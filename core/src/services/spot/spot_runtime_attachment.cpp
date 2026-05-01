@@ -81,6 +81,10 @@ int spot_runtime_t::create_attachment (int kind_,
         return -1;
     socket_base_t *relay_socket = NULL;
     socket->set_auto_hwm_policy_enabled (false);
+    const spot_node_hwm_config_t hwm_config = hwm_config_snapshot ();
+    const int pubsub_admission_hwm =
+      spot_node_pubsub_admission_hwm (hwm_config);
+    const int zero = 0;
     apply_spot_internal_auto_hwm (
       owner->_ctx, socket,
       kind_ == spot_attachment_pub
@@ -107,6 +111,15 @@ int spot_runtime_t::create_attachment (int kind_,
                                           true, true, true, true,
                                           auto_hwm_scope_per_spot,
                                           next_spot_scope_count, 0});
+    if (kind_ == spot_attachment_pub) {
+        socket->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                             &pubsub_admission_hwm,
+                             sizeof (pubsub_admission_hwm));
+        socket->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero, sizeof (zero));
+    } else {
+        socket->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &zero, sizeof (zero));
+        socket->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero, sizeof (zero));
+    }
 
     owner->track_owned_socket (socket);
 
@@ -130,6 +143,10 @@ int spot_runtime_t::create_attachment (int kind_,
                                           true, true, true, true,
                                           auto_hwm_scope_per_spot,
                                           next_spot_scope_count, 0});
+        relay_socket->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &zero,
+                                  sizeof (zero));
+        relay_socket->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero,
+                                  sizeof (zero));
         const int neg_one = -1;
         relay_socket->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                   sizeof (neg_one));

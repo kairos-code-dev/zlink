@@ -89,16 +89,22 @@ public interface IZLinkSessionContext
     ValueTask CloseAsync(
         CancellationToken cancellationToken = default);
 
-    ValueTask AttachActorAsync(
-        IZLinkActor actor,
+    ValueTask<IZLinkActorRef> CreateActorAsync(
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActorRef> CreateRemoteActorAsync(
+        RoutingId actorNodeId,
+        string actorId,
+        string actorType,
         CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
+        IZLinkActorRef actor,
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default);
-
-    ValueTask DisconnectActorAsync(CancellationToken cancellationToken = default);
 }
 ```
 

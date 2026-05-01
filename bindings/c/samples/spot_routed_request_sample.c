@@ -131,6 +131,10 @@ int main (void)
 
     void *requester_node = zlink_spot_node_new (ctx, NULL);
     assert (requester_node != NULL);
+    int zero_linger = 0;
+    assert (zlink_set_option (requester_node, ZLINK_OPT_LINGER, &zero_linger,
+                              sizeof (zero_linger))
+            == 0);
     assert (zlink_set_routing_id (requester_node, "sample-requester-node",
                                   strlen ("sample-requester-node"))
             == 0);
@@ -138,6 +142,12 @@ int main (void)
     void *responder = zlink_spot_new (requester_node);
     assert (requester != NULL);
     assert (responder != NULL);
+    assert (zlink_set_option (requester, ZLINK_OPT_LINGER, &zero_linger,
+                              sizeof (zero_linger))
+            == 0);
+    assert (zlink_set_option (responder, ZLINK_OPT_LINGER, &zero_linger,
+                              sizeof (zero_linger))
+            == 0);
 
     assert (zlink_set_routing_id (requester, "sample-requester-spot",
                                   strlen ("sample-requester-spot"))

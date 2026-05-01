@@ -44,8 +44,8 @@ host/runtime 사용자를 위한 `ZLink Framework` 방향을 정리한다. 제�
 | 4 | [message-model.ko.md](./message-model.ko.md) | `header + body` 메시지 구조, header 필드, body codec 방향. wire 수준 메시지 형식을 다룬다. |
 | 5 | [channel-topology.ko.md](./channel-topology.ko.md) | channel grouping, Discovery, 수동 연결, 상호작용 모델과 내부 transport 매핑. 내부 배선이 어떻게 구성되는지 다룬다. |
 | 6 | [framework-api.ko.md](./framework-api.ko.md) | `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `C++` standalone host 기준의 API 표면 방향. 각 환경에서 handler와 client가 어떤 모양으로 보이는지 다룬다. |
-| 7 | [session-gateway.ko.md](./session-gateway.ko.md) | client 연결을 가진 session server와 actor를 가진 play server를 분리하는 구조. actorId 기준 session gateway, actor relay, routed channel client 필요성을 다룬다. |
-| 8 | [session-gateway-usability.ko.md](./session-gateway-usability.ko.md) | session gateway sample에서 드러난 사용성 문제와 typed handler, route resolver, session actor dispatch helper 개선 방향을 다룬다. |
+| 7 | [session-gateway.ko.md](./session-gateway.ko.md) | 이전 session gateway/actor relay 초안. 현재 public API 기준이 아니며, 배경과 문제 맥락을 확인할 때만 사용한다. |
+| 8 | [session-gateway-usability.ko.md](./session-gateway-usability.ko.md) | 현재 session actor dispatch 기준 초안. typed handler, route resolver, session actor dispatch helper, `SessionProxy` 방향을 다룬다. |
 | 9 | [../bindings/dotnet/README.ko.md](../bindings/dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 상세 초안. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
 | 10 | [../bindings/java/README.ko.md](../bindings/java/README.ko.md) | `Java`와 `Spring Boot` 전용 상세 초안 진입점. |
 | 11 | [../bindings/node/README.ko.md](../bindings/node/README.ko.md) | `Node.js`와 `NestJS` 전용 상세 초안 진입점. |

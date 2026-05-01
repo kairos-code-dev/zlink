@@ -479,15 +479,8 @@ int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_) const
         out_->last_error = _summary_state.last_summary_error;
         if (_runtime && _runtime->faulted)
             out_->last_error = _runtime->fault_errno;
-        if (_runtime) {
-            out_->disconnected_sub_target_count =
-              static_cast<uint32_t> (_runtime->execution.data_plane_state
-                                       .local_fanout.disconnected_targets.size ());
-        }
-        out_->disconnected_routed_target_count =
-          static_cast<uint32_t> (
-            spot_reqrep_internal::disconnected_routed_recv_queue_count_for_node (
-              const_cast<spot_node_t *> (this)));
+        out_->disconnected_sub_target_count = 0;
+        out_->disconnected_routed_target_count = 0;
         out_->last_changed_ms = _summary_state.summary_last_changed_ms;
     }
 

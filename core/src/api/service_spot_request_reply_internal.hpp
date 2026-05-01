@@ -157,7 +157,6 @@ struct routed_message_queue_t
     std::deque<queued_routed_message_t> pending;
     zlink::internal_pair_queue::queue_t signal;
     size_t pending_count;
-    bool disconnected;
 };
 
 struct spot_request_reply_request_state_t :
@@ -243,7 +242,6 @@ typedef std::unordered_map<std::string, std::weak_ptr<router_spot_request_reply_
   router_state_identity_index_t;
 std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >
   &spot_owner_states ();
-size_t disconnected_routed_recv_queue_count_for_node (spot_node_t *node_);
 
 extern std::mutex g_spot_request_reply_index_mutex;
 extern spot_state_identity_index_t g_spot_state_identity_index;

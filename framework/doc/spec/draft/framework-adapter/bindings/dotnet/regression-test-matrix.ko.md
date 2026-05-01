@@ -81,7 +81,9 @@ use case validation은 설계 설명 범위를 보는 문서다. 반면 이 문�
 | outbound-only 외부 publish client | `integration-multi-process` | target SPOT channel publish 성공 |
 | spot 제거 후 scope 정리 | `integration-single-process` | 이후 callback 미발생, dispose 완료 |
 | actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkActorContext.AddPacket(...)`으로 등록한 handler가 join된 `Spot` 실행 문맥에서 실행 |
-| session context actor bridge | `integration-single-process` | `IZLinkSessionContext.AttachActorAsync(...)`, `DispatchToActorAsync(...)`, `DisconnectActorAsync(...)`가 public session 표면에서 동작 |
+| session actor create/dispatch bridge | `integration-single-process` | `CreateActorAsync(...)`, `CreateRemoteActorAsync(...)`, `DispatchToActorAsync(IZLinkActorRef, ...)`가 public session 표면에서 동작 |
+| session actor location writer rollback | `integration-single-process` | writer bind 실패 때 helper가 실패하고 local binding table의 같은 token entry를 제거 |
+| stale session binding token guard | `integration-single-process` | 이전 stream의 늦은 unbind나 stale `SessionProxy` message가 새 binding을 지우거나 사용하지 못함 |
 | session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync(...)`가 현재 stream client 연결을 서버 쪽에서 끊고 disconnect callback으로 이어짐 |
 | actor join 직후 packet dispatch | `integration-single-process` | join 완료 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch 되지 않음 |

@@ -292,3 +292,219 @@ mechanics만 helper 아래에 숨기는 쪽이 깊은 모듈에 가깝다.
 
 결과: 자동 session relay builder 흔적은 draft에 남지 않았다. 구현 전 draft 갱신이므로
 build 검증은 수행하지 않았다.
+
+## Iteration 8
+
+상태: `implemented`
+
+### Red Flags
+
+- `implemented`: draft가 application actor 객체와 session dispatch handle을 모두
+  `IZLinkActor`로 표현했다. 이 상태로 구현하면 remote actor handle에 `Configure()`나
+  actor context를 억지로 붙이거나, actor 객체 생성자 주입 계약을 흐리게 된다.
+- `implemented`: metadata 전달 정책이 개념 설명에 머물러 있어 구현자가 raw stream
+  header, framework routing metadata, application metadata의 경계를 임의로 정해야 했다.
+- `implemented`: actor/session location writer sample은 있었지만 writer와 resolver를
+  어떻게 같은 registry metadata store에 등록하는지, stale unbind를 어떤 atomic 조건으로
+  처리하는지 구현 단서가 부족했다.
+- `implemented`: `IZLinkActorPlayRouteResolver`가 어느 public API에서 호출되는지
+  명확하지 않아 session helper가 actor ref를 가진 뒤에도 resolver를 다시 호출하는
+  shallow path가 생길 수 있었다.
+
+### Alternatives
+
+- 대안 1: 기존 이름을 유지하고 설명 문장으로 local actor와 remote actor의 차이를
+  보완한다.
+- 대안 2: actor 실행 객체와 dispatch handle을 타입으로 분리하고, lifecycle과 metadata
+  policy를 계약 형태로 문서화한다.
+
+선택: 대안 2를 선택했다. 타입 이름이 책임 경계를 표현해야 구현자가 예외 규칙을 덜
+만든다. `IZLinkActor`는 actor node에서 생성되는 객체로, `IZLinkActorRef`는 session이
+dispatch에 사용하는 handle로 분리하는 쪽이 깊은 모듈에 맞다.
+
+수정 결과:
+
+- session helper 반환 타입과 `DispatchToActorAsync(...)` 인자를 `IZLinkActorRef`로
+  정리하고, `IZLinkActor`는 `ActorId`와 `Configure()`를 가진 실행 객체로 정의했다.
+- remote actor marker는 제거했다. local/remote 차이는 create 함수와 internal
+  handle 구현에 숨기고, dispatch caller는 같은 `IZLinkActorRef`만 본다.
+- `CreateActorAsync(...)`와 `CreateRemoteActorAsync(...)` lifecycle을 writer 호출,
+  local binding table 갱신, writer 실패 시 rollback, disconnect unbind 순서까지
+  구현 가능한 단계로 작성했다.
+- `ZLinkMessageMetadata`, `IZLinkMessageMetadataPolicy`,
+  `ConfigureMetadata(...).ForwardApplicationKey(...)` 형태의 metadata 전달 계약을
+  추가했다. resolver 입력 metadata는 되살리지 않았다.
+- `IZLinkSessionProxy`와 `IZLinkActorClient` call builder 계약을 `Async(...)` 실행 함수
+  기준으로 추가했다.
+- registry discovery metadata sample은 같은 store instance를 writer와
+  `IZLinkActorSessionRouteResolver`로 등록하는 예시를 추가했다.
+- `IZLinkActorPlayRouteResolver`는 `IZLinkActorClient`에서만 호출하고,
+  session `DispatchToActorAsync(...)`는 `IZLinkActorRef`의 resolved target을 사용한다고
+  명시했다.
+- old raw actor relay public registration은 제거 대상이며, custom adapter는 framework
+  internal path로만 둔다고 정리했다.
+
+검증:
+
+결과: actor 객체와 actor handle의 타입 혼선, resolver metadata 입력, 오래된 route key
+관련 표현은 draft에서 제거했다. 구현 전 draft 갱신이므로 build 검증은 수행하지 않았다.
+
+## Iteration 9
+
+상태: `implemented`
+
+### Red Flags
+
+- `implemented`: `session-gateway-usability.ko.md`의 테스트 기준이 happy path 중심이라
+  writer rollback, stale unbind, missing resolver validation, metadata deny, registry
+  conditional delete 같은 실패 회귀를 구현자가 놓칠 수 있었다.
+- `implemented`: draft 내용을 정식 spec에 반영한 뒤 전체 spec/draft를 다시 대조하는
+  단계가 plan에 없어, 이전 `SessionGateway` 문서와 새 session actor dispatch 문서가
+  동시에 서로 다른 기준처럼 남을 위험이 있었다.
+
+### Alternatives
+
+- 대안 1: 기존 테스트 표는 유지하고 구현자가 필요한 실패 테스트를 추론하게 한다.
+- 대안 2: draft의 테스트 기준을 실패와 validation까지 포함한 회귀 항목으로 나누고,
+  plan에 정식 spec 반영 및 전체 spec/draft 충돌 리뷰 phase를 추가한다.
+
+선택: 대안 2를 선택했다. 회귀 테스트는 구현자의 추론에 맡기기보다 깨지면 안 되는
+동작을 문서에 고정해야 한다. 또한 draft가 정식 spec으로 반영된 뒤에는 이전 문서와
+새 문서의 개념 충돌을 별도 단계로 닫아야 한다.
+
+수정 결과:
+
+- `session-gateway-usability.ko.md`의 테스트 기준을 typed dispatch, resolver/direct target,
+  actor create/session location lifecycle, metadata/codec/timeout/error, discovery/registry
+  sample 항목으로 나누어 보강했다.
+- `session-actor-dispatch-implementation-plan.ko.md`에 draft 내용을 정식 spec에 반영하는
+  phase를 추가했다.
+- 같은 plan에 전체 spec/draft 개념 충돌 리뷰 phase를 추가하고, 현재 확인된 충돌 후보
+  문서를 기록했다.
+
+검증:
+
+결과: 추가된 테스트 기준과 plan 단계는 문서 변경이다. 금지 표현 검색과 표 형식 확인을
+수행했고, build 검증은 수행하지 않았다.
+
+## Spec/Draft Cross Review 1
+
+상태: `implemented`
+
+### Findings
+
+- `pending`: `policy/session-gateway.ko.md`가 기존 `EnableSessionGateway()`,
+  `AddSessionProxyHandler<THandler>()`, `BindActorAsync(...)`, `OpenActorRelay(...)`,
+  `IZLinkSessionGateway.SendToActor(...)` 중심의 public API를 현재 기준처럼 설명한다.
+  새 `session-gateway-usability.ko.md`는 이 표면을 제거하고 `SessionProxy`와
+  `CreateActorAsync(...)`/`CreateRemoteActorAsync(...)`/`DispatchToActorAsync(...)`로
+  바꾸므로 두 draft가 동시에 읽히면 기준이 충돌한다.
+- `pending`: `.NET` interface 문서와 stream 문서가 `AttachActorAsync(...)`,
+  `DisconnectActorAsync(...)` 기반 session actor bridge를 public 표면으로 설명한다.
+  새 draft는 actor 실행 객체와 dispatch handle을 분리하고 session은 `IZLinkActorRef`를
+  저장해야 하므로 같은 개념의 API가 일치하지 않는다.
+- `pending`: `spec/sample/tictactoe/session-gateway.ko.md`가 기존
+  `OpenActorRelay(...)`, `BindActorAsync(...)`, `SendToActor(...)` 흐름을 sample 완료
+  기준으로 적고 있다. 새 sample 기준은 session actor dispatch helper와 `SessionProxy`다.
+- `pending`: `regression-test-matrix.ko.md`에는 새 resolver, writer, binding token,
+  metadata policy, `SessionProxy` 회귀 항목이 아직 반영되지 않았고, 기존
+  `AttachActorAsync(...)` 회귀 항목이 남아 있다.
+- `pending`: `policy/README.ko.md`는 `session-gateway.ko.md`와
+  `session-gateway-usability.ko.md`를 같은 단계의 연속 문서처럼 나열한다. 지금 상태에서는
+  어떤 문서가 새 기준인지 명시하지 않아 reader가 old API를 현재 목표로 오해할 수 있다.
+
+### Search Used
+
+```bash
+grep -RIn "EnableSessionGateway\\|AddSessionProxyHandler\\|IZLinkSessionGateway\\|SendToActor\\|RequestActor\\|OpenActorRelay\\|IZLinkSessionProxyHandler\\|BindActorAsync\\|AttachActorAsync\\|DisconnectActorAsync" framework/doc/spec
+grep -RIn "RouteKey\\|route key\\|ZLinkSpotRouteRequest\\|ZLinkActor.*RouteRequest\\|metadata.*resolver\\|resolver.*metadata\\|SpotNodeId\\|direct target" framework/doc/spec
+grep -RIn "InMemoryRoutedChannel\\|UseManualConnections\\|Warmup\\|RouteWarmup\\|SampleJson\\|System.Text.Json\\|ExecAsync\\|WithDontWait\\|\\.Sync\\|\\.SendAsync(" framework/doc/spec
+```
+
+### Next Action
+
+이 리뷰는 충돌 식별 단계다. 다음 문서 정리 단계에서는 기존
+`session-gateway.ko.md`와 sample 문서를 새 session actor dispatch 모델로 갱신하거나,
+명확히 superseded 문서로 표시해야 한다. `.NET` binding 문서의 session actor bridge도
+새 `IZLinkActorRef` 기반 표면으로 맞춘다.
+
+## Spec/Draft Cross Review 2
+
+상태: `implemented`
+
+### 수정 결과
+
+- `policy/session-gateway.ko.md`를 superseded 초안으로 표시하고, 현재 구현 기준은
+  `session-gateway-usability.ko.md`라고 명시했다. 이 문서에 남은 old API 이름은 이전
+  설계 배경을 설명하는 문맥으로만 분류한다.
+- `policy/README.ko.md`에서 `session-gateway.ko.md`는 이전 초안,
+  `session-gateway-usability.ko.md`는 현재 session actor dispatch 기준 초안으로 구분했다.
+- `spec/sample/tictactoe/README.ko.md`, `direct.ko.md`,
+  `session-gateway.ko.md`의 sample 설명을 `SessionProxy`와 session actor dispatch helper
+  기준으로 갱신했다.
+- `.NET` `handler-interfaces.ko.md`, `aspnet-core-stream.ko.md`,
+  `stream-samples.ko.md`에서 `AttachActorAsync(...)`/`DisconnectActorAsync(...)` 표면을
+  `CreateActorAsync(...)`, `CreateRemoteActorAsync(...)`,
+  `DispatchToActorAsync(IZLinkActorRef, ...)` 기준으로 바꿨다.
+- `spot-samples.ko.md`의 actor join 설명과 sample 흐름도 session actor create 기준으로
+  맞췄다.
+- `regression-test-matrix.ko.md`의 session actor bridge 회귀 항목을 새 API 기준으로
+  갱신하고 writer rollback, stale binding token guard 항목을 추가했다.
+
+### 재검색 결과
+
+- sample 문서와 `.NET` binding 문서에는 `BindActorAsync(...)`, `AttachActorAsync(...)`,
+  `DisconnectActorAsync(...)`, `OpenActorRelay(...)`, `SendToActor(...)` 기준의 현재 표면
+  설명이 남지 않았다.
+- 전체 spec 검색에서 남는 old session gateway API 이름은 superseded 처리된
+  `policy/session-gateway.ko.md`와 새 `session-gateway-usability.ko.md`의 제거 설명
+  문맥이다.
+- `UseManualConnections(...)`와 `Warmup` 검색 결과는 일반 channel/spot/manual connection
+  문서와 다른 언어 샘플의 service 이름이다. session actor dispatch sample 금지 항목과는
+  직접 충돌하지 않는다.
+
+### 남은 주의점
+
+- `policy/session-gateway.ko.md` 전체를 완전히 삭제하거나 새 모델로 전면 재작성할지는
+  구현 완료 뒤 정식 spec 반영 단계에서 결정한다. 현재는 superseded 표시로 reader 충돌을
+  막는다.
+
+## Spec/Draft Cross Review 3
+
+상태: `implemented`
+
+### 추가 발견
+
+- `spot-samples.ko.md`에는 아직 `IZLinkActor.Context { get; set; }`와
+  `actor.Context.GetSpot<SampleSpot>()` 예시가 남아 있었다. 이는 actor context
+  constructor 주입 기준과 충돌하고, session/handler가 actor 내부 framework context에
+  직접 접근하게 만드는 얕은 인터페이스다.
+- `handler-interfaces.ko.md`의 `IZLinkActorContext`가 `SessionId`를 노출했다. 이 값은
+  actor가 session 위치를 직접 저장해도 된다는 신호로 읽힐 수 있고, reconnect 뒤 stale
+  route를 막기 위해 session route resolver/writer로 위치 정보를 제한한다는 새 기준과
+  충돌한다.
+
+### 수정 결과
+
+- `spot-samples.ko.md`의 actor contract와 sample code를 constructor-injected
+  `IZLinkActorContext` 기준으로 바꿨다. actor context는 actor 내부의 private field로
+  숨기고, join/reply/spot 조회는 actor method로 감싸도록 정리했다.
+- `handler-interfaces.ko.md`의 `IZLinkActorContext.SessionId`를 제거하고, session id,
+  session router id, binding token은 runtime metadata와 session route resolver/writer의
+  책임이라고 명시했다.
+
+### 재검색 결과
+
+- sample 문서와 `.NET` binding 문서에서 `IZLinkActor.Context`,
+  `actor.Context`, `Actor.Context`, actor context setter 형태가 더 이상 검색되지 않는다.
+- actor/session 위치 정보 검색 결과에서 actor context의 session id 노출은 제거되었고,
+  session context와 stream 자체의 `SessionId`만 남았다.
+
+### POSD 판단
+
+- context 공개 속성을 없애 actor 객체가 자기 framework context를 감추게 했으므로 정보
+  은닉이 좋아졌다.
+- session 위치 정보는 resolver/writer와 runtime metadata로 한정되어 stale state
+  위험 신호를 줄였다.
+- 현재 sample과 `.NET` binding draft에서 서로 다른 actor/session 모델이 경쟁하는
+  충돌은 발견되지 않았다.

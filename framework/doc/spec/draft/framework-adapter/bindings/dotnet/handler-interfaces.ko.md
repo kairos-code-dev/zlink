@@ -541,24 +541,30 @@ public interface IZLinkSessionContext
     ValueTask CloseAsync(
         CancellationToken cancellationToken = default);
 
-    ValueTask AttachActorAsync(
-        IZLinkActor actor,
+    ValueTask<IZLinkActorRef> CreateActorAsync(
+        string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActorRef> CreateRemoteActorAsync(
+        RoutingId actorNodeId,
+        string actorId,
+        string actorType,
         CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
+        IZLinkActorRef actor,
         ZlinkStreamHeader header,
         Message body,
-        CancellationToken cancellationToken = default);
-
-    ValueTask DisconnectActorAsync(
         CancellationToken cancellationToken = default);
 }
 ```
 
 `CloseAsync(...)`는 현재 session의 stream peer 연결을 서버 쪽에서 끊는다.
 인증 실패, protocol 위반, idle timeout처럼 더 이상 packet을 받을 필요가 없는
-상황에서 사용한다. 연결 종료 뒤의 actor 정리는 transport disconnect callback이
-올라오면 `DisconnectActorAsync(...)` 경로에서 처리한다.
+상황에서 사용한다. 연결 종료 뒤의 session binding 정리는 framework가 현재
+`sessionId + bindingToken` 기준으로 처리하고, 전역 session route는 session location
+writer의 조건부 unbind 규칙을 따른다.
 
 `OnErrorAsync(...)`는 application handler 내부 예외를 받는 callback이 아니다.
 이 초안에서는 `SocketMonitor`에서 관찰 가능한 session-correlatable transport 오류만
@@ -634,16 +640,21 @@ actor packet 실행 계약은 아래와 같이 둔다.
   session은 packet ingress 역할을 하고, join된 actor의 game/domain 처리는
   `Spot` 실행 문맥에서 직렬화된다.
 
-actor의 공개 표면은 actor context 중심으로 둔다. actor는 context를 property로
-가지고, framework runtime이 actor를 처음 사용할 때 같은 context instance를
-주입한다. callback signature는 context 인자를 반복해서 받지 않는다.
+actor 실행 객체와 session dispatch handle은 분리한다. session은 `IZLinkActorRef`를
+저장하고 dispatch에 사용한다. `IZLinkActor`는 actor node에서 생성되는 application
+객체이며, `IZLinkActorContext`는 constructor 주입으로 받는다. callback signature는
+context 인자를 반복해서 받지 않는다.
 
 ```csharp
+public interface IZLinkActorRef
+{
+    string ActorId { get; }
+    string ActorType { get; }
+}
+
 public interface IZLinkActor
 {
     string ActorId { get; }
-
-    IZLinkActorContext Context { get; set; }
 
     void Configure()
     {
@@ -655,7 +666,6 @@ public interface IZLinkActor
 public interface IZLinkActorContext
 {
     string ActorId { get; }
-    string? SessionId { get; }
     RoutingId? SpotRid { get; }
     bool IsJoined { get; }
 
@@ -707,6 +717,11 @@ public interface IZLinkSpotContext
         CancellationToken cancellationToken = default);
 }
 ```
+
+actor context는 현재 client session의 `SessionId`, session router id, binding token을
+노출하지 않는다. 그 값들은 actor -> client send/request를 위한 runtime 내부 metadata와
+session route resolver/writer의 책임이다. actor가 session 위치를 직접 저장하면 재접속
+시 stale 상태가 되기 쉽기 때문이다.
 
 framework runtime은 actor context를 먼저 주입한 뒤 `Configure()`를 한 번 호출한다.
 actor packet handler 등록은 이 단계에서 `Context.AddPacket<THandler>(...)`로 한다.

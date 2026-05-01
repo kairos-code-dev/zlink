@@ -2,12 +2,24 @@
 
 [초안 묶음](./README.ko.md) | [개요](./overview.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md)
 
-# Draft -- Session Gateway And Actor Relay
+# Draft -- Session Gateway And Actor Relay (Superseded)
 
 > 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, session server와 play server를 분리해서 운영하는
-> 구조를 framework에서 어떻게 표현할지 정리하기 위한 설계 문서다.
-> 구현이 끝나기 전까지 이 문서의 API 이름과 동작은 바뀔 수 있다.
+> 현재 공개 계약이 아니다.
+> 이 문서의 public API 표면은
+> [session-gateway-usability.ko.md](./session-gateway-usability.ko.md)의
+> session actor dispatch 모델로 대체되었다.
+> 이 문서는 이전 설계 배경과 문제 맥락을 확인할 때만 사용한다.
+> 새 구현과 sample은 이 문서의 `EnableSessionGateway(...)`,
+> `AddSessionProxyHandler(...)`, `BindActorAsync(...)`, `OpenActorRelay(...)`,
+> `IZLinkSessionGateway.SendToActor(...)` 표면을 기준으로 삼지 않는다.
+
+## 0. 현재 기준
+
+현재 구현 기준은 [Session Actor Dispatch 사용성 초안](./session-gateway-usability.ko.md)이다.
+새 기준에서는 session에서 actor로 가는 방향을 actor create/dispatch helper로 표현하고,
+actor에서 client session으로 가는 방향만 `SessionProxy`로 표현한다. 이 문서의
+`SessionGateway` 이름과 direct target API는 제거 대상이다.
 
 ## 1. 목적
 

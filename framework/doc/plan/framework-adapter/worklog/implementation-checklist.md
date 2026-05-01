@@ -3,6 +3,24 @@
 이 파일은 `full-implementation-and-sample-plan.ko.md` Phase 0에서 만든 작업 로그다.
 상태 값은 `pending`, `implemented`, `verified`, `not-applicable`만 사용한다.
 
+## Current Direction Note
+
+상태: `implemented`
+
+이 파일의 이전 queue 기록에는 `SessionGateway`, `BindActorAsync(...)`,
+`OpenActorRelay(...)`, `IZLinkSessionGateway.SendToActor(...)` 기준의 구현 이력이 남아
+있다. 이 기록은 당시 작업 이력으로 보존하지만, 새 구현 기준으로 사용하지 않는다.
+
+현재 기준은 아래 문서다.
+
+- `framework/doc/spec/draft/framework-adapter/policy/session-gateway-usability.ko.md`
+- `framework/doc/plan/framework-adapter/session-actor-dispatch-implementation-plan.ko.md`
+
+새 기준에서는 session -> actor 방향은 `CreateActorAsync(...)`,
+`CreateRemoteActorAsync(...)`, `DispatchToActorAsync(IZLinkActorRef, ...)`로 표현하고,
+actor -> client 방향만 `SessionProxy`로 표현한다. `SessionGateway` 이름과 direct target
+send/request API는 제거 대상이다.
+
 ## Phase 0 Inventory
 
 ### Project Paths

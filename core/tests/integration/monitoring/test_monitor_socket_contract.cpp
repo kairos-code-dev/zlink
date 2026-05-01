@@ -1462,7 +1462,7 @@ void test_pubsub_delivery_ready_snapshot_and_reopen_after_ready ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_snapshot (snapshot_monitor,
                                                        &snapshot));
     TEST_ASSERT_TRUE ((snapshot.state_flags & ZLINK_MONITOR_STATE_READY) != 0);
-    TEST_ASSERT_EQUAL_UINT (0u, snapshot.auto_hwm_enabled);
+    TEST_ASSERT_EQUAL_UINT (1u, snapshot.auto_hwm_enabled);
     TEST_ASSERT_TRUE ((snapshot.detail_flags
                        & ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET)
                       != 0);

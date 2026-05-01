@@ -14,7 +14,6 @@
 #include <set>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace zlink
@@ -324,9 +323,7 @@ struct spot_data_plane_runtime_state_t
             pending_bytes (0),
             pending_pause_threshold (0),
             pending_resume_threshold (0),
-            pending_hard_limit (0),
-            pending_message_count_hard_limit (
-              ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT)
+            pending_hard_limit (0)
         {
         }
 
@@ -334,11 +331,9 @@ struct spot_data_plane_runtime_state_t
         size_t pending_pause_threshold;
         size_t pending_resume_threshold;
         size_t pending_hard_limit;
-        size_t pending_message_count_hard_limit;
         pending_message_map_t pending_messages;
         target_map_t targets;
         std::unordered_map<socket_base_t *, uint64_t> target_by_socket;
-        std::unordered_set<uint64_t> disconnected_targets;
     };
 
     struct remote_mesh_state_t
@@ -508,8 +503,6 @@ struct spot_data_plane_protocol_t
 struct spot_data_plane_forwarder_t
 {
     static void pump_socket_commands (socket_base_t *socket_);
-    static int resolve_internal_hwm_override (const char *env_name_,
-                                              int default_value_);
     static void sync_local_fanout_targets (spot_runtime_t *runtime_,
                                            spot_data_plane_runtime_state_t *state_);
     static void sync_remote_mesh_targets (spot_runtime_t *runtime_,

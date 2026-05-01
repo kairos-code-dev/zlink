@@ -31,73 +31,26 @@ static void copy_int_option_value (const void *optval_,
     memcpy (out_, optval_, std::min (optvallen_, sizeof (*out_)));
 }
 
-static void refresh_runtime_pub_hwm (spot_runtime_t *runtime_,
-                                     const void *optval_,
-                                     size_t optvallen_)
+static void refresh_runtime_pubsub_admission_hwm (spot_runtime_t *runtime_,
+                                                  int hwm_)
 {
-    if (!runtime_ || !optval_ || optvallen_ == 0)
+    if (!runtime_)
         return;
 
-    int value = 0;
-    copy_int_option_value (optval_, optvallen_, &value);
-    if (runtime_->mesh_pub)
-        (void) runtime_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
-                                               &value, sizeof (value));
-    if (runtime_->local_fanout_xpub)
-        (void) runtime_->local_fanout_xpub->setsockopt (
-          ZLINK_INTERNAL_OPT_SNDHWM, &value, sizeof (value));
-    runtime_->execution.data_plane_state.mesh_pub_hwm.current_sndhwm = value;
-}
-
-static void refresh_runtime_sub_hwm (spot_runtime_t *runtime_,
-                                     const void *optval_,
-                                     size_t optvallen_)
-{
-    if (!runtime_ || !optval_ || optvallen_ == 0)
-        return;
-
-    int value = 0;
-    copy_int_option_value (optval_, optvallen_, &value);
     if (runtime_->local_pub_ingress_sub)
         (void) runtime_->local_pub_ingress_sub->setsockopt (
-          ZLINK_INTERNAL_OPT_RCVHWM, &value, sizeof (value));
-    if (runtime_->mesh_xsub)
-        (void) runtime_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
-                                                &value, sizeof (value));
+          ZLINK_INTERNAL_OPT_RCVHWM, &hwm_, sizeof (hwm_));
 }
 
-static void refresh_runtime_routed_send_hwm (spot_runtime_t *runtime_,
-                                             const void *optval_,
-                                             size_t optvallen_)
+static void refresh_runtime_router_admission_hwm (spot_runtime_t *runtime_,
+                                                  int hwm_)
 {
-    if (!runtime_ || !optval_ || optvallen_ == 0)
+    if (!runtime_)
         return;
 
-    int value = 0;
-    copy_int_option_value (optval_, optvallen_, &value);
-    if (runtime_->internal_router)
-        (void) runtime_->internal_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
-                                                  &value, sizeof (value));
-    if (runtime_->external_router)
-        (void) runtime_->external_router->setsockopt (
-          ZLINK_INTERNAL_OPT_SNDHWM, &value, sizeof (value));
-}
-
-static void refresh_runtime_routed_recv_hwm (spot_runtime_t *runtime_,
-                                             const void *optval_,
-                                             size_t optvallen_)
-{
-    if (!runtime_ || !optval_ || optvallen_ == 0)
-        return;
-
-    int value = 0;
-    copy_int_option_value (optval_, optvallen_, &value);
     if (runtime_->internal_router)
         (void) runtime_->internal_router->setsockopt (
-          ZLINK_INTERNAL_OPT_RCVHWM, &value, sizeof (value));
-    if (runtime_->external_router)
-        (void) runtime_->external_router->setsockopt (
-          ZLINK_INTERNAL_OPT_RCVHWM, &value, sizeof (value));
+          ZLINK_INTERNAL_OPT_RCVHWM, &hwm_, sizeof (hwm_));
 }
 
 static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
@@ -149,7 +102,7 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
                                       connected_peer_count,
                                       active_peer_count,
                                       0, 0,
-                                      !hwm.topic_send_enabled, false,
+                                      true, false,
                                       true, true, auto_hwm_scope_shared, 1,
                                       msg_unit});
     apply_spot_internal_auto_hwm (
@@ -158,7 +111,7 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
                                       ZLINK_CORE_SOCKET_PUB,
                                       local_sub_count, local_sub_count,
                                       0, 0,
-                                      !hwm.topic_send_enabled, false,
+                                      true, false,
                                       true, true, auto_hwm_scope_shared, 1,
                                       msg_unit});
     apply_spot_internal_auto_hwm (
@@ -166,8 +119,8 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
       spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress,
                                       ZLINK_CORE_SOCKET_SUB,
                                       local_pub_count, local_pub_count,
-                                      0, 0, false,
-                                      !hwm.topic_recv_enabled,
+                                      0, spot_node_pubsub_admission_hwm (hwm),
+                                      false, true,
                                       true, true, auto_hwm_scope_shared, 1,
                                       msg_unit});
     apply_spot_internal_auto_hwm (
@@ -176,8 +129,7 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
                                       ZLINK_CORE_SOCKET_XSUB,
                                       connected_peer_count,
                                       active_peer_count,
-                                      0, 0, false,
-                                      !hwm.topic_recv_enabled,
+                                      0, 0, false, true,
                                       true, true, auto_hwm_scope_shared, 1,
                                       msg_unit});
     apply_spot_internal_auto_hwm (
@@ -185,9 +137,8 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
       spot_internal_auto_hwm_policy_t{auto_hwm_role_routed,
                                       ZLINK_CORE_SOCKET_ROUTER,
                                       routed_local_count, routed_local_count,
-                                      0, 0,
-                                      !hwm.routed_send_enabled,
-                                      !hwm.routed_recv_enabled,
+                                      0, spot_node_router_admission_hwm (hwm),
+                                      true, true,
                                       true, true, auto_hwm_scope_shared, 1,
                                       msg_unit});
     apply_spot_internal_auto_hwm (
@@ -196,9 +147,7 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
                                       ZLINK_CORE_SOCKET_ROUTER,
                                       connected_peer_count,
                                       active_peer_count,
-                                      0, 0,
-                                      !hwm.routed_send_enabled,
-                                      !hwm.routed_recv_enabled,
+                                      0, 0, true, true,
                                       true, true, auto_hwm_scope_shared, 1,
                                       msg_unit});
 }
@@ -214,105 +163,31 @@ static bool apply_runtime_hwm_option (spot_node_hwm_config_t *config_,
     int value = 0;
     copy_int_option_value (optval_, optvallen_, &value);
     switch (option_) {
-        case ZLINK_SPOT_NODE_OPT_PUB_HWM:
-            config_->topic_send_enabled = true;
-            config_->topic_send_hwm = value;
+        case ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE:
+            if (!spot_node_valid_hwm_profile (value))
+                return false;
+            config_->router_profile =
+              static_cast<zlink_auto_hwm_profile_t> (value);
             return true;
-        case ZLINK_SPOT_NODE_OPT_SUB_HWM:
-            config_->topic_recv_enabled = true;
-            config_->topic_recv_hwm = value;
-            return true;
-        case ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM:
-            config_->routed_send_enabled = true;
-            config_->routed_send_hwm = value;
-            return true;
-        case ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM:
-            config_->routed_recv_enabled = true;
-            config_->routed_recv_hwm = value;
-            return true;
-        case ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT:
+        case ZLINK_SPOT_NODE_OPT_ROUTER_HWM:
             if (value < 0)
                 return false;
-            config_->sub_queue_hard_limit_enabled = true;
-            config_->sub_queue_hard_limit = value;
+            config_->router_hwm_override = value;
             return true;
-        case ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT:
+        case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE:
+            if (!spot_node_valid_hwm_profile (value))
+                return false;
+            config_->pubsub_profile =
+              static_cast<zlink_auto_hwm_profile_t> (value);
+            return true;
+        case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM:
             if (value < 0)
                 return false;
-            config_->routed_queue_hard_limit_enabled = true;
-            config_->routed_queue_hard_limit = value;
+            config_->pubsub_hwm_override = value;
             return true;
         default:
             return false;
     }
-}
-
-static int compute_default_node_hwm (ctx_t *ctx_,
-                                     const spot_runtime_t *runtime_,
-                                     int option_)
-{
-    if (!ctx_)
-        return 0;
-
-    auto_hwm_context_plan_t context_plan;
-    auto_hwm_context_plan_make (
-      ctx_->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0, ctx_->auto_hwm_profile (),
-      &context_plan);
-
-    auto_hwm_role_t role = auto_hwm_role_none;
-    int socket_type = ZLINK_CORE_SOCKET_PAIR;
-    size_t managed_connections = 0;
-    size_t active_connections = 0;
-    size_t local_pub_count = 0;
-    size_t local_sub_count = 0;
-    size_t connected_peer_count = 0;
-    size_t active_peer_count = 0;
-    if (runtime_) {
-        runtime_->snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count,
-                                            &connected_peer_count,
-                                            &active_peer_count);
-    }
-    switch (option_) {
-        case ZLINK_SPOT_NODE_OPT_PUB_HWM:
-            role = auto_hwm_role_spot_data;
-            socket_type = ZLINK_CORE_SOCKET_PUB;
-            managed_connections =
-              std::max<size_t> (local_sub_count, connected_peer_count);
-            active_connections =
-              std::max<size_t> (local_sub_count, active_peer_count);
-            break;
-        case ZLINK_SPOT_NODE_OPT_SUB_HWM:
-            role = auto_hwm_role_recv_ingress;
-            socket_type = ZLINK_CORE_SOCKET_SUB;
-            managed_connections =
-              std::max<size_t> (local_pub_count, connected_peer_count);
-            active_connections =
-              std::max<size_t> (local_pub_count, active_peer_count);
-            break;
-        case ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM:
-        case ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM:
-            role = auto_hwm_role_routed;
-            socket_type = ZLINK_CORE_SOCKET_ROUTER;
-            managed_connections = std::max<size_t> (
-              std::max<size_t> (local_pub_count, local_sub_count),
-              connected_peer_count);
-            active_connections = std::max<size_t> (
-              std::max<size_t> (local_pub_count, local_sub_count),
-              active_peer_count);
-            break;
-        default:
-            return 0;
-    }
-
-    auto_hwm_socket_plan_t socket_plan;
-    auto_hwm_socket_plan_for_role (context_plan, role, socket_type,
-                                   managed_connections, active_connections,
-                                   &socket_plan, 0, -1, -1, false, false,
-                                   auto_hwm_scope_none, 1, true);
-    return option_ == ZLINK_SPOT_NODE_OPT_SUB_HWM
-             || option_ == ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM
-             ? socket_plan.rcvhwm
-             : socket_plan.sndhwm;
 }
 
 static bool read_runtime_hwm_option (ctx_t *ctx_,
@@ -323,45 +198,21 @@ static bool read_runtime_hwm_option (ctx_t *ctx_,
 {
     if (!value_out_)
         return false;
+    LIBZLINK_UNUSED (ctx_);
+    LIBZLINK_UNUSED (runtime_);
 
     switch (option_) {
-        case ZLINK_SPOT_NODE_OPT_PUB_HWM:
-            if (config_.topic_send_enabled) {
-                *value_out_ = config_.topic_send_hwm;
-                return true;
-            }
-            *value_out_ = compute_default_node_hwm (ctx_, runtime_, option_);
+        case ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE:
+            *value_out_ = config_.router_profile;
             return true;
-        case ZLINK_SPOT_NODE_OPT_SUB_HWM:
-            if (config_.topic_recv_enabled) {
-                *value_out_ = config_.topic_recv_hwm;
-                return true;
-            }
-            *value_out_ = compute_default_node_hwm (ctx_, runtime_, option_);
+        case ZLINK_SPOT_NODE_OPT_ROUTER_HWM:
+            *value_out_ = spot_node_router_admission_hwm (config_);
             return true;
-        case ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM:
-            if (config_.routed_send_enabled) {
-                *value_out_ = config_.routed_send_hwm;
-                return true;
-            }
-            *value_out_ = compute_default_node_hwm (ctx_, runtime_, option_);
+        case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE:
+            *value_out_ = config_.pubsub_profile;
             return true;
-        case ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM:
-            if (config_.routed_recv_enabled) {
-                *value_out_ = config_.routed_recv_hwm;
-                return true;
-            }
-            *value_out_ = compute_default_node_hwm (ctx_, runtime_, option_);
-            return true;
-        case ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT:
-            *value_out_ = config_.sub_queue_hard_limit_enabled
-                            ? config_.sub_queue_hard_limit
-                            : ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT;
-            return true;
-        case ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT:
-            *value_out_ = config_.routed_queue_hard_limit_enabled
-                            ? config_.routed_queue_hard_limit
-                            : ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT;
+        case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM:
+            *value_out_ = spot_node_pubsub_admission_hwm (config_);
             return true;
         default:
             return false;
@@ -678,9 +529,7 @@ int spot_node_t::set_pub_option (int option_,
     if (rc != 0)
         return rc;
 
-    if (option_ == ZLINK_SPOT_PUB_OPT_SNDHWM)
-        refresh_runtime_pub_hwm (_runtime, optval_, optvallen_);
-    else if (option_ == ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES)
+    if (option_ == ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES)
         refresh_runtime_auto_hwm_msg_unit (_runtime, optval_, optvallen_);
     return 0;
 }
@@ -696,9 +545,7 @@ int spot_node_t::set_sub_option (int option_,
     if (rc != 0)
         return rc;
 
-    if (option_ == ZLINK_SPOT_SUB_OPT_RCVHWM)
-        refresh_runtime_sub_hwm (_runtime, optval_, optvallen_);
-    else if (option_ == ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES)
+    if (option_ == ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES)
         refresh_runtime_auto_hwm_msg_unit (_runtime, optval_, optvallen_);
     return 0;
 }
@@ -720,34 +567,18 @@ int spot_node_t::set_node_option (int option_,
         errno = EINVAL;
         return -1;
     }
-    if (option_ == ZLINK_SPOT_NODE_OPT_PUB_HWM) {
-        if (_handle_state.handle_defaults.set_pub_option (ZLINK_SPOT_PUB_OPT_SNDHWM, optval_,
-                                             optvallen_)
-            != 0)
-            return -1;
-    } else if (option_ == ZLINK_SPOT_NODE_OPT_SUB_HWM) {
-        if (_handle_state.handle_defaults.set_sub_option (ZLINK_SPOT_SUB_OPT_RCVHWM, optval_,
-                                             optvallen_)
-            != 0)
-            return -1;
-    }
+    const int router_hwm = spot_node_router_admission_hwm (hwm_config);
+    const int pubsub_hwm = spot_node_pubsub_admission_hwm (hwm_config);
     _runtime->set_hwm_config (hwm_config);
 
     switch (option_) {
-        case ZLINK_SPOT_NODE_OPT_PUB_HWM:
-            refresh_runtime_pub_hwm (_runtime, optval_, optvallen_);
+        case ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE:
+        case ZLINK_SPOT_NODE_OPT_ROUTER_HWM:
+            refresh_runtime_router_admission_hwm (_runtime, router_hwm);
             return 0;
-        case ZLINK_SPOT_NODE_OPT_SUB_HWM:
-            refresh_runtime_sub_hwm (_runtime, optval_, optvallen_);
-            return 0;
-        case ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM:
-            refresh_runtime_routed_send_hwm (_runtime, optval_, optvallen_);
-            return 0;
-        case ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM:
-            refresh_runtime_routed_recv_hwm (_runtime, optval_, optvallen_);
-            return 0;
-        case ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT:
-        case ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT:
+        case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE:
+        case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM:
+            refresh_runtime_pubsub_admission_hwm (_runtime, pubsub_hwm);
             return 0;
         default:
             errno = EINVAL;

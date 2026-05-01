@@ -764,7 +764,8 @@ session handler는 인증과 재연결을 맡는 ingress adapter이고, 실제 l
 actor는 room에 남아 있을 수 있고, 새 stream이 같은
 `accountId`로 다시 들어오면 같은 actor에 다시 연결할 수 있다.
 그리고 이 모델이 public 계약으로 보이려면 actor join은 `IZLinkSpot` override가
-아니라 `IZLinkSessionContext.AttachActorAsync(...)`, `IZLinkActorContext.JoinSpot(...)`,
+아니라 session의 `CreateActorAsync(...)` 또는 `CreateRemoteActorAsync(...)`,
+`IZLinkActorContext.JoinSpot(...)`,
 `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` 조합으로 보여야 한다.
 join 승인과 membership 기록은 반드시 target `Spot` 실행 문맥에서 함께 처리되어야
 하기 때문이다.
@@ -779,8 +780,6 @@ public interface IZLinkActor
 {
     string ActorId { get; }
 
-    IZLinkActorContext Context { get; set; }
-
     void Configure()
     {
     }
@@ -793,12 +792,12 @@ public interface IZLinkActor
 
 - `IZLinkActor`
   - `accountId` 같은 stable identity를 가진 논리 객체다.
-- `IZLinkActor.Context`
-  - 현재 stream session과 room join 상태를 제공한다. reconnect가 일어나면 context가
-    가리키는 stream session이 바뀔 수 있다.
+- `IZLinkActorContext`
+  - actor 생성 시 constructor로 주입되는 framework context다. actor는 이 context를
+    외부에 공개하지 않고, 필요한 동작을 자기 method 안에서 감싼다.
 - `IZLinkActor.Configure()`
-  - context가 주입된 뒤 한 번 호출된다. actor가 받을 packet handler는 이 안에서
-    `Context.AddPacket<THandler>()`로 등록한다.
+  - actor가 생성된 뒤 한 번 호출된다. actor가 받을 packet handler는 이 안에서
+    constructor로 받은 context의 `AddPacket<THandler>()`로 등록한다.
 - `IZLinkActorContext.GetSpot<TSpot>()`
   - 현재 들어가 있는 room instance를 가져온다. room에 아직 안 들어갔으면 실패한다.
 - stream attach/disconnect와 room join/leave는 다른 수명이다.
@@ -1014,12 +1013,15 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
 
 public sealed class SampleActor : IZLinkActor
 {
+    private readonly IZLinkActorContext _context;
     private IZLinkStream? _stream;
 
     public SampleActor(
+        IZLinkActorContext context,
         string actorId,
         string displayName)
     {
+        _context = context;
         ActorId = actorId;
         DisplayName = displayName;
     }
@@ -1040,7 +1042,7 @@ public sealed class SampleActor : IZLinkActor
 
     public void Configure()
     {
-        Context.AddPacket<SampleMoveActorHandler>();
+        _context.AddPacket<SampleMoveActorHandler>();
     }
 
     public async ValueTask SendSnapshotAsync(
@@ -1048,7 +1050,7 @@ public sealed class SampleActor : IZLinkActor
     {
         LastSeenAt = DateTimeOffset.UtcNow;
 
-        await Context
+        await _context
             .Send(new SampleActorSnapshot
             {
                 ActorId = ActorId,
@@ -1093,7 +1095,26 @@ public sealed class SampleActor : IZLinkActor
 
     public SampleSpot GetRoom()
     {
-        return Context.GetSpot<SampleSpot>();
+        return _context.GetSpot<SampleSpot>();
+    }
+
+    public ValueTask<SampleJoinRoomReply> JoinRoomAsync(
+        SampleSpot room,
+        SampleJoinRoomRequest request,
+        CancellationToken cancellationToken)
+    {
+        return _context
+            .JoinSpot(room.SpotRid, request)
+            .Async<SampleJoinRoomReply>(cancellationToken);
+    }
+
+    public ValueTask ReplyAsync<TMessage>(
+        TMessage message,
+        CancellationToken cancellationToken)
+    {
+        return _context
+            .Reply(message)
+            .Async(cancellationToken);
     }
 
 }
@@ -1106,14 +1127,14 @@ public sealed class SampleMoveActorHandler
         SampleMoveActorCommand message,
         CancellationToken cancellationToken)
     {
-        SampleSpot room = actor.Context.GetSpot<SampleSpot>();
+        SampleSpot room = actor.GetRoom();
         actor.MarkSeen(DateTimeOffset.UtcNow);
         room.PublishSampleState();
-        return actor.Context.Reply(new SampleMoveActorReply
+        return actor.ReplyAsync(new SampleMoveActorReply
         {
             X = message.X,
             Y = message.Y
-        }).Async(cancellationToken);
+        }, cancellationToken);
     }
 }
 
@@ -1137,6 +1158,7 @@ public sealed class SampleSession
     public IZLinkSessionContext Context { get; set; } = default!;
 
     public SampleActor? Actor { get; private set; }
+    public IZLinkActorRef? ActorRef { get; private set; }
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
@@ -1152,8 +1174,9 @@ public sealed class SampleSession
 
         SampleActor actor = Actor;
         Actor = null;
+        ActorRef = null;
 
-        await Context.DisconnectActorAsync(cancellationToken);
+        // session binding cleanup is handled by the framework disconnect path.
     }
 
     public ValueTask OnErrorAsync(
@@ -1197,7 +1220,10 @@ public sealed class SampleSession
                     cancellationToken);
 
             Actor = actor;
-            await Context.AttachActorAsync(actor, cancellationToken);
+            ActorRef = await Context.CreateActorAsync(
+                auth.AccountId,
+                auth.ActorType,
+                cancellationToken);
 
             await Context
                 .Reply(new SampleAuthenticateReply
@@ -1222,9 +1248,10 @@ public sealed class SampleSession
                     join.RoomId,
                     cancellationToken);
 
-            SampleJoinRoomReply joinReply = await Actor.Context
-                .JoinSpot(room.SpotRid, join)
-                .Async<SampleJoinRoomReply>(cancellationToken);
+            SampleJoinRoomReply joinReply = await Actor.JoinRoomAsync(
+                room,
+                join,
+                cancellationToken);
 
             await Context
                 .Reply(joinReply)
@@ -1239,6 +1266,7 @@ public sealed class SampleSession
         }
 
         await Context.DispatchToActorAsync(
+            ActorRef ?? throw new InvalidOperationException("Actor is not bound."),
             header,
             body,
             cancellationToken);
@@ -1334,8 +1362,8 @@ public sealed record SampleAuthenticationResult(
    actor가 붙은 `Spot` 문맥으로 제출된다.
 9. 같은 `Spot` 실행 문맥 안에서 실제 처리는
    `IZLinkActorContext.AddPacket(...)`으로 등록한 actor packet handler가 맡는다.
-10. room 전체 로직이 필요하면 handler가 `actor.Context.GetSpot<SampleSpot>()`으로
-    room instance를 가져와 이어서 처리한다.
+10. room 전체 로직이 필요하면 handler가 actor method를 통해 현재 `SampleSpot`을
+    가져와 이어서 처리한다.
 
 즉 room은 actor만 붙잡고, session handler는 room 밖에서 인증과 재연결을 처리한다.
 이 구조로 보면 "같은 account의 actor는 유지하고 stream만 교체"하는 reconnect 정책이

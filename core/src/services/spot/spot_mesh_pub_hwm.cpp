@@ -18,17 +18,9 @@ namespace
 int default_mesh_pub_sndhwm (size_t managed_connections_,
                              size_t active_connections_)
 {
-    auto_hwm_context_plan_t context_plan;
-    auto_hwm_context_plan_make (
-      ZLINK_CTX_AUTO_HWM_ENABLE_DFLT != 0, ZLINK_CTX_AUTO_HWM_PROFILE_DFLT,
-      &context_plan);
-    auto_hwm_socket_plan_t socket_plan;
-    auto_hwm_socket_plan_for_role (context_plan, auto_hwm_role_spot_data,
-                                   ZLINK_CORE_SOCKET_PUB, managed_connections_,
-                                   active_connections_, &socket_plan, 0, -1,
-                                   -1, false, false, auto_hwm_scope_none, 1,
-                                   true);
-    return socket_plan.sndhwm;
+    LIBZLINK_UNUSED (managed_connections_);
+    LIBZLINK_UNUSED (active_connections_);
+    return 0;
 }
 
 int current_socket_sndhwm (socket_base_t *socket_)
@@ -95,30 +87,8 @@ bool spot_mesh_pub_hwm_t::publish_ready_hint (spot_runtime_t *runtime_,
 int spot_mesh_pub_hwm_t::resolve_runtime_default (
   const spot_runtime_t *runtime_)
 {
-    if (!runtime_)
-        return resolve_default (std::string (), 0);
-
-    if (runtime_->owner) {
-        const spot_node_t::pub_defaults_t defaults =
-          runtime_->owner->load_pub_defaults ();
-        if (defaults.sndhwm.enabled && defaults.sndhwm.size > 0) {
-            int value = resolve_default (std::string (), 0);
-            memcpy (&value, &defaults.sndhwm.value,
-                    std::min (defaults.sndhwm.size, sizeof (value)));
-            return value > 0 ? value : 0;
-        }
-    }
-
-    size_t local_pub_count = 0;
-    size_t local_sub_count = 0;
-    size_t connected_peer_count = 0;
-    size_t active_peer_count = 0;
-    runtime_->snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count,
-                                        &connected_peer_count,
-                                        &active_peer_count);
-    return spot_internal_auto_hwm_default_hwm (
-      runtime_->ctx (), auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB, false, 0,
-      connected_peer_count, active_peer_count);
+    LIBZLINK_UNUSED (runtime_);
+    return 0;
 }
 
 int spot_mesh_pub_hwm_t::resolve_initial_bind_sndhwm (
@@ -133,9 +103,9 @@ int spot_mesh_pub_hwm_t::resolve_initial_bind_sndhwm (
         ready_peers =
           mesh_pub_ready_peer_count (&runtime_->execution.mesh_peer_state);
 
-    return spot_data_plane_forwarder_t::resolve_internal_hwm_override (
-      "ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM",
-      resolve_default (endpoint_, ready_peers));
+    LIBZLINK_UNUSED (endpoint_);
+    LIBZLINK_UNUSED (ready_peers);
+    return 0;
 }
 
 void spot_mesh_pub_hwm_t::refresh_live_socket (
@@ -161,9 +131,7 @@ void spot_mesh_pub_hwm_t::refresh_live_socket (
     *last_hwm_version_ = hwm_version;
     *last_bound_endpoint_ = bound_endpoint;
 
-    int desired = spot_data_plane_forwarder_t::resolve_internal_hwm_override (
-      "ZLINK_SPOT_INTERNAL_MESH_PUB_SNDHWM",
-      resolve_runtime_default (runtime_));
+    const int desired = resolve_runtime_default (runtime_);
     if (desired == *current_hwm_)
         return;
 

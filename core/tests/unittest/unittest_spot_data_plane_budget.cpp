@@ -20,16 +20,9 @@ namespace
 int expected_mesh_pub_sndhwm (size_t managed_connections_ = 0,
                               size_t active_connections_ = 0)
 {
-    zlink::auto_hwm_context_plan_t context_plan;
-    zlink::auto_hwm_context_plan_make (
-      ZLINK_CTX_AUTO_HWM_ENABLE_DFLT != 0, ZLINK_CTX_AUTO_HWM_PROFILE_DFLT,
-      &context_plan);
-    zlink::auto_hwm_socket_plan_t socket_plan;
-    zlink::auto_hwm_socket_plan_for_role (
-      context_plan, zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
-      managed_connections_, active_connections_, &socket_plan, 0, -1, -1,
-      false, false, zlink::auto_hwm_scope_none, 1, true);
-    return socket_plan.sndhwm;
+    LIBZLINK_UNUSED (managed_connections_);
+    LIBZLINK_UNUSED (active_connections_);
+    return 0;
 }
 
 int expected_spot_hwm (zlink::auto_hwm_role_t role_,
@@ -542,56 +535,68 @@ void test_spot_node_hwm_options_round_trip_public_api ()
     void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
 
-    int topic_send = 111;
-    int topic_recv = 222;
-    int routed_send = 333;
-    int routed_recv = 444;
-    int sub_queue_limit = 55;
-    int routed_queue_limit = 66;
+    int router_profile = ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY;
+    int pubsub_profile = ZLINK_AUTO_HWM_PROFILE_THROUGHPUT;
+    int router_hwm = 111;
+    int pubsub_hwm = 222;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_PUB_HWM, &topic_send,
-      sizeof (topic_send)));
+      node, ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE, &router_profile,
+      sizeof (router_profile)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_SUB_HWM, &topic_recv,
-      sizeof (topic_recv)));
+      node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE, &pubsub_profile,
+      sizeof (pubsub_profile)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM, &routed_send,
-      sizeof (routed_send)));
+      node, ZLINK_SPOT_NODE_OPT_ROUTER_HWM, &router_hwm,
+      sizeof (router_hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM, &routed_recv,
-      sizeof (routed_recv)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT, &sub_queue_limit,
-      sizeof (sub_queue_limit)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT, &routed_queue_limit,
-      sizeof (routed_queue_limit)));
+      node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, &pubsub_hwm,
+      sizeof (pubsub_hwm)));
 
     int value = 0;
     size_t value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_PUB_HWM, &value, &value_size));
+      node, ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE, &value, &value_size));
+    TEST_ASSERT_EQUAL_INT (ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY, value);
+    value_size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE, &value, &value_size));
+    TEST_ASSERT_EQUAL_INT (ZLINK_AUTO_HWM_PROFILE_THROUGHPUT, value);
+    value_size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_ROUTER_HWM, &value, &value_size));
     TEST_ASSERT_EQUAL_INT (111, value);
     value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_SUB_HWM, &value, &value_size));
+      node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, &value, &value_size));
     TEST_ASSERT_EQUAL_INT (222, value);
+
+    int reset = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
+      node, ZLINK_SPOT_NODE_OPT_ROUTER_HWM, &reset, sizeof (reset)));
     value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM, &value, &value_size));
-    TEST_ASSERT_EQUAL_INT (333, value);
+      node, ZLINK_SPOT_NODE_OPT_ROUTER_HWM, &value, &value_size));
+    TEST_ASSERT_EQUAL_INT (8, value);
+
+    int invalid = -1;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_set_spot_node_option (
+        node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, &invalid, sizeof (invalid)));
+    invalid = 999;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_set_spot_node_option (
+        node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE, &invalid,
+        sizeof (invalid)));
+
+    const int removed_option = 0x3608;
     value_size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM, &value, &value_size));
-    TEST_ASSERT_EQUAL_INT (444, value);
-    value_size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT, &value, &value_size));
-    TEST_ASSERT_EQUAL_INT (55, value);
-    value_size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_spot_node_option (
-      node, ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT, &value, &value_size));
-    TEST_ASSERT_EQUAL_INT (66, value);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_get_spot_node_option (
+        node, static_cast<zlink_spot_node_option_t> (removed_option), &value,
+        &value_size));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
@@ -604,39 +609,28 @@ void test_spot_node_hwm_options_expose_defaults ()
     void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
 
-    const zlink_spot_node_option_t options[] = {
-      ZLINK_SPOT_NODE_OPT_PUB_HWM,
-      ZLINK_SPOT_NODE_OPT_SUB_HWM,
-      ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM,
-      ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM,
-      ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT,
-      ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT,
+    struct expected_option_t
+    {
+        zlink_spot_node_option_t option;
+        int expected;
+    };
+    const expected_option_t options[] = {
+      {ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE,
+       ZLINK_AUTO_HWM_PROFILE_BALANCED},
+      {ZLINK_SPOT_NODE_OPT_ROUTER_HWM, 16},
+      {ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE,
+       ZLINK_AUTO_HWM_PROFILE_BALANCED},
+      {ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, 16},
     };
 
     for (size_t i = 0; i < sizeof (options) / sizeof (options[0]); ++i) {
         int value = -1;
         size_t value_size = sizeof (value);
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_get_spot_node_option (node, options[i], &value, &value_size));
+          zlink_get_spot_node_option (
+            node, options[i].option, &value, &value_size));
         TEST_ASSERT_EQUAL_UINT (sizeof (value), value_size);
-        int expected = 0;
-        if (options[i] == ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT)
-            expected = ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT;
-        else if (options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT)
-            expected = ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT;
-        else if (options[i] == ZLINK_SPOT_NODE_OPT_PUB_HWM)
-            expected = expected_mesh_pub_sndhwm ();
-        else
-            expected = expected_spot_hwm (
-              options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM
-                  || options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM
-                ? zlink::auto_hwm_role_routed
-                : zlink::auto_hwm_role_recv_ingress,
-              options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM
-                  || options[i] == ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM
-                ? ZLINK_CORE_SOCKET_ROUTER
-                : ZLINK_CORE_SOCKET_SUB);
-        TEST_ASSERT_EQUAL_INT (expected, value);
+        TEST_ASSERT_EQUAL_INT (options[i].expected, value);
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));

@@ -224,10 +224,18 @@ void test_typed_spot_node_unified_options ()
     int pub_hwm = 77;
     int sub_hwm = 88;
     size_t size = sizeof (pub_hwm);
-    TEST_ASSERT_SUCCESS_ERRNO (
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
       zlink_set_option (node, ZLINK_OPT_SNDHWM, &pub_hwm, sizeof (pub_hwm)));
-    TEST_ASSERT_SUCCESS_ERRNO (
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
       zlink_set_option (node, ZLINK_OPT_RCVHWM, &sub_hwm, sizeof (sub_hwm)));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_spot_node_option (node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM,
+                                  &sub_hwm, sizeof (sub_hwm)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (node, "npub", 4));
 
@@ -239,14 +247,15 @@ void test_typed_spot_node_unified_options ()
     int got = 0;
     size = sizeof (got);
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_NOT_SUPPORTED,
+      ZLINK_CONFIG_INVALID_ARGUMENT,
       zlink_get_option (node, ZLINK_OPT_SNDHWM, &got, &size));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     size = sizeof (got);
-    TEST_ASSERT_SUCCESS_ERRNO (
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
       zlink_get_option (node, ZLINK_OPT_RCVHWM, &got, &size));
-    TEST_ASSERT_EQUAL_INT (88, got);
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     size = sizeof (got);
     TEST_ASSERT_SUCCESS_ERRNO (

@@ -65,34 +65,55 @@ struct spot_attachment_t
 struct spot_node_hwm_config_t
 {
     spot_node_hwm_config_t () :
-        topic_send_enabled (false),
-        topic_send_hwm (0),
-        topic_recv_enabled (false),
-        topic_recv_hwm (0),
-        routed_send_enabled (false),
-        routed_send_hwm (0),
-        routed_recv_enabled (false),
-        routed_recv_hwm (0),
-        sub_queue_hard_limit_enabled (false),
-        sub_queue_hard_limit (ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT),
-        routed_queue_hard_limit_enabled (false),
-        routed_queue_hard_limit (ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT)
+        router_profile (ZLINK_AUTO_HWM_PROFILE_BALANCED),
+        router_hwm_override (0),
+        pubsub_profile (ZLINK_AUTO_HWM_PROFILE_BALANCED),
+        pubsub_hwm_override (0)
     {
     }
 
-    bool topic_send_enabled;
-    int topic_send_hwm;
-    bool topic_recv_enabled;
-    int topic_recv_hwm;
-    bool routed_send_enabled;
-    int routed_send_hwm;
-    bool routed_recv_enabled;
-    int routed_recv_hwm;
-    bool sub_queue_hard_limit_enabled;
-    int sub_queue_hard_limit;
-    bool routed_queue_hard_limit_enabled;
-    int routed_queue_hard_limit;
+    zlink_auto_hwm_profile_t router_profile;
+    int router_hwm_override;
+    zlink_auto_hwm_profile_t pubsub_profile;
+    int pubsub_hwm_override;
 };
+
+inline int spot_node_admission_hwm_for_profile (
+  zlink_auto_hwm_profile_t profile_)
+{
+    switch (profile_) {
+        case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
+            return 8;
+        case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
+            return 32;
+        case ZLINK_AUTO_HWM_PROFILE_BALANCED:
+        default:
+            return 16;
+    }
+}
+
+inline bool spot_node_valid_hwm_profile (int profile_)
+{
+    return profile_ == ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY
+           || profile_ == ZLINK_AUTO_HWM_PROFILE_BALANCED
+           || profile_ == ZLINK_AUTO_HWM_PROFILE_THROUGHPUT;
+}
+
+inline int spot_node_router_admission_hwm (
+  const spot_node_hwm_config_t &config_)
+{
+    return config_.router_hwm_override > 0
+             ? config_.router_hwm_override
+             : spot_node_admission_hwm_for_profile (config_.router_profile);
+}
+
+inline int spot_node_pubsub_admission_hwm (
+  const spot_node_hwm_config_t &config_)
+{
+    return config_.pubsub_hwm_override > 0
+             ? config_.pubsub_hwm_override
+             : spot_node_admission_hwm_for_profile (config_.pubsub_profile);
+}
 
 struct spot_runtime_t
 {

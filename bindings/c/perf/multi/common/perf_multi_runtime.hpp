@@ -929,24 +929,19 @@ inline bool apply_benchmark_spot_node_hwm(void *node_,
       explicit_rcvhwm || hwm_value > 0
         ? bench_hwm_from_env("PERF_RCVHWM", hwm_value)
         : 0;
+    const int admission_hwm = send_hwm > 0 ? send_hwm : recv_hwm;
 
     bool ok = true;
     if (pubsub_enabled) {
-        ok = set_spot_node_hwm_option(node_, ZLINK_SPOT_NODE_OPT_PUB_HWM,
-                                      send_hwm, "ZLINK_SPOT_NODE_OPT_PUB_HWM")
-             && ok;
-        ok = set_spot_node_hwm_option(node_, ZLINK_SPOT_NODE_OPT_SUB_HWM,
-                                      recv_hwm, "ZLINK_SPOT_NODE_OPT_SUB_HWM")
+        ok = set_spot_node_hwm_option(
+               node_, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, admission_hwm,
+               "ZLINK_SPOT_NODE_OPT_PUBSUB_HWM")
              && ok;
     }
     if (routed_enabled) {
         ok = set_spot_node_hwm_option(
-               node_, ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM, send_hwm,
-               "ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM")
-             && ok;
-        ok = set_spot_node_hwm_option(
-               node_, ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM, recv_hwm,
-               "ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM")
+               node_, ZLINK_SPOT_NODE_OPT_ROUTER_HWM, admission_hwm,
+               "ZLINK_SPOT_NODE_OPT_ROUTER_HWM")
              && ok;
     }
     return ok;

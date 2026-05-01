@@ -116,6 +116,20 @@ size_t count_socket_name_rows (
     return count;
 }
 
+const zlink_spot_node_socket_snapshot_entry_t *find_socket_row (
+  const std::vector<zlink_spot_node_socket_snapshot_entry_t> &rows_,
+  zlink_spot_node_socket_owner_t owner_,
+  const char *socket_name_)
+{
+    for (size_t i = 0; i < rows_.size (); ++i) {
+        if (rows_[i].owner == owner_
+            && strcmp (rows_[i].socket_name, socket_name_) == 0) {
+            return &rows_[i];
+        }
+    }
+    return NULL;
+}
+
 void test_spot_node_options_default_zero_and_invalid_mode ()
 {
     void *ctx = zlink_ctx_new ();
@@ -338,6 +352,127 @@ void test_spot_node_internal_socket_snapshot_contract ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_spot_node_admission_hwm_socket_snapshot_contract ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+
+    int router_hwm = 23;
+    int pubsub_hwm = 17;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_spot_node_option (node, ZLINK_SPOT_NODE_OPT_ROUTER_HWM,
+                                  &router_hwm, sizeof (router_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_spot_node_option (node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM,
+                                  &pubsub_hwm, sizeof (pubsub_hwm)));
+
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
+    TEST_ASSERT_NOT_NULL (resolve_spot_pub_subject_poller_socket (spot));
+    TEST_ASSERT_NOT_NULL (resolve_spot_sub_subject_poller_socket (spot));
+
+    const std::vector<zlink_spot_node_socket_snapshot_entry_t> rows =
+      read_socket_snapshot (node);
+
+    const zlink_spot_node_socket_snapshot_entry_t *spot_pub =
+      find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT, "pub");
+    const zlink_spot_node_socket_snapshot_entry_t *spot_sub =
+      find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT, "sub");
+    const zlink_spot_node_socket_snapshot_entry_t *ingress =
+      find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "ingress-sub");
+    const zlink_spot_node_socket_snapshot_entry_t *fanout =
+      find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "local-pub");
+    const zlink_spot_node_socket_snapshot_entry_t *mesh_pub =
+      find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "mesh-pub");
+    const zlink_spot_node_socket_snapshot_entry_t *mesh_xsub =
+      find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "mesh-xsub");
+    const zlink_spot_node_socket_snapshot_entry_t *internal_router =
+      find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
+                       "internal-router");
+    const zlink_spot_node_socket_snapshot_entry_t *external_router =
+      find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
+                       "external-router");
+
+    TEST_ASSERT_NOT_NULL (spot_pub);
+    TEST_ASSERT_NOT_NULL (spot_sub);
+    TEST_ASSERT_NOT_NULL (ingress);
+    TEST_ASSERT_NOT_NULL (fanout);
+    TEST_ASSERT_NOT_NULL (mesh_pub);
+    TEST_ASSERT_NOT_NULL (mesh_xsub);
+    TEST_ASSERT_NOT_NULL (internal_router);
+    TEST_ASSERT_NOT_NULL (external_router);
+
+    TEST_ASSERT_EQUAL_INT (pubsub_hwm,
+                           spot_pub->snapshot.auto_hwm_applied_sndhwm);
+    TEST_ASSERT_EQUAL_INT (0, spot_pub->snapshot.auto_hwm_applied_rcvhwm);
+    TEST_ASSERT_EQUAL_INT (0, spot_sub->snapshot.auto_hwm_applied_rcvhwm);
+    TEST_ASSERT_EQUAL_INT (pubsub_hwm,
+                           ingress->snapshot.auto_hwm_applied_rcvhwm);
+    TEST_ASSERT_EQUAL_INT (0, fanout->snapshot.auto_hwm_applied_sndhwm);
+    TEST_ASSERT_EQUAL_INT (0, mesh_pub->snapshot.auto_hwm_applied_sndhwm);
+    TEST_ASSERT_EQUAL_INT (0, mesh_xsub->snapshot.auto_hwm_applied_rcvhwm);
+
+    TEST_ASSERT_EQUAL_INT (router_hwm,
+                           internal_router->snapshot.auto_hwm_applied_rcvhwm);
+    TEST_ASSERT_EQUAL_INT (0,
+                           internal_router->snapshot.auto_hwm_applied_sndhwm);
+    TEST_ASSERT_EQUAL_INT (0,
+                           external_router->snapshot.auto_hwm_applied_rcvhwm);
+    TEST_ASSERT_EQUAL_INT (0,
+                           external_router->snapshot.auto_hwm_applied_sndhwm);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_spot_node_admission_hwm_changes_apply_to_new_spots_only ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *old_spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (old_spot);
+    TEST_ASSERT_NOT_NULL (resolve_spot_pub_subject_poller_socket (old_spot));
+
+    int pubsub_hwm = 21;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_spot_node_option (node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM,
+                                  &pubsub_hwm, sizeof (pubsub_hwm)));
+
+    void *new_spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (new_spot);
+    TEST_ASSERT_NOT_NULL (resolve_spot_pub_subject_poller_socket (new_spot));
+
+    const std::vector<zlink_spot_node_socket_snapshot_entry_t> rows =
+      read_socket_snapshot (node);
+    bool saw_old_hwm = false;
+    bool saw_new_hwm = false;
+    for (size_t i = 0; i < rows.size (); ++i) {
+        if (rows[i].owner != ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT
+            || strcmp (rows[i].socket_name, "pub") != 0)
+            continue;
+        if (rows[i].snapshot.auto_hwm_applied_sndhwm == 16)
+            saw_old_hwm = true;
+        if (rows[i].snapshot.auto_hwm_applied_sndhwm == pubsub_hwm)
+            saw_new_hwm = true;
+    }
+
+    TEST_ASSERT_TRUE (saw_old_hwm);
+    TEST_ASSERT_TRUE (saw_new_hwm);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&new_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&old_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_spot_subject_access_resolves_composite_and_node_poller_sockets ()
 {
     void *ctx = zlink_ctx_new ();
@@ -524,9 +659,10 @@ void test_spot_subject_access_applies_pending_pub_defaults_on_lazy_create ()
     const int sndhwm = 321;
     const int sndtimeo = 654;
     const int nodrop = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      spot_subject_set_common_option (spot, ZLINK_OPT_SNDHWM, &sndhwm,
-                                      sizeof (sndhwm)));
+    TEST_ASSERT_EQUAL_INT (
+      -1, spot_subject_set_common_option (spot, ZLINK_OPT_SNDHWM, &sndhwm,
+                                          sizeof (sndhwm)));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_SUCCESS_ERRNO (
       spot_subject_set_common_option (spot, ZLINK_OPT_SNDTIMEO, &sndtimeo,
                                       sizeof (sndtimeo)));
@@ -538,9 +674,10 @@ void test_spot_subject_access_applies_pending_pub_defaults_on_lazy_create ()
 
     int actual = 0;
     size_t actual_size = sizeof (actual);
-    TEST_ASSERT_SUCCESS_ERRNO (spot_subject_get_common_option (
-      spot, ZLINK_OPT_SNDHWM, &actual, &actual_size));
-    TEST_ASSERT_EQUAL_INT (sndhwm, actual);
+    TEST_ASSERT_EQUAL_INT (
+      -1, spot_subject_get_common_option (spot, ZLINK_OPT_SNDHWM, &actual,
+                                          &actual_size));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     actual = 0;
     actual_size = sizeof (actual);
@@ -571,6 +708,8 @@ int main ()
     RUN_TEST (
       test_spot_node_routed_mode_disables_pubsub_sockets_without_lazy_create);
     RUN_TEST (test_spot_node_internal_socket_snapshot_contract);
+    RUN_TEST (test_spot_node_admission_hwm_socket_snapshot_contract);
+    RUN_TEST (test_spot_node_admission_hwm_changes_apply_to_new_spots_only);
     RUN_TEST (test_spot_subject_access_resolves_composite_and_node_poller_sockets);
     RUN_TEST (test_spot_subject_access_routes_subscription_and_routing_state);
     RUN_TEST (test_spot_subject_access_routes_composite_and_node_options);

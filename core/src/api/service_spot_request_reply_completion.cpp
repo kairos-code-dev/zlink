@@ -47,26 +47,13 @@ zlink::ctx_t *resolve_router_state_ctx (
     return handle.socket->get_ctx ();
 }
 
-size_t routed_queue_hard_limit (zlink::spot_runtime_t *runtime_)
-{
-    if (!runtime_)
-        return ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT;
-
-    const zlink::spot_node_hwm_config_t config = runtime_->hwm_config_snapshot ();
-    if (config.routed_queue_hard_limit_enabled)
-        return static_cast<size_t> (config.routed_queue_hard_limit);
-    return ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT;
-}
-
-void apply_routed_queue_limit (zlink::internal_pair_queue::queue_t *queue_,
-                               size_t hard_limit_)
+void apply_unbounded_routed_queue_hwm (
+  zlink::internal_pair_queue::queue_t *queue_)
 {
     if (!queue_)
         return;
 
-    const int hwm = hard_limit_ > static_cast<size_t> (INT_MAX)
-                      ? INT_MAX
-                      : static_cast<int> (hard_limit_);
+    const int hwm = 0;
     if (queue_->rx)
         (void) queue_->rx->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &hwm,
                                        sizeof (hwm));
@@ -147,18 +134,14 @@ int zlink::spot_reqrep_internal::ensure_spot_recv_ready (
 
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
-        if (state_->recv.routed_recv_queue.disconnected) {
-            errno = ENOTCONN;
-            return -1;
-        }
         if (!state_->recv.routed_recv_socket) {
             if (zlink::internal_pair_queue::ensure (
                   ctx, "zlink.spot.route", &state_->recv.routed_recv_queue.signal)
                 != 0) {
                 return -1;
             }
-            apply_routed_queue_limit (&state_->recv.routed_recv_queue.signal,
-                                      routed_queue_hard_limit (runtime));
+            apply_unbounded_routed_queue_hwm (
+              &state_->recv.routed_recv_queue.signal);
             zlink::spot_node_access_t::track_owned_socket (
               spot->node, state_->recv.routed_recv_queue.signal.rx);
             zlink::spot_node_access_t::track_owned_socket (

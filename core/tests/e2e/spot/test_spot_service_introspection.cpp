@@ -239,7 +239,8 @@ static void test_spot_pub_sub_options_and_routing_ids ()
 
     const int rcvhwm = 64;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sub_node, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm)));
+      zlink_set_spot_node_option (sub_node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM,
+                                  &rcvhwm, sizeof (rcvhwm)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "topic.alpha"));
     char filter[64];

@@ -1,4 +1,4 @@
-[TicTacToe Sample](./README.ko.md) | [SessionGateway 버전](./session-gateway.ko.md)
+[TicTacToe Sample](./README.ko.md) | [Session Actor Dispatch 버전](./session-gateway.ko.md)
 
 # TicTacToe Direct Sample
 

@@ -792,3 +792,69 @@ PERF_DISABLE_RESOURCE_METRICS=1 bindings/dotnet/perf/run_benchmarks_multi.sh --p
 - 실패 원인: 공개 헤더와 SpotNode 구현, core 테스트, 정식 문서, binding native/header에 기존 방향별 SpotNode HWM option과 hard limit option/macro가 남아 있음. `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT`도 draft 기준인 `1`이 아니라 `0`으로 남아 있음.
 - 해결 내용: 수정 범위를 public header, context default, SpotNode HWM config/option 처리, relay/delivery HWM 적용, hard limit 제거, core 테스트, C perf runner, 정식 문서, binding native/header와 wrapper로 분리함. dirty worktree의 기존 변경은 되돌리지 않고 누락 항목만 추가 수정하기로 함.
 - 결과: 1단계 통과 기준 충족, 2단계 공개 계약 반영으로 진행.
+
+### 2026-05-01 00:00 KST - 단계 2
+
+- 수정 파일: `core/include/zlink.h`, `core/include/zlink_enum.h`, `core/src/services/spot/spot_runtime.hpp`, `core/src/services/spot/spot_node_handles.cpp`, `core/src/services/spot/spot_data_plane_runtime.cpp`, `core/src/services/spot/spot_runtime_attachment.cpp`, `core/src/services/spot/spot_runtime_sender.cpp`, `core/src/services/spot/spot_data_plane_forwarding.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_node_summary.cpp`, `core/src/api/service_spot_request_reply_queue.cpp`, `core/src/api/service_spot_request_reply_completion.cpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/tests/integration/test_ctx_options.cpp`, `core/tests/integration/monitoring/test_monitor_socket_contract.cpp`
+- 실행 명령: `cmake --build core/build`, `ctest --test-dir core/build --output-on-failure -R "ctx_options|hwm|spot.*option|enum|contract"`
+- 실패 원인: 첫 test run에서 `test_ctx_option_auto_hwm_defaults`가 이전 수동 HWM 기본값 `1000`을 기대했고, `test_pubsub_delivery_ready_snapshot_and_reopen_after_ready`가 auto-HWM disabled snapshot을 기대함.
+- 해결 내용: `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT`를 `1`로 변경하고, 기존 SpotNode 방향별 HWM/hard-limit public enum과 macro를 제거했다. 제거 enum 숫자 `0x3608..0x360D`는 예약 주석으로 남기고 새 admission option을 `0x360E..0x3611`에 추가했다. 테스트 기대값을 auto-HWM 기본 enabled + balanced 계산값으로 갱신했다.
+- 결과: build 성공, 계약 테스트 9/9 성공.
+
+### 2026-05-01 00:00 KST - 단계 3
+
+- 수정 파일: `core/include/zlink.h`, `core/src/core/ctx.cpp`, `core/src/core/auto_hwm_policy.*`, `core/tests/integration/test_ctx_options.cpp`, `core/tests/integration/monitoring/test_monitor_socket_contract.cpp`
+- 실행 명령: `ctest --test-dir core/build --output-on-failure -R "ctx_options|auto_hwm|hwm|monitor"`
+- 실패 원인: 없음
+- 해결 내용: 일반 socket context 기본값을 auto-HWM enabled + balanced로 확인했다. 명시적 `ZLINK_CTX_OPT_AUTO_HWM_ENABLE=0`, profile 변경, message unit 변경, 명시적 socket HWM override는 기존 경로를 유지한다.
+- 결과: 일반 socket auto-HWM 관련 테스트 5/5 성공.
+
+### 2026-05-01 00:00 KST - 단계 4
+
+- 수정 파일: `core/src/services/spot/spot_runtime.hpp`, `core/src/services/spot/spot_node_handles.cpp`, `core/src/services/spot/spot_data_plane_runtime.cpp`, `core/src/services/spot/spot_runtime_attachment.cpp`, `core/src/services/spot/spot_runtime_sender.cpp`, `core/src/services/spot/spot_subject_option.cpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `core/tests/unittest/unittest_spot_subject_access.cpp`, `core/tests/unittest/unittest_typed_option.cpp`, `core/tests/e2e/spot/test_spot_service_introspection.cpp`
+- 실행 명령: `cmake --build core/build`, `ctest --test-dir core/build --output-on-failure -R "spot|Spot|unittest_spot|hwm"`
+- 실패 원인: 첫 run에서 기존 `zlink_set_option(..., ZLINK_OPT_RCVHWM)` SpotNode 테스트와 Spot HWM 설정 허용 테스트가 새 계약과 충돌했고, 새 snapshot 테스트가 실제 socket 이름 `local-pub` 대신 `local-fanout`을 찾음.
+- 해결 내용: SpotNode HWM config를 router/pubsub admission profile과 숫자 override만 저장하도록 정리했다. pubsub admission은 Spot pub `SNDHWM`과 node `ingress-sub` `RCVHWM`에, router admission은 node `internal-router` `RCVHWM`과 routed sender 생성 경로에 적용했다. Spot/SpotNode 일반 `SNDHWM`/`RCVHWM` common option 경로는 invalid로 막고, 테스트는 `ZLINK_SPOT_NODE_OPT_*` admission option을 사용하도록 변경했다.
+- 결과: Spot/HWM 관련 테스트 26/26 성공.
+
+### 2026-05-01 00:00 KST - 단계 5
+
+- 수정 파일: `core/src/services/spot/spot_data_plane_runtime.cpp`, `core/src/services/spot/spot_data_plane_forwarding.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/api/service_spot_request_reply_queue.cpp`, `core/src/api/service_spot_request_reply_completion.cpp`, `core/src/services/spot/spot_node_summary.cpp`, `core/tests/unittest/unittest_spot_subject_access.cpp`
+- 실행 명령: `rg -n "ZLINK_SPOT_NODE_OPT_(PUB_HWM|SUB_HWM|ROUTED_SEND_HWM|ROUTED_RECV_HWM|SUB_QUEUE_HARD_LIMIT|ROUTED_QUEUE_HARD_LIMIT)|ZLINK_SPOT_NODE_(SUB|ROUTED)_QUEUE_HARD_LIMIT_DFLT|routed_queue_hard_limit|sub_queue_hard_limit|pending_message_count_hard_limit.*[1-9]|disconnected_targets\\.insert|routed_recv_queue\\.disconnected = true" core/include core/src core/tests`, `ctest --test-dir core/build --output-on-failure -R "spot|fanout|routed|dispatch|hwm|budget"`
+- 실패 원인: 없음
+- 해결 내용: local fanout pending count hard-limit disconnect와 routed recv queue hard-limit close 경로를 제거했다. byte 단위 pending pause/resume은 유지했고, internal router recv만 router admission HWM을 사용하며 external router, mesh, local fanout, Spot recv 쪽은 HWM 0으로 확인했다.
+- 결과: 제거 대상 core 참조 0개, relay/delivery 관련 테스트 27/27 성공.
+
+### 2026-05-01 11:44 KST - 단계 6/7
+
+- 수정 파일: `core/src/services/spot/spot_mesh_pub_hwm.cpp`, `core/src/services/spot/spot_data_plane_runtime.cpp`, `core/src/services/spot/spot_data_plane_forwarding.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/tests/unittest/unittest_spot_data_plane_budget.cpp`, `doc/plan/monitoring/socket-default-and-spot-admission-hwm-rollout-plan.ko.md`
+- 실행 명령: `cmake --build core/build`, `ctest --test-dir core/build --output-on-failure -R "ctx_options|auto_hwm|hwm|spot|monitor|contract"`, `rg -n "ZLINK_SPOT_INTERNAL_.*HWM|resolve_internal_hwm_override|ZLINK_SPOT_NODE_OPT_(PUB_HWM|SUB_HWM|ROUTED_SEND_HWM|ROUTED_RECV_HWM|SUB_QUEUE_HARD_LIMIT|ROUTED_QUEUE_HARD_LIMIT)|ZLINK_SPOT_NODE_(SUB|ROUTED)_QUEUE_HARD_LIMIT_DFLT|routed_queue_hard_limit|sub_queue_hard_limit|pending_message_count_hard_limit.*[1-9]|disconnected_targets\\.insert|routed_recv_queue\\.disconnected = true" core/include core/src core/tests`
+- 실패 원인: 첫 Stage 6 run에서 `mesh-pub` snapshot이 auto-HWM 계산값을 유지했다. 내부 env HWM override도 admission/relay HWM 고정 정책을 우회할 수 있었다.
+- 해결 내용: mesh pub HWM 계산과 refresh를 0 고정으로 바꾸고 테스트 기대값도 0으로 바꿨다. 내부 `ZLINK_SPOT_INTERNAL_*HWM` env override와 사용하지 않는 resolver를 제거해 public SpotNode admission option만 제어면으로 남겼다.
+- 결과: core build 성공, Stage 6/7 타깃 테스트 33/33 성공, 제거 대상 core 참조 0개.
+
+Draft 대조 결과:
+
+| Draft 항목 | 반영 상태 |
+|---|---|
+| 일반 socket 기본 auto-HWM enabled + balanced | 완료 |
+| 일반 socket auto-HWM 계산식 유지 | 완료 |
+| SpotNode router/pubsub admission option만 공개 | 완료 |
+| admission profile 기본값과 8/16/32 매핑 | 완료 |
+| 숫자 override, `0` reset, 음수 invalid | 완료 |
+| Spot HWM common option 설정 금지 | 완료 |
+| 생성 후 HWM 변경은 기존 Spot 미적용 | 완료 |
+| router/pubsub admission 양방향 snapshot | 완료 |
+| relay/delivery/external/mesh/fanout HWM 0 | 완료 |
+| hard-limit disconnect option과 동작 제거 | 완료 |
+| snapshot `0`과 `-` 구분 | 완료 |
+| 제거 enum 숫자 예약, 재사용 없음 | 완료 |
+| draft 미적용 항목 | 0개 |
+
+### 2026-05-01 12:05 KST - 단계 8/9
+
+- 수정 파일: `core/src/api/service_spot_request_reply_internal.hpp`, `core/src/api/service_spot_request_reply_internal.cpp`, `core/src/api/service_spot_request_reply_registry.cpp`, `core/src/api/service_spot_request_reply_queue.cpp`, `core/src/api/service_spot_request_reply_completion.cpp`, `core/src/services/spot/spot_data_plane_internal.hpp`, `core/src/services/spot/spot_data_plane_forwarding.cpp`, `core/tests/integration/test_backpressure_matrix.cpp`, `core/tests/integration/test_backpressure_oneway_matrix.cpp`, `core/tests/unittest/unittest_typed_option.cpp`, `doc/plan/monitoring/socket-default-and-spot-admission-hwm-rollout-plan.ko.md`
+- 실행 명령: `rg -n "POSD|follow-up|followup|TODO|FIXME" core/src`, `rg -n "//.*(POSD|follow-up|followup)|/\\*.*(POSD|follow-up|followup)" core/src`, `cmake --build core/build`, `ctest --test-dir core/build --output-on-failure`, `ZLINK_TEST_CASE=test_multi_spot_backpressure_matrix timeout 120s core/build/bin/test_backpressure_matrix`, `timeout 120s core/build/bin/test_backpressure_oneway_matrix`, `core/build/bin/unittest_typed_option`, `ctest --test-dir core/build --output-on-failure -R "test_helper_request_sequence_failure"`
+- 실패 원인: POSD 점검에서 hard-limit disconnect 제거 뒤에도 routed recv `disconnected` 상태와 local fanout disconnected target 상태가 남아 있었다. 첫 전체 테스트에서는 Spot handle에 직접 HWM을 설정하던 backpressure matrix spot case가 새 계약과 충돌했고, `unittest_typed_option`의 get-option 기대값 한 곳이 기존 domain 결과를 기대했다. 두 번째 전체 테스트에서 `test_helper_request_sequence_failure`가 일시 SIGALRM으로 실패했으나 단일 재현과 다음 전체 run에서는 통과했다.
+- 해결 내용: hard-limit disconnect 관련 죽은 상태와 집계 함수를 제거했다. backpressure spot case는 Spot 생성 전에 `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM`을 설정하도록 바꿨고, Spot/SpotNode common HWM get/set은 invalid argument 기대값으로 맞췄다.
+- 결과: POSD follow-up 주석 0개, core build 성공, core 전체 테스트 100/100 성공.

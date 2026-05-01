@@ -278,12 +278,12 @@ void test_ctx_option_auto_hwm_defaults ()
     size_t hwm_size = sizeof (hwm);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm, &hwm_size));
-    TEST_ASSERT_EQUAL_INT (1000, hwm);
+    TEST_ASSERT_EQUAL_INT (128, hwm);
     hwm = -1;
     hwm_size = sizeof (hwm);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_RCVHWM, &hwm, &hwm_size));
-    TEST_ASSERT_EQUAL_INT (1000, hwm);
+    TEST_ASSERT_EQUAL_INT (128, hwm);
     test_context_socket_close (router);
 }
 

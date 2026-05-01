@@ -869,6 +869,7 @@ static void setup_spot_case (const char *transport_,
                              int rcvhwm_,
                              spot_case_t *out_)
 {
+    LIBZLINK_UNUSED (rcvhwm_);
     void *ctx = get_test_context ();
 
     out_->pub_node = zlink_spot_node_new (ctx, NULL);
@@ -876,13 +877,22 @@ static void setup_spot_case (const char *transport_,
     TEST_ASSERT_NOT_NULL (out_->pub_node);
     TEST_ASSERT_NOT_NULL (out_->sub_node);
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
+      out_->pub_node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, &sndhwm_,
+      sizeof (sndhwm_)));
+
     out_->pub = zlink_spot_new (out_->pub_node);
     out_->sub = zlink_spot_new (out_->sub_node);
     TEST_ASSERT_NOT_NULL (out_->pub);
     TEST_ASSERT_NOT_NULL (out_->sub);
 
-    configure_sender_socket (out_->pub, sndhwm_);
-    configure_receiver_socket (out_->sub, rcvhwm_);
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (out_->pub, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (out_->pub, ZLINK_OPT_SNDTIMEO, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (out_->sub, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (out_->sub, ZLINK_OPT_RCVTIMEO, &kSpotTimeoutMs,
                         sizeof (kSpotTimeoutMs)));

@@ -1,5 +1,19 @@
 # Sample POSD Review
 
+## Current Direction Note
+
+상태: `implemented`
+
+이 파일의 초기 sample 리뷰는 당시 `SessionGateway` 이름과
+`IZLinkSessionGateway.SendToActor(...)` 기준으로 작성된 이력이다. 이 기록은 보존하지만,
+새 sample 구현 기준으로 사용하지 않는다.
+
+현재 sample 기준은 session actor dispatch 모델이다. session -> actor 방향은
+`CreateActorAsync(...)`, `CreateRemoteActorAsync(...)`,
+`DispatchToActorAsync(IZLinkActorRef, ...)`를 사용하고, actor -> client 방향만
+`SessionProxy`를 사용한다. 새 sample에는 `InMemoryRoutedChannel`, manual connection
+warmup, retry loop, 별도 serializer helper를 두지 않는다.
+
 ## Current State
 
 상태: `verified`
@@ -32,7 +46,7 @@ Session Gateway는 다른 topology를 설명하는 별도 sample이므로 독립
 - 잘못 추가했던 `Direct/`, `SessionGateway/`, `TicTacToe.SmokeTests`,
   `Tools/TicTacToeSmoke` fake sample tree는 제거했다.
 - 기존 `Client/Server/Shared/TicTacToe.sln` sample tree를 복원했다.
-- 기존 client의 오래된 `ExecAsync(...)` 호출만 현재 connector API인 `Async(...)`로
+- 기존 client의 오래된 실행 호출만 현재 connector API인 `Async(...)`로
   바꿨다.
 - `TicTacToe(session-gateway)/TicTacToe.SessionGateway.csproj`를 별도 sample로
   추가했다.
@@ -210,6 +224,14 @@ dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gatew
   session route resolver 구현체 내부에서만 registry metadata를 읽고 쓴다.
 - reconnect stale unbind가 새 session binding을 지우지 않도록 sample에 `BindingToken`
   조건부 삭제 규칙을 넣었다.
+- 반복 리뷰에서 actor 실행 객체와 session dispatch handle을 분리했다. sample이 새 API로
+  갱신될 때 actor class는 `IZLinkActor`로 handler를 등록하고, session은
+  `IZLinkActorRef`만 저장해 local/remote 차이를 숨겨야 한다.
+- registry discovery metadata sample은 같은 store instance를
+  `IZLinkActorSessionLocationWriter`와 `IZLinkActorSessionRouteResolver`로 등록하는
+  wiring까지 포함해야 한다.
+- sample metadata 전달은 `ConfigureMetadata(...).ForwardApplicationKey(...)`로 명시한
+  key만 보여 준다. resolver 입력에 metadata를 넘기는 예시는 추가하지 않는다.
 - 완료 기준도 "session code가 raw stream header를 보지 않는다"가 아니라
   "framework helper 없이 raw relay envelope를 직접 조립하지 않는다"로 조정했다.
 

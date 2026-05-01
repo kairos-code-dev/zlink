@@ -67,7 +67,14 @@ int spot_runtime_t::ensure_sender_socket (spot_runtime_sender_kind_t kind_,
                                       active_peer_count,
                                       0, 0, true, true, true, true});
 
+    const spot_node_hwm_config_t hwm_config = hwm_config_snapshot ();
+    const int router_admission_hwm =
+      spot_node_router_admission_hwm (hwm_config);
+    const int zero = 0;
     const int linger = 0;
+    socket->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &router_admission_hwm,
+                         sizeof (router_admission_hwm));
+    socket->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero, sizeof (zero));
     socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
     if (socket->connect (target_endpoint.c_str ()) != 0) {
         const int saved_errno = errno != 0 ? errno : EIO;

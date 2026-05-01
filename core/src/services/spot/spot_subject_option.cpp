@@ -111,8 +111,6 @@ void store_pending_sub_option (spot_handle_t *spot_,
 int map_common_to_spot_pub_option (zlink_option_t option_)
 {
     switch (option_) {
-        case ZLINK_OPT_SNDHWM:
-            return ZLINK_SPOT_PUB_OPT_SNDHWM;
         case ZLINK_OPT_SNDTIMEO:
             return ZLINK_SPOT_PUB_OPT_SNDTIMEO;
         case ZLINK_OPT_LINGER:
@@ -131,8 +129,6 @@ int map_common_to_spot_pub_option (zlink_option_t option_)
 int map_common_to_spot_sub_option (zlink_option_t option_)
 {
     switch (option_) {
-        case ZLINK_OPT_RCVHWM:
-            return ZLINK_SPOT_SUB_OPT_RCVHWM;
         case ZLINK_OPT_LINGER:
             return ZLINK_SPOT_SUB_OPT_LINGER;
         case ZLINK_OPT_SNDBUF:

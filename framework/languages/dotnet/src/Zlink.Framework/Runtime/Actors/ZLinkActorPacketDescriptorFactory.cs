@@ -42,6 +42,33 @@ internal static class ZLinkActorPacketDescriptorFactory
         foreach (var implemented in handlerType.GetInterfaces())
         {
             if (!implemented.IsGenericType
+                || implemented.GetGenericTypeDefinition() != typeof(IZLinkActorRequestHandler<,,>))
+            {
+                continue;
+            }
+
+            var arguments = implemented.GetGenericArguments();
+            if (!arguments[0].IsAssignableFrom(expectedActorType))
+            {
+                throw new InvalidOperationException(
+                    $"Actor request handler '{handlerType}' targets '{arguments[0]}', but the runtime actor type is '{expectedActorType}'.");
+            }
+
+            return new ZLinkActorPacketDescriptor
+            {
+                HandlerType = handlerType,
+                ActorType = arguments[0],
+                MessageType = arguments[1],
+                ReplyType = arguments[2],
+                Kind = ZLinkMessageKind.Request,
+                HandleMethod = FindHandleMethod(handlerType),
+                MessageName = messageName ?? MessageNameResolver.Resolve(arguments[1])
+            };
+        }
+
+        foreach (var implemented in handlerType.GetInterfaces())
+        {
+            if (!implemented.IsGenericType
                 || implemented.GetGenericTypeDefinition() != typeof(IZLinkActorSendHandler<>))
             {
                 continue;

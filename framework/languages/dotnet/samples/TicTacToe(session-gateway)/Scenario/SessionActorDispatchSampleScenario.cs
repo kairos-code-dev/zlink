@@ -5,6 +5,8 @@ using TicTacToe.SessionActorDispatch.Contracts;
 using TicTacToe.SessionActorDispatch.Infrastructure;
 using TicTacToe.SessionActorDispatch.Play;
 using TicTacToe.SessionActorDispatch.Session;
+using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Spots;
 
 namespace TicTacToe.SessionActorDispatch;
 
@@ -17,6 +19,11 @@ public static class SessionActorDispatchSampleScenario
         var registryMetadata = new InMemoryRegistryDiscoveryMetadata();
         var sessionLocations = new RegistryActorSessionLocationStore(registryMetadata, "tictactoe");
         var playRoutes = new RegistryPlayRouteStore(registryMetadata, "tictactoe");
+        var routePublisher = new RegistryPlayRoutePublisher(playRoutes, topology);
+        await routePublisher.BindInitialActorPlayRoutesAsync(
+                new[] { SampleNames.XActorId, SampleNames.OActorId },
+                cancellationToken)
+            .ConfigureAwait(false);
         using var registryHost = RegistryHostFactory.Build(topology);
         using var apiHost = ApiServerHostFactory.Build(topology);
         using var playHost = PlayServerHostFactory.Build(topology, sessionLocations, playRoutes);
@@ -50,7 +57,13 @@ public static class SessionActorDispatchSampleScenario
 
             var xAuth = await xClient.AuthenticateAsync(cancellationToken);
             var oAuth = await oClient.AuthenticateAsync(cancellationToken);
-            var created = await xClient.CreateMatchAsync(SampleNames.MatchId, cancellationToken);
+            var created = await xClient.CreateMatchAsync(cancellationToken);
+            SessionActorDispatchSampleAssertions.ValidateCreatedMatch(created);
+            await SessionActorDispatchSampleAssertions.ValidateGameRoomSpotAsync(
+                    playHost.Services.GetRequiredService<IZLinkSpotManager>(),
+                    created.MatchId,
+                    cancellationToken)
+                .ConfigureAwait(false);
 
             await xClient.DisposeAsync();
             await using var reconnectedXClient = await SessionActorDispatchPlayerClient.ConnectAsync(

@@ -4,16 +4,15 @@ using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Play;
 
-internal sealed class GameNotificationPublisher
+internal sealed class GameNotificationPublisher(IZLinkSessionProxy sessionProxy)
 {
     public async ValueTask PublishAsync(
-        IZLinkSessionProxy proxy,
         IReadOnlyList<TicTacToeGameEvent> events,
         CancellationToken cancellationToken)
     {
         foreach (var gameEvent in events)
         {
-            await PublishAsync(proxy, gameEvent, cancellationToken).ConfigureAwait(false);
+            await PublishAsync(sessionProxy, gameEvent, cancellationToken).ConfigureAwait(false);
         }
     }
 

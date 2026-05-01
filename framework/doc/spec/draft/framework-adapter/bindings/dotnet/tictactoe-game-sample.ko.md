@@ -60,6 +60,16 @@ public sealed record PlaceMarkReq(int Cell);
 public sealed record PlaceMarkRes(GameState State);
 ```
 
+Play actor가 game room SPOT에 join할 때 사용하는 내부 request/response:
+
+```csharp
+public sealed record TicTacToeGameJoinReq(
+    string GameId,
+    string ActorId);
+
+public sealed record TicTacToeGameJoinRes(GameState State);
+```
+
 server push와 state:
 
 ```csharp
@@ -93,8 +103,9 @@ direct 샘플은 일반 channel client/server와 STREAM header session, SPOT gam
 session actor dispatch 샘플의 DTO는
 `framework/languages/dotnet/samples/TicTacToe(session-gateway)/Contracts/Messages.cs`를 따른다.
 
-이 샘플은 service channel과 routed channel 모두 전역 `UseDiscovery(...)` 기반 자동 연결을
-사용한다. sample 코드에는 `UseManualConnections(...)`를 두지 않는다.
+이 샘플은 service channel과 routed channel 모두 전역 `UseDiscovery(...)` 기반 자동
+연결을 사용한다. game room SPOT node는 `UseSpotDiscovery(...)`로 같은 registry에
+붙는다. sample 코드에는 `UseManualConnections(...)`를 두지 않는다.
 
 핵심 계약은 아래와 같다.
 
@@ -102,7 +113,12 @@ session actor dispatch 샘플의 DTO는
 - 인증 성공 뒤 Session 서버는 `CreateRemoteActorAsync(...)`로 remote actor를 만들고
   현재 stream session binding을 writer로 기록한다.
 - `CreateMatchReq`는 Session 서버에서 API 서버로 channel request로 relay된다.
+  client는 match id나 room name을 지정하지 않는다.
+- API 서버는 Play 서버에 room 생성을 요청하고, Play 서버는 `IZLinkSpotManager`로
+  game room SPOT을 만든다. `CreateMatchRes.MatchId`는 생성된 room의 `SpotRid` hex다.
 - `JoinMatchReq`와 `PlaceMarkReq`는 Session 서버에서 Play 서버 actor로 dispatch된다.
+- Play actor는 `JoinMatchReq` 처리 중 해당 game room SPOT에 join한다. 이후
+  `PlaceMarkReq`는 actor가 join한 room SPOT의 상태를 변경한다.
 - Play 서버가 client에게 push할 때는 `IZLinkSessionProxy`를 사용한다.
 - `OpponentJoinedNotify`, `TurnChangedNotify`, `GameEndedNotify`는 actor id 기준으로
   현재 binding된 Session 서버를 찾아 client stream으로 전달된다.
@@ -113,4 +129,6 @@ session actor dispatch 샘플의 DTO는
 - session actor dispatch 샘플 문서와 code DTO 이름이 일치한다.
 - sample spec과 code에서 actor 식별 public field는 `ActorId`로만 표현한다.
 - session actor dispatch 샘플은 수동 연결 없이 discovery 기반 자동 연결만 사용한다.
+- session actor dispatch 샘플은 Play 서버에 game room SPOT을 만들고, scenario는
+  생성된 `MatchId`가 실제 SPOT room으로 존재하는지 확인한다.
 - direct 샘플의 수동 연결 설명은 direct 샘플 범위로만 제한한다.

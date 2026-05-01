@@ -1,5 +1,4 @@
 using TicTacToe.SessionActorDispatch.Configuration;
-using TicTacToe.SessionActorDispatch.Infrastructure;
 using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
@@ -9,7 +8,7 @@ internal sealed class SessionActorRouteCache
     public async ValueTask<IZLinkActorRef> EnsureRouteAsync(
         IZLinkSessionContext context,
         SessionRelayState state,
-        ZLinkPlayRoute route,
+        ZLinkActorRoute route,
         CancellationToken cancellationToken)
     {
         var actorId = state.RequireActorId("sending game packets");
@@ -19,7 +18,7 @@ internal sealed class SessionActorRouteCache
         }
 
         state.Actor = await context.CreateRemoteActorAsync(
-                route.PlayRouterId,
+                route.TargetNodeRid,
                 actorId,
                 SampleNames.PlayerActorType,
                 cancellationToken)

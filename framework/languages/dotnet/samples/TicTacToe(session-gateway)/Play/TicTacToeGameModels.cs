@@ -16,8 +16,6 @@ internal enum TicTacToeGameStatus
 
 internal sealed record ActorSlot(string ActorId, TicTacToeMark Mark);
 
-internal sealed record CreateMatchRoomResult(string MatchId);
-
 internal sealed record TicTacToeGameSnapshot(
     string MatchId,
     string Board,
@@ -50,7 +48,7 @@ internal sealed record GameEndedGameEvent(
     TicTacToeGameSnapshot Snapshot)
     : TicTacToeGameEvent(RecipientActorId, Snapshot);
 
-internal sealed record JoinResult(
+internal sealed record JoinMatchSpotResult(
     string MatchId,
     string ActorId,
     TicTacToeMark Mark,

@@ -7,6 +7,18 @@
 
 상태: `verified`
 
+- 이번 code/doc 재검토에서 `IZLinkActorClient`가 resolver 기반 internal actor dispatch
+  packet을 사용하도록 정렬했다. `WithMetadata(...)`는 actor handler context까지
+  전달되며 통합 테스트로 확인했다.
+- Session actor dispatch sample의 Play 서버는 `IZLinkSpotManager`로 game room SPOT을
+  만들고, actor-specific request handler가 `PlayerActor`를 받아 해당 room에 join한 뒤
+  move를 room SPOT에서 처리한다. scenario는 생성된 `MatchId`가 실제 SPOT room인지
+  검증한다.
+- routed submitter는 peer 연결 직후 `Backpressured`와 `NotConnected` 제출 실패를
+  bounded pending queue에서 처리한다. sample과 caller가 연결 준비 sleep이나 retry
+  helper를 둘 필요가 없다.
+- actor client, session proxy, session stream request, spot current request는 호출별
+  timeout이 없으면 framework `DefaultTimeout`을 사용한다.
 - framework public API는 `CreateActorAsync(...)`, `CreateRemoteActorAsync(...)`,
   `DispatchToActorAsync(IZLinkActorRef, ...)`, resolver 기반 `IZLinkSessionProxy`로
   전환했다.
@@ -72,9 +84,9 @@ send/request API는 제거 대상이다.
   - `framework/languages/dotnet/samples/TicTacToe/Shared/TicTacToe.Shared.csproj`
   - `framework/languages/dotnet/samples/TicTacToe/Server/TicTacToe.Server.csproj`
   - `framework/languages/dotnet/samples/TicTacToe/Client/TicTacToe.Client.csproj`
-- Planned sample projects not yet present:
-  - `framework/languages/dotnet/samples/TicTacToe(session-gateway)` 아래 gateway
-    version sample. 기존 `TicTacToe/` sample과 파일을 공유하지 않는다.
+- Session actor dispatch sample project:
+  - `framework/languages/dotnet/samples/TicTacToe(session-gateway)` 아래 sample.
+    기존 `TicTacToe/` sample과 파일을 공유하지 않는다.
 
 `framework/samples` 디렉토리는 현재 없으므로 sample 범위는 실제 경로인
 `framework/languages/dotnet/samples`를 기준으로 진행한다. 계획 문서의 검증 명령도
@@ -331,15 +343,15 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
    - Session server는 client stream과 `actorId -> stream` binding을 소유한다.
    - API server는 application location store interface를 소유한다.
    - Play server는 actor와 game room을 소유한다.
-   - ActorRelay와 SessionGateway는 framework routed channel 위에서 request sequence
-     기준으로 reply를 돌려준다.
+   - Session actor dispatch와 SessionProxy는 framework routed channel 위에서 request
+     sequence 기준으로 reply를 돌려준다.
    - reconnect 시 같은 `actorId`가 새 stream으로 교체되는 동작을 test로 검증한다.
    - 구현 결과: `BindActorAsync`, `UnbindActorAsync`, `OpenActorRelay`,
      `IZLinkSessionGateway`, session proxy handler, internal `ZLink.ActorRelay`와
      `ZLink.SessionGateway` routed dispatch를 추가했다. internal packet은 원본 stream
      body bytes와 header snapshot을 함께 전달한다.
    - 검증 결과:
-     `/home/hep7/.dotnet/dotnet test framework/languages/dotnet/tests/Zlink.Framework.Tests/Zlink.Framework.Tests.csproj -c Debug --no-restore --filter SessionGateway_Relays`
+     `/home/hep7/.dotnet/dotnet test framework/languages/dotnet/tests/Zlink.Framework.Tests/Zlink.Framework.Tests.csproj -c Debug --no-restore --filter SessionActorDispatch_Relays`
      통과. 실제 TCP stream과 framework routed channel을 함께 사용했고 request
      sequence 기준 reply matching을 확인했다.
    - reconnect binding은 같은 `actorId`를 dictionary에서 새 session context로
@@ -355,10 +367,10 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
    - Session server는 client stream과 `actorId -> stream` binding을 사용한다.
    - API server는 application location store interface를 소유한다.
    - Play server는 actor와 game room을 소유한다.
-   - ActorRelay와 SessionGateway는 framework routed channel API를 사용한다.
+   - Session actor dispatch와 SessionProxy는 framework routed channel API를 사용한다.
    - reconnect smoke는 같은 `actorId`가 새 Session server에 bind되고 Play server의
      notify target이 바뀌는 것을 log와 assertion으로 검증한다.
-   - 구현 결과: `TicTacToe.SessionGateway.csproj`와 API, Session, Play, Client,
+   - 구현 결과: `TicTacToe.SessionActorDispatch.csproj`와 API, Session, Play, Client,
      Scenario, Contracts, Configuration 디렉토리를 추가했다. sample은 api host,
      session host, play host, stream client를 한 process에서 띄우지만 통신은 실제
      TCP stream connector와 framework routed channel을 사용한다.
@@ -367,17 +379,17 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
    - API server는 in-memory location store를 소유하고, Session server는 actor relay로
      `CreateGameReq`와 `ResolveGameReq`를 API server에 보낸다.
    - Play server는 실제 TicTacToe board, turn, winner state를 소유하고
-     `IZLinkSessionGateway.SendToActor(...).Async(...)`로 client notify를 보낸다.
+     `IZLinkSessionProxy.Send(...).Async(...)`로 client notify를 보낸다.
    - scenario는 같은 `actorId`가 첫 번째 Session server에서 인증한 뒤 두 번째
      Session server로 reconnect하는 흐름, 두 player join, `X0 O3 X1 O4 X2` move
      sequence, final board `XXXOO....`와 winner `player-x`를 검증한다.
    - 검증 결과:
-     `/home/hep7/.dotnet/dotnet build "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionGateway.csproj" -c Debug`
+     `/home/hep7/.dotnet/dotnet build "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionActorDispatch.csproj" -c Debug`
      통과.
-     `/home/hep7/.dotnet/dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionGateway.csproj" -c Debug --no-build`
-     통과. 출력에서 `created=sample-game, reconnect=player-x`,
+     `/home/hep7/.dotnet/dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionActorDispatch.csproj" -c Debug --no-build`
+     통과. 출력에서 `created=<spot-rid-hex>, reconnect=player-x`,
      `final=XXXOO...., status=Won, winner=player-x`,
-     `notifications=state:13, joined:1`을 확인했다.
+     `notifications=turn:11, joined:1, ended:2`를 확인했다.
      `rg -n "UseManualConnections|ExecuteWithRetry|DiscoveryReady|RouteWarmup|Task\\.Delay\\(SampleTimings" "framework/languages/dotnet/samples/TicTacToe(session-gateway)"`
      검색 결과 없음.
 9. `verified`: monitoring, registry, stage wrapper, Unity connector 범위를 문서와
@@ -421,12 +433,12 @@ draft sample `.SendAsync(...)` 호출은 queue 4번에서 제거한다.
      /home/hep7/.dotnet/dotnet test framework/languages/dotnet/tests/Zlink.Framework.MultiProcessTests/Zlink.Framework.MultiProcessTests.csproj -c Release -f net8.0 --no-build
      /home/hep7/.dotnet/dotnet test framework/languages/dotnet/tests/Systems.Zlink.Stream.Connector.Tests/Systems.Zlink.Stream.Connector.Tests.csproj -c Release -f net8.0 --no-build
      /home/hep7/.dotnet/dotnet build framework/languages/dotnet/samples/TicTacToe/TicTacToe.sln -c Debug
-     /home/hep7/.dotnet/dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionGateway.csproj" -c Release --no-build
+     /home/hep7/.dotnet/dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionActorDispatch.csproj" -c Release --no-build
      ```
-     모두 통과했다. SessionGateway sample 출력에서
-     `created=sample-game, reconnect=player-x`,
+     모두 통과했다. session actor dispatch sample 출력에서
+     `created=<spot-rid-hex>, reconnect=player-x`,
      `final=XXXOO...., status=Won, winner=player-x`,
-     `notifications=state:13, joined:1`을 확인했다.
+     `notifications=turn:11, joined:1, ended:2`를 확인했다.
 
 재개 시 첫 작업자는 위 목록에서 가장 위에 있는 `verified` 항목부터 시작한다. 이미
 완료된 항목을 다시 확인해야 하면 근거 명령과 파일 경로를 적고 다음 항목으로

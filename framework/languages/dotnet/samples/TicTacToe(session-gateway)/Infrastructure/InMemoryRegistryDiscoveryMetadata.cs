@@ -5,6 +5,7 @@ namespace TicTacToe.SessionActorDispatch.Infrastructure;
 internal sealed class InMemoryRegistryDiscoveryMetadata : IRegistryDiscoveryMetadata
 {
     private readonly ConcurrentDictionary<string, RegistryMetadataEntry> _entries = new(StringComparer.Ordinal);
+    private readonly object _gate = new();
 
     public ValueTask PutAsync(
         string key,
@@ -12,7 +13,11 @@ internal sealed class InMemoryRegistryDiscoveryMetadata : IRegistryDiscoveryMeta
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _entries[key] = new RegistryMetadataEntry(metadata);
+        lock (_gate)
+        {
+            _entries[key] = new RegistryMetadataEntry(metadata);
+        }
+
         return ValueTask.CompletedTask;
     }
 
@@ -35,9 +40,12 @@ internal sealed class InMemoryRegistryDiscoveryMetadata : IRegistryDiscoveryMeta
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (_entries.TryGetValue(key, out var current) && current.ContainsAll(expected))
+        lock (_gate)
         {
-            _entries.TryRemove(key, out _);
+            if (_entries.TryGetValue(key, out var current) && current.ContainsAll(expected))
+            {
+                _entries.TryRemove(key, out _);
+            }
         }
 
         return ValueTask.CompletedTask;

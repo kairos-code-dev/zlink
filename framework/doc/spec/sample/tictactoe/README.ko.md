@@ -16,12 +16,12 @@
 
 두 샘플은 같은 틱택토 규칙을 사용한다.
 
-- 한 match에는 두 player가 참가한다.
-- 첫 player는 `X`, 두 번째 player는 `O`를 받는다.
+- 한 game에는 두 actor가 참가한다.
+- 첫 actor는 `X`, 두 번째 actor는 `O`를 받는다.
 - board는 0부터 8까지의 cell index로 표현한다.
 - 같은 cell에는 두 번 둘 수 없다.
-- 현재 turn의 player만 `PlaceMarkReq`를 보낼 수 있다.
-- 가로, 세로, 대각선 중 한 줄을 먼저 완성한 player가 이긴다.
+- 현재 turn의 actor만 `PlaceMarkReq`를 보낼 수 있다.
+- 가로, 세로, 대각선 중 한 줄을 먼저 완성한 actor가 이긴다.
 - 모든 cell이 찼고 승자가 없으면 draw다.
 
 ## 공통 메시지 이름 규칙

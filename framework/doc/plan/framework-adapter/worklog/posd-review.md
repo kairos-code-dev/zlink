@@ -1,5 +1,39 @@
 # Framework POSD Review
 
+## 2026-05-01 Code/Doc Alignment Recheck
+
+상태: `verified`
+
+### Red Flags
+
+- `verified`: `IZLinkActorClient`가 actor id를 받으면서도 실제 dispatch packet을 직접
+  routed user packet으로 보내던 얕은 경로를 제거했다. public 호출자는 actor id와
+  packet 이름만 알면 되고, route resolver와 internal actor dispatch packet 생성은
+  framework 내부가 맡는다.
+- `verified`: `IZLinkActorClient.WithMetadata(...)`가 값을 버리던 no-op 상태를 제거했다.
+  metadata는 stream header snapshot에 실려 actor handler context로 전달된다.
+- `verified`: `IZLinkSessionProxy`, actor client, stream request, spot current request가
+  호출별 timeout을 지정하지 않으면 `DefaultTimeout`을 사용한다.
+- `verified`: routed submitter가 peer 연결 직후의 `Backpressured`와 `NotConnected`
+  제출 실패를 bounded pending queue에서 흡수한다. startup 직후 연결 준비 시점을
+  caller가 직접 sleep/retry로 맞출 필요가 없다.
+
+### Alternatives
+
+- 대안 1: sample과 테스트에서 연결 직후 retry 또는 warmup sleep을 둔다.
+- 대안 2: submitter가 retryable submit 상태를 큐에 넣고 ready/deadline 정책으로 처리한다.
+
+선택: 대안 2를 적용했다. peer 준비 시점은 transport 내부 상태이므로 호출자와 sample에
+노출하지 않는 편이 POSD의 정보 은닉과 복잡성을 아래로 내리는 원칙에 맞다.
+
+### 최종 재점검
+
+- framework test 39개가 통과했다.
+- `IZLinkActorClient` request가 routed actor dispatch와 metadata 전달까지 통합 테스트로
+  검증된다.
+- 금지 표현 검색, old sample public API 검색, whitespace 검증을 통과했다.
+- 새 code와 sample 기준의 framework red flag는 남지 않았다.
+
 ## 2026-05-01 Final Iteration
 
 상태: `verified`
@@ -261,7 +295,7 @@ framework 버그를 가리고 사용자가 배워야 할 핵심 흐름도 흐려
 ```bash
 dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Debug --no-restore --filter discovery_attached_routers_exchange_routed_request
 dotnet test framework/languages/dotnet/tests/Zlink.Framework.Tests/Zlink.Framework.Tests.csproj -c Debug --no-restore --filter RoutedRequest_WorksAcrossDiscoveryAttachedRouters
-dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionGateway.csproj" -c Debug --no-build
+dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionActorDispatch.csproj" -c Debug --no-build
 ```
 
 결과: 모두 통과. 새 red flag는 남지 않았다.
@@ -305,9 +339,10 @@ mechanics만 helper 아래에 숨기는 쪽이 깊은 모듈에 가깝다.
 - actor handler 등록 예시는 전역 registry가 아니라 actor 객체의 `Configure()` 안에서
   `Context.AddPacket<THandler>()`를 호출하는 형태로 정정했다. spot handler도 spot 객체
   안에서 등록한다.
-- actor/spot route resolver 입력은 request 객체나 metadata를 받지 않고 `actorId` 또는
-  `spotId` 하나만 받도록 정리했다. metadata가 resolver로 들어가면 route 조회가 작은
-  dispatcher가 되어 정보 은닉을 깨뜨리기 때문이다.
+- actor route resolver 입력은 request 객체나 metadata를 받지 않고 `actorId` 하나만
+  받도록 정리했다. metadata가 resolver로 들어가면 route 조회가 작은 dispatcher가
+  되어 정보 은닉을 깨뜨리기 때문이다. spot route resolver는 현재 구현 계약에
+  포함하지 않는다.
 - `IZLinkActorSessionLocationWriter`는 framework 기본 registry 구현을 두지 않는 대신,
   registry discovery metadata를 사용하는 sample adapter를 draft에 추가했다. writer와
   resolver가 같은 key를 공유하되 resolver 입력은 `actorId` 하나로 유지한다.

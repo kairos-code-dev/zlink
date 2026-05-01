@@ -247,10 +247,27 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         {
             return trySubmit(message);
         }
-        catch (ZlinkException error) when (ZlinkException.MapErrorCode(error.InternalErrno) == ErrorCode.EAgain)
+        catch (ZlinkException error) when (IsRetryableSubmitFailure(error))
         {
             return false;
         }
+    }
+
+    private static bool IsRetryableSubmitFailure(ZlinkException error)
+    {
+        if (error is ZlinkSubmitException
+            {
+                Result: SubmitResult.Backpressured or SubmitResult.NotConnected
+            })
+        {
+            return true;
+        }
+
+        return ZlinkException.MapErrorCode(error.InternalErrno) is
+            ErrorCode.EAgain or
+            ErrorCode.ENotConn or
+            ErrorCode.EHostUnreach or
+            ErrorCode.ETimedOut;
     }
 
     private void Dequeue(PendingSubmit expected)

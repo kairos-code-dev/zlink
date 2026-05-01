@@ -2,13 +2,13 @@ using TicTacToe.SessionActorDispatch.Configuration;
 using TicTacToe.SessionActorDispatch.Contracts;
 using TicTacToe.SessionActorDispatch.Infrastructure;
 using Zlink.Framework.Handlers;
+using Zlink.Framework.Spots;
 
 namespace TicTacToe.SessionActorDispatch.Play;
 
 internal sealed class CreateMatchRoomHandler(
-    TicTacToeGameService games,
-    RegistryPlayRouteStore routes,
-    SampleTopology topology)
+    IZLinkSpotManager spots,
+    RegistryPlayRoutePublisher routes)
 {
     [ZLinkRequest]
     public async ValueTask<CreateMatchRoomRes> CreateMatchRoom(
@@ -18,12 +18,11 @@ internal sealed class CreateMatchRoomHandler(
     {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
-        var room = games.Create(request.MatchName);
-        await routes.BindMatchAsync(
-                room.MatchId,
-                new ZLinkPlayRoute(SampleNames.RouterChannel, topology.PlayRid),
-                cancellationToken)
+        var room = await spots.CreateAsync(SampleNames.GameSpotType, cancellationToken)
             .ConfigureAwait(false);
-        return new CreateMatchRoomRes(room.MatchId);
+        var matchId = room.SpotRid.ToHex();
+        await routes.BindMatchAsync(matchId, cancellationToken)
+            .ConfigureAwait(false);
+        return new CreateMatchRoomRes(matchId);
     }
 }

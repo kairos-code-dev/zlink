@@ -43,8 +43,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IZLinkSpotClient, ZLinkSpotClientService>();
         services.AddSingleton<IZLinkSpotPublisherClient, ZLinkSpotPublisherClientService>();
         services.AddSingleton<IZLinkSpotConnectionManager, ZLinkSpotConnectionManagerService>();
-        services.AddSingleton<IZLinkSessionProxy, ZLinkSessionProxyService>();
-        services.AddSingleton<IZLinkActorClient, ZLinkActorClientService>();
         services.AddSingleton<IZLinkMessageMetadataPolicy, ZLinkMessageMetadataPolicy>();
         services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, ZLinkFrameworkHostedService>();
 
@@ -64,6 +62,11 @@ public static class ServiceCollectionExtensions
             services.AddSingleton(
                 typeof(IZLinkActorPlayRouteResolver),
                 provider => provider.GetRequiredService(registration.ActorPlayRouteResolverType));
+            services.AddSingleton<IZLinkActorClient, ZLinkActorClientService>();
+        }
+        else
+        {
+            services.AddSingleton<IZLinkActorClient, ZLinkMissingActorClient>();
         }
 
         if (registration.ActorSessionRouteResolverType is not null)
@@ -72,6 +75,11 @@ public static class ServiceCollectionExtensions
             services.AddSingleton(
                 typeof(IZLinkActorSessionRouteResolver),
                 provider => provider.GetRequiredService(registration.ActorSessionRouteResolverType));
+            services.AddSingleton<IZLinkSessionProxy, ZLinkSessionProxyService>();
+        }
+        else
+        {
+            services.AddSingleton<IZLinkSessionProxy, ZLinkMissingSessionProxy>();
         }
 
         if (registration.ActorSessionLocationWriterType is not null)

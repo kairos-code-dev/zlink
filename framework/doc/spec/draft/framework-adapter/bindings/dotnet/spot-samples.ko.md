@@ -736,8 +736,8 @@ room 서버는 이미 만들어진 room에 플레이어를 들이는 역할만 �
 4. `SampleSession`이 `SampleAuthenticateRequest`를 받고 API 서버에 토큰 검증을 요청한다.
 5. 검증이 끝나면 `actorType + accountId`로 기존 `SampleActor`를 찾거나 새로 만든다.
 6. actor와 stream을 먼저 연결한다.
-7. client가 `SampleJoinRoomRequest`를 보내면 `SampleSession`이
-   `IZLinkSpotClient.JoinActorAsync(...)`로 target room에 join 요청을 넣는다.
+7. client가 `SampleJoinRoomRequest`를 보내면 actor 쪽 handler가
+   `IZLinkActorContext.JoinSpot(...)`로 target room에 join 요청을 넣는다.
 8. join이 끝난 뒤의 heartbeat, gameplay packet, disconnect, timer는 같은
    `SampleSpot` 실행 문맥에서 처리된다고 읽는다.
 
@@ -845,8 +845,10 @@ builder.Services.AddZLinkFramework(options =>
 실제 샘플 코드는 아래처럼 읽는다. `SampleSpot`은 actor table만 소유하고,
 `SampleSession`은 인증과 actor 재연결, 그리고 actor로 넘길
 `header/body` 정규화와 room join 요청을 맡는다.
-여기서 `IZLinkSessionContext`는 stream session이 actor stream 연결, stale disconnect 필터,
-actor packet dispatch를 framework runtime으로 넘길 때 쓰는 session 전용 context다.
+여기서 `IZLinkSessionContext`는 stream session이 channel request, stream reply,
+actor create와 actor packet dispatch를 framework runtime으로 넘길 때 쓰는 session
+전용 context다. actor stream 연결과 해제는 별도 `IZLinkSessionActorAttachmentContext`
+표면에서 다룬다.
 
 ```csharp
 public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
@@ -1352,8 +1354,8 @@ public sealed record SampleAuthenticationResult(
 3. 인증 결과의 `actorType`과 `accountId`로 `SampleActor`를 찾거나 새로 만든다.
 4. 이미 다른 stream이 붙어 있었다면 framework가 stale 여부를 확인한 뒤 현재 stream을 actor에 다시 attach한다.
 5. client가 `SampleJoinRoomRequest`를 보낸다.
-6. `SampleSession`은 room 정보를 찾은 뒤 `IZLinkSpotClient.JoinActorAsync(...)`로
-   target room의 join callback을 호출한다.
+6. `SampleSession`은 room 정보를 actor packet으로 넘기고, actor 쪽 handler는
+   `IZLinkActorContext.JoinSpot(...)`로 target room의 join callback을 호출한다.
 7. 등록된 `SampleJoinRoomHandler`가 같은 `SampleSpot` 실행 문맥에서 승인,
    `Context.JoinActorAsync(actor)` 호출, 기존 room에서의 이탈, 결과 생성까지
    마무리한다.
@@ -1553,8 +1555,9 @@ public sealed class SampleSessionTimeoutSweepHandler
 
 반면 stream session은 `SampleSpot`이 자기 초기화 단계에서 정적으로 등록하지 않는다.
 `SampleSession`은 `stream node`가 생성하고, 먼저 인증과 actor lookup을 마친 뒤
-`SampleJoinRoomRequest`가 왔을 때 `IZLinkSpotClient.JoinActorAsync(...)`로
-target `SampleSpot`의 join callback을 호출하는 쪽이 이 문서의 기본 모델이다.
+`SampleJoinRoomRequest`가 왔을 때 actor packet으로 join 의도를 전달한다. 실제
+target `SampleSpot` join callback 호출은 actor 쪽에서
+`IZLinkActorContext.JoinSpot(...)`로 수행하는 쪽이 이 문서의 기본 모델이다.
 
 packet은 request와 send를 함께 묶는 상위 개념이다.
 즉 `SampleGetStateHandler`처럼 reply를 돌려주는 handler도 packet이고,

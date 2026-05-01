@@ -114,8 +114,8 @@ TicTacToe sample이다. 다른 언어 binding 초안은 같은 개념을 확인�
    - POSD red flag
    - 테스트와 smoke 누락
 4. smoke marker, stub, TODO, 임시 로그만으로 완료 조건을 만족했다고 보지 않는다.
-   특히 `session-gateway` smoke가 실제 Session server, ActorRelay, Location Store,
-   Routed Channel 경로를 실행하지 않으면 완료가 아니다.
+   특히 `session-gateway` smoke가 실제 Session server, Session Actor Dispatch,
+   Location Store, Routed Channel, SPOT game room 경로를 실행하지 않으면 완료가 아니다.
 5. 경로, project 이름, solution 상태가 현재 저장소와 다르면 실제 저장소 구조를
    기준으로 고친 뒤 worklog에 선택 이유를 남긴다.
 6. 다음 구현 방향이 둘 이상 가능하면 POSD 원칙에 따라 두 대안을 비교하고, 더 깊은
@@ -470,7 +470,7 @@ find framework/samples -name "*.csproj" 2>/dev/null | sort
 
 - `session-gateway.ko.md` 회귀 테스트 항목이 모두 구현되어 있다.
 - same message name 동시 request가 sequence 기준으로 정확히 분리된다.
-- actor relay timeout과 actor binding 없음 오류가 문서대로 처리된다.
+- actor dispatch timeout과 actor binding 없음 오류가 문서대로 처리된다.
 
 ## 9. Phase 5: Framework 문서 반영 리뷰 반복
 
@@ -698,15 +698,15 @@ fi
 
 Session Gateway sample 명령은
 `framework/languages/dotnet/samples/TicTacToe(session-gateway)` project를 만든 뒤
-그 실제 project 이름으로 worklog에 고정한다. 이 smoke는 framework routed channel과
-session gateway API를 사용해야 하며, sample 내부 대체 transport로 통과시키면 완료가
-아니다.
+그 실제 project 이름으로 worklog에 고정한다. 이 smoke는 framework routed channel,
+session actor dispatch API, SPOT game room을 사용해야 하며, sample 내부 대체 transport로
+통과시키면 완료가 아니다.
 
 위 smoke project를 만든 뒤에는 아래 형식의 명령을 실제 project 경로로 바꿔
 worklog에 고정한다. 이 예시 명령은 완료 근거로 사용할 수 없다.
 
 ```bash
-/home/hep7/.dotnet/dotnet test "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionGateway.SmokeTests/TicTacToe.SessionGateway.SmokeTests.csproj" -c Release -f net8.0
+/home/hep7/.dotnet/dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionActorDispatch.csproj" -c Release --no-build
 ```
 
 ### 14.2 완료 판정

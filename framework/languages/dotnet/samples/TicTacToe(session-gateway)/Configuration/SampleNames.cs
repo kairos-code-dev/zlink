@@ -12,11 +12,15 @@ internal static class SampleNames
 
     public const string PlayerActorType = "player";
 
+    public const string GameSpotType = "tictactoe.game";
+
+    public const string GameSpotNode = "tictactoe.game.node";
+
+    public const string GameSpotDiscovery = "tictactoe.game.rooms";
+
     public const string XActorId = "player-x";
 
     public const string OActorId = "player-o";
-
-    public const string MatchId = "sample-game";
 
     public const string TurnChangedPacket = nameof(Contracts.TurnChangedNotify);
 

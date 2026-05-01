@@ -8,7 +8,7 @@ using Zlink.Framework.Streams;
 namespace TicTacToe.SessionActorDispatch.Session;
 
 internal sealed class AuthenticateSessionPacketHandler(
-    IInitialActorRouteResolver initialRoutes,
+    IZLinkActorPlayRouteResolver playRoutes,
     SessionActorRouteCache actorRoutes)
     : ISessionRelayPacketHandler
 {
@@ -36,7 +36,7 @@ internal sealed class AuthenticateSessionPacketHandler(
             }
 
             context.State.ActorId = authenticated.ActorId;
-            var route = await initialRoutes.ResolveAsync(authenticated.ActorId, cancellationToken)
+            var route = await playRoutes.ResolvePlayRouteAsync(authenticated.ActorId, cancellationToken)
                 .ConfigureAwait(false);
             await actorRoutes.EnsureRouteAsync(
                     context.Stream,

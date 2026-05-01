@@ -91,7 +91,6 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         switch (monitorEvent.NativeEvent)
         {
             case ZLinkSocketNativeEventType.ConnectionReady:
-            case ZLinkSocketNativeEventType.Accepted:
                 if (monitorEvent.RoutingId is RoutingId readyRoutingId)
                 {
                     var session = GetOrCreateSession(readyRoutingId);
@@ -105,6 +104,8 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                     }
                 }
                 break;
+            case ZLinkSocketNativeEventType.Accepted:
+                break;
             case ZLinkSocketNativeEventType.Disconnected:
                 if (TryResolveSessionForMonitorEvent(monitorEvent.RoutingId, out var disconnectedSession))
                 {
@@ -112,15 +113,6 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                         new ZLinkStreamError(
                             ZLinkStreamSessionError.TransportError,
                             new ZLinkStreamDiagnostic((int)monitorEvent.Value, monitorEvent.NativeEvent.ToString())));
-
-                    if (monitorEvent.RoutingId is RoutingId disconnectedRoutingId)
-                    {
-                        RemoveSession(disconnectedRoutingId);
-                    }
-                    else
-                    {
-                        RemoveSession(disconnectedSession.Stream.SessionId);
-                    }
                 }
                 break;
         }

@@ -450,10 +450,11 @@ framework 기본 계약처럼 적기보다 wrapper 확장 후보로 따로 다�
 - 현재 SPOT channel 안의 topic publish
 - attach된 다른 channel client를 통한 channel send/request
 
-즉 high-level `SPOT` 표면은 `targetRid + spotRid` routed 호출보다,
-`SendChannel(...)` / `RequestChannel(...)` 같은 channel 호출이 먼저
-보이는 편이 더 맞다. `SpotNode.router`는 peer topology를 위해 남지만, 그 경로를
-공개 high-level API의 기본 표면으로 두는 것은 현재 방향으로 보지 않는다.
+`SendChannel(...)` / `RequestChannel(...)`는 attach된 channel client를 사용한다.
+`SpotNode.router`는 peer topology와 내부 transport를 위해 남지만, 현재 framework
+public surface는 `SpotId` 기반 routed spot send/request를 구현 계약으로 제공하지
+않는다. `targetRid + spotRid`를 직접 받는 raw 호출은 하부 바인딩에 남아 있어도,
+application guide의 기본 API로 문서화하지 않는다.
 
 `IZLinkSpotClient` 인터페이스 전체 정의는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md)의 section 5.2를

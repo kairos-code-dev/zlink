@@ -1,5 +1,36 @@
 # Sample POSD Review
 
+## 2026-05-01 Code/Doc Alignment Recheck
+
+상태: `verified`
+
+### Red Flags
+
+- `verified`: 멀티게임 샘플인데 game room이 singleton service dictionary에 숨어 있던
+  문제를 제거했다. Play 서버는 `IZLinkSpotManager`로 room SPOT을 만들고, actor는
+  `JoinMatchReq` 처리 중 해당 room에 join한다.
+- `verified`: Session-Gateway sample은 API, Session, Play host 모두 embedded registry와
+  `UseDiscovery(...)`를 사용한다. sample 내부에 `UseManualConnections(...)`, warmup
+  sleep, retry loop, fake transport가 없다.
+- `verified`: sample의 사용자 식별자는 `ActorId`로 통일되어 있다. 이전 player 식별자
+  이름은 남아 있지 않다.
+- `verified`: actor play route와 actor session route는 registry discovery metadata
+  adapter 뒤에 숨겨져 있다. handler와 scenario는 transport 위치값을 직접 만들지 않는다.
+- `verified`: handler 파일은 하나의 handler 책임만 갖도록 유지한다.
+
+### 확인 결과
+
+- Session code는 인증 뒤 `CreateRemoteActorAsync(...)`로 actor handle을 만들고
+  `DispatchToActorAsync(...)`로 client packet을 전달한다.
+- Play code는 typed actor request handler, game room SPOT, `IZLinkSessionProxy`를
+  사용한다.
+- Scenario는 생성된 `MatchId`가 `SpotRid` hex이고 Play 서버의 `IZLinkSpotManager`
+  목록에 존재하는지 확인한다.
+- 실행 sample 출력은 `auth=player-x,player-o`, `created=<spot-rid-hex>`,
+  `final=XXXOO...., status=Won, winner=player-x`,
+  `notifications=turn:11, joined:1, ended:2`로 확인했다.
+- 새 sample 기준의 POSD red flag는 남지 않았다.
+
 ## 2026-05-01 Final Iteration
 
 상태: `verified`
@@ -70,13 +101,13 @@ Session Gateway는 다른 topology를 설명하는 별도 sample이므로 독립
 - 기존 `Client/Server/Shared/TicTacToe.sln` sample tree를 복원했다.
 - 기존 client의 오래된 실행 호출만 현재 connector API인 `Async(...)`로
   바꿨다.
-- `TicTacToe(session-gateway)/TicTacToe.SessionGateway.csproj`를 별도 sample로
+- `TicTacToe(session-gateway)/TicTacToe.SessionActorDispatch.csproj`를 별도 sample로
   추가했다.
 - sample은 session host, play host, stream client를 한 process에서 띄우지만, 통신은
   실제 TCP stream connector와 framework routed channel을 사용한다.
-- `OpenActorRelay(...).DispatchAsync(...)`로 client request를 play server에 전달하고,
-  play server는 `IZLinkSessionGateway.SendToActor(...).Async(...)`로 client-facing
-  notify를 보낸다.
+- `DispatchToActorAsync(...)`로 client request를 play server actor에 전달하고,
+  play server는 `IZLinkSessionProxy.Send(...).Async(...)`로 client-facing notify를
+  보낸다.
 
 남은 sample red flag:
 
@@ -93,8 +124,8 @@ Session Gateway는 다른 topology를 설명하는 별도 sample이므로 독립
 - Session server는 framework STREAM session과 `actorId -> stream` binding을 사용한다.
 - API server는 application location store interface를 소유한다.
 - Play server는 actor와 game room을 소유한다.
-- ActorRelay와 SessionGateway는 framework routed channel 위에서 request sequence
-  기준으로 reply를 돌려준다.
+- Session actor dispatch와 SessionProxy는 framework routed channel 위에서 request
+  sequence 기준으로 reply를 돌려준다.
 - reconnect smoke는 같은 `actorId`가 새 Session server에 bind되고 Play server의
   notify target이 바뀌는 것을 검증한다.
 
@@ -126,7 +157,7 @@ Session Gateway는 다른 topology를 설명하는 별도 sample이므로 독립
 수정 결과:
 
 - `Program.cs`는 sample scenario 실행과 결과 출력만 맡는다.
-- `Scenario/SessionGatewaySampleScenario.cs`는 API, Session, Play host와 client lifecycle만
+- `Scenario/SessionActorDispatchSampleScenario.cs`는 API, Session, Play host와 client lifecycle만
   조율한다.
 - `Infrastructure/`는 embedded registry를 띄우고, API/Session/Play host는
   `UseDiscovery(...)`로 routed channel peer를 자동 발견한다. sample 안에는
@@ -134,7 +165,7 @@ Session Gateway는 다른 topology를 설명하는 별도 sample이므로 독립
 - `Api/`는 game 생성과 `gameId -> play node` 위치 조회를 맡는다. 위치 저장소는
   `GameLocationStore` 한 곳에 숨겨 두어 Redis 같은 외부 저장소로 바꿀 지점을 분명히 했다.
 - `Session/`은 STREAM session과 `actorId -> stream` binding, actor relay를 맡는다.
-- `Play/`는 session proxy와 `IZLinkSessionGateway.SendToActor(...).Async(...)` notify를
+- `Play/`는 session proxy와 `IZLinkSessionProxy.Send(...).Async(...)` notify를
   맡는다.
 - `Client/`는 stream connector request와 notify 수신만 맡는다.
 - `Contracts/`, `Configuration/`, `Infrastructure/`로 공유 packet, 이름/timeout,
@@ -145,16 +176,16 @@ Session Gateway는 다른 topology를 설명하는 별도 sample이므로 독립
 검증:
 
 ```bash
-dotnet build "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionGateway.csproj" -c Debug
-dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionGateway.csproj" -c Debug --no-build
+dotnet build "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionActorDispatch.csproj" -c Debug
+dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionActorDispatch.csproj" -c Debug --no-build
 ```
 
 결과:
 
 - session-gateway sample Debug build 통과.
-- session gateway 실행 출력에서 `created=sample-game, reconnect=player-x`,
+- session actor dispatch 실행 출력에서 `created=<spot-rid-hex>, reconnect=player-x`,
   `final=XXXOO...., status=Won, winner=player-x`,
-  `notifications=state:13, joined:1`을 확인했다.
+  `notifications=turn:11, joined:1, ended:2`를 확인했다.
 - sample 내부 fake transport나 old submit API 사용은 없다.
 
 ## TicTacToe Game Refactor
@@ -187,8 +218,8 @@ dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gatew
   추가했다.
 - Session server는 `CreateGameReq`와 `ResolveGameReq`를 actor relay로 API server에
   보내고, join/move는 resolved Play `RoutingId`로 relay한다.
-- Play server는 `TicTacToeGameService`가 board, turn, winner를 소유하고,
-  `PlayerSessionDirectory`가 actor별 session 위치만 소유한다.
+- Play server는 `TicTacToeGameSpot`이 board, turn, winner를 소유하고,
+  session location writer/resolver가 actor별 session 위치만 소유한다.
 - scenario는 `player-x`가 첫 번째 Session server에서 인증한 뒤 두 번째 Session
   server로 재접속하는 흐름, 두 player join, `X0 O3 X1 O4 X2` move sequence, 최종
   board `XXXOO....`와 winner `player-x`를 검증한다.

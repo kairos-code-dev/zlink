@@ -1,14 +1,15 @@
 using Zlink;
+using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Infrastructure;
 
 internal sealed class RegistryPlayRouteStore(
     IRegistryDiscoveryMetadata registry,
-    string metadataNamespace)
+    string metadataNamespace) : IZLinkActorPlayRouteResolver
 {
     public ValueTask BindActorPlayAsync(
         string actorId,
-        ZLinkPlayRoute route,
+        ZLinkActorRoute route,
         CancellationToken cancellationToken)
     {
         return registry.PutAsync(
@@ -17,7 +18,7 @@ internal sealed class RegistryPlayRouteStore(
             cancellationToken);
     }
 
-    public async ValueTask<ZLinkPlayRoute> ResolveActorPlayAsync(
+    public async ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
         string actorId,
         CancellationToken cancellationToken)
     {
@@ -30,7 +31,7 @@ internal sealed class RegistryPlayRouteStore(
 
     public ValueTask BindMatchAsync(
         string matchId,
-        ZLinkPlayRoute route,
+        ZLinkActorRoute route,
         CancellationToken cancellationToken)
     {
         return registry.PutAsync(
@@ -39,7 +40,7 @@ internal sealed class RegistryPlayRouteStore(
             cancellationToken);
     }
 
-    public async ValueTask<ZLinkPlayRoute> ResolveMatchAsync(
+    public async ValueTask<ZLinkActorRoute> ResolveMatchAsync(
         string matchId,
         CancellationToken cancellationToken)
     {
@@ -60,19 +61,19 @@ internal sealed class RegistryPlayRouteStore(
         return $"{metadataNamespace}/match/{matchId}";
     }
 
-    private static Dictionary<string, string> ToMetadata(ZLinkPlayRoute route)
+    private static Dictionary<string, string> ToMetadata(ZLinkActorRoute route)
     {
         return new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["routerChannelId"] = route.RouterChannelId,
-            ["playRouterId"] = route.PlayRouterId.ToHex(),
+            ["targetNodeRid"] = route.TargetNodeRid.ToHex(),
         };
     }
 
-    private static ZLinkPlayRoute ReadPlayRoute(IRegistryMetadataEntry entry)
+    private static ZLinkActorRoute ReadPlayRoute(IRegistryMetadataEntry entry)
     {
-        return new ZLinkPlayRoute(
+        return new ZLinkActorRoute(
             entry.Require("routerChannelId"),
-            RoutingId.FromString(entry.Require("playRouterId")));
+            RoutingId.FromString(entry.Require("targetNodeRid")));
     }
 }

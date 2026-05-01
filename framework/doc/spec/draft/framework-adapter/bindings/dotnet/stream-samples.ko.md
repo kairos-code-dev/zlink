@@ -73,22 +73,8 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSessionContext
+public interface IZLinkSessionActorDispatchContext
 {
-    string SessionId { get; }
-    RoutingId? RoutingId { get; }
-    string? LocalAddr { get; }
-    string? RemoteAddr { get; }
-
-    IZLinkRequestCall RequestChannel<TRequest>(string channelName, TRequest request);
-    IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message);
-
-    IZLinkSessionSendCall Send<TMessage>(TMessage message);
-    IZLinkSessionReplyCall Reply<TMessage>(TMessage message);
-
-    ValueTask CloseAsync(
-        CancellationToken cancellationToken = default);
-
     ValueTask<IZLinkActorRef> CreateActorAsync(
         string actorId,
         string actorType,
@@ -100,12 +86,36 @@ public interface IZLinkSessionContext
         string actorType,
         CancellationToken cancellationToken = default);
 
+    IZLinkSessionRequestCall Request<TRequest>(TRequest request);
+
+    ValueTask DispatchToActorAsync(
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken = default);
+
     ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default);
 }
+
+public interface IZLinkSessionActorAttachmentContext
+{
+    ValueTask AttachActorAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default);
+
+    ValueTask DisconnectActorAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSessionContext :
+    IZLinkSessionIdentityContext,
+    IZLinkSessionChannelClient,
+    IZLinkSessionClientStream,
+    IZLinkSessionActorDispatchContext,
+    IZLinkSessionLifecycle;
 ```
 
 `CloseAsync(...)`는 현재 session의 client stream 연결을 서버 쪽에서 끊을 때

@@ -20,12 +20,9 @@ internal sealed class CreateMatchHandler(IZLinkClient client)
             throw new InvalidOperationException("Match owner actor id must not be empty.");
         }
 
-        var matchName = string.IsNullOrWhiteSpace(request.MatchName)
-            ? SampleNames.MatchId
-            : request.MatchName;
         var room = await client.Request(
                 SampleNames.PlayChannel,
-                new CreateMatchRoomReq(matchName))
+                new CreateMatchRoomReq())
             .WithTimeout(SampleTimings.RequestTimeout)
             .Async<CreateMatchRoomRes>(cancellationToken)
             .ConfigureAwait(false);

@@ -122,7 +122,9 @@ public sealed class StreamIntegrationTests
             Assert.NotNull(recorder.LastSessionId);
             Assert.NotNull(recorder.LastRoutingId);
             AssertStreamMetadata(endpoint, clientLocalPort, recorder.LastLocalAddr, recorder.LastRemoteAddr);
-            Assert.Equal(1, recorder.ConnectedCount);
+            Assert.True(
+                recorder.ConnectedCount == 1,
+                $"Expected one connected callback, got {recorder.ConnectedCount}. Connected sessions={string.Join(',', recorder.ConnectedSessionIds)}.");
 
             client.Dispose();
             await RetryAsync(
@@ -226,11 +228,13 @@ public sealed class StreamIntegrationTests
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
             services.AddSingleton(new GatewayRelaySettings(playRid));
+            services.AddSingleton(new ActorPlayRouteStore(playRid));
             services.AddSingleton(sessionLocations);
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>
             {
                 options.AddActorSessionLocationWriter<ActorSessionLocationStore>();
+                options.AddActorPlayRouteResolver<ActorPlayRouteStore>();
                 options.AddRoutedChannel("gateway", routed =>
                 {
                     routed.Bind(sessionRouterEndpoint);
@@ -303,6 +307,19 @@ public sealed class StreamIntegrationTests
             await clientReplyTask;
             Assert.Equal("client:from-play", gatewayReply.Value);
             Assert.NotEqual(0UL, gatewayReply.RequestSeq);
+
+            var actorClient = sessionHost.Services.GetRequiredService<IZLinkActorClient>();
+            var actorClientReply = await actorClient.Request(
+                    "player-1",
+                    new GatewayPing("from-actor-client"))
+                .WithPacketName("relay.echo")
+                .WithMetadata("trace-id", "trace-actor-client")
+                .WithTimeout(TimeSpan.FromSeconds(3))
+                .Async<GatewayPong>();
+
+            Assert.Equal("play:from-actor-client", actorClientReply.Value);
+            Assert.Equal("relay.echo", proxyRecorder.LastPacketName);
+            Assert.Equal("trace-actor-client", proxyRecorder.LastTraceId);
             callbackCapture.ThrowIfAny();
         }
         finally
@@ -491,6 +508,8 @@ public sealed class StreamIntegrationTests
 
         public int ConnectedCount { get; set; }
 
+        public ConcurrentBag<string> ConnectedSessionIds { get; } = [];
+
         public int DisconnectedCount { get; set; }
 
         public int ErrorCount { get; set; }
@@ -562,6 +581,7 @@ public sealed class StreamIntegrationTests
             recorder.LastLocalAddr = Context.LocalAddr;
             recorder.LastRemoteAddr = Context.RemoteAddr;
             recorder.ConnectedCount++;
+            recorder.ConnectedSessionIds.Add(Context.SessionId);
             return ValueTask.CompletedTask;
         }
 
@@ -608,6 +628,18 @@ public sealed class StreamIntegrationTests
     public sealed record GatewayPong(string Value, ulong RequestSeq);
 
     public sealed record GatewayRelaySettings(RoutingId PlayRid);
+
+    public sealed class ActorPlayRouteStore(RoutingId playRid) : IZLinkActorPlayRouteResolver
+    {
+        public ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
+            string actorId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _ = actorId;
+            return ValueTask.FromResult(new ZLinkActorRoute("gateway", playRid));
+        }
+    }
 
     public sealed class ActorDispatchRecorder
     {

@@ -1,34 +1,35 @@
 using TicTacToe.SessionActorDispatch.Configuration;
 using TicTacToe.SessionActorDispatch.Contracts;
 using TicTacToe.SessionActorDispatch.Infrastructure;
+using Zlink;
 using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Play;
 
 internal sealed class JoinMatchHandler(
-    TicTacToeGameService games,
-    RegistryPlayRouteStore routes,
-    GameNotificationPublisher notifications,
-    SampleTopology topology)
-    : IZLinkActorRequestHandler<JoinMatchReq, JoinMatchRes>
+    RegistryPlayRoutePublisher routes,
+    GameNotificationPublisher notifications)
+    : IZLinkActorRequestHandler<PlayerActor, JoinMatchReq, JoinMatchRes>
 {
     public async ValueTask<JoinMatchRes> HandleAsync(
+        PlayerActor actor,
         JoinMatchReq request,
-        ZLinkActorRequestContext context,
         CancellationToken cancellationToken)
     {
-        var result = games.Join(request.MatchId, context.ActorId);
-        await routes.BindActorPlayAsync(
-                context.ActorId,
-                new ZLinkPlayRoute(SampleNames.RouterChannel, topology.PlayRid),
-                cancellationToken)
+        var result = await actor.Context
+            .JoinSpot(RoutingId.FromString(request.MatchId), request)
+            .WithTimeout(SampleTimings.RequestTimeout)
+            .Async<JoinMatchSpotResult>(cancellationToken)
             .ConfigureAwait(false);
-        await notifications.PublishAsync(context.SessionProxy, result.Events, cancellationToken)
+        await routes.BindActorPlayAsync(actor.ActorId, cancellationToken)
             .ConfigureAwait(false);
-        return new JoinMatchRes(
+        await notifications.PublishAsync(result.Events, cancellationToken)
+            .ConfigureAwait(false);
+        var reply = new JoinMatchRes(
             result.MatchId,
             result.ActorId,
             result.Mark.ToContract(),
             result.Snapshot.ToContract());
+        return reply;
     }
 }

@@ -11,15 +11,13 @@ public sealed record AuthenticateActorRes(
     string? ActorId,
     string? Reason);
 
-public sealed record CreateMatchReq(
-    string? MatchName,
-    string? OwnerActorId = null);
+public sealed record CreateMatchReq(string? OwnerActorId = null);
 
 public sealed record CreateMatchRes(
     string MatchId,
     string OwnerActorId);
 
-public sealed record CreateMatchRoomReq(string MatchName);
+public sealed record CreateMatchRoomReq();
 
 public sealed record CreateMatchRoomRes(string MatchId);
 

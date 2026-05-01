@@ -55,12 +55,10 @@ internal sealed class SessionActorDispatchPlayerClient(
             .Async<JoinMatchRes>(cancellationToken);
     }
 
-    public ValueTask<CreateMatchRes> CreateMatchAsync(
-        string? matchName,
-        CancellationToken cancellationToken)
+    public ValueTask<CreateMatchRes> CreateMatchAsync(CancellationToken cancellationToken)
     {
         return connector
-            .Request(new CreateMatchReq(matchName))
+            .Request(new CreateMatchReq())
             .WithTimeout(SampleTimings.RequestTimeout)
             .Async<CreateMatchRes>(cancellationToken);
     }

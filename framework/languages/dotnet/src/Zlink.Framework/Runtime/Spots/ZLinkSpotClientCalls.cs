@@ -1,6 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Backend.Contracts;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotClientService : IZLinkSpotClient
@@ -82,18 +79,19 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
 
     public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
+        var timeout = _timeout ?? activation.DefaultTimeout;
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Request,
             channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             ZLinkEnvelopeCodec.DefaultContentType,
             Guid.NewGuid().ToString("N"),
-            DateTimeOffset.UtcNow.Add(_timeout ?? TimeSpan.FromSeconds(30)),
+            DateTimeOffset.UtcNow.Add(timeout),
             null,
             null,
             null);
         using var envelope = ZLinkEnvelopeCodec.Encode(header, request, request?.GetType() ?? typeof(TMessage));
-        var reply = await activation.RequestChannelAsync(channelName, envelope, _timeout, cancellationToken);
+        var reply = await activation.RequestChannelAsync(channelName, envelope, timeout, cancellationToken);
         try
         {
             if (reply.Count == 0)

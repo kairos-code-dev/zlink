@@ -155,11 +155,11 @@ internal sealed class ZLinkSessionActorDispatchRoutedPacketDispatcher(IServicePr
             ?? throw new InvalidOperationException(failureMessage);
     }
 
-    private static TimeSpan ResolveInternalTimeout(ZLinkEnvelopeHeader header)
+    private TimeSpan ResolveInternalTimeout(ZLinkEnvelopeHeader header)
     {
         if (header.Deadline is not { } deadline)
         {
-            return TimeSpan.FromSeconds(30);
+            return services.GetRequiredService<ZLinkFrameworkRegistration>().DefaultTimeout;
         }
 
         var remaining = deadline - DateTimeOffset.UtcNow;

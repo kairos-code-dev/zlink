@@ -85,7 +85,7 @@ POSD 원칙 순서로 판단하고 계속 진행한다.
 | session location writer | [§9.5 위치 소유와 갱신 책임](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#95-위치-소유와-갱신-책임), [§9.6 registry discovery metadata sample](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#96-registry-discovery-metadata-sample) |
 | session actor helper | [§10 Session Actor Helpers](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#10-session-actor-helpers), [§10.2 제안 session context API](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#102-제안-session-context-api), [§10.2.1 actor create lifecycle](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#1021-actor-create-lifecycle), [§10.3 직접 dispatch 예시](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#103-직접-dispatch-예시) |
 | discovery | [§13 Discovery 정책](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#13-discovery-정책) |
-| spot route | [§14 Spot Route Resolver와 Direct Target API 정책](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#14-spot-route-resolver와-direct-target-api-정책) |
+| spot direct target | [§14 SPOT direct target API 정책](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#14-spot-direct-target-api-정책) |
 | timeout/retry | [§15 Timeout과 retry 정책](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#15-timeout과-retry-정책) |
 | before/after | [§16 Before / After](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#16-before--after) |
 | error | [§17 Error 의미](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#17-error-의미) |
@@ -146,7 +146,7 @@ rg -n "InMemoryRoutedChannel|UseManualConnections|Retry|Warmup|Task\\.Delay|Samp
 - [§9 Actor Route Resolvers](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#9-actor-route-resolvers)
 - [§10 Session Actor Helpers](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#10-session-actor-helpers)
 - [§11 SessionProxy 호출 표면](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#11-sessionproxy-호출-표면)
-- [§14 Spot Route Resolver와 Direct Target API 정책](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#14-spot-route-resolver와-direct-target-api-정책)
+- [§14 SPOT direct target API 정책](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#14-spot-direct-target-api-정책)
 - [§17 Error 의미](../../spec/draft/framework-adapter/policy/session-gateway-usability.ko.md#17-error-의미)
 
 작업:

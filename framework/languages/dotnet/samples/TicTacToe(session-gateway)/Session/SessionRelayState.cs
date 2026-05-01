@@ -1,4 +1,3 @@
-using TicTacToe.SessionActorDispatch.Infrastructure;
 using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
@@ -9,7 +8,7 @@ internal sealed class SessionRelayState
 
     public string? ActorId { get; set; }
 
-    public ZLinkPlayRoute? ActorRoute { get; set; }
+    public ZLinkActorRoute? ActorRoute { get; set; }
 
     public string RequireActorId(string action)
     {

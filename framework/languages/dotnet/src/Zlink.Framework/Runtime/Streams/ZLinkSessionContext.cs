@@ -95,7 +95,10 @@ internal sealed class ZLinkSessionContext(
 
     public IZLinkSessionRequestCall Request<TRequest>(TRequest request)
     {
-        return new ZLinkSessionRequestCall<TRequest>(this, request);
+        return new ZLinkSessionRequestCall<TRequest>(
+            this,
+            request,
+            runtime.Registration.DefaultTimeout);
     }
 
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)
@@ -144,12 +147,34 @@ internal sealed class ZLinkSessionContext(
 
             if (header.RequestSeq is not null)
             {
-                var reply = await runtime.RoutedClient
-                    .RequestTo(actorRef.RouterChannelId, actorRef.TargetNodeRid, packet)
-                    .WithPacketName(ZLinkInternalPacketNames.ActorDispatch)
-                    .WithTimeout(runtime.Registration.DefaultTimeout)
-                    .Async<byte[]>(cancellationToken)
-                    .ConfigureAwait(false);
+                byte[] reply;
+                try
+                {
+                    reply = await runtime.RoutedClient
+                        .RequestTo(actorRef.RouterChannelId, actorRef.TargetNodeRid, packet)
+                        .WithPacketName(ZLinkInternalPacketNames.ActorDispatch)
+                        .WithTimeout(runtime.Registration.DefaultTimeout)
+                        .Async<byte[]>(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (TimeoutException ex)
+                {
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorDispatchTimeout,
+                        $"Actor dispatch request for '{actorRef.ActorId}' timed out.",
+                        innerException: ex);
+                }
+                catch (ZLinkFrameworkException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorDispatchHandlerFailed,
+                        $"Actor dispatch request for '{actorRef.ActorId}' failed: {ex.Message}",
+                        innerException: ex);
+                }
 
                 await ReplyRawAsync(header, header.Codec, reply, cancellationToken)
                     .ConfigureAwait(false);
@@ -277,6 +302,33 @@ internal sealed class ZLinkSessionContext(
         return ValueTask.CompletedTask;
     }
 
+    internal ValueTask ReplyErrorAsync(
+        ZlinkStreamHeader requestHeader,
+        Exception exception,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (requestHeader.RequestSeq is not { } requestSeq)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Error,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.HasRequestSeq,
+            requestSeq,
+            requestHeader.Name,
+            ZlinkStreamMetadata.Empty);
+        var body = JsonSerializer.SerializeToUtf8Bytes(
+            new ZLinkStreamWireError(
+                exception.GetType().Name,
+                exception.Message),
+            JsonOptions);
+        WriteRawFrame(header, body, "Client stream error reply send failed.");
+        return ValueTask.CompletedTask;
+    }
+
     internal async ValueTask<TReply> RequestClientAsync<TRequest, TReply>(
         TRequest request,
         string packetName,
@@ -328,6 +380,10 @@ internal sealed class ZLinkSessionContext(
     }
 
 }
+
+internal sealed record ZLinkStreamWireError(
+    string? Code,
+    string? Message);
 
 internal abstract class ZLinkSessionStreamCallBase<TMessage>(
     ZLinkSessionContext context,

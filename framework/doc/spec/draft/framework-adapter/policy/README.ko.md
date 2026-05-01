@@ -1,6 +1,6 @@
 [스펙 목차](../../README.ko.md)
 
-[개요](./overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [Session Gateway](./session-gateway.ko.md) | [Session Actor Dispatch 사용성](./session-gateway-usability.ko.md) | [검증](../usecase-validation.ko.md) | [.NET](../bindings/dotnet/README.ko.md) | [Java](../bindings/java/README.ko.md) | [Node.js](../bindings/node/README.ko.md) | [Python](../bindings/python/README.ko.md) | [Go](../bindings/go/README.ko.md) | [Rust](../bindings/rust/README.ko.md) | [C++](../bindings/cpp/README.ko.md)
+[개요](./overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [Session Actor Dispatch 사용성](./session-gateway-usability.ko.md) | [Session Gateway 보관본](./session-gateway.ko.md) | [검증](../usecase-validation.ko.md) | [.NET](../bindings/dotnet/README.ko.md) | [Java](../bindings/java/README.ko.md) | [Node.js](../bindings/node/README.ko.md) | [Python](../bindings/python/README.ko.md) | [Go](../bindings/go/README.ko.md) | [Rust](../bindings/rust/README.ko.md) | [C++](../bindings/cpp/README.ko.md)
 
 # Draft -- ZLink Framework
 

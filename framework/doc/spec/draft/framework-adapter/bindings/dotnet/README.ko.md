@@ -86,7 +86,7 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 - 현재 framework core 문서에서는 `targetRid + spotRid` direct routed public 호출은
   두지 않는다. 반면 actor join, actor factory 등록, stream-to-actor bridge는 현재
   draft 구현 범위에 포함하므로 공용 계약과 샘플 문서에 함께 반영한다.
-- session actor dispatch는 `SessionGateway` feature switch가 아니라
+- session actor dispatch는 하나의 gateway feature switch가 아니라
   `AddStreamNode(...).AddHeaderSession<TSession>()`, actor factory, actor route
   resolver, session route resolver, session location writer, `IZLinkSessionProxy`
   조합으로 설명한다.
@@ -166,7 +166,8 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 - 일반 channel messaging은 `channelName` 호출을 기본으로 두고, `rid` 지정은
   SPOT spot-to-spot 경로에만 남긴다.
 - `SPOT` high-level 표면은 current channel publish/subscribe와 attach된 channel
-  send/request를 먼저 설명한다.
+  send/request를 설명한다. `SpotId` 기반 routed send/request는 현재 구현 계약으로
+  문서화하지 않는다.
 - `IZLinkClient`와 `IZLinkSpotClient`는 서로 다른 C API를 감싸는 별도 인터페이스다.
   다만 하부 기능이 겹치는 부분이 있으므로, 두 인터페이스가 일부 비슷한
   send/request 계열 함수를 가질 수 있다.

@@ -73,7 +73,7 @@
 - `stageId -> address` lookup helper
 
 현재 draft framework는 `membership / actor model`의 최소 공용 계약까지는 포함한다.
-즉 actor join 등록, actor stream 연결/submit/disconnect bridge, 같은 `SPOT` 실행 문맥
+즉 actor join 등록, actor stream 연결/해제 bridge, actor dispatch, 같은 `SPOT` 실행 문맥
 직렬화는 framework가 제공하고, 그 위의 room/stage/zone 정책은 `Stage wrapper`나
 응용 계층이 맡는 구조로 읽는 편이 맞다.
 

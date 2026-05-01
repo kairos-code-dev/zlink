@@ -4,7 +4,8 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionProxyService(
     IZLinkRoutedClient routedClient,
-    IZLinkActorSessionRouteResolver routeResolver) : IZLinkSessionProxy
+    IZLinkActorSessionRouteResolver routeResolver,
+    ZLinkFrameworkRegistration registration) : IZLinkSessionProxy
 {
     public IZLinkSessionProxySendCall Send<TMessage>(
         string actorId,
@@ -24,6 +25,7 @@ internal sealed class ZLinkSessionProxyService(
         return new ZLinkSessionProxyRequestCall<TRequest>(
             routedClient,
             routeResolver,
+            registration,
             actorId,
             request);
     }
@@ -55,7 +57,7 @@ internal sealed class ZLinkSessionProxySendCall<TMessage>(
 
     public async ValueTask Async(CancellationToken cancellationToken = default)
     {
-        var route = await routeResolver.ResolveSessionRouteAsync(actorId, cancellationToken)
+        var route = await ResolveRouteAsync(cancellationToken)
             .ConfigureAwait(false);
         var packet = new ZLinkSessionProxyPacket(
             new ZLinkSessionProxyEnvelope(
@@ -72,18 +74,39 @@ internal sealed class ZLinkSessionProxySendCall<TMessage>(
             .Async(cancellationToken)
             .ConfigureAwait(false);
     }
+
+    private async ValueTask<ZLinkActorSessionRoute> ResolveRouteAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await routeResolver.ResolveSessionRouteAsync(actorId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ZLinkFrameworkException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.SessionRouteNotFound,
+                $"Session route for actor '{actorId}' was not found.",
+                innerException: ex);
+        }
+    }
 }
 
 internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
     IZLinkRoutedClient routedClient,
     IZLinkActorSessionRouteResolver routeResolver,
+    ZLinkFrameworkRegistration registration,
     string actorId,
     TRequest request) : IZLinkSessionProxyRequestCall
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
-    private TimeSpan _timeout = TimeSpan.FromSeconds(30);
+    private TimeSpan? _timeout;
 
     public IZLinkSessionProxyRequestCall WithPacketName(string packetName)
     {
@@ -107,7 +130,7 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
 
     public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
-        var route = await routeResolver.ResolveSessionRouteAsync(actorId, cancellationToken)
+        var route = await ResolveRouteAsync(cancellationToken)
             .ConfigureAwait(false);
         var packet = new ZLinkSessionProxyPacket(
             new ZLinkSessionProxyEnvelope(
@@ -119,12 +142,67 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
                 new Dictionary<string, string>(_metadata, StringComparer.Ordinal)),
             JsonSerializer.SerializeToUtf8Bytes(request, request?.GetType() ?? typeof(TRequest), JsonOptions));
 
-        var reply = await routedClient.RequestTo(route.RouterChannelId, route.SessionRouterId, packet)
-            .WithPacketName(ZLinkInternalPacketNames.SessionProxy)
-            .WithTimeout(_timeout)
-            .Async<byte[]>(cancellationToken)
-            .ConfigureAwait(false);
+        byte[] reply;
+        try
+        {
+            reply = await routedClient.RequestTo(route.RouterChannelId, route.SessionRouterId, packet)
+                .WithPacketName(ZLinkInternalPacketNames.SessionProxy)
+                .WithTimeout(_timeout ?? registration.DefaultTimeout)
+                .Async<byte[]>(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException ex)
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.SessionProxyTimeout,
+                $"Session proxy request for actor '{actorId}' timed out.",
+                innerException: ex);
+        }
+
         return JsonSerializer.Deserialize<TReply>(reply, JsonOptions)
             ?? throw new InvalidOperationException("Session proxy reply body is null.");
+    }
+
+    private async ValueTask<ZLinkActorSessionRoute> ResolveRouteAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await routeResolver.ResolveSessionRouteAsync(actorId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ZLinkFrameworkException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.SessionRouteNotFound,
+                $"Session route for actor '{actorId}' was not found.",
+                innerException: ex);
+        }
+    }
+}
+
+internal sealed class ZLinkMissingSessionProxy : IZLinkSessionProxy
+{
+    public IZLinkSessionProxySendCall Send<TMessage>(
+        string actorId,
+        TMessage message)
+    {
+        _ = actorId;
+        _ = message;
+        throw new ZLinkConfigurationException(
+            "IZLinkSessionProxy requires AddActorSessionRouteResolver<TResolver>().");
+    }
+
+    public IZLinkSessionProxyRequestCall Request<TRequest>(
+        string actorId,
+        TRequest request)
+    {
+        _ = actorId;
+        _ = request;
+        throw new ZLinkConfigurationException(
+            "IZLinkSessionProxy requires AddActorSessionRouteResolver<TResolver>().");
     }
 }

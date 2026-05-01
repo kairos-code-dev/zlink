@@ -9,7 +9,7 @@
 
 ## 1. 상황
 
-일반적인 서비스 이벤트와 달리, 어떤 알림은 여러 front 노드나 session gateway로
+일반적인 서비스 이벤트와 달리, 어떤 알림은 여러 front 노드나 session actor dispatch 계층으로
 아주 빨리 퍼져야 한다. 수신자는 내부 worker가 아니라 현재 연결을 붙잡고 있는
 front 계층일 수 있다.
 

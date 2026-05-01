@@ -59,6 +59,8 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
 
     public string ChannelName { get; }
 
+    public TimeSpan DefaultTimeout => _defaultTimeout;
+
     public RoutingId SpotRid => NativeSpot.RoutingId;
 
     public RoutingId NodeRid { get; }

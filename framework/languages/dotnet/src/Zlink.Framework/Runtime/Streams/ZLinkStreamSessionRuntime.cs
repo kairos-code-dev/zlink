@@ -109,6 +109,11 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                     body.Move(),
                     CancellationToken.None);
             }
+            catch (Exception ex)
+            {
+                await _context.ReplyErrorAsync(decoded, ex, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
             finally
             {
                 _context.ExitDispatch();
@@ -121,6 +126,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         await _handler.OnErrorAsync(error, CancellationToken.None);
         await _handler.OnDisconnectedAsync(CancellationToken.None);
         await _context.CleanupActorBindingsAsync(CancellationToken.None);
+        _removeSession(Stream.SessionId);
     }
 
     private async ValueTask MarkClosedAsync()
@@ -146,18 +152,16 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 
     private ValueTask EnsureConnectedAsync()
     {
-        if (Interlocked.CompareExchange(ref _connected, 1, 1) != 0)
-        {
-            return ValueTask.CompletedTask;
-        }
-
         if (string.IsNullOrWhiteSpace(Stream.LocalAddr)
             || string.IsNullOrWhiteSpace(Stream.RemoteAddr))
         {
             return ValueTask.CompletedTask;
         }
 
-        Interlocked.Exchange(ref _connected, 1);
+        if (Interlocked.CompareExchange(ref _connected, 1, 0) != 0)
+        {
+            return ValueTask.CompletedTask;
+        }
 
         return _handler.OnConnectedAsync(CancellationToken.None);
     }

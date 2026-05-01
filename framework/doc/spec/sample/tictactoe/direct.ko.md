@@ -109,6 +109,16 @@ public sealed record PlaceMarkRes(
     GameState State);
 ```
 
+Play actor가 game room SPOT에 join할 때 사용하는 내부 request/response:
+
+```csharp
+public sealed record TicTacToeGameJoinReq(
+    string GameId,
+    string ActorId);
+
+public sealed record TicTacToeGameJoinRes(GameState State);
+```
+
 server push 메시지:
 
 ```csharp
@@ -140,7 +150,7 @@ public sealed record GameState(
 mark는 `O`로 표현한다. 예를 들어 `"X-O---X--"`는 0번과 6번 cell에 `X`, 2번 cell에
 `O`가 놓인 상태다.
 
-## 6. Match 생성 흐름
+## 6. Game 생성 흐름
 
 ```mermaid
 sequenceDiagram

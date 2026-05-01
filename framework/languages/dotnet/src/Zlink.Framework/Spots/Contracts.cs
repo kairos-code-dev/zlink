@@ -121,12 +121,3 @@ public interface IZLinkSpotActorJoinHandler<TSpot, in TActor, in TRequest, TRepl
         TRequest request,
         CancellationToken cancellationToken);
 }
-
-public interface IZLinkActorPacketHandler<in TActor, in TMessage>
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TActor actor,
-        TMessage message,
-        CancellationToken cancellationToken);
-}

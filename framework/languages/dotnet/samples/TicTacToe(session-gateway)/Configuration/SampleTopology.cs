@@ -11,6 +11,7 @@ internal sealed record SampleTopology(
     string SessionRouterEndpoint,
     string ReconnectSessionRouterEndpoint,
     string PlayRouterEndpoint,
+    string PlaySpotEndpoint,
     string StreamEndpoint,
     string ReconnectStreamEndpoint,
     RoutingId SessionRid,
@@ -30,6 +31,7 @@ internal sealed record SampleTopology(
     public static SampleTopology Create()
     {
         return new SampleTopology(
+            EphemeralTcpEndpoint.Create(),
             EphemeralTcpEndpoint.Create(),
             EphemeralTcpEndpoint.Create(),
             EphemeralTcpEndpoint.Create(),

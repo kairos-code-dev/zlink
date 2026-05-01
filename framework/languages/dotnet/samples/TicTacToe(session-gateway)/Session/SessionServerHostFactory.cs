@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using TicTacToe.SessionActorDispatch.Configuration;
 using TicTacToe.SessionActorDispatch.Infrastructure;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
 
@@ -17,8 +18,6 @@ internal static class SessionServerHostFactory
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(sessionLocations);
         builder.Services.AddSingleton(playRoutes);
-        builder.Services.AddSingleton<IInitialActorRouteResolver>(
-            new StaticInitialActorRouteResolver(new ZLinkPlayRoute(SampleNames.RouterChannel, topology.PlayRid)));
         builder.Services.AddSingleton<SessionActorRouteCache>();
         builder.Services.AddScoped<ISessionRelayPacketHandler, AuthenticateSessionPacketHandler>();
         builder.Services.AddScoped<ISessionRelayPacketHandler, CreateMatchSessionPacketHandler>();
@@ -29,6 +28,7 @@ internal static class SessionServerHostFactory
         {
             options.Codecs.AddJson();
             options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
+            options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
             options.AddActorSessionLocationWriter<RegistryActorSessionLocationStore>();
             options.AddChannel(SampleNames.ApiChannel, channel =>
             {

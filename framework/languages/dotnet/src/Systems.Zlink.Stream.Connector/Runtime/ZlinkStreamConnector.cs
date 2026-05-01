@@ -11,6 +11,7 @@ namespace Systems.Zlink.Stream.Connector.Runtime;
 
 public sealed class ZlinkStreamConnector : IAsyncDisposable
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ZlinkStreamPendingRequests _pending = new();
     private readonly ZlinkStreamTypedHandlerRegistry _typedHandlers = new();
     private readonly Channel<ZlinkStreamHandlerWorkItem> _handlerQueue =
@@ -651,7 +652,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
     {
         try
         {
-            var dto = JsonSerializer.Deserialize<WireError>(body.Span);
+            var dto = JsonSerializer.Deserialize<WireError>(body.Span, JsonOptions);
             return new ZlinkStreamError(
                 ZlinkStreamErrorCode.RemoteError,
                 dto?.Message ?? "Remote stream error.");

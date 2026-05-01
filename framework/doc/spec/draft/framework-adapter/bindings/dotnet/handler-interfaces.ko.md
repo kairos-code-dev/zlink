@@ -46,7 +46,7 @@
 | handler | `IZLinkSpotSubscriptionHandler<TSpot, TEvent>` | SPOT subscription handler | 4.3.1 |
 | handler | `IZLinkSpotTimerHandler<TSpot>` | SPOT lifecycle timer handler | 4.3.1 |
 | handler | `IZLinkSession` | stream session lifecycle + header/body callback | 4.4 |
-| context | `IZLinkSessionContext` | stream session의 send, channel request, actor 연결 표면 | 4.4 |
+| context | `IZLinkSessionContext` | stream session의 send, channel request, actor dispatch 표면 | 4.4 |
 | context | `IZLinkSessionIdentityContext` | stream session identity 조회 | 4.4 |
 | context | `IZLinkSessionChannelClient` | session 안에서 channel request/send 호출 | 4.4 |
 | context | `IZLinkSessionClientStream` | session에서 client stream으로 send/reply | 4.4 |
@@ -705,11 +705,12 @@ protobuf/json decode helper가 가능한 한 추가 메모리 할당 없이 동�
 #### 4.4.1 actor/session 상위 모델 메모
 
 actor join, actor factory, stream-attached actor 모델은 현재 draft `Zlink.Framework`
-구현 범위에 포함한다. 공개 계약은 `IZLinkActor`, `IZLinkSpotClient.JoinActorAsync`,
-`IZLinkSpotContext.AddActorJoin<THandler, TActor, TRequest, TReply>()`, 그리고 stream session에서
-actor stream 연결/submit/disconnect를 이어 주는 `IZLinkSessionContext`까지를 기준으로
-설명한다. `stage-wrapper-on-spot.ko.md`는 이 계약 위에서 room/stage wrapper를
-어떻게 조직하는지 보여 주는 상위 모델 문서로 읽는다.
+구현 범위에 포함한다. 공개 계약은 `IZLinkActor`, `IZLinkActorContext.JoinSpot(...)`,
+`IZLinkSpotContext.AddActorJoin<THandler, TActor, TRequest, TReply>()`, stream session의
+actor dispatch 표면인 `IZLinkSessionContext`, 그리고 actor stream 연결/해제를 맡는
+`IZLinkSessionActorAttachmentContext`를 기준으로 설명한다. `stage-wrapper-on-spot.ko.md`는
+이 계약 위에서 room/stage wrapper를 어떻게 조직하는지 보여 주는 상위 모델 문서로
+읽는다.
 
 actor packet 실행 계약은 아래와 같이 둔다.
 
@@ -842,6 +843,15 @@ public interface IZLinkActorPacketHandler<in TActor, in TMessage>
         CancellationToken cancellationToken);
 }
 
+public interface IZLinkActorRequestHandler<in TActor, in TRequest, TReply>
+    where TActor : IZLinkActor
+{
+    ValueTask<TReply> HandleAsync(
+        TActor actor,
+        TRequest request,
+        CancellationToken cancellationToken);
+}
+
 public interface IZLinkSpotContext
 {
     ValueTask JoinActorAsync(
@@ -886,6 +896,8 @@ default timeout을 사용한다.
 session actor dispatch는 actor 객체 callback을 직접 호출하지 않고, actor 실행 문맥에
 등록된 typed handler를 호출한다. handler는 raw routed envelope, stream sequence,
 session router id를 직접 보지 않는다.
+actor의 `JoinSpot(...)`이나 `GetSpot(...)`처럼 actor 실행 문맥 자체가 필요한 request는
+actor-specific request handler를 사용한다.
 
 ```csharp
 public interface IZLinkActorSendHandler<in TMessage>
@@ -901,6 +913,15 @@ public interface IZLinkActorRequestHandler<in TRequest, TReply>
     ValueTask<TReply> HandleAsync(
         TRequest request,
         ZLinkActorRequestContext context,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkActorRequestHandler<in TActor, in TRequest, TReply>
+    where TActor : IZLinkActor
+{
+    ValueTask<TReply> HandleAsync(
+        TActor actor,
+        TRequest request,
         CancellationToken cancellationToken);
 }
 
@@ -1163,13 +1184,16 @@ await client
 
 ### 5.2 IZLinkSpotClient
 
-현재 spot runtime 안에서 쓰는 SPOT client다.
-`IZLinkClient`와 독립된 인터페이스이며, 하부에서 서로 다른 C API를 감싼다.
-최신 SPOT topology 초안에서는 high-level public surface에서 `targetRid +
-spotRid` routed 호출을 기본으로 두지 않는다. 현재 구현 범위는 아래 두 축이다.
+현재 spot runtime 안의 outbound 호출을 다루는 client다. `IZLinkClient`와 독립된
+인터페이스이며, 하부에서 서로 다른 C API를 감싼다. 현재 구현 범위는 아래 두 축이다.
 
 - 현재 SPOT channel 안의 publish/subscribe
 - attach된 channel client를 통한 다른 channel send/request
+
+`SpotId`만 받아 다른 spot으로 routed send/request를 보내는 public 표면은 아직
+현재 구현 계약에 포함하지 않는다. target node와 spot id를 함께 알아야 하는 raw
+호출은 하부 바인딩에는 남아 있지만, framework application 표면의 기본 사용법으로
+문서화하지 않는다.
 
 ```csharp
 public interface IZLinkSpotClient
@@ -1430,6 +1454,7 @@ public readonly record struct ZLinkActorSessionUnbind(
     string ActorId,
     string SessionId,
     string BindingToken);
+
 ```
 
 ## 6. 등록과 관리 인터페이스

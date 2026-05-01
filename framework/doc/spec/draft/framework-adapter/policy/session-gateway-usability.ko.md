@@ -1,25 +1,25 @@
 [스펙 목차](../../README.ko.md)
 
-[초안 묶음](./README.ko.md) | [Session Gateway](./session-gateway.ko.md) | [framework API](./framework-api.ko.md)
+[초안 묶음](./README.ko.md) | [Session Gateway 보관본](./session-gateway.ko.md) | [framework API](./framework-api.ko.md)
 
 # Draft -- Session Actor Dispatch Usability
 
 > 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, 이미 구현된 session gateway와 actor relay 표면을
+> 현재 공개 계약이 아니며, 이미 구현된 session actor dispatch와 actor relay 표면을
 > session actor dispatch 모델로 정리하기 위한 개선 방향을 정리한다.
 > API 이름, handler 모양, error 형식은 구현과 테스트가 확정되기 전까지 바뀔 수
 > 있다.
 
 ## 1. 목적
 
-현재 session gateway 기능은 session server와 play server를 분리하는 구조를 실제로
+현재 session actor dispatch 기능은 session server와 play server를 분리하는 구조를 실제로
 표현할 수 있다. 별도 `TicTacToe(session-gateway)` sample도 실제 TCP stream
-connector, routed channel, discovery, session gateway, actor relay를 함께 사용해서
+connector, routed channel, discovery, session actor dispatch, actor relay를 함께 사용해서
 동작한다.
 
 다만 sample을 작성하면서 framework 사용자가 알아야 하는 개념이 많다는 문제가
 드러났다. 사용자는 틱택토 같은 domain 흐름을 설명하고 싶지만, 실제 코드는
-`RoutingId`, raw actor relay handler, stream header, packet name, actor/session 위치 저장소,
+`RoutingId`, raw actor dispatch handler, stream header, packet name, actor/session 위치 저장소,
 discovery 설정을 함께 다뤄야 한다.
 
 이 문서의 목적은 정식 application public API를 session에서 actor를 생성하고 dispatch하는
@@ -46,9 +46,9 @@ session actor dispatch sample의 핵심 흐름은 아래 네 가지다.
 | `routerChannelId` | session server와 play server가 공유하는 routed mesh를 고르기 위해 필요하다. |
 | `RoutingId` | 실제 session node나 play node를 직접 지정해야 한다. |
 | `actorId` | 논리 사용자이자 relay domain key다. |
-| `packetName` | raw actor relay handler 안에서 어떤 domain 동작인지 구분하기 위해 필요하다. |
+| `packetName` | raw actor dispatch handler 안에서 어떤 domain 동작인지 구분하기 위해 필요하다. |
 | stream header | client request sequence를 보존하려면 raw dispatch 경로를 이해해야 한다. |
-| raw actor relay handler | session server에서 넘어온 actor relay envelope를 play server에서 풀어야 한다. |
+| raw actor dispatch handler | session server에서 넘어온 actor relay envelope를 play server에서 풀어야 한다. |
 | 위치 저장소 | actor가 있는 play node와 session node를 application이 직접 찾아야 한다. |
 | discovery | routed channel 연결을 자동으로 붙이려면 registry와 discovery 설정을 알아야 한다. |
 
@@ -58,7 +58,7 @@ session actor dispatch sample의 핵심 흐름은 아래 네 가지다.
 ### 2.2 `RoutingId`가 domain 코드에 새어 나온다
 
 `RoutingId`는 zlink routed transport의 목적지다. 반면 game code가 자연스럽게
-다루는 값은 `gameId`, `actorId`, `actorId` 같은 domain key다.
+다루는 값은 `gameId`, `matchId`, `actorId` 같은 domain key다.
 
 현재 sample은 match 생성, join, move 흐름에서 play node 또는 session node
 `RoutingId`를 직접 찾고 전달한다. 이 때문에 domain service가 "어느 game을 찾을지"
@@ -67,9 +67,9 @@ session actor dispatch sample의 핵심 흐름은 아래 네 가지다.
 POSD 기준으로 보면 transport 위치 결정이라는 설계 결정이 여러 파일에 흩어져 있다.
 이는 정보 은닉이 부족하다는 신호다.
 
-### 2.3 raw actor relay handler가 packet switch를 가진다
+### 2.3 raw actor dispatch handler가 packet switch를 가진다
 
-현재 play server raw actor relay handler는 `packetName`을 보고 create, join, move 같은
+현재 play server raw actor dispatch handler는 `packetName`을 보고 create, join, move 같은
 동작으로 나눈다. 이 방식은 처음에는 단순해 보이지만, message 종류가 늘면 하나의
 handler가 작은 router가 된다.
 
@@ -146,7 +146,7 @@ actor가 이미 존재할 때 create 요청을 어떻게 처리할지, 재연결
 
 | red flag | 현재 모습 | 위반되는 원칙 | 개선 방향 |
 |----------|-----------|---------------|-----------|
-| 얕은 raw actor relay handler | envelope를 받고 packet name으로 분기한 뒤 domain service를 호출한다. | 깊은 모듈 | actor/node/spot 실행 문맥의 typed handler registry가 dispatch와 decode를 맡는다. |
+| 얕은 raw actor dispatch handler | envelope를 받고 packet name으로 분기한 뒤 domain service를 호출한다. | 깊은 모듈 | actor/node/spot 실행 문맥의 typed handler registry가 dispatch와 decode를 맡는다. |
 | 정보 누출 | `RoutingId`가 game scenario와 proxy code에 퍼진다. | 정보 은닉 | actor/game route resolver가 transport 위치를 숨긴다. |
 | 특수/범용 코드 혼합 | sample session code가 auth, lookup, relay, stream reply를 함께 가진다. | 복잡성을 아래로 | actor create/dispatch helper가 request sequence 보존과 relay envelope 조립만 맡는다. |
 | 시간적 분해 | "먼저 resolve, 그 다음 relay" 순서가 호출자 코드에 반복된다. | 오류를 정의로 제거 | framework call builder가 resolve 후 request를 하나의 의미로 제공한다. |
@@ -240,6 +240,15 @@ public interface IZLinkActorRequestHandler<in TRequest, TReply>
     ValueTask<TReply> HandleAsync(
         TRequest request,
         ZLinkActorRequestContext context,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkActorRequestHandler<in TActor, in TRequest, TReply>
+    where TActor : IZLinkActor
+{
+    ValueTask<TReply> HandleAsync(
+        TActor actor,
+        TRequest request,
         CancellationToken cancellationToken);
 }
 
@@ -519,12 +528,12 @@ startup validation은 아래 조건을 확인한다.
 
 ### 8.5 낮은 수준 handler와의 관계
 
-typed actor/node/spot handler는 기존 raw actor relay handler를 대체하는 기본 표면이다.
+typed actor/node/spot handler는 기존 raw actor dispatch handler를 대체하는 기본 표면이다.
 `AddSessionProxyHandler<THandler>()` 같은 이름은 새 public API에서 제거한다.
 
-raw actor relay handler는 정식 application public API로 남기지 않는다. custom envelope나
+raw actor dispatch handler는 정식 application public API로 남기지 않는다. custom envelope나
 protocol adapter가 필요하면 framework internal service 또는 별도 adapter package에서
-resolved transport helper를 사용한다. 같은 relay path에서 raw actor relay handler와
+resolved transport helper를 사용한다. 같은 relay path에서 raw actor dispatch handler와
 typed actor/node/spot dispatch를 동시에 선택하는 public 설정은 만들지 않는다.
 
 ## 9. Actor Route Resolvers
@@ -1175,76 +1184,25 @@ public interface IZLinkTopologyDiagnostics
 문제 분석에서 discovery 상태 확인이 중요했으므로, 향후 monitoring/registry 초안과
 함께 검토할 필요가 있다.
 
-## 14. Spot Route Resolver와 Direct Target API 정책
+## 14. SPOT direct target API 정책
 
 actor route와 같은 문제가 `Spot` 호출에도 있다. 사용자가 `SpotId`만으로는 메시지를
 보낼 수 없고 `SpotNodeId`나 node `RoutingId`까지 알아야 한다면, transport 위치 정보가
 application 코드에 새어 나온다.
 
-따라서 `Spot` public API도 resolver 기반으로 통일하는 방향이 맞다.
+다만 현재 코드 기준 framework public surface에는 `SpotId` 기반 routed spot
+send/request와 spot route resolver가 없다. 따라서 session-gateway sample과 completion
+조건도 spot resolver 구현을 요구하지 않는다. 그러나 멀티게임 sample의 game room은
+도메인 핵심 실행 문맥이므로 Play 서버 안에서는 `IZLinkSpotManager`로 room SPOT을
+만든다. client는 match id나 room name을 지정하지 않는다. `MatchId`는 생성된 room의
+`SpotRid` hex이며, actor가 join한 room 안에서 `PlaceMarkReq`가 처리된다. registry
+metadata는 actor play route와 actor session location만 관리하고, spot route resolver
+역할을 하지 않는다.
 
-```csharp
-await spotClient
-    .Send(spotId, new MoveMsg(gameId, cell))
-    .Async(cancellationToken);
-
-MoveRep reply = await spotClient
-    .Request(spotId, new MoveReq(gameId, cell))
-    .Async<MoveRep>(cancellationToken);
-```
-
-framework는 내부에서 `IZLinkSpotRouteResolver`를 호출해 실제 target을 얻는다.
-
-```csharp
-public interface IZLinkSpotRouteResolver
-{
-    ValueTask<ZLinkSpotRoute> ResolveAsync(
-        RoutingId spotId,
-        CancellationToken cancellationToken);
-}
-
-public readonly record struct ZLinkSpotRoute(
-    string RouterChannelId,
-    RoutingId TargetNodeRid,
-    RoutingId SpotId);
-```
-
-`SpotId`는 spot의 routing id다. 따라서 resolver 입력은 request 객체가 아니라
-`RoutingId spotId` 하나면 충분하다. metadata가 필요해 보인다면 resolver가 route 조회
-이외의 정책을 함께 하려는 신호다. 그런 정책은 spot id를 정하는 caller나 domain
+향후 `SpotId` 기반 public 호출을 추가한다면 resolver 입력은 request 객체가 아니라
+`RoutingId spotId` 하나로 제한해야 한다. metadata가 필요해 보인다면 resolver가 route
+조회 이외의 정책을 함께 하려는 신호다. 그런 정책은 spot id를 정하는 caller나 domain
 placement code에 둔다.
-
-framework는 registry 기반 `IZLinkSpotRouteResolver` 기본 구현을 제공하지 않는다.
-registry를 기본 구현으로 넣으면 registry가 placement 정책의 정답처럼 보이고,
-framework가 spot ownership source까지 암묵적으로 정하게 된다. 실제 서비스에서는
-registry, static table, DB, Redis, allocator service, local-only runtime 등 여러 방식이
-가능하므로, 기본 구현은 두지 않는 편이 낫다.
-
-대신 registry를 이용한 resolver는 sample로 제공할 수 있다.
-
-```csharp
-public sealed class RegistrySpotRouteResolver : IZLinkSpotRouteResolver
-{
-    private readonly IZLinkRegistryClient registry;
-
-    public async ValueTask<ZLinkSpotRoute> ResolveAsync(
-        RoutingId spotId,
-        CancellationToken cancellationToken)
-    {
-        SpotSnapshot spot = await registry.GetSpotAsync(
-            spotId,
-            cancellationToken);
-
-        return new ZLinkSpotRoute(
-            RouterChannelId: "spot",
-            TargetNodeRid: spot.NodeRid,
-            SpotId: spotId);
-    }
-}
-```
-
-이 sample의 의미는 "registry를 쓰면 이렇게 resolver를 만들 수 있다"이다. "framework가
-registry로 spot route를 찾는다"가 아니다.
 
 direct target API는 public application 표면에서 기본으로 노출하지 않는다.
 
@@ -1260,18 +1218,9 @@ await spotClient
 직접 target을 넘겨야 하는지 계속 판단해야 한다. framework의 사용성 목표가 transport
 위치값 노출 제거라면, application public API는 `SpotId` 기반으로 통일해야 한다.
 
-구현 내부에는 resolved route를 받는 transport helper가 필요할 수 있다. 이 helper는
-public application API가 아니라 runtime/internal service로 둔다.
-
-```csharp
-internal interface IZLinkResolvedSpotTransport
-{
-    ValueTask SendAsync(
-        ZLinkSpotRoute route,
-        Message message,
-        CancellationToken cancellationToken);
-}
-```
+향후 구현 내부에는 resolved route를 받는 transport helper가 필요할 수 있다. 그 helper는
+public application API가 아니라 runtime/internal service로 두며, 정식 public 계약에
+들어가기 전에는 별도 draft에서 먼저 검토한다.
 
 session proxy도 같은 원칙을 따른다. `RoutingId`를 받는 `SendToActor(...)`류 send/request
 표면은 제거한다. sample은 actor -> client 방향에서 resolver 기반 `SessionProxy` API만
@@ -1308,7 +1257,7 @@ request/reply 대기는 `RequestTimeout`으로 다룬다.
 ### 16.1 현재 방식
 
 현재 방식은 명시적이고 강력하지만, 일반 sample에는 많은 배선이 보인다. 특히 play
-side의 raw actor relay handler가 framework envelope와 packet switch를 직접 다룬다.
+side의 raw actor dispatch handler가 framework envelope와 packet switch를 직접 다룬다.
 이 코드는 `SessionProxy`를 상속한 것이 아니다. 이름이 비슷해도 actor가 client로
 보내는 `SessionProxy`와는 다른 제거 대상 raw relay handler다.
 
@@ -1358,36 +1307,31 @@ domain message handler는 actor 실행 문맥에만 등록된다.
 
 ```csharp
 public sealed class JoinMatchHandler
-    : IZLinkActorRequestHandler<JoinMatchReq, JoinMatchRes>
+    : IZLinkActorRequestHandler<PlayerActor, JoinMatchReq, JoinMatchRes>
 {
-    private readonly TicTacToeGameService game;
-
-    public ValueTask<JoinMatchRes> HandleAsync(
+    public async ValueTask<JoinMatchRes> HandleAsync(
+        PlayerActor actor,
         JoinMatchReq request,
-        ZLinkActorRequestContext context,
         CancellationToken cancellationToken)
     {
-        return game.JoinAsync(
-            context.ActorId,
-            request,
-            cancellationToken);
+        var joined = await actor.Context.JoinSpot(
+                RoutingId.FromString(request.MatchId),
+                request)
+            .Async<JoinMatchSpotResult>(cancellationToken);
+        return joined.ToReply();
     }
 }
 
 public sealed class PlaceMarkHandler
-    : IZLinkActorRequestHandler<PlaceMarkReq, PlaceMarkRes>
+    : IZLinkActorRequestHandler<PlayerActor, PlaceMarkReq, PlaceMarkRes>
 {
-    private readonly TicTacToeGameService game;
-
     public ValueTask<PlaceMarkRes> HandleAsync(
+        PlayerActor actor,
         PlaceMarkReq request,
-        ZLinkActorRequestContext context,
         CancellationToken cancellationToken)
     {
-        return game.PlaceMarkAsync(
-            context.ActorId,
-            request,
-            cancellationToken);
+        var room = actor.Context.GetSpot<TicTacToeGameSpot>();
+        return ValueTask.FromResult(room.PlaceMark(actor.ActorId, request.Cell));
     }
 }
 ```
@@ -1513,8 +1457,8 @@ framework가 공통 error kind를 제공해야 한다.
 | `SessionRouteNotFound` | actor의 현재 session node를 찾지 못했다. |
 | `SessionLocationUpdateFailed` | auth/reconnect 시 session 위치 writer 갱신이 실패했다. |
 | `SessionProxyTimeout` | session proxy request가 제한 시간 안에 완료되지 않았다. |
-| `ActorRelayTimeout` | actor relay request가 제한 시간 안에 완료되지 않았다. |
-| `ActorRelayHandlerFailed` | play handler가 예외를 던졌거나 reply를 만들지 못했다. |
+| `ActorDispatchTimeout` | actor dispatch request가 제한 시간 안에 완료되지 않았다. |
+| `ActorDispatchHandlerFailed` | play handler가 예외를 던졌거나 reply를 만들지 못했다. |
 | `CodecFailed` | body encode/decode가 실패했다. |
 
 request/reply 경로에서는 가능한 한 error reply로 돌려보낸다. send 경로에서는 호출자의
@@ -1540,8 +1484,8 @@ public enum ZLinkFrameworkErrorKind
     SessionRouteNotFound,
     SessionLocationUpdateFailed,
     SessionProxyTimeout,
-    ActorRelayTimeout,
-    ActorRelayHandlerFailed,
+    ActorDispatchTimeout,
+    ActorDispatchHandlerFailed,
     CodecFailed,
 }
 ```
@@ -1555,7 +1499,7 @@ public enum ZLinkFrameworkErrorKind
 session actor helper와 resolver 기반 `SessionProxy` 표면으로 통일하는 것이다.
 
 - `EnableSessionGateway()`는 제거한다.
-- `AddSessionProxyHandler<THandler>()`처럼 이름이 맞지 않는 raw actor relay handler 등록
+- `AddSessionProxyHandler<THandler>()`처럼 이름이 맞지 않는 raw actor dispatch handler 등록
   표면은 제거한다.
 - `IZLinkSessionContext.OpenActorRelay(...)`와 `IZLinkActorRelay.DispatchAsync(...)`는
   public sample과 guide에서 제거한다.
@@ -1592,11 +1536,10 @@ session actor helper와 resolver 기반 `SessionProxy` 표면으로 통일하는
 | route resolver play path | `IZLinkActorClient`가 actor id로 play route를 찾고 routed message를 보낸다. |
 | route resolver session path | session proxy가 resolver로 session router id와 session id를 찾아 client에게 보낸다. |
 | dispatch ref path | `DispatchToActorAsync(...)`는 이미 받은 `IZLinkActorRef` target을 사용하고 play route resolver를 다시 호출하지 않는다. |
-| resolver 입력 제한 | actor resolver는 `actorId`, spot resolver는 `spotId`만 입력으로 받고 metadata, packet name, body를 받지 않는다. |
+| resolver 입력 제한 | actor resolver는 `actorId`만 입력으로 받고 metadata, packet name, body를 받지 않는다. |
 | missing play resolver validation | `IZLinkActorClient` 사용 시 play route resolver가 없으면 startup 또는 첫 호출에서 명확한 framework error가 난다. |
 | missing session resolver validation | `IZLinkSessionProxy` 사용 시 session route resolver가 없으면 startup 또는 첫 호출에서 명확한 framework error가 난다. |
 | direct target send/request 제거 | public send/request sample과 guide에서 `RoutingId` target을 직접 받는 API를 사용하지 않는다. |
-| spot route resolver | `SpotId` 기반 호출이 resolver를 통해 resolved route로 전송된다. |
 
 ### 19.3 actor create와 session location lifecycle
 
@@ -1622,7 +1565,7 @@ session actor helper와 resolver 기반 `SessionProxy` 표면으로 통일하는
 | codec registry 사용 | sample serializer 없이 framework codec으로 body가 encode/decode된다. |
 | codec failure | body encode/decode 실패가 `CodecFailed` 계열 error로 전달된다. |
 | session proxy timeout | `SessionProxy.Request(...).WithTimeout(...)` 대기가 timeout되면 pending request를 정리하고 `SessionProxyTimeout`으로 실패한다. |
-| actor relay timeout | actor dispatch request timeout이 pending request를 정리하고 `ActorRelayTimeout`으로 실패한다. |
+| actor dispatch timeout | actor dispatch request timeout이 pending request를 정리하고 `ActorDispatchTimeout`으로 실패한다. |
 | route not found error | play route 또는 session route가 없으면 transport send를 시도하지 않고 route not found error로 실패한다. |
 | unauthenticated dispatch 차단 | session callback이 인증 전 domain packet을 play server로 보내지 않는다. |
 
@@ -1666,12 +1609,11 @@ sample 검증도 필요하다.
 7. `CreateActorAsync(...)`, `CreateRemoteActorAsync(...)`,
    `DispatchToActorAsync(...)` session actor dispatch helper를 추가한다. session-gateway
    sample은 remote actor model만 사용하고, local-only sample은 별도 흐름으로 유지한다.
-8. `IZLinkSpotRouteResolver` 계약과 `SpotId` 기반 public 호출 표면을 추가한다.
-9. direct target send/request API를 public sample과 guide에서 제거하고
+8. direct target send/request API를 public sample과 guide에서 제거하고
    internal/resolved helper로 분류한다.
-10. session actor dispatch sample을 typed handler와 명시적 session actor dispatch helper 기반으로
+9. session actor dispatch sample을 typed handler와 명시적 session actor dispatch helper 기반으로
     단순화한다.
-11. sample POSD 리뷰에서 packet switch, `RoutingId` 누출, serializer helper가 사라졌는지
+10. sample POSD 리뷰에서 packet switch, `RoutingId` 누출, serializer helper가 사라졌는지
    다시 확인한다.
 12. draft 내용을 구현 결과와 맞춘 뒤 정식 spec 또는 binding 문서로 나누어 반영한다.
 
@@ -1710,7 +1652,7 @@ sample 검증도 필요하다.
 |----------|------|
 | `RoutingId` 노출 | send/request public API에서 제거하고 resolver 구현체와 internal transport helper 안에 가둔다. remote actor activation은 domain placement 결과를 넘기는 명시 예외로 둔다. |
 | session 위치 stale state | session route resolver와 session location writer를 분리하고 `BindingToken`으로 조건부 갱신한다. |
-| 얕은 raw actor relay handler | raw relay handler 대신 actor/node/spot 실행 문맥의 typed handler를 기본 표면으로 둔다. |
+| 얕은 raw actor dispatch handler | raw relay handler 대신 actor/node/spot 실행 문맥의 typed handler를 기본 표면으로 둔다. |
 | packet name switch | 실행 문맥별 handler registry와 message type metadata로 분리한다. |
 | raw relay envelope 누출 | request sequence와 session-local metadata는 dispatch/relay helper 안에 둔다. |
 | registry 기본 구현 과잉 | registry resolver는 sample로만 제공하고 framework 기본 구현으로 내장하지 않는다. |

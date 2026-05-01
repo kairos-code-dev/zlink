@@ -113,17 +113,24 @@ internal sealed class ZLinkActorRuntimeState
         var message = DecodeMessage(header, body, descriptor.MessageType);
         var handler = services.GetRequiredService(descriptor.HandlerType);
         var metadata = CreateMessageMetadata(services, header);
-        var context = new ZLinkActorRequestContext(
-            actor.ActorId,
-            string.Empty,
-            header.Name,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            null,
-            null,
-            services,
-            cancellationToken,
-            metadata);
-        var result = descriptor.HandleMethod.Invoke(handler, [message, context, cancellationToken]);
+        var arguments = descriptor.ActorType is null
+            ? new object[]
+            {
+                message!,
+                new ZLinkActorRequestContext(
+                    actor.ActorId,
+                    string.Empty,
+                    header.Name,
+                    ZLinkEnvelopeCodec.DefaultContentType,
+                    null,
+                    null,
+                    services,
+                    cancellationToken,
+                    metadata),
+                cancellationToken
+            }
+            : [actor, message!, cancellationToken];
+        var result = descriptor.HandleMethod.Invoke(handler, arguments);
         var reply = await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
         return JsonSerializer.SerializeToUtf8Bytes(reply, descriptor.ReplyType, JsonOptions);
     }

@@ -105,22 +105,8 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSessionContext
+public interface IZLinkSessionActorDispatchContext
 {
-    string SessionId { get; }
-    RoutingId? RoutingId { get; }
-    string? LocalAddr { get; }
-    string? RemoteAddr { get; }
-
-    IZLinkRequestCall RequestChannel<TRequest>(string channelName, TRequest request);
-    IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message);
-
-    IZLinkSessionSendCall Send<TMessage>(TMessage message);
-    IZLinkSessionReplyCall Reply<TMessage>(TMessage message);
-
-    ValueTask CloseAsync(
-        CancellationToken cancellationToken = default);
-
     ValueTask<IZLinkActorRef> CreateActorAsync(
         string actorId,
         string actorType,
@@ -132,19 +118,45 @@ public interface IZLinkSessionContext
         string actorType,
         CancellationToken cancellationToken = default);
 
+    IZLinkSessionRequestCall Request<TRequest>(TRequest request);
+
+    ValueTask DispatchToActorAsync(
+        ZlinkStreamHeader header,
+        Message body,
+        CancellationToken cancellationToken = default);
+
     ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default);
 }
+
+public interface IZLinkSessionActorAttachmentContext
+{
+    ValueTask AttachActorAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default);
+
+    ValueTask DisconnectActorAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSessionContext :
+    IZLinkSessionIdentityContext,
+    IZLinkSessionChannelClient,
+    IZLinkSessionClientStream,
+    IZLinkSessionActorDispatchContext,
+    IZLinkSessionLifecycle;
 ```
 
 여기서 기대하는 점은 아래와 같다.
 
 - session callback은 stream 객체를 직접 인자로 받지 않는다.
-- session 정보, channel request, stream send, actor stream 연결/dispatch/disconnect는
-  `Context`를 통해 호출한다.
+- session 정보, channel request, stream send, actor dispatch는 `Context`를 통해
+  호출한다.
+- actor stream 연결과 해제는 별도 `IZLinkSessionActorAttachmentContext` 표면으로
+  분리한다.
 - `CloseAsync(...)`는 현재 stream client 연결을 서버 쪽에서 끊는다.
 - header session은 C API가 이미 header/body로 나눈 framed packet을 받는다.
 - body는 보통 고정 타입 하나로 바로 올리지 않고, header 안의 `msgId` 같은 값을 보고

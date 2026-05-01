@@ -28,7 +28,7 @@ public enum ZLinkFrameworkErrorKind
     SessionRouteNotFound,
     SessionLocationUpdateFailed,
     SessionProxyTimeout,
-    ActorRelayTimeout,
-    ActorRelayHandlerFailed,
+    ActorDispatchTimeout,
+    ActorDispatchHandlerFailed,
     CodecFailed,
 }

@@ -2,12 +2,13 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionRequestCall<TRequest>(
     ZLinkSessionContext context,
-    TRequest request) : IZLinkSessionRequestCall
+    TRequest request,
+    TimeSpan defaultTimeout) : IZLinkSessionRequestCall
 {
     private static readonly ZlinkStreamPacketNameResolver PacketNameResolver = new();
 
     private string? _packetName = PacketNameResolver.Resolve(typeof(TRequest));
-    private TimeSpan _timeout = TimeSpan.FromSeconds(30);
+    private TimeSpan? _timeout;
 
     public IZLinkSessionRequestCall WithPacketName(string packetName)
     {
@@ -26,7 +27,7 @@ internal sealed class ZLinkSessionRequestCall<TRequest>(
         return context.RequestClientAsync<TRequest, TReply>(
             request,
             _packetName ?? throw new InvalidOperationException("Packet name is required."),
-            _timeout,
+            _timeout ?? defaultTimeout,
             cancellationToken);
     }
 }

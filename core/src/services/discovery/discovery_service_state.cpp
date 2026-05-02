@@ -31,7 +31,9 @@ static bool provider_equal_local (const provider_info_t &lhs_,
              != 0) {
         return false;
     }
-    return lhs_.value == rhs_.value && lhs_.metadata == rhs_.metadata;
+    return lhs_.value == rhs_.value && lhs_.metadata == rhs_.metadata
+           && lhs_.source_registry == rhs_.source_registry
+           && lhs_.registration_id == rhs_.registration_id;
 }
 
 static bool providers_equal_local (const std::vector<provider_info_t> &lhs_,
@@ -169,34 +171,6 @@ void discovery_service_state_t::snapshot_member_peers (
         entry.value = provider.value;
         out_->push_back (entry);
     }
-}
-
-bool discovery_service_state_t::copy_member_peer_metadata (
-  const std::set<discovery_member_key_t> &local_members_,
-  uint16_t service_role_,
-  const char *endpoint_,
-  std::vector<unsigned char> *metadata_out_) const
-{
-    if (!endpoint_ || !metadata_out_)
-        return false;
-
-    metadata_out_->clear ();
-    if (local_members_.count (
-          discovery_member_key_t (service_role_, endpoint_))
-        != 0) {
-        return false;
-    }
-
-    for (size_t i = 0; i < _providers.size (); ++i) {
-        const provider_info_t &provider = _providers[i];
-        if (provider.service_role != service_role_
-            || provider.endpoint != endpoint_) {
-            continue;
-        }
-        *metadata_out_ = provider.metadata;
-        return true;
-    }
-    return false;
 }
 
 uint64_t discovery_service_state_t::update_seq () const

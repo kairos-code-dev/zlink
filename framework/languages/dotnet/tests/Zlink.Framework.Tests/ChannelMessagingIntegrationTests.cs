@@ -34,7 +34,7 @@ public sealed class ChannelMessagingIntegrationTests
         serverBuilder.Services.AddZLinkFramework(options =>
         {
             options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
-            options.AddChannel("api", channel =>
+            options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
             });
@@ -45,7 +45,7 @@ public sealed class ChannelMessagingIntegrationTests
         clientBuilder.Services.AddZLinkFramework(options =>
         {
             options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
-            options.AddChannel("api", channel =>
+            options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableClient();
             });
@@ -90,7 +90,7 @@ public sealed class ChannelMessagingIntegrationTests
         serverBuilder.Services.AddSingleton<ProfileCommandRecorder>();
         serverBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddChannel("api", channel =>
+            options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
             });
@@ -100,7 +100,7 @@ public sealed class ChannelMessagingIntegrationTests
         var clientBuilder = Host.CreateApplicationBuilder();
         clientBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddChannel("api", channel =>
+            options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableClient(client =>
                 {
@@ -145,7 +145,7 @@ public sealed class ChannelMessagingIntegrationTests
         var serverBuilder = Host.CreateApplicationBuilder();
         serverBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddChannel("api", channel =>
+            options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
             });
@@ -155,7 +155,7 @@ public sealed class ChannelMessagingIntegrationTests
         var clientBuilder = Host.CreateApplicationBuilder();
         clientBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddChannel("api", channel =>
+            options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableClient();
             });
@@ -195,7 +195,7 @@ public sealed class ChannelMessagingIntegrationTests
         subscriberBuilder.Services.AddSingleton<ProfileEventRecorder>();
         subscriberBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddChannel("profile", channel =>
+            options.AddFanoutChannel("profile", channel =>
             {
                 channel.EnableSubscriber(subscriber =>
                 {
@@ -208,7 +208,7 @@ public sealed class ChannelMessagingIntegrationTests
         var publisherBuilder = Host.CreateApplicationBuilder();
         publisherBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddChannel("profile", channel =>
+            options.AddFanoutChannel("profile", channel =>
             {
                 channel.EnablePublisher(publisher => publisher.Bind(pubEndpoint));
             });
@@ -250,7 +250,7 @@ public sealed class ChannelMessagingIntegrationTests
         {
             options.UseFilter<OuterOrderFilter>();
             options.UseFilter<InnerOrderFilter>();
-            options.AddChannel("api", channel =>
+            options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
             });
@@ -260,7 +260,7 @@ public sealed class ChannelMessagingIntegrationTests
         var clientBuilder = Host.CreateApplicationBuilder();
         clientBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddChannel("api", channel =>
+            options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableClient(client =>
                 {
@@ -299,7 +299,7 @@ public sealed class ChannelMessagingIntegrationTests
         channelBuilder.Services.AddSingleton<ProfileCommandRecorder>();
         channelBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddChannel("api", channel =>
+            options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
             });
@@ -310,7 +310,7 @@ public sealed class ChannelMessagingIntegrationTests
         httpBuilder.Services.AddLogging();
         httpBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddChannel("api", channel =>
+            options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableClient(client =>
                 {

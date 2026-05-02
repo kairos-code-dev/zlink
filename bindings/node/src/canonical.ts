@@ -1676,7 +1676,6 @@ export class Registry extends NativeHandle {
     return (requireNative().registryMemberPeers(this._native, validateCString(channelName, 'channelName')) as Array<Record<string, unknown>>)
       .map((entry) => mapMemberPeerEntry(entry as any));
   }
-  memberPeerMetadata(channelName: string, serviceRole: number, endpoint: string): Buffer { return requireNative().registryMemberPeerMetadata(this._native, validateCString(channelName, 'channelName'), serviceRole, validateCString(endpoint, 'endpoint')); }
   close(): void { if (this._native) { requireNative().registryDestroy(this._native); this._native = null; } }
 }
 
@@ -1704,8 +1703,25 @@ export class Discovery extends NativeHandle {
   connectRegistry(endpoint: string): void { requireNative().discoveryConnectRegistry(this._native, validateCString(endpoint, 'endpoint')); }
   setValue(value: number): void { requireNative().discoverySetValue(this._native, value | 0); }
   getValue(): number { return requireNative().discoveryGetValue(this._native) as number; }
-  setMetadata(metadata: BufferLike | string): void { requireNative().discoverySetMetadata(this._native, normalizeBufferLike(metadata, 'metadata')); }
-  getMetadata(): Buffer { return requireNative().discoveryGetMetadata(this._native) as Buffer; }
+  bindRoute(kind: number, key: BufferLike | string, value: BufferLike | string): void {
+    requireNative().discoveryBindRoute(
+      this._native,
+      kind >>> 0,
+      normalizeBufferLike(key, 'key'),
+      normalizeBufferLike(value, 'value')
+    );
+  }
+  unbindRoute(kind: number, key: BufferLike | string): void {
+    requireNative().discoveryUnbindRoute(this._native, kind >>> 0, normalizeBufferLike(key, 'key'));
+  }
+  resolveRoute(kind: number, key: BufferLike | string): { owner: RoutingId; value: Buffer } {
+    const result = requireNative().discoveryResolveRoute(
+      this._native,
+      kind >>> 0,
+      normalizeBufferLike(key, 'key')
+    ) as { owner: Buffer; value: Buffer };
+    return { owner: RoutingId.fromBytes(result.owner), value: result.value };
+  }
   resolveSpot(spotRid: RoutingId): RoutingId {
     return RoutingId.fromBytes(
       requireNative().discoveryResolveSpot(this._native, normalizeRoutingId(spotRid)) as Buffer
@@ -1715,7 +1731,6 @@ export class Discovery extends NativeHandle {
     return (requireNative().discoveryGetProviders(this._native) as Array<Record<string, unknown>>)
       .map((entry) => mapMemberPeerEntry(entry as any));
   }
-  memberPeerMetadata(serviceRole: number, endpoint: string): Buffer { return requireNative().discoveryMemberPeerMetadata(this._native, serviceRole, validateCString(endpoint, 'endpoint')) as Buffer; }
   setTlsClient(ca: string, host: string, trust = 0): void { requireNative().discoverySetTlsClient(this._native, validateCString(ca, 'ca', Number.MAX_SAFE_INTEGER), validateCString(host, 'host', Number.MAX_SAFE_INTEGER), trust | 0); }
   close(): void { if (this._native) { requireNative().discoveryDestroy(this._native); this._native = null; } }
 }

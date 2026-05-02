@@ -1,11 +1,14 @@
 using Zlink;
 using Zlink.Framework.Streams;
 
-namespace TicTacToe.SessionActorDispatch.Infrastructure;
+namespace TicTacToe.SessionGateway.Infrastructure;
 
-internal sealed class RegistryPlayRouteStore(
+public sealed class RegistryPlayRouteStore(
     IRegistryDiscoveryMetadata registry,
-    string metadataNamespace) : IZLinkActorPlayRouteResolver
+    string metadataNamespace)
+    : IZLinkActorPlayRouteResolver,
+      ISpotRouteResolver,
+      ISpotRouteWriter
 {
     public ValueTask BindActorPlayAsync(
         string actorId,
@@ -29,23 +32,23 @@ internal sealed class RegistryPlayRouteStore(
         return ReadPlayRoute(entry);
     }
 
-    public ValueTask BindMatchAsync(
-        string matchId,
+    public ValueTask BindSpotRouteAsync(
+        RoutingId spotRid,
         ZLinkActorRoute route,
         CancellationToken cancellationToken)
     {
         return registry.PutAsync(
-            MatchKey(matchId),
+            SpotKey(spotRid),
             ToMetadata(route),
             cancellationToken);
     }
 
-    public async ValueTask<ZLinkActorRoute> ResolveMatchAsync(
-        string matchId,
+    public async ValueTask<ZLinkActorRoute> ResolveSpotRouteAsync(
+        RoutingId spotRid,
         CancellationToken cancellationToken)
     {
         var entry = await registry.GetRequiredAsync(
-            MatchKey(matchId),
+            SpotKey(spotRid),
             cancellationToken).ConfigureAwait(false);
 
         return ReadPlayRoute(entry);
@@ -56,9 +59,9 @@ internal sealed class RegistryPlayRouteStore(
         return $"{metadataNamespace}/actor-play/{actorId}";
     }
 
-    private string MatchKey(string matchId)
+    private string SpotKey(RoutingId spotRid)
     {
-        return $"{metadataNamespace}/match/{matchId}";
+        return $"{metadataNamespace}/spot/{spotRid.ToHex()}";
     }
 
     private static Dictionary<string, string> ToMetadata(ZLinkActorRoute route)

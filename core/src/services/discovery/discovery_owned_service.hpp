@@ -35,16 +35,7 @@ inline int register_endpoint (discovery_t *discovery_,
     if (discovery_->get_value (&value) != 0)
         return -1;
 
-    zlink_msg_t metadata_msg;
-    if (discovery_->get_metadata (&metadata_msg) != 0)
-        return -1;
     std::vector<unsigned char> metadata;
-    if (zlink_msg_size (&metadata_msg) > 0) {
-        const unsigned char *data =
-          static_cast<const unsigned char *> (zlink_msg_data (&metadata_msg));
-        metadata.assign (data, data + zlink_msg_size (&metadata_msg));
-    }
-    zlink_msg_close (&metadata_msg);
 
     return discovery_->register_service (
       endpoint_, weight_, value, &metadata, resolved_endpoint_out_,
@@ -90,16 +81,7 @@ inline int update_attributes (discovery_t *discovery_,
     if (discovery_->get_value (&value) != 0)
         return -1;
 
-    zlink_msg_t metadata_msg;
-    if (discovery_->get_metadata (&metadata_msg) != 0)
-        return -1;
     std::vector<unsigned char> metadata;
-    if (zlink_msg_size (&metadata_msg) > 0) {
-        const unsigned char *data =
-          static_cast<const unsigned char *> (zlink_msg_data (&metadata_msg));
-        metadata.assign (data, data + zlink_msg_size (&metadata_msg));
-    }
-    zlink_msg_close (&metadata_msg);
 
     return discovery_->update_service_attributes (
       endpoint_, weight_, value, &metadata, service_role_);

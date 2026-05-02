@@ -215,10 +215,12 @@ Not every call has the same timing constraints, though.
   connect API. Discovery learns the broadcast and uplink paths internally.
 - Use `zlink_discovery_resolve_spot()` when the caller starts from a logical
   `spot_rid` and needs the current destination `node_rid`.
-- Use `zlink_discovery_member_peers()` and
-  `zlink_discovery_member_peer_metadata()` for the current Discovery view.
-  When the caller needs a stable service-level picture, poll these query
-  functions and compare snapshots over time.
+- Use `zlink_discovery_member_peers()` for the current Discovery peer view.
+  When the caller needs a stable service-level picture, poll this query
+  function and compare snapshots over time.
+- Use `zlink_discovery_bind_route()`,
+  `zlink_discovery_unbind_route()`, and
+  `zlink_discovery_resolve_route()` for owner-bound route lookup.
 - Use Registry topology snapshot/query APIs for global summary inspection.
 - Discovery supports `zlink_set_option(discovery, ZLINK_OPT_*, ...)` which
   applies to its managed socket set as fan-out. No getter
@@ -491,7 +493,7 @@ registration. Remote consumers see it in `zlink_member_peer_entry_t.value`.
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_discovery_get_value`, `zlink_discovery_set_metadata`
+**See also:** `zlink_discovery_get_value`
 
 ---
 
@@ -510,45 +512,98 @@ zlink_config_result_t zlink_discovery_get_value (void *discovery,
 
 ---
 
-### zlink_discovery_set_metadata
+### zlink_discovery_bind_route
 
-Set the opaque metadata blob for this Discovery instance.
+Bind an application route key to the provider generation owned by this
+Discovery instance.
 
 ```c
-zlink_config_result_t zlink_discovery_set_metadata (void *discovery,
-                                                    const void *data,
-                                                    size_t size);
+zlink_config_result_t zlink_discovery_bind_route(void *discovery,
+                                                 zlink_route_kind_t kind,
+                                                 const void *key,
+                                                 size_t key_size,
+                                                 const void *value,
+                                                 size_t value_size);
 ```
 
-Sets the opaque metadata blob published alongside this service's
-registration. Remote consumers retrieve it via
-`zlink_discovery_member_peer_metadata()` or
-`zlink_registry_member_peer_metadata()`. Max size is runtime-configurable
-(default 4 KiB); oversized blobs fail with `EMSGSIZE`.
+`kind + key` is scoped to the Discovery channel name. `kind` must not be
+`ZLINK_ROUTE_KIND_INVALID`. `key_size` must be `1..ZLINK_ROUTE_KEY_MAX`.
+`value_size` must be at most `ZLINK_ROUTE_VALUE_MAX`. The Registry copies the
+key and value before the call returns.
+
+The call must be made by the Discovery instance that owns an attached provider.
+If the provider generation has already been replaced, the bind fails and no
+partial route is stored.
+
+**Errors:**
+- `EINVAL` -- Invalid handle, kind, key, or channel state.
+- `EMSGSIZE` -- Key or value exceeds the public limit.
+- `ENOENT` -- No live owner provider is registered for this Discovery instance.
+- `ESTALE` -- The owner provider generation no longer matches the Registry view.
 
 **Returns:** A `zlink_config_result_t` value.
 
-**Thread safety:** Safe to call from any thread.
-
-**See also:** `zlink_discovery_get_metadata`, `zlink_discovery_set_value`
+**Thread safety:** Same-handle calls remain thread-safe.
 
 ---
 
-### zlink_discovery_get_metadata
+### zlink_discovery_unbind_route
 
-Get the current metadata blob.
+Remove a route binding owned by this Discovery instance.
 
 ```c
-zlink_config_result_t zlink_discovery_get_metadata (void *discovery,
-                                                    zlink_msg_t *metadata_out);
+zlink_config_result_t zlink_discovery_unbind_route(void *discovery,
+                                                   zlink_route_kind_t kind,
+                                                   const void *key,
+                                                   size_t key_size);
 ```
 
-Copies the current metadata into `metadata_out`. The caller must
-initialize the message before the call and close it after use.
+Only the owner provider generation that created the binding can remove it.
+Destroying or unregistering the owner provider also removes its route bindings.
+
+**Errors:**
+- `EINVAL` -- Invalid handle, kind, key, or channel state.
+- `EMSGSIZE` -- Key exceeds `ZLINK_ROUTE_KEY_MAX`.
+- `ENOENT` -- Owner provider or route binding was not found.
+- `ESTALE` -- The owner provider generation no longer matches the Registry view.
 
 **Returns:** A `zlink_config_result_t` value.
 
-**See also:** `zlink_discovery_set_metadata`
+**Thread safety:** Same-handle calls remain thread-safe.
+
+---
+
+### zlink_discovery_resolve_route
+
+Resolve a route key to its current owner routing id and value.
+
+```c
+zlink_config_result_t zlink_discovery_resolve_route(void *discovery,
+                                                    zlink_route_kind_t kind,
+                                                    const void *key,
+                                                    size_t key_size,
+                                                    zlink_routing_id_t *owner_rid_out,
+                                                    zlink_msg_t *value_out);
+```
+
+`owner_rid_out` receives the routing id of the live owner provider. If
+`value_out` is not `NULL`, the caller must pass an initialized `zlink_msg_t`;
+on success the message contains a copy of the stored value and remains owned by
+the caller. On failure `value_out` is not a valid result.
+
+Resolve does not create or refresh a cache entry. If the owner provider is no
+longer live, the route is treated as missing.
+
+**Errors:**
+- `EINVAL` -- Invalid handle, kind, key, output pointer, or channel state.
+- `EMSGSIZE` -- Key exceeds `ZLINK_ROUTE_KEY_MAX`.
+- `ENOENT` -- No live route binding exists for `kind + key`.
+
+**Returns:** A `zlink_config_result_t` value.
+
+**Thread safety:** Same-handle calls remain thread-safe.
+
+**See also:** `zlink_discovery_bind_route`, `zlink_discovery_unbind_route`
 
 ---
 

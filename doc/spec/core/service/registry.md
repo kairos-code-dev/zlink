@@ -712,27 +712,6 @@ input `*count` is the array capacity; on output it is the actual count. Pass
 
 ---
 
-### zlink_registry_member_peer_metadata
-
-Get metadata for a specific member peer from a local Registry.
-
-```c
-zlink_config_result_t zlink_registry_member_peer_metadata(void *registry,
-                                                          const char *channel_name,
-                                                          zlink_service_role_t service_role,
-                                                          const char *endpoint,
-                                                          zlink_msg_t *metadata_out);
-```
-
-Retrieves metadata for the member peer identified by channel name, role, and
-endpoint. The metadata is written into `metadata_out`.
-
-**Returns:** A `zlink_config_result_t` value.
-
-**Thread safety:** Safe to call from any thread.
-
----
-
 ### zlink_discovery_member_peers
 
 Get member peer entries from a local Discovery instance.
@@ -753,20 +732,6 @@ actual count. Pass `entries = NULL` to query the required count first.
 
 ---
 
-### zlink_discovery_member_peer_metadata
-
-Get metadata for a specific member peer from a local Discovery instance.
-
-```c
-zlink_config_result_t zlink_discovery_member_peer_metadata(void *discovery,
-                                                           uint16_t service_role,
-                                                           const char *endpoint,
-                                                           zlink_msg_t *metadata_out);
-```
-
-Retrieves metadata for the member peer identified by role and endpoint.
-The metadata is written into `metadata_out`.
-
-**Returns:** A `zlink_config_result_t` value.
-
-**Thread safety:** Safe to call from any thread.
+Route binding lookup is exposed on Discovery, not Registry. See
+`zlink_discovery_bind_route`, `zlink_discovery_unbind_route`, and
+`zlink_discovery_resolve_route` in the Discovery spec.

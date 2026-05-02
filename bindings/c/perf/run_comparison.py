@@ -2984,6 +2984,13 @@ def run_sizes_test(
     return merged
 
 
+def defer_live_multi_rows(pattern_name):
+    return (
+        normalize_multi_pattern_name(pattern_name) == "SPOT"
+        and os.environ.get("PERF_MULTI_SPOT_CLEAN_LATENCY", "1") != "0"
+    )
+
+
 def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
     """Runs a single binary for one specific config."""
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
@@ -3287,13 +3294,16 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     live_metrics[key] = value
                     maybe_emit_live_row(line_size)
 
+                live_result_callback = (
+                    None if defer_live_multi_rows(pattern_name) else on_result_metric
+                )
                 outcome = run_sizes_test(
                     binary_name,
                     lib_name,
                     tr,
                     sizes,
                     pattern_name,
-                    result_line_callback=on_result_metric,
+                    result_line_callback=live_result_callback,
                 )
                 rc = outcome.get("returncode", 0)
                 for warning in outcome.get("warnings", []) or []:

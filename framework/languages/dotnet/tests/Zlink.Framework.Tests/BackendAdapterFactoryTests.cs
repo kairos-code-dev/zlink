@@ -16,7 +16,7 @@ public sealed class BackendAdapterFactoryTests
         await using var context = channelAdapter.CreateContext();
         await using var discovery = channelAdapter.CreateDiscovery(
             context,
-            ZLinkBackendServiceType.Socket,
+            ZLinkAutoConnectType.ClientServer,
             "profile");
         await using var dealer = channelAdapter.CreateDealerSocket(context);
         await using var router = channelAdapter.CreateRouterSocket(context);

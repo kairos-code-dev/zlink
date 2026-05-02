@@ -190,7 +190,9 @@
 - `resolve_spot()`이 live owner provider를 확인하게 만든다.
 - Discovery auto-connect를 `routing_id -> endpoint` diff 기준으로 정리한다.
 - local RID와 같은 remote RID를 endpoint와 관계없이 제외한다.
-- route와 SPOT resolve cache 무효화 규칙을 구현한다.
+- route와 SPOT resolve 결과를 TTL cache로 재사용하지 않도록 구현한다.
+- concurrent in-flight resolve 요청 합치기처럼 공개 API 의미를 바꾸지 않는 내부
+  최적화만 허용한다.
 
 통과 조건:
 

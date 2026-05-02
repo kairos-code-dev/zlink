@@ -65,19 +65,14 @@ public readonly record struct ZLinkActorRoute(
     RoutingId TargetNodeRid);
 
 public readonly record struct ZLinkActorSessionRoute(
-    string RouterChannelId,
     RoutingId SessionRouterId,
-    string SessionId,
     string BindingToken);
 
 public readonly record struct ZLinkActorSessionBinding(
     string ActorId,
-    string RouterChannelId,
     RoutingId SessionRouterId,
-    string SessionId,
     string BindingToken);
 
 public readonly record struct ZLinkActorSessionUnbind(
     string ActorId,
-    string SessionId,
     string BindingToken);

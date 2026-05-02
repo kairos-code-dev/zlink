@@ -348,29 +348,6 @@ class Registry:
             ),
         )
 
-    def member_peer_metadata(
-        self, channel_name, service_role: int, endpoint: str
-    ) -> bytes:
-        msg = ZlinkMsg()
-        rc = lib().zlink_msg_init(ctypes.byref(msg))
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        try:
-            rc = lib().zlink_registry_member_peer_metadata(
-                self._handle,
-                _validated_c_string_text(
-                    channel_name, field="channel_name", max_length=255
-                ),
-                int(service_role),
-                _validated_c_string_text(endpoint, field="endpoint", max_length=255),
-                ctypes.byref(msg),
-            )
-            if rc != 0:
-                _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-            return _msg_to_bytes(msg)
-        finally:
-            lib().zlink_msg_close(ctypes.byref(msg))
-
     def topology_snapshot(self):
         return _query_topology(self._handle, lib().zlink_registry_topology_snapshot)
 
@@ -437,50 +414,49 @@ class Discovery:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return int(value.value)
 
-    def set_metadata(self, data):
-        if not data:
-            rc = lib().zlink_discovery_set_metadata(self._handle, None, 0)
-        else:
-            raw = memoryview(data).tobytes()
-            rc = lib().zlink_discovery_set_metadata(
-                self._handle, ctypes.c_char_p(raw), len(raw)
-            )
+    def bind_route(self, kind: int, key, value):
+        key_raw = memoryview(key).tobytes()
+        value_raw = memoryview(value).tobytes()
+        rc = lib().zlink_discovery_bind_route(
+            self._handle,
+            int(kind),
+            ctypes.c_char_p(key_raw),
+            len(key_raw),
+            ctypes.c_char_p(value_raw) if value_raw else None,
+            len(value_raw),
+        )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
-    def get_metadata(self) -> bytes:
-        msg = ZlinkMsg()
-        rc = lib().zlink_msg_init(ctypes.byref(msg))
+    def unbind_route(self, kind: int, key):
+        key_raw = memoryview(key).tobytes()
+        rc = lib().zlink_discovery_unbind_route(
+            self._handle, int(kind), ctypes.c_char_p(key_raw), len(key_raw)
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
+    def resolve_route(self, kind: int, key):
+        key_raw = memoryview(key).tobytes()
+        owner_node_rid = ZlinkRoutingId()
+        value = ZlinkMsg()
+        rc = lib().zlink_discovery_resolve_route(
+            self._handle,
+            int(kind),
+            ctypes.c_char_p(key_raw),
+            len(key_raw),
+            ctypes.byref(owner_node_rid),
+            ctypes.byref(value),
+        )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         try:
-            rc = lib().zlink_discovery_get_metadata(self._handle, ctypes.byref(msg))
-            if rc != 0:
-                _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-            return _msg_to_bytes(msg)
+            return RoutingId(_routing_id_bytes(owner_node_rid)), _msg_to_bytes(value)
         finally:
-            lib().zlink_msg_close(ctypes.byref(msg))
+            lib().zlink_msg_close(ctypes.byref(value))
 
     def member_peers(self):
         return _query_member_peers(self._handle, lib().zlink_discovery_member_peers)
-
-    def member_peer_metadata(self, service_role: int, endpoint: str) -> bytes:
-        msg = ZlinkMsg()
-        rc = lib().zlink_msg_init(ctypes.byref(msg))
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        try:
-            rc = lib().zlink_discovery_member_peer_metadata(
-                self._handle,
-                int(service_role),
-                _validated_c_string_text(endpoint, field="endpoint", max_length=255),
-                ctypes.byref(msg),
-            )
-            if rc != 0:
-                _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-            return _msg_to_bytes(msg)
-        finally:
-            lib().zlink_msg_close(ctypes.byref(msg))
 
     def resolve_spot(self, spot_rid):
         native_spot_rid = _copy_routing_id(spot_rid)

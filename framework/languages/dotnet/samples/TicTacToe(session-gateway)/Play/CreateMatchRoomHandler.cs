@@ -20,9 +20,8 @@ internal sealed class CreateMatchRoomHandler(
         cancellationToken.ThrowIfCancellationRequested();
         var room = await spots.CreateAsync(SampleNames.GameSpotType, cancellationToken)
             .ConfigureAwait(false);
-        var matchId = room.SpotRid.ToHex();
-        await routes.BindMatchAsync(matchId, cancellationToken)
+        await routes.BindSpotRouteAsync(room.SpotRid, cancellationToken)
             .ConfigureAwait(false);
-        return new CreateMatchRoomRes(matchId);
+        return new CreateMatchRoomRes(room.SpotRid.ToHex());
     }
 }

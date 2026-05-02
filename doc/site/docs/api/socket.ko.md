@@ -133,6 +133,7 @@ NULL입니다. 성공 시 `result_`는 `ZLINK_REQUEST_OK`이고 모든 메시지
 ```c
 typedef enum zlink_socket_type_t
 {
+    ZLINK_SOCKET_ANY    = 0,
     ZLINK_SOCKET_PAIR   = 0x1001,
     ZLINK_SOCKET_PUB    = 0x1002,
     ZLINK_SOCKET_SUB    = 0x1003,
@@ -144,7 +145,9 @@ typedef enum zlink_socket_type_t
 } zlink_socket_type_t;
 ```
 
-항상 위에 표시된 `ZLINK_SOCKET_*` 정규화된 상수를 사용합니다.
+`ZLINK_SOCKET_ANY`는 생성할 socket type이 아니다. filter API에서 전체 socket type을
+뜻하는 wildcard로만 사용한다. 실제 socket 생성에는 위에 표시된 정규화된
+`ZLINK_SOCKET_*` 상수를 사용한다.
 
 ### 송신 플래그
 
@@ -320,7 +323,7 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 
 | 카테고리 | 대표 옵션 | 내부 소유자 |
 |----------|-----------|-------------|
-| Core Socket | `SNDHWM`, `RCVHWM`, `LINGER`, `SNDTIMEO`, `RCVTIMEO` | `options_core_socket` |
+| Core Socket | `SNDHWM`, `RCVHWM`, `AUTO_HWM_MSG_UNIT_BYTES`, `LINGER`, `SNDTIMEO`, `RCVTIMEO` | `options_core_socket` |
 | Transport/Network | `RATE`, `RECOVERY_IVL`, `SNDBUF`, `RCVBUF`, `TOS`, `PRIORITY` | `options_transport_network` |
 | Protocol/Metadata | ZMP 메타데이터 | `options_protocol_metadata` |
 
@@ -335,6 +338,7 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 | `ZLINK_OPT_RCVBUF` | 커널 수신 버퍼 크기 (`int`; 0=OS 기본값) |
 | `ZLINK_OPT_SNDHWM` | 송신 하이 워터 마크 (`int`; 0=무제한) |
 | `ZLINK_OPT_RCVHWM` | 수신 하이 워터 마크 (`int`; 0=무제한) |
+| `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 자동 HWM 계산에서 메시지 슬롯으로 환산할 때 쓰는 바이트 단위 (`int`; 0=소켓 타입 기본값, 음수는 `EINVAL`) |
 | `ZLINK_OPT_MAXMSGSIZE` | 최대 인바운드 메시지 크기 (`int64_t`; -1=무제한) |
 
 ##### Timing
@@ -410,7 +414,7 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 | `ZLINK_OPT_EVENTS` | 이벤트 상태 비트마스크 (`int`, 읽기 전용) |
 | `ZLINK_OPT_TYPE` | 소켓 타입 (`int`, 읽기 전용) |
 | `ZLINK_OPT_LAST_ENDPOINT` | 바인딩된 엔드포인트 (`string`, 읽기 전용) |
-| `ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE` | 최대 discovery 메타데이터 크기 (`int`, 읽기 전용) |
+| `ZLINK_OPT_ROUTE_VALUE_MAX_SIZE` | 최대 discovery route value 크기 (`int`, 읽기 전용) |
 
 #### 전용 함수 (옵션 enum이 아님)
 

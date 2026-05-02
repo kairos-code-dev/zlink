@@ -85,18 +85,7 @@ void test_discovery_service_state_tracks_provider_views_and_sequences ()
     TEST_ASSERT_EQUAL_STRING ("tcp://remote", peers[0].endpoint);
     TEST_ASSERT_EQUAL_INT64 (9, peers[0].value);
 
-    std::vector<unsigned char> metadata;
-    TEST_ASSERT_TRUE (
-      state.copy_member_peer_metadata (local_members, 2, "tcp://remote",
-                                       &metadata));
-    TEST_ASSERT_EQUAL_UINT (2, metadata.size ());
-    TEST_ASSERT_EQUAL_UINT8 (3, metadata[0]);
-    TEST_ASSERT_EQUAL_UINT8 (4, metadata[1]);
-
-    metadata.clear ();
-    TEST_ASSERT_FALSE (
-      state.copy_member_peer_metadata (local_members, 1, "tcp://local",
-                                       &metadata));
+    TEST_ASSERT_EQUAL_UINT (1, peers.size ());
 }
 
 void test_discovery_service_state_blocks_observer_removal_while_inflight ()

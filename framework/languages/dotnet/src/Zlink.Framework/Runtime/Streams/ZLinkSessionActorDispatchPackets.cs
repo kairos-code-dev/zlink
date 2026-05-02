@@ -29,7 +29,6 @@ internal sealed record ZLinkSessionProxyPacket(
 
 internal sealed record ZLinkSessionProxyEnvelope(
     string ActorId,
-    string SessionId,
     string BindingToken,
     string PacketName,
     bool ExpectsReply,

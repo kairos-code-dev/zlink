@@ -28,10 +28,9 @@ internal sealed class PlayServer(SampleSettings settings)
         builder.Services.AddZLinkHandlersFromAssemblyContaining<CreateGameHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.tictactoe", _ => { });
             options.AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor);
 
-            options.AddChannel(SampleChannels.Api, channel =>
+            options.AddClientServerChannel(SampleChannels.Api, channel =>
             {
                 channel.EnableClient(client =>
                 {
@@ -42,7 +41,7 @@ internal sealed class PlayServer(SampleSettings settings)
                 });
             });
 
-            options.AddChannel(SampleChannels.Play, channel =>
+            options.AddClientServerChannel(SampleChannels.Play, channel =>
             {
                 channel.EnableServer(server =>
                 {
@@ -56,10 +55,13 @@ internal sealed class PlayServer(SampleSettings settings)
                 stream.AddHeaderSession<PlaySession>();
             });
 
-            options.AddSpotNode(SampleNodes.PlaySpot, spot =>
+            options.AddSpotMesh("game.tictactoe", spotMesh =>
             {
-                spot.Bind(settings.SpotEndpoint);
-                spot.AddSpotFactory<TicTacToeGame>(SampleTypes.GameSpot);
+                spotMesh.AddNode(SampleNodes.PlaySpot, spot =>
+                {
+                    spot.Bind(settings.SpotEndpoint);
+                    spot.AddSpotFactory<TicTacToeGame>(SampleTypes.GameSpot);
+                });
             });
         });
 

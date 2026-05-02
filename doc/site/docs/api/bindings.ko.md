@@ -1070,8 +1070,9 @@ Registry (서버)
 
 Discovery (클라이언트 — 서비스 뷰)
   ├── connectRegistry (Registry에 연결)
-  ├── metadata: setValue/getValue, setMetadata/getMetadata
-  ├── introspection: memberPeers, memberPeerMetadata
+  ├── attributes: setValue/getValue
+  ├── routes: bindRoute, unbindRoute, resolveRoute
+  ├── introspection: memberPeers
   └── lifecycle: destroy → 연결된 모든 participant 종료
 
 SpotNode (channel-aware topology runtime)
@@ -1154,9 +1155,8 @@ RegistryQueryClient (원격 토폴로지 조회)
 |---|---|
 | `connectRegistry` | Y |
 | `setValue` / `getValue` | Y |
-| `setMetadata` / `getMetadata` | Y |
+| `bindRoute` / `unbindRoute` / `resolveRoute` | Y |
 | `memberPeers` | Y |
-| `memberPeerMetadata` | Y |
 | `close` | Y |
 
 - Discovery는 생성 시 `autoConnectType`과 `channelName`을 고정한다.
@@ -1178,7 +1178,6 @@ RegistryQueryClient (원격 토폴로지 조회)
 | `statusSnapshot` | Y |
 | `serviceSummarySnapshot` | Y |
 | `memberPeers` | Y |
-| `memberPeerMetadata` | Y |
 | `topologySnapshot` | Y |
 | `topologyQuery` | Y |
 | `close` | Y |
@@ -1203,7 +1202,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 
 ### Service Observability Policy
 - 공개 서비스 계층 관찰은 별도 monitor handle 대신 snapshot/query surface로 한다.
-- Discovery 관찰은 `memberPeers`, `memberPeerMetadata`를 기준으로 한다.
+- Discovery 관찰은 `memberPeers`를 기준으로 한다.
 - SPOT(SpotNode, Spot) 관찰은 `statusSnapshot`, `peersSnapshot`,
   `peersQuery`, `subjectsSnapshot` API를 사용한다.
 - Registry 관찰은 `statusSnapshot`, `serviceSummarySnapshot`,
@@ -1280,9 +1279,8 @@ RegistryQueryClient (원격 토폴로지 조회)
 | Spot | `close` | facade 종료 |
 | Discovery | `connectRegistry` | Registry에 연결 |
 | Discovery | `setValue` / `getValue` | 서비스 값 설정/조회 |
-| Discovery | `setMetadata` / `getMetadata` | 서비스 메타데이터 설정/조회 |
+| Discovery | `bindRoute` / `unbindRoute` / `resolveRoute` | owner-bound route 등록/해제/조회 |
 | Discovery | `memberPeers` | 멤버 peer 목록 조회 |
-| Discovery | `memberPeerMetadata` | 멤버 peer 메타데이터 조회 |
 | Discovery | `close` | Discovery 종료 (participant 포함) |
 | Registry | `bind` | PUB + ROUTER endpoint 바인드 |
 | Registry | `setId` | Registry ID 설정 |
@@ -1292,7 +1290,6 @@ RegistryQueryClient (원격 토폴로지 조회)
 | Registry | `statusSnapshot` | Registry 상태 스냅샷 |
 | Registry | `serviceSummarySnapshot` | 서비스 요약 스냅샷 |
 | Registry | `memberPeers` | 멤버 peer 목록 조회 |
-| Registry | `memberPeerMetadata` | 멤버 peer 메타데이터 조회 |
 | Registry | `topologySnapshot` | 토폴로지 스냅샷 |
 | Registry | `topologyQuery` | 토폴로지 필터 조회 |
 | Registry | `close` | Registry 종료 |
@@ -1336,7 +1333,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 - SpotNode attachPubIngress 경로 동작 확인
 - Discovery connectRegistry → 서비스 등록 경로 성공
 - Discovery setValue/getValue round-trip 확인
-- Discovery setMetadata/getMetadata round-trip 확인
+- Discovery bindRoute/resolveRoute/unbindRoute 경로 확인
 - Discovery memberPeers 조회 확인
 - Registry bind → Discovery connectRegistry → 서비스 발견 경로 성공
   (Registry 구현된 경우)
@@ -1357,7 +1354,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 - Registry memberPeers → MemberPeerEntry 목록 검증 (구현된 경우)
 - Registry topologySnapshot → RegistryTopologyEntry 목록 검증 (구현된 경우)
 - Discovery memberPeers → MemberPeerEntry 목록 검증
-- Discovery memberPeerMetadata → metadata 반환 검증
+- Discovery route resolve → owner RoutingId와 value 반환 검증
 
 #### Service Layer Scope for Tests
 

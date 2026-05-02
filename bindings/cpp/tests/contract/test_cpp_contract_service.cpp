@@ -334,11 +334,6 @@ void test_registry_query_and_discovery_metadata ()
     discovery.get_value (&got_value);
     assert (got_value == value);
 
-    discovery.set_metadata ("meta-orders");
-    zlink::message_t metadata;
-    discovery.get_metadata (metadata);
-    assert (metadata.to_string () == "meta-orders");
-
     const std::vector<zlink::member_peer_entry_t> peers =
       discovery.member_peers ();
     assert (peers.size () >= 0);

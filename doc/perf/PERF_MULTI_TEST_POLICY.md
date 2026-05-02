@@ -25,9 +25,9 @@
 
 | 항목 | 기준 |
 |------|------|
-| 측정 모델 | time-based, 패턴별 phase: ready → active(throughput+latency 동시) |
+| 측정 모델 | time-based, 패턴별 phase: ready → active. 기본은 active에서 throughput과 latency를 함께 측정하며, runner는 `MULTI_SPOT` one-way latency를 별도 clean-latency pass로 보정한다 |
 | throughput | `recv_count / duration_seconds` — echo 패턴: `ops/s`, one-way 패턴: `msg/s` |
-| latency | active phase에서 수신된 메시지의 내장 timestamp(header)로 전수 집계 (internal ns / external ms) |
+| latency | 기본은 active phase에서 수신된 메시지의 내장 timestamp(header) 기반 집계다. runner 기본 출력에서 `MULTI_SPOT`은 latency-only 재실행 결과를 latency/p95/p99에 병합한다 |
 | 대표값 | median (runs > 1) |
 | 기본 runs | 1 |
 
@@ -632,8 +632,13 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 1. echo 패턴: ready → active phase
 2. one-way 패턴: ready → active phase
+3. `MULTI_SPOT` runner 기본 출력: active pass → latency-only pass
 
-- echo/one-way 모두 active phase 단일 실행에서 throughput/latency를 동시에 산출한다.
+- 기본 echo/one-way 패턴은 active phase 단일 실행에서 throughput/latency를 동시에 산출한다.
+- `MULTI_SPOT`의 runner 기본 출력은 active pass에서 throughput/bandwidth를 산출하고,
+  같은 size를 latency-only mode로 다시 실행한 결과를 latency/p95/p99에 병합한다.
+  active phase는 의도적으로 큐를 포화시키므로 이 구간의 timestamp 차이는 서비스
+  latency가 아니라 큐 체류 시간을 크게 반영할 수 있기 때문이다.
 
 ### 5.2 패턴별 divisor 규칙
 
@@ -661,6 +666,8 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 - `MULTI_PUBSUB`, `MULTI_SPOT`: client(receiver) 기준으로 latency 측정
 - active phase 구간에서 수신한 메시지는 **전수 집계**한다(메시지 단위 샘플 누락 금지).
 - mean은 `lat_sum / lat_count`로 계산하고, p95/p99는 동일 샘플 집합에서 계산한다.
+- runner 기본 출력에서 `MULTI_SPOT`은 clean-latency pass 샘플을 latency RESULT에
+  사용한다. 이때 throughput/bandwidth RESULT는 active phase 수신 수 기준을 유지한다.
 
 ### 5.5 Header 기반 필터 규칙
 
@@ -1150,6 +1157,7 @@ core/perf/run_benchmarks_multi.sh --duration 10
 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` | 연결 준비 타임아웃(ms) | 5000 |
 | `PERF_MULTI_SERVICE_CLIENTS` | 서비스 클라이언트 수 상한 (0=제한 없음) | 0 |
 | `PERF_MULTI_LATENCY_SAMPLE_CAP` | 레이턴시 샘플 최대 수 | 200000 |
+| `PERF_MULTI_SPOT_CLEAN_LATENCY` | runner의 `MULTI_SPOT` latency-only 재실행 병합 사용 여부. `0`이면 비활성 | 1 |
 
 ### 12.3 송수신 제어
 

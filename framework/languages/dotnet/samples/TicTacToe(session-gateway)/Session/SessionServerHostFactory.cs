@@ -2,12 +2,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TicTacToe.SessionActorDispatch.Configuration;
 using TicTacToe.SessionActorDispatch.Infrastructure;
+using TicTacToe.SessionGateway.Infrastructure;
+using TicTacToe.SessionGateway.Infrastructure.Configuration;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
 
-internal static class SessionServerHostFactory
+public static class SessionServerHostFactory
 {
     public static IHost Build(
         SampleTopology topology,
@@ -18,6 +20,8 @@ internal static class SessionServerHostFactory
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(sessionLocations);
         builder.Services.AddSingleton(playRoutes);
+        builder.Services.AddSingleton<ISpotRouteResolver>(playRoutes);
+        builder.Services.AddSingleton<ISpotRouteWriter>(playRoutes);
         builder.Services.AddSingleton<SessionActorRouteCache>();
         builder.Services.AddScoped<ISessionRelayPacketHandler, AuthenticateSessionPacketHandler>();
         builder.Services.AddScoped<ISessionRelayPacketHandler, CreateMatchSessionPacketHandler>();
@@ -30,11 +34,11 @@ internal static class SessionServerHostFactory
             options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
             options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
             options.AddActorSessionLocationWriter<RegistryActorSessionLocationStore>();
-            options.AddChannel(SampleNames.ApiChannel, channel =>
+            options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
                 channel.EnableClient();
             });
-            options.AddRoutedChannel(SampleNames.RouterChannel, routed =>
+            options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
             {
                 routed.Bind(sessionNode.RouterEndpoint);
                 routed.ConfigureRouting(routing => routing.RoutingId = sessionNode.RoutingId);

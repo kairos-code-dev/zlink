@@ -1,8 +1,9 @@
 using System.Collections.Concurrent;
+using TicTacToe.SessionActorDispatch.Infrastructure;
 
-namespace TicTacToe.SessionActorDispatch.Infrastructure;
+namespace TicTacToe.SessionGateway.Infrastructure;
 
-internal sealed class InMemoryRegistryDiscoveryMetadata : IRegistryDiscoveryMetadata
+public sealed class InMemoryRegistryDiscoveryMetadata : IRegistryDiscoveryMetadata
 {
     private readonly ConcurrentDictionary<string, RegistryMetadataEntry> _entries = new(StringComparer.Ordinal);
     private readonly object _gate = new();

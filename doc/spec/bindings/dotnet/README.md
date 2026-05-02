@@ -1543,9 +1543,6 @@ public sealed class Registry : IDisposable, IAsyncDisposable
     RegistryTopologyEntry[] TopologyQuery(RegistryTopologyFilter? filter = null);
     /// <exception cref="ZlinkConfigException"/>
     MemberPeerEntry[] MemberPeers(string channelName);
-    /// <exception cref="ZlinkConfigException"/>
-    Message MemberPeerMetadata(string channelName, ServiceRole serviceRole,
-                               string endpoint);
 
     /// <exception cref="ZlinkCloseException"/>
     void Close();
@@ -1583,14 +1580,15 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     long GetValue();
     /// <exception cref="ZlinkConfigException"/>
-    void SetMetadata(Message metadata);
+    void BindRoute(uint kind, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
     /// <exception cref="ZlinkConfigException"/>
-    Message GetMetadata();
+    void UnbindRoute(uint kind, ReadOnlySpan<byte> key);
+    /// <exception cref="ZlinkConfigException"/>
+    (RoutingId OwnerNodeRoutingId, Message Value) ResolveRoute(
+        uint kind, ReadOnlySpan<byte> key);
 
     /// <exception cref="ZlinkConfigException"/>
     MemberPeerEntry[] MemberPeers();
-    /// <exception cref="ZlinkConfigException"/>
-    Message MemberPeerMetadata(ServiceRole serviceRole, string endpoint);
 
     /// <summary>
     /// Resolve the current owner node routing id for a logical spot routing id.

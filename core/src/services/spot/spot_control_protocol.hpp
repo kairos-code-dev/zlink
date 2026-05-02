@@ -6,6 +6,7 @@
 #include "utils/stdint.hpp"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string>
 #include <string.h>
 
@@ -134,6 +135,33 @@ inline bool derive_fixed_port_endpoint (const std::string &endpoint_,
     return true;
 }
 
+inline bool parse_endpoint_port_and_suffix (const std::string &endpoint_,
+                                            size_t port_sep_,
+                                            unsigned long *port_out_,
+                                            std::string *suffix_out_)
+{
+    if (!port_out_ || !suffix_out_ || port_sep_ == std::string::npos
+        || port_sep_ + 1 >= endpoint_.size ()) {
+        return false;
+    }
+
+    const std::string port_and_suffix = endpoint_.substr (port_sep_ + 1);
+    char *end = NULL;
+    const unsigned long port = std::strtoul (port_and_suffix.c_str (), &end, 10);
+    if (!end || end == port_and_suffix.c_str () || port < 1024UL
+        || port > 65535UL) {
+        return false;
+    }
+
+    const char *suffix = end;
+    if (*suffix != '\0' && *suffix != '/')
+        return false;
+
+    *port_out_ = port;
+    suffix_out_->assign (suffix);
+    return true;
+}
+
 inline bool derive_peer_ctrl_bind_endpoint (const std::string &data_endpoint_,
                                             uint32_t node_id_,
                                             std::string *out_)
@@ -196,10 +224,9 @@ inline bool derive_external_router_bind_endpoint (
             return false;
         }
 
-        const std::string port_text = endpoint_.substr (port_sep + 1);
-        char *end = NULL;
-        const unsigned long port = std::strtoul (port_text.c_str (), &end, 10);
-        if (!end || *end != '\0' || port < 1024UL || port > 65535UL)
+        unsigned long port = 0;
+        std::string suffix;
+        if (!parse_endpoint_port_and_suffix (endpoint_, port_sep, &port, &suffix))
             return false;
 
         const unsigned long min_port = 1024UL;
@@ -210,7 +237,7 @@ inline bool derive_external_router_bind_endpoint (
 
         char buf[32];
         snprintf (buf, sizeof (buf), "%lu", mapped_port);
-        *out_ = endpoint_.substr (0, port_sep + 1) + buf;
+        *out_ = endpoint_.substr (0, port_sep + 1) + buf + suffix;
         return true;
       };
 

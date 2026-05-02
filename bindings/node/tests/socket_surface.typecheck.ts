@@ -26,8 +26,9 @@ registry.setTlsClient('ca', 'host');
 const discovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, 'surface-discovery');
 discovery.setTlsClient('ca', 'host');
 discovery.resolveSpot(routingId);
+discovery.bindRoute(1, 'key', 'value');
+discovery.resolveRoute(1, 'key');
 discovery.memberPeers();
-discovery.memberPeerMetadata(2, 'tcp://127.0.0.1:5555');
 zlink.MonitorSocket.ignoreHandler(new zlink.MonitorEvent({ event: 0, value: 0 }));
 
 const pub = new zlink.PubSocket(ctx);

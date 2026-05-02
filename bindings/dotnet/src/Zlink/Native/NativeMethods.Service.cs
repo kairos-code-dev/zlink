@@ -80,14 +80,6 @@ internal static partial class NativeMethods
         IntPtr entries, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_registry_member_peer_metadata(
-        IntPtr registry,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-        int serviceRole,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint,
-        ref ZlinkMsg metadata);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_registry_query_client_new(IntPtr ctx);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -128,22 +120,21 @@ internal static partial class NativeMethods
         out long value);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_discovery_set_metadata(IntPtr discovery,
-        IntPtr data, nuint size);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_discovery_get_metadata(IntPtr discovery,
-        ref ZlinkMsg metadata);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_member_peers(IntPtr discovery,
         IntPtr entries, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_discovery_member_peer_metadata(
-        IntPtr discovery, int serviceRole,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint,
-        ref ZlinkMsg metadata);
+    internal static extern int zlink_discovery_bind_route(IntPtr discovery,
+        uint kind, IntPtr key, nuint keySize, IntPtr value, nuint valueSize);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_discovery_unbind_route(IntPtr discovery,
+        uint kind, IntPtr key, nuint keySize);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_discovery_resolve_route(IntPtr discovery,
+        uint kind, IntPtr key, nuint keySize, out ZlinkRoutingId ownerNodeRid,
+        ref ZlinkMsg value);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_destroy(ref IntPtr discovery);

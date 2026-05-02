@@ -1131,6 +1131,198 @@ void test_registry_peer_sync_conflict_keeps_deterministic_winner_projection ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&winner_registry));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
+
+void test_discovery_route_binding_follows_owner_provider_lifecycle ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+
+    char registry_pub[128];
+    char registry_router[128];
+    char owner_endpoint[128];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, 6100, registry_pub, sizeof (registry_pub), registry_router,
+      sizeof (registry_router)));
+
+    void *owner_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "route-binding");
+    void *resolver_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "route-binding");
+    TEST_ASSERT_NOT_NULL (owner_discovery);
+    TEST_ASSERT_NOT_NULL (resolver_discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      owner_discovery, registry_router, 3000));
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      resolver_discovery, registry_router, 3000));
+
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router, "owner-a", 7));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (router, owner_discovery));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      router, 6101, owner_endpoint, sizeof (owner_endpoint)));
+    TEST_ASSERT_TRUE (wait_for_registry_member_count_local (
+      registry, "route-binding", 1, 5000));
+
+    const char key[] = "actor-1";
+    const char value[] = "slot-a";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_bind_route (owner_discovery, 1, key, sizeof (key) - 1,
+                                  value, sizeof (value) - 1));
+
+    zlink_routing_id_t owner_rid;
+    memset (&owner_rid, 0, sizeof (owner_rid));
+    zlink_msg_t route_value;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_resolve_route (resolver_discovery, 1, key,
+                                     sizeof (key) - 1, &owner_rid,
+                                     &route_value));
+    TEST_ASSERT_EQUAL_UINT8 (7, owner_rid.size);
+    TEST_ASSERT_EQUAL_MEMORY ("owner-a", owner_rid.data, 7);
+    TEST_ASSERT_EQUAL_UINT (sizeof (value) - 1, zlink_msg_size (&route_value));
+    TEST_ASSERT_EQUAL_MEMORY (value, zlink_msg_data (&route_value),
+                              sizeof (value) - 1);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&route_value));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&owner_discovery));
+    for (int i = 0; i < 200; ++i) {
+        errno = 0;
+        if (zlink_discovery_resolve_route (resolver_discovery, 1, key,
+                                           sizeof (key) - 1, &owner_rid,
+                                           NULL)
+              != ZLINK_CONFIG_OK
+            && errno == ENOENT) {
+            break;
+        }
+        msleep (25);
+    }
+    errno = 0;
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK,
+      zlink_discovery_resolve_route (resolver_discovery, 1, key,
+                                     sizeof (key) - 1, &owner_rid, NULL));
+    TEST_ASSERT_EQUAL_INT (ENOENT, errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&resolver_discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_registry_peer_sync_propagates_route_binding_snapshot ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *owner_registry = zlink_registry_new (ctx);
+    void *resolver_registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (owner_registry);
+    TEST_ASSERT_NOT_NULL (resolver_registry);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_id (owner_registry, 31));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_id (resolver_registry, 32));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (owner_registry, 50));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (resolver_registry, 50));
+
+    char owner_pub[128];
+    char owner_registry_router[128];
+    char resolver_pub[128];
+    char resolver_registry_router[128];
+    char owner_endpoint[128];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      owner_registry, 6110, owner_pub, sizeof (owner_pub),
+      owner_registry_router, sizeof (owner_registry_router)));
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      resolver_registry, 6112, resolver_pub, sizeof (resolver_pub),
+      resolver_registry_router, sizeof (resolver_registry_router)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_add_peer (owner_registry, resolver_pub));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_add_peer (resolver_registry, owner_pub));
+
+    void *owner_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "route-binding-peer");
+    void *resolver_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "route-binding-peer");
+    TEST_ASSERT_NOT_NULL (owner_discovery);
+    TEST_ASSERT_NOT_NULL (resolver_discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      owner_discovery, owner_registry_router, 3000));
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      resolver_discovery, resolver_registry_router, 3000));
+
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router, "peer-owner", 10));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (router, owner_discovery));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      router, 6114, owner_endpoint, sizeof (owner_endpoint)));
+    TEST_ASSERT_TRUE (wait_for_registry_member_count_local (
+      resolver_registry, "route-binding-peer", 1, 10000));
+
+    const char key[] = "actor-peer";
+    const char value[] = "peer-slot";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_bind_route (owner_discovery, 2, key, sizeof (key) - 1,
+                                  value, sizeof (value) - 1));
+
+    bool resolved = false;
+    zlink_routing_id_t owner_rid;
+    memset (&owner_rid, 0, sizeof (owner_rid));
+    for (int i = 0; i < 400 && !resolved; ++i) {
+        zlink_msg_t route_value;
+        if (zlink_discovery_resolve_route (
+              resolver_discovery, 2, key, sizeof (key) - 1, &owner_rid,
+              &route_value)
+            == ZLINK_CONFIG_OK) {
+            TEST_ASSERT_EQUAL_UINT8 (10, owner_rid.size);
+            TEST_ASSERT_EQUAL_MEMORY ("peer-owner", owner_rid.data, 10);
+            TEST_ASSERT_EQUAL_UINT (sizeof (value) - 1,
+                                    zlink_msg_size (&route_value));
+            TEST_ASSERT_EQUAL_MEMORY (value, zlink_msg_data (&route_value),
+                                      sizeof (value) - 1);
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&route_value));
+            resolved = true;
+            break;
+        }
+        msleep (25);
+    }
+    TEST_ASSERT_TRUE (resolved);
+
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&owner_discovery, 3000));
+    bool lost = false;
+    for (int i = 0; i < 400 && !lost; ++i) {
+        errno = 0;
+        if (zlink_discovery_resolve_route (
+              resolver_discovery, 2, key, sizeof (key) - 1, &owner_rid, NULL)
+              != ZLINK_CONFIG_OK
+            && errno == ENOENT) {
+            lost = true;
+            break;
+        }
+        msleep (25);
+    }
+    TEST_ASSERT_TRUE (lost);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&resolver_discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&resolver_registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&owner_registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
 } // namespace
 
 int main ()
@@ -1147,5 +1339,7 @@ int main ()
     RUN_TEST (test_endpointless_client_server_dealer_is_not_member_but_reports_connect_intent);
     RUN_TEST (test_fanout_sub_connects_pub_and_endpointless_sub_is_not_member);
     RUN_TEST (test_registry_peer_sync_conflict_keeps_deterministic_winner_projection);
+    RUN_TEST (test_discovery_route_binding_follows_owner_provider_lifecycle);
+    RUN_TEST (test_registry_peer_sync_propagates_route_binding_snapshot);
     return UNITY_END ();
 }

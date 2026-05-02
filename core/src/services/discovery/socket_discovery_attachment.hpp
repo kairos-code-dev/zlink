@@ -8,6 +8,7 @@
 #include "services/discovery/discovery_observer.hpp"
 #include "utils/mutex.hpp"
 
+#include <map>
 #include <set>
 #include <string>
 
@@ -68,6 +69,8 @@ class socket_discovery_attachment_t : public discovery_observer_t
     uint64_t _refresh_seq;
     std::set<std::string> _discovery_managed_peer_endpoints;
     std::set<std::string> _active_peer_endpoints;
+    std::map<std::string, std::string> _discovery_managed_peers_by_rid;
+    std::map<std::string, std::string> _active_peers_by_rid;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_discovery_attachment_t)
 };

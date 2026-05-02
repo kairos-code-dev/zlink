@@ -286,9 +286,8 @@ const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_);
 Symbol reserved for message-level string metadata lookup (for example
 `"Socket-Type"`, `"Identity"`, `"Peer-Address"`). The current
 implementation is a stub: every call returns `NULL` with `errno = EINVAL`.
-Do not rely on this function in application code; per-peer metadata is
-exposed through the socket monitor event payload and through
-`zlink_discovery_member_peer_metadata` / `zlink_registry_member_peer_metadata`.
+Do not rely on this function in application code; peer details are exposed
+through socket monitor event payloads and service snapshot/query APIs.
 
 **Returns:** `NULL` (the function does not expose metadata at this time).
 

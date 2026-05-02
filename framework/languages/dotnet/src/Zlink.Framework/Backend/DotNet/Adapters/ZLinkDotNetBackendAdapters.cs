@@ -12,19 +12,13 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 
     public IZLinkBackendDiscovery CreateDiscovery(
         IZLinkBackendContext context,
-        ZLinkBackendServiceType serviceType,
-        string serviceName)
+        ZLinkAutoConnectType autoConnectType,
+        string channelName)
     {
         var nativeContext = context.RequireNative<Context>();
-        var nativeServiceType = serviceType switch
-        {
-            ZLinkBackendServiceType.Socket => ServiceType.Socket,
-            ZLinkBackendServiceType.Spot => ServiceType.Spot,
-            _ => throw new ArgumentOutOfRangeException(nameof(serviceType)),
-        };
 
         return new ZLinkBackendDiscoveryWrapper(
-            new Discovery(nativeContext, nativeServiceType, serviceName));
+            new Discovery(nativeContext, (AutoConnectType)autoConnectType, channelName));
     }
 
     public IZLinkBackendDealerSocket CreateDealerSocket(IZLinkBackendContext context)

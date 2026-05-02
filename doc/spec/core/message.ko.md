@@ -65,9 +65,8 @@ typedef void (zlink_free_fn) (void *data_, void *hint_);
 아래 키들은 장래 `zlink_msg_gets()`가 노출할 수 있도록 예약된 식별자입니다.
 **현재 `zlink_msg_gets()` 구현은 스텁 상태**로 모든 호출이 `NULL` +
 `errno=EINVAL`을 반환하므로 응용 코드에서 이 함수에 의존하면 안 됩니다.
-피어 메타데이터가 필요하면 socket monitor 이벤트 payload, 또는
-`zlink_discovery_member_peer_metadata` /
-`zlink_registry_member_peer_metadata`를 사용하세요.
+피어 상세 정보가 필요하면 socket monitor 이벤트 payload나 service snapshot/query
+API를 사용하세요.
 
 | 키 (예약) | 의미 |
 |------|------|
@@ -298,9 +297,8 @@ const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_);
 메시지별 문자열 메타데이터 조회를 위해 예약된 심볼입니다(`"Socket-Type"`,
 `"Identity"`, `"Peer-Address"` 등). **현재 구현은 스텁**으로, 모든 호출이
 `NULL`을 반환하며 `errno`에 `EINVAL`을 설정합니다. 응용 코드에서 이 함수에
-의존하면 안 됩니다. 피어 메타데이터는 socket monitor 이벤트 payload, 그리고
-`zlink_discovery_member_peer_metadata` /
-`zlink_registry_member_peer_metadata`를 통해 제공됩니다.
+의존하면 안 됩니다. 피어 상세 정보는 socket monitor 이벤트 payload와 service
+snapshot/query API를 통해 제공합니다.
 
 **반환값:** `NULL` (현재 메타데이터를 노출하지 않습니다).
 

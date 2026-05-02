@@ -1082,8 +1082,6 @@ func (r *Registry) SetBroadcastInterval(intervalMS uint32) error
 func (r *Registry) StatusSnapshot() (*RegistryStatus, error)
 func (r *Registry) ServiceSummarySnapshot(filter *RegistryServiceSummaryFilter) ([]RegistryServiceSummaryEntry, error)
 func (r *Registry) MemberPeers(channelName string) ([]MemberPeerEntry, error)
-func (r *Registry) MemberPeerMetadata(channelName string,
-    serviceRole ServiceRole, endpoint string) (*Message, error)
 func (r *Registry) TopologySnapshot() ([]RegistryTopologyEntry, error)
 func (r *Registry) TopologyQuery(filter *RegistryTopologyFilter) ([]RegistryTopologyEntry, error)
 // Close closes the registry. Returns *CloseError on failure.
@@ -1110,10 +1108,10 @@ func (d *Discovery) ConnectRegistry(endpoint string) error
 // Discovery option getters/setters and snapshot queries return *ConfigError on failure.
 func (d *Discovery) SetValue(value int64) error
 func (d *Discovery) GetValue() (int64, error)
-func (d *Discovery) SetMetadata(data []byte) error
-func (d *Discovery) GetMetadata() (*Message, error)
+func (d *Discovery) BindRoute(kind RouteKind, key, value []byte) error
+func (d *Discovery) UnbindRoute(kind RouteKind, key []byte) error
+func (d *Discovery) ResolveRoute(kind RouteKind, key []byte) (RoutingID, *Message, error)
 func (d *Discovery) MemberPeers() ([]MemberPeerEntry, error)
-func (d *Discovery) MemberPeerMetadata(serviceRole ServiceRole, endpoint string) (*Message, error)
 func (d *Discovery) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
 // ResolveSpot resolves the current owner node routing id for a logical spot
 // routing id. Intended for send/request destination lookup. Maps to

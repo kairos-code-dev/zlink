@@ -15,15 +15,9 @@ using K4os.Compression.LZ4;
 
 namespace Systems.Zlink.Stream.Connector.Transport;
 
-internal sealed class WebSocketConnection : IZlinkStreamConnection
+internal sealed class WebSocketConnection(ClientWebSocket webSocket) : IZlinkStreamConnection
 {
-    private readonly ClientWebSocket _webSocket;
     private readonly Queue<byte> _pendingBytes = new();
-
-    public WebSocketConnection(ClientWebSocket webSocket)
-    {
-        _webSocket = webSocket;
-    }
 
     public bool CanWriteSegments => false;
 
@@ -36,7 +30,7 @@ internal sealed class WebSocketConnection : IZlinkStreamConnection
             WebSocketReceiveResult result;
             do
             {
-                result = await _webSocket.ReceiveAsync(temp, cancellationToken).ConfigureAwait(false);
+                result = await webSocket.ReceiveAsync(temp, cancellationToken).ConfigureAwait(false);
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
                     return 0;
@@ -69,15 +63,15 @@ internal sealed class WebSocketConnection : IZlinkStreamConnection
     }
 
     public async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
-        => await _webSocket.SendAsync(buffer, WebSocketMessageType.Binary, true, cancellationToken).ConfigureAwait(false);
+        => await webSocket.SendAsync(buffer, WebSocketMessageType.Binary, true, cancellationToken).ConfigureAwait(false);
 
     public async ValueTask CloseAsync(CancellationToken cancellationToken)
     {
-        if (_webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+        if (webSocket.State is WebSocketState.Open or WebSocketState.CloseReceived)
         {
-            await _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "closed", cancellationToken).ConfigureAwait(false);
+            await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "closed", cancellationToken).ConfigureAwait(false);
         }
 
-        _webSocket.Dispose();
+        webSocket.Dispose();
     }
 }

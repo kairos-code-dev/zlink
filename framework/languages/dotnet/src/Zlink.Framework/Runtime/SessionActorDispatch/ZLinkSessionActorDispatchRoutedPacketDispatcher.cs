@@ -134,7 +134,6 @@ internal sealed class ZLinkSessionActorDispatchRoutedPacketDispatcher(IServicePr
         var runtime = services.GetRequiredService<ZLinkFrameworkRuntime>();
         if (runtime.TryGetSessionActorContext(
                 envelope.ActorId,
-                envelope.SessionId,
                 envelope.BindingToken,
                 out var sessionContext))
         {

@@ -373,6 +373,9 @@ Environment:
                             Fixed memory reserve before per-client estimate
   PERF_MULTI_MEMORY_PER_CLIENT_KB=1024
                             Estimated memory per client socket for guard
+  PERF_MULTI_SPOT_CLEAN_LATENCY=0
+                            Disable the default SPOT clean-latency rerun used
+                            for the table latency columns.
 Notes:
   - result is saved under results/multi/report/ as
     perf_c_multi_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt.

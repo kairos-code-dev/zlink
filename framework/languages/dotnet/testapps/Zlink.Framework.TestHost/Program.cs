@@ -252,7 +252,7 @@ internal static class TestHostScenarioConfigurator
                 });
             }
 
-            framework.AddChannel(
+            framework.AddClientServerChannel(
                 options.ChannelName
                     ?? throw new InvalidOperationException("Channel server mode requires --channel-name."),
                 channel =>
@@ -277,7 +277,7 @@ internal static class TestHostScenarioConfigurator
                     ?? throw new InvalidOperationException("Channel subscriber mode requires --discovery-endpoint."));
             });
 
-            framework.AddChannel(
+            framework.AddFanoutChannel(
                 options.ChannelName
                     ?? throw new InvalidOperationException("Channel subscriber mode requires --channel-name."),
                 channel =>
@@ -300,7 +300,7 @@ internal static class TestHostScenarioConfigurator
                 });
             }
 
-            framework.AddChannel(
+            framework.AddFanoutChannel(
                 options.ChannelName
                     ?? throw new InvalidOperationException("Channel publisher mode requires --channel-name."),
                 channel =>
@@ -317,7 +317,7 @@ internal static class TestHostScenarioConfigurator
         {
             services.AddHostedService(provider =>
                 new ChannelStartupPublishHostedService(
-                    provider.GetRequiredService<IZLinkEventPublisher>(),
+                    provider.GetRequiredService<IZLinkFanoutPublisher>(),
                     options.ChannelName!,
                     options.PublishTopic!,
                     options.PublishValue ?? "startup"));
@@ -330,37 +330,40 @@ internal static class TestHostScenarioConfigurator
         services.AddScoped<StartupStageSubscriptionHandler>();
         services.AddZLinkFramework(framework =>
         {
-            framework.UseSpotDiscovery(
+            framework.AddSpotMesh(
                 options.DiscoveryChannelName
                     ?? throw new InvalidOperationException("SPOT node mode requires --discovery-channel."),
-                discovery =>
+                spotMesh =>
                 {
-                    discovery.Add(options.DiscoveryEndpoint
-                        ?? throw new InvalidOperationException("SPOT node mode requires --discovery-endpoint."));
-                });
-
-            framework.AddSpotNode(
-                options.SpotNodeName
-                    ?? throw new InvalidOperationException("SPOT node mode requires --spot-node-name."),
-                spot =>
-                {
-                    spot.Bind(options.SpotBindEndpoint
-                        ?? throw new InvalidOperationException("SPOT node mode requires --spot-bind-endpoint."));
-
-                    if (options.EnablePubSub)
+                    spotMesh.UseDiscovery(discovery =>
                     {
-                        spot.EnablePubSub();
-                    }
+                        discovery.Add(options.DiscoveryEndpoint
+                            ?? throw new InvalidOperationException("SPOT node mode requires --discovery-endpoint."));
+                    });
 
-                    if (!string.IsNullOrWhiteSpace(options.AttachSpotPublisherChannel))
-                    {
-                        spot.AttachSpotPublisherClient(options.AttachSpotPublisherChannel);
-                    }
+                    spotMesh.AddNode(
+                        options.SpotNodeName
+                            ?? throw new InvalidOperationException("SPOT node mode requires --spot-node-name."),
+                        spot =>
+                        {
+                            spot.Bind(options.SpotBindEndpoint
+                                ?? throw new InvalidOperationException("SPOT node mode requires --spot-bind-endpoint."));
 
-                    if (!string.IsNullOrWhiteSpace(options.SpotFactoryName))
-                    {
-                        spot.AddSpotFactory<StartupStageSpot>(options.SpotFactoryName);
-                    }
+                            if (options.EnablePubSub)
+                            {
+                                spot.EnablePubSub();
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(options.AttachSpotPublisherChannel))
+                            {
+                                spot.AttachSpotMeshPublisherClient(options.AttachSpotPublisherChannel);
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(options.SpotFactoryName))
+                            {
+                                spot.AddSpotFactory<StartupStageSpot>(options.SpotFactoryName);
+                            }
+                        });
                 });
         });
 
@@ -377,7 +380,7 @@ internal static class TestHostScenarioConfigurator
         {
             services.AddHostedService(provider =>
                 new SpotStartupPublishHostedService(
-                    provider.GetRequiredService<IZLinkSpotPublisherClient>(),
+                    provider.GetRequiredService<IZLinkSpotMeshPublisherClient>(),
                     options.AttachSpotPublisherChannel!,
                     options.PublishTopic!,
                     options.PublishValue ?? "startup"));
@@ -494,7 +497,7 @@ internal sealed class StartupSpotCreationHostedService(
 }
 
 internal sealed class ChannelStartupPublishHostedService(
-    IZLinkEventPublisher publisher,
+    IZLinkFanoutPublisher publisher,
     string channelName,
     string topic,
     string value) : BackgroundService
@@ -519,7 +522,7 @@ internal sealed class ChannelStartupPublishHostedService(
 }
 
 internal sealed class SpotStartupPublishHostedService(
-    IZLinkSpotPublisherClient publisher,
+    IZLinkSpotMeshPublisherClient publisher,
     string channelName,
     string topic,
     string value) : BackgroundService

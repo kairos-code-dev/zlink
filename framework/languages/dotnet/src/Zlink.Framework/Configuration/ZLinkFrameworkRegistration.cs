@@ -52,6 +52,8 @@ internal sealed class ZLinkChannelRegistration
 {
     public required string ChannelName { get; init; }
 
+    public ZLinkAutoConnectType AutoConnectType { get; set; }
+
     public ZLinkChannelServerCapabilityRegistration? Server { get; set; }
 
     public ZLinkChannelClientCapabilityRegistration? Client { get; set; }
@@ -72,6 +74,8 @@ internal sealed class ZLinkChannelServerCapabilityRegistration
 
 internal sealed class ZLinkChannelClientCapabilityRegistration
 {
+    public string? BindEndpoint { get; set; }
+
     public ZLinkCommonSocketOptions SocketOptions { get; } = new();
 
     public ZLinkOutboundPeerOptions RoutingOptions { get; } = new();

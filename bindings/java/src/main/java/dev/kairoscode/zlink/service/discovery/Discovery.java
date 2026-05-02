@@ -6,7 +6,6 @@ import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.service.registry.AutoConnectType;
 import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
-import dev.kairoscode.zlink.service.registry.ServiceRole;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
@@ -25,10 +24,13 @@ import java.util.Objects;
  * Fixed-channel discovery view.
  *
  * <p>One instance tracks exactly one {@link AutoConnectType}/{@code channelName}
- * pair and exposes discovery metadata plus member peer snapshots for that view.
+ * pair and exposes route binding plus member peer snapshots for that view.
  */
 public final class Discovery implements AutoCloseable {
     private MemorySegment handle;
+
+    /** Result of resolving a discovery route key. */
+    public record RouteResolution(RoutingId ownerNodeRoutingId, byte[] value) {}
 
     /** Opens a discovery handle for one auto-connect type and channel name. */
     public Discovery(Context ctx, AutoConnectType autoConnectType,
@@ -103,25 +105,6 @@ public final class Discovery implements AutoCloseable {
         }
     }
 
-    /** Sets the service-local metadata blob. */
-    public void setMetadata(byte[] metadata) {
-        Objects.requireNonNull(metadata, "metadata");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment data = metadata.length == 0
-              ? MemorySegment.NULL
-              : arena.allocate(metadata.length);
-            if (metadata.length > 0) {
-                MemorySegment.copy(MemorySegment.ofArray(metadata), 0, data, 0,
-                  metadata.length);
-            }
-            int rc = Native.discoverySetMetadata(handle, data, metadata.length);
-            if (rc != 0) {
-                throw ZlinkException.fromLastError(
-                  "zlink_discovery_set_metadata");
-            }
-        }
-    }
-
     /** Configures client TLS credentials for the discovery registry link. */
     public void setTlsClient(String caCertPem, String hostname,
                              boolean trustSystem) {
@@ -137,20 +120,62 @@ public final class Discovery implements AutoCloseable {
         }
     }
 
-    /** Returns the current service-local metadata blob. */
-    public byte[] getMetadata() {
+    /** Binds a route key to this discovery handle's registered provider. */
+    public void bindRoute(int kind, byte[] key, byte[] value) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(value, "value");
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment metadata = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            initMessage(metadata);
+            MemorySegment keyData = arena.allocate(key.length);
+            MemorySegment.copy(MemorySegment.ofArray(key), 0, keyData, 0,
+              key.length);
+            MemorySegment valueData = value.length == 0
+              ? MemorySegment.NULL
+              : arena.allocate(value.length);
+            if (value.length > 0) {
+                MemorySegment.copy(MemorySegment.ofArray(value), 0, valueData,
+                  0, value.length);
+            }
+            int rc = Native.discoveryBindRoute(handle, kind, keyData,
+              key.length, valueData, value.length);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_discovery_bind_route");
+        }
+    }
+
+    /** Removes a route key owned by this discovery handle's registered provider. */
+    public void unbindRoute(int kind, byte[] key) {
+        Objects.requireNonNull(key, "key");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment keyData = arena.allocate(key.length);
+            MemorySegment.copy(MemorySegment.ofArray(key), 0, keyData, 0,
+              key.length);
+            int rc = Native.discoveryUnbindRoute(handle, kind, keyData,
+              key.length);
+            if (rc != 0)
+                throw ZlinkException.fromLastError(
+                  "zlink_discovery_unbind_route");
+        }
+    }
+
+    /** Resolves a route key in this discovery view. */
+    public RouteResolution resolveRoute(int kind, byte[] key) {
+        Objects.requireNonNull(key, "key");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment keyData = arena.allocate(key.length);
+            MemorySegment.copy(MemorySegment.ofArray(key), 0, keyData, 0,
+              key.length);
+            MemorySegment ownerRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+            MemorySegment value = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            int rc = Native.discoveryResolveRoute(handle, kind, keyData,
+              key.length, ownerRid, value);
+            if (rc != 0)
+                throw ZlinkException.fromLastError(
+                  "zlink_discovery_resolve_route");
             try {
-                int rc = Native.discoveryGetMetadata(handle, metadata);
-                if (rc != 0) {
-                    throw ZlinkException.fromLastError(
-                      "zlink_discovery_get_metadata");
-                }
-                return readMessageBytes(metadata);
+                return new RouteResolution(readRoutingId(ownerRid),
+                  readMessageBytes(value));
             } finally {
-                NativeMsg.msgClose(metadata);
+                NativeMsg.msgClose(value);
             }
         }
     }
@@ -180,28 +205,6 @@ public final class Discovery implements AutoCloseable {
         }
     }
 
-    /** Returns the metadata blob for one discovered member peer. */
-    public byte[] memberPeerMetadata(ServiceRole serviceRole, String endpoint) {
-        Objects.requireNonNull(serviceRole, "serviceRole");
-        Objects.requireNonNull(endpoint, "endpoint");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment metadata = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            initMessage(metadata);
-            try {
-                int rc = Native.discoveryMemberPeerMetadata(handle,
-                  serviceRole.getValue(),
-                  NativeHelpers.toCString(arena, endpoint), metadata);
-                if (rc != 0) {
-                    throw ZlinkException.fromLastError(
-                      "zlink_discovery_member_peer_metadata");
-                }
-                return readMessageBytes(metadata);
-            } finally {
-                NativeMsg.msgClose(metadata);
-            }
-        }
-    }
-
     @Override
     public void close() {
         if (handle == null || handle.address() == 0)
@@ -228,12 +231,6 @@ public final class Discovery implements AutoCloseable {
         if (value > max)
             return max;
         return (int) value;
-    }
-
-    private static void initMessage(MemorySegment message) {
-        int rc = NativeMsg.msgInit(message);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_msg_init");
     }
 
     private static byte[] readMessageBytes(MemorySegment message) {

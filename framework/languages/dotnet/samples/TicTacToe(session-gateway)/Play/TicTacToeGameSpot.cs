@@ -1,7 +1,8 @@
 using TicTacToe.SessionActorDispatch.Contracts;
+using TicTacToe.SessionActorDispatch.Play;
 using Zlink.Framework.Spots;
 
-namespace TicTacToe.SessionActorDispatch.Play;
+namespace TicTacToe.SessionGateway.Play;
 
 internal sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot
 {

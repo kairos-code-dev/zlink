@@ -11,6 +11,7 @@
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 
+#include <cstring>
 #include <map>
 #include <set>
 #include <string>
@@ -48,16 +49,24 @@ class discovery_t
                         int trust_system_);
     int set_value (int64_t value_);
     int get_value (int64_t *value_out_) const;
-    int set_metadata (const void *data_, size_t size_);
-    int get_metadata (zlink_msg_t *metadata_out_) const;
     int resolve_spot (const zlink_routing_id_t *spot_rid_,
                       zlink_routing_id_t *owner_node_rid_out_);
+    int bind_route (zlink_route_kind_t kind_,
+                    const void *key_,
+                    size_t key_size_,
+                    const void *value_,
+                    size_t value_size_);
+    int unbind_route (zlink_route_kind_t kind_,
+                      const void *key_,
+                      size_t key_size_);
+    int resolve_route (zlink_route_kind_t kind_,
+                       const void *key_,
+                       size_t key_size_,
+                       zlink_routing_id_t *owner_rid_out_,
+                       zlink_msg_t *value_out_);
     void snapshot_member_peers (
       std::vector<zlink_member_peer_entry_t> *out_) const;
     int member_peers (zlink_member_peer_entry_t *entries_, size_t *count_) const;
-    int member_peer_metadata (zlink_service_role_t service_role_,
-                              const char *endpoint_,
-                              zlink_msg_t *metadata_out_) const;
     int destroy ();
     int register_service (const char *endpoint_,
                           uint32_t weight_,
@@ -195,25 +204,30 @@ class discovery_t
         uint32_t weight;
         int64_t value;
         std::vector<unsigned char> metadata;
+        zlink_routing_id_t routing_id;
+        uint32_t source_registry;
+        uint64_t registration_id;
         uint64_t last_heartbeat_ms;
 
         registered_service_t () :
             service_role (0),
             weight (100),
             value (0),
+            source_registry (0),
+            registration_id (0),
             last_heartbeat_ms (0)
         {
+            memset (&routing_id, 0, sizeof (routing_id));
         }
     };
 
     void snapshot_registered_service_updates (
       std::vector<registered_service_t> *services_out_,
-      int64_t *value_out_,
-      std::vector<unsigned char> *metadata_out_) const;
+      int64_t *value_out_) const;
     int propagate_registered_service_updates (
       const std::vector<registered_service_t> &services_,
-      int64_t value_,
-      const std::vector<unsigned char> &metadata_);
+      int64_t value_);
+    bool select_route_owner_locked (registered_service_t *owner_out_) const;
 
     ctx_t *_ctx;
     uint32_t _tag;

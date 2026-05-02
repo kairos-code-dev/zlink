@@ -10,7 +10,7 @@ SpotSync::SpotSync(zlink::context_t& ctx,
                    const std::string& registry_router_ep,
                    const std::string& bind_endpoint,
                    int zone_x, int zone_y)
-    : discovery_(ctx, zlink::service_type::spot)
+    : discovery_(ctx, zlink::auto_connect_type::spot_mesh)
     , node_(ctx)
     , spot_(node_)
     , zone_x_(zone_x)

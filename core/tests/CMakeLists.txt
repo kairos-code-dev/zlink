@@ -693,7 +693,7 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_node_default_handle_owner_keeps_defaults_private
     test_spot_unified_spot_basic
     test_spot_node_snapshot_status_peers_subjects
-    test_discovery_local_value_metadata_contract)
+    test_discovery_local_value_route_limit_contract)
 
 set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_pub_sub_options=test_spot_pub_sub_options_and_routing_ids
@@ -702,7 +702,7 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_default_handle_owner=test_spot_node_default_handle_owner_keeps_defaults_private
     test_spot_service_introspection_unified_spot=test_spot_unified_spot_basic
     test_spot_service_introspection_snapshots=test_spot_node_snapshot_status_peers_subjects
-    test_spot_service_introspection_metadata_local=test_discovery_local_value_metadata_contract)
+    test_spot_service_introspection_route_limit=test_discovery_local_value_route_limit_contract)
 
 set(SPOT_PUBSUB_CASES
     test_spot_peer_tcp

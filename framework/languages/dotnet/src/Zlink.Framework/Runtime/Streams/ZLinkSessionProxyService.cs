@@ -5,6 +5,7 @@ namespace Zlink.Framework.Runtime.Streams;
 internal sealed class ZLinkSessionProxyService(
     IZLinkRoutedClient routedClient,
     IZLinkActorSessionRouteResolver routeResolver,
+    ZLinkFrameworkRuntime runtime,
     ZLinkFrameworkRegistration registration) : IZLinkSessionProxy
 {
     public IZLinkSessionProxySendCall Send<TMessage>(
@@ -14,6 +15,7 @@ internal sealed class ZLinkSessionProxyService(
         return new ZLinkSessionProxySendCall<TMessage>(
             routedClient,
             routeResolver,
+            runtime,
             actorId,
             message);
     }
@@ -25,6 +27,7 @@ internal sealed class ZLinkSessionProxyService(
         return new ZLinkSessionProxyRequestCall<TRequest>(
             routedClient,
             routeResolver,
+            runtime,
             registration,
             actorId,
             request);
@@ -34,6 +37,7 @@ internal sealed class ZLinkSessionProxyService(
 internal sealed class ZLinkSessionProxySendCall<TMessage>(
     IZLinkRoutedClient routedClient,
     IZLinkActorSessionRouteResolver routeResolver,
+    ZLinkFrameworkRuntime runtime,
     string actorId,
     TMessage message) : IZLinkSessionProxySendCall
 {
@@ -62,14 +66,13 @@ internal sealed class ZLinkSessionProxySendCall<TMessage>(
         var packet = new ZLinkSessionProxyPacket(
             new ZLinkSessionProxyEnvelope(
                 actorId,
-                route.SessionId,
                 route.BindingToken,
                 _packetName ?? throw new InvalidOperationException("Packet name is required."),
                 false,
                 new Dictionary<string, string>(_metadata, StringComparer.Ordinal)),
             JsonSerializer.SerializeToUtf8Bytes(message, message?.GetType() ?? typeof(TMessage), JsonOptions));
 
-        await routedClient.SendTo(route.RouterChannelId, route.SessionRouterId, packet)
+        await routedClient.SendTo(runtime.ResolveDefaultRouterChannelId(), route.SessionRouterId, packet)
             .WithPacketName(ZLinkInternalPacketNames.SessionProxy)
             .Async(cancellationToken)
             .ConfigureAwait(false);
@@ -99,6 +102,7 @@ internal sealed class ZLinkSessionProxySendCall<TMessage>(
 internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
     IZLinkRoutedClient routedClient,
     IZLinkActorSessionRouteResolver routeResolver,
+    ZLinkFrameworkRuntime runtime,
     ZLinkFrameworkRegistration registration,
     string actorId,
     TRequest request) : IZLinkSessionProxyRequestCall
@@ -135,7 +139,6 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
         var packet = new ZLinkSessionProxyPacket(
             new ZLinkSessionProxyEnvelope(
                 actorId,
-                route.SessionId,
                 route.BindingToken,
                 _packetName ?? throw new InvalidOperationException("Packet name is required."),
                 true,
@@ -145,7 +148,7 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
         byte[] reply;
         try
         {
-            reply = await routedClient.RequestTo(route.RouterChannelId, route.SessionRouterId, packet)
+            reply = await routedClient.RequestTo(runtime.ResolveDefaultRouterChannelId(), route.SessionRouterId, packet)
                 .WithPacketName(ZLinkInternalPacketNames.SessionProxy)
                 .WithTimeout(_timeout ?? registration.DefaultTimeout)
                 .Async<byte[]>(cancellationToken)

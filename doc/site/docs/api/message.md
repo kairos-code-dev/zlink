@@ -1,5 +1,14 @@
+[English](message.md) | [한국어](message.ko.md)
+
+[Spec Index](../README.md) · [Core Index](README.md)
 
 # Message API Reference
+
+> Note:
+> This document covers message creation and multipart handling.
+> Request-reply and SPOT direct delivery are defined at the ZMP
+> protocol level; see the protocol documents under `doc/plan/spot-refactor`.
+> The public message API does not expose message-level request-reply state.
 
 The Message API provides functions for creating, sending, and managing zlink
 messages. Messages are the fundamental unit of data exchange between sockets
@@ -57,14 +66,14 @@ The following string metadata keys can be retrieved with `zlink_msg_gets()`:
 Initialize an empty message.
 
 ```c
-int zlink_msg_init (zlink_msg_t *msg_);
+zlink_config_result_t zlink_msg_init (zlink_msg_t *msg_);
 ```
 
 Initializes `msg_` to an empty zero-length message. The message must
 eventually be released with `zlink_msg_close()`. Always initialize a
 `zlink_msg_t` before passing it to any other message function.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Not thread-safe. Each `zlink_msg_t` must be used from a
 single thread at a time.
@@ -78,14 +87,14 @@ single thread at a time.
 Initialize a message of a given size.
 
 ```c
-int zlink_msg_init_size (zlink_msg_t *msg_, size_t size_);
+zlink_config_result_t zlink_msg_init_size (zlink_msg_t *msg_, size_t size_);
 ```
 
 Allocates an internal buffer of `size_` bytes and initializes `msg_`. The
 buffer contents are uninitialized. Use `zlink_msg_data()` to obtain a pointer
 to the buffer and populate it before sending.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Errors:** `ENOMEM` if the allocation fails.
 
@@ -100,7 +109,7 @@ to the buffer and populate it before sending.
 Initialize a message from an external data buffer (zero-copy).
 
 ```c
-int zlink_msg_init_data (
+zlink_config_result_t zlink_msg_init_data (
   zlink_msg_t *msg_, void *data_, size_t size_, zlink_free_fn *ffn_, void *hint_);
 ```
 
@@ -114,7 +123,7 @@ ensuring the buffer outlives the message.
 This function enables true zero-copy message passing. The caller must not
 modify or free `data_` until `ffn_` has been called.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Not thread-safe.
 
@@ -127,14 +136,14 @@ modify or free `data_` until `ffn_` has been called.
 Release message resources.
 
 ```c
-int zlink_msg_close (zlink_msg_t *msg_);
+zlink_config_result_t zlink_msg_close (zlink_msg_t *msg_);
 ```
 
 Releases all resources associated with the message. Every initialized message
 must be closed exactly once. After closing, the `zlink_msg_t` structure is
 invalid and must be re-initialized before reuse.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Not thread-safe.
 
@@ -147,7 +156,7 @@ invalid and must be re-initialized before reuse.
 Move message content from source to destination.
 
 ```c
-int zlink_msg_move (zlink_msg_t *dest_, zlink_msg_t *src_);
+zlink_config_result_t zlink_msg_move (zlink_msg_t *dest_, zlink_msg_t *src_);
 ```
 
 Moves the content of `src_` into `dest_`. After a successful move, `src_`
@@ -155,7 +164,7 @@ becomes an empty message (equivalent to a freshly initialized message) and
 `dest_` contains the original content. Any previous content of `dest_` is
 released.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Not thread-safe.
 
@@ -168,14 +177,14 @@ released.
 Copy a message.
 
 ```c
-int zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
+zlink_config_result_t zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
 ```
 
 Copies the content of `src_` into `dest_`. Both messages share the underlying
 data buffer via reference counting. Any previous content of `dest_` is
 released. The copy is lightweight and does not duplicate the data payload.
 
-**Returns:** 0 on success, -1 on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Not thread-safe.
 
@@ -227,12 +236,14 @@ returns 0.
 Return the message storage reference count.
 
 ```c
-int zlink_msg_refcnt (const zlink_msg_t *msg_);
+int zlink_msg_refcnt (const zlink_msg_t *msg_, zlink_config_result_t *error_out_);
 ```
 
 Returns the current internal reference count for reference-counted large
 or zero-copy message storage. Message kinds that are not internally
-reference-counted (inline, borrowed-constant) return 1.
+reference-counted (inline, borrowed-constant) return 1. Writes the
+configuration result into `*error_out_` on failure; returns the reference
+count as the primary return on success.
 
 The internal reference count is managed with atomic operations:
 `zlink_msg_copy()` atomically increments the count, and `zlink_msg_close()`
@@ -250,7 +261,9 @@ multiple threads. Concurrent access requires separate `zlink_msg_t` handles
 created via `zlink_msg_copy()`.
 
 **Returns:** Current storage reference count, or 1 when the message kind is
-not internally reference-counted.
+not internally reference-counted. On failure returns `-1` and writes a
+`zlink_config_result_t` into `*error_out_`. `zlink_errno()` retains the
+detailed internal errno for diagnostics.
 
 **Thread safety:** The underlying reference count is atomic. Reading it
 via this function is safe while other threads copy or close *different*
@@ -270,16 +283,13 @@ Get a string message property.
 const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_);
 ```
 
-Retrieves a string metadata value from the message by key name. Metadata is
-attached by the transport layer and may include keys such as
-`"Socket-Type"`, `"Identity"`, and `"Peer-Address"`. The returned pointer
-is valid only until the message is closed.
+Symbol reserved for message-level string metadata lookup (for example
+`"Socket-Type"`, `"Identity"`, `"Peer-Address"`). The current
+implementation is a stub: every call returns `NULL` with `errno = EINVAL`.
+Do not rely on this function in application code; peer details are exposed
+through socket monitor event payloads and service snapshot/query APIs.
 
-**Returns:** Null-terminated string on success, `NULL` on failure (errno is
-set).
-
-**Errors:** `EINVAL` if the property name is not found in the message
-metadata.
+**Returns:** `NULL` (the function does not expose metadata at this time).
 
 **Thread safety:** Not thread-safe.
 
@@ -307,84 +317,15 @@ message stored as a contiguous array of `zlink_msg_t` structures.
 
 ---
 
-## Request-Reply And Metadata Removal Note
+## Scope Of The Message API
 
-The active public API does not provide message-level request-reply markers or
-per-message metadata setters.
+The public message API is a payload-part container. It does not expose
+message-level request-reply functions or per-message metadata functions.
+Request-reply is carried by ZMP control parts outside `zlink_msg_t`, and
+metadata is not part of the active message path.
 
-Removed families:
+See these documents for the adjacent contracts:
 
-- `zlink_msg_set_request`
-- `zlink_msg_set_reply`
-- `zlink_msg_get_request_info`
-- `zlink_msg_set_metadata`
-- `zlink_msg_get_metadata`
-- `zlink_msg_clear_metadata`
-
-Current request-reply uses typed socket surfaces and ZMP control parts.
-Current SPOT direct delivery and SPOT request-reply also use typed receive
-surfaces and ZMP control parts.
-
-For the current interfaces, see:
-
-- `doc/spec/core/socket/README.md`
-- `doc/spec/core/service/spot.md`
-- `doc/internals/protocol-zmp.md`
-
-```c
-#define ZLINK_MSG_METADATA_KEY_USER_MIN   0x0100
-#define ZLINK_MSG_METADATA_VALUE_MAX      65535
-```
-
-| Constant | Value | Description |
-|---|---|---|
-| `ZLINK_MSG_METADATA_KEY_USER_MIN` | 0x0100 | Minimum user-defined key. Keys below this are reserved. |
-| `ZLINK_MSG_METADATA_VALUE_MAX` | 65535 | Maximum value size in bytes per entry. |
-
-### zlink_msg_set_metadata
-
-Set a metadata key-value pair on a message.
-
-```c
-int zlink_msg_set_metadata (zlink_msg_t *msg_, uint16_t key_,
-                            const void *value_, size_t value_size_);
-```
-
-Attaches or overwrites a metadata entry. If this function is called at least
-once, the send path will include a metadata header on the wire. Keys in the
-range `0x0000`--`0x00FF` are reserved for zlink internal use and are rejected
-with `EINVAL`. Pass `value_ = NULL` to set a zero-length value (the key's
-presence itself carries meaning).
-
-**Returns:** 0 on success, -1 on failure (errno is set).
-
-**Errors:**
-- `EINVAL`: `msg_` is NULL, `key_` < 0x0100, or `value_size_` exceeds
-  `ZLINK_MSG_METADATA_VALUE_MAX`.
-- `ENOMEM`: heap allocation failure.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_msg_get_metadata`
-
----
-
-### zlink_msg_get_metadata
-
-Retrieve a metadata value from a message.
-
-```c
-const void *zlink_msg_get_metadata (const zlink_msg_t *msg_,
-                                    uint16_t key_, size_t *size_);
-```
-
-Returns a pointer to the value associated with `key_`, or NULL if the key
-is not present. The pointer is valid only while the message is alive and the
-same key has not been overwritten via `zlink_msg_set_metadata()`. Pass
-`size_ = NULL` to skip the length output.
-
-**Returns:** Pointer to value bytes, or NULL if the key is absent.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_msg_set_metadata`
+- request-reply public API: [socket/README.md](socket/README.md)
+- SPOT direct and request-reply public API: [service/spot.md](service/spot.md)
+- wire format and control-part rules: `doc/internals/protocol-zmp.md`

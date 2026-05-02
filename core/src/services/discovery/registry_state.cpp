@@ -143,10 +143,107 @@ void registry_t::handle_peer (void *sub_)
         _peer_last_seen[peer_registry_id] = now;
         std::map<uint32_t, uint64_t>::iterator it =
           _peer_seq.find (peer_registry_id);
-        if (it != _peer_seq.end () && list_seq <= it->second) {
+        std::map<uint32_t, uint64_t>::iterator route_it =
+          _peer_route_seq.find (peer_registry_id);
+        if (msg_id == discovery_protocol::msg_service_list
+            && it != _peer_seq.end () && list_seq <= it->second) {
             close_msg_frames (&frames);
             return;
         }
+        if (msg_id == discovery_protocol::msg_registry_sync
+            && route_it != _peer_route_seq.end ()
+            && list_seq <= route_it->second) {
+            close_msg_frames (&frames);
+            return;
+        }
+    }
+
+    if (msg_id == discovery_protocol::msg_registry_sync) {
+        std::map<route_key_t, route_entry_t> incoming_routes;
+        size_t route_index = 4;
+        for (uint32_t i = 0; i < service_count && route_index < frames.size ();
+             ++i) {
+            if (route_index + 9 >= frames.size ())
+                break;
+
+            const std::string channel_name =
+              discovery_protocol::read_string (frames[route_index++]);
+            uint32_t raw_kind = 0;
+            if (!discovery_protocol::read_u32 (frames[route_index++],
+                                               &raw_kind))
+                break;
+
+            route_key_t route_key;
+            if (!read_route_key (raw_kind, frames[route_index++],
+                                 channel_name, &route_key))
+                break;
+
+            route_entry_t route;
+            route.key = route_key;
+            const size_t value_size = zlink_msg_size (&frames[route_index]);
+            if (value_size > ZLINK_ROUTE_VALUE_MAX)
+                break;
+            if (value_size > 0) {
+                const unsigned char *value_data =
+                  static_cast<const unsigned char *> (
+                    zlink_msg_data (
+                      const_cast<zlink_msg_t *> (&frames[route_index])));
+                route.value.assign (value_data, value_data + value_size);
+            }
+            ++route_index;
+
+            route.owner.channel_name =
+              discovery_protocol::read_string (frames[route_index++]);
+            if (!discovery_protocol::read_u16 (
+                  frames[route_index++], &route.owner.service_role))
+                break;
+            const size_t owner_rid_size = zlink_msg_size (&frames[route_index]);
+            if (owner_rid_size > sizeof (route.owner_routing_id.data))
+                break;
+            route.owner.routing_id_key.assign (
+              static_cast<const char *> (
+                zlink_msg_data (const_cast<zlink_msg_t *> (
+                  &frames[route_index]))),
+              owner_rid_size);
+            ++route_index;
+            if (!discovery_protocol::read_u32 (
+                  frames[route_index++], &route.owner.source_registry)
+                || !discovery_protocol::read_u64 (
+                  frames[route_index++], &route.owner.registration_id))
+                break;
+            discovery_protocol::read_routing_id (frames[route_index++],
+                                                 &route.owner_routing_id);
+            route.updated_at_ms = now;
+            route.advertising_registry = peer_registry_id;
+            incoming_routes[route.key] = route;
+        }
+
+        {
+            scoped_lock_t lock (_sync);
+            std::map<uint32_t, uint64_t>::iterator route_it =
+              _peer_route_seq.find (peer_registry_id);
+            if (peer_registry_id == local_registry_id
+                || (route_it != _peer_route_seq.end ()
+                    && list_seq <= route_it->second)) {
+                close_msg_frames (&frames);
+                return;
+            }
+
+            cleanup_advertised_route_records_locked (peer_registry_id);
+            for (std::map<route_key_t, route_entry_t>::const_iterator it =
+                   incoming_routes.begin ();
+                 it != incoming_routes.end (); ++it) {
+                if (_routes.find (it->first) != _routes.end ())
+                    continue;
+                _routes[it->first] = it->second;
+                _routes_by_owner[it->second.owner].insert (it->first);
+            }
+            _peer_route_seq[peer_registry_id] = list_seq;
+            _list_seq++;
+        }
+
+        close_msg_frames (&frames);
+        return;
     }
 
     size_t index = 4;
@@ -180,7 +277,7 @@ void registry_t::handle_peer (void *sub_)
 
         service_entry_t &service = incoming[service_key];
         service.auto_connect_type = auto_connect_type;
-        for (uint32_t p = 0; p < provider_count && index + 5 < frames.size ();
+        for (uint32_t p = 0; p < provider_count && index + 8 < frames.size ();
              ++p) {
             provider_entry_t entry;
             if (!discovery_protocol::read_u16 (frames[index++],
@@ -192,6 +289,12 @@ void registry_t::handle_peer (void *sub_)
             entry.endpoint = discovery_protocol::read_string (frames[index++]);
             discovery_protocol::read_routing_id (frames[index++],
                                                  &entry.routing_id);
+            uint32_t source_registry = 0;
+            discovery_protocol::read_u32 (frames[index++], &source_registry);
+            discovery_protocol::read_u64 (frames[index++],
+                                          &entry.registration_id);
+            discovery_protocol::read_u64 (frames[index++],
+                                          &entry.provider_update_seq);
             uint16_t raw_weight = 0;
             if (!discovery_protocol::read_u16 (frames[index++],
                                                &raw_weight))
@@ -211,7 +314,8 @@ void registry_t::handle_peer (void *sub_)
             ++index;
             entry.registered_at = now;
             entry.last_heartbeat = now;
-            entry.source_registry = peer_registry_id;
+            entry.source_registry =
+              source_registry == 0 ? peer_registry_id : source_registry;
             if (!entry.endpoint.empty ()) {
                 provider_key_t provider_key;
                 provider_key.service_role = entry.service_role;
@@ -266,9 +370,14 @@ void registry_t::handle_peer (void *sub_)
                           cur.service_role == incoming_entry.service_role
                           && cur.weight
                                == incoming_entry.weight
-                          &&
-                          cur.value == incoming_entry.value
+                          && cur.value == incoming_entry.value
                           && cur.metadata == incoming_entry.metadata
+                          && cur.source_registry
+                               == incoming_entry.source_registry
+                          && cur.registration_id
+                               == incoming_entry.registration_id
+                          && cur.provider_update_seq
+                               == incoming_entry.provider_update_seq
                           && cur.routing_id.size
                                == incoming_entry.routing_id.size
                           && (cur.routing_id.size == 0
@@ -325,6 +434,17 @@ void registry_t::handle_peer (void *sub_)
             for (provider_map_t::iterator pit = providers.begin ();
                  pit != providers.end ();) {
                 if (pit->second.source_registry == peer_registry_id) {
+                    owner_identity_t removed_owner;
+                    removed_owner.channel_name = sit->first.channel_name;
+                    removed_owner.service_role = pit->second.service_role;
+                    removed_owner.routing_id_key.assign (
+                      reinterpret_cast<const char *> (
+                        pit->second.routing_id.data),
+                      pit->second.routing_id.size);
+                    removed_owner.source_registry = pit->second.source_registry;
+                    removed_owner.registration_id = pit->second.registration_id;
+                    cleanup_owner_records_locked (removed_owner,
+                                                  zlink::clock_t ().now_ms ());
                     pit = providers.erase (pit);
                     continue;
                 }
@@ -368,7 +488,7 @@ void registry_t::handle_register (void *router_,
                                   const zlink_routing_id_t &sender_id_)
 {
     if (frame_count_ < 5) {
-        send_register_ack (router_, sender_id_, 0xFF, std::string (),
+        send_register_ack (router_, sender_id_, 0xFF, std::string (), 0, 0,
                            "invalid register");
         return;
     }
@@ -377,7 +497,7 @@ void registry_t::handle_register (void *router_,
     if (!discovery_protocol::read_u16 (frames_[1], &auto_connect_type)
         || !discovery_protocol::is_valid_auto_connect_type (
           auto_connect_type)) {
-        send_register_ack (router_, sender_id_, 0xFF, std::string (),
+        send_register_ack (router_, sender_id_, 0xFF, std::string (), 0, 0,
                            "invalid type");
         return;
     }
@@ -385,7 +505,7 @@ void registry_t::handle_register (void *router_,
     if (!discovery_protocol::read_u16 (frames_[2], &service_role)
         || !discovery_protocol::auto_connect_type_allows_role (
           auto_connect_type, service_role)) {
-        send_register_ack (router_, sender_id_, 0xFF, std::string (),
+        send_register_ack (router_, sender_id_, 0xFF, std::string (), 0, 0,
                            "invalid role");
         return;
     }
@@ -395,7 +515,7 @@ void registry_t::handle_register (void *router_,
       discovery_protocol::read_string (frames_[4]);
 
     if (channel_name.empty () || endpoint.empty ()) {
-        send_register_ack (router_, sender_id_, 0x02, endpoint,
+        send_register_ack (router_, sender_id_, 0x02, endpoint, 0, 0,
                            "invalid endpoint");
         return;
     }
@@ -424,6 +544,8 @@ void registry_t::handle_register (void *router_,
     const uint64_t now = zlink::clock_t ().now_ms ();
 
     uint8_t status = 0x00;
+    uint32_t source_registry = 0;
+    uint64_t registration_id = 0;
     std::string error;
     {
         scoped_lock_t lock (_sync);
@@ -441,6 +563,20 @@ void registry_t::handle_register (void *router_,
             provider_key_t provider_key;
             provider_key.service_role = service_role;
             provider_key.endpoint = endpoint;
+            provider_map_t::iterator existing =
+              service.providers.find (provider_key);
+            if (existing != service.providers.end ()) {
+                owner_identity_t old_owner;
+                old_owner.channel_name = channel_name;
+                old_owner.service_role = existing->second.service_role;
+                old_owner.routing_id_key.assign (
+                  reinterpret_cast<const char *> (
+                    existing->second.routing_id.data),
+                  existing->second.routing_id.size);
+                old_owner.source_registry = existing->second.source_registry;
+                old_owner.registration_id = existing->second.registration_id;
+                cleanup_owner_records_locked (old_owner, now);
+            }
             provider_entry_t &entry = service.providers[provider_key];
             entry.service_role = service_role;
             entry.endpoint = endpoint;
@@ -448,15 +584,20 @@ void registry_t::handle_register (void *router_,
             entry.weight = weight;
             entry.value = value;
             entry.metadata = metadata;
+            entry.registration_id = _next_registration_id++;
+            entry.provider_update_seq = _next_provider_update_seq++;
             entry.registered_at = now;
             entry.last_heartbeat = now;
             entry.source_registry = registry_id;
+            source_registry = entry.source_registry;
+            registration_id = entry.registration_id;
 
             _list_seq++;
         }
     }
 
-    send_register_ack (router_, sender_id_, status, endpoint, error);
+    send_register_ack (router_, sender_id_, status, endpoint, source_registry,
+                       registration_id, error);
 }
 
 void registry_t::handle_unregister (void *router_,
@@ -507,6 +648,16 @@ void registry_t::handle_unregister (void *router_,
         send_unregister_ack (router_, sender_id_, 0x01, "foreign provider");
         return;
     }
+
+    owner_identity_t removed_owner;
+    removed_owner.channel_name = channel_name;
+    removed_owner.service_role = pit->second.service_role;
+    removed_owner.routing_id_key.assign (
+      reinterpret_cast<const char *> (pit->second.routing_id.data),
+      pit->second.routing_id.size);
+    removed_owner.source_registry = pit->second.source_registry;
+    removed_owner.registration_id = pit->second.registration_id;
+    cleanup_owner_records_locked (removed_owner, zlink::clock_t ().now_ms ());
 
     sit->second.providers.erase (pit);
     if (sit->second.providers.empty ())
@@ -559,7 +710,7 @@ void registry_t::handle_update_attributes (void *router_,
                                            const zlink_routing_id_t &sender_id_)
 {
     if (frame_count_ < 7) {
-        send_register_ack (router_, sender_id_, 0xFF, std::string (),
+        send_register_ack (router_, sender_id_, 0xFF, std::string (), 0, 0,
                            "invalid update");
         return;
     }
@@ -568,7 +719,7 @@ void registry_t::handle_update_attributes (void *router_,
     if (!discovery_protocol::read_u16 (frames_[1], &auto_connect_type)
         || !discovery_protocol::is_valid_auto_connect_type (
           auto_connect_type)) {
-        send_register_ack (router_, sender_id_, 0xFF, std::string (),
+        send_register_ack (router_, sender_id_, 0xFF, std::string (), 0, 0,
                            "invalid type");
         return;
     }
@@ -576,7 +727,7 @@ void registry_t::handle_update_attributes (void *router_,
     if (!discovery_protocol::read_u16 (frames_[2], &service_role)
         || !discovery_protocol::auto_connect_type_allows_role (
           auto_connect_type, service_role)) {
-        send_register_ack (router_, sender_id_, 0xFF, std::string (),
+        send_register_ack (router_, sender_id_, 0xFF, std::string (), 0, 0,
                            "invalid role");
         return;
     }
@@ -606,7 +757,7 @@ void registry_t::handle_update_attributes (void *router_,
     service_key.channel_name = channel_name;
     service_map_t::iterator sit = _services.find (service_key);
     if (sit == _services.end ()) {
-        send_register_ack (router_, sender_id_, 0x01, endpoint,
+        send_register_ack (router_, sender_id_, 0x01, endpoint, 0, 0,
                            "service not found");
         return;
     }
@@ -616,12 +767,13 @@ void registry_t::handle_update_attributes (void *router_,
     provider_key.endpoint = endpoint;
     provider_map_t::iterator pit = sit->second.providers.find (provider_key);
     if (pit == sit->second.providers.end ()) {
-        send_register_ack (router_, sender_id_, 0x01, endpoint,
+        send_register_ack (router_, sender_id_, 0x01, endpoint, 0, 0,
                            "provider not found");
         return;
     }
-    if (pit->second.source_registry != _registry_id) {
-        send_register_ack (router_, sender_id_, 0x01, endpoint,
+    const uint32_t local_registry_id = _registry_id == 0 ? 1 : _registry_id;
+    if (pit->second.source_registry != local_registry_id) {
+        send_register_ack (router_, sender_id_, 0x01, endpoint, 0, 0,
                            "provider not local");
         return;
     }
@@ -629,7 +781,10 @@ void registry_t::handle_update_attributes (void *router_,
     pit->second.weight = weight;
     pit->second.value = value;
     pit->second.metadata = metadata;
+    pit->second.provider_update_seq = _next_provider_update_seq++;
     _list_seq++;
-    send_register_ack (router_, sender_id_, 0x00, endpoint, std::string ());
+    send_register_ack (router_, sender_id_, 0x00, endpoint,
+                       pit->second.source_registry,
+                       pit->second.registration_id, std::string ());
 }
 }

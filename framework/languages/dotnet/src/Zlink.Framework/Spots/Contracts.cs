@@ -47,12 +47,16 @@ public interface IZLinkSpotClient
         TEvent message);
 }
 
-public interface IZLinkSpotPublisherClient
+public interface IZLinkSpotMeshPublisherClient
 {
     IZLinkPublishCall Publish<TEvent>(
         string channelName,
         string topic,
         TEvent message);
+}
+
+public interface IZLinkSpotPublisherClient : IZLinkSpotMeshPublisherClient
+{
 }
 
 public interface IZLinkSpotConnectionManager
@@ -63,6 +67,16 @@ public interface IZLinkSpotConnectionManager
 
     ValueTask<IZLinkEndpointConnections> GetPubSubAsync(
         string spotNodeName,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkEndpointConnections> GetClientServerChannelClientAsync(
+        string spotNodeName,
+        string channelName,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkEndpointConnections> GetSpotMeshPublisherClientAsync(
+        string spotNodeName,
+        string channelName,
         CancellationToken cancellationToken = default);
 
     ValueTask<IZLinkEndpointConnections> GetChannelClientAsync(

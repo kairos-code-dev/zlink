@@ -52,27 +52,6 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         return value;
     }
 
-    public void SetMetadata(Message metadata)
-    {
-        if (metadata == null)
-            throw new ArgumentNullException(nameof(metadata));
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_discovery_set_metadata(_handle,
-            NativeMethods.zlink_msg_data(ref metadata.Handle),
-            (nuint)metadata.Size);
-        ZlinkException.ThrowConfigIfError(rc);
-    }
-
-    public Message GetMetadata()
-    {
-        EnsureNotDisposed();
-        using var metadata = new Message();
-        int rc = NativeMethods.zlink_discovery_get_metadata(_handle,
-            ref metadata.Handle);
-        ZlinkException.ThrowConfigIfError(rc);
-        return metadata.Move();
-    }
-
     public MemberPeerEntry[] MemberPeers()
     {
         EnsureNotDisposed();
@@ -108,17 +87,6 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         }
     }
 
-    public Message MemberPeerMetadata(ServiceRole serviceRole, string endpoint)
-    {
-        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
-        EnsureNotDisposed();
-        using var metadata = new Message();
-        int rc = NativeMethods.zlink_discovery_member_peer_metadata(_handle,
-            (int)serviceRole, endpoint, ref metadata.Handle);
-        ZlinkException.ThrowConfigIfError(rc);
-        return metadata.Move();
-    }
-
     public RoutingId ResolveSpot(RoutingId spotRid)
     {
         EnsureNotDisposed();
@@ -140,6 +108,49 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
                 return RoutingId.FromBytes(
                     NativeHelpers.ReadRoutingId(ref ownerNodeRoutingId));
             }
+        }
+    }
+
+    public unsafe void BindRoute(uint kind, ReadOnlySpan<byte> key,
+        ReadOnlySpan<byte> value)
+    {
+        EnsureNotDisposed();
+        fixed (byte* keyPtr = key)
+        fixed (byte* valuePtr = value)
+        {
+            int rc = NativeMethods.zlink_discovery_bind_route(_handle, kind,
+                (IntPtr)keyPtr, (nuint)key.Length, (IntPtr)valuePtr,
+                (nuint)value.Length);
+            ZlinkException.ThrowConfigIfError(rc);
+        }
+    }
+
+    public unsafe void UnbindRoute(uint kind, ReadOnlySpan<byte> key)
+    {
+        EnsureNotDisposed();
+        fixed (byte* keyPtr = key)
+        {
+            int rc = NativeMethods.zlink_discovery_unbind_route(_handle, kind,
+                (IntPtr)keyPtr, (nuint)key.Length);
+            ZlinkException.ThrowConfigIfError(rc);
+        }
+    }
+
+    public unsafe (RoutingId OwnerNodeRoutingId, Message Value) ResolveRoute(
+        uint kind, ReadOnlySpan<byte> key)
+    {
+        EnsureNotDisposed();
+        fixed (byte* keyPtr = key)
+        {
+            using var value = new Message(init: false);
+            int rc = NativeMethods.zlink_discovery_resolve_route(_handle, kind,
+                (IntPtr)keyPtr, (nuint)key.Length,
+                out ZlinkRoutingId ownerNodeRoutingId, ref value.Handle);
+            ZlinkException.ThrowConfigIfError(rc);
+            value.AdoptInitializedNative();
+            return (RoutingId.FromBytes(
+                NativeHelpers.ReadRoutingId(ref ownerNodeRoutingId)),
+                value.Move());
         }
     }
 

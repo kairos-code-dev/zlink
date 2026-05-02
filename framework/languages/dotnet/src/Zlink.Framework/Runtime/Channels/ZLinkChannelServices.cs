@@ -6,7 +6,8 @@ using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Channels;
 
-internal sealed class ZLinkClient(ZLinkFrameworkRuntime runtime, ZLinkFrameworkRegistration registration) : IZLinkClient
+internal sealed class ZLinkClient(ZLinkFrameworkRuntime runtime, ZLinkFrameworkRegistration registration)
+    : IZLinkClient, IZLinkClientServerClient
 {
     public IZLinkSendCall Send<TMessage>(string channelName, TMessage message)
     {
@@ -17,7 +18,8 @@ internal sealed class ZLinkClient(ZLinkFrameworkRuntime runtime, ZLinkFrameworkR
         => new ZLinkRequestCall<TMessage>(runtime, registration, channelName, request);
 }
 
-internal sealed class ZLinkEventPublisher(ZLinkFrameworkRuntime runtime) : IZLinkEventPublisher
+internal sealed class ZLinkEventPublisher(ZLinkFrameworkRuntime runtime)
+    : IZLinkEventPublisher, IZLinkFanoutPublisher
 {
     public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
     {

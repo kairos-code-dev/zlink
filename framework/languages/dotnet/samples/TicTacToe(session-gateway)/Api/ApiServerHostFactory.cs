@@ -1,10 +1,11 @@
 using Microsoft.Extensions.Hosting;
 using TicTacToe.SessionActorDispatch.Configuration;
+using TicTacToe.SessionGateway.Infrastructure.Configuration;
 using Zlink.Framework.AspNetCore;
 
-namespace TicTacToe.SessionActorDispatch.Api;
+namespace TicTacToe.SessionGateway.Api;
 
-internal static class ApiServerHostFactory
+public static class ApiServerHostFactory
 {
     public static IHost Build(SampleTopology topology)
     {
@@ -14,14 +15,14 @@ internal static class ApiServerHostFactory
         {
             options.Codecs.AddJson();
             options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
-            options.AddChannel(SampleNames.ApiChannel, channel =>
+            options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
                 channel.EnableServer(server =>
                 {
                     server.Bind(topology.ApiChannelEndpoint);
                 });
             });
-            options.AddChannel(SampleNames.PlayChannel, channel =>
+            options.AddClientServerChannel(SampleNames.PlayChannel, channel =>
             {
                 channel.EnableClient();
             });

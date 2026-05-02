@@ -1,9 +1,9 @@
 using System.Net;
 using System.Net.Sockets;
 
-namespace TicTacToe.SessionActorDispatch.Infrastructure;
+namespace TicTacToe.SessionGateway.Infrastructure;
 
-internal static class EphemeralTcpEndpoint
+public static class EphemeralTcpEndpoint
 {
     public static string Create()
     {

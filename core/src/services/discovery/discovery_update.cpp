@@ -227,7 +227,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
 
         std::vector<provider_info_t> service_providers;
         service_providers.reserve (receiver_count);
-        for (uint32_t p = 0; p < receiver_count && index + 5 < frames_.size ();
+        for (uint32_t p = 0; p < receiver_count && index + 8 < frames_.size ();
              ++p) {
             provider_info_t info;
             info.auto_connect_type = auto_connect_type;
@@ -238,6 +238,13 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             info.endpoint = discovery_protocol::read_string (frames_[index++]);
             discovery_protocol::read_routing_id (frames_[index++],
                                                  &info.routing_id);
+            discovery_protocol::read_u32 (frames_[index++],
+                                          &info.source_registry);
+            discovery_protocol::read_u64 (frames_[index++],
+                                          &info.registration_id);
+            uint64_t provider_update_seq = 0;
+            discovery_protocol::read_u64 (frames_[index++],
+                                          &provider_update_seq);
             uint16_t raw_weight = 0;
             if (!discovery_protocol::read_u16 (frames_[index++],
                                                &raw_weight))

@@ -12,10 +12,24 @@ internal sealed class ZLinkChannelConnectionManager(ZLinkFrameworkRuntime runtim
         string channelName,
         CancellationToken cancellationToken = default)
     {
-        return runtime.GetClientConnectionsAsync(channelName, cancellationToken);
+        return GetClientServerClientAsync(channelName, cancellationToken);
     }
 
     public ValueTask<IZLinkEndpointConnections> GetSubscriberAsync(
+        string channelName,
+        CancellationToken cancellationToken = default)
+    {
+        return GetFanoutSubscriberAsync(channelName, cancellationToken);
+    }
+
+    public ValueTask<IZLinkEndpointConnections> GetClientServerClientAsync(
+        string channelName,
+        CancellationToken cancellationToken = default)
+    {
+        return runtime.GetClientConnectionsAsync(channelName, cancellationToken);
+    }
+
+    public ValueTask<IZLinkEndpointConnections> GetFanoutSubscriberAsync(
         string channelName,
         CancellationToken cancellationToken = default)
     {

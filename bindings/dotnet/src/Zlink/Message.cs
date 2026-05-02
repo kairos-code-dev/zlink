@@ -52,7 +52,7 @@ public sealed class Message : IDisposable, IAsyncDisposable
     {
     }
 
-    private Message(bool init)
+    internal Message(bool init)
     {
         if (init)
             Init();
@@ -264,6 +264,11 @@ public sealed class Message : IDisposable, IAsyncDisposable
     internal ref ZlinkMsg Handle => ref _msg;
 
     internal bool IsValid => _valid;
+
+    internal void AdoptInitializedNative()
+    {
+        _valid = true;
+    }
 
     internal void Init()
     {

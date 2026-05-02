@@ -112,7 +112,7 @@ public sealed class MonitoringIntegrationTests
                 discovery.Add(registryRouterEndpoint);
             });
 
-            options.AddChannel("profile", channel =>
+            options.AddClientServerChannel("profile", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
             });

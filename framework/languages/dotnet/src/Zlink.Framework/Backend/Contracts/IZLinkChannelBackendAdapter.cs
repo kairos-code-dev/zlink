@@ -6,8 +6,8 @@ internal interface IZLinkChannelBackendAdapter
 
     IZLinkBackendDiscovery CreateDiscovery(
         IZLinkBackendContext context,
-        ZLinkBackendServiceType serviceType,
-        string serviceName);
+        ZLinkAutoConnectType autoConnectType,
+        string channelName);
 
     IZLinkBackendDealerSocket CreateDealerSocket(IZLinkBackendContext context);
 

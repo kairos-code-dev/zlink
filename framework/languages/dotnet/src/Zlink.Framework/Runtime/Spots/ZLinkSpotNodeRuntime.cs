@@ -20,6 +20,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly Dictionary<RoutingId, ZLinkSpotActivation> _spots = [];
     private readonly HashSet<string> _routerManualConnections = new(StringComparer.Ordinal);
     private readonly HashSet<string> _pubSubManualConnections = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _pubSubDiscoveredConnections = new(StringComparer.Ordinal);
+    private Task? _discoveryPeerReconciliationTask;
 
     public ZLinkSpotNodeRuntime(
         IServiceProvider services,
@@ -52,6 +54,18 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public IReadOnlyDictionary<string, ZLinkSpotPublisherBundle> PublisherBundles => _publisherBundles;
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Values;
+
+    public IZLinkBackendDiscovery? SpotDiscovery { get; set; }
+
+    public void StartDiscoveryPeerReconciliation()
+    {
+        if (SpotDiscovery is null || _discoveryPeerReconciliationTask is not null)
+        {
+            return;
+        }
+
+        _discoveryPeerReconciliationTask = Task.Run(ReconcileDiscoveryPeersAsync);
+    }
 
     public bool HasPublisherClient(string channelName)
     {
@@ -113,7 +127,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         {
             var discovery = _channelAdapter.CreateDiscovery(
                 _context,
-                ZLinkBackendServiceType.Socket,
+                ZLinkAutoConnectType.ClientServer,
                 attached.ChannelName);
             foreach (var endpoint in _frameworkRegistration.Discovery?.Endpoints ?? [])
             {
@@ -140,6 +154,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             throw new InvalidOperationException(
                 $"SPOT node '{Name}' publisher client '{channelName}' is not registered.");
         }
+
+        ConnectDiscoveredPubSubPeers();
 
         var publisher = Node.CreateSpot();
         var bundle = new ZLinkSpotPublisherBundle(
@@ -200,6 +216,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             ZLinkSpotActivation? activation = null;
             try
             {
+                ConnectDiscoveredPubSubPeers();
+
                 if (requestedSpotRid is RoutingId providedRid)
                 {
                     nativeSpot.SetRoutingId(providedRid);
@@ -360,9 +378,59 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         }
     }
 
+    public void ConnectDiscoveredPubSubPeers()
+    {
+        if (SpotDiscovery is null)
+        {
+            return;
+        }
+
+        var localEndpoint = Node.StatusSnapshot().LocalEndpoint;
+        var connectedEndpoints = Node.PeersSnapshot()
+            .Select(static peer => peer.PeerEndpoint)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var peer in SpotDiscovery.MemberPeers())
+        {
+            if (peer.AutoConnectType != ZLinkAutoConnectType.SpotMesh
+                || peer.ServiceRole != ZLinkServiceRole.Spot
+                || !string.Equals(peer.ChannelName, _spotChannelName, StringComparison.Ordinal)
+                || string.IsNullOrWhiteSpace(peer.Endpoint)
+                || string.Equals(peer.Endpoint, localEndpoint, StringComparison.Ordinal)
+                || connectedEndpoints.Contains(peer.Endpoint))
+            {
+                continue;
+            }
+
+            if (TryAddDiscoveredPubSubConnection(peer.Endpoint))
+            {
+                try
+                {
+                    Node.ConnectPeer(peer.Endpoint);
+                }
+                catch (ZlinkConnectException error)
+                    when (error.InternalErrno == 16)
+                {
+                    // Discovery may connect the same peer between the snapshot
+                    // and this manual reconciliation pass.
+                }
+            }
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         _stopSource.Cancel();
+
+        if (_discoveryPeerReconciliationTask is not null)
+        {
+            try
+            {
+                await _discoveryPeerReconciliationTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
 
         foreach (var activation in _spots.Values.ToArray())
         {
@@ -413,6 +481,40 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         lock (_connectionsGate)
         {
             _pubSubManualConnections.Remove(endpoint);
+            _pubSubDiscoveredConnections.Remove(endpoint);
+        }
+    }
+
+    private bool TryAddDiscoveredPubSubConnection(string endpoint)
+    {
+        lock (_connectionsGate)
+        {
+            return !_pubSubManualConnections.Contains(endpoint)
+                && _pubSubDiscoveredConnections.Add(endpoint);
+        }
+    }
+
+    private async Task ReconcileDiscoveryPeersAsync()
+    {
+        while (!_stopSource.IsCancellationRequested)
+        {
+            try
+            {
+                ConnectDiscoveredPubSubPeers();
+                await Task.Delay(TimeSpan.FromMilliseconds(100), _stopSource.Token);
+            }
+            catch (OperationCanceledException) when (_stopSource.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (ObjectDisposedException) when (_stopSource.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (ZlinkException)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(100), _stopSource.Token);
+            }
         }
     }
 }

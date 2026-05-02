@@ -6,7 +6,7 @@
 namespace sample {
 
 OutgameGateway::OutgameGateway(zlink::context_t& ctx, const std::string& registry_pub_ep)
-    : discovery_(ctx, zlink::service_type::gateway)
+    : discovery_(ctx, zlink::auto_connect_type::client_server, "outgame.api")
     , gateway_(ctx, discovery_)
 {
     discovery_.connect_registry(registry_pub_ep.c_str());

@@ -3,6 +3,7 @@
 #include "../testutil_unity.hpp"
 
 #include "core/ctx.hpp"
+#include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "sockets/socket_base.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -334,6 +335,20 @@ void test_bootstrap_descriptor_republish_resumes_after_topology_change ()
         &runtime, true, 3));
 }
 
+void test_ws_route_endpoint_derivation_preserves_path_suffix ()
+{
+    std::string out;
+    TEST_ASSERT_TRUE (
+      zlink::spot_control_protocol::derive_external_router_bind_endpoint (
+        "ws://127.0.0.1:35000/", 7, &out));
+    TEST_ASSERT_EQUAL_STRING ("ws://127.0.0.1:55000/", out.c_str ());
+
+    TEST_ASSERT_TRUE (
+      zlink::spot_control_protocol::derive_external_router_bind_endpoint (
+        "wss://localhost:35001/spot", 7, &out));
+    TEST_ASSERT_EQUAL_STRING ("wss://localhost:55001/spot", out.c_str ());
+}
+
 }
 
 int main (int argc, char **argv)
@@ -353,5 +368,6 @@ int main (int argc, char **argv)
     RUN_TEST (
       test_bootstrap_descriptor_republish_stops_after_ready_topology_stabilizes);
     RUN_TEST (test_bootstrap_descriptor_republish_resumes_after_topology_change);
+    RUN_TEST (test_ws_route_endpoint_derivation_preserves_path_suffix);
     return UNITY_END ();
 }

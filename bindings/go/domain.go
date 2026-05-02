@@ -112,6 +112,12 @@ const (
 	ConfigNotSupported    ConfigResult = 703
 )
 
+type RouteKind uint32
+
+const (
+	RouteKindInvalid RouteKind = 0
+)
+
 type SpotDispatchEvent int
 
 const (

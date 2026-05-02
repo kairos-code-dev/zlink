@@ -17,8 +17,7 @@ public interface IZLinkRegistryQuery
         CancellationToken cancellationToken = default);
 
     ValueTask<ZLinkMemberPeerEntry[]> MemberPeersAsync(
-        ZLinkServiceType serviceType,
-        string serviceName,
+        string channelName,
         CancellationToken cancellationToken = default);
 }
 

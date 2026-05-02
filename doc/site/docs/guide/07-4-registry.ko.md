@@ -396,9 +396,9 @@ zlink_ctx_term(ctx);
 
 ### 6.3 Member Peer 조회
 
-Registry와 Discovery는 서비스의 피어별 라우팅 속성(`value`)과 불투명(opaque, 내부 구조를 노출하지 않는)
-메타데이터를 노출하는 member peer 조회를 제공한다. 가중치 기반 라우팅
-결정과 운영 모니터링에 유용하다.
+Registry와 Discovery는 서비스의 피어별 라우팅 속성(`value`)을 노출하는
+member peer 조회를 제공한다. 가중치 기반 라우팅 결정과 운영 모니터링에
+유용하다.
 
 #### Registry Member Peer 조회
 
@@ -420,22 +420,6 @@ for (size_t i = 0; i < count; i++) {
            (long long)peers[i].value);
 }
 free(peers);
-```
-
-#### Member Peer 메타데이터
-
-```c
-/* Retrieve opaque metadata blob for a specific peer */
-zlink_msg_t metadata;
-zlink_msg_init(&metadata);
-zlink_config_result_t rc = zlink_registry_member_peer_metadata(registry,
-    "payment-service",
-    ZLINK_SERVICE_ROLE_ROUTER, "tcp://10.0.1.5:5555",
-    &metadata);
-if (rc == ZLINK_CONFIG_OK) {
-    printf("metadata size=%zu\n", zlink_msg_size(&metadata));
-}
-zlink_msg_close(&metadata);
 ```
 
 #### Member Peer 엔트리 필드
@@ -468,15 +452,35 @@ for (size_t i = 0; i < count; i++) {
            (long long)peers[i].value);
 }
 free(peers);
+```
 
-/* Retrieve metadata for a specific peer via Discovery */
-zlink_msg_t metadata;
-zlink_msg_init(&metadata);
-zlink_discovery_member_peer_metadata(discovery,
-    ZLINK_SERVICE_ROLE_ROUTER, "tcp://10.0.1.5:5555",
-    &metadata);
-printf("metadata size=%zu\n", zlink_msg_size(&metadata));
-zlink_msg_close(&metadata);
+#### Owner-Bound Route Binding
+
+응용 key가 그 key를 소유한 provider의 생존 상태를 따라야 하면 route binding을
+사용한다. bind는 owner Discovery에서 수행하고, resolve는 같은 channel 안의 다른
+Discovery에서도 수행할 수 있다.
+
+```c
+const char key[] = "actor:42";
+const char value[] = "shard-a";
+
+zlink_discovery_bind_route(owner_discovery, 1,
+    key, sizeof(key) - 1,
+    value, sizeof(value) - 1);
+
+zlink_routing_id_t owner_rid;
+zlink_msg_t route_value;
+zlink_msg_init(&route_value);
+if (zlink_discovery_resolve_route(resolver_discovery, 1,
+        key, sizeof(key) - 1,
+        &owner_rid, &route_value) == ZLINK_CONFIG_OK) {
+    printf("owner rid size=%u value size=%zu\n",
+           owner_rid.size, zlink_msg_size(&route_value));
+}
+zlink_msg_close(&route_value);
+
+zlink_discovery_unbind_route(owner_discovery, 1,
+    key, sizeof(key) - 1);
 ```
 
 ## 7. 운영 패턴

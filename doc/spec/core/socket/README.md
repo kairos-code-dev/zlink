@@ -415,7 +415,7 @@ based on the following classification:
 | `ZLINK_OPT_EVENTS` | Event state bitmask (read-only, `int`) |
 | `ZLINK_OPT_TYPE` | Socket type (read-only, `int`) |
 | `ZLINK_OPT_LAST_ENDPOINT` | Last endpoint bound (read-only, `string`) |
-| `ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE` | Maximum discovery metadata size in bytes (read-only, `int`) |
+| `ZLINK_OPT_ROUTE_VALUE_MAX_SIZE` | Maximum discovery route value size in bytes (read-only, `int`) |
 
 #### Dedicated Functions (not option enums)
 

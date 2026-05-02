@@ -23,9 +23,7 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         var sessionRouterId = runtime.ResolveSessionRouterId(routerChannelId);
         var binding = new ZLinkActorSessionBinding(
             actorId,
-            routerChannelId,
             sessionRouterId,
-            sessionId,
             Guid.NewGuid().ToString("N"));
 
         var writer = runtime.Services.GetRequiredService<IZLinkActorSessionLocationWriter>();
@@ -72,7 +70,6 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
                 await writer.UnbindSessionAsync(
                     new ZLinkActorSessionUnbind(
                         binding.ActorId,
-                        binding.SessionId,
                         binding.BindingToken),
                     cancellationToken).ConfigureAwait(false);
             }

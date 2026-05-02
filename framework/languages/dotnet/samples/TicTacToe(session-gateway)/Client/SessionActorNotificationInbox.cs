@@ -4,7 +4,7 @@ using Systems.Zlink.Stream.Connector.Runtime;
 using TicTacToe.SessionActorDispatch.Configuration;
 using TicTacToe.SessionActorDispatch.Contracts;
 
-namespace TicTacToe.SessionActorDispatch.Client;
+namespace TicTacToe.SessionGateway.Client;
 
 internal sealed class SessionActorNotificationInbox
 {

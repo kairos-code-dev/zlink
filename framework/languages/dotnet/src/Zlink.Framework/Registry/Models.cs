@@ -1,9 +1,13 @@
 namespace Zlink.Framework.Registry;
 
-public enum ZLinkServiceType
+public enum ZLinkAutoConnectType
 {
-    Spot = 0x3002,
-    Socket = 0x3003,
+    Invalid = 0,
+    RouteMesh = 1,
+    ClientServer = 2,
+    DealerMesh = 3,
+    Fanout = 4,
+    SpotMesh = 5,
 }
 
 public enum ZLinkServiceKind
@@ -56,14 +60,15 @@ public enum ZLinkAdmissionState
 }
 
 public sealed record ZLinkRegistryServiceSummaryFilter(
-    ZLinkServiceKind? ServiceKind = null,
+    ZLinkAutoConnectType? AutoConnectType = null,
     ZLinkServiceRole? ServiceRole = null,
-    string? ServiceName = null);
+    string? ChannelName = null);
 
 public sealed record ZLinkRegistryTopologyFilter(
+    ZLinkAutoConnectType? AutoConnectType = null,
     ZLinkServiceKind? ServiceKind = null,
     ZLinkServiceRole? ServiceRole = null,
-    string? ServiceName = null,
+    string? ChannelName = null,
     RoutingId? RoutingId = null,
     ZLinkTopologyState? State = null,
     ZLinkTopologySource? Source = null);
@@ -80,9 +85,9 @@ public sealed record ZLinkRegistryStatus(
     ulong LastChangedMs);
 
 public sealed record ZLinkRegistryServiceSummaryEntry(
-    ZLinkServiceKind ServiceKind,
+    ZLinkAutoConnectType AutoConnectType,
     ZLinkServiceRole ServiceRole,
-    string ServiceName,
+    string ChannelName,
     uint TotalCount,
     uint ConnectingCount,
     uint ReadyCount,
@@ -91,10 +96,11 @@ public sealed record ZLinkRegistryServiceSummaryEntry(
     ulong LastReportedMs);
 
 public sealed record ZLinkRegistryTopologyEntry(
+    ZLinkAutoConnectType AutoConnectType,
     RoutingId? RoutingId,
     ZLinkServiceKind ServiceKind,
     ZLinkServiceRole ServiceRole,
-    string ServiceName,
+    string ChannelName,
     string Endpoint,
     ZLinkTopologySource Source,
     ZLinkTopologyState State,
@@ -104,9 +110,9 @@ public sealed record ZLinkRegistryTopologyEntry(
     ulong LastReportedMs);
 
 public sealed record ZLinkMemberPeerEntry(
-    ZLinkServiceType ServiceType,
+    ZLinkAutoConnectType AutoConnectType,
     ZLinkServiceRole ServiceRole,
-    string ServiceName,
+    string ChannelName,
     string Endpoint,
     RoutingId? RoutingId,
     long Value,

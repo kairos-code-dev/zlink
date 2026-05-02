@@ -23,6 +23,11 @@ public interface IChannelClientCapabilityBuilder
     void UseManualConnections(Action<IChannelClientConnections> configure);
 }
 
+public interface IDealerMeshChannelClientCapabilityBuilder : IChannelClientCapabilityBuilder
+{
+    void Bind(string endpoint);
+}
+
 public interface IChannelPublisherCapabilityBuilder
 {
     void Bind(string endpoint);
@@ -97,6 +102,10 @@ public interface IZLinkRoutedChannelBuilder
         where THandler : class, IZLinkRoutedRequestHandler<TRequest, TReply>;
 }
 
+public interface IZLinkRouteMeshChannelBuilder : IZLinkRoutedChannelBuilder
+{
+}
+
 public interface IZLinkStreamNodeBuilder
 {
     void Bind(string endpoint);
@@ -116,6 +125,25 @@ public interface IZLinkChannelBuilder
     void EnableSubscriber(Action<IChannelSubscriberCapabilityBuilder>? configure = null);
 }
 
+public interface IZLinkClientServerChannelBuilder
+{
+    void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null);
+
+    void EnableClient(Action<IChannelClientCapabilityBuilder>? configure = null);
+}
+
+public interface IZLinkFanoutChannelBuilder
+{
+    void EnablePublisher(Action<IChannelPublisherCapabilityBuilder>? configure = null);
+
+    void EnableSubscriber(Action<IChannelSubscriberCapabilityBuilder>? configure = null);
+}
+
+public interface IZLinkDealerMeshChannelBuilder
+{
+    void EnableClient(Action<IDealerMeshChannelClientCapabilityBuilder>? configure = null);
+}
+
 public interface IZLinkSpotNodeBuilder
 {
     void Bind(string endpoint);
@@ -128,12 +156,49 @@ public interface IZLinkSpotNodeBuilder
         string channelName,
         Action<ISpotChannelClientCapabilityBuilder>? configure = null);
 
+    void AttachClientServerChannelClient(
+        string channelName,
+        Action<ISpotChannelClientCapabilityBuilder>? configure = null);
+
     void AttachSpotPublisherClient(
+        string channelName,
+        Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
+
+    void AttachSpotMeshPublisherClient(
         string channelName,
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
 
     void AddSpotFactory<TSpot>(string spotName)
         where TSpot : IZLinkSpot;
+}
+
+public interface IZLinkSpotMeshNodeBuilder
+{
+    void Bind(string endpoint);
+
+    void EnableRouter(Action<ISpotRouterCapabilityBuilder>? configure = null);
+
+    void EnablePubSub(Action<ISpotPubSubCapabilityBuilder>? configure = null);
+
+    void AttachClientServerChannelClient(
+        string channelName,
+        Action<ISpotChannelClientCapabilityBuilder>? configure = null);
+
+    void AttachSpotMeshPublisherClient(
+        string channelName,
+        Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
+
+    void AddSpotFactory<TSpot>(string spotName)
+        where TSpot : IZLinkSpot;
+}
+
+public interface IZLinkSpotMeshBuilder
+{
+    void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure);
+
+    void AddNode(
+        string spotNodeName,
+        Action<IZLinkSpotMeshNodeBuilder> configure);
 }
 
 public interface IZLinkFrameworkOptions
@@ -160,9 +225,25 @@ public interface IZLinkFrameworkOptions
         string channelName,
         Action<IZLinkChannelBuilder> configure);
 
+    void AddClientServerChannel(
+        string channelName,
+        Action<IZLinkClientServerChannelBuilder> configure);
+
+    void AddFanoutChannel(
+        string channelName,
+        Action<IZLinkFanoutChannelBuilder> configure);
+
+    void AddDealerMeshChannel(
+        string channelName,
+        Action<IZLinkDealerMeshChannelBuilder> configure);
+
     void AddRoutedChannel(
         string routerChannelId,
         Action<IZLinkRoutedChannelBuilder> configure);
+
+    void AddRouteMeshChannel(
+        string channelName,
+        Action<IZLinkRouteMeshChannelBuilder> configure);
 
     void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure);
 
@@ -182,6 +263,10 @@ public interface IZLinkFrameworkOptions
     void AddSpotNode(
         string spotNodeName,
         Action<IZLinkSpotNodeBuilder> configure);
+
+    void AddSpotMesh(
+        string channelName,
+        Action<IZLinkSpotMeshBuilder> configure);
 }
 
 public interface IZLinkMetadataPolicyBuilder

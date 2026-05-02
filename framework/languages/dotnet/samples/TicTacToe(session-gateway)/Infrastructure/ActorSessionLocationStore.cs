@@ -1,9 +1,10 @@
+using TicTacToe.SessionActorDispatch.Infrastructure;
 using Zlink;
 using Zlink.Framework.Streams;
 
-namespace TicTacToe.SessionActorDispatch.Infrastructure;
+namespace TicTacToe.SessionGateway.Infrastructure;
 
-internal sealed class RegistryActorSessionLocationStore(
+public sealed class RegistryActorSessionLocationStore(
     IRegistryDiscoveryMetadata registry,
     string metadataNamespace)
     : IZLinkActorSessionLocationWriter,
@@ -17,9 +18,7 @@ internal sealed class RegistryActorSessionLocationStore(
             Key(binding.ActorId),
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                ["routerChannelId"] = binding.RouterChannelId,
                 ["sessionRouterId"] = binding.SessionRouterId.ToHex(),
-                ["sessionId"] = binding.SessionId,
                 ["bindingToken"] = binding.BindingToken,
             },
             cancellationToken);
@@ -33,7 +32,6 @@ internal sealed class RegistryActorSessionLocationStore(
             Key(binding.ActorId),
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                ["sessionId"] = binding.SessionId,
                 ["bindingToken"] = binding.BindingToken,
             },
             cancellationToken);
@@ -48,9 +46,7 @@ internal sealed class RegistryActorSessionLocationStore(
             cancellationToken).ConfigureAwait(false);
 
         return new ZLinkActorSessionRoute(
-            entry.Require("routerChannelId"),
             RoutingId.FromString(entry.Require("sessionRouterId")),
-            entry.Require("sessionId"),
             entry.Require("bindingToken"));
     }
 

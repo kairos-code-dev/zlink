@@ -91,33 +91,6 @@ class discovery_t
             zlink_discovery_get_value (_discovery, value_out_)));
     }
 
-    void set_metadata (const void *data_, size_t size_)
-    {
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_discovery_set_metadata (_discovery, data_, size_)));
-    }
-
-    void set_metadata (const std::vector<uint8_t> &bytes_)
-    {
-        set_metadata (
-          bytes_.empty () ? NULL : &bytes_[0], bytes_.size ());
-    }
-
-    void set_metadata (const std::string &text_)
-    {
-        set_metadata (text_.data (), text_.size ());
-    }
-
-    void get_metadata (message_t &metadata_out_) const
-    {
-        zlink_msg_t native;
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_discovery_get_metadata (_discovery, &native)));
-        metadata_out_.adopt (&native);
-    }
-
     std::vector<member_peer_entry_t> member_peers () const
     {
         size_t count = 0;
@@ -140,20 +113,6 @@ class discovery_t
         return entries;
     }
 
-    void member_peer_metadata (service_role service_role_,
-                               const std::string &endpoint_,
-                               message_t &metadata_out_) const
-    {
-        validate_bounded_c_string (endpoint_, 255u, "endpoint");
-        zlink_msg_t native;
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_discovery_member_peer_metadata (
-              _discovery, static_cast<zlink_service_role_t> (service_role_),
-              endpoint_.c_str (), &native)));
-        metadata_out_.adopt (&native);
-    }
-
     routing_id_t resolve_spot (const routing_id_t &spot_rid_)
     {
         routing_id_t owner_node_rid;
@@ -163,6 +122,72 @@ class discovery_t
               _discovery, routing_id_native (spot_rid_),
               routing_id_native (owner_node_rid))));
         return owner_node_rid;
+    }
+
+    void bind_route (zlink_route_kind_t kind_,
+                     const void *key_,
+                     size_t key_size_,
+                     const void *value_,
+                     size_t value_size_)
+    {
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_bind_route (_discovery, kind_, key_, key_size_,
+                                        value_, value_size_)));
+    }
+
+    void bind_route (zlink_route_kind_t kind_,
+                     const std::string &key_,
+                     const std::vector<uint8_t> &value_)
+    {
+        bind_route (kind_, key_.data (), key_.size (),
+                    value_.empty () ? NULL : &value_[0], value_.size ());
+    }
+
+    void bind_route (zlink_route_kind_t kind_,
+                     const std::string &key_,
+                     const std::string &value_)
+    {
+        bind_route (kind_, key_.data (), key_.size (), value_.data (),
+                    value_.size ());
+    }
+
+    void unbind_route (zlink_route_kind_t kind_,
+                       const void *key_,
+                       size_t key_size_)
+    {
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_unbind_route (_discovery, kind_, key_,
+                                          key_size_)));
+    }
+
+    void unbind_route (zlink_route_kind_t kind_, const std::string &key_)
+    {
+        unbind_route (kind_, key_.data (), key_.size ());
+    }
+
+    routing_id_t resolve_route (zlink_route_kind_t kind_,
+                                const void *key_,
+                                size_t key_size_,
+                                message_t &value_out_) const
+    {
+        routing_id_t owner_node_rid;
+        zlink_msg_t native;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_resolve_route (
+              _discovery, kind_, key_, key_size_,
+              routing_id_native (owner_node_rid), &native)));
+        value_out_.adopt (&native);
+        return owner_node_rid;
+    }
+
+    routing_id_t resolve_route (zlink_route_kind_t kind_,
+                                const std::string &key_,
+                                message_t &value_out_) const
+    {
+        return resolve_route (kind_, key_.data (), key_.size (), value_out_);
     }
 
     void close ()

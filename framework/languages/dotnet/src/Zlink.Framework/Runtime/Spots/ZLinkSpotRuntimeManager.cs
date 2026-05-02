@@ -1,4 +1,5 @@
 using Zlink.Framework.Backend.Contracts;
+using System.Security.Cryptography;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -21,6 +22,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         foreach (var spotNodeRegistration in registration.SpotNodes.Values)
         {
             var node = spotAdapter.CreateSpotNode(state.Context);
+            node.SetRoutingId(CreateNodeRoutingId(spotNodeRegistration));
             node.Bind(spotNodeRegistration.BindEndpoint!);
 
             var nodeRuntime = new ZLinkSpotNodeRuntime(
@@ -41,9 +43,11 @@ internal sealed class ZLinkSpotRuntimeManager(
                     channelAdapter,
                     state,
                     registration.SpotDiscovery.ChannelName,
-                    ZLinkBackendServiceType.Spot,
+                    ZLinkAutoConnectType.SpotMesh,
                     registration.SpotDiscovery.Endpoints);
                 node.AttachDiscovery(discovery);
+                nodeRuntime.SpotDiscovery = discovery;
+                nodeRuntime.StartDiscoveryPeerReconciliation();
                 state.SpotDiscoveries.Add($"{spotNodeRegistration.SpotNodeName}.discovery", discovery);
             }
 
@@ -55,6 +59,11 @@ internal sealed class ZLinkSpotRuntimeManager(
             foreach (var endpoint in spotNodeRegistration.PubSub?.ManualConnections ?? [])
             {
                 _ = nodeRuntime.ConnectPubSubAsync(endpoint, CancellationToken.None);
+            }
+
+            foreach (var channelName in spotNodeRegistration.AttachedSpotPublisherClients.Keys)
+            {
+                nodeRuntime.GetOrCreatePublisherBundle(channelName);
             }
 
             state.SpotNodes.Add(spotNodeRegistration.SpotNodeName, nodeRuntime);
@@ -79,7 +88,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         }
 
         throw new InvalidOperationException(
-            $"SPOT publisher client '{channelName}' is not registered.");
+            $"SPOT publisher client channel '{channelName}' is not registered.");
     }
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
@@ -255,16 +264,28 @@ internal sealed class ZLinkSpotRuntimeManager(
         IZLinkChannelBackendAdapter adapter,
         ZLinkFrameworkRuntimeState state,
         string channelName,
-        ZLinkBackendServiceType serviceType,
+        ZLinkAutoConnectType autoConnectType,
         IReadOnlyCollection<string> endpoints)
     {
-        var discovery = adapter.CreateDiscovery(state.Context, serviceType, channelName);
+        var discovery = adapter.CreateDiscovery(state.Context, autoConnectType, channelName);
         foreach (var endpoint in endpoints)
         {
             discovery.ConnectRegistry(endpoint);
         }
 
         return discovery;
+    }
+
+    private static RoutingId CreateNodeRoutingId(ZLinkSpotNodeRegistration registration)
+    {
+        var bytes = RandomNumberGenerator.GetBytes(16);
+        bytes[0] = registration.AttachedSpotPublisherClients.Count switch
+        {
+            > 0 when registration.SpotFactories.Count == 0 => 0xf0,
+            > 0 => 0x80,
+            _ => 0x10,
+        };
+        return RoutingId.FromBytes(bytes);
     }
 
     private static ZLinkSpotNodeRuntime GetNode(

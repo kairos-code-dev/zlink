@@ -1,6 +1,6 @@
-namespace TicTacToe.SessionActorDispatch.Infrastructure;
+namespace TicTacToe.SessionGateway.Infrastructure;
 
-internal interface IRegistryDiscoveryMetadata
+public interface IRegistryDiscoveryMetadata
 {
     ValueTask PutAsync(
         string key,
@@ -17,7 +17,7 @@ internal interface IRegistryDiscoveryMetadata
         CancellationToken cancellationToken);
 }
 
-internal interface IRegistryMetadataEntry
+public interface IRegistryMetadataEntry
 {
     string Require(string name);
 }

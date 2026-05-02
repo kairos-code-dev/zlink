@@ -60,11 +60,9 @@ internal sealed class ZLinkBackendRegistryWrapper(ZlinkRegistry nativeRegistry) 
             .ToArray();
     }
 
-    public IReadOnlyList<ZLinkMemberPeerEntry> MemberPeers(
-        ZLinkServiceType serviceType,
-        string serviceName)
+    public IReadOnlyList<ZLinkMemberPeerEntry> MemberPeers(string channelName)
     {
-        return nativeRegistry.MemberPeers((ServiceType)serviceType, serviceName)
+        return nativeRegistry.MemberPeers(channelName)
             .Select(static entry => entry.ToFramework())
             .ToArray();
     }

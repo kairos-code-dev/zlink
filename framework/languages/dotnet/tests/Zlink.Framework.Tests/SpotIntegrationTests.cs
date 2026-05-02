@@ -187,7 +187,7 @@ public sealed class SpotIntegrationTests
             {
                 spot.Bind(publisherNodeEndpoint);
                 spot.EnablePubSub();
-                spot.AttachSpotPublisherClient("game.stage");
+                spot.AttachSpotMeshPublisherClient("game.stage");
             });
         });
 
@@ -327,7 +327,7 @@ public sealed class SpotIntegrationTests
             {
                 spot.Bind(publisherNodeEndpoint);
                 spot.EnablePubSub();
-                spot.AttachSpotPublisherClient("game.stage");
+                spot.AttachSpotMeshPublisherClient("game.stage");
             });
         });
 
@@ -528,7 +528,7 @@ public sealed class SpotIntegrationTests
         builder.Services.AddZLinkFramework(options =>
         {
             options.UseSpotDiscovery("game.stage", _ => { });
-            options.AddChannel("actor-pre-api", channel =>
+            options.AddClientServerChannel("actor-pre-api", channel =>
             {
                 channel.EnableServer(server => server.Bind(preJoinApi));
                 channel.EnableClient(client =>
@@ -536,14 +536,14 @@ public sealed class SpotIntegrationTests
                     client.UseManualConnections(connections => connections.Connect(preJoinApi));
                 });
             });
-            options.AddChannel("actor-post-api", channel =>
+            options.AddClientServerChannel("actor-post-api", channel =>
             {
                 channel.EnableServer(server => server.Bind(postJoinApi));
             });
             options.AddSpotNode("actor-node", spot =>
             {
                 spot.Bind(spotNode);
-                spot.AttachChannelClient("actor-post-api", client =>
+                spot.AttachClientServerChannelClient("actor-post-api", client =>
                 {
                     client.UseManualConnections(connections => connections.Connect(postJoinApi));
                 });
@@ -659,7 +659,7 @@ public sealed class SpotIntegrationTests
         {
             options.UseSpotDiscovery("game.stage", _ => { });
 
-            options.AddChannel("orders", channel =>
+            options.AddClientServerChannel("orders", channel =>
             {
                 channel.EnableServer(server => server.Bind(ordersServer));
             });
@@ -667,7 +667,7 @@ public sealed class SpotIntegrationTests
             options.AddSpotNode("stage-node", spot =>
             {
                 spot.Bind(spotNode);
-                spot.AttachChannelClient("orders", client =>
+                spot.AttachClientServerChannelClient("orders", client =>
                 {
                     client.UseManualConnections(connections => connections.Connect(ordersServer));
                 });

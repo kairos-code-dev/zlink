@@ -1,9 +1,8 @@
-using TicTacToe.SessionActorDispatch.Infrastructure;
 using Zlink;
 
-namespace TicTacToe.SessionActorDispatch.Configuration;
+namespace TicTacToe.SessionGateway.Infrastructure.Configuration;
 
-internal sealed record SampleTopology(
+public sealed record SampleTopology(
     string RegistryPubEndpoint,
     string RegistryRouterEndpoint,
     string ApiChannelEndpoint,
@@ -47,7 +46,7 @@ internal sealed record SampleTopology(
     }
 }
 
-internal sealed record SampleSessionNode(
+public sealed record SampleSessionNode(
     string RouterEndpoint,
     string StreamEndpoint,
     RoutingId RoutingId);

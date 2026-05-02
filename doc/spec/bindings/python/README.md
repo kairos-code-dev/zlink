@@ -1056,8 +1056,6 @@ class Registry:
         filter_: RegistryServiceSummaryFilter | None = None
     ) -> list[RegistryServiceSummaryEntry]: ...                                  # Raises: ConfigError
     def member_peers(self, channel_name: str) -> list[MemberPeerEntry]: ...       # Raises: ConfigError
-    def member_peer_metadata(self, channel_name: str, service_role: int,
-                             endpoint: str) -> bytes: ...                        # Raises: ConfigError
     def topology_snapshot(self) -> list[RegistryTopologyEntry]: ...              # Raises: ConfigError
     def topology_query(self, filter_: RegistryTopologyFilter) -> list[RegistryTopologyEntry]: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -1083,10 +1081,11 @@ class Discovery:
     def connect_registry(self, registry_endpoint: str) -> None: ...              # Raises: ConnectError
     def set_value(self, value: int) -> None: ...                                 # Raises: ConfigError
     def get_value(self) -> int: ...                                              # Raises: ConfigError
-    def set_metadata(self, data: bytes | bytearray) -> None: ...                 # Raises: ConfigError
-    def get_metadata(self) -> bytes: ...                                         # Raises: ConfigError
+    def bind_route(self, kind: int, key: bytes | bytearray,
+                   value: bytes | bytearray) -> None: ...                       # Raises: ConfigError
+    def unbind_route(self, kind: int, key: bytes | bytearray) -> None: ...       # Raises: ConfigError
+    def resolve_route(self, kind: int, key: bytes | bytearray) -> tuple[RoutingId, bytes]: ...  # Raises: ConfigError
     def member_peers(self) -> list[MemberPeerEntry]: ...                         # Raises: ConfigError
-    def member_peer_metadata(self, service_role: int, endpoint: str) -> bytes: ...  # Raises: ConfigError
     def resolve_spot(self, spot_rid: RoutingId) -> RoutingId: ...                # Raises: ConfigError — maps to zlink_discovery_resolve_spot
     def set_tls_client(self, ca_cert: str | None, hostname: str | None,
                        trust_system: bool = False) -> None: ...                  # Raises: ConfigError

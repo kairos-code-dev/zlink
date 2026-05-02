@@ -62,6 +62,8 @@ int socket_discovery_attachment_t::attach (discovery_t *discovery_)
         _advertise_endpoint = bound_endpoint;
         _discovery_managed_peer_endpoints.clear ();
         _active_peer_endpoints.clear ();
+        _discovery_managed_peers_by_rid.clear ();
+        _active_peers_by_rid.clear ();
     }
 
     std::string advertise_endpoint;
@@ -78,6 +80,8 @@ int socket_discovery_attachment_t::attach (discovery_t *discovery_)
         _refresh_seq = 0;
         _discovery_managed_peer_endpoints.clear ();
         _active_peer_endpoints.clear ();
+        _discovery_managed_peers_by_rid.clear ();
+        _active_peers_by_rid.clear ();
         (void) discovery_access_t::remove_observer (discovery_, this);
         return -1;
     }
@@ -249,6 +253,8 @@ void socket_discovery_attachment_t::on_discovery_shutdown_requested (
         _registered = false;
         _discovery_managed_peer_endpoints.clear ();
         _active_peer_endpoints.clear ();
+        _discovery_managed_peers_by_rid.clear ();
+        _active_peers_by_rid.clear ();
     }
 
     if (registered && discovery && !advertise_endpoint.empty ()) {
@@ -278,6 +284,8 @@ void socket_discovery_attachment_t::on_discovery_destroyed (
         _refresh_seq = 0;
         _discovery_managed_peer_endpoints.clear ();
         _active_peer_endpoints.clear ();
+        _discovery_managed_peers_by_rid.clear ();
+        _active_peers_by_rid.clear ();
     }
 
     (void) zlink_close (static_cast<void *> (_socket));

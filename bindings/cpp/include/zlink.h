@@ -215,6 +215,12 @@ typedef struct zlink_routing_id_t
     uint8_t data[255];
 } zlink_routing_id_t;
 
+typedef uint32_t zlink_route_kind_t;
+
+#define ZLINK_ROUTE_KIND_INVALID 0u
+#define ZLINK_ROUTE_KEY_MAX 256u
+#define ZLINK_ROUTE_VALUE_MAX 4096u
+
 typedef void (zlink_free_fn) (void *data_, void *hint_);
 
 #define ZLINK_MSG_METADATA_KEY_USER_MIN 0x0100
@@ -1071,11 +1077,25 @@ ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_spot (
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_set_value (void *discovery_, int64_t value_);
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_get_value (void *discovery_,
                                             int64_t *value_out_);
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_set_metadata (void *discovery_,
-                                               const void *data_,
-                                               size_t size_);
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_get_metadata (void *discovery_,
-                                               zlink_msg_t *metadata_out_);
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_bind_route (
+  void *discovery_,
+  zlink_route_kind_t kind_,
+  const void *key_,
+  size_t key_size_,
+  const void *value_,
+  size_t value_size_);
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_unbind_route (
+  void *discovery_,
+  zlink_route_kind_t kind_,
+  const void *key_,
+  size_t key_size_);
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_route (
+  void *discovery_,
+  zlink_route_kind_t kind_,
+  const void *key_,
+  size_t key_size_,
+  zlink_routing_id_t *owner_rid_out_,
+  zlink_msg_t *value_out_);
 
 /**
  * @brief Destroy the discovery instance and release all resources.
@@ -1329,20 +1349,9 @@ ZLINK_EXPORT zlink_config_result_t zlink_registry_member_peers (
   const char *channel_name_,
   zlink_member_peer_entry_t *entries_,
   size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_registry_member_peer_metadata (
-  void *registry_,
-  const char *channel_name_,
-  zlink_service_role_t service_role_,
-  const char *endpoint_,
-  zlink_msg_t *metadata_out_);
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_member_peers (void *discovery_,
                                                zlink_member_peer_entry_t *entries_,
                                                size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_member_peer_metadata (
-  void *discovery_,
-  zlink_service_role_t service_role_,
-  const char *endpoint_,
-  zlink_msg_t *metadata_out_);
 
 typedef struct zlink_registry_topology_entry_t
 {

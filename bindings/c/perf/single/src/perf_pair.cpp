@@ -99,6 +99,18 @@ void run_pair (const std::string &transport,
         return;
     }
 
+    emit_single_socket_hwm_detail (bind_socket.get (),
+                                   "PAIR",
+                                   transport,
+                                   "receiver",
+                                   ZLINK_SOCKET_PAIR,
+                                   msg_size);
+    emit_single_socket_hwm_detail (connect_socket.get (),
+                                   "PAIR",
+                                   transport,
+                                   "sender",
+                                   ZLINK_SOCKET_PAIR,
+                                   msg_size);
     print_result (lib_name,
                   "PAIR",
                   transport,

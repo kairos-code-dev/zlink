@@ -2,11 +2,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TicTacToe.SessionActorDispatch.Configuration;
 using TicTacToe.SessionActorDispatch.Infrastructure;
+using TicTacToe.SessionActorDispatch.Play;
+using TicTacToe.SessionGateway.Infrastructure;
+using TicTacToe.SessionGateway.Infrastructure.Configuration;
 using Zlink.Framework.AspNetCore;
 
-namespace TicTacToe.SessionActorDispatch.Play;
+namespace TicTacToe.SessionGateway.Play;
 
-internal static class PlayServerHostFactory
+public static class PlayServerHostFactory
 {
     public static IHost Build(
         SampleTopology topology,
@@ -17,6 +20,8 @@ internal static class PlayServerHostFactory
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(sessionLocations);
         builder.Services.AddSingleton(playRoutes);
+        builder.Services.AddSingleton<ISpotRouteResolver>(playRoutes);
+        builder.Services.AddSingleton<ISpotRouteWriter>(playRoutes);
         builder.Services.AddSingleton<RegistryPlayRoutePublisher>();
         builder.Services.AddSingleton<GameNotificationPublisher>();
         builder.Services.AddScoped<PlayerActorFactory>();
@@ -29,11 +34,7 @@ internal static class PlayServerHostFactory
         {
             options.Codecs.AddJson();
             options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
-            options.UseSpotDiscovery(SampleNames.GameSpotDiscovery, discovery =>
-            {
-                discovery.Add(topology.RegistryRouterEndpoint);
-            });
-            options.AddChannel(SampleNames.PlayChannel, channel =>
+            options.AddClientServerChannel(SampleNames.PlayChannel, channel =>
             {
                 channel.EnableServer(server =>
                 {
@@ -43,15 +44,22 @@ internal static class PlayServerHostFactory
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
             options.AddActorPlayRouteResolver<RegistryPlayRouteStore>();
             options.AddActorSessionRouteResolver<RegistryActorSessionLocationStore>();
-            options.AddRoutedChannel(SampleNames.RouterChannel, routed =>
+            options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
             {
                 routed.Bind(topology.PlayRouterEndpoint);
                 routed.ConfigureRouting(routing => routing.RoutingId = topology.PlayRid);
             });
-            options.AddSpotNode(SampleNames.GameSpotNode, spot =>
+            options.AddSpotMesh(SampleNames.GameSpotDiscovery, spotMesh =>
             {
-                spot.Bind(topology.PlaySpotEndpoint);
-                spot.AddSpotFactory<TicTacToeGameSpot>(SampleNames.GameSpotType);
+                spotMesh.UseDiscovery(discovery =>
+                {
+                    discovery.Add(topology.RegistryRouterEndpoint);
+                });
+                spotMesh.AddNode(SampleNames.GameSpotNode, spot =>
+                {
+                    spot.Bind(topology.PlaySpotEndpoint);
+                    spot.AddSpotFactory<TicTacToeGameSpot>(SampleNames.GameSpotType);
+                });
             });
         });
 

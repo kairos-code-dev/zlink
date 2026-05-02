@@ -561,37 +561,6 @@ napi_value registry_member_peers(napi_env env, napi_callback_info info)
     return throw_last_error(env, "registry_member_peers failed");
 }
 
-napi_value registry_member_peer_metadata(napi_env env, napi_callback_info info)
-{
-    napi_value argv[4];
-    size_t argc = 4;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *registry = NULL;
-    napi_get_value_external(env, argv[0], &registry);
-    uint32_t service_role = 0;
-    std::string channel_name = get_string(env, argv[1]);
-    napi_get_value_uint32(env, argv[2], &service_role);
-    std::string endpoint = get_string(env, argv[3]);
-
-    zlink_msg_t metadata;
-    int rc = zlink_msg_init(&metadata);
-    if (rc != 0)
-        return throw_last_error(env, "zlink_msg_init failed");
-    rc = zlink_registry_member_peer_metadata(
-      registry, channel_name.c_str(),
-      static_cast<zlink_service_role_t>(service_role), endpoint.c_str(), &metadata);
-    if (rc != 0) {
-        (void) zlink_msg_close(&metadata);
-        return throw_last_error(env, "registry_member_peer_metadata failed");
-    }
-
-    napi_value out;
-    napi_create_buffer_copy(env, zlink_msg_size(&metadata), zlink_msg_data(&metadata),
-                            NULL, &out);
-    (void) zlink_msg_close(&metadata);
-    return out;
-}
-
 napi_value registry_query_client_new(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
@@ -787,35 +756,6 @@ napi_value discovery_get_providers(napi_env env, napi_callback_info info)
     return throw_last_error(env, "discovery_member_peers failed");
 }
 
-napi_value discovery_member_peer_metadata(napi_env env, napi_callback_info info)
-{
-    napi_value argv[3];
-    size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *discovery = NULL;
-    napi_get_value_external(env, argv[0], &discovery);
-    uint32_t service_role = 0;
-    napi_get_value_uint32(env, argv[1], &service_role);
-    std::string endpoint = get_string(env, argv[2]);
-
-    zlink_msg_t metadata;
-    int rc = zlink_msg_init(&metadata);
-    if (rc != 0)
-        return throw_last_error(env, "zlink_msg_init failed");
-    rc = zlink_discovery_member_peer_metadata(
-      discovery, static_cast<zlink_service_role_t>(service_role), endpoint.c_str(), &metadata);
-    if (rc != 0) {
-        (void) zlink_msg_close(&metadata);
-        return throw_last_error(env, "discovery_member_peer_metadata failed");
-    }
-
-    napi_value out;
-    napi_create_buffer_copy(env, zlink_msg_size(&metadata), zlink_msg_data(&metadata),
-                            NULL, &out);
-    (void) zlink_msg_close(&metadata);
-    return out;
-}
-
 napi_value discovery_set_value(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -849,49 +789,94 @@ napi_value discovery_get_value(napi_env env, napi_callback_info info)
     return out;
 }
 
-napi_value discovery_set_metadata(napi_env env, napi_callback_info info)
+napi_value discovery_bind_route(napi_env env, napi_callback_info info)
 {
-    napi_value argv[2];
-    size_t argc = 2;
+    napi_value argv[4];
+    size_t argc = 4;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *discovery = NULL;
     napi_get_value_external(env, argv[0], &discovery);
-    void *data = NULL;
-    size_t len = 0;
-    if (napi_get_buffer_info(env, argv[1], &data, &len) != napi_ok) {
-      napi_throw_type_error(env, NULL, "metadata must be Buffer");
-      return NULL;
+    uint32_t kind = 0;
+    napi_get_value_uint32(env, argv[1], &kind);
+    void *key = NULL;
+    size_t key_len = 0;
+    void *value = NULL;
+    size_t value_len = 0;
+    if (napi_get_buffer_info(env, argv[2], &key, &key_len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "key must be Buffer");
+        return NULL;
     }
-    int rc = zlink_discovery_set_metadata(discovery, data, len);
+    if (napi_get_buffer_info(env, argv[3], &value, &value_len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "value must be Buffer");
+        return NULL;
+    }
+    int rc = zlink_discovery_bind_route(
+      discovery, static_cast<zlink_route_kind_t>(kind), key, key_len, value, value_len);
     if (rc != 0)
-        return throw_last_error(env, "discovery_set_metadata failed");
+        return throw_last_error(env, "discovery_bind_route failed");
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
 }
 
-napi_value discovery_get_metadata(napi_env env, napi_callback_info info)
+napi_value discovery_unbind_route(napi_env env, napi_callback_info info)
 {
-    napi_value argv[1];
-    size_t argc = 1;
+    napi_value argv[3];
+    size_t argc = 3;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *discovery = NULL;
     napi_get_value_external(env, argv[0], &discovery);
-
-    zlink_msg_t metadata;
-    int rc = zlink_msg_init(&metadata);
+    uint32_t kind = 0;
+    napi_get_value_uint32(env, argv[1], &kind);
+    void *key = NULL;
+    size_t key_len = 0;
+    if (napi_get_buffer_info(env, argv[2], &key, &key_len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "key must be Buffer");
+        return NULL;
+    }
+    int rc = zlink_discovery_unbind_route(
+      discovery, static_cast<zlink_route_kind_t>(kind), key, key_len);
     if (rc != 0)
-        return throw_last_error(env, "zlink_msg_init failed");
-    rc = zlink_discovery_get_metadata(discovery, &metadata);
+        return throw_last_error(env, "discovery_unbind_route failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value discovery_resolve_route(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *discovery = NULL;
+    napi_get_value_external(env, argv[0], &discovery);
+    uint32_t kind = 0;
+    napi_get_value_uint32(env, argv[1], &kind);
+    void *key = NULL;
+    size_t key_len = 0;
+    if (napi_get_buffer_info(env, argv[2], &key, &key_len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "key must be Buffer");
+        return NULL;
+    }
+
+    zlink_routing_id_t owner_rid;
+    zlink_msg_t value;
+    int rc = zlink_discovery_resolve_route(
+      discovery, static_cast<zlink_route_kind_t>(kind), key, key_len, &owner_rid, &value);
     if (rc != 0) {
-        (void) zlink_msg_close(&metadata);
-        return throw_last_error(env, "discovery_get_metadata failed");
+        return throw_last_error(env, "discovery_resolve_route failed");
     }
 
     napi_value out;
-    napi_create_buffer_copy(env, zlink_msg_size(&metadata), zlink_msg_data(&metadata),
-                            NULL, &out);
-    (void) zlink_msg_close(&metadata);
+    napi_create_object(env, &out);
+    napi_value rid;
+    napi_create_buffer_copy(env, owner_rid.size, owner_rid.data, NULL, &rid);
+    napi_value value_buf;
+    napi_create_buffer_copy(env, zlink_msg_size(&value), zlink_msg_data(&value),
+                            NULL, &value_buf);
+    napi_set_named_property(env, out, "owner", rid);
+    napi_set_named_property(env, out, "value", value_buf);
+    (void) zlink_msg_close(&value);
     return out;
 }
 

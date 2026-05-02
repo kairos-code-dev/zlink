@@ -354,6 +354,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             RC.ALLOW_MULTI = True
             os.environ["PERF_RUN_COOLDOWN_MS"] = "0"
             os.environ["PERF_TRANSPORT_TRANSITION_MS"] = "23"
+            os.environ["PERF_MULTI_SPOT_CLEAN_LATENCY"] = "0"
 
             def fake_run_sizes_test(binary_name, lib_name, transport, sizes,
                                     pattern_name, result_line_callback=None):
@@ -401,6 +402,64 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             RC.ALLOW_MULTI = old_allow_multi
             RC.run_sizes_test = old_run_sizes_test
             RC.time.sleep = old_sleep
+            os.environ.clear()
+            os.environ.update(old_env)
+
+    def test_multi_spot_clean_latency_table_uses_merged_result(self):
+        old_allow_multi = RC.ALLOW_MULTI
+        old_run_sizes_test = RC.run_sizes_test
+        old_msg_sizes = RC.MSG_SIZES
+        old_env = os.environ.copy()
+        callbacks = []
+        try:
+            RC.ALLOW_MULTI = True
+            RC.MSG_SIZES = [65536]
+            os.environ["PERF_RUN_COOLDOWN_MS"] = "0"
+            os.environ["PERF_TRANSPORT_TRANSITION_MS"] = "0"
+            os.environ.pop("PERF_MULTI_SPOT_CLEAN_LATENCY", None)
+
+            def fake_run_sizes_test(binary_name, lib_name, transport, sizes,
+                                    pattern_name, result_line_callback=None):
+                callbacks.append(result_line_callback)
+                if result_line_callback is not None:
+                    for metric_name, value in tier1_metrics(999.0):
+                        result_line_callback(transport, sizes[0], metric_name, value)
+                return {
+                    "status": "success",
+                    "parsed": {
+                        "tcp|65536|throughput": 123.0,
+                        "tcp|65536|bandwidth": 456.0,
+                        "tcp|65536|latency": 1.5,
+                        "tcp|65536|latency_p95": 2.5,
+                        "tcp|65536|latency_p99": 3.5,
+                    },
+                    "timed_out": False,
+                    "returncode": 0,
+                    "reason": "",
+                    "warnings": [],
+                }
+
+            RC.run_sizes_test = fake_run_sizes_test
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                RC.collect_data(
+                    "ignored",
+                    "current",
+                    "SPOT",
+                    1,
+                    transports=["tcp"],
+                    table_lines=[],
+                )
+
+            output = stdout.getvalue()
+            self.assertEqual(callbacks, [None])
+            self.assertIn("1.500 ms", output)
+            self.assertNotIn("999.000 ms", output)
+        finally:
+            RC.ALLOW_MULTI = old_allow_multi
+            RC.run_sizes_test = old_run_sizes_test
+            RC.MSG_SIZES = old_msg_sizes
             os.environ.clear()
             os.environ.update(old_env)
 

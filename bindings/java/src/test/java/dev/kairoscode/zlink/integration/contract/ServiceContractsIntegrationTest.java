@@ -24,7 +24,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -49,7 +48,6 @@ class ServiceContractsIntegrationTest {
             queryClient.connect(registryRouter);
             discovery.connectRegistry(registryRouter);
             discovery.setValue(7L);
-            discovery.setMetadata("meta".getBytes());
             String cert = Path.of("tests/certs/server.crt").toAbsolutePath().toString();
             String key = Path.of("tests/certs/server.key").toAbsolutePath().toString();
             String ca = Path.of("tests/certs/ca.crt").toAbsolutePath().toString();
@@ -58,7 +56,6 @@ class ServiceContractsIntegrationTest {
             discovery.setTlsClient(ca, "localhost", true);
 
             assertEquals(7L, discovery.getValue());
-            assertArrayEquals("meta".getBytes(), discovery.getMetadata());
             assertTrue(discovery.memberPeers().isEmpty());
 
             assertEquals(0, registry.statusSnapshot().topologyEntryCount());

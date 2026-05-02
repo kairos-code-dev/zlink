@@ -252,32 +252,72 @@ bool zlink::registry_t::select_spot_owner_entry_locked (
         return false;
 
     bool found = false;
-    uint64_t best_registered_at = 0;
+    uint64_t best_registration_id = 0;
     uint64_t best_reported_at = 0;
-    std::string best_endpoint;
+    std::string best_routing_id;
     for (size_t i = 0; i < matched_.size (); ++i) {
         const zlink_registry_topology_entry_t &entry = matched_[i];
-        provider_key_t provider_key;
-        provider_key.service_role = discovery_protocol::service_role_spot;
-        provider_key.endpoint = entry.endpoint;
-        provider_map_t::const_iterator pit =
-          sit->second.providers.find (provider_key);
-        if (pit == sit->second.providers.end ())
+        topology_key_t topology_key;
+        topology_key.service_kind = entry.service_kind;
+        topology_key.service_role = entry.service_role;
+        topology_key.routing_id_key.assign (
+          reinterpret_cast<const char *> (entry.routing_id.data),
+          entry.routing_id.size);
+        topology_key.channel_name = entry.channel_name;
+        topology_key.endpoint = entry.endpoint;
+        std::map<topology_key_t, topology_entry_t>::const_iterator tit =
+          _topology.find (topology_key);
+        if (tit == _topology.end () || !tit->second.has_owner
+            || !owner_is_live_locked (tit->second.owner)) {
             continue;
+        }
 
-        const uint64_t registered_at = pit->second.registered_at;
+        const uint64_t registration_id = tit->second.owner.registration_id;
         const uint64_t reported_at = entry.last_reported_ms;
-        if (!found || registered_at > best_registered_at
-            || (registered_at == best_registered_at
-                && reported_at > best_reported_at)
-            || (registered_at == best_registered_at
-                && reported_at == best_reported_at
-                && entry.endpoint > best_endpoint)) {
+        const std::string owner_rid = tit->second.owner.routing_id_key;
+        if (!found || reported_at > best_reported_at
+            || (reported_at == best_reported_at
+                && registration_id > best_registration_id)
+            || (reported_at == best_reported_at
+                && registration_id == best_registration_id
+                && owner_rid < best_routing_id)) {
             *entry_out_ = entry;
-            best_registered_at = registered_at;
+            best_registration_id = registration_id;
             best_reported_at = reported_at;
-            best_endpoint = entry.endpoint;
+            best_routing_id = owner_rid;
             found = true;
+        }
+    }
+
+    if (!found) {
+        for (size_t i = 0; i < matched_.size (); ++i) {
+            const zlink_registry_topology_entry_t &entry = matched_[i];
+            provider_key_t provider_key;
+            provider_key.service_role = discovery_protocol::service_role_spot;
+            provider_key.endpoint = entry.endpoint;
+            provider_map_t::const_iterator pit =
+              sit->second.providers.find (provider_key);
+            if (pit == sit->second.providers.end ())
+                continue;
+
+            const uint64_t registration_id = pit->second.registration_id;
+            const uint64_t reported_at = entry.last_reported_ms;
+            const std::string owner_rid =
+              std::string (reinterpret_cast<const char *> (
+                             pit->second.routing_id.data),
+                           pit->second.routing_id.size);
+            if (!found || reported_at > best_reported_at
+                || (reported_at == best_reported_at
+                    && registration_id > best_registration_id)
+                || (reported_at == best_reported_at
+                    && registration_id == best_registration_id
+                    && owner_rid < best_routing_id)) {
+                *entry_out_ = entry;
+                best_registration_id = registration_id;
+                best_reported_at = reported_at;
+                best_routing_id = owner_rid;
+                found = true;
+            }
         }
     }
 
@@ -418,51 +458,6 @@ int zlink::registry_t::member_peers (const char *channel_name_,
     return 0;
 }
 
-int zlink::registry_t::member_peer_metadata (const char *channel_name_,
-                                             zlink_service_role_t service_role_,
-                                             const char *endpoint_,
-                                             zlink_msg_t *metadata_out_)
-{
-    service_public_api_scope_t admission (_public_api);
-    if (!admission.acquired ())
-        return -1;
-    if (!channel_name_ || channel_name_[0] == '\0' || !endpoint_
-        || endpoint_[0] == '\0' || !metadata_out_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    std::vector<unsigned char> metadata;
-    bool found = false;
-    {
-        scoped_lock_t lock (_sync);
-        service_key_t key;
-        key.channel_name = channel_name_;
-        service_map_t::const_iterator sit = _services.find (key);
-        if (sit != _services.end ()) {
-            provider_key_t provider_key;
-            provider_key.service_role = service_role_;
-            provider_key.endpoint = endpoint_;
-            provider_map_t::const_iterator pit =
-              sit->second.providers.find (provider_key);
-            if (pit != sit->second.providers.end ()) {
-                metadata = pit->second.metadata;
-                found = true;
-            }
-        }
-    }
-
-    if (!found) {
-        errno = ENOENT;
-        return -1;
-    }
-    if (zlink_msg_init_size (metadata_out_, metadata.size ()) != 0)
-        return -1;
-    if (!metadata.empty ())
-        memcpy (zlink_msg_data (metadata_out_), &metadata[0], metadata.size ());
-    return 0;
-}
-
 void zlink::registry_t::handle_topology_query (
   void *router_,
   const zlink_msg_t *frames_,
@@ -513,4 +508,277 @@ void zlink::registry_t::send_topology_reply (
           router_, &entries_[i], sizeof (entries_[i]),
           (i + 1 == entries_.size ()) ? 0 : ZLINK_SNDMORE);
     }
+}
+
+void zlink::registry_t::send_route_reply (
+  void *router_,
+  const zlink_routing_id_t &sender_id_,
+  uint8_t status_,
+  const zlink_routing_id_t *owner_rid_,
+  const std::vector<unsigned char> *value_,
+  const std::string &error_)
+{
+    zlink_msg_t id_frame;
+    zlink_msg_init_size (&id_frame, sender_id_.size);
+    if (sender_id_.size > 0)
+        memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
+    if (zlink::send_msg_internal (router_, &id_frame, ZLINK_SNDMORE) == -1) {
+        zlink_msg_close (&id_frame);
+        return;
+    }
+
+    zlink_routing_id_t empty_rid;
+    memset (&empty_rid, 0, sizeof (empty_rid));
+    const zlink_routing_id_t &rid = owner_rid_ ? *owner_rid_ : empty_rid;
+    const std::vector<unsigned char> empty_value;
+    const std::vector<unsigned char> &value = value_ ? *value_ : empty_value;
+
+    discovery_protocol::send_u16 (
+      router_, discovery_protocol::msg_resolve_route_reply, ZLINK_SNDMORE);
+    discovery_protocol::send_frame (router_, &status_, sizeof (status_),
+                                    ZLINK_SNDMORE);
+    discovery_protocol::send_routing_id (router_, rid, ZLINK_SNDMORE);
+    discovery_protocol::send_frame (
+      router_, value.empty () ? NULL : &value[0], value.size (),
+      ZLINK_SNDMORE);
+    discovery_protocol::send_string (router_, error_, 0);
+}
+
+bool zlink::registry_t::read_route_key (zlink_route_kind_t kind_,
+                                        const zlink_msg_t &key_frame_,
+                                        const std::string &channel_name_,
+                                        route_key_t *out_) const
+{
+    if (!out_ || channel_name_.empty ()
+        || kind_ == ZLINK_ROUTE_KIND_INVALID) {
+        errno = EINVAL;
+        return false;
+    }
+    const size_t key_size = zlink_msg_size (&key_frame_);
+    if (key_size == 0 || key_size > ZLINK_ROUTE_KEY_MAX) {
+        errno = key_size == 0 ? EINVAL : EMSGSIZE;
+        return false;
+    }
+    out_->channel_name = channel_name_;
+    out_->kind = kind_;
+    out_->key.assign (
+      static_cast<const char *> (
+        zlink_msg_data (const_cast<zlink_msg_t *> (&key_frame_))),
+      key_size);
+    return true;
+}
+
+void zlink::registry_t::handle_bind_route (
+  void *router_,
+  const zlink_msg_t *frames_,
+  size_t frame_count_,
+  const zlink_routing_id_t &sender_id_)
+{
+    if (frame_count_ != 8) {
+        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+                          "invalid bind route");
+        return;
+    }
+
+    uint32_t raw_kind = 0;
+    if (!discovery_protocol::read_u32 (frames_[1], &raw_kind)) {
+        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+                          "invalid kind");
+        return;
+    }
+    const size_t value_size = zlink_msg_size (&frames_[3]);
+    if (value_size > ZLINK_ROUTE_VALUE_MAX) {
+        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+                          "value too large");
+        return;
+    }
+    const std::string channel_name =
+      discovery_protocol::read_string (frames_[4]);
+    uint16_t owner_role = 0;
+    uint64_t registration_id = 0;
+    if (!discovery_protocol::read_u16 (frames_[5], &owner_role)
+        || !discovery_protocol::read_u64 (frames_[7], &registration_id)) {
+        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+                          "invalid owner");
+        return;
+    }
+    const std::string owner_endpoint =
+      discovery_protocol::read_string (frames_[6]);
+
+    const uint64_t now_ms = zlink::clock_t ().now_ms ();
+    uint8_t status = 0x00;
+    std::string error;
+    {
+        scoped_lock_t lock (_sync);
+        owner_identity_t owner;
+        zlink_routing_id_t owner_rid;
+        if (!find_provider_owner_locked (channel_name, owner_role, owner_endpoint,
+                                         &owner, &owner_rid)) {
+            owner.registration_id = 0;
+        }
+        if (owner.registration_id == 0) {
+            status = 0x01;
+            error = "owner not found";
+        } else if (owner.registration_id != registration_id) {
+            status = 0x02;
+            error = "stale owner generation";
+        } else {
+            route_key_t route_key;
+            if (!read_route_key (raw_kind, frames_[2], channel_name,
+                                 &route_key)) {
+                status = 0xFF;
+                error = "invalid route key";
+            } else {
+                route_entry_t &entry = _routes[route_key];
+                std::map<owner_identity_t, route_key_set_t>::iterator
+                  old_owner_it = _routes_by_owner.find (entry.owner);
+                if (old_owner_it != _routes_by_owner.end ()) {
+                    old_owner_it->second.erase (route_key);
+                    if (old_owner_it->second.empty ())
+                        _routes_by_owner.erase (old_owner_it);
+                }
+                entry.key = route_key;
+                entry.value.clear ();
+                if (value_size > 0) {
+                    const unsigned char *value_data =
+                      static_cast<const unsigned char *> (
+                        zlink_msg_data (
+                          const_cast<zlink_msg_t *> (&frames_[3])));
+                    entry.value.assign (value_data, value_data + value_size);
+                }
+                entry.owner = owner;
+                entry.owner_routing_id = owner_rid;
+                entry.updated_at_ms = now_ms;
+                entry.advertising_registry =
+                  owner.source_registry == 0 ? 1 : owner.source_registry;
+                _routes_by_owner[owner].insert (route_key);
+                _list_seq++;
+            }
+        }
+    }
+
+    send_route_reply (router_, sender_id_, status, NULL, NULL, error);
+}
+
+void zlink::registry_t::handle_unbind_route (
+  void *router_,
+  const zlink_msg_t *frames_,
+  size_t frame_count_,
+  const zlink_routing_id_t &sender_id_)
+{
+    if (frame_count_ != 7) {
+        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+                          "invalid unbind route");
+        return;
+    }
+
+    uint32_t raw_kind = 0;
+    const std::string channel_name =
+      discovery_protocol::read_string (frames_[3]);
+    uint16_t owner_role = 0;
+    uint64_t registration_id = 0;
+    if (!discovery_protocol::read_u32 (frames_[1], &raw_kind)
+        || !discovery_protocol::read_u16 (frames_[4], &owner_role)
+        || !discovery_protocol::read_u64 (frames_[6], &registration_id)) {
+        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+                          "invalid unbind route");
+        return;
+    }
+    const std::string owner_endpoint =
+      discovery_protocol::read_string (frames_[5]);
+
+    uint8_t status = 0x00;
+    std::string error;
+    {
+        scoped_lock_t lock (_sync);
+        owner_identity_t owner;
+        zlink_routing_id_t owner_rid;
+        if (!find_provider_owner_locked (channel_name, owner_role,
+                                         owner_endpoint, &owner, &owner_rid))
+            owner.registration_id = 0;
+        if (owner.registration_id == 0) {
+            status = 0x01;
+            error = "owner not found";
+        } else if (owner.registration_id != registration_id) {
+            status = 0x02;
+            error = "stale owner generation";
+        } else {
+            route_key_t route_key;
+            if (!read_route_key (raw_kind, frames_[2], channel_name,
+                                 &route_key)) {
+                status = 0xFF;
+                error = "invalid route key";
+            } else {
+                std::map<route_key_t, route_entry_t>::iterator it =
+                  _routes.find (route_key);
+                if (it == _routes.end ()) {
+                    status = 0x01;
+                    error = "route not found";
+                } else if (it->second.owner.operator< (owner)
+                           || owner.operator< (it->second.owner)) {
+                    status = 0x02;
+                    error = "route owner mismatch";
+                } else {
+                    std::map<owner_identity_t, route_key_set_t>::iterator
+                      owner_it = _routes_by_owner.find (owner);
+                    if (owner_it != _routes_by_owner.end ()) {
+                        owner_it->second.erase (route_key);
+                        if (owner_it->second.empty ())
+                            _routes_by_owner.erase (owner_it);
+                    }
+                    _routes.erase (it);
+                    _list_seq++;
+                }
+            }
+        }
+    }
+
+    send_route_reply (router_, sender_id_, status, NULL, NULL, error);
+}
+
+void zlink::registry_t::handle_resolve_route (
+  void *router_,
+  const zlink_msg_t *frames_,
+  size_t frame_count_,
+  const zlink_routing_id_t &sender_id_)
+{
+    if (frame_count_ < 4) {
+        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+                          "invalid resolve route");
+        return;
+    }
+
+    uint32_t raw_kind = 0;
+    if (!discovery_protocol::read_u32 (frames_[1], &raw_kind)) {
+        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+                          "invalid kind");
+        return;
+    }
+    const std::string channel_name =
+      discovery_protocol::read_string (frames_[3]);
+
+    uint8_t status = 0x01;
+    zlink_routing_id_t owner_rid;
+    memset (&owner_rid, 0, sizeof (owner_rid));
+    std::vector<unsigned char> value;
+    std::string error = "route not found";
+    {
+        scoped_lock_t lock (_sync);
+        route_key_t route_key;
+        if (!read_route_key (raw_kind, frames_[2], channel_name, &route_key)) {
+            status = 0xFF;
+            error = "invalid route key";
+        } else {
+            std::map<route_key_t, route_entry_t>::const_iterator it =
+              _routes.find (route_key);
+            if (it != _routes.end () && owner_is_live_locked (it->second.owner)) {
+                status = 0x00;
+                owner_rid = it->second.owner_routing_id;
+                value = it->second.value;
+                error.clear ();
+            }
+        }
+    }
+
+    send_route_reply (router_, sender_id_, status, &owner_rid, &value, error);
 }

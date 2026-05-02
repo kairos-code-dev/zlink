@@ -74,10 +74,24 @@ void socket_discovery_attachment_t::refresh_peers (
     discovery_->snapshot_providers (discovery_->channel_name (), &providers);
 
     std::set<std::string> target_endpoints;
+    std::map<std::string, std::string> target_peers_by_rid;
     for (size_t i = 0; i < providers.size (); ++i) {
         const provider_info_t &provider = providers[i];
+        const std::string remote_rid =
+          provider.routing_id.size == 0
+            ? std::string ()
+            : std::string (reinterpret_cast<const char *> (
+                             provider.routing_id.data),
+                           provider.routing_id.size);
+        const std::string local_rid =
+          local_routing_id.size == 0
+            ? std::string ()
+            : std::string (reinterpret_cast<const char *> (
+                             local_routing_id.data),
+                           local_routing_id.size);
         if (provider.endpoint.empty ()
             || advertise_endpoint_ == provider.endpoint
+            || (!local_rid.empty () && local_rid == remote_rid)
             || !discovery_protocol::socket_auto_connect_target_matches (
               discovery_->auto_connect_type (), local_role_,
               provider.service_role, local_routing_id, provider.routing_id,
@@ -85,37 +99,55 @@ void socket_discovery_attachment_t::refresh_peers (
             continue;
         }
         target_endpoints.insert (provider.endpoint);
+        if (!remote_rid.empty ())
+            target_peers_by_rid[remote_rid] = provider.endpoint;
     }
 
     std::set<std::string> active_endpoints;
+    std::map<std::string, std::string> active_peers_by_rid;
     {
         scoped_lock_t lock (_sync);
         if (_discovery != discovery_ || _shutdown_requested)
             return;
         active_endpoints = _active_peer_endpoints;
+        active_peers_by_rid = _active_peers_by_rid;
         _discovery_managed_peer_endpoints = target_endpoints;
+        _discovery_managed_peers_by_rid = target_peers_by_rid;
         _refresh_seq =
           discovery_->service_update_seq (discovery_->channel_name ());
     }
 
-    for (std::set<std::string>::const_iterator it = target_endpoints.begin ();
-         it != target_endpoints.end (); ++it) {
-        if (active_endpoints.find (*it) != active_endpoints.end ())
+    for (std::map<std::string, std::string>::const_iterator it =
+           target_peers_by_rid.begin ();
+         it != target_peers_by_rid.end (); ++it) {
+        std::map<std::string, std::string>::const_iterator active =
+          active_peers_by_rid.find (it->first);
+        if (active != active_peers_by_rid.end () && active->second == it->second)
             continue;
-        if (_socket->service_attachment_connect (it->c_str ()) == 0) {
+        if (active != active_peers_by_rid.end ())
+            (void) _socket->service_attachment_term_endpoint (
+              active->second.c_str ());
+        if (_socket->service_attachment_connect (it->second.c_str ()) == 0) {
             scoped_lock_t lock (_sync);
-            if (_discovery == discovery_ && !_shutdown_requested)
-                _active_peer_endpoints.insert (*it);
+            if (_discovery == discovery_ && !_shutdown_requested) {
+                _active_peer_endpoints.erase (active == active_peers_by_rid.end ()
+                                                ? std::string ()
+                                                : active->second);
+                _active_peer_endpoints.insert (it->second);
+                _active_peers_by_rid[it->first] = it->second;
+            }
         }
     }
 
-    for (std::set<std::string>::const_iterator it = active_endpoints.begin ();
-         it != active_endpoints.end (); ++it) {
-        if (target_endpoints.find (*it) != target_endpoints.end ())
+    for (std::map<std::string, std::string>::const_iterator it =
+           active_peers_by_rid.begin ();
+         it != active_peers_by_rid.end (); ++it) {
+        if (target_peers_by_rid.find (it->first) != target_peers_by_rid.end ())
             continue;
-        if (_socket->service_attachment_term_endpoint (it->c_str ()) == 0) {
+        if (_socket->service_attachment_term_endpoint (it->second.c_str ()) == 0) {
             scoped_lock_t lock (_sync);
-            _active_peer_endpoints.erase (*it);
+            _active_peer_endpoints.erase (it->second);
+            _active_peers_by_rid.erase (it->first);
         }
     }
 

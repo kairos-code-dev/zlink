@@ -50,7 +50,7 @@ DEFAULT_SOCKET_TRANSPORTS = ["tcp", "tls", "ws", "wss", "inproc"]
 if not IS_WINDOWS:
     DEFAULT_SOCKET_TRANSPORTS.append("ipc")
 DEFAULT_STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
-DEFAULT_SPOT_TRANSPORTS = ["tcp", "tls"]
+DEFAULT_SPOT_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 STREAM_TRANSPORT_PATTERNS = {
     "SPOT",
 }
@@ -83,6 +83,7 @@ class RunOutcome:
     reason: str = ""
     warnings: Optional[List[str]] = None
     stderr: str = ""
+    auto_hwm_details: Optional[List[Dict[str, str]]] = None
 
 
 @dataclass
@@ -130,6 +131,132 @@ def emit_result_lines(combo_results: Dict[Tuple[str, str, int], ComboRecord]) ->
                 f"RESULT,current,{pattern},{transport},{size},"
                 f"{metric_name},{value:.3f}"
             )
+
+
+def parse_auto_hwm_detail_line(line: str) -> Optional[Dict[str, str]]:
+    stripped = (line or "").strip()
+    if not stripped.startswith("AUTO_HWM_DETAIL,"):
+        return None
+    fields: Dict[str, str] = {}
+    for item in stripped.split(",")[1:]:
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        fields[key.strip()] = value.strip()
+    return fields if fields else None
+
+
+def bytes_to_kb_display(value: str) -> str:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return "?"
+    if parsed <= 0:
+        return "0"
+    if parsed % 1024 == 0:
+        return str(parsed // 1024)
+    return f"{parsed / 1024.0:.1f}"
+
+
+def auto_hwm_detail_cell_widths(
+    rows: List[Dict[str, str]],
+    columns: Tuple[Tuple[str, str], ...],
+) -> List[int]:
+    widths: List[int] = []
+    for header, key in columns:
+        width = len(header)
+        for row in rows:
+            width = max(width, len(str(row.get(key, "?"))))
+        widths.append(width)
+    return widths
+
+
+def emit_auto_hwm_detail_table(
+    rows: List[Dict[str, str]],
+    pattern: str,
+) -> bool:
+    pattern_rows = [
+        row
+        for row in rows
+        if row.get("pattern", "").upper() == pattern.upper()
+    ]
+    if not pattern_rows:
+        return False
+
+    display_rows: List[Dict[str, str]] = []
+    seen = set()
+    for row in pattern_rows:
+        display = dict(row)
+        display["sndbuf_kb"] = bytes_to_kb_display(row.get("effective_sndbuf", ""))
+        display["rcvbuf_kb"] = bytes_to_kb_display(row.get("effective_rcvbuf", ""))
+        key = tuple(
+            display.get(name, "")
+            for name in (
+                "msg_size",
+                "component",
+                "owner",
+                "socket",
+                "socket_type",
+                "role",
+                "sndhwm",
+                "rcvhwm",
+                "sndbuf_kb",
+                "rcvbuf_kb",
+                "effective_message_bytes",
+                "socket_message_slots",
+            )
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        display_rows.append(display)
+
+    if not display_rows:
+        return False
+
+    display_rows.sort(
+        key=lambda row: (
+            int(row.get("msg_size", "0") or "0"),
+            row.get("component", ""),
+            row.get("owner", ""),
+            row.get("socket", ""),
+        )
+    )
+    columns = (
+        ("Size(B)", "msg_size"),
+        ("Component", "component"),
+        ("Owner", "owner"),
+        ("Socket", "socket"),
+        ("Type", "socket_type"),
+        ("Role", "role"),
+        ("SNDHWM", "sndhwm"),
+        ("RCVHWM", "rcvhwm"),
+        ("SNDBUF(KB)", "sndbuf_kb"),
+        ("RCVBUF(KB)", "rcvbuf_kb"),
+        ("MsgUnit(B)", "effective_message_bytes"),
+        ("Slots", "socket_message_slots"),
+    )
+    widths = auto_hwm_detail_cell_widths(display_rows, columns)
+
+    print("\n## Auto-HWM Detail")
+    print(f"- pattern: {pattern}")
+    header = "| " + " | ".join(
+        f"{columns[index][0]:<{widths[index]}}"
+        for index in range(len(columns))
+    ) + " |"
+    separator = "|-" + "-|-".join("-" * width for width in widths) + "-|"
+    print(header)
+    print(separator)
+    for row in display_rows:
+        print(
+            "| "
+            + " | ".join(
+                f"{str(row.get(columns[index][1], '?')):<{widths[index]}}"
+                for index in range(len(columns))
+            )
+            + " |"
+        )
+    return True
 
 
 def env_get(name: str) -> str:
@@ -609,7 +736,12 @@ def run_single_test(
 
         metrics: Dict[str, float] = {}
         warnings: List[str] = []
+        auto_hwm_details: List[Dict[str, str]] = []
         for line in stdout.splitlines():
+            auto_hwm_detail = parse_auto_hwm_detail_line(line)
+            if auto_hwm_detail:
+                auto_hwm_details.append(auto_hwm_detail)
+                continue
             parsed, warning = parse_metric_from_result_line(
                 line, lib_name, pattern, transport, size
             )
@@ -666,6 +798,7 @@ def run_single_test(
                 latency_p99=latency_p99 if latency_p99 is not None else metrics["latency"],
                 warnings=warnings or None,
                 stderr=stderr,
+                auto_hwm_details=auto_hwm_details or None,
             )
 
         if special == "unsupported" and not metrics:
@@ -843,6 +976,7 @@ def build_single_option_items(
         ("sndtimeo_ms", str(sndtimeo_ms)),
         ("rcvtimeo_ms", str(rcvtimeo_ms)),
         ("ctx_auto_hwm_enable", env_get("PERF_CTX_AUTO_HWM_ENABLE") or "core-default"),
+        ("ctx_auto_hwm_profile", env_get("PERF_CTX_AUTO_HWM_PROFILE") or "core-default"),
         ("patterns", ",".join(patterns)),
         ("transports", ",".join(unique_transports) if unique_transports else "none"),
         ("msg_sizes", ",".join(str(sz) for sz in unique_sizes) if unique_sizes else "none"),
@@ -999,6 +1133,7 @@ def main() -> int:
     all_failures: List[Tuple[str, str, int, str]] = []
     combo_results: Dict[Tuple[str, str, int], ComboRecord] = {}
     run_warnings: List[str] = []
+    auto_hwm_detail_rows: List[Dict[str, str]] = []
     table_lines: List[str] = []
     transport_transition_ms = max(
         0,
@@ -1097,6 +1232,8 @@ def main() -> int:
                             run_warnings.append(
                                 f"{pattern} {transport} {size}B run#{run_no}: {warning}"
                             )
+                    if outcome.auto_hwm_details:
+                        auto_hwm_detail_rows.extend(outcome.auto_hwm_details)
 
                     if outcome.status == "success":
                         t_samples[size].append(outcome.throughput)
@@ -1248,6 +1385,9 @@ def main() -> int:
         print("\n## Failures")
         for pattern, transport, size, reason in all_failures:
             print(f"- {pattern} current {transport} {size}B: {reason}")
+
+    for pattern in patterns:
+        emit_auto_hwm_detail_table(auto_hwm_detail_rows, pattern)
 
     unsupported_combo_count = sum(
         1 for record in combo_results.values() if record.status == "unsupported"

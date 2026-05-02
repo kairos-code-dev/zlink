@@ -71,6 +71,7 @@ pub enum zlink_auto_hwm_profile_t {
 
 pub type zlink_send_flags_t = u32;
 pub type zlink_recv_flags_t = u32;
+pub type zlink_route_kind_t = u32;
 
 pub const ZLINK_DONTWAIT: zlink_send_flags_t = 0x0001;
 
@@ -205,7 +206,7 @@ pub enum zlink_option_t {
     ZLINK_OPT_TYPE = 0x3009,
     ZLINK_OPT_LAST_ENDPOINT = 0x3014,
     ZLINK_OPT_ZMP_METADATA = 0x3030,
-    ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE = 0x3032,
+    ZLINK_OPT_ROUTE_VALUE_MAX_SIZE = 0x3032,
     ZLINK_OPT_RID_DUPLICATE_POLICY = 0x3033,
     ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0x3034,
 }
@@ -1128,14 +1129,27 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_discovery_set_value(discovery: *mut c_void, value: i64) -> c_int;
     pub fn zlink_discovery_get_value(discovery: *mut c_void, value_out: *mut i64) -> c_int;
-    pub fn zlink_discovery_set_metadata(
+    pub fn zlink_discovery_bind_route(
         discovery: *mut c_void,
-        data: *const c_void,
-        size: usize,
+        kind: zlink_route_kind_t,
+        key: *const c_void,
+        key_size: usize,
+        value: *const c_void,
+        value_size: usize,
     ) -> c_int;
-    pub fn zlink_discovery_get_metadata(
+    pub fn zlink_discovery_unbind_route(
         discovery: *mut c_void,
-        metadata_out: *mut zlink_msg_t,
+        kind: zlink_route_kind_t,
+        key: *const c_void,
+        key_size: usize,
+    ) -> c_int;
+    pub fn zlink_discovery_resolve_route(
+        discovery: *mut c_void,
+        kind: zlink_route_kind_t,
+        key: *const c_void,
+        key_size: usize,
+        owner_node_rid_out: *mut zlink_routing_id_t,
+        value_out: *mut zlink_msg_t,
     ) -> c_int;
     pub fn zlink_discovery_resolve_spot(
         discovery: *mut c_void,
@@ -1316,23 +1330,10 @@ unsafe extern "C" {
         entries: *mut zlink_member_peer_entry_t,
         count: *mut usize,
     ) -> c_int;
-    pub fn zlink_registry_member_peer_metadata(
-        registry: *mut c_void,
-        channel_name: *const c_char,
-        service_role: zlink_service_role_t,
-        endpoint: *const c_char,
-        metadata_out: *mut zlink_msg_t,
-    ) -> c_int;
     pub fn zlink_discovery_member_peers(
         discovery: *mut c_void,
         entries: *mut zlink_member_peer_entry_t,
         count: *mut usize,
-    ) -> c_int;
-    pub fn zlink_discovery_member_peer_metadata(
-        discovery: *mut c_void,
-        service_role: zlink_service_role_t,
-        endpoint: *const c_char,
-        metadata_out: *mut zlink_msg_t,
     ) -> c_int;
     pub fn zlink_registry_topology_snapshot(
         registry: *mut c_void,

@@ -25,7 +25,7 @@ public sealed class ChannelMessagingRuntimeTests
         serverBuilder.Services.AddZLinkFramework(options =>
         {
             options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
-            options.AddChannel("api", channel =>
+            options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server => server.Bind(apiEndpoint));
             });
@@ -36,7 +36,7 @@ public sealed class ChannelMessagingRuntimeTests
         clientBuilder.Services.AddZLinkFramework(options =>
         {
             options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
-            options.AddChannel("api", channel =>
+            options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableClient();
             });

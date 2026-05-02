@@ -207,9 +207,11 @@ DEALER-to-ROUTER channel은 Discovery 생성 시 `ZLINK_AUTO_CONNECT_CLIENT_SERV
   `zlink_discovery_resolve_spot()`를 사용합니다.
 - `ZLINK_DISCOVERY_SERVICE_UP`,
   `ZLINK_DISCOVERY_PROVIDERS_CHANGED` 같은 상태 전이는
-  `zlink_discovery_member_peers()`와
-  `zlink_discovery_member_peer_metadata()`로 현재 뷰를 읽습니다. 서비스 수준
+  `zlink_discovery_member_peers()`로 현재 peer view를 읽습니다. 서비스 수준
   상태 변화를 추적하려면 이 조회 결과를 주기적으로 비교합니다.
+- owner-bound route 조회에는 `zlink_discovery_bind_route()`,
+  `zlink_discovery_unbind_route()`, `zlink_discovery_resolve_route()`를
+  사용합니다.
   `zlink_monitor_close()`로 닫습니다.
 - 전역 요약 상태는 registry topology snapshot/query API로 조회합니다.
 - Discovery는 `zlink_set_option(discovery, ZLINK_OPT_*, ...)`을 지원하며,
@@ -478,7 +480,7 @@ zlink_config_result_t zlink_discovery_set_value (void *discovery, int64_t value)
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
-**참고:** `zlink_discovery_get_value`, `zlink_discovery_set_metadata`
+**참고:** `zlink_discovery_get_value`
 
 ---
 
@@ -497,45 +499,98 @@ zlink_config_result_t zlink_discovery_get_value (void *discovery,
 
 ---
 
-### zlink_discovery_set_metadata
+### zlink_discovery_bind_route
 
-이 Discovery 인스턴스의 opaque 메타데이터 blob을 설정합니다.
+응용 route key를 이 Discovery 인스턴스가 소유한 provider generation에 묶습니다.
 
 ```c
-zlink_config_result_t zlink_discovery_set_metadata (void *discovery,
-                                                    const void *data,
-                                                    size_t size);
+zlink_config_result_t zlink_discovery_bind_route(void *discovery,
+                                                 zlink_route_kind_t kind,
+                                                 const void *key,
+                                                 size_t key_size,
+                                                 const void *value,
+                                                 size_t value_size);
 ```
 
-서비스 등록과 함께 게시되는 opaque 메타데이터 blob을 설정합니다.
-원격 소비자는 `zlink_discovery_member_peer_metadata()` 또는
-`zlink_registry_member_peer_metadata()`로 조회할 수 있습니다.
-최대 크기는 런타임 설정 가능(기본 4 KiB)이며, 초과 시 `EMSGSIZE`로
-실패합니다.
+`kind + key`는 Discovery channel 이름 안에서만 의미가 있습니다. `kind`는
+`ZLINK_ROUTE_KIND_INVALID`가 아니어야 합니다. `key_size`는
+`1..ZLINK_ROUTE_KEY_MAX` 범위여야 하고, `value_size`는
+`ZLINK_ROUTE_VALUE_MAX` 이하여야 합니다. Registry는 호출이 반환되기 전에
+key와 value를 복사합니다.
+
+이 호출은 실제 provider를 소유한 Discovery 인스턴스에서만 해야 합니다.
+provider generation이 이미 바뀐 경우 bind는 실패하고 route가 일부만 저장되지
+않습니다.
+
+**오류:**
+- `EINVAL` -- handle, kind, key, channel 상태가 올바르지 않습니다.
+- `EMSGSIZE` -- key 또는 value가 공개 제한을 초과했습니다.
+- `ENOENT` -- 이 Discovery 인스턴스의 live owner provider가 없습니다.
+- `ESTALE` -- owner provider generation이 Registry view와 더 이상 일치하지 않습니다.
 
 **반환값:** `zlink_config_result_t` 값을 반환합니다.
 
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
-
-**참고:** `zlink_discovery_get_metadata`, `zlink_discovery_set_value`
+**스레드 안전성:** 같은 handle에 대한 호출은 thread-safe입니다.
 
 ---
 
-### zlink_discovery_get_metadata
+### zlink_discovery_unbind_route
 
-현재 메타데이터 blob을 가져옵니다.
+이 Discovery 인스턴스가 소유한 route binding을 제거합니다.
 
 ```c
-zlink_config_result_t zlink_discovery_get_metadata (void *discovery,
-                                                    zlink_msg_t *metadata_out);
+zlink_config_result_t zlink_discovery_unbind_route(void *discovery,
+                                                   zlink_route_kind_t kind,
+                                                   const void *key,
+                                                   size_t key_size);
 ```
 
-현재 메타데이터를 `metadata_out`에 복사합니다. 호출 전에 메시지를
-초기화하고, 사용 후에 닫아야 합니다.
+binding을 만든 owner provider generation만 제거할 수 있습니다. owner provider가
+destroy 또는 unregister되면 그 provider가 소유한 route binding도 함께 제거됩니다.
+
+**오류:**
+- `EINVAL` -- handle, kind, key, channel 상태가 올바르지 않습니다.
+- `EMSGSIZE` -- key가 `ZLINK_ROUTE_KEY_MAX`를 초과했습니다.
+- `ENOENT` -- owner provider 또는 route binding을 찾지 못했습니다.
+- `ESTALE` -- owner provider generation이 Registry view와 더 이상 일치하지 않습니다.
 
 **반환값:** `zlink_config_result_t` 값을 반환합니다.
 
-**참고:** `zlink_discovery_set_metadata`
+**스레드 안전성:** 같은 handle에 대한 호출은 thread-safe입니다.
+
+---
+
+### zlink_discovery_resolve_route
+
+route key를 현재 owner routing id와 value로 조회합니다.
+
+```c
+zlink_config_result_t zlink_discovery_resolve_route(void *discovery,
+                                                    zlink_route_kind_t kind,
+                                                    const void *key,
+                                                    size_t key_size,
+                                                    zlink_routing_id_t *owner_rid_out,
+                                                    zlink_msg_t *value_out);
+```
+
+`owner_rid_out`에는 live owner provider의 routing id가 기록됩니다.
+`value_out`이 `NULL`이 아니면 호출자는 초기화된 `zlink_msg_t`를 전달해야 합니다.
+성공하면 이 메시지에는 저장된 value의 복사본이 들어가며 소유권은 호출자에게 있습니다.
+실패 시 `value_out`은 유효한 결과가 아닙니다.
+
+resolve는 cache 항목을 만들거나 갱신하지 않습니다. owner provider가 더 이상 live
+상태가 아니면 route는 없는 것으로 처리됩니다.
+
+**오류:**
+- `EINVAL` -- handle, kind, key, 출력 포인터, channel 상태가 올바르지 않습니다.
+- `EMSGSIZE` -- key가 `ZLINK_ROUTE_KEY_MAX`를 초과했습니다.
+- `ENOENT` -- `kind + key`에 해당하는 live route binding이 없습니다.
+
+**반환값:** `zlink_config_result_t` 값을 반환합니다.
+
+**스레드 안전성:** 같은 handle에 대한 호출은 thread-safe입니다.
+
+**참고:** `zlink_discovery_bind_route`, `zlink_discovery_unbind_route`
 
 ---
 

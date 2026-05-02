@@ -492,13 +492,13 @@ static void test_spot_node_default_handle_owner_keeps_defaults_private ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-static void test_discovery_local_value_metadata_contract ()
+static void test_discovery_local_value_route_limit_contract ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "metadata-local");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "route-local");
     TEST_ASSERT_NOT_NULL (discovery);
 
     int64_t value = 0;
@@ -509,36 +509,22 @@ static void test_discovery_local_value_metadata_contract ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_get_value (discovery, &value));
     TEST_ASSERT_EQUAL_INT64 (-7, value);
 
-    size_t metadata_max_size = 4;
+    size_t route_value_max_size = 4;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE,
-                        &metadata_max_size, sizeof (metadata_max_size)));
-    size_t read_size = sizeof (metadata_max_size);
-    size_t metadata_max_size_read = 0;
+      zlink_set_option (discovery, ZLINK_OPT_ROUTE_VALUE_MAX_SIZE,
+                        &route_value_max_size, sizeof (route_value_max_size)));
+    size_t read_size = sizeof (route_value_max_size);
+    size_t route_value_max_size_read = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE,
-                        &metadata_max_size_read, &read_size));
-    TEST_ASSERT_EQUAL_UINT (sizeof (metadata_max_size_read), read_size);
-    TEST_ASSERT_EQUAL_UINT (metadata_max_size, metadata_max_size_read);
-
-    zlink_msg_t metadata;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_get_metadata (discovery, &metadata));
-    TEST_ASSERT_EQUAL_UINT (0, zlink_msg_size (&metadata));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&metadata));
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_set_metadata (discovery, "abcd", 4));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_get_metadata (discovery, &metadata));
-    TEST_ASSERT_EQUAL_UINT (4, zlink_msg_size (&metadata));
-    TEST_ASSERT_EQUAL_MEMORY ("abcd", zlink_msg_data (&metadata), 4);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&metadata));
+      zlink_get_option (discovery, ZLINK_OPT_ROUTE_VALUE_MAX_SIZE,
+                        &route_value_max_size_read, &read_size));
+    TEST_ASSERT_EQUAL_UINT (sizeof (route_value_max_size_read), read_size);
+    TEST_ASSERT_EQUAL_UINT (route_value_max_size, route_value_max_size_read);
 
     errno = 0;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_discovery_set_metadata (discovery, "abcde", 5));
+      zlink_discovery_bind_route (discovery, 1, "k", 1, "abcde", 5));
     TEST_ASSERT_EQUAL_INT (EMSGSIZE, errno);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
@@ -568,7 +554,7 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_default_handle_owner_keeps_defaults_private);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_unified_spot_basic);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_snapshot_status_peers_subjects);
-    RUN_SPOT_INTROSPECTION_TEST (test_discovery_local_value_metadata_contract);
+    RUN_SPOT_INTROSPECTION_TEST (test_discovery_local_value_route_limit_contract);
 #undef RUN_SPOT_INTROSPECTION_TEST
     return UNITY_END ();
 }

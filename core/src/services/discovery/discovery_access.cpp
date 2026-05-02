@@ -104,19 +104,6 @@ int discovery_access_t::get_value (discovery_t *discovery_, int64_t *value_out_)
     return discovery_ ? discovery_->get_value (value_out_) : -1;
 }
 
-int discovery_access_t::set_metadata (discovery_t *discovery_,
-                                      const void *data_,
-                                      size_t size_)
-{
-    return discovery_ ? discovery_->set_metadata (data_, size_) : -1;
-}
-
-int discovery_access_t::get_metadata (discovery_t *discovery_,
-                                      zlink_msg_t *metadata_out_)
-{
-    return discovery_ ? discovery_->get_metadata (metadata_out_) : -1;
-}
-
 int discovery_access_t::resolve_spot (discovery_t *discovery_,
                                       const zlink_routing_id_t *spot_rid_,
                                       zlink_routing_id_t *owner_node_rid_out_)
@@ -126,22 +113,45 @@ int discovery_access_t::resolve_spot (discovery_t *discovery_,
              : -1;
 }
 
+int discovery_access_t::bind_route (discovery_t *discovery_,
+                                    zlink_route_kind_t kind_,
+                                    const void *key_,
+                                    size_t key_size_,
+                                    const void *value_,
+                                    size_t value_size_)
+{
+    return discovery_
+             ? discovery_->bind_route (kind_, key_, key_size_, value_,
+                                       value_size_)
+             : -1;
+}
+
+int discovery_access_t::unbind_route (discovery_t *discovery_,
+                                      zlink_route_kind_t kind_,
+                                      const void *key_,
+                                      size_t key_size_)
+{
+    return discovery_ ? discovery_->unbind_route (kind_, key_, key_size_) : -1;
+}
+
+int discovery_access_t::resolve_route (discovery_t *discovery_,
+                                       zlink_route_kind_t kind_,
+                                       const void *key_,
+                                       size_t key_size_,
+                                       zlink_routing_id_t *owner_rid_out_,
+                                       zlink_msg_t *value_out_)
+{
+    return discovery_
+             ? discovery_->resolve_route (kind_, key_, key_size_,
+                                          owner_rid_out_, value_out_)
+             : -1;
+}
+
 int discovery_access_t::member_peers (discovery_t *discovery_,
                                       zlink_member_peer_entry_t *entries_,
                                       size_t *count_)
 {
     return discovery_ ? discovery_->member_peers (entries_, count_) : -1;
-}
-
-int discovery_access_t::member_peer_metadata (discovery_t *discovery_,
-                                              zlink_service_role_t service_role_,
-                                              const char *endpoint_,
-                                              zlink_msg_t *metadata_out_)
-{
-    return discovery_
-             ? discovery_->member_peer_metadata (service_role_, endpoint_,
-                                                 metadata_out_)
-             : -1;
 }
 
 int discovery_access_t::destroy (discovery_t *discovery_)

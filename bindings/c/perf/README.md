@@ -73,3 +73,17 @@ Profile guidance after the auto-HWM message-unit change:
 If calculated HWM values are too small for the target traffic shape, first
 select a larger profile. Use `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` only when the
 benchmark's effective message unit differs from the socket-type default.
+
+## SPOT One-Way Latency
+
+`MULTI_SPOT` measures throughput during the active phase. For large one-way
+payloads, that phase intentionally saturates the sender and receiver queues, so
+active-phase message timestamps mostly describe queue residence time rather than
+service latency.
+
+By default, the runner keeps active-phase throughput and bandwidth, then reruns
+the same SPOT size in latency-only mode and uses that low-rate pass for latency,
+p95, and p99 in both the markdown table and `RESULT` data.
+
+Use `PERF_MULTI_SPOT_CLEAN_LATENCY=0` to disable the clean-latency merge and
+show active-phase queue residence time instead.

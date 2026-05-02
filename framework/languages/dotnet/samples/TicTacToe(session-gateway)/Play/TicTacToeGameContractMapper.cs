@@ -1,6 +1,7 @@
 using TicTacToe.SessionActorDispatch.Contracts;
+using TicTacToe.SessionActorDispatch.Play;
 
-namespace TicTacToe.SessionActorDispatch.Play;
+namespace TicTacToe.SessionGateway.Play;
 
 internal static class TicTacToeGameContractMapper
 {

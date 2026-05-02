@@ -234,23 +234,6 @@ class registry_t
         return entries;
     }
 
-    void member_peer_metadata (const std::string &channel_name_,
-                               service_role service_role_,
-                               const std::string &endpoint_,
-                               message_t &metadata_out_) const
-    {
-        validate_bounded_c_string (channel_name_, 255u, "channel_name");
-        validate_bounded_c_string (endpoint_, 255u, "endpoint");
-        zlink_msg_t native;
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_registry_member_peer_metadata (
-              _registry, channel_name_.c_str (),
-              static_cast<zlink_service_role_t> (service_role_),
-              endpoint_.c_str (), &native)));
-        metadata_out_.adopt (&native);
-    }
-
     void close ()
     {
         if (!_registry)

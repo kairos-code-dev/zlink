@@ -710,27 +710,6 @@ zlink_config_result_t zlink_registry_member_peers(void *registry,
 
 ---
 
-### zlink_registry_member_peer_metadata
-
-로컬 Registry에서 특정 멤버 피어의 메타데이터를 가져옵니다.
-
-```c
-zlink_config_result_t zlink_registry_member_peer_metadata(void *registry,
-                                                          const char *channel_name,
-                                                          zlink_service_role_t service_role,
-                                                          const char *endpoint,
-                                                          zlink_msg_t *metadata_out);
-```
-
-channel 이름, 역할, 엔드포인트로 식별되는 멤버 피어의 메타데이터를 조회합니다.
-메타데이터는 `metadata_out`에 기록됩니다.
-
-**반환값:** `zlink_config_result_t` 값을 반환합니다.
-
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
-
----
-
 ### zlink_discovery_member_peers
 
 로컬 Discovery 인스턴스에서 멤버 피어 항목을 가져옵니다.
@@ -751,20 +730,6 @@ Discovery 인스턴스가 알고 있는 모든 멤버 피어 항목을 `entries`
 
 ---
 
-### zlink_discovery_member_peer_metadata
-
-로컬 Discovery 인스턴스에서 특정 멤버 피어의 메타데이터를 가져옵니다.
-
-```c
-zlink_config_result_t zlink_discovery_member_peer_metadata(void *discovery,
-                                                           uint16_t service_role,
-                                                           const char *endpoint,
-                                                           zlink_msg_t *metadata_out);
-```
-
-역할과 엔드포인트로 식별되는 멤버 피어의 메타데이터를 조회합니다.
-메타데이터는 `metadata_out`에 기록됩니다.
-
-**반환값:** `zlink_config_result_t` 값을 반환합니다.
-
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+route binding 조회는 Registry가 아니라 Discovery 공개 API로 제공합니다.
+`zlink_discovery_bind_route`, `zlink_discovery_unbind_route`,
+`zlink_discovery_resolve_route` 계약은 Discovery spec을 참고합니다.

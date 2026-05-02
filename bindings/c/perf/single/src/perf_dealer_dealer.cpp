@@ -99,6 +99,18 @@ void run_dealer_dealer (const std::string &transport,
         return;
     }
 
+    emit_single_socket_hwm_detail (receiver.get (),
+                                   "DEALER_DEALER",
+                                   transport,
+                                   "receiver",
+                                   ZLINK_SOCKET_DEALER,
+                                   msg_size);
+    emit_single_socket_hwm_detail (sender.get (),
+                                   "DEALER_DEALER",
+                                   transport,
+                                   "sender",
+                                   ZLINK_SOCKET_DEALER,
+                                   msg_size);
     print_result (lib_name,
                   "DEALER_DEALER",
                   transport,

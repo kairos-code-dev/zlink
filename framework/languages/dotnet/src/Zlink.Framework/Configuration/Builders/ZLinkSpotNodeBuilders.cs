@@ -1,6 +1,7 @@
 namespace Zlink.Framework.Configuration.Builders;
 
-internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registration) : IZLinkSpotNodeBuilder
+internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registration)
+    : IZLinkSpotNodeBuilder, IZLinkSpotMeshNodeBuilder
 {
     public void Bind(string endpoint)
     {
@@ -28,9 +29,16 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         string channelName,
         Action<ISpotChannelClientCapabilityBuilder>? configure = null)
     {
+        AttachClientServerChannelClient(channelName, configure);
+    }
+
+    public void AttachClientServerChannelClient(
+        string channelName,
+        Action<ISpotChannelClientCapabilityBuilder>? configure = null)
+    {
         if (string.IsNullOrWhiteSpace(channelName))
         {
-            throw new ZLinkConfigurationException("Attached channel client name must not be empty.");
+            throw new ZLinkConfigurationException("Attached client/server channel client name must not be empty.");
         }
 
         if (!registration.AttachedChannelClients.TryGetValue(channelName, out var attached))
@@ -46,9 +54,16 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         string channelName,
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null)
     {
+        AttachSpotMeshPublisherClient(channelName, configure);
+    }
+
+    public void AttachSpotMeshPublisherClient(
+        string channelName,
+        Action<ISpotPublisherClientCapabilityBuilder>? configure = null)
+    {
         if (string.IsNullOrWhiteSpace(channelName))
         {
-            throw new ZLinkConfigurationException("Attached SPOT publisher channel name must not be empty.");
+            throw new ZLinkConfigurationException("Attached SPOT mesh publisher channel name must not be empty.");
         }
 
         if (!registration.AttachedSpotPublisherClients.TryGetValue(channelName, out var attached))

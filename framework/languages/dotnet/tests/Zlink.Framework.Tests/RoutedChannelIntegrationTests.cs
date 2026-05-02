@@ -28,7 +28,7 @@ public sealed class RoutedChannelIntegrationTests
         leftBuilder.Services.AddZLinkFramework(options =>
         {
             options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
-            options.AddRoutedChannel("backend.discovery", routed =>
+            options.AddRouteMeshChannel("backend.discovery", routed =>
             {
                 routed.Bind(leftEndpoint);
                 routed.ConfigureRouting(routing => routing.RoutingId = leftRid);
@@ -39,7 +39,7 @@ public sealed class RoutedChannelIntegrationTests
         rightBuilder.Services.AddZLinkFramework(options =>
         {
             options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
-            options.AddRoutedChannel("backend.discovery", routed =>
+            options.AddRouteMeshChannel("backend.discovery", routed =>
             {
                 routed.Bind(rightEndpoint);
                 routed.ConfigureRouting(routing => routing.RoutingId = rightRid);
@@ -82,7 +82,7 @@ public sealed class RoutedChannelIntegrationTests
         var leftBuilder = Host.CreateApplicationBuilder();
         leftBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddRoutedChannel("backend", routed =>
+            options.AddRouteMeshChannel("backend", routed =>
             {
                 routed.Bind(leftEndpoint);
                 routed.ConfigureRouting(routing => routing.RoutingId = leftRid);
@@ -93,7 +93,7 @@ public sealed class RoutedChannelIntegrationTests
         var rightBuilder = Host.CreateApplicationBuilder();
         rightBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddRoutedChannel("backend", routed =>
+            options.AddRouteMeshChannel("backend", routed =>
             {
                 routed.Bind(rightEndpoint);
                 routed.ConfigureRouting(routing => routing.RoutingId = rightRid);

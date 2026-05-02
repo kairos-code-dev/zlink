@@ -1,8 +1,8 @@
-using TicTacToe.SessionActorDispatch.Contracts;
 using TicTacToe.SessionActorDispatch.Configuration;
+using TicTacToe.SessionActorDispatch.Contracts;
 using Zlink.Framework.Handlers;
 
-namespace TicTacToe.SessionActorDispatch.Api;
+namespace TicTacToe.SessionGateway.Api;
 
 internal sealed class AuthenticateActorHandler
 {

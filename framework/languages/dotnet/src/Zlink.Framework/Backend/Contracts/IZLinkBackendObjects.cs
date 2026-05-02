@@ -2,12 +2,6 @@ using Zlink.Framework;
 
 namespace Zlink.Framework.Backend.Contracts;
 
-internal enum ZLinkBackendServiceType
-{
-    Socket = 1,
-    Spot = 2,
-}
-
 internal enum ZLinkBackendSpotDispatchEvent
 {
     Internal = 0,
@@ -38,6 +32,8 @@ internal interface IZLinkBackendContext : IZLinkBackendObject, IAsyncDisposable
 internal interface IZLinkBackendDiscovery : IZLinkBackendObject, IAsyncDisposable
 {
     void ConnectRegistry(string endpoint);
+
+    IReadOnlyList<ZLinkMemberPeerEntry> MemberPeers();
 }
 
 internal interface IZLinkBackendSocket : IZLinkBackendObject, IAsyncDisposable
@@ -159,9 +155,7 @@ internal interface IZLinkBackendRegistry : IZLinkBackendObject, IAsyncDisposable
     IReadOnlyList<ZLinkRegistryTopologyEntry> TopologyQuery(
         ZLinkRegistryTopologyFilter? filter);
 
-    IReadOnlyList<ZLinkMemberPeerEntry> MemberPeers(
-        ZLinkServiceType serviceType,
-        string serviceName);
+    IReadOnlyList<ZLinkMemberPeerEntry> MemberPeers(string channelName);
 }
 
 internal interface IZLinkBackendRegistryQueryClient : IZLinkBackendObject, IAsyncDisposable
@@ -175,6 +169,8 @@ internal interface IZLinkBackendRegistryQueryClient : IZLinkBackendObject, IAsyn
 internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
 {
     RoutingId RoutingId { get; }
+
+    void SetRoutingId(RoutingId routingId);
 
     void Bind(string endpoint);
 

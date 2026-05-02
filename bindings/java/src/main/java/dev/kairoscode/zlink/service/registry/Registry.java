@@ -8,7 +8,6 @@ import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
-import dev.kairoscode.zlink.internal.NativeMsg;
 import dev.kairoscode.zlink.internal.ServiceDecoders;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -185,31 +184,6 @@ public final class Registry implements AutoCloseable {
         }
     }
 
-    /** Returns the metadata blob for one registry member peer. */
-    public byte[] memberPeerMetadata(String channelName, ServiceRole serviceRole,
-                                     String endpoint) {
-        Objects.requireNonNull(channelName, "channelName");
-        Objects.requireNonNull(serviceRole, "serviceRole");
-        Objects.requireNonNull(endpoint, "endpoint");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment metadata = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            initMessage(metadata);
-            try {
-                int rc = Native.registryMemberPeerMetadata(handle,
-                  NativeHelpers.toCString(arena, channelName),
-                  serviceRole.getValue(),
-                  NativeHelpers.toCString(arena, endpoint), metadata);
-                if (rc != 0) {
-                    throw ZlinkException.fromLastError(
-                      "zlink_registry_member_peer_metadata");
-                }
-                return readMessageBytes(metadata);
-            } finally {
-                NativeMsg.msgClose(metadata);
-            }
-        }
-    }
-
     /** Returns the full current topology snapshot. */
     public List<RegistryTopologyEntry> topologySnapshot() {
         return readTopology(null);
@@ -293,19 +267,4 @@ public final class Registry implements AutoCloseable {
         return (int) value;
     }
 
-    private static void initMessage(MemorySegment message) {
-        int rc = NativeMsg.msgInit(message);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_msg_init");
-    }
-
-    private static byte[] readMessageBytes(MemorySegment message) {
-        int size = Math.toIntExact(NativeMsg.msgSize(message));
-        byte[] bytes = new byte[size];
-        if (size > 0) {
-            MemorySegment.copy(NativeMsg.msgData(message).reinterpret(size), 0,
-              MemorySegment.ofArray(bytes), 0, size);
-        }
-        return bytes;
-    }
 }

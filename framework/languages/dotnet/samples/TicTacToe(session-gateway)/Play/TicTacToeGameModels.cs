@@ -1,4 +1,4 @@
-namespace TicTacToe.SessionActorDispatch.Play;
+namespace TicTacToe.SessionGateway.Play;
 
 internal enum TicTacToeMark
 {

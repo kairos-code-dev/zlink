@@ -282,11 +282,10 @@ internal sealed class ZLinkFrameworkRuntime
 
     internal bool TryGetSessionActorContext(
         string actorId,
-        string sessionId,
         string bindingToken,
         out ZLinkSessionContext context)
     {
-        return _sessionActorBindings.TryGet(actorId, sessionId, bindingToken, out context);
+        return _sessionActorBindings.TryGet(actorId, bindingToken, out context);
     }
 
     internal async ValueTask<IZLinkEndpointConnections> GetSpotRouterConnectionsAsync(

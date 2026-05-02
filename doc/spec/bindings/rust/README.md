@@ -1347,9 +1347,6 @@ impl Registry {
     pub fn member_peers(&self, channel_name: &str)
         -> Result<Vec<MemberPeerEntry>, ConfigError>;
     /// # Errors: ConfigError
-    pub fn member_peer_metadata(&self, channel_name: &str, service_role: ServiceRole,
-        endpoint: &str) -> Result<Message, ConfigError>;
-    /// # Errors: ConfigError
     pub fn topology_snapshot(&self) -> Result<Vec<RegistryTopologyEntry>, ConfigError>;
     /// # Errors: ConfigError
     pub fn topology_query(&self, filter: &RegistryTopologyFilter)
@@ -1384,14 +1381,16 @@ impl Discovery {
     /// # Errors: ConfigError
     pub fn get_value(&self) -> Result<i64, ConfigError>;
     /// # Errors: ConfigError
-    pub fn set_metadata(&self, data: &[u8]) -> Result<(), ConfigError>;
+    pub fn bind_route(&self, kind: RouteKind, key: &[u8], value: &[u8])
+        -> Result<(), ConfigError>;
     /// # Errors: ConfigError
-    pub fn get_metadata(&self) -> Result<Message, ConfigError>;
+    pub fn unbind_route(&self, kind: RouteKind, key: &[u8])
+        -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn resolve_route(&self, kind: RouteKind, key: &[u8])
+        -> Result<(RoutingId, Message), ConfigError>;
     /// # Errors: ConfigError
     pub fn member_peers(&self) -> Result<Vec<MemberPeerEntry>, ConfigError>;
-    /// # Errors: ConfigError
-    pub fn member_peer_metadata(&self, service_role: ServiceRole, endpoint: &str)
-        -> Result<Message, ConfigError>;
     /// # Errors: ConfigError
     pub fn set_tls_client(&self, ca_cert_path: &str, hostname: &str,
         trust_system: bool) -> Result<(), ConfigError>;

@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Configuration.Builders;
 
 internal sealed class ZLinkRoutedChannelBuilder(ZLinkRoutedChannelRegistration registration)
-    : IZLinkRoutedChannelBuilder
+    : IZLinkRoutedChannelBuilder, IZLinkRouteMeshChannelBuilder
 {
     public void Bind(string endpoint)
     {

@@ -1223,8 +1223,6 @@ public final class Registry implements AutoCloseable {
     List<RegistryTopologyEntry> topologySnapshot();                  // @throws ConfigException
     List<RegistryTopologyEntry> topologyQuery(RegistryTopologyFilter filter); // @throws ConfigException
     List<MemberPeerEntry> memberPeers(String channelName); // @throws ConfigException
-    byte[] memberPeerMetadata(String channelName,
-                              ServiceRole serviceRole, String endpoint); // @throws ConfigException
 
     void close();                                                    // @throws CloseException
 }
@@ -1251,12 +1249,12 @@ public final class Discovery implements AutoCloseable {
     void connectRegistry(String registryEndpoint);                   // @throws ConnectException
     void setValue(long value);                                       // @throws ConfigException
     long getValue();                                                 // @throws ConfigException
-    void setMetadata(byte[] metadata);                               // @throws ConfigException
-    byte[] getMetadata();                                            // @throws ConfigException
+    void bindRoute(int kind, byte[] key, byte[] value);              // @throws ConfigException
+    void unbindRoute(int kind, byte[] key);                          // @throws ConfigException
+    RouteResolution resolveRoute(int kind, byte[] key);              // @throws ConfigException
     void setTlsClient(String caCertPem, String hostname, boolean trustSystem); // @throws ConfigException
 
     List<MemberPeerEntry> memberPeers();                             // @throws ConfigException
-    byte[] memberPeerMetadata(ServiceRole serviceRole, String endpoint); // @throws ConfigException
 
     RoutingId resolveSpot(RoutingId spotRid);                        // @throws ConfigException
 

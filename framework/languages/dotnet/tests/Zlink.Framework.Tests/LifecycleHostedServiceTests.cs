@@ -16,7 +16,7 @@ public sealed class LifecycleHostedServiceTests
         builder.Services.AddZLinkFramework(options =>
         {
             options.UseDiscovery(discovery => discovery.Add($"tcp://127.0.0.1:{routerPort}"));
-            options.AddChannel("profile", channel => channel.EnableClient());
+            options.AddClientServerChannel("profile", channel => channel.EnableClient());
         });
         builder.Services.AddZLinkRegistry(options =>
         {
@@ -52,7 +52,7 @@ public sealed class LifecycleHostedServiceTests
             {
                 discovery.Add($"tcp://127.0.0.1:{routerPort}");
             });
-            options.AddChannel("profile", channel => channel.EnableClient());
+            options.AddClientServerChannel("profile", channel => channel.EnableClient());
         });
         builder.Services.AddZLinkRegistry(options =>
         {

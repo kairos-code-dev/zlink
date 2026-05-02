@@ -13,7 +13,7 @@ internal sealed class ApiServer(SampleSettings settings)
         builder.Services.AddZLinkHandlersFromAssemblyContaining<AuthenticatePlayerHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddChannel(SampleChannels.Api, channel =>
+            options.AddClientServerChannel(SampleChannels.Api, channel =>
             {
                 channel.EnableServer(server =>
                 {
@@ -21,7 +21,7 @@ internal sealed class ApiServer(SampleSettings settings)
                 });
             });
 
-            options.AddChannel(SampleChannels.Play, channel =>
+            options.AddClientServerChannel(SampleChannels.Play, channel =>
             {
                 channel.EnableClient(client =>
                 {

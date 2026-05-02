@@ -385,7 +385,7 @@ Discovery, Registry, SPOT runtime 상태는 별도 공개 이벤트 스트림이
 snapshot/query API로 관찰합니다.
 
 - Discovery: `zlink_discovery_member_peers()`,
-  `zlink_discovery_member_peer_metadata()`
+  `zlink_discovery_resolve_route()`
 - Registry: `zlink_registry_status_snapshot()`,
   `zlink_registry_service_summary_snapshot()`,
   `zlink_registry_topology_snapshot()`,

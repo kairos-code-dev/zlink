@@ -115,7 +115,7 @@ enum class socket_option : int
     tls_password = ZLINK_OPT_TLS_PASSWORD,
     zmp_metadata = ZLINK_OPT_ZMP_METADATA,
     rid_duplicate_policy = ZLINK_OPT_RID_DUPLICATE_POLICY,
-    discovery_metadata_max_size = ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE,
+    route_value_max_size = ZLINK_OPT_ROUTE_VALUE_MAX_SIZE,
     auto_hwm_msg_unit_bytes = ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES
 };
 

@@ -247,8 +247,11 @@ status   = (expected == actual) ? "complete" : "partial"
 
 1. `## Effective Options (start)` — 불릿 목록 형식 (lang, suite, runs, patterns, transports, msg_sizes, pin_cpu)
 2. 패턴/트랜스포트별 실행 로그 및 테이블
-3. `## Effective Options (result)` — 불릿 목록 형식
-4. Completion (`status`, `expected_result_lines`, `actual_result_lines`)
+3. `## Auto-HWM Detail` — 모든 single 패턴에서 benchmark process 가 노출한
+   실제 socket HWM snapshot table. auto-HWM 정보가 없는 socket 은 생략할 수
+   있다.
+4. `## Effective Options (result)` — 불릿 목록 형식
+5. Completion (`status`, `expected_result_lines`, `actual_result_lines`)
 
 - `Effective Options`에는 `lang`과 `suite` 항목이 반드시 포함되어야 한다.
 - `tmp/`, `baseline/` 디렉터리는 single 정책에서 사용하지 않는다.
@@ -356,6 +359,9 @@ request/reply probe barrier 로 판정한다. perf는 추가 precondition
 - single SPOT 은 local pub/sub setup 완료 후 sender 가 metric header가 찍힌
   probe payload 를 publish 하고, recv 측이 첫 유효 payload 를 확인하면
   ready 를 닫는다.
+- single SPOT one-way perf 는 registry/discovery bootstrap 시간을 측정 대상에
+  넣지 않는다. 같은 process 안에서 publisher node 를 bind 하고 subscriber node 가
+  직접 peer connect 한 뒤, 위 local probe 로 data path 준비 여부만 판정한다.
 - single SPOT_REQREP 은 SpotNode mesh 구성 완료 후 requester 가 metric
   header 가 찍힌 probe request 를 routed 경로로 보내고, replier 의 reply 가
   requester 에 도착하면 ready 를 닫는다.

@@ -51,12 +51,12 @@ public sealed class TopologyMultiProcessTests
         var snapshot = await RetryAsync(
             () => client.SnapshotAsync().AsTask(),
             entries => entries.Any(entry =>
-                entry.ServiceName == "profile"
+                entry.ChannelName == "profile"
                 && entry.Endpoint == channelEndpoint
                 && entry.ServiceRole == ZLinkServiceRole.Router),
             TimeSpan.FromSeconds(15));
 
-        Assert.Contains(snapshot, entry => entry.ServiceName == "profile");
+        Assert.Contains(snapshot, entry => entry.ChannelName == "profile");
 
         await host.StopAsync(timeout.Token);
     }

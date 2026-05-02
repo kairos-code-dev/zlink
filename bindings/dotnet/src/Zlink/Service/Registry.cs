@@ -204,21 +204,6 @@ public sealed class Registry : IDisposable, IAsyncDisposable
         }
     }
 
-    public Message MemberPeerMetadata(string channelName,
-        ServiceRole serviceRole, string endpoint)
-    {
-        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
-        EnsureNotDisposed();
-
-        using var metadata = new Message();
-        int rc = NativeMethods.zlink_registry_member_peer_metadata(_handle,
-            channelName, (int)serviceRole, endpoint,
-            ref metadata.Handle);
-        ZlinkException.ThrowConfigIfError(rc);
-        return metadata.Move();
-    }
-
     public void Close()
     {
         Dispose();

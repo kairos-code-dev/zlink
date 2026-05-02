@@ -39,16 +39,16 @@ test('service objects expose aligned monitor and query surface', () => {
     registry.bind('inproc://registry-pub', 'inproc://registry-router');
     query.connect('inproc://registry-router');
     discovery.setValue(7);
-    discovery.setMetadata(Buffer.from('meta'));
     assert.equal(registry.statusSnapshot().topologyEntryCount, 0);
     assert.deepEqual(registry.serviceSummarySnapshot(), []);
     assert.deepEqual(registry.topologySnapshot(), []);
     assert.deepEqual(registry.topologyQuery(), []);
     assert.deepEqual(query.snapshot(), []);
     assert.equal(discovery.getValue(), 7);
-    assert.equal(discovery.getMetadata().toString(), 'meta');
     assert.deepEqual(discovery.memberPeers(), []);
-    assert.equal(typeof discovery.memberPeerMetadata, 'function');
+    assert.equal(discovery.memberPeerMetadata, undefined);
+    assert.equal(typeof discovery.bindRoute, 'function');
+    assert.equal(typeof discovery.resolveRoute, 'function');
     assert.equal(typeof discovery.resolveSpot, 'function');
     assert.equal(discovery.setDealerPeerMode, undefined);
     assert.equal(typeof spot.onDispatchEvent, 'function');
@@ -215,7 +215,6 @@ test('registry, discovery, and query client expose canonical service discovery f
         query.connect(routerEndpoint);
         providerDiscovery.connectRegistry(routerEndpoint);
         watcherDiscovery.connectRegistry(routerEndpoint);
-        providerDiscovery.setMetadata(Buffer.from('peer-meta'));
         node.attachDiscovery(providerDiscovery);
         node.bind(serviceEndpoint);
         const topologyEntry = await waitFor(5000, () => (registry.topologySnapshot().find((entry) => entry.channelName === 'service-found') ?? null));
@@ -237,26 +236,8 @@ test('registry, discovery, and query client expose canonical service discovery f
         assert.ok(peers.some((peer) => peer.channelName === 'service-found' && peer.endpoint.length > 0));
         const discoveryPeer = await waitFor(5000, () => (watcherDiscovery.memberPeers().find((peer) => peer.endpoint === serviceEndpoint) ?? null));
         assert.ok(discoveryPeer);
-        const registryMetadata = await waitFor(5000, () => {
-            try {
-                return registry.memberPeerMetadata('service-found', discoveryPeer.serviceRole, discoveryPeer.endpoint);
-            }
-            catch (_) {
-                return null;
-            }
-        });
-        assert.ok(Buffer.isBuffer(registryMetadata));
-        assert.equal(registryMetadata.toString(), 'peer-meta');
-        const discoveryMetadata = await waitFor(5000, () => {
-            try {
-                return watcherDiscovery.memberPeerMetadata(discoveryPeer.serviceRole, discoveryPeer.endpoint);
-            }
-            catch (_) {
-                return null;
-            }
-        });
-        assert.ok(Buffer.isBuffer(discoveryMetadata));
-        assert.equal(discoveryMetadata.toString(), 'peer-meta');
+        assert.equal(registry.memberPeerMetadata, undefined);
+        assert.equal(watcherDiscovery.memberPeerMetadata, undefined);
     }
     finally {
         watcherDiscovery.close();

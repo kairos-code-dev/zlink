@@ -1,11 +1,11 @@
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TicTacToe.SessionActorDispatch.Configuration;
+using TicTacToe.SessionGateway.Infrastructure.Configuration;
 using Zlink.Framework.AspNetCore;
 
-namespace TicTacToe.SessionActorDispatch.Infrastructure;
+namespace TicTacToe.SessionGateway.Registry;
 
-internal static class RegistryHostFactory
+public static class RegistryHostFactory
 {
     public static IHost Build(SampleTopology topology)
     {

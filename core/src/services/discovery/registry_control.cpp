@@ -105,6 +105,15 @@ void registry_t::handle_router (void *router_)
             handle_update_attributes (router_, &frames[0], frames.size (),
                                       sender);
             break;
+        case discovery_protocol::msg_bind_route:
+            handle_bind_route (router_, &frames[0], frames.size (), sender);
+            break;
+        case discovery_protocol::msg_unbind_route:
+            handle_unbind_route (router_, &frames[0], frames.size (), sender);
+            break;
+        case discovery_protocol::msg_resolve_route:
+            handle_resolve_route (router_, &frames[0], frames.size (), sender);
+            break;
         default:
             break;
     }
@@ -170,6 +179,8 @@ void registry_t::send_register_ack (void *router_,
                                     const zlink_routing_id_t &sender_id_,
                                     uint8_t status_,
                                     const std::string &endpoint_,
+                                    uint32_t source_registry_,
+                                    uint64_t registration_id_,
                                     const std::string &error_)
 {
     registry_debug ("send_register_ack");
@@ -203,6 +214,12 @@ void registry_t::send_register_ack (void *router_,
                                             ZLINK_SNDMORE));
     log_rc ("send ack endpoint", discovery_protocol::send_string (
                                    router_, endpoint_, ZLINK_SNDMORE));
+    log_rc ("send ack source_registry",
+            discovery_protocol::send_u32 (router_, source_registry_,
+                                          ZLINK_SNDMORE));
+    log_rc ("send ack registration_id",
+            discovery_protocol::send_u64 (router_, registration_id_,
+                                          ZLINK_SNDMORE));
     log_rc ("send ack error",
             discovery_protocol::send_string (router_, error_, 0));
 }

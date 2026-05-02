@@ -1,6 +1,7 @@
 using TicTacToe.SessionActorDispatch.Configuration;
 using TicTacToe.SessionActorDispatch.Contracts;
 using TicTacToe.SessionActorDispatch.Infrastructure;
+using TicTacToe.SessionGateway.Play;
 using Zlink;
 using Zlink.Framework.Streams;
 

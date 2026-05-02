@@ -28,6 +28,8 @@ struct provider_info_t
     int64_t value;
     std::vector<unsigned char> metadata;
     uint64_t registered_at;
+    uint32_t source_registry;
+    uint64_t registration_id;
 };
 
 typedef std::pair<uint16_t, std::string> discovery_member_key_t;
@@ -37,19 +39,16 @@ class discovery_local_state_t
   public:
     discovery_local_state_t ();
 
-    int set_metadata_max_size (size_t value_);
-    int get_metadata_max_size (void *optval_, size_t *optvallen_) const;
+    int set_route_value_max_size (size_t value_);
+    int get_route_value_max_size (void *optval_, size_t *optvallen_) const;
+    size_t route_value_max_size () const { return _route_value_max_size; }
     void set_value (int64_t value_);
     int get_value (int64_t *value_out_) const;
-    int set_metadata (const void *data_, size_t size_);
-    int get_metadata (zlink_msg_t *metadata_out_) const;
-    void snapshot_registration (int64_t *value_out_,
-                                std::vector<unsigned char> *metadata_out_) const;
+    void snapshot_registration (int64_t *value_out_) const;
 
   private:
     int64_t _value;
-    std::vector<unsigned char> _metadata;
-    size_t _metadata_max_size;
+    size_t _route_value_max_size;
 };
 
 struct discovery_service_change_t
@@ -81,12 +80,6 @@ class discovery_service_state_t
       zlink_auto_connect_type_t auto_connect_type_,
       const std::set<discovery_member_key_t> &local_members_,
       std::vector<zlink_member_peer_entry_t> *out_) const;
-    bool copy_member_peer_metadata (
-      const std::set<discovery_member_key_t> &local_members_,
-      uint16_t service_role_,
-      const char *endpoint_,
-      std::vector<unsigned char> *metadata_out_) const;
-
     uint64_t update_seq () const;
     uint64_t service_update_seq () const;
     void apply_provider_snapshot (uint32_t registry_id_,

@@ -1625,28 +1625,33 @@ connect를 호출하는 것은 reconnect를 강제한다는 뜻이 아니다.
 
 ## Discovery cache 처리
 
-Discovery의 `resolve_spot()` 또는 `resolve_route()` 구현은 Registry에서 받은 owner
-record를 짧게 재사용할 수 있다. cache는 조회 최적화일 뿐 record 생존 기준이 아니다.
+Discovery core는 `resolve_route()` 결과를 TTL 기반으로 저장해서 재사용하는 cache를
+제공하지 않는다. `resolve_route()`는 Registry가 가진 현재 materialized view를
+확인하는 API다. 따라서 core는 이전 resolve 결과를 TTL이 남았다는 이유로 다음
+`resolve_route()` 호출에 반환하면 안 된다.
 
-SPOT owner cache는 아래 조건 중 하나라도 만족하면 owner로 사용하면 안 된다.
+route value의 의미는 core가 알 수 없다. 예를 들어 value가 actor 위치인지, shard 위치인지,
+임시 세션 주소인지에 따라 허용할 수 있는 stale 시간이 다르다. 이 정책을 core가 하나로
+정하면 어떤 사용자는 불필요하게 느려지고, 어떤 사용자는 오래된 주소를 받아 위험해질 수
+있다. route 조회 결과를 오래 재사용해야 하는 경우에는 framework 또는 application layer가
+자기 도메인에 맞는 cache, TTL, 무효화 정책을 별도로 가져야 한다.
 
-- topology entry 상태가 `READY`가 아니다.
-- entry의 내부 owner identity와 일치하는 live provider가 Discovery service view 안에 없다.
-- service provider 목록의 update sequence가 cache 검증 시점과 달라졌다.
+core 구현이 허용하는 최적화는 공개 API 의미를 바꾸지 않는 범위로 제한한다.
 
-Route binding cache는 아래 조건 중 하나라도 만족하면 owner로 사용하면 안 된다.
+- 같은 Discovery event-loop turn 안에서 이미 처리 중인 같은 key의 resolve 요청을 하나의
+  Registry 요청으로 합칠 수 있다.
+- 같은 key의 concurrent in-flight resolve 요청은 하나의 Registry reply를 공유할 수 있다.
+- 이 임시 상태는 API 호출 사이에 TTL cache처럼 유지하면 안 된다.
+- Registry reconnect, snapshot sequence 불연속, provider view 변경, 같은 process의
+  bind/unbind 성공 시 임시 resolve 상태는 폐기해야 한다.
 
-- cache TTL이 지났다.
-- 같은 `channel_name + kind + key`를 현재 process에서 bind 또는 unbind했다.
-- owner provider update sequence가 cache 검증 시점과 달라졌다.
+`resolve_spot()`도 같은 원칙을 따른다. Discovery가 이미 유지하는 topology view와
+service provider view를 읽어 결과를 만들 수는 있지만, 별도의 TTL 기반 resolve 결과
+cache를 두고 다음 호출에 재사용하면 안 된다.
 
-route binding cache key는 `channel_name + kind + key`다. cache TTL은 구현 상수로
-짧게 둔다. 기본값은 250 ms를 권장한다. route binding은 service list broadcast에
-포함되지 않을 수 있으므로, provider update sequence만으로 route 변경을 감지할 수
-있다고 가정하면 안 된다.
-
-이 규칙은 owner-bound record가 Registry에서 늦게 정리되거나 다른 owner로 갱신되더라도
-조회 결과가 오래된 주소를 오래 가리키지 않게 하기 위한 안전 장치다.
+이 규칙은 `resolve_route()`와 `resolve_spot()`의 의미를 단순하게 유지하기 위한 것이다.
+조회 API는 core 기준의 현재 view를 확인하고, 장기 cache 정책은 route value의 의미를 아는
+상위 계층이 결정한다.
 
 ## 내부 protocol 초안
 

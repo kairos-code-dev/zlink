@@ -39,21 +39,28 @@ struct discovery_access_t
     static int routing_id (discovery_t *discovery_, zlink_routing_id_t *out_);
     static int set_value (discovery_t *discovery_, int64_t value_);
     static int get_value (discovery_t *discovery_, int64_t *value_out_);
-    static int set_metadata (discovery_t *discovery_,
-                             const void *data_,
-                             size_t size_);
-    static int get_metadata (discovery_t *discovery_,
-                             zlink_msg_t *metadata_out_);
     static int resolve_spot (discovery_t *discovery_,
                              const zlink_routing_id_t *spot_rid_,
                              zlink_routing_id_t *owner_node_rid_out_);
+    static int bind_route (discovery_t *discovery_,
+                           zlink_route_kind_t kind_,
+                           const void *key_,
+                           size_t key_size_,
+                           const void *value_,
+                           size_t value_size_);
+    static int unbind_route (discovery_t *discovery_,
+                             zlink_route_kind_t kind_,
+                             const void *key_,
+                             size_t key_size_);
+    static int resolve_route (discovery_t *discovery_,
+                              zlink_route_kind_t kind_,
+                              const void *key_,
+                              size_t key_size_,
+                              zlink_routing_id_t *owner_rid_out_,
+                              zlink_msg_t *value_out_);
     static int member_peers (discovery_t *discovery_,
                              zlink_member_peer_entry_t *entries_,
                              size_t *count_);
-    static int member_peer_metadata (discovery_t *discovery_,
-                                     zlink_service_role_t service_role_,
-                                     const char *endpoint_,
-                                     zlink_msg_t *metadata_out_);
     static int destroy (discovery_t *discovery_);
     static void delete_handle (discovery_t *discovery_);
     static void set_summary_enabled (discovery_t *discovery_, bool enabled_);

@@ -285,16 +285,16 @@ void test_typed_service_handle_dispatch_domains ()
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_NOT_NULL (registry);
 
-    size_t metadata_limit = 91;
-    size_t size = sizeof (metadata_limit);
+    size_t route_value_limit = 91;
+    size_t size = sizeof (route_value_limit);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE,
-                        &metadata_limit, sizeof (metadata_limit)));
-    metadata_limit = 0;
+      zlink_set_option (discovery, ZLINK_OPT_ROUTE_VALUE_MAX_SIZE,
+                        &route_value_limit, sizeof (route_value_limit)));
+    route_value_limit = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE,
-                        &metadata_limit, &size));
-    TEST_ASSERT_EQUAL_UINT (91, (unsigned int) metadata_limit);
+      zlink_get_option (discovery, ZLINK_OPT_ROUTE_VALUE_MAX_SIZE,
+                        &route_value_limit, &size));
+    TEST_ASSERT_EQUAL_UINT (91, (unsigned int) route_value_limit);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (discovery, "disc", 4));
     zlink_routing_id_t rid;

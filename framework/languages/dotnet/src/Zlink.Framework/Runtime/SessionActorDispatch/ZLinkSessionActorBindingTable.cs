@@ -37,14 +37,12 @@ internal sealed class ZLinkSessionActorBindingTable
 
     public bool TryGet(
         string actorId,
-        string sessionId,
         string bindingToken,
         out ZLinkSessionContext context)
     {
         lock (_entries)
         {
             if (_entries.TryGetValue(actorId, out var entry)
-                && string.Equals(entry.Context.SessionId, sessionId, StringComparison.Ordinal)
                 && string.Equals(entry.BindingToken, bindingToken, StringComparison.Ordinal))
             {
                 context = entry.Context;

@@ -1207,9 +1207,6 @@ class Registry {
     topologyQuery(filter?: RegistryTopologyFilter): RegistryTopologyEntry[];
     /** @throws {ConfigError} */
     memberPeers(channelName: string): MemberPeerEntry[];
-    /** @throws {ConfigError} */
-    memberPeerMetadata(channelName: string, serviceRole: number,
-                       endpoint: string): Buffer;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -1238,13 +1235,17 @@ class Discovery {
     /** @throws {ConfigError} */
     getValue(): number;
     /** @throws {ConfigError} */
-    setMetadata(metadata: BufferLike | string): void;
+    bindRoute(kind: number, key: BufferLike | string,
+              value: BufferLike | string): void;
     /** @throws {ConfigError} */
-    getMetadata(): Buffer;
+    unbindRoute(kind: number, key: BufferLike | string): void;
+    /** @throws {ConfigError} */
+    resolveRoute(kind: number, key: BufferLike | string): {
+        owner: RoutingId;
+        value: Buffer;
+    };
     /** @throws {ConfigError} */
     memberPeers(): MemberPeerEntry[];
-    /** @throws {ConfigError} */
-    memberPeerMetadata(serviceRole: number, endpoint: string): Buffer;
     /** @throws {ConfigError} */
     setTlsClient(ca: string, host: string, trust?: number): void;
     /**

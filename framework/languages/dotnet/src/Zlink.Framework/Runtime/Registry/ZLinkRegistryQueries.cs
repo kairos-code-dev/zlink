@@ -39,12 +39,11 @@ internal sealed class ZLinkRegistryQuery(ZLinkRegistryRuntime runtime) : IZLinkR
     }
 
     public async ValueTask<ZLinkMemberPeerEntry[]> MemberPeersAsync(
-        ZLinkServiceType serviceType,
-        string serviceName,
+        string channelName,
         CancellationToken cancellationToken = default)
     {
         return await runtime.ExecuteAsync(
-            registry => registry.MemberPeers(serviceType, serviceName).ToArray(),
+            registry => registry.MemberPeers(channelName).ToArray(),
             cancellationToken);
     }
 }

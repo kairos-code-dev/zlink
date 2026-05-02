@@ -1,9 +1,8 @@
 # Tic Tac Toe Session Actor Dispatch Sample
 
 This directory contains the session actor dispatch version of the TicTacToe sample.
-
-The existing TicTacToe sample in `../TicTacToe` is the baseline sample and must
-remain unchanged except for required public API name updates.
+It keeps each runtime role in its own project so the sample topology is easy to
+inspect: client, API, Play, and Session are separate assemblies.
 
 The sample is a separate project and uses real framework routed-channel and
 session actor dispatch APIs:
@@ -22,23 +21,34 @@ session actor dispatch APIs:
 - reconnect recovery for the same `actorId` through a second Session server
 - a complete two-actor TicTacToe round ending in `player-x` winning
 
-Code is split by runtime role:
+Code is split by project:
 
-- `Configuration/` defines sample names, timeouts, and generated endpoints.
-- `Infrastructure/` creates the embedded registry, actor session location store,
-  play route store, and route publisher backed by sample registry metadata.
+- `Shared/` contains packets, sample names, and timeouts shared by all roles.
+- `Client/` owns typed stream connector requests, notify handlers, reconnect flow,
+  and the command-line client executable.
 - `Api/` owns actor authentication and match creation relay.
-- `Session/` owns the STREAM session and actor binding. The scenario
-  starts two Session servers to verify reconnect across Session nodes.
-- `Play/` owns TicTacToe SPOT match rooms, Play channel room creation, and client-facing notify.
-- `Client/` owns typed stream connector requests and notify handlers.
-- `Scenario/` wires the two hosts and the client together.
-- `Contracts/` contains packets shared by the client, session server, and play server.
+- `Play/` owns the Play channel server, routed actor handlers, and SPOT game rooms.
+- `Session/` owns STREAM session binding and actor dispatch into Play.
+- `Registry/` owns the embedded registry host.
+- `Infrastructure/` owns generated endpoints and the sample registry metadata
+  stores shared by Play and Session.
+- `Server/` is only the end-to-end scenario executable that starts all server roles
+  and runs the client flow.
+
+The scenario stays thin: `Server/Scenario/` wires the runtime topology, and the
+actual player actions are delegated to `Client/`.
 
 Run it with:
 
 ```bash
-/home/hep7/.dotnet/dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gateway)/TicTacToe.SessionActorDispatch.csproj" -c Debug
+/home/hep7/.dotnet/dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gateway)/Server/TicTacToe.SessionGateway.Server.csproj" -c Debug
+```
+
+The client project can also run against an already-started pair of Session stream
+endpoints:
+
+```bash
+/home/hep7/.dotnet/dotnet run --project "framework/languages/dotnet/samples/TicTacToe(session-gateway)/Client/TicTacToe.SessionGateway.Client.csproj" -c Debug -- --stream-endpoint tcp://HOST:PORT --reconnect-stream-endpoint tcp://HOST:PORT
 ```
 
 Do not use an in-memory routed-channel replacement to make this sample pass.

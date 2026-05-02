@@ -34,7 +34,8 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
     }
 }
 
-internal sealed class ZLinkSpotPublisherClientService(ZLinkFrameworkRuntime runtime) : IZLinkSpotPublisherClient
+internal sealed class ZLinkSpotPublisherClientService(ZLinkFrameworkRuntime runtime)
+    : IZLinkSpotPublisherClient, IZLinkSpotMeshPublisherClient
 {
     public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
     {

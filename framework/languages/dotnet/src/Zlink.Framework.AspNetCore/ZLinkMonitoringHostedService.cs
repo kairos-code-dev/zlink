@@ -246,13 +246,13 @@ internal sealed class ZLinkMonitoringHostedService(
             var timestamp = DateTimeOffset.UtcNow;
             var status = await query.StatusSnapshotAsync(cancellationToken);
             var topology = (await query.TopologySnapshotAsync(cancellationToken))
-                .OrderBy(static entry => entry.ServiceName, StringComparer.Ordinal)
+                .OrderBy(static entry => entry.ChannelName, StringComparer.Ordinal)
                 .ThenBy(static entry => entry.Endpoint, StringComparer.Ordinal)
                 .ThenBy(static entry => entry.RoutingId?.ToString(), StringComparer.Ordinal)
                 .ToArray();
             var summary = (await query.ServiceSummarySnapshotAsync(cancellationToken: cancellationToken))
-                .OrderBy(static entry => entry.ServiceName, StringComparer.Ordinal)
-                .ThenBy(static entry => entry.ServiceKind)
+                .OrderBy(static entry => entry.ChannelName, StringComparer.Ordinal)
+                .ThenBy(static entry => entry.AutoConnectType)
                 .ThenBy(static entry => entry.ServiceRole)
                 .ToArray();
 

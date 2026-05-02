@@ -180,7 +180,52 @@ class RunComparisonPolicyTests(unittest.TestCase):
             self.assertNotIn("ipc", pair_transports)
         else:
             self.assertIn("ipc", pair_transports)
-        self.assertEqual(stream_transports, ["tcp", "tls"])
+        self.assertEqual(stream_transports, ["tcp", "tls", "ws", "wss"])
+
+    def test_auto_hwm_detail_lines_are_rendered(self):
+        spot_tcp_line = (
+            "AUTO_HWM_DETAIL,pattern=SPOT,transport=tcp,component=publisher,"
+            "msg_size=65536,owner=node,socket=mesh-pub,socket_type=pub,"
+            "role=spot_data,sndhwm=16,rcvhwm=0,effective_sndbuf=262144,"
+            "effective_rcvbuf=0,effective_message_bytes=4096,"
+            "socket_message_slots=16"
+        )
+        tls_line = spot_tcp_line.replace("transport=tcp", "transport=tls")
+        pair_line = (
+            "AUTO_HWM_DETAIL,pattern=PAIR,transport=tcp,component=sender,"
+            "msg_size=65536,owner=socket,socket=sender,socket_type=pair,"
+            "role=fanout,sndhwm=16,rcvhwm=0,effective_sndbuf=262144,"
+            "effective_rcvbuf=0,effective_message_bytes=4096,"
+            "socket_message_slots=16"
+        )
+        row = RC.parse_auto_hwm_detail_line(spot_tcp_line)
+        tls_row = RC.parse_auto_hwm_detail_line(tls_line)
+        pair_row = RC.parse_auto_hwm_detail_line(pair_line)
+        self.assertIsNotNone(row)
+        self.assertIsNotNone(tls_row)
+        self.assertIsNotNone(pair_row)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            emitted = RC.emit_auto_hwm_detail_table([row, tls_row, pair_row], "SPOT")
+        output = buf.getvalue()
+        self.assertTrue(emitted)
+        self.assertIn("## Auto-HWM Detail", output)
+        self.assertNotIn("Transport", output)
+        self.assertNotIn("| tcp", output)
+        self.assertNotIn("| tls", output)
+        self.assertEqual(output.count("| 65536"), 1)
+        self.assertIn("| 65536", output)
+        self.assertIn("| mesh-pub", output)
+        self.assertIn("| 256", output)
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            emitted = RC.emit_auto_hwm_detail_table([row, pair_row], "PAIR")
+        output = buf.getvalue()
+        self.assertTrue(emitted)
+        self.assertIn("| sender", output)
+        self.assertIn("| pair", output)
+        self.assertNotIn("| mesh-pub", output)
 
     def test_run_single_test_retries_timeout_once(self):
         old_run_command_with_metrics = RC.run_command_with_metrics

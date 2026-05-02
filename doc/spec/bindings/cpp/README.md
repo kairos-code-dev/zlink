@@ -1954,10 +1954,6 @@ class registry_t {
         const registry_topology_filter_t& filter) const;
     /// @throws config_error_t
     std::vector<member_peer_entry_t> member_peers(const std::string& channel_name) const;
-    /// @throws config_error_t
-    void member_peer_metadata(const std::string& channel_name, service_role service_role,
-                              const std::string& endpoint,
-                              message_t& metadata_out) const;
 
     /// @throws close_error_t
     void close();
@@ -1990,18 +1986,31 @@ class discovery_t {
     /// @throws config_error_t
     void get_value(int64_t* value_out) const;
     /// @throws config_error_t
-    void set_metadata(const void* data, size_t size);
+    void bind_route(route_kind_t kind, const void* key, size_t key_size,
+                    const void* value, size_t value_size);
     /// @throws config_error_t
-    void set_metadata(const std::vector<uint8_t>& bytes);
+    void bind_route(route_kind_t kind, const std::vector<uint8_t>& key,
+                    const std::vector<uint8_t>& value);
     /// @throws config_error_t
-    void set_metadata(const std::string& text);
+    void bind_route(route_kind_t kind, const std::string& key,
+                    const std::string& value);
     /// @throws config_error_t
-    void get_metadata(message_t& metadata_out) const;
+    void unbind_route(route_kind_t kind, const void* key, size_t key_size);
+    /// @throws config_error_t
+    void unbind_route(route_kind_t kind, const std::vector<uint8_t>& key);
+    /// @throws config_error_t
+    void unbind_route(route_kind_t kind, const std::string& key);
+    /// @throws config_error_t
+    routing_id_t resolve_route(route_kind_t kind, const void* key, size_t key_size,
+                               message_t* value_out = nullptr) const;
+    /// @throws config_error_t
+    routing_id_t resolve_route(route_kind_t kind, const std::vector<uint8_t>& key,
+                               message_t* value_out = nullptr) const;
+    /// @throws config_error_t
+    routing_id_t resolve_route(route_kind_t kind, const std::string& key,
+                               message_t* value_out = nullptr) const;
     /// @throws config_error_t
     std::vector<member_peer_entry_t> member_peers() const;
-    /// @throws config_error_t
-    void member_peer_metadata(service_role service_role, const std::string& endpoint,
-                              message_t& metadata_out) const;
 
     /// Resolve current owner node rid for a logical spot rid. Intended for
     /// send/request destination lookup. Maps to zlink_discovery_resolve_spot.

@@ -16,11 +16,11 @@ public sealed class RegistrationValidationTests
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddChannel("profile", channel =>
+                options.AddClientServerChannel("profile", channel =>
                 {
                     channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
                 });
-                options.AddChannel("profile", channel =>
+                options.AddClientServerChannel("profile", channel =>
                 {
                     channel.EnableClient();
                 });
@@ -30,13 +30,31 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
+    public void AddZLinkFramework_Throws_WhenCompatibilityChannelMixesAutoConnectTypes()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddChannel("profile", channel =>
+                {
+                    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
+                    channel.EnablePublisher(publisher => publisher.Bind("tcp://127.0.0.1:7102"));
+                });
+            }));
+
+        Assert.Contains("mixes client/server and fanout capabilities", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AddZLinkFramework_AllowsChannelClientManualConnections_WhenDiscoveryIsConfigured()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
-            options.AddChannel("profile", channel =>
+            options.AddClientServerChannel("profile", channel =>
             {
                 channel.EnableClient(client =>
                 {
@@ -57,7 +75,7 @@ public sealed class RegistrationValidationTests
             services.AddZLinkFramework(options =>
             {
                 options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
-                options.AddRoutedChannel("backend", routed =>
+                options.AddRouteMeshChannel("backend", routed =>
                 {
                     routed.Bind("tcp://127.0.0.1:7201");
                     routed.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7202"));
@@ -75,7 +93,7 @@ public sealed class RegistrationValidationTests
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddChannel("profile", channel => channel.EnableClient());
+                options.AddClientServerChannel("profile", channel => channel.EnableClient());
             }));
 
         Assert.Contains("requires discovery or manual connections", exception.Message, StringComparison.Ordinal);
@@ -115,7 +133,7 @@ public sealed class RegistrationValidationTests
                 });
             }));
 
-        Assert.Contains("requires UseSpotDiscovery", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("requires AddSpotMesh", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -167,7 +185,7 @@ public sealed class RegistrationValidationTests
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddChannel("profile", channel => channel.EnableServer());
+                options.AddClientServerChannel("profile", channel => channel.EnableServer());
             }));
 
         Assert.Contains("server must define a bind endpoint", exception.Message, StringComparison.Ordinal);
@@ -181,7 +199,7 @@ public sealed class RegistrationValidationTests
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddChannel("profile", channel => channel.EnablePublisher());
+                options.AddFanoutChannel("profile", channel => channel.EnablePublisher());
             }));
 
         Assert.Contains("publisher must define a bind endpoint", exception.Message, StringComparison.Ordinal);
@@ -204,11 +222,15 @@ public sealed class RegistrationValidationTests
             options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
             options.UseSpotDiscovery("game.stage", discovery => discovery.Add("tcp://127.0.0.1:5551"));
 
-            options.AddChannel("profile", channel =>
+            options.AddClientServerChannel("profile", channel =>
             {
                 channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
                 channel.EnableClient();
-                channel.EnableSubscriber();
+            });
+
+            options.AddFanoutChannel("profile.events", events =>
+            {
+                events.EnableSubscriber();
             });
 
             options.AddStreamNode("stream.node", stream =>
@@ -221,7 +243,7 @@ public sealed class RegistrationValidationTests
             {
                 spot.Bind("tcp://127.0.0.1:9000");
                 spot.AddSpotFactory<TestSpot>("stage");
-                spot.AttachChannelClient("profile");
+                spot.AttachClientServerChannelClient("profile");
             });
         });
 
@@ -292,7 +314,7 @@ public sealed class RegistrationValidationTests
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddChannel("profile", channel =>
+            options.AddClientServerChannel("profile", channel =>
             {
                 channel.EnableServer(server => server.Bind(endpoint));
             });

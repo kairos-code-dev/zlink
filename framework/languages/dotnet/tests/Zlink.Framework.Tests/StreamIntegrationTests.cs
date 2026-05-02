@@ -216,7 +216,7 @@ public sealed class StreamIntegrationTests
                 });
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddActorSessionRouteResolver<ActorSessionLocationStore>();
-                options.AddRoutedChannel("gateway", routed =>
+                options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(playRouterEndpoint);
                     routed.ConfigureRouting(routing => routing.RoutingId = playRid);
@@ -235,7 +235,7 @@ public sealed class StreamIntegrationTests
             {
                 options.AddActorSessionLocationWriter<ActorSessionLocationStore>();
                 options.AddActorPlayRouteResolver<ActorPlayRouteStore>();
-                options.AddRoutedChannel("gateway", routed =>
+                options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(sessionRouterEndpoint);
                     routed.ConfigureRouting(routing => routing.RoutingId = sessionRid);
@@ -672,7 +672,6 @@ public sealed class StreamIntegrationTests
             cancellationToken.ThrowIfCancellationRequested();
             if (_binding is { } current
                 && current.ActorId == binding.ActorId
-                && current.SessionId == binding.SessionId
                 && current.BindingToken == binding.BindingToken)
             {
                 _binding = null;
@@ -689,9 +688,7 @@ public sealed class StreamIntegrationTests
             var binding = _binding
                 ?? throw new InvalidOperationException("No session binding exists.");
             return ValueTask.FromResult(new ZLinkActorSessionRoute(
-                binding.RouterChannelId,
                 binding.SessionRouterId,
-                binding.SessionId,
                 binding.BindingToken));
         }
     }

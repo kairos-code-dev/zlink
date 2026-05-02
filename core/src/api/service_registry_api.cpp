@@ -206,24 +206,6 @@ zlink_config_result_t zlink_registry_member_peers (void *registry_,
         registry, channel_name_, entries_, count_));
 }
 
-zlink_config_result_t zlink_registry_member_peer_metadata (void *registry_,
-                                                           const char *channel_name_,
-                                                           zlink_service_role_t service_role_,
-                                                           const char *endpoint_,
-                                                           zlink_msg_t *metadata_out_)
-{
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (registry_);
-    if (!registry) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    return zlink::config_result_internal::from_rc (
-      zlink::registry_access_t::member_peer_metadata (
-        registry, channel_name_, service_role_, endpoint_,
-        metadata_out_));
-}
-
 zlink_config_result_t zlink_registry_topology_query (
   void *registry_,
   const zlink_registry_topology_filter_t *filter_,

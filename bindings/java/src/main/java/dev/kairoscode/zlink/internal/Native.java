@@ -552,12 +552,6 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_MEMBER_PEER_METADATA = downcall(
-            "zlink_registry_member_peer_metadata",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_REG_TOPOLOGY_SNAPSHOT = downcall(
             "zlink_registry_topology_snapshot",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -601,13 +595,22 @@ public final class Native {
             "zlink_discovery_get_value",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_SET_METADATA = downcall(
-            "zlink_discovery_set_metadata",
+    private static final MethodHandle MH_DISC_BIND_ROUTE = downcall(
+            "zlink_discovery_bind_route",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_DISC_GET_METADATA = downcall(
-            "zlink_discovery_get_metadata",
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_DISC_UNBIND_ROUTE = downcall(
+            "zlink_discovery_unbind_route",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_DISC_RESOLVE_ROUTE = downcall(
+            "zlink_discovery_resolve_route",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_DESTROY = downcall("zlink_discovery_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
@@ -615,11 +618,6 @@ public final class Native {
             "zlink_discovery_member_peers",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_MEMBER_PEER_METADATA = downcall(
-            "zlink_discovery_member_peer_metadata",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
 
     private static final MethodHandle MH_PROVIDER_NEW =
         unsupportedLegacyDowncall("zlink_receiver_new",
@@ -2506,20 +2504,6 @@ public final class Native {
         }
     }
 
-    public static int registryMemberPeerMetadata(MemorySegment registry,
-                                                 MemorySegment channelName,
-                                                 int serviceRole,
-                                                 MemorySegment endpoint,
-                                                 MemorySegment metadataOut) {
-        try {
-            return (int) MH_REG_MEMBER_PEER_METADATA.invokeExact(registry,
-              channelName, serviceRole, endpoint, metadataOut);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_registry_member_peer_metadata failed", t);
-        }
-    }
-
     public static int registryTopologySnapshot(MemorySegment registry,
                                                MemorySegment entries,
                                                MemorySegment count) {
@@ -2637,23 +2621,44 @@ public final class Native {
         }
     }
 
-    public static int discoverySetMetadata(MemorySegment disc,
-                                           MemorySegment data,
-                                           long size) {
+    public static int discoveryBindRoute(MemorySegment disc,
+                                         int kind,
+                                         MemorySegment key,
+                                         long keySize,
+                                         MemorySegment value,
+                                         long valueSize) {
         try {
-            return (int) MH_DISC_SET_METADATA.invokeExact(disc, data, size);
+            return (int) MH_DISC_BIND_ROUTE.invokeExact(disc, kind, key,
+              keySize, value, valueSize);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_set_metadata failed",
+            throw new RuntimeException("zlink_discovery_bind_route failed", t);
+        }
+    }
+
+    public static int discoveryUnbindRoute(MemorySegment disc,
+                                           int kind,
+                                           MemorySegment key,
+                                           long keySize) {
+        try {
+            return (int) MH_DISC_UNBIND_ROUTE.invokeExact(disc, kind, key,
+              keySize);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_discovery_unbind_route failed",
               t);
         }
     }
 
-    public static int discoveryGetMetadata(MemorySegment disc,
-                                           MemorySegment metadataOut) {
+    public static int discoveryResolveRoute(MemorySegment disc,
+                                            int kind,
+                                            MemorySegment key,
+                                            long keySize,
+                                            MemorySegment ownerRidOut,
+                                            MemorySegment valueOut) {
         try {
-            return (int) MH_DISC_GET_METADATA.invokeExact(disc, metadataOut);
+            return (int) MH_DISC_RESOLVE_ROUTE.invokeExact(disc, kind, key,
+              keySize, ownerRidOut, valueOut);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_get_metadata failed",
+            throw new RuntimeException("zlink_discovery_resolve_route failed",
               t);
         }
     }
@@ -2677,19 +2682,6 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException("zlink_discovery_member_peers failed",
               t);
-        }
-    }
-
-    public static int discoveryMemberPeerMetadata(MemorySegment discovery,
-                                                  int serviceRole,
-                                                  MemorySegment endpoint,
-                                                  MemorySegment metadataOut) {
-        try {
-            return (int) MH_DISC_MEMBER_PEER_METADATA.invokeExact(discovery,
-              serviceRole, endpoint, metadataOut);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_discovery_member_peer_metadata failed", t);
         }
     }
 

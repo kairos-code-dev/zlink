@@ -1,6 +1,6 @@
 namespace TicTacToe.SessionActorDispatch.Configuration;
 
-internal static class SampleNames
+public static class SampleNames
 {
     public const string ApiChannel = "tictactoe.api";
 
@@ -29,7 +29,7 @@ internal static class SampleNames
     public const string GameEndedPacket = nameof(Contracts.GameEndedNotify);
 }
 
-internal static class SampleTimings
+public static class SampleTimings
 {
     public static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(5);
 

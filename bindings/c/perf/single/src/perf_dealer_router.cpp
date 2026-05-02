@@ -479,6 +479,8 @@ void run_dealer_router (const std::string &transport,
         std::_Exit (1);
     }
 
+    apply_single_auto_hwm_msg_unit (receiver.get (), msg_size);
+    apply_single_auto_hwm_msg_unit (sender.get (), msg_size);
     if (!setup_dealer_router_session (
           receiver.get (), sender.get (), transport,
           lib_name + "_dealer_router")) {
@@ -506,6 +508,18 @@ void run_dealer_router (const std::string &transport,
     if (bench_debug_enabled ())
         std::cerr << "[perf-dealer-router] active complete" << std::endl;
 
+    emit_single_socket_hwm_detail (receiver.get (),
+                                   "DEALER_ROUTER",
+                                   transport,
+                                   "receiver",
+                                   ZLINK_SOCKET_ROUTER,
+                                   msg_size);
+    emit_single_socket_hwm_detail (sender.get (),
+                                   "DEALER_ROUTER",
+                                   transport,
+                                   "sender",
+                                   ZLINK_SOCKET_DEALER,
+                                   msg_size);
     print_result (lib_name,
                   "DEALER_ROUTER",
                   transport,

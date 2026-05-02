@@ -229,6 +229,18 @@ void run_pubsub (const std::string &transport,
         return;
     }
 
+    emit_single_socket_hwm_detail (publisher.get (),
+                                   "PUBSUB",
+                                   transport,
+                                   "publisher",
+                                   ZLINK_SOCKET_PUB,
+                                   msg_size);
+    emit_single_socket_hwm_detail (subscriber.get (),
+                                   "PUBSUB",
+                                   transport,
+                                   "subscriber",
+                                   ZLINK_SOCKET_SUB,
+                                   msg_size);
     print_result (lib_name,
                   "PUBSUB",
                   transport,

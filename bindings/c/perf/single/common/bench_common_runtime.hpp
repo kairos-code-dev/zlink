@@ -382,6 +382,113 @@ inline void apply_single_auto_hwm_msg_unit(void *socket_, size_t msg_size_)
                     "ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES");
 }
 
+inline const char *single_socket_type_name(zlink_socket_type_t type_)
+{
+    switch (type_) {
+    case ZLINK_SOCKET_PAIR:
+        return "pair";
+    case ZLINK_SOCKET_PUB:
+        return "pub";
+    case ZLINK_SOCKET_SUB:
+        return "sub";
+    case ZLINK_SOCKET_DEALER:
+        return "dealer";
+    case ZLINK_SOCKET_ROUTER:
+        return "router";
+    case ZLINK_SOCKET_XPUB:
+        return "xpub";
+    case ZLINK_SOCKET_XSUB:
+        return "xsub";
+    case ZLINK_SOCKET_STREAM:
+        return "stream";
+    default:
+        return "unknown";
+    }
+}
+
+inline const char *single_auto_hwm_role_name(uint32_t role_)
+{
+    switch (role_) {
+    case 1:
+        return "control";
+    case 2:
+        return "routed";
+    case 3:
+        return "fanout";
+    case 4:
+        return "recv_ingress";
+    case 5:
+        return "spot_data";
+    case 6:
+        return "peer_queue";
+    case 7:
+        return "stream";
+    default:
+        return "none";
+    }
+}
+
+inline bool single_auto_hwm_snapshot_visible(
+  const zlink_monitor_snapshot_t &snapshot_)
+{
+    return snapshot_.auto_hwm_applied_sndhwm > 0
+           || snapshot_.auto_hwm_applied_rcvhwm > 0
+           || snapshot_.auto_hwm_effective_sndbuf > 0
+           || snapshot_.auto_hwm_effective_rcvbuf > 0
+           || snapshot_.auto_hwm_effective_message_bytes > 0
+           || snapshot_.auto_hwm_socket_message_slots > 0;
+}
+
+inline void emit_single_socket_hwm_detail(void *socket_,
+                                          const char *pattern_,
+                                          const std::string &transport_,
+                                          const char *component_,
+                                          zlink_socket_type_t socket_type_,
+                                          size_t msg_size_)
+{
+    if (!socket_ || !pattern_ || !component_)
+        return;
+
+    zlink_socket_monitor_open_options_t options;
+    std::memset(&options, 0, sizeof(options));
+    options.events = ZLINK_EVENT_CONNECTION_READY;
+    void *monitor = zlink_socket_monitor_open(socket_, &options);
+    if (!monitor)
+        return;
+
+    zlink_monitor_snapshot_t snapshot;
+    std::memset(&snapshot, 0, sizeof(snapshot));
+    const zlink_config_result_t snapshot_rc =
+      zlink_monitor_snapshot(monitor, &snapshot);
+    zlink_monitor_close(&monitor);
+    if (snapshot_rc != ZLINK_CONFIG_OK
+        || !single_auto_hwm_snapshot_visible(snapshot)) {
+        return;
+    }
+
+    const char *socket_name = component_;
+    const char *socket_type = single_socket_type_name(socket_type_);
+    std::cout << "AUTO_HWM_DETAIL"
+              << ",pattern=" << pattern_
+              << ",transport=" << transport_
+              << ",component=" << component_
+              << ",msg_size=" << msg_size_
+              << ",owner=socket"
+              << ",owner_id=0"
+              << ",socket=" << socket_name
+              << ",socket_type=" << socket_type
+              << ",role=" << single_auto_hwm_role_name(snapshot.auto_hwm_role)
+              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+              << ",effective_sndbuf=" << snapshot.auto_hwm_effective_sndbuf
+              << ",effective_rcvbuf=" << snapshot.auto_hwm_effective_rcvbuf
+              << ",effective_message_bytes="
+              << snapshot.auto_hwm_effective_message_bytes
+              << ",socket_message_slots="
+              << snapshot.auto_hwm_socket_message_slots
+              << std::endl;
+}
+
 inline void apply_single_benchmark_socket_options(void *socket_,
                                                   const std::string &transport_)
 {

@@ -1,10 +1,14 @@
 using TicTacToe.SessionActorDispatch.Configuration;
+using TicTacToe.SessionGateway.Infrastructure;
+using TicTacToe.SessionGateway.Infrastructure.Configuration;
+using Zlink;
 using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Infrastructure;
 
-internal sealed class RegistryPlayRoutePublisher(
-    RegistryPlayRouteStore routes,
+public sealed class RegistryPlayRoutePublisher(
+    RegistryPlayRouteStore actorRoutes,
+    ISpotRouteWriter spotRoutes,
     SampleTopology topology)
 {
     public async ValueTask BindInitialActorPlayRoutesAsync(
@@ -21,18 +25,18 @@ internal sealed class RegistryPlayRoutePublisher(
         string actorId,
         CancellationToken cancellationToken)
     {
-        return routes.BindActorPlayAsync(
+        return actorRoutes.BindActorPlayAsync(
             actorId,
             CreateLocalPlayRoute(),
             cancellationToken);
     }
 
-    public ValueTask BindMatchAsync(
-        string matchId,
+    public ValueTask BindSpotRouteAsync(
+        RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        return routes.BindMatchAsync(
-            matchId,
+        return spotRoutes.BindSpotRouteAsync(
+            spotRid,
             CreateLocalPlayRoute(),
             cancellationToken);
     }

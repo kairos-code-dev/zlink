@@ -401,8 +401,8 @@ zlink_ctx_term(ctx);
 ### 6.3 Member Peer Introspection
 
 Registry and Discovery provide member peer queries that expose per-peer
-routing attributes (`value`) and opaque metadata for services. This is
-useful for weighted routing decisions and operational inspection.
+routing attributes (`value`). This is useful for weighted routing decisions
+and operational inspection.
 
 #### Registry Member Peer Query
 
@@ -424,22 +424,6 @@ for (size_t i = 0; i < count; i++) {
            (long long)peers[i].value);
 }
 free(peers);
-```
-
-#### Member Peer Metadata
-
-```c
-/* Retrieve opaque metadata blob for a specific peer */
-zlink_msg_t metadata;
-zlink_msg_init(&metadata);
-zlink_config_result_t rc = zlink_registry_member_peer_metadata(registry,
-    "payment-service",
-    ZLINK_SERVICE_ROLE_ROUTER, "tcp://10.0.1.5:5555",
-    &metadata);
-if (rc == ZLINK_CONFIG_OK) {
-    printf("metadata size=%zu\n", zlink_msg_size(&metadata));
-}
-zlink_msg_close(&metadata);
 ```
 
 #### Member Peer Entry Fields
@@ -472,15 +456,35 @@ for (size_t i = 0; i < count; i++) {
            (long long)peers[i].value);
 }
 free(peers);
+```
 
-/* Retrieve metadata for a specific peer via Discovery */
-zlink_msg_t metadata;
-zlink_msg_init(&metadata);
-zlink_discovery_member_peer_metadata(discovery,
-    ZLINK_SERVICE_ROLE_ROUTER, "tcp://10.0.1.5:5555",
-    &metadata);
-printf("metadata size=%zu\n", zlink_msg_size(&metadata));
-zlink_msg_close(&metadata);
+#### Owner-Bound Route Binding
+
+Use route binding when an application key should follow the lifetime of the
+provider that owns it. Bind from the owner Discovery, resolve from any
+Discovery in the same channel.
+
+```c
+const char key[] = "actor:42";
+const char value[] = "shard-a";
+
+zlink_discovery_bind_route(owner_discovery, 1,
+    key, sizeof(key) - 1,
+    value, sizeof(value) - 1);
+
+zlink_routing_id_t owner_rid;
+zlink_msg_t route_value;
+zlink_msg_init(&route_value);
+if (zlink_discovery_resolve_route(resolver_discovery, 1,
+        key, sizeof(key) - 1,
+        &owner_rid, &route_value) == ZLINK_CONFIG_OK) {
+    printf("owner rid size=%u value size=%zu\n",
+           owner_rid.size, zlink_msg_size(&route_value));
+}
+zlink_msg_close(&route_value);
+
+zlink_discovery_unbind_route(owner_discovery, 1,
+    key, sizeof(key) - 1);
 ```
 
 ## 7. Operational Patterns

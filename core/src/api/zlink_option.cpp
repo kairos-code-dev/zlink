@@ -227,7 +227,7 @@ zlink_config_result_t zlink_set_option (void *handle_,
     }
 
     int socket_option = 0;
-    if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE)
+    if (option_ == ZLINK_OPT_ROUTE_VALUE_MAX_SIZE)
         socket_option = option_;
     else {
         socket_option = map_common_option (option_);
@@ -250,7 +250,7 @@ zlink_config_result_t zlink_set_option (void *handle_,
         return zlink::config_result_internal::from_rc (-1);
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
-        if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE) {
+        if (option_ == ZLINK_OPT_ROUTE_VALUE_MAX_SIZE) {
             errno = EINVAL;
             return ZLINK_CONFIG_INVALID_ARGUMENT;
         }
@@ -272,7 +272,7 @@ zlink_config_result_t zlink_get_option (void *handle_,
     }
 
     int socket_option = 0;
-    if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE)
+    if (option_ == ZLINK_OPT_ROUTE_VALUE_MAX_SIZE)
         socket_option = option_;
     else {
         socket_option = map_common_option (option_);
@@ -290,7 +290,7 @@ zlink_config_result_t zlink_get_option (void *handle_,
         return zlink::config_result_internal::from_rc (-1);
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
-        if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE) {
+        if (option_ == ZLINK_OPT_ROUTE_VALUE_MAX_SIZE) {
             errno = EINVAL;
             return ZLINK_CONFIG_INVALID_ARGUMENT;
         }

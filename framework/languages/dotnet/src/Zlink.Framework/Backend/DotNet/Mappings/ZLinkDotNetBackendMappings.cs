@@ -20,9 +20,9 @@ internal static class ZLinkDotNetBackendMappings
     public static ZLinkRegistryServiceSummaryEntry ToFramework(this RegistryServiceSummaryEntry entry)
     {
         return new ZLinkRegistryServiceSummaryEntry(
-            (ZLinkServiceKind)entry.ServiceKind,
+            (ZLinkAutoConnectType)entry.AutoConnectType,
             (ZLinkServiceRole)entry.ServiceRole,
-            entry.ServiceName,
+            entry.ChannelName,
             entry.TotalCount,
             entry.ConnectingCount,
             entry.ReadyCount,
@@ -34,10 +34,11 @@ internal static class ZLinkDotNetBackendMappings
     public static ZLinkRegistryTopologyEntry ToFramework(this RegistryTopologyEntry entry)
     {
         return new ZLinkRegistryTopologyEntry(
+            (ZLinkAutoConnectType)entry.AutoConnectType,
             entry.RoutingId,
             (ZLinkServiceKind)entry.ServiceKind,
             (ZLinkServiceRole)entry.ServiceRole,
-            entry.ServiceName,
+            entry.ChannelName,
             entry.Endpoint,
             (ZLinkTopologySource)entry.Source,
             (ZLinkTopologyState)entry.State,
@@ -50,9 +51,9 @@ internal static class ZLinkDotNetBackendMappings
     public static ZLinkMemberPeerEntry ToFramework(this MemberPeerEntry entry)
     {
         return new ZLinkMemberPeerEntry(
-            (ZLinkServiceType)entry.ServiceType,
+            (ZLinkAutoConnectType)entry.AutoConnectType,
             (ZLinkServiceRole)entry.ServiceRole,
-            entry.ServiceName,
+            entry.ChannelName,
             entry.Endpoint,
             entry.RoutingId,
             entry.Value,
@@ -107,9 +108,9 @@ internal static class ZLinkDotNetBackendMappings
         }
 
         return new RegistryServiceSummaryFilter(
-            filter.ServiceKind is null ? null : (ServiceKind?)filter.ServiceKind,
+            filter.AutoConnectType is null ? null : (AutoConnectType?)filter.AutoConnectType,
             filter.ServiceRole is null ? null : (ServiceRole?)filter.ServiceRole,
-            filter.ServiceName);
+            filter.ChannelName);
     }
 
     public static RegistryTopologyFilter? ToNative(this ZLinkRegistryTopologyFilter? filter)
@@ -120,9 +121,10 @@ internal static class ZLinkDotNetBackendMappings
         }
 
         return new RegistryTopologyFilter(
+            filter.AutoConnectType is null ? null : (AutoConnectType?)filter.AutoConnectType,
             filter.ServiceKind is null ? null : (ServiceKind?)filter.ServiceKind,
             filter.ServiceRole is null ? null : (ServiceRole?)filter.ServiceRole,
-            filter.ServiceName,
+            filter.ChannelName,
             filter.RoutingId,
             filter.State is null ? null : (TopologyState?)filter.State,
             filter.Source is null ? null : (TopologySource?)filter.Source);

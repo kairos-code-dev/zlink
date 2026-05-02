@@ -3,9 +3,9 @@ using TicTacToe.SessionActorDispatch.Contracts;
 using Zlink.Framework.Channels;
 using Zlink.Framework.Handlers;
 
-namespace TicTacToe.SessionActorDispatch.Api;
+namespace TicTacToe.SessionGateway.Api;
 
-internal sealed class CreateMatchHandler(IZLinkClient client)
+internal sealed class CreateMatchHandler(IZLinkClientServerClient client)
 {
     [ZLinkRequest]
     public async ValueTask<CreateMatchRes> CreateMatch(

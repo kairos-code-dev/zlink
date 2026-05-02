@@ -40,6 +40,8 @@ static int recv_status_ack_local (socket_base_t *socket_,
                                   uint16_t expected_msg_id_,
                                   int *status_out_,
                                   std::string *resolved_out_,
+                                  uint32_t *source_registry_out_,
+                                  uint64_t *registration_id_out_,
                                   std::string *error_out_)
 {
     if (!socket_ || !status_out_) {
@@ -50,6 +52,10 @@ static int recv_status_ack_local (socket_base_t *socket_,
     *status_out_ = -1;
     if (resolved_out_)
         resolved_out_->clear ();
+    if (source_registry_out_)
+        *source_registry_out_ = 0;
+    if (registration_id_out_)
+        *registration_id_out_ = 0;
     if (error_out_)
         error_out_->clear ();
 
@@ -79,10 +85,20 @@ static int recv_status_ack_local (socket_base_t *socket_,
                 && expected_msg_id_ == discovery_protocol::msg_register_ack) {
                 *resolved_out_ = discovery_protocol::read_string (frames[2]);
             }
+            if (source_registry_out_ && frames.size () >= 4
+                && expected_msg_id_ == discovery_protocol::msg_register_ack) {
+                discovery_protocol::read_u32 (frames[3],
+                                              source_registry_out_);
+            }
+            if (registration_id_out_ && frames.size () >= 5
+                && expected_msg_id_ == discovery_protocol::msg_register_ack) {
+                discovery_protocol::read_u64 (frames[4],
+                                              registration_id_out_);
+            }
             if (error_out_) {
                 if (expected_msg_id_ == discovery_protocol::msg_register_ack
-                    && frames.size () >= 4) {
-                    *error_out_ = discovery_protocol::read_string (frames[3]);
+                    && frames.size () >= 6) {
+                    *error_out_ = discovery_protocol::read_string (frames[5]);
                 } else if (
                   expected_msg_id_ == discovery_protocol::msg_unregister_ack
                   && frames.size () >= 3) {
@@ -245,6 +261,83 @@ static int recv_topology_reply_entries_local (
 
     close_msg_frames (&frames);
     return 0;
+}
+
+static int recv_route_reply_local (socket_base_t *socket_,
+                                   zlink_routing_id_t *owner_rid_out_,
+                                   zlink_msg_t *value_out_)
+{
+    if (!socket_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::vector<zlink_msg_t> frames;
+    if (!recv_msg_sequence_socket_wait (socket_, &frames, 500))
+        return -1;
+
+    uint16_t msg_id = 0;
+    if (frames.size () < 5
+        || !discovery_protocol::read_u16 (frames[0], &msg_id)
+        || msg_id != discovery_protocol::msg_resolve_route_reply
+        || zlink_msg_size (&frames[1]) != sizeof (uint8_t)) {
+        close_msg_frames (&frames);
+        errno = EPROTO;
+        return -1;
+    }
+
+    uint8_t status = 0xFF;
+    memcpy (&status, zlink_msg_data (&frames[1]), sizeof (status));
+    if (status != 0) {
+        close_msg_frames (&frames);
+        errno = status == 0x01 ? ENOENT
+                               : (status == 0x02 ? ESTALE : EINVAL);
+        return -1;
+    }
+
+    if (owner_rid_out_)
+        discovery_protocol::read_routing_id (frames[2], owner_rid_out_);
+    if (value_out_) {
+        const size_t value_size = zlink_msg_size (&frames[3]);
+        if (zlink_msg_init_size (value_out_, value_size) != 0) {
+            close_msg_frames (&frames);
+            return -1;
+        }
+        if (value_size > 0)
+            memcpy (zlink_msg_data (value_out_),
+                    zlink_msg_data (&frames[3]), value_size);
+    }
+
+    close_msg_frames (&frames);
+    return 0;
+}
+
+static bool valid_route_request_local (zlink_route_kind_t kind_,
+                                       const void *key_,
+                                       size_t key_size_,
+                                       const void *value_,
+                                       size_t value_size_,
+                                       bool has_value_)
+{
+    if (kind_ == ZLINK_ROUTE_KIND_INVALID || !key_ || key_size_ == 0) {
+        errno = EINVAL;
+        return false;
+    }
+    if (key_size_ > ZLINK_ROUTE_KEY_MAX) {
+        errno = EMSGSIZE;
+        return false;
+    }
+    if (has_value_) {
+        if (value_size_ > ZLINK_ROUTE_VALUE_MAX) {
+            errno = EMSGSIZE;
+            return false;
+        }
+        if (!value_ && value_size_ > 0) {
+            errno = EINVAL;
+            return false;
+        }
+    }
+    return true;
 }
 }
 
@@ -422,6 +515,209 @@ void discovery_t::refresh_spot_owner_cache_locked (
     }
 }
 
+bool discovery_t::select_route_owner_locked (registered_service_t *owner_out_) const
+{
+    if (!owner_out_)
+        return false;
+    bool found = false;
+    for (std::map<registered_service_key_t, registered_service_t>::const_iterator
+           it = _registered_services.begin ();
+         it != _registered_services.end (); ++it) {
+        if (it->second.channel_name != _channel_name)
+            continue;
+        if (found) {
+            errno = EINVAL;
+            return false;
+        }
+        *owner_out_ = it->second;
+        found = true;
+    }
+    if (!found)
+        errno = ENOENT;
+    return found;
+}
+
+int discovery_t::bind_route (zlink_route_kind_t kind_,
+                             const void *key_,
+                             size_t key_size_,
+                             const void *value_,
+                             size_t value_size_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!valid_route_request_local (kind_, key_, key_size_, value_,
+                                    value_size_, true))
+        return -1;
+
+    registered_service_t owner;
+    {
+        scoped_lock_t lock (_sync);
+        if (value_size_ > _local_state.route_value_max_size ()) {
+            errno = EMSGSIZE;
+            return -1;
+        }
+        if (!select_route_owner_locked (&owner))
+            return -1;
+    }
+    if (owner.registration_id == 0) {
+        errno = EAGAIN;
+        return -1;
+    }
+
+    socket_base_t *dealer = NULL;
+    if (prepare_transient_dealer_local (_ctx, _bootstrap_runtime,
+                                        owner.uplink_endpoint, NULL, &dealer)
+        != 0) {
+        return -1;
+    }
+
+    const uint32_t raw_kind = kind_;
+    const int send_rc =
+      discovery_protocol::send_u16 (dealer, discovery_protocol::msg_bind_route,
+                                    ZLINK_SNDMORE)
+        < 0
+        || discovery_protocol::send_u32 (dealer, raw_kind, ZLINK_SNDMORE) < 0
+        || discovery_protocol::send_frame (dealer, key_, key_size_,
+                                           ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_frame (dealer, value_, value_size_,
+                                           ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_string (dealer, _channel_name,
+                                            ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_u16 (dealer, owner.service_role,
+                                         ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_string (dealer, owner.endpoint,
+                                            ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_u64 (dealer, owner.registration_id, 0) < 0;
+    if (send_rc) {
+        (void) close_transient_dealer_local (_ctx, dealer);
+        return -1;
+    }
+
+    const int rc = recv_route_reply_local (dealer, NULL, NULL);
+    const int saved_errno = errno;
+    (void) close_transient_dealer_local (_ctx, dealer);
+    if (rc != 0)
+        errno = saved_errno;
+    return rc;
+}
+
+int discovery_t::unbind_route (zlink_route_kind_t kind_,
+                               const void *key_,
+                               size_t key_size_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!valid_route_request_local (kind_, key_, key_size_, NULL, 0, false))
+        return -1;
+
+    registered_service_t owner;
+    {
+        scoped_lock_t lock (_sync);
+        if (!select_route_owner_locked (&owner))
+            return -1;
+    }
+    if (owner.registration_id == 0) {
+        errno = EAGAIN;
+        return -1;
+    }
+
+    socket_base_t *dealer = NULL;
+    if (prepare_transient_dealer_local (_ctx, _bootstrap_runtime,
+                                        owner.uplink_endpoint, NULL, &dealer)
+        != 0) {
+        return -1;
+    }
+
+    const uint32_t raw_kind = kind_;
+    const int send_rc =
+      discovery_protocol::send_u16 (
+        dealer, discovery_protocol::msg_unbind_route, ZLINK_SNDMORE)
+        < 0
+        || discovery_protocol::send_u32 (dealer, raw_kind, ZLINK_SNDMORE) < 0
+        || discovery_protocol::send_frame (dealer, key_, key_size_,
+                                           ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_string (dealer, _channel_name,
+                                            ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_u16 (dealer, owner.service_role,
+                                         ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_string (dealer, owner.endpoint,
+                                            ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_u64 (dealer, owner.registration_id, 0) < 0;
+    if (send_rc) {
+        (void) close_transient_dealer_local (_ctx, dealer);
+        return -1;
+    }
+
+    const int rc = recv_route_reply_local (dealer, NULL, NULL);
+    const int saved_errno = errno;
+    (void) close_transient_dealer_local (_ctx, dealer);
+    if (rc != 0)
+        errno = saved_errno;
+    return rc;
+}
+
+int discovery_t::resolve_route (zlink_route_kind_t kind_,
+                                const void *key_,
+                                size_t key_size_,
+                                zlink_routing_id_t *owner_rid_out_,
+                                zlink_msg_t *value_out_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!owner_rid_out_
+        || !valid_route_request_local (kind_, key_, key_size_, NULL, 0,
+                                       false))
+        return -1;
+
+    std::string uplink;
+    if (!_uplink_runtime->latest_registry_uplink (this, &uplink)) {
+        errno = EAGAIN;
+        return -1;
+    }
+
+    socket_base_t *dealer = NULL;
+    if (prepare_transient_dealer_local (_ctx, _bootstrap_runtime, uplink, NULL,
+                                        &dealer)
+        != 0) {
+        return -1;
+    }
+
+    const uint32_t raw_kind = kind_;
+    const int send_rc =
+      discovery_protocol::send_u16 (
+        dealer, discovery_protocol::msg_resolve_route, ZLINK_SNDMORE)
+        < 0
+        || discovery_protocol::send_u32 (dealer, raw_kind, ZLINK_SNDMORE) < 0
+        || discovery_protocol::send_frame (dealer, key_, key_size_,
+                                           ZLINK_SNDMORE)
+             < 0
+        || discovery_protocol::send_string (dealer, _channel_name, 0) < 0;
+    if (send_rc) {
+        (void) close_transient_dealer_local (_ctx, dealer);
+        return -1;
+    }
+
+    const int rc =
+      recv_route_reply_local (dealer, owner_rid_out_, value_out_);
+    const int saved_errno = errno;
+    (void) close_transient_dealer_local (_ctx, dealer);
+    if (rc != 0)
+        errno = saved_errno;
+    return rc;
+}
+
 int discovery_t::register_service (const char *endpoint_,
                                    uint32_t weight_,
                                    int64_t value_,
@@ -483,10 +779,13 @@ int discovery_t::register_service (const char *endpoint_,
     }
 
     int status = -1;
+    uint32_t source_registry = 0;
+    uint64_t registration_id = 0;
     std::string resolved;
     std::string error;
     if (recv_status_ack_local (dealer, discovery_protocol::msg_register_ack,
-                               &status, &resolved, &error)
+                               &status, &resolved, &source_registry,
+                               &registration_id, &error)
         != 0) {
         discovery_debugf_local ("register_service ack recv failed errno=%d",
                                 errno);
@@ -522,6 +821,10 @@ int discovery_t::register_service (const char *endpoint_,
         service.weight = weight_;
         service.value = value_;
         service.metadata = metadata_ ? *metadata_ : std::vector<unsigned char> ();
+        service.routing_id = routing_id_ ? *routing_id_
+                                         : _bootstrap_runtime->routing_id_value ();
+        service.source_registry = source_registry;
+        service.registration_id = registration_id;
         service.last_heartbeat_ms = clock_t ().now_ms ();
     }
 
@@ -603,10 +906,13 @@ int discovery_t::update_service_attributes (const char *endpoint_,
     }
 
     int status = -1;
+    uint32_t source_registry = 0;
+    uint64_t registration_id = 0;
     std::string resolved;
     std::string error;
     if (recv_status_ack_local (dealer, discovery_protocol::msg_register_ack,
-                               &status, &resolved, &error)
+                               &status, &resolved, &source_registry,
+                               &registration_id, &error)
         != 0) {
         discovery_debugf_local (
           "update_service_attributes ack recv failed errno=%d", errno);
@@ -641,6 +947,10 @@ int discovery_t::update_service_attributes (const char *endpoint_,
         it->second.value = value_;
         it->second.metadata =
           metadata_ ? *metadata_ : std::vector<unsigned char> ();
+        if (source_registry != 0)
+            it->second.source_registry = source_registry;
+        if (registration_id != 0)
+            it->second.registration_id = registration_id;
     }
     return 0;
 }
@@ -707,7 +1017,7 @@ int discovery_t::unregister_service (const char *endpoint_,
     int status = -1;
     std::string error;
     if (recv_status_ack_local (dealer, discovery_protocol::msg_unregister_ack,
-                               &status, NULL, &error)
+                               &status, NULL, NULL, NULL, &error)
         != 0) {
         discovery_debugf_local (
           "unregister_service ack recv failed errno=%d", errno);

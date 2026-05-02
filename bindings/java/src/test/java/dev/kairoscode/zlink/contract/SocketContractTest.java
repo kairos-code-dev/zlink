@@ -324,6 +324,10 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(SpotNode.class, "routingId"));
         assertTrue(hasPublicMethod(Discovery.class, "resolveSpot",
             RoutingId.class));
+        assertTrue(hasPublicMethod(Discovery.class, "bindRoute",
+            int.class, byte[].class, byte[].class));
+        assertTrue(hasPublicMethod(Discovery.class, "resolveRoute",
+            int.class, byte[].class));
         assertFalse(hasPublicMethod(Discovery.class, "setDealerPeerMode"));
 
         assertFalse(hasPublicMethod(XPubSocket.class, "onSubscribe"));

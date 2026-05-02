@@ -26,7 +26,7 @@ internal static class FixtureSamples
                 discovery.Add("tcp://127.0.0.1:7100");
             });
 
-            options.AddChannel("orders", channel =>
+            options.AddClientServerChannel("orders", channel =>
             {
                 channel.EnableServer(server =>
                 {
@@ -41,11 +41,14 @@ internal static class FixtureSamples
                     });
                 });
 
+            });
+
+            options.AddFanoutChannel("orders.events", channel =>
+            {
                 channel.EnablePublisher(publisher =>
                 {
                     publisher.Bind("tcp://127.0.0.1:7202");
                 });
-
                 channel.EnableSubscriber(subscriber =>
                 {
                     subscriber.UseManualConnections(connections =>
@@ -66,19 +69,21 @@ internal static class FixtureSamples
         builder.Services.AddScoped<FixtureSpotSubscriptionHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.stage", discovery =>
+            options.AddSpotMesh("game.stage", spotMesh =>
             {
-                discovery.Add("tcp://127.0.0.1:7300");
-            });
-
-            options.AddSpotNode("stage-node", spot =>
-            {
-                spot.Bind("tcp://127.0.0.1:7301");
-                spot.EnableRouter();
-                spot.EnablePubSub();
-                spot.AttachChannelClient("orders");
-                spot.AttachSpotPublisherClient("game.stage");
-                spot.AddSpotFactory<FixtureStageSpot>("stage");
+                spotMesh.UseDiscovery(discovery =>
+                {
+                    discovery.Add("tcp://127.0.0.1:7300");
+                });
+                spotMesh.AddNode("stage-node", spot =>
+                {
+                    spot.Bind("tcp://127.0.0.1:7301");
+                    spot.EnableRouter();
+                    spot.EnablePubSub();
+                    spot.AttachClientServerChannelClient("orders");
+                    spot.AttachSpotMeshPublisherClient("game.stage");
+                    spot.AddSpotFactory<FixtureStageSpot>("stage");
+                });
             });
         });
         return builder;
@@ -125,12 +130,7 @@ internal static class FixtureSamples
                 discovery.Add("tcp://127.0.0.1:7602");
             });
 
-            options.UseSpotDiscovery("game.stage", discovery =>
-            {
-                discovery.Add("tcp://127.0.0.1:7602");
-            });
-
-            options.AddChannel("orders", channel =>
+            options.AddClientServerChannel("orders", channel =>
             {
                 channel.EnableServer(server =>
                 {
@@ -138,12 +138,19 @@ internal static class FixtureSamples
                 });
             });
 
-            options.AddSpotNode("stage-node", spot =>
+            options.AddSpotMesh("game.stage", spotMesh =>
             {
-                spot.Bind("tcp://127.0.0.1:7604");
-                spot.EnableRouter();
-                spot.EnablePubSub();
-                spot.AddSpotFactory<FixtureStageSpot>("stage");
+                spotMesh.UseDiscovery(discovery =>
+                {
+                    discovery.Add("tcp://127.0.0.1:7602");
+                });
+                spotMesh.AddNode("stage-node", spot =>
+                {
+                    spot.Bind("tcp://127.0.0.1:7604");
+                    spot.EnableRouter();
+                    spot.EnablePubSub();
+                    spot.AddSpotFactory<FixtureStageSpot>("stage");
+                });
             });
         });
         builder.Services.AddZLinkMonitoring(options =>
@@ -162,11 +169,6 @@ internal static class FixtureSamples
         builder.Services.AddScoped<FixtureActorPacketSession>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.stage", discovery =>
-            {
-                discovery.Add("tcp://127.0.0.1:7700");
-            });
-
             options.AddActorFactory<FixtureActorFactory>("hero");
 
             options.AddStreamNode("stream.actor", stream =>
@@ -175,10 +177,17 @@ internal static class FixtureSamples
                 stream.AddHeaderSession<FixtureActorPacketSession>();
             });
 
-            options.AddSpotNode("actor-node", spot =>
+            options.AddSpotMesh("game.stage", spotMesh =>
             {
-                spot.Bind("tcp://127.0.0.1:7702");
-                spot.AddSpotFactory<FixtureActorSpot>("fixture-actor-stage");
+                spotMesh.UseDiscovery(discovery =>
+                {
+                    discovery.Add("tcp://127.0.0.1:7700");
+                });
+                spotMesh.AddNode("actor-node", spot =>
+                {
+                    spot.Bind("tcp://127.0.0.1:7702");
+                    spot.AddSpotFactory<FixtureActorSpot>("fixture-actor-stage");
+                });
             });
         });
         return builder;

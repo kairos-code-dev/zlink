@@ -122,18 +122,6 @@ int registry_access_t::member_peers (registry_t *registry_,
              : -1;
 }
 
-int registry_access_t::member_peer_metadata (registry_t *registry_,
-                                             const char *channel_name_,
-                                             zlink_service_role_t service_role_,
-                                             const char *endpoint_,
-                                             zlink_msg_t *metadata_out_)
-{
-    return registry_
-             ? registry_->member_peer_metadata (channel_name_, service_role_, endpoint_,
-                                                metadata_out_)
-             : -1;
-}
-
 int registry_access_t::service_summary_snapshot (
   registry_t *registry_,
   const zlink_registry_service_summary_filter_t *filter_,

@@ -22,7 +22,6 @@ namespace {
 
 static const char *k_pattern = "SPOT";
 static const char *k_topic = "bench";
-static const char *k_service_name = "spot-bench";
 
 int current_process_id ()
 {
@@ -49,42 +48,15 @@ std::string bind_node (void *node_, const std::string &transport_, int base_port
       node_, transport_, base_port_, 64, &perf_bind_spot_node_endpoint);
 }
 
-bool bind_registry (void *registry_,
-                    const std::string &transport_,
-                    int base_port_,
-                    std::string *pub_endpoint_out_,
-                    std::string *router_endpoint_out_)
-{
-    if (!registry_ || !pub_endpoint_out_ || !router_endpoint_out_)
-        return false;
-
-    for (int i = 0; i < 64; ++i) {
-        const std::string pub_endpoint =
-          make_fixed_endpoint (transport_, base_port_ + (i * 2));
-        const std::string router_endpoint =
-          make_fixed_endpoint (transport_, base_port_ + (i * 2) + 1);
-        if (pub_endpoint.empty () || router_endpoint.empty ())
-            continue;
-        if (zlink_registry_bind (
-              registry_, pub_endpoint.c_str (), router_endpoint.c_str ())
-            != 0) {
-            continue;
-        }
-        *pub_endpoint_out_ =
-          perf_normalize_bind_endpoint_host (pub_endpoint, transport_);
-        *router_endpoint_out_ =
-          perf_normalize_bind_endpoint_host (router_endpoint, transport_);
-        return true;
-    }
-
-    return false;
-}
-
 int resolve_spot_subscription_ready_timeout_ms (const std::string &transport_)
 {
-    if (transport_ == "tls" || transport_ == "wss")
-        return 10000;
-    return 3000;
+    const int transport_default_ms =
+      (transport_ == "tls" || transport_ == "wss") ? 10000 : 5000;
+    const int connect_timeout_ms =
+      parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS",
+                          transport_default_ms);
+    return parse_positive_env ("PERF_SINGLE_SPOT_SUBJECT_READY_TIMEOUT_MS",
+                               connect_timeout_ms);
 }
 
 bool topic_matches (const char *topic_, size_t topic_len_)
@@ -97,14 +69,117 @@ bool topic_matches (const char *topic_, size_t topic_len_)
            && std::memcmp (topic_, k_topic, topic_len_) == 0;
 }
 
-bool service_matches (const char *service_name_, size_t service_name_len_)
+const char *socket_type_name (zlink_socket_type_t type_)
 {
-    if (!service_name_)
-        return false;
-    if (service_name_len_ > 0 && service_name_[service_name_len_ - 1] == '\0')
-        --service_name_len_;
-    return service_name_len_ == std::strlen (k_service_name)
-           && std::memcmp (service_name_, k_service_name, service_name_len_) == 0;
+    switch (type_) {
+    case ZLINK_SOCKET_PAIR:
+        return "pair";
+    case ZLINK_SOCKET_PUB:
+        return "pub";
+    case ZLINK_SOCKET_SUB:
+        return "sub";
+    case ZLINK_SOCKET_DEALER:
+        return "dealer";
+    case ZLINK_SOCKET_ROUTER:
+        return "router";
+    case ZLINK_SOCKET_XPUB:
+        return "xpub";
+    case ZLINK_SOCKET_XSUB:
+        return "xsub";
+    case ZLINK_SOCKET_STREAM:
+        return "stream";
+    default:
+        return "unknown";
+    }
+}
+
+const char *auto_hwm_role_name (uint32_t role_)
+{
+    switch (role_) {
+    case 1:
+        return "control";
+    case 2:
+        return "routed";
+    case 3:
+        return "fanout";
+    case 4:
+        return "recv_ingress";
+    case 5:
+        return "spot_data";
+    case 6:
+        return "peer_queue";
+    case 7:
+        return "stream";
+    default:
+        return "none";
+    }
+}
+
+const char *spot_socket_owner_name (zlink_spot_node_socket_owner_t owner_)
+{
+    switch (owner_) {
+    case ZLINK_SPOT_NODE_SOCKET_OWNER_NODE:
+        return "node";
+    case ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT:
+        return "spot";
+    default:
+        return "unknown";
+    }
+}
+
+void emit_spot_hwm_detail (void *node_,
+                           const char *component_,
+                           const std::string &transport_,
+                           size_t msg_size_)
+{
+    if (!node_ || !component_)
+        return;
+
+    size_t count = 0;
+    if (zlink_spot_node_internal_sockets_snapshot (node_, NULL, NULL, &count)
+        != ZLINK_CONFIG_OK
+        || count == 0) {
+        return;
+    }
+
+    std::vector<zlink_spot_node_socket_snapshot_entry_t> entries (count);
+    if (zlink_spot_node_internal_sockets_snapshot (
+          node_, NULL, entries.data (), &count)
+        != ZLINK_CONFIG_OK) {
+        return;
+    }
+
+    for (size_t i = 0; i < count; ++i) {
+        const zlink_spot_node_socket_snapshot_entry_t &entry = entries[i];
+        if (entry.auto_hwm_visible == 0)
+            continue;
+        const zlink_monitor_snapshot_t &snapshot = entry.snapshot;
+        if (snapshot.auto_hwm_applied_sndhwm <= 0
+            && snapshot.auto_hwm_applied_rcvhwm <= 0
+            && snapshot.auto_hwm_effective_sndbuf <= 0
+            && snapshot.auto_hwm_effective_rcvbuf <= 0) {
+            continue;
+        }
+        std::cout << "AUTO_HWM_DETAIL"
+                  << ",pattern=" << k_pattern
+                  << ",transport=" << transport_
+                  << ",component=" << component_
+                  << ",msg_size=" << msg_size_
+                  << ",owner=" << spot_socket_owner_name (entry.owner)
+                  << ",owner_id=" << entry.owner_id
+                  << ",socket=" << entry.socket_name
+                  << ",socket_type=" << socket_type_name (entry.socket_type)
+                  << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role)
+                  << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+                  << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+                  << ",effective_sndbuf=" << snapshot.auto_hwm_effective_sndbuf
+                  << ",effective_rcvbuf=" << snapshot.auto_hwm_effective_rcvbuf
+                  << ",effective_message_bytes="
+                  << snapshot.auto_hwm_effective_message_bytes
+                  << ",socket_message_slots="
+                  << snapshot.auto_hwm_socket_message_slots
+                  << std::endl;
+    }
 }
 
 int recv_spot_header_flags (void *subscriber_,
@@ -136,9 +211,7 @@ int recv_spot_header_flags (void *subscriber_,
     }
 
     const bool header_ok =
-      service_matches (service_name, service_name_len)
-      && topic_matches (topic, topic_len) && parts && part_count >= 1
-      && header_out_
+      topic_matches (topic, topic_len) && parts && part_count >= 1 && header_out_
       && perf_single_metric::decode_payload_header (
         zlink_msg_data (&parts[0]), zlink_msg_size (&parts[0]), header_out_);
     if (header_ok_out_)
@@ -182,11 +255,11 @@ bool publish_metric_payload (void *publisher_,
     if (zlink_msg_init_size (&part, payload_->size ()) != 0)
         return false;
     std::memcpy (zlink_msg_data (&part), payload_->data (), payload_->size ());
-    if (zlink_spot_publish (
-          publisher_, k_service_name, k_topic, &part, 1,
-          static_cast<zlink_send_flags_t> (flags_))
+    if (zlink_publish (
+          publisher_, k_topic, &part, 1, static_cast<zlink_send_flags_t> (flags_))
         != 0) {
         const int err = zlink_errno ();
+        zlink_msg_close (&part);
         const bool retry_ready_probe =
           (flags_ & ZLINK_DONTWAIT) != 0
           && (err == EAGAIN || err == ENOTCONN || err == EHOSTUNREACH
@@ -500,15 +573,12 @@ int run_case (const std::string &lib_name_,
 
     void *publisher_node = zlink_spot_node_new (ctx.get (), NULL);
     void *subscriber_node = zlink_spot_node_new (ctx.get (), NULL);
-    void *registry = zlink_registry_new (ctx.get ());
-    void *publisher_discovery =
-      zlink_discovery_new (ctx.get (), ZLINK_AUTO_CONNECT_SPOT_MESH, k_service_name);
-    void *subscriber_discovery =
-      zlink_discovery_new (ctx.get (), ZLINK_AUTO_CONNECT_SPOT_MESH, k_service_name);
+    void *registry = NULL;
+    void *publisher_discovery = NULL;
+    void *subscriber_discovery = NULL;
     void *publisher = NULL;
     void *subscriber = NULL;
-    if (!publisher_node || !subscriber_node || !registry
-        || !publisher_discovery || !subscriber_discovery) {
+    if (!publisher_node || !subscriber_node) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] object creation failed" << std::endl;
         cleanup_spot_case (&subscriber,
@@ -522,10 +592,7 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    if (!setup_tls_server (registry, transport_)
-        || !setup_tls_client (publisher_discovery, transport_)
-        || !setup_tls_client (subscriber_discovery, transport_)
-        || !setup_tls_server (publisher_node, transport_)
+    if (!setup_tls_server (publisher_node, transport_)
         || !setup_tls_client (publisher_node, transport_)
         || !setup_tls_server (subscriber_node, transport_)
         || !setup_tls_client (subscriber_node, transport_)) {
@@ -543,40 +610,7 @@ int run_case (const std::string &lib_name_,
         return 1;
     }
 
-    const int base_port = 35000 + (current_process_id () % 1000) * 8;
-    std::string registry_pub_endpoint;
-    std::string registry_router_endpoint;
-    if (!bind_registry (
-          registry, transport_, base_port, &registry_pub_endpoint,
-          &registry_router_endpoint)
-        || zlink_discovery_connect_registry (
-             publisher_discovery, registry_router_endpoint.c_str ())
-             != ZLINK_CONNECT_OK
-        || zlink_discovery_connect_registry (
-             subscriber_discovery, registry_router_endpoint.c_str ())
-             != ZLINK_CONNECT_OK
-        || zlink_spot_node_attach_discovery (
-             publisher_node, publisher_discovery)
-             != ZLINK_CONFIG_OK
-        || zlink_spot_node_attach_discovery (
-             subscriber_node, subscriber_discovery)
-             != ZLINK_CONFIG_OK) {
-        if (bench_debug_enabled ()) {
-            std::cerr << "[perf-spot] registry/discovery setup failed"
-                      << " registry_router=" << registry_router_endpoint
-                      << " err=" << zlink_errno () << std::endl;
-        }
-        cleanup_spot_case (&subscriber,
-                           &publisher,
-                           &subscriber_discovery,
-                           &publisher_discovery,
-                           &registry,
-                           &subscriber_node,
-                           &publisher_node);
-        print_fail ();
-        return 1;
-    }
-
+    const int base_port = 25000 + (current_process_id () % 32) * 512;
     publisher = zlink_spot_new (publisher_node);
     subscriber = zlink_spot_new (subscriber_node);
     if (!publisher || !subscriber) {
@@ -599,26 +633,6 @@ int run_case (const std::string &lib_name_,
     apply_single_benchmark_socket_options (publisher, transport_);
     apply_single_benchmark_socket_options (subscriber, transport_);
 
-    const std::string publisher_endpoint =
-      bind_node (publisher_node, transport_, base_port + 128);
-    const std::string subscriber_endpoint =
-      bind_node (subscriber_node, transport_, base_port + 192);
-    if (publisher_endpoint.empty () || subscriber_endpoint.empty ()) {
-        if (bench_debug_enabled ()) {
-            std::cerr << "[perf-spot] node bind failed"
-                      << " pub=" << publisher_endpoint
-                      << " sub=" << subscriber_endpoint << std::endl;
-        }
-        cleanup_spot_case (&subscriber,
-                           &publisher,
-                           &subscriber_discovery,
-                           &publisher_discovery,
-                           &registry,
-                           &subscriber_node,
-                           &publisher_node);
-        print_fail ();
-        return 1;
-    }
     if (zlink_set_subscription (subscriber, k_topic) != ZLINK_CONFIG_OK) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] set subscription failed err="
@@ -633,15 +647,39 @@ int run_case (const std::string &lib_name_,
         print_fail ();
         return 1;
     }
+
+    const std::string publisher_endpoint =
+      bind_node (publisher_node, transport_, base_port + 128);
+    if (publisher_endpoint.empty ()
+        || zlink_spot_node_connect_peer (
+             subscriber_node, publisher_endpoint.c_str ())
+             != ZLINK_CONNECT_OK) {
+        if (bench_debug_enabled ()) {
+            std::cerr << "[perf-spot] node direct connect failed"
+                      << " pub=" << publisher_endpoint
+                      << " err=" << zlink_errno () << std::endl;
+        }
+        cleanup_spot_case (&subscriber,
+                           &publisher,
+                           &subscriber_discovery,
+                           &publisher_discovery,
+                           &registry,
+                           &subscriber_node,
+                           &publisher_node);
+        print_fail ();
+        return 1;
+    }
     spot_recv_state_t state;
     state.run_id = next_single_metric_run_id ();
     state.msg_size = msg_size_;
+    const int ready_timeout_ms =
+      resolve_spot_subscription_ready_timeout_ms (transport_);
     if (!wait_for_spot_ready_barrier (
           publisher,
           subscriber,
           &state,
           msg_size_,
-          resolve_spot_subscription_ready_timeout_ms (transport_))) {
+          ready_timeout_ms)) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] ready barrier failed" << std::endl;
         cleanup_spot_case (&subscriber,
@@ -693,6 +731,11 @@ int run_case (const std::string &lib_name_,
         fast_exit_process (1);
         return 1;
     }
+
+    emit_spot_hwm_detail (
+      publisher_node, "publisher", transport_, msg_size_);
+    emit_spot_hwm_detail (
+      subscriber_node, "subscriber", transport_, msg_size_);
 
     print_result (lib_name_,
                   k_pattern,

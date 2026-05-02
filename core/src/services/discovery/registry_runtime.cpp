@@ -62,8 +62,10 @@ void registry_t::tick ()
                 if (zlink_msg_size (&submsg) > 0) {
                     unsigned char *data = static_cast<unsigned char *> (
                       zlink_msg_data (&submsg));
-                    if (data && data[0] == 1)
+                    if (data && data[0] == 1) {
                         send_service_list (pub);
+                        send_route_list (pub);
+                    }
                 }
                 zlink_msg_close (&submsg);
             }
@@ -98,8 +100,10 @@ void registry_t::tick ()
             _broadcast_interval_ms = 30000;
     }
 
-    if (send_list)
+    if (send_list) {
         send_service_list (pub);
+        send_route_list (pub);
+    }
 
     if (broadcast_interval_ms == 0) {
         scoped_lock_t lock (_sync);

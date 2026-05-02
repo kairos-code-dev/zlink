@@ -351,7 +351,7 @@ public sealed class test_socket_surface
         Assert.Equal(typeof(RoutingId),
             typeof(SpotNode).GetProperty(nameof(SpotNode.RoutingId))!.PropertyType);
 
-        Assert.True(HasPublicInstanceMethod(typeof(Discovery),
+        Assert.False(HasPublicInstanceMethod(typeof(Discovery),
             "MemberPeerMetadata", typeof(ServiceRole), typeof(string)));
         ParameterInfo registryTopologyQueryFilter =
             typeof(Registry).GetMethod(nameof(Registry.TopologyQuery))!
@@ -360,6 +360,11 @@ public sealed class test_socket_surface
         Assert.Null(registryTopologyQueryFilter.DefaultValue);
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
             nameof(Discovery.ResolveSpot), typeof(RoutingId)));
+        Assert.True(HasPublicInstanceMethod(typeof(Discovery),
+            nameof(Discovery.BindRoute), typeof(uint), typeof(ReadOnlySpan<byte>),
+            typeof(ReadOnlySpan<byte>)));
+        Assert.True(HasPublicInstanceMethod(typeof(Discovery),
+            nameof(Discovery.ResolveRoute), typeof(uint), typeof(ReadOnlySpan<byte>)));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery),
             "SetDealerPeerMode"));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen"));

@@ -19,6 +19,9 @@ registry_t::registry_t (ctx_t *ctx_) :
     _registry_id (_coordination_state.registry_id),
     _registry_id_set (_coordination_state.registry_id_set),
     _list_seq (_coordination_state.list_seq),
+    _next_registration_id (_coordination_state.next_registration_id),
+    _next_provider_update_seq (_coordination_state.next_provider_update_seq),
+    _route_snapshot_announced (_coordination_state.route_snapshot_announced),
     _last_summary_error (_coordination_state.last_summary_error),
     _summary_last_changed_ms (_coordination_state.summary_last_changed_ms),
     _heartbeat_interval_ms (_coordination_state.heartbeat_interval_ms),
@@ -40,9 +43,11 @@ registry_t::registry_t (ctx_t *ctx_) :
     _services (_projection_state.services),
     _channel_contracts (_projection_state.channel_contracts),
     _topology (_projection_state.topology),
+    _routes (_projection_state.routes),
+    _routes_by_owner (_projection_state.routes_by_owner),
     _peer_seq (_projection_state.peer_seq),
-    _peer_last_seen (_projection_state.peer_last_seen),
-    _metadata_max_size (_projection_state.metadata_max_size)
+    _peer_route_seq (_projection_state.peer_route_seq),
+    _peer_last_seen (_projection_state.peer_last_seen)
 {
     zlink_assert (_ctx);
 

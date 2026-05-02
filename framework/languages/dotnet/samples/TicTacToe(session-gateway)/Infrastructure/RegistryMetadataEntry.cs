@@ -1,13 +1,8 @@
-namespace TicTacToe.SessionActorDispatch.Infrastructure;
+namespace TicTacToe.SessionGateway.Infrastructure;
 
-internal sealed class RegistryMetadataEntry : IRegistryMetadataEntry
+public sealed class RegistryMetadataEntry(IReadOnlyDictionary<string, string> metadata) : IRegistryMetadataEntry
 {
-    private readonly IReadOnlyDictionary<string, string> _metadata;
-
-    public RegistryMetadataEntry(IReadOnlyDictionary<string, string> metadata)
-    {
-        _metadata = new Dictionary<string, string>(metadata, StringComparer.Ordinal);
-    }
+    private readonly IReadOnlyDictionary<string, string> _metadata = new Dictionary<string, string>(metadata, StringComparer.Ordinal);
 
     public string Require(string name)
     {

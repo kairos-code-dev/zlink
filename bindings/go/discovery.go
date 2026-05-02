@@ -394,26 +394,65 @@ func (d *Discovery) GetValue() (int64, error) {
 	return int64(value), nil
 }
 
-func (d *Discovery) SetMetadata(data []byte) error {
+func (d *Discovery) BindRoute(kind RouteKind, key []byte, value []byte) error {
 	if d == nil || d.closed {
 		return stateError("discovery is closed")
 	}
-	var ptr unsafe.Pointer
-	if len(data) > 0 {
-		ptr = unsafe.Pointer(&data[0])
+	var keyPtr unsafe.Pointer
+	if len(key) > 0 {
+		keyPtr = unsafe.Pointer(&key[0])
 	}
-	return checkRC(C.zlink_discovery_set_metadata(d.raw(), ptr, C.size_t(len(data))))
+	var valuePtr unsafe.Pointer
+	if len(value) > 0 {
+		valuePtr = unsafe.Pointer(&value[0])
+	}
+	return checkRC(C.zlink_discovery_bind_route(
+		d.raw(),
+		C.zlink_route_kind_t(kind),
+		keyPtr,
+		C.size_t(len(key)),
+		valuePtr,
+		C.size_t(len(value)),
+	))
 }
 
-func (d *Discovery) GetMetadata() (*Message, error) {
+func (d *Discovery) UnbindRoute(kind RouteKind, key []byte) error {
 	if d == nil || d.closed {
-		return nil, stateError("discovery is closed")
+		return stateError("discovery is closed")
 	}
+	var keyPtr unsafe.Pointer
+	if len(key) > 0 {
+		keyPtr = unsafe.Pointer(&key[0])
+	}
+	return checkRC(C.zlink_discovery_unbind_route(
+		d.raw(),
+		C.zlink_route_kind_t(kind),
+		keyPtr,
+		C.size_t(len(key)),
+	))
+}
+
+func (d *Discovery) ResolveRoute(kind RouteKind, key []byte) (RoutingID, *Message, error) {
+	if d == nil || d.closed {
+		return RoutingID{}, nil, stateError("discovery is closed")
+	}
+	var keyPtr unsafe.Pointer
+	if len(key) > 0 {
+		keyPtr = unsafe.Pointer(&key[0])
+	}
+	var owner C.zlink_routing_id_t
 	msg := &Message{}
-	if err := checkRC(C.zlink_discovery_get_metadata(d.raw(), &msg.msg)); err != nil {
-		return nil, err
+	if err := checkRC(C.zlink_discovery_resolve_route(
+		d.raw(),
+		C.zlink_route_kind_t(kind),
+		keyPtr,
+		C.size_t(len(key)),
+		&owner,
+		&msg.msg,
+	)); err != nil {
+		return RoutingID{}, nil, err
 	}
-	return msg, nil
+	return routingIDFromC(owner), msg, nil
 }
 
 func (d *Discovery) MemberPeers() ([]MemberPeerEntry, error) {
@@ -423,20 +462,6 @@ func (d *Discovery) MemberPeers() ([]MemberPeerEntry, error) {
 	return queryMemberPeers(func(entries *C.zlink_member_peer_entry_t, count *C.size_t) error {
 		return checkRC(C.zlink_discovery_member_peers(d.raw(), entries, count))
 	})
-}
-
-func (d *Discovery) MemberPeerMetadata(serviceRole ServiceRole, endpoint string) (*Message, error) {
-	if d == nil || d.closed {
-		return nil, stateError("discovery is closed")
-	}
-	msg := &Message{}
-	err := withDiscoveryCString(d, endpoint, func(cstr *C.char) error {
-		return checkRC(C.zlink_discovery_member_peer_metadata(d.raw(), C.zlink_service_role_t(serviceRole), cstr, &msg.msg))
-	})
-	if err != nil {
-		return nil, err
-	}
-	return msg, nil
 }
 
 func (d *Discovery) SetTLSClient(caCertPath string, hostname string, trustSystem bool) error {
@@ -546,25 +571,6 @@ func (r *Registry) MemberPeers(channelName string) ([]MemberPeerEntry, error) {
 		return nil
 	}()
 	return out, err
-}
-
-func (r *Registry) MemberPeerMetadata(channelName string, serviceRole ServiceRole, endpoint string) (*Message, error) {
-	if r == nil || r.closed {
-		return nil, stateError("registry is closed")
-	}
-	if err := validateChannelName(channelName); err != nil {
-		return nil, err
-	}
-	channelNameC := C.CString(channelName)
-	defer C.free(unsafe.Pointer(channelNameC))
-	msg := &Message{}
-	err := withRegistryCString(r, endpoint, func(endpointC *C.char) error {
-		return checkRC(C.zlink_registry_member_peer_metadata(r.raw(), channelNameC, C.zlink_service_role_t(serviceRole), endpointC, &msg.msg))
-	})
-	if err != nil {
-		return nil, err
-	}
-	return msg, nil
 }
 
 func (r *Registry) TopologySnapshot() ([]RegistryTopologyEntry, error) {

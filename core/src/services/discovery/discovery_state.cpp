@@ -12,42 +12,24 @@
 
 namespace zlink
 {
-namespace
-{
-static int init_msg_from_blob_local (const std::vector<unsigned char> &blob_,
-                                     zlink_msg_t *metadata_out_)
-{
-    if (!metadata_out_) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (zlink_msg_init_size (metadata_out_, blob_.size ()) != 0)
-        return -1;
-    if (!blob_.empty ())
-        memcpy (zlink_msg_data (metadata_out_), &blob_[0], blob_.size ());
-    return 0;
-}
-
-}
-
 discovery_local_state_t::discovery_local_state_t () :
     _value (0),
-    _metadata_max_size (4096)
+    _route_value_max_size (ZLINK_ROUTE_VALUE_MAX)
 {
 }
 
-int discovery_local_state_t::set_metadata_max_size (size_t value_)
+int discovery_local_state_t::set_route_value_max_size (size_t value_)
 {
-    if (value_ == 0) {
+    if (value_ == 0 || value_ > ZLINK_ROUTE_VALUE_MAX) {
         errno = EINVAL;
         return -1;
     }
-    _metadata_max_size = value_;
+    _route_value_max_size = value_;
     return 0;
 }
 
-int discovery_local_state_t::get_metadata_max_size (void *optval_,
-                                                    size_t *optvallen_) const
+int discovery_local_state_t::get_route_value_max_size (void *optval_,
+                                                       size_t *optvallen_) const
 {
     if (!optvallen_) {
         errno = EINVAL;
@@ -62,7 +44,7 @@ int discovery_local_state_t::get_metadata_max_size (void *optval_,
         errno = ENOBUFS;
         return -1;
     }
-    *static_cast<size_t *> (optval_) = _metadata_max_size;
+    *static_cast<size_t *> (optval_) = _route_value_max_size;
     *optvallen_ = sizeof (size_t);
     return 0;
 }
@@ -82,39 +64,11 @@ int discovery_local_state_t::get_value (int64_t *value_out_) const
     return 0;
 }
 
-int discovery_local_state_t::set_metadata (const void *data_, size_t size_)
-{
-    if (size_ > _metadata_max_size) {
-        errno = EMSGSIZE;
-        return -1;
-    }
-    if (size_ != 0 && !data_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    _metadata.clear ();
-    if (size_ != 0) {
-        const unsigned char *begin =
-          static_cast<const unsigned char *> (data_);
-        _metadata.assign (begin, begin + size_);
-    }
-    return 0;
-}
-
-int discovery_local_state_t::get_metadata (zlink_msg_t *metadata_out_) const
-{
-    return init_msg_from_blob_local (_metadata, metadata_out_);
-}
-
 void discovery_local_state_t::snapshot_registration (
-  int64_t *value_out_,
-  std::vector<unsigned char> *metadata_out_) const
+  int64_t *value_out_) const
 {
     if (value_out_)
         *value_out_ = _value;
-    if (metadata_out_)
-        *metadata_out_ = _metadata;
 }
 
 int discovery_t::add_observer (discovery_observer_t *observer_)
@@ -130,7 +84,7 @@ int discovery_t::set_option (int option_,
                              const void *optval_,
                              size_t optvallen_)
 {
-    if (option_ == ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE) {
+    if (option_ == ZLINK_OPT_ROUTE_VALUE_MAX_SIZE) {
         service_public_api_scope_t admission (_public_api);
         if (!admission.acquired ())
             return -1;
@@ -140,14 +94,14 @@ int discovery_t::set_option (int option_,
         }
         const size_t value = *static_cast<const size_t *> (optval_);
         scoped_lock_t lock (_sync);
-        return _local_state.set_metadata_max_size (value);
+        return _local_state.set_route_value_max_size (value);
     }
     return _bootstrap_runtime->set_option (this, option_, optval_, optvallen_);
 }
 
 int discovery_t::get_option (int option_, void *optval_, size_t *optvallen_) const
 {
-    if (option_ != ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE) {
+    if (option_ != ZLINK_OPT_ROUTE_VALUE_MAX_SIZE) {
         errno = ENOTSUP;
         return -1;
     }
@@ -158,7 +112,7 @@ int discovery_t::get_option (int option_, void *optval_, size_t *optvallen_) con
         return -1;
 
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    return _local_state.get_metadata_max_size (optval_, optvallen_);
+    return _local_state.get_route_value_max_size (optval_, optvallen_);
 }
 
 int discovery_t::set_value (int64_t value_)
@@ -168,13 +122,12 @@ int discovery_t::set_value (int64_t value_)
         return -1;
 
     std::vector<registered_service_t> services;
-    std::vector<unsigned char> metadata;
     {
         scoped_lock_t lock (_sync);
         _local_state.set_value (value_);
     }
-    snapshot_registered_service_updates (&services, NULL, &metadata);
-    if (propagate_registered_service_updates (services, value_, metadata) != 0)
+    snapshot_registered_service_updates (&services, NULL);
+    if (propagate_registered_service_updates (services, value_) != 0)
         return -1;
     return 0;
 }
@@ -187,36 +140,6 @@ int discovery_t::get_value (int64_t *value_out_) const
         return -1;
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
     return _local_state.get_value (value_out_);
-}
-
-int discovery_t::set_metadata (const void *data_, size_t size_)
-{
-    service_public_api_scope_t admission (_public_api);
-    if (!admission.acquired ())
-        return -1;
-
-    std::vector<registered_service_t> services;
-    std::vector<unsigned char> metadata;
-    int64_t value = 0;
-    {
-        scoped_lock_t lock (_sync);
-        if (_local_state.set_metadata (data_, size_) != 0)
-            return -1;
-    }
-    snapshot_registered_service_updates (&services, &value, &metadata);
-    if (propagate_registered_service_updates (services, value, metadata) != 0)
-        return -1;
-    return 0;
-}
-
-int discovery_t::get_metadata (zlink_msg_t *metadata_out_) const
-{
-    service_public_api_scope_t admission (
-      const_cast<service_public_api_guard_t &> (_public_api));
-    if (!admission.acquired ())
-        return -1;
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    return _local_state.get_metadata (metadata_out_);
 }
 
 void discovery_t::snapshot_providers (const std::string &channel_name_,
@@ -284,41 +207,6 @@ int discovery_t::member_peers (zlink_member_peer_entry_t *entries_,
         entries_[i] = remote[i];
     *count_ = remote.size ();
     return 0;
-}
-
-int discovery_t::member_peer_metadata (zlink_service_role_t service_role_,
-                                       const char *endpoint_,
-                                       zlink_msg_t *metadata_out_) const
-{
-    service_public_api_scope_t admission (
-      const_cast<service_public_api_guard_t &> (_public_api));
-    if (!admission.acquired ())
-        return -1;
-    if (!endpoint_ || endpoint_[0] == '\0' || !metadata_out_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    std::vector<unsigned char> metadata;
-    {
-        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-        std::set<discovery_member_key_t> local_members;
-        for (std::map<registered_service_key_t, registered_service_t>::const_iterator
-               it = _registered_services.begin ();
-             it != _registered_services.end (); ++it) {
-            if (it->second.channel_name == _channel_name) {
-                local_members.insert (
-                  discovery_member_key_t (it->second.service_role,
-                                          it->second.endpoint));
-            }
-        }
-        if (!_service_state.copy_member_peer_metadata (
-              local_members, service_role_, endpoint_, &metadata)) {
-            errno = ENOENT;
-            return -1;
-        }
-    }
-    return init_msg_from_blob_local (metadata, metadata_out_);
 }
 
 uint64_t discovery_t::update_seq ()

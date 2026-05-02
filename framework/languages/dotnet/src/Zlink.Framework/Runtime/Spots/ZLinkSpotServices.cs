@@ -63,6 +63,14 @@ internal sealed class ZLinkSpotConnectionManagerService(ZLinkFrameworkRuntime ru
         string channelName,
         CancellationToken cancellationToken = default)
     {
+        return GetClientServerChannelClientAsync(spotNodeName, channelName, cancellationToken);
+    }
+
+    public ValueTask<IZLinkEndpointConnections> GetClientServerChannelClientAsync(
+        string spotNodeName,
+        string channelName,
+        CancellationToken cancellationToken = default)
+    {
         return runtime.GetSpotChannelClientConnectionsAsync(
             spotNodeName,
             channelName,
@@ -70,6 +78,14 @@ internal sealed class ZLinkSpotConnectionManagerService(ZLinkFrameworkRuntime ru
     }
 
     public ValueTask<IZLinkEndpointConnections> GetSpotPublisherClientAsync(
+        string spotNodeName,
+        string channelName,
+        CancellationToken cancellationToken = default)
+    {
+        return GetSpotMeshPublisherClientAsync(spotNodeName, channelName, cancellationToken);
+    }
+
+    public ValueTask<IZLinkEndpointConnections> GetSpotMeshPublisherClientAsync(
         string spotNodeName,
         string channelName,
         CancellationToken cancellationToken = default)

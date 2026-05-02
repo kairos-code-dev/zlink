@@ -22,6 +22,8 @@ use crate::socket::{
     send_ready_trampoline, submit_part_sequence, take_parts,
 };
 
+pub type RouteKind = u32;
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -837,27 +839,6 @@ impl Discovery {
         Ok(v)
     }
 
-    pub fn set_metadata(&self, data: &[u8]) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_discovery_set_metadata(
-                self.handle,
-                data.as_ptr() as *const c_void,
-                data.len(),
-            )
-        })
-    }
-
-    pub fn get_metadata(&self) -> Result<Message, ConfigError> {
-        let mut msg = MaybeUninit::<ffi::zlink_msg_t>::uninit();
-        unsafe {
-            ffi::zlink_msg_init(msg.as_mut_ptr());
-        }
-        check_config_rc(unsafe {
-            ffi::zlink_discovery_get_metadata(self.handle, msg.as_mut_ptr())
-        })?;
-        Ok(unsafe { Message::from_raw(msg.assume_init()) })
-    }
-
     pub fn resolve_spot(&self, spot_rid: &RoutingId) -> Result<RoutingId, ConfigError> {
         let mut owner_node_rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         check_config_rc(unsafe {
@@ -868,6 +849,58 @@ impl Discovery {
             )
         })?;
         Ok(RoutingId::from_raw(unsafe { owner_node_rid.assume_init() }))
+    }
+
+    pub fn bind_route(
+        &self,
+        kind: RouteKind,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
+            ffi::zlink_discovery_bind_route(
+                self.handle,
+                kind,
+                key.as_ptr() as *const c_void,
+                key.len(),
+                value.as_ptr() as *const c_void,
+                value.len(),
+            )
+        })
+    }
+
+    pub fn unbind_route(&self, kind: RouteKind, key: &[u8]) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
+            ffi::zlink_discovery_unbind_route(
+                self.handle,
+                kind,
+                key.as_ptr() as *const c_void,
+                key.len(),
+            )
+        })
+    }
+
+    pub fn resolve_route(
+        &self,
+        kind: RouteKind,
+        key: &[u8],
+    ) -> Result<(RoutingId, Message), ConfigError> {
+        let mut owner_node_rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
+        let mut msg = MaybeUninit::<ffi::zlink_msg_t>::uninit();
+        check_config_rc(unsafe {
+            ffi::zlink_discovery_resolve_route(
+                self.handle,
+                kind,
+                key.as_ptr() as *const c_void,
+                key.len(),
+                owner_node_rid.as_mut_ptr(),
+                msg.as_mut_ptr(),
+            )
+        })?;
+        Ok((
+            RoutingId::from_raw(unsafe { owner_node_rid.assume_init() }),
+            unsafe { Message::from_raw(msg.assume_init()) },
+        ))
     }
 
     pub fn member_peers(&self) -> Result<Vec<MemberPeerEntry>, ConfigError> {
@@ -891,27 +924,6 @@ impl Discovery {
             .iter()
             .map(MemberPeerEntry::from_raw)
             .collect()
-    }
-
-    pub fn member_peer_metadata(
-        &self,
-        service_role: ServiceRole,
-        endpoint: &str,
-    ) -> Result<Message, ConfigError> {
-        let c_endpoint = fixed_cstring_config(endpoint, "endpoint")?;
-        let mut msg = MaybeUninit::<ffi::zlink_msg_t>::uninit();
-        unsafe {
-            ffi::zlink_msg_init(msg.as_mut_ptr());
-        }
-        check_config_rc(unsafe {
-            ffi::zlink_discovery_member_peer_metadata(
-                self.handle,
-                service_role.to_raw(),
-                c_endpoint.as_ptr(),
-                msg.as_mut_ptr(),
-            )
-        })?;
-        Ok(unsafe { Message::from_raw(msg.assume_init()) })
     }
 
     pub fn set_tls_client(
@@ -2148,30 +2160,6 @@ impl Registry {
             .iter()
             .map(MemberPeerEntry::from_raw)
             .collect()
-    }
-
-    pub fn member_peer_metadata(
-        &self,
-        channel_name: &str,
-        service_role: ServiceRole,
-        endpoint: &str,
-    ) -> Result<Message, ConfigError> {
-        let c_channel_name = fixed_cstring_config(channel_name, "channel_name")?;
-        let c_endpoint = fixed_cstring_config(endpoint, "endpoint")?;
-        let mut msg = MaybeUninit::<ffi::zlink_msg_t>::uninit();
-        unsafe {
-            ffi::zlink_msg_init(msg.as_mut_ptr());
-        }
-        check_config_rc(unsafe {
-            ffi::zlink_registry_member_peer_metadata(
-                self.handle,
-                c_channel_name.as_ptr(),
-                service_role.to_raw(),
-                c_endpoint.as_ptr(),
-                msg.as_mut_ptr(),
-            )
-        })?;
-        Ok(unsafe { Message::from_raw(msg.assume_init()) })
     }
 
     pub fn topology_snapshot(&self) -> Result<Vec<RegistryTopologyEntry>, ConfigError> {

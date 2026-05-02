@@ -35,13 +35,19 @@ public static class ServiceCollectionExtensions
                 provider.GetRequiredService<ZLinkHandlerRegistry>(),
                 provider.GetRequiredService<ZLinkHandlerDispatcher>(),
                 provider.GetService<ZLinkRegistryRuntime>()));
-        services.AddSingleton<IZLinkClient, ZLinkClient>();
+        services.AddSingleton<ZLinkClient>();
+        services.AddSingleton<IZLinkClientServerClient>(static provider => provider.GetRequiredService<ZLinkClient>());
+        services.AddSingleton<IZLinkClient>(static provider => provider.GetRequiredService<ZLinkClient>());
         services.AddSingleton<IZLinkRoutedClient, ZLinkRoutedClient>();
-        services.AddSingleton<IZLinkEventPublisher, ZLinkEventPublisher>();
+        services.AddSingleton<ZLinkEventPublisher>();
+        services.AddSingleton<IZLinkFanoutPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());
+        services.AddSingleton<IZLinkEventPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());
         services.AddSingleton<IZLinkChannelConnectionManager, ZLinkChannelConnectionManager>();
         services.AddSingleton<IZLinkSpotManager, ZLinkSpotManagerService>();
         services.AddSingleton<IZLinkSpotClient, ZLinkSpotClientService>();
-        services.AddSingleton<IZLinkSpotPublisherClient, ZLinkSpotPublisherClientService>();
+        services.AddSingleton<ZLinkSpotPublisherClientService>();
+        services.AddSingleton<IZLinkSpotMeshPublisherClient>(static provider => provider.GetRequiredService<ZLinkSpotPublisherClientService>());
+        services.AddSingleton<IZLinkSpotPublisherClient>(static provider => provider.GetRequiredService<ZLinkSpotPublisherClientService>());
         services.AddSingleton<IZLinkSpotConnectionManager, ZLinkSpotConnectionManagerService>();
         services.AddSingleton<IZLinkMessageMetadataPolicy, ZLinkMessageMetadataPolicy>();
         services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService, ZLinkFrameworkHostedService>();

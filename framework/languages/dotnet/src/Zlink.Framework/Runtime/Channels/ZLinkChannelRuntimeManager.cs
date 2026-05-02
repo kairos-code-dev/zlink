@@ -28,6 +28,11 @@ internal sealed class ZLinkChannelRuntimeManager(
             var adapter = backendAdapterFactory.CreateChannelAdapter();
             var dealer = adapter.CreateDealerSocket(state.Context);
             dealer.SetChannelName(channelName);
+            if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint))
+            {
+                dealer.Bind(channel.Client.BindEndpoint);
+            }
+
             var bundle = new ZLinkChannelRuntimeBundle(
                 dealer,
                 new ZLinkAsyncSubmitter(
@@ -51,7 +56,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                         adapter,
                         state,
                         channelName,
-                        ZLinkBackendServiceType.Socket,
+                        ResolveClientAutoConnectType(channel),
                         registration.Discovery?.Endpoints ?? []);
                     dealer.AttachDiscovery(discovery);
                     bundle.Discovery = discovery;
@@ -183,7 +188,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                     adapter,
                     state,
                     routedRegistration.RouterChannelId,
-                    ZLinkBackendServiceType.Socket,
+                    ZLinkAutoConnectType.RouteMesh,
                     registration.Discovery.Endpoints);
                 router.AttachDiscovery(discovery);
             }
@@ -309,7 +314,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                 adapter,
                 state,
                 channelName,
-                ZLinkBackendServiceType.Socket,
+                ZLinkAutoConnectType.ClientServer,
                 registration.Discovery.Endpoints);
             router.AttachDiscovery(discovery);
             bundle.Discovery = discovery;
@@ -343,7 +348,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                 adapter,
                 state,
                 channelName,
-                ZLinkBackendServiceType.Socket,
+                ZLinkAutoConnectType.Fanout,
                 registration.Discovery?.Endpoints ?? []);
             subscriber.AttachDiscovery(discovery);
             bundle.Discovery = discovery;
@@ -375,7 +380,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                 adapter,
                 state,
                 channelName,
-                ZLinkBackendServiceType.Socket,
+                ZLinkAutoConnectType.Fanout,
                 registration.Discovery.Endpoints);
             publisher.AttachDiscovery(discovery);
             bundle.Discovery = discovery;
@@ -388,16 +393,23 @@ internal sealed class ZLinkChannelRuntimeManager(
         IZLinkChannelBackendAdapter adapter,
         ZLinkFrameworkRuntimeState state,
         string channelName,
-        ZLinkBackendServiceType serviceType,
+        ZLinkAutoConnectType autoConnectType,
         IReadOnlyCollection<string> endpoints)
     {
-        var discovery = adapter.CreateDiscovery(state.Context, serviceType, channelName);
+        var discovery = adapter.CreateDiscovery(state.Context, autoConnectType, channelName);
         foreach (var endpoint in endpoints)
         {
             discovery.ConnectRegistry(endpoint);
         }
 
         return discovery;
+    }
+
+    private static ZLinkAutoConnectType ResolveClientAutoConnectType(ZLinkChannelRegistration channel)
+    {
+        return channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh
+            ? ZLinkAutoConnectType.DealerMesh
+            : ZLinkAutoConnectType.ClientServer;
     }
 
     private static IEnumerable<ZLinkRoutedHandlerDescriptor> CreateRoutedHandlerDescriptors(

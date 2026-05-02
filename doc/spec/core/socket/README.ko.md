@@ -414,7 +414,7 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 | `ZLINK_OPT_EVENTS` | 이벤트 상태 비트마스크 (`int`, 읽기 전용) |
 | `ZLINK_OPT_TYPE` | 소켓 타입 (`int`, 읽기 전용) |
 | `ZLINK_OPT_LAST_ENDPOINT` | 바인딩된 엔드포인트 (`string`, 읽기 전용) |
-| `ZLINK_OPT_DISCOVERY_METADATA_MAX_SIZE` | 최대 discovery 메타데이터 크기 (`int`, 읽기 전용) |
+| `ZLINK_OPT_ROUTE_VALUE_MAX_SIZE` | 최대 discovery route value 크기 (`int`, 읽기 전용) |
 
 #### 전용 함수 (옵션 enum이 아님)
 

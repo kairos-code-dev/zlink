@@ -211,8 +211,14 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.Discovery)(nil), "GetValue") {
 		t.Fatalf("Discovery should expose GetValue")
 	}
-	if !hasMethod((*zlink.Discovery)(nil), "GetMetadata") {
-		t.Fatalf("Discovery should expose GetMetadata")
+	if hasMethod((*zlink.Discovery)(nil), "GetMetadata") {
+		t.Fatalf("Discovery should not expose GetMetadata")
+	}
+	if !hasMethod((*zlink.Discovery)(nil), "BindRoute") {
+		t.Fatalf("Discovery should expose BindRoute")
+	}
+	if !hasMethod((*zlink.Discovery)(nil), "ResolveRoute") {
+		t.Fatalf("Discovery should expose ResolveRoute")
 	}
 	if hasMethod((*zlink.Discovery)(nil), "MonitorOpen") {
 		t.Fatalf("Discovery should not expose MonitorOpen")

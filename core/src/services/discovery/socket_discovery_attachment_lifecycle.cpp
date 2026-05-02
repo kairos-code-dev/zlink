@@ -28,8 +28,8 @@ void socket_discovery_attachment_t::on_local_peer_weight_changed ()
         return;
 
     (void) discovery_owned_service::update_attributes (
-      discovery, discovery_protocol::service_type_socket,
-      advertise_endpoint.c_str (), local_role, _socket->local_peer_weight ());
+      discovery, advertise_endpoint.c_str (), local_role,
+      _socket->local_peer_weight ());
 }
 
 int socket_discovery_attachment_t::attach (discovery_t *discovery_)
@@ -217,7 +217,7 @@ void socket_discovery_attachment_t::on_service_update (
     bool shutdown_requested = false;
     {
         scoped_lock_t lock (_sync);
-        if (!_discovery || _discovery->service_name () != service_name_)
+        if (!_discovery || _discovery->channel_name () != service_name_)
             return;
         discovery = _discovery;
         local_role = _local_role;
@@ -255,8 +255,7 @@ void socket_discovery_attachment_t::on_discovery_shutdown_requested (
         report_topology (discovery, local_role, advertise_endpoint,
                          ZLINK_TOPOLOGY_STATE_STOPPED, 0, 0, 0, true);
         (void) discovery_owned_service::unregister_endpoint (
-          discovery, discovery_protocol::service_type_socket,
-          advertise_endpoint.c_str (), local_role);
+          discovery, advertise_endpoint.c_str (), local_role);
     }
 
     for (std::set<std::string>::const_iterator it = active_endpoints.begin ();

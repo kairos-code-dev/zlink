@@ -130,7 +130,7 @@ void discovery_uplink_runtime_t::flush_topology_reports (discovery_t *owner_)
             discovery_debugf_local (
               "topology report send failed kind=%u service=%s errno=%d",
               static_cast<unsigned int> (entries[i].service_kind),
-              entries[i].service_name, errno);
+              entries[i].channel_name, errno);
         }
     }
 
@@ -185,13 +185,13 @@ void discovery_uplink_runtime_t::refresh_registered_service_heartbeats (
         if (discovery_protocol::send_u16 (
               dealer, discovery_protocol::msg_heartbeat, ZLINK_SNDMORE)
               < 0
-            || discovery_protocol::send_u16 (dealer, services[i].service_type,
+            || discovery_protocol::send_u16 (dealer, owner_->_auto_connect_type,
                                              ZLINK_SNDMORE)
                  < 0
             || discovery_protocol::send_u16 (dealer, services[i].service_role,
                                              ZLINK_SNDMORE)
                  < 0
-            || discovery_protocol::send_string (dealer, services[i].service_name,
+            || discovery_protocol::send_string (dealer, services[i].channel_name,
                                                 ZLINK_SNDMORE)
                  < 0
             || discovery_protocol::send_string (dealer, services[i].endpoint, 0)
@@ -201,9 +201,8 @@ void discovery_uplink_runtime_t::refresh_registered_service_heartbeats (
 
         scoped_lock_t lock (owner_->_sync);
         discovery_t::registered_service_key_t key;
-        key.service_type = services[i].service_type;
         key.service_role = services[i].service_role;
-        key.service_name = services[i].service_name;
+        key.channel_name = services[i].channel_name;
         key.endpoint = services[i].endpoint;
         std::map<discovery_t::registered_service_key_t,
                  discovery_t::registered_service_t>::iterator it =

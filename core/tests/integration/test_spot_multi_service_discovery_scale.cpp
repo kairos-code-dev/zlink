@@ -69,9 +69,9 @@ void test_spot_multi_service_discovery_scale_and_churn ()
         service_names.push_back (service_name);
 
         void *consumer_discovery =
-          zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, service_name);
+          zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, service_name);
         void *provider_discovery =
-          zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, service_name);
+          zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, service_name);
         TEST_ASSERT_NOT_NULL (consumer_discovery);
         TEST_ASSERT_NOT_NULL (provider_discovery);
         TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
@@ -103,8 +103,7 @@ void test_spot_multi_service_discovery_scale_and_churn ()
             std::string resolved_endpoint;
             TEST_ASSERT_SUCCESS_ERRNO (
               zlink::discovery_owned_service::register_endpoint (
-                static_cast<zlink::discovery_t *> (provider_discovery),
-                service_type_socket, router_endpoint, &resolved_endpoint, NULL,
+                static_cast<zlink::discovery_t *> (provider_discovery), router_endpoint, &resolved_endpoint, NULL,
                 service_role_router));
         }
     }
@@ -141,15 +140,13 @@ void test_spot_multi_service_discovery_scale_and_churn ()
             std::string resolved_endpoint;
             TEST_ASSERT_SUCCESS_ERRNO (
               zlink::discovery_owned_service::register_endpoint (
-                static_cast<zlink::discovery_t *> (provider_discoveries[service_index]),
-                service_type_socket, router_endpoint, &resolved_endpoint, NULL,
+                static_cast<zlink::discovery_t *> (provider_discoveries[service_index]), router_endpoint, &resolved_endpoint, NULL,
                 service_role_router));
             TEST_ASSERT_TRUE (wait_for_service_attachment_shape_local (
               node, service_names[service_index].c_str (), 5, 0, 0, 5000));
             TEST_ASSERT_SUCCESS_ERRNO (
               zlink::discovery_owned_service::unregister_endpoint (
-                static_cast<zlink::discovery_t *> (provider_discoveries[service_index]),
-                service_type_socket, resolved_endpoint.c_str (), service_role_router));
+                static_cast<zlink::discovery_t *> (provider_discoveries[service_index]), resolved_endpoint.c_str (), service_role_router));
             TEST_ASSERT_TRUE (wait_for_service_attachment_shape_local (
               node, service_names[service_index].c_str (), 4, 0, 0, 5000));
         }

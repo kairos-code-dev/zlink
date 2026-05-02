@@ -135,7 +135,7 @@ void discovery_service_state_t::snapshot_providers (
 }
 
 void discovery_service_state_t::snapshot_member_peers (
-  zlink_service_type_t public_service_type_,
+  zlink_auto_connect_type_t auto_connect_type_,
   const std::set<discovery_member_key_t> &local_members_,
   std::vector<zlink_member_peer_entry_t> *out_) const
 {
@@ -153,12 +153,14 @@ void discovery_service_state_t::snapshot_member_peers (
 
         zlink_member_peer_entry_t entry;
         memset (&entry, 0, sizeof (entry));
-        entry.service_type = public_service_type_;
-        entry.service_role = provider.service_role;
-        copy_fixed_c_string_from_bytes (entry.service_name,
-                                        sizeof (entry.service_name),
-                                        provider.service_name.data (),
-                                        provider.service_name.size ());
+        entry.auto_connect_type =
+          static_cast<zlink_auto_connect_type_t> (auto_connect_type_);
+        entry.service_role =
+          static_cast<zlink_service_role_t> (provider.service_role);
+        copy_fixed_c_string_from_bytes (entry.channel_name,
+                                        sizeof (entry.channel_name),
+                                        provider.channel_name.data (),
+                                        provider.channel_name.size ());
         copy_fixed_c_string_from_bytes (entry.endpoint, sizeof (entry.endpoint),
                                         provider.endpoint.data (),
                                         provider.endpoint.size ());
@@ -211,7 +213,7 @@ void discovery_service_state_t::apply_provider_snapshot (
   uint32_t registry_id_,
   uint64_t list_seq_,
   const std::vector<provider_info_t> &updated_,
-  const std::string &service_name_,
+  const std::string &channel_name_,
   const zlink_routing_id_t &routing_id_,
   discovery_service_change_t *change_out_)
 {
@@ -246,7 +248,7 @@ void discovery_service_state_t::apply_provider_snapshot (
     change_out_->event.routing_id = routing_id_;
     copy_fixed_c_string_from_cstr (change_out_->event.service_name,
                                    sizeof (change_out_->event.service_name),
-                                   service_name_.c_str ());
+                                   channel_name_.c_str ());
     change_out_->event.value = static_cast<uint32_t> (_providers.size ());
     if (!had_providers)
         change_out_->event.event_type = ZLINK_DISCOVERY_SERVICE_UP;

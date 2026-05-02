@@ -245,9 +245,9 @@ func TestExportedSpecShapeForMonitorDiscoveryAndErrors(t *testing.T) {
 	assertNoField("ConnectedSinceMS", reflect.TypeOf(SpotNodePeerEntry{}))
 	assertNoField("LastReportedMS", reflect.TypeOf(RegistryTopologyEntry{}))
 
-	assertField("ServiceKind", reflect.TypeOf(RegistryServiceSummaryFilter{}), reflect.Pointer)
+	assertField("AutoConnectType", reflect.TypeOf(RegistryServiceSummaryFilter{}), reflect.Pointer)
 	assertField("ServiceRole", reflect.TypeOf(RegistryServiceSummaryFilter{}), reflect.Pointer)
-	assertField("ServiceName", reflect.TypeOf(RegistryServiceSummaryFilter{}), reflect.Pointer)
+	assertField("ChannelName", reflect.TypeOf(RegistryServiceSummaryFilter{}), reflect.Pointer)
 	assertField("RoutingID", reflect.TypeOf(RegistryTopologyFilter{}), reflect.Pointer)
 	assertField("PeerEndpoint", reflect.TypeOf(SpotNodePeerFilter{}), reflect.Pointer)
 	assertField("Role", reflect.TypeOf(SpotNodeSubjectFilter{}), reflect.Pointer)
@@ -319,4 +319,6 @@ func TestExportedSpecShapeForSpotServiceBindingTypes(t *testing.T) {
 	assertField("serviceName", reflect.TypeOf(SubscriptionEvent{}), reflect.String)
 	assertField("Weight", reflect.TypeOf(SpotNodePeerEntry{}), reflect.Uint32)
 	assertField("Weight", reflect.TypeOf(MemberPeerEntry{}), reflect.Uint32)
+	assertField("AutoConnectType", reflect.TypeOf(MemberPeerEntry{}), reflect.Uint32)
+	assertField("ChannelName", reflect.TypeOf(MemberPeerEntry{}), reflect.String)
 }

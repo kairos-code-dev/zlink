@@ -35,7 +35,7 @@ with the rules here, this section wins.
   `sendChannel(...)`, `sendToSpot(...)`, `requestChannel(...)`, and
   `publish(serviceName, topic, ...)`.
 - `Spot.subscribe(...)` returns a service-aware `TopicMessage`.
-  `TopicMessage` therefore needs `serviceName: string | null`, populated for
+  `TopicMessage` therefore needs `channelName: string | null`, populated for
   SPOT subscribe results and `null` for raw `SUB` / `XSUB`.
 - `Spot` must not expose `onSubscribe(...)`.
 - `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
@@ -758,7 +758,7 @@ Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
 ```typescript
 class TopicMessage {
     readonly routingId: RoutingId | null;    // null when transport carries no source id
-    readonly serviceName: string | null;     // Spot subscribe only; null for raw SUB / XSUB
+    readonly channelName: string | null;     // Spot subscribe only; null for raw SUB / XSUB
     readonly topic: string;                  // UTF-8
     readonly parts: Message[];
     isSinglePart(): boolean;
@@ -779,7 +779,7 @@ Value object emitted by `XPubSocket.receiveSubscriptionEvent` and
 ```typescript
 class SubscriptionEvent {
     readonly routingId: RoutingId | null;
-    readonly serviceName: string | null;
+    readonly channelName: string | null;
     readonly topic: string;                  // UTF-8
     readonly subscribed: boolean;            // true=subscribe, false=unsubscribe
 }
@@ -1206,10 +1206,10 @@ class Registry {
     /** @throws {ConfigError} */
     topologyQuery(filter?: RegistryTopologyFilter): RegistryTopologyEntry[];
     /** @throws {ConfigError} */
-    memberPeers(serviceType: number, serviceName?: string): MemberPeerEntry[];
+    memberPeers(channelName: string): MemberPeerEntry[];
     /** @throws {ConfigError} */
-    memberPeerMetadata(serviceType: number, serviceName: string,
-                       serviceRole: number, endpoint: string): Buffer;
+    memberPeerMetadata(channelName: string, serviceRole: number,
+                       endpoint: string): Buffer;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -1218,15 +1218,19 @@ class Registry {
 ### Discovery
 
 ```typescript
-export enum DiscoveryDealerPeerMode {
-    Router = 1,
-    Dealer = 2,
+export enum AutoConnectType {
+    INVALID = 0,
+    ROUTE_MESH = 1,
+    CLIENT_SERVER = 2,
+    DEALER_MESH = 3,
+    FANOUT = 4,
+    SPOT_MESH = 5,
 }
 
 class Discovery {
-    constructor(ctx: Context, serviceType: number, serviceName: string);
-    readonly serviceType: number;
-    readonly serviceName: string;
+    constructor(ctx: Context, autoConnectType: number, channelName: string);
+    readonly autoConnectType: number;
+    readonly channelName: string;
     /** @throws {ConnectError} */
     connectRegistry(endpoint: string): void;
     /** @throws {ConfigError} */
@@ -1248,11 +1252,6 @@ class Discovery {
      * Maps to zlink_discovery_resolve_spot.
      */
     resolveSpot(spotRid: RoutingId): RoutingId;
-    /**
-     * Set the auto-connect target policy used by DEALER sockets in this
-     * discovery view. Default is Router. Maps to zlink_discovery_set_dealer_peer_mode.
-     */
-    setDealerPeerMode(mode: DiscoveryDealerPeerMode): void;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -1486,9 +1485,9 @@ Primary entry types used in the default service flow:
 ```typescript
 /** Discovery / Registry member peer entry. */
 interface MemberPeerEntry {
-    readonly serviceType: number;            // zlink_service_type_t
+    readonly autoConnectType: number;            // zlink_auto_connect_type_t
     readonly serviceRole: number;            // uint16 service role
-    readonly serviceName: string;
+    readonly channelName: string;
     readonly endpoint: string;
     readonly routingId: RoutingId;
     readonly value: bigint;                  // int64 user value
@@ -1500,7 +1499,7 @@ interface RegistryTopologyEntry {
     readonly routingId: RoutingId;
     readonly serviceKind: number;            // zlink_service_kind_t
     readonly serviceRole: number;            // zlink_service_role_t
-    readonly serviceName: string;
+    readonly channelName: string;
     readonly endpoint: string;
     readonly source: number;                 // zlink_topology_source_t
     readonly state: number;                  // zlink_topology_state_t
@@ -1512,7 +1511,7 @@ interface RegistryTopologyEntry {
 
 /** SpotNode runtime status snapshot. */
 interface SpotNodeStatus {
-    readonly serviceName: string;
+    readonly channelName: string;
     readonly localEndpoint: string;
     readonly nodeRoutingId: RoutingId;
     readonly state: number;                  // zlink_spot_node_state_t
@@ -1535,7 +1534,7 @@ Advanced / Diagnostic entry types and filters:
 interface RegistryServiceSummaryEntry {
     readonly serviceKind: number;            // zlink_service_kind_t
     readonly serviceRole: number;            // zlink_service_role_t
-    readonly serviceName: string;
+    readonly channelName: string;
     readonly totalCount: number;             // uint32
     readonly connectingCount: number;        // uint32
     readonly readyCount: number;             // uint32
@@ -1559,7 +1558,7 @@ interface RegistryStatus {
 
 /** SpotNode peer entry. */
 interface SpotNodePeerEntry {
-    readonly serviceName: string;
+    readonly channelName: string;
     readonly localEndpoint: string;
     readonly peerEndpoint: string;
     readonly source: number;                 // zlink_spot_peer_source_t

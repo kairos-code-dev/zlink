@@ -10,10 +10,6 @@ package zlink
 static inline int zlink_discovery_resolve_spot_go(void *discovery, const zlink_routing_id_t *spot_rid, zlink_routing_id_t *owner_node_rid_out) {
     return zlink_discovery_resolve_spot(discovery, spot_rid, owner_node_rid_out);
 }
-
-static inline int zlink_discovery_set_dealer_peer_mode_go(void *discovery, unsigned int mode) {
-    return zlink_discovery_set_dealer_peer_mode(discovery, (zlink_discovery_dealer_peer_mode_t)mode);
-}
 */
 import "C"
 
@@ -24,11 +20,15 @@ import (
 	"unsafe"
 )
 
-type ServiceType uint32
+type AutoConnectType uint32
 
 const (
-	ServiceTypeSpot   ServiceType = ServiceType(C.ZLINK_SERVICE_TYPE_SPOT)
-	ServiceTypeSocket ServiceType = ServiceType(C.ZLINK_SERVICE_TYPE_SOCKET)
+	AutoConnectInvalid      AutoConnectType = AutoConnectType(C.ZLINK_AUTO_CONNECT_INVALID)
+	AutoConnectRouteMesh    AutoConnectType = AutoConnectType(C.ZLINK_AUTO_CONNECT_ROUTE_MESH)
+	AutoConnectClientServer AutoConnectType = AutoConnectType(C.ZLINK_AUTO_CONNECT_CLIENT_SERVER)
+	AutoConnectDealerMesh   AutoConnectType = AutoConnectType(C.ZLINK_AUTO_CONNECT_DEALER_MESH)
+	AutoConnectFanout       AutoConnectType = AutoConnectType(C.ZLINK_AUTO_CONNECT_FANOUT)
+	AutoConnectSpotMesh     AutoConnectType = AutoConnectType(C.ZLINK_AUTO_CONNECT_SPOT_MESH)
 )
 
 type ServiceRole uint16
@@ -120,13 +120,6 @@ const (
 	TopologyStateStopped    TopologyState = TopologyState(C.ZLINK_TOPOLOGY_STATE_STOPPED)
 )
 
-type DiscoveryDealerPeerMode int
-
-const (
-	DiscoveryDealerPeerModeRouter DiscoveryDealerPeerMode = 1
-	DiscoveryDealerPeerModeDealer DiscoveryDealerPeerMode = 2
-)
-
 type Discovery struct {
 	handle unsafe.Pointer
 	closed bool
@@ -203,9 +196,9 @@ type RegistryStatus struct {
 }
 
 type RegistryServiceSummaryEntry struct {
-	ServiceKind     ServiceKind
+	AutoConnectType AutoConnectType
 	ServiceRole     ServiceRole
-	ServiceName     string
+	ChannelName     string
 	TotalCount      uint32
 	ConnectingCount uint32
 	ReadyCount      uint32
@@ -215,42 +208,44 @@ type RegistryServiceSummaryEntry struct {
 }
 
 type RegistryServiceSummaryFilter struct {
-	ServiceKind *ServiceKind
-	ServiceRole *ServiceRole
-	ServiceName *string
+	AutoConnectType *AutoConnectType
+	ServiceRole     *ServiceRole
+	ChannelName     *string
 }
 
 type MemberPeerEntry struct {
-	ServiceType ServiceType
-	ServiceRole ServiceRole
-	ServiceName string
-	Endpoint    string
-	RoutingID   RoutingID
-	Weight      uint32
-	Value       int64
+	AutoConnectType AutoConnectType
+	ServiceRole     ServiceRole
+	ChannelName     string
+	Endpoint        string
+	RoutingID       RoutingID
+	Weight          uint32
+	Value           int64
 }
 
 type RegistryTopologyEntry struct {
-	RoutingID      RoutingID
-	ServiceKind    ServiceKind
-	ServiceRole    ServiceRole
-	ServiceName    string
-	Endpoint       string
-	Source         TopologySource
-	State          TopologyState
-	DesiredCount   uint32
-	ReadyCount     uint32
-	ErrorCode      uint32
-	LastReportedMs uint64
+	AutoConnectType AutoConnectType
+	RoutingID       RoutingID
+	ServiceKind     ServiceKind
+	ServiceRole     ServiceRole
+	ChannelName     string
+	Endpoint        string
+	Source          TopologySource
+	State           TopologyState
+	DesiredCount    uint32
+	ReadyCount      uint32
+	ErrorCode       uint32
+	LastReportedMs  uint64
 }
 
 type RegistryTopologyFilter struct {
-	ServiceKind *ServiceKind
-	ServiceRole *ServiceRole
-	ServiceName *string
-	RoutingID   *RoutingID
-	State       *TopologyState
-	Source      *TopologySource
+	AutoConnectType *AutoConnectType
+	ServiceKind     *ServiceKind
+	ServiceRole     *ServiceRole
+	ChannelName     *string
+	RoutingID       *RoutingID
+	State           *TopologyState
+	Source          *TopologySource
 }
 
 func (e *MemberPeerEntry) HasRoutingID() bool {
@@ -276,16 +271,16 @@ func newRegistry(ctx *Context) (*Registry, error) {
 	return &Registry{handle: handle}, nil
 }
 
-func newDiscovery(ctx *Context, serviceType ServiceType, serviceName string) (*Discovery, error) {
+func newDiscovery(ctx *Context, autoConnectType AutoConnectType, channelName string) (*Discovery, error) {
 	if ctx == nil || ctx.closed {
 		return nil, stateError("context is closed")
 	}
-	if err := validateServiceName(serviceName); err != nil {
+	if err := validateChannelName(channelName); err != nil {
 		return nil, err
 	}
-	serviceNameC := C.CString(serviceName)
-	defer C.free(unsafe.Pointer(serviceNameC))
-	handle := C.zlink_discovery_new(ctx.raw(), C.zlink_service_type_t(serviceType), serviceNameC)
+	channelNameC := C.CString(channelName)
+	defer C.free(unsafe.Pointer(channelNameC))
+	handle := C.zlink_discovery_new(ctx.raw(), C.zlink_auto_connect_type_t(autoConnectType), channelNameC)
 	if handle == nil {
 		return nil, lastError()
 	}
@@ -388,13 +383,6 @@ func (d *Discovery) ResolveSpot(spotRid RoutingID) (RoutingID, error) {
 	return routingIDFromC(ownerNodeRID), nil
 }
 
-func (d *Discovery) SetDealerPeerMode(mode DiscoveryDealerPeerMode) error {
-	if d == nil || d.closed {
-		return stateError("discovery is closed")
-	}
-	return checkRC(C.zlink_discovery_set_dealer_peer_mode_go(d.raw(), C.uint(mode)))
-}
-
 func (d *Discovery) GetValue() (int64, error) {
 	if d == nil || d.closed {
 		return 0, stateError("discovery is closed")
@@ -443,7 +431,7 @@ func (d *Discovery) MemberPeerMetadata(serviceRole ServiceRole, endpoint string)
 	}
 	msg := &Message{}
 	err := withDiscoveryCString(d, endpoint, func(cstr *C.char) error {
-		return checkRC(C.zlink_discovery_member_peer_metadata(d.raw(), C.uint16_t(serviceRole), cstr, &msg.msg))
+		return checkRC(C.zlink_discovery_member_peer_metadata(d.raw(), C.zlink_service_role_t(serviceRole), cstr, &msg.msg))
 	})
 	if err != nil {
 		return nil, err
@@ -537,19 +525,19 @@ func (r *Registry) ServiceSummarySnapshot(filter *RegistryServiceSummaryFilter) 
 	})
 }
 
-func (r *Registry) MemberPeers(serviceType ServiceType, serviceName string) ([]MemberPeerEntry, error) {
+func (r *Registry) MemberPeers(channelName string) ([]MemberPeerEntry, error) {
 	if r == nil || r.closed {
 		return nil, stateError("registry is closed")
 	}
-	if err := validateServiceName(serviceName); err != nil {
+	if err := validateChannelName(channelName); err != nil {
 		return nil, err
 	}
 	var out []MemberPeerEntry
-	serviceNameC := C.CString(serviceName)
-	defer C.free(unsafe.Pointer(serviceNameC))
+	channelNameC := C.CString(channelName)
+	defer C.free(unsafe.Pointer(channelNameC))
 	err := func() error {
 		entries, err := queryMemberPeers(func(native *C.zlink_member_peer_entry_t, count *C.size_t) error {
-			return checkRC(C.zlink_registry_member_peers(r.raw(), C.zlink_service_type_t(serviceType), serviceNameC, native, count))
+			return checkRC(C.zlink_registry_member_peers(r.raw(), channelNameC, native, count))
 		})
 		if err != nil {
 			return err
@@ -560,18 +548,18 @@ func (r *Registry) MemberPeers(serviceType ServiceType, serviceName string) ([]M
 	return out, err
 }
 
-func (r *Registry) MemberPeerMetadata(serviceType ServiceType, serviceName string, serviceRole ServiceRole, endpoint string) (*Message, error) {
+func (r *Registry) MemberPeerMetadata(channelName string, serviceRole ServiceRole, endpoint string) (*Message, error) {
 	if r == nil || r.closed {
 		return nil, stateError("registry is closed")
 	}
-	if err := validateServiceName(serviceName); err != nil {
+	if err := validateChannelName(channelName); err != nil {
 		return nil, err
 	}
-	serviceNameC := C.CString(serviceName)
-	defer C.free(unsafe.Pointer(serviceNameC))
+	channelNameC := C.CString(channelName)
+	defer C.free(unsafe.Pointer(channelNameC))
 	msg := &Message{}
 	err := withRegistryCString(r, endpoint, func(endpointC *C.char) error {
-		return checkRC(C.zlink_registry_member_peer_metadata(r.raw(), C.zlink_service_type_t(serviceType), serviceNameC, C.uint16_t(serviceRole), endpointC, &msg.msg))
+		return checkRC(C.zlink_registry_member_peer_metadata(r.raw(), channelNameC, C.zlink_service_role_t(serviceRole), endpointC, &msg.msg))
 	})
 	if err != nil {
 		return nil, err
@@ -861,28 +849,31 @@ func queryCountedSnapshot[CEntry any, T any](probe func() (int, error), fill fun
 
 func (f RegistryServiceSummaryFilter) toC() C.zlink_registry_service_summary_filter_t {
 	var out C.zlink_registry_service_summary_filter_t
-	if f.ServiceKind != nil {
-		out.service_kind = C.zlink_service_kind_t(*f.ServiceKind)
+	if f.AutoConnectType != nil {
+		out.auto_connect_type = C.zlink_auto_connect_type_t(*f.AutoConnectType)
 	}
 	if f.ServiceRole != nil {
 		out.service_role = C.zlink_service_role_t(*f.ServiceRole)
 	}
-	if f.ServiceName != nil {
-		mustCopyFixedCString(unsafe.Pointer(&out.service_name[0]), 256, *f.ServiceName)
+	if f.ChannelName != nil {
+		mustCopyFixedCString(unsafe.Pointer(&out.channel_name[0]), 256, *f.ChannelName)
 	}
 	return out
 }
 
 func (f RegistryTopologyFilter) toC() C.zlink_registry_topology_filter_t {
 	var out C.zlink_registry_topology_filter_t
+	if f.AutoConnectType != nil {
+		out.auto_connect_type = C.zlink_auto_connect_type_t(*f.AutoConnectType)
+	}
 	if f.ServiceKind != nil {
 		out.service_kind = C.zlink_service_kind_t(*f.ServiceKind)
 	}
 	if f.ServiceRole != nil {
 		out.service_role = C.zlink_service_role_t(*f.ServiceRole)
 	}
-	if f.ServiceName != nil {
-		mustCopyFixedCString(unsafe.Pointer(&out.service_name[0]), 256, *f.ServiceName)
+	if f.ChannelName != nil {
+		mustCopyFixedCString(unsafe.Pointer(&out.channel_name[0]), 256, *f.ChannelName)
 	}
 	if f.RoutingID != nil {
 		out.routing_id = f.RoutingID.toC()
@@ -1018,9 +1009,9 @@ func registryStatusFromC(raw C.zlink_registry_status_t) *RegistryStatus {
 
 func registryServiceSummaryEntryFromC(raw C.zlink_registry_service_summary_entry_t) RegistryServiceSummaryEntry {
 	return RegistryServiceSummaryEntry{
-		ServiceKind:     ServiceKind(raw.service_kind),
+		AutoConnectType: AutoConnectType(raw.auto_connect_type),
 		ServiceRole:     ServiceRole(raw.service_role),
-		ServiceName:     C.GoString(&raw.service_name[0]),
+		ChannelName:     C.GoString(&raw.channel_name[0]),
 		TotalCount:      uint32(raw.total_count),
 		ConnectingCount: uint32(raw.connecting_count),
 		ReadyCount:      uint32(raw.ready_count),
@@ -1032,29 +1023,30 @@ func registryServiceSummaryEntryFromC(raw C.zlink_registry_service_summary_entry
 
 func memberPeerEntryFromC(raw C.zlink_member_peer_entry_t) MemberPeerEntry {
 	return MemberPeerEntry{
-		ServiceType: ServiceType(raw.service_type),
-		ServiceRole: ServiceRole(raw.service_role),
-		ServiceName: C.GoString(&raw.service_name[0]),
-		Endpoint:    C.GoString(&raw.endpoint[0]),
-		RoutingID:   routingIDFromC(raw.routing_id),
-		Weight:      uint32(raw.weight),
-		Value:       int64(raw.value),
+		AutoConnectType: AutoConnectType(raw.auto_connect_type),
+		ServiceRole:     ServiceRole(raw.service_role),
+		ChannelName:     C.GoString(&raw.channel_name[0]),
+		Endpoint:        C.GoString(&raw.endpoint[0]),
+		RoutingID:       routingIDFromC(raw.routing_id),
+		Weight:          uint32(raw.weight),
+		Value:           int64(raw.value),
 	}
 }
 
 func registryTopologyEntryFromC(raw C.zlink_registry_topology_entry_t) RegistryTopologyEntry {
 	return RegistryTopologyEntry{
-		RoutingID:      routingIDFromC(raw.routing_id),
-		ServiceKind:    ServiceKind(raw.service_kind),
-		ServiceRole:    ServiceRole(raw.service_role),
-		ServiceName:    C.GoString(&raw.service_name[0]),
-		Endpoint:       C.GoString(&raw.endpoint[0]),
-		Source:         TopologySource(raw.source),
-		State:          TopologyState(raw.state),
-		DesiredCount:   uint32(raw.desired_count),
-		ReadyCount:     uint32(raw.ready_count),
-		ErrorCode:      uint32(raw.error_code),
-		LastReportedMs: uint64(raw.last_reported_ms),
+		AutoConnectType: AutoConnectType(raw.auto_connect_type),
+		RoutingID:       routingIDFromC(raw.routing_id),
+		ServiceKind:     ServiceKind(raw.service_kind),
+		ServiceRole:     ServiceRole(raw.service_role),
+		ChannelName:     C.GoString(&raw.channel_name[0]),
+		Endpoint:        C.GoString(&raw.endpoint[0]),
+		Source:          TopologySource(raw.source),
+		State:           TopologyState(raw.state),
+		DesiredCount:    uint32(raw.desired_count),
+		ReadyCount:      uint32(raw.ready_count),
+		ErrorCode:       uint32(raw.error_code),
+		LastReportedMs:  uint64(raw.last_reported_ms),
 	}
 }
 
@@ -1145,6 +1137,10 @@ func validateServiceName(value string) error {
 	return validateFixedCString("service_name", value)
 }
 
+func validateChannelName(value string) error {
+	return validateFixedCString("channel_name", value)
+}
+
 func validateSpotNodeSubjectFilter(filter SpotNodeSubjectFilter) error {
 	if filter.Subject == nil {
 		return nil
@@ -1173,15 +1169,15 @@ func validateSpotNodeSocketSnapshotFilter(filter SpotNodeSocketSnapshotFilter) e
 }
 
 func validateRegistryServiceSummaryFilter(filter RegistryServiceSummaryFilter) error {
-	if filter.ServiceName == nil {
+	if filter.ChannelName == nil {
 		return nil
 	}
-	return validateFixedCString("service_name", *filter.ServiceName)
+	return validateFixedCString("channel_name", *filter.ChannelName)
 }
 
 func validateRegistryTopologyFilter(filter RegistryTopologyFilter) error {
-	if filter.ServiceName != nil {
-		if err := validateFixedCString("service_name", *filter.ServiceName); err != nil {
+	if filter.ChannelName != nil {
+		if err := validateFixedCString("channel_name", *filter.ChannelName); err != nil {
 			return err
 		}
 	}

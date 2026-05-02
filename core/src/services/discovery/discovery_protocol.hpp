@@ -11,6 +11,7 @@
 #include "utils/stdint.hpp"
 
 #include <string>
+#include <string.h>
 
 namespace zlink
 {
@@ -30,9 +31,6 @@ static const uint16_t msg_topology_query = 0x000B;
 static const uint16_t msg_topology_reply = 0x000C;
 static const uint16_t msg_unregister_ack = 0x000D;
 
-static const uint16_t service_type_spot_node = 2;
-static const uint16_t service_type_socket = 3;
-
 enum service_role_t
 {
     service_role_invalid = 0,
@@ -43,12 +41,6 @@ enum service_role_t
     service_role_sub = 6
 };
 
-inline bool is_valid_service_type (uint16_t service_type_)
-{
-    return service_type_ == service_type_spot_node
-           || service_type_ == service_type_socket;
-}
-
 inline bool is_valid_service_role (uint16_t service_role_)
 {
     return service_role_ == service_role_spot
@@ -58,28 +50,39 @@ inline bool is_valid_service_role (uint16_t service_role_)
            || service_role_ == service_role_sub;
 }
 
-inline uint16_t fixed_service_role_for_type (uint16_t service_type_)
+inline bool is_valid_auto_connect_type (uint16_t auto_connect_type_)
 {
-    if (service_type_ == service_type_spot_node)
-        return service_role_spot;
-    return service_role_invalid;
+    return auto_connect_type_ == ZLINK_AUTO_CONNECT_ROUTE_MESH
+           || auto_connect_type_ == ZLINK_AUTO_CONNECT_CLIENT_SERVER
+           || auto_connect_type_ == ZLINK_AUTO_CONNECT_DEALER_MESH
+           || auto_connect_type_ == ZLINK_AUTO_CONNECT_FANOUT
+           || auto_connect_type_ == ZLINK_AUTO_CONNECT_SPOT_MESH;
 }
 
-inline bool is_valid_service_role_for_type (uint16_t service_type_,
-                                            uint16_t service_role_)
+inline bool auto_connect_type_allows_role (uint16_t auto_connect_type_,
+                                           uint16_t service_role_)
 {
-    if (!is_valid_service_type (service_type_)
+    if (!is_valid_auto_connect_type (auto_connect_type_)
         || !is_valid_service_role (service_role_)) {
         return false;
     }
 
-    if (service_type_ == service_type_spot_node)
-        return service_role_ == service_role_spot;
-
-    return service_role_ == service_role_router
-           || service_role_ == service_role_dealer
-           || service_role_ == service_role_pub
-           || service_role_ == service_role_sub;
+    switch (auto_connect_type_) {
+        case ZLINK_AUTO_CONNECT_ROUTE_MESH:
+            return service_role_ == service_role_router;
+        case ZLINK_AUTO_CONNECT_CLIENT_SERVER:
+            return service_role_ == service_role_router
+                   || service_role_ == service_role_dealer;
+        case ZLINK_AUTO_CONNECT_DEALER_MESH:
+            return service_role_ == service_role_dealer;
+        case ZLINK_AUTO_CONNECT_FANOUT:
+            return service_role_ == service_role_pub
+                   || service_role_ == service_role_sub;
+        case ZLINK_AUTO_CONNECT_SPOT_MESH:
+            return service_role_ == service_role_spot;
+        default:
+            return false;
+    }
 }
 
 inline uint16_t derive_socket_service_role (int socket_type_)
@@ -95,40 +98,90 @@ inline uint16_t derive_socket_service_role (int socket_type_)
     return service_role_invalid;
 }
 
-inline bool service_roles_match (uint16_t local_role_, uint16_t remote_role_)
+inline bool auto_connect_type_allows_raw_socket (
+  uint16_t auto_connect_type_)
 {
-    if (!is_valid_service_role (local_role_)
-        || !is_valid_service_role (remote_role_)) {
-        return false;
+    return auto_connect_type_ == ZLINK_AUTO_CONNECT_ROUTE_MESH
+           || auto_connect_type_ == ZLINK_AUTO_CONNECT_CLIENT_SERVER
+           || auto_connect_type_ == ZLINK_AUTO_CONNECT_DEALER_MESH
+           || auto_connect_type_ == ZLINK_AUTO_CONNECT_FANOUT;
+}
+
+inline int compare_routing_id_bytes (const zlink_routing_id_t &lhs_,
+                                     const zlink_routing_id_t &rhs_)
+{
+    const size_t lhs_size = lhs_.size;
+    const size_t rhs_size = rhs_.size;
+    const size_t common = lhs_size < rhs_size ? lhs_size : rhs_size;
+    if (common > 0) {
+        const int cmp = memcmp (lhs_.data, rhs_.data, common);
+        if (cmp != 0)
+            return cmp;
+    }
+    if (lhs_size < rhs_size)
+        return -1;
+    if (lhs_size > rhs_size)
+        return 1;
+    return 0;
+}
+
+inline int compare_connect_keys (const zlink_routing_id_t &local_rid_,
+                                 const zlink_routing_id_t &remote_rid_,
+                                 const std::string &local_endpoint_,
+                                 const std::string &remote_endpoint_)
+{
+    if (local_rid_.size > 0 && remote_rid_.size > 0) {
+        const int rid_cmp = compare_routing_id_bytes (local_rid_, remote_rid_);
+        if (rid_cmp != 0)
+            return rid_cmp;
     }
 
-    if (local_role_ == service_role_spot)
-        return remote_role_ == service_role_spot;
-    if (local_role_ == service_role_pub)
-        return remote_role_ == service_role_sub;
-    if (local_role_ == service_role_sub)
-        return remote_role_ == service_role_pub;
-
-    return remote_role_ == service_role_router
-           || remote_role_ == service_role_dealer;
+    if (local_endpoint_ < remote_endpoint_)
+        return -1;
+    if (local_endpoint_ > remote_endpoint_)
+        return 1;
+    return 0;
 }
 
 inline bool socket_auto_connect_target_matches (
+  uint16_t auto_connect_type_,
   uint16_t local_role_,
   uint16_t remote_role_,
-  zlink_discovery_dealer_peer_mode_t dealer_peer_mode_)
+  const zlink_routing_id_t &local_rid_,
+  const zlink_routing_id_t &remote_rid_,
+  const std::string &local_endpoint_,
+  const std::string &remote_endpoint_)
 {
-    switch (local_role_) {
-        case service_role_router:
-            return remote_role_ == service_role_router;
-        case service_role_sub:
-            return remote_role_ == service_role_pub;
-        case service_role_pub:
-            return false;
-        case service_role_dealer:
-            if (dealer_peer_mode_ == ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER)
-                return remote_role_ == service_role_dealer;
-            return remote_role_ == service_role_router;
+    if (!auto_connect_type_allows_role (auto_connect_type_, local_role_)
+        || !auto_connect_type_allows_role (auto_connect_type_, remote_role_)) {
+        return false;
+    }
+
+    switch (auto_connect_type_) {
+        case ZLINK_AUTO_CONNECT_ROUTE_MESH:
+            return local_role_ == service_role_router
+                   && remote_role_ == service_role_router
+                   && compare_connect_keys (local_rid_, remote_rid_,
+                                            local_endpoint_, remote_endpoint_)
+                        < 0;
+        case ZLINK_AUTO_CONNECT_CLIENT_SERVER:
+            return local_role_ == service_role_dealer
+                   && remote_role_ == service_role_router;
+        case ZLINK_AUTO_CONNECT_DEALER_MESH:
+            return local_role_ == service_role_dealer
+                   && remote_role_ == service_role_dealer
+                   && compare_connect_keys (local_rid_, remote_rid_,
+                                            local_endpoint_, remote_endpoint_)
+                        < 0;
+        case ZLINK_AUTO_CONNECT_FANOUT:
+            return local_role_ == service_role_sub
+                   && remote_role_ == service_role_pub;
+        case ZLINK_AUTO_CONNECT_SPOT_MESH:
+            return local_role_ == service_role_spot
+                   && remote_role_ == service_role_spot
+                   && compare_connect_keys (local_rid_, remote_rid_,
+                                            local_endpoint_, remote_endpoint_)
+                        < 0;
         default:
             return false;
     }
@@ -137,8 +190,9 @@ inline bool socket_auto_connect_target_matches (
 struct bootstrap_req_t
 {
     uint16_t msg_id;
-    uint16_t service_type;
+    uint16_t auto_connect_type;
     zlink_routing_id_t routing_id;
+    char channel_name[256];
 };
 
 struct bootstrap_rep_t
@@ -148,6 +202,7 @@ struct bootstrap_rep_t
     uint32_t heartbeat_interval_ms;
     uint32_t registry_id;
     uint32_t feature_flags;
+    uint32_t status_errno;
     char pub_endpoint[256];
     char uplink_endpoint[256];
 };

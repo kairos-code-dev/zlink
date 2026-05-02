@@ -69,12 +69,12 @@ stateDiagram-v2
 
 ### 3.2 Service Types and Roles
 
-Discovery tracks providers with a (service_type, service_role) pair:
+Discovery tracks providers with a (auto_connect_type, service_role) pair:
 
 ```cpp
 // Service types
-static const uint16_t service_type_spot_node = 2;
-static const uint16_t service_type_socket = 3;
+static const uint16_t auto_connect_type_spot_node = 2;
+static const uint16_t auto_connect_type_socket = 3;
 
 // Service roles
 enum service_role_t {
@@ -87,7 +87,7 @@ enum service_role_t {
 };
 ```
 
-SPOT has a fixed role derived from its service type. Socket family
+SPOT has a fixed role fixed by the SPOT role. Socket family
 services require an explicit role matching the socket type. Role
 matching rules for peer discovery:
 - PUB ↔ SUB
@@ -102,22 +102,22 @@ convenience API:
 
 ```cpp
 namespace discovery_owned_service {
-    int register_endpoint(discovery_t *, uint16_t service_type,
+    int register_endpoint(discovery_t *, uint16_t auto_connect_type,
                           const char *endpoint, uint32_t weight,
                           std::string *resolved_endpoint_out,
                           const zlink_routing_id_t *routing_id = NULL,
                           uint16_t service_role = 0);
-    int update_weight(discovery_t *, uint16_t service_type,
+    int update_weight(discovery_t *, uint16_t auto_connect_type,
                       const char *endpoint, uint32_t weight,
                       uint16_t service_role = 0);
-    int unregister_endpoint(discovery_t *, uint16_t service_type,
+    int unregister_endpoint(discovery_t *, uint16_t auto_connect_type,
                             const char *endpoint,
                             uint16_t service_role = 0);
 }
 ```
 
 Discovery internally maintains a `_registered_services` map keyed by
-`(service_type, service_role, service_name, endpoint)` and periodically
+`(auto_connect_type, service_role, service_name, endpoint)` and periodically
 refreshes heartbeats for all registered services via
 `refresh_registered_service_heartbeats()`.
 
@@ -194,7 +194,7 @@ Frame 1: registry_id (uint32_t)
 Frame 2: list_seq (uint64_t)
 Frame 3: service_count (uint32_t)
 Frame 4~N: Service entries (repeated service_count times)
-  - service_type (uint16_t)
+  - auto_connect_type (uint16_t)
   - service_name (string)
   - provider_count (uint32_t)
   - provider entries (repeated provider_count times):
@@ -245,8 +245,8 @@ Frame 4~N: Service entries (repeated service_count times)
 - `spot_sub_t`: Does not expose raw SUB socket; consumption is via callback/recv API only
 
 ### 5.6 Discovery Type Segmentation
-- Separates spot_node/socket_family via service_type field
-  - `service_type_spot_node` (2), `service_type_socket` (3)
+- Separates spot_node/socket_family via auto_connect_type field
+  - `auto_connect_type_spot_node` (2), `auto_connect_type_socket` (3)
 - Socket family services additionally carry a `service_role` field
   (ROUTER=3, DEALER=4, PUB=5, SUB=6) for role-based peer matching
 - Role matching is enforced by `service_roles_match()` -- PUB pairs with SUB,

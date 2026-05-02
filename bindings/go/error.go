@@ -304,6 +304,8 @@ func fallbackRecvErrno(result RecvResult) int {
 		return int(C.EFAULT)
 	case RecvNotSupported:
 		return int(C.ENOTSUP)
+	case RecvInternalError:
+		return int(C.EINTR)
 	default:
 		return int(C.EIO)
 	}
@@ -465,6 +467,8 @@ func recvErrorFromErrno(errno int) error {
 		return &RecvError{Result: RecvInvalidHandle, internalErrno: errno}
 	case int(C.ENOTSUP):
 		return &RecvError{Result: RecvNotSupported, internalErrno: errno}
+	case int(C.EINTR):
+		return &RecvError{Result: RecvInternalError, internalErrno: errno}
 	default:
 		return &RecvError{Result: RecvTerminated, internalErrno: errno}
 	}

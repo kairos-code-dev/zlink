@@ -111,8 +111,13 @@ fn main() {
 
     let ctx = common::perf_server_context();
     let registry = Registry::new(&ctx).expect("registry");
-    let discovery = Discovery::new(&ctx, ServiceType::Spot, SERVICE_NAME).expect("discovery");
+    let discovery = Discovery::new(&ctx, AutoConnectType::SpotMesh, SERVICE_NAME).expect("discovery");
     let node = SpotNode::new(&ctx).expect("spot node");
+    node.set_routing_id(&RoutingId::from_bytes(b"z-rust-multi-spot-server"))
+        .expect("server node rid");
+    let spot = node.create_spot().expect("spot");
+    spot.set_routing_id(&RoutingId::from_bytes(b"z-rust-multi-spot-server-spot"))
+        .expect("server spot rid");
     common::apply_multi_spot_node_admission(&node, &settings);
     if matches!(args.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
@@ -138,17 +143,19 @@ fn main() {
     registry
         .bind(&registry_pub_endpoint, &registry_router_endpoint)
         .expect("registry bind");
+    registry
+        .set_broadcast_interval(50)
+        .expect("registry broadcast interval");
     discovery
         .connect_registry(&registry_router_endpoint)
         .expect("discovery connect");
-    node.attach_discovery(&discovery).expect("attach discovery");
     if let Err(err) = node.bind(&data_endpoint) {
         if common::handle_transport_setup_error("MULTI_SPOT", &args.transport, "bind", err) {
             return;
         }
         panic!("bind: {err}");
     }
-    let spot = node.create_spot().expect("spot");
+    node.attach_discovery(&discovery).expect("attach discovery");
     common::print_ready(&registry_router_endpoint);
     println!("CONTROL_READY,{control_endpoint}");
     io::stdout().flush().ok();

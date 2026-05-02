@@ -33,9 +33,7 @@ int discovery_t::propagate_registered_service_updates (
   const std::vector<unsigned char> &metadata_)
 {
     for (size_t i = 0; i < services_.size (); ++i) {
-        if (update_service_attributes (services_[i].service_type,
-                                       services_[i].service_name.c_str (),
-                                       services_[i].endpoint.c_str (),
+        if (update_service_attributes (services_[i].endpoint.c_str (),
                                        services_[i].weight, value_,
                                        &metadata_, services_[i].service_role)
             != 0) {

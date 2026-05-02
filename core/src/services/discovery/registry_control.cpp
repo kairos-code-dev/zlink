@@ -93,7 +93,7 @@ void registry_t::handle_router (void *router_)
             handle_heartbeat (&frames[0], frames.size ());
             break;
         case discovery_protocol::msg_bootstrap_req:
-            handle_bootstrap (router_, sender);
+            handle_bootstrap (router_, &frames[0], frames.size (), sender);
             break;
         case discovery_protocol::msg_topology_report:
             handle_topology_report (&frames[0], frames.size ());
@@ -113,9 +113,42 @@ void registry_t::handle_router (void *router_)
 }
 
 void registry_t::handle_bootstrap (void *router_,
+                                   const zlink_msg_t *frames_,
+                                   size_t frame_count_,
                                    const zlink_routing_id_t &sender_id_)
 {
-    send_bootstrap_reply (router_, sender_id_);
+    if (frame_count_ < 1
+        || zlink_msg_size (&frames_[0])
+             != sizeof (discovery_protocol::bootstrap_req_t)) {
+        send_bootstrap_reply (router_, sender_id_, EINVAL);
+        return;
+    }
+
+    discovery_protocol::bootstrap_req_t req;
+    memcpy (&req, zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[0])),
+            sizeof (req));
+    const std::string channel_name = req.channel_name;
+    if (channel_name.empty ()
+        || !discovery_protocol::is_valid_auto_connect_type (
+          req.auto_connect_type)) {
+        send_bootstrap_reply (router_, sender_id_, EINVAL);
+        return;
+    }
+
+    const uint64_t now_ms = zlink::clock_t ().now_ms ();
+    uint32_t registry_id = 0;
+    uint32_t status_errno = 0;
+    {
+        scoped_lock_t lock (_sync);
+        registry_id = _registry_id == 0 ? 1 : _registry_id;
+        if (ensure_channel_contract_locked (
+              channel_name, req.auto_connect_type, now_ms, registry_id)
+            != 0) {
+            status_errno = errno == EEXIST ? EEXIST : EINVAL;
+        }
+    }
+
+    send_bootstrap_reply (router_, sender_id_, status_errno);
 }
 
 void registry_t::handle_topology_report (const zlink_msg_t *frames_,
@@ -214,7 +247,8 @@ void registry_t::send_unregister_ack (void *router_,
 }
 
 void registry_t::send_bootstrap_reply (void *router_,
-                                       const zlink_routing_id_t &sender_id_)
+                                       const zlink_routing_id_t &sender_id_,
+                                       uint32_t status_errno_)
 {
     zlink_msg_t id_frame;
     zlink_msg_init_size (&id_frame, sender_id_.size);
@@ -249,11 +283,14 @@ void registry_t::send_bootstrap_reply (void *router_,
     rep.msg_id = discovery_protocol::msg_bootstrap_rep;
     rep.heartbeat_interval_ms = heartbeat_interval_ms;
     rep.registry_id = registry_id;
+    rep.status_errno = status_errno_;
     copy_fixed_c_string_from_cstr (rep.pub_endpoint, sizeof (rep.pub_endpoint),
-                                   pub_endpoint.c_str ());
+                                   status_errno_ == 0 ? pub_endpoint.c_str ()
+                                                      : "");
     copy_fixed_c_string_from_cstr (rep.uplink_endpoint,
                                    sizeof (rep.uplink_endpoint),
-                                   uplink_endpoint.c_str ());
+                                   status_errno_ == 0 ? uplink_endpoint.c_str ()
+                                                      : "");
     const int rc_rep =
       discovery_protocol::send_frame (router_, &rep, sizeof (rep), 0);
     if (std::getenv ("ZLINK_REGISTRY_DEBUG")) {

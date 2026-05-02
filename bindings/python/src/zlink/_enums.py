@@ -251,9 +251,13 @@ class PollEvent(IntFlag):
     POLLPRI = 8
 
 
-class ServiceType(IntEnum):
-    SPOT = 0x3002
-    SOCKET = 0x3003
+class AutoConnectType(IntEnum):
+    INVALID = 0
+    ROUTE_MESH = 1
+    CLIENT_SERVER = 2
+    DEALER_MESH = 3
+    FANOUT = 4
+    SPOT_MESH = 5
 
 
 class ServiceRole(IntEnum):
@@ -273,11 +277,6 @@ class RegistrySocketRole(IntEnum):
 
 class DiscoverySocketRole(IntEnum):
     SUB = 1
-
-
-class DiscoveryDealerPeerMode(IntEnum):
-    ROUTER = 1
-    DEALER = 2
 
 
 class SpotNodeSocketRole(IntEnum):

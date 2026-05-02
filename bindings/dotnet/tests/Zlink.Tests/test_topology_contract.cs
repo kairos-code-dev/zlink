@@ -18,7 +18,7 @@ public sealed class test_topology_contract
         Assert.Empty(registry.ServiceSummarySnapshot());
         Assert.Empty(registry.TopologySnapshot());
         Assert.Empty(registry.TopologyQuery());
-        Assert.Empty(registry.MemberPeers(ServiceType.Spot, "missing"));
+        Assert.Empty(registry.MemberPeers("missing"));
     }
 
     [Fact]

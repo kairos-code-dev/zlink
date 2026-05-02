@@ -224,12 +224,16 @@ public shape를 기준으로 고정한다.
 - `MonitorSnapshot` 은 core `zlink_monitor_snapshot_t` 의 auto-HWM v2 진단 필드를
   빠뜨리지 않고 노출해야 한다. profile, policy class, unit budget, size cap,
   effective publish fanout 은 public snapshot 계약에 포함된다.
-- SPOT node option 이름은 core 공개 enum을 그대로 따른다. topic send/recv라는
-  이름은 더 이상 쓰지 않고, publish 축은 `ZLINK_SPOT_NODE_OPT_PUB_HWM`,
-  subscribe 축은 `ZLINK_SPOT_NODE_OPT_SUB_HWM`으로 노출한다.
+- SPOT node option 이름은 core 공개 enum을 그대로 따른다. 방향별 HWM option이나
+  delivery queue hard-limit option은 노출하지 않는다. 노출 대상은
+  `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`, `ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
+  `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`,
+  `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` 네 가지 admission option이다.
 - SPOT binding status object는 core의
   `disconnected_sub_target_count`,
   `disconnected_routed_target_count`를 언어 관례에 맞는 이름으로 노출해야 한다.
+  현재 core는 delivery queue 증가만으로 target을 끊지 않으므로 두 값은 `0`을
+  보고한다.
 - SPOT binding이 internal socket snapshot 이름을 노출하거나 문서화할 때는
   `ingress-sub`, `local-pub`, `mesh-pub`, `mesh-xsub`, `internal-router`,
   `external-router` 기준을 사용한다.
@@ -1155,7 +1159,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 | `memberPeerMetadata` | Y |
 | `close` | Y |
 
-- Discovery는 생성 시 `serviceType`과 `serviceName`을 고정한다.
+- Discovery는 생성 시 `autoConnectType`과 `channelName`을 고정한다.
 - 이후 변경할 수 없다.
 - `close` 시 연결된 모든 participant(SpotNode 등)가 종료된다.
 - Discovery는 data plane이 아니라 서비스 등록/발견 plane이다.
@@ -1226,7 +1230,7 @@ RegistryQueryClient (원격 토폴로지 조회)
   - `RegistryServiceSummaryFilter`: 서비스 요약 조회 필터
   - `RegistryTopologyFilter`: 토폴로지 조회 필터
 - enum/value object:
-  - `ServiceType`: `SPOT`, `SOCKET`
+  - `AutoConnectType`: `ROUTE_MESH`, `CLIENT_SERVER`, `DEALER_MESH`, `FANOUT`, `SPOT_MESH`
   - `ServiceRole`: `SPOT`, `ROUTER`, `DEALER`, `PUB`, `SUB`
   - `SpotNodeState`: `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, `ERROR`
   - `MonitorSourceKind`: `SOCKET`, `SPOT_PUB`, `SPOT_SUB`, `SPOT_NODE`
@@ -1310,7 +1314,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 - RegistryQueryClient capability matrix 정렬 확인 (구현된 경우)
 - typed domain object 존재 확인 (SpotNodeStatus,
   MemberPeerEntry 등)
-- typed enum 존재 확인 (ServiceType, ServiceRole, SpotNodeState 등)
+- typed enum 존재 확인 (AutoConnectType, ServiceRole, SpotNodeState 등)
 
 #### Service Layer Contract Tests
 - SpotNode: create/bind/close lifecycle 누수 없음

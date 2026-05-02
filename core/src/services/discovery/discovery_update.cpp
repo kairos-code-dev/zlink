@@ -167,7 +167,7 @@ void discovery_t::notify_observers (const std::set<std::string> &services_)
     std::vector<discovery_observer_t *> observers;
     {
         scoped_lock_t lock (_sync);
-        _service_state.begin_observer_notification (_service_name, services_,
+        _service_state.begin_observer_notification (_channel_name, services_,
                                                     &observers);
     }
     if (observers.empty ())
@@ -175,7 +175,7 @@ void discovery_t::notify_observers (const std::set<std::string> &services_)
     for (size_t i = 0; i < observers.size (); ++i) {
         if (!observers[i])
             continue;
-        observers[i]->on_service_update (_service_name);
+        observers[i]->on_service_update (_channel_name);
     }
     {
         scoped_lock_t lock (_sync);
@@ -209,13 +209,18 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
 
     size_t index = 4;
     for (uint32_t i = 0; i < service_count && index < frames_.size (); ++i) {
-        if (index + 2 >= frames_.size ())
+        if (index + 3 >= frames_.size ())
             break;
-        uint16_t service_type = 0;
-        if (!discovery_protocol::read_u16 (frames_[index++], &service_type))
+        uint16_t auto_connect_type = 0;
+        if (!discovery_protocol::read_u16 (frames_[index++],
+                                           &auto_connect_type))
             break;
-        const std::string service_name =
+        const std::string channel_name =
           discovery_protocol::read_string (frames_[index++]);
+        uint64_t contract_created_at = 0;
+        if (!discovery_protocol::read_u64 (frames_[index++],
+                                           &contract_created_at))
+            break;
         uint32_t receiver_count = 0;
         if (!discovery_protocol::read_u32 (frames_[index++], &receiver_count))
             break;
@@ -225,7 +230,8 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
         for (uint32_t p = 0; p < receiver_count && index + 5 < frames_.size ();
              ++p) {
             provider_info_t info;
-            info.service_name = service_name;
+            info.auto_connect_type = auto_connect_type;
+            info.channel_name = channel_name;
             if (!discovery_protocol::read_u16 (frames_[index++],
                                                &info.service_role))
                 break;
@@ -251,11 +257,12 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             }
             ++index;
             info.registered_at = 0;
-            if (service_type == _service_type)
+            if (auto_connect_type == _auto_connect_type)
                 service_providers.push_back (info);
         }
 
-        if (service_type != _service_type || service_name != _service_name)
+        if (auto_connect_type != _auto_connect_type
+            || channel_name != _channel_name)
             continue;
         updated.insert (updated.end (), service_providers.begin (),
                         service_providers.end ());
@@ -270,12 +277,12 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
         _service_state.snapshot_providers (&previous);
         discovery_service_change_t service_change;
         _service_state.apply_provider_snapshot (
-          registry_id, list_seq, updated, _service_name,
+          registry_id, list_seq, updated, _channel_name,
           _bootstrap_runtime->routing_id_value (), &service_change);
-        append_peer_admission_events_local (previous, updated, _service_name,
+        append_peer_admission_events_local (previous, updated, _channel_name,
                                             &events);
         if (service_change.changed) {
-            changed.insert (_service_name);
+            changed.insert (_channel_name);
             events.push_back (service_change.event);
         }
     }
@@ -300,8 +307,10 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             entry.routing_id = _bootstrap_runtime->routing_id_value ();
             entry.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
             entry.service_role = ZLINK_SERVICE_ROLE_INVALID;
-            copy_fixed_c_string_from_cstr (entry.service_name,
-                                           sizeof (entry.service_name),
+            entry.auto_connect_type =
+              static_cast<zlink_auto_connect_type_t> (_auto_connect_type);
+            copy_fixed_c_string_from_cstr (entry.channel_name,
+                                           sizeof (entry.channel_name),
                                            events[i].service_name);
             entry.source = ZLINK_TOPOLOGY_SOURCE_REGISTRY;
             entry.state = static_cast<zlink_topology_state_t> (state);

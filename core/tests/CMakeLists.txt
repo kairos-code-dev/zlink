@@ -481,7 +481,11 @@ if(TARGET test_zmp_request_reply_router_recv_surface)
       RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_monitor_socket_contract)
-  set_tests_properties(test_monitor_socket_contract PROPERTIES TIMEOUT 120)
+  set_tests_properties(
+    test_monitor_socket_contract
+    PROPERTIES
+      TIMEOUT 120
+      RESOURCE_LOCK "${NETWORK_INTEGRATION_RESOURCE_LOCK}")
 endif()
 if(TARGET test_monitor_perf_contract)
   set_tests_properties(test_monitor_perf_contract PROPERTIES TIMEOUT 30)

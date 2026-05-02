@@ -5,7 +5,7 @@ mod sample_support;
 
 use std::time::Duration;
 
-use zlink::{Context, Discovery, Registry, RegistryQueryClient, ServiceType};
+use zlink::{AutoConnectType, Context, Discovery, Registry, RegistryQueryClient};
 
 const SERVICE_NAME: &str = "sample";
 
@@ -13,7 +13,7 @@ fn main() {
     let ctx = Context::new().expect("context creation failed");
     let registry = Registry::new(&ctx).expect("registry creation failed");
     let discovery =
-        Discovery::new(&ctx, ServiceType::Socket, SERVICE_NAME).expect("discovery failed");
+        Discovery::new(&ctx, AutoConnectType::Fanout, SERVICE_NAME).expect("discovery failed");
     let query = RegistryQueryClient::new(&ctx).expect("query client failed");
     let provider = ctx.pub_socket().expect("pub socket failed");
     let registry_pub = sample_support::tcp_endpoint();
@@ -43,7 +43,7 @@ fn main() {
                 .map(|entries| {
                     entries
                         .iter()
-                        .any(|entry| entry.service_name == SERVICE_NAME)
+                        .any(|entry| entry.channel_name == SERVICE_NAME)
                 })
                 .unwrap_or(false)
         },

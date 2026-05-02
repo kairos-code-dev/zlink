@@ -5,8 +5,9 @@ package dev.kairoscode.zlink.service.registry;
 import dev.kairoscode.zlink.RoutingId;
 import java.lang.foreign.MemorySegment;
 
-public record MemberPeerEntry(ServiceType serviceType, ServiceRole serviceRole,
-                              String serviceName, String endpoint,
+public record MemberPeerEntry(AutoConnectType autoConnectType,
+                              ServiceRole serviceRole,
+                              String channelName, String endpoint,
                               RoutingId routingId, long value,
                               int weight) {
     static MemberPeerEntry fromNative(MemorySegment segment) {

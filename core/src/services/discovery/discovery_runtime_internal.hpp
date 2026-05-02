@@ -19,7 +19,8 @@ class socket_base_t;
 
 struct provider_info_t
 {
-    std::string service_name;
+    uint16_t auto_connect_type;
+    std::string channel_name;
     std::string endpoint;
     zlink_routing_id_t routing_id;
     uint16_t service_role;
@@ -77,7 +78,7 @@ class discovery_service_state_t
 
     void snapshot_providers (std::vector<provider_info_t> *out_) const;
     void snapshot_member_peers (
-      zlink_service_type_t public_service_type_,
+      zlink_auto_connect_type_t auto_connect_type_,
       const std::set<discovery_member_key_t> &local_members_,
       std::vector<zlink_member_peer_entry_t> *out_) const;
     bool copy_member_peer_metadata (
@@ -91,7 +92,7 @@ class discovery_service_state_t
     void apply_provider_snapshot (uint32_t registry_id_,
                                   uint64_t list_seq_,
                                   const std::vector<provider_info_t> &updated_,
-                                  const std::string &service_name_,
+                                  const std::string &channel_name_,
                                   const zlink_routing_id_t &routing_id_,
                                   discovery_service_change_t *change_out_);
 

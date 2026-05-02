@@ -76,15 +76,14 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_registry_member_peers(IntPtr registry,
-        int serviceType,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
         IntPtr entries, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_registry_member_peer_metadata(
-        IntPtr registry, int serviceType,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
-        ushort serviceRole,
+        IntPtr registry,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
+        int serviceRole,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint,
         ref ZlinkMsg metadata);
 
@@ -108,17 +107,13 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_discovery_new(IntPtr ctx,
-        int serviceType,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName);
+        int autoConnectType,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_connect_registry(
         IntPtr discovery,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string registryEndpoint);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_discovery_set_dealer_peer_mode(
-        IntPtr discovery, int mode);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_resolve_spot(IntPtr discovery,
@@ -146,7 +141,7 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_member_peer_metadata(
-        IntPtr discovery, ushort serviceRole,
+        IntPtr discovery, int serviceRole,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint,
         ref ZlinkMsg metadata);
 

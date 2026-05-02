@@ -40,23 +40,26 @@ public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
             if (filter != null)
             {
                 RegistryTopologyFilter value = filter;
-                if (value.ServiceKind.HasValue || value.ServiceRole.HasValue
-                    || !string.IsNullOrEmpty(value.ServiceName)
+                if (value.AutoConnectType.HasValue
+                    || value.ServiceKind.HasValue || value.ServiceRole.HasValue
+                    || !string.IsNullOrEmpty(value.ChannelName)
                     || value.RoutingId.HasValue || value.State.HasValue
                     || value.Source.HasValue)
                 {
+                    nativeFilter.AutoConnectType =
+                        (int)value.AutoConnectType.GetValueOrDefault();
                     nativeFilter.ServiceKind =
                         (int)value.ServiceKind.GetValueOrDefault();
                     nativeFilter.ServiceRole =
-                        (ushort)value.ServiceRole.GetValueOrDefault();
+                        (int)value.ServiceRole.GetValueOrDefault();
                     nativeFilter.State = (int)value.State.GetValueOrDefault();
                     nativeFilter.Source = (int)value.Source.GetValueOrDefault();
-                    if (!string.IsNullOrEmpty(value.ServiceName))
+                    if (!string.IsNullOrEmpty(value.ChannelName))
                     {
-                        BoundaryValidation.ValidateFixedUtf8(value.ServiceName,
-                            nameof(RegistryTopologyFilter.ServiceName));
-                        WriteFixedString(value.ServiceName,
-                            nativeFilter.ServiceName, 256);
+                        BoundaryValidation.ValidateFixedUtf8(value.ChannelName,
+                            nameof(RegistryTopologyFilter.ChannelName));
+                        WriteFixedString(value.ChannelName,
+                            nativeFilter.ChannelName, 256);
                     }
                     if (value.RoutingId.HasValue)
                     {

@@ -1071,7 +1071,7 @@ Implements `AutoCloseable`.
 
 ```java
 public final class TopicMessage implements AutoCloseable {
-    TopicMessage(RoutingId routingId, String serviceName, String topic, Message[] parts);
+    TopicMessage(RoutingId routingId, String channelName, String topic, Message[] parts);
 
     Optional<RoutingId> routingId();
     Optional<String> serviceName();          // empty for raw SUB / XSUB
@@ -1222,8 +1222,8 @@ public final class Registry implements AutoCloseable {
         RegistryServiceSummaryFilter filter);                        // @throws ConfigException
     List<RegistryTopologyEntry> topologySnapshot();                  // @throws ConfigException
     List<RegistryTopologyEntry> topologyQuery(RegistryTopologyFilter filter); // @throws ConfigException
-    List<MemberPeerEntry> memberPeers(ServiceType serviceType, String serviceName); // @throws ConfigException
-    byte[] memberPeerMetadata(ServiceType serviceType, String serviceName,
+    List<MemberPeerEntry> memberPeers(String channelName); // @throws ConfigException
+    byte[] memberPeerMetadata(String channelName,
                               ServiceRole serviceRole, String endpoint); // @throws ConfigException
 
     void close();                                                    // @throws CloseException
@@ -1232,17 +1232,21 @@ public final class Registry implements AutoCloseable {
 
 ### Discovery
 
-Fixed-service discovery view. Tracks one service type/name pair.
+Fixed-channel discovery view. Tracks one auto-connect type and channel name.
 Implements `AutoCloseable`.
 
 ```java
-public enum DiscoveryDealerPeerMode {
-    ROUTER,
-    DEALER
+public enum AutoConnectType {
+    INVALID,
+    ROUTE_MESH,
+    CLIENT_SERVER,
+    DEALER_MESH,
+    FANOUT,
+    SPOT_MESH
 }
 
 public final class Discovery implements AutoCloseable {
-    Discovery(Context ctx, ServiceType serviceType, String serviceName);
+    Discovery(Context ctx, AutoConnectType autoConnectType, String channelName);
 
     void connectRegistry(String registryEndpoint);                   // @throws ConnectException
     void setValue(long value);                                       // @throws ConfigException
@@ -1255,7 +1259,6 @@ public final class Discovery implements AutoCloseable {
     byte[] memberPeerMetadata(ServiceRole serviceRole, String endpoint); // @throws ConfigException
 
     RoutingId resolveSpot(RoutingId spotRid);                        // @throws ConfigException
-    void setDealerPeerMode(DiscoveryDealerPeerMode mode);            // @throws ConfigException
 
     void close();                                                    // @throws CloseException
 }
@@ -1514,9 +1517,9 @@ Primary entry types used in the default service flow:
 Discovery / Registry member peer entry value object.
 
 ```java
-public record MemberPeerEntry(ServiceType serviceType,
+public record MemberPeerEntry(AutoConnectType autoConnectType,
                               ServiceRole serviceRole,
-                              String serviceName,
+                              String channelName,
                               String endpoint,
                               RoutingId routingId,
                               long value,
@@ -1533,7 +1536,7 @@ Registry topology entry value object. Returned by
 public record RegistryTopologyEntry(RoutingId routingId,
                                     ServiceKind serviceKind,
                                     ServiceRole serviceRole,
-                                    String serviceName,
+                                    String channelName,
                                     String endpoint,
                                     TopologySource source,
                                     TopologyState state,
@@ -1548,7 +1551,7 @@ public record RegistryTopologyEntry(RoutingId routingId,
 Spot node status snapshot returned by `SpotNode.statusSnapshot`.
 
 ```java
-public record SpotNodeStatus(String serviceName,
+public record SpotNodeStatus(String channelName,
                              String localEndpoint,
                              RoutingId nodeRoutingId,
                              SpotNodeState state,
@@ -1602,7 +1605,7 @@ Registry service summary entry value object. Returned by
 ```java
 public record RegistryServiceSummaryEntry(ServiceKind serviceKind,
                                           ServiceRole serviceRole,
-                                          String serviceName,
+                                          String channelName,
                                           int totalCount,
                                           int connectingCount,
                                           int readyCount,
@@ -1633,7 +1636,7 @@ Spot node peer entry value object. Returned by
 `SpotNode.peersSnapshot` / `peersQuery`.
 
 ```java
-public record SpotNodePeerEntry(String serviceName,
+public record SpotNodePeerEntry(String channelName,
                                 String localEndpoint,
                                 String peerEndpoint,
                                 SpotPeerSource source,
@@ -1686,7 +1689,7 @@ Filter for `Registry.serviceSummarySnapshot`.
 ```java
 public record RegistryServiceSummaryFilter(ServiceKind serviceKind,
                                            ServiceRole serviceRole,
-                                           String serviceName) {}
+                                           String channelName) {}
 ```
 
 ### RegistryTopologyFilter
@@ -1696,7 +1699,7 @@ Filter for `Registry.topologyQuery` and `RegistryQueryClient.snapshot`.
 ```java
 public record RegistryTopologyFilter(ServiceKind serviceKind,
                                      ServiceRole serviceRole,
-                                     String serviceName,
+                                     String channelName,
                                      RoutingId routingId,
                                      TopologyState state,
                                      TopologySource source) {}

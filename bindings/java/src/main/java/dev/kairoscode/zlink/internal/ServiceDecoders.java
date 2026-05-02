@@ -4,8 +4,8 @@ package dev.kairoscode.zlink.internal;
 
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
+import dev.kairoscode.zlink.service.registry.AutoConnectType;
 import dev.kairoscode.zlink.service.registry.ServiceRole;
-import dev.kairoscode.zlink.service.registry.ServiceType;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
@@ -17,16 +17,14 @@ public final class ServiceDecoders {
     }
 
     public static MemberPeerEntry memberPeerEntry(MemorySegment segment) {
-        ServiceType serviceType = ServiceType.fromValue(
-          segment.get(ValueLayout.JAVA_SHORT,
-            NativeLayouts.MEMBER_PEER_SERVICE_TYPE_OFFSET)
-            & 0xFFFF);
+        AutoConnectType autoConnectType = AutoConnectType.fromValue(
+          segment.get(ValueLayout.JAVA_INT,
+            NativeLayouts.MEMBER_PEER_AUTO_CONNECT_TYPE_OFFSET));
         ServiceRole serviceRole = ServiceRole.fromValue(
-          segment.get(ValueLayout.JAVA_SHORT,
-            NativeLayouts.MEMBER_PEER_SERVICE_ROLE_OFFSET)
-            & 0xFFFF);
-        String serviceName = NativeHelpers.fromCString(segment.asSlice(
-          NativeLayouts.MEMBER_PEER_SERVICE_NAME_OFFSET, 256), 256);
+          segment.get(ValueLayout.JAVA_INT,
+            NativeLayouts.MEMBER_PEER_SERVICE_ROLE_OFFSET));
+        String channelName = NativeHelpers.fromCString(segment.asSlice(
+          NativeLayouts.MEMBER_PEER_CHANNEL_NAME_OFFSET, 256), 256);
         String endpoint = NativeHelpers.fromCString(segment.asSlice(
           NativeLayouts.MEMBER_PEER_ENDPOINT_OFFSET, 256), 256);
         int routingSize = segment.get(ValueLayout.JAVA_BYTE,
@@ -43,7 +41,7 @@ public final class ServiceDecoders {
           NativeLayouts.MEMBER_PEER_WEIGHT_OFFSET);
         long value = segment.get(ValueLayout.JAVA_LONG_UNALIGNED,
           NativeLayouts.MEMBER_PEER_VALUE_OFFSET);
-        return new MemberPeerEntry(serviceType, serviceRole, serviceName,
+        return new MemberPeerEntry(autoConnectType, serviceRole, channelName,
           endpoint, InternalAccess.routingIdFromTrusted(routingBytes), value,
           weight);
     }

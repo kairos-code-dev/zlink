@@ -13,56 +13,6 @@
 
 namespace zlink
 {
-namespace
-{
-int compare_routing_id_bytes (const zlink_routing_id_t &lhs_,
-                              const zlink_routing_id_t &rhs_)
-{
-    const size_t lhs_size = lhs_.size;
-    const size_t rhs_size = rhs_.size;
-    const size_t common = lhs_size < rhs_size ? lhs_size : rhs_size;
-    if (common > 0) {
-        const int cmp = memcmp (lhs_.data, rhs_.data, common);
-        if (cmp != 0)
-            return cmp;
-    }
-    if (lhs_size < rhs_size)
-        return -1;
-    if (lhs_size > rhs_size)
-        return 1;
-    return 0;
-}
-
-int compare_connect_keys (const zlink_routing_id_t &local_rid_,
-                          const zlink_routing_id_t &remote_rid_,
-                          const std::string &local_endpoint_,
-                          const std::string &remote_endpoint_)
-{
-    if (local_rid_.size > 0 && remote_rid_.size > 0) {
-        const int rid_cmp = compare_routing_id_bytes (local_rid_, remote_rid_);
-        if (rid_cmp != 0)
-            return rid_cmp;
-    }
-
-    if (local_endpoint_ < remote_endpoint_)
-        return -1;
-    if (local_endpoint_ > remote_endpoint_)
-        return 1;
-    return 0;
-}
-
-bool should_initiate_router_router (
-  const zlink_routing_id_t &local_rid_,
-  const zlink_routing_id_t &remote_rid_,
-  const std::string &local_endpoint_,
-  const std::string &remote_endpoint_)
-{
-    return compare_connect_keys (local_rid_, remote_rid_, local_endpoint_,
-                                 remote_endpoint_)
-           < 0;
-}
-}
-
 void socket_discovery_attachment_t::report_topology (
   discovery_t *discovery_,
   uint16_t local_role_,
@@ -85,9 +35,11 @@ void socket_discovery_attachment_t::report_topology (
     entry.routing_id = routing_id;
     entry.service_kind = ZLINK_SERVICE_KIND_SOCKET;
     entry.service_role = static_cast<zlink_service_role_t> (local_role_);
-    copy_fixed_c_string_from_cstr (entry.service_name,
-                                   sizeof (entry.service_name),
-                                   discovery_->service_name ().c_str ());
+    entry.auto_connect_type =
+      static_cast<zlink_auto_connect_type_t> (discovery_->auto_connect_type ());
+    copy_fixed_c_string_from_cstr (entry.channel_name,
+                                   sizeof (entry.channel_name),
+                                   discovery_->channel_name ().c_str ());
     copy_fixed_c_string_from_cstr (entry.endpoint, sizeof (entry.endpoint),
                                    advertise_endpoint_.c_str ());
     entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
@@ -112,15 +64,14 @@ void socket_discovery_attachment_t::refresh_peers (
 
     zlink_routing_id_t local_routing_id;
     memset (&local_routing_id, 0, sizeof (local_routing_id));
-    if (local_role_ == discovery_protocol::service_role_router
+    if ((local_role_ == discovery_protocol::service_role_router
+         || local_role_ == discovery_protocol::service_role_dealer)
         && !ensure_socket_routing_id (&local_routing_id)) {
         return;
     }
 
     std::vector<provider_info_t> providers;
-    const zlink_discovery_dealer_peer_mode_t dealer_peer_mode =
-      discovery_->dealer_peer_mode ();
-    discovery_->snapshot_providers (discovery_->service_name (), &providers);
+    discovery_->snapshot_providers (discovery_->channel_name (), &providers);
 
     std::set<std::string> target_endpoints;
     for (size_t i = 0; i < providers.size (); ++i) {
@@ -128,16 +79,9 @@ void socket_discovery_attachment_t::refresh_peers (
         if (provider.endpoint.empty ()
             || advertise_endpoint_ == provider.endpoint
             || !discovery_protocol::socket_auto_connect_target_matches (
-              local_role_, provider.service_role, dealer_peer_mode)) {
-            continue;
-        }
-        if (local_role_ == discovery_protocol::service_role_router
-            && provider.service_role
-                 == discovery_protocol::service_role_router
-            && !should_initiate_router_router (local_routing_id,
-                                              provider.routing_id,
-                                              advertise_endpoint_,
-                                              provider.endpoint)) {
+              discovery_->auto_connect_type (), local_role_,
+              provider.service_role, local_routing_id, provider.routing_id,
+              advertise_endpoint_, provider.endpoint)) {
             continue;
         }
         target_endpoints.insert (provider.endpoint);
@@ -151,7 +95,7 @@ void socket_discovery_attachment_t::refresh_peers (
         active_endpoints = _active_peer_endpoints;
         _discovery_managed_peer_endpoints = target_endpoints;
         _refresh_seq =
-          discovery_->service_update_seq (discovery_->service_name ());
+          discovery_->service_update_seq (discovery_->channel_name ());
     }
 
     for (std::set<std::string>::const_iterator it = target_endpoints.begin ();

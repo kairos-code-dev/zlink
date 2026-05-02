@@ -58,26 +58,71 @@ int current_process_id ()
 #endif
 }
 
+bool allocate_loopback_tcp_endpoint (char *endpoint_out_, size_t endpoint_size_)
+{
+    if (!endpoint_out_ || endpoint_size_ == 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    for (int attempt = 0; attempt < 256; ++attempt) {
+        fd_t fd = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (fd == retired_fd)
+            continue;
+
+        int reuse = 1;
+        setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, as_setsockopt_opt_t (&reuse),
+                    sizeof (reuse));
+
+        struct sockaddr_in addr;
+        memset (&addr, 0, sizeof (addr));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+        addr.sin_port = 0;
+
+        if (bind (fd, reinterpret_cast<struct sockaddr *> (&addr),
+                  sizeof (addr))
+            == 0) {
+#if defined ZLINK_HAVE_WINDOWS
+            int addr_len = sizeof (addr);
+#else
+            socklen_t addr_len = sizeof (addr);
+#endif
+            if (getsockname (fd, reinterpret_cast<struct sockaddr *> (&addr),
+                             &addr_len)
+                == 0) {
+                close (fd);
+                snprintf (endpoint_out_, endpoint_size_, "tcp://127.0.0.1:%u",
+                          static_cast<unsigned> (ntohs (addr.sin_port)));
+                return true;
+            }
+        }
+
+        close (fd);
+    }
+
+    errno = EADDRINUSE;
+    return false;
+}
+
 std::string bind_spot_test_endpoint (void *node_)
 {
-    const int base_port = 36000 + (current_process_id () % 1000) * 8;
     for (int i = 0; i < 64; ++i) {
-        std::ostringstream endpoint;
-        endpoint << "tcp://127.0.0.1:" << (base_port + i);
-        if (zlink_spot_node_bind (node_, endpoint.str ().c_str ()) == 0)
-            return endpoint.str ();
+        char endpoint[128];
+        if (allocate_loopback_tcp_endpoint (endpoint, sizeof (endpoint))
+            && zlink_spot_node_bind (node_, endpoint) == 0)
+            return endpoint;
     }
     return std::string ();
 }
 
 std::string bind_socket_test_endpoint (void *socket_)
 {
-    const int base_port = 36500 + (current_process_id () % 1000) * 8;
     for (int i = 0; i < 64; ++i) {
-        std::ostringstream endpoint;
-        endpoint << "tcp://127.0.0.1:" << (base_port + i);
-        if (zlink_bind (socket_, endpoint.str ().c_str ()) == ZLINK_BIND_OK)
-            return endpoint.str ();
+        char endpoint[128];
+        if (allocate_loopback_tcp_endpoint (endpoint, sizeof (endpoint))
+            && zlink_bind (socket_, endpoint) == ZLINK_BIND_OK)
+            return endpoint;
     }
     return std::string ();
 }
@@ -86,20 +131,22 @@ bool bind_registry_test_endpoints (void *registry_,
                                    std::string *pub_out_,
                                    std::string *router_out_)
 {
-    const int base_port = 37000 + (current_process_id () % 1000) * 8;
     for (int i = 0; i < 64; ++i) {
-        std::ostringstream pub_endpoint;
-        std::ostringstream router_endpoint;
-        pub_endpoint << "tcp://127.0.0.1:" << (base_port + i * 2);
-        router_endpoint << "tcp://127.0.0.1:" << (base_port + i * 2 + 1);
-        if (zlink_registry_bind (
-              registry_, pub_endpoint.str ().c_str (),
-              router_endpoint.str ().c_str ())
+        char pub_endpoint[128];
+        char router_endpoint[128];
+        if (!allocate_loopback_tcp_endpoint (pub_endpoint,
+                                             sizeof (pub_endpoint))
+            || !allocate_loopback_tcp_endpoint (router_endpoint,
+                                                sizeof (router_endpoint))
+            || strcmp (pub_endpoint, router_endpoint) == 0) {
+            continue;
+        }
+        if (zlink_registry_bind (registry_, pub_endpoint, router_endpoint)
             == ZLINK_BIND_OK) {
             if (pub_out_)
-                *pub_out_ = pub_endpoint.str ();
+                *pub_out_ = pub_endpoint;
             if (router_out_)
-                *router_out_ = router_endpoint.str ();
+                *router_out_ = router_endpoint;
             return true;
         }
     }
@@ -438,7 +485,7 @@ void test_spot_node_discovery_attach_limits_service_aware_facades ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-svc");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
     void *node = zlink_spot_node_new (ctx, NULL);
@@ -465,7 +512,7 @@ void test_spot_node_attach_discovery_rejects_preexisting_multiple_facades ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-svc");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
     void *node = zlink_spot_node_new (ctx, NULL);
@@ -494,7 +541,7 @@ void test_spot_node_attach_discovery_rejects_duplicate_discovery ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-svc");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
     void *node = zlink_spot_node_new (ctx, NULL);
@@ -518,7 +565,7 @@ void test_spot_publish_service_name_matches_attached_discovery ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-svc");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
     void *node = zlink_spot_node_new (ctx, NULL);
@@ -549,7 +596,7 @@ void test_spot_publish_service_name_rejects_mismatch ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-svc");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
     void *node = zlink_spot_node_new (ctx, NULL);
@@ -607,29 +654,36 @@ void test_discovery_protocol_accepts_socket_family_and_roles ()
 {
     using namespace zlink::discovery_protocol;
 
-    TEST_ASSERT_TRUE (is_valid_service_type (service_type_spot_node));
-    TEST_ASSERT_TRUE (is_valid_service_type (service_type_socket));
-    TEST_ASSERT_FALSE (is_valid_service_type (0));
+    TEST_ASSERT_TRUE (
+      is_valid_auto_connect_type (ZLINK_AUTO_CONNECT_ROUTE_MESH));
+    TEST_ASSERT_TRUE (
+      is_valid_auto_connect_type (ZLINK_AUTO_CONNECT_CLIENT_SERVER));
+    TEST_ASSERT_TRUE (
+      is_valid_auto_connect_type (ZLINK_AUTO_CONNECT_DEALER_MESH));
+    TEST_ASSERT_TRUE (is_valid_auto_connect_type (ZLINK_AUTO_CONNECT_FANOUT));
+    TEST_ASSERT_TRUE (
+      is_valid_auto_connect_type (ZLINK_AUTO_CONNECT_SPOT_MESH));
+    TEST_ASSERT_FALSE (
+      is_valid_auto_connect_type (ZLINK_AUTO_CONNECT_INVALID));
 
-    TEST_ASSERT_EQUAL_UINT16 (service_role_spot,
-                              fixed_service_role_for_type (
-                                service_type_spot_node));
-    TEST_ASSERT_EQUAL_UINT16 (service_role_invalid,
-                              fixed_service_role_for_type (
-                                service_type_socket));
-
-    TEST_ASSERT_TRUE (is_valid_service_role_for_type (service_type_spot_node,
-                                                      service_role_spot));
-    TEST_ASSERT_FALSE (is_valid_service_role_for_type (
-      service_type_spot_node, service_role_pub));
-    TEST_ASSERT_TRUE (is_valid_service_role_for_type (service_type_socket,
-                                                      service_role_router));
-    TEST_ASSERT_TRUE (is_valid_service_role_for_type (service_type_socket,
-                                                      service_role_dealer));
-    TEST_ASSERT_TRUE (is_valid_service_role_for_type (service_type_socket,
-                                                      service_role_pub));
-    TEST_ASSERT_TRUE (is_valid_service_role_for_type (service_type_socket,
-                                                      service_role_sub));
+    TEST_ASSERT_TRUE (auto_connect_type_allows_role (
+      ZLINK_AUTO_CONNECT_ROUTE_MESH, service_role_router));
+    TEST_ASSERT_FALSE (auto_connect_type_allows_role (
+      ZLINK_AUTO_CONNECT_ROUTE_MESH, service_role_dealer));
+    TEST_ASSERT_TRUE (auto_connect_type_allows_role (
+      ZLINK_AUTO_CONNECT_CLIENT_SERVER, service_role_router));
+    TEST_ASSERT_TRUE (auto_connect_type_allows_role (
+      ZLINK_AUTO_CONNECT_CLIENT_SERVER, service_role_dealer));
+    TEST_ASSERT_TRUE (auto_connect_type_allows_role (
+      ZLINK_AUTO_CONNECT_DEALER_MESH, service_role_dealer));
+    TEST_ASSERT_TRUE (auto_connect_type_allows_role (
+      ZLINK_AUTO_CONNECT_FANOUT, service_role_pub));
+    TEST_ASSERT_TRUE (auto_connect_type_allows_role (
+      ZLINK_AUTO_CONNECT_FANOUT, service_role_sub));
+    TEST_ASSERT_TRUE (auto_connect_type_allows_role (
+      ZLINK_AUTO_CONNECT_SPOT_MESH, service_role_spot));
+    TEST_ASSERT_FALSE (auto_connect_type_allows_role (
+      ZLINK_AUTO_CONNECT_SPOT_MESH, service_role_router));
 }
 
 void test_discovery_protocol_derives_socket_roles_and_matching ()
@@ -652,62 +706,52 @@ void test_discovery_protocol_derives_socket_roles_and_matching ()
                               derive_socket_service_role (
                                 ZLINK_CORE_SOCKET_PAIR));
 
-    TEST_ASSERT_TRUE (
-      service_roles_match (service_role_spot, service_role_spot));
-    TEST_ASSERT_TRUE (
-      service_roles_match (service_role_pub, service_role_sub));
-    TEST_ASSERT_TRUE (
-      service_roles_match (service_role_sub, service_role_pub));
-    TEST_ASSERT_TRUE (
-      service_roles_match (service_role_router, service_role_router));
-    TEST_ASSERT_TRUE (
-      service_roles_match (service_role_router, service_role_dealer));
-    TEST_ASSERT_TRUE (
-      service_roles_match (service_role_dealer, service_role_router));
-    TEST_ASSERT_TRUE (
-      service_roles_match (service_role_dealer, service_role_dealer));
-    TEST_ASSERT_FALSE (
-      service_roles_match (service_role_pub, service_role_pub));
-    TEST_ASSERT_FALSE (
-      service_roles_match (service_role_sub, service_role_sub));
-    TEST_ASSERT_FALSE (
-      service_roles_match (service_role_pub, service_role_router));
+    TEST_ASSERT_TRUE (auto_connect_type_allows_raw_socket (
+      ZLINK_AUTO_CONNECT_CLIENT_SERVER));
+    TEST_ASSERT_FALSE (auto_connect_type_allows_raw_socket (
+      ZLINK_AUTO_CONNECT_SPOT_MESH));
 }
 
 void test_discovery_protocol_applies_socket_auto_connect_policy ()
 {
     using namespace zlink::discovery_protocol;
 
-    TEST_ASSERT_TRUE (socket_auto_connect_target_matches (
-      service_role_router, service_role_router,
-      ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER));
-    TEST_ASSERT_FALSE (socket_auto_connect_target_matches (
-      service_role_router, service_role_dealer,
-      ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER));
+    zlink_routing_id_t local_rid;
+    zlink_routing_id_t remote_rid;
+    memset (&local_rid, 0, sizeof (local_rid));
+    memset (&remote_rid, 0, sizeof (remote_rid));
+    local_rid.size = 1;
+    remote_rid.size = 1;
+    local_rid.data[0] = 1;
+    remote_rid.data[0] = 2;
 
     TEST_ASSERT_TRUE (socket_auto_connect_target_matches (
-      service_role_sub, service_role_pub,
-      ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER));
+      ZLINK_AUTO_CONNECT_ROUTE_MESH, service_role_router, service_role_router,
+      local_rid, remote_rid, "tcp://a", "tcp://b"));
     TEST_ASSERT_FALSE (socket_auto_connect_target_matches (
-      service_role_sub, service_role_sub,
-      ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER));
-    TEST_ASSERT_FALSE (socket_auto_connect_target_matches (
-      service_role_pub, service_role_sub,
-      ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER));
+      ZLINK_AUTO_CONNECT_ROUTE_MESH, service_role_router, service_role_dealer,
+      local_rid, remote_rid, "tcp://a", "tcp://b"));
 
     TEST_ASSERT_TRUE (socket_auto_connect_target_matches (
-      service_role_dealer, service_role_router,
-      ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER));
+      ZLINK_AUTO_CONNECT_FANOUT, service_role_sub, service_role_pub,
+      local_rid, remote_rid, "", "tcp://pub"));
     TEST_ASSERT_FALSE (socket_auto_connect_target_matches (
-      service_role_dealer, service_role_dealer,
-      ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER));
+      ZLINK_AUTO_CONNECT_FANOUT, service_role_sub, service_role_sub,
+      local_rid, remote_rid, "", "tcp://sub"));
+    TEST_ASSERT_FALSE (socket_auto_connect_target_matches (
+      ZLINK_AUTO_CONNECT_FANOUT, service_role_pub, service_role_sub,
+      local_rid, remote_rid, "tcp://pub", ""));
 
-    TEST_ASSERT_FALSE (socket_auto_connect_target_matches (
-      service_role_dealer, service_role_router,
-      ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER));
     TEST_ASSERT_TRUE (socket_auto_connect_target_matches (
-      service_role_dealer, service_role_dealer,
-      ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER));
+      ZLINK_AUTO_CONNECT_CLIENT_SERVER, service_role_dealer,
+      service_role_router, local_rid, remote_rid, "", "tcp://router"));
+    TEST_ASSERT_FALSE (socket_auto_connect_target_matches (
+      ZLINK_AUTO_CONNECT_CLIENT_SERVER, service_role_dealer,
+      service_role_dealer, local_rid, remote_rid, "", "tcp://dealer"));
+
+    TEST_ASSERT_TRUE (socket_auto_connect_target_matches (
+      ZLINK_AUTO_CONNECT_DEALER_MESH, service_role_dealer,
+      service_role_dealer, local_rid, remote_rid, "tcp://a", "tcp://b"));
 }
 
 void test_discovery_new_accepts_socket_family ()
@@ -716,7 +760,7 @@ void test_discovery_new_accepts_socket_family ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-svc");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "socket-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
@@ -729,7 +773,7 @@ void test_socket_attach_discovery_rejects_unsupported_socket_type ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-svc");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "socket-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
     void *pair = zlink_socket (ctx, ZLINK_SOCKET_PAIR);
@@ -750,7 +794,7 @@ void test_socket_attach_discovery_gates_manual_peer_apis ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-svc");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "socket-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
     void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
@@ -780,7 +824,7 @@ void test_socket_attach_discovery_fails_after_bind_without_registry ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-svc");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "socket-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
     void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
@@ -798,62 +842,35 @@ void test_socket_attach_discovery_fails_after_bind_without_registry ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_discovery_dealer_peer_mode_defaults_and_accepts_known_modes ()
+void test_discovery_new_rejects_invalid_auto_connect_type ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-svc");
-    TEST_ASSERT_NOT_NULL (discovery);
-
-    TEST_ASSERT_EQUAL (
-      ZLINK_CONFIG_OK,
-      zlink_discovery_set_dealer_peer_mode (
-        discovery, ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER));
-    TEST_ASSERT_EQUAL (
-      ZLINK_CONFIG_OK,
-      zlink_discovery_set_dealer_peer_mode (
-        discovery, ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER));
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
-}
-
-void test_discovery_dealer_peer_mode_rejects_invalid_mode ()
-{
-    void *ctx = zlink_ctx_new ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-svc");
-    TEST_ASSERT_NOT_NULL (discovery);
-
-    TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK,
-      zlink_discovery_set_dealer_peer_mode (
-        discovery, static_cast<zlink_discovery_dealer_peer_mode_t> (99)));
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_INVALID, "socket-svc");
+    TEST_ASSERT_NULL (discovery);
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_discovery_dealer_peer_mode_rejects_spot_service_view ()
+void test_socket_attach_discovery_rejects_type_role_mismatch ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-svc");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT, "fanout-svc");
     TEST_ASSERT_NOT_NULL (discovery);
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (dealer);
 
     TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK,
-      zlink_discovery_set_dealer_peer_mode (
-        discovery, ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER));
+      ZLINK_CONFIG_OK, zlink_socket_attach_discovery (dealer, discovery));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (dealer));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
@@ -878,19 +895,20 @@ void test_spot_node_attach_discovery_rejects_unsupported_socket_role ()
       registry, &registry_pub_endpoint, &registry_router_endpoint));
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "svc-dealer");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "svc-dealer");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery, registry_router_endpoint.c_str (), 3000));
 
     std::string registered_endpoint;
     TEST_ASSERT_SUCCESS_ERRNO (register_endpoint (
-      static_cast<zlink::discovery_t *> (discovery), service_type_socket,
-      "tcp://127.0.0.1:39111", &registered_endpoint, NULL, service_role_dealer));
+      static_cast<zlink::discovery_t *> (discovery),
+      "tcp://127.0.0.1:39111", &registered_endpoint, NULL,
+      service_role_dealer));
 
     TEST_ASSERT_NOT_EQUAL (
       ZLINK_CONFIG_OK, zlink_spot_node_attach_discovery (node, discovery));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
@@ -903,7 +921,7 @@ void test_discovery_resolve_spot_rejects_invalid_arguments ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *discovery = zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT,
+    void *discovery = zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH,
                                            "spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
@@ -939,7 +957,7 @@ void test_discovery_resolve_spot_rejects_socket_service_view ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-svc");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "socket-svc");
     TEST_ASSERT_NOT_NULL (discovery);
 
     zlink_routing_id_t spot_rid;
@@ -1165,9 +1183,8 @@ int main (void)
     RUN_TEST (test_socket_attach_discovery_rejects_unsupported_socket_type);
     RUN_TEST (test_socket_attach_discovery_gates_manual_peer_apis);
     RUN_TEST (test_socket_attach_discovery_fails_after_bind_without_registry);
-    RUN_TEST (test_discovery_dealer_peer_mode_defaults_and_accepts_known_modes);
-    RUN_TEST (test_discovery_dealer_peer_mode_rejects_invalid_mode);
-    RUN_TEST (test_discovery_dealer_peer_mode_rejects_spot_service_view);
+    RUN_TEST (test_discovery_new_rejects_invalid_auto_connect_type);
+    RUN_TEST (test_socket_attach_discovery_rejects_type_role_mismatch);
     RUN_TEST (test_spot_node_attach_discovery_rejects_unsupported_socket_role);
     RUN_TEST (test_discovery_resolve_spot_rejects_invalid_arguments);
     RUN_TEST (test_discovery_resolve_spot_rejects_socket_service_view);

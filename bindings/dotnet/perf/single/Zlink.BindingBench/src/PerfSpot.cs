@@ -31,7 +31,7 @@ internal static class PerfSpot
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
         using var registry = new Registry(ctx);
-        using var discovery = new Discovery(ctx, ServiceType.Spot, ServiceName);
+        using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh, ServiceName);
         using var pubNode = new SpotNode(ctx);
         using var subNode = new SpotNode(ctx);
         using var spotPub = pubNode.CreateSpot();

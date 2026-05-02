@@ -9,7 +9,7 @@ import dev.kairoscode.zlink.RecvResult;
 import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SubmitException;
-import dev.kairoscode.zlink.service.registry.ServiceType;
+import dev.kairoscode.zlink.service.registry.AutoConnectType;
 import dev.kairoscode.zlink.TestSupport;
 import dev.kairoscode.zlink.SpotDispatchEvent;
 import dev.kairoscode.zlink.service.discovery.Discovery;
@@ -41,7 +41,7 @@ class ServiceContractsIntegrationTest {
 
         try (Context ctx = new Context();
             Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, ServiceType.SOCKET,
+             Discovery discovery = new Discovery(ctx, AutoConnectType.CLIENT_SERVER,
                "svc-alpha");
              SpotNode node = new SpotNode(ctx);
              RegistryQueryClient queryClient = new RegistryQueryClient(ctx)) {
@@ -64,8 +64,7 @@ class ServiceContractsIntegrationTest {
             assertEquals(0, registry.statusSnapshot().topologyEntryCount());
             assertTrue(registry.serviceSummarySnapshot().isEmpty());
             assertTrue(registry.topologySnapshot().isEmpty());
-            assertTrue(registry.memberPeers(ServiceType.SOCKET,
-              "svc-alpha").isEmpty());
+            assertTrue(registry.memberPeers("svc-alpha").isEmpty());
             assertTrue(queryClient.snapshot().isEmpty());
 
             assertEquals(0, node.statusSnapshot().configuredPeerCount());

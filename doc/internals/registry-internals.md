@@ -57,7 +57,7 @@ immediate SERVICE_LIST broadcast to new subscribers.
 
 ```cpp
 struct service_key_t {
-    uint16_t service_type;       // spot_node(2), socket(3)
+    uint16_t auto_connect_type;       // spot_node(2), socket(3)
     std::string service_name;
 };
 
@@ -85,7 +85,7 @@ sequenceDiagram
     participant Pub as Registry XPUB
     participant Subs as Discovery SUBs
 
-    Disc->>Router: REGISTER (0x0001)<br/>[service_type, name, role,<br/>endpoint, routing_id, value]
+    Disc->>Router: REGISTER (0x0001)<br/>[auto_connect_type, name, role,<br/>endpoint, routing_id, value]
     Router->>Store: insert provider_entry
     Router->>Router: increment list_seq
     Router->>Disc: REGISTER_ACK (0x0002)<br/>[status=0, resolved_endpoint]
@@ -102,7 +102,7 @@ sequenceDiagram
     participant Store as service_map
 
     loop Every heartbeat_interval (default 5000ms)
-        Disc->>Router: HEARTBEAT (0x0004)<br/>[service_type, role, name, endpoint]
+        Disc->>Router: HEARTBEAT (0x0004)<br/>[auto_connect_type, role, name, endpoint]
         Router->>Store: update last_heartbeat timestamp
     end
 

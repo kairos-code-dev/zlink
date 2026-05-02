@@ -261,7 +261,7 @@ static inline void sample_pause_ms (int timeout_ms_)
 /* ---- Discovery / readiness helpers -------------------------------------- */
 
 static inline int wait_for_discovery_service (void *discovery_,
-                                              const char *service_name_,
+                                              const char *channel_name_,
                                               int timeout_ms)
 {
     struct timespec start;
@@ -276,8 +276,8 @@ static inline int wait_for_discovery_service (void *discovery_,
             assert (entries != NULL);
             if (zlink_discovery_member_peers (discovery_, entries, &count) == 0) {
                 for (size_t i = 0; i < count; ++i) {
-                    if (!service_name_
-                        || strcmp (entries[i].service_name, service_name_) == 0) {
+                    if (!channel_name_
+                        || strcmp (entries[i].channel_name, channel_name_) == 0) {
                         free (entries);
                         return 1;
                     }

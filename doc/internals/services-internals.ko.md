@@ -69,14 +69,14 @@ stateDiagram-v2
     UNAVAILABLE --> AVAILABLE : SERVICE_LIST (count > 0)
 ```
 
-### 3.2 서비스 타입과 역할
+### 3.2 자동 연결 타입과 역할
 
-Discovery는 프로바이더를 (service_type, service_role) 쌍으로 추적한다:
+Discovery는 프로바이더를 (auto_connect_type, service_role) 쌍으로 추적한다:
 
 ```cpp
 // Service types
-static const uint16_t service_type_spot_node = 2;
-static const uint16_t service_type_socket = 3;
+static const uint16_t auto_connect_type_spot_node = 2;
+static const uint16_t auto_connect_type_socket = 3;
 
 // Service roles
 enum service_role_t {
@@ -89,7 +89,7 @@ enum service_role_t {
 };
 ```
 
-SPOT은 서비스 타입에서 파생되는 고정 역할을 가진다. 소켓 패밀리
+SPOT은 고정 SPOT 역할을 가진다. 소켓 패밀리
 서비스는 소켓 타입에 맞는 명시적 역할이 필요하다. 피어 발견을 위한 역할
 매칭 규칙:
 - PUB ↔ SUB
@@ -98,26 +98,26 @@ SPOT은 서비스 타입에서 파생되는 고정 역할을 가진다. 소켓 �
 
 ### 3.3 Discovery 소유 서비스 실행
 
-Discovery는 연결된 서비스의 lifecycle owner 역할을 한다. 각 서비스 타입은
+Discovery는 연결된 서비스의 lifecycle owner 역할을 한다. 각 자동 연결 타입은
 `discovery_owned_service` 편의 API를 통해 엔드포인트를 등록한다:
 
 ```cpp
 namespace discovery_owned_service {
-    int register_endpoint(discovery_t *, uint16_t service_type,
+    int register_endpoint(discovery_t *, uint16_t auto_connect_type,
                           const char *endpoint, uint32_t weight,
                           std::string *resolved_endpoint_out,
                           const zlink_routing_id_t *routing_id = NULL,
                           uint16_t service_role = 0);
-    int update_weight(discovery_t *, uint16_t service_type,
+    int update_weight(discovery_t *, uint16_t auto_connect_type,
                       const char *endpoint, uint32_t weight,
                       uint16_t service_role = 0);
-    int unregister_endpoint(discovery_t *, uint16_t service_type,
+    int unregister_endpoint(discovery_t *, uint16_t auto_connect_type,
                             const char *endpoint,
                             uint16_t service_role = 0);
 }
 ```
 
-Discovery는 내부적으로 `(service_type, service_role, service_name,
+Discovery는 내부적으로 `(auto_connect_type, service_role, service_name,
 endpoint)` 키의 `_registered_services` 맵을 유지하고,
 `refresh_registered_service_heartbeats()`로 등록된 모든 서비스의
 heartbeat를 주기적으로 갱신한다.
@@ -196,7 +196,7 @@ Frame 1: registry_id (uint32_t)
 Frame 2: list_seq (uint64_t)
 Frame 3: service_count (uint32_t)
 Frame 4~N: Service entries (repeated service_count times)
-  - service_type (uint16_t)
+  - auto_connect_type (uint16_t)
   - service_name (string)
   - provider_count (uint32_t)
   - provider entries (repeated provider_count times):
@@ -255,8 +255,8 @@ Frame 4~N: Service entries (repeated service_count times)
   callback/recv API로만 소비
 
 ### 5.6 Discovery 타입 분리
-- service_type 필드로 spot_node/socket_family 분리
-  - `service_type_spot_node` (2), `service_type_socket` (3)
+- auto_connect_type 필드로 spot_node/socket_family 분리
+  - `auto_connect_type_spot_node` (2), `auto_connect_type_socket` (3)
 - 소켓 패밀리 서비스는 추가로 `service_role` 필드를 가진다
   (ROUTER=3, DEALER=4, PUB=5, SUB=6) — 역할 기반 피어 매칭용
 - 역할 매칭은 `service_roles_match()`가 강제한다 — PUB은 SUB과 짝,

@@ -61,7 +61,7 @@ Discovery channel은 자동 연결에만 필요한 개념이다. 자동 연결�
 ## Public API 변경 요약
 
 이 초안은 호환성을 유지하지 않는 변경을 전제로 한다. 따라서 기존
-`service_type` 중심 Discovery 생성 모델과 `DEALER` peer mode 옵션은 새 자동
+`auto_connect_type` 중심 Discovery 생성 모델과 `DEALER` peer mode 옵션은 새 자동
 연결 타입 모델로 대체한다.
 
 | 구분 | 변경 |
@@ -69,8 +69,8 @@ Discovery channel은 자동 연결에만 필요한 개념이다. 자동 연결�
 | 추가 enum | `zlink_auto_connect_type_t` |
 | 변경 API | `zlink_discovery_new()`, `zlink_registry_member_peers()`, `zlink_registry_member_peer_metadata()`, `zlink_spot_node_attach_channel_dealer()` (시그니처 유지, 검증 기준 변경) |
 | 유지 API | `zlink_socket_attach_discovery()`, `zlink_spot_node_attach_discovery()`, `zlink_spot_node_attach_channel_dealer_manual()`, `zlink_spot_node_attach_pub_ingress()`, `zlink_discovery_member_peers()`, `zlink_discovery_member_peer_metadata()` |
-| 제거 API | `zlink_discovery_set_dealer_peer_mode()` |
-| 제거 enum/인자 | `zlink_discovery_dealer_peer_mode_t`, Discovery/Registry API의 `zlink_service_type_t` 인자 |
+| 제거 API | `Discovery auto-connect type constructor contract` |
+| 제거 enum/인자 | `zlink_discovery_dealer_peer_mode_t`, Discovery/Registry API의 `zlink_auto_connect_type_t` 인자 |
 | 추가 option | 없음 |
 | 제거 option | `DEALER` peer mode |
 | 구조체 변경 | service/member/topology 구조체에서 `service_name` 의미를 `channel_name`으로 정리하고 `auto_connect_type` 추가 |
@@ -100,7 +100,7 @@ typedef enum zlink_auto_connect_type_t {
 ```c
 void *zlink_discovery_new(
   void *ctx,
-  zlink_service_type_t service_type,
+  zlink_auto_connect_type_t auto_connect_type,
   const char *service_name);
 ```
 
@@ -115,22 +115,22 @@ void *zlink_discovery_new(
 
 변경 의미는 다음과 같다.
 
-- `service_type` 인자는 제거한다.
+- `auto_connect_type` 인자는 제거한다.
 - `service_name`은 Discovery 자동 연결 범위라는 의미를 분명히 하기 위해
   `channel_name`으로 부른다.
 - `auto_connect_type`은 channel 생성 시점에 반드시 정한다.
 - 생성 뒤 `auto_connect_type`을 바꾸는 public API는 두지 않는다.
 - `auto_connect_type == ZLINK_AUTO_CONNECT_INVALID`이면 실패한다.
 
-이 draft 범위의 public API에서는 `zlink_service_type_t`를 더 이상 사용하지 않는다.
-`ZLINK_SERVICE_TYPE_SOCKET`, `ZLINK_SERVICE_TYPE_SPOT`,
+이 draft 범위의 public API에서는 `zlink_auto_connect_type_t`를 더 이상 사용하지 않는다.
+`ZLINK_AUTO_CONNECT_CLIENT_SERVER`, `ZLINK_AUTO_CONNECT_SPOT_MESH`,
 `ZLINK_CHANNEL_TYPE_SOCKET`, `ZLINK_CHANNEL_TYPE_SPOT`은 자동 연결 의미를 고르는
 값으로 쓰지 않는다. 다른 정식 spec에서 독립적으로 쓰는 계약이 없다면 공개
 헤더에서 제거한다.
 
 ### 변경되는 Registry 조회 API
 
-Registry 조회 API도 `service_type + service_name` 조합 대신 `channel_name`과
+Registry 조회 API도 `auto_connect_type + service_name` 조합 대신 `channel_name`과
 자동 연결 타입을 사용한다.
 
 기존 API는 아래 형태였다.
@@ -138,14 +138,14 @@ Registry 조회 API도 `service_type + service_name` 조합 대신 `channel_name
 ```c
 zlink_config_result_t zlink_registry_member_peers(
   void *registry,
-  zlink_service_type_t service_type,
+  zlink_auto_connect_type_t auto_connect_type,
   const char *service_name,
   zlink_member_peer_entry_t *entries,
   size_t *count);
 
 zlink_config_result_t zlink_registry_member_peer_metadata(
   void *registry,
-  zlink_service_type_t service_type,
+  zlink_auto_connect_type_t auto_connect_type,
   const char *service_name,
   uint16_t service_role,
   const char *endpoint,
@@ -241,7 +241,7 @@ typedef enum zlink_discovery_dealer_peer_mode_t {
   ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER = 2
 } zlink_discovery_dealer_peer_mode_t;
 
-zlink_config_result_t zlink_discovery_set_dealer_peer_mode(
+zlink_config_result_t Discovery auto-connect type constructor contract(
   void *discovery,
   zlink_discovery_dealer_peer_mode_t mode);
 ```
@@ -369,7 +369,7 @@ void *zlink_discovery_new(
   `auto_connect_type`만 가진다.
 - 생성 후 `auto_connect_type`을 바꾸는 API는 두지 않는다.
 
-기존 `service_type` 기반 생성자는 새 모델에서 사용하지 않는다.
+기존 `auto_connect_type` 기반 생성자는 새 모델에서 사용하지 않는다.
 
 ## 자동 연결 타입 목록
 
@@ -623,15 +623,14 @@ winner는 아래 순서로 정한다.
 2. `owner_registry_id`가 같으면 `created_at`이 더 작은 계약이 이긴다.
 3. 두 값이 모두 같으면 `auto_connect_type` 숫자가 더 작은 계약이 이긴다.
 
-loser 계약을 가진 Registry는 해당 channel을 `CONFLICTED` 상태로 표시한다.
-`CONFLICTED` 상태의 channel은 새 Discovery bootstrap, provider registration,
-member metadata update를 모두 `EEXIST`로 거부한다. 이미 등록된 loser 쪽 provider는
-다음 projection broadcast에서 내보내지 않는다. 정상 winner 계약의 provider를
-다른 타입으로 재해석하면 안 된다.
+winner 계약을 관측한 Registry는 해당 `channel_name`의 로컬 계약을 winner로
+교체한다. 교체 전 loser 계약으로 등록된 provider는 제거하고 다음 projection
+broadcast에서 내보내지 않는다. 정상 winner 계약의 provider를 다른 타입으로
+재해석하면 안 된다.
 
-클러스터 충돌은 운영 오류다. Registry는 충돌을 자동으로 병합하지 않는다.
-운영자는 loser 쪽 Discovery를 winner의 자동 연결 타입으로 다시 만들거나, 서로
-다른 channel name을 사용하도록 설정을 바꿔야 한다.
+winner가 아닌 계약은 `EEXIST`로 거부한다. 이후 같은 Registry에서 해당
+`channel_name`을 계속 쓰려면 winner의 자동 연결 타입으로 Discovery를 다시
+만들어야 한다. 서로 다른 topology가 필요하면 서로 다른 channel name을 사용한다.
 
 ## Discovery snapshot 계약
 
@@ -721,7 +720,7 @@ Discovery가 채널 자동 연결을 소유하는 동안 수동 lifecycle API는
 이 규칙은 자동 연결 타입과 무관하게 같다. 자동 연결 타입은 어떤 peer를 고를지
 정하고, lifecycle ownership은 Discovery attach 여부가 정한다.
 
-## 기존 DEALER peer mode 제거
+## 기존 auto-connect type 제거
 
 이 초안에서는 `DEALER -> ROUTER`와 `DEALER -> DEALER`를 하나의 Discovery 옵션으로
 바꾸지 않는다. 대신 서로 다른 자동 연결 타입으로 나눈다.
@@ -730,7 +729,7 @@ Discovery가 채널 자동 연결을 소유하는 동안 수동 lifecycle API는
   `ZLINK_AUTO_CONNECT_CLIENT_SERVER`로 표현한다.
 - 기존 `ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER` 의미는
   `ZLINK_AUTO_CONNECT_DEALER_MESH`로 표현한다.
-- `zlink_discovery_set_dealer_peer_mode()`는 새 모델에서 제거한다.
+- `Discovery auto-connect type constructor contract`는 새 모델에서 제거한다.
 
 ## 같은 기능에 여러 토폴로지가 필요한 경우
 
@@ -846,7 +845,7 @@ SpotNode endpoint에 connect한다.
 구현은 아래 순서로 진행한다.
 
 1. 공개 enum과 public API 시그니처를 먼저 바꾼다.
-2. Discovery 내부 상태에서 `service_type`을 제거하고 `auto_connect_type`과
+2. Discovery 내부 상태에서 `auto_connect_type`을 제거하고 `auto_connect_type`과
    `channel_name`을 기준으로 저장한다.
 3. Registry channel 계약 저장소를 추가한다.
 4. Registry channel 계약을 Registry 프로세스 수명 동안 유지한다.
@@ -886,7 +885,7 @@ SpotNode endpoint에 connect한다.
     connect한다.
 14. Registry member peer 조회 API가 `channel_name`만으로 조회된다.
 15. service summary와 topology query가 `auto_connect_type` 필터를 적용한다.
-16. `zlink_discovery_set_dealer_peer_mode()`와
+16. `Discovery auto-connect type constructor contract`와
     `zlink_discovery_dealer_peer_mode_t`가 공개 헤더에서 제거된다.
 17. `zlink_spot_node_attach_channel_dealer()`가 `CLIENT_SERVER`와 `DEALER_MESH`
     Discovery만 받고, `ROUTE_MESH`, `FANOUT`, `SPOT_MESH` Discovery를 거부한다.

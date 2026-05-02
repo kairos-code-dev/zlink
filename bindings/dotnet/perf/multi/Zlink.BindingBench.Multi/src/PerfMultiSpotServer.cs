@@ -16,7 +16,7 @@ internal static class PerfMultiSpotServer
         using var controlState = new RunnerControlState(config.Size);
         ApplyMultiServerContextOptions(ctx, options);
         using var registry = new Registry(ctx);
-        using var discovery = new Discovery(ctx, ServiceType.Spot, ServiceName);
+        using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh, ServiceName);
         using var nodePub = new SpotNode(ctx);
         using var spotPub = nodePub.CreateSpot();
         registry.Bind(config.RegistryPubEndpoint, config.RegistryRouterEndpoint);

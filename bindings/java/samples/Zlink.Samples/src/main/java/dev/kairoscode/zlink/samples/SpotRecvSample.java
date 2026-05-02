@@ -2,9 +2,10 @@ package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.registry.Registry;
-import dev.kairoscode.zlink.service.registry.ServiceType;
+import dev.kairoscode.zlink.service.registry.AutoConnectType;
 import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.service.spot.Spot;
@@ -25,18 +26,33 @@ public final class SpotRecvSample {
 
         try (Context ctx = new Context();
              Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, ServiceType.SPOT, serviceName);
+             Discovery publisherDiscovery = new Discovery(ctx,
+                 AutoConnectType.SPOT_MESH, serviceName);
+             Discovery subscriberDiscovery = new Discovery(ctx,
+                 AutoConnectType.SPOT_MESH, serviceName);
              SpotNode publisherNode = new SpotNode(ctx);
              SpotNode subscriberNode = new SpotNode(ctx);
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
+            publisherNode.setRoutingId(RoutingId.fromBytes(
+                "z-java-spot-recv-publisher".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            subscriberNode.setRoutingId(RoutingId.fromBytes(
+                "a-java-spot-recv-subscriber".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            publisher.setRoutingId(RoutingId.fromBytes(
+                "z-java-spot-recv-publisher-spot".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            subscriber.setRoutingId(RoutingId.fromBytes(
+                "a-java-spot-recv-subscriber-spot".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             registry.bind(registryPub, registryRouter);
-            discovery.connectRegistry(registryRouter);
-            publisherNode.attachDiscovery(discovery);
-            subscriberNode.attachDiscovery(discovery);
+            registry.setBroadcastInterval(50);
+            publisherDiscovery.connectRegistry(registryRouter);
+            subscriberDiscovery.connectRegistry(registryRouter);
             publisherNode.bind(publisherEndpoint);
             subscriberNode.bind(subscriberEndpoint);
+            publisherNode.attachDiscovery(publisherDiscovery);
+            subscriberNode.attachDiscovery(subscriberDiscovery);
             subscriber.setSubscription(topic);
+            SampleSupport.waitSpotPeerConnected(publisherNode);
+            SampleSupport.waitSpotPeerConnected(subscriberNode);
 
             Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
             while (Instant.now().isBefore(deadline)) {

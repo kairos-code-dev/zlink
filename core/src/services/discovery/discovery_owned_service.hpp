@@ -13,7 +13,6 @@ namespace zlink
 namespace discovery_owned_service
 {
 inline int register_endpoint (discovery_t *discovery_,
-                              uint16_t service_type_,
                               const char *endpoint_,
                               std::string *resolved_endpoint_out_,
                               const zlink_routing_id_t *routing_id_ = NULL,
@@ -26,8 +25,8 @@ inline int register_endpoint (discovery_t *discovery_,
         return -1;
     }
 
-    const std::string &service_name = discovery_->service_name ();
-    if (service_name.empty ()) {
+    const std::string &channel_name = discovery_->channel_name ();
+    if (channel_name.empty ()) {
         errno = EINVAL;
         return -1;
     }
@@ -48,13 +47,11 @@ inline int register_endpoint (discovery_t *discovery_,
     zlink_msg_close (&metadata_msg);
 
     return discovery_->register_service (
-      service_type_, service_name.c_str (), endpoint_, weight_, value,
-      &metadata,
-      resolved_endpoint_out_, routing_id_, service_role_);
+      endpoint_, weight_, value, &metadata, resolved_endpoint_out_,
+      routing_id_, service_role_);
 }
 
 inline int unregister_endpoint (discovery_t *discovery_,
-                                uint16_t service_type_,
                                 const char *endpoint_,
                                 uint16_t service_role_ = 0)
 {
@@ -63,18 +60,16 @@ inline int unregister_endpoint (discovery_t *discovery_,
         return -1;
     }
 
-    const std::string &service_name = discovery_->service_name ();
-    if (service_name.empty ()) {
+    const std::string &channel_name = discovery_->channel_name ();
+    if (channel_name.empty ()) {
         errno = EINVAL;
         return -1;
     }
 
-    return discovery_->unregister_service (
-      service_type_, service_name.c_str (), endpoint_, service_role_);
+    return discovery_->unregister_service (endpoint_, service_role_);
 }
 
 inline int update_attributes (discovery_t *discovery_,
-                              uint16_t service_type_,
                               const char *endpoint_,
                               uint16_t service_role_ = 0,
                               uint32_t weight_ =
@@ -85,8 +80,8 @@ inline int update_attributes (discovery_t *discovery_,
         return -1;
     }
 
-    const std::string &service_name = discovery_->service_name ();
-    if (service_name.empty ()) {
+    const std::string &channel_name = discovery_->channel_name ();
+    if (channel_name.empty ()) {
         errno = EINVAL;
         return -1;
     }
@@ -107,9 +102,7 @@ inline int update_attributes (discovery_t *discovery_,
     zlink_msg_close (&metadata_msg);
 
     return discovery_->update_service_attributes (
-      service_type_, service_name.c_str (), endpoint_, weight_, value,
-      &metadata,
-      service_role_);
+      endpoint_, weight_, value, &metadata, service_role_);
 }
 }
 }

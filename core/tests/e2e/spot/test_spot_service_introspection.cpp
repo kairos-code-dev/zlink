@@ -498,7 +498,7 @@ static void test_discovery_local_value_metadata_contract ()
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "metadata-local");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "metadata-local");
     TEST_ASSERT_NOT_NULL (discovery);
 
     int64_t value = 0;

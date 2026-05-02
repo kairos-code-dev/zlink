@@ -118,13 +118,14 @@ class registry_t
         const zlink_registry_service_summary_filter_t *filter_ptr = NULL;
         if (filter_) {
             std::memset (&native_filter, 0, sizeof (native_filter));
-            native_filter.service_kind =
-              static_cast<zlink_service_kind_t> (filter_->service_kind);
+            native_filter.auto_connect_type =
+              static_cast<zlink_auto_connect_type_t> (
+                filter_->auto_connect_type);
             native_filter.service_role =
               static_cast<zlink_service_role_t> (filter_->service_role);
             std::snprintf (
-              native_filter.service_name, sizeof (native_filter.service_name),
-              "%s", filter_->service_name.c_str ());
+              native_filter.channel_name, sizeof (native_filter.channel_name),
+              "%s", filter_->channel_name.c_str ());
             filter_ptr = &native_filter;
         }
 
@@ -178,9 +179,11 @@ class registry_t
           static_cast<zlink_service_kind_t> (filter_.service_kind);
         native_filter.service_role =
           static_cast<zlink_service_role_t> (filter_.service_role);
+        native_filter.auto_connect_type =
+          static_cast<zlink_auto_connect_type_t> (filter_.auto_connect_type);
         std::snprintf (
-          native_filter.service_name, sizeof (native_filter.service_name),
-          "%s", filter_.service_name.c_str ());
+          native_filter.channel_name, sizeof (native_filter.channel_name),
+          "%s", filter_.channel_name.c_str ());
         native_filter.state = static_cast<zlink_topology_state_t> (filter_.state);
         native_filter.source =
           static_cast<zlink_topology_source_t> (filter_.source);
@@ -208,23 +211,20 @@ class registry_t
     }
 
     std::vector<member_peer_entry_t>
-    member_peers (service_type service_type_,
-                  const std::string &service_name_) const
+    member_peers (const std::string &channel_name_) const
     {
-        validate_bounded_c_string (service_name_, 255u, "service_name");
+        validate_bounded_c_string (channel_name_, 255u, "channel_name");
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
             zlink_registry_member_peers (
-              _registry, static_cast<zlink_service_type_t> (service_type_),
-              service_name_.c_str (), NULL, &count)));
+              _registry, channel_name_.c_str (), NULL, &count)));
         std::vector<zlink_member_peer_entry_t> native (count);
         if (count > 0) {
             detail::throw_if_failed<config_error_t> (
               static_cast<config_result_t> (
                 zlink_registry_member_peers (
-                  _registry, static_cast<zlink_service_type_t> (service_type_),
-                  service_name_.c_str (), native.data (), &count)));
+                  _registry, channel_name_.c_str (), native.data (), &count)));
             native.resize (count);
         }
         std::vector<member_peer_entry_t> entries;
@@ -234,20 +234,19 @@ class registry_t
         return entries;
     }
 
-    void member_peer_metadata (service_type service_type_,
-                               const std::string &service_name_,
+    void member_peer_metadata (const std::string &channel_name_,
                                service_role service_role_,
                                const std::string &endpoint_,
                                message_t &metadata_out_) const
     {
-        validate_bounded_c_string (service_name_, 255u, "service_name");
+        validate_bounded_c_string (channel_name_, 255u, "channel_name");
         validate_bounded_c_string (endpoint_, 255u, "endpoint");
         zlink_msg_t native;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
             zlink_registry_member_peer_metadata (
-              _registry, static_cast<zlink_service_type_t> (service_type_),
-              service_name_.c_str (), static_cast<uint16_t> (service_role_),
+              _registry, channel_name_.c_str (),
+              static_cast<zlink_service_role_t> (service_role_),
               endpoint_.c_str (), &native)));
         metadata_out_.adopt (&native);
     }

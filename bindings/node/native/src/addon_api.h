@@ -108,7 +108,6 @@ napi_value discovery_get_value(napi_env env, napi_callback_info info);
 napi_value discovery_set_metadata(napi_env env, napi_callback_info info);
 napi_value discovery_get_metadata(napi_env env, napi_callback_info info);
 napi_value discovery_resolve_spot(napi_env env, napi_callback_info info);
-napi_value discovery_set_dealer_peer_mode(napi_env env, napi_callback_info info);
 napi_value discovery_destroy(napi_env env, napi_callback_info info);
 napi_value discovery_set_tls_client(napi_env env, napi_callback_info info);
 

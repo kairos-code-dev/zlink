@@ -7,9 +7,9 @@ int main ()
     zlink::context_t ctx;
     zlink::service::registry_t registry (ctx);
     zlink::service::discovery_t provider_discovery (
-      ctx, zlink::service_type::socket, detail::k_spot_service);
+      ctx, zlink::auto_connect_type::fanout, detail::k_spot_service);
     zlink::service::discovery_t client_discovery (
-      ctx, zlink::service_type::socket, detail::k_spot_service);
+      ctx, zlink::auto_connect_type::fanout, detail::k_spot_service);
     zlink::pub_socket_t provider (ctx);
     assert (registry.valid ());
     assert (provider_discovery.valid ());
@@ -33,7 +33,7 @@ int main ()
         const std::vector<zlink::member_peer_entry_t> peers =
           client_discovery.member_peers ();
         for (size_t i = 0; i < peers.size (); ++i) {
-            if (peers[i].service_name == detail::k_spot_service
+            if (peers[i].channel_name == detail::k_spot_service
                 && peers[i].endpoint == service_endpoint) {
                 discovered = true;
                 break;

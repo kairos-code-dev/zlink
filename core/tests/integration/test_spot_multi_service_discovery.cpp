@@ -37,8 +37,8 @@ bool wait_for_spot_node_provider_weight_local (void *registry_,
     for (int i = 0; i < attempts; ++i) {
         zlink_member_peer_entry_t entries[8];
         size_t count = 8;
-        if (zlink_registry_member_peers (registry_, ZLINK_SERVICE_TYPE_SPOT,
-                                         service_name_, entries, &count)
+        if (zlink_registry_member_peers (registry_, service_name_, entries,
+                                         &count)
             == ZLINK_CONFIG_OK) {
             for (size_t j = 0; j < count; ++j) {
                 if (entries[j].service_role
@@ -87,9 +87,9 @@ void test_spot_service_discovery_replays_existing_filters_end_to_end ()
       zlink_registry_bind (registry, registry_pub, registry_router));
 
     void *consumer_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "spot-auto-sub");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "spot-auto-sub");
     void *provider_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "spot-auto-sub");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "spot-auto-sub");
     TEST_ASSERT_NOT_NULL (consumer_discovery);
     TEST_ASSERT_NOT_NULL (provider_discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
@@ -117,12 +117,10 @@ void test_spot_service_discovery_replays_existing_filters_end_to_end ()
     std::string resolved_sub;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::discovery_owned_service::register_endpoint (
-        static_cast<zlink::discovery_t *> (provider_discovery), service_type_socket,
-        xpub_endpoint, &resolved_pub, NULL, service_role_pub));
+        static_cast<zlink::discovery_t *> (provider_discovery), xpub_endpoint, &resolved_pub, NULL, service_role_pub));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::discovery_owned_service::register_endpoint (
-        static_cast<zlink::discovery_t *> (provider_discovery), service_type_socket,
-        sub_endpoint, &resolved_sub, NULL, service_role_sub));
+        static_cast<zlink::discovery_t *> (provider_discovery), sub_endpoint, &resolved_sub, NULL, service_role_sub));
 
     TEST_ASSERT_TRUE (wait_for_service_summary_count_local (
       consumer_discovery, service_role_pub, 1, 5000));
@@ -176,7 +174,7 @@ void test_spot_node_provider_registers_default_weight ()
       zlink_registry_bind (registry, registry_pub, registry_router));
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-weight-default");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "spot-weight-default");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery, registry_router, 3000));
@@ -232,9 +230,9 @@ void test_spot_service_discovery_replays_filters_after_pubsub_churn ()
       zlink_registry_bind (registry, registry_pub, registry_router));
 
     void *consumer_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "spot-auto-churn");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "spot-auto-churn");
     void *provider_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "spot-auto-churn");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "spot-auto-churn");
     TEST_ASSERT_NOT_NULL (consumer_discovery);
     TEST_ASSERT_NOT_NULL (provider_discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
@@ -262,12 +260,10 @@ void test_spot_service_discovery_replays_filters_after_pubsub_churn ()
     std::string resolved_sub;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::discovery_owned_service::register_endpoint (
-        static_cast<zlink::discovery_t *> (provider_discovery), service_type_socket,
-        xpub_endpoint, &resolved_pub, NULL, service_role_pub));
+        static_cast<zlink::discovery_t *> (provider_discovery), xpub_endpoint, &resolved_pub, NULL, service_role_pub));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::discovery_owned_service::register_endpoint (
-        static_cast<zlink::discovery_t *> (provider_discovery), service_type_socket,
-        sub_endpoint, &resolved_sub, NULL, service_role_sub));
+        static_cast<zlink::discovery_t *> (provider_discovery), sub_endpoint, &resolved_sub, NULL, service_role_sub));
 
     TEST_ASSERT_TRUE (wait_for_service_attachment_shape_local (
       node, "spot-auto-churn", 0, 1, 1, 5000));
@@ -279,23 +275,19 @@ void test_spot_service_discovery_replays_filters_after_pubsub_churn ()
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::discovery_owned_service::unregister_endpoint (
-        static_cast<zlink::discovery_t *> (provider_discovery), service_type_socket,
-        resolved_pub.c_str (), service_role_pub));
+        static_cast<zlink::discovery_t *> (provider_discovery), resolved_pub.c_str (), service_role_pub));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::discovery_owned_service::unregister_endpoint (
-        static_cast<zlink::discovery_t *> (provider_discovery), service_type_socket,
-        resolved_sub.c_str (), service_role_sub));
+        static_cast<zlink::discovery_t *> (provider_discovery), resolved_sub.c_str (), service_role_sub));
     TEST_ASSERT_TRUE (wait_for_service_attachment_shape_local (
       node, "spot-auto-churn", 0, 0, 0, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::discovery_owned_service::register_endpoint (
-        static_cast<zlink::discovery_t *> (provider_discovery), service_type_socket,
-        xpub_endpoint, &resolved_pub, NULL, service_role_pub));
+        static_cast<zlink::discovery_t *> (provider_discovery), xpub_endpoint, &resolved_pub, NULL, service_role_pub));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::discovery_owned_service::register_endpoint (
-        static_cast<zlink::discovery_t *> (provider_discovery), service_type_socket,
-        sub_endpoint, &resolved_sub, NULL, service_role_sub));
+        static_cast<zlink::discovery_t *> (provider_discovery), sub_endpoint, &resolved_sub, NULL, service_role_sub));
     TEST_ASSERT_TRUE (wait_for_service_attachment_shape_local (
       node, "spot-auto-churn", 0, 1, 1, 5000));
 
@@ -342,9 +334,9 @@ void test_spot_service_discovery_multi_router_distributes_across_candidates ()
       zlink_registry_bind (registry, registry_pub, registry_router));
 
     void *consumer_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "spot-auto-router");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "spot-auto-router");
     void *provider_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "spot-auto-router");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "spot-auto-router");
     TEST_ASSERT_NOT_NULL (consumer_discovery);
     TEST_ASSERT_NOT_NULL (provider_discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
@@ -373,12 +365,10 @@ void test_spot_service_discovery_multi_router_distributes_across_candidates ()
     std::string resolved_b;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::discovery_owned_service::register_endpoint (
-        static_cast<zlink::discovery_t *> (provider_discovery), service_type_socket,
-        router_a_endpoint, &resolved_a, NULL, service_role_router));
+        static_cast<zlink::discovery_t *> (provider_discovery), router_a_endpoint, &resolved_a, NULL, service_role_router));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::discovery_owned_service::register_endpoint (
-        static_cast<zlink::discovery_t *> (provider_discovery), service_type_socket,
-        router_b_endpoint, &resolved_b, NULL, service_role_router));
+        static_cast<zlink::discovery_t *> (provider_discovery), router_b_endpoint, &resolved_b, NULL, service_role_router));
 
     TEST_ASSERT_TRUE (wait_for_service_summary_count_local (
       consumer_discovery, service_role_router, 2, 5000));
@@ -421,9 +411,9 @@ void test_spot_service_discovery_many_router_candidates_attach_and_distribute ()
       zlink_registry_bind (registry, registry_pub, registry_router));
 
     void *consumer_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "spot-auto-router-n");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "spot-auto-router-n");
     void *provider_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "spot-auto-router-n");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "spot-auto-router-n");
     TEST_ASSERT_NOT_NULL (consumer_discovery);
     TEST_ASSERT_NOT_NULL (provider_discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
@@ -457,8 +447,7 @@ void test_spot_service_discovery_many_router_candidates_attach_and_distribute ()
         std::string resolved_endpoint;
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink::discovery_owned_service::register_endpoint (
-            static_cast<zlink::discovery_t *> (provider_discovery),
-            service_type_socket, router_endpoint, &resolved_endpoint, NULL,
+            static_cast<zlink::discovery_t *> (provider_discovery), router_endpoint, &resolved_endpoint, NULL,
             service_role_router));
     }
 

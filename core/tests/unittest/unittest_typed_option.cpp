@@ -280,7 +280,7 @@ void test_typed_service_handle_dispatch_domains ()
 {
     void *ctx = new_ctx ();
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "svc-alpha");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "svc-alpha");
     void *registry = zlink_registry_new (ctx);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_NOT_NULL (registry);
@@ -347,7 +347,7 @@ void test_discovery_routing_id_locks_after_registry_connect ()
 
     void *ctx = new_ctx ();
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "svc-lock");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "svc-lock");
     void *registry = zlink_registry_new (ctx);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_NOT_NULL (registry);

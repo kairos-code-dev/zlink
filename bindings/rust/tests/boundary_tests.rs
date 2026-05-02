@@ -115,22 +115,22 @@ fn message_try_from_str() {
 }
 
 #[test]
-fn discovery_service_name_over_255_rejected() {
+fn discovery_channel_name_over_255_rejected() {
     let ctx = Context::new().unwrap();
     let too_long = "s".repeat(256);
-    let result = Discovery::new(&ctx, ServiceType::Spot, &too_long);
+    let result = Discovery::new(&ctx, AutoConnectType::SpotMesh, &too_long);
     assert!(
         result.is_err(),
-        "service_name over 255 bytes must be rejected"
+        "channel_name over 255 bytes must be rejected"
     );
 }
 
 #[test]
-fn discovery_service_name_255_accepted() {
+fn discovery_channel_name_255_accepted() {
     let ctx = Context::new().unwrap();
     let max_len = "s".repeat(255);
-    let result = Discovery::new(&ctx, ServiceType::Spot, &max_len);
-    assert!(result.is_ok(), "255-byte service_name must be accepted");
+    let result = Discovery::new(&ctx, AutoConnectType::SpotMesh, &max_len);
+    assert!(result.is_ok(), "255-byte channel_name must be accepted");
 }
 
 #[test]

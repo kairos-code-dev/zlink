@@ -34,7 +34,7 @@ with the rules here, this section wins.
   `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
   `publish(service_name, topic, ...)`.
 - `Spot.subscribe(...)` returns a service-aware `TopicMessage`. `TopicMessage`
-  therefore needs `service_name: str | None`, populated for SPOT subscribe
+  therefore needs `channel_name: str | None`, populated for SPOT subscribe
   results and `None` for raw `SUB` / `XSUB`.
 - `Spot` must not expose `on_subscribe(...)`. Use
   `on_dispatch_event(...)` plus `subscribe(...)` / `recv_routed(...)` /
@@ -645,7 +645,7 @@ class Received:
 ```python
 class TopicMessage:
     routing_id: RoutingId | None             # None when transport carries no source id
-    service_name: str | None                 # Spot subscribe only; None for raw SUB / XSUB
+    channel_name: str | None                 # Spot subscribe only; None for raw SUB / XSUB
     topic: str                               # UTF-8
     parts: tuple[Message, ...]
 
@@ -666,7 +666,7 @@ Fields only — no `close()` / lifecycle methods.
 ```python
 class SubscriptionEvent:
     routing_id: RoutingId | None    # subscriber routing id; None if transport carries none
-    service_name: str | None        # Spot subscription event only; None for XPub
+    channel_name: str | None        # Spot subscription event only; None for XPub
     topic: str                       # UTF-8 topic string (NOT bytes)
     subscribed: bool                 # True = subscribe, False = unsubscribe
 ```
@@ -1055,28 +1055,31 @@ class Registry:
     def service_summary_snapshot(self,
         filter_: RegistryServiceSummaryFilter | None = None
     ) -> list[RegistryServiceSummaryEntry]: ...                                  # Raises: ConfigError
-    def member_peers(self, service_type: int,
-                     service_name: str) -> list[MemberPeerEntry]: ...            # Raises: ConfigError
-    def member_peer_metadata(self, service_type: int, service_name: str,
-                             service_role: int, endpoint: str) -> bytes: ...     # Raises: ConfigError
+    def member_peers(self, channel_name: str) -> list[MemberPeerEntry]: ...       # Raises: ConfigError
+    def member_peer_metadata(self, channel_name: str, service_role: int,
+                             endpoint: str) -> bytes: ...                        # Raises: ConfigError
     def topology_snapshot(self) -> list[RegistryTopologyEntry]: ...              # Raises: ConfigError
     def topology_query(self, filter_: RegistryTopologyFilter) -> list[RegistryTopologyEntry]: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
-### DiscoveryDealerPeerMode
+### AutoConnectType
 
 ```python
-class DiscoveryDealerPeerMode(IntEnum):
-    ROUTER = 1
-    DEALER = 2
+class AutoConnectType(IntEnum):
+    INVALID = 0
+    ROUTE_MESH = 1
+    CLIENT_SERVER = 2
+    DEALER_MESH = 3
+    FANOUT = 4
+    SPOT_MESH = 5
 ```
 
 ### Discovery
 
 ```python
 class Discovery:
-    def __init__(self, ctx: Context, service_type: int, service_name: str) -> None: ...
+    def __init__(self, ctx: Context, auto_connect_type: int, channel_name: str) -> None: ...
     def connect_registry(self, registry_endpoint: str) -> None: ...              # Raises: ConnectError
     def set_value(self, value: int) -> None: ...                                 # Raises: ConfigError
     def get_value(self) -> int: ...                                              # Raises: ConfigError
@@ -1085,7 +1088,6 @@ class Discovery:
     def member_peers(self) -> list[MemberPeerEntry]: ...                         # Raises: ConfigError
     def member_peer_metadata(self, service_role: int, endpoint: str) -> bytes: ...  # Raises: ConfigError
     def resolve_spot(self, spot_rid: RoutingId) -> RoutingId: ...                # Raises: ConfigError — maps to zlink_discovery_resolve_spot
-    def set_dealer_peer_mode(self, mode: DiscoveryDealerPeerMode) -> None: ...   # Raises: ConfigError — maps to zlink_discovery_set_dealer_peer_mode
     def set_tls_client(self, ca_cert: str | None, hostname: str | None,
                        trust_system: bool = False) -> None: ...                  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -1263,9 +1265,9 @@ Primary entry types used in the default service flow:
 ```python
 @dataclass(frozen=True)
 class MemberPeerEntry:
-    service_type: int                # zlink_service_type_t
+    auto_connect_type: int                # zlink_auto_connect_type_t
     service_role: int
-    service_name: str
+    channel_name: str
     endpoint: str
     routing_id: RoutingId
     value: int                       # int64
@@ -1276,7 +1278,7 @@ class RegistryTopologyEntry:
     routing_id: RoutingId
     service_kind: int                # zlink_service_kind_t
     service_role: int
-    service_name: str
+    channel_name: str
     endpoint: str
     source: int                      # zlink_topology_source_t
     state: int                       # zlink_topology_state_t
@@ -1287,7 +1289,7 @@ class RegistryTopologyEntry:
 
 @dataclass(frozen=True)
 class SpotNodeStatus:
-    service_name: str
+    channel_name: str
     local_endpoint: str
     node_routing_id: RoutingId
     state: int                       # zlink_spot_node_state_t
@@ -1309,7 +1311,7 @@ Advanced / Diagnostic entry types and filters:
 class RegistryServiceSummaryEntry:
     service_kind: int                # zlink_service_kind_t
     service_role: int
-    service_name: str
+    channel_name: str
     total_count: int
     connecting_count: int
     ready_count: int
@@ -1331,7 +1333,7 @@ class RegistryStatus:
 
 @dataclass(frozen=True)
 class SpotNodePeerEntry:
-    service_name: str
+    channel_name: str
     local_endpoint: str
     peer_endpoint: str
     source: int                      # zlink_spot_peer_source_t
@@ -1353,13 +1355,13 @@ class SpotNodeSubjectEntry:
 class RegistryServiceSummaryFilter:
     service_kind: int | None = None
     service_role: int | None = None
-    service_name: str | None = None
+    channel_name: str | None = None
 
 @dataclass(frozen=True)
 class RegistryTopologyFilter:
     service_kind: int | None = None
     service_role: int | None = None
-    service_name: str | None = None
+    channel_name: str | None = None
     routing_id: RoutingId | None = None
     state: int | None = None
     source: int | None = None

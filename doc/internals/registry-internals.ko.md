@@ -57,7 +57,7 @@ XPUB을 사용하여 구독 이벤트를 감지하고 새 구독자에게
 
 ```cpp
 struct service_key_t {
-    uint16_t service_type;       // spot_node(2), socket(3)
+    uint16_t auto_connect_type;       // spot_node(2), socket(3)
     std::string service_name;
 };
 
@@ -85,7 +85,7 @@ sequenceDiagram
     participant Pub as Registry XPUB
     participant Subs as Discovery SUB들
 
-    Disc->>Router: REGISTER (0x0001)<br/>[service_type, name, role,<br/>endpoint, routing_id, value]
+    Disc->>Router: REGISTER (0x0001)<br/>[auto_connect_type, name, role,<br/>endpoint, routing_id, value]
     Router->>Store: provider_entry 삽입
     Router->>Router: list_seq 증가
     Router->>Disc: REGISTER_ACK (0x0002)<br/>[status=0, resolved_endpoint]
@@ -102,7 +102,7 @@ sequenceDiagram
     participant Store as service_map
 
     loop heartbeat_interval (기본 5000ms) 마다
-        Disc->>Router: HEARTBEAT (0x0004)<br/>[service_type, role, name, endpoint]
+        Disc->>Router: HEARTBEAT (0x0004)<br/>[auto_connect_type, role, name, endpoint]
         Router->>Store: last_heartbeat 타임스탬프 갱신
     end
 

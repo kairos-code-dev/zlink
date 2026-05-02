@@ -1159,7 +1159,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 | `memberPeerMetadata` | Y |
 | `close` | Y |
 
-- Discovery는 생성 시 `serviceType`과 `serviceName`을 고정한다.
+- Discovery는 생성 시 `autoConnectType`과 `channelName`을 고정한다.
 - 이후 변경할 수 없다.
 - `close` 시 연결된 모든 participant(SpotNode 등)가 종료된다.
 - Discovery는 data plane이 아니라 서비스 등록/발견 plane이다.
@@ -1230,7 +1230,7 @@ RegistryQueryClient (원격 토폴로지 조회)
   - `RegistryServiceSummaryFilter`: 서비스 요약 조회 필터
   - `RegistryTopologyFilter`: 토폴로지 조회 필터
 - enum/value object:
-  - `ServiceType`: `SPOT`, `SOCKET`
+  - `AutoConnectType`: `ROUTE_MESH`, `CLIENT_SERVER`, `DEALER_MESH`, `FANOUT`, `SPOT_MESH`
   - `ServiceRole`: `SPOT`, `ROUTER`, `DEALER`, `PUB`, `SUB`
   - `SpotNodeState`: `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, `ERROR`
   - `MonitorSourceKind`: `SOCKET`, `SPOT_PUB`, `SPOT_SUB`, `SPOT_NODE`
@@ -1314,7 +1314,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 - RegistryQueryClient capability matrix 정렬 확인 (구현된 경우)
 - typed domain object 존재 확인 (SpotNodeStatus,
   MemberPeerEntry 등)
-- typed enum 존재 확인 (ServiceType, ServiceRole, SpotNodeState 등)
+- typed enum 존재 확인 (AutoConnectType, ServiceRole, SpotNodeState 등)
 
 #### Service Layer Contract Tests
 - SpotNode: create/bind/close lifecycle 누수 없음

@@ -5,7 +5,7 @@ import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.registry.Registry;
 import dev.kairoscode.zlink.service.registry.RegistryQueryClient;
-import dev.kairoscode.zlink.service.registry.ServiceType;
+import dev.kairoscode.zlink.service.registry.AutoConnectType;
 
 public final class RegistryQuerySample {
     public static void main(String[] args) {
@@ -21,7 +21,7 @@ public final class RegistryQuerySample {
         PubSocket provider = null;
         try {
             registry = new Registry(ctx);
-            discovery = new Discovery(ctx, ServiceType.SOCKET, serviceName);
+            discovery = new Discovery(ctx, AutoConnectType.FANOUT, serviceName);
             query = new RegistryQueryClient(ctx);
             provider = new PubSocket(ctx);
             registry.bind(registryPub, registryRouter);
@@ -35,7 +35,7 @@ public final class RegistryQuerySample {
                 () -> {
                     try {
                         return finalQuery.snapshot().stream()
-                            .anyMatch(entry -> serviceName.equals(entry.serviceName()));
+                            .anyMatch(entry -> serviceName.equals(entry.channelName()));
                     } catch (RuntimeException ex) {
                         return false;
                     }

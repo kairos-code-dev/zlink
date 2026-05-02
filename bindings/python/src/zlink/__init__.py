@@ -104,13 +104,12 @@ from ._enums import (
     DisconnectReason,
     PollEvent,
     RegistryState,
-    ServiceType,
+    AutoConnectType,
     ServiceRole,
     TopologySource,
     TopologyState,
     RegistrySocketRole,
     DiscoverySocketRole,
-    DiscoveryDealerPeerMode,
     SpotNodeSocketRole,
     SpotNodeMode,
     SpotNodeSocketOwner,
@@ -124,7 +123,11 @@ from ._enums import (
     SpotServiceAttachmentRole,
 )
 
-SERVICE_TYPE_SPOT = ServiceType.SPOT
+AUTO_CONNECT_ROUTE_MESH = AutoConnectType.ROUTE_MESH
+AUTO_CONNECT_CLIENT_SERVER = AutoConnectType.CLIENT_SERVER
+AUTO_CONNECT_DEALER_MESH = AutoConnectType.DEALER_MESH
+AUTO_CONNECT_FANOUT = AutoConnectType.FANOUT
+AUTO_CONNECT_SPOT_MESH = AutoConnectType.SPOT_MESH
 
 
 __all__ = [
@@ -175,7 +178,11 @@ __all__ = [
     "RegistryTopologyEntry",
     "RegistryTopologyFilter",
     "RegistryQueryClient",
-    "SERVICE_TYPE_SPOT",
+    "AUTO_CONNECT_ROUTE_MESH",
+    "AUTO_CONNECT_CLIENT_SERVER",
+    "AUTO_CONNECT_DEALER_MESH",
+    "AUTO_CONNECT_FANOUT",
+    "AUTO_CONNECT_SPOT_MESH",
     "SpotNode",
     "Spot",
     "SpotDispatchInfo",
@@ -216,13 +223,12 @@ __all__ = [
     "DisconnectReason",
     "PollEvent",
     "RegistryState",
-    "ServiceType",
+    "AutoConnectType",
     "ServiceRole",
     "TopologySource",
     "TopologyState",
     "RegistrySocketRole",
     "DiscoverySocketRole",
-    "DiscoveryDealerPeerMode",
     "SpotNodeSocketRole",
     "SpotNodeMode",
     "SpotNodeSocketOwner",

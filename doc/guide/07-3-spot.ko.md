@@ -94,7 +94,7 @@ zlink_spot_node_bind(node, "tcp://127.0.0.1:0");
 
 void *discovery = zlink_discovery_new(
   ctx,
-  ZLINK_SERVICE_TYPE_SPOT,
+  ZLINK_AUTO_CONNECT_SPOT_MESH,
   "alpha");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
@@ -116,7 +116,7 @@ peer endpoint를 모르고 target node의 routing id만 알고 있으면
 ### 3.3 raw peer weight로 새 outbound만 비우기
 
 SpotNode와 Spot에는 weight 설정 옵션이 없다. 서비스가 raw ROUTER 또는 worker
-DEALER peer를 사용할 때 peer 연결은 유지한 채 새 routed/channel 요청만 잠시
+auto-connect peer를 사용할 때 peer 연결은 유지한 채 새 routed/channel 요청만 잠시
 빼고 싶으면 해당 raw socket의 weight를 `0`으로 둔다. 값 범위는 `0..100`,
 기본값은 `100`이다.
 
@@ -208,14 +208,14 @@ void *node = zlink_spot_node_new(ctx, NULL);
 
 void *spot_discovery = zlink_discovery_new(
   ctx,
-  ZLINK_SERVICE_TYPE_SPOT,
+  ZLINK_AUTO_CONNECT_SPOT_MESH,
   "alpha");
 zlink_discovery_connect_registry(spot_discovery, "tcp://127.0.0.1:5551");
 zlink_spot_node_attach_discovery(node, spot_discovery);
 
 void *orders_discovery = zlink_discovery_new(
   ctx,
-  ZLINK_SERVICE_TYPE_SOCKET,
+  ZLINK_AUTO_CONNECT_CLIENT_SERVER,
   "orders");
 zlink_discovery_connect_registry(orders_discovery, "tcp://127.0.0.1:5551");
 

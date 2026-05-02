@@ -105,8 +105,8 @@ publish/subscribe를 함께 수행한다.
 
 ### 3.3 소켓 패밀리 — Discovery 관리 raw 소켓
 
-raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스(서비스 타입
-`ZLINK_SERVICE_TYPE_SOCKET`)에 연결하여 자동 피어 발견과 lifecycle
+raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스(자동 연결 타입
+`ZLINK_AUTO_CONNECT_CLIENT_SERVER`)에 연결하여 자동 피어 발견과 lifecycle
 관리를 할 수 있다. SPOT 추상화 없이 소켓 수준에서 위치투명 통신을
 제공한다.
 

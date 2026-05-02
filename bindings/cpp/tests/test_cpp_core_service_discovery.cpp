@@ -91,7 +91,7 @@ static void test_discovery_provider_registration ()
     assert (registry.start () == 0);
     sleep_ms (50);
 
-    zlink::service::discovery_t discovery (ctx, zlink::service_type::spot);
+    zlink::service::discovery_t discovery (ctx, zlink::auto_connect_type::spot_mesh);
     assert (discovery.handle () != NULL);
     assert (discovery.connect_registry (eps.router.c_str ()) == 0);
     sleep_ms (50);
@@ -136,7 +136,7 @@ static void test_discovery_service_filtering ()
     assert (registry.start () == 0);
     sleep_ms (50);
 
-    zlink::service::discovery_t discovery (ctx, zlink::service_type::spot);
+    zlink::service::discovery_t discovery (ctx, zlink::auto_connect_type::spot_mesh);
     assert (discovery.handle () != NULL);
     assert (discovery.connect_registry (eps.router.c_str ()) == 0);
     sleep_ms (50);
@@ -199,7 +199,7 @@ static void test_discovery_heartbeat_timeout ()
     assert (registry.start () == 0);
     sleep_ms (50);
 
-    zlink::service::discovery_t discovery (ctx, zlink::service_type::spot);
+    zlink::service::discovery_t discovery (ctx, zlink::auto_connect_type::spot_mesh);
     assert (discovery.handle () != NULL);
     assert (discovery.connect_registry (eps.router.c_str ()) == 0);
     sleep_ms (50);
@@ -240,7 +240,7 @@ static void test_discovery_weight_update ()
     assert (registry.start () == 0);
     sleep_ms (50);
 
-    zlink::service::discovery_t discovery (ctx, zlink::service_type::spot);
+    zlink::service::discovery_t discovery (ctx, zlink::auto_connect_type::spot_mesh);
     assert (discovery.handle () != NULL);
     assert (discovery.connect_registry (eps.router.c_str ()) == 0);
     sleep_ms (50);

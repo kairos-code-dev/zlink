@@ -311,8 +311,7 @@ int spot_node_t::ensure_registered ()
 
     std::string resolved;
     if (discovery_owned_service::register_endpoint (
-          discovery, discovery_protocol::service_type_spot_node,
-          advertise.c_str (), &resolved, &node_rid,
+          discovery, advertise.c_str (), &resolved, &node_rid,
           discovery_protocol::service_role_spot, 100)
         != 0) {
         return -1;
@@ -354,8 +353,7 @@ int spot_node_t::unregister_registered ()
         return -1;
     }
     if (discovery_owned_service::unregister_endpoint (
-          discovery, discovery_protocol::service_type_spot_node,
-          advertise.c_str ())
+          discovery, advertise.c_str ())
         != 0)
         return -1;
 
@@ -427,8 +425,8 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
         return -1;
     }
 
-    if (discovery_->service_type () != discovery_protocol::service_type_spot_node) {
-        errno = EINVAL;
+    if (discovery_->auto_connect_type () != ZLINK_AUTO_CONNECT_SPOT_MESH) {
+        errno = ENOTSUP;
         return -1;
     }
 
@@ -448,7 +446,7 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
             return -1;
         }
         _discovery_state.discovery = discovery_;
-        _discovery_state.discovery_service = discovery_->service_name ();
+        _discovery_state.discovery_service = discovery_->channel_name ();
         _discovery_state.discovery_seq = 0;
         _discovery_state.pending_service_updates.insert (_discovery_state.discovery_service);
         _peer_state.discovery_endpoints.clear ();
@@ -485,15 +483,19 @@ int spot_node_t::attach_channel_dealer (discovery_t *discovery_,
         errno = EINVAL;
         return -1;
     }
-    if (discovery_->service_type () != discovery_protocol::service_type_socket
-        || !valid_attached_socket_type_local (dealer_, ZLINK_CORE_SOCKET_DEALER)) {
+    if (!valid_attached_socket_type_local (dealer_, ZLINK_CORE_SOCKET_DEALER)) {
         errno = EINVAL;
+        return -1;
+    }
+    if (discovery_->auto_connect_type () != ZLINK_AUTO_CONNECT_CLIENT_SERVER
+        && discovery_->auto_connect_type () != ZLINK_AUTO_CONNECT_DEALER_MESH) {
+        errno = ENOTSUP;
         return -1;
     }
     if (ensure_healthy () != 0)
         return -1;
 
-    const std::string channel_name = discovery_->service_name ();
+    const std::string channel_name = discovery_->channel_name ();
     {
         scoped_lock_t lock (_sync);
         if (channel_name.empty ()) {

@@ -11,7 +11,7 @@ public sealed class test_attach_discovery_contract
             return;
 
         using var ctx = new Context();
-        using var discovery = new Discovery(ctx, ServiceType.Socket,
+        using var discovery = new Discovery(ctx, AutoConnectType.ClientServer,
             "attach-discovery");
         var dealer = new DealerSocket(ctx);
 

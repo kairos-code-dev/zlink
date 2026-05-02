@@ -50,7 +50,7 @@ fn sub_socket_has_subscribe_no_send() {
 #[test]
 fn discovery_attach_surface_exists_on_supported_sockets() {
     let ctx = Context::new().unwrap();
-    let discovery = Discovery::new(&ctx, ServiceType::Socket, "surface-svc").unwrap();
+    let discovery = Discovery::new(&ctx, AutoConnectType::ClientServer, "surface-svc").unwrap();
     let dealer = ctx.dealer_socket().unwrap();
     let router = ctx.router_socket().unwrap();
     let pub_sock = ctx.pub_socket().unwrap();

@@ -17,8 +17,8 @@ namespace zlink
 static const uint32_t discovery_tag_value = 0x1e6700d6;
 
 discovery_t::discovery_t (ctx_t *ctx_,
-                          uint16_t service_type_,
-                          const std::string &service_name_) :
+                          uint16_t auto_connect_type_,
+                          const std::string &channel_name_) :
     _ctx (ctx_),
     _tag (discovery_tag_value),
     _lifecycle (ctx_),
@@ -28,16 +28,16 @@ discovery_t::discovery_t (ctx_t *ctx_,
     _bootstrap_runtime (new discovery_bootstrap_runtime_t ()),
     _uplink_runtime (new discovery_uplink_runtime_t ()),
     _monitor_ready_count (0),
-    _service_type (service_type_),
-    _service_name (service_name_),
-    _dealer_peer_mode (ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER),
+    _auto_connect_type (auto_connect_type_),
+    _channel_name (channel_name_),
     _discovery_summary_enabled (true)
 {
     zlink_assert (_ctx);
-    zlink_assert (discovery_protocol::is_valid_service_type (_service_type));
+    zlink_assert (
+      discovery_protocol::is_valid_auto_connect_type (_auto_connect_type));
     zlink_assert (_bootstrap_runtime);
     zlink_assert (_uplink_runtime);
-    if (_service_name.empty ())
+    if (_channel_name.empty ())
         _tag = 0xdeadbeef;
 }
 
@@ -53,44 +53,6 @@ discovery_t::~discovery_t ()
 bool discovery_t::check_tag () const
 {
     return _tag == discovery_tag_value;
-}
-
-int discovery_t::set_dealer_peer_mode (zlink_discovery_dealer_peer_mode_t mode_)
-{
-    service_public_api_scope_t admission (_public_api);
-    if (!admission.acquired ())
-        return -1;
-    if (_service_type != discovery_protocol::service_type_socket) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    if (mode_ != ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER
-        && mode_ != ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    bool changed = false;
-    {
-        scoped_lock_t lock (_sync);
-        if (_dealer_peer_mode != mode_) {
-            _dealer_peer_mode = mode_;
-            changed = true;
-        }
-    }
-
-    if (changed) {
-        std::set<std::string> services;
-        services.insert (_service_name);
-        notify_observers (services);
-    }
-    return 0;
-}
-
-zlink_discovery_dealer_peer_mode_t discovery_t::dealer_peer_mode () const
-{
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    return _dealer_peer_mode;
 }
 
 void discovery_t::emit_ready_changed (uint32_t ready_count_)

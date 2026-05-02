@@ -10,7 +10,7 @@ int main ()
     zlink::context_t ctx;
     zlink::service::registry_t registry (ctx);
     zlink::service::discovery_t discovery (
-      ctx, zlink::service_type::spot, detail::k_spot_service);
+      ctx, zlink::auto_connect_type::spot_mesh, detail::k_spot_service);
     zlink::service::spot_node_t topic_node (ctx);
     zlink::service::spot_t topic_spot = topic_node.create_spot ();
     zlink::timer_t timer = zlink::timer_t::from_spot (topic_spot);

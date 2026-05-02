@@ -47,7 +47,7 @@ func TestServiceLayerEmptySnapshotsAndCanonicalNames(t *testing.T) {
 		t.Fatalf("Bind() error = %v", err)
 	}
 
-	discovery, err := ctx.Discovery(zlink.ServiceTypeSocket, "svc-alpha")
+	discovery, err := ctx.Discovery(zlink.AutoConnectClientServer, "svc-alpha")
 	if err != nil {
 		t.Fatalf("Discovery() error = %v", err)
 	}
@@ -105,7 +105,7 @@ func TestAttachDiscoveryBlocksManualSocketLifecycleControls(t *testing.T) {
 	}
 	defer dealer.Close()
 
-	discovery, err := ctx.Discovery(zlink.ServiceTypeSocket, "attach-discovery")
+	discovery, err := ctx.Discovery(zlink.AutoConnectClientServer, "attach-discovery")
 	if err != nil {
 		t.Fatalf("Discovery() error = %v", err)
 	}

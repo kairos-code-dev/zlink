@@ -69,7 +69,7 @@ internal static class PerfMultiSpotClient
     private static SpotClientSlot CreateSlot(Context ctx,
         SpotClientConfig config, PerfOptions options, int index)
     {
-        var discovery = new Discovery(ctx, ServiceType.Spot, "bench-svc");
+        var discovery = new Discovery(ctx, AutoConnectType.SpotMesh, "bench-svc");
         var node = new SpotNode(ctx);
         var subscriber = node.CreateSpot();
         var state = new SpotClientSlotState(config.LatencySampleCap);

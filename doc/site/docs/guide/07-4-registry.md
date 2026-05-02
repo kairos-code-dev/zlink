@@ -43,7 +43,7 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* === Discovery === */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SOCKET, "my-service");
+    ZLINK_AUTO_CONNECT_CLIENT_SERVER, "my-service");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
 /* === ROUTER socket (server, Discovery-managed) === */
@@ -139,7 +139,7 @@ zlink_registry_bind(registry, "tcp://*:5550", "tcp://*:5551");
 
 /* Discovery (same process) */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SOCKET, "echo-service");
+    ZLINK_AUTO_CONNECT_CLIENT_SERVER, "echo-service");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
 /* ROUTER socket (server, Discovery-managed) */
@@ -149,7 +149,7 @@ zlink_socket_attach_discovery(server, discovery);
 
 /* DEALER socket (client, same process) */
 void *client_disc = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SOCKET, "echo-service");
+    ZLINK_AUTO_CONNECT_CLIENT_SERVER, "echo-service");
 zlink_discovery_connect_registry(client_disc, "tcp://127.0.0.1:5551");
 
 void *client = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
@@ -249,7 +249,7 @@ zlink_registry_bind(reg3, "tcp://*:5550", "tcp://*:5551");
 
 /* Discovery connects to multiple Registries (HA — a single one suffices for service visibility) */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SOCKET, "my-service");
+    ZLINK_AUTO_CONNECT_CLIENT_SERVER, "my-service");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry2:5551");
 zlink_discovery_connect_registry(discovery, "tcp://registry3:5551");
@@ -285,7 +285,7 @@ zlink_registry_topology_entry_t *entries = malloc(
 zlink_registry_topology_snapshot(registry, entries, &count);
 
 for (size_t i = 0; i < count; i++) {
-    printf("service=%s endpoint=%s state=%d\n",
+    printf("channel=%s endpoint=%s state=%d\n",
            entries[i].service_name,
            entries[i].endpoint,
            entries[i].state);
@@ -300,8 +300,8 @@ free(entries);
 zlink_registry_topology_filter_t filter;
 memset(&filter, 0, sizeof(filter));
 filter.service_kind = ZLINK_SERVICE_KIND_SOCKET;
-strncpy(filter.service_name, "payment-service",
-        sizeof(filter.service_name) - 1);
+strncpy(filter.channel_name, "payment-service",
+        sizeof(filter.channel_name) - 1);
 filter.state = ZLINK_TOPOLOGY_STATE_READY;
 
 size_t count = 64;
@@ -321,7 +321,7 @@ for (size_t i = 0; i < count; i++) {
 |-------|-------------|
 | `routing_id` | Routing identity of the service instance |
 | `service_kind` | `SPOT_PUB`, `SPOT_SUB`, `SOCKET`, or `DISCOVERY` |
-| `service_name` | Logical service name |
+| `service_name` | Logical channel name |
 | `endpoint` | Advertised endpoint |
 | `source` | How the entry was added (`MANUAL`, `DISCOVERY`, `REGISTRY`) |
 | `state` | `DISCOVERED`, `CONNECTING`, `READY`, `LOST`, `ERROR`, `STOPPED` |
@@ -338,7 +338,7 @@ fields are treated as wildcards (match all).
 | Field | Description |
 |-------|-------------|
 | `service_kind` | Filter by service kind |
-| `service_name` | Filter by service name |
+| `service_name` | Filter by channel name |
 | `routing_id` | Filter by routing identity |
 | `state` | Filter by topology state |
 | `source` | Filter by topology source |
@@ -410,16 +410,16 @@ useful for weighted routing decisions and operational inspection.
 /* Query member peers of a specific service from the local Registry */
 size_t count = 0;
 zlink_registry_member_peers(registry,
-    ZLINK_SERVICE_TYPE_SOCKET, "payment-service", NULL, &count);
+    "payment-service", NULL, &count);
 
 zlink_member_peer_entry_t *peers = malloc(
     count * sizeof(zlink_member_peer_entry_t));
 zlink_registry_member_peers(registry,
-    ZLINK_SERVICE_TYPE_SOCKET, "payment-service", peers, &count);
+    "payment-service", peers, &count);
 
 for (size_t i = 0; i < count; i++) {
-    printf("service=%s endpoint=%s value=%lld\n",
-           peers[i].service_name,
+    printf("channel=%s endpoint=%s value=%lld\n",
+           peers[i].channel_name,
            peers[i].endpoint,
            (long long)peers[i].value);
 }
@@ -433,7 +433,7 @@ free(peers);
 zlink_msg_t metadata;
 zlink_msg_init(&metadata);
 zlink_config_result_t rc = zlink_registry_member_peer_metadata(registry,
-    ZLINK_SERVICE_TYPE_SOCKET, "payment-service",
+    "payment-service",
     ZLINK_SERVICE_ROLE_ROUTER, "tcp://10.0.1.5:5555",
     &metadata);
 if (rc == ZLINK_CONFIG_OK) {
@@ -446,9 +446,9 @@ zlink_msg_close(&metadata);
 
 | Field | Description |
 |-------|-------------|
-| `service_type` | Service type (`ZLINK_SERVICE_TYPE_*`) |
+| `auto_connect_type` | Auto-connect channel type (`ZLINK_AUTO_CONNECT_*`) |
 | `service_role` | Role of the service instance |
-| `service_name` | Null-terminated service name |
+| `channel_name` | Null-terminated channel name |
 | `endpoint` | Null-terminated endpoint |
 | `routing_id` | Routing identity of the peer |
 | `value` | Service-specific numeric value (`int64_t`) |
@@ -466,7 +466,7 @@ zlink_discovery_member_peers(discovery, peers, &count);
 
 for (size_t i = 0; i < count; i++) {
     printf("[%s] endpoint=%s role=%u value=%lld\n",
-           peers[i].service_name,
+           peers[i].channel_name,
            peers[i].endpoint,
            peers[i].service_role,
            (long long)peers[i].value);

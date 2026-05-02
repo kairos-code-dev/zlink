@@ -177,12 +177,12 @@ class ZlinkSpotDispatchInfo(ctypes.Structure):
 
 class ZlinkMemberPeerEntry(ctypes.Structure):
     _fields_ = [
-        ("service_type", ctypes.c_uint16),
-        ("service_role", ctypes.c_uint16),
-        ("service_name", ctypes.c_char * 256),
+        ("auto_connect_type", ctypes.c_int),
+        ("service_role", ctypes.c_int),
+        ("channel_name", ctypes.c_char * 256),
         ("endpoint", ctypes.c_char * 256),
-        ("routing_id", ZlinkRoutingId),
         ("weight", ctypes.c_uint32),
+        ("routing_id", ZlinkRoutingId),
         ("value", ctypes.c_int64),
     ]
 
@@ -203,9 +203,9 @@ class ZlinkRegistryStatus(ctypes.Structure):
 
 class ZlinkRegistryServiceSummaryEntry(ctypes.Structure):
     _fields_ = [
-        ("service_kind", ctypes.c_uint32),
-        ("service_role", ctypes.c_uint32),
-        ("service_name", ctypes.c_char * 256),
+        ("auto_connect_type", ctypes.c_int),
+        ("service_role", ctypes.c_int),
+        ("channel_name", ctypes.c_char * 256),
         ("total_count", ctypes.c_uint32),
         ("connecting_count", ctypes.c_uint32),
         ("ready_count", ctypes.c_uint32),
@@ -217,18 +217,19 @@ class ZlinkRegistryServiceSummaryEntry(ctypes.Structure):
 
 class ZlinkRegistryServiceSummaryFilter(ctypes.Structure):
     _fields_ = [
-        ("service_kind", ctypes.c_uint32),
-        ("service_role", ctypes.c_uint32),
-        ("service_name", ctypes.c_char * 256),
+        ("auto_connect_type", ctypes.c_int),
+        ("service_role", ctypes.c_int),
+        ("channel_name", ctypes.c_char * 256),
     ]
 
 
 class ZlinkRegistryTopologyEntry(ctypes.Structure):
     _fields_ = [
+        ("auto_connect_type", ctypes.c_int),
         ("routing_id", ZlinkRoutingId),
         ("service_kind", ctypes.c_uint32),
-        ("service_role", ctypes.c_uint32),
-        ("service_name", ctypes.c_char * 256),
+        ("service_role", ctypes.c_int),
+        ("channel_name", ctypes.c_char * 256),
         ("endpoint", ctypes.c_char * 256),
         ("source", ctypes.c_uint32),
         ("state", ctypes.c_uint32),
@@ -241,9 +242,10 @@ class ZlinkRegistryTopologyEntry(ctypes.Structure):
 
 class ZlinkRegistryTopologyFilter(ctypes.Structure):
     _fields_ = [
+        ("auto_connect_type", ctypes.c_int),
         ("service_kind", ctypes.c_uint32),
-        ("service_role", ctypes.c_uint32),
-        ("service_name", ctypes.c_char * 256),
+        ("service_role", ctypes.c_int),
+        ("channel_name", ctypes.c_char * 256),
         ("routing_id", ZlinkRoutingId),
         ("state", ctypes.c_uint32),
         ("source", ctypes.c_uint32),
@@ -804,7 +806,6 @@ class _Lib:
             "zlink_registry_member_peers",
             [
                 ctypes.c_void_p,
-                ctypes.c_uint16,
                 ctypes.c_char_p,
                 ctypes.POINTER(ZlinkMemberPeerEntry),
                 ctypes.POINTER(ctypes.c_size_t),
@@ -815,9 +816,8 @@ class _Lib:
             "zlink_registry_member_peer_metadata",
             [
                 ctypes.c_void_p,
-                ctypes.c_uint16,
                 ctypes.c_char_p,
-                ctypes.c_uint16,
+                ctypes.c_int,
                 ctypes.c_char_p,
                 ctypes.POINTER(ZlinkMsg),
             ],
@@ -826,7 +826,7 @@ class _Lib:
 
         self._require(
             "zlink_discovery_new",
-            [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_char_p],
+            [ctypes.c_void_p, ctypes.c_int, ctypes.c_char_p],
             ctypes.c_void_p,
         )
         self._require(
@@ -861,11 +861,6 @@ class _Lib:
                 ctypes.POINTER(ZlinkRoutingId),
                 ctypes.POINTER(ZlinkRoutingId),
             ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_discovery_set_dealer_peer_mode",
-            [ctypes.c_void_p, ctypes.c_uint],
             ctypes.c_int,
         )
         self._require(
@@ -1158,7 +1153,7 @@ class _Lib:
         )
         self._require(
             "zlink_discovery_member_peer_metadata",
-            [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_char_p, ctypes.POINTER(ZlinkMsg)],
+            [ctypes.c_void_p, ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ZlinkMsg)],
             ctypes.c_int,
         )
         self._require(

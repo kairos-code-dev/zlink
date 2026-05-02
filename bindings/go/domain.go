@@ -61,6 +61,7 @@ const (
 	RecvTerminated    RecvResult = 203
 	RecvInvalidHandle RecvResult = 204
 	RecvNotSupported  RecvResult = 205
+	RecvInternalError RecvResult = 206
 )
 
 type HandlerResult int

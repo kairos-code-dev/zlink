@@ -15,8 +15,8 @@ public sealed class test_discovery_router_socket
         using var leftContext = new Context();
         using var rightContext = new Context();
         using var registry = new Registry(registryContext);
-        using var leftDiscovery = new Discovery(leftContext, ServiceType.Socket, "routed-discovery");
-        using var rightDiscovery = new Discovery(rightContext, ServiceType.Socket, "routed-discovery");
+        using var leftDiscovery = new Discovery(leftContext, AutoConnectType.RouteMesh, "routed-discovery");
+        using var rightDiscovery = new Discovery(rightContext, AutoConnectType.RouteMesh, "routed-discovery");
         var left = new RouterSocket(leftContext);
         var right = new RouterSocket(rightContext);
 
@@ -42,14 +42,14 @@ public sealed class test_discovery_router_socket
         right.Bind(rightEndpoint);
 
         var peersReady = CoreTestSupport.WaitUntil(
-            () => registry.MemberPeers(ServiceType.Socket, "routed-discovery").Length >= 2
+            () => registry.MemberPeers("routed-discovery").Length >= 2
                 && leftDiscovery.MemberPeers().Length >= 1
                 && rightDiscovery.MemberPeers().Length >= 1,
             timeoutMs: 10000,
             sleepMs: 25);
         Assert.True(
             peersReady,
-            $"registry={registry.MemberPeers(ServiceType.Socket, "routed-discovery").Length}, left={leftDiscovery.MemberPeers().Length}, right={rightDiscovery.MemberPeers().Length}");
+            $"registry={registry.MemberPeers("routed-discovery").Length}, left={leftDiscovery.MemberPeers().Length}, right={rightDiscovery.MemberPeers().Length}");
 
         var received = new ManualResetEventSlim(false);
         var server = Task.Run(() =>

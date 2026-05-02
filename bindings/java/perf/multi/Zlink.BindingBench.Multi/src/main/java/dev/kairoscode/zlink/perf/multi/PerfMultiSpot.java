@@ -5,15 +5,17 @@ package dev.kairoscode.zlink.perf.multi;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RecvFlags;
+import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.perf.PerfControl;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.registry.Registry;
-import dev.kairoscode.zlink.service.registry.ServiceType;
+import dev.kairoscode.zlink.service.registry.AutoConnectType;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
@@ -30,15 +32,18 @@ final class PerfMultiSpot {
         String registryRouterEndpoint = derivedEndpoint(config.endpoint(), 2);
         try (Context ctx = PerfUtil.newContext(config);
              Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, ServiceType.SPOT, SERVICE_NAME);
+             Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH, SERVICE_NAME);
              SpotNode node = new SpotNode(ctx);
              Spot publisher = node.createSpot()) {
+            node.setRoutingId(routingId("z-java-multi-spot-server"));
+            publisher.setRoutingId(routingId("z-java-multi-spot-server-spot"));
             registry.bind(registryPubEndpoint, registryRouterEndpoint);
+            registry.setBroadcastInterval(50);
             discovery.connectRegistry(registryRouterEndpoint);
-            node.attachDiscovery(discovery);
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
             node.bind(config.endpoint());
+            node.attachDiscovery(discovery);
             PerfControl.emitReady(config.endpoint());
             sleepQuietly(2500);
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
@@ -86,15 +91,17 @@ final class PerfMultiSpot {
                                       PerfUtil.Metrics metrics,
                                       AtomicReference<Throwable> failure) {
         try (Context ctx = PerfUtil.newContext(config);
-             Discovery discovery = new Discovery(ctx, ServiceType.SPOT, SERVICE_NAME);
+             Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH, SERVICE_NAME);
              SpotNode node = new SpotNode(ctx);
              Spot subscriber = node.createSpot()) {
+            node.setRoutingId(routingId("a-java-multi-spot-client-" + index));
+            subscriber.setRoutingId(routingId("a-java-multi-spot-client-spot-" + index));
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureClientTls(node, config.transport());
             discovery.connectRegistry(registryRouterEndpoint);
-            node.attachDiscovery(discovery);
             node.bind(PerfUtil.endpoint(config.transport(),
                 "multi-spot-client-" + index));
+            node.attachDiscovery(discovery);
             subscriber.setSubscription(TOPIC);
             settleReadyBarrier();
             ready.countDown();
@@ -178,5 +185,9 @@ final class PerfMultiSpot {
         }
         int port = Integer.parseInt(endpoint.substring(colon + 1));
         return endpoint.substring(0, colon + 1) + (port + portOffset);
+    }
+
+    private static RoutingId routingId(String value) {
+        return RoutingId.fromBytes(value.getBytes(StandardCharsets.UTF_8));
     }
 }

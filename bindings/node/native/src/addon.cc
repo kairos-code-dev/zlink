@@ -97,7 +97,6 @@ static napi_value init(napi_env env, napi_value exports)
         {"discoverySetMetadata", 0, discovery_set_metadata, 0, 0, 0, napi_default, 0},
         {"discoveryGetMetadata", 0, discovery_get_metadata, 0, 0, 0, napi_default, 0},
         {"discoveryResolveSpot", 0, discovery_resolve_spot, 0, 0, 0, napi_default, 0},
-        {"discoverySetDealerPeerMode", 0, discovery_set_dealer_peer_mode, 0, 0, 0, napi_default, 0},
         {"discoverySetTlsClient", 0, discovery_set_tls_client, 0, 0, 0, napi_default, 0},
         {"discoveryDestroy", 0, discovery_destroy, 0, 0, 0, napi_default, 0},
 

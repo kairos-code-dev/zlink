@@ -25,10 +25,10 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	subscriberNode, err := ctx.SpotNode()
 	perfcommon.Must(err)
 	defer subscriberNode.Close()
-	publisherDiscovery, err := ctx.Discovery(zlink.ServiceTypeSpot, singleSpotServiceName)
+	publisherDiscovery, err := ctx.Discovery(zlink.AutoConnectSpotMesh, singleSpotServiceName)
 	perfcommon.Must(err)
 	defer publisherDiscovery.Close()
-	subscriberDiscovery, err := ctx.Discovery(zlink.ServiceTypeSpot, singleSpotServiceName)
+	subscriberDiscovery, err := ctx.Discovery(zlink.AutoConnectSpotMesh, singleSpotServiceName)
 	perfcommon.Must(err)
 	defer subscriberDiscovery.Close()
 

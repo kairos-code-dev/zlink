@@ -984,22 +984,15 @@ inline poll_event operator| (poll_event a, poll_event b)
                                     | static_cast<short> (b));
 }
 
-enum class service_type : int
+enum class auto_connect_type : int
 {
-    spot = ZLINK_SERVICE_TYPE_SPOT,
-    socket = ZLINK_SERVICE_TYPE_SOCKET
+    invalid = ZLINK_AUTO_CONNECT_INVALID,
+    route_mesh = ZLINK_AUTO_CONNECT_ROUTE_MESH,
+    client_server = ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+    dealer_mesh = ZLINK_AUTO_CONNECT_DEALER_MESH,
+    fanout = ZLINK_AUTO_CONNECT_FANOUT,
+    spot_mesh = ZLINK_AUTO_CONNECT_SPOT_MESH
 };
-
-namespace service
-{
-
-enum class discovery_dealer_peer_mode_t : int
-{
-    router = ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER,
-    dealer = ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER
-};
-
-} // namespace service
 
 enum class service_role : int
 {
@@ -1291,7 +1284,7 @@ enum class subject_kind : uint32_t
 
 using monitor_event_type_t = monitor_event;
 using monitor_source_kind_t = monitor_source_kind;
-using service_type_t = service_type;
+using auto_connect_type_t = auto_connect_type;
 using service_role_t = service_role;
 using service_kind_t = service_kind;
 using spot_role_t = spot_socket_role;
@@ -1307,16 +1300,18 @@ using subject_kind_t = subject_kind;
 struct member_peer_entry_t
 {
     member_peer_entry_t ()
-        : service_type (service_type::socket), service_role (service_role::invalid),
-          service_name (), endpoint (), routing_id (std::nullopt), weight (0),
+        : auto_connect_type (zlink::auto_connect_type::invalid),
+          service_role (service_role::invalid), channel_name (), endpoint (),
+          routing_id (std::nullopt), weight (0),
           value (0)
     {
     }
 
     explicit member_peer_entry_t (const zlink_member_peer_entry_t &entry_)
-        : service_type (static_cast<zlink::service_type> (entry_.service_type)),
+        : auto_connect_type (
+            static_cast<zlink::auto_connect_type> (entry_.auto_connect_type)),
           service_role (static_cast<zlink::service_role> (entry_.service_role)),
-          service_name (fixed_string_to_string (entry_.service_name)),
+          channel_name (fixed_string_to_string (entry_.channel_name)),
           endpoint (fixed_string_to_string (entry_.endpoint)),
           routing_id (entry_.routing_id.size > 0
                         ? std::optional<routing_id_t> (
@@ -1327,9 +1322,9 @@ struct member_peer_entry_t
     {
     }
 
-    zlink::service_type service_type;
+    zlink::auto_connect_type auto_connect_type;
     zlink::service_role service_role;
-    std::string service_name;
+    std::string channel_name;
     std::string endpoint;
     std::optional<routing_id_t> routing_id;
     uint32_t weight;
@@ -1339,8 +1334,9 @@ struct member_peer_entry_t
 struct registry_topology_entry_t
 {
     registry_topology_entry_t ()
-        : routing_id (std::nullopt), service_kind (service_kind::socket),
-          service_role (service_role::invalid), service_name (), endpoint (),
+        : auto_connect_type (zlink::auto_connect_type::invalid),
+          routing_id (std::nullopt), service_kind (service_kind::socket),
+          service_role (service_role::invalid), channel_name (), endpoint (),
           source (topology_source::manual), state (topology_state::discovered),
           desired_count (0), ready_count (0), error_code (0),
           last_reported_ms (0)
@@ -1349,13 +1345,15 @@ struct registry_topology_entry_t
 
     explicit registry_topology_entry_t (
       const zlink_registry_topology_entry_t &entry_)
-        : routing_id (entry_.routing_id.size > 0
+        : auto_connect_type (
+            static_cast<zlink::auto_connect_type> (entry_.auto_connect_type)),
+          routing_id (entry_.routing_id.size > 0
                         ? std::optional<routing_id_t> (
                             routing_id_t (entry_.routing_id))
                         : std::nullopt),
           service_kind (static_cast<zlink::service_kind> (entry_.service_kind)),
           service_role (static_cast<zlink::service_role> (entry_.service_role)),
-          service_name (fixed_string_to_string (entry_.service_name)),
+          channel_name (fixed_string_to_string (entry_.channel_name)),
           endpoint (fixed_string_to_string (entry_.endpoint)),
           source (static_cast<topology_source> (entry_.source)),
           state (static_cast<topology_state> (entry_.state)),
@@ -1366,10 +1364,11 @@ struct registry_topology_entry_t
     {
     }
 
+    zlink::auto_connect_type auto_connect_type;
     std::optional<routing_id_t> routing_id;
     zlink::service_kind service_kind;
     zlink::service_role service_role;
-    std::string service_name;
+    std::string channel_name;
     std::string endpoint;
     topology_source source;
     topology_state state;
@@ -1430,8 +1429,8 @@ struct spot_node_status_t
 struct registry_service_summary_entry_t
 {
     registry_service_summary_entry_t ()
-        : service_kind (service_kind::socket),
-          service_role (service_role::invalid), service_name (),
+        : auto_connect_type (zlink::auto_connect_type::invalid),
+          service_role (service_role::invalid), channel_name (),
           total_count (0), connecting_count (0), ready_count (0),
           error_count (0), stopped_count (0), last_reported_ms (0)
     {
@@ -1439,9 +1438,10 @@ struct registry_service_summary_entry_t
 
     explicit registry_service_summary_entry_t (
       const zlink_registry_service_summary_entry_t &entry_)
-        : service_kind (static_cast<zlink::service_kind> (entry_.service_kind)),
+        : auto_connect_type (
+            static_cast<zlink::auto_connect_type> (entry_.auto_connect_type)),
           service_role (static_cast<zlink::service_role> (entry_.service_role)),
-          service_name (fixed_string_to_string (entry_.service_name)),
+          channel_name (fixed_string_to_string (entry_.channel_name)),
           total_count (entry_.total_count),
           connecting_count (entry_.connecting_count),
           ready_count (entry_.ready_count),
@@ -1451,9 +1451,9 @@ struct registry_service_summary_entry_t
     {
     }
 
-    zlink::service_kind service_kind;
+    zlink::auto_connect_type auto_connect_type;
     zlink::service_role service_role;
-    std::string service_name;
+    std::string channel_name;
     uint32_t total_count;
     uint32_t connecting_count;
     uint32_t ready_count;
@@ -1464,9 +1464,10 @@ struct registry_service_summary_entry_t
 
 struct registry_service_summary_filter_t
 {
-    zlink::service_kind service_kind = service_kind::socket;
+    zlink::auto_connect_type auto_connect_type =
+      zlink::auto_connect_type::invalid;
     zlink::service_role service_role = service_role::invalid;
-    std::string service_name;
+    std::string channel_name;
 };
 
 struct registry_status_t
@@ -1650,9 +1651,11 @@ template<size_t N> inline std::string fixed_string_to_string (const char (&src_)
 
 struct registry_topology_filter_t
 {
+    zlink::auto_connect_type auto_connect_type =
+      zlink::auto_connect_type::invalid;
     zlink::service_kind service_kind = service_kind::socket;
     zlink::service_role service_role = service_role::invalid;
-    std::string service_name;
+    std::string channel_name;
     std::optional<routing_id_t> routing_id;
     topology_state state = topology_state::discovered;
     topology_source source = topology_source::manual;
@@ -1740,9 +1743,9 @@ inline std::string routing_id_to_string (const zlink_routing_id_t &routing_id_)
 }
 
 inline std::string
-service_name (const zlink_member_peer_entry_t &entry_)
+channel_name (const zlink_member_peer_entry_t &entry_)
 {
-    return fixed_string_to_string (entry_.service_name);
+    return fixed_string_to_string (entry_.channel_name);
 }
 
 inline std::string endpoint (const zlink_member_peer_entry_t &entry_)
@@ -1751,9 +1754,9 @@ inline std::string endpoint (const zlink_member_peer_entry_t &entry_)
 }
 
 inline std::string
-service_name (const zlink_registry_topology_entry_t &entry_)
+channel_name (const zlink_registry_topology_entry_t &entry_)
 {
-    return fixed_string_to_string (entry_.service_name);
+    return fixed_string_to_string (entry_.channel_name);
 }
 
 inline std::string

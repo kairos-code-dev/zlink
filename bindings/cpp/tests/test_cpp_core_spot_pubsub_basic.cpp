@@ -59,7 +59,7 @@ static void test_spot_peer_pubsub ()
 
         const std::string service_name_a = "spot-peer";
         zlink::service::discovery_t discovery_a (
-          ctx, zlink::service_type::spot, service_name_a);
+          ctx, zlink::auto_connect_type::spot_mesh, service_name_a);
         assert (discovery_a.valid ());
         node_a.attach_discovery (discovery_a);
 
@@ -100,7 +100,7 @@ static void test_spot_multipart_peer_pubsub ()
 
     const std::string service_name_a = "spot-multipart";
     zlink::service::discovery_t discovery_a (
-      ctx, zlink::service_type::spot, service_name_a);
+      ctx, zlink::auto_connect_type::spot_mesh, service_name_a);
     assert (discovery_a.valid ());
     node_a.attach_discovery (discovery_a);
 

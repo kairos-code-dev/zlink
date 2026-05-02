@@ -249,13 +249,9 @@ export class MonitorEvent {
 
 Object.freeze(MonitorEvent);
 
-const ServiceType = Object.freeze({ SPOT: 0x3002, SOCKET: 0x3003 } as const);
-const SERVICE_TYPE_SPOT = ServiceType.SPOT;
-const SERVICE_TYPE_SOCKET = ServiceType.SOCKET;
-export enum DiscoveryDealerPeerMode {
-  Router = 1,
-  Dealer = 2
-}
+export const AutoConnectType = Object.freeze({
+  INVALID: 0, ROUTE_MESH: 1, CLIENT_SERVER: 2, DEALER_MESH: 3, FANOUT: 4, SPOT_MESH: 5
+} as const);
 const ServiceRole = Object.freeze({
   INVALID: 0, SPOT: 2, ROUTER: 3, DEALER: 4, PUB: 5, SUB: 6
 } as const);
@@ -272,9 +268,9 @@ const TopologySource = Object.freeze({ MANUAL: 1, DISCOVERY: 2, REGISTRY: 3 } as
 const TopologyState = Object.freeze({ DISCOVERED: 1, CONNECTING: 2, READY: 3, LOST: 4, ERROR: 5, STOPPED: 6 } as const);
 
 export interface MemberPeerEntry {
-  readonly serviceType: number;
+  readonly autoConnectType: number;
   readonly serviceRole: number;
-  readonly serviceName: string;
+  readonly channelName: string;
   readonly endpoint: string;
   readonly routingId: RoutingId;
   readonly weight: number;
@@ -282,10 +278,11 @@ export interface MemberPeerEntry {
 }
 
 export interface RegistryTopologyEntry {
+  readonly autoConnectType: number;
   readonly routingId: RoutingId;
   readonly serviceKind: number;
   readonly serviceRole: number;
-  readonly serviceName: string;
+  readonly channelName: string;
   readonly endpoint: string;
   readonly source: number;
   readonly state: number;
@@ -296,9 +293,9 @@ export interface RegistryTopologyEntry {
 }
 
 export interface RegistryServiceSummaryEntry {
-  readonly serviceKind: number;
+  readonly autoConnectType: number;
   readonly serviceRole: number;
-  readonly serviceName: string;
+  readonly channelName: string;
   readonly totalCount: number;
   readonly connectingCount: number;
   readonly readyCount: number;
@@ -376,15 +373,16 @@ export interface SpotNodeSocketSnapshotEntry {
 }
 
 export interface RegistryServiceSummaryFilter {
-  readonly serviceKind?: number;
+  readonly autoConnectType?: number;
   readonly serviceRole?: number;
-  readonly serviceName?: string;
+  readonly channelName?: string;
 }
 
 export interface RegistryTopologyFilter {
+  readonly autoConnectType?: number;
   readonly serviceKind?: number;
   readonly serviceRole?: number;
-  readonly serviceName?: string;
+  readonly channelName?: string;
   readonly routingId?: RoutingId;
   readonly state?: number;
   readonly source?: number;
@@ -605,18 +603,18 @@ function materializeMonitorSnapshot(raw: MonitorSnapshotRaw): MonitorSnapshot {
 }
 
 function mapMemberPeerEntry(entry: {
-  serviceType: number;
+  autoConnectType: number;
   serviceRole: number;
-  serviceName: string;
+  channelName: string;
   endpoint: string;
   routingId: Buffer;
   weight: number;
   value: number | bigint;
 }): MemberPeerEntry {
   return {
-    serviceType: entry.serviceType,
+    autoConnectType: entry.autoConnectType,
     serviceRole: entry.serviceRole,
-    serviceName: entry.serviceName,
+    channelName: entry.channelName,
     endpoint: entry.endpoint,
     routingId: RoutingId.fromBytes(entry.routingId),
     weight: entry.weight,
@@ -625,10 +623,11 @@ function mapMemberPeerEntry(entry: {
 }
 
 function mapRegistryTopologyEntry(entry: {
+  autoConnectType: number;
   routingId: Buffer;
   serviceKind: number;
   serviceRole: number;
-  serviceName: string;
+  channelName: string;
   endpoint: string;
   source: number;
   state: number;
@@ -638,10 +637,11 @@ function mapRegistryTopologyEntry(entry: {
   lastReportedMs: number | bigint;
 }): RegistryTopologyEntry {
   return {
+    autoConnectType: entry.autoConnectType,
     routingId: RoutingId.fromBytes(entry.routingId),
     serviceKind: entry.serviceKind,
     serviceRole: entry.serviceRole,
-    serviceName: entry.serviceName,
+    channelName: entry.channelName,
     endpoint: entry.endpoint,
     source: entry.source,
     state: entry.state,
@@ -677,9 +677,9 @@ function mapRegistryStatus(entry: {
 }
 
 function mapRegistryServiceSummaryEntry(entry: {
-  serviceKind: number;
+  autoConnectType: number;
   serviceRole: number;
-  serviceName: string;
+  channelName: string;
   totalCount: number;
   connectingCount: number;
   readyCount: number;
@@ -688,9 +688,9 @@ function mapRegistryServiceSummaryEntry(entry: {
   lastReportedMs: number | bigint;
 }): RegistryServiceSummaryEntry {
   return {
-    serviceKind: entry.serviceKind,
+    autoConnectType: entry.autoConnectType,
     serviceRole: entry.serviceRole,
-    serviceName: entry.serviceName,
+    channelName: entry.channelName,
     totalCount: entry.totalCount,
     connectingCount: entry.connectingCount,
     readyCount: entry.readyCount,
@@ -780,9 +780,10 @@ function normalizeTopologyFilter(filter?: RegistryTopologyFilter): Record<string
     return undefined;
   }
   return {
+    autoConnectType: filter.autoConnectType,
     serviceKind: filter.serviceKind,
     serviceRole: filter.serviceRole,
-    serviceName: filter.serviceName,
+    channelName: filter.channelName,
     routingId: filter.routingId ? normalizeRoutingId(filter.routingId, 'filter.routingId') : undefined,
     state: filter.state,
     source: filter.source
@@ -1671,11 +1672,11 @@ export class Registry extends NativeHandle {
     return (requireNative().registryTopologyQuery(this._native, normalizeTopologyFilter(filter)) as Array<Record<string, unknown>>)
       .map((entry) => mapRegistryTopologyEntry(entry as any));
   }
-  memberPeers(serviceType: number, serviceName?: string): MemberPeerEntry[] {
-    return (requireNative().registryMemberPeers(this._native, serviceType, serviceName ?? '') as Array<Record<string, unknown>>)
+  memberPeers(channelName: string): MemberPeerEntry[] {
+    return (requireNative().registryMemberPeers(this._native, validateCString(channelName, 'channelName')) as Array<Record<string, unknown>>)
       .map((entry) => mapMemberPeerEntry(entry as any));
   }
-  memberPeerMetadata(serviceType: number, serviceName: string, serviceRole: number, endpoint: string): Buffer { return requireNative().registryMemberPeerMetadata(this._native, serviceType, validateCString(serviceName, 'serviceName'), serviceRole, validateCString(endpoint, 'endpoint')); }
+  memberPeerMetadata(channelName: string, serviceRole: number, endpoint: string): Buffer { return requireNative().registryMemberPeerMetadata(this._native, validateCString(channelName, 'channelName'), serviceRole, validateCString(endpoint, 'endpoint')); }
   close(): void { if (this._native) { requireNative().registryDestroy(this._native); this._native = null; } }
 }
 
@@ -1690,14 +1691,14 @@ export class RegistryQueryClient extends NativeHandle {
 }
 
 export class Discovery extends NativeHandle {
-  readonly serviceType: number;
-  readonly serviceName: string;
-  constructor(ctx: Context, serviceType: number, serviceName: string) {
-    if (typeof serviceName !== 'string' || serviceName.length === 0) throw new TypeError('Discovery serviceName must be a non-empty string');
-    validateCString(serviceName, 'serviceName');
-    super(requireNative().discoveryNew(ctx.nativeHandle(), serviceType, serviceName));
-    this.serviceType = serviceType;
-    this.serviceName = serviceName;
+  readonly autoConnectType: number;
+  readonly channelName: string;
+  constructor(ctx: Context, autoConnectType: number, channelName: string) {
+    if (typeof channelName !== 'string' || channelName.length === 0) throw new TypeError('Discovery channelName must be a non-empty string');
+    validateCString(channelName, 'channelName');
+    super(requireNative().discoveryNew(ctx.nativeHandle(), autoConnectType, channelName));
+    this.autoConnectType = autoConnectType;
+    this.channelName = channelName;
   }
   nativeHandle(): unknown { return this._native; }
   connectRegistry(endpoint: string): void { requireNative().discoveryConnectRegistry(this._native, validateCString(endpoint, 'endpoint')); }
@@ -1709,9 +1710,6 @@ export class Discovery extends NativeHandle {
     return RoutingId.fromBytes(
       requireNative().discoveryResolveSpot(this._native, normalizeRoutingId(spotRid)) as Buffer
     );
-  }
-  setDealerPeerMode(mode: DiscoveryDealerPeerMode): void {
-    requireNative().discoverySetDealerPeerMode(this._native, mode | 0);
   }
   memberPeers(): MemberPeerEntry[] {
     return (requireNative().discoveryGetProviders(this._native) as Array<Record<string, unknown>>)

@@ -5,23 +5,7 @@
 
 namespace {
 
-static const int32_t k_legacy_service_spot = 2;
-static const int32_t k_legacy_service_socket = 3;
 static const int k_snapshot_retry_limit = 4;
-
-zlink_service_type_t translate_service_type(uint32_t service_type)
-{
-    switch (service_type) {
-    case k_legacy_service_spot:
-    case ZLINK_SERVICE_TYPE_SPOT:
-        return ZLINK_SERVICE_TYPE_SPOT;
-    case k_legacy_service_socket:
-    case ZLINK_SERVICE_TYPE_SOCKET:
-        return ZLINK_SERVICE_TYPE_SOCKET;
-    default:
-        return static_cast<zlink_service_type_t>(service_type);
-    }
-}
 
 napi_value unsupported_receiver(napi_env env, const char *method)
 {
@@ -104,10 +88,10 @@ napi_value create_member_peer_array(napi_env env,
     for (size_t i = 0; i < count; ++i) {
         napi_value obj;
         napi_create_object(env, &obj);
-        set_uint32_property(env, obj, "serviceType",
-                            static_cast<uint32_t>(entries[i].service_type));
+        set_uint32_property(env, obj, "autoConnectType",
+                            static_cast<uint32_t>(entries[i].auto_connect_type));
         set_uint32_property(env, obj, "serviceRole", entries[i].service_role);
-        set_string_property(env, obj, "serviceName", entries[i].service_name);
+        set_string_property(env, obj, "channelName", entries[i].channel_name);
         set_string_property(env, obj, "endpoint", entries[i].endpoint);
         napi_value rid = create_routing_id_value(env, entries[i].routing_id);
         napi_set_named_property(env, obj, "routingId", rid);
@@ -130,10 +114,12 @@ napi_value create_registry_topology_array(napi_env env,
         napi_create_object(env, &obj);
         napi_value rid = create_routing_id_value(env, entries[i].routing_id);
         napi_set_named_property(env, obj, "routingId", rid);
+        set_uint32_property(env, obj, "autoConnectType",
+                            static_cast<uint32_t>(entries[i].auto_connect_type));
         set_uint32_property(env, obj, "serviceKind",
                             static_cast<uint32_t>(entries[i].service_kind));
         set_uint32_property(env, obj, "serviceRole", entries[i].service_role);
-        set_string_property(env, obj, "serviceName", entries[i].service_name);
+        set_string_property(env, obj, "channelName", entries[i].channel_name);
         set_string_property(env, obj, "endpoint", entries[i].endpoint);
         set_uint32_property(env, obj, "source",
                             static_cast<uint32_t>(entries[i].source));
@@ -164,6 +150,13 @@ bool build_topology_filter(napi_env env,
 
     napi_value prop;
     bool has_prop = false;
+    if (napi_has_named_property(env, value, "autoConnectType", &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, "autoConnectType", &prop) == napi_ok) {
+        uint32_t raw = 0;
+        napi_get_value_uint32(env, prop, &raw);
+        out->auto_connect_type = static_cast<zlink_auto_connect_type_t>(raw);
+    }
     if (napi_has_named_property(env, value, "serviceKind", &has_prop) == napi_ok
         && has_prop
         && napi_get_named_property(env, value, "serviceKind", &prop) == napi_ok) {
@@ -178,12 +171,12 @@ bool build_topology_filter(napi_env env,
         napi_get_value_uint32(env, prop, &raw);
         out->service_role = static_cast<zlink_service_role_t>(raw);
     }
-    if (napi_has_named_property(env, value, "serviceName", &has_prop) == napi_ok
+    if (napi_has_named_property(env, value, "channelName", &has_prop) == napi_ok
         && has_prop
-        && napi_get_named_property(env, value, "serviceName", &prop) == napi_ok) {
-        std::string service_name = get_string(env, prop);
-        strncpy(out->service_name, service_name.c_str(),
-                sizeof(out->service_name) - 1);
+        && napi_get_named_property(env, value, "channelName", &prop) == napi_ok) {
+        std::string channel_name = get_string(env, prop);
+        strncpy(out->channel_name, channel_name.c_str(),
+                sizeof(out->channel_name) - 1);
     }
     if (napi_has_named_property(env, value, "state", &has_prop) == napi_ok
         && has_prop
@@ -217,12 +210,12 @@ bool build_registry_service_summary_filter(napi_env env,
 
     napi_value prop;
     bool has_prop = false;
-    if (napi_has_named_property(env, value, "serviceKind", &has_prop) == napi_ok
+    if (napi_has_named_property(env, value, "autoConnectType", &has_prop) == napi_ok
         && has_prop
-        && napi_get_named_property(env, value, "serviceKind", &prop) == napi_ok) {
+        && napi_get_named_property(env, value, "autoConnectType", &prop) == napi_ok) {
         uint32_t raw = 0;
         napi_get_value_uint32(env, prop, &raw);
-        out->service_kind = static_cast<zlink_service_kind_t>(raw);
+        out->auto_connect_type = static_cast<zlink_auto_connect_type_t>(raw);
     }
     if (napi_has_named_property(env, value, "serviceRole", &has_prop) == napi_ok
         && has_prop
@@ -231,12 +224,12 @@ bool build_registry_service_summary_filter(napi_env env,
         napi_get_value_uint32(env, prop, &raw);
         out->service_role = static_cast<zlink_service_role_t>(raw);
     }
-    if (napi_has_named_property(env, value, "serviceName", &has_prop) == napi_ok
+    if (napi_has_named_property(env, value, "channelName", &has_prop) == napi_ok
         && has_prop
-        && napi_get_named_property(env, value, "serviceName", &prop) == napi_ok) {
-        std::string service_name = get_string(env, prop);
-        strncpy(out->service_name, service_name.c_str(),
-                sizeof(out->service_name) - 1);
+        && napi_get_named_property(env, value, "channelName", &prop) == napi_ok) {
+        std::string channel_name = get_string(env, prop);
+        strncpy(out->channel_name, channel_name.c_str(),
+                sizeof(out->channel_name) - 1);
     }
     return true;
 }
@@ -436,10 +429,10 @@ napi_value registry_service_summary_snapshot(napi_env env, napi_callback_info in
         for (size_t i = 0; i < count; ++i) {
             napi_value obj;
             napi_create_object(env, &obj);
-            set_uint32_property(env, obj, "serviceKind",
-                                static_cast<uint32_t>(entries[i].service_kind));
+            set_uint32_property(env, obj, "autoConnectType",
+                                static_cast<uint32_t>(entries[i].auto_connect_type));
             set_uint32_property(env, obj, "serviceRole", entries[i].service_role);
-            set_string_property(env, obj, "serviceName", entries[i].service_name);
+            set_string_property(env, obj, "channelName", entries[i].channel_name);
             set_uint32_property(env, obj, "totalCount", entries[i].total_count);
             set_uint32_property(env, obj, "connectingCount", entries[i].connecting_count);
             set_uint32_property(env, obj, "readyCount", entries[i].ready_count);
@@ -537,16 +530,13 @@ napi_value registry_member_peers(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *registry = NULL;
     napi_get_value_external(env, argv[0], &registry);
-    uint32_t service_type = 0;
-    napi_get_value_uint32(env, argv[1], &service_type);
-    std::string service_name;
-    if (argc >= 3)
-        service_name = get_string(env, argv[2]);
+    std::string channel_name;
+    if (argc >= 2)
+        channel_name = get_string(env, argv[1]);
 
     for (int attempt = 0; attempt < k_snapshot_retry_limit; ++attempt) {
         size_t count = 0;
-        int rc = zlink_registry_member_peers(registry, translate_service_type(service_type),
-                                             service_name.c_str(), NULL, &count);
+        int rc = zlink_registry_member_peers(registry, channel_name.c_str(), NULL, &count);
         if (rc != 0) {
             if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
                 continue;
@@ -559,8 +549,7 @@ napi_value registry_member_peers(napi_env env, napi_callback_info info)
         }
 
         std::vector<zlink_member_peer_entry_t> entries(count);
-        rc = zlink_registry_member_peers(registry, translate_service_type(service_type),
-                                         service_name.c_str(), entries.data(), &count);
+        rc = zlink_registry_member_peers(registry, channel_name.c_str(), entries.data(), &count);
         if (rc != 0) {
             if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
                 continue;
@@ -574,25 +563,23 @@ napi_value registry_member_peers(napi_env env, napi_callback_info info)
 
 napi_value registry_member_peer_metadata(napi_env env, napi_callback_info info)
 {
-    napi_value argv[5];
-    size_t argc = 5;
+    napi_value argv[4];
+    size_t argc = 4;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *registry = NULL;
     napi_get_value_external(env, argv[0], &registry);
-    uint32_t service_type = 0;
     uint32_t service_role = 0;
-    napi_get_value_uint32(env, argv[1], &service_type);
-    std::string service_name = get_string(env, argv[2]);
-    napi_get_value_uint32(env, argv[3], &service_role);
-    std::string endpoint = get_string(env, argv[4]);
+    std::string channel_name = get_string(env, argv[1]);
+    napi_get_value_uint32(env, argv[2], &service_role);
+    std::string endpoint = get_string(env, argv[3]);
 
     zlink_msg_t metadata;
     int rc = zlink_msg_init(&metadata);
     if (rc != 0)
         return throw_last_error(env, "zlink_msg_init failed");
     rc = zlink_registry_member_peer_metadata(
-      registry, translate_service_type(service_type), service_name.c_str(),
-      static_cast<uint16_t>(service_role), endpoint.c_str(), &metadata);
+      registry, channel_name.c_str(),
+      static_cast<zlink_service_role_t>(service_role), endpoint.c_str(), &metadata);
     if (rc != 0) {
         (void) zlink_msg_close(&metadata);
         return throw_last_error(env, "registry_member_peer_metadata failed");
@@ -699,17 +686,18 @@ napi_value discovery_new(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
     napi_get_value_external(env, argv[0], &ctx);
-    uint32_t service_type = 0;
-    napi_get_value_uint32(env, argv[1], &service_type);
-    std::string service_name;
+    uint32_t auto_connect_type = 0;
+    napi_get_value_uint32(env, argv[1], &auto_connect_type);
+    std::string channel_name;
     if (argc >= 3) {
         napi_valuetype type = napi_undefined;
         napi_typeof(env, argv[2], &type);
         if (type != napi_undefined && type != napi_null)
-            service_name = get_string(env, argv[2]);
+            channel_name = get_string(env, argv[2]);
     }
-    void *disc = zlink_discovery_new(ctx, translate_service_type(service_type),
-                                     service_name.c_str());
+    void *disc = zlink_discovery_new(ctx,
+                                     static_cast<zlink_auto_connect_type_t>(auto_connect_type),
+                                     channel_name.c_str());
     if (!disc)
         return throw_last_error(env, "discovery_new failed");
     napi_value ext;
@@ -815,7 +803,7 @@ napi_value discovery_member_peer_metadata(napi_env env, napi_callback_info info)
     if (rc != 0)
         return throw_last_error(env, "zlink_msg_init failed");
     rc = zlink_discovery_member_peer_metadata(
-      discovery, static_cast<uint16_t>(service_role), endpoint.c_str(), &metadata);
+      discovery, static_cast<zlink_service_role_t>(service_role), endpoint.c_str(), &metadata);
     if (rc != 0) {
         (void) zlink_msg_close(&metadata);
         return throw_last_error(env, "discovery_member_peer_metadata failed");
@@ -923,24 +911,6 @@ napi_value discovery_resolve_spot(napi_env env, napi_callback_info info)
     if (rc != 0)
         return throw_last_error(env, "discovery_resolve_spot failed");
     return create_routing_id_value(env, owner_node_rid);
-}
-
-napi_value discovery_set_dealer_peer_mode(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *discovery = NULL;
-    napi_get_value_external(env, argv[0], &discovery);
-    uint32_t mode = 0;
-    napi_get_value_uint32(env, argv[1], &mode);
-    int rc = zlink_discovery_set_dealer_peer_mode(
-      discovery, static_cast<zlink_discovery_dealer_peer_mode_t>(mode));
-    if (rc != 0)
-        return throw_last_error(env, "discovery_set_dealer_peer_mode failed");
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
 }
 
 napi_value discovery_destroy(napi_env env, napi_callback_info info)

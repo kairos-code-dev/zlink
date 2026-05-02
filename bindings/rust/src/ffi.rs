@@ -514,9 +514,13 @@ pub type zlink_spot_dispatch_event_handler_fn = unsafe extern "C" fn(
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum zlink_service_type_t {
-    ZLINK_SERVICE_TYPE_SPOT = 0x3002,
-    ZLINK_SERVICE_TYPE_SOCKET = 0x3003,
+pub enum zlink_auto_connect_type_t {
+    ZLINK_AUTO_CONNECT_INVALID = 0,
+    ZLINK_AUTO_CONNECT_ROUTE_MESH = 1,
+    ZLINK_AUTO_CONNECT_CLIENT_SERVER = 2,
+    ZLINK_AUTO_CONNECT_DEALER_MESH = 3,
+    ZLINK_AUTO_CONNECT_FANOUT = 4,
+    ZLINK_AUTO_CONNECT_SPOT_MESH = 5,
 }
 
 #[repr(C)]
@@ -665,9 +669,9 @@ pub struct zlink_registry_status_t {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct zlink_registry_service_summary_entry_t {
-    pub service_kind: zlink_service_kind_t,
+    pub auto_connect_type: zlink_auto_connect_type_t,
     pub service_role: zlink_service_role_t,
-    pub service_name: [c_char; 256],
+    pub channel_name: [c_char; 256],
     pub total_count: u32,
     pub connecting_count: u32,
     pub ready_count: u32,
@@ -679,20 +683,20 @@ pub struct zlink_registry_service_summary_entry_t {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct zlink_registry_service_summary_filter_t {
-    pub service_kind: zlink_service_kind_t,
+    pub auto_connect_type: zlink_auto_connect_type_t,
     pub service_role: zlink_service_role_t,
-    pub service_name: [c_char; 256],
+    pub channel_name: [c_char; 256],
 }
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct zlink_member_peer_entry_t {
-    pub service_type: zlink_service_type_t,
-    pub service_role: u16,
-    pub service_name: [c_char; 256],
+    pub auto_connect_type: zlink_auto_connect_type_t,
+    pub service_role: zlink_service_role_t,
+    pub channel_name: [c_char; 256],
     pub endpoint: [c_char; 256],
-    pub routing_id: zlink_routing_id_t,
     pub weight: u32,
+    pub routing_id: zlink_routing_id_t,
     pub value: i64,
 }
 
@@ -718,10 +722,11 @@ pub enum zlink_topology_state_t {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct zlink_registry_topology_entry_t {
+    pub auto_connect_type: zlink_auto_connect_type_t,
     pub routing_id: zlink_routing_id_t,
     pub service_kind: zlink_service_kind_t,
     pub service_role: zlink_service_role_t,
-    pub service_name: [c_char; 256],
+    pub channel_name: [c_char; 256],
     pub endpoint: [c_char; 256],
     pub source: zlink_topology_source_t,
     pub state: zlink_topology_state_t,
@@ -734,9 +739,10 @@ pub struct zlink_registry_topology_entry_t {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct zlink_registry_topology_filter_t {
+    pub auto_connect_type: zlink_auto_connect_type_t,
     pub service_kind: zlink_service_kind_t,
     pub service_role: zlink_service_role_t,
-    pub service_name: [c_char; 256],
+    pub channel_name: [c_char; 256],
     pub routing_id: zlink_routing_id_t,
     pub state: zlink_topology_state_t,
     pub source: zlink_topology_source_t,
@@ -1113,8 +1119,8 @@ unsafe extern "C" {
     // -- Discovery ---------------------------------------------------------
     pub fn zlink_discovery_new(
         ctx: *mut c_void,
-        service_type: zlink_service_type_t,
-        service_name: *const c_char,
+        auto_connect_type: zlink_auto_connect_type_t,
+        channel_name: *const c_char,
     ) -> *mut c_void;
     pub fn zlink_discovery_connect_registry(
         discovery: *mut c_void,
@@ -1136,7 +1142,6 @@ unsafe extern "C" {
         spot_rid: *const zlink_routing_id_t,
         owner_node_rid_out: *mut zlink_routing_id_t,
     ) -> c_int;
-    pub fn zlink_discovery_set_dealer_peer_mode(discovery: *mut c_void, mode: u32) -> c_int;
     pub fn zlink_discovery_destroy(discovery_p: *mut *mut c_void) -> c_int;
 
     // -- Spot --------------------------------------------------------------
@@ -1307,16 +1312,14 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_registry_member_peers(
         registry: *mut c_void,
-        service_type: zlink_service_type_t,
-        service_name: *const c_char,
+        channel_name: *const c_char,
         entries: *mut zlink_member_peer_entry_t,
         count: *mut usize,
     ) -> c_int;
     pub fn zlink_registry_member_peer_metadata(
         registry: *mut c_void,
-        service_type: zlink_service_type_t,
-        service_name: *const c_char,
-        service_role: u16,
+        channel_name: *const c_char,
+        service_role: zlink_service_role_t,
         endpoint: *const c_char,
         metadata_out: *mut zlink_msg_t,
     ) -> c_int;
@@ -1327,7 +1330,7 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_discovery_member_peer_metadata(
         discovery: *mut c_void,
-        service_role: u16,
+        service_role: zlink_service_role_t,
         endpoint: *const c_char,
         metadata_out: *mut zlink_msg_t,
     ) -> c_int;

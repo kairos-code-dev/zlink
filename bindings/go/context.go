@@ -241,8 +241,8 @@ func (c *Context) Registry() (*Registry, error) {
 	return newRegistry(c)
 }
 
-func (c *Context) Discovery(serviceType ServiceType, serviceName string) (*Discovery, error) {
-	return newDiscovery(c, serviceType, serviceName)
+func (c *Context) Discovery(autoConnectType AutoConnectType, channelName string) (*Discovery, error) {
+	return newDiscovery(c, autoConnectType, channelName)
 }
 
 func (c *Context) RegistryQueryClient() (*RegistryQueryClient, error) {

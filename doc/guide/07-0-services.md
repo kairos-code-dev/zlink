@@ -98,7 +98,7 @@ See the [SPOT Guide](07-3-spot.md) for details.
 ### 3.3 Socket Family -- Discovery-Managed Raw Sockets
 
 Raw ROUTER/DEALER/PUB/SUB sockets can attach to a Discovery instance
-(service type `ZLINK_SERVICE_TYPE_SOCKET`) for automatic peer discovery
+(auto-connect type `ZLINK_AUTO_CONNECT_CLIENT_SERVER`) for automatic peer discovery
 and lifecycle management. This provides location-transparent communication
 at the socket level without the SPOT abstraction.
 
@@ -148,7 +148,7 @@ service implementation files.
 
 When you need to take a SPOT Node or raw ROUTER offline for maintenance,
 prefer a graceful drain over an abrupt disconnect. For raw ROUTER or worker
-DEALER peers, setting the socket weight to `0` lets in-flight work finish
+auto-connect peers, setting the socket weight to `0` lets in-flight work finish
 while peers automatically stop selecting that raw peer for new outbound work.
 SpotNode and Spot do not provide a separate weight setting.
 

@@ -24,7 +24,7 @@ results so the send path can answer quickly.
   [spot.md](spot.md)
 
 The key job for Discovery is simple: inside the current Discovery
-`service_name` view, given a `spot_rid`, answer which `SpotNode` currently
+`channel_name` view, given a `spot_rid`, answer which `SpotNode` currently
 owns it. If a fresh local answer is available, Discovery may return it
 immediately. If not, it refreshes against Registry.
 
@@ -40,7 +40,7 @@ zlink_config_result_t zlink_discovery_resolve_spot (
 On success, the caller combines `owner_node_rid_out` with the original
 `spot_rid` and passes them to the ROUTER-side direct functions
 (`zlink_router_send_spot()` or `zlink_router_request_spot()`). That
-lookup result is scoped to the current Discovery `service_name`.
+lookup result is scoped to the current Discovery `channel_name`.
 
 ### Cache model
 
@@ -74,7 +74,7 @@ spots per node, or similarly large totals.
 
 A caller that starts from only `spot_rid` obtains the final
 `dest_node_rid + dest_spot_rid` pair inside the current Discovery
-`service_name` in the following order.
+`channel_name` in the following order.
 
 1. Look up `spot_rid` ownership in the local Discovery cache.
 2. If an active owner exists, normalize it into the
@@ -104,14 +104,14 @@ new authoritative owner.
 
 ## Auto-Connect Policy
 
-For Discovery-attached services, the current Discovery `service_name` is the
-auto-connect boundary. Managed auto-connect operates only inside that service
-scope and never crosses into a different `service_name`.
+For Discovery-attached channels, the current Discovery `channel_name` is the
+auto-connect boundary. Managed auto-connect operates only inside that channel
+scope and never crosses into a different `channel_name`.
 
 ### SpotNode Discovery attach
 
 `zlink_spot_node_attach_discovery()` accepts only
-`ZLINK_SERVICE_TYPE_SPOT` Discovery handles. This Discovery provides the
+`ZLINK_AUTO_CONNECT_SPOT_MESH` Discovery handles. This Discovery provides the
 SPOT channel view that determines the node's mesh auto-connect scope.
 
 - A node may have at most one active SPOT Discovery view.
@@ -123,10 +123,10 @@ SPOT channel view that determines the node's mesh auto-connect scope.
 
 To call another channel from a `SpotNode`, the caller attaches a `DEALER`
 via `zlink_spot_node_attach_channel_dealer()`. This function takes a
-`ZLINK_SERVICE_TYPE_SOCKET` Discovery together with the `DEALER` socket.
+`ZLINK_AUTO_CONNECT_CLIENT_SERVER` Discovery together with the `DEALER` socket.
 The Discovery manages the peer set for that channel.
 
-- A Discovery has exactly one fixed `service_name` (channel name) view.
+- A Discovery has exactly one fixed `channel_name` (channel) view.
 - The same `channel_name` may have at most one `DEALER` (automatic and
   manual attach combined). Duplicates fail with `EBUSY`.
 - The same Discovery handle must not be attached to more than one owner.
@@ -138,9 +138,9 @@ The Discovery manages the peer set for that channel.
 ### SPOT Node
 
 SPOT Node may automatically discover and connect to other SPOT Node endpoints
-that belong to the same `service_name`, excluding its own advertised endpoint.
+that belong to the same `channel_name`, excluding its own advertised endpoint.
 
-- Only SPOT Node endpoints from the same `service_name` are candidates.
+- Only SPOT Node endpoints from the same `channel_name` are candidates.
 - A node must not auto-connect to its own advertised endpoint.
 - Manual peer connect/disconnect and Discovery-managed auto-connect must not
   be mixed.
@@ -151,18 +151,22 @@ Raw socket family auto-connect follows role-directed rules. These rules are
 not just "which roles are compatible"; they define which side is allowed to
 initiate the outbound connect.
 
-- `ROUTER -> ROUTER`
-- `SUB -> PUB`
-- `PUB -> none`
-- `DEALER -> ROUTER` by default
+- `ZLINK_AUTO_CONNECT_ROUTE_MESH`: ROUTER peers form a mesh, with one
+  initiator per pair.
+- `ZLINK_AUTO_CONNECT_CLIENT_SERVER`: DEALER peers connect to every eligible
+  ROUTER endpoint in the same channel.
+- `ZLINK_AUTO_CONNECT_DEALER_MESH`: DEALER peers form a mesh, with one
+  initiator per pair.
+- `ZLINK_AUTO_CONNECT_FANOUT`: SUB peers connect to PUB endpoints.
+- `ZLINK_AUTO_CONNECT_SPOT_MESH`: SpotNode peers form a mesh, with one
+  initiator per pair.
 
-### Pairwise initiator rule (ROUTER ↔ ROUTER)
+### Pairwise initiator rule
 
-When two ROUTERs in the same service discover each other via Discovery,
-a single successful connect already provides a bidirectional message path.
-Letting both sides dial in parallel creates duplicate-connection races and
-handover churn, so the library decides internally that exactly one side of
-each pair initiates the connect.
+For `ROUTE_MESH`, `DEALER_MESH`, and `SPOT_MESH`, a single successful connect
+already provides a bidirectional message path. Letting both sides dial in
+parallel creates duplicate-connection races and handover churn, so the library
+decides internally that exactly one side of each pair initiates the connect.
 
 - The comparison key is `routing_id` (primary) with the advertised endpoint
   string as a tie-break. Both peers compute the same total order from the
@@ -176,42 +180,16 @@ each pair initiates the connect.
 ### Auto-connected peer entries and weight
 
 Peer entries surfaced by Discovery carry peer weight.
-`zlink_member_peer_entry_t.weight` stores the current `0..100` value for
-each peer. DEALER attachments exclude peers with weight `0` from candidate
+`zlink_member_peer_entry_t.weight` stores the current `0..100` value for each
+peer. DEALER attachments exclude peers with weight `0` from candidate
 selection and fail submit with `ZLINK_SUBMIT_NOT_ADMITTED` when every known
 peer has weight `0`. Raw ROUTER and DEALER sockets are the public handles that
 can change local advertised weight.
 
-DEALER is the only exception that may be changed by service-level policy. If a
-service explicitly switches its DEALER peer mode, the service may use
-`DEALER -> DEALER` inside the same `service_name` instead.
-
-- The default DEALER auto-connect target is ROUTER.
-- `DEALER -> DEALER` is allowed only when the service explicitly switches the
-  service-level DEALER target policy.
-- One service must not mix `DEALER -> ROUTER` and `DEALER -> DEALER` at the
-  same time.
-- In other words, the DEALER auto-connect target policy is chosen once per
-  service scope.
-
-The policy is changed through this public function:
-
-```c
-zlink_config_result_t zlink_discovery_set_dealer_peer_mode (
-  void *discovery,
-  zlink_discovery_dealer_peer_mode_t mode);
-```
-
-- `ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER`:
-  DEALER automatically connects to ROUTER peers inside the same
-  `service_name`.
-- `ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER`:
-  DEALER automatically connects to DEALER peers inside the same
-  `service_name`.
-
-This function changes the DEALER target policy for the current Discovery
-service view. It does not apply to `ZLINK_SERVICE_TYPE_SPOT`, and it must fail
-when called on a SPOT Discovery handle.
+There is no runtime setter for a DEALER target policy. Select
+`ZLINK_AUTO_CONNECT_CLIENT_SERVER` for DEALER-to-ROUTER client/server channels,
+or `ZLINK_AUTO_CONNECT_DEALER_MESH` for DEALER-to-DEALER mesh channels when the
+Discovery handle is created.
 
 ## Thread-Safety Summary
 
@@ -219,8 +197,7 @@ A single Discovery handle can be used concurrently from multiple threads (thread
 Not every call has the same timing constraints, though.
 
 - `zlink_discovery_connect_registry()`, `zlink_discovery_resolve_spot()`,
-  `zlink_discovery_set_dealer_peer_mode()`, monitor operations, and
-  query-style reads are valid at runtime.
+  monitor operations, and query-style reads are valid at runtime.
 - `zlink_set_routing_id()` is init-only in practice and only matters
   before the first subscribe/query/connect.
 - `zlink_discovery_destroy()` uses a fail-fast lifecycle gate. If another
@@ -249,20 +226,27 @@ Not every call has the same timing constraints, though.
 
 ## Constants
 
-### Service Types
+### Auto-Connect Types
 
 ```c
-typedef enum zlink_service_type_t
+typedef enum zlink_auto_connect_type_t
 {
-    ZLINK_SERVICE_TYPE_SPOT    = 0x3002,
-    ZLINK_SERVICE_TYPE_SOCKET  = 0x3003
-} zlink_service_type_t;
+    ZLINK_AUTO_CONNECT_INVALID = 0,
+    ZLINK_AUTO_CONNECT_ROUTE_MESH = 1,
+    ZLINK_AUTO_CONNECT_CLIENT_SERVER = 2,
+    ZLINK_AUTO_CONNECT_DEALER_MESH = 3,
+    ZLINK_AUTO_CONNECT_FANOUT = 4,
+    ZLINK_AUTO_CONNECT_SPOT_MESH = 5
+} zlink_auto_connect_type_t;
 ```
 
 | Constant | Description |
 |----------|-------------|
-| `ZLINK_SERVICE_TYPE_SPOT` | Discovery type for SPOT Node services |
-| `ZLINK_SERVICE_TYPE_SOCKET` | Discovery type for raw socket families (ROUTER/DEALER/PUB/SUB) |
+| `ZLINK_AUTO_CONNECT_ROUTE_MESH` | ROUTER mesh channel |
+| `ZLINK_AUTO_CONNECT_CLIENT_SERVER` | DEALER clients to ROUTER servers |
+| `ZLINK_AUTO_CONNECT_DEALER_MESH` | DEALER mesh channel |
+| `ZLINK_AUTO_CONNECT_FANOUT` | PUB to SUB fanout channel |
+| `ZLINK_AUTO_CONNECT_SPOT_MESH` | SpotNode mesh channel |
 
 ### Service Roles
 
@@ -280,43 +264,37 @@ typedef enum zlink_service_role_t
 
 | Constant | Description |
 |----------|-------------|
-| `ZLINK_SERVICE_ROLE_SPOT` | Fixed role for SPOT service type |
+| `ZLINK_SERVICE_ROLE_SPOT` | Fixed SPOT role |
 | `ZLINK_SERVICE_ROLE_ROUTER` | Socket family: ROUTER socket |
 | `ZLINK_SERVICE_ROLE_DEALER` | Socket family: DEALER socket |
 | `ZLINK_SERVICE_ROLE_PUB` | Socket family: PUB socket |
 | `ZLINK_SERVICE_ROLE_SUB` | Socket family: SUB socket |
 
-SPOT has a fixed role (automatically derived from its service type). Socket
-family services require an explicit role matching the socket type. Auto-connect
-then follows directed policy rules. `SUB -> PUB`, `ROUTER -> ROUTER`, and
-`PUB -> none` are fixed. DEALER uses ROUTER as the default target policy and
-may be switched to DEALER target mode per service.
+SPOT has a fixed role. Socket family services derive their role from the
+attached socket type. Auto-connect then follows the channel's fixed
+`zlink_auto_connect_type_t` contract.
 
 ## Functions
 
 ### zlink_discovery_new
 
-Create a Discovery instance with a fixed service view.
+Create a Discovery instance with a fixed channel view.
 
 ```c
 void *zlink_discovery_new (void *ctx,
-                           zlink_service_type_t service_type,
-                           const char *service_name);
+                           zlink_auto_connect_type_t auto_connect_type,
+                           const char *channel_name);
 ```
 
 Allocates and initializes a new Discovery instance scoped to the given
-service type and logical service name. Both are fixed at creation time and
+auto-connect type and logical channel name. Both are fixed at creation time and
 cannot be changed. All subscribe/get/count queries operate within that one
-logical service view.
-
-Use `ZLINK_SERVICE_TYPE_SPOT` for SPOT Node services, or
-`ZLINK_SERVICE_TYPE_SOCKET` for raw socket family services
-(ROUTER/DEALER/PUB/SUB).
+logical channel view.
 
 **Parameters:**
 - `ctx` -- Context handle.
-- `service_type` -- Service family for this handle.
-- `service_name` -- Fixed logical service name for this handle.
+- `auto_connect_type` -- Auto-connect topology contract for this handle.
+- `channel_name` -- Fixed logical channel name for this handle.
 
 **Returns:** A Discovery handle on success, or `NULL` on failure.
 
@@ -363,14 +341,14 @@ zlink_config_result_t zlink_discovery_resolve_spot (void *discovery,
 ```
 
 This function accepts a logical `spot_rid` inside the current Discovery
-`service_name` view and returns the `node_rid` of the `SpotNode` that
+`channel_name` view and returns the `node_rid` of the `SpotNode` that
 currently owns that name. Discovery may answer from local cache first and
 refresh against Registry when needed.
 
 The current core implementation does not trust that cache indefinitely.
 Discovery first checks whether the cached owner row was validated against the
 current service-view update sequence. If not, it reuses the cached row only for
-a short local TTL. Once the service view changes or that short TTL expires,
+a short local TTL. Once the channel view changes or that short TTL expires,
 Discovery queries Registry again before returning the owner.
 
 On success, `owner_node_rid_out` receives the current owner node routing id.
@@ -394,34 +372,11 @@ subject to the normal runtime lifecycle constraints.
 
 ---
 
-### zlink_discovery_set_dealer_peer_mode
+### Removed dealer target setter
 
-Set the DEALER auto-connect target policy for a Discovery-managed socket
-service.
-
-```c
-zlink_config_result_t zlink_discovery_set_dealer_peer_mode (
-  void *discovery,
-  zlink_discovery_dealer_peer_mode_t mode);
-```
-
-This function is meaningful only for `ZLINK_SERVICE_TYPE_SOCKET` Discovery
-handles. The default is `ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER`, which means
-DEALER connects automatically to ROUTER peers inside the same `service_name`.
-If the service policy is switched to
-`ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER`, DEALER connects automatically to
-DEALER peers inside the same `service_name`.
-
-The policy applies to the whole current Discovery service view. It is not a
-per-socket mix-and-match setting.
-
-**Returns:** A `zlink_config_result_t` value. The call may fail if `mode` is
-invalid or if the Discovery handle does not represent a socket service view.
-Detailed errno remains available through `zlink_errno()` for diagnostics.
-
-**Thread safety:** Safe to change at runtime. When the value changes,
-Discovery may notify observers for the same service and recompute its
-auto-connect targets.
+There is no `zlink_discovery_set_dealer_peer_mode()` API. Use
+`ZLINK_AUTO_CONNECT_CLIENT_SERVER` for DEALER-to-ROUTER channels and
+`ZLINK_AUTO_CONNECT_DEALER_MESH` for DEALER-to-DEALER channels.
 
 **See also:** `zlink_discovery_connect_registry`,
 `zlink_socket_attach_discovery`
@@ -487,14 +442,14 @@ zlink_config_result_t zlink_get_routing_id (void *discovery,
 
 ### zlink_socket_attach_discovery
 
-Attach a raw ROUTER/DEALER/PUB/SUB socket to a discovery service view.
+Attach a raw ROUTER/DEALER/PUB/SUB socket to a discovery channel view.
 
 ```c
 zlink_config_result_t zlink_socket_attach_discovery (void *socket, void *discovery);
 ```
 
 Attaches the socket to the given Discovery instance. The Discovery service
-type must be `ZLINK_SERVICE_TYPE_SOCKET` and the socket type must be one of
+type must be `ZLINK_AUTO_CONNECT_CLIENT_SERVER` and the socket type must be one of
 ROUTER, DEALER, PUB, or SUB. The service role is derived automatically from
 the socket type.
 
@@ -505,7 +460,7 @@ instance to terminate the attached socket lifecycle.
 
 **Parameters:**
 - `socket` -- Socket handle (must be ROUTER, DEALER, PUB, or SUB).
-- `discovery` -- Discovery handle created with `ZLINK_SERVICE_TYPE_SOCKET`.
+- `discovery` -- Discovery handle created with `ZLINK_AUTO_CONNECT_CLIENT_SERVER`.
 
 **Returns:** A `zlink_config_result_t` value.
 
@@ -608,7 +563,7 @@ zlink_close_result_t zlink_discovery_destroy(void **discovery_p);
 Closes the internal SUB socket, frees all cached data, and releases the
 Discovery instance. Destroying a Discovery also shuts down every attached
 service participant (SPOT Node or socket) that delegated lifecycle
-ownership to this service view. The pointer at `*discovery_p` is set to
+ownership to this channel view. The pointer at `*discovery_p` is set to
 `NULL` after destruction.
 
 **Returns:** A `zlink_close_result_t` value.

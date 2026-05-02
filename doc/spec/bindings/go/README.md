@@ -83,7 +83,7 @@ func (c *Context) StreamSocket() (*StreamSocket, error)
 func (c *Context) SpotNode() (*SpotNode, error)
 func (c *Context) SpotNodeWithOptions(options SpotNodeOptions) (*SpotNode, error)
 func (c *Context) Registry() (*Registry, error)
-func (c *Context) Discovery(serviceType ServiceType, serviceName string) (*Discovery, error)
+func (c *Context) Discovery(autoConnectType AutoConnectType, channelName string) (*Discovery, error)
 func (c *Context) RegistryQueryClient() (*RegistryQueryClient, error)
 ```
 
@@ -1081,8 +1081,8 @@ func (r *Registry) SetBroadcastInterval(intervalMS uint32) error
 // Snapshot and query methods return *ConfigError on failure.
 func (r *Registry) StatusSnapshot() (*RegistryStatus, error)
 func (r *Registry) ServiceSummarySnapshot(filter *RegistryServiceSummaryFilter) ([]RegistryServiceSummaryEntry, error)
-func (r *Registry) MemberPeers(serviceType ServiceType, serviceName string) ([]MemberPeerEntry, error)
-func (r *Registry) MemberPeerMetadata(serviceType ServiceType, serviceName string,
+func (r *Registry) MemberPeers(channelName string) ([]MemberPeerEntry, error)
+func (r *Registry) MemberPeerMetadata(channelName string,
     serviceRole ServiceRole, endpoint string) (*Message, error)
 func (r *Registry) TopologySnapshot() ([]RegistryTopologyEntry, error)
 func (r *Registry) TopologyQuery(filter *RegistryTopologyFilter) ([]RegistryTopologyEntry, error)
@@ -1093,12 +1093,16 @@ func (r *Registry) Close() error
 ### Discovery
 
 ```go
-// DiscoveryDealerPeerMode controls the auto-connect target policy used by
-// DEALER sockets in a discovery view.
-type DiscoveryDealerPeerMode int
+// AutoConnectType is the fixed auto-connect channel contract selected when
+// a Discovery handle is created.
+type AutoConnectType int
 const (
-    DiscoveryDealerPeerModeRouter DiscoveryDealerPeerMode = 1
-    DiscoveryDealerPeerModeDealer DiscoveryDealerPeerMode = 2
+    AutoConnectInvalid AutoConnectType = 0
+    AutoConnectRouteMesh AutoConnectType = 1
+    AutoConnectClientServer AutoConnectType = 2
+    AutoConnectDealerMesh AutoConnectType = 3
+    AutoConnectFanout AutoConnectType = 4
+    AutoConnectSpotMesh AutoConnectType = 5
 )
 
 // ConnectRegistry connects discovery to a registry. Returns *ConnectError on failure.
@@ -1115,10 +1119,6 @@ func (d *Discovery) SetTLSClient(caCertPath, hostname string, trustSystem bool) 
 // routing id. Intended for send/request destination lookup. Maps to
 // zlink_discovery_resolve_spot.
 func (d *Discovery) ResolveSpot(spotRid RoutingID) (RoutingID, error)
-// SetDealerPeerMode sets the auto-connect target policy used by DEALER
-// sockets in this discovery view. Default is Router. Maps to
-// zlink_discovery_set_dealer_peer_mode.
-func (d *Discovery) SetDealerPeerMode(mode DiscoveryDealerPeerMode) error
 // Close closes the discovery handle. Returns *CloseError on failure.
 func (d *Discovery) Close() error
 ```
@@ -1270,7 +1270,7 @@ Primary entry types used in the default service flow:
 ```go
 // MemberPeerEntry — entry from Registry.MemberPeers / Discovery.MemberPeers.
 type MemberPeerEntry struct {
-    ServiceType    ServiceType
+    AutoConnectType    AutoConnectType
     ServiceRole    ServiceRole
     ServiceName    string
     Endpoint       string

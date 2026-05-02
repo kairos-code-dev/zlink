@@ -71,7 +71,10 @@ foreach(test ${unittests})
   set_tests_properties(${test} PROPERTIES LABELS "unittest;parallel-safe")
 
   if(${test} STREQUAL "unittest_service_mode_policy")
-    set_tests_properties(${test} PROPERTIES TIMEOUT 30)
+    set_tests_properties(${test} PROPERTIES
+      TIMEOUT 30
+      RUN_SERIAL TRUE
+      LABELS "unittest;serial")
   endif()
 
   # TODO prevent libzlink (non-static) being in the list of link libraries at all

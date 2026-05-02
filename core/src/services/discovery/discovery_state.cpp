@@ -28,12 +28,6 @@ static int init_msg_from_blob_local (const std::vector<unsigned char> &blob_,
     return 0;
 }
 
-static zlink_service_type_t public_service_type_local (uint16_t service_type_)
-{
-    return service_type_ == discovery_protocol::service_type_spot_node
-             ? ZLINK_SERVICE_TYPE_SPOT
-             : ZLINK_SERVICE_TYPE_SOCKET;
-}
 }
 
 discovery_local_state_t::discovery_local_state_t () :
@@ -225,13 +219,13 @@ int discovery_t::get_metadata (zlink_msg_t *metadata_out_) const
     return _local_state.get_metadata (metadata_out_);
 }
 
-void discovery_t::snapshot_providers (const std::string &service_name_,
+void discovery_t::snapshot_providers (const std::string &channel_name_,
                                       std::vector<provider_info_t> *out_)
 {
     if (!out_)
         return;
     out_->clear ();
-    if (service_name_ != _service_name)
+    if (channel_name_ != _channel_name)
         return;
     scoped_lock_t lock (_sync);
     _service_state.snapshot_providers (out_);
@@ -251,15 +245,15 @@ void discovery_t::snapshot_member_peers (
         for (std::map<registered_service_key_t, registered_service_t>::const_iterator
                it = _registered_services.begin ();
              it != _registered_services.end (); ++it) {
-            if (it->second.service_type == _service_type
-                && it->second.service_name == _service_name) {
+            if (it->second.channel_name == _channel_name) {
                 local_members.insert (
                   discovery_member_key_t (it->second.service_role,
                                           it->second.endpoint));
             }
         }
         _service_state.snapshot_member_peers (
-          public_service_type_local (_service_type), local_members, out_);
+          static_cast<zlink_auto_connect_type_t> (_auto_connect_type),
+          local_members, out_);
     }
 }
 
@@ -292,7 +286,7 @@ int discovery_t::member_peers (zlink_member_peer_entry_t *entries_,
     return 0;
 }
 
-int discovery_t::member_peer_metadata (uint16_t service_role_,
+int discovery_t::member_peer_metadata (zlink_service_role_t service_role_,
                                        const char *endpoint_,
                                        zlink_msg_t *metadata_out_) const
 {
@@ -312,8 +306,7 @@ int discovery_t::member_peer_metadata (uint16_t service_role_,
         for (std::map<registered_service_key_t, registered_service_t>::const_iterator
                it = _registered_services.begin ();
              it != _registered_services.end (); ++it) {
-            if (it->second.service_type == _service_type
-                && it->second.service_name == _service_name) {
+            if (it->second.channel_name == _channel_name) {
                 local_members.insert (
                   discovery_member_key_t (it->second.service_role,
                                           it->second.endpoint));
@@ -334,9 +327,9 @@ uint64_t discovery_t::update_seq ()
     return _service_state.update_seq ();
 }
 
-uint64_t discovery_t::service_update_seq (const std::string &service_name_)
+uint64_t discovery_t::service_update_seq (const std::string &channel_name_)
 {
-    if (service_name_ != _service_name)
+    if (channel_name_ != _channel_name)
         return 0;
     scoped_lock_t lock (_sync);
     return _service_state.service_update_seq ();
@@ -354,12 +347,12 @@ int discovery_t::remove_observer (discovery_observer_t *observer_)
 void discovery_t::upsert_service_summary (
   const zlink_registry_topology_entry_t &entry_)
 {
-    if (entry_.routing_id.size == 0 || entry_.service_name[0] == '\0')
+    if (entry_.routing_id.size == 0 || entry_.channel_name[0] == '\0')
         return;
 
     const topology_key_t key = make_summary_key (
       entry_.service_kind, entry_.service_role, entry_.routing_id,
-      entry_.service_name);
+      entry_.channel_name);
 
     {
         scoped_lock_t lock (_sync);
@@ -377,7 +370,7 @@ discovery_t::topology_key_t discovery_t::make_summary_key (
   uint16_t service_kind_,
   uint16_t service_role_,
   const zlink_routing_id_t &routing_id_,
-  const std::string &service_name_) const
+  const std::string &channel_name_) const
 {
     topology_key_t key;
     key.service_kind = service_kind_;
@@ -386,7 +379,7 @@ discovery_t::topology_key_t discovery_t::make_summary_key (
         key.routing_id_key.assign (
           reinterpret_cast<const char *> (routing_id_.data), routing_id_.size);
     }
-    key.service_name = service_name_;
+    key.channel_name = channel_name_;
     return key;
 }
 

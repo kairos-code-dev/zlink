@@ -17,15 +17,16 @@ class discovery_t
 {
   public:
     discovery_t (context_t &ctx_,
-                 service_type service_type_,
-                 const std::string &service_name_)
+                 auto_connect_type auto_connect_type_,
+                 const std::string &channel_name_)
         : _discovery (NULL),
           _last_error (0)
     {
-        validate_bounded_c_string (service_name_, 255u, "service_name");
+        validate_bounded_c_string (channel_name_, 255u, "channel_name");
         _discovery = zlink_discovery_new (
-          ctx_.handle (), static_cast<zlink_service_type_t> (service_type_),
-          service_name_.c_str ());
+          ctx_.handle (),
+          static_cast<zlink_auto_connect_type_t> (auto_connect_type_),
+          channel_name_.c_str ());
         if (!_discovery)
             _last_error = errno != 0 ? errno : EFAULT;
     }
@@ -148,7 +149,7 @@ class discovery_t
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
             zlink_discovery_member_peer_metadata (
-              _discovery, static_cast<uint16_t> (service_role_),
+              _discovery, static_cast<zlink_service_role_t> (service_role_),
               endpoint_.c_str (), &native)));
         metadata_out_.adopt (&native);
     }
@@ -162,15 +163,6 @@ class discovery_t
               _discovery, routing_id_native (spot_rid_),
               routing_id_native (owner_node_rid))));
         return owner_node_rid;
-    }
-
-    void set_dealer_peer_mode (discovery_dealer_peer_mode_t mode_)
-    {
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_discovery_set_dealer_peer_mode (
-              _discovery,
-              static_cast<zlink_discovery_dealer_peer_mode_t> (mode_))));
     }
 
     void close ()

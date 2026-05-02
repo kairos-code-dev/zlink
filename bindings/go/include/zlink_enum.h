@@ -300,16 +300,15 @@ typedef enum zlink_monitor_snapshot_detail_flag_e
     ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS = 1u << 4
 } zlink_monitor_snapshot_detail_flag_e;
 
-typedef enum zlink_service_type_t
+typedef enum zlink_auto_connect_type_t
 {
-    ZLINK_SERVICE_TYPE_SPOT = 0x3002,
-    ZLINK_SERVICE_TYPE_SOCKET = 0x3003
-} zlink_service_type_t;
-
-typedef zlink_service_type_t zlink_channel_type_t;
-
-#define ZLINK_CHANNEL_TYPE_SPOT ZLINK_SERVICE_TYPE_SPOT
-#define ZLINK_CHANNEL_TYPE_SOCKET ZLINK_SERVICE_TYPE_SOCKET
+    ZLINK_AUTO_CONNECT_INVALID = 0,
+    ZLINK_AUTO_CONNECT_ROUTE_MESH = 1,
+    ZLINK_AUTO_CONNECT_CLIENT_SERVER = 2,
+    ZLINK_AUTO_CONNECT_DEALER_MESH = 3,
+    ZLINK_AUTO_CONNECT_FANOUT = 4,
+    ZLINK_AUTO_CONNECT_SPOT_MESH = 5
+} zlink_auto_connect_type_t;
 
 typedef enum zlink_service_role_t
 {
@@ -329,12 +328,6 @@ typedef zlink_service_role_t zlink_channel_role_t;
 #define ZLINK_CHANNEL_ROLE_DEALER ZLINK_SERVICE_ROLE_DEALER
 #define ZLINK_CHANNEL_ROLE_PUB ZLINK_SERVICE_ROLE_PUB
 #define ZLINK_CHANNEL_ROLE_SUB ZLINK_SERVICE_ROLE_SUB
-
-typedef enum zlink_discovery_dealer_peer_mode_t
-{
-    ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER = 1,
-    ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER = 2
-} zlink_discovery_dealer_peer_mode_t;
 
 typedef enum zlink_spot_role_t
 {

@@ -381,9 +381,9 @@ public final class NativeLayouts {
 
     public static final MemoryLayout REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT =
             MemoryLayout.structLayout(
-                    ValueLayout.JAVA_INT.withName("service_kind"),
+                    ValueLayout.JAVA_INT.withName("auto_connect_type"),
                     ValueLayout.JAVA_INT.withName("service_role"),
-                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
+                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("channel_name"),
                     ValueLayout.JAVA_INT.withName("total_count"),
                     ValueLayout.JAVA_INT.withName("connecting_count"),
                     ValueLayout.JAVA_INT.withName("ready_count"),
@@ -394,29 +394,29 @@ public final class NativeLayouts {
 
     public static final MemoryLayout REGISTRY_SERVICE_SUMMARY_FILTER_LAYOUT =
             MemoryLayout.structLayout(
-                    ValueLayout.JAVA_INT.withName("service_kind"),
+                    ValueLayout.JAVA_INT.withName("auto_connect_type"),
                     ValueLayout.JAVA_INT.withName("service_role"),
-                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"));
+                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("channel_name"));
 
     public static final MemoryLayout MEMBER_PEER_ENTRY_LAYOUT =
             MemoryLayout.structLayout(
-                    ValueLayout.JAVA_SHORT.withName("service_type"),
-                    ValueLayout.JAVA_SHORT.withName("service_role"),
-                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
+                    ValueLayout.JAVA_INT.withName("auto_connect_type"),
+                    ValueLayout.JAVA_INT.withName("service_role"),
+                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("channel_name"),
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("endpoint"),
-                    ROUTING_ID_LAYOUT.withName("routing_id"),
                     ValueLayout.JAVA_INT.withName("weight"),
-                    MemoryLayout.paddingLayout(8),
+                    ROUTING_ID_LAYOUT.withName("routing_id"),
+                    MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("value"));
-    public static final long MEMBER_PEER_SERVICE_TYPE_OFFSET =
+    public static final long MEMBER_PEER_AUTO_CONNECT_TYPE_OFFSET =
             MEMBER_PEER_ENTRY_LAYOUT.byteOffset(
-                    PathElement.groupElement("service_type"));
+                    PathElement.groupElement("auto_connect_type"));
     public static final long MEMBER_PEER_SERVICE_ROLE_OFFSET =
             MEMBER_PEER_ENTRY_LAYOUT.byteOffset(
                     PathElement.groupElement("service_role"));
-    public static final long MEMBER_PEER_SERVICE_NAME_OFFSET =
+    public static final long MEMBER_PEER_CHANNEL_NAME_OFFSET =
             MEMBER_PEER_ENTRY_LAYOUT.byteOffset(
-                    PathElement.groupElement("service_name"));
+                    PathElement.groupElement("channel_name"));
     public static final long MEMBER_PEER_ENDPOINT_OFFSET =
             MEMBER_PEER_ENTRY_LAYOUT.byteOffset(
                     PathElement.groupElement("endpoint"));
@@ -432,24 +432,25 @@ public final class NativeLayouts {
 
     public static final MemoryLayout REGISTRY_TOPOLOGY_ENTRY_LAYOUT =
             MemoryLayout.structLayout(
+                    ValueLayout.JAVA_INT.withName("auto_connect_type"),
                     ROUTING_ID_LAYOUT.withName("routing_id"),
                     ValueLayout.JAVA_INT.withName("service_kind"),
                     ValueLayout.JAVA_INT.withName("service_role"),
-                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
+                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("channel_name"),
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("endpoint"),
                     ValueLayout.JAVA_INT.withName("source"),
                     ValueLayout.JAVA_INT.withName("state"),
                     ValueLayout.JAVA_INT.withName("desired_count"),
                     ValueLayout.JAVA_INT.withName("ready_count"),
                     ValueLayout.JAVA_INT.withName("error_code"),
-                    MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("last_reported_ms"));
 
     public static final MemoryLayout REGISTRY_TOPOLOGY_FILTER_LAYOUT =
             MemoryLayout.structLayout(
+                    ValueLayout.JAVA_INT.withName("auto_connect_type"),
                     ValueLayout.JAVA_INT.withName("service_kind"),
                     ValueLayout.JAVA_INT.withName("service_role"),
-                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
+                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("channel_name"),
                     ROUTING_ID_LAYOUT.withName("routing_id"),
                     ValueLayout.JAVA_INT.withName("state"),
                     ValueLayout.JAVA_INT.withName("source"));

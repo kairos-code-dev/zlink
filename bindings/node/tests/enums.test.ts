@@ -34,8 +34,8 @@ test('compat enums and errno helper are not public', () => {
   assert.equal(zlink.MonitorSnapshotDetail, undefined);
   assert.equal(zlink.ServiceMonitorEvent, undefined);
   assert.equal(zlink.ServiceType, undefined);
-  assert.equal(zlink.SERVICE_TYPE_SPOT, undefined);
-  assert.equal(zlink.SERVICE_TYPE_SOCKET, undefined);
+  assert.equal(zlink.AUTO_CONNECT_SPOT_MESH, undefined);
+  assert.equal(zlink.AUTO_CONNECT_CLIENT_SERVER, undefined);
   assert.equal(zlink.ServiceRole, undefined);
   assert.equal(zlink.ServiceKind, undefined);
   assert.equal(zlink.SpotPeerSource, undefined);

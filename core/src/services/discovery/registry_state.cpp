@@ -13,6 +13,67 @@
 
 namespace zlink
 {
+int registry_t::ensure_channel_contract_locked (
+  const std::string &channel_name_,
+  uint16_t auto_connect_type_,
+  uint64_t now_ms_,
+  uint32_t owner_registry_id_)
+{
+    if (channel_name_.empty ()
+        || !discovery_protocol::is_valid_auto_connect_type (
+          auto_connect_type_)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::map<std::string, channel_contract_t>::iterator it =
+      _channel_contracts.find (channel_name_);
+    if (it == _channel_contracts.end ()) {
+        channel_contract_t contract;
+        contract.auto_connect_type = auto_connect_type_;
+        contract.created_at = now_ms_;
+        contract.owner_registry_id = owner_registry_id_ == 0 ? 1
+                                                             : owner_registry_id_;
+        _channel_contracts[channel_name_] = contract;
+        return 0;
+    }
+
+    if (it->second.auto_connect_type != auto_connect_type_) {
+        const uint32_t existing_owner =
+          it->second.owner_registry_id == 0 ? 1 : it->second.owner_registry_id;
+        const uint32_t incoming_owner =
+          owner_registry_id_ == 0 ? 1 : owner_registry_id_;
+        const bool incoming_wins =
+          incoming_owner < existing_owner
+          || (incoming_owner == existing_owner
+              && (now_ms_ < it->second.created_at
+                  || (now_ms_ == it->second.created_at
+                      && auto_connect_type_ < it->second.auto_connect_type)));
+        if (incoming_wins) {
+            channel_contract_t contract;
+            contract.auto_connect_type = auto_connect_type_;
+            contract.created_at = now_ms_;
+            contract.owner_registry_id = owner_registry_id_ == 0
+                                           ? 1
+                                           : owner_registry_id_;
+            it->second = contract;
+            remove_channel_providers_locked (channel_name_);
+            return 0;
+        }
+        errno = EEXIST;
+        return -1;
+    }
+    return 0;
+}
+
+void registry_t::remove_channel_providers_locked (
+  const std::string &channel_name_)
+{
+    service_key_t key;
+    key.channel_name = channel_name_;
+    _services.erase (key);
+}
+
 void registry_t::handle_peer (void *sub_)
 {
     std::vector<zlink_msg_t> frames;
@@ -64,6 +125,7 @@ void registry_t::handle_peer (void *sub_)
     }
 
     service_map_t incoming;
+    std::map<std::string, channel_contract_t> incoming_contracts;
     const uint64_t now = zlink::clock_t ().now_ms ();
 
     uint32_t local_registry_id = 0;
@@ -89,29 +151,43 @@ void registry_t::handle_peer (void *sub_)
 
     size_t index = 4;
     for (uint32_t i = 0; i < service_count && index < frames.size (); ++i) {
-        if (index + 2 >= frames.size ())
+        if (index + 3 >= frames.size ())
             break;
-        uint16_t service_type = 0;
-        if (!discovery_protocol::read_u16 (frames[index++], &service_type))
+        uint16_t auto_connect_type = 0;
+        if (!discovery_protocol::read_u16 (frames[index++],
+                                           &auto_connect_type)
+            || !discovery_protocol::is_valid_auto_connect_type (
+              auto_connect_type))
             break;
-        const std::string service_name =
+        const std::string channel_name =
           discovery_protocol::read_string (frames[index++]);
+        uint64_t contract_created_at = 0;
+        if (!discovery_protocol::read_u64 (frames[index++],
+                                           &contract_created_at))
+            break;
         uint32_t provider_count = 0;
         if (!discovery_protocol::read_u32 (frames[index++], &provider_count))
             break;
 
         service_key_t service_key;
-        service_key.service_type = service_type;
-        service_key.service_name = service_name;
+        service_key.channel_name = channel_name;
+        channel_contract_t contract;
+        contract.auto_connect_type = auto_connect_type;
+        contract.created_at = contract_created_at;
+        contract.owner_registry_id = peer_registry_id == 0 ? 1
+                                                           : peer_registry_id;
+        incoming_contracts[channel_name] = contract;
+
         service_entry_t &service = incoming[service_key];
+        service.auto_connect_type = auto_connect_type;
         for (uint32_t p = 0; p < provider_count && index + 5 < frames.size ();
              ++p) {
             provider_entry_t entry;
             if (!discovery_protocol::read_u16 (frames[index++],
                                                &entry.service_role))
                 break;
-            if (!discovery_protocol::is_valid_service_role_for_type (
-                  service_type, entry.service_role))
+            if (!discovery_protocol::auto_connect_type_allows_role (
+                  auto_connect_type, entry.service_role))
                 break;
             entry.endpoint = discovery_protocol::read_string (frames[index++]);
             discovery_protocol::read_routing_id (frames[index++],
@@ -154,6 +230,20 @@ void registry_t::handle_peer (void *sub_)
             || (it != _peer_seq.end () && list_seq <= it->second)) {
             close_msg_frames (&frames);
             return;
+        }
+
+        for (std::map<std::string, channel_contract_t>::const_iterator cit =
+               incoming_contracts.begin ();
+             cit != incoming_contracts.end (); ++cit) {
+            const channel_contract_t &contract = cit->second;
+            if (ensure_channel_contract_locked (
+                  cit->first, contract.auto_connect_type, contract.created_at,
+                  contract.owner_registry_id)
+                != 0) {
+                service_key_t rejected_key;
+                rejected_key.channel_name = cit->first;
+                incoming.erase (rejected_key);
+            }
         }
 
         for (service_map_t::const_iterator sit = incoming.begin ();
@@ -252,6 +342,7 @@ void registry_t::handle_peer (void *sub_)
             const service_key_t &service_key = sit->first;
             const provider_map_t &providers = sit->second.providers;
             service_entry_t &service = _services[service_key];
+            service.auto_connect_type = sit->second.auto_connect_type;
             for (provider_map_t::const_iterator pit = providers.begin ();
                  pit != providers.end (); ++pit) {
                 provider_map_t::iterator existing =
@@ -282,27 +373,28 @@ void registry_t::handle_register (void *router_,
         return;
     }
 
-    uint16_t service_type = 0;
-    if (!discovery_protocol::read_u16 (frames_[1], &service_type)
-        || !discovery_protocol::is_valid_service_type (service_type)) {
+    uint16_t auto_connect_type = 0;
+    if (!discovery_protocol::read_u16 (frames_[1], &auto_connect_type)
+        || !discovery_protocol::is_valid_auto_connect_type (
+          auto_connect_type)) {
         send_register_ack (router_, sender_id_, 0xFF, std::string (),
                            "invalid type");
         return;
     }
     uint16_t service_role = 0;
     if (!discovery_protocol::read_u16 (frames_[2], &service_role)
-        || !discovery_protocol::is_valid_service_role_for_type (service_type,
-                                                                service_role)) {
+        || !discovery_protocol::auto_connect_type_allows_role (
+          auto_connect_type, service_role)) {
         send_register_ack (router_, sender_id_, 0xFF, std::string (),
                            "invalid role");
         return;
     }
-    const std::string service_name =
+    const std::string channel_name =
       discovery_protocol::read_string (frames_[3]);
     const std::string endpoint =
       discovery_protocol::read_string (frames_[4]);
 
-    if (service_name.empty () || endpoint.empty ()) {
+    if (channel_name.empty () || endpoint.empty ()) {
         send_register_ack (router_, sender_id_, 0x02, endpoint,
                            "invalid endpoint");
         return;
@@ -331,26 +423,40 @@ void registry_t::handle_register (void *router_,
 
     const uint64_t now = zlink::clock_t ().now_ms ();
 
-    service_key_t service_key;
-    service_key.service_type = service_type;
-    service_key.service_name = service_name;
-    service_entry_t &service = _services[service_key];
-    provider_key_t provider_key;
-    provider_key.service_role = service_role;
-    provider_key.endpoint = endpoint;
-    provider_entry_t &entry = service.providers[provider_key];
-    entry.service_role = service_role;
-    entry.endpoint = endpoint;
-    entry.routing_id = sender_id_;
-    entry.weight = weight;
-    entry.value = value;
-    entry.metadata = metadata;
-    entry.registered_at = now;
-    entry.last_heartbeat = now;
-    entry.source_registry = _registry_id;
+    uint8_t status = 0x00;
+    std::string error;
+    {
+        scoped_lock_t lock (_sync);
+        uint32_t registry_id = _registry_id == 0 ? 1 : _registry_id;
+        if (ensure_channel_contract_locked (channel_name, auto_connect_type,
+                                            now, registry_id)
+            != 0) {
+            status = errno == EEXIST ? 0x03 : 0xFF;
+            error = "channel type conflict";
+        } else {
+            service_key_t service_key;
+            service_key.channel_name = channel_name;
+            service_entry_t &service = _services[service_key];
+            service.auto_connect_type = auto_connect_type;
+            provider_key_t provider_key;
+            provider_key.service_role = service_role;
+            provider_key.endpoint = endpoint;
+            provider_entry_t &entry = service.providers[provider_key];
+            entry.service_role = service_role;
+            entry.endpoint = endpoint;
+            entry.routing_id = sender_id_;
+            entry.weight = weight;
+            entry.value = value;
+            entry.metadata = metadata;
+            entry.registered_at = now;
+            entry.last_heartbeat = now;
+            entry.source_registry = registry_id;
 
-    _list_seq++;
-    send_register_ack (router_, sender_id_, 0x00, endpoint, std::string ());
+            _list_seq++;
+        }
+    }
+
+    send_register_ack (router_, sender_id_, status, endpoint, error);
 }
 
 void registry_t::handle_unregister (void *router_,
@@ -363,26 +469,25 @@ void registry_t::handle_unregister (void *router_,
         return;
     }
 
-    uint16_t service_type = 0;
-    if (!discovery_protocol::read_u16 (frames_[1], &service_type)) {
+    uint16_t auto_connect_type = 0;
+    if (!discovery_protocol::read_u16 (frames_[1], &auto_connect_type)) {
         send_unregister_ack (router_, sender_id_, 0xFF, "invalid type");
         return;
     }
     uint16_t service_role = 0;
     if (!discovery_protocol::read_u16 (frames_[2], &service_role)
-        || !discovery_protocol::is_valid_service_role_for_type (service_type,
-                                                                service_role)) {
+        || !discovery_protocol::auto_connect_type_allows_role (
+          auto_connect_type, service_role)) {
         send_unregister_ack (router_, sender_id_, 0xFF, "invalid role");
         return;
     }
-    const std::string service_name =
+    const std::string channel_name =
       discovery_protocol::read_string (frames_[3]);
     const std::string endpoint =
       discovery_protocol::read_string (frames_[4]);
 
     service_key_t service_key;
-    service_key.service_type = service_type;
-    service_key.service_name = service_name;
+    service_key.channel_name = channel_name;
 
     service_map_t::iterator sit = _services.find (service_key);
     if (sit == _services.end ()) {
@@ -417,23 +522,22 @@ void registry_t::handle_heartbeat (const zlink_msg_t *frames_,
     if (frame_count_ < 5)
         return;
 
-    uint16_t service_type = 0;
-    if (!discovery_protocol::read_u16 (frames_[1], &service_type))
+    uint16_t auto_connect_type = 0;
+    if (!discovery_protocol::read_u16 (frames_[1], &auto_connect_type))
         return;
     uint16_t service_role = 0;
     if (!discovery_protocol::read_u16 (frames_[2], &service_role)
-        || !discovery_protocol::is_valid_service_role_for_type (service_type,
-                                                                service_role)) {
+        || !discovery_protocol::auto_connect_type_allows_role (
+          auto_connect_type, service_role)) {
         return;
     }
-    const std::string service_name =
+    const std::string channel_name =
       discovery_protocol::read_string (frames_[3]);
     const std::string endpoint =
       discovery_protocol::read_string (frames_[4]);
 
     service_key_t service_key;
-    service_key.service_type = service_type;
-    service_key.service_name = service_name;
+    service_key.channel_name = channel_name;
 
     service_map_t::iterator sit = _services.find (service_key);
     if (sit == _services.end ())
@@ -460,22 +564,23 @@ void registry_t::handle_update_attributes (void *router_,
         return;
     }
 
-    uint16_t service_type = 0;
-    if (!discovery_protocol::read_u16 (frames_[1], &service_type)
-        || !discovery_protocol::is_valid_service_type (service_type)) {
+    uint16_t auto_connect_type = 0;
+    if (!discovery_protocol::read_u16 (frames_[1], &auto_connect_type)
+        || !discovery_protocol::is_valid_auto_connect_type (
+          auto_connect_type)) {
         send_register_ack (router_, sender_id_, 0xFF, std::string (),
                            "invalid type");
         return;
     }
     uint16_t service_role = 0;
     if (!discovery_protocol::read_u16 (frames_[2], &service_role)
-        || !discovery_protocol::is_valid_service_role_for_type (service_type,
-                                                                service_role)) {
+        || !discovery_protocol::auto_connect_type_allows_role (
+          auto_connect_type, service_role)) {
         send_register_ack (router_, sender_id_, 0xFF, std::string (),
                            "invalid role");
         return;
     }
-    const std::string service_name =
+    const std::string channel_name =
       discovery_protocol::read_string (frames_[3]);
     const std::string endpoint =
       discovery_protocol::read_string (frames_[4]);
@@ -498,8 +603,7 @@ void registry_t::handle_update_attributes (void *router_,
     }
 
     service_key_t service_key;
-    service_key.service_type = service_type;
-    service_key.service_name = service_name;
+    service_key.channel_name = channel_name;
     service_map_t::iterator sit = _services.find (service_key);
     if (sit == _services.end ()) {
         send_register_ack (router_, sender_id_, 0x01, endpoint,

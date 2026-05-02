@@ -669,21 +669,21 @@ services managed by the Registry and Discovery.
 ```c
 typedef struct zlink_member_peer_entry_t
 {
-    zlink_service_type_t service_type;
-    uint16_t service_role;
-    char service_name[256];
+    zlink_auto_connect_type_t auto_connect_type;
+    zlink_service_role_t service_role;
+    char channel_name[256];
     char endpoint[256];
-    zlink_routing_id_t routing_id;
     uint32_t weight;
+    zlink_routing_id_t routing_id;
     int64_t value;
 } zlink_member_peer_entry_t;
 ```
 
 | Field | Description |
 |-------|-------------|
-| `service_type` | Service type (`ZLINK_SERVICE_TYPE_*`). |
+| `auto_connect_type` | Auto-connect channel type (`ZLINK_AUTO_CONNECT_*`). |
 | `service_role` | Role of the service instance. |
-| `service_name` | Null-terminated service name. |
+| `channel_name` | Null-terminated channel name. |
 | `endpoint` | Null-terminated endpoint. |
 | `routing_id` | Routing identity of the peer. |
 | `weight` | Current peer weight (`0..100`). `0` means the provider is excluded from new outbound candidate selection; positive values remain eligible and are selected proportionally. |
@@ -697,15 +697,14 @@ Get member peer entries for a service from a local Registry.
 
 ```c
 zlink_config_result_t zlink_registry_member_peers(void *registry,
-                                                  zlink_service_type_t service_type,
-                                                  const char *service_name,
+                                                  const char *channel_name,
                                                   zlink_member_peer_entry_t *entries,
                                                   size_t *count);
 ```
 
-Fills `entries` with member peer entries matching the given service type
-and name. On input `*count` is the array capacity; on output it is the
-actual count. Pass `entries = NULL` to query the required count first.
+Fills `entries` with member peer entries matching the given channel name. On
+input `*count` is the array capacity; on output it is the actual count. Pass
+`entries = NULL` to query the required count first.
 
 **Returns:** A `zlink_config_result_t` value.
 
@@ -719,15 +718,14 @@ Get metadata for a specific member peer from a local Registry.
 
 ```c
 zlink_config_result_t zlink_registry_member_peer_metadata(void *registry,
-                                                          zlink_service_type_t service_type,
-                                                          const char *service_name,
-                                                          uint16_t service_role,
+                                                          const char *channel_name,
+                                                          zlink_service_role_t service_role,
                                                           const char *endpoint,
                                                           zlink_msg_t *metadata_out);
 ```
 
-Retrieves metadata for the member peer identified by service type, name,
-role, and endpoint. The metadata is written into `metadata_out`.
+Retrieves metadata for the member peer identified by channel name, role, and
+endpoint. The metadata is written into `metadata_out`.
 
 **Returns:** A `zlink_config_result_t` value.
 

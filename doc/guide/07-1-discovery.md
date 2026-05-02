@@ -157,7 +157,7 @@ For socket family services, Discovery matches peers by **service role**:
 |--------------|-----------|---------|
 | PUB | SUB peers | Publisher finds all subscribers |
 | SUB | PUB peers | Subscriber finds all publishers |
-| ROUTER | DEALER peers | Server finds all clients |
+| ROUTER | auto-connect peers | Server finds all clients |
 | DEALER | ROUTER peers | Client finds all servers |
 
 The role is derived automatically from the socket type at attach time --
@@ -246,9 +246,9 @@ SPOT nodes or raw sockets. Discovery handles registration, peer lookup,
 and heartbeats on behalf of the attached services.
 
 ```c
-/* service_type: ZLINK_SERVICE_TYPE_SPOT or ZLINK_SERVICE_TYPE_SOCKET */
+/* choose ROUTE_MESH, CLIENT_SERVER, DEALER_MESH, FANOUT, or SPOT_MESH */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SPOT, "order-service");
+    ZLINK_AUTO_CONNECT_SPOT_MESH, "order-service");
 
 /* Connect to Registry bootstrap/control endpoint (multiple allowed) */
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
@@ -265,7 +265,7 @@ zlink_discovery_destroy(&discovery);
 ```
 
 For the new multi-service SpotNode topology, use
-`ZLINK_SERVICE_TYPE_SOCKET` per attached socket — see the SPOT guide
+`ZLINK_AUTO_CONNECT_CLIENT_SERVER` for channel DEALER calls — see the SPOT guide
 [§3.1 Discovery-Based Automatic Mesh](07-3-spot.md#31-discovery-based-automatic-mesh).
 
 ## 4.1 Socket Family Discovery
@@ -275,9 +275,9 @@ discovery and lifecycle management. This enables location-transparent
 communication at the socket level without the SPOT abstraction.
 
 ```c
-/* Create Discovery with SOCKET type */
+/* Create a FANOUT Discovery for PUB/SUB */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SOCKET, "price-feed");
+    ZLINK_AUTO_CONNECT_FANOUT, "price-feed");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Create a PUB socket and attach it to Discovery */
@@ -310,13 +310,13 @@ zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* SPOT mesh — this node's own channel */
 void *spot_disc = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SPOT, "alpha");
+    ZLINK_AUTO_CONNECT_SPOT_MESH, "alpha");
 zlink_discovery_connect_registry(spot_disc, "tcp://registry1:5551");
 zlink_spot_node_attach_discovery(node, spot_disc);
 
 /* Channel call to "orders-exec" via automatic dealer */
 void *orders_disc = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SOCKET, "orders-exec");
+    ZLINK_AUTO_CONNECT_CLIENT_SERVER, "orders-exec");
 zlink_discovery_connect_registry(orders_disc, "tcp://registry1:5551");
 
 void *orders_dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
@@ -328,7 +328,7 @@ zlink_spot_node_attach_channel_dealer(node, orders_disc, orders_dealer);
 Rules to keep in mind:
 
 - **One SPOT Discovery per node.** `zlink_spot_node_attach_discovery()`
-  accepts only `ZLINK_SERVICE_TYPE_SPOT`. A second attach is `EBUSY`.
+  accepts only `ZLINK_AUTO_CONNECT_SPOT_MESH`. A second attach is `EBUSY`.
 - **One DEALER per channel name.** Automatic and manual attach share the
   same namespace. Attaching a second `DEALER` for the same channel fails
   with `EBUSY`.

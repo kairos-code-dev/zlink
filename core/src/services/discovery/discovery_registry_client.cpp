@@ -173,12 +173,18 @@ static int prepare_transient_dealer_local (ctx_t *ctx_,
     return 0;
 }
 
-static uint16_t resolve_registered_service_role_local (uint16_t service_type_,
-                                                       uint16_t service_role_)
+static uint16_t resolve_registered_service_role_local (uint16_t service_role_)
 {
-    return service_role_ != discovery_protocol::service_role_invalid
-             ? service_role_
-             : discovery_protocol::fixed_service_role_for_type (service_type_);
+    return service_role_;
+}
+
+static int register_status_errno_local (int status_)
+{
+    if (status_ == 0x03)
+        return EEXIST;
+    if (status_ == 0x04)
+        return ENOTSUP;
+    return EINVAL;
 }
 
 static bool topology_state_is_resolvable_local (zlink_topology_state_t state_)
@@ -252,7 +258,7 @@ int discovery_t::resolve_spot (const zlink_routing_id_t *spot_rid_,
         errno = EINVAL;
         return -1;
     }
-    if (_service_type != discovery_protocol::service_type_spot_node) {
+    if (_auto_connect_type != ZLINK_AUTO_CONNECT_SPOT_MESH) {
         errno = ENOTSUP;
         return -1;
     }
@@ -291,7 +297,7 @@ discovery_t::topology_key_t discovery_t::make_spot_topology_key (
   const zlink_routing_id_t &spot_rid_) const
 {
     return make_summary_key (ZLINK_SERVICE_KIND_SPOT_PUB, ZLINK_SERVICE_ROLE_SPOT,
-                             spot_rid_, _service_name);
+                             spot_rid_, _channel_name);
 }
 
 bool discovery_t::resolve_owner_node_from_endpoint_locked (
@@ -369,9 +375,11 @@ int discovery_t::query_spot_owner_entries_from_registry (
     filter.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
     filter.service_role = ZLINK_SERVICE_ROLE_SPOT;
     filter.routing_id = *spot_rid_;
-    copy_fixed_c_string_from_cstr (filter.service_name,
-                                   sizeof (filter.service_name),
-                                   _service_name.c_str ());
+    filter.auto_connect_type =
+      static_cast<zlink_auto_connect_type_t> (_auto_connect_type);
+    copy_fixed_c_string_from_cstr (filter.channel_name,
+                                   sizeof (filter.channel_name),
+                                   _channel_name.c_str ());
 
     int rc = 0;
     if (discovery_protocol::send_u16 (static_cast<void *> (dealer),
@@ -407,16 +415,14 @@ void discovery_t::refresh_spot_owner_cache_locked (
 
         const topology_key_t entry_key = make_summary_key (
           entry.service_kind, entry.service_role, entry.routing_id,
-          entry.service_name);
+          entry.channel_name);
         store_summary_entry_locked (
           entry_key, entry, false, entry.state == ZLINK_TOPOLOGY_STATE_STOPPED,
           validated_service_seq);
     }
 }
 
-int discovery_t::register_service (uint16_t service_type_,
-                                   const char *service_name_,
-                                   const char *endpoint_,
+int discovery_t::register_service (const char *endpoint_,
                                    uint32_t weight_,
                                    int64_t value_,
                                    const std::vector<unsigned char> *metadata_,
@@ -424,16 +430,15 @@ int discovery_t::register_service (uint16_t service_type_,
                                    const zlink_routing_id_t *routing_id_,
                                    uint16_t service_role_)
 {
-    if (!service_name_ || service_name_[0] == '\0' || !endpoint_
-        || endpoint_[0] == '\0') {
+    if (_channel_name.empty () || !endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
         return -1;
     }
     const uint16_t service_role =
-      resolve_registered_service_role_local (service_type_, service_role_);
-    if (!discovery_protocol::is_valid_service_role_for_type (service_type_,
-                                                             service_role)) {
-        errno = EINVAL;
+      resolve_registered_service_role_local (service_role_);
+    if (!discovery_protocol::auto_connect_type_allows_role (
+          _auto_connect_type, service_role)) {
+        errno = ENOTSUP;
         return -1;
     }
 
@@ -455,11 +460,12 @@ int discovery_t::register_service (uint16_t service_type_,
     if (discovery_protocol::send_u16 (
           dealer, discovery_protocol::msg_register, ZLINK_SNDMORE)
           < 0
-        || discovery_protocol::send_u16 (dealer, service_type_, ZLINK_SNDMORE)
+        || discovery_protocol::send_u16 (dealer, _auto_connect_type,
+                                         ZLINK_SNDMORE)
              < 0
         || discovery_protocol::send_u16 (dealer, service_role, ZLINK_SNDMORE)
              < 0
-        || discovery_protocol::send_string (dealer, service_name_,
+        || discovery_protocol::send_string (dealer, _channel_name,
                                             ZLINK_SNDMORE)
              < 0
         || discovery_protocol::send_string (dealer, endpoint_, ZLINK_SNDMORE)
@@ -497,22 +503,20 @@ int discovery_t::register_service (uint16_t service_type_,
         }
         discovery_debugf_local ("register_service rejected status=%d error=%s",
                                 status, error.c_str ());
-        errno = EINVAL;
+        errno = register_status_errno_local (status);
         return -1;
     }
 
     registered_service_key_t key;
-    key.service_type = service_type_;
     key.service_role = service_role;
-    key.service_name = service_name_;
+    key.channel_name = _channel_name;
     key.endpoint = resolved.empty () ? endpoint_ : resolved;
 
     {
         scoped_lock_t lock (_sync);
         registered_service_t &service = _registered_services[key];
-        service.service_type = service_type_;
         service.service_role = service_role;
-        service.service_name = service_name_;
+        service.channel_name = _channel_name;
         service.endpoint = key.endpoint;
         service.uplink_endpoint = uplink;
         service.weight = weight_;
@@ -526,24 +530,21 @@ int discovery_t::register_service (uint16_t service_type_,
     return 0;
 }
 
-int discovery_t::update_service_attributes (uint16_t service_type_,
-                                            const char *service_name_,
-                                            const char *endpoint_,
+int discovery_t::update_service_attributes (const char *endpoint_,
                                             uint32_t weight_,
                                             int64_t value_,
                                             const std::vector<unsigned char> *metadata_,
                                             uint16_t service_role_)
 {
-    if (!service_name_ || service_name_[0] == '\0' || !endpoint_
-        || endpoint_[0] == '\0') {
+    if (_channel_name.empty () || !endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
         return -1;
     }
     const uint16_t service_role =
-      resolve_registered_service_role_local (service_type_, service_role_);
-    if (!discovery_protocol::is_valid_service_role_for_type (service_type_,
-                                                             service_role)) {
-        errno = EINVAL;
+      resolve_registered_service_role_local (service_role_);
+    if (!discovery_protocol::auto_connect_type_allows_role (
+          _auto_connect_type, service_role)) {
+        errno = ENOTSUP;
         return -1;
     }
 
@@ -551,9 +552,8 @@ int discovery_t::update_service_attributes (uint16_t service_type_,
     {
         scoped_lock_t lock (_sync);
         registered_service_key_t key;
-        key.service_type = service_type_;
         key.service_role = service_role;
-        key.service_name = service_name_;
+        key.channel_name = _channel_name;
         key.endpoint = endpoint_;
         std::map<registered_service_key_t, registered_service_t>::const_iterator
           it = _registered_services.find (key);
@@ -580,11 +580,12 @@ int discovery_t::update_service_attributes (uint16_t service_type_,
     if (discovery_protocol::send_u16 (
           dealer, discovery_protocol::msg_update_attributes, ZLINK_SNDMORE)
           < 0
-        || discovery_protocol::send_u16 (dealer, service_type_, ZLINK_SNDMORE)
+        || discovery_protocol::send_u16 (dealer, _auto_connect_type,
+                                         ZLINK_SNDMORE)
              < 0
         || discovery_protocol::send_u16 (dealer, service_role, ZLINK_SNDMORE)
              < 0
-        || discovery_protocol::send_string (dealer, service_name_,
+        || discovery_protocol::send_string (dealer, _channel_name,
                                             ZLINK_SNDMORE)
              < 0
         || discovery_protocol::send_string (dealer, endpoint_, ZLINK_SNDMORE)
@@ -624,15 +625,14 @@ int discovery_t::update_service_attributes (uint16_t service_type_,
         discovery_debugf_local (
           "update_service_attributes rejected status=%d error=%s", status,
           error.c_str ());
-        errno = EINVAL;
+        errno = register_status_errno_local (status);
         return -1;
     }
 
     scoped_lock_t lock (_sync);
     registered_service_key_t key;
-    key.service_type = service_type_;
     key.service_role = service_role;
-    key.service_name = service_name_;
+    key.channel_name = _channel_name;
     key.endpoint = endpoint_;
     std::map<registered_service_key_t, registered_service_t>::iterator it =
       _registered_services.find (key);
@@ -645,21 +645,18 @@ int discovery_t::update_service_attributes (uint16_t service_type_,
     return 0;
 }
 
-int discovery_t::unregister_service (uint16_t service_type_,
-                                     const char *service_name_,
-                                     const char *endpoint_,
+int discovery_t::unregister_service (const char *endpoint_,
                                      uint16_t service_role_)
 {
-    if (!service_name_ || service_name_[0] == '\0' || !endpoint_
-        || endpoint_[0] == '\0') {
+    if (_channel_name.empty () || !endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
         return -1;
     }
     const uint16_t service_role =
-      resolve_registered_service_role_local (service_type_, service_role_);
-    if (!discovery_protocol::is_valid_service_role_for_type (service_type_,
-                                                             service_role)) {
-        errno = EINVAL;
+      resolve_registered_service_role_local (service_role_);
+    if (!discovery_protocol::auto_connect_type_allows_role (
+          _auto_connect_type, service_role)) {
+        errno = ENOTSUP;
         return -1;
     }
 
@@ -667,9 +664,8 @@ int discovery_t::unregister_service (uint16_t service_type_,
     {
         scoped_lock_t lock (_sync);
         registered_service_key_t key;
-        key.service_type = service_type_;
         key.service_role = service_role;
-        key.service_name = service_name_;
+        key.channel_name = _channel_name;
         key.endpoint = endpoint_;
         std::map<registered_service_key_t, registered_service_t>::const_iterator
           it = _registered_services.find (key);
@@ -695,11 +691,12 @@ int discovery_t::unregister_service (uint16_t service_type_,
     if (discovery_protocol::send_u16 (
           dealer, discovery_protocol::msg_unregister, ZLINK_SNDMORE)
           < 0
-        || discovery_protocol::send_u16 (dealer, service_type_, ZLINK_SNDMORE)
+        || discovery_protocol::send_u16 (dealer, _auto_connect_type,
+                                         ZLINK_SNDMORE)
              < 0
         || discovery_protocol::send_u16 (dealer, service_role, ZLINK_SNDMORE)
              < 0
-        || discovery_protocol::send_string (dealer, service_name_,
+        || discovery_protocol::send_string (dealer, _channel_name,
                                             ZLINK_SNDMORE)
              < 0
         || discovery_protocol::send_string (dealer, endpoint_, 0) < 0) {
@@ -734,9 +731,8 @@ int discovery_t::unregister_service (uint16_t service_type_,
 
     scoped_lock_t lock (_sync);
     registered_service_key_t key;
-    key.service_type = service_type_;
     key.service_role = service_role;
-    key.service_name = service_name_;
+    key.channel_name = _channel_name;
     key.endpoint = endpoint_;
     _registered_services.erase (key);
     return 0;

@@ -2,21 +2,19 @@
 
 package dev.kairoscode.zlink.service.registry;
 
-import dev.kairoscode.zlink.service.registry.ServiceKind;
-import dev.kairoscode.zlink.service.registry.ServiceRole;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
-public record RegistryServiceSummaryEntry(ServiceKind serviceKind,
+public record RegistryServiceSummaryEntry(AutoConnectType autoConnectType,
                                           ServiceRole serviceRole,
-                                          String serviceName, int totalCount,
+                                          String channelName, int totalCount,
                                           int connectingCount, int readyCount,
                                           int errorCount, int stoppedCount,
                                           long lastReportedMs) {
     static RegistryServiceSummaryEntry fromNative(MemorySegment segment) {
         return new RegistryServiceSummaryEntry(
-          ServiceKind.fromValue(segment.get(ValueLayout.JAVA_INT, 0)),
+          AutoConnectType.fromValue(segment.get(ValueLayout.JAVA_INT, 0)),
           ServiceRole.fromValue(segment.get(ValueLayout.JAVA_INT, 4)),
           NativeHelpers.fromCString(segment.asSlice(8, 256), 256),
           segment.get(ValueLayout.JAVA_INT, 264),

@@ -4,7 +4,7 @@ import ctypes
 from dataclasses import dataclass
 
 from ._enums import (
-    DiscoveryDealerPeerMode,
+    AutoConnectType,
     RegistryState,
     ServiceRole,
     TopologySource,
@@ -46,9 +46,9 @@ def _decode_fixed(buf):
 
 @dataclass(frozen=True)
 class MemberPeerEntry:
-    service_type: int
+    auto_connect_type: int
     service_role: int
-    service_name: str
+    channel_name: str
     endpoint: str
     routing_id: bytes
     weight: int
@@ -70,9 +70,9 @@ class RegistryStatus:
 
 @dataclass(frozen=True)
 class RegistryServiceSummaryEntry:
-    service_kind: int
+    auto_connect_type: int
     service_role: int
-    service_name: str
+    channel_name: str
     total_count: int
     connecting_count: int
     ready_count: int
@@ -83,17 +83,18 @@ class RegistryServiceSummaryEntry:
 
 @dataclass(frozen=True)
 class RegistryServiceSummaryFilter:
-    service_kind: int | None = None
+    auto_connect_type: int | None = None
     service_role: int | None = None
-    service_name: str | None = None
+    channel_name: str | None = None
 
 
 @dataclass(frozen=True)
 class RegistryTopologyEntry:
+    auto_connect_type: int
     routing_id: bytes
     service_kind: int
     service_role: int
-    service_name: str
+    channel_name: str
     endpoint: str
     source: int
     state: int
@@ -105,9 +106,10 @@ class RegistryTopologyEntry:
 
 @dataclass(frozen=True)
 class RegistryTopologyFilter:
+    auto_connect_type: int | None = None
     service_kind: int | None = None
     service_role: int | None = None
-    service_name: str | None = None
+    channel_name: str | None = None
     routing_id: bytes | None = None
     state: int | None = None
     source: int | None = None
@@ -115,9 +117,9 @@ class RegistryTopologyFilter:
 
 def _member_peer_from_native(entry):
     return MemberPeerEntry(
-        service_type=int(entry.service_type),
+        auto_connect_type=AutoConnectType(int(entry.auto_connect_type)),
         service_role=ServiceRole(int(entry.service_role)),
-        service_name=_decode_fixed(entry.service_name),
+        channel_name=_decode_fixed(entry.channel_name),
         endpoint=_decode_fixed(entry.endpoint),
         routing_id=_routing_id_bytes(entry.routing_id),
         weight=int(entry.weight),
@@ -142,10 +144,11 @@ def _query_member_peers(handle, fn, *args):
 
 def _topology_entry_from_native(entry):
     return RegistryTopologyEntry(
+        auto_connect_type=AutoConnectType(int(entry.auto_connect_type)),
         routing_id=_routing_id_bytes(entry.routing_id),
         service_kind=int(entry.service_kind),
         service_role=ServiceRole(int(entry.service_role)),
-        service_name=_decode_fixed(entry.service_name),
+        channel_name=_decode_fixed(entry.channel_name),
         endpoint=_decode_fixed(entry.endpoint),
         source=TopologySource(int(entry.source)),
         state=TopologyState(int(entry.state)),
@@ -173,11 +176,14 @@ def _query_topology(handle, fn, filter_ptr=None):
 
 def _build_topology_filter(filter_):
     native = ZlinkRegistryTopologyFilter()
+    native.auto_connect_type = (
+        0 if filter_.auto_connect_type is None else int(filter_.auto_connect_type)
+    )
     native.service_kind = 0 if filter_.service_kind is None else int(filter_.service_kind)
     native.service_role = 0 if filter_.service_role is None else int(filter_.service_role)
-    native.service_name = _validated_c_string_text(
-        filter_.service_name or "",
-        field="service_name",
+    native.channel_name = _validated_c_string_text(
+        filter_.channel_name or "",
+        field="channel_name",
         max_length=255,
     )
     if filter_.routing_id is not None:
@@ -291,11 +297,15 @@ class Registry:
         filter_native = None
         if filter_ is not None:
             filter_native = ZlinkRegistryServiceSummaryFilter()
-            filter_native.service_kind = 0 if filter_.service_kind is None else int(filter_.service_kind)
+            filter_native.auto_connect_type = (
+                0
+                if filter_.auto_connect_type is None
+                else int(filter_.auto_connect_type)
+            )
             filter_native.service_role = 0 if filter_.service_role is None else int(filter_.service_role)
-            filter_native.service_name = _validated_c_string_text(
-                filter_.service_name or "",
-                field="service_name",
+            filter_native.channel_name = _validated_c_string_text(
+                filter_.channel_name or "",
+                field="channel_name",
                 max_length=255,
             )
             filter_ptr = ctypes.byref(filter_native)
@@ -316,9 +326,9 @@ class Registry:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return [
             RegistryServiceSummaryEntry(
-                service_kind=int(entry.service_kind),
+                auto_connect_type=AutoConnectType(int(entry.auto_connect_type)),
                 service_role=ServiceRole(int(entry.service_role)),
-                service_name=_decode_fixed(entry.service_name),
+                channel_name=_decode_fixed(entry.channel_name),
                 total_count=int(entry.total_count),
                 connecting_count=int(entry.connecting_count),
                 ready_count=int(entry.ready_count),
@@ -329,18 +339,17 @@ class Registry:
             for entry in entries[: count.value]
         ]
 
-    def member_peers(self, service_type, service_name):
+    def member_peers(self, channel_name):
         return _query_member_peers(
             self._handle,
             lib().zlink_registry_member_peers,
-            int(service_type),
             _validated_c_string_text(
-                service_name, field="service_name", max_length=255
+                channel_name, field="channel_name", max_length=255
             ),
         )
 
     def member_peer_metadata(
-        self, service_type, service_name, service_role: int, endpoint: str
+        self, channel_name, service_role: int, endpoint: str
     ) -> bytes:
         msg = ZlinkMsg()
         rc = lib().zlink_msg_init(ctypes.byref(msg))
@@ -349,9 +358,8 @@ class Registry:
         try:
             rc = lib().zlink_registry_member_peer_metadata(
                 self._handle,
-                int(service_type),
                 _validated_c_string_text(
-                    service_name, field="service_name", max_length=255
+                    channel_name, field="channel_name", max_length=255
                 ),
                 int(service_role),
                 _validated_c_string_text(endpoint, field="endpoint", max_length=255),
@@ -396,12 +404,12 @@ class Registry:
 
 
 class Discovery:
-    def __init__(self, ctx, service_type, service_name: str):
+    def __init__(self, ctx, auto_connect_type, channel_name: str):
         self._handle = lib().zlink_discovery_new(
             ctx._handle,
-            int(service_type),
+            int(auto_connect_type),
             _validated_c_string_text(
-                service_name, field="service_name", max_length=255
+                channel_name, field="channel_name", max_length=255
             ),
         )
         if not self._handle:
@@ -485,11 +493,6 @@ class Discovery:
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return RoutingId(_routing_id_bytes(owner_node_rid))
-
-    def set_dealer_peer_mode(self, mode: DiscoveryDealerPeerMode):
-        rc = lib().zlink_discovery_set_dealer_peer_mode(self._handle, int(mode))
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def set_tls_client(
         self, ca_cert: str | None, hostname: str | None, trust_system: bool = False

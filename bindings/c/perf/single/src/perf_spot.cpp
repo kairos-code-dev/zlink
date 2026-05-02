@@ -502,9 +502,9 @@ int run_case (const std::string &lib_name_,
     void *subscriber_node = zlink_spot_node_new (ctx.get (), NULL);
     void *registry = zlink_registry_new (ctx.get ());
     void *publisher_discovery =
-      zlink_discovery_new (ctx.get (), ZLINK_SERVICE_TYPE_SPOT, k_service_name);
+      zlink_discovery_new (ctx.get (), ZLINK_AUTO_CONNECT_SPOT_MESH, k_service_name);
     void *subscriber_discovery =
-      zlink_discovery_new (ctx.get (), ZLINK_SERVICE_TYPE_SPOT, k_service_name);
+      zlink_discovery_new (ctx.get (), ZLINK_AUTO_CONNECT_SPOT_MESH, k_service_name);
     void *publisher = NULL;
     void *subscriber = NULL;
     if (!publisher_node || !subscriber_node || !registry

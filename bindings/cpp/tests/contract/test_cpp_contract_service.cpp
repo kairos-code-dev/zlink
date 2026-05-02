@@ -252,21 +252,6 @@ template<typename T> class has_resolve_spot_t
     static const bool value = decltype (test<T> (0))::value;
 };
 
-template<typename T> class has_set_dealer_peer_mode_t
-{
-  private:
-    template<typename U>
-    static auto test (int)
-      -> decltype (std::declval<U &> ().set_dealer_peer_mode (
-                      zlink::service::discovery_dealer_peer_mode_t::router),
-                    std::true_type ());
-
-    template<typename> static std::false_type test (...);
-
-  public:
-    static const bool value = decltype (test<T> (0))::value;
-};
-
 template<typename T> class has_routing_id_getter_t
 {
   private:
@@ -315,8 +300,6 @@ static_assert (!has_monitor_open_t<zlink::service::discovery_t>::value,
                "discovery_t must not expose monitor_open");
 static_assert (has_resolve_spot_t<zlink::service::discovery_t>::value,
                "discovery_t must expose resolve_spot");
-static_assert (has_set_dealer_peer_mode_t<zlink::service::discovery_t>::value,
-               "discovery_t must expose set_dealer_peer_mode");
 static_assert (has_close_t<zlink::service::spot_t>::value,
                "spot_t must expose close");
 static_assert (has_close_t<zlink::service::spot_node_t>::value,
@@ -341,7 +324,7 @@ void test_registry_query_and_discovery_metadata ()
     assert (topology.size () >= 0);
 
     zlink::service::discovery_t discovery (
-      ctx, zlink::service_type::spot, "orders");
+      ctx, zlink::auto_connect_type::spot_mesh, "orders");
     assert (discovery.valid ());
 
     const int64_t value = 42;
@@ -361,12 +344,8 @@ void test_registry_query_and_discovery_metadata ()
     assert (peers.size () >= 0);
 
     zlink::service::discovery_t socket_discovery (
-      ctx, zlink::service_type::socket, "orders-socket");
+      ctx, zlink::auto_connect_type::client_server, "orders-socket");
     assert (socket_discovery.valid ());
-    socket_discovery.set_dealer_peer_mode (
-      zlink::service::discovery_dealer_peer_mode_t::router);
-    socket_discovery.set_dealer_peer_mode (
-      zlink::service::discovery_dealer_peer_mode_t::dealer);
 }
 
 void test_spot_node_snapshot_contract ()
@@ -409,7 +388,7 @@ void test_unified_spot_self_delivery_recv_contract ()
       zlink_cpp_contract::unique_tcp ("spot-self-reg-router");
     registry.bind (registry_pub, registry_router);
     zlink::service::discovery_t discovery (
-      ctx, zlink::service_type::spot, service_name);
+      ctx, zlink::auto_connect_type::spot_mesh, service_name);
     assert (discovery.valid ());
     discovery.connect_registry (registry_router);
     node.attach_discovery (discovery);

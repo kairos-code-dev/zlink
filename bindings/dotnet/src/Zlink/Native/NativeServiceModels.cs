@@ -156,9 +156,9 @@ internal unsafe struct ZlinkRegistryStatus
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct ZlinkRegistryServiceSummaryEntry
 {
-    public int ServiceKind;
+    public int AutoConnectType;
     public int ServiceRole;
-    public fixed byte ServiceName[256];
+    public fixed byte ChannelName[256];
     public uint TotalCount;
     public uint ConnectingCount;
     public uint ReadyCount;
@@ -170,30 +170,31 @@ internal unsafe struct ZlinkRegistryServiceSummaryEntry
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct ZlinkRegistryServiceSummaryFilter
 {
-    public int ServiceKind;
+    public int AutoConnectType;
     public int ServiceRole;
-    public fixed byte ServiceName[256];
+    public fixed byte ChannelName[256];
 }
 
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct ZlinkMemberPeerEntry
 {
-    public int ServiceType;
-    public ushort ServiceRole;
-    public fixed byte ServiceName[256];
+    public int AutoConnectType;
+    public int ServiceRole;
+    public fixed byte ChannelName[256];
     public fixed byte Endpoint[256];
-    public ZlinkRoutingId RoutingId;
     public uint Weight;
+    public ZlinkRoutingId RoutingId;
     public long Value;
 }
 
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct ZlinkRegistryTopologyEntry
 {
+    public int AutoConnectType;
     public ZlinkRoutingId RoutingId;
     public int ServiceKind;
     public int ServiceRole;
-    public fixed byte ServiceName[256];
+    public fixed byte ChannelName[256];
     public fixed byte Endpoint[256];
     public int Source;
     public int State;
@@ -206,9 +207,10 @@ internal unsafe struct ZlinkRegistryTopologyEntry
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct ZlinkRegistryTopologyFilter
 {
+    public int AutoConnectType;
     public int ServiceKind;
     public int ServiceRole;
-    public fixed byte ServiceName[256];
+    public fixed byte ChannelName[256];
     public ZlinkRoutingId RoutingId;
     public int State;
     public int Source;

@@ -47,7 +47,7 @@ static void registry_query_client_thread (void *arg_)
                   sample->query, NULL, entries, &count)
                 == ZLINK_CONFIG_OK);
         for (size_t i = 0; i < count; ++i) {
-            if (strcmp (entries[i].service_name, k_service_name) == 0) {
+            if (strcmp (entries[i].channel_name, k_service_name) == 0) {
                 sample->found = 1;
                 break;
             }
@@ -66,7 +66,7 @@ int main (void)
     void *ctx = zlink_ctx_new ();
     void *registry = zlink_registry_new (ctx);
     sample.discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, k_service_name);
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT, k_service_name);
     sample.query = zlink_registry_query_client_new (ctx);
     sample.provider = zlink_socket (ctx, ZLINK_SOCKET_PUB);
     assert (ctx != NULL);

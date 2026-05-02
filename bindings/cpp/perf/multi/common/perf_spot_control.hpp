@@ -443,7 +443,7 @@ inline bool initialize_client_control_session (
 
     std::unique_ptr<zlink::service::discovery_t> control_discovery (
       new zlink::service::discovery_t (
-        ctx_, zlink::service_type::spot, service_name_));
+        ctx_, zlink::auto_connect_type::spot_mesh, service_name_));
     if (!control_discovery->valid ())
         return false;
     control_node->attach_discovery (*control_discovery);

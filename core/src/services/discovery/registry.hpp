@@ -45,13 +45,11 @@ class registry_t
     int topology_query (const zlink_registry_topology_filter_t *filter_,
                         zlink_registry_topology_entry_t *entries_,
                         size_t *count_);
-    int member_peers (zlink_service_type_t service_type_,
-                      const char *service_name_,
+    int member_peers (const char *channel_name_,
                       zlink_member_peer_entry_t *entries_,
                       size_t *count_);
-    int member_peer_metadata (zlink_service_type_t service_type_,
-                              const char *service_name_,
-                              uint16_t service_role_,
+    int member_peer_metadata (const char *channel_name_,
+                              zlink_service_role_t service_role_,
                               const char *endpoint_,
                               zlink_msg_t *metadata_out_);
     int status_snapshot (zlink_registry_status_t *out_);
@@ -68,14 +66,11 @@ class registry_t
   private:
     struct service_key_t
     {
-        uint16_t service_type;
-        std::string service_name;
+        std::string channel_name;
 
         bool operator< (const service_key_t &other_) const
         {
-            if (service_type != other_.service_type)
-                return service_type < other_.service_type;
-            return service_name < other_.service_name;
+            return channel_name < other_.channel_name;
         }
     };
 
@@ -109,7 +104,10 @@ class registry_t
 
     struct service_entry_t
     {
+        uint16_t auto_connect_type;
         provider_map_t providers;
+
+        service_entry_t () : auto_connect_type (0) {}
     };
 
     typedef std::map<service_key_t, service_entry_t> service_map_t;
@@ -119,7 +117,7 @@ class registry_t
         uint16_t service_kind;
         uint16_t service_role;
         std::string routing_id_key;
-        std::string service_name;
+        std::string channel_name;
         std::string endpoint;
 
         bool operator< (const topology_key_t &other_) const
@@ -130,8 +128,8 @@ class registry_t
                 return service_role < other_.service_role;
             if (routing_id_key != other_.routing_id_key)
                 return routing_id_key < other_.routing_id_key;
-            if (service_name != other_.service_name)
-                return service_name < other_.service_name;
+            if (channel_name != other_.channel_name)
+                return channel_name < other_.channel_name;
             return endpoint < other_.endpoint;
         }
     };
@@ -139,6 +137,20 @@ class registry_t
     struct topology_entry_t
     {
         zlink_registry_topology_entry_t entry;
+    };
+
+    struct channel_contract_t
+    {
+        uint16_t auto_connect_type;
+        uint64_t created_at;
+        uint32_t owner_registry_id;
+
+        channel_contract_t () :
+            auto_connect_type (0),
+            created_at (0),
+            owner_registry_id (0)
+        {
+        }
     };
 
     static void control_task (void *arg_);
@@ -155,6 +167,8 @@ class registry_t
                             const zlink_routing_id_t &sender_id_);
     void handle_heartbeat (const zlink_msg_t *frames_, size_t frame_count_);
     void handle_bootstrap (void *router_,
+                           const zlink_msg_t *frames_,
+                           size_t frame_count_,
                            const zlink_routing_id_t &sender_id_);
     void handle_topology_report (const zlink_msg_t *frames_,
                                  size_t frame_count_);
@@ -187,10 +201,16 @@ class registry_t
       std::vector<zlink_registry_topology_entry_t> *out_) const;
     bool select_spot_owner_entry_locked (
       const std::vector<zlink_registry_topology_entry_t> &matched_,
-      const char *service_name_,
+      const char *channel_name_,
       zlink_registry_topology_entry_t *entry_out_) const;
     void send_bootstrap_reply (void *router_,
-                               const zlink_routing_id_t &sender_id_);
+                               const zlink_routing_id_t &sender_id_,
+                               uint32_t status_errno_ = 0);
+    int ensure_channel_contract_locked (const std::string &channel_name_,
+                                        uint16_t auto_connect_type_,
+                                        uint64_t now_ms_,
+                                        uint32_t owner_registry_id_);
+    void remove_channel_providers_locked (const std::string &channel_name_);
     void upsert_topology_entry (const zlink_registry_topology_entry_t &entry_,
                                 uint64_t now_ms_);
     void send_service_list (void *pub_);
@@ -289,6 +309,7 @@ class registry_t
         projection_state_t () : metadata_max_size (4096) {}
 
         service_map_t services;
+        std::map<std::string, channel_contract_t> channel_contracts;
         std::map<topology_key_t, topology_entry_t> topology;
         std::map<uint32_t, uint64_t> peer_seq;
         std::map<uint32_t, uint64_t> peer_last_seen;
@@ -326,6 +347,7 @@ class registry_t
     bool &_started;
     uint64_t &_next_socket_retry_ms;
     service_map_t &_services;
+    std::map<std::string, channel_contract_t> &_channel_contracts;
     std::map<topology_key_t, topology_entry_t> &_topology;
     std::map<uint32_t, uint64_t> &_peer_seq;
     std::map<uint32_t, uint64_t> &_peer_last_seen;

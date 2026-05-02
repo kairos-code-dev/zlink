@@ -113,28 +113,40 @@ impl Drop for Registry {
 }
 
 // ---------------------------------------------------------------------------
-// ServiceType / ServiceRole newtypes
+// AutoConnectType / ServiceRole newtypes
 // ---------------------------------------------------------------------------
 
-/// The service family for a Discovery instance.
+/// The fixed auto-connect contract for a Discovery channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ServiceType {
-    Spot,
-    Socket,
+pub enum AutoConnectType {
+    Invalid,
+    RouteMesh,
+    ClientServer,
+    DealerMesh,
+    Fanout,
+    SpotMesh,
 }
 
-impl ServiceType {
-    fn to_raw(self) -> ffi::zlink_service_type_t {
+impl AutoConnectType {
+    fn to_raw(self) -> ffi::zlink_auto_connect_type_t {
         match self {
-            Self::Spot => ffi::zlink_service_type_t::ZLINK_SERVICE_TYPE_SPOT,
-            Self::Socket => ffi::zlink_service_type_t::ZLINK_SERVICE_TYPE_SOCKET,
+            Self::Invalid => ffi::zlink_auto_connect_type_t::ZLINK_AUTO_CONNECT_INVALID,
+            Self::RouteMesh => ffi::zlink_auto_connect_type_t::ZLINK_AUTO_CONNECT_ROUTE_MESH,
+            Self::ClientServer => ffi::zlink_auto_connect_type_t::ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+            Self::DealerMesh => ffi::zlink_auto_connect_type_t::ZLINK_AUTO_CONNECT_DEALER_MESH,
+            Self::Fanout => ffi::zlink_auto_connect_type_t::ZLINK_AUTO_CONNECT_FANOUT,
+            Self::SpotMesh => ffi::zlink_auto_connect_type_t::ZLINK_AUTO_CONNECT_SPOT_MESH,
         }
     }
 
-    fn from_raw(raw: ffi::zlink_service_type_t) -> Self {
+    fn from_raw(raw: ffi::zlink_auto_connect_type_t) -> Self {
         match raw {
-            ffi::zlink_service_type_t::ZLINK_SERVICE_TYPE_SPOT => Self::Spot,
-            ffi::zlink_service_type_t::ZLINK_SERVICE_TYPE_SOCKET => Self::Socket,
+            ffi::zlink_auto_connect_type_t::ZLINK_AUTO_CONNECT_INVALID => Self::Invalid,
+            ffi::zlink_auto_connect_type_t::ZLINK_AUTO_CONNECT_ROUTE_MESH => Self::RouteMesh,
+            ffi::zlink_auto_connect_type_t::ZLINK_AUTO_CONNECT_CLIENT_SERVER => Self::ClientServer,
+            ffi::zlink_auto_connect_type_t::ZLINK_AUTO_CONNECT_DEALER_MESH => Self::DealerMesh,
+            ffi::zlink_auto_connect_type_t::ZLINK_AUTO_CONNECT_FANOUT => Self::Fanout,
+            ffi::zlink_auto_connect_type_t::ZLINK_AUTO_CONNECT_SPOT_MESH => Self::SpotMesh,
         }
     }
 }
@@ -170,18 +182,6 @@ impl ServiceRole {
             ffi::zlink_service_role_t::ZLINK_SERVICE_ROLE_DEALER => Self::Dealer,
             ffi::zlink_service_role_t::ZLINK_SERVICE_ROLE_PUB => Self::Pub,
             ffi::zlink_service_role_t::ZLINK_SERVICE_ROLE_SUB => Self::Sub,
-        }
-    }
-
-    fn from_raw_u16(raw: u16) -> Result<Self, ConfigError> {
-        match raw {
-            0 => Ok(Self::Invalid),
-            2 => Ok(Self::Spot),
-            3 => Ok(Self::Router),
-            4 => Ok(Self::Dealer),
-            5 => Ok(Self::Pub),
-            6 => Ok(Self::Sub),
-            _ => Err(config_validation_error()),
         }
     }
 }
@@ -685,9 +685,9 @@ impl RegistryStatus {
 
 #[derive(Debug, Clone)]
 pub struct RegistryServiceSummaryEntry {
-    pub service_kind: ServiceKind,
+    pub auto_connect_type: AutoConnectType,
     pub service_role: ServiceRole,
-    pub service_name: String,
+    pub channel_name: String,
     pub total_count: u32,
     pub connecting_count: u32,
     pub ready_count: u32,
@@ -699,9 +699,9 @@ pub struct RegistryServiceSummaryEntry {
 impl RegistryServiceSummaryEntry {
     fn from_raw(raw: &ffi::zlink_registry_service_summary_entry_t) -> Self {
         Self {
-            service_kind: ServiceKind::from_raw(raw.service_kind),
+            auto_connect_type: AutoConnectType::from_raw(raw.auto_connect_type),
             service_role: ServiceRole::from_raw(raw.service_role),
-            service_name: fixed_cstr_to_string(&raw.service_name),
+            channel_name: fixed_cstr_to_string(&raw.channel_name),
             total_count: raw.total_count,
             connecting_count: raw.connecting_count,
             ready_count: raw.ready_count,
@@ -714,16 +714,16 @@ impl RegistryServiceSummaryEntry {
 
 #[derive(Debug, Clone)]
 pub struct RegistryServiceSummaryFilter {
-    pub service_kind: Option<ServiceKind>,
+    pub auto_connect_type: Option<AutoConnectType>,
     pub service_role: Option<ServiceRole>,
-    pub service_name: Option<String>,
+    pub channel_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct MemberPeerEntry {
-    pub service_type: ServiceType,
+    pub auto_connect_type: AutoConnectType,
     pub service_role: ServiceRole,
-    pub service_name: String,
+    pub channel_name: String,
     pub endpoint: String,
     pub routing_id: RoutingId,
     pub weight: u32,
@@ -733,9 +733,9 @@ pub struct MemberPeerEntry {
 impl MemberPeerEntry {
     fn from_raw(raw: &ffi::zlink_member_peer_entry_t) -> Result<Self, ConfigError> {
         Ok(Self {
-            service_type: ServiceType::from_raw(raw.service_type),
-            service_role: ServiceRole::from_raw_u16(raw.service_role)?,
-            service_name: fixed_cstr_to_string(&raw.service_name),
+            auto_connect_type: AutoConnectType::from_raw(raw.auto_connect_type),
+            service_role: ServiceRole::from_raw(raw.service_role),
+            channel_name: fixed_cstr_to_string(&raw.channel_name),
             endpoint: fixed_cstr_to_string(&raw.endpoint),
             routing_id: RoutingId::from_raw(raw.routing_id),
             weight: raw.weight,
@@ -746,10 +746,11 @@ impl MemberPeerEntry {
 
 #[derive(Debug, Clone)]
 pub struct RegistryTopologyEntry {
+    pub auto_connect_type: AutoConnectType,
     pub routing_id: RoutingId,
     pub service_kind: ServiceKind,
     pub service_role: ServiceRole,
-    pub service_name: String,
+    pub channel_name: String,
     pub endpoint: String,
     pub source: TopologySource,
     pub state: TopologyState,
@@ -762,10 +763,11 @@ pub struct RegistryTopologyEntry {
 impl RegistryTopologyEntry {
     fn from_raw(raw: &ffi::zlink_registry_topology_entry_t) -> Self {
         Self {
+            auto_connect_type: AutoConnectType::from_raw(raw.auto_connect_type),
             routing_id: RoutingId::from_raw(raw.routing_id),
             service_kind: ServiceKind::from_raw(raw.service_kind),
             service_role: ServiceRole::from_raw(raw.service_role),
-            service_name: fixed_cstr_to_string(&raw.service_name),
+            channel_name: fixed_cstr_to_string(&raw.channel_name),
             endpoint: fixed_cstr_to_string(&raw.endpoint),
             source: TopologySource::from_raw(raw.source),
             state: TopologyState::from_raw(raw.state),
@@ -779,18 +781,13 @@ impl RegistryTopologyEntry {
 
 #[derive(Debug, Clone)]
 pub struct RegistryTopologyFilter {
+    pub auto_connect_type: Option<AutoConnectType>,
     pub service_kind: Option<ServiceKind>,
     pub service_role: Option<ServiceRole>,
-    pub service_name: Option<String>,
+    pub channel_name: Option<String>,
     pub routing_id: Option<RoutingId>,
     pub state: Option<TopologyState>,
     pub source: Option<TopologySource>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiscoveryDealerPeerMode {
-    Router = 1,
-    Dealer = 2,
 }
 
 // ---------------------------------------------------------------------------
@@ -807,12 +804,13 @@ unsafe impl Send for Discovery {}
 impl Discovery {
     pub fn new(
         ctx: &crate::ctx::Context,
-        service_type: ServiceType,
-        service_name: &str,
+        auto_connect_type: AutoConnectType,
+        channel_name: &str,
     ) -> Result<Self, ConfigError> {
-        let c_name = fixed_cstring_config(service_name, "service_name")?;
-        let handle =
-            unsafe { ffi::zlink_discovery_new(ctx.raw(), service_type.to_raw(), c_name.as_ptr()) };
+        let c_name = fixed_cstring_config(channel_name, "channel_name")?;
+        let handle = unsafe {
+            ffi::zlink_discovery_new(ctx.raw(), auto_connect_type.to_raw(), c_name.as_ptr())
+        };
         if handle.is_null() {
             return Err(ConfigError::new(
                 crate::error::ConfigResult::InvalidHandle,
@@ -872,12 +870,6 @@ impl Discovery {
         Ok(RoutingId::from_raw(unsafe { owner_node_rid.assume_init() }))
     }
 
-    pub fn set_dealer_peer_mode(&self, mode: DiscoveryDealerPeerMode) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_discovery_set_dealer_peer_mode(self.handle, mode as u32)
-        })
-    }
-
     pub fn member_peers(&self) -> Result<Vec<MemberPeerEntry>, ConfigError> {
         let count = count_entries_config(|count| unsafe {
             ffi::zlink_discovery_member_peers(self.handle, ptr::null_mut(), count)
@@ -914,7 +906,7 @@ impl Discovery {
         check_config_rc(unsafe {
             ffi::zlink_discovery_member_peer_metadata(
                 self.handle,
-                service_role.to_raw() as u16,
+                service_role.to_raw(),
                 c_endpoint.as_ptr(),
                 msg.as_mut_ptr(),
             )
@@ -2124,17 +2116,12 @@ impl Registry {
         self.service_summary_query_opt(Some(filter))
     }
 
-    pub fn member_peers(
-        &self,
-        service_type: ServiceType,
-        service_name: &str,
-    ) -> Result<Vec<MemberPeerEntry>, ConfigError> {
-        let c_service_name = fixed_cstring_config(service_name, "service_name")?;
+    pub fn member_peers(&self, channel_name: &str) -> Result<Vec<MemberPeerEntry>, ConfigError> {
+        let c_channel_name = fixed_cstring_config(channel_name, "channel_name")?;
         let count = count_entries_config(|count| unsafe {
             ffi::zlink_registry_member_peers(
                 self.handle,
-                service_type.to_raw(),
-                c_service_name.as_ptr(),
+                c_channel_name.as_ptr(),
                 ptr::null_mut(),
                 count,
             )
@@ -2150,8 +2137,7 @@ impl Registry {
             |entries_ptr, count_ptr| unsafe {
                 ffi::zlink_registry_member_peers(
                     self.handle,
-                    service_type.to_raw(),
-                    c_service_name.as_ptr(),
+                    c_channel_name.as_ptr(),
                     entries_ptr,
                     count_ptr,
                 )
@@ -2166,12 +2152,11 @@ impl Registry {
 
     pub fn member_peer_metadata(
         &self,
-        service_type: ServiceType,
-        service_name: &str,
+        channel_name: &str,
         service_role: ServiceRole,
         endpoint: &str,
     ) -> Result<Message, ConfigError> {
-        let c_service_name = fixed_cstring_config(service_name, "service_name")?;
+        let c_channel_name = fixed_cstring_config(channel_name, "channel_name")?;
         let c_endpoint = fixed_cstring_config(endpoint, "endpoint")?;
         let mut msg = MaybeUninit::<ffi::zlink_msg_t>::uninit();
         unsafe {
@@ -2180,9 +2165,8 @@ impl Registry {
         check_config_rc(unsafe {
             ffi::zlink_registry_member_peer_metadata(
                 self.handle,
-                service_type.to_raw(),
-                c_service_name.as_ptr(),
-                service_role.to_raw() as u16,
+                c_channel_name.as_ptr(),
+                service_role.to_raw(),
                 c_endpoint.as_ptr(),
                 msg.as_mut_ptr(),
             )
@@ -2379,14 +2363,14 @@ fn with_registry_service_summary_filter_config<T>(
     let mut raw = MaybeUninit::<ffi::zlink_registry_service_summary_filter_t>::zeroed();
     let ptr = raw.as_mut_ptr();
     unsafe {
-        if let Some(service_kind) = filter.service_kind {
-            (*ptr).service_kind = service_kind.to_raw();
+        if let Some(auto_connect_type) = filter.auto_connect_type {
+            (*ptr).auto_connect_type = auto_connect_type.to_raw();
         }
         if let Some(service_role) = filter.service_role {
             (*ptr).service_role = service_role.to_raw();
         }
-        if let Some(service_name) = &filter.service_name {
-            write_c_array_config(&mut (*ptr).service_name, service_name, "service_name")?;
+        if let Some(channel_name) = &filter.channel_name {
+            write_c_array_config(&mut (*ptr).channel_name, channel_name, "channel_name")?;
         }
     }
     f(ptr)
@@ -2399,14 +2383,17 @@ fn with_registry_topology_filter_config<T>(
     let mut raw = MaybeUninit::<ffi::zlink_registry_topology_filter_t>::zeroed();
     let ptr = raw.as_mut_ptr();
     unsafe {
+        if let Some(auto_connect_type) = filter.auto_connect_type {
+            (*ptr).auto_connect_type = auto_connect_type.to_raw();
+        }
         if let Some(service_kind) = filter.service_kind {
             (*ptr).service_kind = service_kind.to_raw();
         }
         if let Some(service_role) = filter.service_role {
             (*ptr).service_role = service_role.to_raw();
         }
-        if let Some(service_name) = &filter.service_name {
-            write_c_array_config(&mut (*ptr).service_name, service_name, "service_name")?;
+        if let Some(channel_name) = &filter.channel_name {
+            write_c_array_config(&mut (*ptr).channel_name, channel_name, "channel_name")?;
         }
         if let Some(routing_id) = &filter.routing_id {
             (*ptr).routing_id = *routing_id.as_raw();

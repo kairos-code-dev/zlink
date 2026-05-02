@@ -8,7 +8,7 @@ import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.perf.PerfUtil;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.registry.Registry;
-import dev.kairoscode.zlink.service.registry.ServiceType;
+import dev.kairoscode.zlink.service.registry.AutoConnectType;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.time.Duration;
@@ -34,7 +34,7 @@ final class PerfSpot {
 
         try (var ctx = PerfUtil.newContext(config);
              Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, ServiceType.SPOT,
+             Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH,
                  SERVICE_NAME);
              SpotNode publisherNode = new SpotNode(ctx);
              SpotNode subscriberNode = new SpotNode(ctx);

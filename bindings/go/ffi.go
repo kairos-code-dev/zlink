@@ -50,9 +50,5 @@ static inline int zlink_socket_monitor_handler_go(void *m, uintptr_t userdata) {
 static inline int zlink_discovery_resolve_spot_go(void *discovery, const zlink_routing_id_t *spot_rid, zlink_routing_id_t *owner_node_rid_out) {
     return zlink_discovery_resolve_spot(discovery, spot_rid, owner_node_rid_out);
 }
-
-static inline int zlink_discovery_set_dealer_peer_mode_go(void *discovery, unsigned int mode) {
-    return zlink_discovery_set_dealer_peer_mode(discovery, (zlink_discovery_dealer_peer_mode_t)mode);
-}
 */
 import "C"

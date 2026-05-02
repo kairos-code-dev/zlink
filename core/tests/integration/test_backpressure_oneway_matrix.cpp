@@ -897,6 +897,10 @@ static void setup_spot_case (const char *transport_,
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (out_->pub_node, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (out_->sub_node, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (out_->pub, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (out_->pub, ZLINK_OPT_SNDTIMEO, &zero, sizeof (zero)));

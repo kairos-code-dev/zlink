@@ -26,9 +26,8 @@ fn block_on_ready<F: Future>(future: F) -> F::Output {
 #[test]
 fn discovery_member_surfaces_exist() {
     let ctx = Context::new().unwrap();
-    let discovery = Discovery::new(&ctx, ServiceType::Socket, "svc").unwrap();
+    let discovery = Discovery::new(&ctx, AutoConnectType::ClientServer, "svc").unwrap();
     let _ = discovery.member_peers().unwrap();
-    let _ = discovery.set_dealer_peer_mode(DiscoveryDealerPeerMode::Router);
 }
 
 #[test]
@@ -110,7 +109,7 @@ fn spot_callback_surfaces_exist() {
 #[test]
 fn service_close_surfaces_exist() {
     let ctx = Context::new().unwrap();
-    let mut discovery = Discovery::new(&ctx, ServiceType::Spot, "svc-close").unwrap();
+    let mut discovery = Discovery::new(&ctx, AutoConnectType::SpotMesh, "svc-close").unwrap();
     let mut node = SpotNode::new(&ctx).unwrap();
     let mut spot = node.create_spot().unwrap();
     let mut registry = Registry::new(&ctx).unwrap();
@@ -126,7 +125,7 @@ fn service_close_surfaces_exist() {
 #[test]
 fn socket_attach_discovery_blocks_manual_connect_and_close() {
     let ctx = Context::new().unwrap();
-    let discovery = Discovery::new(&ctx, ServiceType::Socket, "svc-attach").unwrap();
+    let discovery = Discovery::new(&ctx, AutoConnectType::ClientServer, "svc-attach").unwrap();
     let mut dealer = ctx.dealer_socket().unwrap();
 
     dealer.attach_discovery(&discovery).unwrap();
@@ -139,7 +138,8 @@ fn socket_attach_discovery_blocks_manual_connect_and_close() {
 #[test]
 fn discovery_close_terminates_attached_socket_lifecycle() {
     let ctx = Context::new().unwrap();
-    let mut discovery = Discovery::new(&ctx, ServiceType::Socket, "svc-attach-close").unwrap();
+    let mut discovery =
+        Discovery::new(&ctx, AutoConnectType::ClientServer, "svc-attach-close").unwrap();
     let dealer = ctx.dealer_socket().unwrap();
     dealer.attach_discovery(&discovery).unwrap();
     discovery.close().unwrap();
@@ -167,14 +167,14 @@ fn registry_query_client_surface_exists() {
 #[test]
 fn discovery_tls_client_surface_exists() {
     let ctx = Context::new().unwrap();
-    let discovery = Discovery::new(&ctx, ServiceType::Spot, "svc-tls").unwrap();
+    let discovery = Discovery::new(&ctx, AutoConnectType::SpotMesh, "svc-tls").unwrap();
     let _ = discovery.set_tls_client("ca", "localhost", true);
 }
 
 #[test]
 fn discovery_resolve_spot_surface_exists() {
     let ctx = Context::new().unwrap();
-    let discovery = Discovery::new(&ctx, ServiceType::Spot, "svc-resolve").unwrap();
+    let discovery = Discovery::new(&ctx, AutoConnectType::SpotMesh, "svc-resolve").unwrap();
     let _ = discovery.resolve_spot(&RoutingId::from_bytes(b"spot-rid"));
 }
 

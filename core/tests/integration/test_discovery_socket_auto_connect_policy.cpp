@@ -197,6 +197,73 @@ bool wait_for_topology_entry_local (
     return false;
 }
 
+bool wait_for_registry_member_count_local (void *registry_,
+                                           const char *channel_name_,
+                                           size_t expected_count_,
+                                           int timeout_ms_)
+{
+    const int attempts = timeout_ms_ / 25;
+    for (int i = 0; i < attempts; ++i) {
+        zlink_member_peer_entry_t entries[8];
+        size_t count = 8;
+        memset (entries, 0, sizeof (entries));
+        if (zlink_registry_member_peers (registry_, channel_name_, entries,
+                                         &count)
+              == ZLINK_CONFIG_OK
+            && count == expected_count_)
+            return true;
+        msleep (25);
+    }
+    return false;
+}
+
+bool wait_for_service_summary_count_local (
+  void *registry_,
+  const zlink_registry_service_summary_filter_t *filter_,
+  size_t expected_count_,
+  int timeout_ms_)
+{
+    const int attempts = timeout_ms_ / 25;
+    for (int i = 0; i < attempts; ++i) {
+        zlink_registry_service_summary_entry_t entries[8];
+        size_t count = 8;
+        memset (entries, 0, sizeof (entries));
+        if (zlink_registry_service_summary_snapshot (
+              registry_, filter_, entries, &count)
+              == ZLINK_CONFIG_OK
+            && count == expected_count_)
+            return true;
+        msleep (25);
+    }
+    return false;
+}
+
+bool wait_for_topology_desired_total_local (
+  void *registry_,
+  const zlink_registry_topology_filter_t *filter_,
+  size_t min_count_,
+  uint32_t expected_desired_total_,
+  int timeout_ms_)
+{
+    const int attempts = timeout_ms_ / 25;
+    for (int i = 0; i < attempts; ++i) {
+        zlink_registry_topology_entry_t entries[8];
+        size_t count = 8;
+        memset (entries, 0, sizeof (entries));
+        if (zlink_registry_topology_query (registry_, filter_, entries, &count)
+              == ZLINK_CONFIG_OK
+            && count >= min_count_) {
+            uint32_t desired_total = 0;
+            for (size_t j = 0; j < count; ++j)
+                desired_total += entries[j].desired_count;
+            if (desired_total == expected_desired_total_)
+                return true;
+        }
+        msleep (25);
+    }
+    return false;
+}
+
 void init_socket_topology_filter_local (
   zlink_registry_topology_filter_t *filter_,
   const char *service_name_,
@@ -207,10 +274,104 @@ void init_socket_topology_filter_local (
     filter_->service_kind = ZLINK_SERVICE_KIND_SOCKET;
     filter_->service_role = service_role_;
     filter_->source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
-    strncpy (filter_->service_name, service_name_,
-             sizeof (filter_->service_name) - 1);
+    strncpy (filter_->channel_name, service_name_,
+             sizeof (filter_->channel_name) - 1);
     if (routing_id_)
         filter_->routing_id = *routing_id_;
+}
+
+void init_summary_filter_local (
+  zlink_registry_service_summary_filter_t *filter_,
+  zlink_auto_connect_type_t auto_connect_type_,
+  const char *channel_name_,
+  zlink_service_role_t service_role_)
+{
+    memset (filter_, 0, sizeof (*filter_));
+    filter_->auto_connect_type = auto_connect_type_;
+    filter_->service_role = service_role_;
+    if (channel_name_)
+        strncpy (filter_->channel_name, channel_name_,
+                 sizeof (filter_->channel_name) - 1);
+}
+
+bool connect_discovery_expect_errno_local (void *discovery_,
+                                           const char *endpoint_,
+                                           int expected_errno_,
+                                           int timeout_ms_)
+{
+    const int attempts = timeout_ms_ / 25;
+    for (int i = 0; i < attempts; ++i) {
+        errno = 0;
+        if (zlink_discovery_connect_registry (discovery_, endpoint_)
+              != ZLINK_CONNECT_OK
+            && zlink_errno () == expected_errno_)
+            return true;
+        msleep (25);
+    }
+    return false;
+}
+
+bool wait_for_router_payload_local (void *router_,
+                                    const char *expected_,
+                                    int timeout_ms_)
+{
+    const int attempts = timeout_ms_ / 25;
+    for (int i = 0; i < attempts; ++i) {
+        const zlink_routing_id_t *source_node_rid = NULL;
+        const zlink_routing_id_t *source_spot_rid = NULL;
+        uint64_t request_seq = 0;
+        zlink_msg_t part;
+        zlink_part_flag_t more = ZLINK_PART_FINAL;
+        memset (&part, 0, sizeof (part));
+        const zlink_recv_result_t rc = zlink_router_recv_part (
+          router_, &source_node_rid, &source_spot_rid, &request_seq, &part,
+          &more, static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
+        if (rc == ZLINK_RECV_OK) {
+            const bool matched =
+              more == ZLINK_PART_FINAL && zlink_msg_size (&part) == strlen (expected_)
+              && memcmp (zlink_msg_data (&part), expected_,
+                         strlen (expected_))
+                   == 0;
+            zlink_msg_close (&part);
+            if (matched)
+                return true;
+        }
+        msleep (25);
+    }
+    return false;
+}
+
+bool wait_for_dealer_router_delivery_local (void *dealer_,
+                                            void *router_,
+                                            const char *text_,
+                                            int timeout_ms_)
+{
+    const int attempts = timeout_ms_ / 25;
+    for (int i = 0; i < attempts; ++i) {
+        (void) zlink_send (dealer_, text_, strlen (text_), ZLINK_DONTWAIT);
+        if (wait_for_router_payload_local (router_, text_, 25))
+            return true;
+    }
+    return false;
+}
+
+bool wait_for_pubsub_delivery_local (void *pub_,
+                                     void *sub_,
+                                     const char *text_,
+                                     int timeout_ms_)
+{
+    const int attempts = timeout_ms_ / 25;
+    for (int i = 0; i < attempts; ++i) {
+        (void) zlink_send (pub_, text_, strlen (text_), ZLINK_DONTWAIT);
+        char buffer[128];
+        memset (buffer, 0, sizeof (buffer));
+        const int rc = zlink_recv (sub_, buffer, sizeof (buffer), ZLINK_DONTWAIT);
+        if (rc == static_cast<int> (strlen (text_))
+            && memcmp (buffer, text_, strlen (text_)) == 0)
+            return true;
+        msleep (25);
+    }
+    return false;
 }
 
 void test_socket_discovery_default_dealer_mode_targets_router ()
@@ -237,9 +398,9 @@ void test_socket_discovery_default_dealer_mode_targets_router ()
       sizeof (registry_router)));
 
     void *router_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-auto-router");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "socket-auto-router");
     void *dealer_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-auto-router");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "socket-auto-router");
     TEST_ASSERT_NOT_NULL (router_discovery);
     TEST_ASSERT_NOT_NULL (dealer_discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
@@ -324,9 +485,9 @@ void test_socket_discovery_default_dealer_mode_ignores_dealer_peers ()
       sizeof (registry_router)));
 
     void *discovery_a =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-auto-default");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "socket-auto-default");
     void *discovery_b =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-auto-default");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "socket-auto-default");
     TEST_ASSERT_NOT_NULL (discovery_a);
     TEST_ASSERT_NOT_NULL (discovery_b);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
@@ -409,21 +570,15 @@ void test_socket_discovery_explicit_dealer_mode_targets_dealer ()
       sizeof (registry_router)));
 
     void *discovery_a =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-auto-dealer");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_DEALER_MESH, "socket-auto-dealer");
     void *discovery_b =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-auto-dealer");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_DEALER_MESH, "socket-auto-dealer");
     TEST_ASSERT_NOT_NULL (discovery_a);
     TEST_ASSERT_NOT_NULL (discovery_b);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery_a, registry_router, 3000));
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery_b, registry_router, 3000));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_set_dealer_peer_mode (
-        discovery_a, ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_set_dealer_peer_mode (
-        discovery_b, ZLINK_DISCOVERY_DEALER_PEER_MODE_DEALER));
 
     void *dealer_a = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     void *dealer_b = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
@@ -452,23 +607,26 @@ void test_socket_discovery_explicit_dealer_mode_targets_dealer ()
     TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
       discovery_b, ZLINK_SERVICE_ROLE_DEALER, 1, 10000));
 
-    zlink_registry_topology_filter_t filter_a;
-    init_socket_topology_filter_local (&filter_a, "socket-auto-dealer",
-                                       ZLINK_SERVICE_ROLE_DEALER,
-                                       &dealer_a_rid);
-    zlink_registry_topology_entry_t entry_a;
-    memset (&entry_a, 0, sizeof (entry_a));
-    TEST_ASSERT_TRUE (wait_for_topology_entry_local (
-      registry, &filter_a, &entry_a, 1, 60000));
-
-    zlink_registry_topology_filter_t filter_b;
-    init_socket_topology_filter_local (&filter_b, "socket-auto-dealer",
-                                       ZLINK_SERVICE_ROLE_DEALER,
-                                       &dealer_b_rid);
-    zlink_registry_topology_entry_t entry_b;
-    memset (&entry_b, 0, sizeof (entry_b));
-    TEST_ASSERT_TRUE (wait_for_topology_entry_local (
-      registry, &filter_b, &entry_b, 1, 60000));
+    zlink_registry_topology_filter_t filter;
+    init_socket_topology_filter_local (&filter, "socket-auto-dealer",
+                                       ZLINK_SERVICE_ROLE_DEALER, NULL);
+    bool saw_dealer_mesh_topology = false;
+    for (int i = 0; i < 400 && !saw_dealer_mesh_topology; ++i) {
+        zlink_registry_topology_entry_t entries[4];
+        size_t count = 4;
+        memset (entries, 0, sizeof (entries));
+        if (zlink_registry_topology_query (registry, &filter, entries, &count)
+              == ZLINK_CONFIG_OK
+            && count >= 2) {
+            uint32_t desired_total = 0;
+            for (size_t j = 0; j < count; ++j)
+                desired_total += entries[j].desired_count;
+            saw_dealer_mesh_topology = desired_total == 1u;
+        }
+        if (!saw_dealer_mesh_topology)
+            msleep (25);
+    }
+    TEST_ASSERT_TRUE (saw_dealer_mesh_topology);
 
     TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_b, 3000));
     TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_a, 3000));
@@ -500,9 +658,9 @@ void test_socket_discovery_router_router_uses_single_initiator ()
       sizeof (registry_router)));
 
     void *discovery_a = zlink_discovery_new (
-      ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-auto-router-router");
+      ctx, ZLINK_AUTO_CONNECT_ROUTE_MESH, "socket-auto-router-router");
     void *discovery_b = zlink_discovery_new (
-      ctx, ZLINK_SERVICE_TYPE_SOCKET, "socket-auto-router-router");
+      ctx, ZLINK_AUTO_CONNECT_ROUTE_MESH, "socket-auto-router-router");
     TEST_ASSERT_NOT_NULL (discovery_a);
     TEST_ASSERT_NOT_NULL (discovery_b);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
@@ -537,34 +695,22 @@ void test_socket_discovery_router_router_uses_single_initiator ()
     TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
       discovery_b, ZLINK_SERVICE_ROLE_ROUTER, 1, 10000));
 
-    zlink_registry_topology_filter_t filter_a;
-    init_socket_topology_filter_local (&filter_a, "socket-auto-router-router",
-                                       ZLINK_SERVICE_ROLE_ROUTER, &rid_a);
-    zlink_registry_topology_filter_t filter_b;
-    init_socket_topology_filter_local (&filter_b, "socket-auto-router-router",
-                                       ZLINK_SERVICE_ROLE_ROUTER, &rid_b);
+    zlink_registry_topology_filter_t filter;
+    init_socket_topology_filter_local (&filter, "socket-auto-router-router",
+                                       ZLINK_SERVICE_ROLE_ROUTER, NULL);
     bool single_initiator = false;
-    for (int i = 0; i < 2400 && !single_initiator; ++i) {
-        zlink_registry_topology_entry_t entry_a;
-        zlink_registry_topology_entry_t entry_b;
-        size_t count_a = 1;
-        size_t count_b = 1;
-        memset (&entry_a, 0, sizeof (entry_a));
-        memset (&entry_b, 0, sizeof (entry_b));
-        if (zlink_registry_topology_query (registry, &filter_a, &entry_a,
-                                           &count_a)
-              != ZLINK_CONFIG_OK
-            || count_a == 0) {
-            msleep (25);
-            continue;
+    for (int i = 0; i < 400 && !single_initiator; ++i) {
+        zlink_registry_topology_entry_t entries[4];
+        size_t count = 4;
+        memset (entries, 0, sizeof (entries));
+        if (zlink_registry_topology_query (registry, &filter, entries, &count)
+              == ZLINK_CONFIG_OK
+            && count >= 2) {
+            uint32_t desired_total = 0;
+            for (size_t j = 0; j < count; ++j)
+                desired_total += entries[j].desired_count;
+            single_initiator = desired_total == 1u;
         }
-        if (zlink_registry_topology_query (registry, &filter_b, &entry_b, &count_b)
-              != ZLINK_CONFIG_OK
-            || count_b == 0) {
-            msleep (25);
-            continue;
-        }
-        single_initiator = entry_a.desired_count + entry_b.desired_count == 1u;
         if (!single_initiator)
             msleep (25);
     }
@@ -574,6 +720,415 @@ void test_socket_discovery_router_router_uses_single_initiator ()
     TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_b, 3000));
     TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_a, 3000));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_discovery_channel_contract_rejects_type_conflict_and_persists ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry, 50));
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, 5990, registry_pub, sizeof (registry_pub), registry_router,
+      sizeof (registry_router)));
+
+    void *first =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "socket-contract-stable");
+    void *same =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "socket-contract-stable");
+    void *conflict =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT,
+                           "socket-contract-stable");
+    TEST_ASSERT_NOT_NULL (first);
+    TEST_ASSERT_NOT_NULL (same);
+    TEST_ASSERT_NOT_NULL (conflict);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      first, registry_router, 3000));
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      same, registry_router, 3000));
+    TEST_ASSERT_TRUE (connect_discovery_expect_errno_local (
+      conflict, registry_router, EEXIST, 3000));
+
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&same, 3000));
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&first, 3000));
+
+    void *after_destroy =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT,
+                           "socket-contract-stable");
+    TEST_ASSERT_NOT_NULL (after_destroy);
+    TEST_ASSERT_TRUE (connect_discovery_expect_errno_local (
+      after_destroy, registry_router, EEXIST, 3000));
+
+    size_t count = 8;
+    zlink_member_peer_entry_t entries[8];
+    memset (entries, 0, sizeof (entries));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_registry_member_peers (registry, "socket-contract-stable",
+                                   entries, &count));
+    TEST_ASSERT_EQUAL_UINT32 (0u, static_cast<uint32_t> (count));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&after_destroy));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&conflict));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_client_server_dealer_connects_all_routers_and_registry_queries_use_channel ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry, 50));
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    char router_a_endpoint[MAX_SOCKET_STRING];
+    char router_b_endpoint[MAX_SOCKET_STRING];
+    char dealer_endpoint[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, 5992, registry_pub, sizeof (registry_pub), registry_router,
+      sizeof (registry_router)));
+
+    void *router_a_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "socket-client-server-all");
+    void *router_b_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "socket-client-server-all");
+    void *dealer_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "socket-client-server-all");
+    TEST_ASSERT_NOT_NULL (router_a_discovery);
+    TEST_ASSERT_NOT_NULL (router_b_discovery);
+    TEST_ASSERT_NOT_NULL (dealer_discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      router_a_discovery, registry_router, 3000));
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      router_b_discovery, registry_router, 3000));
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      dealer_discovery, registry_router, 3000));
+
+    void *router_a = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *router_b = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router_a);
+    TEST_ASSERT_NOT_NULL (router_b);
+    TEST_ASSERT_NOT_NULL (dealer);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router_a, "router-ca", 9));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router_b, "router-cb", 9));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "dealer-cs", 9));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (router_a, router_a_discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (router_b, router_b_discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (dealer, dealer_discovery));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      router_a, 5993, router_a_endpoint, sizeof (router_a_endpoint)));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      router_b, 5994, router_b_endpoint, sizeof (router_b_endpoint)));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      dealer, 5995, dealer_endpoint, sizeof (dealer_endpoint)));
+
+    TEST_ASSERT_TRUE (wait_for_registry_member_count_local (
+      registry, "socket-client-server-all", 3, 10000));
+
+    zlink_member_peer_entry_t members[4];
+    size_t member_count = 4;
+    memset (members, 0, sizeof (members));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_registry_member_peers (registry, "socket-client-server-all",
+                                   members, &member_count));
+    TEST_ASSERT_EQUAL_UINT32 (3u, static_cast<uint32_t> (member_count));
+    size_t router_rows = 0;
+    size_t dealer_rows = 0;
+    for (size_t i = 0; i < member_count; ++i) {
+        TEST_ASSERT_EQUAL_INT (ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                               members[i].auto_connect_type);
+        TEST_ASSERT_EQUAL_STRING ("socket-client-server-all",
+                                  members[i].channel_name);
+        if (members[i].service_role == ZLINK_SERVICE_ROLE_ROUTER)
+            ++router_rows;
+        if (members[i].service_role == ZLINK_SERVICE_ROLE_DEALER)
+            ++dealer_rows;
+    }
+    TEST_ASSERT_EQUAL_UINT32 (2u, static_cast<uint32_t> (router_rows));
+    TEST_ASSERT_EQUAL_UINT32 (1u, static_cast<uint32_t> (dealer_rows));
+
+    zlink_registry_topology_filter_t topology_filter;
+    init_socket_topology_filter_local (
+      &topology_filter, "socket-client-server-all", ZLINK_SERVICE_ROLE_DEALER,
+      NULL);
+    topology_filter.auto_connect_type = ZLINK_AUTO_CONNECT_CLIENT_SERVER;
+    TEST_ASSERT_TRUE (wait_for_topology_desired_total_local (
+      registry, &topology_filter, 1, 2, 10000));
+    topology_filter.auto_connect_type = ZLINK_AUTO_CONNECT_FANOUT;
+    TEST_ASSERT_TRUE (wait_for_topology_desired_total_local (
+      registry, &topology_filter, 0, 0, 1000));
+
+    zlink_registry_service_summary_filter_t summary_filter;
+    init_summary_filter_local (&summary_filter, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                               "socket-client-server-all",
+                               ZLINK_SERVICE_ROLE_ROUTER);
+    TEST_ASSERT_TRUE (wait_for_service_summary_count_local (
+      registry, &summary_filter, 1, 10000));
+    init_summary_filter_local (&summary_filter, ZLINK_AUTO_CONNECT_FANOUT,
+                               "socket-client-server-all",
+                               ZLINK_SERVICE_ROLE_ROUTER);
+    TEST_ASSERT_TRUE (wait_for_service_summary_count_local (
+      registry, &summary_filter, 0, 1000));
+
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&dealer_discovery, 3000));
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&router_b_discovery, 3000));
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&router_a_discovery, 3000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_endpointless_client_server_dealer_is_not_member_but_reports_connect_intent ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry, 50));
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    char router_endpoint[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, 5995, registry_pub, sizeof (registry_pub), registry_router,
+      sizeof (registry_router)));
+
+    void *router_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "socket-client-no-endpoint");
+    void *dealer_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "socket-client-no-endpoint");
+    TEST_ASSERT_NOT_NULL (router_discovery);
+    TEST_ASSERT_NOT_NULL (dealer_discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      router_discovery, registry_router, 3000));
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      dealer_discovery, registry_router, 3000));
+
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router, "router-ne", 9));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "dealer-ne", 9));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (router, router_discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (dealer, dealer_discovery));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      router, 5996, router_endpoint, sizeof (router_endpoint)));
+
+    TEST_ASSERT_TRUE (wait_for_registry_member_count_local (
+      registry, "socket-client-no-endpoint", 1, 10000));
+    TEST_ASSERT_TRUE (wait_for_dealer_router_delivery_local (
+      dealer, router, "endpointless-client", 10000));
+
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&dealer_discovery, 3000));
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&router_discovery, 3000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_fanout_sub_connects_pub_and_endpointless_sub_is_not_member ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry, 50));
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    char pub_endpoint[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, 5997, registry_pub, sizeof (registry_pub), registry_router,
+      sizeof (registry_router)));
+
+    void *pub_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT,
+                           "socket-fanout-events");
+    void *sub_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT,
+                           "socket-fanout-events");
+    TEST_ASSERT_NOT_NULL (pub_discovery);
+    TEST_ASSERT_NOT_NULL (sub_discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      pub_discovery, registry_router, 3000));
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      sub_discovery, registry_router, 3000));
+
+    void *pub = zlink_socket (ctx, ZLINK_SOCKET_PUB);
+    void *sub = zlink_socket (ctx, ZLINK_SOCKET_SUB);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, ""));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_discovery (pub, pub_discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_discovery (sub, sub_discovery));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      pub, 5998, pub_endpoint, sizeof (pub_endpoint)));
+
+    TEST_ASSERT_TRUE (wait_for_registry_member_count_local (
+      registry, "socket-fanout-events", 1, 10000));
+    TEST_ASSERT_TRUE (wait_for_pubsub_delivery_local (
+      pub, sub, "fanout-event", 10000));
+
+    zlink_registry_topology_filter_t pub_filter;
+    init_socket_topology_filter_local (&pub_filter, "socket-fanout-events",
+                                       ZLINK_SERVICE_ROLE_PUB, NULL);
+    pub_filter.auto_connect_type = ZLINK_AUTO_CONNECT_FANOUT;
+    TEST_ASSERT_TRUE (wait_for_topology_desired_total_local (
+      registry, &pub_filter, 1, 0, 10000));
+
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&sub_discovery, 3000));
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&pub_discovery, 3000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_registry_peer_sync_conflict_keeps_deterministic_winner_projection ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *winner_registry = zlink_registry_new (ctx);
+    void *loser_registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (winner_registry);
+    TEST_ASSERT_NOT_NULL (loser_registry);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_id (winner_registry, 10));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_id (loser_registry, 20));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (winner_registry, 50));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (loser_registry, 50));
+
+    char winner_pub[MAX_SOCKET_STRING];
+    char winner_router[MAX_SOCKET_STRING];
+    char loser_pub[MAX_SOCKET_STRING];
+    char loser_router[MAX_SOCKET_STRING];
+    char winner_endpoint[MAX_SOCKET_STRING];
+    char loser_endpoint[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      winner_registry, 6000, winner_pub, sizeof (winner_pub), winner_router,
+      sizeof (winner_router)));
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      loser_registry, 6002, loser_pub, sizeof (loser_pub), loser_router,
+      sizeof (loser_router)));
+    void *winner_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "registry-sync-conflict");
+    void *loser_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT,
+                           "registry-sync-conflict");
+    TEST_ASSERT_NOT_NULL (winner_discovery);
+    TEST_ASSERT_NOT_NULL (loser_discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      winner_discovery, winner_router, 3000));
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      loser_discovery, loser_router, 3000));
+
+    void *winner_router_socket = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *loser_pub_socket = zlink_socket (ctx, ZLINK_SOCKET_PUB);
+    TEST_ASSERT_NOT_NULL (winner_router_socket);
+    TEST_ASSERT_NOT_NULL (loser_pub_socket);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (winner_router_socket, winner_discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (loser_pub_socket, loser_discovery));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      winner_router_socket, 6004, winner_endpoint, sizeof (winner_endpoint)));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      loser_pub_socket, 6005, loser_endpoint, sizeof (loser_endpoint)));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_add_peer (winner_registry, loser_pub));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_add_peer (loser_registry, winner_pub));
+
+    TEST_ASSERT_TRUE (wait_for_registry_member_count_local (
+      winner_registry, "registry-sync-conflict", 1, 10000));
+    bool saw_winner_projection = false;
+    for (int i = 0; i < 400 && !saw_winner_projection; ++i) {
+        zlink_member_peer_entry_t entries[4];
+        size_t count = 4;
+        memset (entries, 0, sizeof (entries));
+        if (zlink_registry_member_peers (
+              loser_registry, "registry-sync-conflict", entries, &count)
+              == ZLINK_CONFIG_OK
+            && count == 1
+            && entries[0].auto_connect_type
+                 == ZLINK_AUTO_CONNECT_CLIENT_SERVER
+            && entries[0].service_role == ZLINK_SERVICE_ROLE_ROUTER
+            && strcmp (entries[0].endpoint, winner_endpoint) == 0) {
+            saw_winner_projection = true;
+        }
+        if (!saw_winner_projection)
+            msleep (25);
+    }
+    TEST_ASSERT_TRUE (saw_winner_projection);
+
+    void *late_loser =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT,
+                           "registry-sync-conflict");
+    TEST_ASSERT_NOT_NULL (late_loser);
+    TEST_ASSERT_TRUE (connect_discovery_expect_errno_local (
+      late_loser, loser_router, EEXIST, 3000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&late_loser));
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&loser_discovery, 3000));
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&winner_discovery, 3000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&loser_registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&winner_registry));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 } // namespace
@@ -587,5 +1142,10 @@ int main ()
     RUN_TEST (test_socket_discovery_default_dealer_mode_ignores_dealer_peers);
     RUN_TEST (test_socket_discovery_explicit_dealer_mode_targets_dealer);
     RUN_TEST (test_socket_discovery_router_router_uses_single_initiator);
+    RUN_TEST (test_discovery_channel_contract_rejects_type_conflict_and_persists);
+    RUN_TEST (test_client_server_dealer_connects_all_routers_and_registry_queries_use_channel);
+    RUN_TEST (test_endpointless_client_server_dealer_is_not_member_but_reports_connect_intent);
+    RUN_TEST (test_fanout_sub_connects_pub_and_endpointless_sub_is_not_member);
+    RUN_TEST (test_registry_peer_sync_conflict_keeps_deterministic_winner_projection);
     return UNITY_END ();
 }

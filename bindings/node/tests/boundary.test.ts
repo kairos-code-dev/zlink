@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const zlink = require('../dist/canonical');
 
-const SERVICE_TYPE_SPOT = 0x3002;
+const AUTO_CONNECT_SPOT_MESH = 5;
 
 test('routing id accepts 255-byte maximum and rejects overflow', () => {
   const ctx = new zlink.Context();
@@ -36,7 +36,7 @@ test('fixed-size c-string inputs reject embedded nulls and overflow', () => {
   const pair = new zlink.PairSocket(ctx);
   const registry = new zlink.Registry(ctx);
   const query = new zlink.RegistryQueryClient(ctx);
-  const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'svc');
+  const discovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, 'svc');
   const node = new zlink.SpotNode(ctx);
   const spot = node.createSpot();
   const maxServiceName = 's'.repeat(255);
@@ -48,7 +48,7 @@ test('fixed-size c-string inputs reject embedded nulls and overflow', () => {
   assert.throws(() => discovery.connectRegistry('x'.repeat(256)), /255 bytes/);
   assert.throws(() => node.bind('tcp://127.0.0.1:5557\0bad'), /embedded null/);
   assert.throws(() => spot.setSubscription('topic\0bad'), /embedded null/);
-  assert.doesNotThrow(() => new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, maxServiceName).close());
+  assert.doesNotThrow(() => new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, maxServiceName).close());
 
   spot.close();
   node.close();

@@ -5,7 +5,9 @@ use std::time::{Duration, Instant};
 #[path = "sample_support.rs"]
 mod sample_support;
 
-use zlink::{Context, Discovery, Message, RecvFlags, RecvResult, Registry, ServiceType, SpotNode};
+use zlink::{
+    AutoConnectType, Context, Discovery, Message, RecvFlags, RecvResult, Registry, SpotNode,
+};
 
 const SERVICE_NAME: &str = "sample";
 const TOPIC: &str = "room:lobby";
@@ -14,7 +16,7 @@ fn main() {
     let ctx = Context::new().expect("context creation failed");
     let registry = Registry::new(&ctx).expect("registry failed");
     let discovery =
-        Discovery::new(&ctx, ServiceType::Spot, SERVICE_NAME).expect("discovery failed");
+        Discovery::new(&ctx, AutoConnectType::SpotMesh, SERVICE_NAME).expect("discovery failed");
     let publisher_node = SpotNode::new(&ctx).expect("publisher node failed");
     let subscriber_node = SpotNode::new(&ctx).expect("subscriber node failed");
     let registry_pub = sample_support::tcp_endpoint();

@@ -18,7 +18,7 @@ flowchart TB
         sub_socket["SUB socket<br/>SERVICE_LIST 수신"]
         service_state["service_state<br/>provider 스냅샷"]
         observers["observer 목록<br/>(attachment들)"]
-        registered["_registered_services<br/>(service_type, role, name, endpoint)"]
+        registered["_registered_services<br/>(auto_connect_type, role, name, endpoint)"]
         control_task["control_task (주기적)"]
     end
 
@@ -108,11 +108,11 @@ sequenceDiagram
 
     Service->>Disc: register_endpoint(type, endpoint, weight)
     Disc->>Disc: _registered_services에 저장
-    Disc->>DEALER: REGISTER (0x0001)<br/>[service_type, service_name,<br/>service_role, endpoint, routing_id]
+    Disc->>DEALER: REGISTER (0x0001)<br/>[auto_connect_type, service_name,<br/>service_role, endpoint, routing_id]
     REG->>DEALER: REGISTER_ACK (0x0002)<br/>[status, resolved_endpoint]
 
     loop heartbeat_interval 마다
-        Disc->>DEALER: HEARTBEAT (0x0004)<br/>[service_type, service_role,<br/>service_name, endpoint]
+        Disc->>DEALER: HEARTBEAT (0x0004)<br/>[auto_connect_type, service_role,<br/>service_name, endpoint]
     end
 ```
 
@@ -126,7 +126,7 @@ sequenceDiagram
     participant Observer as Attachment Observer
 
     REG->>SUB: SERVICE_LIST (0x0005)<br/>[registry_id, list_seq,<br/>service_count, entries...]
-    SUB->>State: service_type/name으로 파싱 및 필터링
+    SUB->>State: auto_connect_type/name으로 파싱 및 필터링
     State->>State: apply_provider_snapshot()
     State->>State: provider 변경 여부 확인
 
@@ -145,7 +145,7 @@ Frame 1: registry_id (uint32_t)
 Frame 2: list_seq (uint64_t)
 Frame 3: service_count (uint32_t)
 Frame 4~N: 서비스 항목 (반복):
-  - service_type (uint16_t)
+  - auto_connect_type (uint16_t)
   - service_name (string)
   - provider_count (uint32_t)
   - provider별:
@@ -171,7 +171,7 @@ sequenceDiagram
     Socket->>Socket: zlink_bind("tcp://*:5555")
     Socket->>Attach: attach(socket, discovery)
     Attach->>Attach: socket_type에서 service_role 파생<br/>(ROUTER→3, DEALER→4, PUB→5, SUB→6)
-    Attach->>Disc: register_endpoint(service_type_socket,<br/>endpoint, role)
+    Attach->>Disc: register_endpoint(auto_connect_type_socket,<br/>endpoint, role)
     Disc->>REG: REGISTER
 
     Attach->>Disc: add_observer(self)
@@ -203,7 +203,7 @@ sequenceDiagram
 ## 8. SpotNode Attachment
 
 SpotNode는 동일한 observer 패턴을 사용하지만:
-- `service_type = service_type_spot_node (2)`
+- `auto_connect_type = auto_connect_type_spot_node (2)`
 - `service_role = service_role_spot (2)` (고정)
 - Peer 연결 대상은 mesh 내 다른 SpotNode
 
@@ -259,7 +259,7 @@ ROUTER 쪽 direct 함수(`zlink_router_send_spot()` /
 
 | 항목 | 값 |
 |---|---|
-| 선행 조건 | `discovery->_service_type == SPOT_NODE`, 아니면 `ENOTSUP` → `ZLINK_CONFIG_NOT_SUPPORTED` |
+| 선행 조건 | `discovery->_auto_connect_type == SPOT_NODE`, 아니면 `ENOTSUP` → `ZLINK_CONFIG_NOT_SUPPORTED` |
 | 출력 | `owner_node_rid_out` 에 owner SpotNode rid 기록 |
 | 캐시 TTL | `resolve_spot_cache_ttl_ms = 250` ms |
 | 캐시 유효 조건 | `validated_service_seq == current_service_seq` 또는 `now − last_reported_ms ≤ 250 ms` |

@@ -7,7 +7,7 @@ const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('../dist/canonical');
 
-const SERVICE_TYPE_SPOT = 0x3002;
+const AUTO_CONNECT_SPOT_MESH = 5;
 
 async function reservePort() {
   const server = net.createServer();
@@ -18,10 +18,10 @@ async function reservePort() {
   return port;
 }
 
-async function waitForTopologyEntry(registry, serviceName, endpoint) {
+async function waitForTopologyEntry(registry, channelName, endpoint) {
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
-    const entry = registry.topologySnapshot().find((item) => item.serviceName === serviceName);
+    const entry = registry.topologySnapshot().find((item) => item.channelName === channelName);
     if (entry) {
       return entry;
     }
@@ -33,7 +33,7 @@ async function waitForTopologyEntry(registry, serviceName, endpoint) {
 async function main() {
   const ctx = new zlink.Context();
   const registry = new zlink.Registry(ctx);
-  const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, 'sample');
+  const discovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, 'sample');
   const node = new zlink.SpotNode(ctx);
   const pubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const routerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;

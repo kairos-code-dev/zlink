@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "core/c_api_copy_internal.hpp"
 #include "core/recv_internal.hpp"
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
@@ -483,8 +484,11 @@ int discovery_bootstrap_runtime_t::bootstrap_registry (
         discovery_protocol::bootstrap_req_t req;
         memset (&req, 0, sizeof (req));
         req.msg_id = discovery_protocol::msg_bootstrap_req;
-        req.service_type = owner_->_service_type;
+        req.auto_connect_type = owner_->_auto_connect_type;
         req.routing_id = rid;
+        copy_fixed_c_string_from_cstr (req.channel_name,
+                                       sizeof (req.channel_name),
+                                       owner_->_channel_name.c_str ());
         if (discovery_protocol::send_frame (dealer, &req, sizeof (req), 0)
             < 0) {
             if (errno == EAGAIN)
@@ -530,6 +534,12 @@ int discovery_bootstrap_runtime_t::bootstrap_registry (
         heartbeat_interval_ms = rep.heartbeat_interval_ms;
         registry_id = rep.registry_id;
         feature_flags = rep.feature_flags;
+        if (rep.status_errno != 0) {
+            close_msg_frames (&frames);
+            errno = static_cast<int> (rep.status_errno);
+            discovery_debugf ("bootstrap rejected errno=%d", errno);
+            return -1;
+        }
         pub_endpoint = rep.pub_endpoint;
         uplink_endpoint = rep.uplink_endpoint;
         ok = msg_id == discovery_protocol::msg_bootstrap_rep;

@@ -39,9 +39,9 @@ int main (void)
     void *ctx = zlink_ctx_new ();
     void *registry = zlink_registry_new (ctx);
     sample.provider_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, k_service_name);
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT, k_service_name);
     sample.client_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SOCKET, k_service_name);
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT, k_service_name);
     sample.provider = zlink_socket (ctx, ZLINK_SOCKET_PUB);
     assert (ctx != NULL);
     assert (registry != NULL);

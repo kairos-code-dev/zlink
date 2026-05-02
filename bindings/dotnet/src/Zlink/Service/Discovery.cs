@@ -12,13 +12,14 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
 {
     private IntPtr _handle;
 
-    public Discovery(Context context, ServiceType serviceType, string serviceName)
+    public Discovery(Context context, AutoConnectType autoConnectType,
+        string channelName)
     {
         if (context == null)
             throw new ArgumentNullException(nameof(context));
-        BoundaryValidation.ValidateFixedUtf8(serviceName, nameof(serviceName));
+        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
         _handle = NativeMethods.zlink_discovery_new(context.Handle,
-            (int)serviceType, serviceName);
+            (int)autoConnectType, channelName);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.CreateConfigException(
                 NativeMethods.zlink_errno());
@@ -113,7 +114,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         using var metadata = new Message();
         int rc = NativeMethods.zlink_discovery_member_peer_metadata(_handle,
-            (ushort)serviceRole, endpoint, ref metadata.Handle);
+            (int)serviceRole, endpoint, ref metadata.Handle);
         ZlinkException.ThrowConfigIfError(rc);
         return metadata.Move();
     }
@@ -140,14 +141,6 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
                     NativeHelpers.ReadRoutingId(ref ownerNodeRoutingId));
             }
         }
-    }
-
-    public void SetDealerPeerMode(DiscoveryDealerPeerMode mode)
-    {
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_discovery_set_dealer_peer_mode(_handle,
-            (int)mode);
-        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public void Close()

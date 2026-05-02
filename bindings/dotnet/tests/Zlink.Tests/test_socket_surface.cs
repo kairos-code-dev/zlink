@@ -360,12 +360,12 @@ public sealed class test_socket_surface
         Assert.Null(registryTopologyQueryFilter.DefaultValue);
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
             nameof(Discovery.ResolveSpot), typeof(RoutingId)));
-        Assert.True(HasPublicInstanceMethod(typeof(Discovery),
-            nameof(Discovery.SetDealerPeerMode), typeof(DiscoveryDealerPeerMode)));
+        Assert.False(HasPublicInstanceMethod(typeof(Discovery),
+            "SetDealerPeerMode"));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen"));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery),
             "GetMemberPeerMetadata"));
-        Assert.True(typeof(DiscoveryDealerPeerMode).IsEnum);
+        Assert.True(typeof(AutoConnectType).IsEnum);
 
         Assert.True(HasPublicInstanceMethod(typeof(Message), "GetProperty",
             typeof(string)));

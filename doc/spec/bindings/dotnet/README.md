@@ -39,6 +39,45 @@ The framework-level STREAM and actor surface follows these rules.
   through `IZLinkActorContext.Client`, with per-message builder options for
   metadata, message name override, and forced compression.
 
+## Framework Discovery Channel Configuration
+
+Framework channel configuration names must expose the Discovery auto-connect
+type selected by the runtime. A configuration method that hides multiple
+auto-connect types behind one name is not the canonical API.
+
+| Framework API | Discovery auto-connect type | Participant roles |
+|---------------|-----------------------------|-------------------|
+| `AddClientServerChannel(...)` | `ClientServer` | `ROUTER` server, `DEALER` client |
+| `AddDealerMeshChannel(...)` | `DealerMesh` | `DEALER` clients |
+| `AddFanoutChannel(...)` | `Fanout` | `PUB` publisher, `SUB` subscriber |
+| `AddRouteMeshChannel(...)` | `RouteMesh` | `ROUTER` peers |
+| `AddSpotMesh(...)` | `SpotMesh` | `SPOT` nodes |
+
+`AddChannel(...)`, `AddRoutedChannel(...)`, `UseSpotDiscovery(...)`, and
+`AddSpotNode(...)` may exist as compatibility entry points, but framework
+samples and new code should use the typed names above.
+
+SPOT nodes attach to other Framework channels with names that also state the
+selected topology:
+
+```csharp
+options.AddSpotMesh("game.stage", spotMesh =>
+{
+    spotMesh.UseDiscovery(discovery => discovery.Add(registryEndpoint));
+    spotMesh.AddNode("stage-node", node =>
+    {
+        node.Bind(stageEndpoint);
+        node.AttachClientServerChannelClient("orders");
+        node.AttachSpotMeshPublisherClient("game.stage");
+    });
+});
+```
+
+Runtime client services follow the same naming rule. `IZLinkClientServerClient`
+targets `ClientServer` channels, `IZLinkFanoutPublisher` targets `Fanout`
+channels, and `IZLinkSpotMeshPublisherClient` publishes through a `SpotMesh`
+channel.
+
 ---
 
 ## Current Core Alignment Overrides
@@ -1503,10 +1542,10 @@ public sealed class Registry : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     RegistryTopologyEntry[] TopologyQuery(RegistryTopologyFilter? filter = null);
     /// <exception cref="ZlinkConfigException"/>
-    MemberPeerEntry[] MemberPeers(ServiceType serviceType, string serviceName);
+    MemberPeerEntry[] MemberPeers(string channelName);
     /// <exception cref="ZlinkConfigException"/>
-    Message MemberPeerMetadata(ServiceType serviceType, string serviceName,
-                               ServiceRole serviceRole, string endpoint);
+    Message MemberPeerMetadata(string channelName, ServiceRole serviceRole,
+                               string endpoint);
 
     /// <exception cref="ZlinkCloseException"/>
     void Close();
@@ -1519,15 +1558,23 @@ public sealed class Registry : IDisposable, IAsyncDisposable
 
 ### Discovery
 
-Fixed-service discovery view. Tracks one service type/name pair.
+Fixed-channel discovery view. Tracks one auto-connect type and channel name.
 Implements `IDisposable` and `IAsyncDisposable`.
 
 ```csharp
-public enum DiscoveryDealerPeerMode { Router = 1, Dealer = 2 }
+public enum AutoConnectType
+{
+    Invalid = 0,
+    RouteMesh = 1,
+    ClientServer = 2,
+    DealerMesh = 3,
+    Fanout = 4,
+    SpotMesh = 5
+}
 
 public sealed class Discovery : IDisposable, IAsyncDisposable
 {
-    Discovery(Context context, ServiceType serviceType, string serviceName);
+    Discovery(Context context, AutoConnectType autoConnectType, string channelName);
 
     /// <exception cref="ZlinkConnectException"/>
     void ConnectRegistry(string registryPubEndpoint);
@@ -1551,13 +1598,6 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
     /// </summary>
     /// <exception cref="ZlinkConfigException"/>
     RoutingId ResolveSpot(RoutingId spotRid);
-
-    /// <summary>
-    /// Set the auto-connect target policy used by DEALER sockets in this
-    /// discovery view. Default is Router. Maps to zlink_discovery_set_dealer_peer_mode.
-    /// </summary>
-    /// <exception cref="ZlinkConfigException"/>
-    void SetDealerPeerMode(DiscoveryDealerPeerMode mode);
 
     /// <exception cref="ZlinkCloseException"/>
     void Close();
@@ -1851,7 +1891,7 @@ Discovery / registry member peer entry.
 
 ```csharp
 public sealed record MemberPeerEntry(
-    ServiceType ServiceType,
+    AutoConnectType AutoConnectType,
     ServiceRole ServiceRole,
     string ServiceName,
     string Endpoint,

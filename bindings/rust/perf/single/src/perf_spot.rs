@@ -106,7 +106,7 @@ fn main() {
 
     let ctx = common::perf_context();
     let registry = Registry::new(&ctx).expect("registry");
-    let discovery = Discovery::new(&ctx, ServiceType::Spot, SERVICE_NAME).expect("discovery");
+    let discovery = Discovery::new(&ctx, AutoConnectType::SpotMesh, SERVICE_NAME).expect("discovery");
     let publisher_node = SpotNode::new(&ctx).expect("publisher node");
     let subscriber_node = SpotNode::new(&ctx).expect("subscriber node");
     common::apply_single_spot_node_admission(&publisher_node);

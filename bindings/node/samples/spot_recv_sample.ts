@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('../dist/canonical');
-const SERVICE_TYPE_SPOT = 0x3002;
+const AUTO_CONNECT_SPOT_MESH = 5;
 
 const SERVICE_NAME = 'sample';
 
@@ -22,7 +22,7 @@ async function reservePort() {
 async function main() {
   const ctx = new zlink.Context();
   const registry = new zlink.Registry(ctx);
-  const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, SERVICE_NAME);
+  const discovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
   const publisherNode = new zlink.SpotNode(ctx);
   const subscriberNode = new zlink.SpotNode(ctx);
   let publisher = null;

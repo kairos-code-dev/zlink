@@ -1,4 +1,5 @@
 using SampleCommon;
+using System.Linq;
 using Zlink;
 
 if (!SampleSupport.IsNativeAvailable())
@@ -6,7 +7,10 @@ if (!SampleSupport.IsNativeAvailable())
 
 using var ctx = new Context();
 using var registry = new Registry(ctx);
-using var discovery = new Discovery(ctx, ServiceType.Spot, "sample");
+using var publisherDiscovery = new Discovery(ctx, AutoConnectType.SpotMesh,
+    "sample");
+using var subscriberDiscovery = new Discovery(ctx, AutoConnectType.SpotMesh,
+    "sample");
 using var publisherNode = new SpotNode(ctx);
 using var subscriberNode = new SpotNode(ctx);
 using var publisher = publisherNode.CreateSpot();
@@ -18,13 +22,26 @@ string registryPub = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
 string registryRouter = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
 string publisherEndpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
 string subscriberEndpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
+publisherNode.SetRoutingId(SampleSupport.RoutingIdUtf8("z-sample-spot-pub"));
+subscriberNode.SetRoutingId(SampleSupport.RoutingIdUtf8("a-sample-spot-sub"));
+publisher.SetRoutingId(SampleSupport.RoutingIdUtf8("z-sample-spot-pub-spot"));
+subscriber.SetRoutingId(SampleSupport.RoutingIdUtf8("a-sample-spot-sub-spot"));
 registry.Bind(registryPub, registryRouter);
-discovery.ConnectRegistry(registryRouter);
-publisherNode.AttachDiscovery(discovery);
-subscriberNode.AttachDiscovery(discovery);
+registry.SetBroadcastInterval(50);
+publisherDiscovery.ConnectRegistry(registryRouter);
+subscriberDiscovery.ConnectRegistry(registryRouter);
 publisherNode.Bind(publisherEndpoint);
 subscriberNode.Bind(subscriberEndpoint);
+publisherNode.AttachDiscovery(publisherDiscovery);
+subscriberNode.AttachDiscovery(subscriberDiscovery);
 subscriber.SetSubscription(topic);
+
+SampleSupport.WaitOrThrow(
+    () => publisherNode.StatusSnapshot().ConnectedPeerCount > 0
+        && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0
+        && subscriberNode.SubjectsSnapshot().Any(entry => entry.Subject == topic),
+    5000,
+    "spot discovery readiness");
 
 TopicMessage? subscribed = null;
 SampleSupport.WaitOrThrow(() =>

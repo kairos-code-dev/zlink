@@ -115,14 +115,23 @@ fn main() {
     let mut nodes: Vec<SpotNode> = Vec::with_capacity(settings.clients);
     let mut discoveries: Vec<Discovery> = Vec::with_capacity(settings.clients);
 
-    for _ in 0..settings.clients {
+    for index in 0..settings.clients {
         let node = SpotNode::new(&ctx).expect("spot node");
+        node.set_routing_id(&RoutingId::from_bytes(
+            format!("a-rust-multi-spot-client-{index}").as_bytes(),
+        ))
+        .expect("client node rid");
+        let spot = Box::new(node.create_spot().expect("spot"));
+        spot.set_routing_id(&RoutingId::from_bytes(
+            format!("a-rust-multi-spot-client-spot-{index}").as_bytes(),
+        ))
+        .expect("client spot rid");
         common::apply_multi_spot_node_admission(&node, &settings);
-        let discovery = Discovery::new(&ctx, ServiceType::Spot, SERVICE_NAME).expect("discovery");
+        let discovery =
+            Discovery::new(&ctx, AutoConnectType::SpotMesh, SERVICE_NAME).expect("discovery");
         discovery
             .connect_registry(registry_router_endpoint)
             .expect("discovery connect");
-        node.attach_discovery(&discovery).expect("attach discovery");
         if matches!(args.transport.as_str(), "tls" | "wss") {
             let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
             let pem = common::load_tls_pem(&tls);
@@ -135,7 +144,7 @@ fn main() {
             return;
         };
         node.bind(&bind_endpoint).expect("client bind");
-        let spot = Box::new(node.create_spot().expect("spot"));
+        node.attach_discovery(&discovery).expect("attach discovery");
         spot.set_subscription(TOPIC).expect("subscription");
         nodes.push(node);
         discoveries.push(discovery);

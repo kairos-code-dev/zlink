@@ -8,7 +8,7 @@ const node_net_1 = __importDefault(require("node:net"));
 const zlink = require('../../dist/canonical');
 const perf_metrics_1 = require("../common/perf_metrics");
 const perf_single_common_1 = require("./perf_single_common");
-const SERVICE_TYPE_SPOT = 0x3002;
+const AUTO_CONNECT_SPOT_MESH = 5;
 const SERVICE_NAME = 'perf.spot';
 const TOPIC = 'perf.topic';
 function trySpotPublish(spot, payload) {
@@ -71,7 +71,8 @@ async function runSpotBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     (0, perf_single_common_1.applyContextPolicy)(ctx);
     const registry = new zlink.Registry(ctx);
-    const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, SERVICE_NAME);
+    const publisherDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
+    const subscriberDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
     const publisherNode = new zlink.SpotNode(ctx);
     const subscriberNode = new zlink.SpotNode(ctx);
     let publisher = null;
@@ -81,16 +82,22 @@ async function runSpotBenchmark(msgSize, options) {
         const registryRouter = `tcp://127.0.0.1:${await reservePort()}`;
         const publisherEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
         const subscriberEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+        publisher = publisherNode.createSpot();
+        subscriber = subscriberNode.createSpot();
+        publisherNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('z-node-perf-spot-publisher')));
+        subscriberNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('a-node-perf-spot-subscriber')));
+        publisher.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('z-node-perf-spot-publisher-spot')));
+        subscriber.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('a-node-perf-spot-subscriber-spot')));
         registry.bind(registryPub, registryRouter);
-        discovery.connectRegistry(registryRouter);
-        publisherNode.attachDiscovery(discovery);
-        subscriberNode.attachDiscovery(discovery);
+        registry.setBroadcastInterval(50);
+        publisherDiscovery.connectRegistry(registryRouter);
+        subscriberDiscovery.connectRegistry(registryRouter);
         (0, perf_single_common_1.applySpotNodeAdmission)(publisherNode, options);
         (0, perf_single_common_1.applySpotNodeAdmission)(subscriberNode, options);
         publisherNode.bind(publisherEndpoint);
         subscriberNode.bind(subscriberEndpoint);
-        publisher = publisherNode.createSpot();
-        subscriber = subscriberNode.createSpot();
+        publisherNode.attachDiscovery(publisherDiscovery);
+        subscriberNode.attachDiscovery(subscriberDiscovery);
         publisher.setLinger(Number(process.env.PERF_SINGLE_LINGER_MS ?? 0));
         subscriber.setLinger(Number(process.env.PERF_SINGLE_LINGER_MS ?? 0));
         subscriber.setSubscription(TOPIC);
@@ -197,7 +204,8 @@ async function runSpotBenchmark(msgSize, options) {
         }
         subscriberNode.close();
         publisherNode.close();
-        discovery.close();
+        subscriberDiscovery.close();
+        publisherDiscovery.close();
         registry.close();
         ctx.close();
     }

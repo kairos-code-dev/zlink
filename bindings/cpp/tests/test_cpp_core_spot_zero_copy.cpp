@@ -81,7 +81,7 @@ void test_spot_publish_external_buffer_delivery ()
 
     const std::string service_name = "zero-copy";
     zlink::service::discovery_t pub_discovery (
-      ctx, zlink::service_type::spot, service_name);
+      ctx, zlink::auto_connect_type::spot_mesh, service_name);
     assert (pub_discovery.valid ());
     pub_node.attach_discovery (pub_discovery);
 

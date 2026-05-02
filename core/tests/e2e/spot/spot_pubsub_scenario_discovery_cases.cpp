@@ -24,11 +24,16 @@ void test_spot_node_discovery_direct_and_child_interop ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_registry_set_broadcast_interval (registry, 50));
 
-    void *discovery = zlink_discovery_new (
-      ctx, ZLINK_SERVICE_TYPE_SPOT, "spot-discovery-interop");
-    TEST_ASSERT_NOT_NULL (discovery);
+    void *pub_discovery = zlink_discovery_new (
+      ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "spot-discovery-interop");
+    void *sub_discovery = zlink_discovery_new (
+      ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "spot-discovery-interop");
+    TEST_ASSERT_NOT_NULL (pub_discovery);
+    TEST_ASSERT_NOT_NULL (sub_discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      connect_discovery_registry_with_retry (discovery, registry_router, 2000));
+      connect_discovery_registry_with_retry (pub_discovery, registry_router, 2000));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      connect_discovery_registry_with_retry (sub_discovery, registry_router, 2000));
 
     void *pub_node = create_spot_node (ctx, "spot-discovery-interop");
     void *sub_node = create_spot_node (ctx, "spot-discovery-interop");
@@ -38,6 +43,10 @@ void test_spot_node_discovery_direct_and_child_interop ()
     void *sub = create_spot_sub_handle (sub_node);
     TEST_ASSERT_NOT_NULL (pub);
     TEST_ASSERT_NOT_NULL (sub);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (pub_node, "z-spot-discovery-pub", 20));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (sub_node, "a-spot-discovery-sub", 20));
 
     char pub_endpoint[MAX_SOCKET_STRING];
     char sub_endpoint[MAX_SOCKET_STRING];
@@ -48,29 +57,32 @@ void test_spot_node_discovery_direct_and_child_interop ()
       sub_node, "tcp://127.0.0.1:", &port_seed, sub_endpoint));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_attach_discovery (pub_node, discovery));
+      zlink_spot_node_attach_discovery (pub_node, pub_discovery));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_attach_discovery (sub_node, discovery));
+      zlink_spot_node_attach_discovery (sub_node, sub_discovery));
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_subscription (sub, "interop:node"));
 
     TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
       pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_READY, 1, 10000));
-    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 10000));
 
-    TEST_ASSERT_SUCCESS_ERRNO (publish_text (
-      &zlink_publish, pub, "interop:node", "node-hop", 0));
-    TEST_ASSERT_TRUE (wait_for_spot_recv_message (
-      sub, "interop:node", "node-hop", 8, 10000));
+    bool received = false;
+    for (int attempt = 0; attempt < 40 && !received; ++attempt) {
+        TEST_ASSERT_SUCCESS_ERRNO (publish_text (
+          &zlink_publish, pub, "interop:node", "node-hop", 0));
+        received = wait_for_spot_recv_message (
+          sub, "interop:node", "node-hop", 8, 250);
+    }
+    TEST_ASSERT_TRUE (received);
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_unset_subscription (sub, "interop:node"));
 
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&pub_node));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&sub_discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&pub_discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }

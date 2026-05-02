@@ -15,7 +15,7 @@ func main() {
 	samplecommon.MustStep("Registry", err)
 	defer func() { samplecommon.MustStep("registry.Close", registry.Close()) }()
 
-	discovery, err := ctx.Discovery(zlink.ServiceTypeSocket, "sample")
+	discovery, err := ctx.Discovery(zlink.AutoConnectFanout, "sample")
 	samplecommon.MustStep("Discovery", err)
 
 	pub, err := ctx.PubSocket()

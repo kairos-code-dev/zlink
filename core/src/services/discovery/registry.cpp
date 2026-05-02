@@ -38,6 +38,7 @@ registry_t::registry_t (ctx_t *ctx_) :
     _started (_runtime_socket_state.started),
     _next_socket_retry_ms (_runtime_socket_state.next_socket_retry_ms),
     _services (_projection_state.services),
+    _channel_contracts (_projection_state.channel_contracts),
     _topology (_projection_state.topology),
     _peer_seq (_projection_state.peer_seq),
     _peer_last_seen (_projection_state.peer_last_seen),

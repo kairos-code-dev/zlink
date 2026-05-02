@@ -25,7 +25,7 @@ void registry_t::upsert_topology_entry (
     key.service_kind = entry_.service_kind;
     key.service_role = entry_.service_role;
     key.routing_id_key = routing_id_key_of (entry_.routing_id);
-    key.service_name = entry_.service_name;
+    key.channel_name = entry_.channel_name;
     key.endpoint = entry_.endpoint;
 
     topology_entry_t &stored = _topology[key];
@@ -69,14 +69,22 @@ void registry_t::send_service_list (void *pub_)
             continue;
 
         const service_key_t &service_key = it->first;
-        const provider_map_t &providers = it->second.providers;
+        const service_entry_t &service = it->second;
+        const provider_map_t &providers = service.providers;
         const uint32_t provider_count =
           static_cast<uint32_t> (providers.size ());
+        uint64_t contract_created_at = 0;
+        std::map<std::string, channel_contract_t>::const_iterator cit =
+          _channel_contracts.find (service_key.channel_name);
+        if (cit != _channel_contracts.end ())
+            contract_created_at = cit->second.created_at;
 
-        discovery_protocol::send_u16 (pub_, service_key.service_type,
+        discovery_protocol::send_u16 (pub_, service.auto_connect_type,
                                       ZLINK_SNDMORE);
-        discovery_protocol::send_string (pub_, service_key.service_name,
+        discovery_protocol::send_string (pub_, service_key.channel_name,
                                          ZLINK_SNDMORE);
+        discovery_protocol::send_u64 (pub_, contract_created_at,
+                                      ZLINK_SNDMORE);
         discovery_protocol::send_u32 (pub_, provider_count,
                                       ZLINK_SNDMORE);
 

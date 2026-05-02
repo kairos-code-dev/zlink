@@ -18,15 +18,16 @@ int socket_discovery_attachment_t::attach_validation (
   std::string *bound_endpoint_out_)
 {
     if (!discovery_
-        || discovery_->service_type () != discovery_protocol::service_type_socket) {
+        || !discovery_protocol::auto_connect_type_allows_raw_socket (
+          discovery_->auto_connect_type ())) {
         errno = EINVAL;
         return -1;
     }
 
     const uint16_t local_role =
       discovery_protocol::derive_socket_service_role (_socket->socket_type ());
-    if (!discovery_protocol::is_valid_service_role_for_type (
-          discovery_protocol::service_type_socket, local_role)) {
+    if (!discovery_protocol::auto_connect_type_allows_role (
+          discovery_->auto_connect_type (), local_role)) {
         errno = ENOTSUP;
         return -1;
     }
@@ -74,8 +75,7 @@ int socket_discovery_attachment_t::register_bound_endpoint (
     }
 
     return discovery_owned_service::register_endpoint (
-      discovery_, discovery_protocol::service_type_socket, endpoint_.c_str (),
-      resolved_endpoint_out_, routing_id_ptr, local_role_,
+      discovery_, endpoint_.c_str (), resolved_endpoint_out_, routing_id_ptr, local_role_,
       _socket->local_peer_weight ());
 }
 

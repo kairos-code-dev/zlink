@@ -1215,7 +1215,6 @@ enum class registry_socket_role : int {
 };
 
 namespace zlink::service {
-enum class discovery_dealer_peer_mode_t : int {
     router,
     dealer
 };
@@ -1285,7 +1284,7 @@ Installed alias declarations:
 ```cpp
 using monitor_event_type_t = monitor_event;
 using monitor_source_kind_t = monitor_source_kind;
-using service_type_t = service_type;
+using auto_connect_type_t = auto_connect_type;
 using service_role_t = service_role;
 using service_kind_t = service_kind;
 using monitor_target_kind_t = monitor_target_kind;
@@ -1746,7 +1745,7 @@ Member peer entry returned by `registry_t::member_peers(...)` and
 
 ```cpp
 struct member_peer_entry_t {
-    service_type_t service_type;
+    auto_connect_type_t auto_connect_type;
     service_role_t service_role;
     std::string service_name;
     std::string endpoint;
@@ -1954,11 +1953,10 @@ class registry_t {
     std::vector<registry_topology_entry_t> topology_query(
         const registry_topology_filter_t& filter) const;
     /// @throws config_error_t
-    std::vector<member_peer_entry_t> member_peers(service_type service_type,
-                                                  const std::string& service_name) const;
+    std::vector<member_peer_entry_t> member_peers(const std::string& channel_name) const;
     /// @throws config_error_t
-    void member_peer_metadata(service_type service_type, const std::string& service_name,
-                              service_role service_role, const std::string& endpoint,
+    void member_peer_metadata(const std::string& channel_name, service_role service_role,
+                              const std::string& endpoint,
                               message_t& metadata_out) const;
 
     /// @throws close_error_t
@@ -1970,16 +1968,13 @@ class registry_t {
 
 ### service::discovery_t
 
-Fixed-service discovery view. Tracks one service type/name pair and
-provides metadata and member peer snapshots.
+Fixed-channel discovery view. Tracks one auto-connect type and channel name.
 
 ```cpp
 namespace service {
 
-enum class discovery_dealer_peer_mode_t { router = 1, dealer = 2 };
-
 class discovery_t {
-    discovery_t(context_t& ctx, service_type service_type, const std::string& service_name);
+    discovery_t(context_t& ctx, auto_connect_type auto_connect_type, const std::string& channel_name);
     ~discovery_t();
 
     discovery_t(discovery_t&& other) noexcept;
@@ -2012,11 +2007,6 @@ class discovery_t {
     /// send/request destination lookup. Maps to zlink_discovery_resolve_spot.
     /// @throws config_error_t
     routing_id_t resolve_spot(const routing_id_t& spot_rid);
-
-    /// Set the auto-connect target policy for DEALER sockets in this
-    /// discovery view. Default is router. Maps to zlink_discovery_set_dealer_peer_mode.
-    /// @throws config_error_t
-    void set_dealer_peer_mode(discovery_dealer_peer_mode_t mode);
 
     /// @throws close_error_t
     void close();

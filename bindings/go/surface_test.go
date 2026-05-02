@@ -220,8 +220,8 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.Discovery)(nil), "ResolveSpot") {
 		t.Fatalf("Discovery should expose ResolveSpot")
 	}
-	if !hasMethod((*zlink.Discovery)(nil), "SetDealerPeerMode") {
-		t.Fatalf("Discovery should expose SetDealerPeerMode")
+	if hasMethod((*zlink.Discovery)(nil), "SetDealerPeerMode") {
+		t.Fatalf("Discovery should not expose SetDealerPeerMode")
 	}
 	if !hasMethod((*zlink.Registry)(nil), "SetTLSServer") {
 		t.Fatalf("Registry should expose SetTLSServer")

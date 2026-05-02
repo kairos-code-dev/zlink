@@ -4,7 +4,7 @@ import dev.kairoscode.zlink.SpotDispatchEvent;
 import dev.kairoscode.zlink.SpotDispatchSubjectKind;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.registry.Registry;
-import dev.kairoscode.zlink.service.registry.ServiceType;
+import dev.kairoscode.zlink.service.registry.AutoConnectType;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.nio.charset.StandardCharsets;
@@ -58,7 +58,7 @@ public class CallbackModeContractTest {
 
         try (Context ctx = new Context();
              Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, ServiceType.SPOT,
+             Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH,
                  serviceName);
              SpotNode publisherNode = new SpotNode(ctx);
              SpotNode subscriberNode = new SpotNode(ctx);

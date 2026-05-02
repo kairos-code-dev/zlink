@@ -38,6 +38,11 @@ public static class SampleSupport
         return $"{transport}://127.0.0.1:{port}";
     }
 
+    public static RoutingId RoutingIdUtf8(string value)
+    {
+        return RoutingId.FromBytes(Encoding.UTF8.GetBytes(value));
+    }
+
     public static int ReservePort()
     {
         TcpListener listener = new(IPAddress.Loopback, 0);

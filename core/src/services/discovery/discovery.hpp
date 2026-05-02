@@ -32,14 +32,13 @@ enum discovery_socket_role_t
 class discovery_t
 {
   public:
-    discovery_t (ctx_t *ctx_, uint16_t service_type_,
-                 const std::string &service_name_);
+    discovery_t (ctx_t *ctx_, uint16_t auto_connect_type_,
+                 const std::string &channel_name_);
     ~discovery_t ();
 
     bool check_tag () const;
 
     int connect_registry (const char *registry_endpoint_);
-    int set_dealer_peer_mode (zlink_discovery_dealer_peer_mode_t mode_);
     int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_) const;
     int set_option (int option_, const void *optval_, size_t optvallen_);
@@ -56,40 +55,33 @@ class discovery_t
     void snapshot_member_peers (
       std::vector<zlink_member_peer_entry_t> *out_) const;
     int member_peers (zlink_member_peer_entry_t *entries_, size_t *count_) const;
-    int member_peer_metadata (uint16_t service_role_,
+    int member_peer_metadata (zlink_service_role_t service_role_,
                               const char *endpoint_,
                               zlink_msg_t *metadata_out_) const;
     int destroy ();
-    int register_service (uint16_t service_type_,
-                          const char *service_name_,
-                          const char *endpoint_,
+    int register_service (const char *endpoint_,
                           uint32_t weight_,
                           int64_t value_,
                           const std::vector<unsigned char> *metadata_,
                           std::string *resolved_endpoint_out_,
                           const zlink_routing_id_t *routing_id_ = NULL,
                           uint16_t service_role_ = 0);
-    int update_service_attributes (uint16_t service_type_,
-                                   const char *service_name_,
-                                   const char *endpoint_,
+    int update_service_attributes (const char *endpoint_,
                                    uint32_t weight_,
                                    int64_t value_,
                                    const std::vector<unsigned char> *metadata_,
                                    uint16_t service_role_ = 0);
-    int unregister_service (uint16_t service_type_,
-                            const char *service_name_,
-                            const char *endpoint_,
+    int unregister_service (const char *endpoint_,
                             uint16_t service_role_ = 0);
 
-    uint16_t service_type () const { return _service_type; }
-    const std::string &service_name () const { return _service_name; }
-    zlink_discovery_dealer_peer_mode_t dealer_peer_mode () const;
+    uint16_t auto_connect_type () const { return _auto_connect_type; }
+    const std::string &channel_name () const { return _channel_name; }
 
-    void snapshot_providers (const std::string &service_name_,
+    void snapshot_providers (const std::string &channel_name_,
                              std::vector<provider_info_t> *out_);
     bool latest_registry_uplink (std::string *out_);
     uint64_t update_seq ();
-    uint64_t service_update_seq (const std::string &service_name_);
+    uint64_t service_update_seq (const std::string &channel_name_);
     service_public_api_guard_t &public_api_guard_for_testing ()
     {
         return _public_api;
@@ -132,7 +124,7 @@ class discovery_t
         uint16_t service_kind;
         uint16_t service_role;
         std::string routing_id_key;
-        std::string service_name;
+        std::string channel_name;
 
         bool operator< (const topology_key_t &other_) const
         {
@@ -142,7 +134,7 @@ class discovery_t
                 return service_role < other_.service_role;
             if (routing_id_key != other_.routing_id_key)
                 return routing_id_key < other_.routing_id_key;
-            return service_name < other_.service_name;
+            return channel_name < other_.channel_name;
         }
     };
 
@@ -157,7 +149,7 @@ class discovery_t
     topology_key_t make_summary_key (uint16_t service_kind_,
                                      uint16_t service_role_,
                                      const zlink_routing_id_t &routing_id_,
-                                     const std::string &service_name_) const;
+                                     const std::string &channel_name_) const;
     void store_summary_entry_locked (const topology_key_t &key_,
                                      const zlink_registry_topology_entry_t &entry_,
                                      bool dirty_,
@@ -180,28 +172,24 @@ class discovery_t
 
     struct registered_service_key_t
     {
-        uint16_t service_type;
         uint16_t service_role;
-        std::string service_name;
+        std::string channel_name;
         std::string endpoint;
 
         bool operator< (const registered_service_key_t &other_) const
         {
-            if (service_type != other_.service_type)
-                return service_type < other_.service_type;
             if (service_role != other_.service_role)
                 return service_role < other_.service_role;
-            if (service_name != other_.service_name)
-                return service_name < other_.service_name;
+            if (channel_name != other_.channel_name)
+                return channel_name < other_.channel_name;
             return endpoint < other_.endpoint;
         }
     };
 
     struct registered_service_t
     {
-        uint16_t service_type;
         uint16_t service_role;
-        std::string service_name;
+        std::string channel_name;
         std::string endpoint;
         std::string uplink_endpoint;
         uint32_t weight;
@@ -210,7 +198,6 @@ class discovery_t
         uint64_t last_heartbeat_ms;
 
         registered_service_t () :
-            service_type (0),
             service_role (0),
             weight (100),
             value (0),
@@ -244,9 +231,8 @@ class discovery_t
     discovery_uplink_runtime_t *_uplink_runtime;
     discovery_service_state_t _service_state;
     uint32_t _monitor_ready_count;
-    uint16_t _service_type;
-    std::string _service_name;
-    zlink_discovery_dealer_peer_mode_t _dealer_peer_mode;
+    uint16_t _auto_connect_type;
+    std::string _channel_name;
     bool _discovery_summary_enabled;
     std::map<registered_service_key_t, registered_service_t> _registered_services;
     discovery_local_state_t _local_state;

@@ -3,9 +3,6 @@
 package dev.kairoscode.zlink.service.registry;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
-import dev.kairoscode.zlink.service.registry.ServiceRole;
-import dev.kairoscode.zlink.service.registry.ServiceType;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
@@ -161,12 +158,10 @@ public final class Registry implements AutoCloseable {
         }
     }
 
-    /** Returns member peers for one service view. */
-    public List<MemberPeerEntry> memberPeers(ServiceType serviceType,
-                                             String serviceName) {
-        Objects.requireNonNull(serviceType, "serviceType");
-        Objects.requireNonNull(serviceName, "serviceName");
-        int count = countMemberPeers(serviceType, serviceName);
+    /** Returns member peers for one channel view. */
+    public List<MemberPeerEntry> memberPeers(String channelName) {
+        Objects.requireNonNull(channelName, "channelName");
+        int count = countMemberPeers(channelName);
         if (count == 0)
             return List.of();
         try (Arena arena = Arena.ofConfined()) {
@@ -175,8 +170,7 @@ public final class Registry implements AutoCloseable {
             MemorySegment countOut = arena.allocate(ValueLayout.JAVA_LONG);
             countOut.set(ValueLayout.JAVA_LONG, 0, count);
             int rc = Native.registryMemberPeers(handle,
-              serviceType.getValue(),
-              NativeHelpers.toCString(arena, serviceName), entries, countOut);
+              NativeHelpers.toCString(arena, channelName), entries, countOut);
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_registry_member_peers");
             int actual = Math.min(count, boundedCount(
@@ -192,26 +186,24 @@ public final class Registry implements AutoCloseable {
     }
 
     /** Returns the metadata blob for one registry member peer. */
-    public byte[] memberPeerMetadata(ServiceType serviceType, String serviceName,
-                                     ServiceRole serviceRole, String endpoint) {
-        Objects.requireNonNull(serviceType, "serviceType");
-        Objects.requireNonNull(serviceName, "serviceName");
+    public byte[] memberPeerMetadata(String channelName, ServiceRole serviceRole,
+                                     String endpoint) {
+        Objects.requireNonNull(channelName, "channelName");
         Objects.requireNonNull(serviceRole, "serviceRole");
         Objects.requireNonNull(endpoint, "endpoint");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment metadata = arena.allocate(NativeLayouts.MSG_LAYOUT);
             initMessage(metadata);
             try {
-            int rc = Native.registryMemberPeerMetadata(handle,
-              serviceType.getValue(),
-              NativeHelpers.toCString(arena, serviceName),
-              (short) serviceRole.getValue(),
-              NativeHelpers.toCString(arena, endpoint), metadata);
-            if (rc != 0) {
-                throw ZlinkException.fromLastError(
-                  "zlink_registry_member_peer_metadata");
-            }
-            return readMessageBytes(metadata);
+                int rc = Native.registryMemberPeerMetadata(handle,
+                  NativeHelpers.toCString(arena, channelName),
+                  serviceRole.getValue(),
+                  NativeHelpers.toCString(arena, endpoint), metadata);
+                if (rc != 0) {
+                    throw ZlinkException.fromLastError(
+                      "zlink_registry_member_peer_metadata");
+                }
+                return readMessageBytes(metadata);
             } finally {
                 NativeMsg.msgClose(metadata);
             }
@@ -281,12 +273,11 @@ public final class Registry implements AutoCloseable {
         }
     }
 
-    private int countMemberPeers(ServiceType serviceType, String serviceName) {
+    private int countMemberPeers(String channelName) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
             int rc = Native.registryMemberPeers(handle,
-              serviceType.getValue(),
-              NativeHelpers.toCString(arena, serviceName), MemorySegment.NULL,
+              NativeHelpers.toCString(arena, channelName), MemorySegment.NULL,
               count);
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_registry_member_peers");

@@ -264,18 +264,19 @@ class CoreApiAlignmentTests(unittest.TestCase):
                         any(entry.subject == TOPIC.decode("utf-8") for entry in subjects)
                     )
 
-    def test_discovery_surface_exposes_resolution_and_peer_mode(self):
+    def test_discovery_surface_exposes_resolution_without_dealer_peer_mode(self):
         try:
             ctx = zlink.Context()
         except OSError:
             self.skipTest("zlink native library not found")
 
         with ctx:
-            with zlink.Discovery(ctx, zlink.ServiceType.SOCKET, "svc") as discovery:
+            with zlink.Discovery(
+                ctx, zlink.AutoConnectType.CLIENT_SERVER, "svc"
+            ) as discovery:
                 self.assertTrue(hasattr(discovery, "resolve_spot"))
-                self.assertTrue(hasattr(discovery, "set_dealer_peer_mode"))
-                self.assertTrue(hasattr(zlink, "DiscoveryDealerPeerMode"))
-                discovery.set_dealer_peer_mode(zlink.DiscoveryDealerPeerMode.ROUTER)
+                self.assertFalse(hasattr(discovery, "set_dealer_peer_mode"))
+                self.assertFalse(hasattr(zlink, "DiscoveryDealerPeerMode"))
 
     def test_message_and_routing_id_helpers_use_canonical_names(self):
         try:

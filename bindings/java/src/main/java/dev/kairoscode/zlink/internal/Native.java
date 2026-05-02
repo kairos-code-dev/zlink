@@ -550,13 +550,13 @@ public final class Native {
     private static final MethodHandle MH_REG_MEMBER_PEERS = downcall(
             "zlink_registry_member_peers",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_REG_MEMBER_PEER_METADATA = downcall(
             "zlink_registry_member_peer_metadata",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_SHORT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
     private static final MethodHandle MH_REG_TOPOLOGY_SNAPSHOT = downcall(
             "zlink_registry_topology_snapshot",
@@ -589,10 +589,6 @@ public final class Native {
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_CONNECT = downcall("zlink_discovery_connect_registry",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_SET_DEALER_PEER_MODE = downcall(
-            "zlink_discovery_set_dealer_peer_mode",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT));
     private static final MethodHandle MH_DISC_RESOLVE_SPOT = downcall(
             "zlink_discovery_resolve_spot",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -622,7 +618,7 @@ public final class Native {
     private static final MethodHandle MH_DISC_MEMBER_PEER_METADATA = downcall(
             "zlink_discovery_member_peer_metadata",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_SHORT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
 
     private static final MethodHandle MH_PROVIDER_NEW =
@@ -2499,27 +2495,25 @@ public final class Native {
     }
 
     public static int registryMemberPeers(MemorySegment registry,
-                                          int serviceType,
-                                          MemorySegment serviceName,
+                                          MemorySegment channelName,
                                           MemorySegment entries,
                                           MemorySegment count) {
         try {
-            return (int) MH_REG_MEMBER_PEERS.invokeExact(registry, serviceType,
-              serviceName, entries, count);
+            return (int) MH_REG_MEMBER_PEERS.invokeExact(registry, channelName,
+              entries, count);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_registry_member_peers failed", t);
         }
     }
 
     public static int registryMemberPeerMetadata(MemorySegment registry,
-                                                 int serviceType,
-                                                 MemorySegment serviceName,
-                                                 short serviceRole,
+                                                 MemorySegment channelName,
+                                                 int serviceRole,
                                                  MemorySegment endpoint,
                                                  MemorySegment metadataOut) {
         try {
             return (int) MH_REG_MEMBER_PEER_METADATA.invokeExact(registry,
-              serviceType, serviceName, serviceRole, endpoint, metadataOut);
+              channelName, serviceRole, endpoint, metadataOut);
         } catch (Throwable t) {
             throw new RuntimeException(
               "zlink_registry_member_peer_metadata failed", t);
@@ -2596,11 +2590,11 @@ public final class Native {
     }
 
     public static MemorySegment discoveryNewFixed(MemorySegment ctx,
-                                                  int serviceType,
-                                                  MemorySegment serviceName) {
+                                                  int autoConnectType,
+                                                  MemorySegment channelName) {
         try {
             return (MemorySegment) MH_DISC_NEW_FIXED.invokeExact(ctx,
-              serviceType, serviceName);
+              autoConnectType, channelName);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_discovery_new failed", t);
         }
@@ -2611,17 +2605,6 @@ public final class Native {
             return (int) MH_DISC_CONNECT.invokeExact(disc, pub);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_discovery_connect_registry failed", t);
-        }
-    }
-
-    public static int discoverySetDealerPeerMode(MemorySegment discovery,
-                                                 int mode) {
-        try {
-            return (int) MH_DISC_SET_DEALER_PEER_MODE.invokeExact(discovery,
-              mode);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_discovery_set_dealer_peer_mode failed", t);
         }
     }
 
@@ -2698,7 +2681,7 @@ public final class Native {
     }
 
     public static int discoveryMemberPeerMetadata(MemorySegment discovery,
-                                                  short serviceRole,
+                                                  int serviceRole,
                                                   MemorySegment endpoint,
                                                   MemorySegment metadataOut) {
         try {

@@ -10,6 +10,54 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
 {
+bool allocate_loopback_tcp_endpoint_local (char *endpoint_out_,
+                                           size_t endpoint_size_)
+{
+    if (!endpoint_out_ || endpoint_size_ == 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    for (int attempt = 0; attempt < 256; ++attempt) {
+        fd_t fd = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (fd == retired_fd)
+            continue;
+
+        int reuse = 1;
+        setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, as_setsockopt_opt_t (&reuse),
+                    sizeof (reuse));
+
+        struct sockaddr_in addr;
+        memset (&addr, 0, sizeof (addr));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+        addr.sin_port = 0;
+
+        if (bind (fd, reinterpret_cast<struct sockaddr *> (&addr),
+                  sizeof (addr))
+            == 0) {
+#if defined ZLINK_HAVE_WINDOWS
+            int addr_len = sizeof (addr);
+#else
+            socklen_t addr_len = sizeof (addr);
+#endif
+            if (getsockname (fd, reinterpret_cast<struct sockaddr *> (&addr),
+                             &addr_len)
+                == 0) {
+                close (fd);
+                snprintf (endpoint_out_, endpoint_size_, "tcp://127.0.0.1:%u",
+                          static_cast<unsigned> (ntohs (addr.sin_port)));
+                return true;
+            }
+        }
+
+        close (fd);
+    }
+
+    errno = EADDRINUSE;
+    return false;
+}
+
 bool bind_registry_test_endpoints_local (void *registry_,
                                          char *pub_out_,
                                          size_t pub_size_,
@@ -22,12 +70,13 @@ bool bind_registry_test_endpoints_local (void *registry_,
         return false;
     }
 
-    const int base_port = 49900 + test_port_offset ();
     for (int i = 0; i < 128; ++i) {
-        snprintf (pub_out_, pub_size_, "tcp://127.0.0.1:%d",
-                  base_port + i * 2);
-        snprintf (router_out_, router_size_, "tcp://127.0.0.1:%d",
-                  base_port + i * 2 + 1);
+        if (!allocate_loopback_tcp_endpoint_local (pub_out_, pub_size_)
+            || !allocate_loopback_tcp_endpoint_local (router_out_,
+                                                      router_size_)
+            || strcmp (pub_out_, router_out_) == 0) {
+            continue;
+        }
         if (zlink_registry_bind (registry_, pub_out_, router_out_)
             == ZLINK_BIND_OK) {
             return true;
@@ -47,11 +96,11 @@ bool bind_socket_test_endpoint_local (void *socket_,
         return false;
     }
 
-    const int base_port = base_port_ + test_port_offset ();
+    LIBZLINK_UNUSED (base_port_);
     for (int i = 0; i < 128; ++i) {
-        snprintf (endpoint_out_, endpoint_size_, "tcp://127.0.0.1:%d",
-                  base_port + i);
-        if (zlink_bind (socket_, endpoint_out_) == ZLINK_BIND_OK)
+        if (allocate_loopback_tcp_endpoint_local (endpoint_out_,
+                                                  endpoint_size_)
+            && zlink_bind (socket_, endpoint_out_) == ZLINK_BIND_OK)
             return true;
     }
 
@@ -740,9 +789,9 @@ void test_discovery_member_peers_reports_weight ()
       sizeof (registry_router)));
 
     void *router_discovery = zlink_discovery_new (
-      ctx, ZLINK_SERVICE_TYPE_SOCKET, "peer-weight-socket");
+      ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "peer-weight-socket");
     void *dealer_discovery = zlink_discovery_new (
-      ctx, ZLINK_SERVICE_TYPE_SOCKET, "peer-weight-socket");
+      ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, "peer-weight-socket");
     TEST_ASSERT_NOT_NULL (router_discovery);
     TEST_ASSERT_NOT_NULL (dealer_discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (

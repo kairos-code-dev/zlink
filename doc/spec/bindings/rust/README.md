@@ -1344,11 +1344,11 @@ impl Registry {
     pub fn service_summary_query(&self, filter: &RegistryServiceSummaryFilter)
         -> Result<Vec<RegistryServiceSummaryEntry>, ConfigError>;
     /// # Errors: ConfigError
-    pub fn member_peers(&self, service_type: ServiceType, service_name: &str)
+    pub fn member_peers(&self, channel_name: &str)
         -> Result<Vec<MemberPeerEntry>, ConfigError>;
     /// # Errors: ConfigError
-    pub fn member_peer_metadata(&self, service_type: ServiceType, service_name: &str,
-        service_role: ServiceRole, endpoint: &str) -> Result<Message, ConfigError>;
+    pub fn member_peer_metadata(&self, channel_name: &str, service_role: ServiceRole,
+        endpoint: &str) -> Result<Message, ConfigError>;
     /// # Errors: ConfigError
     pub fn topology_snapshot(&self) -> Result<Vec<RegistryTopologyEntry>, ConfigError>;
     /// # Errors: ConfigError
@@ -1362,16 +1362,20 @@ impl Registry {
 ### Discovery
 
 ```rust
-/// Auto-connect target policy used by DEALER sockets in a Discovery view.
+/// Fixed auto-connect channel contract selected when a Discovery handle is created.
 #[repr(i32)]
-pub enum DiscoveryDealerPeerMode {
-    Router = 1,
-    Dealer = 2,
+pub enum AutoConnectType {
+    Invalid,
+    RouteMesh,
+    ClientServer,
+    DealerMesh,
+    Fanout,
+    SpotMesh,
 }
 
 impl Discovery {
     /// # Errors: ConfigError
-    pub fn new(ctx: &Context, service_type: ServiceType, service_name: &str)
+    pub fn new(ctx: &Context, auto_connect_type: AutoConnectType, channel_name: &str)
         -> Result<Self, ConfigError>;
     /// # Errors: ConnectError
     pub fn connect_registry(&self, endpoint: &str) -> Result<(), ConnectError>;
@@ -1395,11 +1399,6 @@ impl Discovery {
     /// Intended for send/request destination lookup. Maps to
     /// `zlink_discovery_resolve_spot`.
     pub fn resolve_spot(&self, spot_rid: &RoutingId) -> Result<RoutingId, ConfigError>;
-    /// Set the auto-connect target policy used by DEALER sockets in this
-    /// discovery view. Default is Router. Maps to
-    /// `zlink_discovery_set_dealer_peer_mode`.
-    pub fn set_dealer_peer_mode(&self, mode: DiscoveryDealerPeerMode)
-        -> Result<(), ConfigError>;
     /// # Errors: CloseError
     pub fn close(&mut self) -> Result<(), CloseError>;
 }
@@ -1643,9 +1642,9 @@ Primary entry types used in the default service flow:
 
 ```rust
 pub struct MemberPeerEntry {
-    pub service_type: ServiceType,
+    pub auto_connect_type: AutoConnectType,
     pub service_role: u16,
-    pub service_name: String,
+    pub channel_name: String,
     pub endpoint: String,
     pub routing_id: RoutingId,
     pub value: i64,
@@ -1656,7 +1655,7 @@ pub struct RegistryTopologyEntry {
     pub routing_id: RoutingId,
     pub service_kind: ServiceKind,
     pub service_role: ServiceRole,
-    pub service_name: String,
+    pub channel_name: String,
     pub endpoint: String,
     pub source: TopologySource,
     pub state: TopologyState,
@@ -1667,7 +1666,7 @@ pub struct RegistryTopologyEntry {
 }
 
 pub struct SpotNodeStatus {
-    pub service_name: String,
+    pub channel_name: String,
     pub local_endpoint: String,
     pub node_routing_id: RoutingId,
     pub state: SpotNodeState,
@@ -1689,7 +1688,7 @@ Advanced / Diagnostic entry types and filters:
 pub struct RegistryServiceSummaryEntry {
     pub service_kind: ServiceKind,
     pub service_role: ServiceRole,
-    pub service_name: String,
+    pub channel_name: String,
     pub total_count: u32,
     pub connecting_count: u32,
     pub ready_count: u32,
@@ -1711,7 +1710,7 @@ pub struct RegistryStatus {
 }
 
 pub struct SpotNodePeerEntry {
-    pub service_name: String,
+    pub channel_name: String,
     pub local_endpoint: String,
     pub peer_endpoint: String,
     pub source: SpotPeerSource,

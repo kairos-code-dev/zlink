@@ -27,7 +27,7 @@ from perf_common import (
 
 
 SERVICE_NAME = "spot-svc"
-TOPIC = b"bench.topic"
+TOPIC = "bench.topic"
 
 
 def main(argv=None):
@@ -44,158 +44,181 @@ def main(argv=None):
     with zlink.Context() as ctx:
         with zlink.Registry(ctx) as registry:
             with zlink.Discovery(
-                ctx, zlink.ServiceType.SPOT, SERVICE_NAME
-            ) as discovery:
-                with zlink.SpotNode(ctx) as publisher_node:
-                    with zlink.SpotNode(ctx) as subscriber_node:
-                        apply_single_spot_node_admission(
-                            publisher_node, subscriber_node
-                        )
-                        with publisher_node.create_spot() as publisher:
-                            with subscriber_node.create_spot() as subscriber:
-                                registry_pub_endpoint = resolve_single_endpoint(
-                                    args.transport, "spot-registry-pub"
-                                )
-                                registry_router_endpoint = resolve_single_endpoint(
-                                    args.transport, "spot-registry-router"
-                                )
-                                publisher_endpoint = resolve_single_endpoint(
-                                    args.transport, "spot-publisher"
-                                )
-                                subscriber_endpoint = resolve_single_endpoint(
-                                    args.transport, "spot-subscriber"
-                                )
-                                configure_single_tls_server(
-                                    publisher_node, args.transport
-                                )
-                                configure_single_tls_client(
-                                    subscriber_node, args.transport
-                                )
-                                registry.bind(
-                                    registry_pub_endpoint,
-                                    registry_router_endpoint,
-                                )
-                                discovery.connect_registry(
-                                    registry_router_endpoint
-                                )
-                                publisher_node.attach_discovery(discovery)
-                                subscriber_node.attach_discovery(discovery)
-                                publisher_node.bind(publisher_endpoint)
-                                subscriber_node.bind(subscriber_endpoint)
-                                subscriber.set_subscription(TOPIC)
+                ctx, zlink.AutoConnectType.SPOT_MESH, SERVICE_NAME
+            ) as publisher_discovery:
+                with zlink.Discovery(
+                    ctx, zlink.AutoConnectType.SPOT_MESH, SERVICE_NAME
+                ) as subscriber_discovery:
+                    with zlink.SpotNode(ctx) as publisher_node:
+                        with zlink.SpotNode(ctx) as subscriber_node:
+                            apply_single_spot_node_admission(
+                                publisher_node, subscriber_node
+                            )
+                            with publisher_node.create_spot() as publisher:
+                                with subscriber_node.create_spot() as subscriber:
+                                    publisher_node.set_routing_id(
+                                        b"z-python-perf-spot-publisher"
+                                    )
+                                    subscriber_node.set_routing_id(
+                                        b"a-python-perf-spot-subscriber"
+                                    )
+                                    publisher.set_routing_id(
+                                        b"z-python-perf-spot-publisher-spot"
+                                    )
+                                    subscriber.set_routing_id(
+                                        b"a-python-perf-spot-subscriber-spot"
+                                    )
+                                    registry_pub_endpoint = resolve_single_endpoint(
+                                        args.transport, "spot-registry-pub"
+                                    )
+                                    registry_router_endpoint = resolve_single_endpoint(
+                                        args.transport, "spot-registry-router"
+                                    )
+                                    publisher_endpoint = resolve_single_endpoint(
+                                        args.transport, "spot-publisher"
+                                    )
+                                    subscriber_endpoint = resolve_single_endpoint(
+                                        args.transport, "spot-subscriber"
+                                    )
+                                    configure_single_tls_server(
+                                        publisher_node, args.transport
+                                    )
+                                    configure_single_tls_client(
+                                        subscriber_node, args.transport
+                                    )
+                                    registry.bind(
+                                        registry_pub_endpoint,
+                                        registry_router_endpoint,
+                                    )
+                                    registry.set_broadcast_interval(50)
+                                    publisher_discovery.connect_registry(
+                                        registry_router_endpoint
+                                    )
+                                    subscriber_discovery.connect_registry(
+                                        registry_router_endpoint
+                                    )
+                                    publisher_node.bind(publisher_endpoint)
+                                    subscriber_node.bind(subscriber_endpoint)
+                                    publisher_node.attach_discovery(
+                                        publisher_discovery
+                                    )
+                                    subscriber_node.attach_discovery(
+                                        subscriber_discovery
+                                    )
+                                    subscriber.set_subscription(TOPIC)
 
-                                def on_dispatch(current_spot, info):
-                                    if (
-                                        info.event
-                                        != zlink.SpotDispatchEvent.SUBSCRIBE_READABLE
-                                    ):
-                                        return
-                                    while True:
-                                        received = recv_nonblocking(
-                                            current_spot, method="subscribe"
-                                        )
-                                        if received is None:
-                                            return
-                                        with received:
-                                            parts = received.to_bytes_list()
-                                        if not parts:
-                                            continue
-                                        data = parts[0]
-                                        header = decode_header(data)
+                                    def on_dispatch(current_spot, info):
                                         if (
-                                            not probe_ready.is_set()
-                                            and header is not None
-                                            and header["magic"] == HEADER_MAGIC
-                                            and header["phase"] == 0
-                                            and header["msg_size"] == args.msg_size
-                                            and header["run_id"] == run_id
+                                            info.event
+                                            != zlink.SpotDispatchEvent.SUBSCRIBE_READABLE
                                         ):
-                                            probe_ready.set()
-                                            continue
-                                        if not is_active_message(
-                                            data,
-                                            expected_msg_size=args.msg_size,
-                                            run_id=run_id,
-                                        ):
-                                            continue
-                                        if time.perf_counter() > active_deadline[0]:
-                                            continue
-                                        with recv_lock:
-                                            latencies.append(
-                                                latency_ns_from_message(data)
+                                            return
+                                        while True:
+                                            received = recv_nonblocking(
+                                                current_spot, method="subscribe"
                                             )
-
-                                subscriber.on_dispatch_event(on_dispatch)
-
-                                ready_deadline = time.monotonic() + (
-                                    resolve_single_connect_ready_timeout_ms()
-                                    / 1000.0
-                                )
-                                while (
-                                    not probe_ready.is_set()
-                                    and time.monotonic() < ready_deadline
-                                ):
-                                    publisher.publish(
-                                        SERVICE_NAME,
-                                        TOPIC,
-                                        [
-                                            stamp_payload(
-                                                probe_payload,
-                                                phase=0,
+                                            if received is None:
+                                                return
+                                            with received:
+                                                parts = received.to_bytes_list()
+                                            if not parts:
+                                                continue
+                                            data = parts[0]
+                                            header = decode_header(data)
+                                            if (
+                                                not probe_ready.is_set()
+                                                and header is not None
+                                                and header["magic"] == HEADER_MAGIC
+                                                and header["phase"] == 0
+                                                and header["msg_size"] == args.msg_size
+                                                and header["run_id"] == run_id
+                                            ):
+                                                probe_ready.set()
+                                                continue
+                                            if not is_active_message(
+                                                data,
+                                                expected_msg_size=args.msg_size,
                                                 run_id=run_id,
-                                            )
-                                        ],
-                                    )
-                                    probe_ready.wait(0.05)
-                                if not probe_ready.is_set():
-                                    raise RuntimeError(
-                                        "spot benchmark probe-ready timeout"
-                                    )
+                                            ):
+                                                continue
+                                            if time.perf_counter() > active_deadline[0]:
+                                                continue
+                                            with recv_lock:
+                                                latencies.append(
+                                                    latency_ns_from_message(data)
+                                                )
 
-                                time.sleep(resolve_single_spot_ready_settle_s())
+                                    subscriber.on_dispatch_event(on_dispatch)
 
-                                active_deadline[0] = time.perf_counter() + args.duration
-                                while time.perf_counter() < active_deadline[0]:
-                                    publisher.publish(
-                                        SERVICE_NAME,
-                                        TOPIC,
-                                        [
-                                            stamp_payload(
-                                                active_payload,
-                                                phase=1,
-                                                run_id=run_id,
-                                            )
-                                        ],
+                                    ready_deadline = time.monotonic() + (
+                                        resolve_single_connect_ready_timeout_ms()
+                                        / 1000.0
                                     )
-                                publisher.publish(
-                                    SERVICE_NAME,
-                                    TOPIC,
-                                    [
-                                        stamp_payload(
-                                            cooldown_payload,
-                                            phase=2,
-                                            run_id=run_id,
+                                    while (
+                                        not probe_ready.is_set()
+                                        and time.monotonic() < ready_deadline
+                                    ):
+                                        publisher.publish(
+                                            SERVICE_NAME,
+                                            TOPIC,
+                                            [
+                                                stamp_payload(
+                                                    probe_payload,
+                                                    phase=0,
+                                                    run_id=run_id,
+                                                )
+                                            ],
                                         )
-                                    ],
-                                )
-                                threading.Event().wait(
-                                    resolve_single_recv_timeout_ms() / 1000.0
-                                )
+                                        probe_ready.wait(0.05)
+                                    if not probe_ready.is_set():
+                                        raise RuntimeError(
+                                            "spot benchmark probe-ready timeout"
+                                        )
 
-                                with recv_lock:
-                                    collected = list(latencies)
-                                if not collected:
-                                    raise RuntimeError(
-                                        "spot benchmark did not receive any active message"
+                                    time.sleep(resolve_single_spot_ready_settle_s())
+
+                                    active_deadline[0] = time.perf_counter() + args.duration
+                                    while time.perf_counter() < active_deadline[0]:
+                                        publisher.publish(
+                                            SERVICE_NAME,
+                                            TOPIC,
+                                            [
+                                                stamp_payload(
+                                                    active_payload,
+                                                    phase=1,
+                                                    run_id=run_id,
+                                                )
+                                            ],
+                                        )
+                                    publisher.publish(
+                                        SERVICE_NAME,
+                                        TOPIC,
+                                        [
+                                            stamp_payload(
+                                                cooldown_payload,
+                                                phase=2,
+                                                run_id=run_id,
+                                            )
+                                        ],
                                     )
-                                metrics = result_metrics(
-                                    count=len(collected),
-                                    msg_size=args.msg_size,
-                                    elapsed_s=args.duration,
-                                    latencies_ns=collected,
-                                )
-                                print_result_lines(
-                                    "SPOT", args.transport, args.msg_size, metrics
+                                    threading.Event().wait(
+                                        resolve_single_recv_timeout_ms() / 1000.0
+                                    )
+
+                                    with recv_lock:
+                                        collected = list(latencies)
+                                    if not collected:
+                                        raise RuntimeError(
+                                            "spot benchmark did not receive any active message"
+                                        )
+                                    metrics = result_metrics(
+                                        count=len(collected),
+                                        msg_size=args.msg_size,
+                                        elapsed_s=args.duration,
+                                        latencies_ns=collected,
+                                    )
+                                    print_result_lines(
+                                        "SPOT", args.transport, args.msg_size, metrics
                                 )
 
 

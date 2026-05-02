@@ -10,26 +10,27 @@
 #include "api/connect_result_internal.hpp"
 
 #include "services/discovery/discovery_access.hpp"
+#include "services/discovery/discovery_protocol.hpp"
 
 void *zlink_discovery_new (void *ctx_,
-                           zlink_service_type_t service_type_,
-                           const char *service_name_)
+                           zlink_auto_connect_type_t auto_connect_type_,
+                           const char *channel_name_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
         return NULL;
     }
-    if (!service_name_ || service_name_[0] == '\0') {
+    if (!channel_name_ || channel_name_[0] == '\0') {
         errno = EINVAL;
         return NULL;
     }
-    if (service_type_ != ZLINK_SERVICE_TYPE_SPOT
-        && service_type_ != ZLINK_SERVICE_TYPE_SOCKET) {
+    if (!zlink::discovery_protocol::is_valid_auto_connect_type (
+          static_cast<uint16_t> (auto_connect_type_))) {
         errno = EINVAL;
         return NULL;
     }
     void *discovery = zlink::discovery_access_t::create (
-      static_cast<zlink::ctx_t *> (ctx_), service_type_, service_name_);
+      static_cast<zlink::ctx_t *> (ctx_), auto_connect_type_, channel_name_);
     register_discovery_handle (discovery);
     return discovery;
 }
@@ -46,20 +47,6 @@ zlink_connect_result_t zlink_discovery_connect_registry (void *discovery_,
     return zlink::connect_result_internal::from_rc (
       zlink::discovery_access_t::connect_registry (discovery,
                                                     registry_endpoint_));
-}
-
-zlink_config_result_t zlink_discovery_set_dealer_peer_mode (
-  void *discovery_,
-  zlink_discovery_dealer_peer_mode_t mode_)
-{
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
-    if (!discovery) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    return zlink::config_result_internal::from_rc (
-      zlink::discovery_access_t::set_dealer_peer_mode (discovery, mode_));
 }
 
 zlink_config_result_t zlink_discovery_set_value (void *discovery_, int64_t value_)
@@ -143,7 +130,7 @@ zlink_config_result_t zlink_discovery_member_peers (void *discovery_,
 }
 
 zlink_config_result_t zlink_discovery_member_peer_metadata (void *discovery_,
-                                                            uint16_t service_role_,
+                                                            zlink_service_role_t service_role_,
                                                             const char *endpoint_,
                                                             zlink_msg_t *metadata_out_)
 {

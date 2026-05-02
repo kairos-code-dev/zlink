@@ -241,9 +241,9 @@ raw 소켓을 attach한다. Discovery가 등록, 피어 조회, heartbeat를 대
 처리한다.
 
 ```c
-/* service_type: ZLINK_SERVICE_TYPE_SPOT or ZLINK_SERVICE_TYPE_SOCKET */
+/* choose ROUTE_MESH, CLIENT_SERVER, DEALER_MESH, FANOUT, or SPOT_MESH */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SPOT, "order-service");
+    ZLINK_AUTO_CONNECT_SPOT_MESH, "order-service");
 
 /* Connect to Registry bootstrap/control endpoint (multiple allowed) */
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
@@ -260,7 +260,7 @@ zlink_discovery_destroy(&discovery);
 ```
 
 새로운 multi-service SpotNode 토폴로지에서는 attach되는 socket마다
-`ZLINK_SERVICE_TYPE_SOCKET`을 사용한다. SPOT 가이드의
+`ZLINK_AUTO_CONNECT_CLIENT_SERVER`를 channel DEALER 호출에 사용한다. SPOT 가이드의
 [§3.1 Discovery 기반 자동 Mesh](07-3-spot.ko.md#31-discovery-기반-자동-mesh)를
 참고한다.
 
@@ -271,9 +271,9 @@ lifecycle 관리를 할 수 있다. SPOT 추상화 없이 소켓 수준에서 �
 통신을 가능하게 한다.
 
 ```c
-/* Create Discovery with SOCKET type */
+/* Create a FANOUT Discovery for PUB/SUB */
 void *discovery = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SOCKET, "price-feed");
+    ZLINK_AUTO_CONNECT_FANOUT, "price-feed");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
 /* Create a PUB socket and attach it to Discovery */
@@ -306,13 +306,13 @@ zlink_spot_node_bind(node, "tcp://*:9000");
 
 /* SPOT mesh — 이 node 자신의 channel */
 void *spot_disc = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SPOT, "alpha");
+    ZLINK_AUTO_CONNECT_SPOT_MESH, "alpha");
 zlink_discovery_connect_registry(spot_disc, "tcp://registry1:5551");
 zlink_spot_node_attach_discovery(node, spot_disc);
 
 /* "orders-exec" channel 호출용 자동 dealer */
 void *orders_disc = zlink_discovery_new(ctx,
-    ZLINK_SERVICE_TYPE_SOCKET, "orders-exec");
+    ZLINK_AUTO_CONNECT_CLIENT_SERVER, "orders-exec");
 zlink_discovery_connect_registry(orders_disc, "tcp://registry1:5551");
 
 void *orders_dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
@@ -324,7 +324,7 @@ zlink_spot_node_attach_channel_dealer(node, orders_disc, orders_dealer);
 attach 시 지켜야 하는 규칙:
 
 - **SPOT Discovery는 node당 하나.** `zlink_spot_node_attach_discovery()`는
-  `ZLINK_SERVICE_TYPE_SPOT`만 받는다. 두 번째 attach는 `EBUSY`로 실패한다.
+  `ZLINK_AUTO_CONNECT_SPOT_MESH`만 받는다. 두 번째 attach는 `EBUSY`로 실패한다.
 - **같은 channel에 DEALER 하나.** 자동 attach와 수동 attach가 같은 namespace를
   공유한다. 같은 channel에 `DEALER`를 두 번 attach하면 `EBUSY`로 실패한다.
 - **attach된 DEALER는 전용 자원.** 소유권은 호출자가 유지하지만, attach 뒤에는

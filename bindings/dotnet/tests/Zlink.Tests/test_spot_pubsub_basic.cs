@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using Xunit;
 
@@ -163,9 +164,9 @@ public sealed class test_spot_pubsub_basic
 
         using var ctx = new Context();
         using var registry = new Registry(ctx);
-        using var publisherDiscovery = new Discovery(ctx, ServiceType.Spot,
+        using var publisherDiscovery = new Discovery(ctx, AutoConnectType.SpotMesh,
             "game.stage");
-        using var subscriberDiscovery = new Discovery(ctx, ServiceType.Spot,
+        using var subscriberDiscovery = new Discovery(ctx, AutoConnectType.SpotMesh,
             "game.stage");
         using var publisherNode = new SpotNode(ctx);
         using var subscriberNode = new SpotNode(ctx);
@@ -184,6 +185,14 @@ public sealed class test_spot_pubsub_basic
         string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp",
             "spot-discovery-subscriber");
 
+        publisherNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "z-spot-discovery-publisher"));
+        subscriberNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "a-spot-discovery-subscriber"));
+        publisher.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "z-spot-discovery-publisher-spot"));
+        subscriber.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "a-spot-discovery-subscriber-spot"));
         registry.Bind(registryPub, registryRouter);
         registry.SetBroadcastInterval(50);
         publisherDiscovery.ConnectRegistry(registryRouter);
@@ -196,7 +205,9 @@ public sealed class test_spot_pubsub_basic
 
         Assert.True(CoreTestSupport.WaitUntil(
             () => publisherNode.StatusSnapshot().ConnectedPeerCount > 0
-                && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0,
+                && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0
+                && subscriberNode.SubjectsSnapshot()
+                    .Any(entry => entry.Subject == topic),
             10000));
 
         TopicMessage? subscribed = null;
@@ -235,9 +246,9 @@ public sealed class test_spot_pubsub_basic
         using var subscriberContext = new Context();
         using var registry = new Registry(registryContext);
         using var publisherDiscovery = new Discovery(publisherContext,
-            ServiceType.Spot, "game.stage");
+            AutoConnectType.SpotMesh, "game.stage");
         using var subscriberDiscovery = new Discovery(subscriberContext,
-            ServiceType.Spot, "game.stage");
+            AutoConnectType.SpotMesh, "game.stage");
         using var publisherNode = new SpotNode(publisherContext);
         using var subscriberNode = new SpotNode(subscriberContext);
         using var publisher = publisherNode.CreateSpot();
@@ -255,6 +266,14 @@ public sealed class test_spot_pubsub_basic
         string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp",
             "spot-cross-context-subscriber");
 
+        publisherNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "z-spot-cross-context-publisher"));
+        subscriberNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "a-spot-cross-context-subscriber"));
+        publisher.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "z-spot-cross-context-publisher-spot"));
+        subscriber.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "a-spot-cross-context-subscriber-spot"));
         registry.Bind(registryPub, registryRouter);
         registry.SetBroadcastInterval(50);
         publisherDiscovery.ConnectRegistry(registryRouter);
@@ -306,9 +325,9 @@ public sealed class test_spot_pubsub_basic
         using var subscriberContext = new Context();
         using var registry = new Registry(registryContext);
         using var publisherDiscovery = new Discovery(publisherContext,
-            ServiceType.Spot, "game.stage");
+            AutoConnectType.SpotMesh, "game.stage");
         using var subscriberDiscovery = new Discovery(subscriberContext,
-            ServiceType.Spot, "game.stage");
+            AutoConnectType.SpotMesh, "game.stage");
         using var publisherNode = new SpotNode(publisherContext);
         using var subscriberNode = new SpotNode(subscriberContext);
         using var subscriber = subscriberNode.CreateSpot();
@@ -325,6 +344,12 @@ public sealed class test_spot_pubsub_basic
         string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp",
             "spot-late-publisher-subscriber");
 
+        publisherNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "z-spot-late-publisher"));
+        subscriberNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "a-spot-late-subscriber"));
+        subscriber.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "a-spot-late-subscriber-spot"));
         registry.Bind(registryPub, registryRouter);
         registry.SetBroadcastInterval(50);
         publisherDiscovery.ConnectRegistry(registryRouter);
@@ -341,6 +366,8 @@ public sealed class test_spot_pubsub_basic
             10000));
 
         using var publisher = publisherNode.CreateSpot();
+        publisher.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "z-spot-late-publisher-spot"));
 
         TopicMessage? subscribed = null;
         Assert.True(CoreTestSupport.WaitUntil(
@@ -378,9 +405,9 @@ public sealed class test_spot_pubsub_basic
         using var subscriberContext = new Context();
         using var registry = new Registry(registryContext);
         using var publisherDiscovery = new Discovery(publisherContext,
-            ServiceType.Spot, "game.stage");
+            AutoConnectType.SpotMesh, "game.stage");
         using var subscriberDiscovery = new Discovery(subscriberContext,
-            ServiceType.Spot, "game.stage");
+            AutoConnectType.SpotMesh, "game.stage");
         using var publisherNode = new SpotNode(publisherContext);
         using var subscriberNode = new SpotNode(subscriberContext);
         using var subscriber = subscriberNode.CreateSpot();
@@ -397,6 +424,12 @@ public sealed class test_spot_pubsub_basic
         string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp",
             "spot-preconnected-subscriber");
 
+        publisherNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "z-spot-preconnected-publisher"));
+        subscriberNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "a-spot-preconnected-subscriber"));
+        subscriber.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "a-spot-preconnected-subscriber-spot"));
         registry.Bind(registryPub, registryRouter);
         registry.SetBroadcastInterval(50);
         publisherDiscovery.ConnectRegistry(registryRouter);
@@ -407,6 +440,8 @@ public sealed class test_spot_pubsub_basic
         subscriberNode.AttachDiscovery(subscriberDiscovery);
 
         using var publisher = publisherNode.CreateSpot();
+        publisher.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "z-spot-preconnected-publisher-spot"));
         subscriber.SetSubscription(topic);
 
         Assert.True(CoreTestSupport.WaitUntil(
@@ -450,9 +485,9 @@ public sealed class test_spot_pubsub_basic
         using var subscriberContext = new Context();
         using var registry = new Registry(registryContext);
         using var publisherDiscovery = new Discovery(publisherContext,
-            ServiceType.Spot, "game.stage");
+            AutoConnectType.SpotMesh, "game.stage");
         using var subscriberDiscovery = new Discovery(subscriberContext,
-            ServiceType.Spot, "game.stage");
+            AutoConnectType.SpotMesh, "game.stage");
         using var publisherNode = new SpotNode(publisherContext);
         using var subscriberNode = new SpotNode(subscriberContext);
         using var subscriber = subscriberNode.CreateSpot();
@@ -469,6 +504,12 @@ public sealed class test_spot_pubsub_basic
         string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp",
             "spot-early-publish-subscriber");
 
+        publisherNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "z-spot-early-publisher"));
+        subscriberNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "a-spot-early-subscriber"));
+        subscriber.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "a-spot-early-subscriber-spot"));
         registry.Bind(registryPub, registryRouter);
         registry.SetBroadcastInterval(50);
         publisherDiscovery.ConnectRegistry(registryRouter);
@@ -479,6 +520,8 @@ public sealed class test_spot_pubsub_basic
         subscriberNode.AttachDiscovery(subscriberDiscovery);
 
         using var publisher = publisherNode.CreateSpot();
+        publisher.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
+            "z-spot-early-publisher-spot"));
         subscriber.SetSubscription(topic);
 
         TopicMessage? subscribed = null;

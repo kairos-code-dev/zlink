@@ -41,7 +41,8 @@ static zlink::provider_info_t make_provider (const char *service_name_,
                                              unsigned char metadata1_)
 {
     zlink::provider_info_t provider;
-    provider.service_name = service_name_;
+    provider.auto_connect_type = ZLINK_AUTO_CONNECT_CLIENT_SERVER;
+    provider.channel_name = service_name_;
     provider.endpoint = endpoint_;
     provider.service_role = service_role_;
     provider.value = value_;
@@ -76,11 +77,11 @@ void test_discovery_service_state_tracks_provider_views_and_sequences ()
       zlink::discovery_member_key_t (1, std::string ("tcp://local")));
 
     std::vector<zlink_member_peer_entry_t> peers;
-    state.snapshot_member_peers (ZLINK_SERVICE_TYPE_SOCKET, local_members,
+    state.snapshot_member_peers (ZLINK_AUTO_CONNECT_CLIENT_SERVER, local_members,
                                  &peers);
     TEST_ASSERT_EQUAL_UINT (1, peers.size ());
     TEST_ASSERT_EQUAL_UINT16 (2, peers[0].service_role);
-    TEST_ASSERT_EQUAL_STRING ("svc", peers[0].service_name);
+    TEST_ASSERT_EQUAL_STRING ("svc", peers[0].channel_name);
     TEST_ASSERT_EQUAL_STRING ("tcp://remote", peers[0].endpoint);
     TEST_ASSERT_EQUAL_INT64 (9, peers[0].value);
 

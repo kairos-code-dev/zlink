@@ -16,9 +16,8 @@ import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.SubmitResult;
-import dev.kairoscode.zlink.service.discovery.DiscoveryDealerPeerMode;
 import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
-import dev.kairoscode.zlink.service.registry.ServiceType;
+import dev.kairoscode.zlink.service.registry.AutoConnectType;
 import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.SubSocketOptions;
@@ -246,7 +245,7 @@ public class SocketContractTest {
 
         try (Context ctx = new Context();
              Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, ServiceType.SOCKET,
+             Discovery discovery = new Discovery(ctx, AutoConnectType.CLIENT_SERVER,
                "svc-tls");
              PairSocket socket = new PairSocket(ctx)) {
             assertTrue(hasPublicMethod(Registry.class, "setTlsServer",
@@ -325,8 +324,7 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(SpotNode.class, "routingId"));
         assertTrue(hasPublicMethod(Discovery.class, "resolveSpot",
             RoutingId.class));
-        assertTrue(hasPublicMethod(Discovery.class, "setDealerPeerMode",
-            DiscoveryDealerPeerMode.class));
+        assertFalse(hasPublicMethod(Discovery.class, "setDealerPeerMode"));
 
         assertFalse(hasPublicMethod(XPubSocket.class, "onSubscribe"));
         assertFalse(hasPublicMethod(SubSocket.class, "onSubscribe"));
@@ -446,13 +444,8 @@ public class SocketContractTest {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
-             Discovery discovery = new Discovery(ctx, ServiceType.SOCKET, "svc");
+             Discovery discovery = new Discovery(ctx, AutoConnectType.CLIENT_SERVER, "svc");
              SpotNode node = new SpotNode(ctx)) {
-            assertDoesNotThrow(() ->
-              discovery.setDealerPeerMode(DiscoveryDealerPeerMode.ROUTER));
-            assertDoesNotThrow(() ->
-              discovery.setDealerPeerMode(DiscoveryDealerPeerMode.DEALER));
-
             RoutingId nodeRid = RoutingId.fromBytes(
               "spot-node".getBytes(StandardCharsets.UTF_8));
             node.setRoutingId(nodeRid);
@@ -617,7 +610,7 @@ public class SocketContractTest {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
-             Discovery discovery = new Discovery(ctx, ServiceType.SOCKET,
+             Discovery discovery = new Discovery(ctx, AutoConnectType.CLIENT_SERVER,
                "socket-svc")) {
             DealerSocket dealer = new DealerSocket(ctx);
             dealer.attachDiscovery(discovery);

@@ -5,7 +5,7 @@ import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.registry.Registry;
 import dev.kairoscode.zlink.service.registry.RegistryQueryClient;
-import dev.kairoscode.zlink.service.registry.ServiceType;
+import dev.kairoscode.zlink.service.registry.AutoConnectType;
 import dev.kairoscode.zlink.Context;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
@@ -24,7 +24,7 @@ public final class DiscoveryRegistrySample {
         PubSocket provider = null;
         try {
             registry = new Registry(ctx);
-            providerDiscovery = new Discovery(ctx, ServiceType.SOCKET, serviceName);
+            providerDiscovery = new Discovery(ctx, AutoConnectType.FANOUT, serviceName);
             query = new RegistryQueryClient(ctx);
             provider = new PubSocket(ctx);
             registry.bind(registryPub, registryRouter);
@@ -53,7 +53,7 @@ public final class DiscoveryRegistrySample {
                             try {
                                 return queryView.snapshot().stream().anyMatch(
                                     entry -> serviceName.equals(
-                                        entry.serviceName()));
+                                        entry.channelName()));
                             } catch (ConfigException transientNotReady) {
                                 return false;
                             }

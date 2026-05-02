@@ -68,10 +68,10 @@ func TestNullByteValidation(t *testing.T) {
 	if err := sub.UnsetSubscription("bad\x00topic"); err == nil {
 		t.Fatalf("UnsetSubscription() with null byte should fail")
 	}
-	if _, err := ctx.Discovery(zlink.ServiceTypeSocket, strings.Repeat("s", 256)); err == nil {
+	if _, err := ctx.Discovery(zlink.AutoConnectClientServer, strings.Repeat("s", 256)); err == nil {
 		t.Fatalf("Discovery() with oversized service name should fail")
 	}
-	if discovery, err := ctx.Discovery(zlink.ServiceTypeSocket, strings.Repeat("s", 255)); err != nil {
+	if discovery, err := ctx.Discovery(zlink.AutoConnectClientServer, strings.Repeat("s", 255)); err != nil {
 		t.Fatalf("Discovery() with max-sized service name error = %v", err)
 	} else {
 		discovery.Close()

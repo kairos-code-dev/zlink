@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "services/spot/spot_node.hpp"
+#include "services/discovery/discovery_protocol.hpp"
 
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -53,13 +54,21 @@ void spot_node_t::refresh_discovery_peers ()
     std::map<std::string, uint32_t> new_weight_by_rid;
     std::map<std::string, std::set<std::string> > new_endpoints_by_rid;
     std::string self_endpoint;
+    zlink_routing_id_t self_rid;
+    memset (&self_rid, 0, sizeof (self_rid));
+    (void) node_routing_id (&self_rid);
     {
         scoped_lock_t lock (_sync);
         self_endpoint = _discovery_state.advertise_endpoint;
     }
     for (size_t i = 0; i < providers.size (); ++i) {
         if (!providers[i].endpoint.empty ()
-            && self_endpoint != providers[i].endpoint) {
+            && self_endpoint != providers[i].endpoint
+            && discovery_protocol::socket_auto_connect_target_matches (
+              discovery->auto_connect_type (),
+              discovery_protocol::service_role_spot, providers[i].service_role,
+              self_rid, providers[i].routing_id, self_endpoint,
+              providers[i].endpoint)) {
             new_endpoints.insert (providers[i].endpoint);
             new_weight_by_endpoint[providers[i].endpoint] =
               providers[i].weight;

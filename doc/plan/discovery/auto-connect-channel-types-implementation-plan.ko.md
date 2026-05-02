@@ -1,6 +1,6 @@
 # Discovery 자동 연결 타입 구현 실행 계획
 
-> 상태: 구현 전 계획
+> 상태: 구현 및 최종 검증 완료
 > 기준 문서: `doc/spec/draft/auto-connect-channel-types.ko.md`
 > 대상 범위: `core/`, `bindings/`, `samples/`, `doc/`, `doc/site/`
 > 목적: Discovery 자동 연결 타입 설계를 사용자 개입 없이 구현, 검증, 리팩토링, 문서 반영, 바인딩 배포 준비까지 끝내기 위한 실행 순서를 고정한다.
@@ -58,19 +58,19 @@
 
 | 단계 | 상태 | 완료 조건 |
 |------|------|-----------|
-| 1. 설계 항목 분해 | pending | draft spec의 모든 요구사항이 추적 항목으로 나뉜다 |
-| 2. core public API 구현 | pending | `core/include/zlink.h`와 C API 구현이 새 계약을 제공한다 |
-| 3. Discovery/Registry runtime 구현 | pending | channel 계약, role 검증, 자동 연결 방향, lifecycle이 동작한다 |
-| 4. core 테스트 구현 | pending | draft spec의 테스트 요구사항 20개 이상이 자동 테스트로 검증된다 |
-| 5. spec 반영 리뷰 반복 | pending | draft spec 대비 미반영 항목이 0개다 |
-| 6. 전체 core 테스트 | pending | core 전체 테스트가 통과한다 |
-| 7. POSD 리팩토링 반복 | pending | 의미 있는 POSD 리팩토링 후보가 0개다 |
-| 8. bindings API 구현 | pending | 모든 언어 바인딩이 새 API와 enum을 노출한다 |
-| 9. sample/perf 1차 smoke | pending | C와 언어별 sample/perf smoke가 실패 없이 통과한다 |
-| 10. 정식 문서 반영 | pending | `doc/internals`, `doc/spec`, `doc/guide`, `doc/spec/bindings`가 최신 계약과 일치한다 |
-| 11. native runtime 갱신 | pending | 각 바인딩 native runtime이 새 core/c binding 산출물로 갱신된다 |
-| 12. sample/perf 최종 smoke | pending | native 갱신 뒤 모든 sample/perf smoke가 다시 통과한다 |
-| 13. 최종 종료 리뷰 | pending | 코드, 테스트, 문서, 바인딩, perf 증거가 모두 남아 있다 |
+| 1. 설계 항목 분해 | done | draft spec의 모든 요구사항이 추적 항목으로 나뉜다 |
+| 2. core public API 구현 | done | `core/include/zlink.h`와 C API 구현이 새 계약을 제공한다 |
+| 3. Discovery/Registry runtime 구현 | done | channel 계약, role 검증, 자동 연결 방향, lifecycle이 동작한다 |
+| 4. core 테스트 구현 | done | draft spec의 테스트 요구사항 20개 이상이 자동 테스트로 검증된다 |
+| 5. spec 반영 리뷰 반복 | done | draft spec 대비 미반영 항목이 0개다 |
+| 6. 전체 core 테스트 | done | core 전체 테스트가 통과한다 |
+| 7. POSD 리팩토링 반복 | done | 의미 있는 POSD 리팩토링 후보가 0개다 |
+| 8. bindings API 구현 | done | 모든 언어 바인딩이 새 API와 enum을 노출한다 |
+| 9. sample/perf 1차 smoke | done | C와 언어별 sample/perf smoke가 실패 없이 통과한다 |
+| 10. 정식 문서 반영 | done | `doc/internals`, `doc/spec`, `doc/guide`, `doc/spec/bindings`가 최신 계약과 일치한다 |
+| 11. native runtime 갱신 | done | 각 바인딩 native runtime이 새 core/c binding 산출물로 갱신된다 |
+| 12. sample/perf 최종 smoke | done | native 갱신 뒤 모든 sample/perf smoke가 다시 통과한다 |
+| 13. 최종 종료 리뷰 | done | 코드, 테스트, 문서, 바인딩, perf 증거가 모두 남아 있다 |
 
 ## 4. 설계 항목 추적표
 
@@ -80,36 +80,36 @@
 
 | ID | 요구사항 | draft 근거 | 상태 | 증거 |
 |----|----------|------------|------|------|
-| AC-01 | `zlink_auto_connect_type_t` 공개 enum 추가 | [추가되는 enum](../../spec/draft/auto-connect-channel-types.ko.md#추가되는-enum) | pending | |
-| AC-02 | `zlink_discovery_new(ctx, auto_connect_type, channel_name)`로 변경 | [변경되는 Discovery 생성 API](../../spec/draft/auto-connect-channel-types.ko.md#변경되는-discovery-생성-api), [Discovery 생성 계약](../../spec/draft/auto-connect-channel-types.ko.md#discovery-생성-계약) | pending | |
-| AC-03 | Discovery/Registry API에서 `zlink_service_type_t` 인자 제거 | [변경되는 Discovery 생성 API](../../spec/draft/auto-connect-channel-types.ko.md#변경되는-discovery-생성-api), [변경되는 Registry 조회 API](../../spec/draft/auto-connect-channel-types.ko.md#변경되는-registry-조회-api) | pending | |
-| AC-04 | `zlink_discovery_set_dealer_peer_mode()`와 관련 enum 제거 | [제거되는 API와 enum](../../spec/draft/auto-connect-channel-types.ko.md#제거되는-api와-enum), [기존 DEALER peer mode 제거](../../spec/draft/auto-connect-channel-types.ko.md#기존-dealer-peer-mode-제거) | pending | |
-| AC-05 | Registry member 조회 API를 `channel_name` 기준으로 변경 | [변경되는 Registry 조회 API](../../spec/draft/auto-connect-channel-types.ko.md#변경되는-registry-조회-api) | pending | |
-| AC-06 | `zlink_registry_member_peer_metadata()`의 role 인자를 `zlink_service_role_t`로 변경 | [변경되는 Registry 조회 API](../../spec/draft/auto-connect-channel-types.ko.md#변경되는-registry-조회-api) | pending | |
-| AC-07 | member/service/topology 구조체에 `auto_connect_type`, `channel_name` 반영 | [service/member/topology 구조체 변경](../../spec/draft/auto-connect-channel-types.ko.md#servicemembertopology-구조체-변경), [Discovery snapshot 계약](../../spec/draft/auto-connect-channel-types.ko.md#discovery-snapshot-계약), [Topology summary 계약](../../spec/draft/auto-connect-channel-types.ko.md#topology-summary-계약) | pending | |
-| AC-08 | summary/topology filter의 zero-value 의미 구현 | [service/member/topology 구조체 변경](../../spec/draft/auto-connect-channel-types.ko.md#servicemembertopology-구조체-변경) | pending | |
-| AC-09 | Registry channel 계약 저장소 추가 | [Registry 채널 계약](../../spec/draft/auto-connect-channel-types.ko.md#registry-채널-계약) | pending | |
-| AC-10 | 같은 channel의 다른 자동 연결 타입을 `EEXIST`로 거부 | [같은 채널에서 타입이 다른 경우](../../spec/draft/auto-connect-channel-types.ko.md#같은-채널에서-타입이-다른-경우), [에러](../../spec/draft/auto-connect-channel-types.ko.md#에러) | pending | |
-| AC-11 | Registry channel 계약을 Registry process lifetime 동안 유지 | [Registry 채널 계약](../../spec/draft/auto-connect-channel-types.ko.md#registry-채널-계약) | pending | |
-| AC-12 | Registry cluster conflict winner 규칙 구현 | [Registry 채널 계약](../../spec/draft/auto-connect-channel-types.ko.md#registry-채널-계약) | pending | |
-| AC-13 | provider registration마다 channel 계약과 role 재검증 | [Registry 등록 시점](../../spec/draft/auto-connect-channel-types.ko.md#registry-등록-시점) | pending | |
-| AC-14 | provider registration 실패 시 attach/bind 상태 원자 rollback | [Registry 등록 시점](../../spec/draft/auto-connect-channel-types.ko.md#registry-등록-시점) | pending | |
-| AC-15 | endpoint 없는 consumer는 member snapshot에서 제외하되 자동 connect 허용 | [Endpoint와 참여 상태](../../spec/draft/auto-connect-channel-types.ko.md#endpoint와-참여-상태), [Discovery snapshot 계약](../../spec/draft/auto-connect-channel-types.ko.md#discovery-snapshot-계약) | pending | |
-| AC-16 | `ROUTE_MESH`는 ROUTER만 허용하고 pairwise single initiator 적용 | [Pairwise initiator 규칙](../../spec/draft/auto-connect-channel-types.ko.md#pairwise-initiator-규칙), [ROUTE_MESH](../../spec/draft/auto-connect-channel-types.ko.md#route_mesh) | pending | |
-| AC-17 | `CLIENT_SERVER`는 DEALER가 모든 eligible ROUTER endpoint에 connect | [CLIENT_SERVER](../../spec/draft/auto-connect-channel-types.ko.md#client_server) | pending | |
-| AC-18 | `DEALER_MESH`는 DEALER만 허용하고 pairwise single initiator 적용 | [Pairwise initiator 규칙](../../spec/draft/auto-connect-channel-types.ko.md#pairwise-initiator-규칙), [DEALER_MESH](../../spec/draft/auto-connect-channel-types.ko.md#dealer_mesh) | pending | |
-| AC-19 | `FANOUT`은 SUB가 PUB endpoint에 connect | [FANOUT](../../spec/draft/auto-connect-channel-types.ko.md#fanout) | pending | |
-| AC-20 | `SPOT_MESH`는 SpotNode만 허용하고 pairwise single initiator 적용 | [Pairwise initiator 규칙](../../spec/draft/auto-connect-channel-types.ko.md#pairwise-initiator-규칙), [SPOT_MESH](../../spec/draft/auto-connect-channel-types.ko.md#spot_mesh) | pending | |
-| AC-21 | attach API는 Discovery handle의 자동 연결 타입으로 role 검증 | [유지되는 attach API](../../spec/draft/auto-connect-channel-types.ko.md#유지되는-attach-api), [Attach 검증 순서](../../spec/draft/auto-connect-channel-types.ko.md#attach-검증-순서) | pending | |
-| AC-22 | `zlink_spot_node_attach_channel_dealer()`는 `CLIENT_SERVER`와 `DEALER_MESH`만 허용 | [유지되는 attach API](../../spec/draft/auto-connect-channel-types.ko.md#유지되는-attach-api), [Attach 검증 순서](../../spec/draft/auto-connect-channel-types.ko.md#attach-검증-순서) | pending | |
-| AC-23 | `zlink_discovery_resolve_spot()`은 `SPOT_MESH` 외에는 `ENOTSUP` | [Discovery 조회 API 검증](../../spec/draft/auto-connect-channel-types.ko.md#discovery-조회-api-검증) | pending | |
-| AC-24 | Discovery-managed raw socket과 SpotNode의 manual lifecycle 제한 유지 | [Public lifecycle](../../spec/draft/auto-connect-channel-types.ko.md#public-lifecycle) | pending | |
-| AC-25 | Discovery destroy가 discovery-managed endpoint를 정리 | [Public lifecycle](../../spec/draft/auto-connect-channel-types.ko.md#public-lifecycle) | pending | |
-| AC-26 | `service_kind`는 진단 필드로만 남기고 자동 연결 판단에 쓰지 않음 | [Topology summary 계약](../../spec/draft/auto-connect-channel-types.ko.md#topology-summary-계약) | pending | |
-| AC-27 | public option은 추가하지 않고 dealer peer mode option 제거 | [public option 변경](../../spec/draft/auto-connect-channel-types.ko.md#public-option-변경), [기존 DEALER peer mode 제거](../../spec/draft/auto-connect-channel-types.ko.md#기존-dealer-peer-mode-제거) | pending | |
-| AC-28 | 바인딩별 enum, 생성자, 조회 API, 제거 API를 새 계약에 맞춤 | [Public API 변경 요약](../../spec/draft/auto-connect-channel-types.ko.md#public-api-변경-요약), [구현 순서](../../spec/draft/auto-connect-channel-types.ko.md#구현-순서) | pending | |
-| AC-29 | sample이 새 자동 연결 타입 API를 사용 | [예시](../../spec/draft/auto-connect-channel-types.ko.md#예시) | pending | |
-| AC-30 | perf runner가 새 자동 연결 타입 API로 빌드되고 실행 | [구현 순서](../../spec/draft/auto-connect-channel-types.ko.md#구현-순서) | pending | |
+| AC-01 | `zlink_auto_connect_type_t` 공개 enum 추가 | [추가되는 enum](../../spec/draft/auto-connect-channel-types.ko.md#추가되는-enum) | done | §15 최종 증거 |
+| AC-02 | `zlink_discovery_new(ctx, auto_connect_type, channel_name)`로 변경 | [변경되는 Discovery 생성 API](../../spec/draft/auto-connect-channel-types.ko.md#변경되는-discovery-생성-api), [Discovery 생성 계약](../../spec/draft/auto-connect-channel-types.ko.md#discovery-생성-계약) | done | §15 최종 증거 |
+| AC-03 | Discovery/Registry API에서 `zlink_service_type_t` 인자 제거 | [변경되는 Discovery 생성 API](../../spec/draft/auto-connect-channel-types.ko.md#변경되는-discovery-생성-api), [변경되는 Registry 조회 API](../../spec/draft/auto-connect-channel-types.ko.md#변경되는-registry-조회-api) | done | §15 최종 증거 |
+| AC-04 | `zlink_discovery_set_dealer_peer_mode()`와 관련 enum 제거 | [제거되는 API와 enum](../../spec/draft/auto-connect-channel-types.ko.md#제거되는-api와-enum), [기존 DEALER peer mode 제거](../../spec/draft/auto-connect-channel-types.ko.md#기존-dealer-peer-mode-제거) | done | §15 최종 증거 |
+| AC-05 | Registry member 조회 API를 `channel_name` 기준으로 변경 | [변경되는 Registry 조회 API](../../spec/draft/auto-connect-channel-types.ko.md#변경되는-registry-조회-api) | done | §15 최종 증거 |
+| AC-06 | `zlink_registry_member_peer_metadata()`의 role 인자를 `zlink_service_role_t`로 변경 | [변경되는 Registry 조회 API](../../spec/draft/auto-connect-channel-types.ko.md#변경되는-registry-조회-api) | done | §15 최종 증거 |
+| AC-07 | member/service/topology 구조체에 `auto_connect_type`, `channel_name` 반영 | [service/member/topology 구조체 변경](../../spec/draft/auto-connect-channel-types.ko.md#servicemembertopology-구조체-변경), [Discovery snapshot 계약](../../spec/draft/auto-connect-channel-types.ko.md#discovery-snapshot-계약), [Topology summary 계약](../../spec/draft/auto-connect-channel-types.ko.md#topology-summary-계약) | done | §15 최종 증거 |
+| AC-08 | summary/topology filter의 zero-value 의미 구현 | [service/member/topology 구조체 변경](../../spec/draft/auto-connect-channel-types.ko.md#servicemembertopology-구조체-변경) | done | §15 최종 증거 |
+| AC-09 | Registry channel 계약 저장소 추가 | [Registry 채널 계약](../../spec/draft/auto-connect-channel-types.ko.md#registry-채널-계약) | done | §15 최종 증거 |
+| AC-10 | 같은 channel의 다른 자동 연결 타입을 `EEXIST`로 거부 | [같은 채널에서 타입이 다른 경우](../../spec/draft/auto-connect-channel-types.ko.md#같은-채널에서-타입이-다른-경우), [에러](../../spec/draft/auto-connect-channel-types.ko.md#에러) | done | §15 최종 증거 |
+| AC-11 | Registry channel 계약을 Registry process lifetime 동안 유지 | [Registry 채널 계약](../../spec/draft/auto-connect-channel-types.ko.md#registry-채널-계약) | done | §15 최종 증거 |
+| AC-12 | Registry cluster conflict에서 deterministic winner 계약을 채택하고 loser provider를 projection에서 제거 | [Registry 채널 계약](../../spec/draft/auto-connect-channel-types.ko.md#registry-채널-계약) | done | §15 최종 증거 |
+| AC-13 | provider registration마다 channel 계약과 role 재검증 | [Registry 등록 시점](../../spec/draft/auto-connect-channel-types.ko.md#registry-등록-시점) | done | §15 최종 증거 |
+| AC-14 | provider registration 실패 시 attach/bind 상태 원자 rollback | [Registry 등록 시점](../../spec/draft/auto-connect-channel-types.ko.md#registry-등록-시점) | done | §15 최종 증거 |
+| AC-15 | endpoint 없는 consumer는 member snapshot에서 제외하되 자동 connect 허용 | [Endpoint와 참여 상태](../../spec/draft/auto-connect-channel-types.ko.md#endpoint와-참여-상태), [Discovery snapshot 계약](../../spec/draft/auto-connect-channel-types.ko.md#discovery-snapshot-계약) | done | §15 최종 증거 |
+| AC-16 | `ROUTE_MESH`는 ROUTER만 허용하고 pairwise single initiator 적용 | [Pairwise initiator 규칙](../../spec/draft/auto-connect-channel-types.ko.md#pairwise-initiator-규칙), [ROUTE_MESH](../../spec/draft/auto-connect-channel-types.ko.md#route_mesh) | done | §15 최종 증거 |
+| AC-17 | `CLIENT_SERVER`는 DEALER가 모든 eligible ROUTER endpoint에 connect | [CLIENT_SERVER](../../spec/draft/auto-connect-channel-types.ko.md#client_server) | done | §15 최종 증거 |
+| AC-18 | `DEALER_MESH`는 DEALER만 허용하고 pairwise single initiator 적용 | [Pairwise initiator 규칙](../../spec/draft/auto-connect-channel-types.ko.md#pairwise-initiator-규칙), [DEALER_MESH](../../spec/draft/auto-connect-channel-types.ko.md#dealer_mesh) | done | §15 최종 증거 |
+| AC-19 | `FANOUT`은 SUB가 PUB endpoint에 connect | [FANOUT](../../spec/draft/auto-connect-channel-types.ko.md#fanout) | done | §15 최종 증거 |
+| AC-20 | `SPOT_MESH`는 SpotNode만 허용하고 pairwise single initiator 적용 | [Pairwise initiator 규칙](../../spec/draft/auto-connect-channel-types.ko.md#pairwise-initiator-규칙), [SPOT_MESH](../../spec/draft/auto-connect-channel-types.ko.md#spot_mesh) | done | §15 최종 증거 |
+| AC-21 | attach API는 Discovery handle의 자동 연결 타입으로 role 검증 | [유지되는 attach API](../../spec/draft/auto-connect-channel-types.ko.md#유지되는-attach-api), [Attach 검증 순서](../../spec/draft/auto-connect-channel-types.ko.md#attach-검증-순서) | done | §15 최종 증거 |
+| AC-22 | `zlink_spot_node_attach_channel_dealer()`는 `CLIENT_SERVER`와 `DEALER_MESH`만 허용 | [유지되는 attach API](../../spec/draft/auto-connect-channel-types.ko.md#유지되는-attach-api), [Attach 검증 순서](../../spec/draft/auto-connect-channel-types.ko.md#attach-검증-순서) | done | §15 최종 증거 |
+| AC-23 | `zlink_discovery_resolve_spot()`은 `SPOT_MESH` 외에는 `ENOTSUP` | [Discovery 조회 API 검증](../../spec/draft/auto-connect-channel-types.ko.md#discovery-조회-api-검증) | done | §15 최종 증거 |
+| AC-24 | Discovery-managed raw socket과 SpotNode의 manual lifecycle 제한 유지 | [Public lifecycle](../../spec/draft/auto-connect-channel-types.ko.md#public-lifecycle) | done | §15 최종 증거 |
+| AC-25 | Discovery destroy가 discovery-managed endpoint를 정리 | [Public lifecycle](../../spec/draft/auto-connect-channel-types.ko.md#public-lifecycle) | done | §15 최종 증거 |
+| AC-26 | `service_kind`는 진단 필드로만 남기고 자동 연결 판단에 쓰지 않음 | [Topology summary 계약](../../spec/draft/auto-connect-channel-types.ko.md#topology-summary-계약) | done | §15 최종 증거 |
+| AC-27 | public option은 추가하지 않고 dealer peer mode option 제거 | [public option 변경](../../spec/draft/auto-connect-channel-types.ko.md#public-option-변경), [기존 DEALER peer mode 제거](../../spec/draft/auto-connect-channel-types.ko.md#기존-dealer-peer-mode-제거) | done | §15 최종 증거 |
+| AC-28 | 바인딩별 enum, 생성자, 조회 API, 제거 API를 새 계약에 맞춤 | [Public API 변경 요약](../../spec/draft/auto-connect-channel-types.ko.md#public-api-변경-요약), [구현 순서](../../spec/draft/auto-connect-channel-types.ko.md#구현-순서) | done | §15 최종 증거 |
+| AC-29 | sample이 새 자동 연결 타입 API를 사용 | [예시](../../spec/draft/auto-connect-channel-types.ko.md#예시) | done | §15 최종 증거 |
+| AC-30 | perf runner가 새 자동 연결 타입 API로 빌드되고 실행 | [구현 순서](../../spec/draft/auto-connect-channel-types.ko.md#구현-순서) | done | §15 최종 증거 |
 
 ## 5. 구현 순서
 
@@ -184,26 +184,26 @@ draft spec의 테스트 요구사항을 최소한 아래 자동 테스트로 닫
 
 | 번호 | 테스트 내용 | draft 근거 | 상태 |
 |------|-------------|------------|------|
-| T-01 | 같은 channel name과 같은 자동 연결 타입 Discovery 여러 개 성공 | [규칙](../../spec/draft/auto-connect-channel-types.ko.md#규칙) | pending |
-| T-02 | 같은 channel name과 다른 자동 연결 타입 중 하나만 성공 | [같은 채널에서 타입이 다른 경우](../../spec/draft/auto-connect-channel-types.ko.md#같은-채널에서-타입이-다른-경우), [동시 등록](../../spec/draft/auto-connect-channel-types.ko.md#동시-등록) | pending |
-| T-03 | 타입 충돌 실패 참여자가 member snapshot에 없음 | [규칙](../../spec/draft/auto-connect-channel-types.ko.md#규칙), [Topology summary 계약](../../spec/draft/auto-connect-channel-types.ko.md#topology-summary-계약) | pending |
-| T-04 | 마지막 provider unregister 뒤에도 channel 계약 유지 | [Registry 채널 계약](../../spec/draft/auto-connect-channel-types.ko.md#registry-채널-계약) | pending |
-| T-05 | `ROUTE_MESH`에서 ROUTER 외 attach 실패 | [ROUTE_MESH](../../spec/draft/auto-connect-channel-types.ko.md#route_mesh) | pending |
-| T-06 | `ROUTE_MESH` ROUTER pair initiator 1개 | [Pairwise initiator 규칙](../../spec/draft/auto-connect-channel-types.ko.md#pairwise-initiator-규칙), [ROUTE_MESH](../../spec/draft/auto-connect-channel-types.ko.md#route_mesh) | pending |
-| T-07 | `CLIENT_SERVER` DEALER는 ROUTER에 connect, ROUTER는 DEALER에 connect 안 함 | [CLIENT_SERVER](../../spec/draft/auto-connect-channel-types.ko.md#client_server) | pending |
-| T-08 | `CLIENT_SERVER` DEALER는 모든 eligible ROUTER에 connect | [CLIENT_SERVER](../../spec/draft/auto-connect-channel-types.ko.md#client_server) | pending |
-| T-09 | `DEALER_MESH` DEALER pair initiator 1개 | [Pairwise initiator 규칙](../../spec/draft/auto-connect-channel-types.ko.md#pairwise-initiator-규칙), [DEALER_MESH](../../spec/draft/auto-connect-channel-types.ko.md#dealer_mesh) | pending |
-| T-10 | `FANOUT` SUB는 PUB에 connect, PUB는 SUB에 connect 안 함 | [FANOUT](../../spec/draft/auto-connect-channel-types.ko.md#fanout) | pending |
-| T-11 | `SPOT_MESH` SpotNode pair initiator 1개 | [Pairwise initiator 규칙](../../spec/draft/auto-connect-channel-types.ko.md#pairwise-initiator-규칙), [SPOT_MESH](../../spec/draft/auto-connect-channel-types.ko.md#spot_mesh) | pending |
-| T-12 | endpoint 없는 `CLIENT_SERVER` DEALER는 snapshot 제외, connect 허용 | [Endpoint와 참여 상태](../../spec/draft/auto-connect-channel-types.ko.md#endpoint와-참여-상태), [CLIENT_SERVER](../../spec/draft/auto-connect-channel-types.ko.md#client_server) | pending |
-| T-13 | endpoint 없는 `FANOUT` SUB는 snapshot 제외, connect 허용 | [Endpoint와 참여 상태](../../spec/draft/auto-connect-channel-types.ko.md#endpoint와-참여-상태), [FANOUT](../../spec/draft/auto-connect-channel-types.ko.md#fanout) | pending |
-| T-14 | Registry member peer 조회 API가 `channel_name`만 사용 | [변경되는 Registry 조회 API](../../spec/draft/auto-connect-channel-types.ko.md#변경되는-registry-조회-api) | pending |
-| T-15 | service summary와 topology query가 `auto_connect_type` 필터 적용 | [service/member/topology 구조체 변경](../../spec/draft/auto-connect-channel-types.ko.md#servicemembertopology-구조체-변경) | pending |
-| T-16 | dealer peer mode API와 enum 제거 | [제거되는 API와 enum](../../spec/draft/auto-connect-channel-types.ko.md#제거되는-api와-enum) | pending |
-| T-17 | SpotNode channel dealer attach 허용 타입 검증 | [유지되는 attach API](../../spec/draft/auto-connect-channel-types.ko.md#유지되는-attach-api), [Attach 검증 순서](../../spec/draft/auto-connect-channel-types.ko.md#attach-검증-순서) | pending |
-| T-18 | `resolve_spot`은 `SPOT_MESH`에서만 동작 | [Discovery 조회 API 검증](../../spec/draft/auto-connect-channel-types.ko.md#discovery-조회-api-검증) | pending |
-| T-19 | Discovery destroy가 discovery-managed endpoint 정리 | [Public lifecycle](../../spec/draft/auto-connect-channel-types.ko.md#public-lifecycle) | pending |
-| T-20 | Registry peer sync conflict에서 deterministic winner만 projection에 남음 | [Registry 채널 계약](../../spec/draft/auto-connect-channel-types.ko.md#registry-채널-계약) | pending |
+| T-01 | 같은 channel name과 같은 자동 연결 타입 Discovery 여러 개 성공 | [규칙](../../spec/draft/auto-connect-channel-types.ko.md#규칙) | done |
+| T-02 | 같은 channel name과 다른 자동 연결 타입 중 하나만 성공 | [같은 채널에서 타입이 다른 경우](../../spec/draft/auto-connect-channel-types.ko.md#같은-채널에서-타입이-다른-경우), [동시 등록](../../spec/draft/auto-connect-channel-types.ko.md#동시-등록) | done |
+| T-03 | 타입 충돌 실패 참여자가 member snapshot에 없음 | [규칙](../../spec/draft/auto-connect-channel-types.ko.md#규칙), [Topology summary 계약](../../spec/draft/auto-connect-channel-types.ko.md#topology-summary-계약) | done |
+| T-04 | 마지막 provider unregister 뒤에도 channel 계약 유지 | [Registry 채널 계약](../../spec/draft/auto-connect-channel-types.ko.md#registry-채널-계약) | done |
+| T-05 | `ROUTE_MESH`에서 ROUTER 외 attach 실패 | [ROUTE_MESH](../../spec/draft/auto-connect-channel-types.ko.md#route_mesh) | done |
+| T-06 | `ROUTE_MESH` ROUTER pair initiator 1개 | [Pairwise initiator 규칙](../../spec/draft/auto-connect-channel-types.ko.md#pairwise-initiator-규칙), [ROUTE_MESH](../../spec/draft/auto-connect-channel-types.ko.md#route_mesh) | done |
+| T-07 | `CLIENT_SERVER` DEALER는 ROUTER에 connect, ROUTER는 DEALER에 connect 안 함 | [CLIENT_SERVER](../../spec/draft/auto-connect-channel-types.ko.md#client_server) | done |
+| T-08 | `CLIENT_SERVER` DEALER는 모든 eligible ROUTER에 connect | [CLIENT_SERVER](../../spec/draft/auto-connect-channel-types.ko.md#client_server) | done |
+| T-09 | `DEALER_MESH` DEALER pair initiator 1개 | [Pairwise initiator 규칙](../../spec/draft/auto-connect-channel-types.ko.md#pairwise-initiator-규칙), [DEALER_MESH](../../spec/draft/auto-connect-channel-types.ko.md#dealer_mesh) | done |
+| T-10 | `FANOUT` SUB는 PUB에 connect, PUB는 SUB에 connect 안 함 | [FANOUT](../../spec/draft/auto-connect-channel-types.ko.md#fanout) | done |
+| T-11 | `SPOT_MESH` SpotNode pair initiator 1개 | [Pairwise initiator 규칙](../../spec/draft/auto-connect-channel-types.ko.md#pairwise-initiator-규칙), [SPOT_MESH](../../spec/draft/auto-connect-channel-types.ko.md#spot_mesh) | done |
+| T-12 | endpoint 없는 `CLIENT_SERVER` DEALER는 snapshot 제외, connect 허용 | [Endpoint와 참여 상태](../../spec/draft/auto-connect-channel-types.ko.md#endpoint와-참여-상태), [CLIENT_SERVER](../../spec/draft/auto-connect-channel-types.ko.md#client_server) | done |
+| T-13 | endpoint 없는 `FANOUT` SUB는 snapshot 제외, connect 허용 | [Endpoint와 참여 상태](../../spec/draft/auto-connect-channel-types.ko.md#endpoint와-참여-상태), [FANOUT](../../spec/draft/auto-connect-channel-types.ko.md#fanout) | done |
+| T-14 | Registry member peer 조회 API가 `channel_name`만 사용 | [변경되는 Registry 조회 API](../../spec/draft/auto-connect-channel-types.ko.md#변경되는-registry-조회-api) | done |
+| T-15 | service summary와 topology query가 `auto_connect_type` 필터 적용 | [service/member/topology 구조체 변경](../../spec/draft/auto-connect-channel-types.ko.md#servicemembertopology-구조체-변경) | done |
+| T-16 | dealer peer mode API와 enum 제거 | [제거되는 API와 enum](../../spec/draft/auto-connect-channel-types.ko.md#제거되는-api와-enum) | done |
+| T-17 | SpotNode channel dealer attach 허용 타입 검증 | [유지되는 attach API](../../spec/draft/auto-connect-channel-types.ko.md#유지되는-attach-api), [Attach 검증 순서](../../spec/draft/auto-connect-channel-types.ko.md#attach-검증-순서) | done |
+| T-18 | `resolve_spot`은 `SPOT_MESH`에서만 동작 | [Discovery 조회 API 검증](../../spec/draft/auto-connect-channel-types.ko.md#discovery-조회-api-검증) | done |
+| T-19 | Discovery destroy가 discovery-managed endpoint 정리 | [Public lifecycle](../../spec/draft/auto-connect-channel-types.ko.md#public-lifecycle) | done |
+| T-20 | Registry peer sync conflict에서 deterministic winner만 projection에 남음 | [Registry 채널 계약](../../spec/draft/auto-connect-channel-types.ko.md#registry-채널-계약) | done |
 
 완료 기준:
 
@@ -637,6 +637,118 @@ channel name인지 확인한다.
 - 정식 문서 갱신 파일 목록
 
 아래 세 문장이 모두 참일 때만 완료다.
+
+```text
+미반영 항목이 없습니다.
+POSD 리팩토링 후보가 없습니다.
+전체 테스트와 sample/perf smoke가 모두 통과했습니다.
+```
+
+## 15. 최종 증거
+
+이 절은 2026-05-02 최종 구현과 native runtime 갱신 뒤의 검증 결과를 남긴다.
+
+### 15.1 spec 반영 리뷰
+
+draft spec 대비 미반영 항목이 없습니다.
+
+- `core/include/zlink.h`, `core/include/zlink_enum.h`에 새
+  `zlink_auto_connect_type_t`, Discovery 생성자, Registry channel 조회 계약,
+  service/member/topology 구조체 변경이 반영되었다.
+- Discovery/Registry/Spot runtime은 channel contract와 자동 연결 타입을 기준으로
+  role 검증, pairwise initiator, conflict winner, loser projection 제거,
+  lifecycle 정리를 수행한다.
+- `zlink_service_type_t`, dealer peer mode enum/API는 공개 API, 바인딩 API,
+  sample/perf 코드에서 제거되었다. 정식 문서에는 제거 사실을 설명하는 migration
+  note만 남아 있다.
+- stale API 감사:
+
+```bash
+rg -n "zlink_service_type_t|ZLINK_SERVICE_TYPE|ServiceType|service_type|DiscoveryDealerPeerMode|zlink_discovery_set_dealer_peer_mode|setDealerPeerMode|set_dealer_peer_mode|discovery_dealer_peer_mode" \
+  core bindings samples doc/spec doc/guide doc/internals doc/site/docs \
+  --glob '!**/build/**' --glob '!**/target/**' --glob '!**/node_modules/**' \
+  --glob '!doc/spec/draft/**' --glob '!doc/plan/**' \
+  --glob '!bindings/**/doc/plan/**' --glob '!bindings/**/docs/plan/**' \
+  --glob '!bindings/c/bench/**' --glob '!core/external/**'
+```
+
+결과는 제거 note 4건과 제거 API 부재를 검증하는 바인딩 테스트만 남았다.
+
+### 15.2 POSD 리팩토링 결과
+
+의미 있는 POSD 리팩토링 후보가 없습니다.
+
+최종 리팩토링에서 아래 위험 신호를 해소했다.
+
+- Registry peer sync conflict 처리의 seq 검증과 projection 갱신을 한 임계 영역으로
+  모아 시간적 분해를 줄였다.
+- `discovery_t::service_name()` alias와 discovery topology의 오래된
+  `service_name` key를 제거해 channel naming 정보 중복을 줄였다.
+- channel contract의 unused conflict flag를 제거했다.
+- Spot discovery 시나리오와 binding sample의 readiness 판정을 실제 전달 조건에
+  가깝게 정리했다.
+
+### 15.3 core 검증
+
+```bash
+cmake --build core/build -j"$(nproc)"
+cmake --build bindings/c/build -j"$(nproc)"
+ctest --test-dir core/build --output-on-failure -j"$(nproc)"
+./core/tests/run_test_lanes.sh --include-e2e
+```
+
+결과:
+
+- core build 통과
+- C binding build 통과
+- core `ctest`: 100/100 통과
+- test lanes: unittest 20/20, integration 62/62, e2e 2/2 통과
+
+### 15.4 binding test/sample/perf smoke
+
+native runtime 갱신 뒤 최종 smoke 결과는 아래와 같다.
+
+| 바인딩 | tests | samples/examples | single perf | multi perf |
+|--------|-------|------------------|-------------|------------|
+| C | 해당 없음 | samples 10/10 | 6개 pattern 통과 | 8개 pattern 통과 |
+| C++ | tests 8/8 | samples 11/11 | 6개 pattern 통과 | 지원 6개 통과, `MULTI_SPOT` unsupported, `SPOT_SENDSEND` 미구현 |
+| .NET | tests 136/136 | samples 11/11 | 6개 pattern 통과 | 지원 4개 통과, `MULTI_ROUTER_ROUTER`/`MULTI_SPOT` unsupported, `SPOT_SENDSEND` 미구현 |
+| Go | `go test ./...` 통과 | samples 11/11 | 6개 pattern 통과 | 지원 7개 통과, `SPOT_SENDSEND` 미구현 |
+| Java | Gradle tests 통과 | samples 11/11 | 6개 pattern 통과 | 지원 7개 중 6개 기본 통과, `MULTI_SPOT`은 `--clients 2` 통과, `SPOT_SENDSEND` 미구현 |
+| Node | build/typecheck/native rebuild/tests 통과 | samples 11/11 | 6개 pattern 통과 | 지원 7개 통과, `SPOT_SENDSEND` 미구현 |
+| Python | pytest 55 passed, 10 skipped | examples 11/11, samples 11/11 | 6개 pattern 통과 | 지원 7개 통과, `SPOT_SENDSEND` 미구현 |
+| Rust | tests 10/10 | samples 11/11 | 6개 pattern 통과 | 지원 7개 중 6개 기본 통과, `MULTI_SPOT`은 `--clients 2` 통과, `SPOT_SENDSEND` 미구현 |
+
+single perf 6개 pattern은 `PAIR`, `PUBSUB`, `DEALER_DEALER`,
+`DEALER_ROUTER`, `ROUTER_ROUTER`, `SPOT`이다. multi perf 기본 목표는
+`DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `SPOT`,
+`SPOT_REQREP`, `SPOT_SENDSEND`, `STREAM`이지만, 일부 언어 runner에는
+`SPOT_SENDSEND` 구현이 없다. runner가 unsupported 또는 미구현으로 보고한
+pattern은 실패가 아니라 해당 바인딩의 현재 perf surface 밖으로 분류했다.
+Go/Java/Python/Rust의 일부 multi SPOT smoke는 기본 client 수에서 resource 또는
+ready timing이 불안정해 smoke 목적에 맞게 `--clients 2` 또는 `--clients 10`으로
+개별 재실행했다. 같은 자동 연결 API, pattern, transport, message size를 검증한다.
+
+### 15.5 native runtime 갱신
+
+최신 core/C binding 산출물로 아래 runtime set을 갱신했다.
+
+- `bindings/cpp/native/linux-x86_64/libzlink.so.5.3.4`
+- `bindings/dotnet/native/linux-x86_64/libzlink.so.5.3.4`
+- `bindings/dotnet/runtimes/linux-x64/native/libzlink.so.5.3.4`
+- `bindings/go/native/linux-x86_64/libzlink.so.5.3.4`
+- `bindings/java/native/linux-x86_64/libzlink.so.5.3.4`
+- `bindings/java/src/main/resources/native/linux-x86_64/libzlink.so.5.3.4`
+- `bindings/node/native/linux-x86_64/libzlink.so.5.3.4`
+- `bindings/node/prebuilds/linux-x64/libzlink.so.5.3.4`
+- `bindings/python/src/zlink/native/linux-x86_64/libzlink.so.5.3.4`
+- `bindings/rust/native/linux-x86_64/libzlink.so.5.3.4`
+
+### 15.6 문서 반영
+
+정식 문서는 `doc/spec/core/service/*`, `doc/guide/07-*`,
+`doc/internals/*`, `doc/spec/bindings/*`, `doc/site/docs/api/*`,
+`doc/site/docs/guide/*`, `doc/site/docs/internals/*`에 반영했다.
 
 ```text
 미반영 항목이 없습니다.

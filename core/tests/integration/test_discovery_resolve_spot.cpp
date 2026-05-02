@@ -202,8 +202,9 @@ bool wait_for_spot_owner_topology_entry_local (
     memset (&filter, 0, sizeof (filter));
     filter.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
     filter.service_role = ZLINK_SERVICE_ROLE_SPOT;
-    strncpy (filter.service_name, service_name_,
-             sizeof (filter.service_name) - 1);
+    filter.auto_connect_type = ZLINK_AUTO_CONNECT_SPOT_MESH;
+    strncpy (filter.channel_name, service_name_,
+             sizeof (filter.channel_name) - 1);
     filter.routing_id = *spot_rid_;
 
     for (int i = 0; i < attempts; ++i) {
@@ -245,7 +246,7 @@ void test_discovery_resolve_spot_returns_owner_node_rid ()
       registry, &registry_pub, &registry_router));
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "resolve-spot-svc");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "resolve-spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery, registry_router.c_str (), 3000));
@@ -318,9 +319,9 @@ void test_discovery_resolve_spot_is_scoped_by_service_name ()
       registry, &registry_pub, &registry_router));
 
     void *discovery_a =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "resolve-svc-a");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "resolve-svc-a");
     void *discovery_b =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "resolve-svc-b");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "resolve-svc-b");
     TEST_ASSERT_NOT_NULL (discovery_a);
     TEST_ASSERT_NOT_NULL (discovery_b);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
@@ -407,7 +408,7 @@ void test_discovery_resolve_spot_returns_enoent_after_owner_unregister ()
       registry, &registry_pub, &registry_router));
 
     void *discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "resolve-unregister");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "resolve-unregister");
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery, registry_router.c_str (), 3000));
@@ -464,11 +465,11 @@ void test_discovery_resolve_spot_handover_switches_owner ()
       registry, &registry_pub, &registry_router));
 
     void *discovery_a =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "resolve-handover");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "resolve-handover");
     void *discovery_b =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "resolve-handover");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "resolve-handover");
     void *resolver_discovery =
-      zlink_discovery_new (ctx, ZLINK_SERVICE_TYPE_SPOT, "resolve-handover");
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "resolve-handover");
     TEST_ASSERT_NOT_NULL (discovery_a);
     TEST_ASSERT_NOT_NULL (discovery_b);
     TEST_ASSERT_NOT_NULL (resolver_discovery);

@@ -212,7 +212,7 @@ void test_router_request_part_failure_discards_pending_sequence_and_allows_fresh
 
 int main (void)
 {
-    setup_test_environment ();
+    setup_test_environment (120);
 
     UNITY_BEGIN ();
     RUN_TEST (

@@ -27,7 +27,7 @@ const {
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
 const SERVICE_NAME = 'perf.spot';
-const SERVICE_TYPE_SPOT = 0x3002;
+const AUTO_CONNECT_SPOT_MESH = 5;
 
 function trySpotPublish(spot, serviceName, topic, payload) {
   return trySocketPublish({
@@ -64,7 +64,7 @@ async function main() {
   const ctx = new zlink.Context();
   applyContextPolicy(ctx, 'server', 'MULTI_SPOT');
   const registry = new zlink.Registry(ctx);
-  const discovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, SERVICE_NAME);
+  const discovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
   const node = new zlink.SpotNode(ctx);
   const controlPub = new zlink.PubSocket(ctx);
   const controlSub = new zlink.SubSocket(ctx);

@@ -87,7 +87,7 @@ zlink_spot_node_bind(node, "tcp://127.0.0.1:0");
 
 void *discovery = zlink_discovery_new(
   ctx,
-  ZLINK_SERVICE_TYPE_SPOT,
+  ZLINK_AUTO_CONNECT_SPOT_MESH,
   "alpha");
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5551");
 
@@ -107,7 +107,7 @@ disconnect function because it does not directly own peer connections.
 ### 3.3 Drain new outbound with raw peer weight
 
 SpotNode and Spot do not expose a weight setting. If a service uses raw
-ROUTER or worker DEALER peers and you want to stop new outbound temporarily
+ROUTER or worker auto-connect peers and you want to stop new outbound temporarily
 without tearing down peer connections, set that raw socket's weight to `0`.
 The valid range is `0..100`; the default is `100`.
 
@@ -190,14 +190,14 @@ void *node = zlink_spot_node_new(ctx, NULL);
 
 void *spot_discovery = zlink_discovery_new(
   ctx,
-  ZLINK_SERVICE_TYPE_SPOT,
+  ZLINK_AUTO_CONNECT_SPOT_MESH,
   "alpha");
 zlink_discovery_connect_registry(spot_discovery, "tcp://127.0.0.1:5551");
 zlink_spot_node_attach_discovery(node, spot_discovery);
 
 void *orders_discovery = zlink_discovery_new(
   ctx,
-  ZLINK_SERVICE_TYPE_SOCKET,
+  ZLINK_AUTO_CONNECT_CLIENT_SERVER,
   "orders");
 zlink_discovery_connect_registry(orders_discovery, "tcp://127.0.0.1:5551");
 

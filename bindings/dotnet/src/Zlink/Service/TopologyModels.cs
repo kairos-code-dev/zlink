@@ -4,10 +4,14 @@ using Zlink.Native;
 
 namespace Zlink;
 
-public enum ServiceType
+public enum AutoConnectType
 {
-    Spot = 0x3002,
-    Socket = 0x3003
+    Invalid = 0,
+    RouteMesh = 1,
+    ClientServer = 2,
+    DealerMesh = 3,
+    Fanout = 4,
+    SpotMesh = 5
 }
 
 public enum ServiceKind
@@ -18,7 +22,7 @@ public enum ServiceKind
     Socket = 5
 }
 
-public enum ServiceRole : ushort
+public enum ServiceRole
 {
     Invalid = 0,
     Spot = 2,
@@ -26,12 +30,6 @@ public enum ServiceRole : ushort
     Dealer = 4,
     Pub = 5,
     Sub = 6
-}
-
-public enum DiscoveryDealerPeerMode
-{
-    Router = 1,
-    Dealer = 2
 }
 
 public enum SpotNodeState
@@ -106,14 +104,15 @@ public sealed record SpotNodeSubjectFilter(
     SubjectKind? SubjectKind = null);
 
 public sealed record RegistryServiceSummaryFilter(
-    ServiceKind? ServiceKind = null,
+    AutoConnectType? AutoConnectType = null,
     ServiceRole? ServiceRole = null,
-    string? ServiceName = null);
+    string? ChannelName = null);
 
 public sealed record RegistryTopologyFilter(
+    AutoConnectType? AutoConnectType = null,
     ServiceKind? ServiceKind = null,
     ServiceRole? ServiceRole = null,
-    string? ServiceName = null,
+    string? ChannelName = null,
     RoutingId? RoutingId = null,
     TopologyState? State = null,
     TopologySource? Source = null);
@@ -143,9 +142,9 @@ public sealed record RegistryStatus(
 }
 
 public sealed record RegistryServiceSummaryEntry(
-    ServiceKind ServiceKind,
+    AutoConnectType AutoConnectType,
     ServiceRole ServiceRole,
-    string ServiceName,
+    string ChannelName,
     uint TotalCount,
     uint ConnectingCount,
     uint ReadyCount,
@@ -156,11 +155,12 @@ public sealed record RegistryServiceSummaryEntry(
     internal static unsafe RegistryServiceSummaryEntry FromNative(
         ref ZlinkRegistryServiceSummaryEntry native)
     {
-        fixed (byte* serviceName = native.ServiceName)
+        fixed (byte* channelName = native.ChannelName)
         {
             return new RegistryServiceSummaryEntry(
-                (ServiceKind)native.ServiceKind, (ServiceRole)native.ServiceRole,
-                NativeHelpers.ReadFixedString(serviceName, 256),
+                (AutoConnectType)native.AutoConnectType,
+                (ServiceRole)native.ServiceRole,
+                NativeHelpers.ReadFixedString(channelName, 256),
                 native.TotalCount, native.ConnectingCount, native.ReadyCount,
                 native.ErrorCount, native.StoppedCount, native.LastReportedMs);
         }
@@ -168,10 +168,11 @@ public sealed record RegistryServiceSummaryEntry(
 }
 
 public sealed record RegistryTopologyEntry(
+    AutoConnectType AutoConnectType,
     RoutingId? RoutingId,
     ServiceKind ServiceKind,
     ServiceRole ServiceRole,
-    string ServiceName,
+    string ChannelName,
     string Endpoint,
     TopologySource Source,
     TopologyState State,
@@ -183,15 +184,16 @@ public sealed record RegistryTopologyEntry(
     internal static unsafe RegistryTopologyEntry FromNative(
         ref ZlinkRegistryTopologyEntry native)
     {
-        fixed (byte* serviceName = native.ServiceName)
+        fixed (byte* channelName = native.ChannelName)
         fixed (byte* endpoint = native.Endpoint)
         {
             return new RegistryTopologyEntry(
+                (AutoConnectType)native.AutoConnectType,
                 RoutingIdCodec.ToRoutingId(
                     NativeHelpers.ReadRoutingId(ref native.RoutingId)),
                 (ServiceKind)native.ServiceKind,
                 (ServiceRole)native.ServiceRole,
-                NativeHelpers.ReadFixedString(serviceName, 256),
+                NativeHelpers.ReadFixedString(channelName, 256),
                 NativeHelpers.ReadFixedString(endpoint, 256),
                 (TopologySource)native.Source, (TopologyState)native.State,
                 native.DesiredCount, native.ReadyCount, native.ErrorCode,
@@ -201,9 +203,9 @@ public sealed record RegistryTopologyEntry(
 }
 
 public sealed record MemberPeerEntry(
-    ServiceType ServiceType,
+    AutoConnectType AutoConnectType,
     ServiceRole ServiceRole,
-    string ServiceName,
+    string ChannelName,
     string Endpoint,
     RoutingId? RoutingId,
     long Value,
@@ -211,12 +213,12 @@ public sealed record MemberPeerEntry(
 {
     internal static unsafe MemberPeerEntry FromNative(ref ZlinkMemberPeerEntry native)
     {
-        fixed (byte* serviceName = native.ServiceName)
+        fixed (byte* channelName = native.ChannelName)
         fixed (byte* endpoint = native.Endpoint)
         {
-            return new MemberPeerEntry((ServiceType)native.ServiceType,
+            return new MemberPeerEntry((AutoConnectType)native.AutoConnectType,
                 (ServiceRole)native.ServiceRole,
-                NativeHelpers.ReadFixedString(serviceName, 256),
+                NativeHelpers.ReadFixedString(channelName, 256),
                 NativeHelpers.ReadFixedString(endpoint, 256),
                 RoutingIdCodec.ToRoutingId(
                     NativeHelpers.ReadRoutingId(ref native.RoutingId)),

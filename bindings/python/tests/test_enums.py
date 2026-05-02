@@ -47,9 +47,13 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.ErrorCode.EFSM), 156384763)
         self.assertEqual(int(zlink.ErrorCode.EMTHREAD), 156384766)
 
-    def test_service_type_values(self):
-        self.assertEqual(int(zlink.ServiceType.SPOT), 0x3002)
-        self.assertEqual(int(zlink.ServiceType.SOCKET), 0x3003)
+    def test_auto_connect_type_values(self):
+        self.assertEqual(int(zlink.AutoConnectType.INVALID), 0)
+        self.assertEqual(int(zlink.AutoConnectType.ROUTE_MESH), 1)
+        self.assertEqual(int(zlink.AutoConnectType.CLIENT_SERVER), 2)
+        self.assertEqual(int(zlink.AutoConnectType.DEALER_MESH), 3)
+        self.assertEqual(int(zlink.AutoConnectType.FANOUT), 4)
+        self.assertEqual(int(zlink.AutoConnectType.SPOT_MESH), 5)
 
     def test_spot_role_values(self):
         self.assertEqual(int(zlink.SpotSocketRole.PUB), 1)
@@ -74,9 +78,11 @@ class EnumTypeTests(unittest.TestCase):
 
 
 class BackwardCompatTests(unittest.TestCase):
-    def test_service_type_aliases(self):
-        self.assertEqual(zlink.SERVICE_TYPE_SPOT, 0x3002)
-        self.assertEqual(zlink.SERVICE_TYPE_SPOT, zlink.ServiceType.SPOT)
+    def test_auto_connect_type_aliases(self):
+        self.assertEqual(zlink.AUTO_CONNECT_SPOT_MESH, 5)
+        self.assertEqual(
+            zlink.AUTO_CONNECT_SPOT_MESH, zlink.AutoConnectType.SPOT_MESH
+        )
 
 
 if __name__ == "__main__":

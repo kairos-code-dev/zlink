@@ -1021,20 +1021,20 @@ ZLINK_EXPORT zlink_close_result_t zlink_registry_destroy (void **registry_p);
 /** @} */
 
 /**
- * @brief Create a Discovery instance with a fixed service view.
+ * @brief Create a Discovery instance with a fixed auto-connect channel view.
  *
- * The service type and service name are fixed at creation time and cannot be
- * changed. All subscribe/get/count queries operate within that one logical
- * service view.
+ * The auto-connect type and channel name are fixed at creation time and cannot
+ * be changed. All member queries operate within that one logical Discovery
+ * channel.
  *
- * @param ctx           Context handle.
- * @param service_type  Service family for this handle.
- * @param service_name  Fixed logical service name for this handle.
+ * @param ctx                Context handle.
+ * @param auto_connect_type  Auto-connect topology contract for this handle.
+ * @param channel_name       Fixed logical Discovery channel name.
  * @return Discovery handle, or NULL on failure.
  */
 ZLINK_EXPORT void *zlink_discovery_new (void *ctx,
-                                        zlink_service_type_t service_type,
-                                        const char *service_name);
+                                        zlink_auto_connect_type_t auto_connect_type,
+                                        const char *channel_name);
 
 /**
  * @brief Connect Discovery to a Registry bootstrap/control endpoint.
@@ -1044,15 +1044,6 @@ ZLINK_EXPORT void *zlink_discovery_new (void *ctx,
  */
 ZLINK_EXPORT zlink_connect_result_t zlink_discovery_connect_registry (
   void *discovery, const char *registry_endpoint);
-
-/**
- * @brief Set the auto-connect target policy used by DEALER sockets.
- *
- * This policy applies to the current Discovery service view. The default
- * policy is `ZLINK_DISCOVERY_DEALER_PEER_MODE_ROUTER`.
- */
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_set_dealer_peer_mode (
-  void *discovery_, zlink_discovery_dealer_peer_mode_t mode_);
 
 /**
  * @brief Resolve the current owner node for a logical SPOT routing id.
@@ -1274,9 +1265,9 @@ typedef struct zlink_registry_status_t
 
 typedef struct zlink_registry_service_summary_entry_t
 {
-    zlink_service_kind_t service_kind;
+    zlink_auto_connect_type_t auto_connect_type;
     zlink_service_role_t service_role;
-    char service_name[256];
+    char channel_name[256];
     uint32_t total_count;
     uint32_t connecting_count;
     uint32_t ready_count;
@@ -1287,19 +1278,19 @@ typedef struct zlink_registry_service_summary_entry_t
 
 typedef struct zlink_registry_service_summary_filter_t
 {
-    zlink_service_kind_t service_kind;
+    zlink_auto_connect_type_t auto_connect_type;
     zlink_service_role_t service_role;
-    char service_name[256];
+    char channel_name[256];
 } zlink_registry_service_summary_filter_t;
 
 typedef struct zlink_member_peer_entry_t
 {
-    zlink_service_type_t service_type;
-    uint16_t service_role;
-    char service_name[256];
+    zlink_auto_connect_type_t auto_connect_type;
+    zlink_service_role_t service_role;
+    char channel_name[256];
     char endpoint[256];
-    zlink_routing_id_t routing_id;
     uint32_t weight;
+    zlink_routing_id_t routing_id;
     int64_t value;
 } zlink_member_peer_entry_t;
 
@@ -1335,15 +1326,13 @@ ZLINK_EXPORT zlink_config_result_t zlink_registry_service_summary_snapshot (
   size_t *count_);
 ZLINK_EXPORT zlink_config_result_t zlink_registry_member_peers (
   void *registry_,
-  zlink_service_type_t service_type_,
-  const char *service_name_,
+  const char *channel_name_,
   zlink_member_peer_entry_t *entries_,
   size_t *count_);
 ZLINK_EXPORT zlink_config_result_t zlink_registry_member_peer_metadata (
   void *registry_,
-  zlink_service_type_t service_type_,
-  const char *service_name_,
-  uint16_t service_role_,
+  const char *channel_name_,
+  zlink_service_role_t service_role_,
   const char *endpoint_,
   zlink_msg_t *metadata_out_);
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_member_peers (void *discovery_,
@@ -1351,16 +1340,17 @@ ZLINK_EXPORT zlink_config_result_t zlink_discovery_member_peers (void *discovery
                                                size_t *count_);
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_member_peer_metadata (
   void *discovery_,
-  uint16_t service_role_,
+  zlink_service_role_t service_role_,
   const char *endpoint_,
   zlink_msg_t *metadata_out_);
 
 typedef struct zlink_registry_topology_entry_t
 {
+    zlink_auto_connect_type_t auto_connect_type;
     zlink_routing_id_t routing_id;
     zlink_service_kind_t service_kind;
     zlink_service_role_t service_role;
-    char service_name[256];
+    char channel_name[256];
     char endpoint[256];
     zlink_topology_source_t source;
     zlink_topology_state_t state;
@@ -1372,9 +1362,10 @@ typedef struct zlink_registry_topology_entry_t
 
 typedef struct zlink_registry_topology_filter_t
 {
+    zlink_auto_connect_type_t auto_connect_type;
     zlink_service_kind_t service_kind;
     zlink_service_role_t service_role;
-    char service_name[256];
+    char channel_name[256];
     zlink_routing_id_t routing_id;
     zlink_topology_state_t state;
     zlink_topology_source_t source;

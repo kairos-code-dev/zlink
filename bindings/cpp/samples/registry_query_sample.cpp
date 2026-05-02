@@ -7,7 +7,7 @@ int main ()
     zlink::context_t ctx;
     zlink::service::registry_t registry (ctx);
     zlink::service::discovery_t discovery (
-      ctx, zlink::service_type::socket, detail::k_spot_service);
+      ctx, zlink::auto_connect_type::fanout, detail::k_spot_service);
     zlink::service::registry_query_client_t query (ctx);
     zlink::pub_socket_t provider (ctx);
     assert (registry.valid ());
@@ -31,7 +31,7 @@ int main ()
         try {
             const auto entries = query.snapshot ();
             for (const auto &entry : entries) {
-                if (entry.service_name == detail::k_spot_service) {
+                if (entry.channel_name == detail::k_spot_service) {
                     found = true;
                     break;
                 }

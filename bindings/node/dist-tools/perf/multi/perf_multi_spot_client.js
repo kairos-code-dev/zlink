@@ -11,7 +11,7 @@ const { POLLIN, POLLOUT, applySocketPolicy, applyContextPolicy, applySpotNodeAdm
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
 const SERVICE_NAME = 'perf.spot';
-const SERVICE_TYPE_SPOT = 0x3002;
+const AUTO_CONNECT_SPOT_MESH = 5;
 const TRACE = process.env.PERF_MULTI_SPOT_TRACE === '1';
 function trace(message) {
     if (TRACE) {
@@ -124,7 +124,7 @@ async function main() {
         }
         trace(`creating-slots count=${options.clients}`);
         sharedNode = new zlink.SpotNode(ctx);
-        sharedDiscovery = new zlink.Discovery(ctx, SERVICE_TYPE_SPOT, SERVICE_NAME);
+        sharedDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
         configureTlsClient(sharedNode, options.transport);
         sharedDiscovery.connectRegistry(options.endpoint);
         sharedNode.attachDiscovery(sharedDiscovery);

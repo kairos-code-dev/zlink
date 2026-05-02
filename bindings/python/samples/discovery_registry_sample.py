@@ -13,7 +13,7 @@ def main():
     _, service_endpoint = tcp_endpoint()
     ctx = zlink.Context()
     registry = zlink.Registry(ctx)
-    discovery = zlink.Discovery(ctx, zlink.ServiceType.SOCKET, SERVICE_NAME)
+    discovery = zlink.Discovery(ctx, zlink.AutoConnectType.FANOUT, SERVICE_NAME)
     query = zlink.RegistryQueryClient(ctx)
     provider = zlink.PubSocket(ctx)
     try:
@@ -28,7 +28,7 @@ def main():
                 entries = query.snapshot()
             except zlink.ConfigError:
                 return False
-            return any(entry.service_name == SERVICE_NAME for entry in entries)
+            return any(entry.channel_name == SERVICE_NAME for entry in entries)
 
         wait_until(found, description="discovery registry sample")
         print('[discovery-registry] service: "sample" -> discovered')

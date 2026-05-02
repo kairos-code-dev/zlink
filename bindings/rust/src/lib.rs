@@ -57,11 +57,11 @@ pub use poller::{
 };
 pub use runtime::{multipart_close, proxy, proxy_steerable, sleep};
 pub use service::{
-    Discovery, DiscoveryDealerPeerMode, MemberPeerEntry, Registry, RegistryQueryClient,
+    AutoConnectType, Discovery, MemberPeerEntry, Registry, RegistryQueryClient,
     RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryState, RegistryStatus,
-    RegistryTopologyEntry, RegistryTopologyFilter, ServiceKind, ServiceRole, ServiceType,
-    SocketType, Spot, SpotDispatchEvent, SpotDispatchInfo, SpotDispatchSubjectKind, SpotNode,
-    SpotNodeMode, SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketOwner,
+    RegistryTopologyEntry, RegistryTopologyFilter, ServiceKind, ServiceRole, SocketType, Spot,
+    SpotDispatchEvent, SpotDispatchInfo, SpotDispatchSubjectKind, SpotNode, SpotNodeMode,
+    SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketOwner,
     SpotNodeSocketSnapshotEntry, SpotNodeSocketSnapshotFilter, SpotNodeState, SpotNodeStatus,
     SpotNodeSubjectEntry, SpotNodeSubjectFilter, SpotPeerSource, SpotPeerState, SpotRole,
     SpotServiceAttachmentRole, TopologySource, TopologyState,

@@ -256,10 +256,12 @@ void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
     zlink_registry_topology_entry_t entry;
     memset (&entry, 0, sizeof (entry));
     entry.routing_id = rid;
+    entry.auto_connect_type =
+      static_cast<zlink_auto_connect_type_t> (discovery->auto_connect_type ());
     entry.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
     entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
-    copy_fixed_c_string_from_cstr (entry.service_name,
-                                   sizeof (entry.service_name),
+    copy_fixed_c_string_from_cstr (entry.channel_name,
+                                   sizeof (entry.channel_name),
                                    service_name.c_str ());
     copy_fixed_c_string_from_cstr (entry.endpoint, sizeof (entry.endpoint),
                                    endpoint.c_str ());
@@ -296,10 +298,12 @@ void spot_node_t::submit_sub_summary (spot_sub_t *sub_,
     zlink_registry_topology_entry_t entry;
     memset (&entry, 0, sizeof (entry));
     entry.routing_id = rid;
+    entry.auto_connect_type =
+      static_cast<zlink_auto_connect_type_t> (discovery->auto_connect_type ());
     entry.service_kind = ZLINK_SERVICE_KIND_SPOT_SUB;
     entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
-    copy_fixed_c_string_from_cstr (entry.service_name,
-                                   sizeof (entry.service_name),
+    copy_fixed_c_string_from_cstr (entry.channel_name,
+                                   sizeof (entry.channel_name),
                                    service_name.c_str ());
     entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
     entry.state = static_cast<zlink_topology_state_t> (state_);

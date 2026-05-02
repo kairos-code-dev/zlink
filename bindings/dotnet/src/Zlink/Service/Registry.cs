@@ -90,19 +90,19 @@ public sealed class Registry : IDisposable, IAsyncDisposable
             if (requestedFilter != null)
             {
                 RegistryServiceSummaryFilter value = requestedFilter;
-                if (value.ServiceKind.HasValue || value.ServiceRole.HasValue
-                    || !string.IsNullOrEmpty(value.ServiceName))
+                if (value.AutoConnectType.HasValue || value.ServiceRole.HasValue
+                    || !string.IsNullOrEmpty(value.ChannelName))
                 {
-                    nativeFilter.ServiceKind =
-                        (int)value.ServiceKind.GetValueOrDefault();
+                    nativeFilter.AutoConnectType =
+                        (int)value.AutoConnectType.GetValueOrDefault();
                     nativeFilter.ServiceRole =
-                        (ushort)value.ServiceRole.GetValueOrDefault();
-                    if (!string.IsNullOrEmpty(value.ServiceName))
+                        (int)value.ServiceRole.GetValueOrDefault();
+                    if (!string.IsNullOrEmpty(value.ChannelName))
                     {
-                        BoundaryValidation.ValidateFixedUtf8(value.ServiceName,
-                            nameof(RegistryServiceSummaryFilter.ServiceName));
-                        WriteFixedString(value.ServiceName,
-                            nativeFilter.ServiceName,
+                        BoundaryValidation.ValidateFixedUtf8(value.ChannelName,
+                            nameof(RegistryServiceSummaryFilter.ChannelName));
+                        WriteFixedString(value.ChannelName,
+                            nativeFilter.ChannelName,
                             256);
                     }
                     filterPtr = (IntPtr)(&nativeFilter);
@@ -131,23 +131,26 @@ public sealed class Registry : IDisposable, IAsyncDisposable
             if (requestedFilter != null)
             {
                 RegistryTopologyFilter value = requestedFilter;
-                if (value.ServiceKind.HasValue || value.ServiceRole.HasValue
-                    || !string.IsNullOrEmpty(value.ServiceName)
+                if (value.AutoConnectType.HasValue
+                    || value.ServiceKind.HasValue || value.ServiceRole.HasValue
+                    || !string.IsNullOrEmpty(value.ChannelName)
                     || value.RoutingId.HasValue || value.State.HasValue
                     || value.Source.HasValue)
                 {
+                    nativeFilter.AutoConnectType =
+                        (int)value.AutoConnectType.GetValueOrDefault();
                     nativeFilter.ServiceKind =
                         (int)value.ServiceKind.GetValueOrDefault();
                     nativeFilter.ServiceRole =
-                        (ushort)value.ServiceRole.GetValueOrDefault();
+                        (int)value.ServiceRole.GetValueOrDefault();
                     nativeFilter.State = (int)value.State.GetValueOrDefault();
                     nativeFilter.Source = (int)value.Source.GetValueOrDefault();
-                    if (!string.IsNullOrEmpty(value.ServiceName))
+                    if (!string.IsNullOrEmpty(value.ChannelName))
                     {
-                        BoundaryValidation.ValidateFixedUtf8(value.ServiceName,
-                            nameof(RegistryTopologyFilter.ServiceName));
-                        WriteFixedString(value.ServiceName,
-                            nativeFilter.ServiceName,
+                        BoundaryValidation.ValidateFixedUtf8(value.ChannelName,
+                            nameof(RegistryTopologyFilter.ChannelName));
+                        WriteFixedString(value.ChannelName,
+                            nativeFilter.ChannelName,
                             256);
                     }
                     if (value.RoutingId.HasValue)
@@ -164,15 +167,14 @@ public sealed class Registry : IDisposable, IAsyncDisposable
         }
     }
 
-    public MemberPeerEntry[] MemberPeers(ServiceType serviceType,
-        string serviceName)
+    public MemberPeerEntry[] MemberPeers(string channelName)
     {
-        BoundaryValidation.ValidateFixedUtf8(serviceName, nameof(serviceName));
+        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
         EnsureNotDisposed();
 
         nuint count = 0;
         int rc = NativeMethods.zlink_registry_member_peers(_handle,
-            (int)serviceType, serviceName, IntPtr.Zero, ref count);
+            channelName, IntPtr.Zero, ref count);
         ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
             return Array.Empty<MemberPeerEntry>();
@@ -183,7 +185,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
         {
             nuint actual = count;
             rc = NativeMethods.zlink_registry_member_peers(_handle,
-                (int)serviceType, serviceName, entries, ref actual);
+                channelName, entries, ref actual);
             ZlinkException.ThrowConfigIfError(rc);
 
             MemberPeerEntry[] result = new MemberPeerEntry[(int)actual];
@@ -202,16 +204,16 @@ public sealed class Registry : IDisposable, IAsyncDisposable
         }
     }
 
-    public Message MemberPeerMetadata(ServiceType serviceType,
-        string serviceName, ServiceRole serviceRole, string endpoint)
+    public Message MemberPeerMetadata(string channelName,
+        ServiceRole serviceRole, string endpoint)
     {
-        BoundaryValidation.ValidateFixedUtf8(serviceName, nameof(serviceName));
+        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
         BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
         EnsureNotDisposed();
 
         using var metadata = new Message();
         int rc = NativeMethods.zlink_registry_member_peer_metadata(_handle,
-            (int)serviceType, serviceName, (ushort)serviceRole, endpoint,
+            channelName, (int)serviceRole, endpoint,
             ref metadata.Handle);
         ZlinkException.ThrowConfigIfError(rc);
         return metadata.Move();

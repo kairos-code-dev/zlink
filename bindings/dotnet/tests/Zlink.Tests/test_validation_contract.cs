@@ -89,7 +89,7 @@ public sealed class test_validation_contract
         using var query = new RegistryQueryClient(ctx);
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            _ = new Discovery(ctx, ServiceType.Spot, overlong));
+            _ = new Discovery(ctx, AutoConnectType.SpotMesh, overlong));
         Assert.Throws<ArgumentOutOfRangeException>(() => node.Bind(overlong));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             registry.Bind(overlong, "tcp://127.0.0.1:5555"));
@@ -105,6 +105,6 @@ public sealed class test_validation_contract
         string maxLength = new string('a', 255);
 
         using var ctx = new Context();
-        using var discovery = new Discovery(ctx, ServiceType.Spot, maxLength);
+        using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh, maxLength);
     }
 }

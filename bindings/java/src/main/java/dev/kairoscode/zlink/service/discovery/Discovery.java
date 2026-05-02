@@ -4,9 +4,9 @@ package dev.kairoscode.zlink.service.discovery;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.service.registry.AutoConnectType;
 import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
 import dev.kairoscode.zlink.service.registry.ServiceRole;
-import dev.kairoscode.zlink.service.registry.ServiceType;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
@@ -22,24 +22,25 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Fixed-service discovery view.
+ * Fixed-channel discovery view.
  *
- * <p>One instance tracks exactly one {@link ServiceType}/{@code serviceName}
+ * <p>One instance tracks exactly one {@link AutoConnectType}/{@code channelName}
  * pair and exposes discovery metadata plus member peer snapshots for that view.
  */
 public final class Discovery implements AutoCloseable {
     private MemorySegment handle;
 
-    /** Opens a discovery handle for one service type and name. */
-    public Discovery(Context ctx, ServiceType serviceType, String serviceName) {
+    /** Opens a discovery handle for one auto-connect type and channel name. */
+    public Discovery(Context ctx, AutoConnectType autoConnectType,
+                     String channelName) {
         Objects.requireNonNull(ctx, "ctx");
-        Objects.requireNonNull(serviceType, "serviceType");
-        Objects.requireNonNull(serviceName, "serviceName");
+        Objects.requireNonNull(autoConnectType, "autoConnectType");
+        Objects.requireNonNull(channelName, "channelName");
         try (Arena arena = Arena.ofConfined()) {
             this.handle = Native.discoveryNewFixed(
               InternalAccess.contextHandle(ctx),
-              serviceType.getValue(),
-              NativeHelpers.toCString(arena, serviceName));
+              autoConnectType.getValue(),
+              NativeHelpers.toCString(arena, channelName));
         }
         if (handle == null || handle.address() == 0)
             throw ZlinkException.fromLastError("zlink_discovery_new");
@@ -64,16 +65,6 @@ public final class Discovery implements AutoCloseable {
                 throw ZlinkException.fromLastError(
                   "zlink_discovery_connect_registry");
             }
-        }
-    }
-
-    /** Configures the DEALER auto-connect target policy for this view. */
-    public void setDealerPeerMode(DiscoveryDealerPeerMode mode) {
-        Objects.requireNonNull(mode, "mode");
-        int rc = Native.discoverySetDealerPeerMode(handle, mode.getValue());
-        if (rc != 0) {
-            throw ZlinkException.fromLastError(
-              "zlink_discovery_set_dealer_peer_mode");
         }
     }
 
@@ -197,14 +188,14 @@ public final class Discovery implements AutoCloseable {
             MemorySegment metadata = arena.allocate(NativeLayouts.MSG_LAYOUT);
             initMessage(metadata);
             try {
-            int rc = Native.discoveryMemberPeerMetadata(handle,
-              (short) serviceRole.getValue(),
-              NativeHelpers.toCString(arena, endpoint), metadata);
-            if (rc != 0) {
-                throw ZlinkException.fromLastError(
-                  "zlink_discovery_member_peer_metadata");
-            }
-            return readMessageBytes(metadata);
+                int rc = Native.discoveryMemberPeerMetadata(handle,
+                  serviceRole.getValue(),
+                  NativeHelpers.toCString(arena, endpoint), metadata);
+                if (rc != 0) {
+                    throw ZlinkException.fromLastError(
+                      "zlink_discovery_member_peer_metadata");
+                }
+                return readMessageBytes(metadata);
             } finally {
                 NativeMsg.msgClose(metadata);
             }

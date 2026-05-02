@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <cstdlib>
 #include <iostream>
 #include <mutex>
@@ -26,6 +27,12 @@
 namespace {
 
 const char *const k_topic = "bench";
+
+zlink::routing_id_t routing_id_from_ascii (const char *value_)
+{
+    return zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> (value_), std::strlen (value_));
+}
 
 unsigned current_process_id ()
 {
@@ -361,9 +368,9 @@ bool run_pattern_spot (const std::string &transport,
 
     const std::string pub_service_name = "spot-bench";
     zlink::service::discovery_t pub_discovery (
-      ctx.ctx (), zlink::service_type::spot, pub_service_name);
+      ctx.ctx (), zlink::auto_connect_type::spot_mesh, pub_service_name);
     zlink::service::discovery_t sub_discovery (
-      ctx.ctx (), zlink::service_type::spot, pub_service_name);
+      ctx.ctx (), zlink::auto_connect_type::spot_mesh, pub_service_name);
     if (!pub_discovery.valid () || !sub_discovery.valid ()) {
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
         return false;
@@ -391,12 +398,27 @@ bool run_pattern_spot (const std::string &transport,
     const std::string registry_router_endpoint = make_spot_endpoint (transport);
     const std::string publisher_endpoint = make_spot_endpoint (transport);
     const std::string subscriber_endpoint = make_spot_endpoint (transport);
+
+    zlink::service::spot_t pub_spot = pub_node.create_spot ();
+    zlink::service::spot_t sub_spot = sub_node.create_spot ();
+    if (!pub_spot.valid () || !sub_spot.valid ()) {
+        perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
+        return false;
+    }
+
     try {
+        pub_node.set_routing_id (
+          routing_id_from_ascii ("z-cpp-perf-spot-publisher"));
+        sub_node.set_routing_id (
+          routing_id_from_ascii ("a-cpp-perf-spot-subscriber"));
+        pub_spot.set_routing_id (
+          routing_id_from_ascii ("z-cpp-perf-spot-publisher-spot"));
+        sub_spot.set_routing_id (
+          routing_id_from_ascii ("a-cpp-perf-spot-subscriber-spot"));
         registry.bind (registry_pub_endpoint, registry_router_endpoint);
+        registry.set_broadcast_interval (50);
         pub_discovery.connect_registry (registry_router_endpoint);
         sub_discovery.connect_registry (registry_router_endpoint);
-        pub_node.attach_discovery (pub_discovery);
-        sub_node.attach_discovery (sub_discovery);
         const int pubsub_hwm =
           perf::single::resolve_single_socket_hwm (true);
         const int router_hwm =
@@ -422,15 +444,12 @@ bool run_pattern_spot (const std::string &transport,
         }
         pub_node.bind (publisher_endpoint);
         sub_node.bind (subscriber_endpoint);
+        pub_node.attach_discovery (pub_discovery);
+        sub_node.attach_discovery (sub_discovery);
     }
-    catch (const std::exception &) {
-        perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
-        return false;
-    }
-
-    zlink::service::spot_t pub_spot = pub_node.create_spot ();
-    zlink::service::spot_t sub_spot = sub_node.create_spot ();
-    if (!pub_spot.valid () || !sub_spot.valid ()) {
+    catch (const std::exception &e) {
+        if (perf_debug_enabled ())
+            std::cerr << "spot: setup failed: " << e.what () << std::endl;
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
         return false;
     }

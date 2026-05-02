@@ -191,8 +191,7 @@ zlink_config_result_t zlink_registry_service_summary_snapshot (
 }
 
 zlink_config_result_t zlink_registry_member_peers (void *registry_,
-                                                    zlink_service_type_t service_type_,
-                                                    const char *service_name_,
+                                                    const char *channel_name_,
                                                     zlink_member_peer_entry_t *entries_,
                                                     size_t *count_)
 {
@@ -204,13 +203,12 @@ zlink_config_result_t zlink_registry_member_peers (void *registry_,
     }
     return zlink::config_result_internal::from_rc (
       zlink::registry_access_t::member_peers (
-        registry, service_type_, service_name_, entries_, count_));
+        registry, channel_name_, entries_, count_));
 }
 
 zlink_config_result_t zlink_registry_member_peer_metadata (void *registry_,
-                                                           zlink_service_type_t service_type_,
-                                                           const char *service_name_,
-                                                           uint16_t service_role_,
+                                                           const char *channel_name_,
+                                                           zlink_service_role_t service_role_,
                                                            const char *endpoint_,
                                                            zlink_msg_t *metadata_out_)
 {
@@ -222,7 +220,7 @@ zlink_config_result_t zlink_registry_member_peer_metadata (void *registry_,
     }
     return zlink::config_result_internal::from_rc (
       zlink::registry_access_t::member_peer_metadata (
-        registry, service_type_, service_name_, service_role_, endpoint_,
+        registry, channel_name_, service_role_, endpoint_,
         metadata_out_));
 }
 

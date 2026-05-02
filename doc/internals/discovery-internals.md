@@ -18,7 +18,7 @@ flowchart TB
         sub_socket["SUB socket<br/>SERVICE_LIST reception"]
         service_state["service_state<br/>provider snapshots"]
         observers["observer list<br/>(attachments)"]
-        registered["_registered_services<br/>(service_type, role, name, endpoint)"]
+        registered["_registered_services<br/>(auto_connect_type, role, name, endpoint)"]
         control_task["control_task (periodic)"]
     end
 
@@ -108,11 +108,11 @@ sequenceDiagram
 
     Service->>Disc: register_endpoint(type, endpoint, weight)
     Disc->>Disc: store in _registered_services
-    Disc->>DEALER: REGISTER (0x0001)<br/>[service_type, service_name,<br/>service_role, endpoint, routing_id]
+    Disc->>DEALER: REGISTER (0x0001)<br/>[auto_connect_type, service_name,<br/>service_role, endpoint, routing_id]
     REG->>DEALER: REGISTER_ACK (0x0002)<br/>[status, resolved_endpoint]
 
     loop Every heartbeat_interval
-        Disc->>DEALER: HEARTBEAT (0x0004)<br/>[service_type, service_role,<br/>service_name, endpoint]
+        Disc->>DEALER: HEARTBEAT (0x0004)<br/>[auto_connect_type, service_role,<br/>service_name, endpoint]
     end
 ```
 
@@ -126,7 +126,7 @@ sequenceDiagram
     participant Observer as Attachment Observer
 
     REG->>SUB: SERVICE_LIST (0x0005)<br/>[registry_id, list_seq,<br/>service_count, entries...]
-    SUB->>State: parse and filter by service_type/name
+    SUB->>State: parse and filter by auto_connect_type/name
     State->>State: apply_provider_snapshot()
     State->>State: check if providers changed
 
@@ -145,7 +145,7 @@ Frame 1: registry_id (uint32_t)
 Frame 2: list_seq (uint64_t)
 Frame 3: service_count (uint32_t)
 Frame 4~N: Service entries (repeated):
-  - service_type (uint16_t)
+  - auto_connect_type (uint16_t)
   - service_name (string)
   - provider_count (uint32_t)
   - Per provider:
@@ -171,7 +171,7 @@ sequenceDiagram
     Socket->>Socket: zlink_bind("tcp://*:5555")
     Socket->>Attach: attach(socket, discovery)
     Attach->>Attach: derive service_role from socket_type<br/>(ROUTER→3, DEALER→4, PUB→5, SUB→6)
-    Attach->>Disc: register_endpoint(service_type_socket,<br/>endpoint, role)
+    Attach->>Disc: register_endpoint(auto_connect_type_socket,<br/>endpoint, role)
     Disc->>REG: REGISTER
 
     Attach->>Disc: add_observer(self)
@@ -203,7 +203,7 @@ sequenceDiagram
 ## 8. SPOT Node Attachment
 
 SpotNode uses the same observer pattern but with:
-- `service_type = service_type_spot_node (2)`
+- `auto_connect_type = auto_connect_type_spot_node (2)`
 - `service_role = service_role_spot (2)` (fixed)
 - Peer connections target other SpotNodes in the mesh
 
@@ -258,7 +258,7 @@ recoverable via `zlink_errno()`.
 
 | Aspect | Value |
 |---|---|
-| Precondition | `discovery->_service_type == SPOT_NODE`; otherwise `ENOTSUP` → `ZLINK_CONFIG_NOT_SUPPORTED` |
+| Precondition | `discovery->_auto_connect_type == SPOT_NODE`; otherwise `ENOTSUP` → `ZLINK_CONFIG_NOT_SUPPORTED` |
 | Output | `owner_node_rid_out` populated with the owner SpotNode's rid |
 | Cache TTL | `resolve_spot_cache_ttl_ms = 250` ms |
 | Cache validity rule | `validated_service_seq == current_service_seq` OR `now − last_reported_ms ≤ 250 ms` |

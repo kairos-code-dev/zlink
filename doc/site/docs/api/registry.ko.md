@@ -667,21 +667,21 @@ API입니다.
 ```c
 typedef struct zlink_member_peer_entry_t
 {
-    zlink_service_type_t service_type;
-    uint16_t service_role;
-    char service_name[256];
+    zlink_auto_connect_type_t auto_connect_type;
+    zlink_service_role_t service_role;
+    char channel_name[256];
     char endpoint[256];
-    zlink_routing_id_t routing_id;
     uint32_t weight;
+    zlink_routing_id_t routing_id;
     int64_t value;
 } zlink_member_peer_entry_t;
 ```
 
 | 필드 | 설명 |
 |------|------|
-| `service_type` | 서비스 타입 (`ZLINK_SERVICE_TYPE_*`). |
+| `auto_connect_type` | 자동 연결 channel 타입 (`ZLINK_AUTO_CONNECT_*`). |
 | `service_role` | 서비스 인스턴스의 역할. |
-| `service_name` | null 종료 서비스 이름. |
+| `channel_name` | null 종료 channel 이름. |
 | `endpoint` | null 종료 엔드포인트. |
 | `routing_id` | 피어의 라우팅 아이덴티티. |
 | `weight` | 현재 peer 가중치 (`0..100`). `0`은 provider를 새 outbound 후보에서 제외함을 뜻하고, 양수 값은 후보에 남되 값 비율에 맞게 더 자주 또는 덜 자주 선택됨을 뜻한다. |
@@ -695,15 +695,14 @@ typedef struct zlink_member_peer_entry_t
 
 ```c
 zlink_config_result_t zlink_registry_member_peers(void *registry,
-                                                  zlink_service_type_t service_type,
-                                                  const char *service_name,
+                                                  const char *channel_name,
                                                   zlink_member_peer_entry_t *entries,
                                                   size_t *count);
 ```
 
-주어진 서비스 타입과 이름에 일치하는 멤버 피어 항목을 `entries`에 채웁니다.
-입력 시 `*count`는 배열 용량이고, 출력 시 실제 개수입니다. 필요한 개수를
-먼저 조회하려면 `entries = NULL`을 전달합니다.
+주어진 channel 이름에 일치하는 멤버 피어 항목을 `entries`에 채웁니다. 입력 시
+`*count`는 배열 용량이고, 출력 시 실제 개수입니다. 필요한 개수를 먼저
+조회하려면 `entries = NULL`을 전달합니다.
 
 **반환값:** `zlink_config_result_t` 값을 반환합니다.
 
@@ -717,15 +716,14 @@ zlink_config_result_t zlink_registry_member_peers(void *registry,
 
 ```c
 zlink_config_result_t zlink_registry_member_peer_metadata(void *registry,
-                                                          zlink_service_type_t service_type,
-                                                          const char *service_name,
-                                                          uint16_t service_role,
+                                                          const char *channel_name,
+                                                          zlink_service_role_t service_role,
                                                           const char *endpoint,
                                                           zlink_msg_t *metadata_out);
 ```
 
-서비스 타입, 이름, 역할, 엔드포인트로 식별되는 멤버 피어의 메타데이터를
-조회합니다. 메타데이터는 `metadata_out`에 기록됩니다.
+channel 이름, 역할, 엔드포인트로 식별되는 멤버 피어의 메타데이터를 조회합니다.
+메타데이터는 `metadata_out`에 기록됩니다.
 
 **반환값:** `zlink_config_result_t` 값을 반환합니다.
 

@@ -175,6 +175,9 @@ fn discovery_tls_client_surface_exists() {
 fn discovery_resolve_spot_surface_exists() {
     let ctx = Context::new().unwrap();
     let discovery = Discovery::new(&ctx, AutoConnectType::SpotMesh, "svc-resolve").unwrap();
+    assert!(!discovery.spot_owner_sync_enabled().unwrap());
+    discovery.set_spot_owner_sync_enabled(true).unwrap();
+    assert!(discovery.spot_owner_sync_enabled().unwrap());
     let _ = discovery.resolve_spot(&RoutingId::from_bytes(b"spot-rid"));
 }
 

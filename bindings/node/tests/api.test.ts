@@ -44,6 +44,9 @@ test('service objects expose aligned monitor and query surface', () => {
   registry.bind('inproc://registry-pub', 'inproc://registry-router');
   query.connect('inproc://registry-router');
   discovery.setValue(7);
+  assert.equal(discovery.spotOwnerSyncEnabled, false);
+  discovery.spotOwnerSyncEnabled = true;
+  assert.equal(discovery.spotOwnerSyncEnabled, true);
 
   assert.equal(registry.statusSnapshot().topologyEntryCount, 0);
   assert.deepEqual(registry.serviceSummarySnapshot(), []);

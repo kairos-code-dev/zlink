@@ -215,6 +215,8 @@ Not every call has the same timing constraints, though.
   connect API. Discovery learns the broadcast and uplink paths internally.
 - Use `zlink_discovery_resolve_spot()` when the caller starts from a logical
   `spot_rid` and needs the current destination `node_rid`.
+  The SPOT owner rows needed by that lookup are stored in Registry only when
+  the publishing Discovery has enabled `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`.
 - Use `zlink_discovery_member_peers()` for the current Discovery peer view.
   When the caller needs a stable service-level picture, poll this query
   function and compare snapshots over time.
@@ -223,8 +225,11 @@ Not every call has the same timing constraints, though.
   `zlink_discovery_resolve_route()` for owner-bound route lookup.
 - Use Registry topology snapshot/query APIs for global summary inspection.
 - Discovery supports `zlink_set_option(discovery, ZLINK_OPT_*, ...)` which
-  applies to its managed socket set as fan-out. No getter
-  (`zlink_get_option`) is provided for Discovery (no single source-of-truth).
+  applies to its managed socket set as fan-out. Discovery-only options,
+  `ZLINK_OPT_ROUTE_VALUE_MAX_SIZE` and
+  `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`, read or write the Discovery handle
+  itself instead. `zlink_get_option()` is provided only for those two
+  Discovery-only options.
 
 ## Constants
 
@@ -352,6 +357,14 @@ Discovery first checks whether the cached owner row was validated against the
 current service-view update sequence. If not, it reuses the cached row only for
 a short local TTL. Once the channel view changes or that short TTL expires,
 Discovery queries Registry again before returning the owner.
+
+SPOT owner-row publishing is off by default. Attaching a SpotNode to Discovery
+does not by itself store `spot_rid -> owner node` rows in Registry. To use
+Registry-backed SPOT owner lookup, set `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`
+to `int` value `1` on the Discovery handle that publishes the owner. If that
+option is not enabled on the publishing Discovery, Registry refresh will not
+return the SpotNode's owner row and `zlink_discovery_resolve_spot()` may fail
+with `ENOENT`.
 
 On success, `owner_node_rid_out` receives the current owner node routing id.
 The caller then combines that node id with the original `spot_rid` and passes

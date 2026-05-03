@@ -252,6 +252,21 @@ template<typename T> class has_resolve_spot_t
     static const bool value = decltype (test<T> (0))::value;
 };
 
+template<typename T> class has_spot_owner_sync_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (std::declval<U &> ().set_spot_owner_sync_enabled (true),
+                    std::declval<const U &> ().spot_owner_sync_enabled (),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
 template<typename T> class has_routing_id_getter_t
 {
   private:
@@ -300,6 +315,8 @@ static_assert (!has_monitor_open_t<zlink::service::discovery_t>::value,
                "discovery_t must not expose monitor_open");
 static_assert (has_resolve_spot_t<zlink::service::discovery_t>::value,
                "discovery_t must expose resolve_spot");
+static_assert (has_spot_owner_sync_t<zlink::service::discovery_t>::value,
+               "discovery_t must expose spot owner sync option");
 static_assert (has_close_t<zlink::service::spot_t>::value,
                "spot_t must expose close");
 static_assert (has_close_t<zlink::service::spot_node_t>::value,

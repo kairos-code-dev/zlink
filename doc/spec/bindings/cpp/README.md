@@ -2014,8 +2014,14 @@ class discovery_t {
 
     /// Resolve current owner node rid for a logical spot rid. Intended for
     /// send/request destination lookup. Maps to zlink_discovery_resolve_spot.
+    /// Registry-backed lookup requires the publishing Discovery to enable
+    /// ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC.
     /// @throws config_error_t
     routing_id_t resolve_spot(const routing_id_t& spot_rid);
+    /// Enable or disable publishing SPOT owner rows to Registry.
+    void set_spot_owner_sync_enabled(bool enabled);
+    /// Read whether this Discovery publishes SPOT owner rows to Registry.
+    bool spot_owner_sync_enabled() const;
 
     /// @throws close_error_t
     void close();

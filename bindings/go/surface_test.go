@@ -220,6 +220,12 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.Discovery)(nil), "ResolveRoute") {
 		t.Fatalf("Discovery should expose ResolveRoute")
 	}
+	if !hasMethod((*zlink.Discovery)(nil), "SetSpotOwnerSyncEnabled") {
+		t.Fatalf("Discovery should expose SetSpotOwnerSyncEnabled")
+	}
+	if !hasMethod((*zlink.Discovery)(nil), "SpotOwnerSyncEnabled") {
+		t.Fatalf("Discovery should expose SpotOwnerSyncEnabled")
+	}
 	if hasMethod((*zlink.Discovery)(nil), "MonitorOpen") {
 		t.Fatalf("Discovery should not expose MonitorOpen")
 	}

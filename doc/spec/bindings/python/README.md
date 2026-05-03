@@ -1086,7 +1086,8 @@ class Discovery:
     def unbind_route(self, kind: int, key: bytes | bytearray) -> None: ...       # Raises: ConfigError
     def resolve_route(self, kind: int, key: bytes | bytearray) -> tuple[RoutingId, bytes]: ...  # Raises: ConfigError
     def member_peers(self) -> list[MemberPeerEntry]: ...                         # Raises: ConfigError
-    def resolve_spot(self, spot_rid: RoutingId) -> RoutingId: ...                # Raises: ConfigError — maps to zlink_discovery_resolve_spot
+    spot_owner_sync_enabled: bool                                                # set/get; publishes SPOT owner rows when True
+    def resolve_spot(self, spot_rid: RoutingId) -> RoutingId: ...                # Raises: ConfigError — maps to zlink_discovery_resolve_spot; publisher must enable SPOT owner sync for Registry-backed lookup
     def set_tls_client(self, ca_cert: str | None, hostname: str | None,
                        trust_system: bool = False) -> None: ...                  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError

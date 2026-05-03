@@ -119,7 +119,8 @@ void registry_t::handle_peer (void *sub_)
     uint32_t service_count = 0;
     if (!discovery_protocol::read_u32 (frames[1], &peer_registry_id)
         || !discovery_protocol::read_u64 (frames[2], &list_seq)
-        || !discovery_protocol::read_u32 (frames[3], &service_count)) {
+        || (msg_id == discovery_protocol::msg_service_list
+            && !discovery_protocol::read_u32 (frames[3], &service_count))) {
         close_msg_frames (&frames);
         return;
     }
@@ -159,11 +160,28 @@ void registry_t::handle_peer (void *sub_)
     }
 
     if (msg_id == discovery_protocol::msg_registry_sync) {
-        std::map<route_key_t, route_entry_t> incoming_routes;
-        size_t route_index = 4;
-        for (uint32_t i = 0; i < service_count && route_index < frames.size ();
+        if (frames.size () < 6) {
+            close_msg_frames (&frames);
+            return;
+        }
+
+        uint32_t chunk_index = 0;
+        uint32_t chunk_count = 0;
+        uint32_t route_count = 0;
+        if (!discovery_protocol::read_u32 (frames[3], &chunk_index)
+            || !discovery_protocol::read_u32 (frames[4], &chunk_count)
+            || !discovery_protocol::read_u32 (frames[5], &route_count)
+            || chunk_count == 0 || chunk_index >= chunk_count) {
+            close_msg_frames (&frames);
+            return;
+        }
+
+        std::vector<route_entry_t> incoming_routes;
+        size_t incoming_memory = 0;
+        size_t route_index = 6;
+        for (uint32_t i = 0; i < route_count && route_index < frames.size ();
              ++i) {
-            if (route_index + 9 >= frames.size ())
+            if (route_index + 10 >= frames.size ())
                 break;
 
             const std::string channel_name =
@@ -198,7 +216,7 @@ void registry_t::handle_peer (void *sub_)
                   frames[route_index++], &route.owner.service_role))
                 break;
             const size_t owner_rid_size = zlink_msg_size (&frames[route_index]);
-            if (owner_rid_size > sizeof (route.owner_routing_id.data))
+            if (owner_rid_size > sizeof (((zlink_routing_id_t *) 0)->data))
                 break;
             route.owner.routing_id_key.assign (
               static_cast<const char *> (
@@ -211,11 +229,15 @@ void registry_t::handle_peer (void *sub_)
                 || !discovery_protocol::read_u64 (
                   frames[route_index++], &route.owner.registration_id))
                 break;
-            discovery_protocol::read_routing_id (frames[route_index++],
-                                                 &route.owner_routing_id);
-            route.updated_at_ms = now;
+            if (!discovery_protocol::read_u64 (
+                  frames[route_index++], &route.updated_at_ms))
+                break;
+            ++route_index;
+            if (route.updated_at_ms == 0)
+                route.updated_at_ms = now;
             route.advertising_registry = peer_registry_id;
-            incoming_routes[route.key] = route;
+            incoming_memory += route_entry_memory_bytes (route);
+            incoming_routes.push_back (route);
         }
 
         {
@@ -229,17 +251,60 @@ void registry_t::handle_peer (void *sub_)
                 return;
             }
 
-            cleanup_advertised_route_records_locked (peer_registry_id);
-            for (std::map<route_key_t, route_entry_t>::const_iterator it =
+            route_snapshot_staging_t &staging =
+              _route_snapshot_staging[peer_registry_id];
+            const bool starts_snapshot = chunk_index == 0;
+            if (starts_snapshot) {
+                staging = route_snapshot_staging_t ();
+                staging.seq = list_seq;
+                staging.chunk_count = chunk_count;
+                staging.active = true;
+            }
+            if (!staging.active || staging.seq != list_seq
+                || staging.chunk_count != chunk_count
+                || staging.next_chunk_index != chunk_index
+                || staging.memory_bytes + incoming_memory
+                     > _route_limits.staging_memory_budget_bytes) {
+                _route_snapshot_staging.erase (peer_registry_id);
+                _route_stats.snapshot_staging_abort_count++;
+                close_msg_frames (&frames);
+                return;
+            }
+
+            for (std::vector<route_entry_t>::const_iterator it =
                    incoming_routes.begin ();
                  it != incoming_routes.end (); ++it) {
-                if (_routes.find (it->first) != _routes.end ())
-                    continue;
-                _routes[it->first] = it->second;
-                _routes_by_owner[it->second.owner].insert (it->first);
+                route_observation_key_t obs_key;
+                obs_key.route_key = it->key;
+                obs_key.owner = it->owner;
+                obs_key.advertising_registry = it->advertising_registry;
+                staging.observations[obs_key] = *it;
             }
-            _peer_route_seq[peer_registry_id] = list_seq;
-            _list_seq++;
+            staging.memory_bytes += incoming_memory;
+            staging.next_chunk_index++;
+
+            if (chunk_index + 1 == chunk_count) {
+                route_key_set_t dirty_routes;
+                cleanup_advertised_route_records_locked (peer_registry_id);
+                for (route_observation_map_t::const_iterator it =
+                       staging.observations.begin ();
+                     it != staging.observations.end (); ++it) {
+                    int route_error = 0;
+                    if (!route_store_can_fit_locked (it->second, 0,
+                                                     &route_error)) {
+                        _route_snapshot_staging.erase (peer_registry_id);
+                        _route_stats.snapshot_staging_abort_count++;
+                        close_msg_frames (&frames);
+                        return;
+                    }
+                    upsert_route_observation_locked (it->second,
+                                                     &dirty_routes);
+                }
+                materialize_dirty_routes_locked (dirty_routes);
+                _peer_route_seq[peer_registry_id] = list_seq;
+                _route_snapshot_staging.erase (peer_registry_id);
+                _list_seq++;
+            }
         }
 
         close_msg_frames (&frames);
@@ -472,6 +537,15 @@ void registry_t::handle_peer (void *sub_)
                     continue;
                 }
                 service.providers[pit->first] = pit->second;
+                owner_identity_t owner;
+                owner.channel_name = service_key.channel_name;
+                owner.service_role = pit->second.service_role;
+                owner.routing_id_key.assign (
+                  reinterpret_cast<const char *> (pit->second.routing_id.data),
+                  pit->second.routing_id.size);
+                owner.source_registry = pit->second.source_registry;
+                owner.registration_id = pit->second.registration_id;
+                promote_owner_route_records_locked (owner);
             }
         }
 
@@ -591,6 +665,16 @@ void registry_t::handle_register (void *router_,
             entry.source_registry = registry_id;
             source_registry = entry.source_registry;
             registration_id = entry.registration_id;
+
+            owner_identity_t owner;
+            owner.channel_name = channel_name;
+            owner.service_role = entry.service_role;
+            owner.routing_id_key.assign (
+              reinterpret_cast<const char *> (entry.routing_id.data),
+              entry.routing_id.size);
+            owner.source_registry = entry.source_registry;
+            owner.registration_id = entry.registration_id;
+            promote_owner_route_records_locked (owner);
 
             _list_seq++;
         }

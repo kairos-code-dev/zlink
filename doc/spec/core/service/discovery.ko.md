@@ -205,6 +205,8 @@ DEALER-to-ROUTER channel은 Discovery 생성 시 `ZLINK_AUTO_CONNECT_CLIENT_SERV
   사용하고, 브로드캐스트/uplink 경로는 내부에서 자동 구성합니다.
 - 논리 `spot_rid`에서 현재 목적지 `node_rid`를 얻으려면
   `zlink_discovery_resolve_spot()`를 사용합니다.
+  이 조회에 필요한 SPOT owner row는 publish하는 Discovery에서
+  `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`를 켰을 때만 Registry에 저장됩니다.
 - `ZLINK_DISCOVERY_SERVICE_UP`,
   `ZLINK_DISCOVERY_PROVIDERS_CHANGED` 같은 상태 전이는
   `zlink_discovery_member_peers()`로 현재 peer view를 읽습니다. 서비스 수준
@@ -216,8 +218,10 @@ DEALER-to-ROUTER channel은 Discovery 생성 시 `ZLINK_AUTO_CONNECT_CLIENT_SERV
 - 전역 요약 상태는 registry topology snapshot/query API로 조회합니다.
 - Discovery는 `zlink_set_option(discovery, ZLINK_OPT_*, ...)`을 지원하며,
   내부 관리 소켓 세트 전체에 같은 값이 퍼져 적용됩니다.
-  `zlink_get_option()`은 Discovery에 제공되지 않습니다. 여러 내부 소켓 중 어느
-  하나를 단일 기준으로 삼을 수 없기 때문입니다.
+  Discovery 전용 옵션인 `ZLINK_OPT_ROUTE_VALUE_MAX_SIZE`와
+  `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`는 fan-out이 아니라 Discovery handle
+  자체의 값을 읽고 씁니다. `zlink_get_option()`은 이 두 Discovery 전용
+  옵션에만 제공됩니다.
 
 ## 상수
 
@@ -337,10 +341,19 @@ zlink_config_result_t zlink_discovery_resolve_spot (
 이 함수는 현재 Discovery가 보고 있는 `channel_name` 범위 안에서 `spot_rid`를
 받아, 지금 그 이름을 맡고 있는 `SpotNode`의 `node_rid`를 구합니다. Discovery는
 먼저 로컬 캐시를 확인할 수 있고, 필요하면 Registry 기준으로 다시 확인할 수
+있습니다.
 현재 core 구현은 캐시를 아무 때나 오래 믿지 않습니다. Discovery는 cached owner
 row가 현재 channel view와 같은 갱신 순번에서 검증된 값인지 확인하고, 그렇지
 않으면 아주 짧은 로컬 TTL 안에 있는 값만 잠시 재사용합니다. channel view가
 바뀌었거나 TTL이 지난 값이면 Registry에 다시 질의해서 owner를 새로 확인합니다.
+
+SPOT owner row publish는 기본값으로 꺼져 있습니다. SpotNode를 Discovery에
+붙이는 것만으로는 Registry에 `spot_rid -> owner node` row가 저장되지 않습니다.
+SPOT owner 조회를 Registry 기준으로 사용하려면 owner를 publish하는 Discovery
+handle에서 `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`를 `int` 값 `1`로 설정해야
+합니다. 이 옵션을 켜지 않은 Discovery가 publish한 SpotNode는
+`zlink_discovery_resolve_spot()`의 Registry refresh 결과에 나타나지 않으며,
+조회는 `ENOENT`로 실패할 수 있습니다.
 
 성공하면 `owner_node_rid_out`에 현재 owner node의 routing id가 채워집니다.
 호출자는 이 값을 원래 `spot_rid`와 함께 ROUTER 쪽 direct 함수

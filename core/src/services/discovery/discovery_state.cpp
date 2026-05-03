@@ -14,7 +14,8 @@ namespace zlink
 {
 discovery_local_state_t::discovery_local_state_t () :
     _value (0),
-    _route_value_max_size (ZLINK_ROUTE_VALUE_MAX)
+    _route_value_max_size (ZLINK_ROUTE_VALUE_MAX),
+    _spot_owner_sync_enabled (false)
 {
 }
 
@@ -46,6 +47,37 @@ int discovery_local_state_t::get_route_value_max_size (void *optval_,
     }
     *static_cast<size_t *> (optval_) = _route_value_max_size;
     *optvallen_ = sizeof (size_t);
+    return 0;
+}
+
+int discovery_local_state_t::set_spot_owner_sync_enabled (int value_)
+{
+    if (value_ != 0 && value_ != 1) {
+        errno = EINVAL;
+        return -1;
+    }
+    _spot_owner_sync_enabled = value_ != 0;
+    return 0;
+}
+
+int discovery_local_state_t::get_spot_owner_sync_enabled (
+  void *optval_, size_t *optvallen_) const
+{
+    if (!optvallen_) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (!optval_) {
+        *optvallen_ = sizeof (int);
+        return 0;
+    }
+    if (*optvallen_ < sizeof (int)) {
+        *optvallen_ = sizeof (int);
+        errno = ENOBUFS;
+        return -1;
+    }
+    *static_cast<int *> (optval_) = _spot_owner_sync_enabled ? 1 : 0;
+    *optvallen_ = sizeof (int);
     return 0;
 }
 
@@ -96,12 +128,54 @@ int discovery_t::set_option (int option_,
         scoped_lock_t lock (_sync);
         return _local_state.set_route_value_max_size (value);
     }
+    if (option_ == ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC) {
+        service_public_api_scope_t admission (_public_api);
+        if (!admission.acquired ())
+            return -1;
+        if (!optval_ || optvallen_ != sizeof (int)) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int value = *static_cast<const int *> (optval_);
+        if (value != 0 && value != 1) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        bool flush_needed = false;
+        const uint64_t now_ms = clock_t ().now_ms ();
+        {
+            scoped_lock_t lock (_sync);
+            const bool old_value = _local_state.spot_owner_sync_enabled ();
+            if (old_value == (value != 0))
+                return 0;
+            if (value == 0) {
+                mark_spot_owner_summaries_dirty_locked (true, now_ms);
+                flush_needed = true;
+            } else {
+                if (_local_state.set_spot_owner_sync_enabled (value) != 0)
+                    return -1;
+                mark_spot_owner_summaries_dirty_locked (false, now_ms);
+                flush_needed = true;
+            }
+        }
+
+        if (flush_needed)
+            flush_topology_reports ();
+
+        if (value == 0) {
+            scoped_lock_t lock (_sync);
+            return _local_state.set_spot_owner_sync_enabled (value);
+        }
+        return 0;
+    }
     return _bootstrap_runtime->set_option (this, option_, optval_, optvallen_);
 }
 
 int discovery_t::get_option (int option_, void *optval_, size_t *optvallen_) const
 {
-    if (option_ != ZLINK_OPT_ROUTE_VALUE_MAX_SIZE) {
+    if (option_ != ZLINK_OPT_ROUTE_VALUE_MAX_SIZE
+        && option_ != ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC) {
         errno = ENOTSUP;
         return -1;
     }
@@ -112,7 +186,9 @@ int discovery_t::get_option (int option_, void *optval_, size_t *optvallen_) con
         return -1;
 
     scoped_lock_t lock (const_cast<mutex_t &> (_sync));
-    return _local_state.get_route_value_max_size (optval_, optvallen_);
+    if (option_ == ZLINK_OPT_ROUTE_VALUE_MAX_SIZE)
+        return _local_state.get_route_value_max_size (optval_, optvallen_);
+    return _local_state.get_spot_owner_sync_enabled (optval_, optvallen_);
 }
 
 int discovery_t::set_value (int64_t value_)
@@ -254,6 +330,12 @@ void discovery_t::upsert_service_summary (
         runtime->wakeup_task (_task_id);
 }
 
+bool discovery_t::spot_owner_sync_enabled () const
+{
+    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    return _local_state.spot_owner_sync_enabled ();
+}
+
 discovery_t::topology_key_t discovery_t::make_summary_key (
   uint16_t service_kind_,
   uint16_t service_role_,
@@ -283,6 +365,34 @@ void discovery_t::store_summary_entry_locked (
     summary.dirty = dirty_;
     summary.tombstone = tombstone_;
     summary.validated_service_seq = validated_service_seq_;
+}
+
+bool discovery_t::should_publish_summary_entry_locked (
+  const zlink_registry_topology_entry_t &entry_) const
+{
+    if (entry_.service_kind != ZLINK_SERVICE_KIND_SPOT_PUB
+        || entry_.service_role != ZLINK_SERVICE_ROLE_SPOT)
+        return true;
+    return _local_state.spot_owner_sync_enabled ();
+}
+
+void discovery_t::mark_spot_owner_summaries_dirty_locked (bool stopped_,
+                                                          uint64_t now_ms_)
+{
+    for (std::map<topology_key_t, topology_summary_t>::iterator it =
+           _summary_store.begin ();
+         it != _summary_store.end (); ++it) {
+        if (it->second.entry.service_kind != ZLINK_SERVICE_KIND_SPOT_PUB
+            || it->second.entry.service_role != ZLINK_SERVICE_ROLE_SPOT)
+            continue;
+        if (stopped_) {
+            it->second.entry.state = ZLINK_TOPOLOGY_STATE_STOPPED;
+            it->second.entry.ready_count = 0;
+            it->second.entry.last_reported_ms = now_ms_;
+            it->second.tombstone = true;
+        }
+        it->second.dirty = true;
+    }
 }
 
 int discovery_t::destroy ()

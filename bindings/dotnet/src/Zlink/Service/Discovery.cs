@@ -52,6 +52,33 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         return value;
     }
 
+    public bool SpotOwnerSyncEnabled
+    {
+        get => GetSpotOwnerSyncEnabled();
+        set => SetSpotOwnerSyncEnabled(value);
+    }
+
+    public unsafe void SetSpotOwnerSyncEnabled(bool enabled)
+    {
+        EnsureNotDisposed();
+        int raw = enabled ? 1 : 0;
+        int rc = NativeMethods.zlink_set_option(_handle,
+            (int)SocketOption.DiscoverySpotOwnerSync, (IntPtr)(&raw),
+            (nuint)sizeof(int));
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    public unsafe bool GetSpotOwnerSyncEnabled()
+    {
+        EnsureNotDisposed();
+        int raw = 0;
+        nuint size = (nuint)sizeof(int);
+        int rc = NativeMethods.zlink_get_option(_handle,
+            (int)SocketOption.DiscoverySpotOwnerSync, (IntPtr)(&raw), ref size);
+        ZlinkException.ThrowConfigIfError(rc);
+        return raw != 0;
+    }
+
     public MemberPeerEntry[] MemberPeers()
     {
         EnsureNotDisposed();

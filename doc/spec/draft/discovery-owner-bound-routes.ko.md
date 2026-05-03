@@ -42,6 +42,11 @@ provider에 속하는지 찾기 위한 보조 주소 매핑이다. 따라서 rec
 9. 기존 Registry provider sync도 이 owner 모델에 맞춰 함께 갱신한다.
 10. 구현은 하나의 계약 변경으로 반영한다. provider sync만 먼저 공개하거나
     route binding만 별도로 공개하는 중간 계약은 두지 않는다.
+11. SPOT owner entry를 Registry에 올리는 동작은 기본값으로 꺼져 있어야 한다.
+    SpotNode를 Discovery에 붙였다는 이유만으로 SPOT RID owner 주소가 Registry에
+    저장되면 안 된다. 해당 Discovery에서
+    `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`를 `1`로 설정한 경우에만 SPOT owner
+    topology row를 publish한다.
 
 ## 구현 적용 범위
 
@@ -166,7 +171,9 @@ active_peers:
 2. Registry peer sync snapshot을 원 출처를 보존하는 schema로 바꾼다.
 3. raw provider view와 materialized provider view를 분리하고 RID 충돌 처리를 추가한다.
 4. Discovery auto-connect를 `routing_id -> endpoint` diff로 바꾼다.
-5. SPOT owner topology row에 owner identity를 추가한다.
+5. SPOT owner topology row에 owner identity를 추가하고,
+   `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`가 켜진 Discovery에서만 Registry에
+   publish하도록 만든다.
 6. route binding API와 내부 protocol을 추가한다.
 7. cascade cleanup과 late join snapshot 테스트를 추가한다.
 
@@ -181,16 +188,26 @@ owner provider가 사라졌을 때 관련 record를 정확히 정리하는 것�
 아니다. 억 단위 record는 메모리, reverse index, peer snapshot, late join, cleanup
 비용이 모두 커져 Registry의 coordination 역할을 해친다.
 
-다만 Redis 계열 구현에서 쓰는 compact encoding, arena, hash table, chunked snapshot
-같은 저장 구조 아이디어를 참고하면 더 큰 key space를 처리할 수 있다. Redis 자체의
+구현자는 Redis source code를 실제로 내려받아 저장 구조와 hot path를 분석한 뒤,
+검증된 방식을 zlink Registry의 주소 매핑 용도에 맞게 적극적으로 적용한다. Redis 자체의
 명령, eviction, persistence, cluster 기능을 가져오자는 뜻은 아니다. 이 초안에서
-가져올 수 있는 것은 작은 key/value를 촘촘하게 저장하는 내부 구조다.
+가져올 대상은 작은 key/value를 촘촘하게 저장하고, lookup/update/cleanup 지연을 줄이는
+내부 구조와 실행 방식이다.
 
-구현은 우선 Redis 계열 저장 구조를 설계 참고 대상으로 삼는다. compact encoding,
-arena, flat hash table, incremental rehash, lazy free, chunked scan 같은 아이디어를
-zlink Registry의 주소 매핑 용도에 맞게 줄여서 적용한다. 이 초안에서는 라이선스 검토를
-설계 판단의 선행 조건으로 두지 않는다. 다만 zlink에 직접 포함되는 코드는 zlink용으로
-독립 구현하는 것을 기본으로 한다.
+구현은 Redis 계열 저장 구조를 설계 참고 대상으로 삼는 데서 멈추지 않는다.
+`dict`의 2단 hash table, 2의 거듭제곱 bucket, mask 기반 bucket 선택, separate chaining,
+점진적 rehash, rehash 중 lookup/update 처리, empty bucket 이동 budget 같은 구체적인
+방식을 분석하고, 필요한 부분을 route materialized table과 raw observation index에
+반영한다. compact encoding, arena, lazy free, chunked scan 같은 아이디어도 zlink
+Registry의 주소 매핑 용도에 맞게 줄여서 적용한다. materialized table entry는 route
+key를 한 번만 소유하고, value 안에 같은 key를 다시 저장하지 않는다. 이는 Redis
+`dictEntry`의 key/value 분리 방식과 같은 방향이며, 대량 route set에서 중복 문자열
+메모리를 줄이기 위한 규칙이다. owner identity는 반복 저장하지 않고 table 내부에서
+intern id로 공유한다. bucket과 node link는 10M 단위 route table에서 충분한 32비트
+entry id를 사용해 64비트 포인터형 index 비용을 줄인다. materialized entry node는
+fixed scalar만 담고, route key/value byte는 append-only block arena에 붙인다. 같은
+channel 이름은 intern하고, node 자체도 chunk 단위로 할당해 대량 insert 때 container
+capacity가 live record 수보다 크게 커지는 비용을 피한다.
 
 이 초안의 성능 목표는 아래 범위를 전제로 한다.
 
@@ -225,8 +242,9 @@ owner cleanup:
 lookup과 cleanup path에는 hash 기반 index를 우선 사용해야 한다.
 
 route entry는 가능하면 fixed-size에 가깝게 둔다. owner identity는 반복 저장하지 않고
-작은 `owner_id`로 intern한다. key는 entry마다 `std::string`으로 들고 있지 않고 key
-arena에 붙여 저장한다.
+작은 `owner_id`로 intern한다. key와 value는 entry마다 `std::string`이나 `std::vector`로
+들고 있지 않고 key/value arena에 붙여 저장한다. arena도 큰 단일 vector에 의존하지 않고
+작은 block을 이어 붙이는 구조를 우선 사용한다.
 
 ```text
 route_entry:
@@ -397,6 +415,8 @@ route만 방문할 수 있다. 이 방식은 `owner_id -> set<route_key>`보다 
 
 route hash index는 open addressing 기반 flat hash table을 기본으로 한다. bucket은
 entry id와 key hash만 들고, 실제 key byte 비교는 key arena를 보고 수행한다.
+hash 값은 Redis `dict`가 쓰는 방식과 같은 SipHash 계열 함수를 사용한다. 외부 입력에서
+온 route key가 한 bucket에 몰려 resolve 성능을 떨어뜨리는 일을 막기 위해서다.
 
 ```text
 route_hash_bucket:
@@ -605,6 +625,9 @@ entry가 남지만 resolve에서 걸러진다. 구현은 cleanup 완료 시 owne
 
 peer snapshot 생성도 한 번에 모든 record를 frame으로 만들면 안 된다. snapshot은
 sequence와 cursor를 가진 chunk 단위로 보낸다.
+cursor는 Redis `dictScan`처럼 table 내부 위치를 조금씩 전진시키는 값이어야 한다.
+snapshot chunk를 복사하는 동안에는 Redis safe iterator와 같은 의미의 rehash pause를
+잡아 cursor가 가리키는 table layout이 중간에 이동하지 않게 한다.
 
 ```text
 snapshot chunk:

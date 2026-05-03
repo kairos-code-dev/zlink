@@ -271,6 +271,12 @@ ROUTER 쪽 direct 함수(`zlink_router_send_spot()` /
 헬퍼다. 이 조회는
 해당 Discovery 의 현재 서비스 뷰 범위에서만 유효하다.
 
+SPOT owner topology row를 Registry에 publish하는 동작은
+`ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`로 제어한다. 기본값은 `0`이다.
+SpotNode를 Discovery에 붙였더라도 이 옵션이 꺼져 있으면 Discovery는 해당
+`spot_rid -> owner node` summary를 Registry로 올리지 않는다. 옵션을 `1`로
+켠 publish-side Discovery만 owner row를 uplink한다.
+
 이 API 는 **send/request destination lookup 전용**이다. reply 경로는
 여전히 들어온 request 와 함께 전달된 구체적인 source 주소를 그대로 써야
 한다. spot 은 노드 간 이동이 가능하고, 캐시된 owner 가 실제 request 를
@@ -287,6 +293,7 @@ ROUTER 쪽 direct 함수(`zlink_router_send_spot()` /
 |---|---|
 | 선행 조건 | `discovery->_auto_connect_type == SPOT_NODE`, 아니면 `ENOTSUP` → `ZLINK_CONFIG_NOT_SUPPORTED` |
 | 출력 | `owner_node_rid_out` 에 owner SpotNode rid 기록 |
+| Registry publish 조건 | owner Discovery의 `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC == 1`; 기본값은 `0` |
 | 캐시 TTL | `resolve_spot_cache_ttl_ms = 250` ms |
 | 캐시 유효 조건 | `validated_service_seq == current_service_seq` 또는 `now − last_reported_ms ≤ 250 ms` |
 | 미스 동작 | transient DEALER 로 Registry 조회 후 캐시 재시도 |

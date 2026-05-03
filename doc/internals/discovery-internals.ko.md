@@ -162,14 +162,18 @@ Frame 4~N: Service entries (repeated):
 ```
 
 Registry peer는 별도 `REGISTRY_SYNC` multipart 메시지로 route binding snapshot을
-받는다. Discovery subscriber는 이 메시지를 무시한다.
+받는다. Discovery subscriber는 이 메시지를 무시한다. Registry는 route snapshot을
+staging view에 먼저 적용한다. 같은 `snapshot_seq`의 chunk가 순서대로 도착해야 하며,
+마지막 chunk가 commit되기 전에는 기존 materialized route view를 바꾸지 않는다.
 
 ```text
 Frame 0: msg_id = 0x0006
 Frame 1: advertising_registry (uint32_t)
 Frame 2: snapshot_seq (uint64_t)
-Frame 3: route_count (uint32_t)
-Frame 4~N: Route entries (repeated):
+Frame 3: chunk_index (uint32_t)
+Frame 4: chunk_count (uint32_t)
+Frame 5: route_count (uint32_t)
+Frame 6~N: Route entries (repeated):
   - channel_name (string)
   - route_kind (uint32_t)
   - route_key (variable)
@@ -179,8 +183,38 @@ Frame 4~N: Route entries (repeated):
   - owner_routing_id_key (variable)
   - owner_source_registry (uint32_t)
   - owner_registration_id (uint64_t)
+  - updated_at_ms (uint64_t)
   - owner_routing_id (variable)
 ```
+
+Registry 내부 route row는 두 계층으로 나뉜다. raw observation store는
+`route identity + owner identity + advertising registry` 조합을 key로 삼는다.
+materialized route table은 `resolve_route()`가 사용할 winner를 route identity마다
+하나만 노출한다. owner, route identity, advertising registry별 reverse index를 함께
+두기 때문에 owner cleanup, winner 재계산, peer timeout cleanup은 전체 route 수가 아니라
+영향을 받는 record 수에 비례한다.
+
+materialized route table은 Redis `dict`에서 검증된 큰 설계를 따른다. bucket 수는 2의
+거듭제곱으로 유지하고, 나눗셈 대신 mask로 bucket을 고르며, 충돌은 separate chaining으로
+처리한다. table이 커질 때는 기존 table에서 새 table로 bucket을 조금씩 옮긴다. resize
+비용을 route 조회와 갱신 경로에 나누어 부담하므로 큰 route set에서도 한 번에 긴 resize
+지연이 생기지 않는다. 각 table entry는 route key를 한 번만 보관하고, value 안에 같은
+key를 다시 들고 있지 않는다. Redis `dictEntry`처럼 key와 value의 책임을 분리해 큰
+route set에서 중복 문자열 비용을 줄인다. entry node는 fixed scalar만 담고, route key와
+value는 packed byte block에 붙여 저장한다. 같은 channel 이름은 table 안에서 intern해
+반복 저장하지 않는다. owner identity도 intern된 id로 공유하고, bucket과 node link는
+32비트 entry id를 사용한다. node 자체는 65,536개 단위 chunk로 할당하므로 대량 insert 때
+단일 vector capacity가 실제 record 수보다 크게 튀는 비용을 피한다.
+
+route key와 owner identity hash는 Redis `dict`가 쓰는 SipHash 계열 방식으로 계산한다.
+snapshot chunk를 만들 때는 Redis `dictScan`처럼 cursor로 materialized table을 나누어
+읽고, 순회 중에는 rehash pause guard를 잡는다. 그래서 Registry는 route snapshot을 보낼 때
+전체 materialized route를 한 번에 별도 vector로 만들지 않고 chunk 크기만큼만 담는다.
+
+provider row도 같은 owner-bound 규칙으로 materialize된다. 서로 다른 source generation이
+같은 `channel + role + routing_id`를 claim하거나, 같은 generation이 서로 다른 endpoint를
+claim하면 해당 RID는 peer/member projection에서 제외된다. route resolve도 이런 owner를
+live owner로 보지 않는다.
 
 ## 7. Socket Discovery Attachment
 
@@ -271,6 +305,12 @@ ROUTER 쪽 direct 함수(`zlink_router_send_spot()` /
 헬퍼다. 이 조회는
 해당 Discovery 의 현재 서비스 뷰 범위에서만 유효하다.
 
+SPOT owner topology row를 Registry에 publish하는 동작은
+`ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`로 제어한다. 기본값은 `0`이다.
+SpotNode를 Discovery에 붙였더라도 이 옵션이 꺼져 있으면 Discovery는 해당
+`spot_rid -> owner node` summary를 Registry로 올리지 않는다. 옵션을 `1`로
+켠 publish-side Discovery만 owner row를 uplink한다.
+
 이 API 는 **send/request destination lookup 전용**이다. reply 경로는
 여전히 들어온 request 와 함께 전달된 구체적인 source 주소를 그대로 써야
 한다. spot 은 노드 간 이동이 가능하고, 캐시된 owner 가 실제 request 를
@@ -287,6 +327,7 @@ ROUTER 쪽 direct 함수(`zlink_router_send_spot()` /
 |---|---|
 | 선행 조건 | `discovery->_auto_connect_type == SPOT_NODE`, 아니면 `ENOTSUP` → `ZLINK_CONFIG_NOT_SUPPORTED` |
 | 출력 | `owner_node_rid_out` 에 owner SpotNode rid 기록 |
+| Registry publish 조건 | owner Discovery의 `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC == 1`; 기본값은 `0` |
 | 캐시 TTL | `resolve_spot_cache_ttl_ms = 250` ms |
 | 캐시 유효 조건 | `validated_service_seq == current_service_seq` 또는 `now − last_reported_ms ≤ 250 ms` |
 | 미스 동작 | transient DEALER 로 Registry 조회 후 캐시 재시도 |

@@ -14,6 +14,7 @@ set(unittests
     unittest_ctx_runtime
     unittest_service_runtime_base
     unittest_discovery_service_state
+    unittest_discovery_route_store
     unittest_spot_data_plane_protocol
     unittest_spot_data_plane_budget
     unittest_spot_runtime_control_state

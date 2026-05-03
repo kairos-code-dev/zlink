@@ -89,6 +89,9 @@ void discovery_uplink_runtime_t::flush_topology_reports (discovery_t *owner_)
              it != owner_->_summary_store.end (); ++it) {
             if (!it->second.dirty)
                 continue;
+            if (!owner_->should_publish_summary_entry_locked (
+                  it->second.entry))
+                continue;
             keys.push_back (it->first);
             entries.push_back (it->second.entry);
         }

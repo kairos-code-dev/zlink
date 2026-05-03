@@ -405,6 +405,7 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 | `ZLINK_OPT_BLOCKY` | context 종료 시 블로킹 (`int`, 레거시) |
 | `ZLINK_OPT_INVERT_MATCHING` | 토픽 매칭 반전 (`int`) |
 | `ZLINK_OPT_ZMP_METADATA` | ZMP 메타데이터 첨부 (`binary`) |
+| `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC` | Discovery가 SPOT owner row를 Registry에 publish할지 여부 (`int`; 0=기본값, 1=활성화, 그 외 값은 `EINVAL`) |
 
 ##### Read-only
 

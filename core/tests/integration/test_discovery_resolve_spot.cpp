@@ -125,6 +125,14 @@ bool connect_discovery_registry_with_retry_local (void *discovery_,
     return false;
 }
 
+void enable_spot_owner_sync_local (void *discovery_)
+{
+    int enabled = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (discovery_, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
+                        &enabled, sizeof (enabled)));
+}
+
 bool wait_for_resolve_spot_local (void *discovery_,
                                   const zlink_routing_id_t *spot_rid_,
                                   zlink_routing_id_t *owner_node_rid_out_,
@@ -224,6 +232,38 @@ bool wait_for_spot_owner_topology_entry_local (
     return false;
 }
 
+bool wait_for_no_spot_owner_topology_entry_local (
+  void *registry_,
+  const char *service_name_,
+  const zlink_routing_id_t *spot_rid_,
+  int timeout_ms_)
+{
+    if (!registry_ || !service_name_ || !spot_rid_)
+        return false;
+
+    const int attempts = timeout_ms_ / 25;
+    zlink_registry_topology_filter_t filter;
+    memset (&filter, 0, sizeof (filter));
+    filter.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
+    filter.service_role = ZLINK_SERVICE_ROLE_SPOT;
+    filter.auto_connect_type = ZLINK_AUTO_CONNECT_SPOT_MESH;
+    strncpy (filter.channel_name, service_name_,
+             sizeof (filter.channel_name) - 1);
+    filter.routing_id = *spot_rid_;
+
+    for (int i = 0; i < attempts; ++i) {
+        zlink_registry_topology_entry_t entries[4];
+        size_t count = 4;
+        if (zlink_registry_topology_query (registry_, &filter, entries, &count)
+              == ZLINK_CONFIG_OK
+            && count == 0) {
+            return true;
+        }
+        msleep (25);
+    }
+    return false;
+}
+
 void test_discovery_resolve_spot_returns_owner_node_rid ()
 {
     if (!zlink_has ("tcp")) {
@@ -248,6 +288,7 @@ void test_discovery_resolve_spot_returns_owner_node_rid ()
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "resolve-spot-svc");
     TEST_ASSERT_NOT_NULL (discovery);
+    enable_spot_owner_sync_local (discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery, registry_router.c_str (), 3000));
 
@@ -324,6 +365,8 @@ void test_discovery_resolve_spot_is_scoped_by_service_name ()
       zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "resolve-svc-b");
     TEST_ASSERT_NOT_NULL (discovery_a);
     TEST_ASSERT_NOT_NULL (discovery_b);
+    enable_spot_owner_sync_local (discovery_a);
+    enable_spot_owner_sync_local (discovery_b);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery_a, registry_router.c_str (), 3000));
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
@@ -410,6 +453,7 @@ void test_discovery_resolve_spot_returns_enoent_after_owner_unregister ()
     void *discovery =
       zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "resolve-unregister");
     TEST_ASSERT_NOT_NULL (discovery);
+    enable_spot_owner_sync_local (discovery);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery, registry_router.c_str (), 3000));
 
@@ -473,6 +517,8 @@ void test_discovery_resolve_spot_handover_switches_owner ()
     TEST_ASSERT_NOT_NULL (discovery_a);
     TEST_ASSERT_NOT_NULL (discovery_b);
     TEST_ASSERT_NOT_NULL (resolver_discovery);
+    enable_spot_owner_sync_local (discovery_a);
+    enable_spot_owner_sync_local (discovery_b);
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
       discovery_a, registry_router.c_str (), 3000));
     TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
@@ -538,6 +584,62 @@ void test_discovery_resolve_spot_handover_switches_owner ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
+
+void test_discovery_resolve_spot_default_owner_sync_off ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry, 50));
+
+    std::string registry_pub;
+    std::string registry_router;
+    std::string node_endpoint;
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, &registry_pub, &registry_router));
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "resolve-off");
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      discovery, registry_router.c_str (), 3000));
+
+    void *node = zlink_spot_node_new (ctx, NULL);
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (spot);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (node, "resolve-node-off", 16));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (spot, "resolve-spot-off", 16));
+    TEST_ASSERT_TRUE (bind_spot_test_endpoint_local (node, &node_endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_attach_discovery (node, discovery));
+
+    zlink_routing_id_t spot_rid;
+    memset (&spot_rid, 0, sizeof (spot_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (spot, &spot_rid));
+    TEST_ASSERT_TRUE (wait_for_no_spot_owner_topology_entry_local (
+      registry, "resolve-off", &spot_rid, 1500));
+
+    enable_spot_owner_sync_local (discovery);
+    zlink_routing_id_t resolved_node_rid;
+    memset (&resolved_node_rid, 0, sizeof (resolved_node_rid));
+    TEST_ASSERT_TRUE (wait_for_resolve_spot_local (
+      discovery, &spot_rid, &resolved_node_rid, 5000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
 } // namespace
 
 int main ()
@@ -549,5 +651,6 @@ int main ()
     RUN_TEST (test_discovery_resolve_spot_is_scoped_by_service_name);
     RUN_TEST (test_discovery_resolve_spot_returns_enoent_after_owner_unregister);
     RUN_TEST (test_discovery_resolve_spot_handover_switches_owner);
+    RUN_TEST (test_discovery_resolve_spot_default_owner_sync_off);
     return UNITY_END ();
 }

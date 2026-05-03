@@ -270,6 +270,12 @@ for the ROUTER-side direct functions (`zlink_router_send_spot()` /
 `zlink_router_request_spot()`). The lookup is scoped to the Discovery's current
 service view.
 
+Publishing SPOT owner topology rows to Registry is controlled by
+`ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`. The default is `0`. Attaching a SpotNode
+to Discovery does not uplink its `spot_rid -> owner node` summary while this
+option is disabled. Only a publishing-side Discovery with the option set to
+`1` uplinks owner rows.
+
 The helper is for **send/request destination lookup only**. Reply paths
 must continue to use the concrete source addresses delivered with the
 incoming request — a spot may move between nodes and the cached owner
@@ -286,6 +292,7 @@ recoverable via `zlink_errno()`.
 |---|---|
 | Precondition | `discovery->_auto_connect_type == SPOT_NODE`; otherwise `ENOTSUP` → `ZLINK_CONFIG_NOT_SUPPORTED` |
 | Output | `owner_node_rid_out` populated with the owner SpotNode's rid |
+| Registry publish condition | Publishing Discovery has `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC == 1`; default is `0` |
 | Cache TTL | `resolve_spot_cache_ttl_ms = 250` ms |
 | Cache validity rule | `validated_service_seq == current_service_seq` OR `now − last_reported_ms ≤ 250 ms` |
 | Miss outcome | Registry query over a transient DEALER, then retry cache |

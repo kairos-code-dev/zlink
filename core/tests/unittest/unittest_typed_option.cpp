@@ -296,6 +296,30 @@ void test_typed_service_handle_dispatch_domains ()
                         &route_value_limit, &size));
     TEST_ASSERT_EQUAL_UINT (91, (unsigned int) route_value_limit);
 
+    int spot_owner_sync = -1;
+    size = sizeof (spot_owner_sync);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
+                        &spot_owner_sync, &size));
+    TEST_ASSERT_EQUAL_INT (0, spot_owner_sync);
+    spot_owner_sync = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
+                        &spot_owner_sync, sizeof (spot_owner_sync)));
+    spot_owner_sync = 0;
+    size = sizeof (spot_owner_sync);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
+                        &spot_owner_sync, &size));
+    TEST_ASSERT_EQUAL_INT (1, spot_owner_sync);
+    spot_owner_sync = 2;
+    errno = 0;
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK,
+      zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
+                        &spot_owner_sync, sizeof (spot_owner_sync)));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (discovery, "disc", 4));
     zlink_routing_id_t rid;
     memset (&rid, 0, sizeof (rid));

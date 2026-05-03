@@ -91,6 +91,28 @@ class discovery_t
             zlink_discovery_get_value (_discovery, value_out_)));
     }
 
+    void set_spot_owner_sync_enabled (bool enabled_)
+    {
+        int value = enabled_ ? 1 : 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_set_option (_discovery,
+                              ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC, &value,
+                              sizeof (value))));
+    }
+
+    bool spot_owner_sync_enabled () const
+    {
+        int value = 0;
+        size_t size = sizeof (value);
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_get_option (_discovery,
+                              ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC, &value,
+                              &size)));
+        return value != 0;
+    }
+
     std::vector<member_peer_entry_t> member_peers () const
     {
         size_t count = 0;

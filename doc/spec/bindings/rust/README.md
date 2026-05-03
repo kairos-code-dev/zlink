@@ -1396,8 +1396,11 @@ impl Discovery {
         trust_system: bool) -> Result<(), ConfigError>;
     /// Resolve the current owner node routing id for a logical spot routing id.
     /// Intended for send/request destination lookup. Maps to
-    /// `zlink_discovery_resolve_spot`.
+    /// `zlink_discovery_resolve_spot`. Registry-backed lookup requires the
+    /// publishing Discovery to enable `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`.
     pub fn resolve_spot(&self, spot_rid: &RoutingId) -> Result<RoutingId, ConfigError>;
+    pub fn set_spot_owner_sync_enabled(&self, enabled: bool) -> Result<(), ConfigError>;
+    pub fn spot_owner_sync_enabled(&self) -> Result<bool, ConfigError>;
     /// # Errors: CloseError
     pub fn close(&mut self) -> Result<(), CloseError>;
 }

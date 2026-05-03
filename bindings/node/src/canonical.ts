@@ -1727,6 +1727,19 @@ export class Discovery extends NativeHandle {
       requireNative().discoveryResolveSpot(this._native, normalizeRoutingId(spotRid)) as Buffer
     );
   }
+  get spotOwnerSyncEnabled(): boolean {
+    return readInt32Option(
+      requireNative().socketGetOpt(this._native, SocketOption.DISCOVERY_SPOT_OWNER_SYNC) as Buffer,
+      'spotOwnerSyncEnabled'
+    ) !== 0;
+  }
+  set spotOwnerSyncEnabled(enabled: boolean) {
+    requireNative().socketSetOpt(
+      this._native,
+      SocketOption.DISCOVERY_SPOT_OWNER_SYNC,
+      boolBuffer(enabled)
+    );
+  }
   memberPeers(): MemberPeerEntry[] {
     return (requireNative().discoveryGetProviders(this._native) as Array<Record<string, unknown>>)
       .map((entry) => mapMemberPeerEntry(entry as any));

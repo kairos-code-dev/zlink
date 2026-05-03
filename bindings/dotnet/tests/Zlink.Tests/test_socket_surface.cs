@@ -361,6 +361,13 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
             nameof(Discovery.ResolveSpot), typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
+            nameof(Discovery.SetSpotOwnerSyncEnabled), typeof(bool)));
+        Assert.True(HasPublicInstanceMethod(typeof(Discovery),
+            nameof(Discovery.GetSpotOwnerSyncEnabled)));
+        Assert.Equal(typeof(bool),
+            typeof(Discovery).GetProperty(nameof(Discovery.SpotOwnerSyncEnabled))!
+                .PropertyType);
+        Assert.True(HasPublicInstanceMethod(typeof(Discovery),
             nameof(Discovery.BindRoute), typeof(uint), typeof(ReadOnlySpan<byte>),
             typeof(ReadOnlySpan<byte>)));
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),

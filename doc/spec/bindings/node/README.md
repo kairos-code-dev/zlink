@@ -1250,9 +1250,12 @@ class Discovery {
     setTlsClient(ca: string, host: string, trust?: number): void;
     /**
      * Resolve the current owner node routing id for a logical spot routing id.
-     * Maps to zlink_discovery_resolve_spot.
+     * Maps to zlink_discovery_resolve_spot. Registry-backed lookup requires
+     * the publishing Discovery to enable ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC.
      */
     resolveSpot(spotRid: RoutingId): RoutingId;
+    /** Publish SPOT owner rows to Registry when true. */
+    spotOwnerSyncEnabled: boolean;
     /** @throws {CloseError} */
     close(): void;
 }

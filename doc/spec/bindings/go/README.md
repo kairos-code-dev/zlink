@@ -1113,9 +1113,14 @@ func (d *Discovery) UnbindRoute(kind RouteKind, key []byte) error
 func (d *Discovery) ResolveRoute(kind RouteKind, key []byte) (RoutingID, *Message, error)
 func (d *Discovery) MemberPeers() ([]MemberPeerEntry, error)
 func (d *Discovery) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
+// SetSpotOwnerSyncEnabled enables or disables publishing SPOT owner rows to Registry.
+func (d *Discovery) SetSpotOwnerSyncEnabled(enabled bool) error
+// SpotOwnerSyncEnabled reports whether this Discovery publishes SPOT owner rows.
+func (d *Discovery) SpotOwnerSyncEnabled() (bool, error)
 // ResolveSpot resolves the current owner node routing id for a logical spot
 // routing id. Intended for send/request destination lookup. Maps to
-// zlink_discovery_resolve_spot.
+// zlink_discovery_resolve_spot. Registry-backed lookup requires the
+// publishing Discovery to enable ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC.
 func (d *Discovery) ResolveSpot(spotRid RoutingID) (RoutingID, error)
 // Close closes the discovery handle. Returns *CloseError on failure.
 func (d *Discovery) Close() error

@@ -27,6 +27,8 @@ import java.util.Objects;
  * pair and exposes route binding plus member peer snapshots for that view.
  */
 public final class Discovery implements AutoCloseable {
+    private static final int OPT_DISCOVERY_SPOT_OWNER_SYNC = 0x3035;
+
     private MemorySegment handle;
 
     /** Result of resolving a discovery route key. */
@@ -102,6 +104,32 @@ public final class Discovery implements AutoCloseable {
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_discovery_get_value");
             return out.get(ValueLayout.JAVA_LONG, 0);
+        }
+    }
+
+    /** Enables or disables publishing spot owner records to Registry. */
+    public void setSpotOwnerSyncEnabled(boolean enabled) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment value = arena.allocate(ValueLayout.JAVA_INT);
+            value.set(ValueLayout.JAVA_INT, 0, enabled ? 1 : 0);
+            int rc = Native.setSockOpt(handle, OPT_DISCOVERY_SPOT_OWNER_SYNC, value,
+              ValueLayout.JAVA_INT.byteSize());
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_set_option");
+        }
+    }
+
+    /** Returns whether this Discovery publishes spot owner records to Registry. */
+    public boolean isSpotOwnerSyncEnabled() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment value = arena.allocate(ValueLayout.JAVA_INT);
+            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
+            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
+            int rc = Native.getSockOpt(handle, OPT_DISCOVERY_SPOT_OWNER_SYNC,
+              value, len);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_get_option");
+            return value.get(ValueLayout.JAVA_INT, 0) != 0;
         }
     }
 

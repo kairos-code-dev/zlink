@@ -275,6 +275,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 ctx, zlink.AutoConnectType.CLIENT_SERVER, "svc"
             ) as discovery:
                 self.assertTrue(hasattr(discovery, "resolve_spot"))
+                self.assertTrue(hasattr(discovery, "spot_owner_sync_enabled"))
                 self.assertFalse(hasattr(discovery, "set_dealer_peer_mode"))
                 self.assertFalse(hasattr(zlink, "DiscoveryDealerPeerMode"))
 

@@ -839,6 +839,32 @@ impl Discovery {
         Ok(v)
     }
 
+    pub fn set_spot_owner_sync_enabled(&self, enabled: bool) -> Result<(), ConfigError> {
+        let value: i32 = if enabled { 1 } else { 0 };
+        check_config_rc(unsafe {
+            ffi::zlink_set_option(
+                self.handle,
+                ffi::zlink_option_t::ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
+                (&value as *const i32).cast(),
+                std::mem::size_of::<i32>(),
+            )
+        })
+    }
+
+    pub fn spot_owner_sync_enabled(&self) -> Result<bool, ConfigError> {
+        let mut value: i32 = 0;
+        let mut len = std::mem::size_of::<i32>();
+        check_config_rc(unsafe {
+            ffi::zlink_get_option(
+                self.handle,
+                ffi::zlink_option_t::ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
+                (&mut value as *mut i32).cast(),
+                &mut len,
+            )
+        })?;
+        Ok(value != 0)
+    }
+
     pub fn resolve_spot(&self, spot_rid: &RoutingId) -> Result<RoutingId, ConfigError> {
         let mut owner_node_rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         check_config_rc(unsafe {

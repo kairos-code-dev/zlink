@@ -43,8 +43,16 @@ registry_t::registry_t (ctx_t *ctx_) :
     _services (_projection_state.services),
     _channel_contracts (_projection_state.channel_contracts),
     _topology (_projection_state.topology),
+    _topology_by_owner (_projection_state.topology_by_owner),
     _routes (_projection_state.routes),
+    _route_observations (_projection_state.route_observations),
+    _route_observations_by_route (
+      _projection_state.route_observations_by_route),
     _routes_by_owner (_projection_state.routes_by_owner),
+    _routes_by_advertiser (_projection_state.routes_by_advertiser),
+    _route_snapshot_staging (_projection_state.route_snapshot_staging),
+    _route_limits (_projection_state.route_limits),
+    _route_stats (_projection_state.route_stats),
     _peer_seq (_projection_state.peer_seq),
     _peer_route_seq (_projection_state.peer_route_seq),
     _peer_last_seen (_projection_state.peer_last_seen)

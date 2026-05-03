@@ -1,6 +1,6 @@
 # Discovery owner-bound route 구현 실행 계획
 
-> 상태: 구현 전 실행 계획
+> 상태: 구현 완료 및 최종 검증 통과
 > 기준 draft: [`draft`](../../spec/draft/discovery-owner-bound-routes.ko.md)
 > 대상 범위: `core/`, `bindings/`, `framework/`, `samples/`, `doc/`, `doc/site/`
 > 최종 종료 판정: `미적용/미반영 항목이 없습니다. POSD 리팩토링 후보가 없습니다. 전체 테스트와 perf smoke가 모두 통과했습니다.`
@@ -49,6 +49,8 @@
 - 기존 사용자 변경은 되돌리지 않는다.
 - 실패한 테스트, 빌드, perf smoke는 우회하지 않는다.
 - 실패 원인을 수정하고 같은 gate를 다시 실행한다.
+- Redis source code를 실제로 내려받아 현재 구현을 분석하고, `dict` 같은 검증된
+  자료구조와 hot path 처리 방식을 owner-bound route store에 적극적으로 적용한다.
 - runner 경로나 옵션이 바뀌었으면 `--help`, README, 빌드 metadata를 확인해 같은 의미의
   명령으로 갱신하고, 이 계획 문서도 함께 고친다.
 - 각 단계는 자체 리뷰를 통과해야 다음 단계로 간다.
@@ -88,6 +90,7 @@
   찾는다.
 - bindings 언어별 공개 surface와 native runtime 위치를 찾는다.
 - `bindings/c/perf/README.md`와 single/multi runner 옵션을 확인한다.
+- Redis source code를 내려받아 분석 기준 commit, 확인한 파일, 적용할 구조를 기록한다.
 - core, bindings, framework, samples 테스트 실행 명령을 현재 저장소 기준으로 기록한다.
 
 통과 조건:
@@ -151,6 +154,9 @@
   `provider_update_seq`를 보존한다.
 - RID 충돌, 같은 generation endpoint 충돌, stale snapshot 처리를 구현한다.
 - route raw observation, materialized route entry, route winner 재계산을 구현한다.
+- Redis `dict` source에서 확인한 2단 hash table, 2의 거듭제곱 bucket, mask 기반 bucket
+  선택, separate chaining, 점진적 rehash, rehash 중 lookup/update 규칙을 route lookup
+  table에 적용한다.
 - owner별 raw observation index, route identity별 observation index를 구현한다.
 - peer snapshot chunking, staging raw view, memory budget 처리를 구현한다.
 - peer timeout이 advertiser별 observation handle만 순회하게 만든다.
@@ -163,6 +169,7 @@
 - peer timeout은 `advertising_registry` 기준으로만 raw observation을 제거한다.
 - staging snapshot 실패가 기존 materialized view를 깨지 않는다.
 - 대량 모드 자료구조가 memory budget을 지킨다.
+- Redis source 분석에서 가져온 자료구조 선택이 코드와 테스트에 반영되어 있다.
 
 ## 8. Stage 3. SPOT owner cleanup과 Discovery auto-connect 반영
 

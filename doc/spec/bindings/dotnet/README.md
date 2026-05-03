@@ -1593,9 +1593,16 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
     /// <summary>
     /// Resolve the current owner node routing id for a logical spot routing id.
     /// Intended for send/request destination lookup. Maps to zlink_discovery_resolve_spot.
+    /// Registry-backed lookup requires the publishing Discovery to enable
+    /// ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC.
     /// </summary>
     /// <exception cref="ZlinkConfigException"/>
     RoutingId ResolveSpot(RoutingId spotRid);
+
+    /// <summary>Enable or disable publishing SPOT owner rows to Registry.</summary>
+    bool SpotOwnerSyncEnabled { get; set; }
+    void SetSpotOwnerSyncEnabled(bool enabled);
+    bool GetSpotOwnerSyncEnabled();
 
     /// <exception cref="ZlinkCloseException"/>
     void Close();

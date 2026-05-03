@@ -406,6 +406,7 @@ based on the following classification:
 | `ZLINK_OPT_BLOCKY` | Legacy option: block on context termination (`int`; 0 or 1) |
 | `ZLINK_OPT_INVERT_MATCHING` | Invert topic matching (`int`; 0 or 1) |
 | `ZLINK_OPT_ZMP_METADATA` | Attach ZMP metadata properties to outgoing connections (`binary`) |
+| `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC` | Whether Discovery publishes SPOT owner rows to Registry (`int`; 0 = default, 1 = enabled, other values fail with `EINVAL`) |
 
 ##### Read-only (get only)
 

@@ -371,6 +371,30 @@ func (d *Discovery) SetValue(value int64) error {
 	return checkRC(C.zlink_discovery_set_value(d.raw(), C.int64_t(value)))
 }
 
+func (d *Discovery) SetSpotOwnerSyncEnabled(enabled bool) error {
+	if d == nil || d.closed {
+		return stateError("discovery is closed")
+	}
+	return setNativeBoolOption(d.raw(), d.closed, "discovery is closed", C.ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC, enabled)
+}
+
+func (d *Discovery) SpotOwnerSyncEnabled() (bool, error) {
+	if d == nil || d.closed {
+		return false, stateError("discovery is closed")
+	}
+	var value C.int
+	size := C.size_t(C.sizeof_int)
+	if err := configErrorFromResult(ConfigResult(C.zlink_get_option(
+		d.raw(),
+		C.ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
+		unsafe.Pointer(&value),
+		&size,
+	))); err != nil {
+		return false, err
+	}
+	return value != 0, nil
+}
+
 func (d *Discovery) ResolveSpot(spotRid RoutingID) (RoutingID, error) {
 	if d == nil || d.closed {
 		return RoutingID{}, stateError("discovery is closed")

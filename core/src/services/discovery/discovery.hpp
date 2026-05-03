@@ -85,6 +85,7 @@ class discovery_t
 
     uint16_t auto_connect_type () const { return _auto_connect_type; }
     const std::string &channel_name () const { return _channel_name; }
+    bool spot_owner_sync_enabled () const;
 
     void snapshot_providers (const std::string &channel_name_,
                              std::vector<provider_info_t> *out_);
@@ -164,6 +165,10 @@ class discovery_t
                                      bool dirty_,
                                      bool tombstone_,
                                      uint64_t validated_service_seq_);
+    bool should_publish_summary_entry_locked (
+      const zlink_registry_topology_entry_t &entry_) const;
+    void mark_spot_owner_summaries_dirty_locked (bool stopped_,
+                                                 uint64_t now_ms_);
     topology_key_t make_spot_topology_key (
       const zlink_routing_id_t &spot_rid_) const;
     bool resolve_owner_node_from_endpoint_locked (

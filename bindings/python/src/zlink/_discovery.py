@@ -7,6 +7,7 @@ from ._enums import (
     AutoConnectType,
     RegistryState,
     ServiceRole,
+    SocketOption,
     TopologySource,
     TopologyState,
 )
@@ -469,6 +470,32 @@ class Discovery:
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return RoutingId(_routing_id_bytes(owner_node_rid))
+
+    @property
+    def spot_owner_sync_enabled(self):
+        value = ctypes.c_int32()
+        size = ctypes.c_size_t(ctypes.sizeof(value))
+        rc = lib().zlink_get_option(
+            self._handle,
+            int(SocketOption.DISCOVERY_SPOT_OWNER_SYNC),
+            ctypes.byref(value),
+            ctypes.byref(size),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return value.value != 0
+
+    @spot_owner_sync_enabled.setter
+    def spot_owner_sync_enabled(self, enabled):
+        value = ctypes.c_int32(1 if enabled else 0)
+        rc = lib().zlink_set_option(
+            self._handle,
+            int(SocketOption.DISCOVERY_SPOT_OWNER_SYNC),
+            ctypes.byref(value),
+            ctypes.sizeof(value),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def set_tls_client(
         self, ca_cert: str | None, hostname: str | None, trust_system: bool = False

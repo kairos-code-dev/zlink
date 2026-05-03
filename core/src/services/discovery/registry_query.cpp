@@ -150,6 +150,43 @@ bool member_peer_entry_less (const zlink_member_peer_entry_t &lhs_,
         return lhs_.service_role < rhs_.service_role;
     return strcmp (lhs_.endpoint, rhs_.endpoint) < 0;
 }
+
+struct provider_projection_key_t
+{
+    uint16_t service_role;
+    std::string routing_id_key;
+
+    bool operator< (const provider_projection_key_t &other_) const
+    {
+        if (service_role != other_.service_role)
+            return service_role < other_.service_role;
+        return routing_id_key < other_.routing_id_key;
+    }
+};
+
+struct provider_projection_state_t
+{
+    provider_projection_state_t () :
+        initialized (false),
+        conflicted (false),
+        source_registry (0),
+        registration_id (0)
+    {
+    }
+
+    bool initialized;
+    bool conflicted;
+    uint32_t source_registry;
+    uint64_t registration_id;
+    std::string endpoint;
+};
+
+std::string member_routing_id_key_local (const zlink_routing_id_t &rid_)
+{
+    if (rid_.size == 0)
+        return std::string ();
+    return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
+}
 }
 
 int zlink::registry_t::topology_snapshot (zlink_registry_topology_entry_t *entries_,
@@ -418,9 +455,50 @@ int zlink::registry_t::member_peers (const char *channel_name_,
         key.channel_name = channel_name_;
         service_map_t::const_iterator sit = _services.find (key);
         if (sit != _services.end ()) {
+            std::map<provider_projection_key_t, provider_projection_state_t>
+              projection;
+            for (provider_map_t::const_iterator pit =
+                   sit->second.providers.begin ();
+                 pit != sit->second.providers.end (); ++pit) {
+                const std::string rid_key =
+                  member_routing_id_key_local (pit->second.routing_id);
+                if (rid_key.empty ())
+                    continue;
+                provider_projection_key_t projection_key;
+                projection_key.service_role = pit->second.service_role;
+                projection_key.routing_id_key = rid_key;
+                provider_projection_state_t &state =
+                  projection[projection_key];
+                if (!state.initialized) {
+                    state.initialized = true;
+                    state.source_registry = pit->second.source_registry;
+                    state.registration_id = pit->second.registration_id;
+                    state.endpoint = pit->second.endpoint;
+                } else if (state.source_registry != pit->second.source_registry
+                           || state.registration_id
+                                != pit->second.registration_id
+                           || state.endpoint != pit->second.endpoint) {
+                    state.conflicted = true;
+                }
+            }
+
             matched.reserve (sit->second.providers.size ());
             for (provider_map_t::const_iterator pit = sit->second.providers.begin ();
                  pit != sit->second.providers.end (); ++pit) {
+                const std::string rid_key =
+                  member_routing_id_key_local (pit->second.routing_id);
+                if (!rid_key.empty ()) {
+                    provider_projection_key_t projection_key;
+                    projection_key.service_role = pit->second.service_role;
+                    projection_key.routing_id_key = rid_key;
+                    std::map<provider_projection_key_t,
+                             provider_projection_state_t>::const_iterator
+                      projection_it = projection.find (projection_key);
+                    if (projection_it != projection.end ()
+                        && projection_it->second.conflicted) {
+                        continue;
+                    }
+                }
                 zlink_member_peer_entry_t entry;
                 memset (&entry, 0, sizeof (entry));
                 entry.auto_connect_type =
@@ -568,6 +646,22 @@ bool zlink::registry_t::read_route_key (zlink_route_kind_t kind_,
     return true;
 }
 
+bool zlink::registry_t::owner_routing_id_from_key (
+  const owner_identity_t &owner_,
+  zlink_routing_id_t *out_) const
+{
+    if (!out_)
+        return false;
+    if (owner_.routing_id_key.size () > sizeof (out_->data))
+        return false;
+    memset (out_, 0, sizeof (*out_));
+    out_->size = static_cast<uint8_t> (owner_.routing_id_key.size ());
+    if (!owner_.routing_id_key.empty ())
+        memcpy (out_->data, owner_.routing_id_key.data (),
+                owner_.routing_id_key.size ());
+    return true;
+}
+
 void zlink::registry_t::handle_bind_route (
   void *router_,
   const zlink_msg_t *frames_,
@@ -629,16 +723,8 @@ void zlink::registry_t::handle_bind_route (
                 status = 0xFF;
                 error = "invalid route key";
             } else {
-                route_entry_t &entry = _routes[route_key];
-                std::map<owner_identity_t, route_key_set_t>::iterator
-                  old_owner_it = _routes_by_owner.find (entry.owner);
-                if (old_owner_it != _routes_by_owner.end ()) {
-                    old_owner_it->second.erase (route_key);
-                    if (old_owner_it->second.empty ())
-                        _routes_by_owner.erase (old_owner_it);
-                }
+                route_entry_t entry;
                 entry.key = route_key;
-                entry.value.clear ();
                 if (value_size > 0) {
                     const unsigned char *value_data =
                       static_cast<const unsigned char *> (
@@ -647,12 +733,44 @@ void zlink::registry_t::handle_bind_route (
                     entry.value.assign (value_data, value_data + value_size);
                 }
                 entry.owner = owner;
-                entry.owner_routing_id = owner_rid;
                 entry.updated_at_ms = now_ms;
-                entry.advertising_registry =
-                  owner.source_registry == 0 ? 1 : owner.source_registry;
-                _routes_by_owner[owner].insert (route_key);
-                _list_seq++;
+                entry.advertising_registry = _registry_id == 0 ? 1
+                                                               : _registry_id;
+                (void) owner_rid;
+
+                size_t replaced_memory = 0;
+                route_observations_by_route_t::const_iterator route_it =
+                  _route_observations_by_route.find (route_key);
+                if (route_it != _route_observations_by_route.end ()) {
+                    for (route_observation_key_set_t::const_iterator obs =
+                           route_it->second.begin ();
+                         obs != route_it->second.end (); ++obs) {
+                        if (obs->advertising_registry
+                            != entry.advertising_registry)
+                            continue;
+                        route_observation_map_t::const_iterator current =
+                          _route_observations.find (*obs);
+                        if (current != _route_observations.end ())
+                            replaced_memory +=
+                              route_entry_memory_bytes (current->second);
+                    }
+                }
+
+                int route_error = 0;
+                if (!route_store_can_fit_locked (entry, replaced_memory,
+                                                 &route_error)) {
+                    status = 0xFF;
+                    error = route_error == ENOSPC ? "route store full"
+                                                  : "route too large";
+                } else {
+                route_key_set_t dirty_routes;
+                erase_route_observations_by_route_advertiser_locked (
+                  route_key, entry.advertising_registry, &dirty_routes);
+
+                    upsert_route_observation_locked (entry, &dirty_routes);
+                    materialize_dirty_routes_locked (dirty_routes);
+                    _list_seq++;
+                }
             }
         }
     }
@@ -709,24 +827,23 @@ void zlink::registry_t::handle_unbind_route (
                 status = 0xFF;
                 error = "invalid route key";
             } else {
-                std::map<route_key_t, route_entry_t>::iterator it =
-                  _routes.find (route_key);
+                route_map_t::iterator it = _routes.find (route_key);
                 if (it == _routes.end ()) {
                     status = 0x01;
                     error = "route not found";
-                } else if (it->second.owner.operator< (owner)
-                           || owner.operator< (it->second.owner)) {
+                } else if (!(it->owner == owner)) {
                     status = 0x02;
                     error = "route owner mismatch";
                 } else {
-                    std::map<owner_identity_t, route_key_set_t>::iterator
-                      owner_it = _routes_by_owner.find (owner);
-                    if (owner_it != _routes_by_owner.end ()) {
-                        owner_it->second.erase (route_key);
-                        if (owner_it->second.empty ())
-                            _routes_by_owner.erase (owner_it);
-                    }
-                    _routes.erase (it);
+                    route_key_set_t dirty_routes;
+                    route_observation_key_t obs_key;
+                    obs_key.route_key = route_key;
+                    obs_key.owner = owner;
+                    obs_key.advertising_registry = _registry_id == 0
+                                                     ? 1
+                                                     : _registry_id;
+                    erase_route_observation_locked (obs_key, &dirty_routes);
+                    materialize_dirty_routes_locked (dirty_routes);
                     _list_seq++;
                 }
             }
@@ -769,12 +886,12 @@ void zlink::registry_t::handle_resolve_route (
             status = 0xFF;
             error = "invalid route key";
         } else {
-            std::map<route_key_t, route_entry_t>::const_iterator it =
-              _routes.find (route_key);
-            if (it != _routes.end () && owner_is_live_locked (it->second.owner)) {
+            materialize_route_winner_locked (route_key);
+            route_map_t::const_iterator it = _routes.find (route_key);
+            if (it != _routes.end () && owner_is_live_locked (it->owner)
+                && owner_routing_id_from_key (it->owner, &owner_rid)) {
                 status = 0x00;
-                owner_rid = it->second.owner_routing_id;
-                value = it->second.value;
+                value = it->value;
                 error.clear ();
             }
         }

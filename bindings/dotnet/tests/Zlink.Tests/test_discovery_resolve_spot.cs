@@ -33,6 +33,8 @@ public sealed class test_discovery_resolve_spot
 
             registry.Bind(registryPub, registryRouter);
             registry.SetBroadcastInterval(50);
+            Assert.False(discovery.SpotOwnerSyncEnabled);
+            discovery.SpotOwnerSyncEnabled = true;
             discovery.ConnectRegistry(registryRouter);
 
             node.SetRoutingId(nodeRid);

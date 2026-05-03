@@ -135,7 +135,7 @@ int spot_node_t::node_routing_id (zlink_routing_id_t *out_) const
         errno = EINVAL;
         return -1;
     }
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     *out_ = _node_routing_id;
     return 0;
 }
@@ -147,7 +147,7 @@ bool spot_node_t::peer_has_positive_weight (const zlink_routing_id_t *peer_rid_)
 
     const std::string key (
       reinterpret_cast<const char *> (peer_rid_->data), peer_rid_->size);
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     std::map<std::string, uint32_t>::const_iterator it =
       _peer_state.peer_weight_by_rid.find (key);
     return it == _peer_state.peer_weight_by_rid.end () || it->second > 0;
@@ -239,7 +239,7 @@ const std::string &spot_node_t::sub_fanout_endpoint () const
 
 std::string spot_node_t::public_endpoint () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     return _discovery_state.advertise_endpoint.empty () ? _endpoint_state.bound_endpoint : _discovery_state.advertise_endpoint;
 }
 
@@ -274,7 +274,7 @@ void spot_node_t::note_local_sub_filters_changed (bool had_filters_,
 
 std::string spot_node_t::first_active_peer_endpoint () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     if (_peer_state.active_endpoints.empty ())
         return std::string ();
     return *_peer_state.active_endpoints.begin ();
@@ -287,7 +287,7 @@ int spot_node_t::ensure_healthy () const
         errno = fe != 0 ? fe : EFSM;
         return -1;
     }
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     if (!_runtime) {
         errno = EFAULT;
         return -1;
@@ -301,7 +301,7 @@ bool spot_node_t::is_shutting_down () const
     if (state == service_state_stopping || state == service_state_stopped)
         return true;
 
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     return _runtime && _runtime->stop.get () != 0;
 }
 
@@ -392,7 +392,7 @@ int spot_node_t::resolve_advertise_endpoint (const char *advertise_endpoint_,
         return validate_public_endpoint (*out_) ? 0 : -1;
     }
 
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     if (_endpoint_state.bound_endpoint.empty ()) {
         errno = EFSM;
         return -1;

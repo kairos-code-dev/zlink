@@ -43,8 +43,7 @@ int zlink::socket_base_t::get_peer_weight (uint32_t *weight_out_) const
         return -1;
     }
 
-    socket_lifecycle_coordinator_t &lifecycle =
-      const_cast<socket_base_t *> (this)->lifecycle_coordinator ();
+    socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
     socket_public_api_scope_t admission (lifecycle);
     if (!admission.acquired ())
         return -1;

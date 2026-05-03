@@ -54,10 +54,13 @@ template <typename T, int ID = 0> class array_t
     array_t () ZLINK_DEFAULT;
 
     size_type size () { return _items.size (); }
+    size_type size () const { return _items.size (); }
 
     bool empty () { return _items.empty (); }
+    bool empty () const { return _items.empty (); }
 
     T *&operator[] (size_type index_) { return _items[index_]; }
+    T *const &operator[] (size_type index_) const { return _items[index_]; }
 
     void push_back (T *item_)
     {

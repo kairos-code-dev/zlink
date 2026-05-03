@@ -20,7 +20,7 @@ bool spot_runtime_t::try_set_data_plane_task_id (uint64_t task_id_)
 
 uint64_t spot_runtime_t::data_plane_task_id () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (execution_sync));
+    scoped_lock_t lock (execution_sync);
     return execution.data_plane_task_id_value;
 }
 
@@ -46,7 +46,7 @@ bool spot_runtime_t::try_set_control_task_id (uint64_t task_id_)
 
 uint64_t spot_runtime_t::control_task_id () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (execution_sync));
+    scoped_lock_t lock (execution_sync);
     return execution.control_state.task_id;
 }
 
@@ -71,7 +71,7 @@ bool spot_runtime_t::note_connected_peer_version (
 
 uint64_t spot_runtime_t::connected_peer_version_seen () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (execution_sync));
+    scoped_lock_t lock (execution_sync);
     return execution.control_state.connected_peer_version_seen;
 }
 }

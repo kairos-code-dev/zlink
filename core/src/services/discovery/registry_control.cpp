@@ -149,7 +149,7 @@ void registry_t::handle_bootstrap (void *router_,
     uint32_t status_errno = 0;
     {
         scoped_lock_t lock (_sync);
-        registry_id = _registry_id == 0 ? 1 : _registry_id;
+        registry_id = _coordination_state.registry_id == 0 ? 1 : _coordination_state.registry_id;
         if (ensure_channel_contract_locked (
               channel_name, req.auto_connect_type, now_ms, registry_id)
             != 0) {
@@ -289,10 +289,10 @@ void registry_t::send_bootstrap_reply (void *router_,
     std::string uplink_endpoint;
     {
         scoped_lock_t lock (_sync);
-        registry_id = _registry_id == 0 ? 1 : _registry_id;
-        heartbeat_interval_ms = _heartbeat_interval_ms;
-        pub_endpoint = _pub_endpoint;
-        uplink_endpoint = _router_endpoint;
+        registry_id = _coordination_state.registry_id == 0 ? 1 : _coordination_state.registry_id;
+        heartbeat_interval_ms = _coordination_state.heartbeat_interval_ms;
+        pub_endpoint = _endpoint_config.pub_endpoint;
+        uplink_endpoint = _endpoint_config.router_endpoint;
     }
 
     discovery_protocol::bootstrap_rep_t rep;

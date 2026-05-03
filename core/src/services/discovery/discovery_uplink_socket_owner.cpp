@@ -8,12 +8,7 @@
 
 namespace zlink
 {
-discovery_uplink_runtime_t::discovery_uplink_runtime_t () :
-    _registry_uplink_endpoints (_socket_owner_state.registry_uplink_endpoints),
-    _latest_registry_uplink_endpoint (
-      _socket_owner_state.latest_registry_uplink_endpoint),
-    _report_dealers (_socket_owner_state.report_dealers),
-    _control_dealers (_socket_owner_state.control_dealers)
+discovery_uplink_runtime_t::discovery_uplink_runtime_t ()
 {
 }
 
@@ -57,15 +52,15 @@ void discovery_uplink_runtime_t::apply_socket_option_to_existing (
 {
     scoped_lock_t lock (owner_->_sync);
     for (std::map<std::string, socket_base_t *>::const_iterator it =
-           _report_dealers.begin ();
-         it != _report_dealers.end (); ++it) {
+           _socket_owner_state.report_dealers.begin ();
+         it != _socket_owner_state.report_dealers.end (); ++it) {
         if (it->second)
             it->second->setsockopt (option_, optval_, optvallen_);
     }
 
     for (std::map<std::string, socket_base_t *>::const_iterator it =
-           _control_dealers.begin ();
-         it != _control_dealers.end (); ++it) {
+           _socket_owner_state.control_dealers.begin ();
+         it != _socket_owner_state.control_dealers.end (); ++it) {
         if (it->second)
             it->second->setsockopt (option_, optval_, optvallen_);
     }
@@ -84,13 +79,13 @@ int discovery_uplink_runtime_t::ensure_topology_reporter (
 
     scoped_lock_t lock (owner_->_sync);
     std::map<std::string, socket_base_t *>::iterator it =
-      _report_dealers.find (uplink_endpoint_);
-    if (it == _report_dealers.end () || !it->second) {
+      _socket_owner_state.report_dealers.find (uplink_endpoint_);
+    if (it == _socket_owner_state.report_dealers.end () || !it->second) {
         socket_base_t *dealer =
           create_uplink_dealer (owner_, uplink_endpoint_, 200, 100, 1000, true);
         if (!dealer)
             return -1;
-        _report_dealers[uplink_endpoint_] = dealer;
+        _socket_owner_state.report_dealers[uplink_endpoint_] = dealer;
         *dealer_out_ = dealer;
         return 0;
     }
@@ -112,13 +107,13 @@ int discovery_uplink_runtime_t::ensure_control_dealer (
 
     scoped_lock_t lock (owner_->_sync);
     std::map<std::string, socket_base_t *>::iterator it =
-      _control_dealers.find (uplink_endpoint_);
-    if (it == _control_dealers.end () || !it->second) {
+      _socket_owner_state.control_dealers.find (uplink_endpoint_);
+    if (it == _socket_owner_state.control_dealers.end () || !it->second) {
         socket_base_t *dealer = create_uplink_dealer (owner_, uplink_endpoint_,
                                                       200, 500, 500, false);
         if (!dealer)
             return -1;
-        _control_dealers[uplink_endpoint_] = dealer;
+        _socket_owner_state.control_dealers[uplink_endpoint_] = dealer;
         *dealer_out_ = dealer;
         return 0;
     }
@@ -131,8 +126,8 @@ void discovery_uplink_runtime_t::remember_registry_uplink (
   discovery_t *owner_, const std::string &uplink_endpoint_)
 {
     scoped_lock_t lock (owner_->_sync);
-    _registry_uplink_endpoints.insert (uplink_endpoint_);
-    _latest_registry_uplink_endpoint = uplink_endpoint_;
+    _socket_owner_state.registry_uplink_endpoints.insert (uplink_endpoint_);
+    _socket_owner_state.latest_registry_uplink_endpoint = uplink_endpoint_;
 }
 
 void discovery_uplink_runtime_t::adopt_report_dealer (
@@ -147,9 +142,9 @@ void discovery_uplink_runtime_t::adopt_report_dealer (
     {
         scoped_lock_t lock (owner_->_sync);
         std::map<std::string, socket_base_t *>::iterator it =
-          _report_dealers.find (uplink_endpoint_);
-        if (it == _report_dealers.end () || !it->second)
-            _report_dealers[uplink_endpoint_] = bootstrap_dealer_;
+          _socket_owner_state.report_dealers.find (uplink_endpoint_);
+        if (it == _socket_owner_state.report_dealers.end () || !it->second)
+            _socket_owner_state.report_dealers[uplink_endpoint_] = bootstrap_dealer_;
         else
             orphaned_dealer = bootstrap_dealer_;
     }
@@ -166,8 +161,8 @@ void discovery_uplink_runtime_t::collect_uplink_endpoints (
     out_->clear ();
     scoped_lock_t lock (owner_->_sync);
     for (std::set<std::string>::const_iterator it =
-           _registry_uplink_endpoints.begin ();
-         it != _registry_uplink_endpoints.end (); ++it) {
+           _socket_owner_state.registry_uplink_endpoints.begin ();
+         it != _socket_owner_state.registry_uplink_endpoints.end (); ++it) {
         out_->push_back (*it);
     }
 }
@@ -179,9 +174,9 @@ bool discovery_uplink_runtime_t::latest_registry_uplink (
         return false;
 
     scoped_lock_t lock (owner_->_sync);
-    if (_latest_registry_uplink_endpoint.empty ())
+    if (_socket_owner_state.latest_registry_uplink_endpoint.empty ())
         return false;
-    *out_ = _latest_registry_uplink_endpoint;
+    *out_ = _socket_owner_state.latest_registry_uplink_endpoint;
     return true;
 }
 
@@ -197,24 +192,24 @@ void discovery_uplink_runtime_t::take_shutdown_state (
 
     scoped_lock_t lock (owner_->_sync);
     for (std::map<std::string, socket_base_t *>::iterator it =
-           _report_dealers.begin ();
-         it != _report_dealers.end (); ++it) {
+           _socket_owner_state.report_dealers.begin ();
+         it != _socket_owner_state.report_dealers.end (); ++it) {
         if (it->second) {
             report_dealers->push_back (std::make_pair (it->first, it->second));
             it->second = NULL;
         }
     }
     for (std::map<std::string, socket_base_t *>::iterator it =
-           _control_dealers.begin ();
-         it != _control_dealers.end (); ++it) {
+           _socket_owner_state.control_dealers.begin ();
+         it != _socket_owner_state.control_dealers.end (); ++it) {
         if (it->second) {
             control_dealers->push_back (std::make_pair (it->first, it->second));
             it->second = NULL;
         }
     }
-    _report_dealers.clear ();
-    _control_dealers.clear ();
-    _registry_uplink_endpoints.clear ();
-    _latest_registry_uplink_endpoint.clear ();
+    _socket_owner_state.report_dealers.clear ();
+    _socket_owner_state.control_dealers.clear ();
+    _socket_owner_state.registry_uplink_endpoints.clear ();
+    _socket_owner_state.latest_registry_uplink_endpoint.clear ();
 }
 }

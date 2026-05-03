@@ -21,12 +21,26 @@ uint32_t node_t::refcount ()
     return u32;
 }
 
+uint32_t node_t::refcount () const
+{
+    uint32_t u32;
+    memcpy (&u32, _data, sizeof (u32));
+    return u32;
+}
+
 void node_t::set_refcount (uint32_t value_)
 {
     memcpy (_data, &value_, sizeof (value_));
 }
 
 uint32_t node_t::prefix_length ()
+{
+    uint32_t u32;
+    memcpy (&u32, _data + sizeof (uint32_t), sizeof (u32));
+    return u32;
+}
+
+uint32_t node_t::prefix_length () const
 {
     uint32_t u32;
     memcpy (&u32, _data + sizeof (uint32_t), sizeof (u32));
@@ -45,12 +59,24 @@ uint32_t node_t::edgecount ()
     return u32;
 }
 
+uint32_t node_t::edgecount () const
+{
+    uint32_t u32;
+    memcpy (&u32, _data + 2 * sizeof (uint32_t), sizeof (u32));
+    return u32;
+}
+
 void node_t::set_edgecount (uint32_t value_)
 {
     memcpy (_data + 2 * sizeof (value_), &value_, sizeof (value_));
 }
 
 unsigned char *node_t::prefix ()
+{
+    return _data + 3 * sizeof (uint32_t);
+}
+
+const unsigned char *node_t::prefix () const
 {
     return _data + 3 * sizeof (uint32_t);
 }
@@ -65,12 +91,23 @@ unsigned char *node_t::first_bytes ()
     return prefix () + prefix_length ();
 }
 
+const unsigned char *node_t::first_bytes () const
+{
+    return prefix () + prefix_length ();
+}
+
 void node_t::set_first_bytes (const unsigned char *bytes_)
 {
     memcpy (first_bytes (), bytes_, edgecount ());
 }
 
 unsigned char node_t::first_byte_at (size_t index_)
+{
+    zlink_assert (index_ < edgecount ());
+    return first_bytes ()[index_];
+}
+
+unsigned char node_t::first_byte_at (size_t index_) const
 {
     zlink_assert (index_ < edgecount ());
     return first_bytes ()[index_];
@@ -87,12 +124,26 @@ unsigned char *node_t::node_pointers ()
     return prefix () + prefix_length () + edgecount ();
 }
 
+const unsigned char *node_t::node_pointers () const
+{
+    return prefix () + prefix_length () + edgecount ();
+}
+
 void node_t::set_node_pointers (const unsigned char *pointers_)
 {
     memcpy (node_pointers (), pointers_, edgecount () * sizeof (void *));
 }
 
 node_t node_t::node_at (size_t index_)
+{
+    zlink_assert (index_ < edgecount ());
+
+    unsigned char *data;
+    memcpy (&data, node_pointers () + index_ * sizeof (void *), sizeof (data));
+    return node_t (data);
+}
+
+node_t node_t::node_at (size_t index_) const
 {
     zlink_assert (index_ < edgecount ());
 
@@ -500,7 +551,7 @@ bool zlink::radix_tree_t::rm (const unsigned char *key_, size_t key_size_)
     return true;
 }
 
-bool zlink::radix_tree_t::check (const unsigned char *key_, size_t key_size_)
+bool zlink::radix_tree_t::check (const unsigned char *key_, size_t key_size_) const
 {
     if (_root.refcount () > 0)
         return true;
@@ -535,7 +586,8 @@ visit_keys (node_t node_,
 }
 
 void zlink::radix_tree_t::apply (
-  void (*func_) (unsigned char *data_, size_t size_, void *arg_), void *arg_)
+  void (*func_) (unsigned char *data_, size_t size_, void *arg_),
+  void *arg_) const
 {
     if (_root.refcount () > 0)
         func_ (NULL, 0, arg_); // Root node is always empty.

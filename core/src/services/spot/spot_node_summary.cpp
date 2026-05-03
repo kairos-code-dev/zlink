@@ -220,7 +220,7 @@ static int append_socket_snapshot_row (
 
 std::string spot_node_t::summary_service_name () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     if (!_discovery_state.discovery_service.empty ())
         return _discovery_state.discovery_service;
     if (_service_attachment_state.discoveries.size () == 1)
@@ -386,7 +386,7 @@ void spot_node_t::snapshot_raw_subscription_filters (
     if (!out_)
         return;
 
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     for (std::unordered_map<std::string, uint32_t>::const_iterator it =
            _aggregate_subscriptions.local_exact_topic_refcount.begin ();
          it != _aggregate_subscriptions.local_exact_topic_refcount.end ();
@@ -440,7 +440,7 @@ void spot_node_t::snapshot_subscription_subjects (
 
     std::vector<spot_sub_t *> subs;
     {
-        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        scoped_lock_t lock (_sync);
         subs.reserve (_handle_state.subs.size ());
         subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
     }
@@ -461,7 +461,7 @@ int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_) const
     std::string service_name;
     std::string local_endpoint;
     {
-        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        scoped_lock_t lock (_sync);
         service_name = _discovery_state.discovery_service;
         local_endpoint =
           !_discovery_state.advertise_endpoint.empty () ? _discovery_state.advertise_endpoint : _endpoint_state.bound_endpoint;
@@ -536,7 +536,7 @@ int spot_node_t::snapshot_peers (
     std::map<std::string, spot_peer_observation_t> observations;
     std::map<std::string, uint32_t> weight_by_endpoint;
     {
-        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        scoped_lock_t lock (_sync);
         service_name = _discovery_state.discovery_service;
         local_endpoint =
           !_discovery_state.advertise_endpoint.empty () ? _discovery_state.advertise_endpoint : _endpoint_state.bound_endpoint;
@@ -659,7 +659,7 @@ int spot_node_t::snapshot_subjects (
     std::vector<spot_sub_t *> subs;
     std::map<std::string, uint64_t> subject_last_changed;
     {
-        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        scoped_lock_t lock (_sync);
         active_peer_count = static_cast<uint32_t> (_peer_state.active_endpoints.size ());
         subs.reserve (_handle_state.subs.size ());
         subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
@@ -787,7 +787,7 @@ int spot_node_t::snapshot_internal_sockets (
     }
 
     out_->clear ();
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     if (_runtime) {
         if (append_socket_snapshot_row (
               out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0, "spotnode",

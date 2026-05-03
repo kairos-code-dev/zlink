@@ -1424,49 +1424,6 @@ class registry_t
     runtime_socket_state_t _runtime_socket_state;
     projection_state_t _projection_state;
 
-    std::string &_pub_endpoint;
-    std::string &_router_endpoint;
-    std::vector<std::string> &_peer_pubs;
-    uint32_t &_registry_id;
-    bool &_registry_id_set;
-    uint64_t &_list_seq;
-    uint64_t &_next_registration_id;
-    uint64_t &_next_provider_update_seq;
-    bool &_route_snapshot_announced;
-    int &_last_summary_error;
-    uint64_t &_summary_last_changed_ms;
-    uint32_t &_heartbeat_interval_ms;
-    uint32_t &_heartbeat_timeout_ms;
-    uint32_t &_broadcast_interval_ms;
-    std::vector<socket_opt_t> &_pub_opts;
-    std::vector<socket_opt_t> &_router_opts;
-    std::vector<socket_opt_t> &_peer_sub_opts;
-    atomic_counter_t &_stop;
-    uint64_t &_task_id;
-    void *&_pub_socket;
-    void *&_router_socket;
-    void *&_peer_sub_socket;
-    std::set<std::string> &_peer_connected;
-    uint64_t &_next_broadcast_ms;
-    uint64_t &_last_sent_seq;
-    bool &_started;
-    uint64_t &_next_socket_retry_ms;
-    service_map_t &_services;
-    std::map<std::string, channel_contract_t> &_channel_contracts;
-    std::map<topology_key_t, topology_entry_t> &_topology;
-    topology_owner_index_t &_topology_by_owner;
-    route_map_t &_routes;
-    route_observation_map_t &_route_observations;
-    route_observations_by_route_t &_route_observations_by_route;
-    route_owner_index_t &_routes_by_owner;
-    route_advertiser_index_t &_routes_by_advertiser;
-    std::map<uint32_t, route_snapshot_staging_t> &_route_snapshot_staging;
-    route_store_limits_t &_route_limits;
-    route_store_stats_t &_route_stats;
-    std::map<uint32_t, uint64_t> &_peer_seq;
-    std::map<uint32_t, uint64_t> &_peer_route_seq;
-    std::map<uint32_t, uint64_t> &_peer_last_seen;
-
     ZLINK_NON_COPYABLE_NOR_MOVABLE (registry_t)
 };
 }

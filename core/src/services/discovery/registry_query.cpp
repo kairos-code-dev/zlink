@@ -240,7 +240,7 @@ void zlink::registry_t::collect_topology_entries_locked (
     if (!out_)
         return;
     out_->clear ();
-    out_->reserve (_topology.size ());
+    out_->reserve (_projection_state.topology.size ());
 
     std::vector<zlink_registry_topology_entry_t> matched;
     collect_matching_topology_entries_locked (filter_, &matched);
@@ -264,11 +264,11 @@ void zlink::registry_t::collect_matching_topology_entries_locked (
     if (!out_)
         return;
     out_->clear ();
-    out_->reserve (_topology.size ());
+    out_->reserve (_projection_state.topology.size ());
 
     for (std::map<topology_key_t, topology_entry_t>::const_iterator it =
-           _topology.begin ();
-         it != _topology.end (); ++it) {
+           _projection_state.topology.begin ();
+         it != _projection_state.topology.end (); ++it) {
         if (topology_filter_match (it->second.entry, filter_))
             out_->push_back (it->second.entry);
     }
@@ -284,8 +284,8 @@ bool zlink::registry_t::select_spot_owner_entry_locked (
 
     service_key_t provider_service_key;
     provider_service_key.channel_name = channel_name_;
-    service_map_t::const_iterator sit = _services.find (provider_service_key);
-    if (sit == _services.end ())
+    service_map_t::const_iterator sit = _projection_state.services.find (provider_service_key);
+    if (sit == _projection_state.services.end ())
         return false;
 
     bool found = false;
@@ -303,8 +303,8 @@ bool zlink::registry_t::select_spot_owner_entry_locked (
         topology_key.channel_name = entry.channel_name;
         topology_key.endpoint = entry.endpoint;
         std::map<topology_key_t, topology_entry_t>::const_iterator tit =
-          _topology.find (topology_key);
-        if (tit == _topology.end () || !tit->second.has_owner
+          _projection_state.topology.find (topology_key);
+        if (tit == _projection_state.topology.end () || !tit->second.has_owner
             || !owner_is_live_locked (tit->second.owner)) {
             continue;
         }
@@ -381,10 +381,10 @@ int zlink::registry_t::service_summary_snapshot (
       grouped;
     {
         scoped_lock_t lock (_sync);
-        grouped.reserve (_topology.size ());
+        grouped.reserve (_projection_state.topology.size ());
         for (std::map<topology_key_t, topology_entry_t>::const_iterator it =
-               _topology.begin ();
-             it != _topology.end (); ++it) {
+               _projection_state.topology.begin ();
+             it != _projection_state.topology.end (); ++it) {
             const zlink_registry_topology_entry_t &row = it->second.entry;
             summary_key_t key;
             key.auto_connect_type = static_cast<uint16_t> (row.auto_connect_type);
@@ -453,8 +453,8 @@ int zlink::registry_t::member_peers (const char *channel_name_,
         scoped_lock_t lock (_sync);
         service_key_t key;
         key.channel_name = channel_name_;
-        service_map_t::const_iterator sit = _services.find (key);
-        if (sit != _services.end ()) {
+        service_map_t::const_iterator sit = _projection_state.services.find (key);
+        if (sit != _projection_state.services.end ()) {
             std::map<provider_projection_key_t, provider_projection_state_t>
               projection;
             for (provider_map_t::const_iterator pit =
@@ -734,14 +734,14 @@ void zlink::registry_t::handle_bind_route (
                 }
                 entry.owner = owner;
                 entry.updated_at_ms = now_ms;
-                entry.advertising_registry = _registry_id == 0 ? 1
-                                                               : _registry_id;
+                entry.advertising_registry = _coordination_state.registry_id == 0 ? 1
+                                                               : _coordination_state.registry_id;
                 (void) owner_rid;
 
                 size_t replaced_memory = 0;
                 route_observations_by_route_t::const_iterator route_it =
-                  _route_observations_by_route.find (route_key);
-                if (route_it != _route_observations_by_route.end ()) {
+                  _projection_state.route_observations_by_route.find (route_key);
+                if (route_it != _projection_state.route_observations_by_route.end ()) {
                     for (route_observation_key_set_t::const_iterator obs =
                            route_it->second.begin ();
                          obs != route_it->second.end (); ++obs) {
@@ -749,8 +749,8 @@ void zlink::registry_t::handle_bind_route (
                             != entry.advertising_registry)
                             continue;
                         route_observation_map_t::const_iterator current =
-                          _route_observations.find (*obs);
-                        if (current != _route_observations.end ())
+                          _projection_state.route_observations.find (*obs);
+                        if (current != _projection_state.route_observations.end ())
                             replaced_memory +=
                               route_entry_memory_bytes (current->second);
                     }
@@ -769,7 +769,7 @@ void zlink::registry_t::handle_bind_route (
 
                     upsert_route_observation_locked (entry, &dirty_routes);
                     materialize_dirty_routes_locked (dirty_routes);
-                    _list_seq++;
+                    _coordination_state.list_seq++;
                 }
             }
         }
@@ -827,8 +827,8 @@ void zlink::registry_t::handle_unbind_route (
                 status = 0xFF;
                 error = "invalid route key";
             } else {
-                route_map_t::iterator it = _routes.find (route_key);
-                if (it == _routes.end ()) {
+                route_map_t::iterator it = _projection_state.routes.find (route_key);
+                if (it == _projection_state.routes.end ()) {
                     status = 0x01;
                     error = "route not found";
                 } else if (!(it->owner == owner)) {
@@ -839,12 +839,12 @@ void zlink::registry_t::handle_unbind_route (
                     route_observation_key_t obs_key;
                     obs_key.route_key = route_key;
                     obs_key.owner = owner;
-                    obs_key.advertising_registry = _registry_id == 0
+                    obs_key.advertising_registry = _coordination_state.registry_id == 0
                                                      ? 1
-                                                     : _registry_id;
+                                                     : _coordination_state.registry_id;
                     erase_route_observation_locked (obs_key, &dirty_routes);
                     materialize_dirty_routes_locked (dirty_routes);
-                    _list_seq++;
+                    _coordination_state.list_seq++;
                 }
             }
         }
@@ -887,8 +887,8 @@ void zlink::registry_t::handle_resolve_route (
             error = "invalid route key";
         } else {
             materialize_route_winner_locked (route_key);
-            route_map_t::const_iterator it = _routes.find (route_key);
-            if (it != _routes.end () && owner_is_live_locked (it->owner)
+            route_map_t::const_iterator it = _projection_state.routes.find (route_key);
+            if (it != _projection_state.routes.end () && owner_is_live_locked (it->owner)
                 && owner_routing_id_from_key (it->owner, &owner_rid)) {
                 status = 0x00;
                 value = it->value;

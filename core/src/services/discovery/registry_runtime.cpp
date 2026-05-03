@@ -9,12 +9,12 @@ namespace zlink
 {
 void registry_t::tick ()
 {
-    if (_stop.get () != 0)
+    if (_runtime_socket_state.stop.get () != 0)
         return;
 
     {
         scoped_lock_t lock (_sync);
-        if (!_started)
+        if (!_runtime_socket_state.started)
             return;
     }
 
@@ -28,18 +28,18 @@ void registry_t::tick ()
     uint32_t broadcast_interval_ms = 0;
     {
         scoped_lock_t lock (_sync);
-        pub = _pub_socket;
-        router = _router_socket;
-        peer_sub = _peer_sub_socket;
-        peer_pubs = _peer_pubs;
-        broadcast_interval_ms = _broadcast_interval_ms;
+        pub = _runtime_socket_state.pub_socket;
+        router = _runtime_socket_state.router_socket;
+        peer_sub = _runtime_socket_state.peer_sub_socket;
+        peer_pubs = _endpoint_config.peer_pubs;
+        broadcast_interval_ms = _coordination_state.broadcast_interval_ms;
     }
     if (!pub || !router)
         return;
 
     if (ensure_peer_sub_socket () == 0) {
         scoped_lock_t lock (_sync);
-        peer_sub = _peer_sub_socket;
+        peer_sub = _runtime_socket_state.peer_sub_socket;
     }
 
     connect_peer_sub_endpoints (peer_sub, peer_pubs);
@@ -88,16 +88,16 @@ void registry_t::tick ()
     bool send_list = false;
     {
         scoped_lock_t lock (_sync);
-        if (_list_seq != _last_sent_seq) {
+        if (_coordination_state.list_seq != _runtime_socket_state.last_sent_seq) {
             send_list = true;
-            _last_sent_seq = _list_seq;
-            _next_broadcast_ms = now + _broadcast_interval_ms;
-        } else if (_next_broadcast_ms == 0 || now >= _next_broadcast_ms) {
+            _runtime_socket_state.last_sent_seq = _coordination_state.list_seq;
+            _runtime_socket_state.next_broadcast_ms = now + _coordination_state.broadcast_interval_ms;
+        } else if (_runtime_socket_state.next_broadcast_ms == 0 || now >= _runtime_socket_state.next_broadcast_ms) {
             send_list = true;
-            _next_broadcast_ms = now + _broadcast_interval_ms;
+            _runtime_socket_state.next_broadcast_ms = now + _coordination_state.broadcast_interval_ms;
         }
-        if (_broadcast_interval_ms == 0)
-            _broadcast_interval_ms = 30000;
+        if (_coordination_state.broadcast_interval_ms == 0)
+            _coordination_state.broadcast_interval_ms = 30000;
     }
 
     if (send_list) {
@@ -107,7 +107,7 @@ void registry_t::tick ()
 
     if (broadcast_interval_ms == 0) {
         scoped_lock_t lock (_sync);
-        _broadcast_interval_ms = 30000;
+        _coordination_state.broadcast_interval_ms = 30000;
     }
 }
 }

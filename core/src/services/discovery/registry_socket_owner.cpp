@@ -31,25 +31,25 @@ void registry_t::promote_runtime_sockets (socket_base_t *pub_,
 {
     scoped_lock_t lock (_sync);
     if (old_pub_out_)
-        *old_pub_out_ = static_cast<socket_base_t *> (_pub_socket);
+        *old_pub_out_ = static_cast<socket_base_t *> (_runtime_socket_state.pub_socket);
     if (old_router_out_)
-        *old_router_out_ = static_cast<socket_base_t *> (_router_socket);
+        *old_router_out_ = static_cast<socket_base_t *> (_runtime_socket_state.router_socket);
 
-    _pub_socket = pub_;
-    _router_socket = router_;
+    _runtime_socket_state.pub_socket = pub_;
+    _runtime_socket_state.router_socket = router_;
     _lifecycle.register_socket (pub_);
     _lifecycle.register_socket (router_);
 
-    if (!_registry_id_set) {
-        _registry_id = zlink::generate_random ();
-        if (_registry_id == 0)
-            _registry_id = 1;
-        _registry_id_set = true;
+    if (!_coordination_state.registry_id_set) {
+        _coordination_state.registry_id = zlink::generate_random ();
+        if (_coordination_state.registry_id == 0)
+            _coordination_state.registry_id = 1;
+        _coordination_state.registry_id_set = true;
     }
 
-    _next_broadcast_ms = now_ms_ + _broadcast_interval_ms;
-    _last_sent_seq = _list_seq;
-    _next_socket_retry_ms = 0;
+    _runtime_socket_state.next_broadcast_ms = now_ms_ + _coordination_state.broadcast_interval_ms;
+    _runtime_socket_state.last_sent_seq = _coordination_state.list_seq;
+    _runtime_socket_state.next_socket_retry_ms = 0;
 }
 
 int registry_t::ensure_sockets ()
@@ -61,13 +61,13 @@ int registry_t::ensure_sockets ()
 
     {
         scoped_lock_t lock (_sync);
-        if (!_started || _stop.get () != 0)
+        if (!_runtime_socket_state.started || _runtime_socket_state.stop.get () != 0)
             return -1;
-        if (_pub_socket && _router_socket)
+        if (_runtime_socket_state.pub_socket && _runtime_socket_state.router_socket)
             return 0;
-        if (now < _next_socket_retry_ms)
+        if (now < _runtime_socket_state.next_socket_retry_ms)
             return -1;
-        if (_pub_endpoint.empty () || _router_endpoint.empty ()) {
+        if (_endpoint_config.pub_endpoint.empty () || _endpoint_config.router_endpoint.empty ()) {
             errno = EINVAL;
             return -1;
         }
@@ -79,25 +79,25 @@ int registry_t::ensure_sockets ()
         (void) _ctx->close_socket_and_wait (pub, 1000);
         (void) _ctx->close_socket_and_wait (router, 1000);
         scoped_lock_t lock (_sync);
-        _next_socket_retry_ms = now + 100;
+        _runtime_socket_state.next_socket_retry_ms = now + 100;
         return -1;
     }
 
     {
         scoped_lock_t lock (_sync);
-        apply_socket_opts (pub, _pub_opts);
-        apply_socket_opts (router, _router_opts);
+        apply_socket_opts (pub, _socket_option_state.pub_opts);
+        apply_socket_opts (router, _socket_option_state.router_opts);
     }
 
     int verbose = 1;
     pub->setsockopt (ZLINK_INTERNAL_OPT_XPUB_VERBOSE, &verbose, sizeof (verbose));
 
-    if (pub->bind (_pub_endpoint.c_str ()) != 0
-        || router->bind (_router_endpoint.c_str ()) != 0) {
+    if (pub->bind (_endpoint_config.pub_endpoint.c_str ()) != 0
+        || router->bind (_endpoint_config.router_endpoint.c_str ()) != 0) {
         (void) _ctx->close_socket_and_wait (router, 1000);
         (void) _ctx->close_socket_and_wait (pub, 1000);
         scoped_lock_t lock (_sync);
-        _next_socket_retry_ms = now + 100;
+        _runtime_socket_state.next_socket_retry_ms = now + 100;
         return -1;
     }
 
@@ -117,16 +117,16 @@ void registry_t::close_sockets ()
     std::vector<std::string> peer_pubs;
     {
         scoped_lock_t lock (_sync);
-        pub = _pub_socket;
-        router = _router_socket;
-        peer_sub = _peer_sub_socket;
-        pub_endpoint = _pub_endpoint;
-        router_endpoint = _router_endpoint;
-        peer_pubs = _peer_pubs;
-        _pub_socket = NULL;
-        _router_socket = NULL;
-        _peer_sub_socket = NULL;
-        _peer_connected.clear ();
+        pub = _runtime_socket_state.pub_socket;
+        router = _runtime_socket_state.router_socket;
+        peer_sub = _runtime_socket_state.peer_sub_socket;
+        pub_endpoint = _endpoint_config.pub_endpoint;
+        router_endpoint = _endpoint_config.router_endpoint;
+        peer_pubs = _endpoint_config.peer_pubs;
+        _runtime_socket_state.pub_socket = NULL;
+        _runtime_socket_state.router_socket = NULL;
+        _runtime_socket_state.peer_sub_socket = NULL;
+        _runtime_socket_state.peer_connected.clear ();
     }
 
     if (peer_sub) {
@@ -157,9 +157,9 @@ int registry_t::ensure_peer_sub_socket ()
     std::vector<socket_opt_t> peer_sub_opts;
     {
         scoped_lock_t lock (_sync);
-        if (_peer_sub_socket || _peer_pubs.empty ())
+        if (_runtime_socket_state.peer_sub_socket || _endpoint_config.peer_pubs.empty ())
             return 0;
-        peer_sub_opts = _peer_sub_opts;
+        peer_sub_opts = _socket_option_state.peer_sub_opts;
     }
 
     socket_base_t *peer_sub_socket = _ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
@@ -171,8 +171,8 @@ int registry_t::ensure_peer_sub_socket ()
 
     {
         scoped_lock_t lock (_sync);
-        if (_peer_sub_socket == NULL) {
-            _peer_sub_socket = peer_sub_socket;
+        if (_runtime_socket_state.peer_sub_socket == NULL) {
+            _runtime_socket_state.peer_sub_socket = peer_sub_socket;
             _lifecycle.register_socket (peer_sub_socket);
             return 0;
         }
@@ -192,9 +192,9 @@ void registry_t::connect_peer_sub_endpoints (
     for (size_t i = 0; i < peer_pubs_.size (); ++i) {
         const std::string &endpoint = peer_pubs_[i];
         scoped_lock_t lock (_sync);
-        if (_peer_connected.find (endpoint) == _peer_connected.end ()) {
+        if (_runtime_socket_state.peer_connected.find (endpoint) == _runtime_socket_state.peer_connected.end ()) {
             zlink_connect (peer_sub_, endpoint.c_str ());
-            _peer_connected.insert (endpoint);
+            _runtime_socket_state.peer_connected.insert (endpoint);
         }
     }
 }

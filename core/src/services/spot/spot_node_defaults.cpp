@@ -12,91 +12,13 @@ namespace zlink
 int spot_node_t::apply_pub_defaults (spot_pub_t *pub_,
                                      const pub_defaults_t &defaults_)
 {
-    if (!pub_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (defaults_.sndhwm.enabled
-        && pub_->set_option (ZLINK_SPOT_PUB_OPT_SNDHWM, &defaults_.sndhwm.value,
-                             defaults_.sndhwm.size)
-             != 0)
-        return -1;
-    if (defaults_.sndtimeo.enabled
-        && pub_->set_option (ZLINK_SPOT_PUB_OPT_SNDTIMEO,
-                             &defaults_.sndtimeo.value, defaults_.sndtimeo.size)
-             != 0)
-        return -1;
-    if (defaults_.linger.enabled
-        && pub_->set_option (ZLINK_SPOT_PUB_OPT_LINGER, &defaults_.linger.value,
-                             defaults_.linger.size)
-             != 0)
-        return -1;
-    if (defaults_.nodrop.enabled
-        && pub_->set_option (ZLINK_SPOT_PUB_OPT_NODROP, &defaults_.nodrop.value,
-                             defaults_.nodrop.size)
-             != 0)
-        return -1;
-    if (defaults_.sndbuf.enabled
-        && pub_->set_option (ZLINK_SPOT_PUB_OPT_SNDBUF, &defaults_.sndbuf.value,
-                             defaults_.sndbuf.size)
-             != 0)
-        return -1;
-    if (defaults_.rcvbuf.enabled
-        && pub_->set_option (ZLINK_SPOT_PUB_OPT_RCVBUF, &defaults_.rcvbuf.value,
-                             defaults_.rcvbuf.size)
-             != 0)
-        return -1;
-    if (defaults_.auto_hwm_msg_unit_bytes.enabled
-        && pub_->set_option (ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES,
-                             &defaults_.auto_hwm_msg_unit_bytes.value,
-                             defaults_.auto_hwm_msg_unit_bytes.size)
-             != 0)
-        return -1;
-    return 0;
+    return zlink::apply_spot_pub_defaults (pub_, defaults_);
 }
 
 int spot_node_t::apply_sub_defaults (spot_sub_t *sub_,
                                      const sub_defaults_t &defaults_)
 {
-    if (!sub_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (defaults_.rcvhwm.enabled
-        && sub_->set_option (ZLINK_SPOT_SUB_OPT_RCVHWM, &defaults_.rcvhwm.value,
-                             defaults_.rcvhwm.size)
-             != 0)
-        return -1;
-    if (defaults_.linger.enabled
-        && sub_->set_option (ZLINK_SPOT_SUB_OPT_LINGER, &defaults_.linger.value,
-                             defaults_.linger.size)
-             != 0)
-        return -1;
-    if (defaults_.sndbuf.enabled
-        && sub_->set_option (ZLINK_SPOT_SUB_OPT_SNDBUF, &defaults_.sndbuf.value,
-                             defaults_.sndbuf.size)
-             != 0)
-        return -1;
-    if (defaults_.rcvbuf.enabled
-        && sub_->set_option (ZLINK_SPOT_SUB_OPT_RCVBUF, &defaults_.rcvbuf.value,
-                             defaults_.rcvbuf.size)
-             != 0)
-        return -1;
-    if (defaults_.rcvtimeo.enabled
-        && sub_->set_option (ZLINK_SPOT_SUB_OPT_RCVTIMEO,
-                             &defaults_.rcvtimeo.value,
-                             defaults_.rcvtimeo.size)
-             != 0)
-        return -1;
-    if (defaults_.auto_hwm_msg_unit_bytes.enabled
-        && sub_->set_option (ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES,
-                             &defaults_.auto_hwm_msg_unit_bytes.value,
-                             defaults_.auto_hwm_msg_unit_bytes.size)
-             != 0)
-        return -1;
-    return 0;
+    return zlink::apply_spot_sub_defaults (sub_, defaults_);
 }
 
 spot_pub_t *spot_node_t::create_spot_pub_with_defaults (

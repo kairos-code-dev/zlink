@@ -13,7 +13,7 @@ void discovery_t::snapshot_registered_service_updates (
     if (!services_out_ && !value_out_)
         return;
 
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     _local_state.snapshot_registration (value_out_);
     if (!services_out_)
         return;

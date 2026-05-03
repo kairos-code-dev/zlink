@@ -40,13 +40,13 @@ int registry_t::bind (const char *pub_endpoint_, const char *router_endpoint_)
 
     {
         scoped_lock_t lock (_sync);
-        if (_started) {
+        if (_runtime_socket_state.started) {
             errno = EBUSY;
             return -1;
         }
-        _pub_endpoint = pub_endpoint_;
-        _router_endpoint = router_endpoint_;
-        _summary_last_changed_ms = zlink::clock_t ().now_ms ();
+        _endpoint_config.pub_endpoint = pub_endpoint_;
+        _endpoint_config.router_endpoint = router_endpoint_;
+        _coordination_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
     }
 
     return start ();
@@ -58,9 +58,9 @@ int registry_t::set_id (uint32_t registry_id_)
     if (!admission.acquired ())
         return -1;
     scoped_lock_t lock (_sync);
-    _registry_id = registry_id_;
-    _registry_id_set = true;
-    _summary_last_changed_ms = zlink::clock_t ().now_ms ();
+    _coordination_state.registry_id = registry_id_;
+    _coordination_state.registry_id_set = true;
+    _coordination_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
     return 0;
 }
 
@@ -78,8 +78,8 @@ int registry_t::add_peer (const char *peer_pub_endpoint_)
         return -1;
     }
     scoped_lock_t lock (_sync);
-    _peer_pubs.push_back (peer_pub_endpoint_);
-    _summary_last_changed_ms = zlink::clock_t ().now_ms ();
+    _endpoint_config.peer_pubs.push_back (peer_pub_endpoint_);
+    _coordination_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
     return 0;
 }
 
@@ -93,8 +93,8 @@ int registry_t::set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_)
         return -1;
     }
     scoped_lock_t lock (_sync);
-    _heartbeat_interval_ms = interval_ms_;
-    _heartbeat_timeout_ms = timeout_ms_;
+    _coordination_state.heartbeat_interval_ms = interval_ms_;
+    _coordination_state.heartbeat_timeout_ms = timeout_ms_;
     return 0;
 }
 
@@ -108,7 +108,7 @@ int registry_t::set_broadcast_interval (uint32_t interval_ms_)
         return -1;
     }
     scoped_lock_t lock (_sync);
-    _broadcast_interval_ms = interval_ms_;
+    _coordination_state.broadcast_interval_ms = interval_ms_;
     return 0;
 }
 
@@ -130,16 +130,16 @@ int registry_t::set_socket_option (int socket_role_,
     void *existing_socket = NULL;
     switch (socket_role_) {
         case ZLINK_REGISTRY_SOCKET_PUB:
-            opts = &_pub_opts;
-            existing_socket = _pub_socket;
+            opts = &_socket_option_state.pub_opts;
+            existing_socket = _runtime_socket_state.pub_socket;
             break;
         case ZLINK_REGISTRY_SOCKET_ROUTER:
-            opts = &_router_opts;
-            existing_socket = _router_socket;
+            opts = &_socket_option_state.router_opts;
+            existing_socket = _runtime_socket_state.router_socket;
             break;
         case ZLINK_REGISTRY_SOCKET_PEER_SUB:
-            opts = &_peer_sub_opts;
-            existing_socket = _peer_sub_socket;
+            opts = &_socket_option_state.peer_sub_opts;
+            existing_socket = _runtime_socket_state.peer_sub_socket;
             break;
         default:
             errno = EINVAL;
@@ -236,19 +236,19 @@ int registry_t::status_snapshot (zlink_registry_status_t *out_)
     memset (out_, 0, sizeof (*out_));
 
     scoped_lock_t lock (_sync);
-    out_->registry_id = _registry_id;
-    if (!_router_endpoint.empty ()) {
+    out_->registry_id = _coordination_state.registry_id;
+    if (!_endpoint_config.router_endpoint.empty ()) {
         copy_fixed_c_string_from_cstr (out_->bind_endpoint,
                                        sizeof (out_->bind_endpoint),
-                                       _router_endpoint.c_str ());
+                                       _endpoint_config.router_endpoint.c_str ());
     }
-    out_->topology_entry_count = static_cast<uint32_t> (_topology.size ());
-    out_->peer_registry_count = static_cast<uint32_t> (_peer_pubs.size ());
+    out_->topology_entry_count = static_cast<uint32_t> (_projection_state.topology.size ());
+    out_->peer_registry_count = static_cast<uint32_t> (_endpoint_config.peer_pubs.size ());
     out_->connected_peer_registry_count =
-      static_cast<uint32_t> (_peer_last_seen.size ());
-    out_->list_seq = _list_seq;
-    out_->last_error = _last_summary_error;
-    out_->last_changed_ms = _summary_last_changed_ms;
+      static_cast<uint32_t> (_projection_state.peer_last_seen.size ());
+    out_->list_seq = _coordination_state.list_seq;
+    out_->last_error = _coordination_state.last_summary_error;
+    out_->last_changed_ms = _coordination_state.summary_last_changed_ms;
 
     if (out_->last_error != 0)
         out_->state = ZLINK_REGISTRY_STATE_ERROR;

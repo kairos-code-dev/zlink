@@ -102,7 +102,7 @@ inline void snapshot_connected_mesh_peer_endpoints (
     out_->clear ();
     if (!state_)
         return;
-    scoped_lock_t lock (const_cast<mutex_t &> (state_->sync));
+    scoped_lock_t lock (state_->sync);
     *out_ = state_->connected_endpoints;
 }
 

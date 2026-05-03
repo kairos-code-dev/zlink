@@ -136,7 +136,7 @@ void spot_node_t::emit_pending_subscription_replays ()
 
 std::string spot_node_t::first_connected_peer_endpoint () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     if (_peer_state.connected_endpoints.empty ())
         return std::string ();
     return *_peer_state.connected_endpoints.begin ();

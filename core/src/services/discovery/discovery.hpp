@@ -237,14 +237,14 @@ class discovery_t
     ctx_t *_ctx;
     uint32_t _tag;
     service_runtime_base_t _lifecycle;
-    service_public_api_guard_t _public_api;
+    mutable service_public_api_guard_t _public_api;
 
     atomic_counter_t _stop;
     uint64_t _task_id;
     void *_sub_socket;
     std::set<std::string> _connected_endpoints;
 
-    mutex_t _sync;
+    mutable mutex_t _sync;
     mutex_t _uplink_sync;
     discovery_bootstrap_runtime_t *_bootstrap_runtime;
     discovery_uplink_runtime_t *_uplink_runtime;

@@ -63,38 +63,7 @@ zlink::spot_pub_t *ensure_spot_pub (spot_handle_t *spot_)
     if (!pub)
         return NULL;
 
-    const zlink::spot_node_t::pub_defaults_t &defaults =
-      spot_->pending_pub_defaults;
-    if ((defaults.sndhwm.enabled
-         && pub->set_option (ZLINK_SPOT_PUB_OPT_SNDHWM, &defaults.sndhwm.value,
-                             defaults.sndhwm.size)
-              != 0)
-        || (defaults.sndtimeo.enabled
-            && pub->set_option (ZLINK_SPOT_PUB_OPT_SNDTIMEO,
-                                &defaults.sndtimeo.value,
-                                defaults.sndtimeo.size)
-                 != 0)
-        || (defaults.linger.enabled
-            && pub->set_option (ZLINK_SPOT_PUB_OPT_LINGER,
-                                &defaults.linger.value, defaults.linger.size)
-                 != 0)
-        || (defaults.nodrop.enabled
-            && pub->set_option (ZLINK_SPOT_PUB_OPT_NODROP,
-                                &defaults.nodrop.value, defaults.nodrop.size)
-                 != 0)
-        || (defaults.sndbuf.enabled
-            && pub->set_option (ZLINK_SPOT_PUB_OPT_SNDBUF,
-                                &defaults.sndbuf.value, defaults.sndbuf.size)
-                 != 0)
-        || (defaults.rcvbuf.enabled
-            && pub->set_option (ZLINK_SPOT_PUB_OPT_RCVBUF,
-                                &defaults.rcvbuf.value, defaults.rcvbuf.size)
-                 != 0)
-        || (defaults.auto_hwm_msg_unit_bytes.enabled
-            && pub->set_option (ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES,
-                                &defaults.auto_hwm_msg_unit_bytes.value,
-                                defaults.auto_hwm_msg_unit_bytes.size)
-                 != 0)) {
+    if (zlink::apply_spot_pub_defaults (pub, spot_->pending_pub_defaults) != 0) {
         const int err = errno;
         (void) pub->destroy ();
         delete pub;
@@ -131,34 +100,7 @@ zlink::spot_sub_t *ensure_spot_sub (spot_handle_t *spot_)
         return NULL;
     }
 
-    const zlink::spot_node_t::sub_defaults_t &defaults =
-      spot_->pending_sub_defaults;
-    if ((defaults.rcvhwm.enabled
-         && sub->set_option (ZLINK_SPOT_SUB_OPT_RCVHWM, &defaults.rcvhwm.value,
-                             defaults.rcvhwm.size)
-              != 0)
-        || (defaults.linger.enabled
-            && sub->set_option (ZLINK_SPOT_SUB_OPT_LINGER,
-                                &defaults.linger.value, defaults.linger.size)
-                 != 0)
-        || (defaults.sndbuf.enabled
-            && sub->set_option (ZLINK_SPOT_SUB_OPT_SNDBUF,
-                                &defaults.sndbuf.value, defaults.sndbuf.size)
-                 != 0)
-        || (defaults.rcvbuf.enabled
-            && sub->set_option (ZLINK_SPOT_SUB_OPT_RCVBUF,
-                                &defaults.rcvbuf.value, defaults.rcvbuf.size)
-                 != 0)
-        || (defaults.rcvtimeo.enabled
-            && sub->set_option (ZLINK_SPOT_SUB_OPT_RCVTIMEO,
-                                &defaults.rcvtimeo.value,
-                                defaults.rcvtimeo.size)
-                 != 0)
-        || (defaults.auto_hwm_msg_unit_bytes.enabled
-            && sub->set_option (ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES,
-                                &defaults.auto_hwm_msg_unit_bytes.value,
-                                defaults.auto_hwm_msg_unit_bytes.size)
-                 != 0)) {
+    if (zlink::apply_spot_sub_defaults (sub, spot_->pending_sub_defaults) != 0) {
         const int err = errno;
         (void) sub->destroy ();
         delete sub;

@@ -163,7 +163,7 @@ struct socket_monitor_runtime_t
     int64_t events;
     std::atomic<int64_t> events_atomic;
     bool lossy;
-    mutex_t sync;
+    mutable mutex_t sync;
     mutex_t queue_sync;
     condition_variable_t queue_cv;
     std::deque<socket_monitor_event_record_t> queue;

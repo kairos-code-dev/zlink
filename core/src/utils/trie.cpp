@@ -243,7 +243,8 @@ bool zlink::trie_t::check (const unsigned char *data_, size_t size_) const
 }
 
 void zlink::trie_t::apply (
-  void (*func_) (unsigned char *data_, size_t size_, void *arg_), void *arg_)
+  void (*func_) (unsigned char *data_, size_t size_, void *arg_),
+  void *arg_) const
 {
     unsigned char *buff = NULL;
     apply_helper (&buff, 0, 0, func_, arg_);

@@ -81,7 +81,7 @@ socket_base_t *spot_node_t::select_service_router (
 socket_base_t *spot_node_t::service_pub_socket (
   const std::string &service_name_) const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     std::map<std::string, service_attachment_t>::const_iterator it =
       _service_attachment_state.attachments.find (service_name_);
     if (it == _service_attachment_state.attachments.end ()) {

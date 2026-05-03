@@ -17,7 +17,7 @@ namespace zlink
 class service_socket_registry_t
 {
   public:
-    typedef std::map<int, const socket_base_t *> socket_map_t;
+    typedef std::map<int, socket_base_t *> socket_map_t;
 
     service_socket_registry_t ()
     {
@@ -62,7 +62,7 @@ class service_socket_registry_t
 
     void snapshot_drain_state (size_t *owned_count_, socket_map_t *closing_) const
     {
-        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        scoped_lock_t lock (_sync);
         if (owned_count_)
             *owned_count_ = _owned_sockets.size ();
         if (closing_)
@@ -84,7 +84,7 @@ class service_socket_registry_t
 
     size_t socket_count () const
     {
-        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        scoped_lock_t lock (_sync);
         return _owned_sockets.size () + _closing_sockets.size ();
     }
 
@@ -106,14 +106,14 @@ class service_socket_registry_t
         if (!getenv ("ZLINK_DEBUG_SERVICE_RUNTIME_DRAIN"))
             return;
 
-        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        scoped_lock_t lock (_sync);
         std::fprintf (stderr, "%s owned=", prefix_);
-        for (std::map<int, const socket_base_t *>::const_iterator it =
+        for (socket_map_t::const_iterator it =
                _owned_sockets.begin ();
              it != _owned_sockets.end (); ++it)
             std::fprintf (stderr, "%d,", it->first);
         std::fprintf (stderr, " closing=");
-        for (std::map<int, const socket_base_t *>::const_iterator it =
+        for (socket_map_t::const_iterator it =
                _closing_sockets.begin ();
              it != _closing_sockets.end (); ++it)
             std::fprintf (stderr, "%d,", it->first);

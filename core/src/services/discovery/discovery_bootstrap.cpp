@@ -105,7 +105,7 @@ int discovery_bootstrap_socket_config_t::set_routing_id (
 }
 
 int discovery_bootstrap_socket_config_t::routing_id (
-  discovery_t *owner_, zlink_routing_id_t *out_) const
+  const discovery_t *owner_, zlink_routing_id_t *out_) const
 {
     service_public_api_scope_t admission (owner_->_public_api);
     if (!admission.acquired ())
@@ -254,13 +254,7 @@ bool discovery_bootstrap_socket_config_t::ensure_socket_routing_id (
     return true;
 }
 
-discovery_bootstrap_runtime_t::discovery_bootstrap_runtime_t () :
-    _registry_bootstrap_endpoints (_request_state.registry_bootstrap_endpoints),
-    _bootstrapped_registry_endpoints (
-      _request_state.bootstrapped_registry_endpoints),
-    _bootstrap_states (_request_state.bootstrap_states),
-    _registry_pub_endpoints (_request_state.registry_pub_endpoints),
-    _heartbeat_interval_ms (_request_state.heartbeat_interval_ms)
+discovery_bootstrap_runtime_t::discovery_bootstrap_runtime_t ()
 {
 }
 
@@ -313,7 +307,7 @@ int discovery_bootstrap_runtime_t::set_routing_id (discovery_t *owner_,
     return _socket_config.set_routing_id (owner_, data_, size_);
 }
 
-int discovery_bootstrap_runtime_t::routing_id (discovery_t *owner_,
+int discovery_bootstrap_runtime_t::routing_id (const discovery_t *owner_,
                                                zlink_routing_id_t *out_) const
 {
     return _socket_config.routing_id (owner_, out_);
@@ -357,8 +351,8 @@ bool discovery_bootstrap_runtime_t::ensure_socket_routing_id (
 
 bool discovery_bootstrap_runtime_t::has_bootstrap_activity_locked () const
 {
-    return !_registry_pub_endpoints.empty ()
-           || !_registry_bootstrap_endpoints.empty ();
+    return !_request_state.registry_pub_endpoints.empty ()
+           || !_request_state.registry_bootstrap_endpoints.empty ();
 }
 
 void discovery_bootstrap_runtime_t::apply_socket_option_to_bootstrap_dealers (
@@ -366,8 +360,8 @@ void discovery_bootstrap_runtime_t::apply_socket_option_to_bootstrap_dealers (
 {
     (void) owner_;
     for (std::map<std::string, bootstrap_state_t>::const_iterator it =
-           _bootstrap_states.begin ();
-         it != _bootstrap_states.end (); ++it) {
+           _request_state.bootstrap_states.begin ();
+         it != _request_state.bootstrap_states.end (); ++it) {
         if (it->second.dealer)
             it->second.dealer->setsockopt (option_, optval_, optvallen_);
     }
@@ -377,21 +371,21 @@ void discovery_bootstrap_runtime_t::remember_bootstrap_endpoint (
   discovery_t *owner_, const char *registry_endpoint_)
 {
     scoped_lock_t lock (owner_->_sync);
-    _registry_bootstrap_endpoints.insert (registry_endpoint_);
+    _request_state.registry_bootstrap_endpoints.insert (registry_endpoint_);
 }
 
 bool discovery_bootstrap_runtime_t::bootstrap_completed (
   discovery_t *owner_, const char *registry_endpoint_) const
 {
     scoped_lock_t lock (owner_->_sync);
-    return _bootstrapped_registry_endpoints.count (registry_endpoint_) != 0;
+    return _request_state.bootstrapped_registry_endpoints.count (registry_endpoint_) != 0;
 }
 
 void discovery_bootstrap_runtime_t::begin_bootstrap_request (
   discovery_t *owner_, const std::string &registry_endpoint_)
 {
     scoped_lock_t lock (owner_->_sync);
-    bootstrap_state_t &stored = _bootstrap_states[registry_endpoint_];
+    bootstrap_state_t &stored = _request_state.bootstrap_states[registry_endpoint_];
     stored.request_sent = true;
     stored.request_started_ms = zlink::clock_t ().now_ms ();
     discovery_debugf ("bootstrap request sent endpoint=%s dealer=%p",
@@ -404,8 +398,8 @@ bool discovery_bootstrap_runtime_t::reset_bootstrap_request_if_timed_out (
 {
     scoped_lock_t lock (owner_->_sync);
     std::map<std::string, bootstrap_state_t>::iterator it =
-      _bootstrap_states.find (registry_endpoint_);
-    if (it == _bootstrap_states.end () || it->second.request_started_ms == 0
+      _request_state.bootstrap_states.find (registry_endpoint_);
+    if (it == _request_state.bootstrap_states.end () || it->second.request_started_ms == 0
         || now_ms_ - it->second.request_started_ms <= 2000) {
         return false;
     }
@@ -430,14 +424,14 @@ void discovery_bootstrap_runtime_t::commit_bootstrap_success (
         *adopted_report_dealer_out_ = NULL;
 
     scoped_lock_t lock (owner_->_sync);
-    _registry_pub_endpoints.insert (pub_endpoint_);
-    _bootstrapped_registry_endpoints.insert (registry_endpoint_);
+    _request_state.registry_pub_endpoints.insert (pub_endpoint_);
+    _request_state.bootstrapped_registry_endpoints.insert (registry_endpoint_);
     if (heartbeat_interval_ms_ > 0)
-        _heartbeat_interval_ms = heartbeat_interval_ms_;
+        _request_state.heartbeat_interval_ms = heartbeat_interval_ms_;
 
     std::map<std::string, bootstrap_state_t>::iterator it =
-      _bootstrap_states.find (registry_endpoint_);
-    if (it == _bootstrap_states.end ())
+      _request_state.bootstrap_states.find (registry_endpoint_);
+    if (it == _request_state.bootstrap_states.end ())
         return;
 
     if (adopted_report_dealer_out_ && it->second.dealer
@@ -449,7 +443,7 @@ void discovery_bootstrap_runtime_t::commit_bootstrap_success (
         it->second.dealer->close ();
         it->second.dealer = NULL;
     }
-    _bootstrap_states.erase (it);
+    _request_state.bootstrap_states.erase (it);
 }
 
 int discovery_bootstrap_runtime_t::bootstrap_registry (
@@ -463,7 +457,7 @@ int discovery_bootstrap_runtime_t::bootstrap_registry (
     bootstrap_state_t *state = NULL;
     {
         scoped_lock_t lock (owner_->_sync);
-        state = &_bootstrap_states[registry_endpoint_];
+        state = &_request_state.bootstrap_states[registry_endpoint_];
         rid = _socket_config.routing_id_value ();
         discovery_debugf ("bootstrap state endpoint=%s sent=%d started=%llu dealer=%p",
                           registry_endpoint_, state->request_sent ? 1 : 0,
@@ -582,7 +576,7 @@ int discovery_bootstrap_runtime_t::ensure_bootstrap_dealer (
     *dealer_out_ = NULL;
 
     scoped_lock_t lock (owner_->_sync);
-    bootstrap_state_t &state = _bootstrap_states[registry_endpoint_];
+    bootstrap_state_t &state = _request_state.bootstrap_states[registry_endpoint_];
     if (!state.dealer) {
         state.dealer = owner_->create_tracked_socket (ZLINK_CORE_SOCKET_DEALER);
         if (!state.dealer)
@@ -621,9 +615,9 @@ void discovery_bootstrap_runtime_t::collect_pending_bootstrap_endpoints (
     out_->clear ();
     scoped_lock_t lock (owner_->_sync);
     for (std::set<std::string>::const_iterator it =
-           _registry_bootstrap_endpoints.begin ();
-         it != _registry_bootstrap_endpoints.end (); ++it) {
-        if (_bootstrapped_registry_endpoints.count (*it) == 0)
+           _request_state.registry_bootstrap_endpoints.begin ();
+         it != _request_state.registry_bootstrap_endpoints.end (); ++it) {
+        if (_request_state.bootstrapped_registry_endpoints.count (*it) == 0)
             out_->push_back (*it);
     }
 }
@@ -634,7 +628,7 @@ void discovery_bootstrap_runtime_t::collect_registry_pub_endpoints (
     if (!out_)
         return;
     scoped_lock_t lock (owner_->_sync);
-    *out_ = _registry_pub_endpoints;
+    *out_ = _request_state.registry_pub_endpoints;
 }
 
 void discovery_bootstrap_runtime_t::take_shutdown_state (
@@ -646,18 +640,18 @@ void discovery_bootstrap_runtime_t::take_shutdown_state (
     bootstrap_dealers->clear ();
     scoped_lock_t lock (owner_->_sync);
     for (std::map<std::string, bootstrap_state_t>::iterator it =
-           _bootstrap_states.begin ();
-         it != _bootstrap_states.end (); ++it) {
+           _request_state.bootstrap_states.begin ();
+         it != _request_state.bootstrap_states.end (); ++it) {
         if (it->second.dealer) {
             bootstrap_dealers->push_back (
               std::make_pair (it->first, it->second.dealer));
             it->second.dealer = NULL;
         }
     }
-    _bootstrap_states.clear ();
-    _registry_bootstrap_endpoints.clear ();
-    _bootstrapped_registry_endpoints.clear ();
-    _registry_pub_endpoints.clear ();
+    _request_state.bootstrap_states.clear ();
+    _request_state.registry_bootstrap_endpoints.clear ();
+    _request_state.bootstrapped_registry_endpoints.clear ();
+    _request_state.registry_pub_endpoints.clear ();
 }
 
 int discovery_t::connect_registry (const char *registry_endpoint_)
@@ -672,8 +666,7 @@ int discovery_t::set_routing_id (const void *data_, size_t size_)
 
 int discovery_t::routing_id (zlink_routing_id_t *out_) const
 {
-    return _bootstrap_runtime->routing_id (const_cast<discovery_t *> (this),
-                                           out_);
+    return _bootstrap_runtime->routing_id (this, out_);
 }
 
 int discovery_t::set_tls_client (const char *ca_cert_,

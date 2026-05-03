@@ -107,8 +107,7 @@ uint32_t zlink::socket_base_t::monitor_ready_count () const
 
 bool zlink::socket_base_t::has_attached_pipes () const
 {
-    scoped_lock_t lock (
-      const_cast<socket_base_t *> (this)->monitor_runtime ().sync);
+    scoped_lock_t lock (monitor_runtime ().sync);
     return endpoint_runtime ().has_attached_pipes ();
 }
 

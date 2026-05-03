@@ -180,12 +180,11 @@ int discovery_t::get_option (int option_, void *optval_, size_t *optvallen_) con
         return -1;
     }
 
-    service_public_api_scope_t admission (
-      const_cast<service_public_api_guard_t &> (_public_api));
+    service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
 
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     if (option_ == ZLINK_OPT_ROUTE_VALUE_MAX_SIZE)
         return _local_state.get_route_value_max_size (optval_, optvallen_);
     return _local_state.get_spot_owner_sync_enabled (optval_, optvallen_);
@@ -210,11 +209,10 @@ int discovery_t::set_value (int64_t value_)
 
 int discovery_t::get_value (int64_t *value_out_) const
 {
-    service_public_api_scope_t admission (
-      const_cast<service_public_api_guard_t &> (_public_api));
+    service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     return _local_state.get_value (value_out_);
 }
 
@@ -240,7 +238,7 @@ void discovery_t::snapshot_member_peers (
     std::vector<provider_info_t> providers;
     std::set<discovery_member_key_t> local_members;
     {
-        scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+        scoped_lock_t lock (_sync);
         for (std::map<registered_service_key_t, registered_service_t>::const_iterator
                it = _registered_services.begin ();
              it != _registered_services.end (); ++it) {
@@ -259,8 +257,7 @@ void discovery_t::snapshot_member_peers (
 int discovery_t::member_peers (zlink_member_peer_entry_t *entries_,
                                size_t *count_) const
 {
-    service_public_api_scope_t admission (
-      const_cast<service_public_api_guard_t &> (_public_api));
+    service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
     if (!count_) {
@@ -332,7 +329,7 @@ void discovery_t::upsert_service_summary (
 
 bool discovery_t::spot_owner_sync_enabled () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     return _local_state.spot_owner_sync_enabled ();
 }
 

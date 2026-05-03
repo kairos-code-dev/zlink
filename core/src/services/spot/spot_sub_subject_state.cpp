@@ -45,7 +45,7 @@ std::string spot_sub_t::ready_ack_source_id () const
         if (_node->node_routing_id (&node_rid) == 0 && node_rid.size > 0)
             return routing_id_to_hex (node_rid);
     }
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     return routing_id_to_hex (_routing_id);
 }
 
@@ -257,7 +257,7 @@ void spot_sub_t::append_raw_filters (std::set<std::string> *out_) const
     if (!out_)
         return;
 
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     out_->insert (_topics.begin (), _topics.end ());
     out_->insert (_patterns.begin (), _patterns.end ());
 }
@@ -267,7 +267,7 @@ void spot_sub_t::append_replay_raw_filters (std::set<std::string> *out_) const
     if (!out_)
         return;
 
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     for (std::set<std::string>::const_iterator it = _topics.begin ();
          it != _topics.end (); ++it) {
         if (_delivery_ready_raw_filters.count (*it) == 0)
@@ -282,7 +282,7 @@ void spot_sub_t::append_replay_raw_filters (std::set<std::string> *out_) const
 
 bool spot_sub_t::has_filters () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     return !_topics.empty () || !_patterns.empty ();
 }
 
@@ -292,7 +292,7 @@ void spot_sub_t::append_all_subjects (
     if (!out_)
         return;
 
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     for (std::set<std::string>::const_iterator it = _topics.begin ();
          it != _topics.end (); ++it) {
         subject_descriptor_t subject;
@@ -316,7 +316,7 @@ void spot_sub_t::append_subjects_for_raw_filter (
     if (!out_ || raw_filter_.empty ())
         return;
 
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     out_->reserve (out_->size () + 2);
     if (_topics.count (raw_filter_) != 0) {
         subject_descriptor_t subject;
@@ -390,7 +390,7 @@ void spot_sub_t::mark_subject_subscription_ready (
 
 std::string spot_sub_t::first_ready_peer_endpoint () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     if (_ready_peer_endpoints.empty ())
         return std::string ();
     return *_ready_peer_endpoints.begin ();

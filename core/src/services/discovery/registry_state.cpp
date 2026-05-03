@@ -27,14 +27,14 @@ int registry_t::ensure_channel_contract_locked (
     }
 
     std::map<std::string, channel_contract_t>::iterator it =
-      _channel_contracts.find (channel_name_);
-    if (it == _channel_contracts.end ()) {
+      _projection_state.channel_contracts.find (channel_name_);
+    if (it == _projection_state.channel_contracts.end ()) {
         channel_contract_t contract;
         contract.auto_connect_type = auto_connect_type_;
         contract.created_at = now_ms_;
         contract.owner_registry_id = owner_registry_id_ == 0 ? 1
                                                              : owner_registry_id_;
-        _channel_contracts[channel_name_] = contract;
+        _projection_state.channel_contracts[channel_name_] = contract;
         return 0;
     }
 
@@ -71,7 +71,7 @@ void registry_t::remove_channel_providers_locked (
 {
     service_key_t key;
     key.channel_name = channel_name_;
-    _services.erase (key);
+    _projection_state.services.erase (key);
 }
 
 void registry_t::handle_peer (void *sub_)
@@ -132,7 +132,7 @@ void registry_t::handle_peer (void *sub_)
     uint32_t local_registry_id = 0;
     {
         scoped_lock_t lock (_sync);
-        local_registry_id = _registry_id;
+        local_registry_id = _coordination_state.registry_id;
         if (local_registry_id == 0)
             local_registry_id = 1;
 
@@ -141,18 +141,18 @@ void registry_t::handle_peer (void *sub_)
             return;
         }
 
-        _peer_last_seen[peer_registry_id] = now;
+        _projection_state.peer_last_seen[peer_registry_id] = now;
         std::map<uint32_t, uint64_t>::iterator it =
-          _peer_seq.find (peer_registry_id);
+          _projection_state.peer_seq.find (peer_registry_id);
         std::map<uint32_t, uint64_t>::iterator route_it =
-          _peer_route_seq.find (peer_registry_id);
+          _projection_state.peer_route_seq.find (peer_registry_id);
         if (msg_id == discovery_protocol::msg_service_list
-            && it != _peer_seq.end () && list_seq <= it->second) {
+            && it != _projection_state.peer_seq.end () && list_seq <= it->second) {
             close_msg_frames (&frames);
             return;
         }
         if (msg_id == discovery_protocol::msg_registry_sync
-            && route_it != _peer_route_seq.end ()
+            && route_it != _projection_state.peer_route_seq.end ()
             && list_seq <= route_it->second) {
             close_msg_frames (&frames);
             return;
@@ -243,16 +243,16 @@ void registry_t::handle_peer (void *sub_)
         {
             scoped_lock_t lock (_sync);
             std::map<uint32_t, uint64_t>::iterator route_it =
-              _peer_route_seq.find (peer_registry_id);
+              _projection_state.peer_route_seq.find (peer_registry_id);
             if (peer_registry_id == local_registry_id
-                || (route_it != _peer_route_seq.end ()
+                || (route_it != _projection_state.peer_route_seq.end ()
                     && list_seq <= route_it->second)) {
                 close_msg_frames (&frames);
                 return;
             }
 
             route_snapshot_staging_t &staging =
-              _route_snapshot_staging[peer_registry_id];
+              _projection_state.route_snapshot_staging[peer_registry_id];
             const bool starts_snapshot = chunk_index == 0;
             if (starts_snapshot) {
                 staging = route_snapshot_staging_t ();
@@ -264,9 +264,9 @@ void registry_t::handle_peer (void *sub_)
                 || staging.chunk_count != chunk_count
                 || staging.next_chunk_index != chunk_index
                 || staging.memory_bytes + incoming_memory
-                     > _route_limits.staging_memory_budget_bytes) {
-                _route_snapshot_staging.erase (peer_registry_id);
-                _route_stats.snapshot_staging_abort_count++;
+                     > _projection_state.route_limits.staging_memory_budget_bytes) {
+                _projection_state.route_snapshot_staging.erase (peer_registry_id);
+                _projection_state.route_stats.snapshot_staging_abort_count++;
                 close_msg_frames (&frames);
                 return;
             }
@@ -292,8 +292,8 @@ void registry_t::handle_peer (void *sub_)
                     int route_error = 0;
                     if (!route_store_can_fit_locked (it->second, 0,
                                                      &route_error)) {
-                        _route_snapshot_staging.erase (peer_registry_id);
-                        _route_stats.snapshot_staging_abort_count++;
+                        _projection_state.route_snapshot_staging.erase (peer_registry_id);
+                        _projection_state.route_stats.snapshot_staging_abort_count++;
                         close_msg_frames (&frames);
                         return;
                     }
@@ -301,9 +301,9 @@ void registry_t::handle_peer (void *sub_)
                                                      &dirty_routes);
                 }
                 materialize_dirty_routes_locked (dirty_routes);
-                _peer_route_seq[peer_registry_id] = list_seq;
-                _route_snapshot_staging.erase (peer_registry_id);
-                _list_seq++;
+                _projection_state.peer_route_seq[peer_registry_id] = list_seq;
+                _projection_state.route_snapshot_staging.erase (peer_registry_id);
+                _coordination_state.list_seq++;
             }
         }
 
@@ -394,9 +394,9 @@ void registry_t::handle_peer (void *sub_)
     {
         scoped_lock_t lock (_sync);
         std::map<uint32_t, uint64_t>::iterator it =
-          _peer_seq.find (peer_registry_id);
+          _projection_state.peer_seq.find (peer_registry_id);
         if (peer_registry_id == local_registry_id
-            || (it != _peer_seq.end () && list_seq <= it->second)) {
+            || (it != _projection_state.peer_seq.end () && list_seq <= it->second)) {
             close_msg_frames (&frames);
             return;
         }
@@ -420,11 +420,11 @@ void registry_t::handle_peer (void *sub_)
             const service_key_t &service_key = sit->first;
             const provider_map_t &providers = sit->second.providers;
             service_map_t::const_iterator existing_service =
-              _services.find (service_key);
+              _projection_state.services.find (service_key);
             for (provider_map_t::const_iterator pit = providers.begin ();
                  pit != providers.end (); ++pit) {
                 bool match = false;
-                if (existing_service != _services.end ()) {
+                if (existing_service != _projection_state.services.end ()) {
                     provider_map_t::const_iterator ep =
                       existing_service->second.providers.find (pit->first);
                     if (ep != existing_service->second.providers.end ()
@@ -466,8 +466,8 @@ void registry_t::handle_peer (void *sub_)
         }
 
         if (!changed) {
-            for (service_map_t::const_iterator sit = _services.begin ();
-                 sit != _services.end (); ++sit) {
+            for (service_map_t::const_iterator sit = _projection_state.services.begin ();
+                 sit != _projection_state.services.end (); ++sit) {
                 const provider_map_t &providers = sit->second.providers;
                 for (provider_map_t::const_iterator pit = providers.begin ();
                      pit != providers.end (); ++pit) {
@@ -488,13 +488,13 @@ void registry_t::handle_peer (void *sub_)
         }
 
         if (!changed) {
-            _peer_seq[peer_registry_id] = list_seq;
+            _projection_state.peer_seq[peer_registry_id] = list_seq;
             close_msg_frames (&frames);
             return;
         }
 
-        for (service_map_t::iterator sit = _services.begin ();
-             sit != _services.end ();) {
+        for (service_map_t::iterator sit = _projection_state.services.begin ();
+             sit != _projection_state.services.end ();) {
             provider_map_t &providers = sit->second.providers;
             for (provider_map_t::iterator pit = providers.begin ();
                  pit != providers.end ();) {
@@ -516,7 +516,7 @@ void registry_t::handle_peer (void *sub_)
                 ++pit;
             }
             if (providers.empty ()) {
-                sit = _services.erase (sit);
+                sit = _projection_state.services.erase (sit);
                 continue;
             }
             ++sit;
@@ -526,7 +526,7 @@ void registry_t::handle_peer (void *sub_)
              sit != incoming.end (); ++sit) {
             const service_key_t &service_key = sit->first;
             const provider_map_t &providers = sit->second.providers;
-            service_entry_t &service = _services[service_key];
+            service_entry_t &service = _projection_state.services[service_key];
             service.auto_connect_type = sit->second.auto_connect_type;
             for (provider_map_t::const_iterator pit = providers.begin ();
                  pit != providers.end (); ++pit) {
@@ -549,8 +549,8 @@ void registry_t::handle_peer (void *sub_)
             }
         }
 
-        _peer_seq[peer_registry_id] = list_seq;
-        _list_seq++;
+        _projection_state.peer_seq[peer_registry_id] = list_seq;
+        _coordination_state.list_seq++;
     }
 
     close_msg_frames (&frames);
@@ -623,7 +623,7 @@ void registry_t::handle_register (void *router_,
     std::string error;
     {
         scoped_lock_t lock (_sync);
-        uint32_t registry_id = _registry_id == 0 ? 1 : _registry_id;
+        uint32_t registry_id = _coordination_state.registry_id == 0 ? 1 : _coordination_state.registry_id;
         if (ensure_channel_contract_locked (channel_name, auto_connect_type,
                                             now, registry_id)
             != 0) {
@@ -632,7 +632,7 @@ void registry_t::handle_register (void *router_,
         } else {
             service_key_t service_key;
             service_key.channel_name = channel_name;
-            service_entry_t &service = _services[service_key];
+            service_entry_t &service = _projection_state.services[service_key];
             service.auto_connect_type = auto_connect_type;
             provider_key_t provider_key;
             provider_key.service_role = service_role;
@@ -658,8 +658,8 @@ void registry_t::handle_register (void *router_,
             entry.weight = weight;
             entry.value = value;
             entry.metadata = metadata;
-            entry.registration_id = _next_registration_id++;
-            entry.provider_update_seq = _next_provider_update_seq++;
+            entry.registration_id = _coordination_state.next_registration_id++;
+            entry.provider_update_seq = _coordination_state.next_provider_update_seq++;
             entry.registered_at = now;
             entry.last_heartbeat = now;
             entry.source_registry = registry_id;
@@ -676,7 +676,7 @@ void registry_t::handle_register (void *router_,
             owner.registration_id = entry.registration_id;
             promote_owner_route_records_locked (owner);
 
-            _list_seq++;
+            _coordination_state.list_seq++;
         }
     }
 
@@ -714,8 +714,8 @@ void registry_t::handle_unregister (void *router_,
     service_key_t service_key;
     service_key.channel_name = channel_name;
 
-    service_map_t::iterator sit = _services.find (service_key);
-    if (sit == _services.end ()) {
+    service_map_t::iterator sit = _projection_state.services.find (service_key);
+    if (sit == _projection_state.services.end ()) {
         send_unregister_ack (router_, sender_id_, 0x01, "service not found");
         return;
     }
@@ -728,7 +728,7 @@ void registry_t::handle_unregister (void *router_,
         send_unregister_ack (router_, sender_id_, 0x01, "endpoint not found");
         return;
     }
-    if (pit->second.source_registry != _registry_id) {
+    if (pit->second.source_registry != _coordination_state.registry_id) {
         send_unregister_ack (router_, sender_id_, 0x01, "foreign provider");
         return;
     }
@@ -745,9 +745,9 @@ void registry_t::handle_unregister (void *router_,
 
     sit->second.providers.erase (pit);
     if (sit->second.providers.empty ())
-        _services.erase (sit);
+        _projection_state.services.erase (sit);
 
-    _list_seq++;
+    _coordination_state.list_seq++;
     send_unregister_ack (router_, sender_id_, 0x00, std::string ());
 }
 
@@ -774,8 +774,8 @@ void registry_t::handle_heartbeat (const zlink_msg_t *frames_,
     service_key_t service_key;
     service_key.channel_name = channel_name;
 
-    service_map_t::iterator sit = _services.find (service_key);
-    if (sit == _services.end ())
+    service_map_t::iterator sit = _projection_state.services.find (service_key);
+    if (sit == _projection_state.services.end ())
         return;
 
     provider_key_t provider_key;
@@ -839,8 +839,8 @@ void registry_t::handle_update_attributes (void *router_,
 
     service_key_t service_key;
     service_key.channel_name = channel_name;
-    service_map_t::iterator sit = _services.find (service_key);
-    if (sit == _services.end ()) {
+    service_map_t::iterator sit = _projection_state.services.find (service_key);
+    if (sit == _projection_state.services.end ()) {
         send_register_ack (router_, sender_id_, 0x01, endpoint, 0, 0,
                            "service not found");
         return;
@@ -855,7 +855,7 @@ void registry_t::handle_update_attributes (void *router_,
                            "provider not found");
         return;
     }
-    const uint32_t local_registry_id = _registry_id == 0 ? 1 : _registry_id;
+    const uint32_t local_registry_id = _coordination_state.registry_id == 0 ? 1 : _coordination_state.registry_id;
     if (pit->second.source_registry != local_registry_id) {
         send_register_ack (router_, sender_id_, 0x01, endpoint, 0, 0,
                            "provider not local");
@@ -865,8 +865,8 @@ void registry_t::handle_update_attributes (void *router_,
     pit->second.weight = weight;
     pit->second.value = value;
     pit->second.metadata = metadata;
-    pit->second.provider_update_seq = _next_provider_update_seq++;
-    _list_seq++;
+    pit->second.provider_update_seq = _coordination_state.next_provider_update_seq++;
+    _coordination_state.list_seq++;
     send_register_ack (router_, sender_id_, 0x00, endpoint,
                        pit->second.source_registry,
                        pit->second.registration_id, std::string ());

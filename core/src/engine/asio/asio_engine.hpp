@@ -130,10 +130,10 @@ class asio_engine_t : public i_engine
     void on_timer (int id_, const boost::system::error_code &ec);
 
     //  Access to session and socket
-    session_base_t *session () { return _session; }
-    socket_base_t *socket () { return _socket; }
-    i_asio_transport *transport () { return _transport.get (); }
-    bool is_handshaking () const { return _handshaking; }
+    session_base_t *session () { return _connection_facade.session; }
+    socket_base_t *socket () { return _connection_facade.socket; }
+    i_asio_transport *transport () { return _transport_adapter.transport.get (); }
+    bool is_handshaking () const { return _connection_facade.handshaking; }
 
     const options_t _options;
 
@@ -369,54 +369,11 @@ class asio_engine_t : public i_engine
     transport_adapter_t _transport_adapter;
     engine_pipeline_t _pipeline;
     connection_facade_t _connection_facade;
-    boost::asio::io_context *&_io_context;
-    std::unique_ptr<i_asio_transport> &_transport;
-    std::unique_ptr<boost::asio::steady_timer> &_timer;
-    int &_current_timer_id;
-    std::vector<unsigned char> &_read_buffer;
-    std::vector<unsigned char> &_write_buffer;
-    std::deque<std::vector<unsigned char> > &_pending_buffers;
-    std::deque<stream_rx_chunk_t> &_pending_stream_rx_chunks;
-    std::vector<std::vector<unsigned char> > &_pending_buffer_pool;
-    std::vector<stream_rx_chunk_t> &_pending_stream_rx_chunk_pool;
-    std::vector<unsigned char> &_pending_read_buffer;
-    bool &_read_from_pending_pool;
-    size_t &_last_speculative_read_bytes;
-    size_t &_total_pending_bytes;
-    fd_t &_fd;
-    bool &_plugged;
-    bool &_handshaking;
-    msg_t &_tx_msg;
-    bool &_io_error;
-    bool &_read_pending;
-    bool &_write_pending;
-    bool &_handshake_pending;
-    bool &_async_zero_copy;
-    bool &_async_gather;
-    bool &_in_read_drain;
-    unsigned char (&_gather_header)[64];
-    size_t &_gather_header_size;
-    const unsigned char *&_gather_body;
-    size_t &_gather_body_size;
-    bool &_terminating;
-    std::shared_ptr<connection_facade_t::callback_guard_t> &_callback_guard;
-    unsigned char *&_read_buffer_ptr;
-    size_t &_last_read_request_size;
-    bool &_last_read_had_partial_prefix;
-    size_t &_stream_decoder_read_target_size;
-    size_t &_stream_decoder_read_target_max;
-    size_t &_stream_decoder_read_target_full_hits;
-    size_t &_stream_encoder_write_target_size;
-    size_t &_stream_encoder_write_target_max;
-    size_t &_stream_encoder_write_target_full_hits;
-    size_t &_stream_encoder_pending_resize_size;
-    zlink::session_base_t *&_session;
-    zlink::socket_base_t *&_socket;
 
   public:
     size_t stream_encoder_write_target_size () const
     {
-        return _stream_encoder_write_target_size;
+        return _pipeline.stream_encoder_write_target_size;
     }
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_engine_t)

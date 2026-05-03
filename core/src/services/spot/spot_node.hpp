@@ -313,7 +313,7 @@ class spot_node_t : public discovery_observer_t
     spot_peer_state_t _peer_state;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     std::atomic<void *> _send_ready_handler_userdata;
-    service_public_api_guard_t _public_api;
+    mutable service_public_api_guard_t _public_api;
     service_mode_state_t _mode_state;
     service_runtime_base_t _lifecycle;
 

@@ -152,12 +152,12 @@ void zlink::socket_endpoint_runtime_t::detach_pipe (pipe_t *pipe_)
 
 size_t zlink::socket_endpoint_runtime_t::attached_pipe_count () const
 {
-    return const_cast<attached_pipes_t &> (attached_pipes).size ();
+    return attached_pipes.size ();
 }
 
 bool zlink::socket_endpoint_runtime_t::has_attached_pipes () const
 {
-    return !const_cast<attached_pipes_t &> (attached_pipes).empty ();
+    return !attached_pipes.empty ();
 }
 
 zlink::pipe_t *zlink::socket_endpoint_runtime_t::attached_pipe (size_t index_)
@@ -168,7 +168,7 @@ zlink::pipe_t *zlink::socket_endpoint_runtime_t::attached_pipe (size_t index_)
 const zlink::pipe_t *zlink::socket_endpoint_runtime_t::attached_pipe (
   size_t index_) const
 {
-    return const_cast<socket_endpoint_runtime_t *> (this)->attached_pipes[index_];
+    return attached_pipes[index_];
 }
 
 void zlink::socket_endpoint_runtime_t::store_last_recv_source_rid (

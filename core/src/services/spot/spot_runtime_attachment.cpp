@@ -229,7 +229,7 @@ socket_base_t *spot_runtime_t::attachment_socket (uint64_t id_) const
 {
     if (id_ == 0)
         return NULL;
-    scoped_lock_t lock (const_cast<mutex_t &> (attachment_sync));
+    scoped_lock_t lock (attachment_sync);
     std::map<uint64_t, spot_attachment_t>::const_iterator it =
       attachments.find (id_);
     return it != attachments.end () ? it->second.socket : NULL;
@@ -347,7 +347,7 @@ int spot_runtime_t::destroy_attachment_async (uint64_t id_)
 size_t spot_runtime_t::attachment_count_by_kind (int kind_) const
 {
     size_t count = 0;
-    scoped_lock_t lock (const_cast<mutex_t &> (attachment_sync));
+    scoped_lock_t lock (attachment_sync);
     for (std::map<uint64_t, spot_attachment_t>::const_iterator it =
            attachments.begin ();
          it != attachments.end (); ++it) {
@@ -399,7 +399,7 @@ void spot_runtime_t::snapshot_auto_hwm_inputs (
     size_t local_pub_count = 0;
     size_t local_sub_count = 0;
     {
-        scoped_lock_t lock (const_cast<mutex_t &> (attachment_sync));
+        scoped_lock_t lock (attachment_sync);
         for (std::map<uint64_t, spot_attachment_t>::const_iterator it =
                attachments.begin ();
              it != attachments.end (); ++it) {

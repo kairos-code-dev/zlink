@@ -161,6 +161,94 @@ inline bool store_spot_sub_default (spot_node_sub_defaults_t *defaults_,
     copy_spot_option_setting (slot, optval_, optvallen_);
     return true;
 }
+
+template <typename Target>
+inline int apply_spot_default_option (Target *target_,
+                                      int option_,
+                                      const spot_node_option_setting_t &setting_)
+{
+    if (!setting_.enabled)
+        return 0;
+    return target_->set_option (option_, &setting_.value, setting_.size);
+}
+
+template <typename Pub>
+inline int apply_spot_pub_defaults (Pub *pub_,
+                                    const spot_node_pub_defaults_t &defaults_)
+{
+    if (!pub_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (apply_spot_default_option (pub_, ZLINK_SPOT_PUB_OPT_SNDHWM,
+                                   defaults_.sndhwm)
+        != 0)
+        return -1;
+    if (apply_spot_default_option (pub_, ZLINK_SPOT_PUB_OPT_SNDTIMEO,
+                                   defaults_.sndtimeo)
+        != 0)
+        return -1;
+    if (apply_spot_default_option (pub_, ZLINK_SPOT_PUB_OPT_LINGER,
+                                   defaults_.linger)
+        != 0)
+        return -1;
+    if (apply_spot_default_option (pub_, ZLINK_SPOT_PUB_OPT_NODROP,
+                                   defaults_.nodrop)
+        != 0)
+        return -1;
+    if (apply_spot_default_option (pub_, ZLINK_SPOT_PUB_OPT_SNDBUF,
+                                   defaults_.sndbuf)
+        != 0)
+        return -1;
+    if (apply_spot_default_option (pub_, ZLINK_SPOT_PUB_OPT_RCVBUF,
+                                   defaults_.rcvbuf)
+        != 0)
+        return -1;
+    if (apply_spot_default_option (
+          pub_, ZLINK_SPOT_PUB_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+          defaults_.auto_hwm_msg_unit_bytes)
+        != 0)
+        return -1;
+    return 0;
+}
+
+template <typename Sub>
+inline int apply_spot_sub_defaults (Sub *sub_,
+                                    const spot_node_sub_defaults_t &defaults_)
+{
+    if (!sub_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (apply_spot_default_option (sub_, ZLINK_SPOT_SUB_OPT_RCVHWM,
+                                   defaults_.rcvhwm)
+        != 0)
+        return -1;
+    if (apply_spot_default_option (sub_, ZLINK_SPOT_SUB_OPT_LINGER,
+                                   defaults_.linger)
+        != 0)
+        return -1;
+    if (apply_spot_default_option (sub_, ZLINK_SPOT_SUB_OPT_SNDBUF,
+                                   defaults_.sndbuf)
+        != 0)
+        return -1;
+    if (apply_spot_default_option (sub_, ZLINK_SPOT_SUB_OPT_RCVBUF,
+                                   defaults_.rcvbuf)
+        != 0)
+        return -1;
+    if (apply_spot_default_option (sub_, ZLINK_SPOT_SUB_OPT_RCVTIMEO,
+                                   defaults_.rcvtimeo)
+        != 0)
+        return -1;
+    if (apply_spot_default_option (
+          sub_, ZLINK_SPOT_SUB_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+          defaults_.auto_hwm_msg_unit_bytes)
+        != 0)
+        return -1;
+    return 0;
+}
 }
 
 #endif

@@ -211,10 +211,10 @@ int spot_runtime_t::stop_and_join ()
 size_t spot_runtime_t::live_socket_slot_count () const
 {
     size_t count = 0;
-    runtime_socket_slot_ref_t refs[14];
+    const_runtime_socket_slot_ref_t refs[14];
     const size_t slot_count =
-      fill_runtime_socket_slot_refs (const_cast<spot_runtime_t *> (this), refs);
-    scoped_lock_t lock (const_cast<mutex_t &> (owner->_sync));
+      fill_runtime_socket_slot_refs (this, refs);
+    scoped_lock_t lock (owner->_sync);
     for (size_t i = 0; i < slot_count; ++i)
         count += refs[i].slot && *refs[i].slot != NULL ? 1 : 0;
     return count;
@@ -222,7 +222,7 @@ size_t spot_runtime_t::live_socket_slot_count () const
 
 size_t spot_runtime_t::attachment_count () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (attachment_sync));
+    scoped_lock_t lock (attachment_sync);
     return attachments.size ();
 }
 

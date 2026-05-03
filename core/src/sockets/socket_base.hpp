@@ -512,7 +512,7 @@ class socket_base_t : public own_t,
     {
         return _runtime.lifecycle_coordinator;
     }
-    const lifecycle_coordinator_t &lifecycle_coordinator () const
+    lifecycle_coordinator_t &lifecycle_coordinator () const
     {
         return _runtime.lifecycle_coordinator;
     }
@@ -613,7 +613,7 @@ class socket_base_t : public own_t,
 
     //  Improves efficiency of time measurement.
     clock_t _clock;
-    socket_runtime_t _runtime;
+    mutable socket_runtime_t _runtime;
     socket_request_reply_bridge_t _request_reply_bridge;
     auto_hwm_role_t _auto_hwm_role;
     auto_hwm_scope_t _auto_hwm_scope;

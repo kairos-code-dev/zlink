@@ -90,7 +90,7 @@ void add_live_provider (zlink::registry_t *registry_,
     zlink::registry_t::service_key_t service_key;
     service_key.channel_name = owner_.channel_name;
     zlink::registry_t::service_entry_t &service =
-      registry_->_services[service_key];
+      registry_->_projection_state.services[service_key];
     service.auto_connect_type = ZLINK_AUTO_CONNECT_ROUTE_MESH;
 
     zlink::registry_t::provider_key_t provider_key;
@@ -122,14 +122,14 @@ void test_pending_route_materializes_when_owner_provider_arrives ()
     zlink::registry_t::route_key_set_t dirty;
     registry.upsert_route_observation_locked (route, &dirty);
     registry.materialize_dirty_routes_locked (dirty);
-    TEST_ASSERT_TRUE (registry._routes.find (key) == registry._routes.end ());
+    TEST_ASSERT_TRUE (registry._projection_state.routes.find (key) == registry._projection_state.routes.end ());
 
     add_live_provider (&registry, owner);
     registry.promote_owner_route_records_locked (owner);
 
     zlink::registry_t::route_map_t::const_iterator materialized =
-      registry._routes.find (key);
-    TEST_ASSERT_TRUE (materialized != registry._routes.end ());
+      registry._projection_state.routes.find (key);
+    TEST_ASSERT_TRUE (materialized != registry._projection_state.routes.end ());
     TEST_ASSERT_EQUAL_STRING ("owner-a",
                               materialized->owner.routing_id_key.c_str ());
 
@@ -159,18 +159,18 @@ void test_route_winner_falls_back_to_remaining_observation ()
     registry.materialize_dirty_routes_locked (dirty);
 
     TEST_ASSERT_EQUAL_STRING (
-      "owner-new", registry._routes.find (key)->owner.routing_id_key.c_str ());
+      "owner-new", registry._projection_state.routes.find (key)->owner.routing_id_key.c_str ());
 
     registry.cleanup_owner_records_locked (new_owner, 300);
 
     zlink::registry_t::route_map_t::const_iterator materialized =
-      registry._routes.find (key);
-    TEST_ASSERT_TRUE (materialized != registry._routes.end ());
+      registry._projection_state.routes.find (key);
+    TEST_ASSERT_TRUE (materialized != registry._projection_state.routes.end ());
     TEST_ASSERT_EQUAL_STRING ("owner-old",
                               materialized->owner.routing_id_key.c_str ());
-    TEST_ASSERT_EQUAL_UINT64 (1, registry._route_stats.owner_cleanup_count);
+    TEST_ASSERT_EQUAL_UINT64 (1, registry._projection_state.route_stats.owner_cleanup_count);
     TEST_ASSERT_EQUAL_UINT64 (
-      1, registry._route_stats.owner_cleanup_observation_visits);
+      1, registry._projection_state.route_stats.owner_cleanup_observation_visits);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
@@ -180,7 +180,7 @@ void test_route_memory_budget_rejects_new_observation_without_partial_store ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
     zlink::registry_t registry (static_cast<zlink::ctx_t *> (ctx));
-    registry._route_limits.memory_budget_bytes = 1;
+    registry._projection_state.route_limits.memory_budget_bytes = 1;
 
     const zlink::registry_t::route_key_t key =
       make_route_key ("route-store", "actor-3");
@@ -193,8 +193,8 @@ void test_route_memory_budget_rejects_new_observation_without_partial_store ()
     TEST_ASSERT_FALSE (
       registry.route_store_can_fit_locked (route, 0, &route_error));
     TEST_ASSERT_EQUAL_INT (ENOSPC, route_error);
-    TEST_ASSERT_EQUAL_UINT64 (0, registry._route_observations.size ());
-    TEST_ASSERT_EQUAL_UINT64 (0, registry._routes.size ());
+    TEST_ASSERT_EQUAL_UINT64 (0, registry._projection_state.route_observations.size ());
+    TEST_ASSERT_EQUAL_UINT64 (0, registry._projection_state.routes.size ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
@@ -217,7 +217,7 @@ void test_provider_rid_collision_is_excluded_from_materialized_peers ()
     second_endpoint_key.service_role = second.service_role;
     second_endpoint_key.endpoint = "inproc://same-rid-conflict";
     zlink::registry_t::provider_entry_t &provider =
-      registry._services[service_key].providers[second_endpoint_key];
+      registry._projection_state.services[service_key].providers[second_endpoint_key];
     provider.service_role = second.service_role;
     provider.endpoint = second_endpoint_key.endpoint;
     provider.routing_id = make_rid ("same-rid");
@@ -265,18 +265,18 @@ void test_route_store_large_lookup_and_cleanup_stays_fast ()
     const std::chrono::steady_clock::time_point insert_end =
       std::chrono::steady_clock::now ();
 
-    TEST_ASSERT_EQUAL_UINT64 (record_count, registry._route_observations.size ());
-    TEST_ASSERT_EQUAL_UINT64 (record_count, registry._routes.size ());
-    TEST_ASSERT_TRUE (registry._routes.rehash_step_count () > 0);
-    TEST_ASSERT_TRUE (registry._routes.max_chain_length () < 128);
+    TEST_ASSERT_EQUAL_UINT64 (record_count, registry._projection_state.route_observations.size ());
+    TEST_ASSERT_EQUAL_UINT64 (record_count, registry._projection_state.routes.size ());
+    TEST_ASSERT_TRUE (registry._projection_state.routes.rehash_step_count () > 0);
+    TEST_ASSERT_TRUE (registry._projection_state.routes.max_chain_length () < 128);
 
     size_t found = 0;
     const std::chrono::steady_clock::time_point lookup_start =
       std::chrono::steady_clock::now ();
     for (size_t i = 0; i < keys.size (); ++i) {
         zlink::registry_t::route_map_t::const_iterator it =
-          registry._routes.find (keys[i]);
-        if (it != registry._routes.end ())
+          registry._projection_state.routes.find (keys[i]);
+        if (it != registry._projection_state.routes.end ())
             ++found;
     }
     const std::chrono::steady_clock::time_point lookup_end =
@@ -289,10 +289,10 @@ void test_route_store_large_lookup_and_cleanup_stays_fast ()
     const std::chrono::steady_clock::time_point cleanup_end =
       std::chrono::steady_clock::now ();
 
-    TEST_ASSERT_EQUAL_UINT64 (0, registry._route_observations.size ());
-    TEST_ASSERT_EQUAL_UINT64 (0, registry._routes.size ());
+    TEST_ASSERT_EQUAL_UINT64 (0, registry._projection_state.route_observations.size ());
+    TEST_ASSERT_EQUAL_UINT64 (0, registry._projection_state.routes.size ());
     TEST_ASSERT_EQUAL_UINT64 (
-      record_count, registry._route_stats.owner_cleanup_observation_visits);
+      record_count, registry._projection_state.route_stats.owner_cleanup_observation_visits);
 
     const long long insert_ms =
       std::chrono::duration_cast<std::chrono::milliseconds> (insert_end
@@ -315,8 +315,8 @@ void test_route_store_large_lookup_and_cleanup_stays_fast ()
             lookup_ms,
             cleanup_ms,
             static_cast<unsigned long long> (
-              registry._routes.rehash_step_count ()),
-            registry._routes.max_chain_length ());
+              registry._projection_state.routes.rehash_step_count ()),
+            registry._projection_state.routes.max_chain_length ());
 
     TEST_ASSERT_TRUE (insert_ms < 30000);
     TEST_ASSERT_TRUE (lookup_ms < 5000);

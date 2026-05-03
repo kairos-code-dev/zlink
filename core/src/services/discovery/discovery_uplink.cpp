@@ -105,8 +105,8 @@ void discovery_uplink_runtime_t::flush_topology_reports (discovery_t *owner_)
     {
         scoped_lock_t lock (owner_->_sync);
         for (std::map<std::string, socket_base_t *>::const_iterator it =
-               _report_dealers.begin ();
-             it != _report_dealers.end (); ++it) {
+               _socket_owner_state.report_dealers.begin ();
+             it != _socket_owner_state.report_dealers.end (); ++it) {
             if (it->second)
                 dealers.push_back (it->second);
         }

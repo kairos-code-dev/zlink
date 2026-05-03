@@ -108,7 +108,7 @@ bool zlink::service_runtime_base_t::transition_to (
 
 zlink::service_lifecycle_state_t zlink::service_runtime_base_t::state () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     return _state;
 }
 
@@ -136,7 +136,7 @@ void zlink::service_runtime_base_t::mark_faulted (int err_)
 
 int zlink::service_runtime_base_t::fault_errno () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     return _fault_errno;
 }
 
@@ -214,7 +214,7 @@ int zlink::service_runtime_base_t::force_wait_remaining (int timeout_ms_)
         for (service_socket_registry_t::socket_map_t::const_iterator it =
                owned.begin ();
              it != owned.end (); ++it) {
-            socket_base_t *socket = const_cast<socket_base_t *> (it->second);
+            socket_base_t *socket = it->second;
             if (socket)
                 socket_close_ops_t::request_close (socket);
         }

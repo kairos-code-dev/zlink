@@ -36,11 +36,10 @@ void spot_node_t::rebuild_service_attachment_caches_locked ()
 
     sub_cache->reserve (_service_attachment_state.attachments.size () * 2);
     readable_sub_cache->reserve (_service_attachment_state.attachments.size () * 2);
-    for (std::map<std::string, service_attachment_t>::const_iterator it =
+    for (std::map<std::string, service_attachment_t>::iterator it =
            _service_attachment_state.attachments.begin ();
          it != _service_attachment_state.attachments.end (); ++it) {
-        service_attachment_t &attachment =
-          const_cast<service_attachment_t &> (it->second);
+        service_attachment_t &attachment = it->second;
         attachment.router_cache.clear ();
         attachment.router_cache.reserve (attachment.manual.routers.size ()
                                          + attachment.discovered.routers.size ());

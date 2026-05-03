@@ -237,7 +237,7 @@ int spot_pub_t::routing_id (zlink_routing_id_t *out_) const
         errno = EINVAL;
         return -1;
     }
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     *out_ = _routing_id;
     return 0;
 }

@@ -16,7 +16,7 @@ bool spot_node_t::external_route_id_for_peer_endpoint (
     if (peer_endpoint_.empty () || !out_)
         return false;
 
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     for (std::map<std::string, std::set<std::string> >::const_iterator it =
            _peer_state.peer_endpoints_by_rid.begin ();
          it != _peer_state.peer_endpoints_by_rid.end (); ++it) {

@@ -70,43 +70,51 @@ bool spot_shutdown_debug_enabled ()
     return std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN") != NULL;
 }
 
-size_t fill_runtime_socket_slot_refs (spot_runtime_t *runtime_,
-                                      runtime_socket_slot_ref_t *out_)
+template <typename runtime_t, typename slot_ref_t>
+size_t fill_runtime_socket_slot_refs_impl (runtime_t *runtime_, slot_ref_t *out_)
 {
     if (!runtime_ || !out_)
         return 0;
 
     size_t count = 0;
     out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->data_ctrl_front,
-                                &runtime_->data_ctrl_endpoint, false};
+      slot_ref_t{&runtime_->data_ctrl_front, &runtime_->data_ctrl_endpoint,
+                 false};
     out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->data_ctrl_back,
-                                &runtime_->data_ctrl_endpoint, false};
+      slot_ref_t{&runtime_->data_ctrl_back, &runtime_->data_ctrl_endpoint,
+                 false};
+    out_[count++] = slot_ref_t{&runtime_->mesh_pub, NULL, false};
+    out_[count++] = slot_ref_t{&runtime_->mesh_xsub, NULL, false};
     out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->mesh_pub, NULL, false};
+      slot_ref_t{&runtime_->peer_ctrl_pub, &runtime_->peer_ctrl_endpoint,
+                 false};
+    out_[count++] = slot_ref_t{&runtime_->peer_ctrl_sub, NULL, false};
+    out_[count++] = slot_ref_t{&runtime_->external_router, NULL, false};
     out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->mesh_xsub, NULL, false};
+      slot_ref_t{&runtime_->internal_router, &runtime_->internal_router_endpoint,
+                 false};
     out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->peer_ctrl_pub,
-                                &runtime_->peer_ctrl_endpoint, false};
+      slot_ref_t{&runtime_->internal_router_tx,
+                 &runtime_->internal_router_sender_endpoint, true};
     out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->peer_ctrl_sub, NULL, false};
+      slot_ref_t{&runtime_->local_pub_ingress_sub,
+                 &runtime_->pub_ingress_endpoint, false};
     out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->external_router, NULL, false};
-    out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->internal_router,
-                                &runtime_->internal_router_endpoint, false};
-    out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->internal_router_tx,
-                                &runtime_->internal_router_sender_endpoint, true};
-    out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->local_pub_ingress_sub,
-                                &runtime_->pub_ingress_endpoint, false};
-    out_[count++] =
-      runtime_socket_slot_ref_t{&runtime_->local_fanout_xpub,
-                                &runtime_->sub_fanout_endpoint, false};
+      slot_ref_t{&runtime_->local_fanout_xpub, &runtime_->sub_fanout_endpoint,
+                 false};
     return count;
+}
+
+size_t fill_runtime_socket_slot_refs (spot_runtime_t *runtime_,
+                                      runtime_socket_slot_ref_t *out_)
+{
+    return fill_runtime_socket_slot_refs_impl (runtime_, out_);
+}
+
+size_t fill_runtime_socket_slot_refs (const spot_runtime_t *runtime_,
+                                      const_runtime_socket_slot_ref_t *out_)
+{
+    return fill_runtime_socket_slot_refs_impl (runtime_, out_);
 }
 
 spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
@@ -148,13 +156,13 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
 
 spot_node_hwm_config_t spot_runtime_t::hwm_config_snapshot () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (hwm_config_sync));
+    scoped_lock_t lock (hwm_config_sync);
     return hwm_config;
 }
 
 uint64_t spot_runtime_t::attachment_state_version () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (attachment_sync));
+    scoped_lock_t lock (attachment_sync);
     return attachment_version;
 }
 
@@ -206,7 +214,7 @@ std::vector<std::string> spot_runtime_t::external_route_ids_for_destination (
   const std::string &destination_node_rid_) const
 {
     std::vector<std::string> route_ids;
-    scoped_lock_t lock (const_cast<mutex_t &> (routed_send_sync));
+    scoped_lock_t lock (routed_send_sync);
     for (std::map<std::string, std::string>::const_iterator it =
            external_route_ids_by_endpoint.begin ();
          it != external_route_ids_by_endpoint.end (); ++it) {
@@ -321,7 +329,7 @@ int spot_runtime_t::send_command (const char *verb_, const char *arg_) const
         return -1;
     }
 
-    scoped_lock_t lock (const_cast<mutex_t &> (ctrl_sync));
+    scoped_lock_t lock (ctrl_sync);
     if (send_ascii_frame (data_ctrl_front, verb_,
                                 arg_ ? ZLINK_SNDMORE : 0)
         != 0)
@@ -361,7 +369,7 @@ void spot_runtime_t::advance_shutdown_phase (spot_shutdown_phase_t phase_)
 
 spot_shutdown_phase_t spot_runtime_t::shutdown_phase () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (shutdown_sync));
+    scoped_lock_t lock (shutdown_sync);
     return shutdown_phase_value;
 }
 

@@ -42,13 +42,21 @@ struct node_t
     bool operator!= (node_t other_) const;
 
     uint32_t refcount ();
+    uint32_t refcount () const;
     uint32_t prefix_length ();
+    uint32_t prefix_length () const;
     uint32_t edgecount ();
+    uint32_t edgecount () const;
     unsigned char *prefix ();
+    const unsigned char *prefix () const;
     unsigned char *first_bytes ();
+    const unsigned char *first_bytes () const;
     unsigned char first_byte_at (size_t index_);
+    unsigned char first_byte_at (size_t index_) const;
     unsigned char *node_pointers ();
+    const unsigned char *node_pointers () const;
     node_t node_at (size_t index_);
+    node_t node_at (size_t index_) const;
     void set_refcount (uint32_t value_);
     void set_prefix_length (uint32_t value_);
     void set_edgecount (uint32_t value_);
@@ -101,11 +109,11 @@ class radix_tree_t
     bool rm (const unsigned char *key_, size_t key_size_);
 
     //  Check whether particular key is in the tree.
-    bool check (const unsigned char *key_, size_t key_size_);
+    bool check (const unsigned char *key_, size_t key_size_) const;
 
     //  Apply the function supplied to each key in the tree.
     void apply (void (*func_) (unsigned char *data, size_t size, void *arg),
-                void *arg_);
+                void *arg_) const;
 
     //  Retrieve size of the radix tree. Note this is a multithread safe function.
     size_t size () const;

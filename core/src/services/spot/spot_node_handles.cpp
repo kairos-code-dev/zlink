@@ -349,26 +349,26 @@ int spot_node_default_handles_t::set_sub_option (int option_,
 spot_node_default_handles_t::pub_defaults_t
 spot_node_default_handles_t::load_pub_defaults () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     return _pub_defaults;
 }
 
 spot_node_default_handles_t::sub_defaults_t
 spot_node_default_handles_t::load_sub_defaults () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     return _sub_defaults;
 }
 
 spot_sub_t *spot_node_default_handles_t::default_sub () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     return _default_sub;
 }
 
 spot_internal_receiver_t *spot_node_default_handles_t::internal_receiver () const
 {
-    scoped_lock_t lock (const_cast<mutex_t &> (_sync));
+    scoped_lock_t lock (_sync);
     return _internal_receiver;
 }
 
@@ -544,8 +544,7 @@ int spot_node_t::get_node_option (int option_,
                                   void *optval_,
                                   size_t *optvallen_) const
 {
-    service_public_api_scope_t admission (
-      const_cast<service_public_api_guard_t &> (_public_api));
+    service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
     if (!_runtime || !optval_ || !optvallen_ || *optvallen_ < sizeof (int)) {

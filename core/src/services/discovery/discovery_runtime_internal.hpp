@@ -109,7 +109,7 @@ class discovery_bootstrap_socket_config_t
 
     void lock_routing_id (discovery_t *owner_);
     int set_routing_id (discovery_t *owner_, const void *data_, size_t size_);
-    int routing_id (discovery_t *owner_, zlink_routing_id_t *out_) const;
+    int routing_id (const discovery_t *owner_, zlink_routing_id_t *out_) const;
     int set_option (discovery_t *owner_,
                     int option_,
                     const void *optval_,
@@ -151,7 +151,7 @@ class discovery_bootstrap_runtime_t
 
     int connect_registry (discovery_t *owner_, const char *registry_endpoint_);
     int set_routing_id (discovery_t *owner_, const void *data_, size_t size_);
-    int routing_id (discovery_t *owner_, zlink_routing_id_t *out_) const;
+    int routing_id (const discovery_t *owner_, zlink_routing_id_t *out_) const;
     int set_option (discovery_t *owner_,
                     int option_,
                     const void *optval_,
@@ -202,7 +202,10 @@ class discovery_bootstrap_runtime_t
     {
         return _socket_config.routing_id_value ();
     }
-    uint32_t heartbeat_interval_ms () const { return _heartbeat_interval_ms; }
+    uint32_t heartbeat_interval_ms () const
+    {
+        return _request_state.heartbeat_interval_ms;
+    }
 
   private:
     friend class discovery_bootstrap_socket_config_t;
@@ -229,11 +232,6 @@ class discovery_bootstrap_runtime_t
 
     discovery_bootstrap_socket_config_t _socket_config;
     request_state_t _request_state;
-    std::set<std::string> &_registry_bootstrap_endpoints;
-    std::set<std::string> &_bootstrapped_registry_endpoints;
-    std::map<std::string, bootstrap_state_t> &_bootstrap_states;
-    std::set<std::string> &_registry_pub_endpoints;
-    uint32_t &_heartbeat_interval_ms;
 };
 
 class discovery_uplink_runtime_t
@@ -282,12 +280,8 @@ class discovery_uplink_runtime_t
                                          int linger_,
                                          int sndtimeo_ms_,
                                          int rcvtimeo_ms_,
-                                         bool use_bootstrap_routing_id_);
+	                                         bool use_bootstrap_routing_id_);
     socket_owner_state_t _socket_owner_state;
-    std::set<std::string> &_registry_uplink_endpoints;
-    std::string &_latest_registry_uplink_endpoint;
-    std::map<std::string, socket_base_t *> &_report_dealers;
-    std::map<std::string, socket_base_t *> &_control_dealers;
 };
 }
 

@@ -156,8 +156,7 @@ void zlink::xsub_t::snapshot_subscriptions (
         return;
 
     xsub_snapshot_arg_t arg (out_);
-    const_cast<xsub_t *> (this)->_subscriptions.apply (&snapshot_subscription,
-                                                       &arg);
+    _subscriptions.apply (&snapshot_subscription, &arg);
 }
 
 void zlink::xsub_t::xattach_pipe (pipe_t *pipe_,

@@ -35,6 +35,8 @@ const char *zlink::errno_to_string (int errno_)
             return "No thread available";
         case EHOSTUNREACH:
             return "Host unreachable";
+        case ESTALE:
+            return "Stale reference";
         default:
 #if defined _MSC_VER
 #pragma warning(push)
@@ -327,7 +329,7 @@ int zlink::wsa_error_to_errno (int errcode_)
             return EFAULT;
             //  10070 - Stale NFS file handle.
         case WSAESTALE:
-            return EFAULT;
+            return ESTALE;
             //  10071 - Too many levels of remote in path.
         case WSAEREMOTE:
             return EFAULT;

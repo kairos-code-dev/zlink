@@ -385,6 +385,17 @@ jobs:
           cd artifacts
           find . -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" -o -name "*.a" -o -name "*.lib" -o -name "*.h" \) -exec sha256sum {} \; | tee checksums.txt
 
+      - name: Verify public headers
+        run: |
+          for platform in windows-x64 windows-arm64 linux-x64 linux-arm64 macos-x64 macos-arm64; do
+            for header in zlink.h zlink_enum.h zlink_errno.h zlink_utils.h; do
+              test -f "artifacts/libzlink-${platform}/include/${header}" || {
+                echo "missing public header: ${platform}/include/${header}" >&2
+                exit 1
+              }
+            done
+          done
+
       - name: Build summary
         run: |
           echo "## Build Verification Summary" >> $GITHUB_STEP_SUMMARY
@@ -502,7 +513,7 @@ jobs:
             ### Package Contents
             Each archive contains:
             - Native library (`.dll`/`.so`/`.dylib`)
-            - Public headers (`include/zlink.h`, `include/zlink_utils.h`)
+            - Public headers (`include/zlink.h`, `include/zlink_enum.h`, `include/zlink_errno.h`, `include/zlink_utils.h`)
             - OpenSSL dependency required for TLS features
 
             ### Verification

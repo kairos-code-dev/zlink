@@ -274,8 +274,10 @@ try {
         $IncludeDir = Join-Path $OutputDir "include"
         New-Item -ItemType Directory -Force -Path $IncludeDir | Out-Null
         Copy-Item (Join-Path $RepoRoot "core\\include\\zlink.h") $IncludeDir
+        Copy-Item (Join-Path $RepoRoot "core\\include\\zlink_enum.h") $IncludeDir
+        Copy-Item (Join-Path $RepoRoot "core\\include\\zlink_errno.h") $IncludeDir
         Copy-Item (Join-Path $RepoRoot "core\\include\\zlink_utils.h") $IncludeDir
-        Write-Host "Copied: zlink.h, zlink_utils.h -> $IncludeDir"
+        Write-Host "Copied public headers -> $IncludeDir"
     } else {
         throw "zlink.dll not found!"
     }

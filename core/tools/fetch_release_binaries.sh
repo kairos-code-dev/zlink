@@ -164,6 +164,8 @@ copy libzlink_c-linux-x64/libzlink_c.so "$repo_root/bindings/cpp/native/linux-x8
 copy libzlink_c-macos-x64/libzlink_c.dylib "$repo_root/bindings/cpp/native/darwin-x86_64/libzlink_c.dylib"
 copy_windows_c_dll libzlink_c-windows-x64 "$repo_root/bindings/cpp/native/windows-x86_64/zlink_c.dll"
 copy libzlink-linux-x64/include/zlink.h "$repo_root/bindings/cpp/include/zlink.h"
+copy libzlink-linux-x64/include/zlink_enum.h "$repo_root/bindings/cpp/include/zlink_enum.h"
+copy libzlink-linux-x64/include/zlink_errno.h "$repo_root/bindings/cpp/include/zlink_errno.h"
 copy libzlink-linux-x64/include/zlink_utils.h "$repo_root/bindings/cpp/include/zlink_utils.h"
 
 # Go bindings
@@ -177,6 +179,8 @@ copy libzlink_c-linux-x64/libzlink_c.so "$repo_root/bindings/go/native/linux-x86
 copy libzlink_c-macos-x64/libzlink_c.dylib "$repo_root/bindings/go/native/darwin-x86_64/libzlink_c.dylib"
 copy_windows_c_dll libzlink_c-windows-x64 "$repo_root/bindings/go/native/windows-x86_64/zlink_c.dll"
 copy libzlink-linux-x64/include/zlink.h "$repo_root/bindings/go/include/zlink.h"
+copy libzlink-linux-x64/include/zlink_enum.h "$repo_root/bindings/go/include/zlink_enum.h"
+copy libzlink-linux-x64/include/zlink_errno.h "$repo_root/bindings/go/include/zlink_errno.h"
 copy libzlink-linux-x64/include/zlink_utils.h "$repo_root/bindings/go/include/zlink_utils.h"
 
 # Rust bindings
@@ -190,6 +194,8 @@ copy libzlink_c-linux-x64/libzlink_c.so "$repo_root/bindings/rust/native/linux-x
 copy libzlink_c-macos-x64/libzlink_c.dylib "$repo_root/bindings/rust/native/darwin-x86_64/libzlink_c.dylib"
 copy_windows_c_dll libzlink_c-windows-x64 "$repo_root/bindings/rust/native/windows-x86_64/zlink_c.dll"
 copy libzlink-linux-x64/include/zlink.h "$repo_root/bindings/rust/include/zlink.h"
+copy libzlink-linux-x64/include/zlink_enum.h "$repo_root/bindings/rust/include/zlink_enum.h"
+copy libzlink-linux-x64/include/zlink_errno.h "$repo_root/bindings/rust/include/zlink_errno.h"
 copy libzlink-linux-x64/include/zlink_utils.h "$repo_root/bindings/rust/include/zlink_utils.h"
 
 popd >/dev/null

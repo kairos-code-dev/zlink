@@ -120,6 +120,9 @@ typedef enum zlink_submit_result_t
 | SPOT request | `zlink_spot_request_channel`, `zlink_router_request_spot` |
 | SPOT send | `zlink_spot_send_channel`, `zlink_router_send_spot` |
 | SPOT reply | `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
+| Actor join/reply submit | `zlink_actor_join_spot`, `zlink_spot_node_actor_join_spot`, `zlink_spot_actor_join_reply` |
+| STREAM to Actor relay | `zlink_stream_send_bound_actor_part` |
+| Actor to bound session send | `zlink_actor_send_bound_session_msg`, `zlink_actor_send_bound_session_packet` |
 
 ---
 
@@ -136,7 +139,14 @@ typedef enum zlink_request_result_t
     ZLINK_REQUEST_NOT_FOUND       = 102,
     ZLINK_REQUEST_TERMINATED      = 103,
     ZLINK_REQUEST_PROTOCOL_ERROR  = 104,
-    ZLINK_REQUEST_INTERNAL_ERROR  = 105
+    ZLINK_REQUEST_INTERNAL_ERROR  = 105,
+    ZLINK_REQUEST_REJECTED        = 106,
+    ZLINK_REQUEST_CONFLICT        = 107,
+    ZLINK_REQUEST_BUSY            = 108,
+    ZLINK_REQUEST_NOT_CONNECTED   = 109,
+    ZLINK_REQUEST_INVALID_ARGUMENT = 110,
+    ZLINK_REQUEST_INVALID_STATE   = 111,
+    ZLINK_REQUEST_NOT_SUPPORTED   = 112
 } zlink_request_result_t;
 ```
 
@@ -150,13 +160,28 @@ typedef enum zlink_request_result_t
 | `TERMINATED` | `ETERM` | request 경로가 명시적인 종료 completion을 방출하기 전까지는 예약값 |
 | `PROTOCOL_ERROR` | `EPROTO` | reply envelope 또는 error reply payload가 잘못됨 |
 | `INTERNAL_ERROR` | 그 외 내부 completion 실패 | 더 세분화된 public bucket 없이 request completion이 실패함 |
+| `REJECTED` | `ECONNREFUSED` | target이 admission 또는 join request를 명시적으로 거부함 |
+| `CONFLICT` | `EEXIST`, `ESTALE` 계열 | checked ref generation 불일치, 중복 생성 등 caller가 다시 조회해야 하는 충돌 |
+| `BUSY` | `EBUSY` | Actor가 join 또는 bind 상태라 destroy나 bind 변경을 완료할 수 없음 |
+| `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | target node 또는 Actor owner route에 도달할 수 없음 |
+| `INVALID_ARGUMENT` | `EINVAL` | NULL 인자, 잘못된 Actor id, 잘못된 routing id 등 호출 인자 오류 |
+| `INVALID_STATE` | `EFSM` | handle의 현재 상태가 해당 request와 맞지 않음 |
+| `NOT_SUPPORTED` | `ENOTSUP` | 현재 handle 또는 mode에서 지원하지 않는 request |
 
 ### 적용 대상 함수
 
-`zlink_reply_handler_fn`의 첫 번째 인자 `errno_`는 request completion
-결과다. 현재 구현에서 확인되는 completion `errno_` 값은 `0`,
-`ETIMEDOUT`, `ENOENT`, `EPROTO`다. `ETERM`은 예약값이며, 현재 request
-코드에는 이를 명시적으로 completion으로 방출하는 경로가 아직 없다.
+`zlink_reply_handler_fn`의 첫 번째 인자는 request completion 결과다.
+`zlink_actor_join_spot()`과 `zlink_spot_node_actor_join_spot()`의 completion도
+이 enum을 사용한다. Actor 생성, 종료, bind, unbind, ref 기반 leave처럼 동기 request
+결과를 직접 반환하는 API도 같은 enum을 반환한다.
+
+| 분류 | 함수 |
+|---|---|
+| Routed/channel request completion | `zlink_dealer_request`, `zlink_router_request`, `zlink_spot_request_channel`, `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_router_request_spot` |
+| Actor join completion | `zlink_actor_join_spot`, `zlink_spot_node_actor_join_spot` |
+| Actor lifecycle request | `zlink_actor_destroy`, `zlink_spot_node_create_remote_actor`, `zlink_spot_node_destroy_remote_actor` |
+| STREAM Actor mapping request | `zlink_stream_bind_actor`, `zlink_stream_unbind_actor` |
+| Ref 기반 Actor leave | `zlink_spot_node_actor_leave_spot` |
 
 ---
 
@@ -196,6 +221,7 @@ typedef enum zlink_recv_result_t
 |---|---|
 | Router recv | `zlink_router_recv` |
 | SPOT recv | `zlink_spot_recv` |
+| Actor recv | `zlink_actor_recv_part`, `zlink_spot_actor_join_recv` |
 | Recv | `zlink_recv` |
 | Subscribe | `zlink_subscribe` |
 | Subscription event | `zlink_xpub_recv_part` |
@@ -244,6 +270,7 @@ typedef enum zlink_handler_result_t
 | Send-ready handler | `zlink_send_ready_handler` |
 | Spot handler | `zlink_spot_handler` |
 | Spot dispatch-event handler | `zlink_spot_dispatch_event_handler` |
+| SpotNode Actor admission handler | `zlink_spot_node_actor_admission_handler` |
 | Socket monitor handler | `zlink_socket_monitor_handler` |
 | Timer handler | `zlink_timer_handler` |
 

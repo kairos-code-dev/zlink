@@ -92,3 +92,15 @@ add_c_sample(
   sample_c_registry_query_sample
   registry_query_sample.c
 )
+add_c_sample(
+  sample_c_actor_room_server_sample
+  actor_room_server_sample.c
+)
+add_c_sample(
+  sample_c_actor_gateway_relay_sample
+  actor_gateway_relay_sample.c
+)
+add_c_sample(
+  sample_c_actor_single_player_queue_sample
+  actor_single_player_queue_sample.c
+)

@@ -53,5 +53,12 @@ void register_spot_node_mode_state (zlink::spot_node_t *node_);
 void register_spot_mode_state (spot_handle_t *spot_);
 void erase_spot_node_mode_state (zlink::spot_node_t *node_);
 void erase_spot_mode_state (spot_handle_t *spot_);
+void register_actor_spot_node (zlink::spot_node_t *node_);
+void erase_actor_spot_node (zlink::spot_node_t *node_);
+void note_actor_spot_node_peer_disconnected (
+  zlink::spot_node_t *node_, const zlink_routing_id_t *target_node_rid_);
+void register_actor_spot_facade (spot_handle_t *spot_);
+void erase_actor_spot_facade (spot_handle_t *spot_);
+void erase_actor_stream_bindings (void *stream_);
 
 #endif

@@ -1703,25 +1703,6 @@ export class Discovery extends NativeHandle {
   connectRegistry(endpoint: string): void { requireNative().discoveryConnectRegistry(this._native, validateCString(endpoint, 'endpoint')); }
   setValue(value: number): void { requireNative().discoverySetValue(this._native, value | 0); }
   getValue(): number { return requireNative().discoveryGetValue(this._native) as number; }
-  bindRoute(kind: number, key: BufferLike | string, value: BufferLike | string): void {
-    requireNative().discoveryBindRoute(
-      this._native,
-      kind >>> 0,
-      normalizeBufferLike(key, 'key'),
-      normalizeBufferLike(value, 'value')
-    );
-  }
-  unbindRoute(kind: number, key: BufferLike | string): void {
-    requireNative().discoveryUnbindRoute(this._native, kind >>> 0, normalizeBufferLike(key, 'key'));
-  }
-  resolveRoute(kind: number, key: BufferLike | string): { owner: RoutingId; value: Buffer } {
-    const result = requireNative().discoveryResolveRoute(
-      this._native,
-      kind >>> 0,
-      normalizeBufferLike(key, 'key')
-    ) as { owner: Buffer; value: Buffer };
-    return { owner: RoutingId.fromBytes(result.owner), value: result.value };
-  }
   resolveSpot(spotRid: RoutingId): RoutingId {
     return RoutingId.fromBytes(
       requireNative().discoveryResolveSpot(this._native, normalizeRoutingId(spotRid)) as Buffer
@@ -1737,6 +1718,19 @@ export class Discovery extends NativeHandle {
     requireNative().socketSetOpt(
       this._native,
       SocketOption.DISCOVERY_SPOT_OWNER_SYNC,
+      boolBuffer(enabled)
+    );
+  }
+  get actorRouteSyncEnabled(): boolean {
+    return readInt32Option(
+      requireNative().socketGetOpt(this._native, SocketOption.DISCOVERY_ACTOR_ROUTE_SYNC) as Buffer,
+      'actorRouteSyncEnabled'
+    ) !== 0;
+  }
+  set actorRouteSyncEnabled(enabled: boolean) {
+    requireNative().socketSetOpt(
+      this._native,
+      SocketOption.DISCOVERY_ACTOR_ROUTE_SYNC,
       boolBuffer(enabled)
     );
   }

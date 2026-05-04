@@ -24,15 +24,13 @@ import java.util.Objects;
  * Fixed-channel discovery view.
  *
  * <p>One instance tracks exactly one {@link AutoConnectType}/{@code channelName}
- * pair and exposes route binding plus member peer snapshots for that view.
+ * pair and exposes spot owner resolution plus member peer snapshots for that view.
  */
 public final class Discovery implements AutoCloseable {
     private static final int OPT_DISCOVERY_SPOT_OWNER_SYNC = 0x3035;
+    private static final int OPT_DISCOVERY_ACTOR_ROUTE_SYNC = 0x3036;
 
     private MemorySegment handle;
-
-    /** Result of resolving a discovery route key. */
-    public record RouteResolution(RoutingId ownerNodeRoutingId, byte[] value) {}
 
     /** Opens a discovery handle for one auto-connect type and channel name. */
     public Discovery(Context ctx, AutoConnectType autoConnectType,
@@ -133,6 +131,32 @@ public final class Discovery implements AutoCloseable {
         }
     }
 
+    /** Enables or disables publishing actor active routes to Registry. */
+    public void setActorRouteSyncEnabled(boolean enabled) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment value = arena.allocate(ValueLayout.JAVA_INT);
+            value.set(ValueLayout.JAVA_INT, 0, enabled ? 1 : 0);
+            int rc = Native.setSockOpt(handle, OPT_DISCOVERY_ACTOR_ROUTE_SYNC, value,
+              ValueLayout.JAVA_INT.byteSize());
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_set_option");
+        }
+    }
+
+    /** Returns whether this Discovery publishes actor active routes to Registry. */
+    public boolean isActorRouteSyncEnabled() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment value = arena.allocate(ValueLayout.JAVA_INT);
+            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
+            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
+            int rc = Native.getSockOpt(handle, OPT_DISCOVERY_ACTOR_ROUTE_SYNC,
+              value, len);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_get_option");
+            return value.get(ValueLayout.JAVA_INT, 0) != 0;
+        }
+    }
+
     /** Configures client TLS credentials for the discovery registry link. */
     public void setTlsClient(String caCertPem, String hostname,
                              boolean trustSystem) {
@@ -144,66 +168,6 @@ public final class Discovery implements AutoCloseable {
             if (rc != 0) {
                 throw ZlinkException.fromLastError(
                   "zlink_set_tls_client");
-            }
-        }
-    }
-
-    /** Binds a route key to this discovery handle's registered provider. */
-    public void bindRoute(int kind, byte[] key, byte[] value) {
-        Objects.requireNonNull(key, "key");
-        Objects.requireNonNull(value, "value");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment keyData = arena.allocate(key.length);
-            MemorySegment.copy(MemorySegment.ofArray(key), 0, keyData, 0,
-              key.length);
-            MemorySegment valueData = value.length == 0
-              ? MemorySegment.NULL
-              : arena.allocate(value.length);
-            if (value.length > 0) {
-                MemorySegment.copy(MemorySegment.ofArray(value), 0, valueData,
-                  0, value.length);
-            }
-            int rc = Native.discoveryBindRoute(handle, kind, keyData,
-              key.length, valueData, value.length);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_discovery_bind_route");
-        }
-    }
-
-    /** Removes a route key owned by this discovery handle's registered provider. */
-    public void unbindRoute(int kind, byte[] key) {
-        Objects.requireNonNull(key, "key");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment keyData = arena.allocate(key.length);
-            MemorySegment.copy(MemorySegment.ofArray(key), 0, keyData, 0,
-              key.length);
-            int rc = Native.discoveryUnbindRoute(handle, kind, keyData,
-              key.length);
-            if (rc != 0)
-                throw ZlinkException.fromLastError(
-                  "zlink_discovery_unbind_route");
-        }
-    }
-
-    /** Resolves a route key in this discovery view. */
-    public RouteResolution resolveRoute(int kind, byte[] key) {
-        Objects.requireNonNull(key, "key");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment keyData = arena.allocate(key.length);
-            MemorySegment.copy(MemorySegment.ofArray(key), 0, keyData, 0,
-              key.length);
-            MemorySegment ownerRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
-            MemorySegment value = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            int rc = Native.discoveryResolveRoute(handle, kind, keyData,
-              key.length, ownerRid, value);
-            if (rc != 0)
-                throw ZlinkException.fromLastError(
-                  "zlink_discovery_resolve_route");
-            try {
-                return new RouteResolution(readRoutingId(ownerRid),
-                  readMessageBytes(value));
-            } finally {
-                NativeMsg.msgClose(value);
             }
         }
     }

@@ -415,47 +415,6 @@ class Discovery:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return int(value.value)
 
-    def bind_route(self, kind: int, key, value):
-        key_raw = memoryview(key).tobytes()
-        value_raw = memoryview(value).tobytes()
-        rc = lib().zlink_discovery_bind_route(
-            self._handle,
-            int(kind),
-            ctypes.c_char_p(key_raw),
-            len(key_raw),
-            ctypes.c_char_p(value_raw) if value_raw else None,
-            len(value_raw),
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
-    def unbind_route(self, kind: int, key):
-        key_raw = memoryview(key).tobytes()
-        rc = lib().zlink_discovery_unbind_route(
-            self._handle, int(kind), ctypes.c_char_p(key_raw), len(key_raw)
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
-    def resolve_route(self, kind: int, key):
-        key_raw = memoryview(key).tobytes()
-        owner_node_rid = ZlinkRoutingId()
-        value = ZlinkMsg()
-        rc = lib().zlink_discovery_resolve_route(
-            self._handle,
-            int(kind),
-            ctypes.c_char_p(key_raw),
-            len(key_raw),
-            ctypes.byref(owner_node_rid),
-            ctypes.byref(value),
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        try:
-            return RoutingId(_routing_id_bytes(owner_node_rid)), _msg_to_bytes(value)
-        finally:
-            lib().zlink_msg_close(ctypes.byref(value))
-
     def member_peers(self):
         return _query_member_peers(self._handle, lib().zlink_discovery_member_peers)
 
@@ -491,6 +450,32 @@ class Discovery:
         rc = lib().zlink_set_option(
             self._handle,
             int(SocketOption.DISCOVERY_SPOT_OWNER_SYNC),
+            ctypes.byref(value),
+            ctypes.sizeof(value),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
+    @property
+    def actor_route_sync_enabled(self):
+        value = ctypes.c_int32()
+        size = ctypes.c_size_t(ctypes.sizeof(value))
+        rc = lib().zlink_get_option(
+            self._handle,
+            int(SocketOption.DISCOVERY_ACTOR_ROUTE_SYNC),
+            ctypes.byref(value),
+            ctypes.byref(size),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return value.value != 0
+
+    @actor_route_sync_enabled.setter
+    def actor_route_sync_enabled(self, enabled):
+        value = ctypes.c_int32(1 if enabled else 0)
+        rc = lib().zlink_set_option(
+            self._handle,
+            int(SocketOption.DISCOVERY_ACTOR_ROUTE_SYNC),
             ctypes.byref(value),
             ctypes.sizeof(value),
         )

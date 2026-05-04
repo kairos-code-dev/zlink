@@ -385,7 +385,7 @@ Discovery, Registry, and SPOT runtime state is observed through snapshot and
 query APIs rather than a separate public event stream.
 
 - Discovery: `zlink_discovery_member_peers()`,
-  `zlink_discovery_resolve_route()`
+  `zlink_discovery_resolve_spot()`, `zlink_discovery_resolve_actor()`
 - Registry: `zlink_registry_status_snapshot()`,
   `zlink_registry_service_summary_snapshot()`,
   `zlink_registry_topology_snapshot()`,

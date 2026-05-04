@@ -15,7 +15,8 @@ namespace zlink
 discovery_local_state_t::discovery_local_state_t () :
     _value (0),
     _route_value_max_size (ZLINK_ROUTE_VALUE_MAX),
-    _spot_owner_sync_enabled (false)
+    _spot_owner_sync_enabled (false),
+    _actor_route_sync_enabled (false)
 {
 }
 
@@ -77,6 +78,37 @@ int discovery_local_state_t::get_spot_owner_sync_enabled (
         return -1;
     }
     *static_cast<int *> (optval_) = _spot_owner_sync_enabled ? 1 : 0;
+    *optvallen_ = sizeof (int);
+    return 0;
+}
+
+int discovery_local_state_t::set_actor_route_sync_enabled (int value_)
+{
+    if (value_ != 0 && value_ != 1) {
+        errno = EINVAL;
+        return -1;
+    }
+    _actor_route_sync_enabled = value_ != 0;
+    return 0;
+}
+
+int discovery_local_state_t::get_actor_route_sync_enabled (
+  void *optval_, size_t *optvallen_) const
+{
+    if (!optvallen_) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (!optval_) {
+        *optvallen_ = sizeof (int);
+        return 0;
+    }
+    if (*optvallen_ < sizeof (int)) {
+        *optvallen_ = sizeof (int);
+        errno = ENOBUFS;
+        return -1;
+    }
+    *static_cast<int *> (optval_) = _actor_route_sync_enabled ? 1 : 0;
     *optvallen_ = sizeof (int);
     return 0;
 }
@@ -169,13 +201,26 @@ int discovery_t::set_option (int option_,
         }
         return 0;
     }
+    if (option_ == ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC) {
+        service_public_api_scope_t admission (_public_api);
+        if (!admission.acquired ())
+            return -1;
+        if (!optval_ || optvallen_ != sizeof (int)) {
+            errno = EINVAL;
+            return -1;
+        }
+        const int value = *static_cast<const int *> (optval_);
+        scoped_lock_t lock (_sync);
+        return _local_state.set_actor_route_sync_enabled (value);
+    }
     return _bootstrap_runtime->set_option (this, option_, optval_, optvallen_);
 }
 
 int discovery_t::get_option (int option_, void *optval_, size_t *optvallen_) const
 {
     if (option_ != ZLINK_OPT_ROUTE_VALUE_MAX_SIZE
-        && option_ != ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC) {
+        && option_ != ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC
+        && option_ != ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC) {
         errno = ENOTSUP;
         return -1;
     }
@@ -187,7 +232,9 @@ int discovery_t::get_option (int option_, void *optval_, size_t *optvallen_) con
     scoped_lock_t lock (_sync);
     if (option_ == ZLINK_OPT_ROUTE_VALUE_MAX_SIZE)
         return _local_state.get_route_value_max_size (optval_, optvallen_);
-    return _local_state.get_spot_owner_sync_enabled (optval_, optvallen_);
+    if (option_ == ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC)
+        return _local_state.get_spot_owner_sync_enabled (optval_, optvallen_);
+    return _local_state.get_actor_route_sync_enabled (optval_, optvallen_);
 }
 
 int discovery_t::set_value (int64_t value_)
@@ -331,6 +378,12 @@ bool discovery_t::spot_owner_sync_enabled () const
 {
     scoped_lock_t lock (_sync);
     return _local_state.spot_owner_sync_enabled ();
+}
+
+bool discovery_t::actor_route_sync_enabled () const
+{
+    scoped_lock_t lock (_sync);
+    return _local_state.actor_route_sync_enabled ();
 }
 
 discovery_t::topology_key_t discovery_t::make_summary_key (

@@ -34,6 +34,10 @@ std::deque<zlink_spot_dispatch_info_t> *dispatch_queue_for_event (
         return state_ ? &state_->subscribe_pending : NULL;
     case ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE:
         return state_ ? &state_->routed_pending : NULL;
+    case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE:
+        return state_ ? &state_->actor_join_pending : NULL;
+    case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE:
+        return state_ ? &state_->actor_readable_pending : NULL;
     case ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE:
         return state_ ? &state_->channel_reply_pending : NULL;
     case ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE:
@@ -53,6 +57,8 @@ bool dispatch_has_pending (
 {
     return !dispatch_.subscribe_pending.empty ()
            || !dispatch_.routed_pending.empty ()
+           || !dispatch_.actor_join_pending.empty ()
+           || !dispatch_.actor_readable_pending.empty ()
            || !dispatch_.channel_reply_pending.empty ()
            || !dispatch_.timer_pending.empty ();
 }
@@ -75,6 +81,22 @@ bool pop_next_dispatch_info (
 
     queue = dispatch_queue_for_event (dispatch_,
                                       ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE);
+    if (queue && !queue->empty ()) {
+        *info_out_ = queue->front ();
+        queue->pop_front ();
+        return true;
+    }
+
+    queue = dispatch_queue_for_event (
+      dispatch_, ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE);
+    if (queue && !queue->empty ()) {
+        *info_out_ = queue->front ();
+        queue->pop_front ();
+        return true;
+    }
+
+    queue = dispatch_queue_for_event (
+      dispatch_, ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE);
     if (queue && !queue->empty ()) {
         *info_out_ = queue->front ();
         queue->pop_front ();
@@ -133,6 +155,8 @@ void run_pending_spot_dispatch_events (
             std::lock_guard<std::mutex> dispatch_lock (dispatch.mutex);
             dispatch.subscribe_pending.clear ();
             dispatch.routed_pending.clear ();
+            dispatch.actor_join_pending.clear ();
+            dispatch.actor_readable_pending.clear ();
             dispatch.channel_reply_pending.clear ();
             dispatch.timer_pending.clear ();
             dispatch.queued_keys.clear ();

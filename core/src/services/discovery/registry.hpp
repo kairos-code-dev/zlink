@@ -6,6 +6,7 @@
 #include "core/ctx.hpp"
 #include "services/common/service_public_api.hpp"
 #include "services/common/service_runtime_base.hpp"
+#include "services/discovery/route_limits_internal.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/clock.hpp"
 #include "utils/mutex.hpp"

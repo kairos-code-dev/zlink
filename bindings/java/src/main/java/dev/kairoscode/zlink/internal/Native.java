@@ -595,23 +595,6 @@ public final class Native {
             "zlink_discovery_get_value",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_BIND_ROUTE = downcall(
-            "zlink_discovery_bind_route",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_DISC_UNBIND_ROUTE = downcall(
-            "zlink_discovery_unbind_route",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_DISC_RESOLVE_ROUTE = downcall(
-            "zlink_discovery_resolve_route",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_DESTROY = downcall("zlink_discovery_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_MEMBER_PEERS = downcall(
@@ -2618,48 +2601,6 @@ public final class Native {
             return (int) MH_DISC_GET_VALUE.invokeExact(disc, valueOut);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_discovery_get_value failed", t);
-        }
-    }
-
-    public static int discoveryBindRoute(MemorySegment disc,
-                                         int kind,
-                                         MemorySegment key,
-                                         long keySize,
-                                         MemorySegment value,
-                                         long valueSize) {
-        try {
-            return (int) MH_DISC_BIND_ROUTE.invokeExact(disc, kind, key,
-              keySize, value, valueSize);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_bind_route failed", t);
-        }
-    }
-
-    public static int discoveryUnbindRoute(MemorySegment disc,
-                                           int kind,
-                                           MemorySegment key,
-                                           long keySize) {
-        try {
-            return (int) MH_DISC_UNBIND_ROUTE.invokeExact(disc, kind, key,
-              keySize);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_unbind_route failed",
-              t);
-        }
-    }
-
-    public static int discoveryResolveRoute(MemorySegment disc,
-                                            int kind,
-                                            MemorySegment key,
-                                            long keySize,
-                                            MemorySegment ownerRidOut,
-                                            MemorySegment valueOut) {
-        try {
-            return (int) MH_DISC_RESOLVE_ROUTE.invokeExact(disc, kind, key,
-              keySize, ownerRidOut, valueOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_resolve_route failed",
-              t);
         }
     }
 

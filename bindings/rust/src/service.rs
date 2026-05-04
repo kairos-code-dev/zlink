@@ -22,8 +22,6 @@ use crate::socket::{
     send_ready_trampoline, submit_part_sequence, take_parts,
 };
 
-pub type RouteKind = u32;
-
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -865,6 +863,32 @@ impl Discovery {
         Ok(value != 0)
     }
 
+    pub fn set_actor_route_sync_enabled(&self, enabled: bool) -> Result<(), ConfigError> {
+        let value: i32 = if enabled { 1 } else { 0 };
+        check_config_rc(unsafe {
+            ffi::zlink_set_option(
+                self.handle,
+                ffi::zlink_option_t::ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC,
+                (&value as *const i32).cast(),
+                std::mem::size_of::<i32>(),
+            )
+        })
+    }
+
+    pub fn actor_route_sync_enabled(&self) -> Result<bool, ConfigError> {
+        let mut value: i32 = 0;
+        let mut len = std::mem::size_of::<i32>();
+        check_config_rc(unsafe {
+            ffi::zlink_get_option(
+                self.handle,
+                ffi::zlink_option_t::ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC,
+                (&mut value as *mut i32).cast(),
+                &mut len,
+            )
+        })?;
+        Ok(value != 0)
+    }
+
     pub fn resolve_spot(&self, spot_rid: &RoutingId) -> Result<RoutingId, ConfigError> {
         let mut owner_node_rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         check_config_rc(unsafe {
@@ -875,58 +899,6 @@ impl Discovery {
             )
         })?;
         Ok(RoutingId::from_raw(unsafe { owner_node_rid.assume_init() }))
-    }
-
-    pub fn bind_route(
-        &self,
-        kind: RouteKind,
-        key: &[u8],
-        value: &[u8],
-    ) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_discovery_bind_route(
-                self.handle,
-                kind,
-                key.as_ptr() as *const c_void,
-                key.len(),
-                value.as_ptr() as *const c_void,
-                value.len(),
-            )
-        })
-    }
-
-    pub fn unbind_route(&self, kind: RouteKind, key: &[u8]) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_discovery_unbind_route(
-                self.handle,
-                kind,
-                key.as_ptr() as *const c_void,
-                key.len(),
-            )
-        })
-    }
-
-    pub fn resolve_route(
-        &self,
-        kind: RouteKind,
-        key: &[u8],
-    ) -> Result<(RoutingId, Message), ConfigError> {
-        let mut owner_node_rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
-        let mut msg = MaybeUninit::<ffi::zlink_msg_t>::uninit();
-        check_config_rc(unsafe {
-            ffi::zlink_discovery_resolve_route(
-                self.handle,
-                kind,
-                key.as_ptr() as *const c_void,
-                key.len(),
-                owner_node_rid.as_mut_ptr(),
-                msg.as_mut_ptr(),
-            )
-        })?;
-        Ok((
-            RoutingId::from_raw(unsafe { owner_node_rid.assume_init() }),
-            unsafe { Message::from_raw(msg.assume_init()) },
-        ))
     }
 
     pub fn member_peers(&self) -> Result<Vec<MemberPeerEntry>, ConfigError> {

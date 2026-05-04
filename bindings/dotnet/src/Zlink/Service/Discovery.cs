@@ -58,6 +58,12 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         set => SetSpotOwnerSyncEnabled(value);
     }
 
+    public bool ActorRouteSyncEnabled
+    {
+        get => GetActorRouteSyncEnabled();
+        set => SetActorRouteSyncEnabled(value);
+    }
+
     public unsafe void SetSpotOwnerSyncEnabled(bool enabled)
     {
         EnsureNotDisposed();
@@ -75,6 +81,27 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         nuint size = (nuint)sizeof(int);
         int rc = NativeMethods.zlink_get_option(_handle,
             (int)SocketOption.DiscoverySpotOwnerSync, (IntPtr)(&raw), ref size);
+        ZlinkException.ThrowConfigIfError(rc);
+        return raw != 0;
+    }
+
+    public unsafe void SetActorRouteSyncEnabled(bool enabled)
+    {
+        EnsureNotDisposed();
+        int raw = enabled ? 1 : 0;
+        int rc = NativeMethods.zlink_set_option(_handle,
+            (int)SocketOption.DiscoveryActorRouteSync, (IntPtr)(&raw),
+            (nuint)sizeof(int));
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    public unsafe bool GetActorRouteSyncEnabled()
+    {
+        EnsureNotDisposed();
+        int raw = 0;
+        nuint size = (nuint)sizeof(int);
+        int rc = NativeMethods.zlink_get_option(_handle,
+            (int)SocketOption.DiscoveryActorRouteSync, (IntPtr)(&raw), ref size);
         ZlinkException.ThrowConfigIfError(rc);
         return raw != 0;
     }
@@ -135,49 +162,6 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
                 return RoutingId.FromBytes(
                     NativeHelpers.ReadRoutingId(ref ownerNodeRoutingId));
             }
-        }
-    }
-
-    public unsafe void BindRoute(uint kind, ReadOnlySpan<byte> key,
-        ReadOnlySpan<byte> value)
-    {
-        EnsureNotDisposed();
-        fixed (byte* keyPtr = key)
-        fixed (byte* valuePtr = value)
-        {
-            int rc = NativeMethods.zlink_discovery_bind_route(_handle, kind,
-                (IntPtr)keyPtr, (nuint)key.Length, (IntPtr)valuePtr,
-                (nuint)value.Length);
-            ZlinkException.ThrowConfigIfError(rc);
-        }
-    }
-
-    public unsafe void UnbindRoute(uint kind, ReadOnlySpan<byte> key)
-    {
-        EnsureNotDisposed();
-        fixed (byte* keyPtr = key)
-        {
-            int rc = NativeMethods.zlink_discovery_unbind_route(_handle, kind,
-                (IntPtr)keyPtr, (nuint)key.Length);
-            ZlinkException.ThrowConfigIfError(rc);
-        }
-    }
-
-    public unsafe (RoutingId OwnerNodeRoutingId, Message Value) ResolveRoute(
-        uint kind, ReadOnlySpan<byte> key)
-    {
-        EnsureNotDisposed();
-        fixed (byte* keyPtr = key)
-        {
-            using var value = new Message(init: false);
-            int rc = NativeMethods.zlink_discovery_resolve_route(_handle, kind,
-                (IntPtr)keyPtr, (nuint)key.Length,
-                out ZlinkRoutingId ownerNodeRoutingId, ref value.Handle);
-            ZlinkException.ThrowConfigIfError(rc);
-            value.AdoptInitializedNative();
-            return (RoutingId.FromBytes(
-                NativeHelpers.ReadRoutingId(ref ownerNodeRoutingId)),
-                value.Move());
         }
     }
 

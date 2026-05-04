@@ -220,16 +220,18 @@ Not every call has the same timing constraints, though.
 - Use `zlink_discovery_member_peers()` for the current Discovery peer view.
   When the caller needs a stable service-level picture, poll this query
   function and compare snapshots over time.
-- Use `zlink_discovery_bind_route()`,
-  `zlink_discovery_unbind_route()`, and
-  `zlink_discovery_resolve_route()` for owner-bound route lookup.
+- Use `zlink_discovery_resolve_actor()` for Actor active route lookup.
+  The lookup can succeed only after an Actor owner `SpotNode` with
+  `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` enabled has completed a successful
+  stream bind for that Actor.
 - Use Registry topology snapshot/query APIs for global summary inspection.
 - Discovery supports `zlink_set_option(discovery, ZLINK_OPT_*, ...)` which
   applies to its managed socket set as fan-out. Discovery-only options,
-  `ZLINK_OPT_ROUTE_VALUE_MAX_SIZE` and
-  `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`, read or write the Discovery handle
-  itself instead. `zlink_get_option()` is provided only for those two
-  Discovery-only options.
+  `ZLINK_OPT_ROUTE_VALUE_MAX_SIZE`,
+  `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`, and
+  `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`, read or write the Discovery handle
+  itself instead. `zlink_get_option()` is provided only for Discovery-only
+  options.
 
 ## Constants
 
@@ -525,98 +527,33 @@ zlink_config_result_t zlink_discovery_get_value (void *discovery,
 
 ---
 
-### zlink_discovery_bind_route
+### zlink_discovery_resolve_actor
 
-Bind an application route key to the provider generation owned by this
-Discovery instance.
+Resolve an Actor active route.
 
 ```c
-zlink_config_result_t zlink_discovery_bind_route(void *discovery,
-                                                 zlink_route_kind_t kind,
-                                                 const void *key,
-                                                 size_t key_size,
-                                                 const void *value,
-                                                 size_t value_size);
+zlink_config_result_t zlink_discovery_resolve_actor(void *discovery,
+                                                    const char *actor_id,
+                                                    zlink_actor_route_t *route_out);
 ```
 
-`kind + key` is scoped to the Discovery channel name. `kind` must not be
-`ZLINK_ROUTE_KIND_INVALID`. `key_size` must be `1..ZLINK_ROUTE_KEY_MAX`.
-`value_size` must be at most `ZLINK_ROUTE_VALUE_MAX`. The Registry copies the
-key and value before the call returns.
+`actor_id` must be a non-empty NUL-terminated string no longer than
+`ZLINK_ACTOR_ID_MAX - 1` bytes. On success, `route_out->actor` receives the
+current active Actor ref. If the Actor is currently joined to a Spot,
+`route_out->joined != 0` and `route_out->joined_spot_rid` is valid.
 
-The call must be made by the Discovery instance that owns an attached provider.
-If the provider generation has already been replaced, the bind fails and no
-partial route is stored.
+Actor active routes are not created by Actor creation or join alone. A route is
+published when the Actor owner `SpotNode` has
+`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` enabled and `zlink_stream_bind_actor()`
+completes successfully.
 
 **Errors:**
-- `EINVAL` -- Invalid handle, kind, key, or channel state.
-- `EMSGSIZE` -- Key or value exceeds the public limit.
-- `ENOENT` -- No live owner provider is registered for this Discovery instance.
-- `ESTALE` -- The owner provider generation no longer matches the Registry view.
+- `EINVAL` -- Invalid handle, actor id, or output pointer.
+- `ENOENT` -- No active route exists.
 
 **Returns:** A `zlink_config_result_t` value.
 
 **Thread safety:** Same-handle calls remain thread-safe.
-
----
-
-### zlink_discovery_unbind_route
-
-Remove a route binding owned by this Discovery instance.
-
-```c
-zlink_config_result_t zlink_discovery_unbind_route(void *discovery,
-                                                   zlink_route_kind_t kind,
-                                                   const void *key,
-                                                   size_t key_size);
-```
-
-Only the owner provider generation that created the binding can remove it.
-Destroying or unregistering the owner provider also removes its route bindings.
-
-**Errors:**
-- `EINVAL` -- Invalid handle, kind, key, or channel state.
-- `EMSGSIZE` -- Key exceeds `ZLINK_ROUTE_KEY_MAX`.
-- `ENOENT` -- Owner provider or route binding was not found.
-- `ESTALE` -- The owner provider generation no longer matches the Registry view.
-
-**Returns:** A `zlink_config_result_t` value.
-
-**Thread safety:** Same-handle calls remain thread-safe.
-
----
-
-### zlink_discovery_resolve_route
-
-Resolve a route key to its current owner routing id and value.
-
-```c
-zlink_config_result_t zlink_discovery_resolve_route(void *discovery,
-                                                    zlink_route_kind_t kind,
-                                                    const void *key,
-                                                    size_t key_size,
-                                                    zlink_routing_id_t *owner_rid_out,
-                                                    zlink_msg_t *value_out);
-```
-
-`owner_rid_out` receives the routing id of the live owner provider. If
-`value_out` is not `NULL`, the caller must pass an initialized `zlink_msg_t`;
-on success the message contains a copy of the stored value and remains owned by
-the caller. On failure `value_out` is not a valid result.
-
-Resolve does not create or refresh a cache entry. If the owner provider is no
-longer live, the route is treated as missing.
-
-**Errors:**
-- `EINVAL` -- Invalid handle, kind, key, output pointer, or channel state.
-- `EMSGSIZE` -- Key exceeds `ZLINK_ROUTE_KEY_MAX`.
-- `ENOENT` -- No live route binding exists for `kind + key`.
-
-**Returns:** A `zlink_config_result_t` value.
-
-**Thread safety:** Same-handle calls remain thread-safe.
-
-**See also:** `zlink_discovery_bind_route`, `zlink_discovery_unbind_route`
 
 ---
 

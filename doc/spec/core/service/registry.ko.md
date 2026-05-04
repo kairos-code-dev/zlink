@@ -730,6 +730,6 @@ Discovery 인스턴스가 알고 있는 모든 멤버 피어 항목을 `entries`
 
 ---
 
-route binding 조회는 Registry가 아니라 Discovery 공개 API로 제공합니다.
-`zlink_discovery_bind_route`, `zlink_discovery_unbind_route`,
-`zlink_discovery_resolve_route` 계약은 Discovery spec을 참고합니다.
+SPOT owner와 Actor active route 조회는 Registry가 아니라 Discovery 공개 API로
+제공합니다. `zlink_discovery_resolve_spot()`과
+`zlink_discovery_resolve_actor()` 계약은 Discovery spec을 참고합니다.

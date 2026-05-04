@@ -124,19 +124,6 @@ internal static partial class NativeMethods
         IntPtr entries, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_discovery_bind_route(IntPtr discovery,
-        uint kind, IntPtr key, nuint keySize, IntPtr value, nuint valueSize);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_discovery_unbind_route(IntPtr discovery,
-        uint kind, IntPtr key, nuint keySize);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_discovery_resolve_route(IntPtr discovery,
-        uint kind, IntPtr key, nuint keySize, out ZlinkRoutingId ownerNodeRid,
-        ref ZlinkMsg value);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_destroy(ref IntPtr discovery);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

@@ -276,6 +276,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
             ) as discovery:
                 self.assertTrue(hasattr(discovery, "resolve_spot"))
                 self.assertTrue(hasattr(discovery, "spot_owner_sync_enabled"))
+                self.assertTrue(hasattr(type(discovery), "actor_route_sync_enabled"))
                 self.assertFalse(hasattr(discovery, "set_dealer_peer_mode"))
                 self.assertFalse(hasattr(zlink, "DiscoveryDealerPeerMode"))
 

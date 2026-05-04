@@ -6,7 +6,7 @@
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 3
-#define ZLINK_VERSION_PATCH 4
+#define ZLINK_VERSION_PATCH 5
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -215,11 +215,7 @@ typedef struct zlink_routing_id_t
     uint8_t data[255];
 } zlink_routing_id_t;
 
-typedef uint32_t zlink_route_kind_t;
-
-#define ZLINK_ROUTE_KIND_INVALID 0u
-#define ZLINK_ROUTE_KEY_MAX 256u
-#define ZLINK_ROUTE_VALUE_MAX 4096u
+#define ZLINK_ACTOR_ID_MAX 256
 
 typedef void (zlink_free_fn) (void *data_, void *hint_);
 
@@ -1077,26 +1073,6 @@ ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_spot (
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_set_value (void *discovery_, int64_t value_);
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_get_value (void *discovery_,
                                             int64_t *value_out_);
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_bind_route (
-  void *discovery_,
-  zlink_route_kind_t kind_,
-  const void *key_,
-  size_t key_size_,
-  const void *value_,
-  size_t value_size_);
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_unbind_route (
-  void *discovery_,
-  zlink_route_kind_t kind_,
-  const void *key_,
-  size_t key_size_);
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_route (
-  void *discovery_,
-  zlink_route_kind_t kind_,
-  const void *key_,
-  size_t key_size_,
-  zlink_routing_id_t *owner_rid_out_,
-  zlink_msg_t *value_out_);
-
 /**
  * @brief Destroy the discovery instance and release all resources.
  *

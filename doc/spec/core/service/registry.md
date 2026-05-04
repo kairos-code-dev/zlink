@@ -732,6 +732,6 @@ actual count. Pass `entries = NULL` to query the required count first.
 
 ---
 
-Route binding lookup is exposed on Discovery, not Registry. See
-`zlink_discovery_bind_route`, `zlink_discovery_unbind_route`, and
-`zlink_discovery_resolve_route` in the Discovery spec.
+SPOT owner and Actor active route lookup are exposed on Discovery, not
+Registry. See `zlink_discovery_resolve_spot()` and
+`zlink_discovery_resolve_actor()` in the Discovery spec.

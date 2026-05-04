@@ -71,7 +71,6 @@ pub enum zlink_auto_hwm_profile_t {
 
 pub type zlink_send_flags_t = u32;
 pub type zlink_recv_flags_t = u32;
-pub type zlink_route_kind_t = u32;
 
 pub const ZLINK_DONTWAIT: zlink_send_flags_t = 0x0001;
 
@@ -210,6 +209,7 @@ pub enum zlink_option_t {
     ZLINK_OPT_RID_DUPLICATE_POLICY = 0x3033,
     ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0x3034,
     ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC = 0x3035,
+    ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC = 0x3036,
 }
 
 #[repr(C)]
@@ -1130,28 +1130,6 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn zlink_discovery_set_value(discovery: *mut c_void, value: i64) -> c_int;
     pub fn zlink_discovery_get_value(discovery: *mut c_void, value_out: *mut i64) -> c_int;
-    pub fn zlink_discovery_bind_route(
-        discovery: *mut c_void,
-        kind: zlink_route_kind_t,
-        key: *const c_void,
-        key_size: usize,
-        value: *const c_void,
-        value_size: usize,
-    ) -> c_int;
-    pub fn zlink_discovery_unbind_route(
-        discovery: *mut c_void,
-        kind: zlink_route_kind_t,
-        key: *const c_void,
-        key_size: usize,
-    ) -> c_int;
-    pub fn zlink_discovery_resolve_route(
-        discovery: *mut c_void,
-        kind: zlink_route_kind_t,
-        key: *const c_void,
-        key_size: usize,
-        owner_node_rid_out: *mut zlink_routing_id_t,
-        value_out: *mut zlink_msg_t,
-    ) -> c_int;
     pub fn zlink_discovery_resolve_spot(
         discovery: *mut c_void,
         spot_rid: *const zlink_routing_id_t,

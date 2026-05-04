@@ -111,6 +111,10 @@ internal static class SocketOptions
         Int(SocketOption.RidDuplicatePolicy);
     public static SocketOptionKey<int> AutoHwmMsgUnitBytes { get; } =
         Int(SocketOption.AutoHwmMsgUnitBytes);
+    public static SocketOptionKey<int> DiscoverySpotOwnerSync { get; } =
+        Int(SocketOption.DiscoverySpotOwnerSync);
+    public static SocketOptionKey<int> DiscoveryActorRouteSync { get; } =
+        Int(SocketOption.DiscoveryActorRouteSync);
     public static SocketOptionKey<int> XPubVerbose { get; } =
         Int(SocketOption.XPubVerbose);
     public static SocketOptionKey<int> Ipv6 { get; } = Int(SocketOption.Ipv6);

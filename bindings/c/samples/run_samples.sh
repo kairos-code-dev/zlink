@@ -35,6 +35,9 @@ sample_tests=(
   sample_smoke_sample_c_monitor_recv_sample
   sample_smoke_sample_c_discovery_registry_sample
   sample_smoke_sample_c_registry_query_sample
+  sample_smoke_sample_c_actor_room_server_sample
+  sample_smoke_sample_c_actor_gateway_relay_sample
+  sample_smoke_sample_c_actor_single_player_queue_sample
 )
 
 pass_count=0

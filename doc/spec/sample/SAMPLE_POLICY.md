@@ -45,6 +45,9 @@
   - `spot_request_async_sample`
   - `stream_packet_callback_sample`
   - `monitor_recv_sample`
+  - `actor_room_server_sample`
+  - `actor_gateway_relay_sample`
+  - `actor_single_player_queue_sample`
 - service/spot 계열이 없는 표면은 `spot_*` 샘플을 제외할 수 있다.
 - request-reply wrapper 표면이 없는 바인딩은 `request_reply_*` 샘플을 제외할 수
   있다.
@@ -56,9 +59,14 @@
 - 서비스 계층 컴포넌트를 구현하는 표면은 다음 샘플을 추가로 포함한다.
   - `discovery_registry_sample` (Discovery + Registry end-to-end)
   - `registry_query_sample` (RegistryQueryClient로 토폴로지 조회)
+- Actor dispatch 표면을 구현하는 표면은 다음 샘플을 추가로 포함한다.
+  - `actor_room_server_sample` (Spot dispatch에서 Actor별 unread state drain)
+  - `actor_gateway_relay_sample` (STREAM session에서 remote Actor로 relay)
+  - `actor_single_player_queue_sample` (한 사용자 queue를 Actor로 직렬화)
 - 각 샘플은 해당 컴포넌트를 구현한 경우에만 적용된다.
   - Discovery + Registry 미구현 → `discovery_registry_sample` 제외
   - RegistryQueryClient 미구현 → `registry_query_sample` 제외
+  - Actor dispatch 미구현 → `actor_*` 샘플 제외
 
 ## Official Runner Contract
 - 공개 sample runner와 README에서 안내하는 sample 실행 경로는 canonical sample
@@ -211,6 +219,22 @@
 - 대기에는 반드시 hard timeout을 건다 (예: 5초).
 - timeout 초과 시 실패로 종료한다 (non-zero exit code 또는 예외).
 - packet callback이 호출되면 signal을 보내고, 메인 스레드는 signal을 대기한다.
+
+## Actor Dispatch Sample Rules
+- Actor dispatch sample은 session message를 Actor id로 나누어 처리하는 흐름을
+  보여준다.
+- Actor가 socket이나 endpoint를 직접 소유한다고 설명하면 안 된다.
+- `actor_room_server_sample` 은 여러 Actor가 같은 Spot dispatch stream에서
+  `ACTOR_READABLE` subject로 구분되는 흐름을 보여준다.
+- `actor_gateway_relay_sample` 은 gateway STREAM session의 part가 remote Actor로
+  relay되는 흐름을 보여준다.
+- `actor_single_player_queue_sample` 은 한 Actor의 unread state가 도착 순서대로
+  drain되는 흐름을 보여준다.
+- sample은 `zlink_stream_bind_actor()`,
+  `zlink_stream_send_bound_actor_part()`, `zlink_actor_recv_part()`를 기준으로
+  작성한다.
+- Actor active route 조회가 필요하면 `zlink_discovery_resolve_actor()`를 사용한다.
+  generic route lookup을 Actor 주소 조회 sample에 쓰지 않는다.
 
 ## Sample Transport Rules
 - 샘플의 endpoint는 `tcp://127.0.0.1:<port>` 를 기본으로 사용한다.
@@ -606,6 +630,9 @@
 | pubsub | one-way | `"prices"` | `"101.25"` |
 | spot-recv | composite | `"room:lobby"` | service id: `"sample"`, publish: `"hello-spot"`, send: `"hello-spot-send"`, timer: `"tick-1"` |
 | spot-request | async request | — | service id: `"sample"`, request: `"spot-ping"`, reply: `"spot-pong"` |
+| actor-room-server | dispatch | `"room:lobby"` | actor id: `"player-1"`, payload: `"move"` |
+| actor-gateway-relay | stream relay | — | actor id: `"remote-player"`, payload: `"relay"` |
+| actor-single-player-queue | queue order | — | actor id: `"solo-player"`, payload sequence: `"one"`, `"two"` |
 | monitor | event plane | — | recv: `"connection-ready"` |
 | discovery-registry | service plane | — | service id: `"sample"`, state: `discovered`, remove: `removed` |
 | registry-query | service plane | — | service id: `"sample"`, snapshot: `found` |
@@ -636,6 +663,7 @@
   canonical에 포함한다.
 - RegistryQueryClient를 구현한 표면은 `registry_query_sample` 을 canonical에
   포함한다.
+- Actor dispatch를 구현한 표면은 세 Actor sample을 canonical에 포함한다.
 
 ## Stream Socket Policy
 - STREAM socket은 direct recv 방식과 packet callback 방식을 둘 다 지원해야

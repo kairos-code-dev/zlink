@@ -2,8 +2,12 @@
 
 # Bindings API Policy
 
-> request-reply 와 SPOT routed 구현 기준은
-> `doc/draft/spot-socket-backed-runtime.ko.md` 와 정식 core spec 문서를 따른다.
+> request-reply 와 SPOT routed 구현 기준은 정식 core spec 문서를 따른다.
+> Actor dispatch binding 반영 전 추적 기준은
+> `doc/spec/draft/spot-actor-dispatch.ko.md` 와
+> `doc/plan/spot-actor-dispatch-implementation-plan.ko.md` 이다. binding 정식
+> 계약은 core release 뒤 native library를 최신화한 다음 언어별 문서에 순차
+> 반영한다.
 > 언어별 인터페이스 시그니처와 사용 예는
 > `c/`, `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
 
@@ -218,6 +222,9 @@ public shape를 기준으로 고정한다.
   `service_name` 을 노출해야 한다.
 - `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/channel-reply/timer plane 의
   canonical readable notification surface 이다.
+- Actor dispatch surface는 core release 뒤 언어별로 순차 반영한다. 그 전까지
+  binding spec 본문에는 구현 전 공개 계약처럼 섞어 쓰지 않고, 위 draft와 plan 링크를
+  추적 기준으로 둔다.
 - `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` 은 모든 바인딩에서 typed context option 으로
   노출해야 한다. 값은 compact, low latency, balanced, throughput 네 profile 이며
   기본값은 balanced 이다.

@@ -454,34 +454,13 @@ for (size_t i = 0; i < count; i++) {
 free(peers);
 ```
 
-#### Owner-Bound Route Binding
+#### Actor Active Route 조회
 
-응용 key가 그 key를 소유한 provider의 생존 상태를 따라야 하면 route binding을
-사용한다. bind는 owner Discovery에서 수행하고, resolve는 같은 channel 안의 다른
-Discovery에서도 수행할 수 있다.
-
-```c
-const char key[] = "actor:42";
-const char value[] = "shard-a";
-
-zlink_discovery_bind_route(owner_discovery, 1,
-    key, sizeof(key) - 1,
-    value, sizeof(value) - 1);
-
-zlink_routing_id_t owner_rid;
-zlink_msg_t route_value;
-zlink_msg_init(&route_value);
-if (zlink_discovery_resolve_route(resolver_discovery, 1,
-        key, sizeof(key) - 1,
-        &owner_rid, &route_value) == ZLINK_CONFIG_OK) {
-    printf("owner rid size=%u value size=%zu\n",
-           owner_rid.size, zlink_msg_size(&route_value));
-}
-zlink_msg_close(&route_value);
-
-zlink_discovery_unbind_route(owner_discovery, 1,
-    key, sizeof(key) - 1);
-```
+Actor 주소는 application key-value 저장소가 아니라 core Actor active route로
+조회한다. Actor owner Discovery에서 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`를 켜고,
+해당 Actor가 STREAM session에 bind된 뒤 `zlink_discovery_resolve_actor()`로 현재
+Actor ref를 읽는다. match id, user id 같은 domain key는 Redis나 DB 같은 외부
+저장소에서 관리한다.
 
 ## 7. 운영 패턴
 

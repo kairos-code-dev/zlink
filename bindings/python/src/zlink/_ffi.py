@@ -833,35 +833,6 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_discovery_bind_route",
-            [
-                ctypes.c_void_p,
-                ctypes.c_uint32,
-                ctypes.c_void_p,
-                ctypes.c_size_t,
-                ctypes.c_void_p,
-                ctypes.c_size_t,
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_discovery_unbind_route",
-            [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_size_t],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_discovery_resolve_route",
-            [
-                ctypes.c_void_p,
-                ctypes.c_uint32,
-                ctypes.c_void_p,
-                ctypes.c_size_t,
-                ctypes.POINTER(ZlinkRoutingId),
-                ctypes.POINTER(ZlinkMsg),
-            ],
-            ctypes.c_int,
-        )
-        self._require(
             "zlink_discovery_resolve_spot",
             [
                 ctypes.c_void_p,

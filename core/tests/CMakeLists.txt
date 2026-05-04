@@ -71,6 +71,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_pubsub_filter_xpub
   ${INTEGRATION_TEST_ROOT}/test_xpub_nodrop
   ${INTEGRATION_TEST_ROOT}/test_spot_dispatch_event
+  ${INTEGRATION_TEST_ROOT}/test_spot_actor_dispatch
   ${INTEGRATION_TEST_ROOT}/test_spot_poller
   ${INTEGRATION_TEST_ROOT}/test_spot_runtime_activation
   ${INTEGRATION_TEST_ROOT}/test_discovery_resolve_spot

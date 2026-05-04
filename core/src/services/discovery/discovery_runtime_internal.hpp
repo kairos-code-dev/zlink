@@ -5,6 +5,8 @@
 
 #include <zlink.h>
 
+#include "services/discovery/route_limits_internal.hpp"
+
 #include <map>
 #include <set>
 #include <string>
@@ -45,6 +47,9 @@ class discovery_local_state_t
     int set_spot_owner_sync_enabled (int value_);
     int get_spot_owner_sync_enabled (void *optval_, size_t *optvallen_) const;
     bool spot_owner_sync_enabled () const { return _spot_owner_sync_enabled; }
+    int set_actor_route_sync_enabled (int value_);
+    int get_actor_route_sync_enabled (void *optval_, size_t *optvallen_) const;
+    bool actor_route_sync_enabled () const { return _actor_route_sync_enabled; }
     void set_value (int64_t value_);
     int get_value (int64_t *value_out_) const;
     void snapshot_registration (int64_t *value_out_) const;
@@ -53,6 +58,7 @@ class discovery_local_state_t
     int64_t _value;
     size_t _route_value_max_size;
     bool _spot_owner_sync_enabled;
+    bool _actor_route_sync_enabled;
 };
 
 struct discovery_service_change_t

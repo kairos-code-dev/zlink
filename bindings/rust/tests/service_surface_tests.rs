@@ -178,6 +178,9 @@ fn discovery_resolve_spot_surface_exists() {
     assert!(!discovery.spot_owner_sync_enabled().unwrap());
     discovery.set_spot_owner_sync_enabled(true).unwrap();
     assert!(discovery.spot_owner_sync_enabled().unwrap());
+    assert!(!discovery.actor_route_sync_enabled().unwrap());
+    discovery.set_actor_route_sync_enabled(true).unwrap();
+    assert!(discovery.actor_route_sync_enabled().unwrap());
     let _ = discovery.resolve_spot(&RoutingId::from_bytes(b"spot-rid"));
 }
 

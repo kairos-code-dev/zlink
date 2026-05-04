@@ -5,6 +5,13 @@
 관리하고, `STREAM` session에서 Actor로 메시지를 relay하는 기능을 설계하기
 위한 초안이다.
 
+구현 후 정식 공개 계약은 `core/include/zlink.h`와 아래 문서로 나누어 반영한다.
+
+- `doc/spec/core/service/spot.ko.md`
+- `doc/spec/core/socket/stream.ko.md`
+- `doc/spec/core/service/discovery.ko.md`
+- `doc/spec/core/errno-map.ko.md`
+
 정식 spec 문서와 `core/include/zlink.h`, 구현, 테스트에 반영되기 전까지
 응용은 이 동작에 의존하면 안 된다. 이 초안의 함수 이름, enum 이름, 에러
 매핑은 구현 과정에서 바뀔 수 있다.
@@ -177,6 +184,11 @@ handle이다. 호출자는 이 handle을 그대로 `zlink_actor_recv_part()`에 
 설정 가능한 queue 객체를 할당한다는 뜻이 아니다. `SpotNode` 내부 relay/dispatch
 경로에서 Actor별 unread 상태를 구분하기 위한 논리적 표현이다.
 
+Actor는 socket, inproc endpoint, transport endpoint를 소유하지 않는다. Actor는
+`SpotNode`가 관리하는 routing target이며, Actor로 들어온 part는 `SpotNode` 내부의
+Actor별 unread 상태에 저장된다. 이 제한은 local Actor와 remote Actor 모두에
+동일하게 적용된다.
+
 ## 설계 원칙
 
 1. `SpotNode`가 Actor lifecycle과 Actor routing을 소유한다.
@@ -204,6 +216,9 @@ handle이다. 호출자는 이 handle을 그대로 `zlink_actor_recv_part()`에 
 16. STREAM session owner node는 `session -> actor_id -> Actor ref` 목록만 저장한다.
     Actor가 어느 Spot에 join되어 있는지는 Actor owner node가 소유하며, Discovery
     active route도 Actor owner node가 자기 현재 상태를 기준으로 publish하거나 갱신한다.
+17. Actor는 내부 socket이나 per-Actor inproc endpoint를 갖지 않는다. `STREAM` relay,
+    remote mesh relay, dispatch event는 모두 `SpotNode`가 소유한 경로와 Actor별 unread
+    상태를 통해 처리한다.
 
 9번 제한은 초안의 복잡도를 줄이기 위한 의도적인 제약이다. 한 Actor가 여러
 `Spot`에 동시에 join하면 같은 readable event를 어느 queue와 어떤 callback에서
@@ -1361,6 +1376,13 @@ STREAM에서 Actor로 보내는 public relay 경로는 session Actor list에 묶
 application이 해석한 뒤, 같은 session의 Actor list 안에서 target `actor_id`를 지정해
 bound send를 호출한다.
 
+이 relay는 Actor socket으로 보내는 동작이 아니다. local Actor는 session owner
+`SpotNode`가 가진 session Actor list를 통해 target Actor를 찾고, 해당 Actor의 내부
+unread 상태에 part를 넣는다. remote Actor는 session owner `SpotNode`가 target
+`SpotNode`로 relay frame을 보내고, target `SpotNode`가 자기 Actor table을 확인한 뒤
+해당 Actor의 내부 unread 상태에 part를 넣는다. target node에 도착한 뒤에도 Actor별
+socket이나 inproc endpoint로 다시 전달하지 않는다.
+
 ```c
 ZLINK_EXPORT zlink_submit_result_t zlink_stream_send_bound_actor_part(
   void *node_,
@@ -1407,6 +1429,9 @@ ZLINK_EXPORT zlink_submit_result_t zlink_stream_send_bound_actor_part(
   final로 바꾸지는 않는다.
 - target Actor가 local Actor면 current node의 Actor queue에 enqueue한다.
 - target Actor가 remote Actor면 `SpotNode` mesh를 통해 target node로 forward한다.
+- remote target node에 도착한 relay frame은 target `SpotNode`의 Actor table과 내부
+  Actor unread 상태로 처리한다. remote Actor도 별도 socket이나 inproc endpoint를
+  소유하지 않는다.
 - remote target node와 연결되어 있지 않으면 local submit 단계에서
   `ZLINK_SUBMIT_NOT_CONNECTED`로 실패한다.
 - target node까지 보냈지만 remote Actor가 없으면 one-way send의 성공 여부와
@@ -1475,6 +1500,11 @@ ZLINK_EXPORT zlink_submit_result_t zlink_actor_send_bound_session_packet(
 ## Actor queue 수신
 
 Actor dispatch event를 받은 뒤 Actor queue에서 part를 읽는다.
+
+Actor queue는 `ROUTER`, `DEALER`, `PAIR` 같은 socket queue가 아니다. 이 절에서 queue는
+`SpotNode` 내부에 있는 Actor별 unread part 상태를 뜻한다. `zlink_actor_recv_part()`는
+Actor socket에서 `recv`하는 API가 아니라, dispatch callback 안에서 이 내부 unread
+상태의 다음 part를 꺼내는 API다.
 
 ```c
 ZLINK_EXPORT zlink_recv_result_t zlink_actor_recv_part(
@@ -1864,6 +1894,9 @@ HWM option은 두지 않는다.
 Actor relay에서 발생하는 backpressure는 기존 `SpotNode` relay 경로와 내부 dispatch
 경로의 자원 상태를 따른다. `ZLINK_DONTWAIT` relay 호출이 내부 자원 부족이나 기존
 전송 경로 HWM에 걸리면 `ZLINK_SUBMIT_BACKPRESSURED` 계열 결과를 반환한다.
+Actor별 socket HWM은 존재하지 않으며, Actor socket HWM을 `0`으로 설정하는 계약도
+없다. 구현은 `SpotNode`가 소유한 relay 자원과 Actor별 unread 상태의 내부 한계를
+기준으로 backpressure를 판단한다.
 
 ## 모니터링과 snapshot
 

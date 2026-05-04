@@ -458,34 +458,14 @@ for (size_t i = 0; i < count; i++) {
 free(peers);
 ```
 
-#### Owner-Bound Route Binding
+#### Actor Active Route Lookup
 
-Use route binding when an application key should follow the lifetime of the
-provider that owns it. Bind from the owner Discovery, resolve from any
-Discovery in the same channel.
-
-```c
-const char key[] = "actor:42";
-const char value[] = "shard-a";
-
-zlink_discovery_bind_route(owner_discovery, 1,
-    key, sizeof(key) - 1,
-    value, sizeof(value) - 1);
-
-zlink_routing_id_t owner_rid;
-zlink_msg_t route_value;
-zlink_msg_init(&route_value);
-if (zlink_discovery_resolve_route(resolver_discovery, 1,
-        key, sizeof(key) - 1,
-        &owner_rid, &route_value) == ZLINK_CONFIG_OK) {
-    printf("owner rid size=%u value size=%zu\n",
-           owner_rid.size, zlink_msg_size(&route_value));
-}
-zlink_msg_close(&route_value);
-
-zlink_discovery_unbind_route(owner_discovery, 1,
-    key, sizeof(key) - 1);
-```
+Actor addresses are resolved through core Actor active routes, not through an
+application key-value store. Enable `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` on
+the Actor owner Discovery, bind the Actor to a STREAM session, then use
+`zlink_discovery_resolve_actor()` to read the current Actor ref. Domain keys
+such as match ids and user ids should live in an external store such as Redis
+or a database.
 
 ## 7. Operational Patterns
 

@@ -33,6 +33,7 @@ struct iovec
 #include "api/monitor_api_internal.hpp"
 #include "api/part_helper_internal.hpp"
 #include "api/poller_api_internal.hpp"
+#include "api/service_handle_internal.hpp"
 #include "api/service_surface_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/socket_api_internal.hpp"
@@ -204,6 +205,7 @@ zlink_close_result_t zlink_close (void *s_)
         }
         zlink_socket_request_reply_cleanup (s_);
         zlink_spot_request_reply_cleanup_router (s_);
+        erase_actor_stream_bindings (s_);
         const int rc = handle.socket->close ();
         return zlink::close_result_internal::from_rc (rc);
     }
@@ -229,6 +231,7 @@ zlink_close_result_t zlink_close (void *s_)
     }
     zlink_socket_request_reply_cleanup (s_);
     zlink_spot_request_reply_cleanup_router (s_);
+    erase_actor_stream_bindings (s_);
     const int rc = handle.socket->close ();
     return zlink::close_result_internal::from_rc (rc);
 }

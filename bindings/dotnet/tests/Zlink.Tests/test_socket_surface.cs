@@ -368,10 +368,16 @@ public sealed class test_socket_surface
             typeof(Discovery).GetProperty(nameof(Discovery.SpotOwnerSyncEnabled))!
                 .PropertyType);
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
-            nameof(Discovery.BindRoute), typeof(uint), typeof(ReadOnlySpan<byte>),
-            typeof(ReadOnlySpan<byte>)));
+            nameof(Discovery.SetActorRouteSyncEnabled), typeof(bool)));
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
-            nameof(Discovery.ResolveRoute), typeof(uint), typeof(ReadOnlySpan<byte>)));
+            nameof(Discovery.GetActorRouteSyncEnabled)));
+        Assert.Equal(typeof(bool),
+            typeof(Discovery).GetProperty(nameof(Discovery.ActorRouteSyncEnabled))!
+                .PropertyType);
+        Assert.False(HasPublicInstanceMethod(typeof(Discovery), "BindRoute",
+            typeof(uint), typeof(ReadOnlySpan<byte>), typeof(ReadOnlySpan<byte>)));
+        Assert.False(HasPublicInstanceMethod(typeof(Discovery), "ResolveRoute",
+            typeof(uint), typeof(ReadOnlySpan<byte>)));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery),
             "SetDealerPeerMode"));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen"));

@@ -395,6 +395,30 @@ func (d *Discovery) SpotOwnerSyncEnabled() (bool, error) {
 	return value != 0, nil
 }
 
+func (d *Discovery) SetActorRouteSyncEnabled(enabled bool) error {
+	if d == nil || d.closed {
+		return stateError("discovery is closed")
+	}
+	return setNativeBoolOption(d.raw(), d.closed, "discovery is closed", C.ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC, enabled)
+}
+
+func (d *Discovery) ActorRouteSyncEnabled() (bool, error) {
+	if d == nil || d.closed {
+		return false, stateError("discovery is closed")
+	}
+	var value C.int
+	size := C.size_t(C.sizeof_int)
+	if err := configErrorFromResult(ConfigResult(C.zlink_get_option(
+		d.raw(),
+		C.ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC,
+		unsafe.Pointer(&value),
+		&size,
+	))); err != nil {
+		return false, err
+	}
+	return value != 0, nil
+}
+
 func (d *Discovery) ResolveSpot(spotRid RoutingID) (RoutingID, error) {
 	if d == nil || d.closed {
 		return RoutingID{}, stateError("discovery is closed")
@@ -416,67 +440,6 @@ func (d *Discovery) GetValue() (int64, error) {
 		return 0, err
 	}
 	return int64(value), nil
-}
-
-func (d *Discovery) BindRoute(kind RouteKind, key []byte, value []byte) error {
-	if d == nil || d.closed {
-		return stateError("discovery is closed")
-	}
-	var keyPtr unsafe.Pointer
-	if len(key) > 0 {
-		keyPtr = unsafe.Pointer(&key[0])
-	}
-	var valuePtr unsafe.Pointer
-	if len(value) > 0 {
-		valuePtr = unsafe.Pointer(&value[0])
-	}
-	return checkRC(C.zlink_discovery_bind_route(
-		d.raw(),
-		C.zlink_route_kind_t(kind),
-		keyPtr,
-		C.size_t(len(key)),
-		valuePtr,
-		C.size_t(len(value)),
-	))
-}
-
-func (d *Discovery) UnbindRoute(kind RouteKind, key []byte) error {
-	if d == nil || d.closed {
-		return stateError("discovery is closed")
-	}
-	var keyPtr unsafe.Pointer
-	if len(key) > 0 {
-		keyPtr = unsafe.Pointer(&key[0])
-	}
-	return checkRC(C.zlink_discovery_unbind_route(
-		d.raw(),
-		C.zlink_route_kind_t(kind),
-		keyPtr,
-		C.size_t(len(key)),
-	))
-}
-
-func (d *Discovery) ResolveRoute(kind RouteKind, key []byte) (RoutingID, *Message, error) {
-	if d == nil || d.closed {
-		return RoutingID{}, nil, stateError("discovery is closed")
-	}
-	var keyPtr unsafe.Pointer
-	if len(key) > 0 {
-		keyPtr = unsafe.Pointer(&key[0])
-	}
-	var owner C.zlink_routing_id_t
-	msg := &Message{}
-	if err := checkRC(C.zlink_discovery_resolve_route(
-		d.raw(),
-		C.zlink_route_kind_t(kind),
-		keyPtr,
-		C.size_t(len(key)),
-		&owner,
-		&msg.msg,
-	)); err != nil {
-		return RoutingID{}, nil, err
-	}
-	return routingIDFromC(owner), msg, nil
 }
 
 func (d *Discovery) MemberPeers() ([]MemberPeerEntry, error) {

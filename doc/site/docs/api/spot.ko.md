@@ -537,7 +537,8 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_send_spot (
 - `zlink_spot_request_router()`는 `zlink_router_reply_spot(_part)`와 reply 짝을 이룬다.
 - submit이 `ZLINK_SUBMIT_OK`이면 `handler_`가 정확히 한 번 호출된다.
 - 그 외 반환값이면 handler는 등록되지 않는다.
-- 반환 코드 의미는 `doc/draft/spot-routed-request-api.ko.md` 8절을 참조한다.
+- 반환 코드 의미는 [errno-map.ko.md](../errno-map.ko.md)의
+  `zlink_submit_result_t`와 `zlink_request_result_t`를 참조한다.
 - `zlink_spot_send_spot()`은 대상 `Spot`으로 one-way routed send를 수행한다. reply를 기다리지 않으며 handler가 없다.
 - `zlink_spot_send_spot()`은 `ZLINK_SUBMIT_OK`이면 메시지가 전송 경로에 올라간 것이다.
 

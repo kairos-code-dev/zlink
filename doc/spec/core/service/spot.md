@@ -477,7 +477,9 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_send_spot (
 - `zlink_spot_request_router()` pairs with `zlink_router_reply_spot(_part)`.
 - On `ZLINK_SUBMIT_OK` the handler is registered and called exactly once.
 - On any other return value the handler is not registered.
-- For the full result-code mapping see `doc/draft/spot-routed-request-api.ko.md` §8.
+- For the full result-code mapping see
+  [errno-map.md](../errno-map.md) `zlink_submit_result_t` and
+  `zlink_request_result_t`.
 - `zlink_spot_send_spot()` performs a one-way routed send to a destination `Spot`. No handler, no reply wait.
 - Returns `ZLINK_SUBMIT_OK` when the message is accepted into the send path.
 

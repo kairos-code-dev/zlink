@@ -275,8 +275,7 @@ side. `zlink_spot_request_router` pairs with `zlink_router_reply_spot`.
 
 On `ZLINK_SUBMIT_OK` the caller must wait for exactly one `handler_`
 invocation. On any other return value the handler is not registered. See
-Section 8 of `doc/draft/spot-routed-request-api.ko.md` for the full
-result-code mapping.
+`doc/spec/core/errno-map.md` for the full result-code mapping.
 
 ## SPOT Routed Reply Surface
 

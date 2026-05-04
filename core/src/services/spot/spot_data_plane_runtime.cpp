@@ -625,6 +625,9 @@ void spot_data_plane_t::teardown_runtime (
         state_->remote_mesh.pending_messages.clear ();
     }
 
+    LIBZLINK_DELETE (state_->poller);
+    state_->poller = NULL;
+
     if (state_->mesh_xsub)
         (void) state_->mesh_xsub->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
     spot_data_plane_t::close_socket_ptr (node_, state_->mesh_xsub_monitor);

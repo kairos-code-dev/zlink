@@ -57,6 +57,8 @@ class spot_node_t : public discovery_observer_t
     bool routed_enabled () const;
     int set_node_routing_id (const void *data_, size_t size_);
     int node_routing_id (zlink_routing_id_t *out_) const;
+    bool spot_owner_route_synced () const;
+    bool actor_route_sync_enabled () const;
 
     int bind (const char *endpoint_);
     int connect_peer_pub (const char *peer_pub_endpoint_);

@@ -59,8 +59,8 @@ zlink_spot_node_options_t opts = {
 void *node = zlink_spot_node_new(ctx, &opts);
 ```
 
-routed 전용 node는 `ZLINK_SPOT_NODE_MODE_ROUTED`를 쓴다. 꺼진 기능은
-`ENOTSUP`으로 실패하며, 숨은 내부 socket을 만들지 않는다.
+routed 전용 node는 `ZLINK_SPOT_NODE_MODE_ROUTED`를 쓴다. 꺼진 기능의 API는
+`ENOTSUP`으로 실패한다.
 
 이 예제는 한 프로세스 안에서 SPOT node를 만들고, unified `Spot` facade로
 토픽 하나를 발행하는 가장 작은 흐름이다.
@@ -292,6 +292,12 @@ void my_dispatch_handler(
         /* subject가 timer handle */
         zlink_timer_recv(info_->subject, NULL, 0);
         break;
+    case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE:
+        /* zlink_spot_actor_join_recv() 로 drain */
+        break;
+    case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE:
+        /* subject가 Actor handle */
+        break;
     }
 }
 ```
@@ -357,7 +363,86 @@ stream에서 처리된다**.
 
 이 때문에 binding이 attached dealer별 별도 progress pump를 돌릴 필요가 없다.
 
-## 7. 지금 공개된 poller와의 관계
+## 7. Actor로 session 메시지 분배하기
+
+Actor는 session 메시지를 특정 처리 단위로 모으고, Spot dispatch callback에서
+읽을 대상을 구분하고 싶을 때 쓴다. 한 session은 여러 Actor를 bind할 수 있고,
+한 Actor는 동시에 하나의 session에만 bind된다.
+
+가장 작은 흐름은 아래와 같다.
+
+1. `SpotNode`에서 Actor를 만든다.
+2. STREAM client session routing id를 확인한다.
+3. `zlink_stream_bind_actor()`로 session과 Actor를 연결한다.
+4. STREAM packet handler나 app 로직에서 `zlink_stream_send_bound_actor_part()`를
+   호출해 Actor id를 선택한다.
+5. dispatch callback에서 `ACTOR_READABLE`을 받으면 `subject` Actor를
+   `zlink_actor_recv_part()`로 비운다.
+
+```c
+void *actor = zlink_spot_node_actor_new(node, "player-42");
+zlink_actor_ref_t ref;
+zlink_actor_get_ref(actor, &ref);
+
+zlink_stream_bind_actor(node, stream, &session_rid, &ref, 2000);
+
+zlink_msg_t part;
+zlink_msg_init_size(&part, 5);
+memcpy(zlink_msg_data(&part), "hello", 5);
+zlink_stream_send_bound_actor_part(
+  node,
+  stream,
+  &session_rid,
+  "player-42",
+  &part,
+  0,
+  ZLINK_PART_FINAL);
+```
+
+Actor가 읽을 수 있게 되면 dispatch callback은 drain 대상 Actor handle을 알려준다.
+
+```c
+case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
+    void *actor = info_->subject;
+    for (;;) {
+        zlink_actor_recv_info_t recv_info;
+        zlink_msg_t part;
+        zlink_part_flag_t more = ZLINK_PART_FINAL;
+        zlink_recv_result_t rc = zlink_actor_recv_part(
+          actor,
+          &recv_info,
+          &part,
+          &more,
+          ZLINK_DONTWAIT);
+
+        if (rc == ZLINK_RECV_NO_DATA)
+            break;
+        if (rc != ZLINK_RECV_OK)
+            break;
+
+        /* part 처리 */
+        zlink_msg_close(&part);
+    }
+    break;
+}
+```
+
+Actor 주소를 다른 node에서 알고 있어야 하면 Actor owner Discovery에서
+`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`를 켜고, Actor를 STREAM session에 bind한 뒤
+`zlink_discovery_resolve_actor()`로 조회한다. Actor 생성이나 Spot join만으로는
+active route가 공개되지 않는다.
+
+Remote Actor가 필요하면 caller node에서 `zlink_spot_node_create_remote_actor()`를
+사용한다. 이미 target node에 같은 Actor id가 있으면 새로 만들지 않고 existing
+결과를 받는다. target node가 admission handler에서 reject하면 request는 거부
+결과로 끝난다.
+
+Actor가 Spot에 들어가야 하는 흐름에서는 join request를 보낸 뒤 Spot 쪽에서
+`zlink_spot_actor_join_recv()`로 요청 message를 읽고,
+`zlink_spot_actor_join_reply()`로 accept 또는 reject reply를 보낸다. 한 Actor는 한
+Spot에만 join할 수 있으므로 이동할 때는 기존 Spot에서 leave한 뒤 새 Spot에 join한다.
+
+## 8. 지금 공개된 poller와의 관계
 
 현재 public poller는 `Spot` 전용 event kind와 subject를 함께 돌려주지 않는다.
 즉 지금 공개 계약에서는 `Spot`을 poller에 등록해서 dispatch callback과 같은 의미를
@@ -367,7 +452,7 @@ stream에서 처리된다**.
 순차 처리하려면 현재는 `zlink_spot_dispatch_event_handler()`를 사용하는 쪽이 맞다.
 `Spot` progress 하나만으로 channel reply completion을 포함한 모든 work가 진전된다.
 
-## 8. Routed receive와 reply
+## 9. Routed receive와 reply
 
 SPOT routed plane은 수신 시 source node rid, source spot rid, request sequence를
 함께 준다.
@@ -394,13 +479,13 @@ int rc = zlink_spot_recv(
 - 상대가 SPOT이면 `zlink_spot_reply_spot()`
 - 상대가 ROUTER면 `zlink_spot_reply_router()`
 
-## 9. Spot에서 routed request 시작하기
+## 10. Spot에서 routed request 시작하기
 
 `Spot`은 routed request와 one-way direct send를 직접 시작할 수 있다.
 기본 경로는 `send_channel()` / `request_channel()`이지만, 특정 peer를 직접
 지목할 때는 아래 API를 사용한다.
 
-### 9.1 다른 Spot으로 request 보내기
+### 10.1 다른 Spot으로 request 보내기
 
 ```c
 zlink_spot_request_spot(
@@ -417,7 +502,7 @@ zlink_spot_request_spot(
 
 reply는 대상 Spot이 `zlink_spot_reply_spot()`으로 보낸다.
 
-### 9.2 Router peer로 request 보내기
+### 10.2 Router peer로 request 보내기
 
 ```c
 zlink_spot_request_router(
@@ -433,7 +518,7 @@ zlink_spot_request_router(
 
 reply는 대상 ROUTER가 `zlink_router_reply_spot()`으로 보낸다.
 
-### 9.3 Spot에서 Spot으로 one-way direct send
+### 10.3 Spot에서 Spot으로 one-way direct send
 
 `Spot`에서 `rid`를 직접 지정해 다른 `Spot`으로 one-way send를 하려면
 `zlink_spot_send_spot()` (C API) 또는 내부 substrate `zlink_spot_send_spot_part()`를
@@ -442,7 +527,7 @@ reply는 대상 ROUTER가 `zlink_router_reply_spot()`으로 보낸다.
 ROUTER peer로 one-way send는 현재 공개 표면에 없다. 필요하면 `RouterSocket`
 또는 raw ROUTER API를 쓴다.
 
-## 10. Router에서 SPOT으로 직접 보내기
+## 11. Router에서 SPOT으로 직접 보내기
 
 특정 destination node rid와 spot rid를 직접 지정해 ROUTER에서 SPOT으로
 one-way send 또는 request를 보낼 때는 `RouterSocket` 또는 raw ROUTER API를 쓴다.
@@ -460,7 +545,7 @@ zlink_router_request_spot(
   2000);
 ```
 
-## 11. 일반 PUB에서 SPOT으로 publish 넣기
+## 12. 일반 PUB에서 SPOT으로 publish 넣기
 
 외부 일반 `PUB`에서 SPOT topic plane으로 publish를 넣고 싶다면 ingress용 `PUB`를
 등록한다.
@@ -473,7 +558,7 @@ zlink_spot_node_attach_pub_ingress(node, pub);
 이 `PUB`는 `SpotNode` 전용 ingress source로 취급한다. node당 하나만 붙일 수 있고,
 attach 뒤에는 다른 일반 용도로 함께 쓰지 않는 편이 맞다.
 
-## 12. 상태 확인
+## 13. 상태 확인
 
 디버깅이나 운영 상태 확인에는 node snapshot과 query API를 사용한다.
 
@@ -491,7 +576,22 @@ zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
 SPOT delivery 경로는 내부 delivery queue가 커졌다는 이유로 target을 끊지 않기
 때문에 이 값은 `0`을 보고한다.
 
-HWM 진단은 내부 socket snapshot과 monitor snapshot 필드를 함께 본다. SpotNode
-HWM 옵션은 topic publish admission과 routed admission에만 적용된다. relay와
-delivery socket은 HWM `0`을 사용하므로, 큰 메시지 publish latency는 숨은 relay
-상한보다 admission 경계 뒤의 큐 체류 시간으로 보는 편이 맞다.
+HWM 진단은 node snapshot과 monitor snapshot 필드를 함께 본다. SpotNode HWM
+옵션은 topic publish admission과 routed admission에만 적용된다. Actor 전용 HWM
+옵션은 없으므로 Actor 처리 지연은 dispatch event, recv 결과, snapshot count를
+함께 보며 판단한다.
+
+Actor 상태 확인에는 `zlink_spot_node_actors_snapshot()`과
+`zlink_spot_actors_snapshot()`을 사용한다. snapshot의 unread count와 joined 상태는
+운영 진단용이다. 메시지를 처리하거나 흐름 제어를 결정할 때는 dispatch event와 recv
+결과를 기준으로 삼는다.
+
+## 14. Actor C sample
+
+C 샘플에는 Actor 흐름을 나누어 보여 주는 세 파일이 있다.
+
+| 흐름 | 파일 |
+|---|---|
+| 방 단위 Actor dispatch | `bindings/c/samples/actor_room_server_sample.c` |
+| gateway session에서 remote Actor로 relay | `bindings/c/samples/actor_gateway_relay_sample.c` |
+| 단일 사용자 queue 직렬화 | `bindings/c/samples/actor_single_player_queue_sample.c` |

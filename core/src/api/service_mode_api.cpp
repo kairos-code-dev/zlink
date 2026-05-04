@@ -177,22 +177,29 @@ void register_spot_node_mode_state (zlink::spot_node_t *node_)
 {
     if (!node_)
         return;
-    std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
-    g_registered_spot_node_handles.insert (node_);
+    {
+        std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
+        g_registered_spot_node_handles.insert (node_);
+    }
+    register_actor_spot_node (node_);
 }
 
 void register_spot_mode_state (spot_handle_t *spot_)
 {
     if (!spot_)
         return;
-    std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
-    g_registered_spot_handles.insert (spot_);
+    {
+        std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
+        g_registered_spot_handles.insert (spot_);
+    }
+    register_actor_spot_facade (spot_);
 }
 
 void erase_spot_node_mode_state (zlink::spot_node_t *node_)
 {
     if (!node_)
         return;
+    erase_actor_spot_node (node_);
     std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
     g_registered_spot_node_handles.erase (node_);
 }
@@ -201,6 +208,7 @@ void erase_spot_mode_state (spot_handle_t *spot_)
 {
     if (!spot_)
         return;
+    erase_actor_spot_facade (spot_);
     std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
     g_registered_spot_handles.erase (spot_);
 }

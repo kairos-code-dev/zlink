@@ -86,6 +86,7 @@ class discovery_t
     uint16_t auto_connect_type () const { return _auto_connect_type; }
     const std::string &channel_name () const { return _channel_name; }
     bool spot_owner_sync_enabled () const;
+    bool actor_route_sync_enabled () const;
 
     void snapshot_providers (const std::string &channel_name_,
                              std::vector<provider_info_t> *out_);

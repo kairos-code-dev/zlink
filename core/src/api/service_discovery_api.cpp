@@ -89,59 +89,6 @@ zlink_config_result_t zlink_discovery_resolve_spot (
         discovery, spot_rid_, owner_node_rid_out_));
 }
 
-zlink_config_result_t zlink_discovery_bind_route (void *discovery_,
-                                                  zlink_route_kind_t kind_,
-                                                  const void *key_,
-                                                  size_t key_size_,
-                                                  const void *value_,
-                                                  size_t value_size_)
-{
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
-    if (!discovery) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    return zlink::config_result_internal::from_rc (
-      zlink::discovery_access_t::bind_route (discovery, kind_, key_, key_size_,
-                                             value_, value_size_));
-}
-
-zlink_config_result_t zlink_discovery_unbind_route (void *discovery_,
-                                                    zlink_route_kind_t kind_,
-                                                    const void *key_,
-                                                    size_t key_size_)
-{
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
-    if (!discovery) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    return zlink::config_result_internal::from_rc (
-      zlink::discovery_access_t::unbind_route (discovery, kind_, key_,
-                                               key_size_));
-}
-
-zlink_config_result_t zlink_discovery_resolve_route (
-  void *discovery_,
-  zlink_route_kind_t kind_,
-  const void *key_,
-  size_t key_size_,
-  zlink_routing_id_t *owner_rid_out_,
-  zlink_msg_t *value_out_)
-{
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
-    if (!discovery) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    return zlink::config_result_internal::from_rc (
-      zlink::discovery_access_t::resolve_route (
-        discovery, kind_, key_, key_size_, owner_rid_out_, value_out_));
-}
-
 zlink_config_result_t zlink_discovery_member_peers (void *discovery_,
                                                     zlink_member_peer_entry_t *entries_,
                                                     size_t *count_)

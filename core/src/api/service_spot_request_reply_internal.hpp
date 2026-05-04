@@ -83,6 +83,8 @@ struct spot_dispatch_state_t
     std::mutex mutex;
     std::deque<zlink_spot_dispatch_info_t> subscribe_pending;
     std::deque<zlink_spot_dispatch_info_t> routed_pending;
+    std::deque<zlink_spot_dispatch_info_t> actor_join_pending;
+    std::deque<zlink_spot_dispatch_info_t> actor_readable_pending;
     std::deque<zlink_spot_dispatch_info_t> channel_reply_pending;
     std::deque<zlink_spot_dispatch_info_t> timer_pending;
     std::set<std::pair<int, void *> > queued_keys;

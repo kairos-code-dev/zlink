@@ -257,3 +257,73 @@ peer control plane은 data plane과 분리된 작은 메시지 흐름이다. 주
 control socket은 데이터 payload HWM 계산과 별도 메시지 단위를 사용할 수 있다. perf
 표에서 같은 payload 크기 블록 안에 다른 `MsgUnit(B)` 값이 보이면 control plane과
 data plane 기준이 다르기 때문이다.
+
+## 7. Actor dispatch 내부 모델
+
+Actor는 SpotNode가 관리하는 routing target이다. Actor handle 자체는 socket,
+inproc endpoint, transport endpoint를 소유하지 않는다. STREAM session에서 Actor로
+relay되는 part는 target SpotNode의 Actor table을 거쳐 Actor unread state에 들어간다.
+
+```mermaid
+flowchart LR
+    subgraph SessionNode["Session Owner SpotNode"]
+        stream["STREAM"]
+        session_map["session actor list"]
+    end
+
+    subgraph ActorNode["Actor Owner SpotNode"]
+        actor_table["actor table"]
+        unread["actor unread state"]
+        dispatch["spot dispatch stream"]
+    end
+
+    stream --> session_map
+    session_map --> actor_table
+    actor_table --> unread
+    unread --> dispatch
+```
+
+session actor list는 session routing id마다 별도로 존재한다. 각 entry는 Actor id와
+concrete Actor ref를 저장한다. unchecked ref로 bind하더라도 attach가 성공하면
+session entry에는 실제 generation이 들어간다. session owner는 joined Spot 상태를
+저장하지 않는다. joined 상태는 Actor owner table과 snapshot에서만 관리한다.
+
+local Actor relay와 remote Actor relay는 같은 Actor table 의미를 사용한다. 차이는
+target SpotNode가 같은 프로세스 안에 있는지, peer SpotNode로 routed control을 거쳐야
+하는지뿐이다. target Actor가 사라진 뒤 remote relay가 도착하면 target node에서 part를
+버릴 수 있다. 이미 sender 쪽에서 성공한 submit 결과는 그 뒤에 바뀌지 않는다.
+
+### 7.1 Actor table 상태
+
+Actor table row는 아래 상태를 함께 가진다.
+
+| 상태 | 의미 |
+|------|------|
+| Actor ref | node rid, Actor id, generation |
+| joined Spot rid | Actor가 현재 join된 Spot |
+| bound session ref | Actor가 attach된 STREAM session |
+| unread state | 아직 `zlink_actor_recv_part()`로 읽지 않은 part |
+| pending join | Spot이 아직 reply하지 않은 join request |
+| route synced | active route가 현재 Actor ref를 가리키는지 여부 |
+
+Actor destroy는 joined 상태, bound session detach, 진행 중인 multipart relay를 먼저
+확인한다. detach를 완료할 수 없거나 timeout이 발생하면 Actor slot과 unread state를
+호출 전 상태로 유지한다.
+
+### 7.2 Dispatch event
+
+Actor unread state에 읽을 part가 생기고 Actor가 Spot에 join되어 있으면 Spot dispatch
+stream에 `ACTOR_READABLE` readiness가 올라간다. event subject는 drain 대상 Actor
+handle이다. pending join request가 생기면 Spot dispatch stream에
+`ACTOR_JOIN_READABLE` readiness가 올라간다.
+
+readiness는 메시지 개수와 1:1로 대응하지 않는다. dispatch callback은 각 drain API가
+`NO_DATA`를 반환할 때까지 비우는 방식으로 동작해야 하며, 내부는 같은 Actor에 대해
+part 순서를 유지한다.
+
+### 7.3 Active route publish
+
+Actor active route는 Actor 생성 시점이나 Spot join 시점에 publish하지 않는다.
+Actor owner SpotNode의 Discovery에서 Actor route sync가 켜져 있고 STREAM bind가
+성공한 시점에 publish한다. unbind와 session disconnect cleanup은 active route를
+제거하지 않는다. active route가 가리키는 Actor가 destroy되면 route cleanup을 수행한다.

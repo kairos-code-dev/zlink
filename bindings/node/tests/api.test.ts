@@ -47,6 +47,9 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(discovery.spotOwnerSyncEnabled, false);
   discovery.spotOwnerSyncEnabled = true;
   assert.equal(discovery.spotOwnerSyncEnabled, true);
+  assert.equal(discovery.actorRouteSyncEnabled, false);
+  discovery.actorRouteSyncEnabled = true;
+  assert.equal(discovery.actorRouteSyncEnabled, true);
 
   assert.equal(registry.statusSnapshot().topologyEntryCount, 0);
   assert.deepEqual(registry.serviceSummarySnapshot(), []);
@@ -56,8 +59,8 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(discovery.getValue(), 7);
   assert.deepEqual(discovery.memberPeers(), []);
   assert.equal(discovery.memberPeerMetadata, undefined);
-  assert.equal(typeof discovery.bindRoute, 'function');
-  assert.equal(typeof discovery.resolveRoute, 'function');
+  assert.equal(discovery.bindRoute, undefined);
+  assert.equal(discovery.resolveRoute, undefined);
   assert.equal(typeof discovery.resolveSpot, 'function');
   assert.equal(discovery.setDealerPeerMode, undefined);
   assert.equal(typeof spot.onDispatchEvent, 'function');

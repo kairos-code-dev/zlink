@@ -1,0 +1,88 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "actor_sample_common.h"
+
+int main (void)
+{
+    void *ctx = zlink_ctx_new ();
+    assert (ctx != NULL);
+    void *node = zlink_spot_node_new (ctx, NULL);
+    assert (node != NULL);
+    void *first_spot = zlink_spot_new (node);
+    assert (first_spot != NULL);
+    zlink_routing_id_t first_spot_rid =
+      actor_sample_find_spot_rid_not (node, NULL, 0);
+    void *second_spot = zlink_spot_new (node);
+    assert (second_spot != NULL);
+    zlink_routing_id_t second_spot_rid =
+      actor_sample_find_spot_rid_not (node, &first_spot_rid, 1);
+    void *actor = zlink_spot_node_actor_new (node, "single-player");
+    assert (actor != NULL);
+
+    actor_sample_capture_t first_capture;
+    actor_sample_capture_init (&first_capture);
+    assert (zlink_spot_dispatch_event_handler (
+              first_spot, actor_sample_join_only_dispatch, &first_capture)
+            == ZLINK_HANDLER_OK);
+    zlink_msg_t join_first;
+    make_message (&join_first, "join-first");
+    assert (zlink_actor_join_spot (actor, first_spot, &join_first,
+                                   actor_sample_join_reply, &first_capture,
+                                   ZLINK_DONTWAIT, 1000)
+            == ZLINK_SUBMIT_OK);
+    assert (callback_signal_wait (&first_capture.join_signal, 2000));
+    assert (first_capture.join_result == ZLINK_REQUEST_OK);
+
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    assert (stream != NULL);
+    zlink_routing_id_t session;
+    actor_sample_set_rid (&session, "single-player-session");
+    zlink_actor_ref_t ref;
+    assert (zlink_actor_get_ref (actor, &ref) == ZLINK_CONFIG_OK);
+    assert (zlink_stream_bind_actor (node, stream, &session, &ref, 1000)
+            == ZLINK_REQUEST_OK);
+
+    zlink_msg_t before;
+    make_message (&before, "before-");
+    assert (zlink_stream_send_bound_actor_part (
+              node, stream, &session, "single-player", &before,
+              ZLINK_DONTWAIT, ZLINK_PART_FINAL)
+            == ZLINK_SUBMIT_OK);
+    sample_pause_ms (50);
+    assert (zlink_actor_leave_spot (actor, first_spot) == ZLINK_CONFIG_OK);
+
+    zlink_msg_t between;
+    make_message (&between, "between-");
+    assert (zlink_stream_send_bound_actor_part (
+              node, stream, &session, "single-player", &between,
+              ZLINK_DONTWAIT, ZLINK_PART_FINAL)
+            == ZLINK_SUBMIT_OK);
+
+    actor_sample_capture_t second_capture;
+    actor_sample_capture_init (&second_capture);
+    assert (zlink_spot_dispatch_event_handler (
+              second_spot, actor_sample_dispatch, &second_capture)
+            == ZLINK_HANDLER_OK);
+    zlink_msg_t join_second;
+    make_message (&join_second, "join-second");
+    assert (zlink_spot_node_actor_join_spot (
+              node, &ref, &second_spot_rid, &join_second,
+              actor_sample_join_reply, &second_capture, ZLINK_DONTWAIT, 1000)
+            == ZLINK_SUBMIT_OK);
+    assert (callback_signal_wait (&second_capture.join_signal, 2000));
+    assert (second_capture.join_result == ZLINK_REQUEST_OK);
+    assert (callback_signal_wait (&second_capture.actor_signal, 2000));
+
+    assert (strcmp (second_capture.payload, "before-between-") == 0);
+
+    assert (zlink_actor_leave_spot (actor, second_spot) == ZLINK_CONFIG_OK);
+    assert (zlink_actor_destroy (&actor, 0) == ZLINK_REQUEST_OK);
+    assert (zlink_close (stream) == ZLINK_CLOSE_OK);
+    assert (zlink_spot_destroy (&second_spot) == ZLINK_CLOSE_OK);
+    assert (zlink_spot_destroy (&first_spot) == ZLINK_CLOSE_OK);
+    assert (zlink_spot_node_destroy (&node) == ZLINK_CLOSE_OK);
+    actor_sample_capture_destroy (&second_capture);
+    actor_sample_capture_destroy (&first_capture);
+    assert (zlink_ctx_term (ctx) == ZLINK_CLOSE_OK);
+    return 0;
+}

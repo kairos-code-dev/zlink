@@ -96,6 +96,7 @@ internal enum SocketOption
     RidDuplicatePolicy = 0x3033,
     AutoHwmMsgUnitBytes = 0x3034,
     DiscoverySpotOwnerSync = 0x3035,
+    DiscoveryActorRouteSync = 0x3036,
     RouterMandatory = 0x3101,
     ProbeRouter = 0x3103,
     ConnectRoutingId = 0x3104,

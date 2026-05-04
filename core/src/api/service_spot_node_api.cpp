@@ -5,6 +5,7 @@
 #include "api/monitor_api_internal.hpp"
 #include "api/part_helper_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
+#include "api/service_handle_internal.hpp"
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
 #include "services/spot/spot_node.hpp"
@@ -287,9 +288,11 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer_rid (
         errno = EFAULT;
         return ZLINK_CONNECT_INVALID_HANDLE;
     }
-    return zlink::connect_result_internal::from_rc (
-      zlink::spot_node_access_t::disconnect_peer_rid (node,
-                                                      target_node_rid_));
+    const int rc =
+      zlink::spot_node_access_t::disconnect_peer_rid (node, target_node_rid_);
+    if (target_node_rid_)
+        note_actor_spot_node_peer_disconnected (node, target_node_rid_);
+    return zlink::connect_result_internal::from_rc (rc);
 }
 
 zlink_config_result_t zlink_spot_node_status_snapshot (void *node_,

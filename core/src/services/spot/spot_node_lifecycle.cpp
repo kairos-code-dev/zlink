@@ -472,6 +472,20 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
     return 0;
 }
 
+bool spot_node_t::actor_route_sync_enabled () const
+{
+    scoped_lock_t lock (_sync);
+    return _discovery_state.discovery
+           && _discovery_state.discovery->actor_route_sync_enabled ();
+}
+
+bool spot_node_t::spot_owner_route_synced () const
+{
+    scoped_lock_t lock (_sync);
+    return _discovery_state.discovery && _discovery_state.registered
+           && _discovery_state.discovery->spot_owner_sync_enabled ();
+}
+
 int spot_node_t::attach_channel_dealer (discovery_t *discovery_,
                                         socket_base_t *dealer_)
 {

@@ -90,6 +90,8 @@ const option_descriptor_t common_option_table[] = {
   {ZLINK_OPT_ROUTE_VALUE_MAX_SIZE, ZLINK_OPT_ROUTE_VALUE_MAX_SIZE, true},
   {ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
    true},
+  {ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC, ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC,
+   true},
 };
 
 const option_descriptor_t router_option_table[] = {

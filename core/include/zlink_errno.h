@@ -115,7 +115,14 @@ typedef enum zlink_request_result_t
     ZLINK_REQUEST_NOT_FOUND       = 102,
     ZLINK_REQUEST_TERMINATED      = 103,
     ZLINK_REQUEST_PROTOCOL_ERROR  = 104,
-    ZLINK_REQUEST_INTERNAL_ERROR  = 105
+    ZLINK_REQUEST_INTERNAL_ERROR  = 105,
+    ZLINK_REQUEST_REJECTED        = 106,
+    ZLINK_REQUEST_CONFLICT        = 107,
+    ZLINK_REQUEST_BUSY            = 108,
+    ZLINK_REQUEST_NOT_CONNECTED   = 109,
+    ZLINK_REQUEST_INVALID_ARGUMENT = 110,
+    ZLINK_REQUEST_INVALID_STATE   = 111,
+    ZLINK_REQUEST_NOT_SUPPORTED   = 112
 } zlink_request_result_t;
 
 /*  Recv / subscribe / subscription_event result (201+).                     */

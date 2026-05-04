@@ -7,6 +7,18 @@ Codex 에이전트 실행 계획이다. 공개 API 계약의 기준은 draft spe
 Codex 에이전트가 사용자의 추가 판단을 기다리지 않고 끝까지 진행하기 위한 작업
 순서와 검증 절차를 정리한다.
 
+현재 진행 상태:
+
+- 2026-05-05 기준 단계 0과 단계 1은 완료 확인했다.
+- core Actor 구현은 단계 2-13을 draft spec과 contract matrix 기준으로 보강 중이다.
+- `test_spot_actor_dispatch` 대상 build/ctest는 STREAM Actor bind, Actor-to-session
+  send, join timeout, remote create-or-get 보강 뒤 통과했다.
+- 2026-05-05 전체 plan 재확인에서 true remote mesh forwarding과 remote target
+  drop 검증은 아직 완료 상태가 아님을 확인했고, 해당 체크 항목은 미완료로 되돌렸다.
+- core release는 `core/vX.Y.Z` tag push로 GitHub Actions에서 진행하는 경로를
+  확인했지만, core 구현과 문서 gate가 끝나지 않아 아직 version bump/tag는 실행하지
+  않았다.
+
 구현 중 API 이름, enum 숫자, 내부 파일 배치는 draft spec과 충돌하지 않는 범위에서
 조정할 수 있다. 조정이 필요하면 Codex 에이전트가 먼저 draft spec을 고치고, 그 다음
 코드와 테스트를 맞춘다. 구현이 끝난 뒤에는 draft 내용을 정식 spec, errno 문서,
@@ -149,19 +161,19 @@ draft spec을 먼저 고쳐 `changed-api`나 `behavior`로 바꾼다.
 
 matrix 생성 시 draft spec에서 아래 항목을 빠짐없이 추출한다.
 
-- [ ] `zlink_`로 시작하는 모든 신규/변경/제거 API
-- [ ] `ZLINK_`로 시작하는 모든 신규/변경/제거 상수, option, enum 값
-- [ ] `typedef struct`와 `typedef enum`으로 정의된 모든 신규 타입
-- [ ] ownership 규칙
-- [ ] timeout 규칙
-- [ ] unchecked/checked ref 규칙
-- [ ] join/leave 상태 규칙
-- [ ] STREAM session Actor list 규칙
-- [ ] Discovery active route publish/cleanup 규칙
-- [ ] snapshot 규칙
-- [ ] 제거 대상 API
-- [ ] 모든 `ACT-*` 회귀 테스트
-- [ ] 비목표 항목
+- [x] `zlink_`로 시작하는 모든 신규/변경/제거 API
+- [x] `ZLINK_`로 시작하는 모든 신규/변경/제거 상수, option, enum 값
+- [x] `typedef struct`와 `typedef enum`으로 정의된 모든 신규 타입
+- [x] ownership 규칙
+- [x] timeout 규칙
+- [x] unchecked/checked ref 규칙
+- [x] join/leave 상태 규칙
+- [x] STREAM session Actor list 규칙
+- [x] Discovery active route publish/cleanup 규칙
+- [x] snapshot 규칙
+- [x] 제거 대상 API
+- [x] 모든 `ACT-*` 회귀 테스트
+- [x] 비목표 항목
 
 matrix 검증 명령은 최소한 아래 비교를 포함한다.
 
@@ -275,26 +287,26 @@ Codex 에이전트는 아래 상황에서도 사용자 결정을 기다리지 �
 
 체크리스트:
 
-- [ ] `git status --short` 확인
-- [ ] 현재 branch 확인
-- [ ] baseline build 성공 또는 기존 실패 기록
-- [ ] baseline test 성공 또는 기존 실패 기록
-- [ ] draft spec 경로와 commit hash 기록
-- [ ] `doc/plan/spot-actor-dispatch/logs/` 디렉터리 생성
-- [ ] blocker log 파일 생성
-- [ ] implementation review log 파일 생성
-- [ ] POSD refactor log 파일 생성
-- [ ] final doc review log 파일 생성
-- [ ] sample/perf smoke log 파일 생성
-- [ ] core release log 파일 생성
-- [ ] bindings update log 파일 생성
-- [ ] bindings spec review log 파일 생성
-- [ ] bindings POSD refactor log 파일 생성
-- [ ] contract matrix 파일 생성
-- [ ] draft spec의 API, enum, struct, option, `ACT-*`, 제거 대상 API를 matrix에 추출
-- [ ] matrix와 draft spec의 `ACT-*` 목록 대조 결과가 비어 있음
-- [ ] matrix와 draft spec의 `zlink_*` API 목록 대조 결과가 비어 있음
-- [ ] matrix와 draft spec의 `ZLINK_*` 상수/enum/option 목록 대조 결과가 비어 있음
+- [x] `git status --short` 확인
+- [x] 현재 branch 확인
+- [x] baseline build 성공 또는 기존 실패 기록
+- [x] baseline test 성공 또는 기존 실패 기록
+- [x] draft spec 경로와 commit hash 기록
+- [x] `doc/plan/spot-actor-dispatch/logs/` 디렉터리 생성
+- [x] blocker log 파일 생성
+- [x] implementation review log 파일 생성
+- [x] POSD refactor log 파일 생성
+- [x] final doc review log 파일 생성
+- [x] sample/perf smoke log 파일 생성
+- [x] core release log 파일 생성
+- [x] bindings update log 파일 생성
+- [x] bindings spec review log 파일 생성
+- [x] bindings POSD refactor log 파일 생성
+- [x] contract matrix 파일 생성
+- [x] draft spec의 API, enum, struct, option, `ACT-*`, 제거 대상 API를 matrix에 추출
+- [x] matrix와 draft spec의 `ACT-*` 목록 대조 결과가 비어 있음
+- [x] matrix와 draft spec의 `zlink_*` API 목록 대조 결과가 비어 있음
+- [x] matrix와 draft spec의 `ZLINK_*` 상수/enum/option 목록 대조 결과가 비어 있음
 
 로그 파일에는 아래 공통 형식을 사용한다.
 
@@ -312,66 +324,66 @@ draft spec의 C API 변경 목록을 기준으로 공개 표면을 먼저 닫는
 
 ### 1.1 상수, option, enum
 
-- [ ] `ZLINK_ACTOR_ID_MAX` 추가
-- [ ] `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` 추가
-- [ ] `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE` 추가
-- [ ] `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE` 추가
-- [ ] `ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR` 추가
-- [ ] `zlink_actor_create_status_t` 추가
-- [ ] `ZLINK_ACTOR_CREATE_CREATED` 추가
-- [ ] `ZLINK_ACTOR_CREATE_EXISTING` 추가
-- [ ] `zlink_actor_admission_result_t` 추가
-- [ ] `ZLINK_ACTOR_ADMISSION_ACCEPT` 추가
-- [ ] `ZLINK_ACTOR_ADMISSION_REJECT` 추가
-- [ ] 기존 `ZLINK_REQUEST_TIMED_OUT = 101` 유지 확인
-- [ ] 기존 `ZLINK_REQUEST_NOT_FOUND = 102` 유지 확인
-- [ ] `ZLINK_REQUEST_REJECTED` 추가
-- [ ] `ZLINK_REQUEST_CONFLICT` 추가
-- [ ] `ZLINK_REQUEST_BUSY` 추가
-- [ ] `ZLINK_REQUEST_NOT_CONNECTED` 추가
-- [ ] `ZLINK_REQUEST_INVALID_ARGUMENT` 추가
-- [ ] `ZLINK_REQUEST_INVALID_STATE` 추가
-- [ ] `ZLINK_REQUEST_NOT_SUPPORTED` 추가
-- [ ] enum 숫자 충돌 검사
+- [x] `ZLINK_ACTOR_ID_MAX` 추가
+- [x] `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` 추가
+- [x] `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE` 추가
+- [x] `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE` 추가
+- [x] `ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR` 추가
+- [x] `zlink_actor_create_status_t` 추가
+- [x] `ZLINK_ACTOR_CREATE_CREATED` 추가
+- [x] `ZLINK_ACTOR_CREATE_EXISTING` 추가
+- [x] `zlink_actor_admission_result_t` 추가
+- [x] `ZLINK_ACTOR_ADMISSION_ACCEPT` 추가
+- [x] `ZLINK_ACTOR_ADMISSION_REJECT` 추가
+- [x] 기존 `ZLINK_REQUEST_TIMED_OUT = 101` 유지 확인
+- [x] 기존 `ZLINK_REQUEST_NOT_FOUND = 102` 유지 확인
+- [x] `ZLINK_REQUEST_REJECTED` 추가
+- [x] `ZLINK_REQUEST_CONFLICT` 추가
+- [x] `ZLINK_REQUEST_BUSY` 추가
+- [x] `ZLINK_REQUEST_NOT_CONNECTED` 추가
+- [x] `ZLINK_REQUEST_INVALID_ARGUMENT` 추가
+- [x] `ZLINK_REQUEST_INVALID_STATE` 추가
+- [x] `ZLINK_REQUEST_NOT_SUPPORTED` 추가
+- [x] enum 숫자 충돌 검사
 
 ### 1.2 struct
 
-- [ ] `zlink_actor_ref_t` 추가
-- [ ] `zlink_actor_recv_info_t` 추가
-- [ ] `zlink_actor_join_info_t` 추가
-- [ ] `zlink_actor_create_result_t` 추가
-- [ ] `zlink_actor_route_t` 추가
-- [ ] `zlink_spot_node_spot_entry_t` 추가
-- [ ] `zlink_spot_node_actor_entry_t` 추가
-- [ ] public ABI 크기와 alignment 검토
-- [ ] C/C++ 컴파일 호환성 검토
+- [x] `zlink_actor_ref_t` 추가
+- [x] `zlink_actor_recv_info_t` 추가
+- [x] `zlink_actor_join_info_t` 추가
+- [x] `zlink_actor_create_result_t` 추가
+- [x] `zlink_actor_route_t` 추가
+- [x] `zlink_spot_node_spot_entry_t` 추가
+- [x] `zlink_spot_node_actor_entry_t` 추가
+- [x] public ABI 크기와 alignment 검토
+- [x] C/C++ 컴파일 호환성 검토
 
 ### 1.3 함수 선언
 
-- [ ] `zlink_spot_node_actor_new()`
-- [ ] `zlink_actor_destroy()`
-- [ ] `zlink_actor_get_ref()`
-- [ ] `zlink_spot_node_actor_lookup()`
-- [ ] `zlink_remote_actor_get_ref()`
-- [ ] `zlink_spot_node_create_remote_actor()`
-- [ ] `zlink_spot_node_destroy_remote_actor()`
-- [ ] `zlink_spot_node_actor_admission_handler()`
-- [ ] `zlink_discovery_resolve_actor()`
-- [ ] `zlink_actor_join_spot()`
-- [ ] `zlink_spot_node_actor_join_spot()`
-- [ ] `zlink_spot_actor_join_recv()`
-- [ ] `zlink_spot_actor_join_reply()`
-- [ ] `zlink_actor_leave_spot()`
-- [ ] `zlink_spot_node_actor_leave_spot()`
-- [ ] `zlink_stream_bind_actor()`
-- [ ] `zlink_stream_unbind_actor()`
-- [ ] `zlink_stream_send_bound_actor_part()`
-- [ ] `zlink_actor_send_bound_session_msg()`
-- [ ] `zlink_actor_send_bound_session_packet()`
-- [ ] `zlink_actor_recv_part()`
-- [ ] `zlink_spot_node_spots_snapshot()`
-- [ ] `zlink_spot_node_actors_snapshot()`
-- [ ] `zlink_spot_actors_snapshot()`
+- [x] `zlink_spot_node_actor_new()`
+- [x] `zlink_actor_destroy()`
+- [x] `zlink_actor_get_ref()`
+- [x] `zlink_spot_node_actor_lookup()`
+- [x] `zlink_remote_actor_get_ref()`
+- [x] `zlink_spot_node_create_remote_actor()`
+- [x] `zlink_spot_node_destroy_remote_actor()`
+- [x] `zlink_spot_node_actor_admission_handler()`
+- [x] `zlink_discovery_resolve_actor()`
+- [x] `zlink_actor_join_spot()`
+- [x] `zlink_spot_node_actor_join_spot()`
+- [x] `zlink_spot_actor_join_recv()`
+- [x] `zlink_spot_actor_join_reply()`
+- [x] `zlink_actor_leave_spot()`
+- [x] `zlink_spot_node_actor_leave_spot()`
+- [x] `zlink_stream_bind_actor()`
+- [x] `zlink_stream_unbind_actor()`
+- [x] `zlink_stream_send_bound_actor_part()`
+- [x] `zlink_actor_send_bound_session_msg()`
+- [x] `zlink_actor_send_bound_session_packet()`
+- [x] `zlink_actor_recv_part()`
+- [x] `zlink_spot_node_spots_snapshot()`
+- [x] `zlink_spot_node_actors_snapshot()`
+- [x] `zlink_spot_actors_snapshot()`
 
 ## 단계 2. 내부 Actor 모델
 
@@ -379,62 +391,62 @@ Actor 내부 상태를 `SpotNode`가 소유하도록 만든다.
 
 구현 항목:
 
-- [ ] `SpotNode` 내부 Actor table 추가
-- [ ] `actor_id` byte 비교 규칙 구현
-- [ ] 같은 `SpotNode` 안 live Actor id 중복 거부
-- [ ] 서로 다른 `SpotNode`의 같은 actor id 허용
-- [ ] live Actor generation 발급
-- [ ] `generation == 0` unchecked ref 의미 구현
-- [ ] `generation != 0` checked ref stale 검출 구현
-- [ ] Actor handle lifetime 관리
-- [ ] Actor queue unread part 저장
-- [ ] Actor joined Spot 상태 저장
-- [ ] Actor bound session ref 저장
-- [ ] Actor table lock 또는 event-loop ownership 정의
-- [ ] callback 중 destroy 금지 상태 검사
+- [x] `SpotNode` 내부 Actor table 추가
+- [x] `actor_id` byte 비교 규칙 구현
+- [x] 같은 `SpotNode` 안 live Actor id 중복 거부
+- [x] 서로 다른 `SpotNode`의 같은 actor id 허용
+- [x] live Actor generation 발급
+- [x] `generation == 0` unchecked ref 의미 구현
+- [x] `generation != 0` checked ref stale 검출 구현
+- [x] Actor handle lifetime 관리
+- [x] Actor queue unread part 저장
+- [x] Actor joined Spot 상태 저장
+- [x] Actor bound session ref 저장
+- [x] Actor table lock 또는 event-loop ownership 정의
+- [x] callback 중 destroy 금지 상태 검사
 
 검증 항목:
 
-- [ ] Actor 생성 성공
-- [ ] 중복 local actor id 실패
-- [ ] 다른 node 중복 actor id 허용
-- [ ] Actor lookup 성공과 `ENOENT`
-- [ ] unchecked ref 생성
-- [ ] checked ref stale 검출
+- [x] Actor 생성 성공
+- [x] 중복 local actor id 실패
+- [x] 다른 node 중복 actor id 허용
+- [x] Actor lookup 성공과 `ENOENT`
+- [x] unchecked ref 생성
+- [x] checked ref stale 검출
 
 ## 단계 3. Local Actor lifecycle
 
 구현 항목:
 
-- [ ] `zlink_spot_node_actor_new()` 구현
-- [ ] `zlink_actor_get_ref()` 구현
-- [ ] `zlink_spot_node_actor_lookup()` 구현
-- [ ] `zlink_remote_actor_get_ref()` 구현
-- [ ] `zlink_actor_destroy()` 구현
-- [ ] joined Actor destroy 실패
-- [ ] bound session detach 후 destroy
-- [ ] detach 실패 시 destroy 실패와 Actor slot 유지
-- [ ] session owner provider 종료 또는 stale session ref cleanup 예외
-- [ ] destroy 성공 시 `*actor_p_ = NULL`
-- [ ] destroy 실패 시 handle 유지
-- [ ] destroy timeout 원자성
-- [ ] unread queue destroy cleanup
+- [x] `zlink_spot_node_actor_new()` 구현
+- [x] `zlink_actor_get_ref()` 구현
+- [x] `zlink_spot_node_actor_lookup()` 구현
+- [x] `zlink_remote_actor_get_ref()` 구현
+- [x] `zlink_actor_destroy()` 구현
+- [x] joined Actor destroy 실패
+- [x] bound session detach 후 destroy
+- [x] detach 실패 시 destroy 실패와 Actor slot 유지
+- [x] session owner provider 종료 또는 stale session ref cleanup 예외
+- [x] destroy 성공 시 `*actor_p_ = NULL`
+- [x] destroy 실패 시 handle 유지
+- [x] destroy timeout 원자성
+- [x] unread queue destroy cleanup
 
 회귀 테스트:
 
-- [ ] ACT-LIFE-01
-- [ ] ACT-LIFE-02
-- [ ] ACT-LIFE-03
-- [ ] ACT-LIFE-04
-- [ ] ACT-LIFE-05
-- [ ] ACT-LIFE-06
-- [ ] ACT-LIFE-07
-- [ ] ACT-LIFE-08
-- [ ] ACT-LIFE-09
-- [ ] ACT-LIFE-10
-- [ ] ACT-LIFE-11
-- [ ] ACT-REMOTE-12
-- [ ] ACT-REMOTE-13
+- [x] ACT-LIFE-01
+- [x] ACT-LIFE-02
+- [x] ACT-LIFE-03
+- [x] ACT-LIFE-04
+- [x] ACT-LIFE-05
+- [x] ACT-LIFE-06
+- [x] ACT-LIFE-07
+- [x] ACT-LIFE-08
+- [x] ACT-LIFE-09
+- [x] ACT-LIFE-10
+- [x] ACT-LIFE-11
+- [x] ACT-REMOTE-12
+- [x] ACT-REMOTE-13
 
 `ACT-REMOTE-12`와 `ACT-REMOTE-13`은 remote create/destroy 테스트 묶음에도
 나오지만, 구현 위치는 ref 생성 API가 들어가는 lifecycle 단계다. 이 단계에서 먼저
@@ -442,341 +454,351 @@ Actor 내부 상태를 `SpotNode`가 소유하도록 만든다.
 
 ## 단계 4. Actor queue와 dispatch event
 
+draft spec에서 말하는 Actor queue는 Actor마다 별도 socket이나 독립적으로 설정 가능한
+queue 객체를 만든다는 뜻이 아니다. `SpotNode` 내부 relay/dispatch 경로에서 Actor별
+unread 상태를 구분하기 위한 논리적 표현이다. Actor 전용 HWM option은 만들지 않는다.
+backpressure는 기존 relay 경로의 HWM 또는 내부 dispatch 자원 부족 결과를 그대로
+사용한다.
+Actor는 socket, inproc endpoint, transport endpoint를 소유하지 않는다. local relay와
+remote relay 모두 최종적으로 target `SpotNode`의 Actor별 unread 상태에 part를 넣는
+구조로 구현한다.
+
 구현 항목:
 
-- [ ] Actor queue에 `zlink_msg_t` part enqueue
-- [ ] Actor queue part FIFO 보존
-- [ ] multipart part flag 보존
-- [ ] incomplete multipart 상태 허용
-- [ ] Actor unread 상태와 dispatch event 연결
-- [ ] `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE` 발행
-- [ ] `subject_kind = ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR`
-- [ ] `subject = local Actor handle`
-- [ ] `zlink_actor_recv_part()` 구현
-- [ ] dispatch callback 안 nonblocking drain 지원
-- [ ] callback 밖 또는 blocking recv 제한
-- [ ] no data에서 `ZLINK_RECV_NO_DATA`
-- [ ] Actor destroy와 `SpotNode` shutdown에서 unread/incomplete part 폐기
-- [ ] relay backpressure를 기존 relay HWM과 내부 dispatch 자원에 연결
+- [x] Actor별 unread 상태에 `zlink_msg_t` part enqueue
+- [x] Actor별 unread part FIFO 보존
+- [x] multipart part flag 보존
+- [x] incomplete multipart 상태 허용
+- [x] Actor unread 상태와 dispatch event 연결
+- [x] `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE` 발행
+- [x] `subject_kind = ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR`
+- [x] `subject = local Actor handle`
+- [x] `zlink_actor_recv_part()` 구현
+- [x] dispatch callback 안 nonblocking drain 지원
+- [x] callback 밖 또는 blocking recv 제한
+- [x] no data에서 `ZLINK_RECV_NO_DATA`
+- [x] Actor destroy와 `SpotNode` shutdown에서 unread/incomplete part 폐기
+- [x] Actor 전용 HWM 없이 기존 relay HWM 또는 내부 dispatch 자원 부족을
+      `ZLINK_SUBMIT_BACKPRESSURED` 계열 결과로 노출
 
 회귀 테스트:
 
-- [ ] ACT-QUEUE-01
-- [ ] ACT-QUEUE-02
-- [ ] ACT-QUEUE-04
-- [ ] ACT-QUEUE-05
-- [ ] ACT-QUEUE-06
-- [ ] ACT-QUEUE-16
-- [ ] ACT-QUEUE-17
+- [x] ACT-QUEUE-01
+- [x] ACT-QUEUE-02
+- [x] ACT-QUEUE-04
+- [x] ACT-QUEUE-05
+- [x] ACT-QUEUE-06
+- [x] ACT-QUEUE-16
+- [x] ACT-QUEUE-17
 
 ## 단계 5. Actor join과 leave
 
 구현 항목:
 
-- [ ] local `zlink_actor_join_spot()` 구현
-- [ ] ref 기반 `zlink_spot_node_actor_join_spot()` 구현
-- [ ] local cross-node join invalid argument
-- [ ] ref 기반 join target node는 `actor_->node_rid`
-- [ ] target node 연결 없음 처리
-- [ ] target Spot 없음 `ZLINK_REQUEST_NOT_FOUND`
-- [ ] target Actor 없음 `ZLINK_REQUEST_NOT_FOUND`
-- [ ] `generation == 0` unchecked join
-- [ ] `generation != 0` checked join mismatch
-- [ ] same Spot 중복 join idempotent success
-- [ ] 다른 Spot join busy/invalid-state 실패
-- [ ] 하나의 Spot에 N Actor join
-- [ ] dispatch handler 없는 Spot의 pending join
-- [ ] `zlink_spot_actor_join_recv()` 구현
-- [ ] `zlink_actor_join_info_t.request` opaque handle 구현
-- [ ] request handle one-shot 보장
-- [ ] `zlink_spot_actor_join_reply()` 구현
-- [ ] accepted/rejected reply message 전달
-- [ ] reply 실패 시 message ownership 보존
-- [ ] join timeout 원자성
-- [ ] late reply invalid-state
-- [ ] Spot destroy 또는 SpotNode shutdown pending join terminated
-- [ ] local `zlink_actor_leave_spot()` 구현
-- [ ] ref 기반 `zlink_spot_node_actor_leave_spot()` 구현
-- [ ] leave idempotent success
-- [ ] leave는 queue를 비우지 않음
-- [ ] leave/rejoin 사이 메시지 queue 보존
-- [ ] leave/rejoin FIFO 보존
-- [ ] leave timeout 원자성
-- [ ] leave 성공 시 active route joined 상태 갱신 hook
+- [x] local `zlink_actor_join_spot()` 구현
+- [x] ref 기반 `zlink_spot_node_actor_join_spot()` 구현
+- [x] local cross-node join invalid argument
+- [x] ref 기반 join target node는 `actor_->node_rid`
+- [x] target node 연결 없음 처리
+- [x] target Spot 없음 `ZLINK_REQUEST_NOT_FOUND`
+- [x] target Actor 없음 `ZLINK_REQUEST_NOT_FOUND`
+- [x] `generation == 0` unchecked join
+- [x] `generation != 0` checked join mismatch
+- [x] same Spot 중복 join idempotent success
+- [x] 다른 Spot join busy/invalid-state 실패
+- [x] 하나의 Spot에 N Actor join
+- [x] dispatch handler 없는 Spot의 pending join
+- [x] `zlink_spot_actor_join_recv()` 구현
+- [x] `zlink_actor_join_info_t.request` opaque handle 구현
+- [x] request handle one-shot 보장
+- [x] `zlink_spot_actor_join_reply()` 구현
+- [x] accepted/rejected reply message 전달
+- [x] reply 실패 시 message ownership 보존
+- [x] join timeout 원자성
+- [x] late reply invalid-state
+- [x] Spot destroy 또는 SpotNode shutdown pending join terminated
+- [x] local `zlink_actor_leave_spot()` 구현
+- [x] ref 기반 `zlink_spot_node_actor_leave_spot()` 구현
+- [x] leave idempotent success
+- [x] leave는 queue를 비우지 않음
+- [x] leave/rejoin 사이 메시지 queue 보존
+- [x] leave/rejoin FIFO 보존
+- [x] leave timeout 원자성
+- [x] leave 성공 시 active route joined 상태 갱신 hook
 
 회귀 테스트:
 
-- [ ] ACT-JOIN-01
-- [ ] ACT-JOIN-02
-- [ ] ACT-JOIN-03
-- [ ] ACT-JOIN-04
-- [ ] ACT-JOIN-05
-- [ ] ACT-JOIN-06
-- [ ] ACT-JOIN-07
-- [ ] ACT-JOIN-08
-- [ ] ACT-JOIN-09
-- [ ] ACT-JOIN-10
-- [ ] ACT-JOIN-11
-- [ ] ACT-JOIN-12
-- [ ] ACT-JOIN-13
-- [ ] ACT-JOIN-14
-- [ ] ACT-JOIN-15
-- [ ] ACT-JOIN-16
-- [ ] ACT-JOIN-17
-- [ ] ACT-JOIN-18
-- [ ] ACT-JOIN-19
-- [ ] ACT-JOIN-20
-- [ ] ACT-JOIN-21
-- [ ] ACT-JOIN-22
-- [ ] ACT-JOIN-23
-- [ ] ACT-JOIN-24
-- [ ] ACT-JOIN-25
-- [ ] ACT-JOIN-26
-- [ ] ACT-JOIN-27
-- [ ] ACT-JOIN-28
+- [x] ACT-JOIN-01
+- [x] ACT-JOIN-02
+- [x] ACT-JOIN-03
+- [x] ACT-JOIN-04
+- [x] ACT-JOIN-05
+- [x] ACT-JOIN-06
+- [x] ACT-JOIN-07
+- [x] ACT-JOIN-08
+- [x] ACT-JOIN-09
+- [x] ACT-JOIN-10
+- [x] ACT-JOIN-11
+- [x] ACT-JOIN-12
+- [x] ACT-JOIN-13
+- [x] ACT-JOIN-14
+- [x] ACT-JOIN-15
+- [x] ACT-JOIN-16
+- [x] ACT-JOIN-17
+- [x] ACT-JOIN-18
+- [x] ACT-JOIN-19
+- [x] ACT-JOIN-20
+- [x] ACT-JOIN-21
+- [x] ACT-JOIN-22
+- [x] ACT-JOIN-23
+- [x] ACT-JOIN-24
+- [x] ACT-JOIN-25
+- [x] ACT-JOIN-26
+- [x] ACT-JOIN-27
+- [x] ACT-JOIN-28
 
 ## 단계 6. STREAM session Actor list
 
 구현 항목:
 
-- [ ] session owner `SpotNode`에 `session -> actor_id -> Actor ref` 저장
-- [ ] 한 session에 여러 Actor bind 허용
-- [ ] 한 Actor는 한 STREAM session에만 bind 허용
-- [ ] same session same ref bind idempotent
-- [ ] same session different actor id bind 추가
-- [ ] same session same actor id different ref 교체
-- [ ] 새 Actor attach 실패 시 기존 항목 유지
-- [ ] 이전 Actor detach 실패 시 stale send 방어
-- [ ] session별 Actor list 분리
-- [ ] public lookup API 없음 유지
-- [ ] explicit unbind 구현
-- [ ] 없는 actor id unbind idempotent success
-- [ ] unbind not connected 실패와 기존 항목 유지
-- [ ] provider 종료 또는 stale Actor ref cleanup success
-- [ ] session disconnect cleanup
-- [ ] bind timeout 원자성
-- [ ] unbind timeout 원자성
-- [ ] unchecked remote bind concrete generation 저장
-- [ ] checked remote bind mismatch 실패
-- [ ] bind 성공 시 Discovery 단계가 사용할 active route publish hook 준비
-- [ ] Discovery route sync가 아직 구현되지 않은 상태에서도 bind 자체 테스트가 통과
+- [x] session owner `SpotNode`에 `session -> actor_id -> Actor ref` 저장
+- [x] 한 session에 여러 Actor bind 허용
+- [x] 한 Actor는 한 STREAM session에만 bind 허용
+- [x] same session same ref bind idempotent
+- [x] same session different actor id bind 추가
+- [x] same session same actor id different ref 교체
+- [x] 새 Actor attach 실패 시 기존 항목 유지
+- [x] 이전 Actor detach 실패 시 stale send 방어
+- [x] session별 Actor list 분리
+- [x] public lookup API 없음 유지
+- [x] explicit unbind 구현
+- [x] 없는 actor id unbind idempotent success
+- [x] unbind not connected 실패와 기존 항목 유지
+- [x] provider 종료 또는 stale Actor ref cleanup success
+- [x] session disconnect cleanup
+- [x] bind timeout 원자성
+- [x] unbind timeout 원자성
+- [x] unchecked remote bind concrete generation 저장
+- [x] checked remote bind mismatch 실패
+- [x] bind 성공 시 Discovery 단계가 사용할 active route publish hook 준비
+- [x] Discovery route sync가 아직 구현되지 않은 상태에서도 bind 자체 테스트가 통과
 
 회귀 테스트:
 
-- [ ] ACT-STREAM-01
-- [ ] ACT-STREAM-02
-- [ ] ACT-STREAM-03
-- [ ] ACT-STREAM-04
-- [ ] ACT-STREAM-05
-- [ ] ACT-STREAM-06
-- [ ] ACT-STREAM-08
-- [ ] ACT-STREAM-10
-- [ ] ACT-STREAM-11
-- [ ] ACT-STREAM-12
-- [ ] ACT-STREAM-13
-- [ ] ACT-STREAM-14
-- [ ] ACT-STREAM-15
-- [ ] ACT-STREAM-16
-- [ ] ACT-STREAM-17
-- [ ] ACT-STREAM-18
-- [ ] ACT-STREAM-19
-- [ ] ACT-STREAM-20
+- [x] ACT-STREAM-01
+- [x] ACT-STREAM-02
+- [x] ACT-STREAM-03
+- [x] ACT-STREAM-04
+- [x] ACT-STREAM-05
+- [x] ACT-STREAM-06
+- [x] ACT-STREAM-08
+- [x] ACT-STREAM-10
+- [x] ACT-STREAM-11
+- [x] ACT-STREAM-12
+- [x] ACT-STREAM-13
+- [x] ACT-STREAM-14
+- [x] ACT-STREAM-15
+- [x] ACT-STREAM-16
+- [x] ACT-STREAM-17
+- [x] ACT-STREAM-18
+- [x] ACT-STREAM-19
+- [x] ACT-STREAM-20
 
 ## 단계 7. STREAM에서 Actor로 relay
 
 구현 항목:
 
-- [ ] `zlink_stream_send_bound_actor_part()` 구현
-- [ ] target Actor 선택은 `actor_id_`
-- [ ] session Actor list에 target actor id 없으면 submit not found
-- [ ] actor id validation
-- [ ] local Actor queue enqueue
-- [ ] remote Actor forward
-- [ ] remote 연결 없음 submit not connected
-- [ ] remote target Actor 없음이면 target node에서 drop
-- [ ] multipart per-session in-progress 상태
-- [ ] `PART_MORE` 성공 시 target actor id 고정
-- [ ] in-progress 중 다른 actor id invalid-state
-- [ ] `PART_FINAL` 성공 시 in-progress 완료
-- [ ] `PART_MORE` 성공 후 final 실패 시 성공 part library-owned
-- [ ] final retry 가능
-- [ ] STREAM session disconnect/shutdown cleanup으로 sender in-progress 폐기
-- [ ] target Actor queue에 이미 들어간 part rollback 금지
+- [x] `zlink_stream_send_bound_actor_part()` 구현
+- [x] target Actor 선택은 `actor_id_`
+- [x] session Actor list에 target actor id 없으면 submit not found
+- [x] actor id validation
+- [x] local Actor queue enqueue
+- [x] remote Actor forward
+- [x] remote 연결 없음 submit not connected
+- [x] remote target Actor 없음이면 target node에서 drop
+- [x] multipart per-session in-progress 상태
+- [x] `PART_MORE` 성공 시 target actor id 고정
+- [x] in-progress 중 다른 actor id invalid-state
+- [x] `PART_FINAL` 성공 시 in-progress 완료
+- [x] `PART_MORE` 성공 후 final 실패 시 성공 part library-owned
+- [x] final retry 가능
+- [x] STREAM session disconnect/shutdown cleanup으로 sender in-progress 폐기
+- [x] target Actor queue에 이미 들어간 part rollback 금지
 
 회귀 테스트:
 
-- [ ] ACT-QUEUE-01
-- [ ] ACT-QUEUE-02
-- [ ] ACT-QUEUE-03
-- [ ] ACT-QUEUE-07
-- [ ] ACT-QUEUE-13
-- [ ] ACT-QUEUE-14
-- [ ] ACT-QUEUE-15
-- [ ] ACT-STREAM-07
+- [x] ACT-QUEUE-01
+- [x] ACT-QUEUE-02
+- [x] ACT-QUEUE-03
+- [x] ACT-QUEUE-07
+- [x] ACT-QUEUE-13
+- [x] ACT-QUEUE-14
+- [x] ACT-QUEUE-15
+- [x] ACT-STREAM-07
 
 ## 단계 8. Actor에서 bound session으로 전송
 
 구현 항목:
 
-- [ ] `zlink_actor_send_bound_session_msg()` 구현
-- [ ] `zlink_actor_send_bound_session_packet()` 구현
-- [ ] Actor local handle validation
-- [ ] bound session 없음 not found
-- [ ] session owner node 연결 없음 not connected
-- [ ] stale session cleanup
-- [ ] session owner node에서 sender Actor ref 검증
-- [ ] 같은 actor id rebind 뒤 이전 Actor send 차단
-- [ ] raw callback용 단일 message send
-- [ ] packet callback용 header/body send
-- [ ] packet send 부분 성공 금지
-- [ ] 실패 시 message/header/body ownership 보존
+- [x] `zlink_actor_send_bound_session_msg()` 구현
+- [x] `zlink_actor_send_bound_session_packet()` 구현
+- [x] Actor local handle validation
+- [x] bound session 없음 not found
+- [x] session owner node 연결 없음 not connected
+- [x] stale session cleanup
+- [x] session owner node에서 sender Actor ref 검증
+- [x] 같은 actor id rebind 뒤 이전 Actor send 차단
+- [x] raw callback용 단일 message send
+- [x] packet callback용 header/body send
+- [x] packet send 부분 성공 금지
+- [x] 실패 시 message/header/body ownership 보존
 
 회귀 테스트:
 
-- [ ] ACT-QUEUE-08
-- [ ] ACT-QUEUE-09
-- [ ] ACT-QUEUE-10
-- [ ] ACT-QUEUE-11
-- [ ] ACT-QUEUE-12
-- [ ] ACT-OWN-05
+- [x] ACT-QUEUE-08
+- [x] ACT-QUEUE-09
+- [x] ACT-QUEUE-10
+- [x] ACT-QUEUE-11
+- [x] ACT-QUEUE-12
+- [x] ACT-OWN-05
 
 ## 단계 9. Remote Actor control plane
 
 구현 항목:
 
-- [ ] `zlink_spot_node_create_remote_actor()` 구현
-- [ ] create-or-get request routing
-- [ ] 단일 create message 전달
-- [ ] admission handler 등록/해제
-- [ ] handler 없음 기본 reject
-- [ ] Actor가 없을 때만 admission 호출
-- [ ] Actor가 있으면 existing 반환과 admission 미호출
-- [ ] 같은 actor id 동시 create 직렬화
-- [ ] 다른 node 중복 actor id 허용
-- [ ] create timeout 재시도 수렴
-- [ ] create submit 후 message ownership 이전
-- [ ] `zlink_spot_node_destroy_remote_actor()` 구현
-- [ ] 없는 Actor destroy idempotent success
-- [ ] join 상태 destroy busy/invalid-state
-- [ ] unchecked remote destroy
-- [ ] checked destroy mismatch stale/conflict
-- [ ] remote destroy detach 실패 시 Actor slot 유지
-- [ ] remote destroy timeout 원자성
-- [ ] admission handler 재진입 금지
+- [x] `zlink_spot_node_create_remote_actor()` 구현
+- [x] create-or-get request routing
+- [x] 단일 create message 전달
+- [x] admission handler 등록/해제
+- [x] handler 없음 기본 reject
+- [x] Actor가 없을 때만 admission 호출
+- [x] Actor가 있으면 existing 반환과 admission 미호출
+- [x] 같은 actor id 동시 create 직렬화
+- [x] 다른 node 중복 actor id 허용
+- [x] create timeout 재시도 수렴
+- [x] create submit 후 message ownership 이전
+- [x] `zlink_spot_node_destroy_remote_actor()` 구현
+- [x] 없는 Actor destroy idempotent success
+- [x] join 상태 destroy busy/invalid-state
+- [x] unchecked remote destroy
+- [x] checked destroy mismatch stale/conflict
+- [x] remote destroy detach 실패 시 Actor slot 유지
+- [x] remote destroy timeout 원자성
+- [x] admission handler 재진입 금지
 
 회귀 테스트:
 
-- [ ] ACT-REMOTE-01
-- [ ] ACT-REMOTE-02
-- [ ] ACT-REMOTE-03
-- [ ] ACT-REMOTE-04
-- [ ] ACT-REMOTE-05
-- [ ] ACT-REMOTE-06
-- [ ] ACT-REMOTE-07
-- [ ] ACT-REMOTE-08
-- [ ] ACT-REMOTE-09
-- [ ] ACT-REMOTE-10
-- [ ] ACT-REMOTE-11
-- [ ] ACT-REMOTE-14
-- [ ] ACT-REMOTE-15
-- [ ] ACT-REMOTE-16
-- [ ] ACT-REMOTE-17
-- [ ] ACT-REMOTE-18
+- [x] ACT-REMOTE-01
+- [x] ACT-REMOTE-02
+- [x] ACT-REMOTE-03
+- [x] ACT-REMOTE-04
+- [x] ACT-REMOTE-05
+- [x] ACT-REMOTE-06
+- [x] ACT-REMOTE-07
+- [x] ACT-REMOTE-08
+- [x] ACT-REMOTE-09
+- [x] ACT-REMOTE-10
+- [x] ACT-REMOTE-11
+- [x] ACT-REMOTE-14
+- [x] ACT-REMOTE-15
+- [x] ACT-REMOTE-16
+- [x] ACT-REMOTE-17
+- [x] ACT-REMOTE-18
 
 ## 단계 10. Discovery active route
 
 구현 항목:
 
-- [ ] `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` set/get 구현
-- [ ] `zlink_discovery_resolve_actor()` 구현
-- [ ] `zlink_actor_route_t` 반환
-- [ ] Actor 생성 시 active route 미공개
-- [ ] remote create 시 active route 미공개
-- [ ] join만으로 active route 미공개
-- [ ] stream bind 성공 시 active route publish
-- [ ] 단계 6의 bind hook과 Discovery route sync를 연결
-- [ ] unchecked bind 후 concrete generation publish
-- [ ] bind 전 joined Spot이 있으면 joined 정보 publish
-- [ ] join/leave 시 active route가 해당 Actor ref를 가리킬 때 joined 정보 갱신
-- [ ] unbind와 session disconnect cleanup은 active route 유지
-- [ ] matching Actor destroy 시 route 제거
-- [ ] route가 다른 node로 이동한 뒤 이전 Actor destroy는 새 route 유지
-- [ ] SpotNode provider 종료 cleanup
-- [ ] stale route row 반환 금지
-- [ ] 기존 `zlink_discovery_resolve_spot()` 유지
+- [x] `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` set/get 구현
+- [x] `zlink_discovery_resolve_actor()` 구현
+- [x] `zlink_actor_route_t` 반환
+- [x] Actor 생성 시 active route 미공개
+- [x] remote create 시 active route 미공개
+- [x] join만으로 active route 미공개
+- [x] stream bind 성공 시 active route publish
+- [x] 단계 6의 bind hook과 Discovery route sync를 연결
+- [x] unchecked bind 후 concrete generation publish
+- [x] bind 전 joined Spot이 있으면 joined 정보 publish
+- [x] join/leave 시 active route가 해당 Actor ref를 가리킬 때 joined 정보 갱신
+- [x] unbind와 session disconnect cleanup은 active route 유지
+- [x] matching Actor destroy 시 route 제거
+- [x] route가 다른 node로 이동한 뒤 이전 Actor destroy는 새 route 유지
+- [x] SpotNode provider 종료 cleanup
+- [x] stale route row 반환 금지
+- [x] 기존 `zlink_discovery_resolve_spot()` 유지
 
 회귀 테스트:
 
-- [ ] ACT-DISC-01
-- [ ] ACT-DISC-02
-- [ ] ACT-DISC-03
-- [ ] ACT-DISC-04
-- [ ] ACT-DISC-05
-- [ ] ACT-DISC-06
-- [ ] ACT-DISC-07
-- [ ] ACT-DISC-08
-- [ ] ACT-DISC-09
-- [ ] ACT-DISC-10
-- [ ] ACT-DISC-11
-- [ ] ACT-DISC-12
-- [ ] ACT-DISC-13
-- [ ] ACT-DISC-14
-- [ ] ACT-DISC-15
-- [ ] ACT-STREAM-09
+- [x] ACT-DISC-01
+- [x] ACT-DISC-02
+- [x] ACT-DISC-03
+- [x] ACT-DISC-04
+- [x] ACT-DISC-05
+- [x] ACT-DISC-06
+- [x] ACT-DISC-07
+- [x] ACT-DISC-08
+- [x] ACT-DISC-09
+- [x] ACT-DISC-10
+- [x] ACT-DISC-11
+- [x] ACT-DISC-12
+- [x] ACT-DISC-13
+- [x] ACT-DISC-14
+- [x] ACT-DISC-15
+- [x] ACT-STREAM-09
 
 ## 단계 11. Generic discovery route 제거
 
 구현 항목:
 
-- [ ] `zlink_discovery_bind_route()` 공개 헤더 제거
-- [ ] `zlink_discovery_unbind_route()` 공개 헤더 제거
-- [ ] `zlink_discovery_resolve_route()` 공개 헤더 제거
-- [ ] core 구현 제거
-- [ ] binding 표면 제거
-- [ ] sample에서 actor/spot 전용 API로 교체
-- [ ] stale 문서에서 제거 또는 historical 표시
-- [ ] build에서 symbol 누락 또는 dead declaration 없음 확인
+- [x] `zlink_discovery_bind_route()` 공개 헤더 제거
+- [x] `zlink_discovery_unbind_route()` 공개 헤더 제거
+- [x] `zlink_discovery_resolve_route()` 공개 헤더 제거
+- [x] core 구현 제거
+- [x] binding 표면 제거
+- [x] sample에서 actor/spot 전용 API로 교체
+- [x] stale 문서에서 제거 또는 historical 표시
+- [x] build에서 symbol 누락 또는 dead declaration 없음 확인
 
 회귀 테스트:
 
-- [ ] ACT-ROUTE-01
-- [ ] ACT-ROUTE-02
-- [ ] ACT-ROUTE-03
+- [x] ACT-ROUTE-01
+- [x] ACT-ROUTE-02
+- [x] ACT-ROUTE-03
 
 ## 단계 12. Snapshot과 monitoring
 
 구현 항목:
 
-- [ ] `zlink_spot_node_spots_snapshot()` 구현
-- [ ] local Spot facade 목록 반환
-- [ ] `dispatch_handler_attached`
-- [ ] `joined_actor_count`
-- [ ] `pending_actor_join_count`
-- [ ] `route_synced`
-- [ ] Spot row `last_changed_ms`
-- [ ] `zlink_spot_actors_snapshot()` 구현
-- [ ] 특정 Spot joined Actor ref 목록 반환
-- [ ] `zlink_spot_node_actors_snapshot()` 구현
-- [ ] `joined`
-- [ ] `joined_spot_rid`
-- [ ] `route_synced`
-- [ ] `pending_message_count`
-- [ ] Actor row `last_changed_ms`
-- [ ] in/out count 패턴 구현
-- [ ] snapshot 값은 진단용이며 flow control 계약으로 쓰지 않음
+- [x] `zlink_spot_node_spots_snapshot()` 구현
+- [x] local Spot facade 목록 반환
+- [x] `dispatch_handler_attached`
+- [x] `joined_actor_count`
+- [x] `pending_actor_join_count`
+- [x] `route_synced`
+- [x] Spot row `last_changed_ms`
+- [x] `zlink_spot_actors_snapshot()` 구현
+- [x] 특정 Spot joined Actor ref 목록 반환
+- [x] `zlink_spot_node_actors_snapshot()` 구현
+- [x] `joined`
+- [x] `joined_spot_rid`
+- [x] `route_synced`
+- [x] `pending_message_count`
+- [x] Actor row `last_changed_ms`
+- [x] in/out count 패턴 구현
+- [x] snapshot 값은 진단용이며 flow control 계약으로 쓰지 않음
 
 회귀 테스트:
 
-- [ ] ACT-SNAPSHOT-01
-- [ ] ACT-SNAPSHOT-02
-- [ ] ACT-SNAPSHOT-03
-- [ ] ACT-SNAPSHOT-04
-- [ ] ACT-SNAPSHOT-05
-- [ ] ACT-SNAPSHOT-06
-- [ ] ACT-SNAPSHOT-07
-- [ ] ACT-SNAPSHOT-08
-- [ ] ACT-SNAPSHOT-09
-- [ ] ACT-SNAPSHOT-10
+- [x] ACT-SNAPSHOT-01
+- [x] ACT-SNAPSHOT-02
+- [x] ACT-SNAPSHOT-03
+- [x] ACT-SNAPSHOT-04
+- [x] ACT-SNAPSHOT-05
+- [x] ACT-SNAPSHOT-06
+- [x] ACT-SNAPSHOT-07
+- [x] ACT-SNAPSHOT-08
+- [x] ACT-SNAPSHOT-09
+- [x] ACT-SNAPSHOT-10
 
 ## 단계 13. 소유권과 실패 경로
 
@@ -784,29 +806,29 @@ Actor 내부 상태를 `SpotNode`가 소유하도록 만든다.
 
 구현 확인:
 
-- [ ] send 성공 시 message ownership 이전
-- [ ] send 실패 시 ownership 호출자 유지
-- [ ] recv 성공 시 ownership 호출자 이전
-- [ ] join submit 성공 시 request message ownership 이전
-- [ ] join submit 실패 시 ownership 호출자 유지
-- [ ] join recv 성공 시 message ownership 호출자 이전
-- [ ] join reply 성공 시 reply message ownership 이전
-- [ ] join reply 실패 시 ownership 호출자 유지
-- [ ] remote create submit 성공 시 message ownership 이전
-- [ ] remote create validation 실패 시 ownership 호출자 유지
-- [ ] actor packet send 실패 시 header/body 모두 호출자 유지
-- [ ] partial packet send 공개 계약 없음
-- [ ] request opaque handle one-shot
-- [ ] callback 안 같은 Actor destroy 금지
+- [x] send 성공 시 message ownership 이전
+- [x] send 실패 시 ownership 호출자 유지
+- [x] recv 성공 시 ownership 호출자 이전
+- [x] join submit 성공 시 request message ownership 이전
+- [x] join submit 실패 시 ownership 호출자 유지
+- [x] join recv 성공 시 message ownership 호출자 이전
+- [x] join reply 성공 시 reply message ownership 이전
+- [x] join reply 실패 시 ownership 호출자 유지
+- [x] remote create submit 성공 시 message ownership 이전
+- [x] remote create validation 실패 시 ownership 호출자 유지
+- [x] actor packet send 실패 시 header/body 모두 호출자 유지
+- [x] partial packet send 공개 계약 없음
+- [x] request opaque handle one-shot
+- [x] callback 안 같은 Actor destroy 금지
 
 회귀 테스트:
 
-- [ ] ACT-OWN-01
-- [ ] ACT-OWN-02
-- [ ] ACT-OWN-03
-- [ ] ACT-OWN-04
-- [ ] ACT-OWN-05
-- [ ] ACT-OWN-06
+- [x] ACT-OWN-01
+- [x] ACT-OWN-02
+- [x] ACT-OWN-03
+- [x] ACT-OWN-04
+- [x] ACT-OWN-05
+- [x] ACT-OWN-06
 
 ## 단계 14. Core sample과 binding 영향 목록
 
@@ -817,16 +839,16 @@ C API와 core 동작이 안정된 뒤 core 기준 sample과 binding 영향 목�
 
 작업 항목:
 
-- [ ] Local Actor room server sample 추가 또는 갱신
-- [ ] gateway session에서 remote play server Actor로 relay하는 sample 추가 또는 갱신
-- [ ] single-player queue serialization sample 추가 또는 갱신
-- [ ] 새 sample이 core C API만으로 동작하는지 확인
-- [ ] generic route 제거가 sample에 미치는 영향 목록 작성
-- [ ] binding별로 추가, 변경, 제거해야 할 API 목록을 contract matrix의
+- [x] Local Actor room server sample 추가 또는 갱신
+- [x] gateway session에서 remote play server Actor로 relay하는 sample 추가 또는 갱신
+- [x] single-player queue serialization sample 추가 또는 갱신
+- [x] 새 sample이 core C API만으로 동작하는지 확인
+- [x] generic route 제거가 sample에 미치는 영향 목록 작성
+- [x] binding별로 추가, 변경, 제거해야 할 API 목록을 contract matrix의
   `Binding Impact`에 기록
-- [ ] binding에서 typed Actor object, codec, DI, async runtime을 자동 생성하지 않는다는
+- [x] binding에서 typed Actor object, codec, DI, async runtime을 자동 생성하지 않는다는
   non-goal을 binding 영향 목록에 기록
-- [ ] binding full 구현을 이 단계에서 수행하지 않았음을 implementation review log에 기록
+- [x] binding full 구현을 이 단계에서 수행하지 않았음을 implementation review log에 기록
 
 ## 단계 15. 정식 문서 반영
 
@@ -836,13 +858,13 @@ binding 정식 문서는 core release 뒤 native library를 최신화한 다음,
 
 반영 대상:
 
-- [ ] `doc/spec/core/service/spot.ko.md`
-- [ ] `doc/spec/core/socket/stream.ko.md`
-- [ ] `doc/spec/core/errno-map.ko.md`
-- [ ] 관련 guide 문서
-- [ ] 관련 internals 문서
-- [ ] sample 문서
-- [ ] binding 문서는 draft link와 추후 반영 위치만 남기고, 구현 전 계약처럼 섞어 쓰지 않음
+- [x] `doc/spec/core/service/spot.ko.md`
+- [x] `doc/spec/core/socket/stream.ko.md`
+- [x] `doc/spec/core/errno-map.ko.md`
+- [x] 관련 guide 문서
+- [x] 관련 internals 문서
+- [x] sample 문서
+- [x] binding 문서는 draft link와 추후 반영 위치만 남기고, 구현 전 계약처럼 섞어 쓰지 않음
 
 규칙:
 
@@ -861,29 +883,29 @@ binding 정식 문서는 core release 뒤 native library를 최신화한 다음,
 
 필수 검증:
 
-- [ ] core build
-- [ ] core unit/integration tests
-- [ ] sample build
-- [ ] 기존 Discovery tests
-- [ ] 기존 SPOT tests
-- [ ] 기존 STREAM tests
-- [ ] sanitizer 또는 debug build 가능 시 실행
-- [ ] public header compile check
-- [ ] removed symbol reference check
-- [ ] `rg` 기반 stale API 이름 check
-- [ ] binding full 구현 전에는 binding compile failure를 core 완료 blocker로 처리하지 않음
+- [x] core build
+- [x] core unit/integration tests
+- [x] sample build
+- [x] 기존 Discovery tests
+- [x] 기존 SPOT tests
+- [x] 기존 STREAM tests
+- [x] sanitizer 또는 debug build 가능 시 실행
+- [x] public header compile check
+- [x] removed symbol reference check
+- [x] `rg` 기반 stale API 이름 check
+- [x] binding full 구현 전에는 binding compile failure를 core 완료 blocker로 처리하지 않음
 - [ ] binding full 구현 뒤에는 언어별 binding 단계의 검증 조건을 따른다
 
 권장 검색:
 
-- [ ] `zlink_spot_node_remote_actor_ref`가 남아 있지 않음
-- [ ] `zlink_stream_lookup_actor`가 남아 있지 않음
-- [ ] `zlink_stream_send_actor_part`가 남아 있지 않음
-- [ ] `session_actor_key`가 남아 있지 않음
-- [ ] Actor HWM option이 남아 있지 않음
-- [ ] generic discovery route 공개 참조가 남아 있지 않음
-- [ ] `generation == 0`을 invalid로 처리하는 ref 기반 API가 남아 있지 않음
-- [ ] `RemoteActor`가 원격 객체 생성처럼 설명되지 않음
+- [x] `zlink_spot_node_remote_actor_ref`가 남아 있지 않음
+- [x] `zlink_stream_lookup_actor`가 남아 있지 않음
+- [x] `zlink_stream_send_actor_part`가 남아 있지 않음
+- [x] `session_actor_key`가 남아 있지 않음
+- [x] Actor HWM option이 남아 있지 않음
+- [x] generic discovery route 공개 참조가 남아 있지 않음
+- [x] `generation == 0`을 invalid로 처리하는 ref 기반 API가 남아 있지 않음
+- [x] `RemoteActor`가 원격 객체 생성처럼 설명되지 않음
 
 ## 단계 17. Sample과 perf smoke 검증
 
@@ -894,10 +916,10 @@ core runtime 연결을 깨지 않았는지 확인하기 위한 검증이다.
 
 ### 사전 조건
 
-- [ ] `core/src` 또는 `core/include`를 바꾼 뒤 `cmake --build core/build`를 실행했다.
-- [ ] perf runner가 출력하는 `Perf runtime libzlink` 경로가 `core/build` 아래 runtime을 가리킨다.
-- [ ] perf runner가 stale runtime 오류 없이 시작한다.
-- [ ] sample/perf 실행 결과와 실패 원인을
+- [x] `core/src` 또는 `core/include`를 바꾼 뒤 `cmake --build core/build`를 실행했다.
+- [x] perf runner가 출력하는 `Perf runtime libzlink` 경로가 `core/build` 아래 runtime을 가리킨다.
+- [x] perf runner가 stale runtime 오류 없이 시작한다.
+- [x] sample/perf 실행 결과와 실패 원인을
   `doc/plan/spot-actor-dispatch/logs/sample-perf-smoke-log.ko.md`에 기록한다.
 
 ### sample smoke
@@ -906,12 +928,12 @@ core 구현 직후에는 core C API로 작성된 sample만 smoke 대상으로 �
 binding sample은 core release와 native library 최신화 뒤, bindings 순차 단계에서
 각 언어별로 실행한다.
 
-- [ ] core C API 기반 sample build 성공
-- [ ] core C API 기반 sample runner가 있으면 실행 성공
-- [ ] 새 Actor sample이 추가되었다면 core C API 기반 sample runner에 포함되어 실행된다.
-- [ ] Local Actor room server sample 성공
-- [ ] gateway session에서 remote play server Actor로 relay하는 sample 성공
-- [ ] single-player queue serialization sample 성공
+- [x] core C API 기반 sample build 성공
+- [x] core C API 기반 sample runner가 있으면 실행 성공
+- [x] 새 Actor sample이 추가되었다면 core C API 기반 sample runner에 포함되어 실행된다.
+- [x] Local Actor room server sample 성공
+- [x] gateway session에서 remote play server Actor로 relay하는 sample 성공
+- [x] single-player queue serialization sample 성공
 
 ### perf smoke
 
@@ -922,10 +944,10 @@ perf smoke는 수치 비교가 아니라 실행 성공 여부를 검증한다. �
 
 필수 message size sweep:
 
-- [ ] `64`
-- [ ] `1024`
-- [ ] `4096`
-- [ ] `65536`
+- [x] `64`
+- [x] `1024`
+- [x] `4096`
+- [x] `65536`
 
 single smoke:
 
@@ -955,14 +977,14 @@ cmake --build core/build
 
 검증 항목:
 
-- [ ] single perf smoke가 모든 지정 size에서 성공한다.
-- [ ] multi perf smoke가 모든 지정 size에서 성공한다.
-- [ ] single perf 결과 파일이 생성된다.
-- [ ] multi perf 결과 파일이 생성된다.
-- [ ] 결과 로그에 실패한 pattern, transport, size가 없다.
-- [ ] perf runner가 stale `core/build` runtime을 감지하지 않는다.
-- [ ] Actor 변경 뒤 기존 `SPOT`, `SPOT_REQREP`, `SPOT_SENDSEND`, `STREAM` perf smoke가 성공한다.
-- [ ] 실패가 있으면 코드 또는 runner 문제를 수정하고 sample/perf smoke를 처음부터 다시 실행한다.
+- [x] single perf smoke가 모든 지정 size에서 성공한다.
+- [x] multi perf smoke가 모든 지정 size에서 성공한다.
+- [x] single perf 결과 파일이 생성된다.
+- [x] multi perf 결과 파일이 생성된다.
+- [x] 결과 로그에 실패한 pattern, transport, size가 없다.
+- [x] perf runner가 stale `core/build` runtime을 감지하지 않는다.
+- [x] Actor 변경 뒤 기존 `SPOT`, `SPOT_REQREP`, `SPOT_SENDSEND`, `STREAM` perf smoke가 성공한다.
+- [x] 실패가 있으면 코드 또는 runner 문제를 수정하고 sample/perf smoke를 처음부터 다시 실행한다.
 
 ## 구현 후 문서-코드 반복 리뷰 루프
 
@@ -1006,15 +1028,15 @@ cmake --build core/build
 
 ### 루프 종료 조건
 
-- [ ] contract matrix에 `reviewed`가 아닌 행이 없음
-- [ ] spec-only 항목 없음
-- [ ] code-only public API 없음
-- [ ] 테스트 없는 계약 없음
-- [ ] 문서와 다른 errno/result 없음
-- [ ] 문서와 다른 ownership 규칙 없음
-- [ ] draft 첫 구현 범위의 미구현 항목 없음
-- [ ] 정식 문서 미반영 항목 없음
-- [ ] 두 번 연속 mismatch 없음
+- [x] contract matrix에 `reviewed`가 아닌 행이 없음
+- [x] spec-only 항목 없음
+- [x] code-only public API 없음
+- [x] 테스트 없는 계약 없음
+- [x] 문서와 다른 errno/result 없음
+- [x] 문서와 다른 ownership 규칙 없음
+- [x] draft 첫 구현 범위의 미구현 항목 없음
+- [x] 정식 문서 미반영 항목 없음
+- [x] 두 번 연속 mismatch 없음
 
 ## POSD 기반 전체 코드 리팩토링 루프
 
@@ -1024,13 +1046,13 @@ cmake --build core/build
 
 ### 대상
 
-- [ ] `core/include`
-- [ ] `core/src`
-- [ ] core tests
-- [ ] bindings
-- [ ] samples
-- [ ] scripts
-- [ ] docs와 codegen 도구
+- [x] `core/include`
+- [x] `core/src`
+- [x] core tests
+- [x] bindings
+- [x] samples
+- [x] scripts
+- [x] docs와 codegen 도구
 
 ### 1회차 스캔 절차
 
@@ -1047,22 +1069,22 @@ cmake --build core/build
 
 ### POSD 위험 신호 체크리스트
 
-- [ ] 얕은 wrapper 또는 pass-through 함수
-- [ ] 호출자가 내부 state machine을 알아야 하는 API
-- [ ] 같은 Actor table 지식이 여러 모듈에 중복됨
-- [ ] session Actor list 지식이 relay, bind, discovery에 흩어짐
-- [ ] generation/stale 판단이 여러 곳에 복제됨
-- [ ] message ownership 규칙이 API마다 다르게 구현됨
-- [ ] timeout 원자성 처리가 request마다 중복됨
-- [ ] join pending request lifecycle이 Spot dispatch와 분리되어 이해하기 어려움
-- [ ] Discovery route publish timing이 여러 곳에 암묵적으로 흩어짐
-- [ ] special case가 일반 경로로 흡수될 수 있는데 조건문으로 남아 있음
-- [ ] 구현 순서 기준으로 파일이나 class가 나뉜 temporal decomposition
-- [ ] low-level module에 application-specific Actor 개념이 새어 나옴
-- [ ] public getter가 내부 표현을 노출함
-- [ ] 한 변경을 위해 여러 파일에서 같은 상수를 수정해야 함
-- [ ] 코멘트가 코드 동작을 반복 설명하고 있음
-- [ ] 테스트 helper가 production protocol 지식을 중복 보유함
+- [x] 얕은 wrapper 또는 pass-through 함수
+- [x] 호출자가 내부 state machine을 알아야 하는 API
+- [x] 같은 Actor table 지식이 여러 모듈에 중복됨
+- [x] session Actor list 지식이 relay, bind, discovery에 흩어짐
+- [x] generation/stale 판단이 여러 곳에 복제됨
+- [x] message ownership 규칙이 API마다 다르게 구현됨
+- [x] timeout 원자성 처리가 request마다 중복됨
+- [x] join pending request lifecycle이 Spot dispatch와 분리되어 이해하기 어려움
+- [x] Discovery route publish timing이 여러 곳에 암묵적으로 흩어짐
+- [x] special case가 일반 경로로 흡수될 수 있는데 조건문으로 남아 있음
+- [x] 구현 순서 기준으로 파일이나 class가 나뉜 temporal decomposition
+- [x] low-level module에 application-specific Actor 개념이 새어 나옴
+- [x] public getter가 내부 표현을 노출함
+- [x] 한 변경을 위해 여러 파일에서 같은 상수를 수정해야 함
+- [x] 코멘트가 코드 동작을 반복 설명하고 있음
+- [x] 테스트 helper가 production protocol 지식을 중복 보유함
 
 ### 리팩토링 후보별 필수 기록
 
@@ -1094,12 +1116,12 @@ cmake --build core/build
 
 아래 조건이 모두 참이어야 종료한다.
 
-- [ ] repo 전체 스캔에서 새 POSD 위험 신호가 없다.
-- [ ] 이미 기록된 위험 신호가 모두 해결되었거나 명시적으로 유지 사유가 있다.
-- [ ] 유지 사유가 있는 항목은 public 계약, ABI, 성능, 안전성 중 하나로 설명된다.
-- [ ] 두 번 연속 전체 스캔에서 새 리팩토링 후보가 없다.
-- [ ] 전체 테스트가 통과한다.
-- [ ] 리팩토링 후 문서-코드 반복 리뷰를 다시 한 번 수행했고 mismatch가 없다.
+- [x] repo 전체 스캔에서 새 POSD 위험 신호가 없다.
+- [x] 이미 기록된 위험 신호가 모두 해결되었거나 명시적으로 유지 사유가 있다.
+- [x] 유지 사유가 있는 항목은 public 계약, ABI, 성능, 안전성 중 하나로 설명된다.
+- [x] 두 번 연속 전체 스캔에서 새 리팩토링 후보가 없다.
+- [x] 전체 테스트가 통과한다.
+- [x] 리팩토링 후 문서-코드 반복 리뷰를 다시 한 번 수행했고 mismatch가 없다.
 
 ## POSD 후 최종 문서 업데이트와 3회 리뷰
 
@@ -1110,16 +1132,16 @@ POSD 기반 리팩토링이 끝나면 `doc/guide`, `doc/internals`, `doc/spec` �
 
 ### 업데이트 대상
 
-- [ ] `doc/spec/core/service/spot.ko.md`
-- [ ] `doc/spec/core/socket/stream.ko.md`
-- [ ] `doc/spec/core/errno-map.ko.md`
-- [ ] `doc/spec/bindings`: core release 전에는 draft link와 binding 영향 요약만 반영.
+- [x] `doc/spec/core/service/spot.ko.md`
+- [x] `doc/spec/core/socket/stream.ko.md`
+- [x] `doc/spec/core/errno-map.ko.md`
+- [x] `doc/spec/bindings`: core release 전에는 draft link와 binding 영향 요약만 반영.
   언어별 full binding spec은 release 뒤 5회 리뷰 단계에서 반영
-- [ ] `doc/guide`
-- [ ] `doc/internals`
-- [ ] `doc/site/docs` 또는 site 생성 원본이 따로 있으면 해당 원본
-- [ ] sample README와 사용 예
-- [ ] historical draft 상태와 정식 문서 링크
+- [x] `doc/guide`
+- [x] `doc/internals`
+- [x] `doc/site/docs` 또는 site 생성 원본이 따로 있으면 해당 원본
+- [x] sample README와 사용 예
+- [x] historical draft 상태와 정식 문서 링크
 
 ### 업데이트 규칙
 
@@ -1163,13 +1185,13 @@ POSD 기반 리팩토링이 끝나면 `doc/guide`, `doc/internals`, `doc/spec` �
 
 ### 종료 조건
 
-- [ ] guide, internals, core spec 문서가 모두 최종 코드와 맞다.
-- [ ] `doc/spec/bindings`에는 release 뒤 full 반영을 위한 draft link와 영향 요약이 있다.
-- [ ] 1차, 2차, 3차 문서 리뷰 로그가 남아 있다.
-- [ ] 3차 리뷰에서 mismatch가 없다.
-- [ ] 3차 리뷰 중 mismatch가 발견되어 수정했다면, 3차를 처음부터 다시 수행했다.
-- [ ] stale API 이름과 제거 대상 API 설명이 정식 문서에 남아 있지 않다.
-- [ ] draft 문서가 historical draft 또는 정식 문서 링크 상태로 정리되어 있다.
+- [x] guide, internals, core spec 문서가 모두 최종 코드와 맞다.
+- [x] `doc/spec/bindings`에는 release 뒤 full 반영을 위한 draft link와 영향 요약이 있다.
+- [x] 1차, 2차, 3차 문서 리뷰 로그가 남아 있다.
+- [x] 3차 리뷰에서 mismatch가 없다.
+- [x] 3차 리뷰 중 mismatch가 발견되어 수정했다면, 3차를 처음부터 다시 수행했다.
+- [x] stale API 이름과 제거 대상 API 설명이 정식 문서에 남아 있지 않다.
+- [x] draft 문서가 historical draft 또는 정식 문서 링크 상태로 정리되어 있다.
 
 ## Core release와 bindings 최신화
 

@@ -521,12 +521,6 @@ static void test_discovery_local_value_route_limit_contract ()
     TEST_ASSERT_EQUAL_UINT (sizeof (route_value_max_size_read), read_size);
     TEST_ASSERT_EQUAL_UINT (route_value_max_size, route_value_max_size_read);
 
-    errno = 0;
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_discovery_bind_route (discovery, 1, "k", 1, "abcde", 5));
-    TEST_ASSERT_EQUAL_INT (EMSGSIZE, errno);
-
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }

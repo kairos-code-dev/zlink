@@ -166,6 +166,83 @@ callback이 부착된 경우 `EBUSY`. Context가 종료된 경우 `ETERM`.
 
 ---
 
+### STREAM session Actor list
+
+STREAM session Actor list는 STREAM client session routing id와 Actor ref를 연결하는
+per-session 매핑이다. 이 매핑은 STREAM socket의 public lookup 대상이 아니다. 한
+session은 여러 Actor를 bind할 수 있고, 한 Actor는 동시에 하나의 STREAM session에만
+bind될 수 있다.
+
+```c
+zlink_request_result_t zlink_stream_bind_actor(
+  void *node,
+  void *stream,
+  const zlink_routing_id_t *session_rid,
+  const zlink_actor_ref_t *actor,
+  uint32_t timeout_ms);
+
+zlink_request_result_t zlink_stream_unbind_actor(
+  void *node,
+  void *stream,
+  const zlink_routing_id_t *session_rid,
+  const char *actor_id,
+  uint32_t timeout_ms);
+
+zlink_submit_result_t zlink_stream_send_bound_actor_part(
+  void *node,
+  void *stream,
+  const zlink_routing_id_t *session_rid,
+  const char *actor_id,
+  zlink_msg_t *part,
+  zlink_send_flags_t flags,
+  zlink_part_flag_t part_flag);
+```
+
+- `node`는 STREAM session owner `SpotNode`다. session owner node 없이 bind, unbind,
+  relay는 수행하지 않는다.
+- `stream`은 session routing id가 속한 raw STREAM socket이다.
+- `session_rid`는 STREAM client session routing id다.
+- 같은 session에 서로 다른 Actor id를 여러 개 bind할 수 있다.
+- 같은 session의 같은 Actor id를 다시 bind하면 그 Actor id 항목만 새 Actor ref로
+  교체한다.
+- 같은 session에 같은 Actor ref를 다시 bind하면 중복 항목을 만들지 않고 성공한다.
+- 이미 다른 session에 bind된 Actor를 bind하면 `ZLINK_REQUEST_BUSY` 계열 실패다.
+- `zlink_actor_ref_t.generation == 0`인 unchecked ref로 bind하면 target node의 현재
+  같은 Actor id Actor를 attach하고, session Actor list에는 concrete generation을 가진
+  ref가 저장된다.
+- checked ref의 generation이 target Actor와 다르면 conflict 또는 invalid-state 계열
+  실패다.
+- bind 성공 시 Actor owner node에서 actor route sync가 켜져 있으면 active route가
+  publish된다. Actor 생성만으로는 active route가 publish되지 않는다.
+- unbind는 없는 Actor id에 대해서도 성공으로 끝나는 idempotent 작업이다.
+- 여러 Actor가 bind된 session에서 한 Actor id를 unbind해도 다른 Actor 항목은
+  유지된다.
+- remote Actor owner node와 연결이 없으면 explicit unbind는
+  `ZLINK_REQUEST_NOT_CONNECTED`로 실패하고 기존 Actor id 항목을 유지한다.
+- Actor owner provider 종료가 확인된 뒤의 explicit unbind는 detach 확인 없이 session
+  Actor list 항목을 제거하고 성공할 수 있다.
+- bind/unbind timeout 실패 뒤 session Actor list와 Actor bound session ref는 호출 전
+  상태로 유지된다.
+- unbind와 session disconnect cleanup은 active route를 제거하지 않는다.
+
+`zlink_stream_send_bound_actor_part()`는 `actor_id` selector가 가리키는 Actor unread
+state로 STREAM session 메시지 part를 relay한다.
+
+- session Actor list에 `actor_id` 항목이 없으면 `ZLINK_SUBMIT_NOT_FOUND` 계열 실패다.
+- `actor_id`가 잘못됐거나 NULL이면 `ZLINK_SUBMIT_INVALID_ARGUMENT` 계열 실패다.
+- 성공 시 `part` 소유권은 라이브러리로 이전된다. 실패 시 호출자에게 남는다.
+- multipart 중 `ZLINK_PART_MORE`가 성공하면 같은 session의 다음 part는 같은
+  `actor_id`로만 보낼 수 있다. 다른 Actor id를 쓰면 `ZLINK_SUBMIT_INVALID_STATE`다.
+- final part submit이 실패하면 이미 성공한 part는 라이브러리가 소유하고, caller는
+  같은 Actor id로 final part를 다시 시도할 수 있다.
+- target Actor가 remote node에서 이미 사라진 경우 target node에서 메시지를 버릴 수
+  있으며, sender의 완료된 send 결과는 바뀌지 않는다.
+- target Actor owner node와 연결이 없으면 `ZLINK_SUBMIT_NOT_CONNECTED` 계열 실패다.
+- relay 경로의 내부 자원 부족이나 HWM 초과는 `ZLINK_SUBMIT_BACKPRESSURED` 계열
+  실패다.
+
+---
+
 ### zlink_recv_handler
 
 raw `STREAM` 소켓에 raw 수신 콜백을 부착합니다.

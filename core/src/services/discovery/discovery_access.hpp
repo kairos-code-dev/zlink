@@ -5,6 +5,8 @@
 
 #include <zlink.h>
 
+#include "services/discovery/route_limits_internal.hpp"
+
 #include <string>
 
 namespace zlink

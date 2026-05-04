@@ -1329,9 +1329,9 @@ ZLINK_EXPORT zlink_request_result_t zlink_stream_unbind_actor(
   bound session detach를 완료할 수 없으면 destroy는 실패한다.
 - Actor owner node의 actor route sync가 켜져 있으면 bind 성공 뒤
   `actor_->actor_id`의 active route가 bind된 실제 Actor ref로 publish되거나 갱신된다.
-  `actor_->generation == 0`인 unchecked ref로 bind했더라도 target Actor owner node는
-  현재 live Actor의 concrete generation을 채운 ref를 session Actor list와 active
-  route에 저장한다.
+  `actor_->generation == 0`인 unchecked ref로 bind했더라도 bind 결과로 session owner
+  node의 session Actor list에는 concrete generation을 채운 ref가 저장되고, Actor
+  owner node의 active route도 concrete generation으로 publish된다.
 - bind 전에 Actor가 이미 Spot에 join되어 있으면 publish되는 route에는 그
   `joined_spot_rid`가 포함된다.
 - active route 갱신은 session Actor list 항목 저장과 같은 API 호출의 일부로 처리된다.
@@ -2062,6 +2062,7 @@ Actor row의 `last_changed_ms`는 Actor 생성 이후 이 snapshot row의 진단
 | ACT-JOIN-25 | leave/rejoin FIFO | leave 전, leave 후 join 전, 새 join 후 도착한 Actor queue part가 도착 순서대로 drain된다 |
 | ACT-JOIN-26 | unchecked ref join | `generation == 0`인 ref 기반 join은 target node의 현재 같은 actor id Actor를 대상으로 처리한다 |
 | ACT-JOIN-27 | checked ref join mismatch | `generation != 0`인 ref와 target Actor generation이 다르면 stale/conflict 실패로 완료된다 |
+| ACT-JOIN-28 | leave idempotent | Actor가 해당 Spot에 join되어 있지 않은 상태에서 leave를 호출하면 성공으로 처리된다 |
 
 ### SpotNode snapshot
 

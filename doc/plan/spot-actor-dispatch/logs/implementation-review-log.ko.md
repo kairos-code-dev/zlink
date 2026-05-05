@@ -200,13 +200,13 @@
 
 ## 2026-05-05 단계 5 Actor join/leave 보강
 
-- 대상: 단계 5 ref 기반 join, reject reply, leave/rejoin queue 보존
+- 대상: 단계 5 ref 기반 join, reject reply, leave 뒤 Entry Spot 체류 중 queue 보존
 - 확인한 draft spec 절: Actor와 Spot join request, Actor와 Spot leave, 회귀 테스트 항목 `ACT-JOIN-*`
 - 구현 요약:
   - ref 기반 join에서 target node가 없으면 submit 단계에서 `ZLINK_SUBMIT_NOT_CONNECTED`를 반환하도록 했다.
   - target Actor 없음, target Spot 없음, checked generation mismatch는 submit 성공 뒤 request completion으로 `ZLINK_REQUEST_NOT_FOUND` 또는 `ZLINK_REQUEST_CONFLICT`를 전달하도록 맞췄다.
   - join accept 시 Actor unread 상태가 이미 있으면 새 Spot dispatch context로 readable event를 발행하도록 했다.
-  - join reject reply, unchecked ref join, ref join target node 선택, leave/rejoin 사이 unread 보존과 FIFO drain을 회귀 테스트로 추가했다.
+  - join reject reply, unchecked ref join, ref join target node 선택, leave 뒤 Entry Spot 체류 중 unread 보존과 FIFO drain을 회귀 테스트로 추가했다.
 - 검증:
   - `cmake --build core/build --target test_spot_actor_dispatch`
   - `ctest --test-dir core/build --output-on-failure -R '^test_spot_actor_dispatch$' -j1`
@@ -490,3 +490,87 @@
   - ASAN Actor targeted test 통과
   - ASAN 기본 ODR 감지는 Boost.Asio header static `id` 중복 진단으로 먼저 실패하므로,
     `detect_odr_violation=0`을 설정해 Actor 경로 누수와 메모리 오류를 확인했다.
+
+## 2026-05-06 문서 논리 리뷰
+
+- 대상: draft spec, Entry Spot/transport queue draft, 실행 plan, contract matrix
+- 확인한 draft spec 절: Actor와 Spot join request, Actor와 Spot leave, STREAM session
+  Actor list bind, Actor active route 조회, 회귀 테스트 항목
+- 발견 및 반영:
+  - `leave`가 일부 문단과 테스트에서는 "join 관계 해제"로 남아 있고 다른 절에서는
+    "Entry Spot 이동"으로 정의되어 있었다. leave 계약, plan 체크 항목, matrix 행,
+    회귀 테스트 기대값을 Entry Spot 이동 모델로 통일했다.
+  - user Spot destroy가 active route를 unjoined처럼 바꾼다는 문장이 Entry Spot
+    불변식과 충돌했다. user Spot destroy는 Actor를 Entry Spot으로 이동시키고
+    `joined = 1`, `joined_spot_rid = Entry Spot rid`를 유지하도록 수정했다.
+  - destroy 계약이 "Spot에 join된 Actor destroy 실패"로 남아 있어, Actor가 항상
+    Entry Spot을 가진다는 규칙과 충돌했다. destroy 실패 조건을 "Entry Spot이 아닌
+    user Spot에 있는 Actor"로 좁혔다.
+  - matrix test manifest에 `ACT-JOIN-29..38`, `ACT-STREAM-21..22`가 빠져 있었다.
+    manifest를 draft 회귀 테스트 목록과 맞췄다.
+  - 상단 remote join 개요 sequence가 target accept 직후 source retire처럼 보였다.
+    session Actor list compare-and-swap, visible commit, source retire 순서가 드러나도록
+    개요 sequence를 수정했다.
+- 검증:
+  - 오래된 leave 의미와 route 전환 표현 검색
+  - 금지 표현 검색
+  - `git diff --check -- doc/spec/draft/spot-actor-dispatch.ko.md doc/spec/draft/spot-entry-transport-queues.ko.md doc/plan/spot-actor-dispatch-implementation-plan.ko.md doc/plan/spot-actor-dispatch/logs/contract-matrix.ko.md doc/plan/spot-actor-dispatch/logs/implementation-review-log.ko.md`
+- 검증 결과:
+  - 남은 hit는 `joined = 0`으로 바꾸지 않는다는 부정 문장뿐이다.
+  - 금지 표현 없음
+  - diff whitespace 오류 없음
+- 남은 위험:
+  - 정식 spec과 site API 문서에는 현재 header 기준의 이전 join/leave 표면이 남아 있다.
+    draft의 단일 `zlink_spot_node_actor_join_spot(node, actor, dest_node_rid,
+    dest_spot_rid, ...)` 계약과 `current_spot_rid_` 기반 leave 계약은 core header와
+    구현이 갱신된 뒤 정식 spec과 site 문서에 다시 반영해야 한다.
+  - 위 mismatch 때문에 실행 plan의 최종 문서 업데이트 종료 조건 일부는 완료 상태에서
+    미완료 상태로 되돌렸다.
+
+## 2026-05-06 join 승인 handler와 remote join pending Actor 정리
+
+- 대상: draft spec, Entry Spot/transport queue draft, 실행 plan, contract matrix
+- 확인한 draft spec 절: Actor와 Spot join request, Remote Actor create-or-get,
+  Admission handler, remote join process
+- 발견 및 반영:
+  - join 승인은 새 handler 등록 API가 아니라 기존 `zlink_spot_dispatch_event_handler()`
+    등록으로 처리한다는 점을 join API 설명에 명시했다.
+  - target Spot handler가 `ACTOR_JOIN_READABLE` event를 받고
+    `zlink_spot_actor_join_recv()` / `zlink_spot_actor_join_reply()`로 accept 또는 reject를
+    결정한다고 명시했다.
+  - remote join caller가 target node에 remote Actor를 미리 만들 필요가 없다고
+    명시했다. target node는 prepare 단계에서 pending Actor state를 내부 생성한다.
+  - remote join prepare는 explicit remote create-or-get이 아니므로
+    `zlink_spot_node_actor_admission_handler()`를 호출하지 않고, target Spot join
+    handler가 pending Actor 생성과 Spot 입장을 함께 승인한다고 명시했다.
+  - 같은 `actor_id`의 live Actor나 다른 pending Actor가 target node에 이미 있으면
+    conflict 또는 busy 계열 실패가 되며 target Spot handler는 호출되지 않는다고 명시했다.
+  - 회귀 테스트 항목 `ACT-JOIN-39..41`, `ENTRY-ACTOR-30..32`를 추가했고 plan에는
+    아직 구현 검증 전 항목으로 남겼다.
+- 검증:
+  - 금지 표현 검색
+  - 오래된 remote join/create admission 표현 검색
+  - diff whitespace 검사
+- 검증 결과:
+  - 금지 표현 없음
+  - diff whitespace 오류 없음
+
+## 2026-05-06 활성 draft spec 기준 문서 전환
+
+- 대상: `doc/spec/draft/spot-entry-transport-queues.ko.md`, 실행 plan, contract matrix
+- 확인한 draft spec 절: 목적, Actor join, Remote join process, Public API 변경,
+  회귀 테스트
+- 반영:
+  - `doc/spec/draft/spot-entry-transport-queues.ko.md`를 Entry Spot, Actor 이동,
+    remote join, Spot socket 제거 규칙의 활성 draft spec 단일 기준으로 명시했다.
+  - `doc/spec/draft/spot-actor-dispatch.ko.md`에 추가했던 join handler와 remote pending
+    Actor 관련 중복 내용을 제거했다. 이 내용은 활성 draft spec에만 남긴다.
+  - 실행 plan의 기준 문서와 traceability 표를 활성 draft spec으로 전환했다.
+  - contract matrix의 기준 문서 설명과 Draft Link 경로를 활성 draft spec으로 전환했다.
+  - 새 회귀 항목은 `ACT-JOIN-*`가 아니라 활성 draft spec의 `ENTRY-ACTOR-30..32`로
+    추적하도록 plan과 matrix manifest를 맞췄다.
+- 검증:
+  - 활성 draft spec과 matrix의 `ENTRY-*` / `ACT-*` ID 대조
+  - stale `ACT-JOIN-39..41` 검색
+  - 금지 표현 검색
+  - diff whitespace 검사

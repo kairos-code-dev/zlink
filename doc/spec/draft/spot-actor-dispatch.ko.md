@@ -1,20 +1,19 @@
 # SPOT Actor Dispatch 초안
 
-이 문서는 **구현 전 초안**이며 현재 공개 계약이 아니다.
-아래 내용은 `SpotNode`가 기존 SPOT 데이터 평면에 더해 Actor 실행 대상을
-관리하고, `STREAM` session에서 Actor로 메시지를 relay하는 기능을 설계하기
-위한 초안이다.
+> **이 문서는 역사적 초안이다.** 이 초안에 설계된 기능은 `core/v5.3.7`에서
+> 전부 구현되었으며, 정식 공개 계약은 아래 문서에 반영되어 있다.
+> 신규 개발에는 초안이 아닌 정식 문서를 참조한다.
 
-구현 후 정식 공개 계약은 `core/include/zlink.h`와 아래 문서로 나누어 반영한다.
+이 문서는 `SpotNode`가 기존 SPOT 데이터 평면에 더해 Actor 실행 대상을
+관리하고, `STREAM` session에서 Actor로 메시지를 relay하는 기능을 설계한
+구현 전 초안이다.
+
+정식 공개 계약은 `core/include/zlink.h`와 아래 문서에 반영되어 있다.
 
 - `doc/spec/core/service/spot.ko.md`
 - `doc/spec/core/socket/stream.ko.md`
 - `doc/spec/core/service/discovery.ko.md`
 - `doc/spec/core/errno-map.ko.md`
-
-정식 spec 문서와 `core/include/zlink.h`, 구현, 테스트에 반영되기 전까지
-응용은 이 동작에 의존하면 안 된다. 이 초안의 함수 이름, enum 이름, 에러
-매핑은 구현 과정에서 바뀔 수 있다.
 
 ## 첫 구현 범위
 
@@ -303,12 +302,11 @@ spot만 허용한다.
 
 | API | 목적 |
 |-----|------|
-| `zlink_actor_join_spot()` | local Actor handle에서 local Spot으로 join request 전송 |
-| `zlink_spot_node_actor_join_spot()` | Actor ref에서 target Spot으로 join request 전송 |
+| `zlink_spot_node_actor_join_spot()` | Actor ref에서 target node의 target Spot으로 join request 전송 |
 | `zlink_spot_actor_join_recv()` | Spot dispatch context에서 join request message 수신 |
 | `zlink_spot_actor_join_reply()` | join request 결과와 reply message 전송 |
-| `zlink_actor_leave_spot()` | local Actor를 local Spot에서 leave |
-| `zlink_spot_node_actor_leave_spot()` | Actor ref에서 target Spot으로 leave request 전송 |
+| `zlink_actor_leave_spot()` | local Actor를 current Spot에서 Entry Spot으로 이동 |
+| `zlink_spot_node_actor_leave_spot()` | Actor ref에서 current Spot을 확인한 뒤 Entry Spot으로 이동 |
 
 ### 추가 STREAM session Actor API
 
@@ -485,10 +483,14 @@ typedef struct zlink_actor_route_t
 ```
 
 - `actor`는 stream-to-actor relay와 Actor control request에 사용할 Actor ref이다.
-- `joined == 0`이면 `joined_spot_rid`는 의미가 없다.
-- `joined != 0`이면 `joined_spot_rid`는 Actor가 현재 join되어 있는 Spot routing id다.
-- joined Spot의 owner node는 `actor.node_rid`와 같다. Actor와 Spot join은 같은
-  `SpotNode` 안에서만 허용되므로 별도 joined node rid는 두지 않는다.
+- 정상적으로 publish된 Actor active route에서는 `joined != 0`이고
+  `joined_spot_rid`는 Actor의 current Spot routing id다. user Spot join 전이면 Entry
+  Spot rid가 들어간다.
+- `joined == 0`이면 `joined_spot_rid`는 의미가 없다. 이 값은 오래된 row나 손상된
+  provider row를 표현할 때만 허용하며, 정상 publish/update 결과로 만들지 않는다.
+- joined Spot의 owner node는 route에 들어 있는 `actor.node_rid`와 같다. remote join
+  handoff가 성공하면 active route의 Actor ref도 target node 기준으로 갱신되므로 별도
+  joined node rid는 두지 않는다.
 
 admission 거부는 `zlink_actor_create_status_t`에 넣지 않는다. 거부는 성공
 결과의 종류가 아니라 요청 실패이므로 `zlink_request_result_t` 쪽에서 표현한다.
@@ -626,9 +628,9 @@ ZLINK_EXPORT zlink_request_result_t zlink_actor_destroy(
 - `zlink_actor_destroy()`에서 `actor_p_ == NULL`이면
   `ZLINK_REQUEST_INVALID_ARGUMENT` 계열 결과로 실패한다.
 - `zlink_actor_destroy()`에서 `*actor_p_ == NULL`이면 성공으로 처리한다.
-- Actor가 `Spot`에 join된 상태에서 `zlink_actor_destroy()`를 호출하면
+- Actor가 Entry Spot이 아닌 user Spot에 있는 상태에서 `zlink_actor_destroy()`를 호출하면
   `ZLINK_REQUEST_BUSY` 또는 `ZLINK_REQUEST_INVALID_STATE` 계열 결과로 실패한다.
-  호출자는 먼저 `zlink_actor_leave_spot()`을 호출해야 한다.
+  호출자는 먼저 `zlink_actor_leave_spot()`으로 Actor를 Entry Spot으로 되돌려야 한다.
 - Actor destroy는 bound session과 session Actor list의 해당 actor id 항목을 먼저
   해제한 뒤 Actor slot을 제거한다.
   bound session detach를 완료할 수 없으면 `ZLINK_REQUEST_NOT_CONNECTED` 또는
@@ -643,7 +645,7 @@ ZLINK_EXPORT zlink_request_result_t zlink_actor_destroy(
   session Actor list에 target actor id 없음으로 실패한다.
 - `zlink_actor_destroy()`가 성공하면 `*actor_p_`는 `NULL`이 된다.
 - `zlink_actor_destroy()`가 실패하면 `*actor_p_`는 기존 Actor handle 값을 유지한다.
-- `zlink_actor_destroy()`가 timeout으로 실패하면 Actor slot, joined 상태, bound session
+- `zlink_actor_destroy()`가 timeout으로 실패하면 Actor slot, current Spot, bound session
   상태는 호출 전 상태를 유지한다. timeout 뒤에 destroy가 백그라운드에서 늦게 완료되는
   동작은 공개 계약으로 만들지 않는다.
 
@@ -760,10 +762,13 @@ ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_actor(
 - 성공하면 `route_out_->actor.node_rid`에 active route의 `SpotNode` routing id가
   들어간다.
 - 성공하면 `route_out_->actor.actor_id`도 Registry view에서 확인된 값으로 채운다.
-- active route가 가리키는 Actor가 Spot에 join되어 있으면 `route_out_->joined != 0`이고
-  `route_out_->joined_spot_rid`가 유효하다.
-- `route_out_->joined == 0`이면 Actor가 아직 Spot에 join되지 않았거나 Registry view에
-  joined spot 정보가 없다.
+- 이 기능으로 publish된 active route는 bound session이 있는 Actor route이므로
+  `route_out_->joined != 0`이고 `route_out_->joined_spot_rid`가 유효해야 한다.
+- `route_out_->joined_spot_rid`는 Actor의 current Spot routing id이다. Actor가 user
+  Spot에 아직 join하지 않았다면 이 값은 Entry Spot routing id이다.
+- `route_out_->joined == 0`은 Registry view에 joined Spot 정보가 없는 오래된 row나
+  손상된 provider row를 뜻한다. 정상적인 Actor route publish/update 결과로 만들지
+  않는다.
 - joined Spot의 owner node는 항상 `route_out_->actor.node_rid`이다.
 - active route를 찾지 못하거나 route provider가 live 상태가 아니면 `ENOENT`다.
 - Discovery가 Registry 기준 정보에 아직 접근할 수 없으면 `EAGAIN`이다.
@@ -780,21 +785,28 @@ publish하거나 갱신한다.
 Actor active route row 생명주기는 아래 원칙을 따른다.
 
 - local Actor 생성이나 remote create-or-get은 active route를 publish하지 않는다.
-- Actor가 Spot에 join되어 있어도 stream bind 전에는 active route가 없을 수 있다.
-  이 상태에서 `zlink_discovery_resolve_actor()`는 `ENOENT`를 반환할 수 있다.
+- Actor가 Entry Spot에 있어도 stream bind 전에는 active route가 없다. 이 상태에서
+  `zlink_discovery_resolve_actor()`는 `ENOENT`를 반환할 수 있다.
 - `zlink_stream_bind_actor()`가 성공하고 Actor owner node의 actor route sync가
   켜져 있으면 `actor_id -> Actor route` active route row를 publish하거나 갱신한다.
-- bind 전에 Actor가 이미 Spot에 join되어 있으면 bind 시점의 route row에는 현재
-  `joined`와 `joined_spot_rid`가 함께 기록된다. session owner node가 이 값을
-  전달하는 것이 아니라 Actor owner node가 자기 상태에서 채운다.
+- bind 시점의 route row에는 현재 Actor ref, `joined = 1`, current Spot rid가 함께
+  기록된다. 생성 직후 Actor라면 current Spot rid는 Entry Spot rid이다. session owner
+  node가 이 값을 전달하는 것이 아니라 Actor owner node가 자기 상태에서 채운다.
 - 같은 `actor_id`의 active route가 이미 있더라도 새 Actor ref로 갱신할 수 있다.
   이 규칙이 Actor 이동에서 route 전환 지점이 된다.
-- Actor가 Spot에 join되거나 leave하면 active route row의 `joined`와 `joined_spot_rid`
-  값을 갱신한다. route sync가 꺼져 있거나 active route가 해당 Actor를 가리키지
-  않으면 Registry row를 갱신하지 않는다.
+- Actor가 user Spot에 join되면 active route row의 `joined_spot_rid`를 target Spot rid로
+  갱신한다. `joined`는 계속 `1`이다.
+- Actor가 leave하면 Actor current Spot은 Entry Spot이므로 active route row의
+  `joined_spot_rid`를 Entry Spot rid로 갱신한다. `joined = 0`으로 바꾸지 않는다.
+- remote join commit이 성공하면 active route row의 Actor ref를 target node Actor ref로
+  갱신하고, `joined_spot_rid`는 target node의 target Spot rid로 갱신한다.
+- route sync가 꺼져 있거나 active route가 해당 Actor를 가리키지 않으면 Registry row를
+  갱신하지 않는다.
 - `zlink_stream_unbind_actor()`와 session disconnect cleanup은 session Actor list
   항목과 Actor 쪽 bound session ref를 제거한다. active route는 다른 bind가 갱신하거나
-  matching Actor destroy/provider 종료가 정리할 때까지 유지된다.
+  matching Actor destroy/provider 종료가 정리할 때까지 유지된다. session disconnect
+  cleanup이 user Spot Actor를 Entry Spot으로 되돌린 경우 active route가 해당 Actor ref를
+  가리키면 `joined_spot_rid`도 Entry Spot rid로 갱신한다.
 - Actor destroy 시 현재 active route가 같은 actor id, node rid, generation을 가리킬
   때만 route row를 제거한다. route가 이미 다른 node로 이동했다면 이전 Actor destroy는
   새 route를 제거하지 않는다.
@@ -992,7 +1004,7 @@ ZLINK_EXPORT zlink_request_result_t zlink_spot_node_destroy_remote_actor(
 - `actor_->generation == 0`이면 target node의 현재 같은 `actor_id` Actor를 destroy한다.
 - `actor_->generation != 0`이고 target node에 같은 `actor_id`와 같은 generation의
   Actor가 있으면 destroy한다.
-- target Actor가 `Spot`에 join되어 있으면 destroy하지 않고 `ZLINK_REQUEST_BUSY`
+- target Actor가 Entry Spot이 아닌 user Spot에 있으면 destroy하지 않고 `ZLINK_REQUEST_BUSY`
   또는 `ZLINK_REQUEST_INVALID_STATE` 계열 결과로 실패한다.
 - `actor_->generation != 0`이고 target Actor generation이 다르면 stale/conflict
   실패로 반환한다.
@@ -1006,10 +1018,10 @@ ZLINK_EXPORT zlink_request_result_t zlink_spot_node_destroy_remote_actor(
   cleanup하고 destroy를 진행할 수 있다. session owner node가 이미 사라진 경우에는
   그 node의 session Actor list 항목 제거를 remote destroy 성공 조건에 넣지 않는다.
 - `zlink_spot_node_destroy_remote_actor()`가 timeout으로 실패하면 target Actor slot,
-  joined 상태, bound session 상태는 호출 전 상태를 유지한다. timeout 뒤에 destroy가
+  current Spot, bound session 상태는 호출 전 상태를 유지한다. timeout 뒤에 destroy가
   백그라운드에서 늦게 완료되는 동작은 공개 계약으로 만들지 않는다.
 
-join 상태의 Actor를 destroy하지 않는 이유는 local destroy와 같다. dispatch event
+user Spot에 있는 Actor를 destroy하지 않는 이유는 local destroy와 같다. dispatch event
 queue에 이미 들어간 Actor handle이 무효화되는 상황을 공개 계약에서 허용하지
 않기 위해서다.
 
@@ -1021,28 +1033,16 @@ event context에서 직렬화되어 처리된다. core는 join message를 해석
 application은 이 message 안에 입장 판단에 필요한 room option, auth token, initial
 state 같은 값을 담을 수 있다.
 
-local Actor와 local `Spot`을 위한 편의 API는 아래와 같다. 이 API도 즉시 join하지
-않고 같은 dispatch queue에 join request를 넣는다.
-
-```c
-ZLINK_EXPORT zlink_submit_result_t zlink_actor_join_spot(
-  void *actor_,
-  void *spot_,
-  zlink_msg_t *message_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_);
-```
-
-local 또는 remote Actor ref를 target `Spot`에 보내는 일반 API는 아래와 같다.
-이 API는 remote 전용이 아니다. local Actor도 `zlink_actor_get_ref()`로 얻은
-`zlink_actor_ref_t`를 넘겨 같은 경로를 사용할 수 있다.
+local 또는 remote Actor ref를 target `Spot`에 보내는 API는 하나만 둔다.
+local Actor도 `zlink_actor_get_ref()`로 얻은 `zlink_actor_ref_t`를 넘겨 같은 경로를
+사용한다. `dest_node_rid_`가 Actor owner node와 같으면 local Spot 이동이고, 다르면
+remote Spot join handoff다.
 
 ```c
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_join_spot(
   void *node_,
   const zlink_actor_ref_t *actor_,
+  const zlink_routing_id_t *dest_node_rid_,
   const zlink_routing_id_t *dest_spot_rid_,
   zlink_msg_t *message_,
   zlink_reply_handler_fn handler_,
@@ -1076,37 +1076,77 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply(
 
 계약은 아래와 같다.
 
-- `zlink_actor_join_spot()`에서 `actor_ == NULL`, `spot_ == NULL`, `message_ == NULL`,
-  또는 `handler_ == NULL`이면 `ZLINK_SUBMIT_INVALID_ARGUMENT` 계열 결과로 실패한다.
 - `zlink_spot_node_actor_join_spot()`에서 `node_ == NULL`, `actor_ == NULL`,
-  `dest_spot_rid_ == NULL`, `message_ == NULL`, 또는 `handler_ == NULL`이면
-  `ZLINK_SUBMIT_INVALID_ARGUMENT` 계열 결과로 실패한다.
+  `dest_node_rid_ == NULL`, `dest_spot_rid_ == NULL`, `message_ == NULL`, 또는
+  `handler_ == NULL`이면 `ZLINK_SUBMIT_INVALID_ARGUMENT` 계열 결과로 실패한다.
 - `zlink_spot_node_actor_join_spot()`에서 `actor_`의 `actor_id`가 비어 있거나
   `ZLINK_ACTOR_ID_MAX - 1` byte를 넘으면
   `ZLINK_SUBMIT_INVALID_ARGUMENT` 계열 결과로 실패한다.
-- ref 기반 join의 target node는 항상 `actor_->node_rid`이다. 별도 target node
-  인자는 받지 않는다. Actor와 Spot join은 같은 `SpotNode` 안에서만 허용되므로
-  caller가 같은 node 값을 두 번 넘기게 만들지 않는다.
-- ref 기반 join에서 target node와 연결되어 있지 않으면
+- `dest_node_rid_`가 비어 있으면 `ZLINK_SUBMIT_INVALID_ARGUMENT` 계열 결과로
+  실패한다.
+- `node_`는 join request를 제출하고 completion handler를 소유하는 request owner
+  `SpotNode` handle이다. session owner, backend service node, source Actor owner node
+  모두 request owner가 될 수 있다.
+- request owner는 session owner와 같을 필요가 없다. session owner는 Actor의 bound
+  session ref에서 읽고, remote join commit 때 relay mapping만 갱신한다.
+- `actor_->node_rid`는 현재 Actor owner node를 뜻한다. `dest_node_rid_`가
+  `actor_->node_rid`와 같으면 같은 node 안 local join으로 처리한다.
+- `dest_node_rid_`가 `actor_->node_rid`와 다르면 source Actor owner node에서 target
+  Spot owner node로 remote join handoff를 수행한다.
+- caller node가 Actor owner node 또는 target node와 연결되어 있지 않거나, Actor owner
+  node가 target node와 연결되어 있지 않으면
   `ZLINK_SUBMIT_NOT_CONNECTED` 계열 결과로 실패한다.
-- `dest_spot_rid_`가 `actor_->node_rid`의 target node에 없으면 join request는
+- `dest_spot_rid_`가 `dest_node_rid_`의 target node에 없으면 join request는
   `ZLINK_REQUEST_NOT_FOUND` 계열 실패로 끝난다.
 - 비어 있는 join request를 보내고 싶으면 빈 `zlink_msg_t`를 넘긴다.
-- target node에 Actor가 없으면 join request는 `ZLINK_REQUEST_NOT_FOUND` 계열
+- source Actor owner node에 Actor가 없으면 join request는 `ZLINK_REQUEST_NOT_FOUND` 계열
   실패로 끝난다.
-- `actor_->generation == 0`이면 target node의 현재 같은 `actor_id` Actor를 대상으로
-  join request를 보낸다.
-- `actor_->generation != 0`이고 target Actor generation이 다르면 stale/conflict
+- `actor_->generation == 0`이면 source Actor owner node의 현재 같은 `actor_id` Actor를
+  대상으로 join request를 보낸다.
+- `actor_->generation != 0`이고 source Actor generation이 다르면 stale/conflict
+  실패로 끝난다.
+- Actor는 Entry Spot에 있을 때만 bound session 없이 존재할 수 있다.
+- target Spot이 Entry Spot이 아니면 source Actor에 bound STREAM session ref가 있어야
+  한다. bound session이 없으면 join request는 `ZLINK_SUBMIT_INVALID_STATE` 또는
+  `ZLINK_REQUEST_INVALID_STATE` 계열 실패로 끝난다.
+- bound session ref가 닫혔거나 session owner node와 연결되어 있지 않으면 join request는
+  `ZLINK_SUBMIT_NOT_CONNECTED`, `ZLINK_REQUEST_NOT_CONNECTED`, 또는 invalid-state 계열
   실패로 끝난다.
 - Actor가 이미 같은 `Spot`에 join되어 있으면 core가 dispatch callback으로 join
   request를 전달하지 않고
   idempotent success를 caller에게 반환한다. 이때 caller에게는 빈 reply message가
   전달된다.
-- Actor가 다른 `Spot`에 이미 join되어 있으면 core가 dispatch callback으로 join
-  request를 전달하지 않고
-  `ZLINK_REQUEST_BUSY` 또는 `ZLINK_REQUEST_INVALID_STATE` 계열 실패를 caller에게
-  반환한다. caller는 먼저 leave를 수행해야 한다.
+- Actor가 다른 `Spot`에 이미 있으면 join request는 현재 Spot에서 target Spot으로
+  이동하는 request로 처리된다. caller가 먼저 leave를 수행할 필요는 없다.
 - 같은 `Spot`에 이미 다른 Actor가 join되어 있어도 accept할 수 있다.
+- remote join handoff에서 target node는 source Actor의 bound session ref를 pending
+  Actor state에 복사한다.
+- remote join의 coordinator는 source Actor owner node다. request owner가 session service나
+  backend service여도 source node가 join epoch, source Actor fence, session mapping 갱신,
+  target commit을 조율한다.
+- source node는 remote join 시작 시 `JoinOp` 상태를 만든다. `JoinOp`은 join epoch,
+  source Actor ref, target Actor ref, target node/Spot rid, bound session ref, request
+  owner completion handler, 그리고 기존 reply path를 보존한다.
+- `JoinOp`의 기존 reply path는 Actor route가 아니라 이 join 요청에 대한 operation
+  reply context다. 따라서 source Actor가 retired 상태가 된 뒤에도 `JoinOp`은 A node에서
+  session 또는 request owner로 completion을 전달할 수 있어야 한다.
+- remote join handoff가 node를 바꾸면 commit 과정에서 session owner node의
+  `session -> actor_id -> Actor ref` 항목을 source Actor ref에서 target Actor ref로
+  compare-and-swap한다. 같은 node 안 local join은 session Actor list를 갱신하지 않는다.
+- session Actor list compare-and-swap은 현재 값이 source Actor ref일 때만 성공한다. 값이
+  이미 다른 Actor ref면 stale/conflict 실패로 처리하고 source Actor는 source Spot에 남는다.
+- visibility point는 session Actor list compare-and-swap 성공이다. 이 시점 전 relay는
+  source Actor로 가고, 이 시점 뒤 새 relay는 target Actor로 간다.
+- visibility point 뒤 target Actor가 아직 visible commit을 처리 중이면 target node의
+  pending Actor state에 buffer되고 dispatch되지 않는다.
+- session owner mapping 갱신이 실패하거나 timeout되면 remote join commit은 실패한다.
+  이 경우 source Actor는 source Spot에 남고 target pending Actor state는 폐기된다.
+- join completion은 target Spot이나 session owner가 아니라 request owner의
+  `zlink_reply_handler_fn`으로 전달한다. request owner가 session service이면 application이
+  그 completion을 client로 보낸다. request owner가 backend service이면 backend가
+  completion을 받고, client 통지는 별도 application protocol이 맡는다.
+- source Actor retire는 `JoinOp` 정리를 뜻하지 않는다. `JoinOp`은 completion 전달을
+  transport에 넘기고 더 이상 retry나 timeout 처리가 필요 없어진 뒤 정리한다.
 - target `Spot` dispatch callback은 core precheck를 통과한 새로운 pending join만
   `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE`로 받는다.
 - target `Spot`에 dispatch event handler가 등록되어 있지 않으면 core는 join request를
@@ -1137,17 +1177,20 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply(
   reply `message_` 소유권은 호출자에게 남는다.
 - join request handler는 join result와 reply message를 함께 받는다.
 - timeout이 지나면 caller의 join request handler는 timeout 결과를 받는다.
-- join request timeout 뒤 Actor joined 상태는 호출 전 상태를 유지한다. timeout 뒤
+- join request timeout 뒤 Actor current Spot은 호출 전 상태를 유지한다. timeout 뒤
   target node에서 join이 늦게 accept되어 상태가 바뀌는 동작은 공개 계약으로 만들지
   않는다.
 - timeout 뒤 join reply를 호출하면 `ZLINK_SUBMIT_INVALID_STATE` 계열 submit 실패로
   끝나고 Actor는 join되지 않는다.
 - `Spot` destroy 또는 `SpotNode` shutdown은 pending join request를 terminated
   계열 결과로 완료한다.
-- `spot_`이 destroy되면 join 관계는 자동 해제된다.
-- `spot_` destroy로 join 관계가 자동 해제되고 active route가 해당 Actor ref를
-  가리키면 Actor owner node는 route row의 `joined`를 `0`으로 갱신한다.
-- join 상태의 Actor는 destroy할 수 없다. destroy하려면 먼저 leave를 호출해야 한다.
+- user `Spot`이 destroy되면 그 `Spot`에 있던 Actor는 application callback 없이
+  Entry Spot으로 이동한다. Actor slot과 unread 상태는 유지된다.
+- user `Spot` destroy로 Actor가 Entry Spot으로 이동하고 active route가 해당 Actor ref를
+  가리키면 Actor owner node는 route row의 `joined = 1`을 유지하고
+  `joined_spot_rid`를 Entry Spot rid로 갱신한다.
+- user Spot에 있는 Actor는 destroy할 수 없다. destroy하려면 먼저 leave로 Entry Spot에
+  되돌려야 한다.
 
 Actor join request가 readable이 되면 `zlink_spot_dispatch_event_handler()`는
 `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE` event를 받는다. 이 event의
@@ -1166,15 +1209,39 @@ reject처럼 reply message가 있는 완료에서는 `parts_[0]`이
 found처럼 target application이 reply message를 만들지 못한 실패에서는
 `part_count_ == 0`일 수 있다.
 
+remote join에서 target Spot이 accept한 뒤에도 commit 과정은 실패할 수 있다. target
+Actor activate, source Actor retire, session owner node의 session Actor list 갱신,
+active route 갱신은 하나의 handoff 결과로 다룬다. 특히 target node가 source node와
+다르면 session owner node의 `session -> actor_id -> Actor ref` 항목을 target Actor
+ref로 갱신해야 한다. 이 갱신이 실패하거나 timeout되면 join completion은 실패가 되고,
+source Actor는 source Spot에 남으며 target pending Actor state는 폐기된다.
+
+target Spot이 accept했다는 사실만으로 source Actor를 source Spot에서 제거하지 않는다.
+source Actor는 session Actor list compare-and-swap이 성공하고 target Actor activate와
+active route 갱신이 끝났다는 `commit visible OK`를 source node가 받은 뒤 source
+Spot에서 제거되고 retired 상태가 된다. 실패 응답과 성공 응답 모두 request owner의
+completion handler로 전달된다.
+core는 성공 응답을 B 서버에서 client로 직접 보내고 실패 응답을 A 서버에서 client로
+보내는 식으로 응답 경로를 나누지 않는다.
+
+구현은 Actor slot lifetime과 join operation lifetime을 분리한다. source Actor는
+`ACTIVE -> JOIN_PENDING -> COMMITTING -> RETIRED_PENDING_REPLY -> REMOVED` 흐름을
+가질 수 있다. `RETIRED_PENDING_REPLY` 상태의 Actor는 session mapping target도 아니고
+Spot dispatch 대상도 아니지만, source node의 `JoinOp`이 기존 reply path를 통해
+completion을 전달할 때까지 필요한 tombstone 또는 operation reference를 유지한다.
+completion 전달이 끝나면 `JoinOp`을 정리하고, source Actor에 남은 reference가 없으면
+source Actor slot을 제거할 수 있다.
+
 ## Actor와 Spot leave
 
-Actor가 `Spot`에서 나갈 때는 명시적인 leave API를 호출한다. local Actor handle과
-local `Spot` handle을 알고 있으면 local leave API를 사용한다.
+Actor가 user `Spot`에서 나갈 때는 명시적인 leave API를 호출한다. 이 초안에서
+leave는 "Spot 관계를 없애는 동작"이 아니라 "Actor를 Entry Spot으로 되돌리는 동작"이다.
+local Actor handle과 current `Spot` handle을 알고 있으면 local leave API를 사용한다.
 
 ```c
 ZLINK_EXPORT zlink_config_result_t zlink_actor_leave_spot(
   void *actor_,
-  void *spot_);
+  void *current_spot_);
 ```
 
 remote Actor ref만 알고 있으면 `SpotNode` control request로 target node에 leave를
@@ -1185,22 +1252,25 @@ remote Actor ref만 알고 있으면 `SpotNode` control request로 target node�
 ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_leave_spot(
   void *node_,
   const zlink_actor_ref_t *actor_,
-  const zlink_routing_id_t *dest_spot_rid_,
+  const zlink_routing_id_t *current_spot_rid_,
   uint32_t timeout_ms_);
 ```
 
 계약은 아래와 같다.
 
-- local leave에서 `actor_ == NULL` 또는 `spot_ == NULL`이면 `EINVAL`이다.
-- local leave에서 `actor_`와 `spot_`은 같은 backing `SpotNode`에서 만들어졌어야
+- local leave에서 `actor_ == NULL` 또는 `current_spot_ == NULL`이면 `EINVAL`이다.
+- local leave에서 `actor_`와 `current_spot_`은 같은 backing `SpotNode`에서 만들어졌어야
   한다.
 - local leave에서 다른 node가 만든 handle 조합이면 `EINVAL`이다.
-- local leave에서 Actor가 해당 `Spot`에 join되어 있지 않으면 성공으로 처리한다.
-- leave는 Actor queue를 비우지 않는다.
-- leave 뒤 새 메시지가 들어오면 Actor queue에는 쌓일 수 있지만 dispatch event는
-  발생하지 않는다.
+- local leave에서 Actor가 이미 Entry Spot에 있고 `current_spot_`도 Entry Spot이면
+  idempotent 성공이다.
+- local leave에서 `current_spot_`이 Actor의 current Spot이 아니면
+  `ZLINK_CONFIG_INVALID_STATE` 계열 결과와 `errno == EINVAL`로 실패한다.
+- leave는 Actor queue와 bound session ref를 비우지 않는다.
+- leave 성공 뒤 새 메시지가 들어오면 Actor queue에 쌓이고 Entry Spot dispatch context에
+  `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE` event가 올라간다.
 - Actor ref 기반 leave에서 `node_ == NULL`, `actor_ == NULL`, 또는
-  `dest_spot_rid_ == NULL`이면 `ZLINK_REQUEST_INVALID_ARGUMENT` 계열 결과로 실패한다.
+  `current_spot_rid_ == NULL`이면 `ZLINK_REQUEST_INVALID_ARGUMENT` 계열 결과로 실패한다.
 - Actor ref 기반 leave에서 `actor_`의 `actor_id`가 비어 있거나
   `ZLINK_ACTOR_ID_MAX - 1` byte를 넘으면
   `ZLINK_REQUEST_INVALID_ARGUMENT` 계열 결과로 실패한다.
@@ -1213,33 +1283,36 @@ ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_leave_spot(
   leave를 처리한다.
 - `actor_->generation != 0`이고 target Actor generation이 다르면 stale/conflict
   실패로 반환한다.
-- Actor ref 기반 leave에서 Actor가 `dest_spot_rid_`에 join되어 있지 않으면 성공으로
-  처리한다.
-- Actor ref 기반 leave가 timeout으로 실패하면 Actor joined 상태는 호출 전 상태를
+- Actor ref 기반 leave에서 target Actor가 이미 Entry Spot에 있고 `current_spot_rid_`도
+  Entry Spot이면 idempotent 성공이다.
+- Actor ref 기반 leave에서 `current_spot_rid_`가 Actor의 current Spot이 아니면
+  invalid-state 계열 결과로 실패한다.
+- Actor ref 기반 leave가 timeout으로 실패하면 Actor current Spot은 호출 전 상태를
   유지한다. timeout 뒤 leave가 백그라운드에서 늦게 완료되는 동작은 공개 계약으로
   만들지 않는다.
 - leave가 성공하고 active route가 해당 Actor ref를 가리키면 Actor owner node는
-  route row의 `joined`를 `0`으로 갱신한다.
+  route row의 `joined = 1`을 유지하고 `joined_spot_rid`를 Entry Spot rid로 갱신한다.
 
 leave는 join처럼 application accept/reject를 거치는 request가 아니다. core는 Actor와
-Spot의 join 관계만 해제한다. room 상태 저장, 퇴장 payload 처리, 정산 같은
-application 작업이 필요하면 응용이 같은 `Spot` dispatch context에서 일반 Spot
-message나 Actor message로 먼저 처리한 뒤 leave를 호출한다.
+Spot의 current Spot pointer만 Entry Spot으로 바꾼다. room 상태 저장, 퇴장 payload
+처리, 정산 같은 application 작업이 필요하면 응용이 같은 `Spot` dispatch context에서
+일반 Spot message나 Actor message로 먼저 처리한 뒤 leave를 호출한다.
 
-Actor의 dispatch context를 바꾸는 별도 move API는 두지 않는다. `leave`와 새
-join request/accept 사이에 새 메시지가 들어올 수 있지만, 그 메시지는 Actor queue에
-남아 있다가 새 `Spot`에 join한 뒤 readable event로 전달된다.
-Actor queue는 leave와 rejoin을 기준으로 재정렬되지 않는다. leave 전 이미 도착한
-part, leave 뒤 join 전 도착한 part, 새 join 뒤 도착한 part는 모두 Actor queue에
-도착한 순서대로 `zlink_actor_recv_part()`에서 읽힌다.
+Actor의 dispatch context를 바꾸는 별도 move API는 두지 않는다. `leave` 뒤 새 user
+Spot join request/accept 사이에 새 메시지가 들어오면 그 메시지는 Entry Spot에서
+readable event로 전달된다. Actor queue는 leave와 이후 join을 기준으로 재정렬되지
+않는다. leave 전 이미 도착한 part, Entry Spot에 있는 동안 도착한 part, 새 join 뒤
+도착한 part는 모두 Actor queue에 도착한 순서대로 `zlink_actor_recv_part()`에서 읽힌다.
 
-Actor가 어떤 `Spot`에도 join하지 않은 상태에서도 relay된 메시지는 Actor queue에
-쌓일 수 있다. 다만 dispatch event가 없으므로 호출자가 직접 `zlink_actor_recv_part()`
-를 호출할 방법이 없다면 메시지는 drain되지 않는다. 일반 사용은 Actor 생성 뒤
-join request를 보내고 accept된 다음 session mapping을 연결하는 형태를 권장한다.
-join되지 않은 Actor queue도 같은 내부 relay 자원 한계를 공유한다. drain되지 않아
-pending part가 늘어나면 joined Actor와 동일하게 기존 relay HWM 또는 내부 dispatch
-자원 부족 지점에서 sender에게 `ZLINK_SUBMIT_BACKPRESSURED` 계열 결과가 반환된다.
+Actor는 생성 직후 Entry Spot에 있으므로 unjoined 상태를 만들지 않는다. Entry Spot에
+있는 Actor도 session mapping 뒤 relay된 메시지를 Actor queue에 받을 수 있으며, 이
+메시지는 Entry Spot dispatch context에서 drain된다. 일반 사용은 Actor 생성 뒤 STREAM
+session에 bind하고, target user Spot으로 join request를 보내는 순서다. Entry Spot이
+아닌 target Spot으로 join하려면 bound session이 있어야 한다.
+Actor unread 상태도 같은 `SpotNode` relay 경로를 공유한다. drain되지 않아 pending
+part가 늘어나면 구현은 transport socket을 계속 drain해서 Actor unread 상태로 옮기지
+않아야 한다. sender에게 보이는 backpressure는 기존 relay 경로의 transport HWM,
+nonblocking send admission, timeout 규칙을 따른다.
 
 ## STREAM session Actor list bind
 
@@ -1270,9 +1343,10 @@ owner node는 joined Spot을 저장하지 않고, Actor owner node는 session의
 상태를 저장하지 않는다.
 
 bind가 성공할 때 active route를 publish해야 하면 Actor owner node가 자기 Actor의
-현재 joined 상태를 읽어 `zlink_actor_route_t`를 채운다. 이 규칙 때문에 Actor가
-먼저 Spot에 join되고 나중에 STREAM session에 bind되어도 resolve 결과에는 joined
-Spot rid가 들어갈 수 있다.
+current Spot을 읽어 `zlink_actor_route_t`를 채운다. Actor는 생성 직후 Entry
+Spot에 있으므로 bind 성공 시점의 route는 Entry Spot 또는 이미 join된 Spot 정보를
+담을 수 있다. 이후 join/leave가 성공하고 active route가 해당 Actor ref를 가리키면
+joined Spot 정보가 갱신된다.
 
 ```c
 ZLINK_EXPORT zlink_request_result_t zlink_stream_bind_actor(
@@ -1323,6 +1397,9 @@ ZLINK_EXPORT zlink_request_result_t zlink_stream_unbind_actor(
   결과로 실패한다.
 - 다른 session의 mapping은 독립적이다.
 - `unbind`에서 해당 `actor_id` 항목이 없어도 성공으로 처리한다.
+- explicit `unbind`에서 target Actor가 Entry Spot이 아닌 user Spot에 있으면
+  `ZLINK_REQUEST_BUSY` 또는 `ZLINK_REQUEST_INVALID_STATE` 계열 결과로 실패하고 기존
+  actor id 항목은 유지한다. caller는 먼저 Actor를 Entry Spot으로 leave해야 한다.
 - explicit `unbind`에서 해당 `actor_id` 항목이 있으면 session owner node는 Actor
   owner node에 detach control request를 보낸다. detach가 성공한 뒤 session Actor
   list에서 해당 항목을 제거한다.
@@ -1338,8 +1415,9 @@ ZLINK_EXPORT zlink_request_result_t zlink_stream_unbind_actor(
   session ref는 자동 제거된다.
 - session disconnect cleanup은 반환값이 없으므로 local session Actor list를 먼저
   제거하고 각 Actor owner node에 detach를 best-effort로 보낸다. Actor owner node는
-  session owner node/provider 종료 또는 stale session ref 감지 시 bound session ref를
-  정리해야 한다.
+  session owner node/provider 종료 또는 stale session ref 감지 시 user Spot에 있는
+  Actor를 Entry Spot으로 되돌린 뒤 bound session ref를 정리해야 한다. 이 cleanup은
+  application join callback을 거치지 않는다.
 - Actor destroy가 성공하면 session Actor list의 해당 actor id 항목도 해제되어 있다.
   bound session detach를 완료할 수 없으면 destroy는 실패한다.
 - Actor owner node의 actor route sync가 켜져 있으면 bind 성공 뒤
@@ -1347,8 +1425,8 @@ ZLINK_EXPORT zlink_request_result_t zlink_stream_unbind_actor(
   `actor_->generation == 0`인 unchecked ref로 bind했더라도 bind 결과로 session owner
   node의 session Actor list에는 concrete generation을 채운 ref가 저장되고, Actor
   owner node의 active route도 concrete generation으로 publish된다.
-- bind 전에 Actor가 이미 Spot에 join되어 있으면 publish되는 route에는 그
-  `joined_spot_rid`가 포함된다.
+- bind 성공 시 Actor의 current Spot이 Entry Spot이면 publish되는 route에는 Entry Spot
+  rid가 포함된다. 이후 user Spot join이 성공하면 joined Spot 정보가 갱신된다.
 - active route 갱신은 session Actor list 항목 저장과 같은 API 호출의 일부로 처리된다.
   bind가 실패하면 active route도 바뀌지 않는다.
 - 같은 `actor_id`의 active route가 이미 다른 node를 가리키더라도 새 Actor ref로
@@ -1727,14 +1805,15 @@ local Actor를 만들고 session에 mapping하는 흐름은 아래와 같다.
 
 1. `zlink_spot_node_actor_new()`로 Actor를 만든다.
 2. `zlink_actor_get_ref()`로 Actor ref를 얻는다.
-3. `zlink_actor_join_spot()`로 local `Spot`에 join request와 join message를 보낸다.
-4. target `Spot` dispatch callback이 join message를 읽고 accept 또는 reject한다.
-5. accept되면 Actor가 해당 `Spot`에 join된다.
-   이 시점에는 아직 active route가 publish되지 않았을 수 있다.
-6. STREAM packet 또는 raw callback에서 client `source_rid_`를 받는다.
-7. `zlink_stream_bind_actor()`에 session owner `SpotNode`, STREAM handle,
+3. STREAM packet 또는 raw callback에서 client `source_rid_`를 받는다.
+4. `zlink_stream_bind_actor()`에 session owner `SpotNode`, STREAM handle,
    session rid, Actor ref를 넘겨 session의 Actor list에 Actor ref를 묶는다. Actor
    route sync가 켜져 있으면 이 bind 성공 시점에 active route가 publish된다.
+5. `zlink_spot_node_actor_join_spot()`에 local node rid와 local Spot rid를 넘겨
+   join request와 join message를 보낸다.
+6. target `Spot` dispatch callback이 join message를 읽고 accept 또는 reject한다.
+7. accept되면 Actor가 해당 `Spot`에 join된다. Actor route sync가 켜져 있고 active
+   route가 이 Actor ref를 가리키면 joined Spot 정보도 갱신된다.
 8. 이후 client message는 application이 target `actor_id`를 고른 뒤
    `zlink_stream_send_bound_actor_part()`에 같은 session owner `SpotNode`, STREAM
    handle, session rid, target `actor_id`를 넘겨 relay한다.
@@ -1756,15 +1835,15 @@ remote Actor를 session에 mapping하는 흐름은 아래와 같다.
 4. Actor가 없을 수 있으면 `zlink_spot_node_create_remote_actor()`를 호출해
    create message를 보내고 create-or-get 결과의 Actor ref를 받는다.
 5. create-or-get 결과는 `CREATED` 또는 `EXISTING`이다.
-6. `zlink_spot_node_actor_join_spot()`로 target room `Spot`에 join request와
-   join message를 보낸다.
-7. target `Spot` dispatch callback이 join message를 읽고 accept 또는 reject한다.
-8. accept되면 target Actor가 room `Spot`에 join된다.
-   이 시점에는 아직 active route가 publish되지 않았을 수 있다.
-9. STREAM packet 또는 raw callback에서 client `source_rid_`를 받는다.
-10. `zlink_stream_bind_actor()`에 session owner `SpotNode`, STREAM handle,
-    session rid, remote Actor ref를 넘겨 session의 Actor list에 묶는다. Actor route
-    sync가 켜져 있으면 이 bind 성공 시점에 active route가 publish된다.
+6. STREAM packet 또는 raw callback에서 client `source_rid_`를 받는다.
+7. `zlink_stream_bind_actor()`에 session owner `SpotNode`, STREAM handle,
+   session rid, remote Actor ref를 넘겨 session의 Actor list에 묶는다. Actor route
+   sync가 켜져 있으면 이 bind 성공 시점에 active route가 publish된다.
+8. `zlink_spot_node_actor_join_spot()`에 target node rid와 target room Spot rid를
+   넘겨 join request와 join message를 보낸다.
+9. target `Spot` dispatch callback이 join message를 읽고 accept 또는 reject한다.
+10. accept되면 target Actor가 room `Spot`에 join된다. Actor route sync가 켜져 있고
+    active route가 이 Actor ref를 가리키면 joined Spot 정보도 갱신된다.
 11. 이후 client message는 application이 target `actor_id`를 고른 뒤
     `zlink_stream_send_bound_actor_part()`에 같은 session owner `SpotNode`, STREAM
     handle, session rid, target `actor_id`를 넘겨 relay한다.
@@ -1784,20 +1863,24 @@ create-or-get API를 사용한다.
 
 1. 기존 node A에 `actor_id`를 가진 Actor가 있고, session Actor list의 해당
    `actor_id` 항목과 active route가 A의 Actor ref를 가리킨다.
-2. 이동 대상 node B에 `zlink_spot_node_create_remote_actor()`로 같은 `actor_id`의
-   Actor를 만든다. create message에는 이동 판단에 필요한 application payload를
-   담을 수 있다. 이 시점에는 active route가 바뀌지 않는다.
-3. node B의 Actor를 target `Spot`에 join request로 join한다.
-4. join accept가 끝나면 gateway가 session owner `SpotNode`와 STREAM handle을
-   `zlink_stream_bind_actor()`에 넘겨 session Actor list의 해당 `actor_id` 항목을
-   B의 Actor ref로 교체한다.
-5. node B의 actor route sync가 켜져 있으면 이 bind 성공 시점에 discovery active
-   route가 B의 Actor route로 갱신된다.
+2. session service 또는 backend service가 request owner가 되어
+   `zlink_spot_node_actor_join_spot()`에 A의 Actor ref, node B rid, target Spot rid,
+   이동 판단에 필요한 application payload를 넘긴다.
+3. node B는 pending Actor state를 만들고 target `Spot`에 join request를 전달한다.
+   이 시점에는 active route와 session Actor list가 바뀌지 않는다.
+4. target `Spot`이 accept하면 node B는 session owner node에 session Actor list의
+   해당 `actor_id` 항목을 B의 Actor ref로 갱신하도록 요청한다.
+5. session Actor list 갱신이 성공하면 node B의 Actor가 active가 되고 node A의 Actor는
+   retire된다. actor route sync가 켜져 있으면 discovery active route도 B의 Actor route로
+   갱신된다.
 6. 이후 `zlink_discovery_resolve_actor()`와 새 stream-to-actor relay는 B의 Actor를
    기준으로 동작한다. B의 Actor가 Spot에 join되어 있으면 resolve 결과에
    `joined_spot_rid`도 함께 들어간다.
-7. node A의 Actor는 남은 queue를 처리한 뒤 leave/destroy할 수 있다. A의 destroy는
-   이미 B로 이동한 active route를 제거하지 않는다.
+7. session Actor list 갱신, target activate, source retire, active route 갱신 중 하나라도
+   실패하면 이동은 실패하고 A의 Actor가 source Spot에서 계속 active 상태로 남는다.
+8. 이동 성공 또는 실패 completion은 request owner로 돌아간다. request owner가 session
+   service이면 application이 client로 응답을 전달하고, request owner가 backend service이면
+   backend가 completion을 처리한다.
 
 이 흐름에서 같은 `actor_id`의 Actor slot이 A와 B에 동시에 존재하는 것은 정상이다.
 core가 전역으로 하나만 유지해야 하는 것은 Actor slot이 아니라 discovery active
@@ -1805,7 +1888,7 @@ route이다.
 
 remote Actor를 닫는 흐름은 아래와 같다.
 
-1. Actor가 target `Spot`에 join되어 있으면 target node에서 먼저 leave한다.
+1. Actor가 user `Spot`에 있으면 target node에서 먼저 Entry Spot으로 leave한다.
 2. caller가 `zlink_spot_node_destroy_remote_actor()`에 Actor ref를 넘긴다.
 3. target node에 Actor가 없으면 성공으로 처리한다.
 4. target Actor가 아직 `Spot`에 join되어 있으면 `ZLINK_REQUEST_BUSY` 또는
@@ -1823,13 +1906,15 @@ remote Actor를 닫는 흐름은 아래와 같다.
 | 잘못된 Actor id | `EINVAL` |
 | 지원하지 않는 SpotNode mode | `ENOTSUP` |
 | 중복 local Actor id | `EBUSY` |
-| Actor가 이미 다른 Spot에 join됨 | `EBUSY` |
 | Actor가 이미 다른 STREAM session에 bind됨 | `ZLINK_REQUEST_BUSY` 계열 결과 |
 | join request reject | `ZLINK_REQUEST_REJECTED` 계열 결과 |
-| join request target Actor 없음 | `ZLINK_REQUEST_NOT_FOUND` 계열 결과 |
-| local join handle이 서로 다른 SpotNode 소속 | `ZLINK_SUBMIT_INVALID_ARGUMENT` 계열 결과 |
+| join request source Actor 없음 | `ZLINK_REQUEST_NOT_FOUND` 계열 결과 |
+| join request target node 연결 없음 | `ZLINK_SUBMIT_NOT_CONNECTED` 계열 결과 |
+| user Spot join 대상 Actor에 bound session 없음 | `ZLINK_SUBMIT_INVALID_STATE` 또는 `ZLINK_REQUEST_INVALID_STATE` 계열 결과 |
+| remote join session Actor list 갱신 실패 | `ZLINK_REQUEST_NOT_CONNECTED`, `ZLINK_REQUEST_TIMED_OUT`, 또는 invalid-state 계열 결과 |
 | local leave handle이 서로 다른 SpotNode 소속 | `EINVAL` |
-| ref 기반 join/leave에서 target node에 Spot 없음 | `ZLINK_REQUEST_NOT_FOUND` 계열 결과 |
+| ref 기반 join에서 target node에 Spot 없음 | `ZLINK_REQUEST_NOT_FOUND` 계열 결과 |
+| ref 기반 leave에서 Actor owner node에 Spot 없음 | `ZLINK_REQUEST_NOT_FOUND` 계열 결과 |
 | join 상태 Actor destroy 시도 | `ZLINK_REQUEST_BUSY` 또는 `ZLINK_REQUEST_INVALID_STATE` 계열 결과 |
 | session Actor list에 target actor id 없음 | `ENOENT` 또는 `ZLINK_SUBMIT_NOT_FOUND` 계열 결과 |
 | Actor bound session 없음 | `ENOENT` 또는 `ZLINK_SUBMIT_NOT_FOUND` 계열 결과 |
@@ -1891,12 +1976,12 @@ Actor relay API는 기존 send/recv API의 소유권 규칙을 따른다.
 Actor에는 별도로 설정 가능한 queue나 socket을 할당하지 않는다. 따라서 Actor 전용
 HWM option은 두지 않는다.
 
-Actor relay에서 발생하는 backpressure는 기존 `SpotNode` relay 경로와 내부 dispatch
-경로의 자원 상태를 따른다. `ZLINK_DONTWAIT` relay 호출이 내부 자원 부족이나 기존
-전송 경로 HWM에 걸리면 `ZLINK_SUBMIT_BACKPRESSURED` 계열 결과를 반환한다.
+Actor relay에서 발생하는 backpressure는 기존 `SpotNode` relay 경로의 transport HWM,
+nonblocking send admission, timeout 규칙을 따른다. `ZLINK_DONTWAIT` relay 호출이
+기존 전송 경로 HWM에 걸리면 `ZLINK_SUBMIT_BACKPRESSURED` 계열 결과를 반환한다.
 Actor별 socket HWM은 존재하지 않으며, Actor socket HWM을 `0`으로 설정하는 계약도
-없다. 구현은 `SpotNode`가 소유한 relay 자원과 Actor별 unread 상태의 내부 한계를
-기준으로 backpressure를 판단한다.
+없다. Actor queue는 별도 capacity 정책이 아니라 이미 relay된 part를 어느 dispatch
+context에서 drain할지 보존하는 내부 unread 상태다.
 
 ## 모니터링과 snapshot
 
@@ -2002,9 +2087,11 @@ in/out count 패턴을 따른다.
 - caller buffer가 Actor 수보다 작으면 가능한 만큼만 기록하고 성공한다. 필요한 전체
   개수가 필요하면 `entries_ == NULL`로 먼저 조회한다.
 
-`joined == 0`이면 `joined_spot_rid`는 의미가 없다. `joined != 0`이면 이 필드는
-Actor가 readable event를 받을 dispatch spot 주소를 나타낸다. joined Spot의 owner
-node는 `actor.node_rid`와 같다.
+Actor snapshot에서 정상 live Actor는 current Spot을 가지므로 `joined != 0`이고
+`joined_spot_rid`는 Actor가 readable event를 받을 dispatch Spot 주소를 나타낸다. user
+Spot join 전이면 Entry Spot rid가 들어간다. `joined == 0`은 오래된 row나 내부 전환 중
+진단용 값으로만 허용하며, 정상 steady state로 만들지 않는다. joined Spot의 owner node는
+`actor.node_rid`와 같다.
 
 `route_synced != 0`이면 현재 Discovery active route row가 이 Actor의 actor id,
 node rid, generation을 가리키고 있다는 뜻이다. actor route sync가 꺼져 있거나
@@ -2013,7 +2100,7 @@ active route가 다른 Actor ref를 가리키면 `route_synced == 0`이다.
 나타내는 진단값이다. 이 값은 관측 직후 바뀔 수 있으므로 flow control 판단의
 공개 계약으로 사용하지 않는다.
 Actor row의 `last_changed_ms`는 Actor 생성 이후 이 snapshot row의 진단 필드가 바뀐
-마지막 시각이다. joined 상태 변경, bound session attach/detach, pending message count
+마지막 시각이다. current Spot 변경, bound session attach/detach, pending message count
 증감, route sync 상태 변경이 기준이다. 이 값은 정렬과 관측을 돕기 위한 값이며,
 메시지 처리 순서나 timeout 판단의 공개 계약으로 쓰면 안 된다.
 
@@ -2034,12 +2121,12 @@ Actor row의 `last_changed_ms`는 Actor 생성 이후 이 snapshot row의 진단
 | ACT-LIFE-03 | actor lookup | 존재하는 Actor는 ref를 반환하고 없는 Actor는 `ENOENT`다 |
 | ACT-LIFE-04 | join되지 않은 Actor destroy | `zlink_actor_destroy()`가 성공하고 unread queue는 폐기된다 |
 | ACT-LIFE-05 | join 상태 Actor destroy | destroy가 `ZLINK_REQUEST_BUSY` 또는 `ZLINK_REQUEST_INVALID_STATE` 계열 결과로 실패한다 |
-| ACT-LIFE-06 | leave 후 destroy | `zlink_actor_leave_spot()` 뒤 destroy가 성공한다 |
+| ACT-LIFE-06 | Entry Spot destroy | Actor가 Entry Spot에 있으면 `zlink_actor_destroy()`가 성공한다 |
 | ACT-LIFE-07 | bound Actor destroy | destroy 성공 시 bound session과 session Actor list의 해당 actor id 항목이 자동 해제된다 |
 | ACT-LIFE-08 | `SpotNode` destroy | Actor와 Actor queue가 함께 정리된다 |
 | ACT-LIFE-09 | bound detach 실패 destroy | bound session detach를 완료할 수 없으면 destroy가 실패하고 Actor slot은 유지된다 |
 | ACT-LIFE-10 | bound session owner 종료 후 destroy | session owner provider 종료 또는 stale session ref가 확인되면 destroy가 bound session ref를 cleanup하고 성공할 수 있다 |
-| ACT-LIFE-11 | destroy timeout 원자성 | destroy timeout 실패 뒤 Actor slot, joined 상태, bound session 상태가 호출 전 상태로 유지된다 |
+| ACT-LIFE-11 | destroy timeout 원자성 | destroy timeout 실패 뒤 Actor slot, current Spot, bound session 상태가 호출 전 상태로 유지된다 |
 
 ### Remote create와 destroy
 
@@ -2075,27 +2162,37 @@ Actor row의 `last_changed_ms`는 Actor 생성 이후 이 snapshot row의 진단
 | ACT-JOIN-05 | join accept reply | `accepted_ != 0`이면 Actor가 target `Spot`에 join되고 caller가 reply message를 받는다 |
 | ACT-JOIN-06 | join reject reply | `accepted_ == 0`이면 Actor는 join되지 않고 caller가 reject result와 reply message를 받는다 |
 | ACT-JOIN-07 | 같은 Spot 중복 join | 같은 Actor와 같은 Spot의 join은 handler 호출 없이 idempotent success로 처리된다 |
-| ACT-JOIN-08 | 다른 Spot join 충돌 | 이미 다른 Spot에 join된 Actor의 join request는 handler 호출 없이 `ZLINK_REQUEST_BUSY` 또는 `ZLINK_REQUEST_INVALID_STATE` 계열로 실패한다 |
+| ACT-JOIN-08 | 다른 Spot join 이동 | 이미 다른 Spot에 있는 Actor의 join request는 leave 없이 target Spot 이동 request로 처리된다 |
 | ACT-JOIN-09 | 같은 Spot의 N개 Actor | 하나의 Spot에 여러 Actor가 join되고 event subject로 각 Actor를 구분한다 |
-| ACT-JOIN-10 | Spot destroy | join 관계가 해제되고 Actor slot은 살아 있다 |
-| ACT-JOIN-11 | leave 후 다른 Spot join | leave 전 Actor queue 메시지를 새 Spot join 뒤 drain할 수 있다 |
+| ACT-JOIN-10 | Spot destroy | user Spot destroy 뒤 Actor가 Entry Spot으로 이동하고 Actor slot은 살아 있다 |
+| ACT-JOIN-11 | leave 후 다른 Spot join | leave 전 Actor queue 메시지와 Entry Spot 체류 중 메시지를 새 Spot join 뒤 drain할 수 있다 |
 | ACT-JOIN-12 | join request timeout | timeout 뒤 caller가 timeout을 받고 늦은 join reply는 실패한다 |
 | ACT-JOIN-13 | pending join shutdown | Spot destroy 또는 SpotNode shutdown이 pending join request를 terminated로 완료한다 |
 | ACT-JOIN-14 | joined spot snapshot | Actor snapshot에서 joined 상태와 joined spot rid를 확인할 수 있다 |
 | ACT-JOIN-15 | joined spot getter 없음 | Actor에서 joined Spot을 조회하는 public getter API가 없다 |
 | ACT-JOIN-16 | resolve joined spot | active route가 있는 Actor가 Spot에 join되어 있으면 `zlink_discovery_resolve_actor()`가 joined spot rid를 반환한다 |
-| ACT-JOIN-17 | remote Actor leave | Actor ref 기반 leave가 target node의 joined 상태를 해제한다 |
-| ACT-JOIN-18 | leave 후 join 전 메시지 | leave 뒤 새 join accept 전 도착한 메시지는 Actor queue에 쌓이고 dispatch event는 발생하지 않는다 |
-| ACT-JOIN-19 | 새 join accept 후 pending drain | 새 Spot join accept 직후 leave 중 쌓인 메시지까지 readable event로 drain할 수 있다 |
-| ACT-JOIN-20 | local cross-node join 거부 | local `zlink_actor_join_spot()`에서 Actor와 Spot handle의 backing SpotNode가 다르면 submit이 invalid-argument 계열로 실패한다 |
-| ACT-JOIN-21 | join timeout 원자성 | join timeout 뒤 Actor joined 상태가 호출 전 상태로 유지된다 |
-| ACT-JOIN-22 | leave timeout 원자성 | leave timeout 뒤 Actor joined 상태가 호출 전 상태로 유지된다 |
+| ACT-JOIN-17 | remote Actor leave | Actor ref 기반 leave가 target node의 current Spot을 Entry Spot으로 갱신한다 |
+| ACT-JOIN-18 | leave 후 Entry Spot 메시지 | leave 뒤 새 join accept 전 도착한 메시지는 Entry Spot dispatch event로 drain할 수 있다 |
+| ACT-JOIN-19 | 새 join accept 후 pending drain | 새 Spot join accept 직후 Entry Spot 체류 중 쌓인 메시지까지 readable event로 drain할 수 있다 |
+| ACT-JOIN-20 | join target node 분기 | `dest_node_rid_`가 Actor owner node와 같으면 local join, 다르면 remote join handoff로 처리된다 |
+| ACT-JOIN-21 | join timeout 원자성 | join timeout 뒤 Actor current Spot이 호출 전 상태로 유지된다 |
+| ACT-JOIN-22 | leave timeout 원자성 | leave timeout 뒤 Actor current Spot이 호출 전 상태로 유지된다 |
 | ACT-JOIN-23 | dispatch handler 없는 Spot join | dispatch event handler가 없는 target Spot의 join request는 자동 accept/reject되지 않고 timeout 또는 handler 등록 뒤 drain으로만 완료된다 |
-| ACT-JOIN-24 | ref 기반 join target Spot 없음 | ref 기반 join에서 `dest_spot_rid_`가 Actor owner node에 없으면 `ZLINK_REQUEST_NOT_FOUND` 계열 실패로 완료된다 |
-| ACT-JOIN-25 | leave/rejoin FIFO | leave 전, leave 후 join 전, 새 join 후 도착한 Actor queue part가 도착 순서대로 drain된다 |
-| ACT-JOIN-26 | unchecked ref join | `generation == 0`인 ref 기반 join은 target node의 현재 같은 actor id Actor를 대상으로 처리한다 |
-| ACT-JOIN-27 | checked ref join mismatch | `generation != 0`인 ref와 target Actor generation이 다르면 stale/conflict 실패로 완료된다 |
-| ACT-JOIN-28 | leave idempotent | Actor가 해당 Spot에 join되어 있지 않은 상태에서 leave를 호출하면 성공으로 처리된다 |
+| ACT-JOIN-24 | ref 기반 join target Spot 없음 | ref 기반 join에서 `dest_spot_rid_`가 `dest_node_rid_`의 node에 없으면 `ZLINK_REQUEST_NOT_FOUND` 계열 실패로 완료된다 |
+| ACT-JOIN-25 | leave/join FIFO | leave 전, Entry Spot 체류 중, 새 join 후 도착한 Actor queue part가 도착 순서대로 drain된다 |
+| ACT-JOIN-26 | unchecked ref join | `generation == 0`인 ref 기반 join은 source Actor owner node의 현재 같은 actor id Actor를 대상으로 처리한다 |
+| ACT-JOIN-27 | checked ref join mismatch | `generation != 0`인 ref와 source Actor generation이 다르면 stale/conflict 실패로 완료된다 |
+| ACT-JOIN-28 | Entry Spot leave idempotent | Actor가 이미 Entry Spot에 있고 current Spot 인자도 Entry Spot이면 leave가 성공한다 |
+| ACT-JOIN-29 | session required join | Entry Spot이 아닌 target Spot join은 bound session이 없으면 invalid-state 계열 실패로 완료된다 |
+| ACT-JOIN-30 | remote join session mapping | remote join commit 성공 뒤 session Actor list의 actor ref가 target node Actor ref로 갱신된다 |
+| ACT-JOIN-31 | session mapping update failure | remote join 중 session Actor list 갱신이 실패하면 source Actor가 source Spot에 남고 target pending Actor state가 폐기된다 |
+| ACT-JOIN-32 | backend request owner | session owner가 아닌 backend service node가 join을 요청해도 completion은 request owner로 전달된다 |
+| ACT-JOIN-33 | source retire after commit | target Spot accept만으로 source Actor를 제거하지 않고 session mapping 갱신과 target activate 뒤 source retire가 실행된다 |
+| ACT-JOIN-34 | session mapping CAS | remote join commit의 session Actor list 갱신은 source Actor ref에서 target Actor ref로 가는 compare-and-swap이다 |
+| ACT-JOIN-35 | relay visibility point | session Actor list compare-and-swap 전 relay는 source Actor로 가고, 성공 뒤 새 relay는 target Actor로 간다 |
+| ACT-JOIN-36 | target pending buffer | visibility point 뒤 target visible commit 전 도착한 relay는 target pending Actor state에 buffer되고 dispatch되지 않는다 |
+| ACT-JOIN-37 | JoinOp reply path | source Actor retire 뒤에도 JoinOp이 기존 reply path를 유지해 completion을 request owner로 전달한다 |
+| ACT-JOIN-38 | retired pending reply cleanup | completion 전달 뒤 JoinOp과 source Actor tombstone 또는 operation reference가 정리된다 |
 
 ### SpotNode snapshot
 
@@ -2121,7 +2218,7 @@ Actor row의 `last_changed_ms`는 Actor 생성 이후 이 snapshot row의 진단
 | ACT-QUEUE-03 | unbound relay | session Actor list에 target `actor_id` 항목이 없으면 bound send가 `ZLINK_SUBMIT_NOT_FOUND` 계열 결과로 실패한다 |
 | ACT-QUEUE-04 | Actor readable event subject | `ACTOR_READABLE` event의 `subject`가 `zlink_actor_recv_part()` 대상 Actor handle이다 |
 | ACT-QUEUE-05 | nonblocking drain | dispatch callback 안 `ZLINK_DONTWAIT` drain이 `ZLINK_RECV_NO_DATA`에서 멈춘다 |
-| ACT-QUEUE-06 | relay backpressure | 기존 relay 경로의 내부 자원 부족이나 HWM 초과 시 `ZLINK_SUBMIT_BACKPRESSURED` 계열 결과를 반환한다 |
+| ACT-QUEUE-06 | relay backpressure | 기존 relay 경로의 transport HWM 또는 nonblocking send admission에서 `ZLINK_SUBMIT_BACKPRESSURED` 계열 결과를 반환한다 |
 | ACT-QUEUE-07 | target Actor 없음 | remote target Actor가 없을 때 target node에서 메시지를 버리고 sender의 완료된 send 결과는 바뀌지 않는다 |
 | ACT-QUEUE-08 | actor raw send | `zlink_actor_send_bound_session_msg()`가 bound STREAM session으로 단일 message를 전송한다 |
 | ACT-QUEUE-09 | actor packet send | `zlink_actor_send_bound_session_packet()`가 bound STREAM session으로 header/body packet을 전송한다 |
@@ -2158,6 +2255,8 @@ Actor row의 `last_changed_ms`는 Actor 생성 이후 이 snapshot row의 진단
 | ACT-STREAM-18 | unbind timeout 원자성 | unbind timeout 실패 뒤 session Actor list와 Actor bound session ref가 호출 전 상태로 유지된다 |
 | ACT-STREAM-19 | unbind provider 종료 cleanup | Actor owner provider 종료가 확인되면 explicit unbind가 detach 확인 없이 session Actor list 항목을 제거하고 성공한다 |
 | ACT-STREAM-20 | unchecked remote bind | `generation == 0`인 ref로 bind하면 target node의 현재 Actor를 attach하고 session Actor list에는 concrete generation을 가진 ref가 저장된다 |
+| ACT-STREAM-21 | user Spot unbind denied | Entry Spot이 아닌 user Spot에 있는 Actor의 explicit unbind는 busy 또는 invalid-state 계열로 실패한다 |
+| ACT-STREAM-22 | disconnect returns entry | session disconnect cleanup은 user Spot에 있던 Actor를 Entry Spot으로 되돌린 뒤 bound session ref를 정리한다 |
 
 ### Discovery active route 조회
 
@@ -2165,10 +2264,10 @@ Actor row의 `last_changed_ms`는 Actor 생성 이후 이 snapshot row의 진단
 |----|------|-----------|
 | ACT-DISC-01 | actor route sync off | sync off 상태에서는 Registry 기준 `resolve_actor`가 실패할 수 있다 |
 | ACT-DISC-02 | Actor 생성 후 미공개 | Actor 생성만으로는 `zlink_discovery_resolve_actor()`가 Actor route를 반환하지 않는다 |
-| ACT-DISC-03 | join 후 bind 전 미공개 | Actor가 Spot에 join되어 있어도 stream bind 전에는 `resolve_actor`가 `ENOENT`일 수 있다 |
-| ACT-DISC-04 | stream bind route publish | Actor owner node에서 route sync가 켜진 상태로 `zlink_stream_bind_actor()` 성공 후 `resolve_actor`가 Actor route를 반환한다 |
+| ACT-DISC-03 | bind 전 미공개 | Actor가 Entry Spot에 있어도 stream bind 전에는 `resolve_actor`가 `ENOENT`일 수 있다 |
+| ACT-DISC-04 | stream bind route publish | Actor owner node에서 route sync가 켜진 상태로 `zlink_stream_bind_actor()` 성공 후 `resolve_actor`가 Actor route와 Entry Spot rid를 반환한다 |
 | ACT-DISC-05 | remote create 후 미공개 | remote create-or-get으로 생성된 Actor도 stream bind 전에는 active route로 조회되지 않는다 |
-| ACT-DISC-06 | Actor 이동 route 전환 | 같은 actor id의 Actor가 다른 node에 있어도 bind가 새 Actor ref를 publish하면 `resolve_actor`가 새 route를 반환한다 |
+| ACT-DISC-06 | Actor 이동 route 전환 | remote join commit이 session Actor list와 active route를 target node Actor ref로 갱신한다 |
 | ACT-DISC-07 | 이전 Actor destroy | active route가 새 node로 이동한 뒤 이전 Actor destroy는 새 route를 제거하지 않는다 |
 | ACT-DISC-08 | matching Actor destroy cleanup | active route가 가리키는 Actor destroy 뒤 route 조회가 `ENOENT`다 |
 | ACT-DISC-09 | SpotNode provider cleanup | provider 종료 뒤 그 node를 가리키는 active route row가 조회되지 않는다 |
@@ -2176,8 +2275,10 @@ Actor row의 `last_changed_ms`는 Actor 생성 이후 이 snapshot row의 진단
 | ACT-DISC-11 | `resolve_spot` 유지 | 기존 `zlink_discovery_resolve_spot()` 동작이 actor 변경 뒤에도 유지된다 |
 | ACT-DISC-12 | 중복 Actor slot 허용 | 서로 다른 SpotNode에 같은 actor id의 Actor slot을 동시에 만들 수 있다 |
 | ACT-DISC-13 | joined spot owner node | resolve 결과의 joined spot owner node는 `route.actor.node_rid`와 같다 |
-| ACT-DISC-14 | join 후 bind publish | Actor가 먼저 Spot에 join되고 나중에 session bind되면 resolve 결과가 joined spot rid를 포함한다 |
-| ACT-DISC-15 | leave route update | active route가 해당 Actor ref를 가리킬 때 leave 성공 후 resolve 결과의 `joined`가 `0`이 된다 |
+| ACT-DISC-14 | bind 후 join route update | session bind 뒤 user Spot join이 성공하면 resolve 결과의 `joined_spot_rid`가 user Spot rid로 갱신된다 |
+| ACT-DISC-15 | leave route update | active route가 해당 Actor ref를 가리킬 때 leave 성공 후 resolve 결과는 `joined = 1`과 Entry Spot rid를 반환한다 |
+| ACT-DISC-16 | remote join route current spot | remote join commit 성공 뒤 resolve 결과의 Actor ref와 `joined_spot_rid`가 target node와 target Spot 기준으로 갱신된다 |
+| ACT-DISC-17 | disconnect entry route update | session disconnect cleanup이 user Spot Actor를 Entry Spot으로 되돌리면 active route의 `joined_spot_rid`도 Entry Spot rid로 갱신된다 |
 
 ### 제거 대상 API
 

@@ -2,7 +2,7 @@
 
 ## 상태
 
-이 문서는 `doc/spec/draft/spot-actor-dispatch.ko.md`를 실제 구현으로 옮기기 위한
+이 문서는 `doc/spec/draft/spot-entry-transport-queues.ko.md`를 실제 구현으로 옮기기 위한
 Codex 에이전트 실행 계획이다. 공개 API 계약의 기준은 draft spec이며, 이 문서는
 Codex 에이전트가 사용자의 추가 판단을 기다리지 않고 끝까지 진행하기 위한 작업
 순서와 검증 절차를 정리한다.
@@ -30,7 +30,8 @@ binding 문서로 나누어 반영한다.
 
 ## 기준 문서
 
-- 공개 계약 초안: [`doc/spec/draft/spot-actor-dispatch.ko.md`](../spec/draft/spot-actor-dispatch.ko.md)
+- 공개 계약 초안: [`doc/spec/draft/spot-entry-transport-queues.ko.md`](../spec/draft/spot-entry-transport-queues.ko.md)
+- 역사적 초안 참고: [`doc/spec/draft/spot-actor-dispatch.ko.md`](../spec/draft/spot-actor-dispatch.ko.md)
 - 설계 원칙: [`doc/principal/software-design-principles.md`](../principal/software-design-principles.md)
 - 내부 구조 참고: [`doc/internals/spot-internals.ko.md`](../internals/spot-internals.ko.md)
 - STREAM 구조 참고: [`doc/internals/stream-socket.ko.md`](../internals/stream-socket.ko.md)
@@ -51,28 +52,28 @@ Codex 에이전트는 이 plan의 체크리스트만 보고 구현하면 안 된
 
 | plan 단계 | 반드시 확인할 draft spec 절 |
 |-----------|------------------------------|
-| 단계 0 | [첫 구현 범위](../spec/draft/spot-actor-dispatch.ko.md#첫-구현-범위), [구현 순서](../spec/draft/spot-actor-dispatch.ko.md#구현-순서), [기존 공개 계약과의 관계](../spec/draft/spot-actor-dispatch.ko.md#기존-공개-계약과의-관계) |
-| 단계 1 | [C API 변경 목록](../spec/draft/spot-actor-dispatch.ko.md#c-api-변경-목록), [상수와 구조체](../spec/draft/spot-actor-dispatch.ko.md#상수와-구조체), [Dispatch enum 확장](../spec/draft/spot-actor-dispatch.ko.md#dispatch-enum-확장), [오류 의미](../spec/draft/spot-actor-dispatch.ko.md#오류-의미) |
-| 단계 2 | [전체 모델](../spec/draft/spot-actor-dispatch.ko.md#전체-모델), [설계 원칙](../spec/draft/spot-actor-dispatch.ko.md#설계-원칙), [상수와 구조체](../spec/draft/spot-actor-dispatch.ko.md#상수와-구조체), [Actor 생성과 종료](../spec/draft/spot-actor-dispatch.ko.md#actor-생성과-종료) |
-| 단계 3 | [Actor 생성과 종료](../spec/draft/spot-actor-dispatch.ko.md#actor-생성과-종료), [Actor ref 조회](../spec/draft/spot-actor-dispatch.ko.md#actor-ref-조회), [Remote Actor ref](../spec/draft/spot-actor-dispatch.ko.md#remote-actor-ref), [소유권 규칙](../spec/draft/spot-actor-dispatch.ko.md#소유권-규칙) |
-| 단계 4 | [Dispatch enum 확장](../spec/draft/spot-actor-dispatch.ko.md#dispatch-enum-확장), [Actor queue 수신](../spec/draft/spot-actor-dispatch.ko.md#actor-queue-수신), [동시성과 callback 제한](../spec/draft/spot-actor-dispatch.ko.md#동시성과-callback-제한), [Backpressure](../spec/draft/spot-actor-dispatch.ko.md#backpressure) |
-| 단계 5 | [Actor와 Spot join request](../spec/draft/spot-actor-dispatch.ko.md#actor와-spot-join-request), [Actor와 Spot leave](../spec/draft/spot-actor-dispatch.ko.md#actor와-spot-leave), [Dispatch callback 사용 예](../spec/draft/spot-actor-dispatch.ko.md#dispatch-callback-사용-예) |
-| 단계 6 | [STREAM session Actor list bind](../spec/draft/spot-actor-dispatch.ko.md#stream-session-actor-list-bind), [Actor active route 조회](../spec/draft/spot-actor-dispatch.ko.md#actor-active-route-조회), [Actor 이동 사용 흐름](../spec/draft/spot-actor-dispatch.ko.md#actor-이동-사용-흐름) |
-| 단계 7 | [STREAM에서 Actor로 relay](../spec/draft/spot-actor-dispatch.ko.md#stream에서-actor로-relay), [STREAM packet handler 사용 예](../spec/draft/spot-actor-dispatch.ko.md#stream-packet-handler-사용-예), [Actor queue 수신](../spec/draft/spot-actor-dispatch.ko.md#actor-queue-수신) |
-| 단계 8 | [Actor에서 bound session으로 전송](../spec/draft/spot-actor-dispatch.ko.md#actor에서-bound-session으로-전송), [Actor client send 사용 예](../spec/draft/spot-actor-dispatch.ko.md#actor-client-send-사용-예), [소유권 규칙](../spec/draft/spot-actor-dispatch.ko.md#소유권-규칙) |
-| 단계 9 | [Remote Actor create-or-get](../spec/draft/spot-actor-dispatch.ko.md#remote-actor-create-or-get), [Admission handler](../spec/draft/spot-actor-dispatch.ko.md#admission-handler), [Remote Actor 종료](../spec/draft/spot-actor-dispatch.ko.md#remote-actor-종료) |
-| 단계 10 | [Actor active route 조회](../spec/draft/spot-actor-dispatch.ko.md#actor-active-route-조회), [Actor 이동 사용 흐름](../spec/draft/spot-actor-dispatch.ko.md#actor-이동-사용-흐름), [모니터링과 snapshot](../spec/draft/spot-actor-dispatch.ko.md#모니터링과-snapshot) |
-| 단계 11 | [Generic discovery route 제거 계획](../spec/draft/spot-actor-dispatch.ko.md#generic-discovery-route-제거-계획), [C API 제거 대상](../spec/draft/spot-actor-dispatch.ko.md#제거-대상-api), [제거 대상 API 회귀 테스트](../spec/draft/spot-actor-dispatch.ko.md#제거-대상-api-1) |
-| 단계 12 | [모니터링과 snapshot](../spec/draft/spot-actor-dispatch.ko.md#모니터링과-snapshot), [SpotNode snapshot](../spec/draft/spot-actor-dispatch.ko.md#spotnode-snapshot) |
-| 단계 13 | [소유권 규칙](../spec/draft/spot-actor-dispatch.ko.md#소유권-규칙), 각 API 상세 계약 절 |
-| 단계 14 | [Local Actor 사용 흐름](../spec/draft/spot-actor-dispatch.ko.md#local-actor-사용-흐름), [Remote Actor 사용 흐름](../spec/draft/spot-actor-dispatch.ko.md#remote-actor-사용-흐름), [STREAM packet handler 사용 예](../spec/draft/spot-actor-dispatch.ko.md#stream-packet-handler-사용-예), [Actor client send 사용 예](../spec/draft/spot-actor-dispatch.ko.md#actor-client-send-사용-예) |
-| 단계 15 | [기존 공개 계약과의 관계](../spec/draft/spot-actor-dispatch.ko.md#기존-공개-계약과의-관계), [첫 구현 제외 항목](../spec/draft/spot-actor-dispatch.ko.md#첫-구현-제외-항목) |
-| 단계 16 | [회귀 테스트 항목](../spec/draft/spot-actor-dispatch.ko.md#회귀-테스트-항목) 전체 |
-| 단계 17 | [Local Actor 사용 흐름](../spec/draft/spot-actor-dispatch.ko.md#local-actor-사용-흐름), [Remote Actor 사용 흐름](../spec/draft/spot-actor-dispatch.ko.md#remote-actor-사용-흐름), [STREAM packet handler 사용 예](../spec/draft/spot-actor-dispatch.ko.md#stream-packet-handler-사용-예) |
-| 문서-코드 반복 리뷰 | [draft spec 전체](../spec/draft/spot-actor-dispatch.ko.md), 특히 [C API 변경 목록](../spec/draft/spot-actor-dispatch.ko.md#c-api-변경-목록)과 [회귀 테스트 항목](../spec/draft/spot-actor-dispatch.ko.md#회귀-테스트-항목) |
-| POSD 리팩토링 | [draft spec 전체](../spec/draft/spot-actor-dispatch.ko.md)와 [software-design-principles.md](../principal/software-design-principles.md) |
-| Core release와 bindings 최신화 | [기존 공개 계약과의 관계](../spec/draft/spot-actor-dispatch.ko.md#기존-공개-계약과의-관계), [C API 변경 목록](../spec/draft/spot-actor-dispatch.ko.md#c-api-변경-목록), [회귀 테스트 항목](../spec/draft/spot-actor-dispatch.ko.md#회귀-테스트-항목) |
-| Bindings 순차 적용 | [C API 변경 목록](../spec/draft/spot-actor-dispatch.ko.md#c-api-변경-목록), [상수와 구조체](../spec/draft/spot-actor-dispatch.ko.md#상수와-구조체), 각 API 상세 계약 절, [회귀 테스트 항목](../spec/draft/spot-actor-dispatch.ko.md#회귀-테스트-항목) |
+| 단계 0 | [목적](../spec/draft/spot-entry-transport-queues.ko.md#목적), [구현 순서](../spec/draft/spot-entry-transport-queues.ko.md#구현-순서), [비목표](../spec/draft/spot-entry-transport-queues.ko.md#비목표) |
+| 단계 1 | [Public API 변경](../spec/draft/spot-entry-transport-queues.ko.md#public-api-변경), [설계 원칙](../spec/draft/spot-entry-transport-queues.ko.md#설계-원칙) |
+| 단계 2 | [핵심 모델](../spec/draft/spot-entry-transport-queues.ko.md#핵심-모델), [Entry Spot](../spec/draft/spot-entry-transport-queues.ko.md#entry-spot), [Actor lifecycle 의미 변경](../spec/draft/spot-entry-transport-queues.ko.md#actor-lifecycle-의미-변경) |
+| 단계 3 | [Actor 생성](../spec/draft/spot-entry-transport-queues.ko.md#actor-생성), [Remote Actor create-or-get](../spec/draft/spot-entry-transport-queues.ko.md#remote-actor-create-or-get), [Actor destroy](../spec/draft/spot-entry-transport-queues.ko.md#actor-destroy) |
+| 단계 4 | [Actor message 처리 위치](../spec/draft/spot-entry-transport-queues.ko.md#actor-message-처리-위치), [Dispatch event 통합](../spec/draft/spot-entry-transport-queues.ko.md#dispatch-event-통합), [Queue와 backpressure](../spec/draft/spot-entry-transport-queues.ko.md#queue와-backpressure) |
+| 단계 5 | [Actor join](../spec/draft/spot-entry-transport-queues.ko.md#actor-join), [Local join process](../spec/draft/spot-entry-transport-queues.ko.md#local-join-process), [Remote join process](../spec/draft/spot-entry-transport-queues.ko.md#remote-join-process), [Actor leave](../spec/draft/spot-entry-transport-queues.ko.md#actor-leave) |
+| 단계 6 | [STREAM session과 Actor 연결](../spec/draft/spot-entry-transport-queues.ko.md#stream-session과-actor-연결), [Session과 local Actor](../spec/draft/spot-entry-transport-queues.ko.md#session과-local-actor), [Session과 remote Actor](../spec/draft/spot-entry-transport-queues.ko.md#session과-remote-actor) |
+| 단계 7 | [Channel router에서 Actor로 직접 messaging](../spec/draft/spot-entry-transport-queues.ko.md#channel-router에서-actor로-직접-messaging), [Actor message 처리 위치](../spec/draft/spot-entry-transport-queues.ko.md#actor-message-처리-위치) |
+| 단계 8 | [STREAM session과 Actor 연결](../spec/draft/spot-entry-transport-queues.ko.md#stream-session과-actor-연결), [Gateway/session 흐름](../spec/draft/spot-entry-transport-queues.ko.md#gatewaysession-흐름) |
+| 단계 9 | [Remote Actor create-or-get](../spec/draft/spot-entry-transport-queues.ko.md#remote-actor-create-or-get), [Remote join process](../spec/draft/spot-entry-transport-queues.ko.md#remote-join-process) |
+| 단계 10 | [Snapshot과 monitoring](../spec/draft/spot-entry-transport-queues.ko.md#snapshot과-monitoring), [Session과 remote Actor](../spec/draft/spot-entry-transport-queues.ko.md#session과-remote-actor) |
+| 단계 11 | [Public API 변경](../spec/draft/spot-entry-transport-queues.ko.md#public-api-변경), [비목표](../spec/draft/spot-entry-transport-queues.ko.md#비목표) |
+| 단계 12 | [Snapshot과 monitoring](../spec/draft/spot-entry-transport-queues.ko.md#snapshot과-monitoring) |
+| 단계 13 | [Public API 변경](../spec/draft/spot-entry-transport-queues.ko.md#public-api-변경), 각 API 상세 계약 절 |
+| 단계 14 | [Actor와 Entry Spot 흐름](../spec/draft/spot-entry-transport-queues.ko.md#actor와-entry-spot-흐름), [Game room 흐름](../spec/draft/spot-entry-transport-queues.ko.md#game-room-흐름), [Single-player 흐름](../spec/draft/spot-entry-transport-queues.ko.md#single-player-흐름) |
+| 단계 15 | [Public API 변경](../spec/draft/spot-entry-transport-queues.ko.md#public-api-변경), [비목표](../spec/draft/spot-entry-transport-queues.ko.md#비목표) |
+| 단계 16 | [회귀 테스트](../spec/draft/spot-entry-transport-queues.ko.md#회귀-테스트) 전체 |
+| 단계 17 | [Actor와 Entry Spot 흐름](../spec/draft/spot-entry-transport-queues.ko.md#actor와-entry-spot-흐름), [STREAM session과 Actor 연결](../spec/draft/spot-entry-transport-queues.ko.md#stream-session과-actor-연결) |
+| 문서-코드 반복 리뷰 | [draft spec 전체](../spec/draft/spot-entry-transport-queues.ko.md), 특히 [Public API 변경](../spec/draft/spot-entry-transport-queues.ko.md#public-api-변경)과 [회귀 테스트](../spec/draft/spot-entry-transport-queues.ko.md#회귀-테스트) |
+| POSD 리팩토링 | [draft spec 전체](../spec/draft/spot-entry-transport-queues.ko.md)와 [software-design-principles.md](../principal/software-design-principles.md) |
+| Core release와 bindings 최신화 | [Public API 변경](../spec/draft/spot-entry-transport-queues.ko.md#public-api-변경), [회귀 테스트](../spec/draft/spot-entry-transport-queues.ko.md#회귀-테스트) |
+| Bindings 순차 적용 | [Public API 변경](../spec/draft/spot-entry-transport-queues.ko.md#public-api-변경), 각 API 상세 계약 절, [회귀 테스트](../spec/draft/spot-entry-transport-queues.ko.md#회귀-테스트) |
 
 각 단계 시작 전 implementation review log에 아래 항목을 기록한다.
 
@@ -179,15 +180,15 @@ matrix 검증 명령은 최소한 아래 비교를 포함한다.
 
 ```bash
 comm -23 \
-  <(rg -o 'ACT-[A-Z]+-[0-9]+' doc/spec/draft/spot-actor-dispatch.ko.md | sort -u) \
-  <(rg -o 'ACT-[A-Z]+-[0-9]+' doc/plan/spot-actor-dispatch/logs/contract-matrix.ko.md | sort -u)
+  <(rg -o '(ACT-[A-Z]+|ENTRY(?:-[A-Z]+)?)-[0-9]+' doc/spec/draft/spot-entry-transport-queues.ko.md | sort -u) \
+  <(rg -o '(ACT-[A-Z]+|ENTRY(?:-[A-Z]+)?)-[0-9]+' doc/plan/spot-actor-dispatch/logs/contract-matrix.ko.md | sort -u)
 
 comm -23 \
-  <(rg -o 'zlink_[A-Za-z0-9_]+\(' doc/spec/draft/spot-actor-dispatch.ko.md | sort -u) \
+  <(rg -o 'zlink_[A-Za-z0-9_]+\(' doc/spec/draft/spot-entry-transport-queues.ko.md | sort -u) \
   <(rg -o 'zlink_[A-Za-z0-9_]+\(' doc/plan/spot-actor-dispatch/logs/contract-matrix.ko.md | sort -u)
 
 comm -23 \
-  <(rg -o 'ZLINK_[A-Z0-9_]+' doc/spec/draft/spot-actor-dispatch.ko.md | sort -u) \
+  <(rg -o 'ZLINK_[A-Z0-9_]+' doc/spec/draft/spot-entry-transport-queues.ko.md | sort -u) \
   <(rg -o 'ZLINK_[A-Z0-9_]+' doc/plan/spot-actor-dispatch/logs/contract-matrix.ko.md | sort -u)
 ```
 
@@ -369,7 +370,6 @@ draft spec의 C API 변경 목록을 기준으로 공개 표면을 먼저 닫는
 - [x] `zlink_spot_node_destroy_remote_actor()`
 - [x] `zlink_spot_node_actor_admission_handler()`
 - [x] `zlink_discovery_resolve_actor()`
-- [x] `zlink_actor_join_spot()`
 - [x] `zlink_spot_node_actor_join_spot()`
 - [x] `zlink_spot_actor_join_recv()`
 - [x] `zlink_spot_actor_join_reply()`
@@ -457,8 +457,9 @@ Actor 내부 상태를 `SpotNode`가 소유하도록 만든다.
 draft spec에서 말하는 Actor queue는 Actor마다 별도 socket이나 독립적으로 설정 가능한
 queue 객체를 만든다는 뜻이 아니다. `SpotNode` 내부 relay/dispatch 경로에서 Actor별
 unread 상태를 구분하기 위한 논리적 표현이다. Actor 전용 HWM option은 만들지 않는다.
-backpressure는 기존 relay 경로의 HWM 또는 내부 dispatch 자원 부족 결과를 그대로
-사용한다.
+backpressure는 기존 relay 경로의 transport HWM, nonblocking send admission, timeout
+규칙을 그대로 사용한다. Actor unread 상태에는 별도 HWM이나 조정 가능한 queue 한계를
+두지 않는다.
 Actor는 socket, inproc endpoint, transport endpoint를 소유하지 않는다. local relay와
 remote relay 모두 최종적으로 target `SpotNode`의 Actor별 unread 상태에 part를 넣는
 구조로 구현한다.
@@ -478,7 +479,7 @@ remote relay 모두 최종적으로 target `SpotNode`의 Actor별 unread 상태�
 - [x] callback 밖 또는 blocking recv 제한
 - [x] no data에서 `ZLINK_RECV_NO_DATA`
 - [x] Actor destroy와 `SpotNode` shutdown에서 unread/incomplete part 폐기
-- [x] Actor 전용 HWM 없이 기존 relay HWM 또는 내부 dispatch 자원 부족을
+- [x] Actor 전용 HWM 없이 기존 relay transport HWM 또는 nonblocking send admission을
       `ZLINK_SUBMIT_BACKPRESSURED` 계열 결과로 노출
 
 회귀 테스트:
@@ -495,17 +496,31 @@ remote relay 모두 최종적으로 target `SpotNode`의 Actor별 unread 상태�
 
 구현 항목:
 
-- [x] local `zlink_actor_join_spot()` 구현
-- [x] ref 기반 `zlink_spot_node_actor_join_spot()` 구현
-- [x] local cross-node join invalid argument
-- [x] ref 기반 join target node는 `actor_->node_rid`
+- [x] 단일 `zlink_spot_node_actor_join_spot()` 구현
+- [x] `dest_node_rid_`가 Actor owner node와 같으면 local join 처리
+- [x] `dest_node_rid_`가 Actor owner node와 다르면 remote join handoff 처리
+- [x] `dest_node_rid_` invalid argument 검증
 - [x] target node 연결 없음 처리
 - [x] target Spot 없음 `ZLINK_REQUEST_NOT_FOUND`
-- [x] target Actor 없음 `ZLINK_REQUEST_NOT_FOUND`
+- [x] source Actor 없음 `ZLINK_REQUEST_NOT_FOUND`
 - [x] `generation == 0` unchecked join
 - [x] `generation != 0` checked join mismatch
 - [x] same Spot 중복 join idempotent success
-- [x] 다른 Spot join busy/invalid-state 실패
+- [x] 다른 Spot join은 leave 없이 target Spot으로 이동
+- [x] Entry Spot이 아닌 target Spot join은 bound session 필수
+- [x] bound session 없음 join invalid-state
+- [x] remote join prepare에서 bound session ref를 target pending Actor state에 복사
+- [x] remote join commit에서 session owner의 session Actor list를 target Actor ref로 갱신
+- [x] session Actor list 갱신 실패 또는 timeout 시 remote join 원자성 유지
+- [x] request owner와 session owner 분리
+- [x] backend service node가 join request owner인 경우 completion을 backend로 반환
+- [x] target accept만으로 source Actor를 제거하지 않고 commit 성공 뒤 retire
+- [x] session Actor list compare-and-swap으로 remote join visibility point 고정
+- [x] visibility point 전 relay는 source Actor, 이후 새 relay는 target Actor로 전달
+- [x] visible commit 전 target 도착 relay는 pending Actor state에 buffer
+- [x] source node `JoinOp` 생성과 join epoch/reply path 저장
+- [x] source Actor retire 뒤에도 `JoinOp`이 completion 전달
+- [x] completion 전달 뒤 `JoinOp`과 source Actor tombstone 또는 operation reference 정리
 - [x] 하나의 Spot에 N Actor join
 - [x] dispatch handler 없는 Spot의 pending join
 - [x] `zlink_spot_actor_join_recv()` 구현
@@ -519,12 +534,12 @@ remote relay 모두 최종적으로 target `SpotNode`의 Actor별 unread 상태�
 - [x] Spot destroy 또는 SpotNode shutdown pending join terminated
 - [x] local `zlink_actor_leave_spot()` 구현
 - [x] ref 기반 `zlink_spot_node_actor_leave_spot()` 구현
-- [x] leave idempotent success
+- [x] Entry Spot leave idempotent success
 - [x] leave는 queue를 비우지 않음
-- [x] leave/rejoin 사이 메시지 queue 보존
-- [x] leave/rejoin FIFO 보존
+- [x] leave 뒤 Entry Spot 메시지는 Entry Spot dispatch event로 drain
+- [x] leave/join FIFO 보존
 - [x] leave timeout 원자성
-- [x] leave 성공 시 active route joined 상태 갱신 hook
+- [x] leave 성공 시 active route를 Entry Spot rid로 갱신하는 hook
 
 회귀 테스트:
 
@@ -556,6 +571,40 @@ remote relay 모두 최종적으로 target `SpotNode`의 Actor별 unread 상태�
 - [x] ACT-JOIN-26
 - [x] ACT-JOIN-27
 - [x] ACT-JOIN-28
+- [x] ACT-JOIN-29
+- [x] ACT-JOIN-30
+- [x] ACT-JOIN-31
+- [x] ACT-JOIN-32
+- [x] ACT-JOIN-33
+- [x] ACT-JOIN-34
+- [x] ACT-JOIN-35
+- [x] ACT-JOIN-36
+- [x] ACT-JOIN-37
+- [x] ACT-JOIN-38
+- [ ] ENTRY-ACTOR-30
+- [ ] ENTRY-ACTOR-31
+- [ ] ENTRY-ACTOR-32
+
+세부 검증:
+
+- [ ] ENTRY-ACTOR-30은 target Spot의 기존 `zlink_spot_dispatch_event_handler()`가
+      `ACTOR_JOIN_READABLE` event를 받고 `zlink_spot_actor_join_recv()` /
+      `zlink_spot_actor_join_reply()`로 승인하는지 확인한다.
+- [ ] ENTRY-ACTOR-31은 caller가 `zlink_spot_node_create_remote_actor()`를 먼저 호출하지
+      않아도 remote join prepare가 target pending Actor state를 만들고 commit 전까지
+      live lookup과 active route에 노출하지 않는지 확인한다.
+- [ ] ENTRY-ACTOR-32는 remote join prepare가
+      `zlink_spot_node_actor_admission_handler()`를 호출하지 않고 target Spot join
+      handler의 accept/reject로 생성과 join을 결정하는지 확인한다.
+- [x] ACT-JOIN-37은 remote join 성공 commit 뒤 source Actor가 `RETIRED_PENDING_REPLY`
+      상태가 되어도 `JoinOp`이 기존 A->Session/request owner reply path로 completion을
+      한 번 전달하는지 확인한다.
+- [x] ACT-JOIN-37은 completion 전달 전에 같은 session의 새 client relay가 B Actor로
+      가는지 함께 확인한다.
+- [x] ACT-JOIN-38은 completion 전달 뒤 `JoinOp`이 pending table에서 제거되고 source Actor
+      tombstone 또는 operation reference가 정리되는지 확인한다.
+- [x] ACT-JOIN-38은 cleanup 뒤 같은 join epoch의 late reply나 stale control frame이
+      Actor를 다시 만들거나 completion을 중복 전달하지 않는지 확인한다.
 
 ## 단계 6. STREAM session Actor list
 
@@ -573,9 +622,10 @@ remote relay 모두 최종적으로 target `SpotNode`의 Actor별 unread 상태�
 - [x] public lookup API 없음 유지
 - [x] explicit unbind 구현
 - [x] 없는 actor id unbind idempotent success
+- [x] user Spot Actor explicit unbind busy/invalid-state
 - [x] unbind not connected 실패와 기존 항목 유지
 - [x] provider 종료 또는 stale Actor ref cleanup success
-- [x] session disconnect cleanup
+- [x] session disconnect cleanup 시 user Spot Actor를 Entry Spot으로 이동
 - [x] bind timeout 원자성
 - [x] unbind timeout 원자성
 - [x] unchecked remote bind concrete generation 저장
@@ -603,6 +653,8 @@ remote relay 모두 최종적으로 target `SpotNode`의 Actor별 unread 상태�
 - [x] ACT-STREAM-18
 - [x] ACT-STREAM-19
 - [x] ACT-STREAM-20
+- [x] ACT-STREAM-21
+- [x] ACT-STREAM-22
 
 ## 단계 7. STREAM에서 Actor로 relay
 
@@ -714,13 +766,17 @@ remote relay 모두 최종적으로 target `SpotNode`의 Actor별 unread 상태�
 - [x] `zlink_actor_route_t` 반환
 - [x] Actor 생성 시 active route 미공개
 - [x] remote create 시 active route 미공개
-- [x] join만으로 active route 미공개
+- [x] stream bind 전 active route 미공개
 - [x] stream bind 성공 시 active route publish
 - [x] 단계 6의 bind hook과 Discovery route sync를 연결
 - [x] unchecked bind 후 concrete generation publish
-- [x] bind 전 joined Spot이 있으면 joined 정보 publish
-- [x] join/leave 시 active route가 해당 Actor ref를 가리킬 때 joined 정보 갱신
-- [x] unbind와 session disconnect cleanup은 active route 유지
+- [x] bind 직후 current Spot이 Entry Spot이면 `joined = 1`, Entry Spot rid publish
+- [x] user Spot join 시 active route가 해당 Actor ref를 가리키면 joined Spot rid 갱신
+- [x] leave 시 active route가 해당 Actor ref를 가리키면 `joined = 1`, Entry Spot rid로 갱신
+- [x] remote join commit 시 active route를 target node Actor ref로 갱신
+- [x] remote join commit 시 active route의 joined Spot rid를 target Spot rid로 갱신
+- [x] unbind는 active route 유지
+- [x] session disconnect cleanup은 active route를 유지하되 Actor가 Entry Spot으로 돌아가면 joined Spot rid도 Entry Spot rid로 갱신
 - [x] matching Actor destroy 시 route 제거
 - [x] route가 다른 node로 이동한 뒤 이전 Actor destroy는 새 route 유지
 - [x] SpotNode provider 종료 cleanup
@@ -744,7 +800,23 @@ remote relay 모두 최종적으로 target `SpotNode`의 Actor별 unread 상태�
 - [x] ACT-DISC-13
 - [x] ACT-DISC-14
 - [x] ACT-DISC-15
+- [x] ACT-DISC-16
+- [x] ACT-DISC-17
 - [x] ACT-STREAM-09
+
+세부 검증:
+
+- [x] ACT-DISC-04는 Actor 생성 직후에는 `resolve_actor`가 실패하고, session bind 성공
+      뒤에는 `joined = 1`, `joined_spot_rid = Entry Spot rid`로 조회되는지 확인한다.
+- [x] ACT-DISC-14는 같은 SpotNode 안 user Spot join 성공 뒤 같은 Actor ref를 유지하면서
+      `joined_spot_rid`만 user Spot rid로 갱신되는지 확인한다.
+- [x] ACT-DISC-15는 leave 성공 뒤 route를 제거하거나 `joined = 0`으로 만들지 않고
+      `joined = 1`, `joined_spot_rid = Entry Spot rid`로 갱신되는지 확인한다.
+- [x] ACT-DISC-16은 remote join commit 성공 뒤 Actor ref의 node rid/generation과
+      `joined_spot_rid`가 target node와 target Spot 기준으로 바뀌는지 확인한다.
+- [x] ACT-DISC-17은 session disconnect cleanup이 user Spot Actor를 Entry Spot으로
+      되돌릴 때 active route를 유지하고 `joined_spot_rid`를 Entry Spot rid로 갱신하는지
+      확인한다.
 
 ## 단계 11. Generic discovery route 제거
 
@@ -1121,7 +1193,7 @@ cmake --build core/build
 - [x] 유지 사유가 있는 항목은 public 계약, ABI, 성능, 안전성 중 하나로 설명된다.
 - [x] 두 번 연속 전체 스캔에서 새 리팩토링 후보가 없다.
 - [x] 전체 테스트가 통과한다.
-- [x] 리팩토링 후 문서-코드 반복 리뷰를 다시 한 번 수행했고 mismatch가 없다.
+- [ ] 리팩토링 후 문서-코드 반복 리뷰를 다시 한 번 수행했고 mismatch가 없다.
 
 ## POSD 후 최종 문서 업데이트와 3회 리뷰
 
@@ -1132,14 +1204,14 @@ POSD 기반 리팩토링이 끝나면 `doc/guide`, `doc/internals`, `doc/spec` �
 
 ### 업데이트 대상
 
-- [x] `doc/spec/core/service/spot.ko.md`
+- [ ] `doc/spec/core/service/spot.ko.md`
 - [x] `doc/spec/core/socket/stream.ko.md`
-- [x] `doc/spec/core/errno-map.ko.md`
+- [ ] `doc/spec/core/errno-map.ko.md`
 - [x] `doc/spec/bindings`: core release 전에는 draft link와 binding 영향 요약만 반영.
   언어별 full binding spec은 release 뒤 5회 리뷰 단계에서 반영
 - [x] `doc/guide`
 - [x] `doc/internals`
-- [x] `doc/site/docs` 또는 site 생성 원본이 따로 있으면 해당 원본
+- [ ] `doc/site/docs` 또는 site 생성 원본이 따로 있으면 해당 원본
 - [x] sample README와 사용 예
 - [x] historical draft 상태와 정식 문서 링크
 
@@ -1185,12 +1257,12 @@ POSD 기반 리팩토링이 끝나면 `doc/guide`, `doc/internals`, `doc/spec` �
 
 ### 종료 조건
 
-- [x] guide, internals, core spec 문서가 모두 최종 코드와 맞다.
+- [ ] guide, internals, core spec 문서가 모두 최종 코드와 맞다.
 - [x] `doc/spec/bindings`에는 release 뒤 full 반영을 위한 draft link와 영향 요약이 있다.
 - [x] 1차, 2차, 3차 문서 리뷰 로그가 남아 있다.
-- [x] 3차 리뷰에서 mismatch가 없다.
+- [ ] 3차 리뷰에서 mismatch가 없다.
 - [x] 3차 리뷰 중 mismatch가 발견되어 수정했다면, 3차를 처음부터 다시 수행했다.
-- [x] stale API 이름과 제거 대상 API 설명이 정식 문서에 남아 있지 않다.
+- [ ] stale API 이름과 제거 대상 API 설명이 정식 문서에 남아 있지 않다.
 - [x] draft 문서가 historical draft 또는 정식 문서 링크 상태로 정리되어 있다.
 
 ## Core release와 bindings 최신화
@@ -1301,7 +1373,7 @@ bindings 작업은 동시에 진행하지 않는다. 언어별로 하나씩 끝�
 
 각 언어별 반복 절차:
 
-1. `doc/spec/draft/spot-actor-dispatch.ko.md`와 해당 언어 binding spec을 비교한다.
+1. `doc/spec/draft/spot-entry-transport-queues.ko.md`와 해당 언어 binding spec을 비교한다.
 2. core C API 중 해당 binding에 노출해야 할 Actor API를 표로 뽑는다.
 3. binding 코드가 spec 표면을 모두 노출하는지 확인한다.
 4. binding 코드가 spec의 ownership, error/result, timeout, unchecked/checked ref

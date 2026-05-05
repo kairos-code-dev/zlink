@@ -173,6 +173,11 @@ zlink_spot_subscribe(
   0);
 ```
 
+When multiple `Spot` facades under the same node subscribe to the same topic or
+prefix, the node maintains one aggregate subscription toward remote peers. The
+first local subscription raises the remote interest; the last local unsubscribe
+removes it. Applications do not need to manage this aggregation.
+
 ## 5. Calling another channel
 
 To send requests from a `Spot` into another channel, attach a `DEALER` to the
@@ -240,16 +245,182 @@ zlink_spot_request_channel(
 You cannot register two dealers for the same channel name. Automatic and manual
 attach collide in the same namespace.
 
-### 5.4 Poller note
+### 5.4 Channel request reply and the dispatch stream
 
-The current public poller does not yet return a Spot-aware result that says
-"which Spot, which event kind, and which drain target became ready".
+The reply for a `zlink_spot_request_channel()` request returns over the network
+through the attached `DEALER`, but the final user callback runs inside the
+originating `Spot` dispatch stream.
 
-So if you want one unified readiness surface for SPOT today, use
-`zlink_spot_dispatch_event_handler()` rather than trying to infer it from the
-generic poller alone.
+- network reply → attached `DEALER` completion → bridge → Spot dealer source queue
+- `CHANNEL_REPLY_READABLE` dispatch event → `zlink_spot_channel_reply_progress_from()` → user callback
 
-## 6. Routed recv and reply
+Bindings do not need a separate per-dealer progress pump.
+
+## 6. Unified dispatch event handler
+
+Registering `zlink_spot_dispatch_event_handler()` lets you receive subscribe,
+routed, channel reply, timer, and Actor events in a single callback.
+
+```c
+void my_dispatch_handler(
+  void *spot_,
+  const zlink_spot_dispatch_info_t *info_,
+  void *userdata_)
+{
+    switch (info_->event) {
+    case ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE:
+        /* drain with zlink_spot_subscribe() */
+        break;
+    case ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE:
+        /* drain with zlink_spot_recv() */
+        break;
+    case ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE:
+        /* info_->subject is the attached dealer handle */
+        zlink_spot_channel_reply_progress_from(spot_, info_->subject);
+        break;
+    case ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE:
+        /* info_->subject is the timer handle */
+        zlink_timer_recv(info_->subject, NULL, 0);
+        break;
+    case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE:
+        /* drain with zlink_spot_actor_join_recv() */
+        break;
+    case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE:
+        /* info_->subject is the Actor handle */
+        break;
+    }
+}
+```
+
+Dispatch priority is fixed: `SUBSCRIBE_READABLE` → `ROUTED_READABLE` →
+`CHANNEL_REPLY_READABLE` → `TIMER_READABLE` → `ACTOR_JOIN_READABLE` →
+`ACTOR_READABLE`.
+
+### 6.1 Dispatch events are readiness, not message counts
+
+`SUBSCRIBE_READABLE` and `ROUTED_READABLE` mean "there is readable work on this
+Spot" rather than "exactly one message arrived".
+
+One callback may correspond to multiple queued items. When you receive either
+event, treat it as a drain signal:
+
+```c
+for (;;) {
+    int rc = zlink_spot_recv(
+      spot_,
+      &source_node_rid,
+      &source_spot_rid,
+      &request_seq,
+      &parts,
+      &part_count,
+      ZLINK_DONTWAIT);
+
+    if (rc == ZLINK_RECV_NO_DATA && zlink_errno() == EAGAIN)
+        break;
+    if (rc != ZLINK_RECV_OK)
+        break;
+
+    /* handle one routed message */
+    zlink_multipart_close(parts, part_count);
+}
+```
+
+Use the same drain-until-EAGAIN pattern for `zlink_spot_subscribe()` and
+`zlink_actor_recv_part()`.
+
+## 7. Distributing session messages with Actors
+
+Actors let you route messages from a STREAM client session to a specific
+processing unit and distinguish the drain target in the Spot dispatch callback.
+One session can be bound to multiple Actors; one Actor is bound to at most one
+session at a time.
+
+The minimal flow is:
+
+1. Create an Actor on the `SpotNode`.
+2. Identify the STREAM client session routing id.
+3. Bind session and Actor with `zlink_stream_bind_actor()`.
+4. Inside the STREAM packet handler or app logic, select an Actor id and call
+   `zlink_stream_send_bound_actor_part()`.
+5. When `ACTOR_READABLE` arrives in the dispatch callback, drain the `subject`
+   Actor with `zlink_actor_recv_part()`.
+
+```c
+void *actor = zlink_spot_node_actor_new(node, "player-42");
+zlink_actor_ref_t ref;
+zlink_actor_get_ref(actor, &ref);
+
+zlink_stream_bind_actor(node, stream, &session_rid, &ref, 2000);
+
+zlink_msg_t part;
+zlink_msg_init_size(&part, 5);
+memcpy(zlink_msg_data(&part), "hello", 5);
+zlink_stream_send_bound_actor_part(
+  node,
+  stream,
+  &session_rid,
+  "player-42",
+  &part,
+  0,
+  ZLINK_PART_FINAL);
+```
+
+When the Actor has readable parts the dispatch callback identifies the drain
+target:
+
+```c
+case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
+    void *actor = info_->subject;
+    for (;;) {
+        zlink_actor_recv_info_t recv_info;
+        zlink_msg_t part;
+        zlink_part_flag_t more = ZLINK_PART_FINAL;
+        zlink_recv_result_t rc = zlink_actor_recv_part(
+          actor,
+          &recv_info,
+          &part,
+          &more,
+          ZLINK_DONTWAIT);
+
+        if (rc == ZLINK_RECV_NO_DATA)
+            break;
+        if (rc != ZLINK_RECV_OK)
+            break;
+
+        /* process part */
+        zlink_msg_close(&part);
+    }
+    break;
+}
+```
+
+To make an Actor address discoverable from another node, enable
+`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` on the Actor owner Discovery, bind the
+Actor to a STREAM session, then query with `zlink_discovery_resolve_actor()`.
+Creating an Actor or joining a Spot alone does not publish an active route.
+
+To create an Actor on a remote node, use
+`zlink_spot_node_create_remote_actor()`. When the same actor id already exists
+on the target node, the call returns the existing result without creating a
+new slot. When the target node rejects the request in its admission handler,
+the request ends with a rejected result.
+
+When an Actor needs to join a Spot, send a join request and then call
+`zlink_spot_actor_join_recv()` on the Spot side to read the request message,
+followed by `zlink_spot_actor_join_reply()` to send an accept or reject reply.
+One Actor can be joined to at most one Spot; to move it, leave the current Spot
+first and then join the new one.
+
+## 8. Poller relationship
+
+The current public poller does not return a Spot-aware result that carries
+"which Spot, which event kind, and which drain target".
+
+For a single unified readiness surface for SPOT use
+`zlink_spot_dispatch_event_handler()`. One Spot progress call advances all
+work including channel reply completions.
+
+## 9. Routed recv and reply
 
 ```c
 const zlink_routing_id_t *source_node_rid = NULL;
@@ -273,47 +444,13 @@ Reply with:
 - `zlink_spot_reply_spot()` when the origin is another SPOT
 - `zlink_spot_reply_router()` when the origin is a ROUTER
 
-### 6.1 Dispatch events are readiness, not message counts
-
-`SUBSCRIBE_READABLE` and `ROUTED_READABLE` mean "there is readable work on this
-Spot" rather than "exactly one message arrived for this Spot".
-
-That matters because one callback may correspond to multiple queued items, and
-multiple incoming items do not guarantee one callback each.
-
-When you receive either event, treat it as a drain signal:
-
-```c
-for (;;) {
-  int rc = zlink_spot_recv(
-    spot,
-    &source_node_rid,
-    &source_spot_rid,
-    &request_seq,
-    &parts,
-    &part_count,
-    ZLINK_DONTWAIT);
-
-  if (rc == ZLINK_RECV_NO_DATA && zlink_errno() == EAGAIN)
-    break;
-
-  if (rc != ZLINK_RECV_OK)
-    break;
-
-  /* handle one routed message */
-}
-```
-
-Use the same pattern for `zlink_spot_subscribe()`: keep pulling until the API
-returns `ZLINK_RECV_NO_DATA` with `EAGAIN`.
-
-## 7. Initiating routed requests from Spot
+## 10. Initiating routed requests from Spot
 
 `Spot` can initiate routed requests directly. The default path remains
 `send_channel()` / `request_channel()`, but when you need to target a specific
 peer directly use the two APIs below.
 
-### 7.1 Request to another Spot
+### 10.1 Request to another Spot
 
 ```c
 zlink_spot_request_spot(
@@ -330,7 +467,7 @@ zlink_spot_request_spot(
 
 The replier sends back via `zlink_spot_reply_spot()`.
 
-### 7.2 Request to a Router peer
+### 10.2 Request to a Router peer
 
 ```c
 zlink_spot_request_router(
@@ -346,7 +483,7 @@ zlink_spot_request_router(
 
 The replier sends back via `zlink_router_reply_spot()`.
 
-### 7.3 One-way direct send to another Spot
+### 10.3 One-way direct send to another Spot
 
 To send a one-way message directly to another `Spot` without a reply, use
 `zlink_spot_send_spot()` (C API) or the helper substrate
@@ -355,7 +492,7 @@ To send a one-way message directly to another `Spot` without a reply, use
 One-way direct send to a ROUTER peer is not on the public surface.
 If you need that, use `RouterSocket` or raw ROUTER APIs.
 
-## 8. Direct addressing from ROUTER
+## 11. Direct addressing from ROUTER
 
 Use ROUTER APIs to send or request from a ROUTER to a specific SPOT destination.
 
@@ -372,7 +509,7 @@ zlink_router_request_spot(
   2000);
 ```
 
-## 9. Feeding SPOT from a generic PUB
+## 12. Feeding SPOT from a generic PUB
 
 If a generic external `PUB` should feed the SPOT topic plane, attach it as
 publish ingress.
@@ -384,7 +521,7 @@ zlink_spot_node_attach_pub_ingress(node, pub);
 
 Treat that `PUB` as a dedicated ingress source for the node.
 
-## 10. Observability
+## 13. Observability
 
 Use node snapshots and query results for status and debugging.
 
@@ -395,3 +532,28 @@ zlink_spot_node_status_snapshot(node, &status);
 size_t peer_count = 0;
 zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
 ```
+
+`status.disconnected_sub_target_count` and
+`status.disconnected_routed_target_count` are ABI compatibility fields. The
+current SPOT delivery path does not disconnect a target because an internal
+delivery queue grew, so these fields report `0`.
+
+For HWM diagnostics, use the internal socket snapshot and monitor snapshot
+fields. SpotNode HWM options apply to admission only: topic publish admission
+and routed admission. There is no per-Actor HWM option. Actor processing delays
+are diagnosed through dispatch events, recv results, and snapshot counts.
+
+For Actor state, use `zlink_spot_node_actors_snapshot()` and
+`zlink_spot_actors_snapshot()`. The unread count and joined state in a snapshot
+are for operational diagnostics. Base flow-control decisions on dispatch events
+and recv results, not snapshot values.
+
+## 14. Actor C samples
+
+C samples showing three Actor patterns:
+
+| Pattern | File |
+|---------|------|
+| Per-room Actor dispatch | `bindings/c/samples/actor_room_server_sample.c` |
+| Gateway session relay to remote Actor | `bindings/c/samples/actor_gateway_relay_sample.c` |
+| Single-user queue serialization | `bindings/c/samples/actor_single_player_queue_sample.c` |

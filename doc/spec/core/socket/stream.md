@@ -170,6 +170,94 @@ callback is attached. `ETERM` if the context was terminated.
 
 ---
 
+### STREAM session Actor list
+
+The session Actor list is a per-session mapping that associates STREAM client
+session routing ids with Actor refs. The mapping is not a public lookup target
+on the STREAM socket. One session may be bound to multiple Actors; one Actor
+may be bound to at most one STREAM session at a time.
+
+```c
+zlink_request_result_t zlink_stream_bind_actor(
+  void *node,
+  void *stream,
+  const zlink_routing_id_t *session_rid,
+  const zlink_actor_ref_t *actor,
+  uint32_t timeout_ms);
+
+zlink_request_result_t zlink_stream_unbind_actor(
+  void *node,
+  void *stream,
+  const zlink_routing_id_t *session_rid,
+  const char *actor_id,
+  uint32_t timeout_ms);
+
+zlink_submit_result_t zlink_stream_send_bound_actor_part(
+  void *node,
+  void *stream,
+  const zlink_routing_id_t *session_rid,
+  const char *actor_id,
+  zlink_msg_t *part,
+  zlink_send_flags_t flags,
+  zlink_part_flag_t part_flag);
+```
+
+- `node` is the STREAM session owner `SpotNode`. Bind, unbind, and relay
+  require a session owner node.
+- `stream` is the raw STREAM socket that owns the session routing id.
+- `session_rid` is the STREAM client session routing id.
+- Multiple distinct actor ids may be bound to the same session.
+- Binding the same actor id again on the same session replaces only that actor
+  id entry with the new Actor ref.
+- Binding the same Actor ref again on the same session does not create a
+  duplicate entry and succeeds.
+- Binding an Actor that is already bound to a different session fails with
+  `ZLINK_REQUEST_BUSY`.
+- Binding with an unchecked ref (`generation == 0`) attaches the current Actor
+  with that actor id on the target node. The session Actor list stores a
+  concrete generation ref.
+- A checked ref whose generation differs from the target Actor fails with a
+  conflict or invalid-state result.
+- On a successful bind, when actor route sync is enabled on the Actor owner
+  node, the active route is published. Creating an Actor alone does not
+  publish an active route.
+- Unbind is idempotent: it succeeds even when the actor id is not in the list.
+- Unbinding one actor id from a session that has multiple bound Actors leaves
+  the other entries intact.
+- When the remote Actor owner node is unreachable, explicit unbind fails with
+  `ZLINK_REQUEST_NOT_CONNECTED` and leaves the existing actor id entry in
+  place.
+- After the Actor owner provider terminates, explicit unbind may succeed by
+  removing the session Actor list entry without waiting for a detach
+  confirmation.
+- After a bind or unbind timeout failure, the session Actor list and Actor
+  bound session ref are left in the pre-call state.
+- Unbind and session disconnect cleanup do not remove the active route.
+
+`zlink_stream_send_bound_actor_part()` relays a STREAM session message part
+into the Actor unread state identified by the `actor_id` selector.
+
+- When the `actor_id` is not in the session Actor list,
+  `ZLINK_SUBMIT_NOT_FOUND` is returned.
+- When `actor_id` is invalid or NULL, `ZLINK_SUBMIT_INVALID_ARGUMENT` is
+  returned.
+- On success, `part` ownership transfers to the library. Ownership stays with
+  the caller on failure.
+- After a `ZLINK_PART_MORE` succeeds, the next part for the same session must
+  use the same `actor_id`. Using a different actor id returns
+  `ZLINK_SUBMIT_INVALID_STATE`.
+- When a final part submit fails, parts that already succeeded remain owned by
+  the library. The caller may retry the final part with the same actor id.
+- When the target Actor has already been removed on the remote node, the target
+  node discards the message. The completed send result on the sender side is
+  not changed.
+- When the target Actor owner node is unreachable,
+  `ZLINK_SUBMIT_NOT_CONNECTED` is returned.
+- Internal resource exhaustion or HWM overflow on the relay path returns
+  `ZLINK_SUBMIT_BACKPRESSURED`.
+
+---
+
 ### zlink_recv_handler
 
 Attach a raw receive callback to a raw `STREAM` socket.

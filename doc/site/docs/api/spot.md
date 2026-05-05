@@ -65,26 +65,22 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 
 ## SpotNode contract
 
-The default HWM values used by SpotNode and Spot internal raw sockets are
-not fixed constants anymore. They come from the context automatic HWM
-policy. Manual `ZLINK_SPOT_NODE_OPT_PUB_HWM`,
-`ZLINK_SPOT_NODE_OPT_SUB_HWM`,
-`ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM`, and
-`ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM` settings override those automatic
-values. When context auto-HWM is enabled, SPOT uses the active automatic HWM
-profile. Topic publish sockets are planned as `spot_data`, topic ingress
-sockets as `recv_ingress`, routed sockets as `routed`, and control sockets as
-`control`. SPOT publish planning does not lower per-connection HWM based on
-the total number of Spot handles or peer connections.
+SpotNode exposes HWM only as admission control from `Spot` into `SpotNode`.
+The public options are `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`,
+`ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
+`ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`, and
+`ZLINK_SPOT_NODE_OPT_PUBSUB_HWM`. Both admission channels default to the
+balanced profile, which maps to HWM `16`; compact maps to `4`, low latency
+maps to `8`, and throughput maps to `32`. A positive numeric HWM overrides the profile for that
+channel. Setting the numeric HWM to `0` clears the override and returns to the
+profile value. Negative values and unknown profiles fail with `EINVAL`.
 
-`ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT` and
-`ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT` configure the maximum number of
-messages allowed in the internal delivery queues. Their defaults are
-`ZLINK_SPOT_NODE_SUB_QUEUE_HARD_LIMIT_DFLT` and
-`ZLINK_SPOT_NODE_ROUTED_QUEUE_HARD_LIMIT_DFLT`, currently `100` and `500`
-respectively. When a
-target exceeds its limit, only that sub or routed delivery target is
-disconnected; the node and peer stay alive.
+`Spot` handles do not accept common `ZLINK_OPT_SNDHWM` or
+`ZLINK_OPT_RCVHWM` settings. A `Spot` captures the current SpotNode admission
+HWM when it is created; later SpotNode HWM changes apply only to later
+`Spot` handles. Relay and delivery sockets inside SpotNode use HWM `0`.
+The removed direction-based SpotNode HWM options and queue hard-limit options
+are not part of the public contract, and their old enum numbers are reserved.
 
 SpotNode and Spot do not expose a public weight setting. Peer weight can be
 configured only on raw ROUTER and DEALER sockets. Spot peer snapshots may still
@@ -320,28 +316,31 @@ zlink_submit_result_t zlink_spot_reply_router(
 
 ```c
 typedef enum zlink_spot_dispatch_event_t {
-  ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,
-  ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE = 2,
-  ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE = 3,
-  ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4
+  ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE     = 1,
+  ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE        = 2,
+  ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE         = 3,
+  ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4,
+  ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE         = 5,
+  ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE    = 6
 } zlink_spot_dispatch_event_t;
 
 typedef enum zlink_spot_dispatch_subject_kind_t {
-  ZLINK_SPOT_DISPATCH_SUBJECT_SPOT = 1,
-  ZLINK_SPOT_DISPATCH_SUBJECT_TIMER = 2,
-  ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3
+  ZLINK_SPOT_DISPATCH_SUBJECT_SPOT           = 1,
+  ZLINK_SPOT_DISPATCH_SUBJECT_TIMER          = 2,
+  ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3,
+  ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR          = 4
 } zlink_spot_dispatch_subject_kind_t;
 
 typedef struct zlink_spot_dispatch_info_t {
-  zlink_spot_dispatch_event_t event;
+  zlink_spot_dispatch_event_t        event;
   zlink_spot_dispatch_subject_kind_t subject_kind;
-  void *subject;
+  void                              *subject;
 } zlink_spot_dispatch_info_t;
 
 typedef void (*zlink_spot_dispatch_event_handler_fn)(
-  void *spot,
-  const zlink_spot_dispatch_info_t *info,
-  void *userdata);
+  void *spot_,
+  const zlink_spot_dispatch_info_t *info_,
+  void *userdata_);
 ```
 
 - `event` identifies the readable work plane.
@@ -351,15 +350,21 @@ typedef void (*zlink_spot_dispatch_event_handler_fn)(
   originating `Spot`. It does not expose raw dealer receive.
 - `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
   one-event-per-message delivery counters.
+- `ACTOR_READABLE` means a specific Actor has unread parts ready. `subject` is
+  the drain target Actor handle. The caller passes it to `zlink_actor_recv_part()`.
+- `ACTOR_JOIN_READABLE` means the Spot has Actor join requests to process.
+  Drain with `zlink_spot_actor_join_recv()` until `ZLINK_RECV_NO_DATA`.
 
 Drain rules by dispatch subject:
 
 | event | subject_kind | subject | drain |
 |-------|--------------|---------|-------|
-| `SUBSCRIBE_READABLE` | `SPOT` | `spot` | `zlink_spot_subscribe()` / `zlink_spot_subscription_event()` |
-| `ROUTED_READABLE` | `SPOT` | `spot` | `zlink_spot_recv()` |
+| `SUBSCRIBE_READABLE` | `SPOT` | `spot_` (or NULL) | `zlink_spot_subscribe()` |
+| `ROUTED_READABLE` | `SPOT` | `spot_` (or NULL) | `zlink_spot_recv()` |
 | `TIMER_READABLE` | `TIMER` | timer handle | `zlink_timer_recv()` |
 | `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | attached dealer handle | `zlink_spot_channel_reply_progress_from()` |
+| `ACTOR_READABLE` | `ACTOR` | Actor handle | `zlink_actor_recv_part()` |
+| `ACTOR_JOIN_READABLE` | `SPOT` | `spot_` | `zlink_spot_actor_join_recv()` |
 
 Dispatch priority is fixed as:
 
@@ -367,6 +372,8 @@ Dispatch priority is fixed as:
 2. `ROUTED_READABLE`
 3. `CHANNEL_REPLY_READABLE`
 4. `TIMER_READABLE`
+5. `ACTOR_JOIN_READABLE`
+6. `ACTOR_READABLE`
 
 ```c
 zlink_handler_result_t zlink_spot_handler(
@@ -543,27 +550,272 @@ zlink_config_result_t zlink_spot_node_subjects_snapshot(
   const zlink_spot_node_subject_filter_t *filter,
   zlink_spot_node_subject_entry_t *entries,
   size_t *count);
+
+zlink_config_result_t zlink_spot_node_spots_snapshot(
+  void *node,
+  zlink_spot_node_spot_entry_t *entries,
+  size_t *count);
+
+zlink_config_result_t zlink_spot_node_actors_snapshot(
+  void *node,
+  zlink_spot_node_actor_entry_t *entries,
+  size_t *count);
+
+zlink_config_result_t zlink_spot_actors_snapshot(
+  void *spot,
+  zlink_actor_ref_t *entries,
+  size_t *count);
 ```
 
 There is no dedicated public SPOT-node monitor recv API. Use the
 snapshot/query functions.
 
-`zlink_spot_node_status_t.disconnected_sub_target_count` reports local
-subscribe delivery targets disconnected by queue hard limits or equivalent
-delivery guards.
-`zlink_spot_node_status_t.disconnected_routed_target_count` reports routed
-delivery targets disconnected by those guards.
+- `entries == NULL` causes a snapshot function to write only the required row
+  count into `*count`.
+- Insufficient `*count` fails with `ENOBUFS` and writes the required count.
+- `zlink_spot_node_spots_snapshot()` returns local Spot facade rows.
+  `joined_actor_count`, `pending_actor_join_count`, `route_synced`, and
+  `last_changed_ms` are diagnostic values.
+- `zlink_spot_node_actors_snapshot()` returns live local Actor rows. Each row
+  contains the Actor ref, joined state, joined Spot rid, route sync state,
+  unread message count, and `last_changed_ms`.
+- `zlink_spot_actors_snapshot()` returns the list of Actor refs that are joined
+  to a given Spot.
+- Snapshot values must not be used as flow-control contracts.
+
+`zlink_spot_node_status_t.disconnected_sub_target_count` and
+`zlink_spot_node_status_t.disconnected_routed_target_count` remain in the
+status structure for ABI compatibility. The current HWM policy does not
+disconnect local subscribe or routed targets because a delivery queue grew.
 
 ## Relationship to Poller
 
-The current public poller API is unchanged by this SPOT runtime work.
+The current public poller API is unchanged.
 
-- `zlink_poller_event_t` does not currently carry owner Spot, dispatch event
-  kind, or drain subject together.
-- A future Spot-aware poller extension may add that richer result surface, but
-  it is not part of the current public contract.
-- Today, the canonical unified readable-notification surface for SPOT is
+- `zlink_poller_event_t` does not carry owner Spot, dispatch event kind, or
+  drain subject together.
+- The canonical unified readable-notification surface for SPOT is
   `zlink_spot_dispatch_event_handler()`.
+
+## Actor contract
+
+An Actor is a routing target owned by `SpotNode`. An Actor handle is not a
+socket handle. Actors have no public socket option, inproc endpoint, or
+transport endpoint. There is no per-Actor HWM option. Unread parts that
+arrive at an Actor are read only through `zlink_actor_recv_part()`.
+
+An actor id is a NUL-terminated string treated as a UTF-8 byte sequence. The
+public buffer size is `ZLINK_ACTOR_ID_MAX`. Empty ids, ids longer than
+`ZLINK_ACTOR_ID_MAX`, and NULL ids fail with `EINVAL`. Within a single
+`SpotNode` all live actor ids are unique. Different `SpotNode` instances may
+hold Actors with the same actor id simultaneously.
+
+```c
+#define ZLINK_ACTOR_ID_MAX 256
+
+typedef struct zlink_actor_ref_t {
+  zlink_routing_id_t node_rid;
+  char actor_id[ZLINK_ACTOR_ID_MAX];
+  uint64_t generation;
+} zlink_actor_ref_t;
+
+typedef struct zlink_actor_recv_info_t {
+  zlink_actor_ref_t actor;
+  zlink_routing_id_t source_node_rid;
+  zlink_routing_id_t source_session_rid;
+  uint32_t flags;
+} zlink_actor_recv_info_t;
+
+typedef struct zlink_actor_join_info_t {
+  zlink_actor_ref_t actor;
+  zlink_routing_id_t source_node_rid;
+  void *request;
+  uint32_t flags;
+} zlink_actor_join_info_t;
+
+typedef enum zlink_actor_create_status_t {
+  ZLINK_ACTOR_CREATE_CREATED  = 1,
+  ZLINK_ACTOR_CREATE_EXISTING = 2
+} zlink_actor_create_status_t;
+
+typedef struct zlink_actor_create_result_t {
+  zlink_actor_create_status_t status;
+  zlink_actor_ref_t actor;
+} zlink_actor_create_result_t;
+
+typedef enum zlink_actor_admission_result_t {
+  ZLINK_ACTOR_ADMISSION_ACCEPT = 1,
+  ZLINK_ACTOR_ADMISSION_REJECT = 2
+} zlink_actor_admission_result_t;
+
+typedef zlink_actor_admission_result_t (*zlink_actor_admission_handler_fn)(
+  void *node,
+  const char *actor_id,
+  const zlink_msg_t *message,
+  void *userdata);
+```
+
+`zlink_actor_ref_t.generation == 0` is an unchecked ref. An unchecked ref is
+not an error; ref-based APIs interpret it as targeting the current Actor with
+the same actor id on the target node. A checked ref (`generation != 0`) must
+match the target Actor's current generation. A mismatch results in a stale or
+conflict-class failure.
+
+### Creation, lookup, and teardown
+
+```c
+void *zlink_spot_node_actor_new(void *node, const char *actor_id);
+zlink_request_result_t zlink_actor_destroy(void **actor_p, uint32_t timeout_ms);
+zlink_config_result_t zlink_actor_get_ref(void *actor, zlink_actor_ref_t *out);
+zlink_config_result_t zlink_spot_node_actor_lookup(
+  void *node,
+  const char *actor_id,
+  zlink_actor_ref_t *out);
+zlink_config_result_t zlink_remote_actor_get_ref(
+  const zlink_routing_id_t *target_node_rid,
+  const char *actor_id,
+  zlink_actor_ref_t *out);
+```
+
+- `zlink_spot_node_actor_new()` creates a local Actor handle.
+- Creating with an actor id that already exists on the same node fails.
+- `zlink_actor_destroy()` fails with `ZLINK_REQUEST_BUSY` or
+  `ZLINK_REQUEST_INVALID_STATE` when the Actor is joined to a Spot or bound to
+  a STREAM session, and leaves the handle intact.
+- On successful destroy `*actor_p` is set to NULL.
+- If the required control lock or detach does not complete within `timeout_ms`,
+  the call returns `ZLINK_REQUEST_TIMED_OUT` and leaves the handle unchanged.
+- `zlink_actor_get_ref()` and `zlink_spot_node_actor_lookup()` return checked refs.
+- `zlink_remote_actor_get_ref()` builds an unchecked remote ref from a target
+  node rid and actor id only. It does not verify the peer connection, perform a
+  handshake, or confirm that the target Actor exists.
+
+### Remote Actor create-or-get and destroy
+
+```c
+zlink_request_result_t zlink_spot_node_create_remote_actor(
+  void *node,
+  const zlink_routing_id_t *target_node_rid,
+  const char *actor_id,
+  zlink_msg_t *message,
+  zlink_actor_create_result_t *out,
+  uint32_t timeout_ms);
+
+zlink_request_result_t zlink_spot_node_destroy_remote_actor(
+  void *node,
+  const zlink_actor_ref_t *actor,
+  uint32_t timeout_ms);
+
+zlink_handler_result_t zlink_spot_node_actor_admission_handler(
+  void *node,
+  zlink_actor_admission_handler_fn handler,
+  void *userdata);
+```
+
+- create-or-get calls the admission handler only when the target node has no
+  Actor with that id.
+- When the target Actor already exists the handler is not called and
+  `ZLINK_ACTOR_CREATE_EXISTING` is returned.
+- When the handler accepts, the Actor is created and `ZLINK_ACTOR_CREATE_CREATED`
+  is returned.
+- When the handler rejects, the call ends with `ZLINK_REQUEST_REJECTED`.
+- On successful submit, `message` ownership transfers to the library. Ownership
+  stays with the caller on validation or submit failure.
+- `zlink_spot_node_destroy_remote_actor()` is idempotent: it succeeds when the
+  target Actor does not exist.
+- `ZLINK_REQUEST_NOT_CONNECTED` is returned when the target node is unreachable.
+- A joined Actor, a bound session detach failure, or a checked ref generation
+  mismatch does not remove the Actor slot.
+
+### Actor and Spot join/leave
+
+```c
+zlink_submit_result_t zlink_actor_join_spot(
+  void *actor,
+  void *spot,
+  zlink_msg_t *message,
+  zlink_reply_handler_fn handler,
+  void *userdata,
+  zlink_send_flags_t flags,
+  uint32_t timeout_ms);
+
+zlink_submit_result_t zlink_spot_node_actor_join_spot(
+  void *node,
+  const zlink_actor_ref_t *actor,
+  const zlink_routing_id_t *dest_spot_rid,
+  zlink_msg_t *message,
+  zlink_reply_handler_fn handler,
+  void *userdata,
+  zlink_send_flags_t flags,
+  uint32_t timeout_ms);
+
+zlink_recv_result_t zlink_spot_actor_join_recv(
+  void *spot,
+  zlink_actor_join_info_t *info_out,
+  zlink_msg_t *message_out,
+  zlink_recv_flags_t flags);
+
+zlink_submit_result_t zlink_spot_actor_join_reply(
+  void *spot,
+  const zlink_actor_join_info_t *info,
+  uint32_t accepted,
+  zlink_msg_t *message);
+
+zlink_config_result_t zlink_actor_leave_spot(void *actor, void *spot);
+zlink_request_result_t zlink_spot_node_actor_leave_spot(
+  void *node,
+  const zlink_actor_ref_t *actor,
+  const zlink_routing_id_t *dest_spot_rid,
+  uint32_t timeout_ms);
+```
+
+- One Actor can be joined to at most one Spot at a time.
+- Multiple Actors can be joined to the same Spot simultaneously.
+- Joining the same Actor and Spot a second time succeeds.
+- Joining an Actor that is already joined to a different Spot fails with a busy
+  or invalid-state result.
+- A join request carries a single `zlink_msg_t` message.
+- On successful `zlink_spot_actor_join_recv()` the join message ownership
+  transfers to the caller.
+- `zlink_spot_actor_join_reply()` with `accepted != 0` accepts; `accepted == 0`
+  rejects. The reply message is delivered to the caller's join completion.
+- `zlink_actor_join_info_t.request` is an opaque one-shot handle. Sending a
+  second reply for the same request is not allowed.
+- Leave is idempotent: it succeeds even when the Actor is not joined to that Spot.
+- Destroying a Spot removes join relationships but does not destroy Actor slots.
+
+### Actor recv and bound session send
+
+```c
+zlink_recv_result_t zlink_actor_recv_part(
+  void *actor,
+  zlink_actor_recv_info_t *info_out,
+  zlink_msg_t *part_out,
+  zlink_part_flag_t *has_more_out,
+  zlink_recv_flags_t flags);
+
+zlink_submit_result_t zlink_actor_send_bound_session_msg(
+  void *actor,
+  zlink_msg_t *message,
+  zlink_send_flags_t flags);
+
+zlink_submit_result_t zlink_actor_send_bound_session_packet(
+  void *actor,
+  zlink_msg_t *header,
+  zlink_msg_t *body,
+  zlink_send_flags_t flags);
+```
+
+- `zlink_actor_recv_part()` reads one part from the Actor unread state.
+- On success `part_out` ownership transfers to the caller.
+- With `ZLINK_DONTWAIT` and no parts available, returns `ZLINK_RECV_NO_DATA`.
+- `has_more_out` returns `ZLINK_PART_MORE` or `ZLINK_PART_FINAL`.
+- `info_out->actor` is the receiving Actor ref; `source_node_rid` and
+  `source_session_rid` identify the sender session.
+- Sending to a bound STREAM session requires the Actor to be in the session
+  Actor list. Without a binding, `ZLINK_SUBMIT_NOT_FOUND` is returned.
+- On successful send, message or packet header/body ownership transfers to the
+  library. Ownership stays with the caller on failure.
 
 ## Constraint summary
 

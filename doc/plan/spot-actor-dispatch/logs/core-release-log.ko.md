@@ -111,3 +111,126 @@
   - `git diff --check` 통과.
 - 다음 확인: commit, branch push, `core/v5.3.6` tag push, GitHub Actions run watch,
   release asset 확인
+
+## 2026-05-05 core/v5.3.6 tag workflow 결과
+
+- tag: `core/v5.3.6`
+- commit: `4f4f5a5f572efe6324e7306d9123a4573a9d61bd`
+- 수행한 명령:
+  - `git push origin main`
+  - `git tag core/v5.3.6`
+  - `git push origin core/v5.3.6`
+  - `gh run watch 25342011176 --exit-status`
+  - `gh release view core/v5.3.6 --json tagName,url,assets`
+  - `gh run rerun 25342011211`
+  - `gh run watch 25342011211 --exit-status`
+- 결과:
+  - `Build libzlink Core Libraries` run `25342011176` 성공.
+  - Linux x64, Linux ARM64, macOS x64, macOS ARM64, Windows x64, Windows ARM64 job 모두 성공.
+  - `Verify Build Artifacts` job 성공.
+  - `Create Release` job 성공.
+  - release URL: `https://github.com/kairos-code-dev/zlink/releases/tag/core/v5.3.6`
+  - release asset:
+    - `checksums.txt`
+    - `libzlink-linux-arm64.tar.gz`
+    - `libzlink-linux-arm64.zip`
+    - `libzlink-linux-x64.tar.gz`
+    - `libzlink-linux-x64.zip`
+    - `libzlink-macos-arm64.tar.gz`
+    - `libzlink-macos-arm64.zip`
+    - `libzlink-macos-x64.tar.gz`
+    - `libzlink-macos-x64.zip`
+    - `libzlink-windows-arm64.tar.gz`
+    - `libzlink-windows-arm64.zip`
+    - `libzlink-windows-x64.tar.gz`
+    - `libzlink-windows-x64.zip`
+    - `zlink-5.3.6-source.tar.gz`
+  - `Release Core Conan Package` run `25342011211`의 첫 실행은 GitHub source tarball
+    다운로드 중 502 응답으로 실패했다.
+  - 같은 run `25342011211`을 재실행했고, `conan` job `74303695510`이 성공했다.
+  - Conan 재실행에서 `Create Conan package`와 `Upload Conan package` 단계가 모두 성공했다.
+- 닫힌 gate:
+  - `core/v5.3.6` tag push 성공.
+  - native build workflow 성공.
+  - Conan workflow 성공.
+  - `gh release view core/v5.3.6` 성공.
+  - release에 core native archive가 모두 존재.
+  - `bindings/update_zlink_libs.sh`가 요구하는 필수 core asset이 모두 존재.
+  - 실패한 workflow는 원인 수정, 새 patch version, rerun으로 처리했다.
+
+## 2026-05-05 core/v5.3.6 후속 검증 결과
+
+- 수행한 명령:
+  - `gh release download core/v5.3.6 -p 'libzlink-linux-x64.tar.gz'`
+  - `tar -tzf libzlink-linux-x64.tar.gz`
+- 발견한 문제:
+  - `core/v5.3.6` native archive에는 `include/zlink.h`와
+    `include/zlink_utils.h`만 들어 있었다.
+  - `core/include/zlink.h`는 `zlink_enum.h`와 `zlink_errno.h`를 include하므로
+    release archive의 public header 구성이 불완전했다.
+  - 따라서 `core/v5.3.6`은 bindings 최신화의 최종 기준으로 쓰지 않는다.
+- 수정 방향:
+  - Linux, macOS, Windows release package build가 네 public header
+    `zlink.h`, `zlink_enum.h`, `zlink_errno.h`, `zlink_utils.h`를 모두
+    포함하게 고친다.
+  - release workflow에 public header 검증 단계를 추가한다.
+  - `core/tools/fetch_release_binaries.sh`도 C++/Go/Rust vendored header로
+    `zlink_enum.h`, `zlink_errno.h`를 함께 복사하게 고친다.
+  - 이미 원격 tag `core/v5.3.6`이 있으므로 새 patch version `5.3.7`로 재시도한다.
+
+## 2026-05-05 core/v5.3.7 준비와 tag workflow 결과
+
+- tag: `core/v5.3.7`
+- commit: `745f4f904689d22e3385f4193c0ffcb761f61a1b`
+- release URL: `https://github.com/kairos-code-dev/zlink/releases/tag/core/v5.3.7`
+- version bump:
+  - `VERSION`: `LIBZLINK_VERSION=5.3.7`
+  - `core/include/zlink.h`: `ZLINK_VERSION_PATCH 7`
+  - `core/CMakeLists.txt`: `project(zlink VERSION 5.3.7 ...)`
+  - `core/CMakeLists.txt`: shared library `VERSION "5.3.7"`
+  - `core/packaging/conan/conandata.yml`에 `5.3.7` tag source를 추가했다.
+- release package 수정:
+  - `core/builds/linux/build.sh`, `core/builds/macos/build.sh`,
+    `core/builds/windows/build.ps1`에서 public header 네 개를 모두 복사한다.
+  - `.github/workflows/build.yml`에 `Verify public headers` 단계를 추가했다.
+  - `core/tools/fetch_release_binaries.sh`에서 C++/Go/Rust vendored header 복사를
+    네 public header로 맞췄다.
+- local 검증:
+  - `cmake --build core/build -j"$(nproc)"` 성공.
+  - unit test 21/21 통과.
+  - `test_spot_actor_dispatch` 1/1 통과.
+  - `cmake --install core/build --prefix /tmp/zlink-install-check` 뒤 설치 include에
+    네 public header가 모두 존재함을 확인했다.
+  - `git diff --check` 통과.
+- GitHub Actions 검증:
+  - `Build libzlink Core Libraries` run `25343262220` 성공.
+  - `Verify Build Artifacts` job에서 `Verify public headers` 단계가 성공했다.
+  - `Create Release` job 성공.
+  - `Release Core Conan Package` run `25343262218` 성공.
+- release asset:
+  - `checksums.txt`
+  - `libzlink-linux-arm64.tar.gz`
+  - `libzlink-linux-arm64.zip`
+  - `libzlink-linux-x64.tar.gz`
+  - `libzlink-linux-x64.zip`
+  - `libzlink-macos-arm64.tar.gz`
+  - `libzlink-macos-arm64.zip`
+  - `libzlink-macos-x64.tar.gz`
+  - `libzlink-macos-x64.zip`
+  - `libzlink-windows-arm64.tar.gz`
+  - `libzlink-windows-arm64.zip`
+  - `libzlink-windows-x64.tar.gz`
+  - `libzlink-windows-x64.zip`
+  - `zlink-5.3.7-source.tar.gz`
+- archive 직접 검증:
+  - `gh release download core/v5.3.7 -p 'libzlink-*.tar.gz'`로 여섯 tar.gz를 받았다.
+  - 각 archive에서 `include/zlink.h`, `include/zlink_enum.h`,
+    `include/zlink_errno.h`, `include/zlink_utils.h`가 모두 확인됐다.
+- 닫힌 gate:
+  - `core/v5.3.7` tag push 성공.
+  - native build workflow 성공.
+  - Conan workflow 성공.
+  - `gh release view core/v5.3.7` 성공.
+  - release에 core native archive가 모두 존재.
+  - `bindings/update_zlink_libs.sh`가 요구하는 필수 core asset이 모두 존재.
+  - 실패한 workflow와 release package 문제는 원인 수정 뒤 새 patch version으로 처리했다.

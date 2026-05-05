@@ -34,6 +34,7 @@ MONITOR_HWM=""
 SERVER_SHUTDOWN_TIMEOUT_MS=""
 SERVER_BIND_PORT=""
 RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-3000}"
+CASE_RETRIES="${PERF_MULTI_CASE_RETRIES:-3}"
 TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
 PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
 
@@ -58,6 +59,14 @@ resolve_results_dir() {
       echo "${dir}/multi/report"
       ;;
   esac
+}
+
+sleep_millis() {
+  local millis="${1:-0}"
+  if [[ ! "${millis}" =~ ^[0-9]+$ || "${millis}" -eq 0 ]]; then
+    return
+  fi
+  sleep "$((millis / 1000)).$(printf '%03d' "$((millis % 1000))")"
 }
 
 usage() {
@@ -623,13 +632,26 @@ for pattern_index in "${!PATTERNS[@]}"; do
       for size in "${SIZES[@]}"; do
         expected_cases=$((expected_cases + 1))
         case_log="${TMP_DIR}/${pattern}_${transport}_${size}_run${run}.log"
-        if run_go_perf ./perf/multi \
-          --pattern "${pattern}" \
-          --transport "${transport}" \
-          --msg-size "${size}" \
-          --duration "${DURATION}" \
-          --clients "${resolved_clients}" \
-          > "${case_log}" 2>&1; then
+        attempt=1
+        case_ok=0
+        while true; do
+          if run_go_perf ./perf/multi \
+            --pattern "${pattern}" \
+            --transport "${transport}" \
+            --msg-size "${size}" \
+            --duration "${DURATION}" \
+            --clients "${resolved_clients}" \
+            > "${case_log}" 2>&1; then
+            case_ok=1
+            break
+          fi
+          if grep -Eq '^UNSUPPORTED,' "${case_log}" || is_unsupported_output "${case_log}" || [[ "${attempt}" -ge "${CASE_RETRIES}" ]]; then
+            break
+          fi
+          attempt=$((attempt + 1))
+          sleep_millis "${RUN_COOLDOWN_MS}"
+        done
+        if [[ "${case_ok}" -eq 1 ]]; then
           append_case_output "${case_log}"
           case_result_lines="$(count_result_lines "${pattern}" "${transport}" "${size}" "${case_log}")"
           if [[ "${case_result_lines}" -gt 0 ]]; then
@@ -682,13 +704,14 @@ for pattern_index in "${!PATTERNS[@]}"; do
             progress_case_row "${pattern}" "${size}" "${case_log}"
             continue
           fi
-          echo "FAIL,current,${pattern},${transport},${size},exit_nonzero" >> "${RESULTS_FILE}"
+          echo "FAIL,current,${pattern},${transport},${size},exit_nonzero_after_${attempt}_attempts" >> "${RESULTS_FILE}"
           fail=$((fail + 1))
           transport_failures=$((transport_failures + 1))
-          FAILURES+=("${pattern} current ${transport} ${size}B: exit_nonzero")
+          FAILURES+=("${pattern} current ${transport} ${size}B: exit_nonzero_after_${attempt}_attempts")
         fi
         progress_table_header
         progress_case_row "${pattern}" "${size}" "${case_log}"
+        sleep_millis "${RUN_COOLDOWN_MS}"
       done
 
       if [[ "${transport_unsupported}" -eq 1 ]]; then

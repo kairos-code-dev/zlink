@@ -21,6 +21,7 @@ import dev.kairoscode.zlink.SpotRoutedHandler;
 import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.ZlinkException;
+import dev.kairoscode.zlink.internal.ActorInterop;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeLayouts;
@@ -34,6 +35,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -354,7 +356,53 @@ final class SpotRoutedSupport implements AutoCloseable {
             NativeLayouts.SPOT_DISPATCH_INFO_SUBJECT_KIND_OFFSET));
         MemorySegment subject = info.get(ValueLayout.ADDRESS,
           NativeLayouts.SPOT_DISPATCH_INFO_SUBJECT_OFFSET);
+        if (event == SpotDispatchEvent.ACTOR_READABLE
+            && subjectKind == SpotDispatchSubjectKind.ACTOR
+            && subject != null && subject.address() != 0) {
+            return new SpotDispatchInfo(event, subjectKind, subject,
+              drainActorParts(subject), new java.util.concurrent.atomic.AtomicInteger());
+        }
         return new SpotDispatchInfo(event, subjectKind, subject);
+    }
+
+    private static List<ActorPart> drainActorParts(MemorySegment actor) {
+        ArrayList<ActorPart> parts = new ArrayList<>();
+        try (Arena arena = Arena.ofConfined()) {
+            while (true) {
+                MemorySegment infoOut = arena.allocate(
+                  NativeLayouts.ACTOR_RECV_INFO_LAYOUT);
+                MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
+                Message message = new Message();
+                boolean success = false;
+                try {
+                    int rc = Native.actorRecvPart(actor, infoOut,
+                      InternalAccess.messageNativeHandle(message), hasMoreOut,
+                      RecvFlags.DONT_WAIT.value());
+                    if (rc != 0) {
+                        message.close();
+                        if (rc == RecvResult.NO_DATA.value()) {
+                            break;
+                        }
+                        throw new RecvException(RecvResult.fromValue(rc));
+                    }
+                    boolean hasMore =
+                      hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                    InternalAccess.messageFinishReceive(message, hasMore);
+                    success = true;
+                    parts.add(new ActorPart(
+                      ActorInterop.actorRecvInfoFromNative(infoOut), message,
+                      hasMore));
+                } finally {
+                    if (!success) {
+                        try {
+                            message.close();
+                        } catch (RuntimeException ignored) {
+                        }
+                    }
+                }
+            }
+        }
+        return List.copyOf(parts);
     }
 
     private CompletableFuture<List<Message>> requestViaNative(List<Message> parts,

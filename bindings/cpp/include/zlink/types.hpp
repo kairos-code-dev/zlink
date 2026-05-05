@@ -533,7 +533,15 @@ enum class request_result_t : int
     timed_out = ZLINK_REQUEST_TIMED_OUT,
     not_found = ZLINK_REQUEST_NOT_FOUND,
     terminated = ZLINK_REQUEST_TERMINATED,
-    protocol_error = ZLINK_REQUEST_PROTOCOL_ERROR
+    protocol_error = ZLINK_REQUEST_PROTOCOL_ERROR,
+    internal_error = ZLINK_REQUEST_INTERNAL_ERROR,
+    rejected = ZLINK_REQUEST_REJECTED,
+    conflict = ZLINK_REQUEST_CONFLICT,
+    busy = ZLINK_REQUEST_BUSY,
+    not_connected = ZLINK_REQUEST_NOT_CONNECTED,
+    invalid_argument = ZLINK_REQUEST_INVALID_ARGUMENT,
+    invalid_state = ZLINK_REQUEST_INVALID_STATE,
+    not_supported = ZLINK_REQUEST_NOT_SUPPORTED
 };
 
 enum class recv_result_t : int
@@ -733,6 +741,149 @@ routing_id_native (const routing_id_t &routing_id_) noexcept
 {
     return &routing_id_._native;
 }
+
+template<size_t N> inline std::string fixed_string_to_string (const char (&src_)[N]);
+
+enum class actor_create_status_t : int
+{
+    created = ZLINK_ACTOR_CREATE_CREATED,
+    existing = ZLINK_ACTOR_CREATE_EXISTING
+};
+
+enum class actor_admission_result_t : int
+{
+    accept = ZLINK_ACTOR_ADMISSION_ACCEPT,
+    reject = ZLINK_ACTOR_ADMISSION_REJECT
+};
+
+class actor_ref_t
+{
+  public:
+    actor_ref_t () noexcept : _native ()
+    {
+        std::memset (&_native, 0, sizeof (_native));
+    }
+
+    explicit actor_ref_t (const zlink_actor_ref_t &native_) : _native (native_) {}
+
+    const routing_id_t node_rid () const { return routing_id_t (_native.node_rid); }
+
+    const char *actor_id () const noexcept { return _native.actor_id; }
+
+    std::string actor_id_string () const
+    {
+        return fixed_string_to_string (_native.actor_id);
+    }
+
+    uint64_t generation () const noexcept { return _native.generation; }
+
+    bool unchecked () const noexcept { return _native.generation == 0u; }
+
+    const zlink_actor_ref_t &native () const noexcept { return _native; }
+    operator zlink_actor_ref_t () const noexcept { return _native; }
+
+  private:
+    zlink_actor_ref_t _native;
+};
+
+inline const zlink_actor_ref_t *
+actor_ref_native (const actor_ref_t &actor_) noexcept
+{
+    return &actor_.native ();
+}
+
+struct actor_recv_info_t
+{
+    actor_recv_info_t () : actor (), source_node_rid (), source_session_rid (), flags (0) {}
+
+    explicit actor_recv_info_t (const zlink_actor_recv_info_t &native_)
+        : actor (native_.actor),
+          source_node_rid (native_.source_node_rid),
+          source_session_rid (native_.source_session_rid),
+          flags (native_.flags)
+    {
+    }
+
+    actor_ref_t actor;
+    routing_id_t source_node_rid;
+    routing_id_t source_session_rid;
+    uint32_t flags;
+};
+
+struct actor_join_info_t
+{
+    actor_join_info_t () : actor (), source_node_rid (), request (NULL), flags (0) {}
+
+    explicit actor_join_info_t (const zlink_actor_join_info_t &native_)
+        : actor (native_.actor),
+          source_node_rid (native_.source_node_rid),
+          request (native_.request),
+          flags (native_.flags)
+    {
+    }
+
+    zlink_actor_join_info_t native () const
+    {
+        zlink_actor_join_info_t out;
+        std::memset (&out, 0, sizeof (out));
+        out.actor = actor.native ();
+        out.source_node_rid = source_node_rid.native ();
+        out.request = request;
+        out.flags = flags;
+        return out;
+    }
+
+    actor_ref_t actor;
+    routing_id_t source_node_rid;
+    void *request;
+    uint32_t flags;
+};
+
+struct actor_create_result_t
+{
+    actor_create_result_t () : status (actor_create_status_t::created), actor () {}
+
+    explicit actor_create_result_t (const zlink_actor_create_result_t &native_)
+        : status (static_cast<actor_create_status_t> (native_.status)),
+          actor (native_.actor)
+    {
+    }
+
+    actor_create_status_t status;
+    actor_ref_t actor;
+};
+
+struct actor_route_t
+{
+    actor_route_t () : actor (), joined (false), joined_spot_rid () {}
+
+    explicit actor_route_t (const zlink_actor_route_t &native_)
+        : actor (native_.actor),
+          joined (native_.joined != 0),
+          joined_spot_rid (native_.joined_spot_rid)
+    {
+    }
+
+    actor_ref_t actor;
+    bool joined;
+    routing_id_t joined_spot_rid;
+};
+
+struct actor_part_t
+{
+    actor_part_t () : info (), part (), has_more (false) {}
+
+    actor_part_t (actor_recv_info_t info_, message_t part_, bool has_more_)
+        : info (std::move (info_)),
+          part (std::move (part_)),
+          has_more (has_more_)
+    {
+    }
+
+    actor_recv_info_t info;
+    message_t part;
+    bool has_more;
+};
 
 class received_t
 {
@@ -1627,6 +1778,61 @@ struct spot_node_socket_snapshot_entry_t
     socket_type type;
     bool auto_hwm_visible;
     monitor_snapshot_t snapshot;
+};
+
+struct spot_node_spot_entry_t
+{
+    spot_node_spot_entry_t ()
+        : spot_rid (), dispatch_handler_attached (false),
+          joined_actor_count (0), pending_actor_join_count (0),
+          route_synced (false), last_changed_ms (0)
+    {
+    }
+
+    explicit spot_node_spot_entry_t (
+      const zlink_spot_node_spot_entry_t &entry_)
+        : spot_rid (entry_.spot_rid),
+          dispatch_handler_attached (entry_.dispatch_handler_attached != 0),
+          joined_actor_count (entry_.joined_actor_count),
+          pending_actor_join_count (entry_.pending_actor_join_count),
+          route_synced (entry_.route_synced != 0),
+          last_changed_ms (entry_.last_changed_ms)
+    {
+    }
+
+    routing_id_t spot_rid;
+    bool dispatch_handler_attached;
+    uint32_t joined_actor_count;
+    uint32_t pending_actor_join_count;
+    bool route_synced;
+    uint64_t last_changed_ms;
+};
+
+struct spot_node_actor_entry_t
+{
+    spot_node_actor_entry_t ()
+        : actor (), joined (false), joined_spot_rid (), route_synced (false),
+          pending_message_count (0), last_changed_ms (0)
+    {
+    }
+
+    explicit spot_node_actor_entry_t (
+      const zlink_spot_node_actor_entry_t &entry_)
+        : actor (entry_.actor),
+          joined (entry_.joined != 0),
+          joined_spot_rid (entry_.joined_spot_rid),
+          route_synced (entry_.route_synced != 0),
+          pending_message_count (entry_.pending_message_count),
+          last_changed_ms (entry_.last_changed_ms)
+    {
+    }
+
+    actor_ref_t actor;
+    bool joined;
+    routing_id_t joined_spot_rid;
+    bool route_synced;
+    uint32_t pending_message_count;
+    uint64_t last_changed_ms;
 };
 
 enum class spot_service_attachment_role_t

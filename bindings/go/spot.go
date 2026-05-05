@@ -40,11 +40,12 @@ import (
 )
 
 type SpotNode struct {
-	handle  unsafe.Pointer
-	closed  bool
-	closing bool
-	mu      sync.Mutex
-	spots   map[*spotCore]struct{}
+	handle          unsafe.Pointer
+	closed          bool
+	closing         bool
+	mu              sync.Mutex
+	spots           map[*spotCore]struct{}
+	admissionHandle cgo.Handle
 }
 
 type SpotNodeMode int
@@ -389,6 +390,10 @@ func (n *SpotNode) Close() error {
 	n.closing = false
 	n.handle = nil
 	n.spots = nil
+	if n.admissionHandle != 0 {
+		releaseCallbackHandle(n.admissionHandle)
+		n.admissionHandle = 0
+	}
 	return nil
 }
 

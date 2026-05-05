@@ -53,4 +53,16 @@ public sealed class test_domain_objects
         Assert.Throws<ZlinkRecvException>(() =>
             topicMessage.SinglePartOrThrow());
     }
+
+    [Fact]
+    public void actor_ref_keeps_generation_zero_as_unchecked_ref()
+    {
+        ActorRef actor = ActorRef.Unchecked(
+            CoreTestSupport.RoutingIdUtf8("node-a"), "actor-a");
+
+        Assert.True(actor.IsUnchecked);
+        Assert.Equal(0UL, actor.Generation);
+        Assert.Equal("actor-a", actor.ActorId);
+        Assert.Equal("node-a", actor.NodeRid.ToString());
+    }
 }

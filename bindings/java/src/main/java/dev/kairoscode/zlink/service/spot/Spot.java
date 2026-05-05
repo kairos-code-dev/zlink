@@ -19,6 +19,7 @@ import dev.kairoscode.zlink.SpotDispatchEventHandler;
 import dev.kairoscode.zlink.SpotRoutedHandler;
 import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.SubmitResult;
+import dev.kairoscode.zlink.internal.ActorInterop;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.NativeHelpers;
@@ -36,6 +37,7 @@ import java.lang.invoke.MethodType;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -678,6 +680,93 @@ public final class Spot implements AutoCloseable {
         routedSupport.onDispatchEvent(handler);
     }
 
+    public ActorJoinRequest recvActorJoin(RecvFlags flags) {
+        Objects.requireNonNull(flags, "flags");
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment infoOut = arena.allocate(
+              NativeLayouts.ACTOR_JOIN_INFO_LAYOUT);
+            Message message = new Message();
+            boolean success = false;
+            try {
+                int rc = Native.spotActorJoinRecv(handle, infoOut,
+                  InternalAccess.messageNativeHandle(message), flags.value());
+                if (rc != 0) {
+                    if (flags == RecvFlags.DONT_WAIT
+                        && rc == RecvResult.NO_DATA.value()) {
+                        return null;
+                    }
+                    throw new RecvException(RecvResult.fromValue(rc));
+                }
+                InternalAccess.messageFinishReceive(message, false);
+                success = true;
+                return new ActorJoinRequest(
+                  ActorInterop.actorJoinInfoFromNative(infoOut), message);
+            } finally {
+                if (!success) {
+                    message.close();
+                }
+            }
+        }
+    }
+
+    public ActorJoinRequest recvActorJoin() {
+        return recvActorJoin(RecvFlags.NONE);
+    }
+
+    public void replyActorJoin(ActorJoinInfo info,
+                               boolean accepted,
+                               Message message) {
+        Objects.requireNonNull(info, "info");
+        Objects.requireNonNull(message, "message");
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeInfo = arena.allocate(
+              NativeLayouts.ACTOR_JOIN_INFO_LAYOUT);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            ActorInterop.writeActorJoinInfo(nativeInfo, info);
+            InternalAccess.messageCopyTo(message, nativeMsg);
+            int rc = Native.spotActorJoinReply(handle, nativeInfo,
+              accepted ? 1 : 0, nativeMsg);
+            if (rc != 0) {
+                NativeMsg.msgClose(nativeMsg);
+                throw new SubmitException(SubmitResult.fromValue(rc));
+            }
+        }
+    }
+
+    public List<ActorRef> actorsSnapshot() {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
+            int rc = Native.spotActorsSnapshot(handle, MemorySegment.NULL,
+              count);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError("zlink_spot_actors_snapshot");
+            }
+            int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
+            if (available == 0) {
+                return List.of();
+            }
+            MemorySegment entries = arena.allocate(
+              NativeLayouts.ACTOR_REF_LAYOUT, available);
+            count.set(ValueLayout.JAVA_LONG, 0, available);
+            rc = Native.spotActorsSnapshot(handle, entries, count);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError("zlink_spot_actors_snapshot");
+            }
+            int actual = Math.min(available, boundedCount(
+              count.get(ValueLayout.JAVA_LONG, 0)));
+            long stride = NativeLayouts.ACTOR_REF_LAYOUT.byteSize();
+            ArrayList<ActorRef> out = new ArrayList<>(actual);
+            for (int i = 0; i < actual; i++) {
+                out.add(ActorInterop.actorRefFromNative(entries.asSlice(
+                  (long) i * stride, stride)));
+            }
+            return List.copyOf(out);
+        }
+    }
+
     @Override
     public void close() {
         MemorySegment currentHandle = handle;
@@ -733,6 +822,14 @@ public final class Spot implements AutoCloseable {
         if (messages.isEmpty())
             throw new IllegalArgumentException(name + " required");
         return messages.size();
+    }
+
+    private static int boundedCount(long value) {
+        if (value <= 0)
+            return 0;
+        if (value > Integer.MAX_VALUE)
+            return Integer.MAX_VALUE;
+        return (int) value;
     }
 
     private void ensureOpen() {

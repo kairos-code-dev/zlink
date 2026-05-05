@@ -58,6 +58,35 @@ with the rules here, this section wins.
   via Discovery, the library picks one initiator per pair by a total order
   on `(routing_id, advertise_endpoint)`. Users do not configure this.
 
+## Actor Dispatch Public Surface
+
+Python exposes Actor dispatch through public `zlink` package symbols only.
+
+```python
+class ActorRef: ...
+class ActorCreateResult: ...
+class ActorRoute: ...
+class ActorRecvInfo: ...
+class ActorJoinInfo: ...
+class ActorPart: ...
+class ActorJoinRequest: ...
+class SpotNodeSpotEntry: ...
+class SpotNodeActorEntry: ...
+class Actor: ...
+
+def remote_actor_ref(target_node_rid, actor_id): ...
+```
+
+`SpotNode` exposes `actor`, `actor_lookup`, `create_remote_actor`,
+`destroy_remote_actor`, `on_actor_admission`, `join_actor`, `leave_actor`,
+`spots_snapshot`, and `actors_snapshot`. `Spot` exposes `recv_actor_join`,
+`reply_actor_join`, and `actors_snapshot`. `StreamSocket` exposes
+`bind_actor`, `unbind_actor`, and `send_bound_actor`. `Discovery` exposes
+`resolve_actor`.
+
+`ActorRef.generation == 0` is an unchecked remote ref. One Actor can join only
+one Spot at a time, and a STREAM session can bind multiple Actors.
+
 ## Core
 
 ### Context
@@ -1081,10 +1110,6 @@ class Discovery:
     def connect_registry(self, registry_endpoint: str) -> None: ...              # Raises: ConnectError
     def set_value(self, value: int) -> None: ...                                 # Raises: ConfigError
     def get_value(self) -> int: ...                                              # Raises: ConfigError
-    def bind_route(self, kind: int, key: bytes | bytearray,
-                   value: bytes | bytearray) -> None: ...                       # Raises: ConfigError
-    def unbind_route(self, kind: int, key: bytes | bytearray) -> None: ...       # Raises: ConfigError
-    def resolve_route(self, kind: int, key: bytes | bytearray) -> tuple[RoutingId, bytes]: ...  # Raises: ConfigError
     def member_peers(self) -> list[MemberPeerEntry]: ...                         # Raises: ConfigError
     spot_owner_sync_enabled: bool                                                # set/get; publishes SPOT owner rows when True
     def resolve_spot(self, spot_rid: RoutingId) -> RoutingId: ...                # Raises: ConfigError — maps to zlink_discovery_resolve_spot; publisher must enable SPOT owner sync for Registry-backed lookup

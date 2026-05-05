@@ -11,6 +11,7 @@ use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, Message, RoutingId};
 use crate::options::{CommonSocketOptions, StreamSocketOptions};
+use crate::service::{ActorRef, SpotNode, check_request_result};
 
 use super::{
     SendHandle, SocketInner, impl_base_socket, impl_recv_options, impl_routing_id_options,
@@ -106,6 +107,85 @@ impl StreamSocket {
         SendHandle::new(self.inner.handle)
     }
 
+    pub fn bind_actor(
+        &self,
+        node: &SpotNode,
+        session_rid: &RoutingId,
+        actor: &ActorRef,
+        timeout: Duration,
+    ) -> Result<(), crate::error::RequestError> {
+        let raw_actor = actor.to_raw().map_err(|err| {
+            crate::error::RequestError::new(
+                crate::error::RequestResult::InvalidArgument,
+                err.internal_errno(),
+            )
+        })?;
+        check_request_result(unsafe {
+            ffi::zlink_stream_bind_actor(
+                node.raw(),
+                self.inner.handle,
+                session_rid.as_raw(),
+                &raw_actor,
+                timeout_to_timeout_ms(timeout),
+            )
+        })
+    }
+
+    pub fn unbind_actor(
+        &self,
+        node: &SpotNode,
+        session_rid: &RoutingId,
+        actor_id: &str,
+        timeout: Duration,
+    ) -> Result<(), crate::error::RequestError> {
+        let c_actor_id = std::ffi::CString::new(actor_id).map_err(|_| {
+            crate::error::RequestError::new(
+                crate::error::RequestResult::InvalidArgument,
+                libc::EINVAL,
+            )
+        })?;
+        check_request_result(unsafe {
+            ffi::zlink_stream_unbind_actor(
+                node.raw(),
+                self.inner.handle,
+                session_rid.as_raw(),
+                c_actor_id.as_ptr(),
+                timeout_to_timeout_ms(timeout),
+            )
+        })
+    }
+
+    pub fn send_bound_actor_part(
+        &self,
+        node: &SpotNode,
+        session_rid: &RoutingId,
+        actor_id: &str,
+        parts: impl IntoMultipart,
+        flags: SendFlags,
+    ) -> Result<(), SubmitError> {
+        let c_actor_id = std::ffi::CString::new(actor_id).map_err(|_| {
+            crate::error::SubmitError::new(
+                crate::error::SubmitResult::InvalidArgument,
+                libc::EINVAL,
+            )
+        })?;
+        let mut parts = parts.into_parts();
+        let mut native = super::prepare_send_parts(&mut parts)?;
+        let rc = super::submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+            ffi::zlink_stream_send_bound_actor_part(
+                node.raw(),
+                self.inner.handle,
+                session_rid.as_raw(),
+                c_actor_id.as_ptr(),
+                part,
+                flags.bits(),
+                part_flag,
+            )
+        })?;
+        drop(parts);
+        crate::error::check_submit_rc(rc)
+    }
+
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self> {
         CommonSocketOptions::new(self)
     }
@@ -129,6 +209,15 @@ impl StreamSocket {
             self.inner.handle,
             ffi::zlink_stream_option_t::ZLINK_STREAM_OPT_NOTIFY,
         )
+    }
+}
+
+fn timeout_to_timeout_ms(timeout: Duration) -> u32 {
+    let millis = timeout.as_millis();
+    if millis == 0 {
+        0
+    } else {
+        millis.min(u32::MAX as u128) as u32
     }
 }
 

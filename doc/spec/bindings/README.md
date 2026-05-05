@@ -3,11 +3,8 @@
 # Bindings API Policy
 
 > request-reply 와 SPOT routed 구현 기준은 정식 core spec 문서를 따른다.
-> Actor dispatch binding 반영 전 추적 기준은
-> `doc/spec/draft/spot-actor-dispatch.ko.md` 와
-> `doc/plan/spot-actor-dispatch-implementation-plan.ko.md` 이다. binding 정식
-> 계약은 core release 뒤 native library를 최신화한 다음 언어별 문서에 순차
-> 반영한다.
+> Actor dispatch binding 계약은 core release와 native library 최신화가 끝난
+> 뒤 언어별 문서에 반영된 공개 표면을 따른다.
 > 언어별 인터페이스 시그니처와 사용 예는
 > `c/`, `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
 
@@ -222,9 +219,8 @@ public shape를 기준으로 고정한다.
   `service_name` 을 노출해야 한다.
 - `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/channel-reply/timer plane 의
   canonical readable notification surface 이다.
-- Actor dispatch surface는 core release 뒤 언어별로 순차 반영한다. 그 전까지
-  binding spec 본문에는 구현 전 공개 계약처럼 섞어 쓰지 않고, 위 draft와 plan 링크를
-  추적 기준으로 둔다.
+- Actor dispatch surface는 모든 바인딩에서 언어별 관례에 맞는 공개 타입으로
+  노출한다. 공통 의미는 아래 `Actor Dispatch Binding Contract` 절을 따른다.
 - `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` 은 모든 바인딩에서 typed context option 으로
   노출해야 한다. 값은 compact, low latency, balanced, throughput 네 profile 이며
   기본값은 balanced 이다.
@@ -277,6 +273,36 @@ public shape를 기준으로 고정한다.
   `ZLINK_OPT_RID_DUPLICATE_POLICY` = `ZLINK_RID_DUPLICATE_REJECT`,
   `ZLINK_PUB_OPT_NODROP` = `1`.
   바인딩 예제는 이 기본값을 기준으로 작성한다.
+
+## Actor Dispatch Binding Contract
+
+이 절은 모든 언어 바인딩에 공통으로 적용되는 Actor 공개 계약이다. 언어별 문서는
+아래 계약을 각 언어 관례에 맞는 이름과 타입으로 풀어서 적어야 한다.
+
+- Actor id는 비어 있지 않은 UTF-8 문자열이며 최대 255 bytes다. NUL 문자는
+  허용하지 않는다.
+- Actor ref는 `node_rid`, `actor_id`, `generation`을 가진다.
+  `generation == 0`은 unchecked remote ref이며 유효하지 않은 값으로 보지 않는다.
+- local Actor는 `SpotNode`가 만든다. 한 Actor는 동시에 하나의 Spot에만 join할
+  수 있고, leave는 unread 메시지를 비우지 않는다.
+- 한 STREAM session은 여러 Actor를 bind할 수 있다. bind/unbind는 session routing
+  id와 actor id 또는 Actor ref를 기준으로 한다.
+- STREAM에서 Actor로 보내는 public API는 bound session과 actor id를 선택자로
+  사용한다. 제거된 lookup/send helper 이름은 public API에 남기지 않는다.
+- Actor readable dispatch event는 어떤 Actor를 drain해야 하는지 알 수 있어야
+  한다. callback을 다른 실행 컨텍스트로 넘기는 언어는 callback 진입 시점에
+  Actor part를 nonblocking으로 미리 drain해서 public dispatch info가 그 part를
+  반환하게 해야 한다.
+- Spot join request는 message를 포함한다. join reply도 accept/reject 결과와
+  함께 message를 caller에게 돌려줘야 한다.
+- Remote Actor create-or-get은 target Actor가 없을 때만 admission handler를
+  호출한다. 이미 있으면 existing 결과를 반환한다.
+- Discovery Actor route는 Actor 생성 시점이 아니라 STREAM bind 성공 시점에
+  active route로 보인다.
+- Actor별 queue limit option은 없다. 바인딩은 이를 public option으로 만들면
+  안 된다.
+- 제거된 Actor ref 함수, stream actor lookup/send helper, session actor key
+  설계 이름은 public surface와 문서에 남기지 않는다.
 
 ## 문서 해석 규칙
 - 이 문서의 정책 본문은 기본적으로 규범 문서다.
@@ -1078,7 +1104,7 @@ Registry (서버)
 Discovery (클라이언트 — 서비스 뷰)
   ├── connectRegistry (Registry에 연결)
   ├── attributes: setValue/getValue
-  ├── routes: bindRoute, unbindRoute, resolveRoute
+  ├── routes: resolveSpot, resolveActor
   ├── introspection: memberPeers
   └── lifecycle: destroy → 연결된 모든 participant 종료
 
@@ -1162,7 +1188,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 |---|---|
 | `connectRegistry` | Y |
 | `setValue` / `getValue` | Y |
-| `bindRoute` / `unbindRoute` / `resolveRoute` | Y |
+| `resolveSpot` / `resolveActor` | Y |
 | `memberPeers` | Y |
 | `close` | Y |
 
@@ -1286,7 +1312,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 | Spot | `close` | facade 종료 |
 | Discovery | `connectRegistry` | Registry에 연결 |
 | Discovery | `setValue` / `getValue` | 서비스 값 설정/조회 |
-| Discovery | `bindRoute` / `unbindRoute` / `resolveRoute` | owner-bound route 등록/해제/조회 |
+| Discovery | `resolveSpot` / `resolveActor` | SPOT owner와 Actor active route 조회 |
 | Discovery | `memberPeers` | 멤버 peer 목록 조회 |
 | Discovery | `close` | Discovery 종료 (participant 포함) |
 | Registry | `bind` | PUB + ROUTER endpoint 바인드 |
@@ -1340,7 +1366,7 @@ RegistryQueryClient (원격 토폴로지 조회)
 - SpotNode attachPubIngress 경로 동작 확인
 - Discovery connectRegistry → 서비스 등록 경로 성공
 - Discovery setValue/getValue round-trip 확인
-- Discovery bindRoute/resolveRoute/unbindRoute 경로 확인
+- Discovery resolveSpot/resolveActor 경로 확인
 - Discovery memberPeers 조회 확인
 - Registry bind → Discovery connectRegistry → 서비스 발견 경로 성공
   (Registry 구현된 경우)

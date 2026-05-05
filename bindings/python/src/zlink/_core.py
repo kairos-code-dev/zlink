@@ -114,6 +114,22 @@ def _request_result_from_errno(err):
         return RequestResult.NOT_FOUND
     if err in (getattr(_errno, "ETERM", 0),):
         return RequestResult.TERMINATED
+    if err in (_errno.EIO,):
+        return RequestResult.INTERNAL_ERROR
+    if err in (_errno.ECONNREFUSED,):
+        return RequestResult.REJECTED
+    if err in (getattr(_errno, "ESTALE", 116),):
+        return RequestResult.CONFLICT
+    if err in (_errno.EBUSY,):
+        return RequestResult.BUSY
+    if err in (_errno.ENOTCONN,):
+        return RequestResult.NOT_CONNECTED
+    if err in (_errno.EINVAL,):
+        return RequestResult.INVALID_ARGUMENT
+    if err in (getattr(_errno, "EALREADY", 114),):
+        return RequestResult.INVALID_STATE
+    if err in (_errno.ENOTSUP, getattr(_errno, "EOPNOTSUPP", _errno.ENOTSUP)):
+        return RequestResult.NOT_SUPPORTED
     return RequestResult.PROTOCOL_ERROR
 
 
@@ -130,6 +146,24 @@ def _request_result_internal_errno(result):
         return _errno.ETIMEDOUT
     if typed == RequestResult.TERMINATED:
         return getattr(_errno, "ETERM", 0)
+    if typed == RequestResult.NOT_FOUND:
+        return _errno.ENOENT
+    if typed == RequestResult.INTERNAL_ERROR:
+        return _errno.EIO
+    if typed == RequestResult.REJECTED:
+        return _errno.ECONNREFUSED
+    if typed == RequestResult.CONFLICT:
+        return _errno.EINVAL
+    if typed == RequestResult.BUSY:
+        return _errno.EBUSY
+    if typed == RequestResult.NOT_CONNECTED:
+        return _errno.ENOTCONN
+    if typed == RequestResult.INVALID_ARGUMENT:
+        return _errno.EINVAL
+    if typed == RequestResult.INVALID_STATE:
+        return _errno.EINVAL
+    if typed == RequestResult.NOT_SUPPORTED:
+        return _errno.ENOTSUP
     return 0
 
 

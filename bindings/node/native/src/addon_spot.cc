@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "addon_api.h"
+#include <chrono>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -13,6 +15,9 @@ static napi_value unsupported_spot_node(napi_env env, const char *method);
 static napi_value create_message_snapshot_value(napi_env env,
                                                 const zlink_routing_id_t *routing_id,
                                                 zlink_msg_t *msg);
+static napi_value create_buffer_copy_or_empty(napi_env env,
+                                              const void *data,
+                                              size_t len);
 static void set_uint32_property(napi_env env,
                                 napi_value obj,
                                 const char *name,
@@ -26,6 +31,23 @@ static napi_value create_monitor_snapshot_value(
 static bool build_spot_node_socket_snapshot_filter(
   napi_env env, napi_value value,
   zlink_spot_node_socket_snapshot_filter_t *out);
+static napi_value create_actor_ref_value(napi_env env,
+                                         const zlink_actor_ref_t &actor);
+static bool parse_actor_ref_value(napi_env env,
+                                  napi_value value,
+                                  zlink_actor_ref_t *out);
+static napi_value create_actor_recv_info_value(
+  napi_env env, const zlink_actor_recv_info_t &info);
+static napi_value create_actor_join_info_value(
+  napi_env env, const zlink_actor_join_info_t &info);
+static bool parse_actor_join_info_value(napi_env env,
+                                        napi_value value,
+                                        zlink_actor_join_info_t *out);
+static napi_value create_actor_part_value(
+  napi_env env,
+  const zlink_actor_recv_info_t &info,
+  const std::vector<unsigned char> &part,
+  int more);
 
 static const size_t k_spot_send_ready_slot_count = 8;
 
@@ -61,6 +83,266 @@ static bool parse_routing_id_value(napi_env env,
     routing_id->size = static_cast<uint8_t>(len);
     memcpy(routing_id->data, data, len);
     return true;
+}
+
+static std::string get_optional_string_property(napi_env env,
+                                                napi_value obj,
+                                                const char *name)
+{
+    napi_value prop;
+    bool has_prop = false;
+    if (napi_has_named_property(env, obj, name, &has_prop) != napi_ok
+        || !has_prop
+        || napi_get_named_property(env, obj, name, &prop) != napi_ok) {
+        return std::string();
+    }
+    return get_string(env, prop);
+}
+
+static bool get_optional_routing_id_property(napi_env env,
+                                             napi_value obj,
+                                             const char *name,
+                                             zlink_routing_id_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    napi_value prop;
+    bool has_prop = false;
+    if (napi_has_named_property(env, obj, name, &has_prop) != napi_ok
+        || !has_prop
+        || napi_get_named_property(env, obj, name, &prop) != napi_ok) {
+        return true;
+    }
+    napi_valuetype type = napi_undefined;
+    napi_typeof(env, prop, &type);
+    if (type == napi_null || type == napi_undefined)
+        return true;
+    return parse_routing_id_value(env, prop, out);
+}
+
+static bool parse_actor_ref_value(napi_env env,
+                                  napi_value value,
+                                  zlink_actor_ref_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    napi_valuetype type = napi_undefined;
+    if (napi_typeof(env, value, &type) != napi_ok || type != napi_object) {
+        napi_throw_type_error(env, NULL, "actorRef must be an object");
+        return false;
+    }
+    if (!get_optional_routing_id_property(env, value, "nodeRid", &out->node_rid)
+        || (out->node_rid.size == 0
+            && !get_optional_routing_id_property(env, value, "node_rid",
+                                                 &out->node_rid))) {
+        return false;
+    }
+    if (out->node_rid.size == 0) {
+        napi_throw_type_error(env, NULL, "actorRef.nodeRid must be a RoutingId");
+        return false;
+    }
+    std::string actor_id = get_optional_string_property(env, value, "actorId");
+    if (actor_id.empty())
+        actor_id = get_optional_string_property(env, value, "actor_id");
+    if (actor_id.empty() || actor_id.size() >= sizeof(out->actor_id)) {
+        napi_throw_range_error(env, NULL, "actorId must be 1..255 bytes");
+        return false;
+    }
+    memcpy(out->actor_id, actor_id.c_str(), actor_id.size());
+    napi_value generation_value;
+    bool has_generation = false;
+    if (napi_has_named_property(env, value, "generation", &has_generation)
+        == napi_ok
+        && has_generation
+        && napi_get_named_property(env, value, "generation", &generation_value)
+             == napi_ok) {
+        bool lossless = false;
+        napi_get_value_bigint_uint64(env, generation_value, &out->generation,
+                                     &lossless);
+    }
+    return true;
+}
+
+static napi_value create_actor_ref_value(napi_env env,
+                                         const zlink_actor_ref_t &actor)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_value node_rid = create_routing_id_value(env, actor.node_rid);
+    napi_set_named_property(env, obj, "nodeRid", node_rid);
+    set_string_property(env, obj, "actorId", actor.actor_id);
+    napi_value generation;
+    napi_create_bigint_uint64(env, actor.generation, &generation);
+    napi_set_named_property(env, obj, "generation", generation);
+    return obj;
+}
+
+static napi_value create_actor_recv_info_value(
+  napi_env env, const zlink_actor_recv_info_t &info)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_set_named_property(env, obj, "actor",
+                            create_actor_ref_value(env, info.actor));
+    napi_set_named_property(env, obj, "sourceNodeRid",
+                            create_routing_id_value(env, info.source_node_rid));
+    napi_set_named_property(
+      env, obj, "sourceSessionRid",
+      create_routing_id_value(env, info.source_session_rid));
+    set_uint32_property(env, obj, "flags", info.flags);
+    return obj;
+}
+
+static napi_value create_actor_join_info_value(
+  napi_env env, const zlink_actor_join_info_t &info)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_set_named_property(env, obj, "actor",
+                            create_actor_ref_value(env, info.actor));
+    napi_set_named_property(env, obj, "sourceNodeRid",
+                            create_routing_id_value(env, info.source_node_rid));
+    napi_value request;
+    napi_create_bigint_uint64(
+      env, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(info.request)),
+      &request);
+    napi_set_named_property(env, obj, "requestHandle", request);
+    set_uint32_property(env, obj, "flags", info.flags);
+    return obj;
+}
+
+static bool parse_actor_join_info_value(napi_env env,
+                                        napi_value value,
+                                        zlink_actor_join_info_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    napi_valuetype type = napi_undefined;
+    if (napi_typeof(env, value, &type) != napi_ok || type != napi_object) {
+        napi_throw_type_error(env, NULL, "join info must be an object");
+        return false;
+    }
+    napi_value actor_value;
+    if (napi_get_named_property(env, value, "actor", &actor_value) != napi_ok
+        || !parse_actor_ref_value(env, actor_value, &out->actor)) {
+        return false;
+    }
+    if (!get_optional_routing_id_property(env, value, "sourceNodeRid",
+                                          &out->source_node_rid)) {
+        return false;
+    }
+    napi_value request_value;
+    bool has_request = false;
+    if (napi_has_named_property(env, value, "requestHandle", &has_request)
+        != napi_ok
+        || !has_request
+        || napi_get_named_property(env, value, "requestHandle", &request_value)
+             != napi_ok) {
+        napi_throw_type_error(env, NULL, "join info requestHandle is required");
+        return false;
+    }
+    uint64_t request_raw = 0;
+    bool lossless = false;
+    napi_get_value_bigint_uint64(env, request_value, &request_raw, &lossless);
+    out->request = reinterpret_cast<void *>(static_cast<uintptr_t>(request_raw));
+    napi_value flags_value;
+    bool has_flags = false;
+    if (napi_has_named_property(env, value, "flags", &has_flags) == napi_ok
+        && has_flags
+        && napi_get_named_property(env, value, "flags", &flags_value) == napi_ok) {
+        napi_get_value_uint32(env, flags_value, &out->flags);
+    }
+    return true;
+}
+
+static napi_value create_actor_part_value(
+  napi_env env,
+  const zlink_actor_recv_info_t &info,
+  const std::vector<unsigned char> &part,
+  int more)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_set_named_property(env, obj, "info",
+                            create_actor_recv_info_value(env, info));
+    napi_value msg = create_buffer_copy_or_empty(
+      env, part.empty() ? NULL : part.data(), part.size());
+    napi_set_named_property(env, obj, "message", msg);
+    napi_value more_value;
+    napi_get_boolean(env, more != ZLINK_PART_FINAL, &more_value);
+    napi_set_named_property(env, obj, "more", more_value);
+    return obj;
+}
+
+static napi_value create_actor_create_result_value(
+  napi_env env, const zlink_actor_create_result_t &result)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+    set_uint32_property(env, obj, "status", static_cast<uint32_t>(result.status));
+    napi_set_named_property(env, obj, "actor",
+                            create_actor_ref_value(env, result.actor));
+    return obj;
+}
+
+static napi_value create_actor_route_value(napi_env env,
+                                           const zlink_actor_route_t &route)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_set_named_property(env, obj, "actor",
+                            create_actor_ref_value(env, route.actor));
+    napi_value joined;
+    napi_get_boolean(env, route.joined != 0, &joined);
+    napi_set_named_property(env, obj, "joined", joined);
+    napi_set_named_property(env, obj, "joinedSpotRid",
+                            create_routing_id_value(env, route.joined_spot_rid));
+    return obj;
+}
+
+static napi_value create_spot_node_spot_entry_value(
+  napi_env env, const zlink_spot_node_spot_entry_t &entry)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_set_named_property(env, obj, "spotRid",
+                            create_routing_id_value(env, entry.spot_rid));
+    napi_value dispatch_attached;
+    napi_get_boolean(env, entry.dispatch_handler_attached != 0,
+                     &dispatch_attached);
+    napi_set_named_property(env, obj, "dispatchHandlerAttached",
+                            dispatch_attached);
+    set_uint32_property(env, obj, "joinedActorCount",
+                        entry.joined_actor_count);
+    set_uint32_property(env, obj, "pendingActorJoinCount",
+                        entry.pending_actor_join_count);
+    napi_value route_synced;
+    napi_get_boolean(env, entry.route_synced != 0, &route_synced);
+    napi_set_named_property(env, obj, "routeSynced", route_synced);
+    napi_value changed;
+    napi_create_bigint_uint64(env, entry.last_changed_ms, &changed);
+    napi_set_named_property(env, obj, "lastChangedMs", changed);
+    return obj;
+}
+
+static napi_value create_spot_node_actor_entry_value(
+  napi_env env, const zlink_spot_node_actor_entry_t &entry)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_set_named_property(env, obj, "actor",
+                            create_actor_ref_value(env, entry.actor));
+    napi_value joined;
+    napi_get_boolean(env, entry.joined != 0, &joined);
+    napi_set_named_property(env, obj, "joined", joined);
+    napi_set_named_property(env, obj, "joinedSpotRid",
+                            create_routing_id_value(env, entry.joined_spot_rid));
+    napi_value route_synced;
+    napi_get_boolean(env, entry.route_synced != 0, &route_synced);
+    napi_set_named_property(env, obj, "routeSynced", route_synced);
+    set_uint32_property(env, obj, "pendingMessageCount",
+                        entry.pending_message_count);
+    napi_value changed;
+    napi_create_bigint_uint64(env, entry.last_changed_ms, &changed);
+    napi_set_named_property(env, obj, "lastChangedMs", changed);
+    return obj;
 }
 
 static const size_t k_spot_routed_slot_count = 256;
@@ -100,6 +382,9 @@ struct spot_dispatch_event_js_payload_t
     int event;
     uint32_t subject_kind;
     uint64_t subject_handle;
+    std::vector<zlink_actor_recv_info_t> actor_infos;
+    std::vector<std::vector<unsigned char> > actor_parts;
+    std::vector<int> actor_more;
 };
 
 struct spot_dispatch_event_js_state_t
@@ -125,6 +410,28 @@ struct request_js_state_t
 
     napi_env env;
     napi_threadsafe_function tsfn;
+};
+
+struct actor_admission_js_state_t
+{
+    actor_admission_js_state_t () : node (NULL), env (NULL), tsfn (NULL) {}
+
+    void *node;
+    napi_env env;
+    napi_threadsafe_function tsfn;
+};
+
+struct actor_admission_request_t
+{
+    actor_admission_request_t ()
+      : result (ZLINK_ACTOR_ADMISSION_REJECT), done (false) {}
+
+    std::mutex mu;
+    std::condition_variable cv;
+    std::string actor_id;
+    std::vector<unsigned char> message;
+    zlink_actor_admission_result_t result;
+    bool done;
 };
 
 static std::mutex g_spot_routed_slots_mu;
@@ -885,6 +1192,16 @@ static void spot_dispatch_event_tsfn_call_js(napi_env env,
     napi_value subject_handle;
     napi_create_bigint_uint64(env, payload->subject_handle, &subject_handle);
     napi_set_named_property(env, info, "subjectHandle", subject_handle);
+    napi_value actor_parts;
+    napi_create_array_with_length(env, payload->actor_parts.size(), &actor_parts);
+    for (size_t i = 0; i < payload->actor_parts.size(); ++i) {
+        napi_value part = create_actor_part_value(env,
+                                                  payload->actor_infos[i],
+                                                  payload->actor_parts[i],
+                                                  payload->actor_more[i]);
+        napi_set_element(env, actor_parts, static_cast<uint32_t>(i), part);
+    }
+    napi_set_named_property(env, info, "actorParts", actor_parts);
     argv[0] = info;
     napi_value recv;
     napi_value this_arg;
@@ -932,6 +1249,38 @@ static void spot_dispatch_event_dispatch(void *spot_,
     payload->subject_kind = static_cast<uint32_t>(info->subject_kind);
     payload->subject_handle =
       static_cast<uint64_t>(reinterpret_cast<uintptr_t>(info->subject));
+    if (info->event == ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE
+        && info->subject_kind == ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR
+        && info->subject) {
+        for (;;) {
+            zlink_actor_recv_info_t recv_info;
+            zlink_msg_t part;
+            zlink_part_flag_t more = ZLINK_PART_FINAL;
+            if (zlink_msg_init(&part) != 0)
+                break;
+            int rc = zlink_actor_recv_part(info->subject,
+                                           &recv_info,
+                                           &part,
+                                           &more,
+                                           ZLINK_RECV_FLAGS_DONTWAIT);
+            if (rc != ZLINK_RECV_OK) {
+                zlink_msg_close(&part);
+                break;
+            }
+            const unsigned char *data =
+              static_cast<const unsigned char *>(zlink_msg_data(&part));
+            const size_t size = zlink_msg_size(&part);
+            payload->actor_infos.push_back(recv_info);
+            std::vector<unsigned char> copy;
+            if (data && size > 0)
+                copy.assign(data, data + size);
+            payload->actor_parts.push_back(copy);
+            payload->actor_more.push_back(static_cast<int>(more));
+            zlink_msg_close(&part);
+            if (more == ZLINK_PART_FINAL)
+                break;
+        }
+    }
     if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
         != napi_ok) {
         return;
@@ -1964,6 +2313,98 @@ napi_value spot_recv_routed(napi_env env, napi_callback_info info)
     return out;
 }
 
+napi_value spot_actor_join_recv(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    int32_t flags = 0;
+    if (argc >= 2)
+        napi_get_value_int32(env, argv[1], &flags);
+    zlink_actor_join_info_t join_info;
+    zlink_msg_t message;
+    if (zlink_msg_init(&message) != 0)
+        return throw_last_error(env, "spotActorJoinRecv failed");
+    int rc = zlink_spot_actor_join_recv(
+      spot, &join_info, &message, static_cast<zlink_recv_flags_t>(flags));
+    if (rc != ZLINK_RECV_OK) {
+        zlink_msg_close(&message);
+        if ((flags & ZLINK_RECV_FLAGS_DONTWAIT) && zlink_errno() == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        return throw_last_error(env, "spotActorJoinRecv failed");
+    }
+    napi_value out;
+    napi_create_object(env, &out);
+    napi_set_named_property(env, out, "info",
+                            create_actor_join_info_value(env, join_info));
+    napi_set_named_property(env, out, "message",
+                            create_message_snapshot_value(env, NULL, &message));
+    zlink_msg_close(&message);
+    return out;
+}
+
+napi_value spot_actor_join_reply(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    zlink_actor_join_info_t join_info;
+    if (!parse_actor_join_info_value(env, argv[1], &join_info))
+        return NULL;
+    bool accepted = false;
+    napi_get_value_bool(env, argv[2], &accepted);
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[3], &parts))
+        return NULL;
+    if (parts.size() != 1) {
+        close_msg_vector(parts);
+        napi_throw_range_error(env, NULL, "actor join reply message must be single part");
+        return NULL;
+    }
+    int rc = zlink_spot_actor_join_reply(
+      spot, &join_info, accepted ? 1u : 0u, &parts[0]);
+    if (rc != ZLINK_SUBMIT_OK) {
+        close_msg_vector(parts);
+        return throw_last_error(env, "spotActorJoinReply failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_actors_snapshot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    size_t count = 0;
+    int rc = zlink_spot_actors_snapshot(spot, NULL, &count);
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "spotActorsSnapshot failed");
+    napi_value arr;
+    napi_create_array_with_length(env, count, &arr);
+    if (count == 0)
+        return arr;
+    std::vector<zlink_actor_ref_t> entries(count);
+    rc = zlink_spot_actors_snapshot(spot, entries.data(), &count);
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "spotActorsSnapshot failed");
+    for (size_t i = 0; i < count; ++i) {
+        napi_set_element(env, arr, static_cast<uint32_t>(i),
+                         create_actor_ref_value(env, entries[i]));
+    }
+    return arr;
+}
+
 napi_value router_spot_request(napi_env env, napi_callback_info info)
 {
     napi_value argv[7];
@@ -2080,6 +2521,21 @@ napi_value router_spot_recv(napi_env env, napi_callback_info info)
     (void) info;
     napi_throw_error(env, NULL, "routerSpotRecv not implemented");
     return NULL;
+}
+
+napi_value discovery_resolve_actor(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *discovery = NULL;
+    napi_get_value_external(env, argv[0], &discovery);
+    std::string actor_id = get_string(env, argv[1]);
+    zlink_actor_route_t route;
+    int rc = zlink_discovery_resolve_actor(discovery, actor_id.c_str(), &route);
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "discoveryResolveActor failed");
+    return create_actor_route_value(env, route);
 }
 
 napi_value spot_node_new(napi_env env, napi_callback_info info)
@@ -2564,6 +3020,671 @@ napi_value spot_node_internal_sockets_snapshot(napi_env env, napi_callback_info 
         napi_set_element(env, arr, static_cast<uint32_t>(i), obj);
     }
     return arr;
+}
+
+napi_value spot_node_spots_snapshot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    size_t count = 0;
+    int rc = zlink_spot_node_spots_snapshot(node, NULL, &count);
+    if (rc != 0)
+        return throw_last_error(env, "spotNodeSpotsSnapshot failed");
+    napi_value arr;
+    napi_create_array_with_length(env, count, &arr);
+    if (count == 0)
+        return arr;
+    std::vector<zlink_spot_node_spot_entry_t> entries(count);
+    rc = zlink_spot_node_spots_snapshot(node, entries.data(), &count);
+    if (rc != 0)
+        return throw_last_error(env, "spotNodeSpotsSnapshot failed");
+    for (size_t i = 0; i < count; ++i) {
+        napi_set_element(env, arr, static_cast<uint32_t>(i),
+                         create_spot_node_spot_entry_value(env, entries[i]));
+    }
+    return arr;
+}
+
+napi_value spot_node_actors_snapshot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    size_t count = 0;
+    int rc = zlink_spot_node_actors_snapshot(node, NULL, &count);
+    if (rc != 0)
+        return throw_last_error(env, "spotNodeActorsSnapshot failed");
+    napi_value arr;
+    napi_create_array_with_length(env, count, &arr);
+    if (count == 0)
+        return arr;
+    std::vector<zlink_spot_node_actor_entry_t> entries(count);
+    rc = zlink_spot_node_actors_snapshot(node, entries.data(), &count);
+    if (rc != 0)
+        return throw_last_error(env, "spotNodeActorsSnapshot failed");
+    for (size_t i = 0; i < count; ++i) {
+        napi_set_element(env, arr, static_cast<uint32_t>(i),
+                         create_spot_node_actor_entry_value(env, entries[i]));
+    }
+    return arr;
+}
+
+static zlink_actor_admission_result_t actor_admission_callback(
+  void *node_,
+  const char *actor_id_,
+  const zlink_msg_t *message_,
+  void *userdata_)
+{
+    (void) node_;
+    actor_admission_js_state_t *state =
+      static_cast<actor_admission_js_state_t *>(userdata_);
+    if (!state || !state->tsfn)
+        return ZLINK_ACTOR_ADMISSION_REJECT;
+
+    actor_admission_request_t request;
+    request.actor_id = actor_id_ ? actor_id_ : "";
+    const unsigned char *data = static_cast<const unsigned char *>(
+      zlink_msg_data(const_cast<zlink_msg_t *>(message_)));
+    const size_t size = zlink_msg_size(message_);
+    if (data && size > 0)
+        request.message.assign(data, data + size);
+
+    if (napi_call_threadsafe_function(state->tsfn,
+                                      &request,
+                                      napi_tsfn_blocking) != napi_ok) {
+        return ZLINK_ACTOR_ADMISSION_REJECT;
+    }
+
+    std::unique_lock<std::mutex> lock(request.mu);
+    if (!request.cv.wait_for(lock, std::chrono::seconds(5),
+                             [&request] { return request.done; })) {
+        return ZLINK_ACTOR_ADMISSION_REJECT;
+    }
+    return request.result;
+}
+
+static void actor_admission_tsfn_finalize(napi_env env,
+                                          void *finalize_data,
+                                          void *finalize_hint)
+{
+    (void) env;
+    (void) finalize_hint;
+    delete static_cast<actor_admission_js_state_t *>(finalize_data);
+}
+
+static void actor_admission_tsfn_call_js(napi_env env,
+                                         napi_value js_cb,
+                                         void *context,
+                                         void *data)
+{
+    (void) context;
+    actor_admission_request_t *request =
+      static_cast<actor_admission_request_t *>(data);
+    if (!env || !js_cb || !request)
+        return;
+
+    napi_value argv[2];
+    napi_create_string_utf8(env,
+                            request->actor_id.c_str(),
+                            request->actor_id.size(),
+                            &argv[0]);
+    argv[1] = create_buffer_copy_or_empty(
+      env,
+      request->message.empty() ? NULL : request->message.data(),
+      request->message.size());
+    napi_value this_arg;
+    napi_get_undefined(env, &this_arg);
+    napi_value result_value;
+    napi_status status =
+      napi_call_function(env, this_arg, js_cb, 2, argv, &result_value);
+    int32_t result = ZLINK_ACTOR_ADMISSION_REJECT;
+    if (status == napi_ok)
+        napi_get_value_int32(env, result_value, &result);
+    {
+        std::lock_guard<std::mutex> lock(request->mu);
+        request->result = result == ZLINK_ACTOR_ADMISSION_ACCEPT
+                            ? ZLINK_ACTOR_ADMISSION_ACCEPT
+                            : ZLINK_ACTOR_ADMISSION_REJECT;
+        request->done = true;
+    }
+    request->cv.notify_one();
+}
+
+napi_value spot_node_actor_new(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    std::string actor_id = get_string(env, argv[1]);
+    void *actor = zlink_spot_node_actor_new(node, actor_id.c_str());
+    if (!actor)
+        return throw_last_error(env, "spotNodeActorNew failed");
+    napi_value ext;
+    napi_create_external(env, actor, NULL, NULL, &ext);
+    return ext;
+}
+
+napi_value actor_destroy(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *actor = NULL;
+    napi_get_value_external(env, argv[0], &actor);
+    int32_t timeout_ms = 0;
+    if (argc >= 2)
+        napi_get_value_int32(env, argv[1], &timeout_ms);
+    void *tmp = actor;
+    int rc = zlink_actor_destroy(&tmp, static_cast<uint32_t>(timeout_ms));
+    if (rc != ZLINK_REQUEST_OK)
+        return throw_last_error(env, "actorDestroy failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value actor_get_ref(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *actor = NULL;
+    napi_get_value_external(env, argv[0], &actor);
+    zlink_actor_ref_t ref;
+    int rc = zlink_actor_get_ref(actor, &ref);
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "actorGetRef failed");
+    return create_actor_ref_value(env, ref);
+}
+
+napi_value spot_node_actor_lookup(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    std::string actor_id = get_string(env, argv[1]);
+    zlink_actor_ref_t ref;
+    int rc = zlink_spot_node_actor_lookup(node, actor_id.c_str(), &ref);
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "spotNodeActorLookup failed");
+    return create_actor_ref_value(env, ref);
+}
+
+napi_value remote_actor_get_ref(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    zlink_routing_id_t target;
+    if (!parse_routing_id_value(env, argv[0], &target))
+        return NULL;
+    std::string actor_id = get_string(env, argv[1]);
+    zlink_actor_ref_t ref;
+    int rc = zlink_remote_actor_get_ref(&target, actor_id.c_str(), &ref);
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "remoteActorGetRef failed");
+    return create_actor_ref_value(env, ref);
+}
+
+napi_value spot_node_create_remote_actor(napi_env env, napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    zlink_routing_id_t target;
+    if (!parse_routing_id_value(env, argv[1], &target))
+        return NULL;
+    std::string actor_id = get_string(env, argv[2]);
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[3], &parts))
+        return NULL;
+    if (parts.size() != 1) {
+        close_msg_vector(parts);
+        napi_throw_range_error(env, NULL, "create remote actor message must be single part");
+        return NULL;
+    }
+    int32_t timeout_ms = 0;
+    napi_get_value_int32(env, argv[4], &timeout_ms);
+    zlink_actor_create_result_t result;
+    int rc = zlink_spot_node_create_remote_actor(
+      node, &target, actor_id.c_str(), &parts[0], &result,
+      static_cast<uint32_t>(timeout_ms));
+    if (rc != ZLINK_REQUEST_OK) {
+        close_msg_vector(parts);
+        return throw_last_error(env, "spotNodeCreateRemoteActor failed");
+    }
+    return create_actor_create_result_value(env, result);
+}
+
+napi_value spot_node_destroy_remote_actor(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    zlink_actor_ref_t ref;
+    if (!parse_actor_ref_value(env, argv[1], &ref))
+        return NULL;
+    int32_t timeout_ms = 0;
+    if (argc >= 3)
+        napi_get_value_int32(env, argv[2], &timeout_ms);
+    int rc = zlink_spot_node_destroy_remote_actor(
+      node, &ref, static_cast<uint32_t>(timeout_ms));
+    if (rc != ZLINK_REQUEST_OK)
+        return throw_last_error(env, "spotNodeDestroyRemoteActor failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_node_actor_admission_handler(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[1], &handler_type);
+    if (handler_type != napi_function) {
+        napi_throw_type_error(env, NULL, "actor admission handler must be a function");
+        return NULL;
+    }
+    actor_admission_js_state_t *state = new actor_admission_js_state_t();
+    state->node = node;
+    state->env = env;
+    napi_value resource_name;
+    napi_create_string_utf8(
+      env, "zlink-actor-admission-handler", NAPI_AUTO_LENGTH, &resource_name);
+    napi_status status = napi_create_threadsafe_function(
+      env,
+      argv[1],
+      NULL,
+      resource_name,
+      0,
+      1,
+      state,
+      actor_admission_tsfn_finalize,
+      state,
+      actor_admission_tsfn_call_js,
+      &state->tsfn);
+    if (status != napi_ok) {
+        delete state;
+        napi_throw_error(env, NULL, "actor admission handler setup failed");
+        return NULL;
+    }
+    (void) napi_unref_threadsafe_function(env, state->tsfn);
+    int rc = zlink_spot_node_actor_admission_handler(
+      node, actor_admission_callback, state);
+    if (rc != ZLINK_HANDLER_OK) {
+        (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_abort);
+        return throw_last_error(env, "spotNodeActorAdmissionHandler failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value actor_join_spot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[6];
+    size_t argc = 6;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *actor = NULL;
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &actor);
+    napi_get_value_external(env, argv[1], &spot);
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[2], &parts))
+        return NULL;
+    if (parts.size() != 1) {
+        close_msg_vector(parts);
+        napi_throw_range_error(env, NULL, "actor join message must be single part");
+        return NULL;
+    }
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[3], &handler_type);
+    if (handler_type != napi_function) {
+        close_msg_vector(parts);
+        napi_throw_type_error(env, NULL, "actor join handler must be a function");
+        return NULL;
+    }
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[4], &flags);
+    int32_t timeout_ms = 0;
+    napi_get_value_int32(env, argv[5], &timeout_ms);
+    request_js_state_t *state = create_request_js_state(env, argv[3]);
+    if (!state) {
+        close_msg_vector(parts);
+        return NULL;
+    }
+    int rc = zlink_actor_join_spot(actor,
+                                   spot,
+                                   &parts[0],
+                                   request_reply_callback_trampoline,
+                                   state,
+                                   static_cast<zlink_send_flags_t>(flags),
+                                   static_cast<uint32_t>(timeout_ms));
+    if (rc != ZLINK_SUBMIT_OK) {
+        if (state->tsfn)
+            (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_abort);
+        return throw_last_error(env, "actorJoinSpot failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_node_actor_join_spot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[7];
+    size_t argc = 7;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    zlink_actor_ref_t ref;
+    zlink_routing_id_t spot_rid;
+    if (!parse_actor_ref_value(env, argv[1], &ref))
+        return NULL;
+    if (!parse_routing_id_value(env, argv[2], &spot_rid))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[3], &parts))
+        return NULL;
+    if (parts.size() != 1) {
+        close_msg_vector(parts);
+        napi_throw_range_error(env, NULL, "actor join message must be single part");
+        return NULL;
+    }
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[4], &handler_type);
+    if (handler_type != napi_function) {
+        close_msg_vector(parts);
+        napi_throw_type_error(env, NULL, "actor join handler must be a function");
+        return NULL;
+    }
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[5], &flags);
+    int32_t timeout_ms = 0;
+    napi_get_value_int32(env, argv[6], &timeout_ms);
+    request_js_state_t *state = create_request_js_state(env, argv[4]);
+    if (!state) {
+        close_msg_vector(parts);
+        return NULL;
+    }
+    int rc = zlink_spot_node_actor_join_spot(
+      node,
+      &ref,
+      &spot_rid,
+      &parts[0],
+      request_reply_callback_trampoline,
+      state,
+      static_cast<zlink_send_flags_t>(flags),
+      static_cast<uint32_t>(timeout_ms));
+    if (rc != ZLINK_SUBMIT_OK) {
+        if (state->tsfn)
+            (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_abort);
+        return throw_last_error(env, "spotNodeActorJoinSpot failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value actor_leave_spot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *actor = NULL;
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &actor);
+    napi_get_value_external(env, argv[1], &spot);
+    int rc = zlink_actor_leave_spot(actor, spot);
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "actorLeaveSpot failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_node_actor_leave_spot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    zlink_actor_ref_t ref;
+    zlink_routing_id_t spot_rid;
+    if (!parse_actor_ref_value(env, argv[1], &ref))
+        return NULL;
+    if (!parse_routing_id_value(env, argv[2], &spot_rid))
+        return NULL;
+    int32_t timeout_ms = 0;
+    if (argc >= 4)
+        napi_get_value_int32(env, argv[3], &timeout_ms);
+    int rc = zlink_spot_node_actor_leave_spot(
+      node, &ref, &spot_rid, static_cast<uint32_t>(timeout_ms));
+    if (rc != ZLINK_REQUEST_OK)
+        return throw_last_error(env, "spotNodeActorLeaveSpot failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value actor_recv_part(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *actor = NULL;
+    napi_get_value_external(env, argv[0], &actor);
+    int32_t flags = 0;
+    if (argc >= 2)
+        napi_get_value_int32(env, argv[1], &flags);
+    zlink_actor_recv_info_t recv_info;
+    zlink_msg_t part;
+    zlink_part_flag_t more = ZLINK_PART_FINAL;
+    if (zlink_msg_init(&part) != 0)
+        return throw_last_error(env, "actorRecvPart failed");
+    int rc = zlink_actor_recv_part(
+      actor, &recv_info, &part, &more, static_cast<zlink_recv_flags_t>(flags));
+    if (rc != ZLINK_RECV_OK) {
+        zlink_msg_close(&part);
+        if ((flags & ZLINK_RECV_FLAGS_DONTWAIT) && zlink_errno() == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        return throw_last_error(env, "actorRecvPart failed");
+    }
+    const unsigned char *data =
+      static_cast<const unsigned char *>(zlink_msg_data(&part));
+    std::vector<unsigned char> copy;
+    if (data && zlink_msg_size(&part) > 0)
+        copy.assign(data, data + zlink_msg_size(&part));
+    napi_value out = create_actor_part_value(env, recv_info, copy, more);
+    zlink_msg_close(&part);
+    return out;
+}
+
+napi_value actor_send_bound_session_msg(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *actor = NULL;
+    napi_get_value_external(env, argv[0], &actor);
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[1], &parts))
+        return NULL;
+    if (parts.size() != 1) {
+        close_msg_vector(parts);
+        napi_throw_range_error(env, NULL, "actor send message must be single part");
+        return NULL;
+    }
+    int32_t flags = 0;
+    if (argc >= 3)
+        napi_get_value_int32(env, argv[2], &flags);
+    int rc = zlink_actor_send_bound_session_msg(
+      actor, &parts[0], static_cast<zlink_send_flags_t>(flags));
+    if (rc != ZLINK_SUBMIT_OK) {
+        close_msg_vector(parts);
+        return throw_last_error(env, "actorSendBoundSessionMsg failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value actor_send_bound_session_packet(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *actor = NULL;
+    napi_get_value_external(env, argv[0], &actor);
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[1], &parts))
+        return NULL;
+    if (parts.size() != 2) {
+        close_msg_vector(parts);
+        napi_throw_range_error(env, NULL, "actor packet requires header and body");
+        return NULL;
+    }
+    int32_t flags = 0;
+    if (argc >= 3)
+        napi_get_value_int32(env, argv[2], &flags);
+    int rc = zlink_actor_send_bound_session_packet(
+      actor, &parts[0], &parts[1], static_cast<zlink_send_flags_t>(flags));
+    if (rc != ZLINK_SUBMIT_OK) {
+        close_msg_vector(parts);
+        return throw_last_error(env, "actorSendBoundSessionPacket failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+static int send_bound_actor_parts(void *node,
+                                  void *stream,
+                                  const zlink_routing_id_t *session_rid,
+                                  const char *actor_id,
+                                  zlink_msg_t *parts,
+                                  size_t part_count,
+                                  zlink_send_flags_t flags)
+{
+    for (size_t i = 0; i < part_count; ++i) {
+        zlink_part_flag_t part_flag =
+          (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
+        int rc = zlink_stream_send_bound_actor_part(
+          node, stream, session_rid, actor_id, &parts[i], flags, part_flag);
+        if (rc != ZLINK_SUBMIT_OK) {
+            for (size_t j = i + 1u; j < part_count; ++j)
+                zlink_msg_close(&parts[j]);
+            return rc;
+        }
+    }
+    return ZLINK_SUBMIT_OK;
+}
+
+napi_value stream_bind_actor(napi_env env, napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    void *stream = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    napi_get_value_external(env, argv[1], &stream);
+    zlink_routing_id_t session_rid;
+    zlink_actor_ref_t actor;
+    if (!parse_routing_id_value(env, argv[2], &session_rid))
+        return NULL;
+    if (!parse_actor_ref_value(env, argv[3], &actor))
+        return NULL;
+    int32_t timeout_ms = 0;
+    if (argc >= 5)
+        napi_get_value_int32(env, argv[4], &timeout_ms);
+    int rc = zlink_stream_bind_actor(
+      node, stream, &session_rid, &actor, static_cast<uint32_t>(timeout_ms));
+    if (rc != ZLINK_REQUEST_OK)
+        return throw_last_error(env, "streamBindActor failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value stream_unbind_actor(napi_env env, napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    void *stream = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    napi_get_value_external(env, argv[1], &stream);
+    zlink_routing_id_t session_rid;
+    if (!parse_routing_id_value(env, argv[2], &session_rid))
+        return NULL;
+    std::string actor_id = get_string(env, argv[3]);
+    int32_t timeout_ms = 0;
+    if (argc >= 5)
+        napi_get_value_int32(env, argv[4], &timeout_ms);
+    int rc = zlink_stream_unbind_actor(
+      node, stream, &session_rid, actor_id.c_str(),
+      static_cast<uint32_t>(timeout_ms));
+    if (rc != ZLINK_REQUEST_OK)
+        return throw_last_error(env, "streamUnbindActor failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value stream_send_bound_actor_part(napi_env env, napi_callback_info info)
+{
+    napi_value argv[6];
+    size_t argc = 6;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    void *stream = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    napi_get_value_external(env, argv[1], &stream);
+    zlink_routing_id_t session_rid;
+    if (!parse_routing_id_value(env, argv[2], &session_rid))
+        return NULL;
+    std::string actor_id = get_string(env, argv[3]);
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[4], &parts))
+        return NULL;
+    int32_t flags = 0;
+    if (argc >= 6)
+        napi_get_value_int32(env, argv[5], &flags);
+    int rc = send_bound_actor_parts(node,
+                                    stream,
+                                    &session_rid,
+                                    actor_id.c_str(),
+                                    parts.data(),
+                                    parts.size(),
+                                    static_cast<zlink_send_flags_t>(flags));
+    if (rc != ZLINK_SUBMIT_OK)
+        return throw_last_error(env, "streamSendBoundActorPart failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
 }
 
 napi_value spot_node_pub_socket(napi_env env, napi_callback_info info)

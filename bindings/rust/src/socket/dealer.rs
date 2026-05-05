@@ -14,6 +14,7 @@ use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, Message, RoutingId};
 use crate::options::{CommonSocketOptions, DealerSocketOptions};
 use crate::request_progress::RequestProgressGuard;
+use crate::service::request_result_from_raw;
 
 use super::{
     SendHandle, SocketInner, check_send_result, impl_attach_discovery, impl_base_socket,
@@ -369,15 +370,7 @@ fn request_parts_from_callback(
 }
 
 fn request_result_from_ffi(result: ffi::zlink_request_result_t) -> RequestResult {
-    match result {
-        ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_OK => RequestResult::Ok,
-        ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_TIMED_OUT => RequestResult::TimedOut,
-        ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_NOT_FOUND => RequestResult::NotFound,
-        ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_TERMINATED => RequestResult::Terminated,
-        ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_PROTOCOL_ERROR => {
-            RequestResult::ProtocolError
-        }
-    }
+    request_result_from_raw(result)
 }
 
 unsafe extern "C" fn dealer_blocking_request_callback(

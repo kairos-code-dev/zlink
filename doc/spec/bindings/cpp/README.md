@@ -63,6 +63,31 @@ conflicts with the rules here, this section wins.
   Discovery, the library picks one initiator per pair by total order on
   `(routing_id, advertise endpoint)`. Users do not configure this.
 
+## Actor Dispatch Public Surface
+
+C++ exposes Actor dispatch through installed public headers in namespace
+`zlink::service`.
+
+```cpp
+struct actor_ref_t;
+struct actor_create_result_t;
+struct actor_route_t;
+struct actor_recv_info_t;
+struct actor_join_info_t;
+struct actor_part_t;
+class actor_t;
+actor_ref_t remote_actor_ref(const routing_id_t& target_node_rid,
+                             std::string_view actor_id);
+```
+
+`spot_node_t` exposes Actor factory/lookup, remote create-or-get, admission,
+join/leave, and Actor snapshots. `spot_t` exposes Actor join receive/reply and
+joined Actor snapshots. `stream_socket_t` exposes Actor bind/unbind and bound
+Actor send. Discovery exposes Actor route resolve.
+
+`generation == 0` is an unchecked remote ref. One Actor can join only one Spot
+at a time; one STREAM session can bind multiple Actors.
+
 ## Core
 
 ### context_t
@@ -1985,30 +2010,6 @@ class discovery_t {
     void set_value(int64_t value);
     /// @throws config_error_t
     void get_value(int64_t* value_out) const;
-    /// @throws config_error_t
-    void bind_route(route_kind_t kind, const void* key, size_t key_size,
-                    const void* value, size_t value_size);
-    /// @throws config_error_t
-    void bind_route(route_kind_t kind, const std::vector<uint8_t>& key,
-                    const std::vector<uint8_t>& value);
-    /// @throws config_error_t
-    void bind_route(route_kind_t kind, const std::string& key,
-                    const std::string& value);
-    /// @throws config_error_t
-    void unbind_route(route_kind_t kind, const void* key, size_t key_size);
-    /// @throws config_error_t
-    void unbind_route(route_kind_t kind, const std::vector<uint8_t>& key);
-    /// @throws config_error_t
-    void unbind_route(route_kind_t kind, const std::string& key);
-    /// @throws config_error_t
-    routing_id_t resolve_route(route_kind_t kind, const void* key, size_t key_size,
-                               message_t* value_out = nullptr) const;
-    /// @throws config_error_t
-    routing_id_t resolve_route(route_kind_t kind, const std::vector<uint8_t>& key,
-                               message_t* value_out = nullptr) const;
-    /// @throws config_error_t
-    routing_id_t resolve_route(route_kind_t kind, const std::string& key,
-                               message_t* value_out = nullptr) const;
     /// @throws config_error_t
     std::vector<member_peer_entry_t> member_peers() const;
 

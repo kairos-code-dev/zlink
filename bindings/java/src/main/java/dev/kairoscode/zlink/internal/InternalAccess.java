@@ -11,6 +11,7 @@ import dev.kairoscode.zlink.SendFlags;
 import java.lang.foreign.MemorySegment;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.spot.Spot;
+import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.util.List;
 import java.util.function.BiConsumer;
 
@@ -34,6 +35,10 @@ public final class InternalAccess {
 
     public static MemorySegment spotHandle(Spot spot) {
         return dev.kairoscode.zlink.InternalAccess.spotHandle(spot);
+    }
+
+    public static MemorySegment spotNodeHandle(SpotNode node) {
+        return dev.kairoscode.zlink.InternalAccess.spotNodeHandle(node);
     }
 
     public static MemorySegment messageDataSegment(Message message) {

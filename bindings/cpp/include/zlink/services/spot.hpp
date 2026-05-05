@@ -14,8 +14,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <future>
+#include <optional>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 zlink_recv_result_t spot_subscribe_impl (void *spot_,
@@ -53,6 +55,7 @@ namespace service
 {
 
 class spot_t;
+class actor_t;
 
 namespace detail
 {
@@ -695,6 +698,162 @@ class spot_node_t
         entries.reserve (native.size ());
         for (size_t i = 0; i < native.size (); ++i)
             entries.push_back (spot_node_socket_snapshot_entry_t (native[i]));
+        return entries;
+    }
+
+    actor_t create_actor (const std::string &actor_id_);
+
+    actor_ref_t actor_lookup (const std::string &actor_id_) const
+    {
+        validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
+                                   "actor_id");
+        zlink_actor_ref_t native;
+        std::memset (&native, 0, sizeof (native));
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_spot_node_actor_lookup (_node, actor_id_.c_str (), &native)));
+        return actor_ref_t (native);
+    }
+
+    static actor_ref_t remote_actor_ref (const routing_id_t &target_node_rid_,
+                                         const std::string &actor_id_)
+    {
+        validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
+                                   "actor_id");
+        zlink_actor_ref_t native;
+        std::memset (&native, 0, sizeof (native));
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_remote_actor_get_ref (
+              routing_id_native (target_node_rid_), actor_id_.c_str (),
+              &native)));
+        return actor_ref_t (native);
+    }
+
+    actor_create_result_t create_remote_actor (
+      const routing_id_t &target_node_rid_,
+      const std::string &actor_id_,
+      message_t &message_,
+      std::chrono::milliseconds timeout_ = {})
+    {
+        validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
+                                   "actor_id");
+        zlink_msg_t native_message;
+        message_.move_to (&native_message);
+        zlink_actor_create_result_t native_result;
+        std::memset (&native_result, 0, sizeof (native_result));
+        const request_result_t rc = static_cast<request_result_t> (
+          zlink_spot_node_create_remote_actor (
+            _node, routing_id_native (target_node_rid_), actor_id_.c_str (),
+            &native_message, &native_result,
+            static_cast<uint32_t> (timeout_.count ())));
+        if (rc != request_result_t::ok) {
+            message_.init ();
+            (void) zlink_msg_move (message_.handle (), &native_message);
+            throw request_error_t (rc, zlink_errno ());
+        }
+        return actor_create_result_t (native_result);
+    }
+
+    void destroy_remote_actor (const actor_ref_t &actor_,
+                               std::chrono::milliseconds timeout_ = {})
+    {
+        detail::throw_if_failed<request_error_t> (
+          static_cast<request_result_t> (
+            zlink_spot_node_destroy_remote_actor (
+              _node, actor_ref_native (actor_),
+              static_cast<uint32_t> (timeout_.count ()))));
+    }
+
+    void on_actor_admission (zlink_actor_admission_handler_fn handler_,
+                             void *userdata_ = NULL)
+    {
+        detail::throw_if_failed<handler_error_t> (
+          static_cast<handler_result_t> (
+            zlink_spot_node_actor_admission_handler (
+              _node, handler_, userdata_)));
+    }
+
+    bool join_actor (const actor_ref_t &actor_,
+                     const routing_id_t &dest_spot_rid_,
+                     message_t &message_,
+                     std::function<void(request_result_t, std::vector<message_t>)> callback_,
+                     send_flags_t flags_ = send_flags_t::none,
+                     std::chrono::milliseconds timeout_ = {})
+    {
+        zlink_msg_t native;
+        message_.move_to (&native);
+        detail::request_state_t *state =
+          detail::make_callback_request_state (std::move (callback_));
+        const submit_result_t rc = static_cast<submit_result_t> (
+          zlink_spot_node_actor_join_spot (
+            _node, actor_ref_native (actor_), routing_id_native (dest_spot_rid_),
+            &native, &detail::request_callback_trampoline, state,
+            static_cast<zlink_send_flags_t> (flags_),
+            static_cast<uint32_t> (timeout_.count ())));
+        if (rc != submit_result_t::ok) {
+            delete state;
+            message_.init ();
+            (void) zlink_msg_move (message_.handle (), &native);
+            if (flags_ == send_flags_t::dontwait
+                && rc == submit_result_t::backpressured)
+                return false;
+            throw submit_error_t (rc, zlink_errno ());
+        }
+        return true;
+    }
+
+    void leave_actor (const actor_ref_t &actor_,
+                      const routing_id_t &dest_spot_rid_,
+                      std::chrono::milliseconds timeout_ = {})
+    {
+        detail::throw_if_failed<request_error_t> (
+          static_cast<request_result_t> (
+            zlink_spot_node_actor_leave_spot (
+              _node, actor_ref_native (actor_),
+              routing_id_native (dest_spot_rid_),
+              static_cast<uint32_t> (timeout_.count ()))));
+    }
+
+    std::vector<spot_node_spot_entry_t> spots_snapshot () const
+    {
+        size_t count = 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_spot_node_spots_snapshot (_node, NULL, &count)));
+        std::vector<zlink_spot_node_spot_entry_t> native (count);
+        if (count > 0) {
+            detail::throw_if_failed<config_error_t> (
+              static_cast<config_result_t> (
+                zlink_spot_node_spots_snapshot (
+                  _node, native.data (), &count)));
+            native.resize (count);
+        }
+        std::vector<spot_node_spot_entry_t> entries;
+        entries.reserve (native.size ());
+        for (size_t i = 0; i < native.size (); ++i)
+            entries.push_back (spot_node_spot_entry_t (native[i]));
+        return entries;
+    }
+
+    std::vector<spot_node_actor_entry_t> actors_snapshot () const
+    {
+        size_t count = 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_spot_node_actors_snapshot (_node, NULL, &count)));
+        std::vector<zlink_spot_node_actor_entry_t> native (count);
+        if (count > 0) {
+            detail::throw_if_failed<config_error_t> (
+              static_cast<config_result_t> (
+                zlink_spot_node_actors_snapshot (
+                  _node, native.data (), &count)));
+            native.resize (count);
+        }
+        std::vector<spot_node_actor_entry_t> entries;
+        entries.reserve (native.size ());
+        for (size_t i = 0; i < native.size (); ++i)
+            entries.push_back (spot_node_actor_entry_t (native[i]));
         return entries;
     }
 
@@ -1617,6 +1776,67 @@ class spot_t
             throw handler_error_t (rc, zlink_errno ());
     }
 
+    std::optional<std::pair<actor_join_info_t, message_t>>
+    recv_actor_join (recv_flags_t flags_ = recv_flags_t::none)
+    {
+        zlink_actor_join_info_t native_info;
+        std::memset (&native_info, 0, sizeof (native_info));
+        zlink_msg_t native_message;
+        std::memset (&native_message, 0, sizeof (native_message));
+        const recv_result_t rc = static_cast<recv_result_t> (
+          zlink_spot_actor_join_recv (
+            _spot, &native_info, &native_message,
+            static_cast<zlink_recv_flags_t> (flags_)));
+        if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
+            return std::nullopt;
+        if (rc != recv_result_t::ok)
+            throw recv_error_t (rc, zlink_errno ());
+        message_t message;
+        if (zlink_msg_move (message.handle (), &native_message) != 0) {
+            (void) zlink_msg_close (&native_message);
+            throw last_error ();
+        }
+        return std::make_pair (actor_join_info_t (native_info),
+                               std::move (message));
+    }
+
+    void reply_actor_join (const actor_join_info_t &info_,
+                           bool accepted_,
+                           message_t &message_)
+    {
+        zlink_actor_join_info_t native_info = info_.native ();
+        zlink_msg_t native_message;
+        message_.move_to (&native_message);
+        const submit_result_t rc = static_cast<submit_result_t> (
+          zlink_spot_actor_join_reply (
+            _spot, &native_info, accepted_ ? 1u : 0u, &native_message));
+        if (rc != submit_result_t::ok) {
+            message_.init ();
+            (void) zlink_msg_move (message_.handle (), &native_message);
+            throw submit_error_t (rc, zlink_errno ());
+        }
+    }
+
+    std::vector<actor_ref_t> actors_snapshot () const
+    {
+        size_t count = 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_spot_actors_snapshot (_spot, NULL, &count)));
+        std::vector<zlink_actor_ref_t> native (count);
+        if (count > 0) {
+            detail::throw_if_failed<config_error_t> (
+              static_cast<config_result_t> (
+                zlink_spot_actors_snapshot (_spot, native.data (), &count)));
+            native.resize (count);
+        }
+        std::vector<actor_ref_t> entries;
+        entries.reserve (native.size ());
+        for (size_t i = 0; i < native.size (); ++i)
+            entries.push_back (actor_ref_t (native[i]));
+        return entries;
+    }
+
     common_socket_options_t options () { return common_socket_options_t (_spot); }
     pub_socket_options_t publisher_options () { return pub_socket_options_t (_spot); }
     sub_socket_options_t subscriber_options () { return sub_socket_options_t (_spot); }
@@ -1636,6 +1856,198 @@ class spot_t
     void *_spot;
     int _last_error;
 };
+
+class actor_t
+{
+  public:
+    ~actor_t ()
+    {
+        try {
+            close ();
+        } catch (...) {
+        }
+    }
+
+    actor_t (actor_t &&other) noexcept
+        : _actor (other._actor), _last_error (other._last_error)
+    {
+        other._actor = NULL;
+        other._last_error = 0;
+    }
+
+    actor_t &operator= (actor_t &&other) noexcept
+    {
+        if (this == &other)
+            return *this;
+
+        try {
+            close ();
+        } catch (...) {
+        }
+        _actor = other._actor;
+        _last_error = other._last_error;
+        other._actor = NULL;
+        other._last_error = 0;
+        return *this;
+    }
+
+    actor_t (const actor_t &) = delete;
+    actor_t &operator= (const actor_t &) = delete;
+
+    bool valid () const noexcept { return _actor != NULL; }
+
+    int last_error () const noexcept { return _last_error; }
+
+    actor_ref_t ref () const
+    {
+        zlink_actor_ref_t native;
+        std::memset (&native, 0, sizeof (native));
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (zlink_actor_get_ref (_actor, &native)));
+        return actor_ref_t (native);
+    }
+
+    void close (std::chrono::milliseconds timeout_ = {})
+    {
+        if (!_actor)
+            return;
+
+        void *tmp = _actor;
+        detail::throw_if_failed<request_error_t> (
+          static_cast<request_result_t> (
+            zlink_actor_destroy (
+              &tmp, static_cast<uint32_t> (timeout_.count ()))));
+        _actor = NULL;
+    }
+
+    bool join (spot_t &spot_,
+               message_t &message_,
+               std::function<void(request_result_t, std::vector<message_t>)> callback_,
+               send_flags_t flags_ = send_flags_t::none,
+               std::chrono::milliseconds timeout_ = {})
+    {
+        zlink_msg_t native;
+        message_.move_to (&native);
+        detail::request_state_t *state =
+          detail::make_callback_request_state (std::move (callback_));
+        const submit_result_t rc = static_cast<submit_result_t> (
+          zlink_actor_join_spot (
+            _actor, spot_.handle (), &native,
+            &detail::request_callback_trampoline, state,
+            static_cast<zlink_send_flags_t> (flags_),
+            static_cast<uint32_t> (timeout_.count ())));
+        if (rc != submit_result_t::ok) {
+            delete state;
+            message_.init ();
+            (void) zlink_msg_move (message_.handle (), &native);
+            if (flags_ == send_flags_t::dontwait
+                && rc == submit_result_t::backpressured)
+                return false;
+            throw submit_error_t (rc, zlink_errno ());
+        }
+        return true;
+    }
+
+    void leave (spot_t &spot_)
+    {
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_actor_leave_spot (_actor, spot_.handle ())));
+    }
+
+    std::optional<actor_part_t> recv_part (
+      recv_flags_t flags_ = recv_flags_t::none)
+    {
+        zlink_actor_recv_info_t native_info;
+        std::memset (&native_info, 0, sizeof (native_info));
+        zlink_msg_t native_part;
+        std::memset (&native_part, 0, sizeof (native_part));
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        const recv_result_t rc = static_cast<recv_result_t> (
+          zlink_actor_recv_part (
+            _actor, &native_info, &native_part, &has_more,
+            static_cast<zlink_recv_flags_t> (flags_)));
+        if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
+            return std::nullopt;
+        if (rc != recv_result_t::ok)
+            throw recv_error_t (rc, zlink_errno ());
+        message_t part;
+        if (zlink_msg_move (part.handle (), &native_part) != 0) {
+            (void) zlink_msg_close (&native_part);
+            throw last_error ();
+        }
+        return actor_part_t (
+          actor_recv_info_t (native_info), std::move (part),
+          has_more != ZLINK_PART_FINAL);
+    }
+
+    bool send_bound_session_msg (message_t &message_,
+                                 send_flags_t flags_ = send_flags_t::none)
+    {
+        zlink_msg_t native;
+        message_.move_to (&native);
+        const submit_result_t rc = static_cast<submit_result_t> (
+          zlink_actor_send_bound_session_msg (
+            _actor, &native, static_cast<zlink_send_flags_t> (flags_)));
+        if (rc != submit_result_t::ok) {
+            message_.init ();
+            (void) zlink_msg_move (message_.handle (), &native);
+            if (flags_ == send_flags_t::dontwait
+                && rc == submit_result_t::backpressured)
+                return false;
+            throw submit_error_t (rc, zlink_errno ());
+        }
+        return true;
+    }
+
+    bool send_bound_session_packet (message_t &header_,
+                                    message_t &body_,
+                                    send_flags_t flags_ = send_flags_t::none)
+    {
+        zlink_msg_t native_header;
+        zlink_msg_t native_body;
+        header_.move_to (&native_header);
+        body_.move_to (&native_body);
+        const submit_result_t rc = static_cast<submit_result_t> (
+          zlink_actor_send_bound_session_packet (
+            _actor, &native_header, &native_body,
+            static_cast<zlink_send_flags_t> (flags_)));
+        if (rc != submit_result_t::ok) {
+            header_.init ();
+            body_.init ();
+            (void) zlink_msg_move (header_.handle (), &native_header);
+            (void) zlink_msg_move (body_.handle (), &native_body);
+            if (flags_ == send_flags_t::dontwait
+                && rc == submit_result_t::backpressured)
+                return false;
+            throw submit_error_t (rc, zlink_errno ());
+        }
+        return true;
+    }
+
+    void *handle () const { return _actor; }
+
+  private:
+    actor_t (spot_node_t &node_, const std::string &actor_id_)
+        : _actor (NULL), _last_error (0)
+    {
+        validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
+                                   "actor_id");
+        _actor = zlink_spot_node_actor_new (node_.handle (), actor_id_.c_str ());
+        if (!_actor)
+            _last_error = errno != 0 ? errno : EFAULT;
+    }
+
+    friend class spot_node_t;
+
+    void *_actor;
+    int _last_error;
+};
+
+inline actor_t spot_node_t::create_actor (const std::string &actor_id_)
+{
+    return actor_t (*this, actor_id_);
+}
 
 inline spot_t spot_node_t::create_spot ()
 {

@@ -58,6 +58,32 @@ with the rules here, this section wins.
   via Discovery, the library picks one initiator per pair by a total order
   on `(routingId, advertiseEndpoint)`. Users do not configure this.
 
+## Actor Dispatch Public Surface
+
+Node exposes Actor dispatch through the package public entrypoint only.
+
+```typescript
+type ActorRef = { nodeRid: RoutingId; actorId: string; generation: bigint };
+type ActorCreateResult = { status: ActorCreateStatus; actor: ActorRef };
+type ActorRoute = { actor: ActorRef; joined: boolean; joinedSpotRid: RoutingId | null };
+type ActorRecvInfo = { actor: ActorRef; sourceNodeRid: RoutingId | null; sourceSessionRid: RoutingId | null; flags: number };
+type ActorJoinInfo = { actor: ActorRef; sourceNodeRid: RoutingId | null; flags: number };
+type ActorPart = { info: ActorRecvInfo; message: Message; more: boolean };
+type ActorJoinRequest = { info: ActorJoinInfo; message: Message };
+function remoteActorRef(targetNodeRid: RoutingId, actorId: string): ActorRef;
+```
+
+`SpotNode` exposes `actor`, `actorLookup`, `remoteActorRef`,
+`createRemoteActor`, `destroyRemoteActor`, `onActorAdmission`, `joinActor`,
+`leaveActor`, `spotsSnapshot`, and `actorsSnapshot`. `Spot` exposes
+`recvActorJoin`, `replyActorJoin`, and `actorsSnapshot`. `StreamSocket`
+exposes `bindActor`, `unbindActor`, and `sendBoundActor`. `Discovery` exposes
+`resolveActor`.
+
+`generation === 0n` is an unchecked remote ref. Actor readable dispatch returns
+preloaded parts through the dispatch info because the native callback crosses
+into the JavaScript event loop.
+
 ## Core
 
 ### Context
@@ -1234,16 +1260,6 @@ class Discovery {
     setValue(value: number): void;
     /** @throws {ConfigError} */
     getValue(): number;
-    /** @throws {ConfigError} */
-    bindRoute(kind: number, key: BufferLike | string,
-              value: BufferLike | string): void;
-    /** @throws {ConfigError} */
-    unbindRoute(kind: number, key: BufferLike | string): void;
-    /** @throws {ConfigError} */
-    resolveRoute(kind: number, key: BufferLike | string): {
-        owner: RoutingId;
-        value: Buffer;
-    };
     /** @throws {ConfigError} */
     memberPeers(): MemberPeerEntry[];
     /** @throws {ConfigError} */

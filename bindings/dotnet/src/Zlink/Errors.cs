@@ -206,7 +206,16 @@ public abstract class ZlinkException : Exception
             3 or 2 => RequestResult.NotFound,
             156384765 => RequestResult.Terminated,
             104 => RequestResult.ProtocolError,
-            _ => RequestResult.ProtocolError
+            107 or 113 or 111 or 10057 or 10065 =>
+                RequestResult.NotConnected,
+            13 => RequestResult.NotAdmitted,
+            1 => RequestResult.Rejected,
+            17 => RequestResult.Conflict,
+            22 => RequestResult.InvalidArgument,
+            16 => RequestResult.InvalidState,
+            156384766 => RequestResult.ThreadViolation,
+            12 or 105 => RequestResult.InternalError,
+            _ => RequestResult.InternalError
         };
     }
 

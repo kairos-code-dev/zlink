@@ -25,6 +25,8 @@ SEND_HWM=""
 RECV_HWM=""
 SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
+RUN_COOLDOWN_MS="${PERF_SINGLE_RUN_COOLDOWN_MS:-500}"
+CASE_RETRIES="${PERF_SINGLE_CASE_RETRIES:-3}"
 
 print_help() {
     cat <<'EOF'
@@ -134,6 +136,14 @@ prune_reports() {
         done
 }
 
+sleep_millis() {
+    local millis="${1:-0}"
+    if [[ ! "${millis}" =~ ^[0-9]+$ || "${millis}" -eq 0 ]]; then
+        return
+    fi
+    sleep "$((millis / 1000)).$(printf '%03d' "$((millis % 1000))")"
+}
+
 # -- Build -------------------------------------------------------------------
 TARGET_DIR="${BUILD_DIR:-${SCRIPT_DIR}/single/target}"
 SINGLE_DIR="${TARGET_DIR}/release"
@@ -213,19 +223,36 @@ for pat in "${PATTERNS[@]}"; do
             case_status="success"
             case_reason=""
             for run in $(seq 1 "${RUNS}"); do
-                if ! OUTPUT="$(timeout "${BIN_TIMEOUT_SECONDS}s" "${RUN_PREFIX[@]}" "${BIN}" \
-                    --pattern "${pat}" \
-                    --transport "${transport}" \
-                    --msg-size "${size}" \
-                    --duration "${DURATION}" 2>&1)"; then
-                    case_status="fail"
-                    case_reason="binary_exit"
+                attempt=1
+                while true; do
+                    if OUTPUT="$(timeout "${BIN_TIMEOUT_SECONDS}s" "${RUN_PREFIX[@]}" "${BIN}" \
+                        --pattern "${pat}" \
+                        --transport "${transport}" \
+                        --msg-size "${size}" \
+                        --duration "${DURATION}" 2>&1)"; then
+                        break
+                    fi
+                    if [[ "${attempt}" -ge "${CASE_RETRIES}" ]]; then
+                        case_status="fail"
+                        case_reason="binary_exit after ${attempt} attempts"
+                        break
+                    fi
+                    attempt=$((attempt + 1))
+                    sleep_millis "${RUN_COOLDOWN_MS}"
+                done
+                if [[ "${case_status}" == "fail" ]]; then
                     break
                 fi
                 unsupported_line="$(printf '%s\n' "${OUTPUT}" | awk -F',' '/^UNSUPPORTED,/ {print; exit}')"
                 if [[ -n "${unsupported_line}" ]]; then
                     case_status="unsupported"
                     case_reason="${unsupported_line}"
+                    break
+                fi
+                REQUIRED_COUNT="$(printf '%s\n' "${OUTPUT}" | awk -F',' '/^RESULT,/ && ($6=="throughput" || $6=="bandwidth" || $6=="latency" || $6=="latency_p95" || $6=="latency_p99") {count++} END {print count+0}')"
+                if [[ "${REQUIRED_COUNT}" -ne 5 ]]; then
+                    case_status="fail"
+                    case_reason="missing_required_result_lines run=${run}"
                     break
                 fi
                 while IFS= read -r line; do
@@ -235,15 +262,10 @@ for pat in "${PATTERNS[@]}"; do
                     printf '%s,%s,%s,%s,%s,%s\n' \
                         "${pat}" "${transport}" "${size}" "${run}" "${metric}" "${value}" >> "${TMP_METRICS}"
                 done <<< "${OUTPUT}"
-                REQUIRED_COUNT="$(printf '%s\n' "${OUTPUT}" | awk -F',' '/^RESULT,/ && ($6=="throughput" || $6=="bandwidth" || $6=="latency" || $6=="latency_p95" || $6=="latency_p99") {count++} END {print count+0}')"
-                if [[ "${REQUIRED_COUNT}" -ne 5 ]]; then
-                    case_status="fail"
-                    case_reason="missing_required_result_lines run=${run}"
-                    break
-                fi
             done
             case_reason="${case_reason//,/;}"
             printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
+            sleep_millis "${RUN_COOLDOWN_MS}"
         done
     done
 done

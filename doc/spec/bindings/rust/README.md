@@ -56,6 +56,28 @@ with the rules here, this section wins.
 - `Spot::on_routed_receive(...)` and `Spot::on_dispatch_event(...)` are
   mutually exclusive on the routed axis.
 
+## Actor Dispatch Public Surface
+
+Rust exposes Actor dispatch through public crate items.
+
+```rust
+pub struct ActorRef { pub node_rid: RoutingId, pub actor_id: String, pub generation: u64 }
+pub struct ActorCreateResult { pub status: ActorCreateStatus, pub actor: ActorRef }
+pub struct ActorRoute { pub actor: ActorRef, pub joined: bool, pub joined_spot_rid: Option<RoutingId> }
+pub struct ActorRecvInfo { pub actor: ActorRef, pub source_node_rid: Option<RoutingId>, pub source_session_rid: Option<RoutingId>, pub flags: u32 }
+pub struct ActorJoinInfo { /* opaque reply token is not public */ }
+pub struct ActorPart { pub info: ActorRecvInfo, pub message: Message, pub more: bool }
+pub fn remote_actor_ref(target_node_rid: RoutingId, actor_id: &str) -> Result<ActorRef, ConfigError>;
+```
+
+`SpotNode` exposes local Actor lifecycle, remote create-or-get, admission,
+join/leave, and Actor snapshots. `Spot` exposes Actor join receive/reply and
+joined Actor snapshots. `StreamSocket` exposes Actor bind/unbind and bound
+Actor send. `Discovery` exposes Actor route resolve.
+
+`generation == 0` is an unchecked remote ref. Per-Actor queue limit options
+are not part of the Rust public surface.
+
 ## Core
 
 ### Context
@@ -1380,15 +1402,6 @@ impl Discovery {
     pub fn set_value(&self, value: i64) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn get_value(&self) -> Result<i64, ConfigError>;
-    /// # Errors: ConfigError
-    pub fn bind_route(&self, kind: RouteKind, key: &[u8], value: &[u8])
-        -> Result<(), ConfigError>;
-    /// # Errors: ConfigError
-    pub fn unbind_route(&self, kind: RouteKind, key: &[u8])
-        -> Result<(), ConfigError>;
-    /// # Errors: ConfigError
-    pub fn resolve_route(&self, kind: RouteKind, key: &[u8])
-        -> Result<(RoutingId, Message), ConfigError>;
     /// # Errors: ConfigError
     pub fn member_peers(&self) -> Result<Vec<MemberPeerEntry>, ConfigError>;
     /// # Errors: ConfigError

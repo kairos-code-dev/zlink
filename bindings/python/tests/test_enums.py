@@ -59,7 +59,14 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.SpotSocketRole.PUB), 1)
         self.assertEqual(int(zlink.SpotSocketRole.SUB), 2)
         self.assertEqual(int(zlink.SpotDispatchEvent.CHANNEL_REPLY_READABLE), 4)
+        self.assertEqual(int(zlink.SpotDispatchEvent.ACTOR_READABLE), 5)
+        self.assertEqual(int(zlink.SpotDispatchEvent.ACTOR_JOIN_READABLE), 6)
         self.assertEqual(int(zlink.SpotDispatchSubjectKind.CHANNEL_DEALER), 3)
+        self.assertEqual(int(zlink.SpotDispatchSubjectKind.ACTOR), 4)
+        self.assertEqual(int(zlink.ActorCreateStatus.CREATED), 1)
+        self.assertEqual(int(zlink.ActorCreateStatus.EXISTING), 2)
+        self.assertEqual(int(zlink.ActorAdmissionResult.ACCEPT), 1)
+        self.assertEqual(int(zlink.ActorAdmissionResult.REJECT), 2)
 
 
 class EnumTypeTests(unittest.TestCase):

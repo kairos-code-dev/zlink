@@ -4,6 +4,7 @@ package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.spot.Spot;
+import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.lang.foreign.MemorySegment;
 import java.util.List;
 import java.util.function.BiConsumer;
@@ -30,6 +31,10 @@ public final class InternalAccess {
 
     public static MemorySegment spotHandle(Spot spot) {
         return spot.handleInternal();
+    }
+
+    public static MemorySegment spotNodeHandle(SpotNode node) {
+        return node.handleInternal();
     }
 
     public static MemorySegment messageDataSegment(Message message) {

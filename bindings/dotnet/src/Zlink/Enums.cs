@@ -158,7 +158,27 @@ public enum RequestResult
     TimedOut = 101,
     NotFound = 102,
     Terminated = 103,
-    ProtocolError = 104
+    ProtocolError = 104,
+    NotConnected = 105,
+    NotAdmitted = 106,
+    Rejected = 107,
+    Conflict = 108,
+    InvalidArgument = 109,
+    InvalidState = 110,
+    ThreadViolation = 111,
+    InternalError = 112
+}
+
+public enum ActorCreateStatus
+{
+    Created = 1,
+    Existing = 2
+}
+
+public enum ActorAdmissionResult
+{
+    Accept = 1,
+    Reject = 2
 }
 
 public enum RecvResult
@@ -389,12 +409,15 @@ public enum SpotDispatchEvent
     SubscribeReadable = 1,
     RoutedReadable = 2,
     TimerReadable = 3,
-    ChannelReplyReadable = 4
+    ChannelReplyReadable = 4,
+    ActorReadable = 5,
+    ActorJoinReadable = 6
 }
 
 public enum SpotDispatchSubjectKind
 {
     Spot = 1,
     Timer = 2,
-    ChannelDealer = 3
+    ChannelDealer = 3,
+    Actor = 4
 }

@@ -17,6 +17,8 @@ from ._socket_base import (
 )
 from ._request_reply import _ensure_reply_flags_supported
 from ._enums import (
+    ActorAdmissionResult,
+    ActorCreateStatus,
     AutoHwmProfile,
     SpotDispatchEvent,
     SpotDispatchSubjectKind,
@@ -30,6 +32,10 @@ from ._enums import (
 from ._ffi import (
     ZLINK_PART_FINAL,
     ZLINK_PART_MORE,
+    ZlinkActorCreateResult,
+    ZlinkActorJoinInfo,
+    ZlinkActorRecvInfo,
+    ZlinkActorRef,
     ZlinkMsg,
     ZlinkRoutingId,
     ZlinkSpotDispatchInfo,
@@ -38,6 +44,8 @@ from ._ffi import (
     ZlinkSpotNodeOptions,
     ZlinkSpotNodeSocketSnapshotEntry,
     ZlinkSpotNodeSocketSnapshotFilter,
+    ZlinkSpotNodeActorEntry,
+    ZlinkSpotNodeSpotEntry,
     ZlinkSpotNodeStatus,
     ZlinkSpotNodeSubjectEntry,
     ZlinkSpotNodeSubjectFilter,
@@ -73,6 +81,7 @@ from ._core import (
     _decode_topic_text,
     _is_eagain,
     _init_msg_from_buffer,
+    _msg_to_bytes,
     _report_unhandled_callback_exception,
     _raise_config_error_from_errno,
     _raise_result_error,
@@ -119,6 +128,13 @@ _SPOT_DISPATCH_EVENT_HANDLER = ctypes.CFUNCTYPE(
     ctypes.POINTER(ZlinkSpotDispatchInfo),
     ctypes.c_void_p,
 )
+_ACTOR_ADMISSION_HANDLER = ctypes.CFUNCTYPE(
+    ctypes.c_int,
+    ctypes.c_void_p,
+    ctypes.c_char_p,
+    ctypes.POINTER(ZlinkMsg),
+    ctypes.c_void_p,
+)
 
 _SPOT_SUBSCRIBE_HANDLER = ctypes.CFUNCTYPE(
     None,
@@ -155,6 +171,160 @@ class SpotDispatchInfo:
     event: SpotDispatchEvent
     subject_kind: SpotDispatchSubjectKind
     subject: int | None
+
+    def recv_actor_part(self, *, flags=0):
+        if (
+            self.event != SpotDispatchEvent.ACTOR_READABLE
+            or self.subject_kind != SpotDispatchSubjectKind.ACTOR
+            or self.subject is None
+        ):
+            raise RecvError(RecvResult.NOT_SUPPORTED, _ERRNO_ENOTSUP)
+        try:
+            return _recv_actor_part(ctypes.c_void_p(int(self.subject)), flags)
+        except RecvError as ex:
+            if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
+                return None
+            raise
+
+
+@dataclass(frozen=True)
+class ActorRef:
+    node_rid: RoutingId
+    actor_id: str
+    generation: int
+
+    @property
+    def unchecked(self):
+        return self.generation == 0
+
+    def is_unchecked(self):
+        return self.unchecked
+
+
+@dataclass(frozen=True)
+class ActorCreateResult:
+    status: ActorCreateStatus
+    actor: ActorRef
+
+
+@dataclass(frozen=True)
+class ActorRoute:
+    actor: ActorRef
+    joined: bool
+    joined_spot_rid: RoutingId
+
+
+@dataclass(frozen=True)
+class ActorRecvInfo:
+    actor: ActorRef
+    source_node_rid: RoutingId
+    source_session_rid: RoutingId
+    flags: int
+
+
+@dataclass
+class ActorJoinInfo:
+    actor: ActorRef
+    source_node_rid: RoutingId
+    flags: int
+    _native: ZlinkActorJoinInfo
+
+
+@dataclass(frozen=True)
+class ActorPart:
+    info: ActorRecvInfo
+    message: Message
+    more: bool
+
+
+@dataclass(frozen=True)
+class SpotNodeSpotEntry:
+    spot_rid: RoutingId
+    dispatch_handler_attached: bool
+    joined_actor_count: int
+    pending_actor_join_count: int
+    route_synced: bool
+    last_changed_ms: int
+
+
+@dataclass(frozen=True)
+class SpotNodeActorEntry:
+    actor: ActorRef
+    joined: bool
+    joined_spot_rid: RoutingId
+    route_synced: bool
+    pending_message_count: int
+    last_changed_ms: int
+
+
+def _actor_id_bytes(actor_id):
+    return _validated_c_string_value(actor_id, field="actor_id", max_length=255)
+
+
+def _actor_ref_from_native(native):
+    actor_id = bytes(native.actor_id).split(b"\0", 1)[0].decode(
+        "utf-8", errors="replace"
+    )
+    return ActorRef(
+        node_rid=_routing_id_bytes(native.node_rid),
+        actor_id=actor_id,
+        generation=int(native.generation),
+    )
+
+
+def _actor_ref_to_native(actor_ref):
+    if isinstance(actor_ref, ActorRef):
+        native = ZlinkActorRef()
+        native.node_rid = _copy_routing_id(actor_ref.node_rid)
+        actor_id = _actor_id_bytes(actor_ref.actor_id)
+        native.actor_id = actor_id
+        native.generation = int(actor_ref.generation)
+        return native
+    raise TypeError("actor_ref must be ActorRef")
+
+
+def _message_from_native(native):
+    msg = Message.__new__(Message)
+    msg._msg = native
+    msg._valid = True
+    msg._keepalive = None
+    return msg
+
+
+def remote_actor_ref(target_node_rid, actor_id):
+    native_node = _copy_routing_id(target_node_rid)
+    native_ref = ZlinkActorRef()
+    rc = lib().zlink_remote_actor_get_ref(
+        ctypes.byref(native_node), _actor_id_bytes(actor_id), ctypes.byref(native_ref)
+    )
+    if rc != 0:
+        _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+    return _actor_ref_from_native(native_ref)
+
+
+def _recv_actor_part(actor_handle, flags=0):
+    info = ZlinkActorRecvInfo()
+    part = ZlinkMsg()
+    more = ctypes.c_int()
+    rc = lib().zlink_actor_recv_part(
+        actor_handle,
+        ctypes.byref(info),
+        ctypes.byref(part),
+        ctypes.byref(more),
+        int(flags),
+    )
+    if rc != 0:
+        _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
+    return ActorPart(
+        info=ActorRecvInfo(
+            actor=_actor_ref_from_native(info.actor),
+            source_node_rid=_routing_id_bytes(info.source_node_rid),
+            source_session_rid=_routing_id_bytes(info.source_session_rid),
+            flags=int(info.flags),
+        ),
+        message=_message_from_native(part),
+        more=int(more.value) != ZLINK_PART_FINAL,
+    )
 
 
 def _make_spot_routed_reply_sender(spot, node_rid, spot_rid, seq):
@@ -480,6 +650,111 @@ def _recv_spot_routed(handle, flags, *, reply_sender_factory=None):
     )
 
 
+class Actor:
+    def __init__(self, handle):
+        if not handle:
+            _raise_config_error_from_errno()
+        self._handle = handle
+
+    def ref(self):
+        native = ZlinkActorRef()
+        rc = lib().zlink_actor_get_ref(self._handle, ctypes.byref(native))
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return _actor_ref_from_native(native)
+
+    @property
+    def actor_ref(self):
+        return self.ref()
+
+    def join(self, spot, payload, callback, *, flags=0, timeout=0):
+        if callback is None:
+            raise ValueError("callback must not be None")
+        if not isinstance(spot, Spot):
+            raise TypeError("spot must be Spot")
+        native_parts = spot._native_parts_from_payload(payload)
+        if len(native_parts) != 1:
+            _close_native_parts(native_parts)
+            raise ValueError("actor join payload must be a single message")
+        pending = _PendingRequest(callback=callback)
+        handle = id(pending)
+        spot._request_pending[handle] = pending
+        spot._request_progress_targets[handle] = spot._request_progress_target()
+        reply_handler = spot._ensure_request_reply_handler()
+        rc = lib().zlink_actor_join_spot(
+            self._handle,
+            spot._handle,
+            ctypes.byref(native_parts[0]),
+            reply_handler,
+            ctypes.c_void_p(handle),
+            int(flags),
+            _timeout_to_ms(timeout),
+        )
+        if rc != 0:
+            spot._request_pending.pop(handle, None)
+            spot._request_progress_targets.pop(handle, None)
+            _close_native_parts(native_parts)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+        spot._request_progress.ensure_running()
+        return True
+
+    def leave(self, spot):
+        if not isinstance(spot, Spot):
+            raise TypeError("spot must be Spot")
+        rc = lib().zlink_actor_leave_spot(self._handle, spot._handle)
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
+    def recv_part(self, *, flags=0):
+        try:
+            return _recv_actor_part(ctypes.c_void_p(self._handle), flags)
+        except RecvError as ex:
+            if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
+                return None
+            raise
+
+    def send_bound_session(self, payload, *, flags=0):
+        native_parts = _clone_payload(payload)
+        if len(native_parts) != 1:
+            _close_native_parts(native_parts)
+            raise ValueError("payload must be a single message")
+        rc = lib().zlink_actor_send_bound_session_msg(
+            self._handle, ctypes.byref(native_parts[0]), int(flags)
+        )
+        if rc != 0:
+            _close_native_parts(native_parts)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+        return True
+
+    def send_bound_session_packet(self, header, body, *, flags=0):
+        native_parts = _clone_payload([header, body])
+        rc = lib().zlink_actor_send_bound_session_packet(
+            self._handle,
+            ctypes.byref(native_parts[0]),
+            ctypes.byref(native_parts[1]),
+            int(flags),
+        )
+        if rc != 0:
+            _close_native_parts(native_parts)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+        return True
+
+    def close(self, *, timeout=0):
+        if not self._handle:
+            return
+        handle = ctypes.c_void_p(self._handle)
+        rc = lib().zlink_actor_destroy(ctypes.byref(handle), _timeout_to_ms(timeout))
+        if rc != 0:
+            _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
+        self._handle = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+
 @dataclass(frozen=True)
 class SpotNodeStatus:
     service_name: str
@@ -563,6 +838,10 @@ class SpotNode:
         if not self._handle:
             _raise_config_error_from_errno()
         self._spots = set()
+        self._actor_admission_handler = None
+        self._actor_admission_cb = None
+        self._actor_request_pending = {}
+        self._actor_reply_handler = None
 
     def bind(self, endpoint: str):
         rc = lib().zlink_spot_node_bind(
@@ -684,6 +963,180 @@ class SpotNode:
 
     def create_spot(self):
         return Spot._create(self)
+
+    def actor(self, actor_id):
+        handle = lib().zlink_spot_node_actor_new(self._handle, _actor_id_bytes(actor_id))
+        return Actor(handle)
+
+    def actor_lookup(self, actor_id):
+        native = ZlinkActorRef()
+        rc = lib().zlink_spot_node_actor_lookup(
+            self._handle, _actor_id_bytes(actor_id), ctypes.byref(native)
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return _actor_ref_from_native(native)
+
+    def create_remote_actor(self, target_node_rid, actor_id, payload, *, timeout=0):
+        native_node = _copy_routing_id(target_node_rid)
+        native_parts = _clone_payload(payload)
+        if len(native_parts) != 1:
+            _close_native_parts(native_parts)
+            raise ValueError("remote actor create payload must be a single message")
+        result = ZlinkActorCreateResult()
+        rc = lib().zlink_spot_node_create_remote_actor(
+            self._handle,
+            ctypes.byref(native_node),
+            _actor_id_bytes(actor_id),
+            ctypes.byref(native_parts[0]),
+            ctypes.byref(result),
+            _timeout_to_ms(timeout),
+        )
+        if rc != 0:
+            _close_native_parts(native_parts)
+            _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
+        return ActorCreateResult(
+            status=ActorCreateStatus(int(result.status)),
+            actor=_actor_ref_from_native(result.actor),
+        )
+
+    def destroy_remote_actor(self, actor_ref, *, timeout=0):
+        native = _actor_ref_to_native(actor_ref)
+        rc = lib().zlink_spot_node_destroy_remote_actor(
+            self._handle, ctypes.byref(native), _timeout_to_ms(timeout)
+        )
+        if rc != 0:
+            _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
+
+    def on_actor_admission(self, handler):
+        if handler is None:
+            raise ValueError("handler must not be None")
+
+        def _callback(_node, actor_id, message_ptr, _):
+            try:
+                actor_text = ctypes.cast(actor_id, ctypes.c_char_p).value.decode()
+                message = Message.copy_from(_msg_to_bytes(message_ptr.contents))
+                result = handler(actor_text, message)
+                message.close()
+                return int(result)
+            except Exception:
+                _report_unhandled_callback_exception(handler)
+                return int(ActorAdmissionResult.REJECT)
+
+        callback = _ACTOR_ADMISSION_HANDLER(_callback)
+        rc = lib().zlink_spot_node_actor_admission_handler(
+            self._handle, callback, None
+        )
+        if rc != 0:
+            _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
+        self._actor_admission_handler = handler
+        self._actor_admission_cb = callback
+
+    def _ensure_actor_reply_handler(self):
+        if self._actor_reply_handler is None:
+            self._actor_reply_handler = _REPLY_HANDLER(self._on_actor_reply)
+        return self._actor_reply_handler
+
+    def _on_actor_reply(self, result_code, parts, part_count, userdata):
+        handle = ctypes.cast(userdata, ctypes.c_void_p).value
+        pending = self._actor_request_pending.pop(handle, None)
+        if pending is None:
+            return
+        result = _request_result_from_code(int(result_code))
+        received = []
+        if result == RequestResult.OK:
+            received = _make_message_list(parts, part_count)
+        pending.resolve(result, received, _request_result_internal_errno(result))
+
+    def join_actor(self, actor_ref, dest_spot_rid, payload, callback, *, flags=0, timeout=0):
+        if callback is None:
+            raise ValueError("callback must not be None")
+        native_actor = _actor_ref_to_native(actor_ref)
+        native_spot = _copy_routing_id(dest_spot_rid)
+        native_parts = _clone_payload(payload)
+        if len(native_parts) != 1:
+            _close_native_parts(native_parts)
+            raise ValueError("actor join payload must be a single message")
+        pending = _PendingRequest(callback=callback)
+        handle = id(pending)
+        self._actor_request_pending[handle] = pending
+        rc = lib().zlink_spot_node_actor_join_spot(
+            self._handle,
+            ctypes.byref(native_actor),
+            ctypes.byref(native_spot),
+            ctypes.byref(native_parts[0]),
+            self._ensure_actor_reply_handler(),
+            ctypes.c_void_p(handle),
+            int(flags),
+            _timeout_to_ms(timeout),
+        )
+        if rc != 0:
+            self._actor_request_pending.pop(handle, None)
+            _close_native_parts(native_parts)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+        return True
+
+    def leave_actor(self, actor_ref, dest_spot_rid, *, timeout=0):
+        native_actor = _actor_ref_to_native(actor_ref)
+        native_spot = _copy_routing_id(dest_spot_rid)
+        rc = lib().zlink_spot_node_actor_leave_spot(
+            self._handle,
+            ctypes.byref(native_actor),
+            ctypes.byref(native_spot),
+            _timeout_to_ms(timeout),
+        )
+        if rc != 0:
+            _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
+
+    def spots_snapshot(self):
+        count = ctypes.c_size_t()
+        rc = lib().zlink_spot_node_spots_snapshot(self._handle, None, ctypes.byref(count))
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        if count.value == 0:
+            return []
+        entries = (ZlinkSpotNodeSpotEntry * int(count.value))()
+        rc = lib().zlink_spot_node_spots_snapshot(
+            self._handle, entries, ctypes.byref(count)
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return [
+            SpotNodeSpotEntry(
+                spot_rid=_routing_id_bytes(entry.spot_rid),
+                dispatch_handler_attached=bool(entry.dispatch_handler_attached),
+                joined_actor_count=int(entry.joined_actor_count),
+                pending_actor_join_count=int(entry.pending_actor_join_count),
+                route_synced=bool(entry.route_synced),
+                last_changed_ms=int(entry.last_changed_ms),
+            )
+            for entry in entries[: int(count.value)]
+        ]
+
+    def actors_snapshot(self):
+        count = ctypes.c_size_t()
+        rc = lib().zlink_spot_node_actors_snapshot(self._handle, None, ctypes.byref(count))
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        if count.value == 0:
+            return []
+        entries = (ZlinkSpotNodeActorEntry * int(count.value))()
+        rc = lib().zlink_spot_node_actors_snapshot(
+            self._handle, entries, ctypes.byref(count)
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return [
+            SpotNodeActorEntry(
+                actor=_actor_ref_from_native(entry.actor),
+                joined=bool(entry.joined),
+                joined_spot_rid=_routing_id_bytes(entry.joined_spot_rid),
+                route_synced=bool(entry.route_synced),
+                pending_message_count=int(entry.pending_message_count),
+                last_changed_ms=int(entry.last_changed_ms),
+            )
+            for entry in entries[: int(count.value)]
+        ]
 
     def _register_spot(self, spot):
         self._spots.add(spot)
@@ -899,6 +1352,10 @@ class SpotNode:
         rc = lib().zlink_spot_node_destroy(ctypes.byref(handle))
         self._handle = None
         self._spots.clear()
+        self._actor_request_pending.clear()
+        self._actor_admission_handler = None
+        self._actor_admission_cb = None
+        self._actor_reply_handler = None
         if rc != 0 and first_error is None:
             _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
         if first_error is not None:
@@ -1605,6 +2062,65 @@ class Spot:
         )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
+    def recv_actor_join(self, *, flags=0):
+        info = ZlinkActorJoinInfo()
+        message = ZlinkMsg()
+        rc = lib().zlink_spot_actor_join_recv(
+            self._handle,
+            ctypes.byref(info),
+            ctypes.byref(message),
+            int(flags),
+        )
+        if rc != 0:
+            try:
+                _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
+            except RecvError as ex:
+                if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
+                    return None
+                raise
+        return (
+            ActorJoinInfo(
+                actor=_actor_ref_from_native(info.actor),
+                source_node_rid=_routing_id_bytes(info.source_node_rid),
+                flags=int(info.flags),
+                _native=info,
+            ),
+            _message_from_native(message),
+        )
+
+    def reply_actor_join(self, info, accepted, payload):
+        if not isinstance(info, ActorJoinInfo):
+            raise TypeError("info must be ActorJoinInfo")
+        native_parts = _clone_payload(payload)
+        if len(native_parts) != 1:
+            _close_native_parts(native_parts)
+            raise ValueError("actor join reply payload must be a single message")
+        rc = lib().zlink_spot_actor_join_reply(
+            self._handle,
+            ctypes.byref(info._native),
+            1 if accepted else 0,
+            ctypes.byref(native_parts[0]),
+        )
+        if rc != 0:
+            _close_native_parts(native_parts)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+        return True
+
+    def actors_snapshot(self):
+        count = ctypes.c_size_t()
+        rc = lib().zlink_spot_actors_snapshot(self._handle, None, ctypes.byref(count))
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        if count.value == 0:
+            return []
+        entries = (ZlinkActorRef * int(count.value))()
+        rc = lib().zlink_spot_actors_snapshot(
+            self._handle, entries, ctypes.byref(count)
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return [_actor_ref_from_native(entry) for entry in entries[: int(count.value)]]
 
     def _cancel_pending_requests(self):
         for handle, pending in list(self._request_pending.items()):

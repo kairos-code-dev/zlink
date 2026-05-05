@@ -57,14 +57,16 @@ pub use poller::{
 };
 pub use runtime::{multipart_close, proxy, proxy_steerable, sleep};
 pub use service::{
-    AutoConnectType, Discovery, MemberPeerEntry, Registry, RegistryQueryClient,
-    RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryState, RegistryStatus,
-    RegistryTopologyEntry, RegistryTopologyFilter, ServiceKind, ServiceRole, SocketType, Spot,
-    SpotDispatchEvent, SpotDispatchInfo, SpotDispatchSubjectKind, SpotNode, SpotNodeMode,
-    SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketOwner,
-    SpotNodeSocketSnapshotEntry, SpotNodeSocketSnapshotFilter, SpotNodeState, SpotNodeStatus,
-    SpotNodeSubjectEntry, SpotNodeSubjectFilter, SpotPeerSource, SpotPeerState, SpotRole,
-    SpotServiceAttachmentRole, TopologySource, TopologyState,
+    Actor, ActorAdmissionResult, ActorCreateResult, ActorCreateStatus, ActorJoinInfo,
+    ActorRecvInfo, ActorRef, ActorRoute, AutoConnectType, Discovery, MemberPeerEntry, Registry,
+    RegistryQueryClient, RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryState,
+    RegistryStatus, RegistryTopologyEntry, RegistryTopologyFilter, ServiceKind, ServiceRole,
+    SocketType, Spot, SpotDispatchEvent, SpotDispatchInfo, SpotDispatchSubjectKind, SpotNode,
+    SpotNodeActorEntry, SpotNodeMode, SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter,
+    SpotNodeSocketOwner, SpotNodeSocketSnapshotEntry, SpotNodeSocketSnapshotFilter,
+    SpotNodeSpotEntry, SpotNodeState, SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter,
+    SpotPeerSource, SpotPeerState, SpotRole, SpotServiceAttachmentRole, TopologySource,
+    TopologyState,
 };
 pub use socket::{
     DealerSocket, PairSocket, PubSocket, RouterSocket, SendHandle, StreamSocket, SubSocket,

@@ -7,6 +7,7 @@
 #include "../types.hpp"
 
 #include <cerrno>
+#include <cstring>
 
 namespace zlink
 {
@@ -166,6 +167,19 @@ class discovery_t
               _discovery, routing_id_native (spot_rid_),
               routing_id_native (owner_node_rid))));
         return owner_node_rid;
+    }
+
+    actor_route_t resolve_actor (const std::string &actor_id_)
+    {
+        validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
+                                   "actor_id");
+        zlink_actor_route_t native;
+        std::memset (&native, 0, sizeof (native));
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_discovery_resolve_actor (
+              _discovery, actor_id_.c_str (), &native)));
+        return actor_route_t (native);
     }
 
     void close ()

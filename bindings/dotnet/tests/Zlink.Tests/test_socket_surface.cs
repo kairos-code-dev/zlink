@@ -132,8 +132,37 @@ public sealed class test_socket_surface
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(RegistryQueryClient)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(SpotNode)));
         Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Spot)));
+        Assert.True(typeof(IAsyncDisposable).IsAssignableFrom(typeof(Actor)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "DisconnectPeerRid",
             typeof(RoutingId)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
+            nameof(SpotNode.Actor), typeof(string)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
+            nameof(SpotNode.ActorLookup), typeof(string)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
+            nameof(SpotNode.RemoteActorRef), typeof(RoutingId),
+            typeof(string)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
+            nameof(SpotNode.JoinActor), typeof(ActorRef), typeof(RoutingId),
+            typeof(Message),
+            typeof(Action<RequestResult, IReadOnlyList<Message>>),
+            typeof(TimeSpan?), typeof(SendFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.RecvActorJoin), typeof(RecvFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(Spot),
+            nameof(Spot.ReplyActorJoin), typeof(ActorJoinInfo), typeof(bool),
+            typeof(Message)));
+        Assert.True(HasPublicInstanceMethod(typeof(StreamSocket),
+            nameof(StreamSocket.BindActor), typeof(SpotNode), typeof(RoutingId),
+            typeof(ActorRef), typeof(TimeSpan)));
+        Assert.True(HasPublicInstanceMethod(typeof(StreamSocket),
+            nameof(StreamSocket.SendBoundActor), typeof(SpotNode),
+            typeof(RoutingId), typeof(string), typeof(Message),
+            typeof(SendFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(Discovery),
+            nameof(Discovery.ResolveActor), typeof(string)));
+        Assert.True(typeof(ActorRef).GetProperty(nameof(ActorRef.IsUnchecked))
+            is not null);
         Assert.NotNull(typeof(SpotNode).GetMethod(nameof(SpotNode.CreateSpot),
             BindingFlags.Instance | BindingFlags.Public));
         Assert.Empty(typeof(Spot).GetConstructors(
@@ -191,6 +220,8 @@ public sealed class test_socket_surface
             BindingFlags.Instance | BindingFlags.Public, binder: null,
             types: Type.EmptyTypes, modifiers: null));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "SetOption"));
+        Assert.False(HasPublicInstanceMethod(typeof(SpotNode),
+            "SetActorHighWaterMark"));
         Assert.False(HasPublicInstanceMethod(typeof(Message),
             "GetPropertyString"));
         Assert.True(typeof(SocketBase).GetMethod(nameof(SocketBase.MonitorOpen))!
@@ -205,6 +236,26 @@ public sealed class test_socket_surface
             nameof(SocketBase.SetTlsClient), typeof(string), typeof(string),
             typeof(bool)));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery), "MonitorOpen"));
+    }
+
+    [Fact]
+    public void actor_enums_match_core_contract_values()
+    {
+        Assert.Equal(105, (int)RequestResult.NotConnected);
+        Assert.Equal(106, (int)RequestResult.NotAdmitted);
+        Assert.Equal(107, (int)RequestResult.Rejected);
+        Assert.Equal(108, (int)RequestResult.Conflict);
+        Assert.Equal(109, (int)RequestResult.InvalidArgument);
+        Assert.Equal(110, (int)RequestResult.InvalidState);
+        Assert.Equal(111, (int)RequestResult.ThreadViolation);
+        Assert.Equal(112, (int)RequestResult.InternalError);
+        Assert.Equal(5, (int)SpotDispatchEvent.ActorReadable);
+        Assert.Equal(6, (int)SpotDispatchEvent.ActorJoinReadable);
+        Assert.Equal(4, (int)SpotDispatchSubjectKind.Actor);
+        Assert.Equal(1, (int)ActorCreateStatus.Created);
+        Assert.Equal(2, (int)ActorCreateStatus.Existing);
+        Assert.Equal(1, (int)ActorAdmissionResult.Accept);
+        Assert.Equal(2, (int)ActorAdmissionResult.Reject);
     }
 
     [Fact]

@@ -215,12 +215,20 @@ type spotDispatchCallbackState struct {
 	handler    func(*Spot, SpotDispatchInfo)
 }
 
+type actorAdmissionCallbackState struct {
+	handler func(string, *Message) ActorAdmissionResult
+}
+
 func newSpotDispatchCallbackState(spot *Spot, handler func(*Spot, SpotDispatchInfo)) *spotDispatchCallbackState {
 	return &spotDispatchCallbackState{
 		dispatcher: newCallbackDispatcher(),
 		spot:       spot,
 		handler:    handler,
 	}
+}
+
+func newActorAdmissionCallbackState(handler func(string, *Message) ActorAdmissionResult) *actorAdmissionCallbackState {
+	return &actorAdmissionCallbackState{handler: handler}
 }
 
 func (s *spotDispatchCallbackState) close() {
@@ -277,6 +285,8 @@ func releaseCallbackHandle(handle cgo.Handle) {
 	}
 	handle.Delete()
 }
+
+func (s *actorAdmissionCallbackState) close() {}
 
 func safeHandleValue(userdata C.uintptr_t) (value any, ok bool) {
 	defer func() {
@@ -480,6 +490,32 @@ func goZlinkSpotDispatchEventTrampoline(_ unsafe.Pointer, info *C.zlink_spot_dis
 		}
 	}()
 	state.handler(state.spot, dispatchInfo)
+}
+
+//export goZlinkActorAdmissionTrampoline
+func goZlinkActorAdmissionTrampoline(_ unsafe.Pointer, actorID *C.char, message *C.zlink_msg_t, userdata C.uintptr_t) C.zlink_actor_admission_result_t {
+	value, ok := safeHandleValue(userdata)
+	if !ok || actorID == nil || message == nil {
+		return C.ZLINK_ACTOR_ADMISSION_REJECT
+	}
+	state, ok := value.(*actorAdmissionCallbackState)
+	if !ok || state == nil || state.handler == nil {
+		return C.ZLINK_ACTOR_ADMISSION_REJECT
+	}
+	copied := &Message{}
+	if err := configErrorFromResult(C.zlink_msg_init(&copied.msg)); err != nil {
+		return C.ZLINK_ACTOR_ADMISSION_REJECT
+	}
+	if err := configErrorFromResult(C.zlink_msg_copy(&copied.msg, message)); err != nil {
+		_ = copied.Close()
+		return C.ZLINK_ACTOR_ADMISSION_REJECT
+	}
+	defer copied.Close()
+	result := state.handler(C.GoString(actorID), copied)
+	if result == ActorAdmissionAccept {
+		return C.ZLINK_ACTOR_ADMISSION_ACCEPT
+	}
+	return C.ZLINK_ACTOR_ADMISSION_REJECT
 }
 
 //export goZlinkTimerTrampoline

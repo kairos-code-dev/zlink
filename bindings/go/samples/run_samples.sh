@@ -16,6 +16,9 @@ SAMPLES=(
   "samples/monitor_recv_sample"
   "samples/discovery_registry_sample"
   "samples/registry_query_sample"
+  "samples/actor_room_server_sample"
+  "samples/actor_gateway_relay_sample"
+  "samples/actor_single_player_queue_sample"
 )
 
 pass=0

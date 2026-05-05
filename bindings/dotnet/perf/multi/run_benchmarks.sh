@@ -17,6 +17,7 @@ CLIENTS="${PERF_MULTI_CLIENTS:-}"
 DURATION="${PERF_MULTI_DURATION_SECONDS:-5}"
 RUNS="${PERF_RUNS:-1}"
 READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
+CASE_COOLDOWN_MS="${PERF_MULTI_CASE_COOLDOWN_MS:-0}"
 RESULTS_TAG=""
 CONFIGURATION="${PERF_CONFIGURATION:-Release}"
 REPORT=""
@@ -551,6 +552,10 @@ fi
 validate_uint "--duration" "${DURATION}"
 validate_uint "--runs" "${RUNS}"
 validate_uint "PERF_MULTI_CONNECT_READY_TIMEOUT_MS" "${READY_TIMEOUT_MS}"
+if [[ ! "${CASE_COOLDOWN_MS}" =~ ^[0-9]+$ ]]; then
+  echo "PERF_MULTI_CASE_COOLDOWN_MS must be a non-negative integer." >&2
+  exit 1
+fi
 
 if [[ -n "${CLIENTS}" ]]; then
   validate_uint "--clients" "${CLIENTS}"
@@ -653,6 +658,7 @@ print_line "- transports: ${TRANSPORTS}"
 print_line "- msg_sizes: ${MSG_SIZES:-default(pattern)}"
 print_line "- clients: ${CLIENTS:-default(pattern)}"
 print_line "- pin_cpu: off"
+print_line "- case_cooldown_ms: ${CASE_COOLDOWN_MS}"
 print_line ""
 
 IFS=',' read -r -a patterns <<< "${PATTERN}"
@@ -690,6 +696,9 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
       for size in "${msg_sizes[@]}"; do
         size="${size//[[:space:]]/}"
         [[ -n "${size}" ]] || continue
+        if [[ "${CASE_COOLDOWN_MS}" -gt 0 ]]; then
+          sleep "$(( (CASE_COOLDOWN_MS + 999) / 1000 ))"
+        fi
         expected_result_lines=$((expected_result_lines + 5))
 
         server_log="${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_${size}_server_run${run_index}.log"
@@ -1006,6 +1015,7 @@ print_line "- msg_sizes: ${MSG_SIZES:-default(pattern)}"
 print_line "- clients: ${CLIENTS:-default(pattern)}"
 print_line "- duration_seconds: ${DURATION}"
 print_line "- pin_cpu: off"
+print_line "- case_cooldown_ms: ${CASE_COOLDOWN_MS}"
 if [[ "${result_lines}" -eq "${expected_result_lines}" && "${status}" -eq 0 ]]; then
   completion_status="complete"
 else

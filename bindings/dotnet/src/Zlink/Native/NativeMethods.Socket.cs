@@ -158,4 +158,27 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_socket_attach_discovery(IntPtr socket,
         IntPtr discovery);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_stream_bind_actor(IntPtr node,
+        IntPtr stream,
+        ref ZlinkRoutingId sessionRid,
+        ref ZlinkActorRef actor,
+        uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_stream_unbind_actor(IntPtr node,
+        IntPtr stream,
+        ref ZlinkRoutingId sessionRid,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
+        uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_stream_send_bound_actor_part(IntPtr node,
+        IntPtr stream,
+        ref ZlinkRoutingId sessionRid,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
+        ref ZlinkMsg part,
+        int flags,
+        ZlinkPartFlag partFlag);
 }

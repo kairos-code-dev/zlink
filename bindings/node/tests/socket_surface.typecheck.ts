@@ -100,6 +100,20 @@ spotNode.setTlsClient('ca', 'host');
 spotNode.setRoutingId(routingId);
 spotNode.routingId;
 const spot = spotNode.createSpot();
+const actor = spotNode.actor('typed-actor');
+const actorRef = actor.ref();
+actorRef.isUnchecked();
+spotNode.actorLookup('typed-actor');
+spotNode.remoteActorRef(routingId, 'typed-actor');
+zlink.remoteActorRef(routingId, 'typed-actor');
+spotNode.onActorAdmission((_actorId, _message) => zlink.ActorAdmissionResult.Accept);
+spotNode.joinActor(actorRef, routingId, 'join', (_result, _parts) => {});
+spotNode.leaveActor(actorRef, routingId);
+spotNode.spotsSnapshot();
+spotNode.actorsSnapshot();
+stream.bindActor(spotNode, routingId, actorRef);
+stream.unbindActor(spotNode, routingId, 'typed-actor');
+stream.sendBoundActor(spotNode, routingId, 'typed-actor', 'payload');
 spot.setRoutingId(routingId);
 spot.routingId;
 spot.publish('svc', 'topic', 'ok');
@@ -110,6 +124,14 @@ spot.unsetSubscription('topic');
 spot.subscribe();
 spot.receiveSubscriptionEvent();
 spot.onSendReady(() => {});
+spot.onDispatchEvent((info) => {
+  info.recvActorPart(zlink.RecvFlags.DontWait);
+});
+const actorJoin = spot.recvActorJoin(zlink.RecvFlags.DontWait);
+if (actorJoin) {
+  spot.replyActorJoin(actorJoin.info, true, 'ok');
+}
+spot.actorsSnapshot();
 spot.setLinger(0);
 spot.setSendHighWaterMark(1);
 spot.setReceiveHighWaterMark(1);

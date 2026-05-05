@@ -7,7 +7,15 @@ public enum RequestResult {
     TIMED_OUT(101),
     NOT_FOUND(102),
     TERMINATED(103),
-    PROTOCOL_ERROR(104);
+    PROTOCOL_ERROR(104),
+    INTERNAL_ERROR(105),
+    REJECTED(106),
+    CONFLICT(107),
+    BUSY(108),
+    NOT_CONNECTED(109),
+    INVALID_ARGUMENT(110),
+    INVALID_STATE(111),
+    NOT_SUPPORTED(112);
 
     private final int value;
 

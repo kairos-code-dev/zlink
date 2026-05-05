@@ -58,6 +58,29 @@ with the rules here, this section wins.
   via Discovery, the library picks one initiator per pair by a total order
   on `(routingID, advertiseEndpoint)`. Users do not configure this.
 
+## Actor Dispatch Public Surface
+
+Go exposes Actor dispatch through exported identifiers in package `zlink`.
+
+```go
+type ActorRef struct { NodeRID RoutingID; ActorID string; Generation uint64 }
+type ActorCreateResult struct { Status ActorCreateStatus; Actor ActorRef }
+type ActorRoute struct { Actor ActorRef; Joined bool; JoinedSpotRID *RoutingID }
+type ActorRecvInfo struct { Actor ActorRef; SourceNodeRID *RoutingID; SourceSessionRID *RoutingID; Flags uint32 }
+type ActorJoinInfo struct { Actor ActorRef; SourceNodeRID *RoutingID; Flags uint32 }
+type ActorPart struct { Info ActorRecvInfo; Message *Message; More bool }
+func RemoteActorRef(targetNodeRID RoutingID, actorID string) (ActorRef, error)
+```
+
+`SpotNode` exposes `Actor`, `ActorLookup`, `CreateRemoteActor`,
+`DestroyRemoteActor`, `OnActorAdmission`, `JoinActor`, `LeaveActor`,
+`SpotsSnapshot`, and `ActorsSnapshot`. `Spot` exposes `RecvActorJoin`,
+`ReplyActorJoin`, and `ActorsSnapshot`. `StreamSocket` exposes `BindActor`,
+`UnbindActor`, and `SendBoundActor`. `Discovery` exposes `ResolveActor`.
+
+`Generation == 0` is an unchecked remote ref. Actor join requests and replies
+carry a single `Message` payload.
+
 ## Core
 
 ### Context
@@ -1108,9 +1131,6 @@ func (d *Discovery) ConnectRegistry(endpoint string) error
 // Discovery option getters/setters and snapshot queries return *ConfigError on failure.
 func (d *Discovery) SetValue(value int64) error
 func (d *Discovery) GetValue() (int64, error)
-func (d *Discovery) BindRoute(kind RouteKind, key, value []byte) error
-func (d *Discovery) UnbindRoute(kind RouteKind, key []byte) error
-func (d *Discovery) ResolveRoute(kind RouteKind, key []byte) (RoutingID, *Message, error)
 func (d *Discovery) MemberPeers() ([]MemberPeerEntry, error)
 func (d *Discovery) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
 // SetSpotOwnerSyncEnabled enables or disables publishing SPOT owner rows to Registry.

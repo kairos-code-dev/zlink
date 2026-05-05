@@ -369,15 +369,29 @@ replace_regex(python_pyproject, r'^version\s*=\s*"[^"]+"$',
               f'version = "{expect}"')
 replace_regex(python_pkg_info, r"^Version:\s*.*$",
               f"Version: {expect}")
-replace_regex(python_version_test,
-              r"self\.assertEqual\(major,\s*\d+\)",
-              f"self.assertEqual(major, {major})")
-replace_regex(python_version_test,
-              r"self\.assertEqual\(minor,\s*\d+\)",
-              f"self.assertEqual(minor, {minor})")
-replace_regex(python_version_test,
-              r"self\.assertEqual\(patch,\s*\d+\)",
-              f"self.assertEqual(patch, {patch})")
+python_major_updated = replace_regex_optional(
+    python_version_test,
+    r"self\.assertEqual\(major,\s*\d+\)",
+    f"self.assertEqual(major, {major})",
+)
+python_minor_updated = replace_regex_optional(
+    python_version_test,
+    r"self\.assertEqual\(minor,\s*\d+\)",
+    f"self.assertEqual(minor, {minor})",
+)
+python_patch_updated = replace_regex_optional(
+    python_version_test,
+    r"self\.assertEqual\(patch,\s*\d+\)",
+    f"self.assertEqual(patch, {patch})",
+)
+if len({python_major_updated, python_minor_updated, python_patch_updated}) > 1:
+    errors.append(
+        f"{python_version_test}: partial python version marker update "
+        "(major/minor/patch pattern mismatch)"
+    )
+elif not python_major_updated and not python_minor_updated and not python_patch_updated:
+    # Newer python tests may read expected version directly from core/include/zlink.h.
+    pass
 
 if errors:
     print("Error: failed to update some version markers:", file=sys.stderr)

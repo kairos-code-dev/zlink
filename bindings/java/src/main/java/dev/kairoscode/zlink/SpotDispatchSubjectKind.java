@@ -5,7 +5,8 @@ package dev.kairoscode.zlink;
 public enum SpotDispatchSubjectKind {
     SPOT(1),
     TIMER(2),
-    CHANNEL_DEALER(3);
+    CHANNEL_DEALER(3),
+    ACTOR(4);
 
     private final int value;
 

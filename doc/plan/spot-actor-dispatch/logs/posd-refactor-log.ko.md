@@ -89,7 +89,8 @@
 
 - 수행한 스캔:
   - `rg -n "bound_session_node = NULL|bound_stream = NULL|memset \(&.*bound_session_rid|joined_spot = NULL" core/src/api/service_spot_actor_api.cpp`
-  - `rg -n "zlink_discovery_(bind_route|unbind_route|resolve_route)|zlink_route_kind_t|ZLINK_ROUTE_KIND_INVALID|ZLINK_ROUTE_KEY_MAX|ZLINK_ROUTE_VALUE_MAX|zlink_spot_node_remote_actor_ref|zlink_stream_lookup_actor|zlink_stream_send_actor_part|session_actor_key|Actor HWM|actor HWM|generation == 0.*invalid|invalid.*generation == 0|RemoteActor" doc/spec/core doc/guide doc/internals doc/site/docs --glob '!doc/spec/draft/**' --glob '!doc/plan/**'`
+  - 제거된 generic route API, 제거된 Actor helper, Actor별 queue limit option 오해 표현,
+    unchecked generation 오해 표현을 검색했다.
   - Actor API list를 public header와 정식 spec에 다시 대조
 - 결과:
   - bound session field reset은 constructor와 helper 내부에만 남았다.

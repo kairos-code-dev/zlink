@@ -94,6 +94,9 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(stream.setSockOpt, undefined);
   assert.equal(typeof stream.setRoutingId, 'function');
   assert.equal(typeof stream.getRoutingId, 'function');
+  assert.equal(typeof stream.bindActor, 'function');
+  assert.equal(typeof stream.unbindActor, 'function');
+  assert.equal(typeof stream.sendBoundActor, 'function');
 
   assert.equal(typeof router.recv, 'function');
   assert.equal(router.tryRecv, undefined);
@@ -120,8 +123,28 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(typeof spotNode.attachChannelDealer, 'function');
   assert.equal(typeof spotNode.attachChannelDealerManual, 'function');
   assert.equal(typeof spotNode.attachPubIngress, 'function');
+  assert.equal(typeof spotNode.actor, 'function');
+  assert.equal(typeof spotNode.actorLookup, 'function');
+  assert.equal(typeof spotNode.remoteActorRef, 'function');
+  assert.equal(typeof spotNode.createRemoteActor, 'function');
+  assert.equal(typeof spotNode.destroyRemoteActor, 'function');
+  assert.equal(typeof spotNode.onActorAdmission, 'function');
+  assert.equal(typeof spotNode.joinActor, 'function');
+  assert.equal(typeof spotNode.leaveActor, 'function');
+  assert.equal(typeof spotNode.spotsSnapshot, 'function');
+  assert.equal(typeof spotNode.actorsSnapshot, 'function');
   spotNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('node-surface')));
   assert.ok(spotNode.routingId instanceof zlink.RoutingId);
+  const actor = spotNode.actor('surface-actor');
+  const actorRef = actor.ref();
+  assert.equal(actorRef.actorId, 'surface-actor');
+  assert.equal(actorRef.unchecked, false);
+  assert.equal(actorRef.isUnchecked(), false);
+  assert.equal(typeof actor.join, 'function');
+  assert.equal(typeof actor.leave, 'function');
+  assert.equal(typeof actor.recvPart, 'function');
+  assert.equal(typeof actor.sendBoundSession, 'function');
+  assert.equal(typeof actor.sendBoundSessionPacket, 'function');
   const spot = spotNode.createSpot();
   assert.equal(typeof spot.publish, 'function');
   assert.equal(typeof spot.sendChannel, 'function');
@@ -131,8 +154,12 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(typeof spot.receiveSubscriptionEvent, 'function');
   assert.equal(typeof spot.onDispatchEvent, 'function');
   assert.equal(typeof spot.onRoutedReceive, 'function');
+  assert.equal(typeof spot.recvActorJoin, 'function');
+  assert.equal(typeof spot.replyActorJoin, 'function');
+  assert.equal(typeof spot.actorsSnapshot, 'function');
   assert.equal(spot.onSubscribe, undefined);
   spot.close();
+  actor.close();
   spotNode.close();
 
   const monitor = stream.monitorOpen(zlink.MonitorEvent.ALL);

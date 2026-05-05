@@ -165,6 +165,16 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         }
     }
 
+    public ActorRoute ResolveActor(string actorId)
+    {
+        ActorInterop.ValidateActorId(actorId, nameof(actorId));
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_discovery_resolve_actor(_handle, actorId,
+            out ZlinkActorRoute route);
+        ZlinkException.ThrowConfigIfError(rc);
+        return ActorInterop.FromNative(ref route);
+    }
+
     public void Close()
     {
         Dispose();

@@ -299,6 +299,93 @@ func TestSurfaceRemovesRawFlagsAndOptionBags(t *testing.T) {
 	}
 }
 
+func TestSurfaceActorCapabilities(t *testing.T) {
+	if !hasMethod((*zlink.SpotNode)(nil), "Actor") {
+		t.Fatalf("SpotNode should expose Actor")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "ActorLookup") {
+		t.Fatalf("SpotNode should expose ActorLookup")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "CreateRemoteActor") {
+		t.Fatalf("SpotNode should expose CreateRemoteActor")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "DestroyRemoteActor") {
+		t.Fatalf("SpotNode should expose DestroyRemoteActor")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "OnActorAdmission") {
+		t.Fatalf("SpotNode should expose OnActorAdmission")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "JoinActor") {
+		t.Fatalf("SpotNode should expose JoinActor")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "LeaveActor") {
+		t.Fatalf("SpotNode should expose LeaveActor")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "SpotsSnapshot") {
+		t.Fatalf("SpotNode should expose SpotsSnapshot")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "ActorsSnapshot") {
+		t.Fatalf("SpotNode should expose ActorsSnapshot")
+	}
+
+	if !hasMethod((*zlink.Actor)(nil), "Ref") {
+		t.Fatalf("Actor should expose Ref")
+	}
+	if !hasMethod((*zlink.Actor)(nil), "Join") {
+		t.Fatalf("Actor should expose Join")
+	}
+	if !hasMethod((*zlink.Actor)(nil), "Leave") {
+		t.Fatalf("Actor should expose Leave")
+	}
+	if !hasMethod((*zlink.Actor)(nil), "RecvPart") {
+		t.Fatalf("Actor should expose RecvPart")
+	}
+	if !hasMethod((*zlink.Actor)(nil), "SendBoundSession") {
+		t.Fatalf("Actor should expose SendBoundSession")
+	}
+	if !hasMethod((*zlink.Actor)(nil), "SendBoundSessionPacket") {
+		t.Fatalf("Actor should expose SendBoundSessionPacket")
+	}
+	if !hasMethod((*zlink.Actor)(nil), "CloseWithTimeout") {
+		t.Fatalf("Actor should expose CloseWithTimeout")
+	}
+	if !hasMethod((*zlink.Actor)(nil), "Close") {
+		t.Fatalf("Actor should expose Close")
+	}
+
+	if !hasMethod((*zlink.Spot)(nil), "RecvActorJoin") {
+		t.Fatalf("Spot should expose RecvActorJoin")
+	}
+	if !hasMethod((*zlink.Spot)(nil), "ReplyActorJoin") {
+		t.Fatalf("Spot should expose ReplyActorJoin")
+	}
+	if !hasMethod((*zlink.Spot)(nil), "ActorsSnapshot") {
+		t.Fatalf("Spot should expose ActorsSnapshot")
+	}
+
+	if !hasMethod((*zlink.StreamSocket)(nil), "BindActor") {
+		t.Fatalf("StreamSocket should expose BindActor")
+	}
+	if !hasMethod((*zlink.StreamSocket)(nil), "UnbindActor") {
+		t.Fatalf("StreamSocket should expose UnbindActor")
+	}
+	if !hasMethod((*zlink.StreamSocket)(nil), "SendBoundActor") {
+		t.Fatalf("StreamSocket should expose SendBoundActor")
+	}
+
+	if !hasMethod((*zlink.Discovery)(nil), "ResolveActor") {
+		t.Fatalf("Discovery should expose ResolveActor")
+	}
+
+	remote, err := zlink.RemoteActorRef(zlink.NewRoutingID([]byte("node")), "actor")
+	if err != nil {
+		t.Fatalf("RemoteActorRef should create unchecked refs: %v", err)
+	}
+	if !remote.IsUnchecked() {
+		t.Fatalf("RemoteActorRef should return unchecked refs")
+	}
+}
+
 func TestSurfaceTypedOptionMethods(t *testing.T) {
 	if !hasMethod((*zlink.PairSocket)(nil), "SetSendHWM") {
 		t.Fatalf("PairSocket should expose typed common options")

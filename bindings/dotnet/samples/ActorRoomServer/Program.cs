@@ -1,0 +1,39 @@
+using SampleCommon;
+using Zlink;
+
+if (!SampleSupport.IsNativeAvailable())
+    return;
+
+using var ctx = new Context();
+using var node = new SpotNode(ctx);
+using var spot = node.CreateSpot();
+using var actor = node.Actor("room-player-1");
+using Message joinMessage = Message.FromString("join:lobby");
+
+Task<IReadOnlyList<Message>> joinTask = actor.JoinAsync(spot, joinMessage,
+    TimeSpan.FromSeconds(2));
+ActorJoinRequest? request = null;
+SampleSupport.WaitOrThrow(() =>
+{
+    request = spot.RecvActorJoin(RecvFlags.DontWait);
+    return request != null;
+}, 2000, "actor join request");
+
+using (request!.Message)
+{
+    SampleSupport.EnsureEqual("join:lobby", request.Message.GetString(),
+        "join message");
+}
+
+using Message reply = Message.FromString("accepted:lobby");
+spot.ReplyActorJoin(request.Info, accepted: true, reply);
+IReadOnlyList<Message> replies =
+    await joinTask.WaitAsync(TimeSpan.FromSeconds(5));
+using (replies[0])
+{
+    SampleSupport.EnsureEqual("accepted:lobby", replies[0].GetString(),
+        "join reply");
+}
+
+Console.WriteLine("[actor/room] joined actor room-player-1");
+actor.Leave(spot);

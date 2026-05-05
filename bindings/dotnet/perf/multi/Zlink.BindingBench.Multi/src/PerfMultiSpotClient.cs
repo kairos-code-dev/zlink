@@ -62,14 +62,17 @@ internal static class PerfMultiSpotClient
             Math.Max(1, ResolveMultiClients(options)),
             ResolveMultiConnectReadyTimeoutMs(options),
             PerfEnv.ReadNonNegative("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000),
+            ResolveMultiSpotRouteWarmupMs(),
             dataEndpoint,
-            registryEndpoint);
+            registryEndpoint,
+            MultiSpotServiceName(registryEndpoint));
     }
 
     private static SpotClientSlot CreateSlot(Context ctx,
         SpotClientConfig config, PerfOptions options, int index)
     {
-        var discovery = new Discovery(ctx, AutoConnectType.SpotMesh, "bench-svc");
+        var discovery = new Discovery(ctx, AutoConnectType.SpotMesh,
+            config.ServiceName);
         var node = new SpotNode(ctx);
         var subscriber = node.CreateSpot();
         var state = new SpotClientSlotState(config.LatencySampleCap);
@@ -79,10 +82,15 @@ internal static class PerfMultiSpotClient
             ConfigureSpotTlsSubscriberIfNeeded(node, config.Transport);
             ApplySpotSubscriberOptions(node, options);
             discovery.ConnectRegistry(config.RegistryEndpoint);
-            node.AttachDiscovery(discovery);
             node.Bind(MultiEndpointFor(config.Transport,
                 $"multi-spot-client-{index}", options));
+            node.AttachDiscovery(discovery);
             subscriber.SetSubscription(Topic);
+            if (!WaitForSubscriptionReady(node, config.ConnectReadyTimeoutMs))
+            {
+                Console.Error.WriteLine("multi_client_error:subscription_not_ready");
+                throw new TimeoutException("SPOT subscription route was not ready.");
+            }
 
             return new SpotClientSlot(discovery, node, subscriber, state);
         }
@@ -99,9 +107,11 @@ internal static class PerfMultiSpotClient
     private static int RunActivePhase(List<SpotClientSlot> slots,
         RunnerControlState controlState, SpotClientConfig config)
     {
-        long activeDeadlineTicks = DeadlineTicksFromSeconds(config.DurationSeconds);
+        long activeDeadlineTicks = DeadlineTicksFromMilliseconds(
+            (config.DurationSeconds * 1000) + config.RouteWarmupMs);
         long cooldownDeadlineTicks = DeadlineTicksFromMilliseconds(
-            config.DurationSeconds * 1000 + config.ConnectReadyTimeoutMs);
+            config.DurationSeconds * 1000 + config.RouteWarmupMs
+            + config.ConnectReadyTimeoutMs);
         var workers = new List<Thread>(slots.Count);
         for (int i = 0; i < slots.Count; i++)
         {
@@ -235,6 +245,31 @@ internal static class PerfMultiSpotClient
         TrySetSpotOption(() => node.PublisherOptions.NoDrop = xpubNoDrop);
     }
 
+    private static bool WaitForSubscriptionReady(SpotNode node, int timeoutMs)
+    {
+        long deadlineTicks = DeadlineTicksFromMilliseconds(Math.Max(1,
+            timeoutMs));
+        while (Stopwatch.GetTimestamp() < deadlineTicks)
+        {
+            try
+            {
+                foreach (SpotNodeSubjectEntry entry in node.SubjectsSnapshot())
+                {
+                    if (entry.Subject == Topic)
+                        return true;
+                }
+            }
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno))
+            {
+            }
+
+            Thread.Sleep(10);
+        }
+
+        return false;
+    }
+
     private static bool ShouldIgnoreSpotOptionError(int errno)
     {
         return errno == 22 || errno == 93 || errno == 95 || errno == 97;
@@ -291,8 +326,8 @@ internal static class PerfMultiSpotClient
     {
         internal SpotClientConfig(string transport, int size,
             int durationSeconds, int latencySampleCap, int clientCount,
-            int connectReadyTimeoutMs, int readySettleMs, string dataEndpoint,
-            string registryEndpoint)
+            int connectReadyTimeoutMs, int readySettleMs, int routeWarmupMs,
+            string dataEndpoint, string registryEndpoint, string serviceName)
         {
             Transport = transport;
             Size = size;
@@ -301,8 +336,10 @@ internal static class PerfMultiSpotClient
             ClientCount = clientCount;
             ConnectReadyTimeoutMs = connectReadyTimeoutMs;
             ReadySettleMs = readySettleMs;
+            RouteWarmupMs = routeWarmupMs;
             DataEndpoint = dataEndpoint;
             RegistryEndpoint = registryEndpoint;
+            ServiceName = serviceName;
         }
 
         internal string Transport { get; }
@@ -312,8 +349,10 @@ internal static class PerfMultiSpotClient
         internal int ClientCount { get; }
         internal int ConnectReadyTimeoutMs { get; }
         internal int ReadySettleMs { get; }
+        internal int RouteWarmupMs { get; }
         internal string DataEndpoint { get; }
         internal string RegistryEndpoint { get; }
+        internal string ServiceName { get; }
     }
 
     private sealed class SpotClientSlot : IDisposable

@@ -35,6 +35,9 @@ sample_bins=(
   sample_cpp_monitor_recv_sample
   sample_cpp_discovery_registry_sample
   sample_cpp_registry_query_sample
+  sample_cpp_actor_room_server_sample
+  sample_cpp_actor_gateway_relay_sample
+  sample_cpp_actor_single_player_queue_sample
 )
 
 pass_count=0

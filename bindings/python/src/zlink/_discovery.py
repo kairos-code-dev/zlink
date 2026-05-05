@@ -12,6 +12,7 @@ from ._enums import (
     TopologyState,
 )
 from ._ffi import (
+    ZlinkActorRoute,
     ZlinkMemberPeerEntry,
     ZlinkMsg,
     ZlinkRegistryServiceSummaryEntry,
@@ -21,6 +22,7 @@ from ._ffi import (
     ZlinkRegistryTopologyFilter,
     lib,
 )
+from ._spot import ActorRoute, _actor_id_bytes, _actor_ref_from_native
 from ._core import (
     BindError,
     BindResult,
@@ -428,7 +430,20 @@ class Discovery:
         )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return RoutingId(_routing_id_bytes(owner_node_rid))
+        return _routing_id_bytes(owner_node_rid)
+
+    def resolve_actor(self, actor_id):
+        native = ZlinkActorRoute()
+        rc = lib().zlink_discovery_resolve_actor(
+            self._handle, _actor_id_bytes(actor_id), ctypes.byref(native)
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return ActorRoute(
+            actor=_actor_ref_from_native(native.actor),
+            joined=bool(native.joined),
+            joined_spot_rid=_routing_id_bytes(native.joined_spot_rid),
+        )
 
     @property
     def spot_owner_sync_enabled(self):

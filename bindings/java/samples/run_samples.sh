@@ -4,7 +4,8 @@ set -euo pipefail
 
 SAMPLES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SAMPLES_DIR/.." && pwd)"
-CORE_LIB="${ROOT_DIR}/../core/build/lib/libzlink.so"
+REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+CORE_LIB="${REPO_ROOT}/core/build/lib/libzlink.so"
 if [[ -f "${CORE_LIB}" ]]; then
   export ZLINK_LIBRARY_PATH="${CORE_LIB}"
   for native_dir in \
@@ -12,8 +13,7 @@ if [[ -f "${CORE_LIB}" ]]; then
     "${ROOT_DIR}/build/resources/main/native/linux-x86_64"; do
     if [[ -d "${native_dir}" ]]; then
       cp -f "${CORE_LIB}" "${native_dir}/libzlink.so"
-      cp -f "${ROOT_DIR}/../core/build/lib/libzlink.so.5.3.4" "${native_dir}/libzlink.so.5.3.4"
-      ln -sfn libzlink.so.5.3.4 "${native_dir}/libzlink.so.5"
+      ln -sfn libzlink.so "${native_dir}/libzlink.so.5"
     fi
   done
 fi
@@ -29,6 +29,9 @@ TASKS=(
   ":samples:runSpotRequestAsync"
   ":samples:runDiscoveryRegistry"
   ":samples:runRegistryQuery"
+  ":samples:runActorRoomServer"
+  ":samples:runActorGatewayRelay"
+  ":samples:runActorSinglePlayerQueue"
 )
 
 failures=0

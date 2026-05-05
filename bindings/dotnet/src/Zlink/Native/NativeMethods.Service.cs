@@ -5,6 +5,13 @@ namespace Zlink.Native;
 
 internal static partial class NativeMethods
 {
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate ActorAdmissionResult ZlinkActorAdmissionHandlerDelegate(
+        IntPtr node,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
+        IntPtr message,
+        IntPtr userData);
+
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_registry_new(IntPtr ctx);
 
@@ -112,6 +119,11 @@ internal static partial class NativeMethods
         ref ZlinkRoutingId spotRoutingId, out ZlinkRoutingId ownerNodeRoutingId);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_discovery_resolve_actor(IntPtr discovery,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
+        out ZlinkActorRoute route);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_set_value(IntPtr discovery,
         long value);
 
@@ -193,6 +205,122 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_internal_sockets_snapshot(
         IntPtr node, IntPtr filter, IntPtr entries, ref nuint count);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_spot_node_actor_new(IntPtr node,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_actor_destroy(ref IntPtr actor,
+        uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_actor_get_ref(IntPtr actor,
+        out ZlinkActorRef actorRef);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_actor_lookup(IntPtr node,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
+        out ZlinkActorRef actorRef);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_remote_actor_get_ref(
+        ref ZlinkRoutingId targetNodeRid,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
+        out ZlinkActorRef actorRef);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_create_remote_actor(IntPtr node,
+        ref ZlinkRoutingId targetNodeRid,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
+        ref ZlinkMsg message,
+        out ZlinkActorCreateResult result,
+        uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_destroy_remote_actor(IntPtr node,
+        ref ZlinkActorRef actor,
+        uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_actor_admission_handler(
+        IntPtr node,
+        ZlinkActorAdmissionHandlerDelegate handler,
+        IntPtr userData);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_actor_join_spot(IntPtr actor,
+        IntPtr spot,
+        ref ZlinkMsg message,
+        IntPtr handler,
+        IntPtr userData,
+        int flags,
+        uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_actor_join_spot(IntPtr node,
+        ref ZlinkActorRef actor,
+        ref ZlinkRoutingId destSpotRid,
+        ref ZlinkMsg message,
+        IntPtr handler,
+        IntPtr userData,
+        int flags,
+        uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_actor_join_recv(IntPtr spot,
+        out ZlinkActorJoinInfo info,
+        ref ZlinkMsg message,
+        int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_actor_join_reply(IntPtr spot,
+        ref ZlinkActorJoinInfo info,
+        uint accepted,
+        ref ZlinkMsg message);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_actor_leave_spot(IntPtr actor,
+        IntPtr spot);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_actor_leave_spot(IntPtr node,
+        ref ZlinkActorRef actor,
+        ref ZlinkRoutingId destSpotRid,
+        uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_actor_recv_part(IntPtr actor,
+        out ZlinkActorRecvInfo info,
+        ref ZlinkMsg part,
+        out ZlinkPartFlag hasMore,
+        int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_actor_send_bound_session_msg(IntPtr actor,
+        ref ZlinkMsg message,
+        int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_actor_send_bound_session_packet(IntPtr actor,
+        ref ZlinkMsg header,
+        ref ZlinkMsg body,
+        int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_spots_snapshot(IntPtr node,
+        IntPtr entries,
+        ref nuint count);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_actors_snapshot(IntPtr node,
+        IntPtr entries,
+        ref nuint count);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_actors_snapshot(IntPtr spot,
+        IntPtr entries,
+        ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_send_channel_part(IntPtr spot,

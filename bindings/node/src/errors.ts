@@ -23,7 +23,15 @@ export const RequestResult = Object.freeze({
   TimedOut: 101,
   NotFound: 102,
   Terminated: 103,
-  ProtocolError: 104
+  ProtocolError: 104,
+  InternalError: 105,
+  Rejected: 106,
+  Conflict: 107,
+  Busy: 108,
+  NotConnected: 109,
+  InvalidArgument: 110,
+  InvalidState: 111,
+  NotSupported: 112
 } as const);
 export type RequestResult = typeof RequestResult[keyof typeof RequestResult];
 
@@ -210,6 +218,14 @@ export function mapNativeErrno(category: ErrorCategory, errno: number): number {
         case 110: return RequestResult.TimedOut;
         case 2: return RequestResult.NotFound;
         case 125: return RequestResult.Terminated;
+        case 111: return RequestResult.Rejected;
+        case 17: return RequestResult.Conflict;
+        case 16: return RequestResult.Busy;
+        case 107:
+        case 113: return RequestResult.NotConnected;
+        case 22: return RequestResult.InvalidArgument;
+        case 95:
+        case 93: return RequestResult.NotSupported;
         default: return RequestResult.ProtocolError;
       }
     case 'recv':

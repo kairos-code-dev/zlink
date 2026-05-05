@@ -135,6 +135,14 @@ class RequestResult(IntEnum):
     NOT_FOUND = 102
     TERMINATED = 103
     PROTOCOL_ERROR = 104
+    INTERNAL_ERROR = 105
+    REJECTED = 106
+    CONFLICT = 107
+    BUSY = 108
+    NOT_CONNECTED = 109
+    INVALID_ARGUMENT = 110
+    INVALID_STATE = 111
+    NOT_SUPPORTED = 112
 
 
 class RecvResult(IntEnum):
@@ -343,12 +351,25 @@ class SpotDispatchEvent(IntEnum):
     ROUTED_READABLE = 2
     TIMER_READABLE = 3
     CHANNEL_REPLY_READABLE = 4
+    ACTOR_READABLE = 5
+    ACTOR_JOIN_READABLE = 6
 
 
 class SpotDispatchSubjectKind(IntEnum):
     SPOT = 1
     TIMER = 2
     CHANNEL_DEALER = 3
+    ACTOR = 4
+
+
+class ActorCreateStatus(IntEnum):
+    CREATED = 1
+    EXISTING = 2
+
+
+class ActorAdmissionResult(IntEnum):
+    ACCEPT = 1
+    REJECT = 2
 
 
 class RegistryState(IntEnum):

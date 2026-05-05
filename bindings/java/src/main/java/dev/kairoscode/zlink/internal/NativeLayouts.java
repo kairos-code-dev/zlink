@@ -278,6 +278,82 @@ public final class NativeLayouts {
             SPOT_DISPATCH_INFO_LAYOUT.byteOffset(
                     PathElement.groupElement("subject"));
 
+    public static final int ACTOR_ID_MAX = 256;
+
+    public static final MemoryLayout ACTOR_REF_LAYOUT =
+            MemoryLayout.structLayout(
+                    ROUTING_ID_LAYOUT.withName("node_rid"),
+                    MemoryLayout.sequenceLayout(ACTOR_ID_MAX,
+                            ValueLayout.JAVA_BYTE).withName("actor_id"),
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("generation"));
+    public static final long ACTOR_REF_NODE_RID_OFFSET =
+            ACTOR_REF_LAYOUT.byteOffset(PathElement.groupElement("node_rid"));
+    public static final long ACTOR_REF_ACTOR_ID_OFFSET =
+            ACTOR_REF_LAYOUT.byteOffset(PathElement.groupElement("actor_id"));
+    public static final long ACTOR_REF_GENERATION_OFFSET =
+            ACTOR_REF_LAYOUT.byteOffset(PathElement.groupElement("generation"));
+
+    public static final MemoryLayout ACTOR_RECV_INFO_LAYOUT =
+            MemoryLayout.structLayout(
+                    ACTOR_REF_LAYOUT.withName("actor"),
+                    ROUTING_ID_LAYOUT.withName("source_node_rid"),
+                    ROUTING_ID_LAYOUT.withName("source_session_rid"),
+                    ValueLayout.JAVA_INT.withName("flags"),
+                    MemoryLayout.paddingLayout(4));
+    public static final long ACTOR_RECV_INFO_ACTOR_OFFSET =
+            ACTOR_RECV_INFO_LAYOUT.byteOffset(PathElement.groupElement("actor"));
+    public static final long ACTOR_RECV_INFO_SOURCE_NODE_RID_OFFSET =
+            ACTOR_RECV_INFO_LAYOUT.byteOffset(
+                    PathElement.groupElement("source_node_rid"));
+    public static final long ACTOR_RECV_INFO_SOURCE_SESSION_RID_OFFSET =
+            ACTOR_RECV_INFO_LAYOUT.byteOffset(
+                    PathElement.groupElement("source_session_rid"));
+    public static final long ACTOR_RECV_INFO_FLAGS_OFFSET =
+            ACTOR_RECV_INFO_LAYOUT.byteOffset(PathElement.groupElement("flags"));
+
+    public static final MemoryLayout ACTOR_JOIN_INFO_LAYOUT =
+            MemoryLayout.structLayout(
+                    ACTOR_REF_LAYOUT.withName("actor"),
+                    ROUTING_ID_LAYOUT.withName("source_node_rid"),
+                    ValueLayout.ADDRESS.withName("request"),
+                    ValueLayout.JAVA_INT.withName("flags"),
+                    MemoryLayout.paddingLayout(4));
+    public static final long ACTOR_JOIN_INFO_ACTOR_OFFSET =
+            ACTOR_JOIN_INFO_LAYOUT.byteOffset(PathElement.groupElement("actor"));
+    public static final long ACTOR_JOIN_INFO_SOURCE_NODE_RID_OFFSET =
+            ACTOR_JOIN_INFO_LAYOUT.byteOffset(
+                    PathElement.groupElement("source_node_rid"));
+    public static final long ACTOR_JOIN_INFO_REQUEST_OFFSET =
+            ACTOR_JOIN_INFO_LAYOUT.byteOffset(PathElement.groupElement("request"));
+    public static final long ACTOR_JOIN_INFO_FLAGS_OFFSET =
+            ACTOR_JOIN_INFO_LAYOUT.byteOffset(PathElement.groupElement("flags"));
+
+    public static final MemoryLayout ACTOR_CREATE_RESULT_LAYOUT =
+            MemoryLayout.structLayout(
+                    ValueLayout.JAVA_INT.withName("status"),
+                    MemoryLayout.paddingLayout(4),
+                    ACTOR_REF_LAYOUT.withName("actor"));
+    public static final long ACTOR_CREATE_RESULT_STATUS_OFFSET =
+            ACTOR_CREATE_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("status"));
+    public static final long ACTOR_CREATE_RESULT_ACTOR_OFFSET =
+            ACTOR_CREATE_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("actor"));
+
+    public static final MemoryLayout ACTOR_ROUTE_LAYOUT =
+            MemoryLayout.structLayout(
+                    ACTOR_REF_LAYOUT.withName("actor"),
+                    ValueLayout.JAVA_INT.withName("joined"),
+                    ROUTING_ID_LAYOUT.withName("joined_spot_rid"),
+                    MemoryLayout.paddingLayout(4));
+    public static final long ACTOR_ROUTE_ACTOR_OFFSET =
+            ACTOR_ROUTE_LAYOUT.byteOffset(PathElement.groupElement("actor"));
+    public static final long ACTOR_ROUTE_JOINED_OFFSET =
+            ACTOR_ROUTE_LAYOUT.byteOffset(PathElement.groupElement("joined"));
+    public static final long ACTOR_ROUTE_JOINED_SPOT_RID_OFFSET =
+            ACTOR_ROUTE_LAYOUT.byteOffset(
+                    PathElement.groupElement("joined_spot_rid"));
+
     public static final MemoryLayout SPOT_NODE_STATUS_LAYOUT =
             MemoryLayout.structLayout(
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
@@ -364,6 +440,61 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_INT.withName("socket_type"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_visible"),
                     MONITOR_SNAPSHOT_LAYOUT.withName("snapshot"));
+
+    public static final MemoryLayout SPOT_NODE_SPOT_ENTRY_LAYOUT =
+            MemoryLayout.structLayout(
+                    ROUTING_ID_LAYOUT.withName("spot_rid"),
+                    ValueLayout.JAVA_INT.withName("dispatch_handler_attached"),
+                    ValueLayout.JAVA_INT.withName("joined_actor_count"),
+                    ValueLayout.JAVA_INT.withName("pending_actor_join_count"),
+                    ValueLayout.JAVA_INT.withName("route_synced"),
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("last_changed_ms"));
+    public static final long SPOT_NODE_SPOT_ENTRY_SPOT_RID_OFFSET =
+            SPOT_NODE_SPOT_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("spot_rid"));
+    public static final long SPOT_NODE_SPOT_ENTRY_DISPATCH_HANDLER_ATTACHED_OFFSET =
+            SPOT_NODE_SPOT_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("dispatch_handler_attached"));
+    public static final long SPOT_NODE_SPOT_ENTRY_JOINED_ACTOR_COUNT_OFFSET =
+            SPOT_NODE_SPOT_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("joined_actor_count"));
+    public static final long SPOT_NODE_SPOT_ENTRY_PENDING_ACTOR_JOIN_COUNT_OFFSET =
+            SPOT_NODE_SPOT_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("pending_actor_join_count"));
+    public static final long SPOT_NODE_SPOT_ENTRY_ROUTE_SYNCED_OFFSET =
+            SPOT_NODE_SPOT_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("route_synced"));
+    public static final long SPOT_NODE_SPOT_ENTRY_LAST_CHANGED_MS_OFFSET =
+            SPOT_NODE_SPOT_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("last_changed_ms"));
+
+    public static final MemoryLayout SPOT_NODE_ACTOR_ENTRY_LAYOUT =
+            MemoryLayout.structLayout(
+                    ACTOR_REF_LAYOUT.withName("actor"),
+                    ValueLayout.JAVA_INT.withName("joined"),
+                    ROUTING_ID_LAYOUT.withName("joined_spot_rid"),
+                    ValueLayout.JAVA_INT.withName("route_synced"),
+                    ValueLayout.JAVA_INT.withName("pending_message_count"),
+                    MemoryLayout.paddingLayout(4),
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("last_changed_ms"));
+    public static final long SPOT_NODE_ACTOR_ENTRY_ACTOR_OFFSET =
+            SPOT_NODE_ACTOR_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("actor"));
+    public static final long SPOT_NODE_ACTOR_ENTRY_JOINED_OFFSET =
+            SPOT_NODE_ACTOR_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("joined"));
+    public static final long SPOT_NODE_ACTOR_ENTRY_JOINED_SPOT_RID_OFFSET =
+            SPOT_NODE_ACTOR_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("joined_spot_rid"));
+    public static final long SPOT_NODE_ACTOR_ENTRY_ROUTE_SYNCED_OFFSET =
+            SPOT_NODE_ACTOR_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("route_synced"));
+    public static final long SPOT_NODE_ACTOR_ENTRY_PENDING_MESSAGE_COUNT_OFFSET =
+            SPOT_NODE_ACTOR_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("pending_message_count"));
+    public static final long SPOT_NODE_ACTOR_ENTRY_LAST_CHANGED_MS_OFFSET =
+            SPOT_NODE_ACTOR_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("last_changed_ms"));
 
     public static final MemoryLayout REGISTRY_STATUS_LAYOUT =
             MemoryLayout.structLayout(

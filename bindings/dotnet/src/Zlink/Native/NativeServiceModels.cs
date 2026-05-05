@@ -2,6 +2,11 @@ using System.Runtime.InteropServices;
 
 namespace Zlink.Native;
 
+internal static class NativeConstants
+{
+    internal const int ActorIdMax = 256;
+}
+
 [StructLayout(LayoutKind.Sequential)]
 internal struct ZlinkSocketMonitorOpenOptions
 {
@@ -137,6 +142,69 @@ internal unsafe struct ZlinkSpotNodeSocketSnapshotEntry
     public global::Zlink.SpotNodeSocketType SocketType;
     public uint AutoHwmVisible;
     public ZlinkMonitorSnapshot Snapshot;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct ZlinkActorRef
+{
+    public ZlinkRoutingId NodeRid;
+    public fixed byte ActorId[NativeConstants.ActorIdMax];
+    public ulong Generation;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkActorRecvInfo
+{
+    public ZlinkActorRef Actor;
+    public ZlinkRoutingId SourceNodeRid;
+    public ZlinkRoutingId SourceSessionRid;
+    public uint Flags;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkActorJoinInfo
+{
+    public ZlinkActorRef Actor;
+    public ZlinkRoutingId SourceNodeRid;
+    public IntPtr Request;
+    public uint Flags;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkActorCreateResult
+{
+    public global::Zlink.ActorCreateStatus Status;
+    public ZlinkActorRef Actor;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkActorRoute
+{
+    public ZlinkActorRef Actor;
+    public uint Joined;
+    public ZlinkRoutingId JoinedSpotRid;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkSpotNodeSpotEntry
+{
+    public ZlinkRoutingId SpotRid;
+    public uint DispatchHandlerAttached;
+    public uint JoinedActorCount;
+    public uint PendingActorJoinCount;
+    public uint RouteSynced;
+    public ulong LastChangedMs;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkSpotNodeActorEntry
+{
+    public ZlinkActorRef Actor;
+    public uint Joined;
+    public ZlinkRoutingId JoinedSpotRid;
+    public uint RouteSynced;
+    public uint PendingMessageCount;
+    public ulong LastChangedMs;
 }
 
 [StructLayout(LayoutKind.Sequential)]

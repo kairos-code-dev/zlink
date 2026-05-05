@@ -110,6 +110,39 @@ const MonitorSnapshotDetail = Object.freeze({
   SND_PENDING_MSGS: 1 << 1, RCV_PENDING_MSGS: 1 << 2
 } as const);
 
+export const SpotDispatchEvent = Object.freeze({
+  SubscribeReadable: 1,
+  RoutedReadable: 2,
+  TimerReadable: 3,
+  ChannelReplyReadable: 4,
+  ActorReadable: 5,
+  ActorJoinReadable: 6
+} as const);
+export type SpotDispatchEventValue = typeof SpotDispatchEvent[keyof typeof SpotDispatchEvent];
+
+export const SpotDispatchSubjectKind = Object.freeze({
+  Spot: 1,
+  Timer: 2,
+  ChannelDealer: 3,
+  Actor: 4
+} as const);
+export type SpotDispatchSubjectKindValue =
+  typeof SpotDispatchSubjectKind[keyof typeof SpotDispatchSubjectKind];
+
+export const ActorCreateStatus = Object.freeze({
+  Created: 1,
+  Existing: 2
+} as const);
+export type ActorCreateStatusValue =
+  typeof ActorCreateStatus[keyof typeof ActorCreateStatus];
+
+export const ActorAdmissionResult = Object.freeze({
+  Accept: 1,
+  Reject: 2
+} as const);
+export type ActorAdmissionResultValue =
+  typeof ActorAdmissionResult[keyof typeof ActorAdmissionResult];
+
 export type MonitorEventType = number;
 
 export interface MonitorSnapshot {
@@ -413,10 +446,68 @@ export type SpotRoutedHandler = (
   requestSeq: bigint,
   parts: Message[]
 ) => void;
+export interface ActorRef {
+  readonly nodeRid: RoutingId;
+  readonly actorId: string;
+  readonly generation: bigint;
+  readonly unchecked: boolean;
+  isUnchecked(): boolean;
+}
+export interface ActorCreateResult {
+  readonly status: ActorCreateStatusValue;
+  readonly actor: ActorRef;
+}
+export interface ActorRoute {
+  readonly actor: ActorRef;
+  readonly joined: boolean;
+  readonly joinedSpotRid: RoutingId | null;
+}
+export interface ActorRecvInfo {
+  readonly actor: ActorRef;
+  readonly sourceNodeRid: RoutingId;
+  readonly sourceSessionRid: RoutingId;
+  readonly flags: number;
+}
+export interface ActorJoinInfo {
+  readonly actor: ActorRef;
+  readonly sourceNodeRid: RoutingId;
+  readonly flags: number;
+}
+interface NativeActorJoinInfo extends ActorJoinInfo {
+  readonly requestHandle: bigint;
+}
+export interface ActorPart {
+  readonly info: ActorRecvInfo;
+  readonly message: Message;
+  readonly more: boolean;
+}
+export interface ActorJoinRequest {
+  readonly info: ActorJoinInfo;
+  readonly message: Message;
+}
+export interface SpotNodeSpotEntry {
+  readonly spotRid: RoutingId;
+  readonly dispatchHandlerAttached: boolean;
+  readonly joinedActorCount: number;
+  readonly pendingActorJoinCount: number;
+  readonly routeSynced: boolean;
+  readonly lastChangedMs: bigint;
+}
+export interface SpotNodeActorEntry {
+  readonly actor: ActorRef;
+  readonly joined: boolean;
+  readonly joinedSpotRid: RoutingId | null;
+  readonly routeSynced: boolean;
+  readonly pendingMessageCount: number;
+  readonly lastChangedMs: bigint;
+}
+export type ActorAdmissionHandler =
+  (actorId: string, message: Message) => ActorAdmissionResultValue;
 export interface SpotDispatchInfo {
   readonly event: number;
   readonly subjectKind: number;
   readonly subjectHandle: bigint;
+  recvActorPart(flags?: RecvFlags): ActorPart | null;
 }
 export type SpotDispatchEventHandler = (info: SpotDispatchInfo) => void;
 export type RequestResultCallback = (result: RequestResult, parts: Message[]) => void;
@@ -462,6 +553,15 @@ function requestErrorFromResult(result: RequestResult, message: string): Request
 
 function submitErrorFromResult(result: SubmitResult, message: string): SubmitError {
   return new SubmitError(result, 0, message);
+}
+
+export function remoteActorRef(targetNodeRid: RoutingId, actorId: string): ActorRef {
+  return actorRefFromRaw(
+    requireNative().remoteActorGetRef(
+      normalizeRoutingId(targetNodeRid, 'targetNodeRid'),
+      validateCString(actorId, 'actorId', 255)
+    ) as any
+  );
 }
 
 function normalizeReplyFlags(flags: SendFlags = SendFlags.None): SendFlags {
@@ -772,6 +872,140 @@ function mapSpotNodeSubjectEntry(entry: {
     readyPeerCount: entry.readyPeerCount,
     activePeerCount: entry.activePeerCount,
     lastChangedMs: BigInt(entry.lastChangedMs)
+  };
+}
+
+function actorRefFromRaw(raw: { nodeRid: Buffer; actorId: string; generation: bigint | number }): ActorRef {
+  const generation = BigInt(raw.generation);
+  return Object.freeze({
+    nodeRid: RoutingId.fromBytes(raw.nodeRid),
+    actorId: raw.actorId,
+    generation,
+    unchecked: generation === 0n,
+    isUnchecked(): boolean {
+      return this.unchecked;
+    }
+  });
+}
+
+function actorRefToRaw(actor: ActorRef): { nodeRid: Buffer; actorId: string; generation: bigint } {
+  return {
+    nodeRid: normalizeRoutingId(actor.nodeRid, 'actor.nodeRid'),
+    actorId: validateCString(actor.actorId, 'actor.actorId', 255),
+    generation: BigInt(actor.generation)
+  };
+}
+
+function actorRecvInfoFromRaw(raw: {
+  actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+  sourceNodeRid: Buffer;
+  sourceSessionRid: Buffer;
+  flags: number;
+}): ActorRecvInfo {
+  return {
+    actor: actorRefFromRaw(raw.actor),
+    sourceNodeRid: RoutingId.fromBytes(raw.sourceNodeRid),
+    sourceSessionRid: RoutingId.fromBytes(raw.sourceSessionRid),
+    flags: raw.flags
+  };
+}
+
+function actorPartFromRaw(raw: {
+  info: {
+    actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+    sourceNodeRid: Buffer;
+    sourceSessionRid: Buffer;
+    flags: number;
+  };
+  message: Buffer;
+  more: boolean;
+}): ActorPart {
+  return {
+    info: actorRecvInfoFromRaw(raw.info),
+    message: Message.from(raw.message),
+    more: Boolean(raw.more)
+  };
+}
+
+function actorJoinInfoFromRaw(raw: {
+  actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+  sourceNodeRid: Buffer;
+  flags: number;
+  requestHandle: bigint;
+}): NativeActorJoinInfo {
+  return {
+    actor: actorRefFromRaw(raw.actor),
+    sourceNodeRid: RoutingId.fromBytes(raw.sourceNodeRid),
+    flags: raw.flags,
+    requestHandle: BigInt(raw.requestHandle)
+  };
+}
+
+function actorJoinInfoToRaw(info: ActorJoinInfo): Record<string, unknown> {
+  const nativeInfo = info as NativeActorJoinInfo;
+  if (typeof nativeInfo.requestHandle !== 'bigint') {
+    throw new TypeError('join info must come from recvActorJoin()');
+  }
+  return {
+    actor: actorRefToRaw(info.actor),
+    sourceNodeRid: normalizeRoutingId(info.sourceNodeRid, 'info.sourceNodeRid'),
+    flags: info.flags | 0,
+    requestHandle: nativeInfo.requestHandle
+  };
+}
+
+function actorCreateResultFromRaw(raw: {
+  status: number;
+  actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+}): ActorCreateResult {
+  return { status: raw.status as ActorCreateStatusValue, actor: actorRefFromRaw(raw.actor) };
+}
+
+function actorRouteFromRaw(raw: {
+  actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+  joined: boolean;
+  joinedSpotRid: Buffer;
+}): ActorRoute {
+  return {
+    actor: actorRefFromRaw(raw.actor),
+    joined: Boolean(raw.joined),
+    joinedSpotRid: wrapRoutingId(raw.joinedSpotRid)
+  };
+}
+
+function spotNodeSpotEntryFromRaw(raw: {
+  spotRid: Buffer;
+  dispatchHandlerAttached: boolean;
+  joinedActorCount: number;
+  pendingActorJoinCount: number;
+  routeSynced: boolean;
+  lastChangedMs: bigint | number;
+}): SpotNodeSpotEntry {
+  return {
+    spotRid: RoutingId.fromBytes(raw.spotRid),
+    dispatchHandlerAttached: Boolean(raw.dispatchHandlerAttached),
+    joinedActorCount: raw.joinedActorCount,
+    pendingActorJoinCount: raw.pendingActorJoinCount,
+    routeSynced: Boolean(raw.routeSynced),
+    lastChangedMs: BigInt(raw.lastChangedMs)
+  };
+}
+
+function spotNodeActorEntryFromRaw(raw: {
+  actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+  joined: boolean;
+  joinedSpotRid: Buffer;
+  routeSynced: boolean;
+  pendingMessageCount: number;
+  lastChangedMs: bigint | number;
+}): SpotNodeActorEntry {
+  return {
+    actor: actorRefFromRaw(raw.actor),
+    joined: Boolean(raw.joined),
+    joinedSpotRid: wrapRoutingId(raw.joinedSpotRid),
+    routeSynced: Boolean(raw.routeSynced),
+    pendingMessageCount: raw.pendingMessageCount,
+    lastChangedMs: BigInt(raw.lastChangedMs)
   };
 }
 
@@ -1569,6 +1803,80 @@ export class RouterSocket extends RoutedMessageSocket {
   }
 }
 
+export class Actor extends NativeHandle {
+  constructor(handle: unknown) {
+    super(handle);
+  }
+  nativeHandle(): unknown { return this._native; }
+  ref(): ActorRef {
+    return actorRefFromRaw(requireNative().actorGetRef(this._native) as any);
+  }
+  get actorRef(): ActorRef {
+    return this.ref();
+  }
+  join(spot: Spot, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean {
+    if (!(spot instanceof Spot)) {
+      throw new TypeError('spot must be a Spot');
+    }
+    const { flags: normalizedFlags, timeoutMs } = normalizeCallbackFlagsAndTimeout(flags, timeout);
+    const releaseProgress = startRequestProgress(spot.nativeHandle(), (handle) => requireNative().spotRequestProgress(handle));
+    try {
+      requireNative().actorJoinSpot(
+        this._native,
+        spot.nativeHandle(),
+        [normalizeMessageLikePayload(message)],
+        (result: number, replyParts: Buffer[] | null) => {
+          releaseProgress();
+          callback(result as RequestResult, (replyParts ?? []).map((part) => Message.from(part)));
+        },
+        normalizedFlags | 0,
+        timeoutMs | 0
+      );
+      return true;
+    } catch (error) {
+      releaseProgress();
+      const submitError = submitNativeError(error, normalizedFlags, 'actor join failed');
+      if (((normalizedFlags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
+        return false;
+      }
+      throw submitError;
+    }
+  }
+  leave(spot: Spot): void {
+    if (!(spot instanceof Spot)) {
+      throw new TypeError('spot must be a Spot');
+    }
+    requireNative().actorLeaveSpot(this._native, spot.nativeHandle());
+  }
+  recvPart(flags: RecvFlags = RecvFlags.None): ActorPart | null {
+    const raw = requireNative().actorRecvPart(this._native, flags | 0) as any | null;
+    return raw ? actorPartFromRaw(raw) : null;
+  }
+  sendBoundSession(message: MessageLike, flags: SendFlags = SendFlags.None): boolean {
+    requireNative().actorSendBoundSessionMsg(
+      this._native,
+      [normalizeMessageLikePayload(message)],
+      flags | 0
+    );
+    return true;
+  }
+  sendBoundSessionPacket(header: MessageLike, body: MessageLike, flags: SendFlags = SendFlags.None): boolean {
+    requireNative().actorSendBoundSessionPacket(
+      this._native,
+      [normalizeMessageLikePayload(header), normalizeMessageLikePayload(body)],
+      flags | 0
+    );
+    return true;
+  }
+  close(timeoutMs = 0): void {
+    if (!this._native) {
+      return;
+    }
+    requireNative().actorDestroy(this._native, timeoutMs | 0);
+    this._native = null;
+  }
+}
+
 export class StreamSocket extends BaseSocket {
   readonly options: StreamSocketOptions;
   constructor(ctx: Context) {
@@ -1641,6 +1949,36 @@ export class StreamSocket extends BaseSocket {
       normalizeRoutingId(peerRid)
     );
   }
+  bindActor(node: SpotNode, sessionRid: RoutingId, actor: ActorRef, timeoutMs = 0): void {
+    requireNative().streamBindActor(
+      node.nativeHandle(),
+      this.nativeHandle(),
+      normalizeRoutingId(sessionRid, 'sessionRid'),
+      actorRefToRaw(actor),
+      timeoutMs | 0
+    );
+  }
+  unbindActor(node: SpotNode, sessionRid: RoutingId, actorId: string, timeoutMs = 0): void {
+    requireNative().streamUnbindActor(
+      node.nativeHandle(),
+      this.nativeHandle(),
+      normalizeRoutingId(sessionRid, 'sessionRid'),
+      validateCString(actorId, 'actorId', 255),
+      timeoutMs | 0
+    );
+  }
+  sendBoundActor(node: SpotNode, sessionRid: RoutingId, actorId: string, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
+    const parts = Array.isArray(payload) ? toMessageParts(payload) : [normalizeMessageLikePayload(payload)];
+    requireNative().streamSendBoundActorPart(
+      node.nativeHandle(),
+      this.nativeHandle(),
+      normalizeRoutingId(sessionRid, 'sessionRid'),
+      validateCString(actorId, 'actorId', 255),
+      parts,
+      flags | 0
+    );
+    return true;
+  }
 }
 
 export class Registry extends NativeHandle {
@@ -1706,6 +2044,14 @@ export class Discovery extends NativeHandle {
   resolveSpot(spotRid: RoutingId): RoutingId {
     return RoutingId.fromBytes(
       requireNative().discoveryResolveSpot(this._native, normalizeRoutingId(spotRid)) as Buffer
+    );
+  }
+  resolveActor(actorId: string): ActorRoute {
+    return actorRouteFromRaw(
+      requireNative().discoveryResolveActor(
+        this._native,
+        validateCString(actorId, 'actorId', 255)
+      ) as any
     );
   }
   get spotOwnerSyncEnabled(): boolean {
@@ -1817,6 +2163,80 @@ export class SpotNode extends NativeHandle {
     }
     return spot;
   }
+  actor(actorId: string): Actor {
+    return new Actor(
+      requireNative().spotNodeActorNew(
+        this._native,
+        validateCString(actorId, 'actorId', 255)
+      )
+    );
+  }
+  actorLookup(actorId: string): ActorRef {
+    return actorRefFromRaw(
+      requireNative().spotNodeActorLookup(
+        this._native,
+        validateCString(actorId, 'actorId', 255)
+      ) as any
+    );
+  }
+  remoteActorRef(targetNodeRid: RoutingId, actorId: string): ActorRef {
+    return remoteActorRef(targetNodeRid, actorId);
+  }
+  createRemoteActor(targetNodeRid: RoutingId, actorId: string, message: MessageLike, timeoutMs = 0): ActorCreateResult {
+    return actorCreateResultFromRaw(
+      requireNative().spotNodeCreateRemoteActor(
+        this._native,
+        normalizeRoutingId(targetNodeRid, 'targetNodeRid'),
+        validateCString(actorId, 'actorId', 255),
+        [normalizeMessageLikePayload(message)],
+        timeoutMs | 0
+      ) as any
+    );
+  }
+  destroyRemoteActor(actor: ActorRef, timeoutMs = 0): void {
+    requireNative().spotNodeDestroyRemoteActor(
+      this._native,
+      actorRefToRaw(actor),
+      timeoutMs | 0
+    );
+  }
+  onActorAdmission(handler: ActorAdmissionHandler): void {
+    requireNative().spotNodeActorAdmissionHandler(
+      this._native,
+      (actorId: string, rawMessage: Buffer) => handler(actorId, Message.from(rawMessage)) | 0
+    );
+  }
+  joinActor(actor: ActorRef, destSpotRid: RoutingId, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean {
+    const { flags: normalizedFlags, timeoutMs } = normalizeCallbackFlagsAndTimeout(flags, timeout);
+    try {
+      requireNative().spotNodeActorJoinSpot(
+        this._native,
+        actorRefToRaw(actor),
+        normalizeRoutingId(destSpotRid, 'destSpotRid'),
+        [normalizeMessageLikePayload(message)],
+        (result: number, replyParts: Buffer[] | null) => {
+          callback(result as RequestResult, (replyParts ?? []).map((part) => Message.from(part)));
+        },
+        normalizedFlags | 0,
+        timeoutMs | 0
+      );
+      return true;
+    } catch (error) {
+      const submitError = submitNativeError(error, normalizedFlags, 'actor join failed');
+      if (((normalizedFlags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
+        return false;
+      }
+      throw submitError;
+    }
+  }
+  leaveActor(actor: ActorRef, destSpotRid: RoutingId, timeoutMs = 0): void {
+    requireNative().spotNodeActorLeaveSpot(
+      this._native,
+      actorRefToRaw(actor),
+      normalizeRoutingId(destSpotRid, 'destSpotRid'),
+      timeoutMs | 0
+    );
+  }
   unregisterSpot(spot: Spot): void {
     this._spots.delete(spot);
   }
@@ -1866,6 +2286,14 @@ export class SpotNode extends NativeHandle {
         autoHwmVisible: Boolean(entry.autoHwmVisible),
         snapshot: materializeMonitorSnapshot(entry.snapshot as MonitorSnapshotRaw),
       }));
+  }
+  spotsSnapshot(): SpotNodeSpotEntry[] {
+    return (requireNative().spotNodeSpotsSnapshot(this._native) as Array<Record<string, unknown>>)
+      .map((entry) => spotNodeSpotEntryFromRaw(entry as any));
+  }
+  actorsSnapshot(): SpotNodeActorEntry[] {
+    return (requireNative().spotNodeActorsSnapshot(this._native) as Array<Record<string, unknown>>)
+      .map((entry) => spotNodeActorEntryFromRaw(entry as any));
   }
   close(): void {
     if (!this._native) {
@@ -2112,10 +2540,70 @@ export class Spot extends NativeHandle {
     });
   }
   onDispatchEvent(handler: SpotDispatchEventHandler): void {
-    requireNative().spotDispatchEventHandler(this._native, handler);
+    requireNative().spotDispatchEventHandler(this._native, (raw: {
+      event: number;
+      subjectKind: number;
+      subjectHandle: bigint;
+      actorParts?: Array<{
+        info: {
+          actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+          sourceNodeRid: Buffer;
+          sourceSessionRid: Buffer;
+          flags: number;
+        };
+        message: Buffer;
+        more: boolean;
+      }>;
+    }) => {
+      const actorParts = (raw.actorParts ?? []).map((part) => actorPartFromRaw(part));
+      let index = 0;
+      handler({
+        event: raw.event,
+        subjectKind: raw.subjectKind,
+        subjectHandle: BigInt(raw.subjectHandle),
+        recvActorPart(flags: RecvFlags = RecvFlags.None): ActorPart | null {
+          const part = actorParts[index++] ?? null;
+          if (!part && ((flags | 0) & (RecvFlags.DontWait | 0))) {
+            return null;
+          }
+          return part;
+        }
+      });
+    });
   }
   drainChannelReplyFrom(subjectHandle: bigint): void {
     requireNative().spotChannelReplyProgress(this._native, subjectHandle);
+  }
+  recvActorJoin(flags: RecvFlags = RecvFlags.None): ActorJoinRequest | null {
+    const raw = requireNative().spotActorJoinRecv(this._native, flags | 0) as {
+      info: {
+        actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+        sourceNodeRid: Buffer;
+        flags: number;
+        requestHandle: bigint;
+      };
+      message: MessageSnapshot;
+    } | null;
+    if (!raw) {
+      return null;
+    }
+    return {
+      info: actorJoinInfoFromRaw(raw.info),
+      message: Message.fromSnapshot(raw.message)
+    };
+  }
+  replyActorJoin(info: ActorJoinInfo, accepted: boolean, message: MessageLike): boolean {
+    requireNative().spotActorJoinReply(
+      this._native,
+      actorJoinInfoToRaw(info),
+      Boolean(accepted),
+      [normalizeMessageLikePayload(message)]
+    );
+    return true;
+  }
+  actorsSnapshot(): ActorRef[] {
+    return (requireNative().spotActorsSnapshot(this._native) as Array<{ nodeRid: Buffer; actorId: string; generation: bigint | number }>)
+      .map((entry) => actorRefFromRaw(entry));
   }
   setLinger(milliseconds: number): void { requireNative().socketSetOpt(this._native, SocketOption.LINGER, int32Buffer(milliseconds, 'milliseconds')); }
   setSendHighWaterMark(value: number): void { requireNative().socketSetOpt(this._native, SocketOption.SNDHWM, int32Buffer(value, 'value')); }

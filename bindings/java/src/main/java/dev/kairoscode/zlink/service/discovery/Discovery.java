@@ -8,11 +8,13 @@ import dev.kairoscode.zlink.service.registry.AutoConnectType;
 import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
+import dev.kairoscode.zlink.internal.ActorInterop;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
 import dev.kairoscode.zlink.internal.ServiceDecoders;
+import dev.kairoscode.zlink.service.spot.ActorRoute;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -84,6 +86,21 @@ public final class Discovery implements AutoCloseable {
                   "zlink_discovery_resolve_spot");
             }
             return readRoutingId(ownerNodeRidOut);
+        }
+    }
+
+    /** Resolves the current active route for one Actor id. */
+    public ActorRoute resolveActor(String actorId) {
+        Objects.requireNonNull(actorId, "actorId");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(NativeLayouts.ACTOR_ROUTE_LAYOUT);
+            int rc = Native.discoveryResolveActor(handle,
+              NativeHelpers.toCString(arena, actorId), out);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                  "zlink_discovery_resolve_actor");
+            }
+            return ActorInterop.actorRouteFromNative(out);
         }
     }
 

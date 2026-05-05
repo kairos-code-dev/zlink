@@ -70,6 +70,31 @@ with the rules here, this section wins.
   via Discovery, the library picks one initiator per pair by a total order
   on `(routingId, advertiseEndpoint)`. Users do not configure this.
 
+## Actor Dispatch Public Surface
+
+Java exposes Actor dispatch through public classes in
+`dev.kairoscode.zlink.service.spot` and related service packages.
+
+```java
+record ActorRef(RoutingId nodeRid, String actorId, long generation) {}
+record ActorCreateResult(ActorCreateStatus status, ActorRef actor) {}
+record ActorRoute(ActorRef actor, boolean joined, Optional<RoutingId> joinedSpotRid) {}
+record ActorRecvInfo(ActorRef actor, Optional<RoutingId> sourceNodeRid,
+                     Optional<RoutingId> sourceSessionRid, int flags) {}
+record ActorPart(ActorRecvInfo info, Message message, boolean more) {}
+final class Actor implements AutoCloseable { ... }
+```
+
+`SpotNode` exposes `actor`, `actorLookup`, `remoteActorRef`,
+`createRemoteActor`, `destroyRemoteActor`, `onActorAdmission`, `joinActor`,
+`leaveActor`, `spotsSnapshot`, and `actorsSnapshot`. `Spot` exposes
+`recvActorJoin`, `replyActorJoin`, and `actorsSnapshot`. `StreamSocket`
+exposes `bindActor`, `unbindActor`, and `sendBoundActor`. `Discovery` exposes
+`resolveActor`.
+
+`generation == 0` is an unchecked remote ref. Actor readable dispatch uses
+preloaded parts when Java moves native callbacks to managed executors.
+
 ## Core
 
 ### Context
@@ -1249,9 +1274,6 @@ public final class Discovery implements AutoCloseable {
     void connectRegistry(String registryEndpoint);                   // @throws ConnectException
     void setValue(long value);                                       // @throws ConfigException
     long getValue();                                                 // @throws ConfigException
-    void bindRoute(int kind, byte[] key, byte[] value);              // @throws ConfigException
-    void unbindRoute(int kind, byte[] key);                          // @throws ConfigException
-    RouteResolution resolveRoute(int kind, byte[] key);              // @throws ConfigException
     void setTlsClient(String caCertPem, String hostname, boolean trustSystem); // @throws ConfigException
 
     List<MemberPeerEntry> memberPeers();                             // @throws ConfigException

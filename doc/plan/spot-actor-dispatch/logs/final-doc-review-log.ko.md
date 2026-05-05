@@ -59,7 +59,8 @@
 ## 2026-05-05 POSD 후 2차 문서 리뷰
 
 - 검증 명령:
-  - `rg -n "language-exchange|문서작성|zlink_spot_node_remote_actor_ref|zlink_stream_lookup_actor|zlink_stream_send_actor_part|session_actor_key|Actor HWM option|actor HWM option|ACTOR_HWM|HWM.*ACTOR|zlink_discovery_(bind_route|unbind_route|resolve_route)|zlink_route_kind_t|ZLINK_ROUTE_KIND_INVALID|ZLINK_ROUTE_KEY_MAX|ZLINK_ROUTE_VALUE_MAX|generation == 0.*invalid|invalid.*generation == 0|RemoteActor" doc/spec/core doc/guide doc/internals doc/site/docs --glob '!doc/spec/draft/**' --glob '!doc/plan/**'`
+  - 금지 표현, 제거된 Actor helper, 제거된 generic route API, unchecked generation
+    오해 표현을 검색했다.
   - `rg -n "숨은 내부 socket|내부 socket|inproc endpoint|transport endpoint|lock|mutex|clear_actor_bound_session|clear_actor_joined_spot" doc/guide/07-3-spot.ko.md doc/site/docs/guide/07-3-spot.ko.md`
   - `diff -u doc/site/docs/guide/07-3-spot.ko.md doc/guide/07-3-spot.ko.md`
 - 결과:

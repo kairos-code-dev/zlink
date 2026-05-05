@@ -65,3 +65,15 @@ path = "samples/discovery_registry_sample.rs"
 [[example]]
 name = "registry_query_sample"
 path = "samples/registry_query_sample.rs"
+
+[[example]]
+name = "actor_room_server_sample"
+path = "samples/actor_room_server_sample.rs"
+
+[[example]]
+name = "actor_gateway_relay_sample"
+path = "samples/actor_gateway_relay_sample.rs"
+
+[[example]]
+name = "actor_single_player_queue_sample"
+path = "samples/actor_single_player_queue_sample.rs"

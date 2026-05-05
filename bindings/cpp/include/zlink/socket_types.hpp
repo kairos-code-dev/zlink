@@ -8,6 +8,9 @@
 #include "subscriber_socket.hpp"
 #include "error.hpp"
 
+#include <chrono>
+#include <string>
+
 namespace zlink
 {
 
@@ -992,6 +995,62 @@ class stream_socket_t : public routed_message_socket_t
     stream_socket_options_t stream_options ()
     {
         return stream_socket_options_t (handle ());
+    }
+
+    template<typename SpotNodeT>
+    void bind_actor (SpotNodeT &node_,
+                     const routing_id_t &session_rid_,
+                     const actor_ref_t &actor_,
+                     std::chrono::milliseconds timeout_ = {})
+    {
+        detail::throw_if_failed<request_error_t> (
+          static_cast<request_result_t> (
+            zlink_stream_bind_actor (
+              node_.handle (), handle (), routing_id_native (session_rid_),
+              actor_ref_native (actor_),
+              static_cast<uint32_t> (timeout_.count ()))));
+    }
+
+    template<typename SpotNodeT>
+    void unbind_actor (SpotNodeT &node_,
+                       const routing_id_t &session_rid_,
+                       const std::string &actor_id_,
+                       std::chrono::milliseconds timeout_ = {})
+    {
+        validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
+                                   "actor_id");
+        detail::throw_if_failed<request_error_t> (
+          static_cast<request_result_t> (
+            zlink_stream_unbind_actor (
+              node_.handle (), handle (), routing_id_native (session_rid_),
+              actor_id_.c_str (), static_cast<uint32_t> (timeout_.count ()))));
+    }
+
+    template<typename SpotNodeT>
+    bool send_bound_actor_part (SpotNodeT &node_,
+                                const routing_id_t &session_rid_,
+                                const std::string &actor_id_,
+                                message_t &part_,
+                                send_flags_t flags_ = send_flags_t::none)
+    {
+        validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
+                                   "actor_id");
+        zlink_msg_t native;
+        part_.move_to (&native);
+        const submit_result_t rc = static_cast<submit_result_t> (
+          zlink_stream_send_bound_actor_part (
+            node_.handle (), handle (), routing_id_native (session_rid_),
+            actor_id_.c_str (), &native,
+            static_cast<zlink_send_flags_t> (flags_), ZLINK_PART_FINAL));
+        if (rc != submit_result_t::ok) {
+            part_.init ();
+            (void) zlink_msg_move (part_.handle (), &native);
+            if (flags_ == send_flags_t::dontwait
+                && rc == submit_result_t::backpressured)
+                return false;
+            throw submit_error_t (rc, zlink_errno ());
+        }
+        return true;
     }
 
   private:

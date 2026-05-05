@@ -20,6 +20,7 @@ use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{IntoMultipart, Message, RoutingId};
 use crate::options::{CommonSocketOptions, RouterSocketOptions};
 use crate::request_progress::RequestProgressGuard;
+use crate::service::request_result_from_raw;
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 type RequestCallback = Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>;
@@ -666,15 +667,7 @@ fn request_parts_from_callback(
 }
 
 fn request_result_from_ffi(result: ffi::zlink_request_result_t) -> RequestResult {
-    match result {
-        ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_OK => RequestResult::Ok,
-        ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_TIMED_OUT => RequestResult::TimedOut,
-        ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_NOT_FOUND => RequestResult::NotFound,
-        ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_TERMINATED => RequestResult::Terminated,
-        ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_PROTOCOL_ERROR => {
-            RequestResult::ProtocolError
-        }
-    }
+    request_result_from_raw(result)
 }
 
 unsafe extern "C" fn router_blocking_request_callback(
@@ -724,18 +717,9 @@ unsafe extern "C" fn router_spot_reply_callback(
     if result_ == ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_OK {
         callback(Ok(super::take_parts(parts, part_count)));
     } else {
-        let request_result = match result_ {
-            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_OK => RequestResult::Ok,
-            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_TIMED_OUT => RequestResult::TimedOut,
-            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_NOT_FOUND => RequestResult::NotFound,
-            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_TERMINATED => {
-                RequestResult::Terminated
-            }
-            ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_PROTOCOL_ERROR => {
-                RequestResult::ProtocolError
-            }
-        };
-        callback(Err(request_error_from_result(request_result)));
+        callback(Err(request_error_from_result(request_result_from_raw(
+            result_,
+        ))));
     }
 }
 

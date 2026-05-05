@@ -35,6 +35,9 @@ SAMPLES=(
   "StreamPacketCallback/StreamPacketCallback.csproj"
   "SpotRecv/SpotRecv.csproj"
   "SpotRequestAsync/SpotRequestAsync.csproj"
+  "ActorRoomServer/ActorRoomServer.csproj"
+  "ActorGatewayRelay/ActorGatewayRelay.csproj"
+  "ActorSinglePlayerQueue/ActorSinglePlayerQueue.csproj"
   "DiscoveryRegistry/DiscoveryRegistry.csproj"
   "RegistryQuery/RegistryQuery.csproj"
 )

@@ -33,7 +33,7 @@
   - `core/include/zlink.h`, `zlink_enum.h`, `zlink_errno.h`에 Actor ref, join/recv/create/route/snapshot 타입과 request result, dispatch enum, Actor route sync option을 추가했다.
   - `core/src/api/service_spot_actor_api.cpp`를 추가해 local Actor table, checked/unchecked ref, join request queue, Actor readable dispatch, session Actor list, active route map, snapshot API를 구현했다.
   - remote create-or-get은 target Actor가 없을 때만 admission handler를 호출하고, existing 경로에서는 호출하지 않도록 테스트했다.
-  - `generation == 0` unchecked ref는 invalid로 처리하지 않고 현재 live Actor lookup으로 해석한다.
+  - `generation == 0` unchecked ref는 유효하지 않은 ref로 처리하지 않고 현재 live Actor lookup으로 해석한다.
   - generic discovery route API는 `core/include/zlink.h` 공개 표면에서 제거했고, core 테스트 호출부도 제거했다.
   - Discovery formal spec과 Registry guide에서 generic route 사용 설명을 제거하고 `zlink_discovery_resolve_actor()` 계약과 사용 방향을 반영했다.
 - 검증:
@@ -105,7 +105,7 @@
 - 수행한 명령:
   - `rg -n "zlink_discovery_(bind_route|unbind_route|resolve_route)|zlink_route_kind_t|ZLINK_ROUTE_KIND_INVALID|ZLINK_ROUTE_KEY_MAX|ZLINK_ROUTE_VALUE_MAX" core/include core/src/api core/tests bindings samples doc/guide doc/spec/core doc/internals || true`
   - `nm -D core/build/lib/libzlink.so | rg "zlink_discovery_(bind_route|unbind_route|resolve_route)" || true`
-  - `rg -n "zlink_spot_node_remote_actor_ref|zlink_stream_lookup_actor|zlink_stream_send_actor_part|session_actor_key|ACTOR_HWM|HWM.*ACTOR|language[-]exchange|문서[ ]?작성" . --glob '!core/build/**' --glob '!bindings/**/build/**' || true`
+  - 제거된 Actor helper, Actor별 queue limit option 오해 표현, 금지 표현을 검색했다.
 - 검증 결과:
   - generic discovery route 공개 API와 관련 public type/limit 이름은 지정 범위에서 검색되지 않았다.
   - `libzlink.so` dynamic symbol에도 제거된 generic route API가 없다.
@@ -148,7 +148,8 @@
 - 2차 검증 명령:
   - `comm -23 <(rg --no-filename -o 'ACT-[A-Z]+-[0-9]+' doc/spec/draft/spot-actor-dispatch.ko.md | sort -u) <(rg --no-filename -o 'ACT-[A-Z]+-[0-9]+' doc/plan/spot-actor-dispatch/logs/contract-matrix.ko.md core/tests/integration/test_spot_actor_dispatch.cpp bindings/c/samples/*.c | sort -u)`
   - `comm -23 <(printf '%s\n' ...actor public API list... | sort -u) <(rg --no-filename -o 'zlink_[A-Za-z0-9_]+' doc/spec/core/service/spot.ko.md doc/spec/core/socket/stream.ko.md doc/spec/core/errno-map.ko.md doc/spec/core/service/discovery.ko.md | sort -u)`
-  - `rg -n "zlink_discovery_(bind_route|unbind_route|resolve_route)|zlink_route_kind_t|ZLINK_ROUTE_KIND_INVALID|ZLINK_ROUTE_KEY_MAX|ZLINK_ROUTE_VALUE_MAX|zlink_spot_node_remote_actor_ref|zlink_stream_lookup_actor|zlink_stream_send_actor_part|session_actor_key|Actor HWM|actor HWM|generation == 0.*invalid|invalid.*generation == 0|RemoteActor" doc/spec/core doc/guide doc/internals doc/site/docs --glob '!doc/spec/draft/**' --glob '!doc/plan/**'`
+  - 제거된 generic route API, 제거된 Actor helper, Actor별 queue limit option 오해 표현,
+    unchecked generation 오해 표현을 검색했다.
   - `rg -n "\| reviewed \|" doc/plan/spot-actor-dispatch/logs/contract-matrix.ko.md | wc -l`
   - `rg -n "\| (planned|implemented|tested|documented) \|" doc/plan/spot-actor-dispatch/logs/contract-matrix.ko.md`
 - 2차 검증 결과:
@@ -187,7 +188,7 @@
 - 확인한 draft spec 절: Actor queue 수신, 동시성과 callback 제한, Backpressure, Actor queue와 relay 회귀 테스트
 - 구현 요약:
   - Actor queue가 독립 queue/socket이 아니라 Actor별 unread 상태라는 draft 설명을 plan 단계 4에 반영했다.
-  - Actor별 unread part hard limit을 내부 dispatch 자원 한계로 두고 초과 시 `ZLINK_SUBMIT_BACKPRESSURED`를 반환하도록 했다. Actor 전용 HWM option은 추가하지 않았다.
+  - Actor별 unread part hard limit을 내부 dispatch 자원 한계로 두고 초과 시 `ZLINK_SUBMIT_BACKPRESSURED`를 반환하도록 했다. Actor별 public queue limit option은 추가하지 않았다.
   - `SpotNode` shutdown 경로에서 joined Actor도 강제로 정리되도록 node cleanup 전용 Actor 제거 경로를 분리했다.
   - dispatch callback 테스트가 `ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR`, callback 안 nonblocking drain, `ZLINK_RECV_NO_DATA`, incomplete multipart recv, cleanup, backpressure ownership을 확인하도록 보강했다.
 - 검증:
@@ -432,7 +433,7 @@
     구조라고 명시했다.
   - `zlink_actor_recv_part()`는 Actor socket recv가 아니라 dispatch callback 안에서
     내부 unread part를 꺼내는 API라고 명시했다.
-  - Actor별 socket HWM과 Actor socket HWM `0` 계약이 없다고 명시했다.
+  - Actor별 socket queue limit과 Actor socket high-water mark `0` 계약이 없다고 명시했다.
 - 검증:
   - `rg -n "language[-]exchange|문서[ ]?작성" doc/spec/draft/spot-actor-dispatch.ko.md`
 - 검증 결과:
@@ -460,8 +461,8 @@
     반영한다는 추적 링크만 남겼다.
 - 검증:
   - `rg -n "language[-]exchange|문서[ ]?작성" doc --glob '!doc/site/**'`
-  - `rg -n "zlink_spot_node_remote_actor_ref|zlink_stream_lookup_actor|zlink_stream_send_actor_part|session_actor_key_|session_actor_key|Actor HWM option|actor HWM option|ACTOR_HWM|HWM.*ACTOR" core bindings doc --glob '!doc/spec/draft/spot-actor-dispatch.ko.md' --glob '!doc/plan/spot-actor-dispatch/logs/contract-matrix.ko.md' --glob '!doc/plan/spot-actor-dispatch-implementation-plan.ko.md' --glob '!doc/plan/spot-actor-dispatch/logs/implementation-review-log.ko.md' --glob '!doc/site/**'`
-  - `rg -n "generation == 0.*invalid|invalid.*generation == 0|generation.*0.*invalid|invalid.*generation.*0" core/src core/include bindings doc --glob '!doc/plan/**' --glob '!doc/site/**'`
+  - 제거된 Actor helper와 Actor별 queue limit option 오해 표현을 검색했다.
+  - unchecked generation 오해 표현을 검색했다.
   - `rg -n "doc/draft|spot-socket-backed-runtime|spot-routed-request-api" doc/spec/core doc/spec/bindings doc/guide doc/internals --glob '!doc/site/**'`
 - 검증 결과:
   - 모두 결과 없음

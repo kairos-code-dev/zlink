@@ -50,6 +50,14 @@ const (
 	RequestNotFound      RequestResult = 102
 	RequestTerminated    RequestResult = 103
 	RequestProtocolError RequestResult = 104
+	RequestInternalError RequestResult = 105
+	RequestRejected      RequestResult = 106
+	RequestConflict      RequestResult = 107
+	RequestBusy          RequestResult = 108
+	RequestNotConnected  RequestResult = 109
+	RequestInvalidArg    RequestResult = 110
+	RequestInvalidState  RequestResult = 111
+	RequestNotSupported  RequestResult = 112
 )
 
 type RecvResult int
@@ -119,6 +127,8 @@ const (
 	SpotDispatchEventRoutedReadable       SpotDispatchEvent = 2
 	SpotDispatchEventTimerReadable        SpotDispatchEvent = 3
 	SpotDispatchEventChannelReplyReadable SpotDispatchEvent = 4
+	SpotDispatchEventActorReadable        SpotDispatchEvent = 5
+	SpotDispatchEventActorJoinReadable    SpotDispatchEvent = 6
 )
 
 type SpotDispatchSubjectKind int
@@ -127,12 +137,20 @@ const (
 	SpotDispatchSubjectSpot          SpotDispatchSubjectKind = 1
 	SpotDispatchSubjectTimer         SpotDispatchSubjectKind = 2
 	SpotDispatchSubjectChannelDealer SpotDispatchSubjectKind = 3
+	SpotDispatchSubjectActor         SpotDispatchSubjectKind = 4
 )
 
 type SpotDispatchInfo struct {
 	Event       SpotDispatchEvent
 	SubjectKind SpotDispatchSubjectKind
 	Subject     unsafe.Pointer
+}
+
+func (i SpotDispatchInfo) RecvActorPart(flags RecvFlags) (*ActorPart, error) {
+	if i.Event != SpotDispatchEventActorReadable || i.SubjectKind != SpotDispatchSubjectActor {
+		return nil, &RecvError{Result: RecvNotSupported, internalErrno: int(C.ENOTSUP)}
+	}
+	return recvActorPartFromHandle(i.Subject, flags)
 }
 
 type Received struct {

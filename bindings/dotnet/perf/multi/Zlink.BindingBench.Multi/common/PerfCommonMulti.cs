@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Text;
 using Zlink;
 
 internal static partial class PerfRunner
@@ -51,6 +52,11 @@ internal static partial class PerfRunner
         return options.ConnectReadyTimeoutMs;
     }
 
+    internal static int ResolveMultiSpotRouteWarmupMs()
+    {
+        return PerfEnv.ReadNonNegative("PERF_MULTI_SPOT_ROUTE_WARMUP_MS", 0);
+    }
+
     internal static string MultiEndpointFor(string transport, string name,
         PerfOptions options)
     {
@@ -58,6 +64,24 @@ internal static partial class PerfRunner
         if (bindPort > 0)
             return $"{transport}://127.0.0.1:{bindPort}";
         return EndpointFor(transport, name);
+    }
+
+    internal static string MultiSpotServiceName(string registryEndpoint)
+    {
+        var builder = new StringBuilder("bench-svc");
+        foreach (char ch in registryEndpoint)
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                builder.Append(char.ToLowerInvariant(ch));
+            }
+            else if (builder[^1] != '-')
+            {
+                builder.Append('-');
+            }
+        }
+
+        return builder.ToString().TrimEnd('-');
     }
 
     internal static bool IsMonitorReady(MonitorEventType eventValue)

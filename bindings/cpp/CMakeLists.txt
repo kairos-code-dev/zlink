@@ -263,6 +263,18 @@ if(ZLINK_CPP_BUILD_SAMPLES)
     sample_cpp_registry_query_sample
     samples/registry_query_sample.cpp
   )
+  add_cpp_sample(
+    sample_cpp_actor_room_server_sample
+    samples/actor_room_server_sample.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_actor_gateway_relay_sample
+    samples/actor_gateway_relay_sample.cpp
+  )
+  add_cpp_sample(
+    sample_cpp_actor_single_player_queue_sample
+    samples/actor_single_player_queue_sample.cpp
+  )
 endif()
 
 if(ZLINK_CPP_BUILD_TESTS)

@@ -717,6 +717,20 @@ public sealed class StreamSocket : RoutedMessageSocketBase
     void OnPacket(StreamPacketHandler handler);
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
+
+    /// <exception cref="ZlinkRequestException"/>
+    void BindActor(SpotNode node, RoutingId sessionRid, ActorRef actor,
+                   TimeSpan timeout = default);
+    /// <exception cref="ZlinkRequestException"/>
+    void UnbindActor(SpotNode node, RoutingId sessionRid, string actorId,
+                     TimeSpan timeout = default);
+    /// <exception cref="ZlinkSubmitException"/>
+    bool SendBoundActor(SpotNode node, RoutingId sessionRid, string actorId,
+                        Message message, SendFlags flags = SendFlags.None);
+    /// <exception cref="ZlinkSubmitException"/>
+    bool SendBoundActor(SpotNode node, RoutingId sessionRid, string actorId,
+                        IReadOnlyList<Message> parts,
+                        SendFlags flags = SendFlags.None);
 }
 ```
 
@@ -1110,7 +1124,15 @@ public enum RequestResult
     TimedOut = 101,
     NotFound = 102,
     Terminated = 103,
-    ProtocolError = 104
+    ProtocolError = 104,
+    NotConnected = 105,
+    NotAdmitted = 106,
+    Rejected = 107,
+    Conflict = 108,
+    InvalidArgument = 109,
+    InvalidState = 110,
+    ThreadViolation = 111,
+    InternalError = 112
 }
 ```
 
@@ -1280,6 +1302,80 @@ public sealed record SubscriptionEvent(
     bool Subscribed);                        // true=subscribe, false=unsubscribe
 ```
 
+### Actor Types
+
+Actor values are public value objects and lifecycle handles for SPOT Actor
+dispatch.
+
+```csharp
+public readonly struct ActorRef : IEquatable<ActorRef>
+{
+    ActorRef(RoutingId nodeRid, string actorId, ulong generation);
+    RoutingId NodeRid { get; }
+    string ActorId { get; }
+    ulong Generation { get; }
+    bool IsUnchecked { get; }
+    static ActorRef Unchecked(RoutingId nodeRid, string actorId);
+    static ActorRef Remote(RoutingId targetNodeRid, string actorId);
+}
+
+public enum ActorCreateStatus { Created = 1, Existing = 2 }
+public enum ActorAdmissionResult { Accept = 1, Reject = 2 }
+
+public sealed record ActorCreateResult(ActorCreateStatus Status,
+                                       ActorRef Actor);
+public sealed record ActorRoute(ActorRef Actor, bool Joined,
+                                RoutingId? JoinedSpotRid);
+public sealed record ActorRecvInfo(ActorRef Actor,
+                                   RoutingId? SourceNodeRid,
+                                   RoutingId? SourceSessionRid,
+                                   uint Flags);
+public sealed record ActorJoinInfo(ActorRef Actor,
+                                   RoutingId? SourceNodeRid,
+                                   uint Flags);
+public sealed record ActorPart(ActorRecvInfo Info, Message Message,
+                               bool More);
+public sealed record ActorJoinRequest(ActorJoinInfo Info, Message Message);
+public sealed record SpotNodeSpotEntry(RoutingId? SpotRid,
+                                       bool DispatchHandlerAttached,
+                                       uint JoinedActorCount,
+                                       uint PendingActorJoinCount,
+                                       bool RouteSynced,
+                                       ulong LastChangedMs);
+public sealed record SpotNodeActorEntry(ActorRef Actor, bool Joined,
+                                        RoutingId? JoinedSpotRid,
+                                        bool RouteSynced,
+                                        uint PendingMessageCount,
+                                        ulong LastChangedMs);
+
+public delegate ActorAdmissionResult ActorAdmissionHandler(string actorId,
+                                                           Message message);
+
+public sealed class Actor : IDisposable, IAsyncDisposable
+{
+    ActorRef Ref { get; }
+    Task<IReadOnlyList<Message>> JoinAsync(Spot spot, Message message,
+                                           TimeSpan timeout = default,
+                                           SendFlags flags = SendFlags.None,
+                                           CancellationToken ct = default);
+    void Join(Spot spot, Message message,
+              Action<RequestResult, IReadOnlyList<Message>> callback,
+              TimeSpan? timeout = null,
+              SendFlags flags = SendFlags.None);
+    void Leave(Spot spot);
+    ActorPart? RecvPart(RecvFlags flags = RecvFlags.None);
+    bool SendBoundSession(Message message, SendFlags flags = SendFlags.None);
+    bool SendBoundSessionPacket(Message header, Message body,
+                                SendFlags flags = SendFlags.None);
+    void Close(TimeSpan timeout = default);
+    void Dispose();
+    ValueTask DisposeAsync();
+}
+```
+
+`Generation == 0` is an unchecked remote ref, not an invalid ref. One Actor can
+join only one Spot at a time. `Leave` does not drop unread Actor parts.
+
 ### SpotDispatchEvent
 
 Dispatch event kind delivered to `Spot.OnDispatchEvent`. Maps 1-to-1 to the
@@ -1291,7 +1387,9 @@ public enum SpotDispatchEvent
     SubscribeReadable    = 1,  // topic message ready — drain via Spot.Subscribe()
     RoutedReadable       = 2,  // routed message ready — drain via Spot.RecvRouted()
     TimerReadable        = 3,  // timer fired — drain via Timer.Recv(); Subject is Timer
-    ChannelReplyReadable = 4   // channel reply ready — drain via Spot.DrainChannelReplyFrom(Subject)
+    ChannelReplyReadable = 4,  // channel reply ready — drain via Spot.DrainChannelReplyFrom(Subject)
+    ActorReadable        = 5,  // actor part ready — drain via SpotDispatchInfo.RecvActorPart()
+    ActorJoinReadable    = 6   // actor join request ready — drain via Spot.RecvActorJoin()
 }
 ```
 
@@ -1305,20 +1403,25 @@ public enum SpotDispatchSubjectKind
 {
     Spot          = 1,   // Subject is the Spot itself (SubscribeReadable / RoutedReadable)
     Timer         = 2,   // Subject is a Timer handle (TimerReadable)
-    ChannelDealer = 3    // Subject is a DealerSocket handle (ChannelReplyReadable)
+    ChannelDealer = 3,   // Subject is a DealerSocket handle (ChannelReplyReadable)
+    Actor         = 4    // Subject is an Actor handle (ActorReadable)
 }
 ```
 
 ### SpotDispatchInfo
 
 Structured dispatch event info passed to `Spot.OnDispatchEvent`. Maps to
-the C API `zlink_spot_dispatch_info_t`. Pure value object.
+the C API `zlink_spot_dispatch_info_t`.
 
 ```csharp
-public sealed record SpotDispatchInfo(
-    SpotDispatchEvent        Event,
-    SpotDispatchSubjectKind  SubjectKind,
-    IntPtr                   Subject);   // source native handle; IntPtr.Zero when none
+public sealed class SpotDispatchInfo
+{
+    SpotDispatchEvent Event { get; }
+    SpotDispatchSubjectKind SubjectKind { get; }
+    IntPtr Subject { get; }
+    IReadOnlyList<ActorPart> ActorParts { get; }
+    ActorPart? RecvActorPart();
+}
 ```
 
 `Subject` is the source native handle. It is `IntPtr.Zero` only for
@@ -1328,7 +1431,9 @@ Pass the handle back to APIs that consume it, such as
 
 `SubscribeReadable` and `RoutedReadable` are readiness events. Callers must
 drain `Spot.Subscribe(...)` or `Spot.RecvRouted(...)` until the binding
-surfaces `EAGAIN` / no-data.
+reports no data. `ActorReadable` is also a readiness event. The binding drains
+Actor parts at native callback entry and exposes them through `ActorParts` and
+`RecvActorPart()` so the caller knows which Actor produced the message.
 
 ### SendFlags
 
@@ -1579,13 +1684,6 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
     void SetValue(long value);
     /// <exception cref="ZlinkConfigException"/>
     long GetValue();
-    /// <exception cref="ZlinkConfigException"/>
-    void BindRoute(uint kind, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
-    /// <exception cref="ZlinkConfigException"/>
-    void UnbindRoute(uint kind, ReadOnlySpan<byte> key);
-    /// <exception cref="ZlinkConfigException"/>
-    (RoutingId OwnerNodeRoutingId, Message Value) ResolveRoute(
-        uint kind, ReadOnlySpan<byte> key);
 
     /// <exception cref="ZlinkConfigException"/>
     MemberPeerEntry[] MemberPeers();
@@ -1598,11 +1696,16 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
     /// </summary>
     /// <exception cref="ZlinkConfigException"/>
     RoutingId ResolveSpot(RoutingId spotRid);
+    /// <exception cref="ZlinkConfigException"/>
+    ActorRoute ResolveActor(string actorId);
 
     /// <summary>Enable or disable publishing SPOT owner rows to Registry.</summary>
     bool SpotOwnerSyncEnabled { get; set; }
     void SetSpotOwnerSyncEnabled(bool enabled);
     bool GetSpotOwnerSyncEnabled();
+    bool ActorRouteSyncEnabled { get; set; }
+    void SetActorRouteSyncEnabled(bool enabled);
+    bool GetActorRouteSyncEnabled();
 
     /// <exception cref="ZlinkCloseException"/>
     void Close();
@@ -1672,9 +1775,42 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         SpotNodeSubjectFilter? filter = null);
     SpotNodeSocketSnapshotEntry[] InternalSocketsSnapshot(
         SpotNodeSocketSnapshotFilter? filter = null);
+    /// <exception cref="ZlinkConfigException"/>
+    SpotNodeSpotEntry[] SpotsSnapshot();
+    /// <exception cref="ZlinkConfigException"/>
+    SpotNodeActorEntry[] ActorsSnapshot();
     // Spot 생성은 반드시 SpotNode 에서만
     /// <exception cref="ZlinkConfigException"/>
     Spot CreateSpot();
+
+    /// <exception cref="ZlinkConfigException"/>
+    Actor Actor(string actorId);
+    /// <exception cref="ZlinkConfigException"/>
+    ActorRef ActorLookup(string actorId);
+    /// <exception cref="ZlinkConfigException"/>
+    ActorRef RemoteActorRef(RoutingId targetNodeRid, string actorId);
+    /// <exception cref="ZlinkRequestException"/>
+    ActorCreateResult CreateRemoteActor(RoutingId targetNodeRid,
+                                        string actorId,
+                                        Message message,
+                                        TimeSpan timeout = default);
+    /// <exception cref="ZlinkRequestException"/>
+    void DestroyRemoteActor(ActorRef actor, TimeSpan timeout = default);
+    /// <exception cref="ZlinkHandlerException"/>
+    void OnActorAdmission(ActorAdmissionHandler handler);
+    Task<IReadOnlyList<Message>> JoinActorAsync(ActorRef actor,
+                                                RoutingId destSpotRid,
+                                                Message message,
+                                                TimeSpan timeout = default,
+                                                SendFlags flags = SendFlags.None,
+                                                CancellationToken ct = default);
+    void JoinActor(ActorRef actor, RoutingId destSpotRid, Message message,
+                   Action<RequestResult, IReadOnlyList<Message>> callback,
+                   TimeSpan? timeout = null,
+                   SendFlags flags = SendFlags.None);
+    /// <exception cref="ZlinkRequestException"/>
+    void LeaveActor(ActorRef actor, RoutingId destSpotRid,
+                    TimeSpan timeout = default);
 
     // Close/Dispose cascades: live Spot 을 먼저 정리한 후 node 종료
     /// <exception cref="ZlinkCloseException"/>
@@ -1838,6 +1974,14 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// </summary>
     /// <exception cref="ZlinkHandlerException"/>
     void OnDispatchEvent(Action<Spot, SpotDispatchInfo> handler);
+
+    // --- actor join / snapshot ---
+    /// <exception cref="ZlinkRecvException"/>
+    ActorJoinRequest? RecvActorJoin(RecvFlags flags = RecvFlags.None);
+    /// <exception cref="ZlinkSubmitException"/>
+    void ReplyActorJoin(ActorJoinInfo info, bool accepted, Message message);
+    /// <exception cref="ZlinkConfigException"/>
+    ActorRef[] ActorsSnapshot();
 
     // --- channel reply dispatch ---
     /// <summary>

@@ -1,22 +1,26 @@
-//! SPOT recv sample – demonstrates peer SPOT publish/subscribe delivery.
+//! SPOT recv sample – demonstrates SPOT publish/subscribe delivery.
 
 use std::time::{Duration, Instant};
+
+use zlink::{
+    AutoConnectType, Context, Discovery, Message, RecvFlags, RecvResult, Registry,
+    RegistryQueryClient, SpotNode, SubmitResult,
+};
 
 #[path = "sample_support.rs"]
 mod sample_support;
 
-use zlink::{
-    AutoConnectType, Context, Discovery, Message, RecvFlags, RecvResult, Registry, SpotNode,
-};
-
-const SERVICE_NAME: &str = "sample";
+const SERVICE_NAME: &str = "sample-spot-recv";
 const TOPIC: &str = "room:lobby";
 
 fn main() {
     let ctx = Context::new().expect("context creation failed");
     let registry = Registry::new(&ctx).expect("registry failed");
-    let discovery =
+    let publisher_discovery =
         Discovery::new(&ctx, AutoConnectType::SpotMesh, SERVICE_NAME).expect("discovery failed");
+    let subscriber_discovery =
+        Discovery::new(&ctx, AutoConnectType::SpotMesh, SERVICE_NAME).expect("discovery failed");
+    let query = RegistryQueryClient::new(&ctx).expect("query client failed");
     let publisher_node = SpotNode::new(&ctx).expect("publisher node failed");
     let subscriber_node = SpotNode::new(&ctx).expect("subscriber node failed");
     let registry_pub = sample_support::tcp_endpoint();
@@ -26,21 +30,27 @@ fn main() {
     registry
         .bind(&registry_pub, &registry_router)
         .expect("registry bind failed");
-    discovery
+    publisher_discovery
         .connect_registry(&registry_router)
-        .expect("connect_registry failed");
+        .expect("publisher discovery connect failed");
+    subscriber_discovery
+        .connect_registry(&registry_router)
+        .expect("subscriber discovery connect failed");
+    query
+        .connect(&registry_router)
+        .expect("query connect failed");
     publisher_node
-        .attach_discovery(&discovery)
-        .expect("attach_discovery failed");
+        .attach_discovery(&publisher_discovery)
+        .expect("publisher discovery attach failed");
     subscriber_node
-        .attach_discovery(&discovery)
-        .expect("attach_discovery failed");
+        .attach_discovery(&subscriber_discovery)
+        .expect("subscriber discovery attach failed");
     publisher_node
         .bind(&publisher_endpoint)
-        .expect("bind failed");
+        .expect("publisher bind failed");
     subscriber_node
         .bind(&subscriber_endpoint)
-        .expect("bind failed");
+        .expect("subscriber bind failed");
     let publisher = publisher_node.create_spot().expect("publisher spot failed");
     let subscriber = subscriber_node
         .create_spot()
@@ -48,16 +58,37 @@ fn main() {
     subscriber
         .set_subscription(TOPIC)
         .expect("set_subscription failed");
+    sample_support::wait_until(
+        || {
+            query
+                .snapshot(None)
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .filter(|entry| entry.channel_name == SERVICE_NAME)
+                        .count()
+                        >= 2
+                })
+                .unwrap_or(false)
+        },
+        Duration::from_secs(5),
+        "spot recv registry entries",
+    );
 
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
-        publisher
-            .publish(
-                SERVICE_NAME,
-                TOPIC,
-                Message::copy_from(b"hello-spot").unwrap(),
-            )
-            .expect("publish failed");
+        match publisher.publish(
+            SERVICE_NAME,
+            TOPIC,
+            Message::copy_from(b"hello-spot").unwrap(),
+        ) {
+            Ok(()) => {}
+            Err(err) if err.code() == SubmitResult::NotFound => {
+                std::thread::sleep(Duration::from_millis(10));
+                continue;
+            }
+            Err(err) => panic!("publish failed: {err}"),
+        }
         match subscriber.subscribe_with_flags(RecvFlags::DONT_WAIT) {
             Ok(message) => {
                 let payload = message.parts()[0].as_str().unwrap_or("(binary)");

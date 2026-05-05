@@ -6,7 +6,6 @@ using static PerfRunner;
 internal static class PerfMultiSpotServer
 {
     private const uint RunId = 1;
-    private const string ServiceName = "bench-svc";
     private const string Topic = "bench";
 
     internal static int Run(PerfOptions options)
@@ -16,16 +15,18 @@ internal static class PerfMultiSpotServer
         using var controlState = new RunnerControlState(config.Size);
         ApplyMultiServerContextOptions(ctx, options);
         using var registry = new Registry(ctx);
-        using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh, ServiceName);
+        using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh,
+            config.ServiceName);
         using var nodePub = new SpotNode(ctx);
         using var spotPub = nodePub.CreateSpot();
         registry.Bind(config.RegistryPubEndpoint, config.RegistryRouterEndpoint);
+        registry.SetBroadcastInterval(50);
         discovery.ConnectRegistry(config.RegistryRouterEndpoint);
-        nodePub.AttachDiscovery(discovery);
 
         ConfigureSpotTlsPublisherIfNeeded(nodePub, config.Transport);
         ConfigureSpotNodePublisher(nodePub, options);
         nodePub.Bind(config.DataEndpoint);
+        nodePub.AttachDiscovery(discovery);
         WriteStdoutLine(
             $"READY,{config.DataEndpoint}|{config.RegistryRouterEndpoint}");
 
@@ -46,6 +47,7 @@ internal static class PerfMultiSpotServer
             Math.Max(1, options.Size),
             Math.Max(1, ResolveMultiDurationSeconds(options)),
             ResolveMultiConnectReadyTimeoutMs(options),
+            ResolveMultiSpotRouteWarmupMs(),
             MultiEndpointFor(options.Transport, "multi-spot-data", options),
             MultiEndpointFor(options.Transport, "multi-spot-registry-pub", options),
             MultiEndpointFor(options.Transport, "multi-spot-registry-router", options));
@@ -77,6 +79,19 @@ internal static class PerfMultiSpotServer
         ulong seq = 1;
         var payload = new byte[Math.Max(config.Size, PerfMetricHeaderSize)];
         Array.Fill(payload, (byte)'a');
+        long warmupDeadlineTicks = config.RouteWarmupMs > 0
+            ? DeadlineTicksFromMilliseconds(config.RouteWarmupMs)
+            : Stopwatch.GetTimestamp();
+        while (config.RouteWarmupMs > 0
+               && !controlState.StopRequested
+               && Stopwatch.GetTimestamp() < warmupDeadlineTicks)
+        {
+            StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Warmup,
+                config.Size, seq++, EpochNs());
+            TryPublish(spotPub, config, payload, SendFlags.DontWait);
+            Thread.Sleep(5);
+        }
+
         long activeDeadlineTicks = DeadlineTicksFromSeconds(config.DurationSeconds);
 
         while (!controlState.StopRequested
@@ -84,38 +99,32 @@ internal static class PerfMultiSpotServer
         {
             StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Active,
                 config.Size, seq++, EpochNs());
-            try
-            {
-                using Message message = Message.FromBytes(payload);
-                if (!spotPub.Publish(ServiceName, Topic, message,
-                        SendFlags.DontWait))
-                {
-                    continue;
-                }
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
-            {
-                continue;
-            }
+            TryPublish(spotPub, config, payload, SendFlags.None);
         }
 
         for (int i = 0; i < 32 && !controlState.StopRequested; i++)
         {
             StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Cooldown,
                 config.Size, seq++, EpochNs());
-            try
-            {
-                using Message message = Message.FromBytes(payload);
-                _ = spotPub.Publish(ServiceName, Topic, message, SendFlags.None);
-            }
-            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
-                                            || IsInterrupted(ex.InternalErrno))
-            {
-            }
+            TryPublish(spotPub, config, payload, SendFlags.None);
         }
 
         return 0;
+    }
+
+    private static bool TryPublish(Spot spotPub, SpotServerConfig config,
+        byte[] payload, SendFlags flags)
+    {
+        try
+        {
+            using Message message = Message.FromBytes(payload);
+            return spotPub.Publish(config.ServiceName, Topic, message, flags);
+        }
+        catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                        || IsInterrupted(ex.InternalErrno))
+        {
+            return false;
+        }
     }
 
     private static bool ShouldIgnoreSpotOptionError(int errno)
@@ -137,24 +146,29 @@ internal static class PerfMultiSpotServer
     private readonly struct SpotServerConfig
     {
         internal SpotServerConfig(string transport, int size,
-            int durationSeconds, int readyTimeoutMs, string dataEndpoint,
-            string registryPubEndpoint, string registryRouterEndpoint)
+            int durationSeconds, int readyTimeoutMs, int routeWarmupMs,
+            string dataEndpoint, string registryPubEndpoint,
+            string registryRouterEndpoint)
         {
             Transport = transport;
             Size = size;
             DurationSeconds = durationSeconds;
             ReadyTimeoutMs = readyTimeoutMs;
+            RouteWarmupMs = routeWarmupMs;
             DataEndpoint = dataEndpoint;
             RegistryPubEndpoint = registryPubEndpoint;
             RegistryRouterEndpoint = registryRouterEndpoint;
+            ServiceName = MultiSpotServiceName(registryRouterEndpoint);
         }
 
         internal string Transport { get; }
         internal int Size { get; }
         internal int DurationSeconds { get; }
         internal int ReadyTimeoutMs { get; }
+        internal int RouteWarmupMs { get; }
         internal string DataEndpoint { get; }
         internal string RegistryPubEndpoint { get; }
         internal string RegistryRouterEndpoint { get; }
+        internal string ServiceName { get; }
     }
 }

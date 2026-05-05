@@ -198,16 +198,16 @@ matrix에 `existing-reference`로 분류해도 되는지 확인한 뒤 닫는다
 
 구현 후에는 matrix를 코드와도 대조한다.
 
-- [ ] matrix의 모든 public API가 `core/include`에 있다.
-- [ ] matrix의 모든 enum/struct/option이 public header에 있다.
-- [ ] matrix의 모든 제거 대상 API가 public header와 bindings에서 사라졌다.
-- [ ] matrix의 `existing-reference` 행이 새 구현 작업으로 처리되지 않았다.
-- [ ] matrix의 구현 대상 행 중 `Implementation Owner`, `Test ID`, `Doc Impact`가
+- [x] matrix의 모든 public API가 `core/include`에 있다.
+- [x] matrix의 모든 enum/struct/option이 public header에 있다.
+- [x] matrix의 모든 제거 대상 API가 public header와 bindings에서 사라졌다.
+- [x] matrix의 `existing-reference` 행이 새 구현 작업으로 처리되지 않았다.
+- [x] matrix의 구현 대상 행 중 `Implementation Owner`, `Test ID`, `Doc Impact`가
       비어 있는 행이 없다.
-- [ ] matrix의 모든 `ACT-*`가 테스트 파일명 또는 테스트 case 이름으로 추적된다.
-- [ ] matrix의 모든 binding impact가 언어별 작업 로그에 닫혀 있다.
-- [ ] matrix의 모든 doc impact가 정식 문서와 3회/5회 리뷰 로그에 닫혀 있다.
-- [ ] `Status`가 `reviewed`가 아닌 행이 하나도 없다.
+- [x] matrix의 모든 `ACT-*`가 테스트 파일명 또는 테스트 case 이름으로 추적된다.
+- [x] matrix의 모든 binding impact가 언어별 작업 로그에 닫혀 있다.
+- [x] matrix의 모든 doc impact가 정식 문서와 3회/5회 리뷰 로그에 닫혀 있다.
+- [x] `Status`가 `reviewed`가 아닌 행이 하나도 없다.
 
 이 matrix gate가 없으면 완료 판정을 하지 않는다. 새 누락 항목이 발견되면 draft spec,
 plan traceability 표, contract matrix, 테스트 목록을 함께 갱신한다.
@@ -894,7 +894,7 @@ binding 정식 문서는 core release 뒤 native library를 최신화한 다음,
 - [x] removed symbol reference check
 - [x] `rg` 기반 stale API 이름 check
 - [x] binding full 구현 전에는 binding compile failure를 core 완료 blocker로 처리하지 않음
-- [ ] binding full 구현 뒤에는 언어별 binding 단계의 검증 조건을 따른다
+- [x] binding full 구현 뒤에는 언어별 binding 단계의 검증 조건을 따른다
 
 권장 검색:
 
@@ -1247,13 +1247,13 @@ tag push 뒤 아래 workflow를 GitHub CLI로 모니터링한다.
 
 필수 확인:
 
-- [ ] `core/vX.Y.Z` tag push 성공
-- [ ] `Build libzlink Core Libraries` workflow 성공
-- [ ] `Release Core Conan Package` workflow 성공 또는 optional upload skip 사유 기록
-- [ ] `gh release view core/vX.Y.Z`가 성공
-- [ ] release asset에 core native archive가 모두 존재
-- [ ] `bindings/update_zlink_libs.sh`가 요구하는 필수 asset이 모두 존재
-- [ ] 실패한 workflow가 있으면 수정 후 commit, push, tag 재처리 또는 새 patch version으로 재시도
+- [x] `core/vX.Y.Z` tag push 성공
+- [x] `Build libzlink Core Libraries` workflow 성공
+- [x] `Release Core Conan Package` workflow 성공 또는 optional upload skip 사유 기록
+- [x] `gh release view core/vX.Y.Z`가 성공
+- [x] release asset에 core native archive가 모두 존재
+- [x] `bindings/update_zlink_libs.sh`가 요구하는 필수 asset이 모두 존재
+- [x] 실패한 workflow가 있으면 수정 후 commit, push, tag 재처리 또는 새 patch version으로 재시도
 
 권장 명령:
 
@@ -1277,11 +1277,11 @@ bindings/update_zlink_libs.sh core/vX.Y.Z --expect-version X.Y.Z
 
 규칙:
 
-- [ ] `gh` CLI 인증이 되어 있어야 한다.
-- [ ] core release 완료 전에는 이 스크립트를 실행하지 않는다.
-- [ ] 스크립트가 요구하는 release asset 누락이 있으면 core release 문제로 되돌아가 수정한다.
-- [ ] 스크립트 실행 뒤 `git status --short`로 변경된 binding native library와 version marker를 확인한다.
-- [ ] bindings update 결과를 `doc/plan/spot-actor-dispatch/logs/bindings-update-log.ko.md`에 기록한다.
+- [x] `gh` CLI 인증이 되어 있어야 한다.
+- [x] core release 완료 전에는 이 스크립트를 실행하지 않는다.
+- [x] 스크립트가 요구하는 release asset 누락이 있으면 core release 문제로 되돌아가 수정한다.
+- [x] 스크립트 실행 뒤 `git status --short`로 변경된 binding native library와 version marker를 확인한다.
+- [x] bindings update 결과를 `doc/plan/spot-actor-dispatch/logs/bindings-update-log.ko.md`에 기록한다.
 
 ## Bindings 순차 적용, 문서 5회 리뷰, 검증
 
@@ -1337,14 +1337,14 @@ bindings spec을 대상으로 수행하며, 각 회차에서 발견한 mismatch�
 
 종료 조건:
 
-- [ ] 1차 bindings spec 리뷰 완료
-- [ ] 2차 bindings spec 리뷰 완료
-- [ ] 3차 bindings spec 리뷰 완료
-- [ ] 4차 bindings spec 리뷰 완료
-- [ ] 5차 bindings spec 리뷰 완료
-- [ ] 5차에서 mismatch가 발견되면 수정 후 5차를 처음부터 다시 수행
-- [ ] draft spec에 있는 binding 적용 대상이 `doc/spec/bindings`에 모두 반영됨
-- [ ] 특히 언어별 README가 각 언어 API 표면과 일치함
+- [x] 1차 bindings spec 리뷰 완료
+- [x] 2차 bindings spec 리뷰 완료
+- [x] 3차 bindings spec 리뷰 완료
+- [x] 4차 bindings spec 리뷰 완료
+- [x] 5차 bindings spec 리뷰 완료
+- [x] 5차에서 mismatch가 발견되면 수정 후 5차를 처음부터 다시 수행
+- [x] draft spec에 있는 binding 적용 대상이 `doc/spec/bindings`에 모두 반영됨
+- [x] 특히 언어별 README가 각 언어 API 표면과 일치함
 
 ### Bindings 코드와 spec 반복 리뷰
 
@@ -1371,18 +1371,18 @@ bindings spec 5회 리뷰가 끝난 뒤에도, spec 문서에 적힌 내용이 �
 
 공통 sample 조건:
 
-- [ ] 기존 sample runner가 성공한다.
-- [ ] Actor room server sample이 성공한다.
-- [ ] gateway session에서 remote play server Actor로 relay하는 sample이 성공한다.
-- [ ] single-player queue serialization sample이 성공한다.
+- [x] 기존 sample runner가 성공한다.
+- [x] Actor room server sample이 성공한다.
+- [x] gateway session에서 remote play server Actor로 relay하는 sample이 성공한다.
+- [x] single-player queue serialization sample이 성공한다.
 
 공통 perf 조건:
 
-- [ ] single perf smoke 성공
-- [ ] multi perf smoke 성공
-- [ ] size sweep `64,1024,4096,65536` 성공
-- [ ] `SPOT`, `SPOT_REQREP`, `SPOT_SENDSEND`, `STREAM` 관련 smoke 성공
-- [ ] 실패하면 원인 수정 뒤 해당 언어의 sample/perf 검증을 처음부터 다시 수행
+- [x] single perf smoke 성공
+- [x] multi perf smoke 성공
+- [x] size sweep `64,1024,4096,65536` 성공
+- [x] `SPOT`, `SPOT_REQREP`, `SPOT_SENDSEND`, `STREAM` 관련 smoke 성공
+- [x] 실패하면 원인 수정 뒤 해당 언어의 sample/perf 검증을 처음부터 다시 수행
 
 언어별 perf runner가 없는 경우에는 그 이유를 bindings update log에 기록하고,
 해당 언어의 테스트와 sample smoke를 더 엄격하게 실행한다. perf runner가 있는데
@@ -1395,20 +1395,20 @@ bindings 쪽 라이브러리도 POSD 기반 리팩토링을 진행한다. 전체
 
 언어별 POSD 체크리스트:
 
-- [ ] binding이 core C API의 얕은 pass-through만 늘리지 않는지 확인
-- [ ] 언어별 idiom에 맞는 깊은 모듈로 감쌌는지 확인
-- [ ] ownership과 close/dispose 규칙이 호출자에게 과하게 새지 않는지 확인
-- [ ] unchecked/checked ref 의미가 여러 helper에 중복 구현되지 않는지 확인
-- [ ] error/result mapping이 한 곳에서 관리되는지 확인
-- [ ] sample이 내부 구현 세부 사항에 의존하지 않는지 확인
-- [ ] perf wrapper가 core perf 지식을 불필요하게 중복하지 않는지 확인
+- [x] binding이 core C API의 얕은 pass-through만 늘리지 않는지 확인
+- [x] 언어별 idiom에 맞는 깊은 모듈로 감쌌는지 확인
+- [x] ownership과 close/dispose 규칙이 호출자에게 과하게 새지 않는지 확인
+- [x] unchecked/checked ref 의미가 여러 helper에 중복 구현되지 않는지 확인
+- [x] error/result mapping이 한 곳에서 관리되는지 확인
+- [x] sample이 내부 구현 세부 사항에 의존하지 않는지 확인
+- [x] perf wrapper가 core perf 지식을 불필요하게 중복하지 않는지 확인
 
 반복 종료 조건:
 
-- [ ] 해당 언어에서 두 번 연속 새 POSD 리팩토링 후보가 없다.
-- [ ] 해당 언어 tests/sample/perf smoke가 통과한다.
-- [ ] 해당 언어 spec 문서와 코드 mismatch가 없다.
-- [ ] 결과를 `doc/plan/spot-actor-dispatch/logs/bindings-posd-refactor-log.ko.md`에 기록했다.
+- [x] 해당 언어에서 두 번 연속 새 POSD 리팩토링 후보가 없다.
+- [x] 해당 언어 tests/sample/perf smoke가 통과한다.
+- [x] 해당 언어 spec 문서와 코드 mismatch가 없다.
+- [x] 결과를 `doc/plan/spot-actor-dispatch/logs/bindings-posd-refactor-log.ko.md`에 기록했다.
 
 모든 언어가 위 조건을 만족하면 bindings 전체 POSD 리팩토링 완료로 본다.
 

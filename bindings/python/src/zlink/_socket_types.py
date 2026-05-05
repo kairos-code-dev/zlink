@@ -54,6 +54,8 @@ from ._request_reply import (
     _timeout_to_ms,
 )
 from ._spot import (
+    _actor_id_bytes,
+    _actor_ref_to_native,
     _close_native_parts_array as _spot_close_native_parts_array,
     _clone_payload as _spot_clone_payload,
     _prepare_native_parts as _spot_prepare_native_parts,
@@ -665,6 +667,50 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
         rc = lib().zlink_disconnect_rid(self._handle, ctypes.byref(native))
         if rc != 0:
             _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
+
+    def bind_actor(self, node, session_rid, actor_ref, *, timeout=0):
+        native_session = _copy_routing_id(session_rid)
+        native_actor = _actor_ref_to_native(actor_ref)
+        rc = lib().zlink_stream_bind_actor(
+            node._handle,
+            self._handle,
+            ctypes.byref(native_session),
+            ctypes.byref(native_actor),
+            _spot_timeout_to_ms(timeout),
+        )
+        if rc != 0:
+            _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
+
+    def unbind_actor(self, node, session_rid, actor_id, *, timeout=0):
+        native_session = _copy_routing_id(session_rid)
+        rc = lib().zlink_stream_unbind_actor(
+            node._handle,
+            self._handle,
+            ctypes.byref(native_session),
+            _actor_id_bytes(actor_id),
+            _spot_timeout_to_ms(timeout),
+        )
+        if rc != 0:
+            _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
+
+    def send_bound_actor(self, node, session_rid, actor_id, payload, *, flags=0):
+        native_session = _copy_routing_id(session_rid)
+        native_parts = _spot_clone_payload(payload)
+        rc, err = _submit_parts(
+            native_parts,
+            lambda part_ptr, part_flag: lib().zlink_stream_send_bound_actor_part(
+                node._handle,
+                self._handle,
+                ctypes.byref(native_session),
+                _actor_id_bytes(actor_id),
+                part_ptr,
+                int(flags),
+                part_flag,
+            ),
+        )
+        if rc != 0:
+            _raise_result_error(SubmitError, SubmitResult, rc, err)
+        return True
 
     def on_packet(self, handler):
         if handler is None:

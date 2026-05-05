@@ -30,7 +30,10 @@ def sampleMainClasses = [
     runSpotRecv: 'dev.kairoscode.zlink.samples.SpotRecvSample',
     runSpotRequestAsync: 'dev.kairoscode.zlink.samples.SpotRequestAsyncSample',
     runDiscoveryRegistry: 'dev.kairoscode.zlink.samples.DiscoveryRegistrySample',
-    runRegistryQuery: 'dev.kairoscode.zlink.samples.RegistryQuerySample'
+    runRegistryQuery: 'dev.kairoscode.zlink.samples.RegistryQuerySample',
+    runActorRoomServer: 'dev.kairoscode.zlink.samples.ActorRoomServerSample',
+    runActorGatewayRelay: 'dev.kairoscode.zlink.samples.ActorGatewayRelaySample',
+    runActorSinglePlayerQueue: 'dev.kairoscode.zlink.samples.ActorSinglePlayerQueueSample'
 ]
 
 sampleMainClasses.each { taskName, mainClassName ->

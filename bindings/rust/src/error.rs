@@ -29,6 +29,14 @@ pub enum RequestResult {
     NotFound = 102,
     Terminated = 103,
     ProtocolError = 104,
+    InternalError = 105,
+    Rejected = 106,
+    Conflict = 107,
+    Busy = 108,
+    NotConnected = 109,
+    InvalidArgument = 110,
+    InvalidState = 111,
+    NotSupported = 112,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -348,6 +356,14 @@ pub(crate) fn request_error_from_result(code: RequestResult) -> RequestError {
         RequestResult::NotFound => libc::ENOENT,
         RequestResult::Terminated => eterm(),
         RequestResult::ProtocolError => libc::EPROTO,
+        RequestResult::InternalError => libc::EIO,
+        RequestResult::Rejected => libc::ECONNREFUSED,
+        RequestResult::Conflict => libc::EINVAL,
+        RequestResult::Busy => libc::EBUSY,
+        RequestResult::NotConnected => libc::ENOTCONN,
+        RequestResult::InvalidArgument => libc::EINVAL,
+        RequestResult::InvalidState => libc::EINVAL,
+        RequestResult::NotSupported => libc::ENOTSUP,
     };
     RequestError::new(code, internal_errno)
 }

@@ -284,9 +284,21 @@ func fallbackRequestErrno(result RequestResult) int {
 	case RequestTimedOut:
 		return int(C.ETIMEDOUT)
 	case RequestNotFound:
-		return int(C.ENOTCONN)
+		return int(C.ENOENT)
 	case RequestTerminated:
 		return int(C.ETERM)
+	case RequestInternalError:
+		return int(C.EIO)
+	case RequestRejected:
+		return int(C.ECONNREFUSED)
+	case RequestConflict, RequestInvalidArg, RequestInvalidState:
+		return int(C.EINVAL)
+	case RequestBusy:
+		return int(C.EBUSY)
+	case RequestNotConnected:
+		return int(C.ENOTCONN)
+	case RequestNotSupported:
+		return int(C.ENOTSUP)
 	default:
 		return int(C.EPROTO)
 	}

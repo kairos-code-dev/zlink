@@ -3984,7 +3984,7 @@ def build_effective_option_items(args, selected_patterns):
                 ),
                 (
                     "ctx_auto_hwm_profile",
-                    _read_env_value("PERF_CTX_AUTO_HWM_PROFILE") or "core-default",
+                    _read_env_value("PERF_CTX_AUTO_HWM_PROFILE") or "balanced",
                 ),
                 ("sndtimeo_ms", str(parse_env_int("PERF_SNDTIMEO_MS", 200))),
                 ("rcvtimeo_ms", str(parse_env_int("PERF_RCVTIMEO_MS", 200))),

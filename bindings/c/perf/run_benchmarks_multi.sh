@@ -362,7 +362,7 @@ Options:
   --server-bind-port N
                          Override PERF_MULTI_SERVER_BIND_PORT (default: 0=auto).
   --auto-hwm-profile NAME
-                         Set auto-HWM profile: compact, low_latency, balanced, throughput.
+                         Set auto-HWM profile: compact, low_latency, balanced, throughput (default: balanced).
 
 Environment:
   PERF_SKIP_NOFILE_CHECK=1   Disable preflight nofile(limit) check
@@ -528,7 +528,7 @@ MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-${PERF_MONITOR_HWM:-1000}}"
 SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}}"
 SERVER_BIND_PORT="${PERF_MULTI_SERVER_BIND_PORT:-${PERF_SERVER_BIND_PORT:-0}}"
 CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-1}"
-CTX_AUTO_HWM_PROFILE="${PERF_CTX_AUTO_HWM_PROFILE:-}"
+CTX_AUTO_HWM_PROFILE="${PERF_MULTI_CTX_AUTO_HWM_PROFILE:-${PERF_CTX_AUTO_HWM_PROFILE:-balanced}}"
 DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 EXPLICIT_PATTERNS=()

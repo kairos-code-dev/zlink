@@ -89,7 +89,7 @@ SINGLE_SNDBUF="${PERF_SINGLE_SNDBUF:-${PERF_SNDBUF:-}}"
 SINGLE_RCVBUF="${PERF_SINGLE_RCVBUF:-${PERF_RCVBUF:-}}"
 ALLOW_MANUAL_SOCKET_OVERRIDES="${PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}}"
 CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-}"
-CTX_AUTO_HWM_PROFILE="${PERF_CTX_AUTO_HWM_PROFILE:-}"
+CTX_AUTO_HWM_PROFILE="${PERF_SINGLE_CTX_AUTO_HWM_PROFILE:-${PERF_CTX_AUTO_HWM_PROFILE:-balanced}}"
 SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
 PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/single/run_comparison.py"
@@ -130,7 +130,7 @@ Options:
   --io-threads N              Set PERF_IO_THREADS for benchmark binaries.
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
   --transports LIST           Comma-separated transports.
-  --auto-hwm-profile NAME     Set auto-HWM profile: compact, low_latency, balanced, throughput.
+  --auto-hwm-profile NAME     Set auto-HWM profile: compact, low_latency, balanced, throughput (default: balanced).
 
 Notes:
   - result is saved under results/single/report/ as
@@ -793,7 +793,7 @@ fi
 print_effective_option "sndtimeo_ms" "${DISPLAY_SNDTIMEO_MS}"
 print_effective_option "rcvtimeo_ms" "${DISPLAY_RCVTIMEO_MS}"
 print_effective_option "ctx_auto_hwm_enable" "$(value_or_default "${CTX_AUTO_HWM_ENABLE}" "core-default")"
-print_effective_option "ctx_auto_hwm_profile" "$(value_or_default "${CTX_AUTO_HWM_PROFILE}" "core-default")"
+print_effective_option "ctx_auto_hwm_profile" "${CTX_AUTO_HWM_PROFILE}"
 print_effective_option "pin_cpu" "${PIN_CPU}"
 print_effective_option "io_threads" "${EFFECTIVE_IO_THREADS}"
 print_effective_option "msg_sizes" "$(value_or_default "${PERF_MSG_SIZES}" "default(benchmark)")"

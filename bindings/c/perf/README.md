@@ -21,6 +21,12 @@ rebuild.
 ## Socket Sizing Policy
 
 The default single and multi benchmark paths use context auto-HWM.
+Both runners default the context auto-HWM profile to `balanced`. Pass
+`--auto-hwm-profile compact`, `--auto-hwm-profile low_latency`,
+`--auto-hwm-profile balanced`, or `--auto-hwm-profile throughput` to select a
+different profile for a run. The same value can be supplied through
+`PERF_SINGLE_CTX_AUTO_HWM_PROFILE`, `PERF_MULTI_CTX_AUTO_HWM_PROFILE`, or the
+shared `PERF_CTX_AUTO_HWM_PROFILE`.
 Runner defaults do not inject numeric `SNDHWM`, `RCVHWM`, `SNDBUF`, or
 `RCVBUF` into benchmark sockets. If you need a manual override for debug,
 set `PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1` or
@@ -52,8 +58,8 @@ output.
 
 ## Auto-HWM Profile Sweep
 
-Use `PERF_CTX_AUTO_HWM_PROFILE` and benchmark message sizes to exercise the
-per-connection auto-HWM policy.
+Use `--auto-hwm-profile` or `PERF_CTX_AUTO_HWM_PROFILE` with benchmark message
+sizes to exercise the per-connection auto-HWM policy.
 The recommended sweep axes are:
 
 | Axis | Values |

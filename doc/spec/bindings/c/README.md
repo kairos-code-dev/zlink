@@ -9,7 +9,7 @@ This document defines the public C binding contract.
 For C, the public binding surface is the current public C API in
 `core/include/zlink.h`. Unlike higher-level bindings, C does not introduce a
 separate object-oriented facade over the native substrate. Instead, the C
-binding exposes the aggregate multipart API directly.
+binding exposes the current part-based C API directly.
 
 This means:
 
@@ -27,18 +27,18 @@ For C, the public binding surface is the installed public header only.
   header only
 - helper substrate headers and private native support headers are not public
   contract
-- future helper `*_part` substrate APIs do not automatically become public C
-  binding contract unless this document is updated explicitly
+- the current public `*_part` APIs in `core/include/zlink.h` are public C
+  contract
 
 ## Naming and Shape
 
 The C binding keeps the canonical C shape.
 
 - functions use `zlink_*` names in `snake_case`
-- multipart payloads are represented as `zlink_msg_t *parts` plus
-  `size_t part_count`
+- multipart payloads are represented by repeated `zlink_msg_t *part` calls
+  plus `zlink_part_flag_t`
 - routed send/recv uses explicit routing id parameters
-- request/reply and publish/subscribe also follow explicit C aggregate
+- request/reply and publish/subscribe also follow explicit C part-based
   signatures
 
 The C binding does not introduce a second high-level naming layer above the
@@ -56,11 +56,20 @@ Instead:
 - send returns `zlink_submit_result_t`
 - recv returns `zlink_recv_result_t`
 - callback-style request also keeps the canonical
-  `zlink_*_request(..., flags_, timeout_ms_)` form rather than introducing a
+  `zlink_*_request_part(..., flags_, part_flag_, timeout_ms_)` form rather than introducing a
   separate `try_request` public family
 
 In other words, the C binding keeps the native C contract directly rather than
 wrapping it in separate `try_*` convenience APIs.
+
+## High-Performance Requirements
+
+The C binding is part of a high-performance messaging library. Hot paths must
+not add reflection-like dynamic dispatch layers, unnecessary heap allocation,
+unnecessary message copies, coarse lock contention, hidden waits, sleeps, busy
+waits, or thread joins. Multipart processing follows the public `*_part`
+contract so callers and higher-level bindings can avoid native aggregate
+materialization.
 
 ## Actor Dispatch API
 
@@ -167,369 +176,202 @@ fixed to `0`, and delivery queue hard-limit options are not part of the current
 contract. Binding verification must use native headers from `core/include` and
 the runtime library from `core/build`.
 
-## Send Surface
+## Part-Based Data Plane Surface
+
+The C binding follows `core/include/zlink.h` directly. The current public C
+contract is the `*_part` substrate: each call transfers or receives one message
+part, and `zlink_part_flag_t` tells whether more parts follow. Aggregate helper
+names such as `zlink_send(...)`, `zlink_recv(...)`, or `zlink_spot_recv(...)`
+are not part of the current public C contract.
+
+### Send and Publish
 
 ```c
-zlink_submit_result_t zlink_send(
-  void *s_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_send_flags_t flags_);
+zlink_submit_result_t zlink_send_part(
+  void *s_, zlink_msg_t *part_, zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
 
-zlink_submit_result_t zlink_send_rid(
-  void *s_,
-  const zlink_routing_id_t *target_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_send_flags_t flags_);
+zlink_submit_result_t zlink_send_part_rid(
+  void *s_, const zlink_routing_id_t *target_rid_,
+  zlink_msg_t *part_, zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+
+zlink_submit_result_t zlink_publish_part(
+  void *subject_, const char *topic_id_, zlink_msg_t *part_,
+  zlink_send_flags_t flags_, zlink_part_flag_t part_flag_);
 ```
 
-## Publish Surface
+### Request and Reply
 
 ```c
-zlink_submit_result_t zlink_publish(
-  void *subject_,
-  const char *topic_id_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_send_flags_t flags_);
-```
+zlink_submit_result_t zlink_dealer_request_part(
+  void *dealer_, zlink_msg_t *part_, zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_, uint32_t timeout_ms_,
+  zlink_reply_handler_fn handler_, void *userdata_);
 
-`subject_` is a `PubSocket` or `XPubSocket` handle.
+zlink_submit_result_t zlink_router_request_part(
+  void *router_, const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *part_, zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_, uint32_t timeout_ms_,
+  zlink_reply_handler_fn handler_, void *userdata_);
 
-## Request-Reply Surface
-
-Dealer-side and router-side request initiation and reply.
-
-```c
-zlink_submit_result_t zlink_dealer_request(
-  void *dealer_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_);
-
-zlink_submit_result_t zlink_router_request(
-  void *router_,
-  const zlink_routing_id_t *peer_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_);
-
-zlink_submit_result_t zlink_router_reply(
-  void *router_,
-  const zlink_routing_id_t *peer_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_);
+zlink_submit_result_t zlink_router_reply_part(
+  void *router_, const zlink_routing_id_t *peer_rid_,
+  uint64_t request_seq_, zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
 ```
 
 On `ZLINK_SUBMIT_OK` the caller must wait for exactly one `handler_`
 invocation. On any other return value the handler is not registered.
 
-## Router → Spot Surface
-
-One-way send, request initiation, and reply from a router to a remote spot.
+### Router to SPOT
 
 ```c
-zlink_submit_result_t zlink_router_send_spot(
-  void *router_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_send_flags_t flags_);
+zlink_submit_result_t zlink_router_send_spot_part(
+  void *router_, const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_, zlink_msg_t *part_,
+  zlink_send_flags_t flags_, zlink_part_flag_t part_flag_);
 
-zlink_submit_result_t zlink_router_request_spot(
-  void *router_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
+zlink_submit_result_t zlink_router_request_spot_part(
+  void *router_, const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_, zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_, void *userdata_,
+  zlink_send_flags_t flags_, zlink_part_flag_t part_flag_,
   uint32_t timeout_ms_);
 
-zlink_submit_result_t zlink_router_reply_spot(
-  void *router_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_);
+zlink_submit_result_t zlink_router_reply_spot_part(
+  void *router_, const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_, uint64_t request_seq_,
+  zlink_msg_t *part_, zlink_part_flag_t part_flag_);
 ```
 
-`dest_node_rid_` is the target SpotNode routing id; `dest_spot_rid_` is the
-target Spot routing id within that node. `zlink_router_reply_spot` is the
-replier-side counterpart of `zlink_spot_request_router`.
-
-## SPOT Channel Surface
-
-Channel send, channel request, and service publish from a Spot handle.
-`channel_name_` must match the name of an attached dealer on the SpotNode.
+### SPOT Channels and Service Publish
 
 ```c
-zlink_submit_result_t zlink_spot_send_channel(
-  void *spot_,
-  const char *channel_name_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_send_flags_t flags_);
+zlink_submit_result_t zlink_spot_send_channel_part(
+  void *spot_, const char *channel_name_, zlink_msg_t *part_,
+  zlink_send_flags_t flags_, zlink_part_flag_t part_flag_);
 
-zlink_submit_result_t zlink_spot_publish(
-  void *spot_,
-  const char *service_name_,
-  const char *topic_id_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_send_flags_t flags_);
+zlink_submit_result_t zlink_spot_publish_part(
+  void *spot_, const char *service_name_, const char *topic_id_,
+  zlink_msg_t *part_, zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
 
-zlink_submit_result_t zlink_spot_request_channel(
-  void *spot_,
-  const char *channel_name_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
+zlink_submit_result_t zlink_spot_request_channel_part(
+  void *spot_, const char *channel_name_, zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_, void *userdata_,
+  zlink_send_flags_t flags_, zlink_part_flag_t part_flag_,
   uint32_t timeout_ms_);
 ```
 
-`zlink_spot_request_channel` routes the request via the attached dealer whose
-channel name matches `channel_name_`. On `ZLINK_SUBMIT_OK` the caller must
-wait for exactly one `handler_` invocation. Reply completions are delivered
-via the owning Spot dispatch stream (`ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE`),
-not on the dealer's own event.
+Channel request completions are progressed from the owning Spot dispatch
+stream through `ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE`.
 
-## SPOT Routed Request Surface
-
-Direct routed one-way send and routed request initiation from a Spot handle to
-another Spot or to a Router. These wrappers accept `parts_` / `part_count_`
-arrays and delegate internally to the `*_part` substrate.
+### SPOT Routed Data Plane
 
 ```c
-zlink_submit_result_t zlink_spot_send_spot(
-  void *spot_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_send_flags_t flags_);
+zlink_submit_result_t zlink_spot_send_spot_part(
+  void *spot_, const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_, zlink_msg_t *part_,
+  zlink_send_flags_t flags_, zlink_part_flag_t part_flag_);
 
-zlink_submit_result_t zlink_spot_request_spot(
-  void *spot_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
+zlink_submit_result_t zlink_spot_request_spot_part(
+  void *spot_, const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_, zlink_msg_t *part_,
+  zlink_reply_handler_fn handler_, void *userdata_,
+  zlink_send_flags_t flags_, zlink_part_flag_t part_flag_,
   uint32_t timeout_ms_);
 
-zlink_submit_result_t zlink_spot_request_router(
-  void *spot_,
-  const zlink_routing_id_t *peer_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_);
+zlink_submit_result_t zlink_spot_request_router_part(
+  void *spot_, const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *part_, zlink_reply_handler_fn handler_,
+  void *userdata_, zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_, uint32_t timeout_ms_);
+
+zlink_submit_result_t zlink_spot_reply_spot_part(
+  void *spot_, const zlink_routing_id_t *dest_node_rid_,
+  const zlink_routing_id_t *dest_spot_rid_, uint64_t request_seq_,
+  zlink_msg_t *part_, zlink_part_flag_t part_flag_);
+
+zlink_submit_result_t zlink_spot_reply_router_part(
+  void *spot_, const zlink_routing_id_t *peer_rid_,
+  uint64_t request_seq_, zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
 ```
 
-`zlink_spot_send_spot` is the direct one-way routed send surface.
-`zlink_spot_request_spot` pairs with `zlink_spot_reply_spot` on the replier
-side. `zlink_spot_request_router` pairs with `zlink_router_reply_spot`.
-
-On `ZLINK_SUBMIT_OK` the caller must wait for exactly one `handler_`
-invocation. On any other return value the handler is not registered. See
-`doc/spec/core/errno-map.md` for the full result-code mapping.
-
-## SPOT Routed Reply Surface
-
-Replier-side reply from a Spot handle back to the requesting Spot or Router.
+### Receive and Subscribe
 
 ```c
-zlink_submit_result_t zlink_spot_reply_spot(
-  void *spot_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_);
-
-zlink_submit_result_t zlink_spot_reply_router(
-  void *spot_,
-  const zlink_routing_id_t *peer_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_);
-```
-
-`request_seq_` is taken from the `zlink_spot_recv` result. `zlink_spot_reply_spot`
-replies to a `zlink_spot_request_spot` initiator; `zlink_spot_reply_router`
-replies to a `zlink_router_request_spot` initiator.
-
-## Recv Surface
-
-```c
-/* Caller must free(parts_out) after use; zlink_multipart_close closes messages only. */
-zlink_recv_result_t zlink_recv(
-  void *s_,
-  zlink_routing_id_t *source_rid_out_,
-  zlink_msg_t **parts_out_,
-  size_t *part_count_out_,
+zlink_recv_result_t zlink_recv_part(
+  void *s_, const zlink_routing_id_t **source_rid_out_,
+  zlink_msg_t *part_out_, zlink_part_flag_t *has_more_out_,
   zlink_recv_flags_t flags_);
 
-/* Caller must free(parts_out) after use; zlink_multipart_close closes messages only. */
-zlink_recv_result_t zlink_router_recv(
-  void *router_,
-  const zlink_routing_id_t **source_node_rid_out_,
+zlink_recv_result_t zlink_router_recv_part(
+  void *router_, const zlink_routing_id_t **source_node_rid_out_,
   const zlink_routing_id_t **source_spot_rid_out_,
-  uint64_t *request_seq_out_,
-  zlink_msg_t **parts_out_,
-  size_t *part_count_out_,
+  uint64_t *request_seq_out_, zlink_msg_t *part_out_,
+  zlink_part_flag_t *has_more_out_, zlink_recv_flags_t flags_);
+
+zlink_recv_result_t zlink_subscribe_part(
+  void *sub_, const zlink_routing_id_t **source_rid_out_,
+  char *topic_id_buf_, size_t topic_id_capacity_,
+  size_t *topic_id_len_out_, zlink_msg_t *part_out_,
+  zlink_part_flag_t *has_more_out_, zlink_recv_flags_t flags_);
+
+zlink_recv_result_t zlink_xpub_recv_part(
+  void *xpub_, const zlink_routing_id_t **source_rid_out_,
+  int *subscribed_out_, char *topic_id_buf_,
+  size_t topic_id_capacity_, size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_);
 ```
 
-`source_spot_rid_out_` is non-NULL only for packets that originated from a Spot
-(`zlink_router_send_spot` / `zlink_spot_request_router` path); for ordinary
-dealer-originated traffic it is NULL.
+`source_spot_rid_out_` is non-NULL only for packets that originated from a
+Spot path; for ordinary dealer-originated traffic it is NULL.
 
-## Subscribe Surface
+### SPOT Receive and Subscribe
 
 ```c
-/* Caller must free(parts_out) after use; zlink_multipart_close closes messages only. */
-zlink_recv_result_t zlink_subscribe(
-  void *subject_,
-  zlink_routing_id_t *source_rid_out_,
-  zlink_msg_t **parts_out_,
-  size_t *part_count_out_,
-  char *topic_id_out_,
-  size_t *topic_id_len_out_,
+zlink_recv_result_t zlink_spot_subscribe_part(
+  void *spot_, const zlink_routing_id_t **source_rid_out_,
+  char *service_name_buf_, size_t service_name_capacity_,
+  size_t *service_name_len_out_, char *topic_id_buf_,
+  size_t topic_id_capacity_, size_t *topic_id_len_out_,
+  zlink_msg_t *part_out_, zlink_part_flag_t *has_more_out_,
   zlink_recv_flags_t flags_);
 
-zlink_recv_result_t zlink_subscription_event(
-  void *subject_,
-  zlink_routing_id_t *source_rid_out_,
-  int *subscribed_out_,
-  char *topic_id_out_,
-  size_t *topic_id_len_out_,
-  zlink_recv_flags_t flags_);
+zlink_recv_result_t zlink_spot_subscription_event_recv(
+  void *spot_, const zlink_routing_id_t **source_rid_out_,
+  int *subscribed_out_, char *service_name_buf_,
+  size_t service_name_capacity_, size_t *service_name_len_out_,
+  char *topic_id_buf_, size_t topic_id_capacity_,
+  size_t *topic_id_len_out_, zlink_recv_flags_t flags_);
+
+zlink_recv_result_t zlink_spot_recv_part(
+  void *spot_, const zlink_routing_id_t **source_node_rid_out_,
+  const zlink_routing_id_t **source_spot_rid_out_,
+  uint64_t *request_seq_out_, zlink_msg_t *part_out_,
+  zlink_part_flag_t *has_more_out_, zlink_recv_flags_t flags_);
 ```
 
-`subject_` is a `SubSocket` or `XSubSocket` handle. `topic_id_out_` is a
-caller-supplied buffer; `topic_id_len_out_` is both the buffer capacity on
-input and the written byte count on output. `subscribed_out_` is 1 for
-subscribe events and 0 for unsubscribe.
-
-## SPOT Subscribe Surface
-
-SPOT-side subscribe recv and subscription event recv. Returns the originating
-service name in addition to the topic.
-
-```c
-/* Caller must free(parts_out) after use; zlink_multipart_close closes messages only. */
-zlink_recv_result_t zlink_spot_subscribe(
-  void *spot_,
-  zlink_routing_id_t *source_rid_out_,
-  zlink_msg_t **parts_out_,
-  size_t *part_count_out_,
-  char *service_name_out_,
-  size_t *service_name_len_out_,
-  char *topic_id_out_,
-  size_t *topic_id_len_out_,
-  zlink_recv_flags_t flags_);
-
-zlink_recv_result_t zlink_spot_subscription_event(
-  void *spot_,
-  zlink_routing_id_t *source_rid_out_,
-  int *subscribed_out_,
-  char *service_name_out_,
-  size_t *service_name_len_out_,
-  char *topic_id_out_,
-  size_t *topic_id_len_out_,
-  zlink_recv_flags_t flags_);
-```
-
-`service_name_out_` and `topic_id_out_` are caller-supplied buffers; the
-corresponding `*_len_out_` parameters carry the buffer capacity on input and
-the written byte count on output. `subscribed_out_` is 1 for subscribe events
-and 0 for unsubscribe.
-
-When SPOT dispatch is used, `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE`
-means the Spot has readable subscribe work. It is not a one-event-per-message
- contract. The caller must keep pulling with `zlink_spot_subscribe(...)` or
-`zlink_spot_subscription_event(...)` until the API returns
-`ZLINK_RECV_NO_DATA` with `EAGAIN`.
-
-## SPOT Recv Surface
-
-SPOT-side routed recv. Receives both one-way sends and request-reply packets
-arriving at this Spot.
-
-```c
-/* Caller must free(parts_out) after use; zlink_multipart_close closes messages only. */
-zlink_recv_result_t zlink_spot_recv(
-  void *spot_,
-  const zlink_routing_id_t **source_rid_out_,
-  const zlink_routing_id_t **spot_rid_out_,
-  uint64_t *request_seq_out_,
-  zlink_msg_t **parts_out_,
-  size_t *part_count_out_,
-  zlink_recv_flags_t flags_);
-```
-
-`source_rid_out_` is the originating node rid. `spot_rid_out_` is the
-destination spot rid (this Spot's own rid as carried in the packet).
-`request_seq_out_` is non-zero for request packets; pass it back to
-`zlink_spot_reply_spot` or `zlink_spot_reply_router` to reply. The lifetime
-of the routing id pointers is tied to the received message frame — copy before
-freeing `parts_out_`.
-
-The first `zlink_spot_recv(...)` call must not perform hidden activation or
-hidden target registration. With `ZLINK_DONTWAIT`, `EAGAIN` means that Spot's
-owned routed ingress currently has no readable data. Under dispatch,
-`ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE` is also a readiness signal, so the
-caller must drain with repeated `zlink_spot_recv(...)` calls until
-`ZLINK_RECV_NO_DATA` / `EAGAIN`.
-
-## Relationship to Helper Substrate
-
-The public C binding contract is not the same thing as a future helper
-substrate.
-
-If helper substrate APIs such as `*_part` are added later for bindings and
-performance work:
-
-- they do not automatically replace the public C binding contract
-- the C binding still documents the aggregate convenience surface unless the
-  public C contract itself is intentionally changed
-
-That means the helper substrate may exist underneath the C binding without
-changing the public C binding shape.
+When SPOT dispatch reports `SUBSCRIBE_READABLE` or `ROUTED_READABLE`, the event
+is a readiness signal. Callers must keep draining with the corresponding
+`*_part` receive function until it returns `ZLINK_RECV_NO_DATA` with `EAGAIN`.
 
 ## Implementation Follow-Up
 
-This document currently treats `core/include/zlink.h` as the public C binding
-contract. If helper substrate headers and a separate public C binding header
-are introduced later, this document must be updated to point to the installed
-public C binding header instead, and the helper substrate must remain internal.
+This document treats `core/include/zlink.h` as the public C binding contract.
+If a separate public C binding header is introduced later, this document must
+be updated to point to that installed public header.
 
 ## Relationship to Other Bindings
 
 C is intentionally different from higher-level bindings here.
 
 - C keeps flags-based nonblocking control
-- higher-level bindings may expose `send/trySend`, `recv/tryRecv`, value
-  objects, callbacks, and language-specific convenience models
+- higher-level bindings expose language-specific value objects, callbacks, and
+  empty-result nonblocking receive models while preserving the same core
+  meaning
 
 This difference is acceptable because the policy goal is shared meaning, not
 identical surface syntax across languages.

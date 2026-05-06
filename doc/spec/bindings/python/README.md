@@ -13,6 +13,16 @@ must import from `zlink` only and must not rely on private underscore modules.
 
 ---
 
+## High-Performance Requirements
+
+The Python binding is part of a high-performance messaging library. Hot paths
+must not use reflection-style attribute lookup, dynamic dispatch by string,
+unnecessary allocation, avoidable bytes copies, coarse lock contention, hidden
+waits, sleeps, busy waits, or thread joins. Native extension or FFI code must
+construct public `Message` and result objects directly from the core `*_part`
+substrate and must not create native aggregate arrays only to copy them into
+Python lists.
+
 ## Current Core Alignment Overrides
 
 The sections below still contain some older method lists. When they conflict
@@ -34,7 +44,7 @@ with the rules here, this section wins.
   `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
   `publish(service_name, topic, ...)`.
 - `Spot.subscribe(...)` returns a service-aware `TopicMessage`. `TopicMessage`
-  therefore needs `channel_name: str | None`, populated for SPOT subscribe
+  therefore needs `service_name: str | None`, populated for SPOT subscribe
   results and `None` for raw `SUB` / `XSUB`.
 - `Spot` must not expose `on_subscribe(...)`. Use
   `on_dispatch_event(...)` plus `subscribe(...)` / `recv_routed(...)` /
@@ -100,6 +110,7 @@ class Context:
     def __init__(self) -> None: ...
     @property
     def options(self) -> ContextOptions: ...  # Raises: ConfigError
+    def recalculate_auto_hwm(self) -> None: ...  # Raises: ConfigError
     def shutdown(self) -> None: ...           # Raises: CloseError
     def close(self) -> None: ...              # Raises: CloseError
     # supports `with` and `async with` — __exit__ raises CloseError
@@ -133,9 +144,26 @@ class ContextOptions:
     @thread_scheduling_policy.setter
     def thread_scheduling_policy(self, value: int) -> None: ...
     @property
+    def thread_name_prefix(self) -> str: ...
+    @thread_name_prefix.setter
+    def thread_name_prefix(self, value: str) -> None: ...
+    @property
+    def spot_worker_threads(self) -> int: ...
+    @spot_worker_threads.setter
+    def spot_worker_threads(self, value: int) -> None: ...
+    @property
     def blocky(self) -> bool: ...
     @blocky.setter
     def blocky(self, value: bool) -> None: ...
+    @property
+    def auto_hwm_enabled(self) -> bool: ...
+    @auto_hwm_enabled.setter
+    def auto_hwm_enabled(self, value: bool) -> None: ...
+    @property
+    def auto_hwm_recalc_debounce(self) -> int: ...
+    @auto_hwm_recalc_debounce.setter
+    def auto_hwm_recalc_debounce(self, value: int) -> None: ...
+    @property
     def auto_hwm_profile(self) -> AutoHwmProfile: ...
     @auto_hwm_profile.setter
     def auto_hwm_profile(self, value: AutoHwmProfile) -> None: ...
@@ -171,9 +199,10 @@ Python nonblocking data-plane helpers follow this rule:
   backpressure when `flags` includes `DONTWAIT`.
 - Blocking submit returns `True` on success. Route-not-ready and other submit
   failures still raise `SubmitError`.
-- `recv(...)` and `subscribe(...)` return `None` when `flags` includes
-  `DONTWAIT` and no message is currently available, and still raise
-  `RecvError` for real recv failures.
+- `recv(...)`, `subscribe(...)`, `receive_subscription_event(...)`,
+  `recv_routed(...)`, monitor `recv(...)`, and timer `recv()` return `None`
+  when the core reports no data, and still raise `RecvError` for real recv
+  failures.
 
 Peer weight is not a common-socket accessor. Bindings expose it only on the
 implemented weight-bearing handles (`RouterSocket` and `DealerSocket`) through their typed option/property surfaces.
@@ -378,7 +407,7 @@ class XPubSocket:
     def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
     def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
-    def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent: ...  # Raises: RecvError
+    def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent | None: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
     def bind_actor(self, node: SpotNode, session_rid: RoutingId,
                    actor: ActorRef, *, timeout: int = 0) -> None: ...            # Raises: ConfigError
@@ -685,7 +714,7 @@ class Received:
 ```python
 class TopicMessage:
     routing_id: RoutingId | None             # None when transport carries no source id
-    channel_name: str | None                 # Spot subscribe only; None for raw SUB / XSUB
+    service_name: str | None                 # Spot subscribe only; None for raw SUB / XSUB
     topic: str                               # UTF-8
     parts: tuple[Message, ...]
 
@@ -706,9 +735,72 @@ Fields only — no `close()` / lifecycle methods.
 ```python
 class SubscriptionEvent:
     routing_id: RoutingId | None    # subscriber routing id; None if transport carries none
-    channel_name: str | None        # Spot subscription event only; None for XPub
+    service_name: str | None        # Spot subscription event only; None for XPub
     topic: str                       # UTF-8 topic string (NOT bytes)
     subscribed: bool                 # True = subscribe, False = unsubscribe
+```
+
+### Actor Value Types
+
+Actor value objects mirror the public Actor structs in `core/include/zlink.h`.
+The native reply context stored inside `zlink_actor_join_info_t` remains
+internal and is not exposed as a Python field.
+
+```python
+class ActorCreateStatus(IntEnum):
+    CREATED = 1
+    EXISTING = 2
+
+class ActorAdmissionResult(IntEnum):
+    ACCEPT = 1
+    REJECT = 2
+
+@dataclass(frozen=True)
+class ActorRef:
+    node_rid: RoutingId
+    actor_id: str
+    generation: int
+    def is_unchecked(self) -> bool: ...
+
+@dataclass(frozen=True)
+class ActorCreateResult:
+    status: ActorCreateStatus
+    actor: ActorRef
+
+@dataclass(frozen=True)
+class ActorRoute:
+    actor: ActorRef
+    joined: bool
+    joined_spot_rid: RoutingId | None
+
+@dataclass(frozen=True)
+class ActorRecvInfo:
+    actor: ActorRef
+    source_node_rid: RoutingId
+    source_session_rid: RoutingId
+    flags: int
+
+@dataclass(frozen=True)
+class ActorJoinInfo:
+    source_actor: ActorRef
+    target_actor: ActorRef
+    source_node_rid: RoutingId
+    source_spot_rid: RoutingId
+    target_node_rid: RoutingId
+    target_spot_rid: RoutingId
+    join_epoch: int
+    flags: int
+
+@dataclass(frozen=True)
+class ActorPart:
+    info: ActorRecvInfo
+    message: Message
+    more: bool
+
+@dataclass(frozen=True)
+class ActorJoinRequest:
+    info: ActorJoinInfo
+    message: Message
 ```
 
 ### SubmitResult
@@ -982,7 +1074,7 @@ class MonitorSocket:
     # Maps to zlink_monitor_ignore_handler.
     ignore_handler: ClassVar[Callable[[MonitorEvent], None]]
 
-    def recv(self) -> MonitorEvent: ...                                          # Raises: RecvError
+    def recv(self, *, flags: int = 0) -> MonitorEvent | None: ...                # Raises: RecvError
     def on_event(self, handler: Callable[[MonitorEvent], None]) -> None: ...     # Raises: HandlerError
     def snapshot(self) -> MonitorSnapshot: ...                                   # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -1211,7 +1303,7 @@ class Spot:
     def set_subscription(self, topic_or_pattern: bytes | str) -> None: ...       # Raises: ConfigError
     def unset_subscription(self, topic_or_pattern: bytes | str) -> None: ...     # Raises: ConfigError
     def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
-    def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent: ...  # Raises: RecvError
+    def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent | None: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable[[Spot], None]) -> None: ...        # Raises: HandlerError
 
     # --- routed request (spot → spot, async) — no flags ---
@@ -1260,7 +1352,7 @@ class Spot:
                         payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
 
     # --- routed receive ---
-    def recv_routed(self, *, flags: int = 0) -> Received: ...                    # Raises: RecvError
+    def recv_routed(self, *, flags: int = 0) -> Received | None: ...             # Raises: RecvError
     def on_routed_receive(self, handler: Callable) -> None: ...                  # Raises: HandlerError
     def on_dispatch_event(self, handler: Callable[[Spot, SpotDispatchInfo], None]) -> None: ...  # Raises: HandlerError
     def recv_actor_join(self, *, flags: int = 0) -> ActorJoinRequest | None: ...  # Raises: RecvError
@@ -1475,7 +1567,7 @@ class Timer:
     def from_spot(cls, spot: Spot) -> Timer: ...                                 # Raises: ConfigError
     def start(self, interval_ns: int, repeat_count: int) -> None: ...            # Raises: ConfigError
     def stop(self) -> None: ...                                                  # Raises: ConfigError
-    def recv(self, flags: int = 0) -> int: ...                                   # Raises: RecvError
+    def recv(self) -> int | None: ...                                            # Raises: RecvError
     def on_fire(self, handler: Callable[[Timer, int], None]) -> None: ...        # Raises: HandlerError
     def close(self) -> None: ...                                                 # Raises: CloseError
     # supports `with` and `async with` — __exit__ raises CloseError

@@ -26,6 +26,16 @@ Implementation follow-up:
 - Perf and sample projects must continue to compile against the public
   assembly surface only.
 
+## High-Performance Requirements
+
+The .NET binding is part of a high-performance messaging library. Hot paths
+must not use reflection, dynamic invocation, repeated boxing, unnecessary
+allocation, avoidable buffer copies, coarse lock contention, hidden waits,
+sleeps, busy waits, or thread joins. Native interop code must construct managed
+`Message` and result objects directly from the core `*_part` substrate and
+must not create native aggregate arrays only to copy them into managed
+collections.
+
 ## Core API Coverage Rule
 
 `core/include/zlink.h` is the source of truth for core capabilities. The .NET
@@ -78,6 +88,42 @@ updated in the same change.
 | SPOT actor lifecycle | `zlink_spot_node_actor_*`, `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_remote_actor_get_ref`, `zlink_spot_actors_snapshot` | `Actor`, `ActorRef`, `ActorCreateResult`, join/leave/create/destroy/admission APIs, actor receive/send/bound-session APIs, actor snapshots |
 | Polling and timers | `zlink_poll`, `zlink_poller_*`, `zlink_timer_*`, `zlink_spot_timer_new` | `ZlinkPoll`, `Poller`, `PollEvent`, `Timer` |
 | Utilities | `zlink_proxy`, `zlink_proxy_steerable`, `zlink_multipart_close`, `zlink_sleep`, `zlink_stopwatch_*`, `zlink_thread_*`, `zlink_atomic_counter_*` | `Zlink.Proxy`, `Zlink.ProxySteerable`, `Zlink.MultipartClose`, `Zlink.Sleep`, `ZlinkStopwatch`, `ZlinkThread`, `AtomicCounter` |
+
+## Actor Dispatch Public Surface
+
+.NET exposes Actor dispatch through public types in the zlink assembly. Actor
+dispatch is a separate service-layer capability, not a subsection of SPOT.
+
+```csharp
+public sealed record ActorRef(RoutingId NodeRid, string ActorId,
+                              ulong Generation);
+public sealed record ActorCreateResult(ActorCreateStatus Status,
+                                       ActorRef Actor);
+public sealed record ActorRoute(ActorRef Actor, bool Joined,
+                                RoutingId? JoinedSpotRid);
+public sealed record ActorRecvInfo(ActorRef Actor, RoutingId SourceNodeRid,
+                                   RoutingId SourceSessionRid, uint Flags);
+public sealed record ActorJoinInfo(ActorRef SourceActor,
+                                   ActorRef TargetActor,
+                                   RoutingId SourceNodeRid,
+                                   RoutingId SourceSpotRid,
+                                   RoutingId TargetNodeRid,
+                                   RoutingId TargetSpotRid,
+                                   ulong JoinEpoch,
+                                   uint Flags);
+public sealed record ActorPart(ActorRecvInfo Info, Message Message,
+                               bool More);
+public sealed record ActorJoinRequest(ActorJoinInfo Info, Message Message);
+public sealed class Actor : IDisposable, IAsyncDisposable { ... }
+```
+
+`SpotNode` exposes Actor factory/lookup, remote create-or-get, admission,
+join/leave, destroy, and Actor snapshots. `Spot` exposes Actor join
+receive/reply and joined Actor snapshots. `StreamSocket` exposes Actor
+bind/unbind and bound Actor send. `Discovery` exposes Actor route resolve.
+
+`Generation == 0` is an unchecked remote ref and is not invalid. The public
+contract does not expose raw native Actor pointers.
 
 ## Framework Stream And Actor Contract
 
@@ -1462,15 +1508,15 @@ public sealed record ActorCreateResult(ActorCreateStatus Status,
 public sealed record ActorRoute(ActorRef Actor, bool Joined,
                                 RoutingId? JoinedSpotRid);
 public sealed record ActorRecvInfo(ActorRef Actor,
-                                   RoutingId? SourceNodeRid,
-                                   RoutingId? SourceSessionRid,
+                                   RoutingId SourceNodeRid,
+                                   RoutingId SourceSessionRid,
                                    uint Flags);
 public sealed record ActorJoinInfo(ActorRef SourceActor,
                                    ActorRef TargetActor,
-                                   RoutingId? SourceNodeRid,
-                                   RoutingId? SourceSpotRid,
-                                   RoutingId? TargetNodeRid,
-                                   RoutingId? TargetSpotRid,
+                                   RoutingId SourceNodeRid,
+                                   RoutingId SourceSpotRid,
+                                   RoutingId TargetNodeRid,
+                                   RoutingId TargetSpotRid,
                                    ulong JoinEpoch,
                                    uint Flags);
 public sealed record ActorPart(ActorRecvInfo Info, Message Message,

@@ -13,6 +13,15 @@ utilities are internal. Perf, samples, and tests must import the public
 
 ---
 
+## High-Performance Requirements
+
+The Go binding is part of a high-performance messaging library. Hot paths must
+not use reflection, dynamic dispatch by string, unnecessary allocation,
+avoidable byte-slice copies, coarse lock contention, hidden waits, sleeps, busy
+waits, or goroutine joins. cgo bridge code must construct public `Message` and
+result values directly from the core `*_part` substrate and must not create
+native aggregate arrays only to copy them into Go slices.
+
 ## Current Core Alignment Overrides
 
 The sections below still contain some older method lists. When they conflict
@@ -66,8 +75,17 @@ Go exposes Actor dispatch through exported identifiers in package `zlink`.
 type ActorRef struct { NodeRID RoutingID; ActorID string; Generation uint64 }
 type ActorCreateResult struct { Status ActorCreateStatus; Actor ActorRef }
 type ActorRoute struct { Actor ActorRef; Joined bool; JoinedSpotRID *RoutingID }
-type ActorRecvInfo struct { Actor ActorRef; SourceNodeRID *RoutingID; SourceSessionRID *RoutingID; Flags uint32 }
-type ActorJoinInfo struct { Actor ActorRef; SourceNodeRID *RoutingID; Flags uint32 }
+type ActorRecvInfo struct { Actor ActorRef; SourceNodeRID RoutingID; SourceSessionRID RoutingID; Flags uint32 }
+type ActorJoinInfo struct {
+    SourceActor ActorRef
+    TargetActor ActorRef
+    SourceNodeRID RoutingID
+    SourceSpotRID RoutingID
+    TargetNodeRID RoutingID
+    TargetSpotRID RoutingID
+    JoinEpoch uint64
+    Flags uint32
+}
 type ActorPart struct { Info ActorRecvInfo; Message *Message; More bool }
 func RemoteActorRef(targetNodeRID RoutingID, actorID string) (ActorRef, error)
 ```
@@ -92,6 +110,8 @@ func NewContext() (*Context, error)
 func (c *Context) Close() error
 // Shutdown requests a graceful shutdown. Returns *CloseError on failure.
 func (c *Context) Shutdown() error
+// RecalculateAutoHwm forces an automatic HWM recalculation. Returns *ConfigError on failure.
+func (c *Context) RecalculateAutoHwm() error
 func (c *Context) Options() *ContextOptions
 
 // Socket factories — each returns *ConfigError on failure.
@@ -123,11 +143,19 @@ func (o *ContextOptions) SetThreadPriority(value int) error
 func (o *ContextOptions) ThreadPriority() (int, error)
 func (o *ContextOptions) SetThreadSchedulingPolicy(value int) error
 func (o *ContextOptions) ThreadSchedulingPolicy() (int, error)
+func (o *ContextOptions) SetThreadNamePrefix(value string) error
+func (o *ContextOptions) ThreadNamePrefix() (string, error)
+func (o *ContextOptions) SetSpotWorkerThreads(value int) error
+func (o *ContextOptions) SpotWorkerThreads() (int, error)
 func (o *ContextOptions) SetMaxMessageSize(value int) error
 func (o *ContextOptions) MaxMessageSize() (int, error)
 func (o *ContextOptions) MessageStructSize() (int, error)
 func (o *ContextOptions) SetBlocky(value bool) error
 func (o *ContextOptions) Blocky() (bool, error)
+func (o *ContextOptions) SetAutoHwmEnabled(value bool) error
+func (o *ContextOptions) AutoHwmEnabled() (bool, error)
+func (o *ContextOptions) SetAutoHwmRecalcDebounce(value time.Duration) error
+func (o *ContextOptions) AutoHwmRecalcDebounce() (time.Duration, error)
 func (o *ContextOptions) SetAutoHwmProfile(value AutoHwmProfile) error
 func (o *ContextOptions) AutoHwmProfile() (AutoHwmProfile, error)
 func (o *ContextOptions) AddThreadAffinity(cpu int) error
@@ -170,12 +198,11 @@ inherited from internal base types. Only the public methods are shown.
 
 Go nonblocking data-plane helpers follow this rule:
 
-- `TrySend(...)` / `TrySendTo(...)` return `(false, nil)` only for temporary
-  backpressure.
+- Submit methods that take `SendFlags` return `(false, nil)` only for temporary
+  backpressure when `SendFlagsDontWait` is used.
 - Route-not-ready and other submit failures return a non-nil error.
-- `TryRecv()` returns `(*Received, true, nil)` when a message was received,
-  `(nil, false, nil)` when no message is currently available, and a non-nil
-  error for real recv failures.
+- Receive methods that take `RecvFlags` return `(nil, nil)` when no message is
+  currently available and a non-nil error for real recv failures.
 
 Peer weight is not a common-socket accessor. Bindings expose it only on the
 implemented weight-bearing handles (`RouterSocket` and `DealerSocket`) through their typed option/property surfaces.
@@ -195,16 +222,10 @@ func (s *PairSocket) Unbind(endpoint string) error
 func (s *PairSocket) Connect(endpoint string) error
 // Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *PairSocket) Disconnect(endpoint string) error
-// Send submits parts on the socket. Returns *SubmitError on failure.
-func (s *PairSocket) Send(flags SendFlags, parts ...*Message) error
-// TrySend submits parts without blocking. Returns (false, nil) only when the
-// socket is temporarily backpressured.
-func (s *PairSocket) TrySend(parts ...*Message) (bool, error)
+// Send submits parts on the socket. Returns (false, nil) only for temporary backpressure.
+func (s *PairSocket) Send(flags SendFlags, parts ...*Message) (bool, error)
 // Recv receives a message. Returns *RecvError on failure.
 func (s *PairSocket) Recv(flags RecvFlags) (*Received, error)
-// TryRecv receives a message without blocking. Returns (nil, false, nil) when
-// no message is currently available.
-func (s *PairSocket) TryRecv() (*Received, bool, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *PairSocket) OnSendReady(handler func()) error
 // Option setters/getters return *ConfigError on failure.
@@ -237,8 +258,8 @@ func (s *PubSocket) Unbind(endpoint string) error
 func (s *PubSocket) Connect(endpoint string) error
 // Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *PubSocket) Disconnect(endpoint string) error
-// Publish sends parts on the given topic. Returns *SubmitError on failure.
-func (s *PubSocket) Publish(topic string, flags SendFlags, parts ...*Message) error
+// Publish sends parts on the given topic. Returns (false, nil) only for temporary backpressure.
+func (s *PubSocket) Publish(topic string, flags SendFlags, parts ...*Message) (bool, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *PubSocket) OnSendReady(handler func()) error
 // Option setters/getters return *ConfigError on failure.
@@ -300,32 +321,22 @@ func (s *DealerSocket) SetProbe(value bool) error
 // It must be set before attach and becomes read-only after attach.
 func (s *DealerSocket) SetChannelName(value string) error
 func (s *DealerSocket) ChannelName() (string, error)
-// Send submits parts on the socket. Returns *SubmitError on failure.
-func (s *DealerSocket) Send(flags SendFlags, parts ...*Message) error
-// TrySend submits parts without blocking. Returns (false, nil) only when the
-// socket is temporarily backpressured.
-func (s *DealerSocket) TrySend(parts ...*Message) (bool, error)
+// Send submits parts on the socket. Returns (false, nil) only for temporary backpressure.
+func (s *DealerSocket) Send(flags SendFlags, parts ...*Message) (bool, error)
 // Recv receives a message. Returns *RecvError on failure.
 func (s *DealerSocket) Recv(flags RecvFlags) (*Received, error)
-// TryRecv receives a message without blocking. Returns (nil, false, nil) when
-// no message is currently available.
-func (s *DealerSocket) TryRecv() (*Received, bool, error)
 // Request performs a synchronous request — blocks until reply or timeout.
 // timeout = 0 uses the socket default timeout.
 // Returns *SubmitError on submit failure, *RequestError on reply failure
 // (e.g. timeout, protocol error).
 func (s *DealerSocket) Request(parts [][]byte, timeout time.Duration) ([]*Message, error)
-// RequestCallback performs a callback-based request with blocking submit.
+// RequestCallback performs a callback-based request submit.
 // timeout = 0 uses the socket default timeout.
-// Returns *SubmitError on submit failure; the callback receives a
+// Returns (false, nil) only for temporary backpressure. The callback receives a
 // RequestResult which maps to *RequestError for failures.
 // The reply parts slice is nil/empty on failure.
-func (s *DealerSocket) RequestCallback(parts [][]byte, cb func(RequestResult, []*Message), timeout time.Duration) error
-// TryRequestCallback performs a callback-based request with nonblocking submit.
-// Returns (false, nil) only for temporary backpressure. timeout = 0 uses the
-// socket default timeout. Submit errors other than temporary backpressure are
-// returned as *SubmitError. The callback receives RequestResult for the reply phase.
-func (s *DealerSocket) TryRequestCallback(parts [][]byte, cb func(RequestResult, []*Message), timeout time.Duration) (bool, error)
+func (s *DealerSocket) RequestCallback(parts [][]byte, cb func(RequestResult, []*Message),
+    flags SendFlags, timeout time.Duration) (bool, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *DealerSocket) OnSendReady(handler func()) error
 // AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
@@ -352,60 +363,45 @@ func (s *RouterSocket) SetMandatory(value bool) error
 func (s *RouterSocket) SetHandover(value bool) error
 func (s *RouterSocket) SetProbe(value bool) error
 func (s *RouterSocket) SetConnectRoutingID(id RoutingID) error
-// SendTo submits parts to a specific peer. Returns *SubmitError on failure.
-func (s *RouterSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) error
-// TrySendTo submits parts without blocking. Returns (false, nil) only when the
-// socket is temporarily backpressured.
-func (s *RouterSocket) TrySendTo(target RoutingID, parts ...*Message) (bool, error)
+// SendTo submits parts to a specific peer. Returns (false, nil) only for temporary backpressure.
+func (s *RouterSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) (bool, error)
 // Recv receives a message. Returns *RecvError on failure.
 func (s *RouterSocket) Recv(flags RecvFlags) (*Received, error)
-// TryRecv receives a routed message without blocking. Returns (nil, false, nil)
-// when no message is currently available.
-func (s *RouterSocket) TryRecv() (*Received, bool, error)
 // Request performs a synchronous request to a specific peer — blocks until
 // reply or timeout. timeout = 0 uses the socket default timeout.
 // Returns *SubmitError on submit failure, *RequestError on reply failure
 // (e.g. timeout, protocol error).
 func (s *RouterSocket) Request(peerRid RoutingID, parts [][]byte, timeout time.Duration) ([]*Message, error)
-// RequestCallback performs a callback-based request to a specific peer with
-// blocking submit. timeout = 0 uses the socket default timeout.
-// Returns *SubmitError on submit failure; the callback receives a RequestResult
+// RequestCallback performs a callback-based request submit to a specific peer.
+// timeout = 0 uses the socket default timeout.
+// Returns (false, nil) only for temporary backpressure. The callback receives a RequestResult
 // which maps to *RequestError for failures.
 // The reply parts slice is nil/empty on failure.
-func (s *RouterSocket) RequestCallback(peerRid RoutingID, parts [][]byte, cb func(RequestResult, []*Message), timeout time.Duration) error
-// TryRequestCallback performs a callback-based request to a specific peer with
-// nonblocking submit. Returns (false, nil) only for temporary backpressure.
-// timeout = 0 uses the socket default timeout. Submit errors other than
-// temporary backpressure are returned as *SubmitError.
-func (s *RouterSocket) TryRequestCallback(peerRid RoutingID, parts [][]byte, cb func(RequestResult, []*Message), timeout time.Duration) (bool, error)
-// Reply submits a reply to a request from peer rid. Returns *SubmitError on failure.
-func (s *RouterSocket) Reply(rid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error
+func (s *RouterSocket) RequestCallback(peerRid RoutingID, parts [][]byte,
+    cb func(RequestResult, []*Message), flags SendFlags, timeout time.Duration) (bool, error)
+// Reply submits a reply to a request from peer rid.
+func (s *RouterSocket) Reply(rid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) (bool, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *RouterSocket) OnSendReady(handler func()) error
 // AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
 func (s *RouterSocket) AttachDiscovery(discovery *Discovery) error
 
 // --- router → spot routed send ---
-// SendToSpot submits parts routed to a spot. Returns *SubmitError on failure.
+// SendToSpot submits parts routed to a spot.
 func (s *RouterSocket) SendToSpot(destNodeRid, destSpotRid RoutingID,
-    flags SendFlags, parts ...*Message) error
+    flags SendFlags, parts ...*Message) (bool, error)
 
 // --- router → spot routed request (callback, blocking submit) ---
-// RequestToSpot submits a routed request. Returns *SubmitError on submit failure;
+// RequestToSpot submits a routed request;
 // callback receives RequestResult (maps to *RequestError on completion failure).
 func (s *RouterSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID,
-    callback RequestReplyCallback,
-    timeout time.Duration, parts ...*Message) error
-// TryRequestToSpot submits a routed request with nonblocking submit.
-// Returns (false, nil) only for temporary backpressure.
-func (s *RouterSocket) TryRequestToSpot(destNodeRid, destSpotRid RoutingID,
-    callback RequestReplyCallback,
+    callback RequestReplyCallback, flags SendFlags,
     timeout time.Duration, parts ...*Message) (bool, error)
 
 // --- router → spot routed reply ---
-// ReplyToSpot submits a routed reply. Returns *SubmitError on failure.
+// ReplyToSpot submits a routed reply.
 func (s *RouterSocket) ReplyToSpot(destNodeRid, destSpotRid RoutingID,
-    requestSeq uint64, flags SendFlags, parts ...*Message) error
+    requestSeq uint64, flags SendFlags, parts ...*Message) (bool, error)
 
 // NOTE: RouterSocket 의 routed 수신 plane 은 단일 표면이다. 일반 ROUTER
 // 트래픽과 spot-origin routed 트래픽을 모두 Recv 로 받는다.
@@ -428,8 +424,8 @@ func (s *XPubSocket) Unbind(endpoint string) error
 func (s *XPubSocket) Connect(endpoint string) error
 // Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *XPubSocket) Disconnect(endpoint string) error
-// Publish sends parts on the given topic. Returns *SubmitError on failure.
-func (s *XPubSocket) Publish(topic string, flags SendFlags, parts ...*Message) error
+// Publish sends parts on the given topic. Returns (false, nil) only for temporary backpressure.
+func (s *XPubSocket) Publish(topic string, flags SendFlags, parts ...*Message) (bool, error)
 // ReceiveSubscriptionEvent receives an XPub subscription event. Returns *RecvError on failure.
 func (s *XPubSocket) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
@@ -480,19 +476,13 @@ func (s *StreamSocket) Unbind(endpoint string) error
 // RoutingID configuration returns *ConfigError on failure.
 func (s *StreamSocket) SetRoutingID(id RoutingID) error
 func (s *StreamSocket) RoutingID() (RoutingID, error)
-// SendTo submits parts to a specific peer. Returns *SubmitError on failure.
-func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) error
-// TrySendTo submits parts without blocking. Returns (false, nil) only when the
-// socket is temporarily backpressured.
-func (s *StreamSocket) TrySendTo(target RoutingID, parts ...*Message) (bool, error)
+// SendTo submits parts to a specific peer. Returns (false, nil) only for temporary backpressure.
+func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) (bool, error)
 // Two mutually-exclusive receive modes on the same StreamSocket:
 //   (1) Recv, (2) OnPacket(handler). Second attach on the same stream
 //   returns *HandlerError{Code: HandlerResultBusy}.
 // Recv receives a message. Returns *RecvError on failure.
 func (s *StreamSocket) Recv(flags RecvFlags) (*Received, error)
-// TryRecv receives a routed stream frame without blocking. Returns
-// (nil, false, nil) when no message is currently available.
-func (s *StreamSocket) TryRecv() (*Received, bool, error)
 // OnPacket registers the framed packet callback mapped to
 // zlink_stream_packet_handler. The wire frame is big-endian uint16
 // header_size + uint32 body_size + header + body. The handler receives the
@@ -988,7 +978,7 @@ model; after that `Recv()` returns a busy recv error and `Snapshot()` still work
 // OpenSocketMonitor creates a monitor on the given socket. Returns *ConfigError on failure.
 func OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*SocketMonitor, error)
 // Recv receives the next monitor event. Returns *RecvError on failure.
-func (m *SocketMonitor) Recv() (*MonitorEvent, error)
+func (m *SocketMonitor) Recv(flags RecvFlags) (*MonitorEvent, error)
 // Snapshot captures the monitor snapshot. Returns *ConfigError on failure.
 func (m *SocketMonitor) Snapshot() (*MonitorSnapshot, error)
 // OnEvent registers an event handler. Returns *HandlerError on failure.
@@ -1172,13 +1162,13 @@ There is no standalone `NewSpot` constructor in the public API.
 
 ```go
 // Spot is a pub/sub facade owned by SpotNode and created only by SpotNode.Spot().
-// Publish sends parts on the given service/topic. Returns *SubmitError on failure.
-func (s *Spot) Publish(serviceName, topic string, flags SendFlags, parts ...*Message) error
-// SendChannel sends routed multipart data to the selected channel. Returns *SubmitError on failure.
-func (s *Spot) SendChannel(channelName string, flags SendFlags, parts ...*Message) error
-// RequestChannel submits a channel-aware request. Returns *SubmitError on submit failure.
+// Publish sends parts on the given service/topic. Returns (false, nil) only for temporary backpressure.
+func (s *Spot) Publish(serviceName, topic string, flags SendFlags, parts ...*Message) (bool, error)
+// SendChannel sends routed multipart data to the selected channel. Returns (false, nil) only for temporary backpressure.
+func (s *Spot) SendChannel(channelName string, flags SendFlags, parts ...*Message) (bool, error)
+// RequestChannel submits a channel-aware request. Returns (false, nil) only for temporary backpressure.
 func (s *Spot) RequestChannel(channelName string, callback RequestReplyCallback,
-    flags SendFlags, timeout time.Duration, parts ...*Message) error
+    flags SendFlags, timeout time.Duration, parts ...*Message) (bool, error)
 // Subscription filter mutation returns *ConfigError on failure.
 func (s *Spot) SetSubscription(filter string) error
 func (s *Spot) UnsetSubscription(filter string) error
@@ -1204,40 +1194,28 @@ func (s *Spot) SetRoutingID(rid RoutingID) error
 func (s *Spot) RoutingID() (RoutingID, error)
 
 // --- routed request (spot → spot) ---
-// RequestToSpot submits a routed request to a remote Spot. Returns *SubmitError on submit failure;
+// RequestToSpot submits a routed request to a remote Spot;
 // callback receives RequestResult (maps to *RequestError on completion failure).
 func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID,
-    callback RequestReplyCallback,
-    timeout time.Duration, parts ...*Message) error
-// TryRequestToSpot submits a routed request with nonblocking submit.
-// Returns (false, nil) only for temporary backpressure.
-func (s *Spot) TryRequestToSpot(destNodeRid, destSpotRid RoutingID,
-    callback RequestReplyCallback,
+    callback RequestReplyCallback, flags SendFlags,
     timeout time.Duration, parts ...*Message) (bool, error)
 
 // --- routed request (spot → router) ---
-// RequestToRouter submits a routed request to a remote Router peer. Returns *SubmitError on submit failure;
+// RequestToRouter submits a routed request to a remote Router peer;
 // callback receives RequestResult (maps to *RequestError on completion failure).
 func (s *Spot) RequestToRouter(peerRid RoutingID,
-    callback RequestReplyCallback,
-    timeout time.Duration, parts ...*Message) error
-// TryRequestToRouter submits a routed request with nonblocking submit.
-// Returns (false, nil) only for temporary backpressure.
-func (s *Spot) TryRequestToRouter(peerRid RoutingID,
-    callback RequestReplyCallback,
+    callback RequestReplyCallback, flags SendFlags,
     timeout time.Duration, parts ...*Message) (bool, error)
 
 // --- routed reply (spot → spot) ---
-// ReplyToSpot submits a routed reply. Returns *SubmitError on failure.
+// ReplyToSpot submits a routed reply.
 func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64,
-    flags SendFlags, parts ...*Message) error
+    flags SendFlags, parts ...*Message) (bool, error)
 
-// --- routed send (spot → router) ---
-// SendToRouter submits parts routed to a router peer. Returns *SubmitError on failure.
 // --- routed reply (spot → router) ---
-// ReplyToRouter submits a routed reply. Returns *SubmitError on failure.
+// ReplyToRouter submits a routed reply.
 func (s *Spot) ReplyToRouter(peerRid RoutingID, requestSeq uint64,
-    flags SendFlags, parts ...*Message) error
+    flags SendFlags, parts ...*Message) (bool, error)
 
 // --- routed receive ---
 // RecvRouted receives a routed message. Returns *RecvError on failure.
@@ -1452,7 +1430,7 @@ func NewTimerFromSpot(spot *Spot) (*Timer, error)
 func (t *Timer) Start(intervalNs, repeatCount uint64) error
 func (t *Timer) Stop() error
 // Recv drains the next timer fire. Returns *RecvError on failure.
-func (t *Timer) Recv(flags int) (uint64, error)
+func (t *Timer) Recv() (uint64, bool, error)
 // OnFire registers a fire handler. Returns *HandlerError on failure.
 func (t *Timer) OnFire(handler func(timer *Timer, fireCount uint64)) error
 // Close closes the timer. Returns *CloseError on failure.

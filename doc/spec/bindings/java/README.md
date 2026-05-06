@@ -25,6 +25,29 @@ documented public packages may be exported. Perf, samples, and tests must use
 the public Java entrypoint only and must not import internal packages or helper
 classes.
 
+## High-Performance Requirements
+
+The Java binding is part of a high-performance messaging library. Hot paths
+must not use reflection, dynamic method lookup, per-message classpath scanning,
+unnecessary allocation, avoidable byte-buffer copies, coarse lock contention,
+hidden waits, sleeps, busy waits, or thread joins. JNI/JNA bridge code must
+materialize Java `Message` and result objects directly from the core `*_part`
+substrate and must not create native aggregate arrays only to copy them back
+into Java collections.
+
+Reflection is not an acceptable implementation fallback for Java API alignment.
+Missing public APIs must be implemented with typed facades over direct Panama
+downcalls or with direct internal bridges. Callback stub creation may resolve a
+`MethodHandle` during setup, but message send/recv, request/reply, dispatch,
+poller, and timer progress must not perform reflection or reflective lookup in
+the processing loop.
+
+`InternalAccess`, `handleInternal`, and classes under
+`dev.kairoscode.zlink.internal` are direct implementation bridges used to keep
+that no-reflection cost model. They are not public contract, even when Java
+visibility is public for package-wiring reasons. Applications, samples, perf
+tools, and contract tests must not depend on those bridge APIs.
+
 ## Core Feature Coverage
 
 This binding specification must account for every public capability declared
@@ -159,33 +182,15 @@ updated to expose the public API defined in this document.
 
 Known implementation gaps at the time of this review:
 
-- `zlink_ctx_auto_hwm_recalculate`
-- `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS`
-- router/dealer request timeout and peer weight typed accessors
-- common socket option accessors for affinity, rate, recovery interval,
-  multicast hops, TOS, multicast max TPDU, bind-to-device, conflate, blocky,
-  invert matching, file descriptor, event mask, socket type, last endpoint,
-  ZMTP metadata, route value max size, and auto-HWM message unit bytes
-- indexed subscription inspection through `zlink_subscription_at`
-- public `SpotOptions` for `zlink_set_spot_option` / `zlink_get_spot_option`
-- public SpotNode HWM option facade for `zlink_set_spot_node_option` /
-  `zlink_get_spot_node_option`
-- core-aligned public enum cleanup for values that are not declared by
-  `core/include/zlink_enum.h`
-- public typed enums for `RidDuplicatePolicy`, `SocketType`, and monitor
-  auto-HWM profile fields
-- public typed monitor diagnostics for `ProtocolError`, `DisconnectReason`,
-  and `AutoHwmRecalcReason`
-- public `SpotNode.entrySpot` and `SpotNode.spotLookup` for
-  `zlink_spot_node_entry_spot` / `zlink_spot_node_spot_lookup`
-- actor bound-session close for `zlink_spot_node_actor_close_bound_session`
-- poller timer registration through `zlink_poller_add_timer` /
-  `zlink_poller_remove_timer`
-- result enum completion for request, recv, handler, close, bind, connect,
-  and config result codes newly listed below
+- No remaining gap is known for the core-alignment items listed in this
+  section. If a future review finds a mismatch between this document and the
+  Java source, that mismatch is treated as an implementation gap unless this
+  specification is changed first.
 
 Implementation follow-up:
-- internal 성격 타입이 public package에 남아 있지 않도록 정리해야 한다.
+- `InternalAccess` and `handleInternal` are no-reflection direct bridges, not
+  user API. A future JPMS/package-boundary cleanup should hide or relocate them
+  without replacing them with reflection.
 - `SocketCore`, `MessagePlane`, request/reply support helper 같은 구현 중심
   타입은 internal 또는 implementation package로 이동하는 방향이 맞다.
 - JPMS를 도입하면 documented public package만 export 하도록 맞춰야 한다.
@@ -243,9 +248,11 @@ Java exposes Actor dispatch through public classes in
 record ActorRef(RoutingId nodeRid, String actorId, long generation) {}
 record ActorCreateResult(ActorCreateStatus status, ActorRef actor) {}
 record ActorRoute(ActorRef actor, boolean joined, Optional<RoutingId> joinedSpotRid) {}
-record ActorRecvInfo(ActorRef actor, Optional<RoutingId> sourceNodeRid,
-                     Optional<RoutingId> sourceSessionRid, int flags) {}
+record ActorRecvInfo(ActorRef actor, RoutingId sourceNodeRid,
+                     RoutingId sourceSessionRid, int flags) {}
 record ActorPart(ActorRecvInfo info, Message message, boolean more) {}
+final class ActorJoinInfo { ... }
+final class ActorJoinRequest implements AutoCloseable { ... }
 final class Actor implements AutoCloseable { ... }
 ```
 
@@ -299,6 +306,8 @@ public final class ContextOptions {
     void threadPriority(int priority);                               // @throws ConfigException
     int threadSchedulingPolicy();                                    // @throws ConfigException
     void threadSchedulingPolicy(int policy);                         // @throws ConfigException
+    String threadNamePrefix();                                       // @throws ConfigException
+    void threadNamePrefix(String prefix);                            // @throws ConfigException
     int maxMsgSize();                                                // @throws ConfigException
     void maxMsgSize(int bytes);                                      // @throws ConfigException
     int msgTSize();                                                  // @throws ConfigException
@@ -358,8 +367,10 @@ void setTlsClient(String caCertPem, String hostname,
 `send(...)` and `publish(...)` return `false` only for temporary backpressure
 when `SendFlags.DONT_WAIT` is used. Blocking submit returns `true` on success.
 Route-not-ready and other submit failures still raise `SubmitException`.
-`recv(...)` and `subscribe(...)` return `null` when `RecvFlags.DONT_WAIT`
-finds no message and still raise `RecvException` for real recv failures.
+`recv(...)`, `subscribe(...)`, `receiveSubscriptionEvent(...)`,
+`recvRouted(...)`, monitor `recv(...)`, and timer `recv()` return `null` when
+the core reports no data. They still raise `RecvException` for real recv
+failures.
 
 ### CommonSocketOptions
 
@@ -806,7 +817,7 @@ public final class XPubSocket extends Socket {
     boolean publish(String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
 
     SubscriptionEvent receiveSubscriptionEvent();                    // @throws RecvException
-    SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags);     // @throws RecvException
+    @Nullable SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags); // @throws RecvException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     PubSocketOptions options();
@@ -1653,7 +1664,7 @@ Implements `AutoCloseable`.
 
 ```java
 public final class TopicMessage implements AutoCloseable {
-    TopicMessage(RoutingId routingId, String channelName, String topic, Message[] parts);
+    TopicMessage(RoutingId routingId, String serviceName, String topic, Message[] parts);
 
     Optional<RoutingId> routingId();
     Optional<String> serviceName();          // empty for raw SUB / XSUB
@@ -1713,6 +1724,7 @@ public final class MonitorSocket implements AutoCloseable {
 
     void onEvent(SocketMonitorHandler handler);                      // @throws HandlerException
     MonitorEvent recv();                                             // @throws RecvException
+    @Nullable MonitorEvent recv(RecvFlags flags);                    // @throws RecvException
     MonitorSnapshot snapshot();                                      // @throws ConfigException
 
     void close();                                                    // @throws CloseException
@@ -1992,7 +2004,7 @@ public final class Spot implements AutoCloseable {
     TopicMessage subscribe();                                        // @throws RecvException
     @Nullable TopicMessage subscribe(RecvFlags flags);               // @throws RecvException
     SubscriptionEvent receiveSubscriptionEvent();                    // @throws RecvException
-    SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags);     // @throws RecvException
+    @Nullable SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags); // @throws RecvException
 
     // --- routed request (spot -> spot, async, no flags) ---
     CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
@@ -2101,7 +2113,7 @@ public final class Spot implements AutoCloseable {
 
     // --- routed receive ---
     Received recvRouted();                                           // @throws RecvException
-    Received recvRouted(RecvFlags flags);                            // @throws RecvException
+    @Nullable Received recvRouted(RecvFlags flags);                  // @throws RecvException
     void onRoutedReceive(SpotRoutedHandler handler);                 // @throws HandlerException
     void onDispatchEvent(SpotDispatchEventHandler handler);          // @throws HandlerException
     void drainChannelReply(SpotDispatchInfo info);                   // @throws ConfigException
@@ -2174,8 +2186,8 @@ public record ActorRoute(ActorRef actor,
                          Optional<RoutingId> joinedSpotRid) {}
 
 public record ActorRecvInfo(ActorRef actor,
-                            Optional<RoutingId> sourceNodeRid,
-                            Optional<RoutingId> sourceSessionRid,
+                            RoutingId sourceNodeRid,
+                            RoutingId sourceSessionRid,
                             int flags) {}
 
 public record ActorPart(ActorRecvInfo info,
@@ -2183,13 +2195,12 @@ public record ActorPart(ActorRecvInfo info,
                         boolean hasMore) implements AutoCloseable {}
 
 public final class ActorJoinInfo {
-    ActorRef actor();
     ActorRef sourceActor();
     ActorRef targetActor();
-    Optional<RoutingId> sourceNodeRid();
-    Optional<RoutingId> sourceSpotRid();
-    Optional<RoutingId> targetNodeRid();
-    Optional<RoutingId> targetSpotRid();
+    RoutingId sourceNodeRid();
+    RoutingId sourceSpotRid();
+    RoutingId targetNodeRid();
+    RoutingId targetSpotRid();
     long joinEpoch();
     int flags();
 }
@@ -2557,8 +2568,7 @@ public final class Timer implements AutoCloseable {
 
     void start(long intervalNs, long repeatCount);                   // @throws ConfigException
     void stop();                                                     // @throws ConfigException
-    long recv();                                                     // @throws RecvException
-    long recv(RecvFlags flags);                                      // @throws RecvException
+    @Nullable Long recv();                                           // @throws RecvException
     void onFire(TimerHandler handler);                               // @throws HandlerException
 
     void close();                                                    // @throws CloseException

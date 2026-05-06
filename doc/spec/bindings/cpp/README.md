@@ -18,6 +18,16 @@ native bridge headers, and source-tree-only utilities are internal. Perf,
 samples, and tests must include the public C++ headers only and must not rely
 on non-installed internal headers.
 
+## High-Performance Requirements
+
+The C++ binding is part of a high-performance messaging library. Public APIs
+and implementation paths must not put reflection-like dynamic dispatch,
+unnecessary heap allocation, avoidable message copies, coarse lock contention,
+hidden waits, sleeps, busy waits, or thread joins on send/recv, dispatch,
+poller, timer, or request-completion hot paths. The implementation must build
+multipart values directly from the core `*_part` substrate instead of first
+creating native aggregate arrays and then copying them into C++ containers.
+
 ---
 
 ## Core Alignment Rules
@@ -90,6 +100,14 @@ is header-only and users discover the public surface through installed headers.
   `zlink/services/registry.hpp`, `zlink/services/discovery.hpp`,
   `zlink/services/query.hpp`, `zlink/services/spot_node.hpp`,
   `zlink/services/spot.hpp`, and `zlink/services/actor.hpp`.
+- `zlink/services/actor.hpp` is the owning public header for Actor dispatch.
+  It must contain the declarations and inline definitions for Actor value
+  types and `service::actor_t` itself. A file that only includes
+  `zlink/services/spot.hpp` or re-exports the SPOT service header is not a
+  compliant Actor header.
+- SPOT headers may include `zlink/services/actor.hpp` when they need Actor
+  types, but the dependency direction must keep Actor discoverable as its own
+  public surface instead of hiding it inside the SPOT header.
 - Compatibility aggregate headers such as `zlink/socket_types.hpp` may remain
   installed, but they must not be the only discoverable public entrypoint for
   concrete public classes.
@@ -174,6 +192,12 @@ updated to match this document.
 C++ exposes Actor dispatch through installed public headers in namespace
 `zlink::service`.
 
+`zlink/services/actor.hpp` is the canonical include for the declarations below.
+Including only `zlink/services/actor.hpp` must be enough for user code to name
+the Actor value types and `service::actor_t`. Forwarding-only headers are
+non-compliant because they make Actor look like an incidental part of SPOT
+instead of a separate service-layer capability.
+
 ```cpp
 struct actor_ref_t;
 struct actor_create_result_t;
@@ -214,6 +238,9 @@ class context_t {
     void shutdown();
     void term() noexcept;
 
+    /// @throws config_error_t
+    void recalculate_auto_hwm();
+
     context_options_t options();
 };
 ```
@@ -248,6 +275,14 @@ class context_options_t {
     /// @throws config_error_t
     void thread_scheduling_policy(int value);
     /// @throws config_error_t
+    std::string thread_name_prefix() const;
+    /// @throws config_error_t
+    void thread_name_prefix(const std::string& value);
+    /// @throws config_error_t
+    int spot_worker_threads() const;
+    /// @throws config_error_t
+    void spot_worker_threads(int value);
+    /// @throws config_error_t
     bool blocky() const;
     /// @throws config_error_t
     void blocky(bool enabled);
@@ -256,9 +291,9 @@ class context_options_t {
     /// @throws config_error_t
     void auto_hwm_enabled(bool enabled);
     /// @throws config_error_t
-    int auto_hwm_total_memory_budget_mb() const;
+    std::chrono::milliseconds auto_hwm_recalc_debounce() const;
     /// @throws config_error_t
-    void auto_hwm_total_memory_budget_mb(int value);
+    void auto_hwm_recalc_debounce(std::chrono::milliseconds value);
     /// @throws config_error_t
     auto_hwm_profile auto_hwm_profile_value() const;
     /// @throws config_error_t
@@ -1099,8 +1134,8 @@ class actor_ref_t {
 
 struct actor_recv_info_t {
     actor_ref_t actor;
-    std::optional<routing_id_t> source_node_rid;
-    std::optional<routing_id_t> source_session_rid;
+    routing_id_t source_node_rid;
+    routing_id_t source_session_rid;
     uint32_t flags;
 };
 
@@ -1309,6 +1344,9 @@ aliases that back the higher-level typed surface above. They are part of
 the public compatibility contract even when typical users never touch
 them directly.
 
+Deprecated no-op context options are compatibility-only names. They must
+not be added back as canonical typed `context_options_t` getters or setters.
+
 #### Core compatibility enums
 
 ```cpp
@@ -1328,8 +1366,12 @@ enum class context_option : int {
     thread_affinity_cpu_remove,
     thread_name_prefix,
     blocky,
+    spot_worker_threads,
     auto_hwm_enable,
     auto_hwm_total_memory_budget_mb, // deprecated no-op compatibility option
+    auto_hwm_recalc_debounce_ms,
+    auto_hwm_stream_bootstrap, // deprecated no-op compatibility option
+    auto_hwm_spot_bootstrap,   // deprecated no-op compatibility option
     auto_hwm_profile
 };
 

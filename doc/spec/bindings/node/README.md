@@ -14,6 +14,16 @@ package entrypoint only.
 
 ---
 
+## High-Performance Requirements
+
+The Node/TypeScript binding is part of a high-performance messaging library.
+Hot paths must not use reflection-style property walking, dynamic dispatch by
+string lookup, unnecessary allocation, avoidable `Buffer` copies, coarse lock
+or worker-thread contention, hidden waits, sleeps, busy waits, or thread joins.
+Native addon code must construct public `Message` and result objects directly
+from the core `*_part` substrate and must not create native aggregate arrays
+only to copy them into JavaScript arrays.
+
 ## Current Core Alignment Overrides
 
 The sections below still contain some older signatures. When they conflict
@@ -35,7 +45,7 @@ with the rules here, this section wins.
   `sendChannel(...)`, `sendToSpot(...)`, `requestChannel(...)`, and
   `publish(serviceName, topic, ...)`.
 - `Spot.subscribe(...)` returns a service-aware `TopicMessage`.
-  `TopicMessage` therefore needs `channelName: string | null`, populated for
+  `TopicMessage` therefore needs `serviceName: string | null`, populated for
   SPOT subscribe results and `null` for raw `SUB` / `XSUB`.
 - `Spot` must not expose `onSubscribe(...)`.
 - `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
@@ -88,13 +98,12 @@ type ActorCreateResult = { status: ActorCreateStatus; actor: ActorRef };
 type ActorRoute = { actor: ActorRef; joined: boolean; joinedSpotRid: RoutingId | null };
 type ActorRecvInfo = { actor: ActorRef; sourceNodeRid: RoutingId; sourceSessionRid: RoutingId; flags: number };
 type ActorJoinInfo = {
-    actor: ActorRef;
     sourceActor: ActorRef;
     targetActor: ActorRef;
     sourceNodeRid: RoutingId;
-    sourceSpotRid: RoutingId | null;
-    targetNodeRid: RoutingId | null;
-    targetSpotRid: RoutingId | null;
+    sourceSpotRid: RoutingId;
+    targetNodeRid: RoutingId;
+    targetSpotRid: RoutingId;
     joinEpoch: bigint;
     flags: number;
 };
@@ -127,6 +136,8 @@ class Context {
     readonly options: ContextOptions;
     /** @throws {CloseError} */
     shutdown(): void;
+    /** @throws {ConfigError} */
+    recalculateAutoHwm(): void;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -145,9 +156,11 @@ class ContextOptions {
     readonly msgTSize: number;              // @throws {ConfigError}
     threadPriority: number;     // get / set — @throws {ConfigError}
     threadSchedulingPolicy: number; // get / set — @throws {ConfigError}
+    threadNamePrefix: string;   // get / set — @throws {ConfigError}
+    spotWorkerThreads: number;  // get / set — @throws {ConfigError}
     blocky: boolean;            // get / set — @throws {ConfigError}
     autoHwmEnabled: boolean;    // get / set — @throws {ConfigError}
-    autoHwmTotalMemoryBudgetMb: number; // get / set — @throws {ConfigError}
+    autoHwmRecalcDebounceMs: number; // get / set — @throws {ConfigError}
     autoHwmProfile: AutoHwmProfileValue; // get / set — @throws {ConfigError}
     /** @throws {ConfigError} */
     addThreadAffinity(cpu: number): void;
@@ -219,9 +232,10 @@ Node / TypeScript nonblocking data-plane helpers follow this rule:
   backpressure when `SendFlags.DontWait` is used.
 - Blocking submit returns `true` on success. Route-not-ready and other submit
   failures still throw `SubmitError`.
-- `recv(...)` and `subscribe(...)` return `null` when
-  `RecvFlags.DontWait` finds no message and still throw `RecvError` for real
-  recv failures.
+- `recv(...)`, `subscribe(...)`, `receiveSubscriptionEvent(...)`,
+  `recvRouted(...)`, monitor `recv(...)`, and timer `recv()` return `null`
+  when the core reports no data and still throw `RecvError` for real recv
+  failures.
 
 Peer weight is not a common socket option. Bindings expose weight only on
 `RouterSocket` and `DealerSocket`:
@@ -503,7 +517,7 @@ class XPubSocket {
     /** @throws {SubmitError} */
     publish(topic: string, parts: readonly MessageLike[], flags?: SendFlags): boolean;
     /** @throws {RecvError} */
-    receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent;
+    receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent | null;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {CloseError} */
@@ -831,7 +845,7 @@ Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
 ```typescript
 class TopicMessage {
     readonly routingId: RoutingId | null;    // null when transport carries no source id
-    readonly channelName: string | null;     // Spot subscribe only; null for raw SUB / XSUB
+    readonly serviceName: string | null;     // Spot subscribe only; null for raw SUB / XSUB
     readonly topic: string;                  // UTF-8
     readonly parts: Message[];
     isSinglePart(): boolean;
@@ -852,7 +866,7 @@ Value object emitted by `XPubSocket.receiveSubscriptionEvent` and
 ```typescript
 class SubscriptionEvent {
     readonly routingId: RoutingId | null;
-    readonly channelName: string | null;
+    readonly serviceName: string | null;
     readonly topic: string;                  // UTF-8
     readonly subscribed: boolean;            // true=subscribe, false=unsubscribe
 }
@@ -1168,7 +1182,7 @@ class MonitorSocket {
     static readonly ignoreHandler: SocketMonitorHandler;
 
     /** @throws {RecvError} */
-    recv(): MonitorEvent;
+    recv(flags?: RecvFlags): MonitorEvent | null;
     /** @throws {HandlerError} */
     onEvent(handler: (event: MonitorEvent) => void): void;
     /** @throws {ConfigError} */
@@ -1447,7 +1461,7 @@ class Spot {
     /** @throws {RecvError} */
     subscribe(flags?: RecvFlags): TopicMessage | null;
     /** @throws {RecvError} */
-    receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent;
+    receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent | null;
     /** @throws {HandlerError} */
     onSendReady(handler: SpotSendReadyHandler): void;
     /** @throws {ConfigError} */
@@ -1529,7 +1543,7 @@ class Spot {
 
     // --- routed receive ---
     /** @throws {RecvError} */
-    recvRouted(flags?: RecvFlags): Received;
+    recvRouted(flags?: RecvFlags): Received | null;
     /** @throws {HandlerError} */
     onRoutedReceive(handler: SpotRoutedHandler): void;
     /** @throws {HandlerError} */
@@ -1811,7 +1825,7 @@ class Timer {
     /** @throws {ConfigError} */
     stop(): void;
     /** @throws {RecvError} */
-    recv(flags?: number): bigint;
+    recv(): bigint | null;
     /** @throws {HandlerError} */
     onFire(handler: TimerHandler): void;
     /** @throws {CloseError} */

@@ -13,6 +13,16 @@ surface only and must not rely on internal modules.
 
 ---
 
+## High-Performance Requirements
+
+The Rust binding is part of a high-performance messaging library. Hot paths
+must not use reflection-like type erasure, dynamic dispatch where static
+dispatch is practical, unnecessary allocation, avoidable byte copies, coarse
+lock contention, hidden waits, sleeps, busy waits, or thread joins. FFI bridge
+code must construct public `Message` and result values directly from the core
+`*_part` substrate and must not create native aggregate arrays only to copy
+them into Rust `Vec` values.
+
 ## Current Core Alignment Overrides
 
 The sections below still contain some older signatures. When they conflict
@@ -63,16 +73,15 @@ Rust exposes Actor dispatch through public crate items.
 ```rust
 pub struct ActorRef { pub node_rid: RoutingId, pub actor_id: String, pub generation: u64 }
 pub struct ActorCreateResult { pub status: ActorCreateStatus, pub actor: ActorRef }
-pub struct ActorRoute { pub actor: ActorRef, pub joined: bool, pub joined_spot_rid: RoutingId }
+pub struct ActorRoute { pub actor: ActorRef, pub joined: bool, pub joined_spot_rid: Option<RoutingId> }
 pub struct ActorRecvInfo { pub actor: ActorRef, pub source_node_rid: RoutingId, pub source_session_rid: RoutingId, pub flags: u32 }
 pub struct ActorJoinInfo {
-    pub actor: ActorRef,
     pub source_actor: ActorRef,
     pub target_actor: ActorRef,
     pub source_node_rid: RoutingId,
-    pub source_spot_rid: Option<RoutingId>,
-    pub target_node_rid: Option<RoutingId>,
-    pub target_spot_rid: Option<RoutingId>,
+    pub source_spot_rid: RoutingId,
+    pub target_node_rid: RoutingId,
+    pub target_spot_rid: RoutingId,
     pub join_epoch: u64,
     pub flags: u32,
     // non-public: opaque reply token
@@ -106,6 +115,8 @@ impl Context {
     pub fn new() -> Result<Self, ConfigError>;
     /// # Errors: CloseError
     pub fn shutdown(&self) -> Result<(), CloseError>;
+    /// # Errors: ConfigError
+    pub fn recalculate_auto_hwm(&self) -> Result<(), ConfigError>;
     pub fn options(&self) -> ContextOptions<'_>;
 
     // Socket factories — each returns ConfigError on failure.
@@ -153,6 +164,14 @@ impl<'a> ContextOptions<'a> {
     /// # Errors: ConfigError
     pub fn set_thread_scheduling_policy(&self, policy: i32) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
+    pub fn thread_name_prefix(&self) -> Result<String, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_thread_name_prefix(&self, prefix: &str) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn spot_worker_threads(&self) -> Result<i32, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_spot_worker_threads(&self, threads: i32) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
     pub fn max_msg_size(&self) -> Result<i32, ConfigError>;
     /// # Errors: ConfigError
     pub fn set_max_msg_size(&self, size: i32) -> Result<(), ConfigError>;
@@ -162,6 +181,15 @@ impl<'a> ContextOptions<'a> {
     pub fn blocky(&self) -> Result<bool, ConfigError>;
     /// # Errors: ConfigError
     pub fn set_blocky(&self, blocky: bool) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn auto_hwm_enabled(&self) -> Result<bool, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_auto_hwm_enabled(&self, enabled: bool) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn auto_hwm_recalc_debounce(&self) -> Result<Duration, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_auto_hwm_recalc_debounce(&self, value: Duration) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
     pub fn auto_hwm_profile(&self) -> Result<AutoHwmProfile, ConfigError>;
     /// # Errors: ConfigError
     pub fn set_auto_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError>;
@@ -252,11 +280,12 @@ as direct methods on each socket type.
 
 Rust nonblocking data-plane helpers follow this rule:
 
-- `try_send...()` returns `Ok(false)` only for temporary backpressure.
+- `_with_flags(...)` submit variants return `Ok(false)` only for temporary
+  backpressure when `SendFlags::DontWait` is used.
 - Route-not-ready and other submit failures still return
   `Err(SubmitError)`.
-- `try_recv()` returns `Ok(None)` when no message is currently available and
-  still returns `Err(RecvError)` for real recv failures.
+- `_with_flags(...)` receive variants return `Ok(None)` when no message is
+  currently available and still return `Err(RecvError)` for real recv failures.
 
 Peer weight is not part of `CommonSocketOptions`. Rust exposes weight only on
 `RouterSocket`, `DealerSocket`, `SpotNode`, and `Spot`:
@@ -282,15 +311,11 @@ impl PairSocket {
     /// # Errors: SubmitError
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
-    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn try_send(&self, parts: impl IntoMultipart) -> Result<bool, SubmitError>;
+    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
     /// # Errors: RecvError
     pub fn recv(&self) -> Result<Received, RecvError>;
     /// # Errors: RecvError
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
-    /// # Errors: RecvError
-    pub fn try_recv(&self) -> Result<Option<Received>, RecvError>;
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -316,7 +341,7 @@ impl PubSocket {
     /// # Errors: SubmitError
     pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
-    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -348,7 +373,7 @@ impl SubSocket {
     /// # Errors: RecvError
     pub fn subscribe(&self) -> Result<TopicMessage, RecvError>;
     /// # Errors: RecvError
-    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, RecvError>;
+    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<Option<TopicMessage>, RecvError>;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn sub_options(&self) -> SubSocketOptions<'_, Self>;
     /// # Errors: ConfigError
@@ -381,15 +406,11 @@ impl DealerSocket {
     /// # Errors: SubmitError
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
-    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn try_send(&self, parts: impl IntoMultipart) -> Result<bool, SubmitError>;
+    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
     /// # Errors: RecvError
     pub fn recv(&self) -> Result<Received, RecvError>;
     /// # Errors: RecvError
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
-    /// # Errors: RecvError
-    pub fn try_recv(&self) -> Result<Option<Received>, RecvError>;
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -407,13 +428,6 @@ impl DealerSocket {
     pub fn request_callback<F: FnOnce(Result<Vec<Message>, RequestError>) + 'static>(
         &self, parts: &[&[u8]], cb: F, timeout: Option<Duration>)
         -> Result<(), SubmitError>;
-    // --- dealer request (callback, nonblocking submit) ---
-    // `timeout = None` uses the socket default request timeout.
-    // Returns Ok(false) only for temporary backpressure.
-    pub fn try_request_callback<F: FnOnce(Result<Vec<Message>, RequestError>) + 'static>(
-        &self, parts: &[&[u8]], cb: F, timeout: Option<Duration>)
-        -> Result<bool, SubmitError>;
-
     pub fn send_handle(&self) -> SendHandle;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn dealer_options(&self) -> DealerSocketOptions<'_>;
@@ -445,16 +459,11 @@ impl RouterSocket {
         -> Result<(), SubmitError>;
     /// # Errors: SubmitError
     pub fn send_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
-                           flags: SendFlags) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn try_send(&self, target: &RoutingId, parts: impl IntoMultipart)
-        -> Result<bool, SubmitError>;
+                           flags: SendFlags) -> Result<bool, SubmitError>;
     /// # Errors: RecvError
     pub fn recv(&self) -> Result<Received, RecvError>;
     /// # Errors: RecvError
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
-    /// # Errors: RecvError
-    pub fn try_recv(&self) -> Result<Option<Received>, RecvError>;
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -477,13 +486,6 @@ impl RouterSocket {
     pub fn request_callback<F: FnOnce(Result<Vec<Message>, RequestError>) + 'static>(
         &self, peer_rid: &RoutingId, parts: &[&[u8]], cb: F,
         timeout: Option<Duration>) -> Result<(), SubmitError>;
-    // --- router request (callback, nonblocking submit) ---
-    // `timeout = None` uses the socket default request timeout.
-    // Returns Ok(false) only for temporary backpressure.
-    pub fn try_request_callback<F: FnOnce(Result<Vec<Message>, RequestError>) + 'static>(
-        &self, peer_rid: &RoutingId, parts: &[&[u8]], cb: F,
-        timeout: Option<Duration>) -> Result<bool, SubmitError>;
-
     // --- router reply ---
     /// # Errors: SubmitError
     pub fn reply(&self, rid: &RoutingId, request_seq: u64,
@@ -554,11 +556,11 @@ impl XPubSocket {
     /// # Errors: SubmitError
     pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
-    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
     /// # Errors: RecvError
     pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError>;
     /// # Errors: RecvError
-    pub fn receive_subscription_event_with_flags(&self, flags: RecvFlags) -> Result<SubscriptionEvent, RecvError>;
+    pub fn receive_subscription_event_with_flags(&self, flags: RecvFlags) -> Result<Option<SubscriptionEvent>, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -588,7 +590,7 @@ impl XSubSocket {
     /// # Errors: RecvError
     pub fn subscribe(&self) -> Result<TopicMessage, RecvError>;
     /// # Errors: RecvError
-    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, RecvError>;
+    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<Option<TopicMessage>, RecvError>;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn sub_options(&self) -> SubSocketOptions<'_, Self>;
     /// # Errors: CloseError
@@ -613,19 +615,14 @@ impl StreamSocket {
         -> Result<(), SubmitError>;
     /// # Errors: SubmitError
     pub fn send_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
-                           flags: SendFlags) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn try_send(&self, target: &RoutingId, parts: impl IntoMultipart)
-        -> Result<bool, SubmitError>;
+                           flags: SendFlags) -> Result<bool, SubmitError>;
     /// Two mutually-exclusive receive modes on the same StreamSocket:
     ///   (1) recv(), (2) on_packet(handler). Second attach returns
     ///   Err(HandlerError { code: HandlerResult::Busy, .. }).
     /// # Errors: RecvError
     pub fn recv(&self) -> Result<Received, RecvError>;
     /// # Errors: RecvError
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
-    /// # Errors: RecvError
-    pub fn try_recv(&self) -> Result<Option<Received>, RecvError>;
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError>;
     /// Mode (3): framed packet callback mapped to
     /// `zlink_stream_packet_handler`. Wire frame is big-endian `u16`
     /// header_size + `u32` body_size + header + body. The handler receives
@@ -665,7 +662,7 @@ impl SendHandle {
     /// # Errors: SubmitError
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
-    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
     /// # Errors: SubmitError
     pub fn send_to(&self, target: &RoutingId, parts: impl IntoMultipart)
         -> Result<(), SubmitError>;
@@ -1271,6 +1268,8 @@ impl SocketMonitor {
     pub fn open<'a>(socket: impl Into<MonitorTarget<'a>>) -> Result<Self, ConfigError>;
     /// # Errors: RecvError
     pub fn recv(&self) -> Result<MonitorEvent, RecvError>;
+    /// # Errors: RecvError
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<MonitorEvent>, RecvError>;
     /// # Errors: ConfigError
     pub fn snapshot(&self) -> Result<MonitorSnapshot, ConfigError>;
     /// # Errors: HandlerError
@@ -1565,7 +1564,7 @@ impl Spot {
         parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
     pub fn publish_with_flags(&self, service_name: &str, topic: &str,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+        parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
     /// # Errors: SubmitError
     pub fn send_channel(&self, channel_name: &str,
         parts: impl IntoMultipart) -> Result<(), SubmitError>;
@@ -1588,11 +1587,11 @@ impl Spot {
     /// # Errors: RecvError
     pub fn subscribe(&self) -> Result<TopicMessage, RecvError>;
     /// # Errors: RecvError
-    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, RecvError>;
+    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<Option<TopicMessage>, RecvError>;
     pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError>;
     /// # Errors: RecvError
     pub fn receive_subscription_event_with_flags(&self, flags: RecvFlags)
-        -> Result<SubscriptionEvent, RecvError>;
+        -> Result<Option<SubscriptionEvent>, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -1647,7 +1646,7 @@ impl Spot {
     /// # Errors: RecvError
     pub fn recv_routed(&self) -> Result<Received, RecvError>;
     /// # Errors: RecvError
-    pub fn recv_routed_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    pub fn recv_routed_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError>;
     /// # Errors: RecvError
     pub fn recv_actor_join_with_flags(&self, flags: RecvFlags)
         -> Result<Option<(ActorJoinInfo, Message)>, RecvError>;
@@ -1886,7 +1885,7 @@ impl Timer {
     /// # Errors: ConfigError
     pub fn stop(&self) -> Result<(), ConfigError>;
     /// # Errors: RecvError
-    pub fn recv(&self, flags: i32) -> Result<u64, RecvError>;
+    pub fn recv(&self) -> Result<Option<u64>, RecvError>;
     /// # Errors: HandlerError
     pub fn on_fire<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(&Timer, u64) + Send + 'static;

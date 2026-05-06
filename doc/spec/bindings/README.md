@@ -47,6 +47,40 @@
 이 문서는 “각 언어가 어떻게 보일 수 있는가”보다 “각 언어가 무엇을 보장해야
 하는가”를 정의한다.
 
+## High-Performance Binding Policy
+
+zlink는 고성능 메시징 라이브러리다. 바인딩은 언어별 편의성을 제공하더라도
+hot path의 비용 모델을 숨기거나 악화시키면 안 된다. 공개 API와 내부 구현은
+아래 원칙을 따라야 한다.
+
+- 메시지 send/recv, publish/subscribe, request/reply, dispatch callback,
+  poller, timer 경로에서는 reflection 기반 동적 호출을 사용하지 않는다.
+  언어 런타임이 reflection을 필수로 요구하는 경우에도 초기화나 바인딩 등록
+  단계로 제한하고, 메시지 처리 루프에서는 사용하지 않는다.
+- reflection은 누락 API를 맞추기 위한 우회 수단이 아니다. 고성능 바인딩은
+  typed facade, 직접 native downcall, 직접 내부 bridge를 사용해야 하며,
+  public 계약을 맞추기 위해 hot path에 reflective lookup을 추가하면 안 된다.
+- 불필요한 메모리 할당을 만들지 않는다. 반복 호출에서 같은 크기의 임시 배열,
+  wrapper, closure, boxing 객체를 매번 새로 만들면 안 된다.
+- 불필요한 복사를 만들지 않는다. core에서 받은 메시지 part는 가능한 한 바로
+  언어별 `Message` 소유 객체로 옮기고, decode나 사용자 요청 없이 byte buffer를
+  다시 복사하지 않는다.
+- hot path에 전역 lock, coarse lock, 불필요한 mutex 경합, shared executor
+  직렬화 지점을 두지 않는다. 필요한 동기화는 subject별 상태를 보호하는 최소
+  범위로 제한한다.
+- callback, dispatch, poller, timer, request completion 진행 경로에서 숨은
+  blocking wait, sleep, busy wait, thread join을 수행하지 않는다. 명시적으로
+  blocking API로 문서화된 호출만 대기할 수 있다.
+- binding은 core의 `*_part` substrate를 사용해 part 단위로 언어 객체를 구성한다.
+  aggregate native 배열을 만든 뒤 다시 언어별 collection으로 변환하는 이중
+  materialization은 금지한다.
+- 성능 검증용 perf, sample, test도 public binding entrypoint만 사용하면서
+  위 비용 모델을 깨지 않아야 한다.
+
+이 절은 구현 세부 최적화 권고가 아니라 public binding 적합성 조건이다.
+리뷰에서 reflection hot path, 불필요한 할당/복사, 스레드 경합, 숨은 대기가
+확인되면 해당 바인딩은 정책 미준수로 본다.
+
 ## Substrate vs Public Binding Surface
 
 bindings 구현은 core가 제공하는 helper substrate C API(`*_part` 계열) 위에 올라간다.
@@ -1175,6 +1209,15 @@ Actor dispatch는 현재 core 공개 헤더에 존재하는 정식 service layer
 바인딩은 Actor를 SPOT 내부 세부사항으로 숨기지 않고, `SpotNode`, `Spot`,
 `Actor`, `StreamSocket`, `Discovery`에 걸친 별도 공개 기능으로 정리한다.
 
+언어가 header, module, package, namespace처럼 public surface를 나누는 단위를
+제공한다면 Actor는 독립 entrypoint를 가져야 한다. 이 entrypoint는 단순히
+SPOT 전체 헤더나 모듈을 다시 include/import/export하는 얇은 forwarding
+파일이어서는 안 된다. Actor entrypoint는 Actor 값 객체, Actor lifecycle
+handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
+함수 선언을 실질적으로 소유해야 한다. SPOT entrypoint가 Actor entrypoint를
+재사용하는 구조는 허용하지만, Actor entrypoint가 SPOT 구현 전체에 기대어
+존재만 하는 구조는 정책 미준수다.
+
 기준이 되는 core 공개 타입과 함수는 아래다.
 
 - 타입: `zlink_actor_ref_t`, `zlink_actor_create_result_t`,
@@ -1218,7 +1261,7 @@ Actor dispatch는 현재 core 공개 헤더에 존재하는 정식 service layer
 | `ActorRoute` | route 대상 Actor, join 여부, join된 Spot routing id |
 | `ActorRecvInfo` | 수신 Actor, source node/session routing id, flags |
 | `ActorPart` | `ActorRecvInfo`, message part, more 여부 |
-| `ActorJoinInfo` / `ActorJoinRequest` | join 요청 판단과 응답에 필요한 Actor 식별 정보, source routing 정보, flags, join message. source/target Spot routing id와 join epoch 같은 추가 route metadata는 언어별 public shape가 필요로 할 때 노출할 수 있다. native reply context는 binding 내부에서만 보관하며 public field로 노출하지 않는다 |
+| `ActorJoinInfo` + join message | join 요청 판단과 응답에 필요한 `source_actor`, `target_actor`, `source_node_rid`, `source_spot_rid`, `target_node_rid`, `target_spot_rid`, `join_epoch`, `flags`, join message. 언어 관례에 따라 `ActorJoinRequest` wrapper나 tuple/pair로 묶을 수 있다. native reply context는 binding 내부에서만 보관하며 public field로 노출하지 않는다 |
 | `SpotNodeSpotEntry` | Spot routing id, dispatch handler 여부, joined/pending Actor 수, route sync 상태, 변경 시각 |
 | `SpotNodeActorEntry` | Actor ref, joined 여부, joined Spot routing id, route sync 상태, pending message 수, 변경 시각 |
 
@@ -1236,10 +1279,9 @@ Actor dispatch는 현재 core 공개 헤더에 존재하는 정식 service layer
   함께 message를 caller에게 돌려줘야 한다.
 - `ActorJoinInfo`가 native `zlink_actor_join_info_t`의 모든 필드를 public
   field로 노출해야 한다는 뜻은 아니다. 언어별 binding은 reply에 필요한 native
-  request context를 opaque 내부 상태로 보관하고, public 값 객체에는 사용자가
-  판단과 응답에 필요한 Actor 식별 정보, source routing 정보, flags, message를
-  노출한다. source/target Spot routing id와 join epoch는 언어별 public shape가
-  필요로 할 때 추가할 수 있다.
+  request context를 opaque 내부 상태로 보관한다. public 값 객체에는 사용자가
+  판단과 응답에 필요한 `source_actor`, `target_actor`, source/target node와
+  Spot routing id, `join_epoch`, `flags`, message를 노출한다.
 - 한 STREAM session은 여러 Actor를 bind할 수 있다. bind/unbind는 session
   routing id와 actor id 또는 Actor ref를 기준으로 한다.
 - STREAM에서 Actor로 보내는 public API는 bound session과 actor id를 선택자로
@@ -1867,12 +1909,12 @@ high-level request 완료는 첫 reply 1건으로 끝난다.
 
 > 언어별 SPOT 인터페이스는 `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
 
-SPOT public surface 는 channel-aware 경로를 기본으로 둔다. 즉
-`publish(service_name, ...)`, `sendChannel(...)`, `requestChannel(...)` 가
-우선 경로다. 여기서 `publish()`는 현재 공개 헤더 이름 때문에
-`service_name` 인자를 그대로 쓰지만, 의미는 channel 이름으로 읽는다.
-직접 주소 지정 routed messaging 은 선택적으로 추가할 수 있는 보조 typed
-surface 다. request-reply 는 routed messaging 위에 얹어진다.
+SPOT public surface 는 두 이름 축을 분리한다. `sendChannel(...)` 과
+`requestChannel(...)` 은 channel-aware 직접 메시징 경로이고,
+`publish(service_name, topic, ...)` 는 service-aware pub/sub 경로다.
+`service_name` 은 channel 이름으로 해석하지 않는다. 직접 주소 지정 routed
+messaging 은 선택적으로 추가할 수 있는 보조 typed surface 다. request-reply 는
+routed messaging 위에 얹어진다.
 
 #### Pub/Sub 메시징
 
@@ -3045,7 +3087,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 | Monitor typed event surface | Raw struct | Required | Required | Required | Required | Required | Required | Required |
 
 ## Testing Policy
-- reflection/surface test로 canonical public API를 고정한다.
+- public surface test로 canonical public API를 고정한다.
 - 공통 검증 항목:
   - 타입별 capability 분리 여부
   - raw option bag 비노출
@@ -3058,11 +3100,11 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 - ownership 회귀 테스트를 유지한다.
 - callback mode와 direct mode의 충돌 규칙도 테스트한다.
 - 정책 변경 시 필수 테스트 규칙:
-  - public surface 변경: reflection/surface test 동반
+  - public surface 변경: public surface test 동반
   - contract 계약 변경: contract test 동반
   - blocking/non-blocking 계약 변경: behavior test 동반
   - ownership/receive shape 변경: callback regression 또는 ownership test 동반
-  - option surface 변경: typed option reflection test와 negative capability test 동반
+  - option surface 변경: typed option surface test와 negative capability test 동반
 - 성능 회귀 검증은 별도 Perf Policy가 담당한다.
 - Test Matrix에 정의되지 않은 테스트 항목이 기존 코드에 남아 있다면 삭제한다.
   - migration 검증, core 기능 재검증, 자동화 불가능한 리뷰 항목 등이 테스트로
@@ -3102,7 +3144,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
   `Ownership Tests`, `Monitor Tests`는 기본적으로 `Required`다.
 
 ### Surface Tests
-- canonical public API reflection/surface test
+- canonical public API surface test
 - socket type capability 분리 확인
 - typed option surface 존재 확인
 - raw option bag 비노출 확인
@@ -3266,7 +3308,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 - `send` 실패가 backpressure/not-ready를 포함해 모든 오류를 예외로 전달하는가
 - binding이 truncation/overflow를 선검증하는가
 - native 상태 오류를 바인딩이 임의로 추론하지 않는가
-- reflection test와 behavior test가 같이 있는가
+- public surface test와 behavior test가 같이 있는가
 - 값 객체 검증과 호출 직전 검증의 책임 위치가 설명 가능한가
 - 언어별 `Flags Policy`에 없는 legacy flag 타입이 public contract에서 제거되었는가
 - sample code가 canonical API만 사용하는가
@@ -3530,7 +3572,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 - callback mode와 direct recv 충돌 시 native 계약대로 오류가 전달되는지 점검
 
 ### Test Follow-Ups
-- public surface 변경마다 reflection test 존재 여부 확인
+- public surface 변경마다 public surface test 존재 여부 확인
 - value boundary 검증 테스트 추가
   - 예: `RoutingId` 최대 길이
   - 예: `Duration` overflow

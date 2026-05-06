@@ -131,6 +131,11 @@ int spot_node_access_t::status_snapshot (spot_node_t *node_,
     return node_->snapshot_status (out_);
 }
 
+bool spot_node_access_t::has_active_peers (spot_node_t *node_)
+{
+    return node_ && node_->has_active_peers ();
+}
+
 std::string spot_node_access_t::summary_service_name (spot_node_t *node_)
 {
     if (!node_)

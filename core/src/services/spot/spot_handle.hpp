@@ -5,6 +5,7 @@
 
 #include "utils/err.hpp"
 #include "utils/mutex.hpp"
+#include "core/signaler.hpp"
 #include "services/common/service_public_api.hpp"
 #include "services/common/service_mode_state.hpp"
 #include "services/spot/spot_defaults.hpp"
@@ -38,10 +39,17 @@ struct spot_logical_pubsub_message_t
 struct spot_logical_state_t
 {
     spot_logical_state_t () :
-        node (NULL), entry (false), rid_locked (false), pub (NULL), sub (NULL)
+        node (NULL),
+        entry (false),
+        rid_locked (false),
+        pub (NULL),
+        sub (NULL),
+        subscribe_signal_armed (false)
     {
         memset (&routing_id, 0, sizeof (routing_id));
     }
+
+    ~spot_logical_state_t () {}
 
     zlink::spot_node_t *node;
     zlink_routing_id_t routing_id;
@@ -54,6 +62,8 @@ struct spot_logical_state_t
     std::set<std::string> subscription_patterns;
     std::deque<std::shared_ptr<spot_logical_pubsub_message_t> >
       subscribe_queue;
+    zlink::signaler_t subscribe_signaler;
+    bool subscribe_signal_armed;
 };
 
 struct spot_handle_t

@@ -130,16 +130,6 @@ static void *create_spot_facade (
         errno = err;
         return NULL;
     }
-    if (zlink::spot_node_access_t::pubsub_enabled (node_)) {
-        if (!ensure_spot_pub (spot) || !ensure_spot_sub (spot)) {
-            const int err = errno;
-            zlink::spot_node_access_t::unregister_spot_facade (node_, spot);
-            erase_spot_mode_state (spot);
-            delete spot;
-            errno = err;
-            return NULL;
-        }
-    }
     if (zlink::spot_node_access_t::routed_enabled (node_)) {
         if (!zlink::spot_reqrep_internal::find_or_create_spot_state (spot)) {
             const int err = errno;

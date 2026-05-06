@@ -9,6 +9,7 @@
 #include "api/socket_request_reply_internal.hpp"
 #include "api/service_api_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
+#include "core/socket_poller.hpp"
 #include "services/spot/spot_handle.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -45,21 +46,6 @@ zlink::ctx_t *resolve_router_state_ctx (
         return NULL;
     }
     return handle.socket->get_ctx ();
-}
-
-void apply_unbounded_routed_queue_hwm (
-  zlink::internal_pair_queue::queue_t *queue_)
-{
-    if (!queue_)
-        return;
-
-    const int hwm = 0;
-    if (queue_->rx)
-        (void) queue_->rx->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &hwm,
-                                       sizeof (hwm));
-    if (queue_->tx)
-        (void) queue_->tx->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &hwm,
-                                       sizeof (hwm));
 }
 
 std::shared_ptr<spot_channel_reply_source_t> find_channel_reply_source_locked (
@@ -125,28 +111,17 @@ int zlink::spot_reqrep_internal::ensure_spot_recv_ready (
         return -1;
     }
 
-    zlink::ctx_t *ctx = zlink::spot_node_access_t::ctx (spot->node);
     zlink::spot_runtime_t *runtime = zlink::spot_node_access_t::runtime (spot->node);
-    if (!ctx || !runtime || !runtime->execution.data_plane_running) {
+    if (!runtime || !runtime->execution.data_plane_running) {
         errno = ETERM;
         return -1;
     }
 
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
-        if (!state_->recv.routed_recv_socket) {
-            if (zlink::internal_pair_queue::ensure (
-                  ctx, "zlink.spot.route", &state_->recv.routed_recv_queue.signal)
-                != 0) {
-                return -1;
-            }
-            apply_unbounded_routed_queue_hwm (
-              &state_->recv.routed_recv_queue.signal);
-            zlink::spot_node_access_t::track_owned_socket (
-              spot->node, state_->recv.routed_recv_queue.signal.rx);
-            zlink::spot_node_access_t::track_owned_socket (
-              spot->node, state_->recv.routed_recv_queue.signal.tx);
-            state_->recv.routed_recv_socket = state_->recv.routed_recv_queue.signal.rx;
+        if (!state_->recv.routed_recv_queue.signaler.valid ()) {
+            errno = EFAULT;
+            return -1;
         }
     }
 
@@ -229,30 +204,79 @@ int zlink::spot_reqrep_internal::queue_spot_channel_reply_completion (
     return 0;
 }
 
-zlink::socket_base_t *zlink::spot_reqrep_internal::spot_routed_recv_socket (
-  const std::shared_ptr<spot_request_reply_state_t> &state_)
+int zlink::spot_reqrep_internal::spot_routed_recv_fd (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  zlink_fd_t *fd_out_)
 {
-    if (!state_)
-        return NULL;
+    if (!state_ || !fd_out_) {
+        errno = EFAULT;
+        return -1;
+    }
 
     std::lock_guard<std::mutex> lock (state_->mutex);
-    return state_->recv.routed_recv_socket;
+    if (!state_->recv.routed_recv_queue.signaler.valid ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    *fd_out_ = state_->recv.routed_recv_queue.signaler.get_fd ();
+    return 0;
+}
+
+int zlink::spot_reqrep_internal::spot_routed_recv_wait (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  int timeout_ms_,
+  bool *input_ready_out_,
+  bool *signal_ready_out_)
+{
+    if (!state_ || !input_ready_out_ || !signal_ready_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    *input_ready_out_ = false;
+    *signal_ready_out_ = false;
+
+    zlink_fd_t routed_fd = zlink::retired_fd;
+    if (spot_routed_recv_fd (state_, &routed_fd) != 0)
+        return -1;
+
+    zlink::socket_base_t *completion =
+      spot_completion_signal_socket (state_);
+    zlink::socket_poller_t poller;
+    if (poller.add_fd (routed_fd, NULL, ZLINK_POLLIN) != 0)
+        return -1;
+    if (completion && poller.add (completion, NULL, ZLINK_POLLIN) != 0)
+        return -1;
+
+    zlink::socket_poller_t::event_t events[2];
+    const int max_events = completion ? 2 : 1;
+    const int rc = poller.wait (events, max_events, timeout_ms_);
+    if (rc <= 0)
+        return rc;
+
+    for (int i = 0; i < rc; ++i) {
+        if (events[i].fd == routed_fd)
+            *input_ready_out_ = true;
+        else if (events[i].socket == completion)
+            *signal_ready_out_ = true;
+    }
+    return rc;
 }
 
 void zlink::spot_reqrep_internal::close_spot_routed_recv_state (
-  const std::shared_ptr<spot_request_reply_state_t> &state_,
-  zlink::internal_pair_queue::queue_t *signal_out_)
+  const std::shared_ptr<spot_request_reply_state_t> &state_)
 {
     if (!state_)
         return;
 
     std::lock_guard<std::mutex> lock (state_->mutex);
-    if (signal_out_)
-        *signal_out_ = state_->recv.routed_recv_queue.signal;
-    state_->recv.routed_recv_queue.signal = zlink::internal_pair_queue::queue_t ();
     state_->recv.routed_recv_queue.pending.clear ();
     state_->recv.routed_recv_queue.pending_count = 0;
-    state_->recv.routed_recv_socket = NULL;
+    state_->recv.routed_recv_queue.signal_armed = false;
+    if (state_->recv.routed_recv_queue.signaler.valid ()) {
+        while (state_->recv.routed_recv_queue.signaler.recv_failable () == 0) {
+        }
+    }
 }
 
 int zlink::spot_reqrep_internal::drain_spot_reply_completions (

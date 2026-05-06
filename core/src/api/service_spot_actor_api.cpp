@@ -32,7 +32,6 @@
 #include <vector>
 
 const uint32_t actor_handle_tag = 0xacc70001u;
-const size_t actor_unread_part_hard_limit = 1024u;
 
 struct queued_actor_part_t
 {
@@ -131,6 +130,7 @@ struct queued_join_request_t
         has_timeout (false),
         owns_message (false),
         owns_reply (false),
+        join_epoch (0),
         pending_target (NULL)
     {
         memset (&message, 0, sizeof (message));
@@ -161,6 +161,7 @@ struct queued_join_request_t
     bool has_timeout;
     bool owns_message;
     bool owns_reply;
+    uint64_t join_epoch;
     actor_handle_t *pending_target;
     zlink_msg_t message;
     zlink_msg_t reply;
@@ -205,7 +206,9 @@ std::set<zlink::spot_node_t *> g_known_nodes;
 std::set<std::pair<zlink::spot_node_t *, std::string> >
   g_disconnected_actor_routes;
 std::set<queued_join_request_t *> g_retired_join_requests;
+std::set<queued_join_request_t *> g_live_join_requests;
 uint64_t g_actor_protocol_drop_count = 0;
+uint64_t g_next_join_epoch = 1;
 thread_local bool g_in_actor_admission_handler = false;
 
 uint64_t now_ms ();
@@ -255,15 +258,11 @@ bool actor_has_pending_join_locked (const actor_handle_t *actor_)
 {
     if (!actor_)
         return false;
-    for (std::map<spot_handle_t *, std::deque<queued_join_request_t *> >::
-           const_iterator it = g_join_queues.begin ();
-         it != g_join_queues.end (); ++it) {
-        for (std::deque<queued_join_request_t *>::const_iterator q =
-               it->second.begin ();
-             q != it->second.end (); ++q) {
-            if ((*q)->actor == actor_ && !(*q)->replied)
-                return true;
-        }
+    for (std::set<queued_join_request_t *>::const_iterator it =
+           g_live_join_requests.begin ();
+         it != g_live_join_requests.end (); ++it) {
+        if ((*it)->actor == actor_ && !(*it)->replied)
+            return true;
     }
     return false;
 }
@@ -279,19 +278,15 @@ bool node_has_pending_join_actor_locked (zlink::spot_node_t *node_,
       actors.find (actor_id_);
     if (actor_it != actors.end () && actor_it->second->pending_remote_join)
         return true;
-    for (std::map<spot_handle_t *, std::deque<queued_join_request_t *> >::
-           const_iterator it = g_join_queues.begin ();
-         it != g_join_queues.end (); ++it) {
-        for (std::deque<queued_join_request_t *>::const_iterator q =
-               it->second.begin ();
-             q != it->second.end (); ++q) {
-            const queued_join_request_t *request = *q;
-            if (!request->replied && request->remote
-                && request->target_node == node_
-                && request->target_actor_ref.actor_id[0] != '\0'
-                && strcmp (request->target_actor_ref.actor_id, actor_id_) == 0)
-                return true;
-        }
+    for (std::set<queued_join_request_t *>::const_iterator it =
+           g_live_join_requests.begin ();
+         it != g_live_join_requests.end (); ++it) {
+        const queued_join_request_t *request = *it;
+        if (!request->replied && request->remote
+            && request->target_node == node_
+            && request->target_actor_ref.actor_id[0] != '\0'
+            && strcmp (request->target_actor_ref.actor_id, actor_id_) == 0)
+            return true;
     }
     return false;
 }
@@ -682,6 +677,7 @@ void retire_join_request_locked (queued_join_request_t *request_)
 {
     if (!request_)
         return;
+    g_live_join_requests.erase (request_);
     if (request_->pending_target
         && request_->pending_target->pending_remote_join) {
         std::unique_ptr<actor_handle_t> pending =
@@ -705,6 +701,7 @@ void release_join_request_after_completion (queued_join_request_t *request_)
         std::lock_guard<std::timed_mutex> lock (g_actor_mutex);
         if (!request_->has_timeout) {
             g_retired_join_requests.erase (request_);
+            g_live_join_requests.erase (request_);
             should_delete = true;
         }
     }
@@ -1012,6 +1009,12 @@ void erase_actor_spot_facade (spot_handle_t *spot_)
                 request->spot = replacement;
                 target_queue.push_back (request);
             }
+            for (std::set<queued_join_request_t *>::iterator it =
+                   g_live_join_requests.begin ();
+                 it != g_live_join_requests.end (); ++it) {
+                if ((*it)->spot == spot_)
+                    (*it)->spot = replacement;
+            }
             g_join_queues.erase (spot_);
             return;
         }
@@ -1021,6 +1024,15 @@ void erase_actor_spot_facade (spot_handle_t *spot_)
         }
         pending.swap (g_join_queues[spot_]);
         g_join_queues.erase (spot_);
+        for (std::set<queued_join_request_t *>::iterator it =
+               g_live_join_requests.begin ();
+             it != g_live_join_requests.end (); ++it) {
+            queued_join_request_t *request = *it;
+            if (request->spot == spot_ && !request->replied
+                && std::find (pending.begin (), pending.end (), request)
+                     == pending.end ())
+                pending.push_back (request);
+        }
     }
     for (std::deque<queued_join_request_t *>::iterator it = pending.begin ();
          it != pending.end (); ++it) {
@@ -1060,7 +1072,35 @@ extern "C" int zlink_spot_has_joined_or_pending_actor (void *spot_)
         if (same_logical_spot (it->first, spot) && !it->second.empty ())
             return 1;
     }
+    for (std::set<queued_join_request_t *>::const_iterator it =
+           g_live_join_requests.begin ();
+         it != g_live_join_requests.end (); ++it) {
+        if (!(*it)->replied && (*it)->spot
+            && same_logical_spot ((*it)->spot, spot))
+            return 1;
+    }
     return 0;
+}
+
+extern "C" void zlink_actor_replay_readable_for_spot (void *spot_)
+{
+    spot_handle_t *spot = static_cast<spot_handle_t *> (spot_);
+    if (!spot || !spot->logical_state)
+        return;
+    std::lock_guard<std::timed_mutex> lock (g_actor_mutex);
+    std::vector<actor_handle_t *> actors;
+    collect_actor_handles_locked (&actors);
+    for (std::vector<actor_handle_t *>::const_iterator it = actors.begin ();
+         it != actors.end (); ++it) {
+        actor_handle_t *actor = *it;
+        if (!actor->pending_remote_join && actor->joined_spot_state
+            && actor->joined_spot_state == spot->logical_state
+            && !actor->queue.empty ()) {
+            zlink_spot_notify_dispatch_info (
+              spot, ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE,
+              ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR, &actor->ref_cache);
+        }
+    }
 }
 
 extern "C" int zlink_spot_node_has_any_actor (void *node_)
@@ -1103,6 +1143,29 @@ void erase_actor_stream_bindings (void *stream_)
                 ++it;
             }
         }
+        std::vector<queued_join_request_t *> received_aborts;
+        for (std::set<queued_join_request_t *>::iterator it =
+               g_live_join_requests.begin ();
+             it != g_live_join_requests.end (); ++it) {
+            queued_join_request_t *request = *it;
+            if (request->actor && request->actor->bound_stream == stream_
+                && !request->replied
+                && std::find (aborted_joins.begin (), aborted_joins.end (),
+                              request)
+                     == aborted_joins.end ()) {
+                received_aborts.push_back (request);
+            }
+        }
+        for (std::vector<queued_join_request_t *>::iterator it =
+               received_aborts.begin ();
+             it != received_aborts.end (); ++it) {
+            queued_join_request_t *request = *it;
+            remove_pending_join_request_locked (request);
+            clear_actor_bound_session_locked (request->actor, true);
+            clear_actor_joined_spot_locked (request->actor);
+            retire_join_request_locked (request);
+            aborted_joins.push_back (request);
+        }
         for (std::map<std::string, session_binding_t>::iterator it =
                g_session_bindings.begin ();
              it != g_session_bindings.end ();) {
@@ -1134,7 +1197,11 @@ void erase_actor_stream_bindings (void *stream_)
 extern "C" zlink_config_result_t zlink_spot_node_actor_lookup (
   void *node_, const char *actor_id_, zlink_actor_ref_t *out_)
 {
-    if (!node_ || !valid_actor_id (actor_id_) || !out_) {
+    if (!node_) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    if (!valid_actor_id (actor_id_) || !out_) {
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
@@ -1150,7 +1217,7 @@ extern "C" zlink_config_result_t zlink_spot_node_actor_lookup (
       actors.find (actor_id_);
     if (actor_it == actors.end () || actor_it->second->pending_remote_join) {
         errno = ENOENT;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
+        return ZLINK_CONFIG_NOT_FOUND;
     }
     fill_ref (actor_it->second, out_);
     return ZLINK_CONFIG_OK;
@@ -1198,8 +1265,12 @@ extern "C" zlink_request_result_t zlink_spot_node_create_remote_actor (
   zlink_actor_create_result_t *out_,
   uint32_t timeout_ms_)
 {
-    if (!node_ || !valid_routing_id (target_node_rid_)
-        || !valid_actor_id (actor_id_) || !message_ || !out_) {
+    if (!node_) {
+        errno = EFAULT;
+        return ZLINK_REQUEST_INVALID_ARGUMENT;
+    }
+    if (!valid_routing_id (target_node_rid_) || !valid_actor_id (actor_id_)
+        || !message_ || !out_) {
         errno = EINVAL;
         return ZLINK_REQUEST_INVALID_ARGUMENT;
     }
@@ -1329,7 +1400,10 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_join_spot (
   zlink_send_flags_t flags_,
   uint32_t timeout_ms_)
 {
-    LIBZLINK_UNUSED (flags_);
+    if ((flags_ & ~ZLINK_DONTWAIT) != 0) {
+        errno = ENOTSUP;
+        return ZLINK_SUBMIT_NOT_SUPPORTED;
+    }
     if (!node_ || !actor_ref_ || !dest_node_rid_ || !dest_spot_rid_
         || !message_ || !handler_ || !valid_actor_id (actor_ref_->actor_id)
         || !valid_routing_id (&actor_ref_->node_rid)
@@ -1409,16 +1483,11 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_join_spot (
         if (immediate_result != ZLINK_REQUEST_OK) {
             /* Complete outside the actor lock. */
         } else {
-            spot = NULL;
-            for (std::set<spot_handle_t *>::iterator it = g_known_spots.begin ();
-                 it != g_known_spots.end (); ++it) {
-                if ((*it)->node == target_node
-                    && same_routing_id ((*it)->spot_routing_id,
-                                        *dest_spot_rid_)) {
-                    spot = *it;
-                    break;
-                }
-            }
+            std::shared_ptr<spot_logical_state_t> target_state =
+              zlink::spot_node_access_t::lookup_spot_state (target_node,
+                                                            dest_spot_rid_);
+            spot = find_spot_facade_for_state_locked (target_node,
+                                                      target_state);
             if (!spot)
                 immediate_result = ZLINK_REQUEST_NOT_FOUND;
             else if ((!spot->logical_state || !spot->logical_state->entry)
@@ -1471,6 +1540,9 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_join_spot (
             }
             request->handler = handler_;
             request->userdata = userdata_;
+            request->join_epoch = g_next_join_epoch++;
+            if (g_next_join_epoch == 0)
+                g_next_join_epoch = 1;
             if (zlink_msg_adopt (&request->message, message_)
                 != ZLINK_CONFIG_OK) {
                 if (request->pending_target)
@@ -1480,6 +1552,7 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_join_spot (
                 return ZLINK_SUBMIT_INTERNAL_ERROR;
             }
             request->owns_message = true;
+            g_live_join_requests.insert (request);
             g_join_queues[spot].push_back (request);
         }
     }
@@ -1572,6 +1645,7 @@ extern "C" zlink_recv_result_t zlink_spot_actor_join_recv (
       request->target_node ? request->target_node_rid : request->actor->node_rid;
     if (request->spot)
         info_out_->target_spot_rid = request->spot->spot_routing_id;
+    info_out_->join_epoch = request->join_epoch;
     info_out_->request = request;
     info_out_->flags = request->remote ? ZLINK_ACTOR_JOIN_INFO_REMOTE : 0u;
     if (zlink_msg_adopt (message_out_, &request->message) != ZLINK_CONFIG_OK)
@@ -1586,8 +1660,16 @@ extern "C" zlink_submit_result_t zlink_spot_actor_join_reply (
   uint32_t accepted_,
   zlink_msg_t *message_)
 {
-    if (!spot_ || !info_ || !info_->request) {
+    if (!spot_) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+    if (!info_ || !info_->request) {
         errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if ((info_->flags & ~ZLINK_ACTOR_JOIN_INFO_REMOTE) != 0) {
+        errno = EPROTO;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
     if (accepted_ != 0u && accepted_ != 1u) {
@@ -1603,7 +1685,13 @@ extern "C" zlink_submit_result_t zlink_spot_actor_join_reply (
         std::lock_guard<std::timed_mutex> lock (g_actor_mutex);
         if (g_retired_join_requests.count (request) != 0
             || request->replied || request->spot != spot_) {
-            errno = EFSM;
+            errno = EALREADY;
+            return ZLINK_SUBMIT_INVALID_STATE;
+        }
+        if (info_->join_epoch != request->join_epoch
+            || info_->flags
+                 != (request->remote ? ZLINK_ACTOR_JOIN_INFO_REMOTE : 0u)) {
+            errno = ESTALE;
             return ZLINK_SUBMIT_INVALID_STATE;
         }
         if (message_) {
@@ -1888,6 +1976,12 @@ extern "C" zlink_submit_result_t zlink_stream_send_bound_actor_part (
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
+    zlink_routing_id_t source_node_rid;
+    memset (&source_node_rid, 0, sizeof (source_node_rid));
+    if (static_cast<zlink::spot_node_t *> (node_)->node_routing_id (
+          &source_node_rid)
+        != 0)
+        return errno_to_submit_result (errno);
     actor_handle_t *actor = NULL;
     {
         std::lock_guard<std::timed_mutex> lock (g_actor_mutex);
@@ -1933,16 +2027,12 @@ extern "C" zlink_submit_result_t zlink_stream_send_bound_actor_part (
             return ZLINK_SUBMIT_OK;
         }
         it->second.actor = actor;
-        if (actor->queue.size () >= actor_unread_part_hard_limit) {
-            errno = EAGAIN;
-            return ZLINK_SUBMIT_BACKPRESSURED;
-        }
         queued_actor_part_t queued;
         queued.info.actor.node_rid = actor->node_rid;
         strncpy (queued.info.actor.actor_id, actor->actor_id.c_str (),
                  ZLINK_ACTOR_ID_MAX - 1);
         queued.info.actor.generation = actor->generation;
-        queued.info.source_node_rid = actor->node_rid;
+        queued.info.source_node_rid = source_node_rid;
         queued.info.source_session_rid = *session_rid_;
         queued.part_flag = part_flag_;
         if (zlink_msg_adopt (&queued.part, part_) != ZLINK_CONFIG_OK)
@@ -2206,15 +2296,16 @@ extern "C" zlink_config_result_t zlink_spot_node_spots_snapshot (
                 ++entries_[i].joined_actor_count;
         }
         uint32_t pending_count = 0;
-        for (std::map<spot_handle_t *, std::deque<queued_join_request_t *> >::
-               const_iterator join_it = g_join_queues.begin ();
-             join_it != g_join_queues.end (); ++join_it) {
-            if ((spots[i].facade
-                 && same_logical_spot (join_it->first, spots[i].facade))
-                || (join_it->first && join_it->first->logical_state
-                    && join_it->first->logical_state == spots[i].state))
-                pending_count +=
-                  static_cast<uint32_t> (join_it->second.size ());
+        for (std::set<queued_join_request_t *>::const_iterator join_it =
+               g_live_join_requests.begin ();
+             join_it != g_live_join_requests.end (); ++join_it) {
+            const queued_join_request_t *request = *join_it;
+            if (!request->replied && request->spot
+                && ((spots[i].facade
+                     && same_logical_spot (request->spot, spots[i].facade))
+                    || (request->spot->logical_state
+                        && request->spot->logical_state == spots[i].state)))
+                ++pending_count;
         }
         entries_[i].pending_actor_join_count = pending_count;
         entries_[i].route_synced =

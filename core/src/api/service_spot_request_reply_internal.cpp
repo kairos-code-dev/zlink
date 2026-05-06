@@ -226,7 +226,8 @@ queued_routed_message_t &queued_routed_message_t::operator= (
 }
 
 routed_message_queue_t::routed_message_queue_t () :
-    pending_count (0)
+    pending_count (0),
+    signal_armed (false)
 {
 }
 
@@ -235,7 +236,6 @@ spot_request_reply_request_state_t::spot_request_reply_request_state_t ()
 }
 
 spot_request_reply_recv_state_t::spot_request_reply_recv_state_t () :
-    routed_recv_socket (NULL),
     request_handler (NULL),
     request_handler_userdata (NULL)
 {

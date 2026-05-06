@@ -265,17 +265,19 @@ int spot_subject_get_common_option (void *handle_,
         if (!admission.acquired ())
             return -1;
         if (pub_option >= 0) {
-            zlink::spot_pub_t *pub = ensure_spot_pub (spot);
+            zlink::spot_pub_t *pub =
+              spot->logical_state ? spot->logical_state->pub : NULL;
             if (!pub || !pub->poller_socket ()) {
-                errno = EFAULT;
+                errno = ENOTSUP;
                 return -1;
             }
             return pub->poller_socket ()->getsockopt (socket_option, optval_,
                                                       optvallen_);
         }
-        zlink::spot_sub_t *sub = ensure_spot_sub (spot);
+        zlink::spot_sub_t *sub =
+          spot->logical_state ? spot->logical_state->sub : NULL;
         if (!sub || !sub->poller_socket ()) {
-            errno = EFAULT;
+            errno = ENOTSUP;
             return -1;
         }
         return sub->poller_socket ()->getsockopt (socket_option, optval_,
@@ -370,9 +372,10 @@ int spot_subject_get_pub_option (void *handle_,
             return copy_option_setting_value (spot->pending_pub_defaults.nodrop,
                                               optval_, optvallen_);
         }
-        zlink::spot_pub_t *pub = ensure_spot_pub (spot);
+        zlink::spot_pub_t *pub =
+          spot->logical_state ? spot->logical_state->pub : NULL;
         if (!pub || !pub->poller_socket ()) {
-            errno = EFAULT;
+            errno = ENOTSUP;
             return -1;
         }
         return pub->poller_socket ()->getsockopt (socket_option, optval_,
@@ -462,9 +465,10 @@ int spot_subject_get_sub_option (void *handle_,
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return -1;
-        zlink::spot_sub_t *sub = ensure_spot_sub (spot);
+        zlink::spot_sub_t *sub =
+          spot->logical_state ? spot->logical_state->sub : NULL;
         if (!sub || !sub->poller_socket ()) {
-            errno = EFAULT;
+            errno = ENOTSUP;
             return -1;
         }
         return sub->poller_socket ()->getsockopt (socket_option, optval_,

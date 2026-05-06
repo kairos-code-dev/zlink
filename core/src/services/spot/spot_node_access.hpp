@@ -58,6 +58,7 @@ struct spot_node_access_t
     static void delete_handle (spot_node_t *node_);
     static int status_snapshot (spot_node_t *node_,
                                 zlink_spot_node_status_t *out_);
+    static bool has_active_peers (spot_node_t *node_);
     static std::string summary_service_name (spot_node_t *node_);
     static socket_base_t *select_service_router (spot_node_t *node_,
                                                  const std::string &service_name_);

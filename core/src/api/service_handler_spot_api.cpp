@@ -91,75 +91,6 @@ void spot_sub_handler_adapter (const zlink_routing_id_t *source_rid_,
 }
 } // namespace
 
-zlink::spot_pub_t *ensure_spot_pub (spot_handle_t *spot_)
-{
-    if (!spot_ || !spot_->node) {
-        errno = EFAULT;
-        return NULL;
-    }
-
-    if (!spot_->logical_state) {
-        errno = EFAULT;
-        return NULL;
-    }
-    if (spot_->logical_state->pub)
-        return spot_->logical_state->pub;
-
-    zlink::spot_pub_t *pub = spot_->node->create_spot_pub ();
-    if (!pub)
-        return NULL;
-
-    if (zlink::apply_spot_pub_defaults (pub, spot_->pending_pub_defaults) != 0) {
-        const int err = errno;
-        (void) pub->destroy ();
-        delete pub;
-        errno = err;
-        return NULL;
-    }
-
-    spot_->logical_state->pub = pub;
-    return spot_->logical_state->pub;
-}
-
-zlink::spot_sub_t *ensure_spot_sub (spot_handle_t *spot_)
-{
-    if (!spot_ || !spot_->node) {
-        errno = EFAULT;
-        return NULL;
-    }
-
-    if (!spot_->logical_state) {
-        errno = EFAULT;
-        return NULL;
-    }
-    if (spot_->logical_state->sub)
-        return spot_->logical_state->sub;
-
-    zlink::spot_sub_t *sub = spot_->node->create_spot_sub ();
-    if (!sub)
-        return NULL;
-
-    if (spot_->handler
-        && sub->set_direct_handler (&spot_sub_handler_adapter, spot_) != 0) {
-        const int err = errno;
-        (void) sub->destroy ();
-        delete sub;
-        errno = err;
-        return NULL;
-    }
-
-    if (zlink::apply_spot_sub_defaults (sub, spot_->pending_sub_defaults) != 0) {
-        const int err = errno;
-        (void) sub->destroy ();
-        delete sub;
-        errno = err;
-        return NULL;
-    }
-
-    spot_->logical_state->sub = sub;
-    return spot_->logical_state->sub;
-}
-
 bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_)
 {
     if (!node_)
@@ -193,18 +124,9 @@ int spot_install_handler (spot_handle_t *spot_,
         return -1;
     }
 
-    zlink::spot_sub_t *sub = ensure_spot_sub (spot_);
-    if (!sub)
-        return -1;
-
     spot_->handler = handler_;
     spot_->handler_userdata = userdata_;
-    const int rc = sub->set_direct_handler (&spot_sub_handler_adapter, spot_);
-    if (rc != 0) {
-        spot_->handler = NULL;
-        spot_->handler_userdata = NULL;
-    }
-    return rc;
+    return 0;
 }
 
 int spot_node_install_handler (zlink::spot_node_t *node_,
@@ -312,17 +234,10 @@ int spot_install_send_ready_handler (spot_handle_t *spot_,
     bool already_active = false;
     if (spot_activate_send_ready_mode (spot_, &already_active) != 0)
         return -1;
-    zlink::spot_pub_t *pub = ensure_spot_pub (spot_);
-    if (!pub) {
-        if (!already_active)
-            spot_revert_send_ready_mode (spot_);
-        errno = ENOTSUP;
-        return -1;
-    }
-    const int rc = pub->set_send_ready_handler (handler_, spot_, userdata_);
-    if (rc != 0 && !already_active)
+    if (!already_active)
         spot_revert_send_ready_mode (spot_);
-    return rc;
+    errno = ENOTSUP;
+    return -1;
 }
 
 int spot_node_install_send_ready_handler (

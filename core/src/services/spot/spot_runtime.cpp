@@ -97,6 +97,9 @@ size_t fill_runtime_socket_slot_refs_impl (runtime_t *runtime_, slot_ref_t *out_
       slot_ref_t{&runtime_->internal_router_tx,
                  &runtime_->internal_router_sender_endpoint, true};
     out_[count++] =
+      slot_ref_t{&runtime_->pub_ingress_tx,
+                 &runtime_->pub_ingress_sender_endpoint, true};
+    out_[count++] =
       slot_ref_t{&runtime_->local_pub_ingress_sub,
                  &runtime_->pub_ingress_endpoint, false};
     out_[count++] =
@@ -128,6 +131,7 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     external_router (NULL),
     internal_router (NULL),
     internal_router_tx (NULL),
+    pub_ingress_tx (NULL),
     local_pub_ingress_sub (NULL),
     local_fanout_xpub (NULL),
     data_plane_runtime (NULL),
@@ -281,6 +285,24 @@ int spot_runtime_t::start ()
             owner->untrack_owned_socket (data_ctrl_front);
         close_socket_ptr (&data_ctrl_front);
         return -1;
+    }
+    if (owner->pubsub_enabled ()) {
+        socket_base_t *pub_ingress_sender = NULL;
+        if (ensure_sender_socket (spot_runtime_sender_pub_ingress,
+                                  &pub_ingress_sender)
+            != 0) {
+            const int err = errno != 0 ? errno : EIO;
+            stop.set (1);
+            stop_sockets ();
+            spot_data_plane_t::teardown_runtime (
+              owner, this, &execution.data_plane_state,
+              &execution.data_plane_protocol_state);
+            if (owner)
+                owner->untrack_owned_socket (data_ctrl_front);
+            close_socket_ptr (&data_ctrl_front);
+            errno = err;
+            return -1;
+        }
     }
 
     data_plane_runtime = owner->_ctx->service_data_runtime_for_key (node_id);

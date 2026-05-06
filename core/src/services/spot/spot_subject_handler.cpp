@@ -168,19 +168,9 @@ int spot_install_handler (spot_handle_t *spot_,
         return -1;
     }
 
-    zlink::spot_sub_t *sub = ensure_spot_sub (spot_);
-    if (!sub)
-        return -1;
-
     spot_->handler = handler_;
     spot_->handler_userdata = userdata_;
-    const int rc = sub->set_direct_handler (
-      &spot_subject_composite_sub_handler_adapter, spot_);
-    if (rc != 0) {
-        spot_->handler = NULL;
-        spot_->handler_userdata = NULL;
-    }
-    return rc;
+    return 0;
 }
 
 int spot_node_install_handler (zlink::spot_node_t *node_,
@@ -255,12 +245,7 @@ int spot_install_dispatch_event_sub_handler (spot_handle_t *spot_)
         return -1;
     }
 
-    zlink::spot_sub_t *sub = ensure_spot_sub (spot_);
-    if (!sub)
-        return -1;
-
-    return sub->set_direct_handler (&spot_sub_dispatch_event_handler_adapter,
-                                    spot_);
+    return 0;
 }
 
 int spot_node_install_recv_handler (zlink::spot_node_t *node_,
@@ -303,17 +288,10 @@ int spot_install_send_ready_handler (spot_handle_t *spot_,
     bool already_active = false;
     if (spot_activate_send_ready_mode (spot_, &already_active) != 0)
         return -1;
-    zlink::spot_pub_t *pub = ensure_spot_pub (spot_);
-    if (!pub) {
-        if (!already_active)
-            spot_revert_send_ready_mode (spot_);
-        errno = ENOTSUP;
-        return -1;
-    }
-    const int rc = pub->set_send_ready_handler (handler_, spot_, userdata_);
-    if (rc != 0 && !already_active)
+    if (!already_active)
         spot_revert_send_ready_mode (spot_);
-    return rc;
+    errno = ENOTSUP;
+    return -1;
 }
 
 int spot_node_install_send_ready_handler (zlink::spot_node_t *node_,

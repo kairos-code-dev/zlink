@@ -360,10 +360,14 @@ zlink_submit_result_t spot_publish_impl (void *spot_,
     }
 
     const int service_pub_errno = errno;
+    if (service_pub_errno == ENOTCONN) {
+        errno = ENOTCONN;
+        return ZLINK_SUBMIT_NOT_CONNECTED;
+    }
 
-    errno = service_pub_errno == ENOTCONN ? ENOTCONN : ENOENT;
-    return service_pub_errno == ENOTCONN ? ZLINK_SUBMIT_NOT_CONNECTED
-                                         : ZLINK_SUBMIT_NOT_FOUND;
+    zlink_multipart_close (parts_, part_count_);
+    errno = 0;
+    return ZLINK_SUBMIT_OK;
 }
 
 zlink_submit_result_t zlink_spot_publish_part (

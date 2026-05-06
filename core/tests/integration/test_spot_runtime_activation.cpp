@@ -29,9 +29,12 @@ void test_spot_new_keeps_routed_recv_lazy_until_first_recv ()
     std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> state =
       zlink::spot_reqrep_internal::try_find_spot_state (spot);
     TEST_ASSERT_NOT_NULL (state.get ());
-    TEST_ASSERT_NULL (state->recv.routed_recv_socket);
-    TEST_ASSERT_NULL (state->recv.routed_recv_queue.signal.rx);
-    TEST_ASSERT_NULL (state->recv.routed_recv_queue.signal.tx);
+    zlink_fd_t routed_fd = zlink::retired_fd;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink::spot_reqrep_internal::spot_routed_recv_fd (state, &routed_fd));
+    TEST_ASSERT_NOT_EQUAL (zlink::retired_fd, routed_fd);
+    TEST_ASSERT_FALSE (state->recv.routed_recv_queue.signal_armed);
+    TEST_ASSERT_EQUAL_UINT64 (0, state->recv.routed_recv_queue.pending_count);
     TEST_ASSERT_NULL (
       zlink::spot_reqrep_internal::spot_completion_signal_socket (state));
 
@@ -50,11 +53,12 @@ void test_spot_new_keeps_routed_recv_lazy_until_first_recv ()
 
     state = zlink::spot_reqrep_internal::try_find_spot_state (spot);
     TEST_ASSERT_NOT_NULL (state.get ());
-    TEST_ASSERT_NOT_NULL (state->recv.routed_recv_socket);
-    TEST_ASSERT_NOT_NULL (state->recv.routed_recv_queue.signal.rx);
-    TEST_ASSERT_NOT_NULL (state->recv.routed_recv_queue.signal.tx);
-    TEST_ASSERT_EQUAL_PTR (state->recv.routed_recv_queue.signal.rx,
-                           state->recv.routed_recv_socket);
+    routed_fd = zlink::retired_fd;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink::spot_reqrep_internal::spot_routed_recv_fd (state, &routed_fd));
+    TEST_ASSERT_NOT_EQUAL (zlink::retired_fd, routed_fd);
+    TEST_ASSERT_FALSE (state->recv.routed_recv_queue.signal_armed);
+    TEST_ASSERT_EQUAL_UINT64 (0, state->recv.routed_recv_queue.pending_count);
     TEST_ASSERT_NOT_NULL (
       zlink::spot_reqrep_internal::spot_completion_signal_socket (state));
 

@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_auto_hwm_internal.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -34,6 +35,9 @@ static void refresh_runtime_pubsub_admission_hwm (spot_runtime_t *runtime_,
     if (runtime_->local_pub_ingress_sub)
         (void) runtime_->local_pub_ingress_sub->setsockopt (
           ZLINK_INTERNAL_OPT_RCVHWM, &hwm_, sizeof (hwm_));
+    if (runtime_->pub_ingress_tx)
+        (void) runtime_->pub_ingress_tx->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
+                                                     &hwm_, sizeof (hwm_));
 }
 
 static void refresh_runtime_router_admission_hwm (spot_runtime_t *runtime_,
@@ -59,11 +63,13 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
 
     socket_base_t *sockets[] = {
       runtime_->mesh_pub,
-      runtime_->local_fanout_xpub,
-      runtime_->local_pub_ingress_sub,
-      runtime_->mesh_xsub,
-      runtime_->internal_router,
-      runtime_->external_router};
+	      runtime_->local_fanout_xpub,
+	      runtime_->local_pub_ingress_sub,
+	      runtime_->pub_ingress_tx,
+	      runtime_->mesh_xsub,
+	      runtime_->internal_router,
+	      runtime_->internal_router_tx,
+	      runtime_->external_router};
 
     for (size_t i = 0; i != sizeof (sockets) / sizeof (sockets[0]); ++i) {
         socket_base_t *socket = sockets[i];
@@ -172,6 +178,28 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
         (void) runtime_->internal_router->setsockopt (
           ZLINK_INTERNAL_OPT_RCVHWM, &router_hwm, sizeof (router_hwm));
     }
+}
+
+static void spot_internal_receiver_fanout_handler (
+  const zlink_routing_id_t *source_rid_,
+  const char *topic_,
+  size_t topic_len_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_)
+{
+    spot_node_t *node = static_cast<spot_node_t *> (userdata_);
+    if (!node || !node->check_tag ()) {
+        zlink_multipart_close (parts_, part_count_);
+        return;
+    }
+
+    const std::string topic (topic_ ? topic_ : "", topic_len_);
+    const std::string service_name =
+      spot_node_access_t::summary_service_name (node);
+    (void) node->fanout_local_publish (
+      service_name.c_str (), source_rid_, topic.c_str (), parts_, part_count_);
+    zlink_multipart_close (parts_, part_count_);
 }
 
 static bool apply_runtime_hwm_option (spot_node_hwm_config_t *config_,
@@ -616,6 +644,16 @@ spot_internal_receiver_t *spot_node_t::ensure_internal_receiver ()
         (void) sub->abort_create ();
         delete sub;
         errno = ENOMEM;
+        return NULL;
+    }
+    if (receiver->set_direct_handler (&spot_internal_receiver_fanout_handler,
+                                      this)
+        != 0) {
+        const int err = errno;
+        (void) receiver->abort_create ();
+        delete receiver;
+        delete sub;
+        errno = err;
         return NULL;
     }
 

@@ -30,6 +30,8 @@ using zlink::spot_reqrep_internal::router_state_identity_index_t;
 using zlink::spot_reqrep_internal::spot_state_identity_index_t;
 using zlink::spot_reqrep_internal::spot_state_spot_index_t;
 
+extern "C" void zlink_actor_replay_readable_for_spot (void *spot_);
+
 zlink_recv_result_t spot_recv_impl (void *spot_,
                                     const zlink_routing_id_t **source_rid_out_,
                                     const zlink_routing_id_t **spot_rid_out_,
@@ -83,10 +85,8 @@ zlink_recv_result_t spot_recv_impl (void *spot_,
 
         bool input_ready = false;
         bool signal_ready = false;
-        const int wait_rc = zlink::request_completion::wait_input_or_signal (
-          zlink::spot_reqrep_internal::spot_routed_recv_socket (state),
-          zlink::spot_reqrep_internal::spot_completion_signal_socket (state),
-          -1, &input_ready, &signal_ready);
+        const int wait_rc = zlink::spot_reqrep_internal::spot_routed_recv_wait (
+          state, -1, &input_ready, &signal_ready);
         if (wait_rc <= 0) {
             if (wait_rc == 0)
                 errno = EAGAIN;
@@ -191,6 +191,7 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler (
         spot_revert_callback_transition (as_spot_handle (spot_));
         return zlink::handler_result_internal::from_rc (-1);
     }
+    zlink_actor_replay_readable_for_spot (spot_);
     return ZLINK_HANDLER_OK;
 }
 
@@ -401,7 +402,6 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
     uint64_t dispatch_task_id = 0;
     std::shared_ptr<spot_request_reply_state_t> state =
       try_find_spot_state (spot);
-    zlink::internal_pair_queue::queue_t routed_recv_signal;
     if (state)
         (void) zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (
           spot_);
@@ -428,17 +428,7 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
         state->dispatch.runtime = NULL;
         state->dispatch.task_id = 0;
     }
-    zlink::spot_reqrep_internal::close_spot_routed_recv_state (
-      state, &routed_recv_signal);
-    if (routed_recv_signal.rx || routed_recv_signal.tx) {
-        if (routed_recv_signal.rx)
-            zlink::spot_node_access_t::untrack_owned_socket (
-              spot->node, routed_recv_signal.rx);
-        if (routed_recv_signal.tx)
-            zlink::spot_node_access_t::untrack_owned_socket (
-              spot->node, routed_recv_signal.tx);
-        zlink::internal_pair_queue::close (&routed_recv_signal);
-    }
+    zlink::spot_reqrep_internal::close_spot_routed_recv_state (state);
     if (dispatch_runtime && dispatch_task_id != 0)
         (void) dispatch_runtime->remove_task (dispatch_task_id);
     if (state) {

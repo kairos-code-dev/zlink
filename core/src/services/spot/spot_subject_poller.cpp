@@ -40,8 +40,8 @@ zlink::socket_base_t *resolve_spot_pub_subject_poller_socket (
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return NULL;
-        zlink::spot_pub_t *pub = ensure_spot_pub (spot);
-        return pub ? pub->poller_socket () : NULL;
+        errno = ENOTSUP;
+        return NULL;
     }
     if (is_registered_spot_node_handle (spot_or_node_)) {
         errno = ENOTSUP;
@@ -59,8 +59,12 @@ zlink::socket_base_t *resolve_spot_sub_subject_poller_socket (
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return NULL;
-        zlink::spot_sub_t *sub = ensure_spot_sub (spot);
-        return sub ? sub->poller_socket () : NULL;
+        if (!spot->logical_state || !spot->node) {
+            errno = EFAULT;
+            return NULL;
+        }
+        errno = ENOTSUP;
+        return NULL;
     }
     if (is_registered_spot_node_handle (spot_or_node_)) {
         zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (spot_or_node_);
@@ -76,4 +80,47 @@ zlink::socket_base_t *resolve_spot_sub_subject_poller_socket (
     }
     errno = EFAULT;
     return NULL;
+}
+
+int resolve_spot_sub_subject_poller_fd (void *spot_or_node_,
+                                        zlink_fd_t *fd_out_)
+{
+    if (!fd_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+    *fd_out_ = zlink::retired_fd;
+
+    if (!is_registered_spot_handle (spot_or_node_)) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    spot_handle_t *spot = static_cast<spot_handle_t *> (spot_or_node_);
+    zlink::service_public_api_scope_t admission (spot->public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!spot->logical_state || !spot->node) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (!spot->logical_state->subscribe_signaler.valid ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    bool should_signal = false;
+    {
+        zlink::scoped_lock_t lock (spot->logical_state->pubsub_sync);
+        if (!spot->logical_state->subscribe_queue.empty ()
+            && !spot->logical_state->subscribe_signal_armed) {
+            spot->logical_state->subscribe_signal_armed = true;
+            should_signal = true;
+        }
+    }
+    if (should_signal)
+        spot->logical_state->subscribe_signaler.send ();
+
+    *fd_out_ = spot->logical_state->subscribe_signaler.get_fd ();
+    return 0;
 }

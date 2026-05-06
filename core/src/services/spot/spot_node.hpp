@@ -86,6 +86,7 @@ class spot_node_t : public discovery_observer_t
     int update_spot_routing_id (spot_handle_t *spot_,
                                 const void *data_,
                                 size_t size_);
+    void lock_entry_spot_rid ();
     int set_tls_server (const char *cert_, const char *key_);
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
@@ -133,6 +134,9 @@ class spot_node_t : public discovery_observer_t
     bool update_aggregate_subscription (const std::string &raw_filter_,
                                         bool pattern_,
                                         bool subscribe_);
+    int update_logical_spot_subscription (const std::string &raw_filter_,
+                                          bool pattern_,
+                                          bool subscribe_);
     void snapshot_subscription_subjects (
       std::vector<spot_sub_t::subject_descriptor_t> *out_) const;
     int snapshot_status (zlink_spot_node_status_t *out_) const;
@@ -235,6 +239,11 @@ class spot_node_t : public discovery_observer_t
     std::string summary_service_name () const;
     void submit_pub_summary (spot_pub_t *pub_, uint16_t state_, int error_code_);
     void submit_sub_summary (spot_sub_t *sub_, uint16_t state_, int error_code_);
+    void submit_spot_owner_summary (
+      const std::shared_ptr<spot_logical_state_t> &state_,
+      uint16_t state, int error_code_);
+    void submit_spot_owner_summary_for_rid (
+      const zlink_routing_id_t &rid_, uint16_t state_, int error_code_);
     void submit_stopped_summaries ();
     void refresh_existing_summaries ();
     void refresh_sub_peer_summaries (bool has_active_peers,

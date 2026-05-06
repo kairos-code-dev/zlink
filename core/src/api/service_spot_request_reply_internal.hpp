@@ -18,10 +18,10 @@
 #include <unordered_set>
 #include <vector>
 
-#include "api/internal_pair_queue_internal.hpp"
 #include "api/request_completion_queue_internal.hpp"
 #include "api/request_reply_runtime_core.hpp"
 #include "api/request_timeout_scheduler_internal.hpp"
+#include "core/signaler.hpp"
 
 namespace zlink
 {
@@ -157,8 +157,9 @@ struct routed_message_queue_t
 
     std::mutex mutex;
     std::deque<queued_routed_message_t> pending;
-    zlink::internal_pair_queue::queue_t signal;
     size_t pending_count;
+    zlink::signaler_t signaler;
+    bool signal_armed;
 };
 
 struct spot_request_reply_request_state_t :
@@ -177,7 +178,6 @@ struct spot_request_reply_recv_state_t
 
     spot_subscribe_dispatch_queue_t subscribe_queue;
     routed_message_queue_t routed_recv_queue;
-    zlink::socket_base_t *routed_recv_socket;
     zlink_spot_handler_fn request_handler;
     void *request_handler_userdata;
 };
@@ -402,11 +402,16 @@ int ensure_router_completion_queue_ready (
   const std::shared_ptr<router_spot_request_reply_state_t> &state_);
 int ensure_spot_recv_ready (
   const std::shared_ptr<spot_request_reply_state_t> &state_);
-zlink::socket_base_t *spot_routed_recv_socket (
-  const std::shared_ptr<spot_request_reply_state_t> &state_);
-void close_spot_routed_recv_state (
+int spot_routed_recv_fd (
   const std::shared_ptr<spot_request_reply_state_t> &state_,
-  zlink::internal_pair_queue::queue_t *signal_out_);
+  zlink_fd_t *fd_out_);
+int spot_routed_recv_wait (
+  const std::shared_ptr<spot_request_reply_state_t> &state_,
+  int timeout_ms_,
+  bool *input_ready_out_,
+  bool *signal_ready_out_);
+void close_spot_routed_recv_state (
+  const std::shared_ptr<spot_request_reply_state_t> &state_);
 int queue_spot_reply_completion (
   const std::shared_ptr<spot_request_reply_state_t> &state_,
   zlink_reply_handler_fn handler_,

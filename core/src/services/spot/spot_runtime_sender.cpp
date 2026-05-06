@@ -15,11 +15,17 @@ int spot_runtime_t::ensure_sender_socket (spot_runtime_sender_kind_t kind_,
         errno = EFAULT;
         return -1;
     }
-    if (kind_ != spot_runtime_sender_internal_router) {
+    if (kind_ != spot_runtime_sender_internal_router
+        && kind_ != spot_runtime_sender_pub_ingress) {
         errno = EINVAL;
         return -1;
     }
-    if (!owner->routed_enabled ()) {
+    if (kind_ == spot_runtime_sender_internal_router
+        && !owner->routed_enabled ()) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    if (kind_ == spot_runtime_sender_pub_ingress && !owner->pubsub_enabled ()) {
         errno = ENOTSUP;
         return -1;
     }
@@ -31,9 +37,16 @@ int spot_runtime_t::ensure_sender_socket (spot_runtime_sender_kind_t kind_,
         return -1;
     }
 
-    socket_base_t *&slot = internal_router_tx;
-    std::string &connected_endpoint = internal_router_sender_endpoint;
-    const std::string &target_endpoint = internal_router_endpoint;
+    socket_base_t *&slot =
+      kind_ == spot_runtime_sender_internal_router ? internal_router_tx
+                                                   : pub_ingress_tx;
+    std::string &connected_endpoint =
+      kind_ == spot_runtime_sender_internal_router
+        ? internal_router_sender_endpoint
+        : pub_ingress_sender_endpoint;
+    const std::string &target_endpoint =
+      kind_ == spot_runtime_sender_internal_router ? internal_router_endpoint
+                                                   : pub_ingress_endpoint;
     if (target_endpoint.empty ()) {
         errno = EFAULT;
         return -1;
@@ -49,7 +62,9 @@ int spot_runtime_t::ensure_sender_socket (spot_runtime_sender_kind_t kind_,
         connected_endpoint.clear ();
     }
 
-    socket_base_t *socket = owner->_ctx->create_socket (ZLINK_CORE_SOCKET_DEALER);
+    socket_base_t *socket = owner->_ctx->create_socket (
+      kind_ == spot_runtime_sender_internal_router ? ZLINK_CORE_SOCKET_DEALER
+                                                   : ZLINK_CORE_SOCKET_PUB);
     if (!socket)
         return -1;
     socket->set_auto_hwm_policy_enabled (false);
@@ -61,19 +76,25 @@ int spot_runtime_t::ensure_sender_socket (spot_runtime_sender_kind_t kind_,
                               &connected_peer_count, &active_peer_count);
     apply_spot_internal_auto_hwm (
       owner->_ctx, socket,
-      spot_internal_auto_hwm_policy_t{auto_hwm_role_routed,
-                                      ZLINK_CORE_SOCKET_DEALER,
+      spot_internal_auto_hwm_policy_t{kind_ == spot_runtime_sender_internal_router
+                                        ? auto_hwm_role_routed
+                                        : auto_hwm_role_spot_data,
+                                      kind_ == spot_runtime_sender_internal_router
+                                        ? ZLINK_CORE_SOCKET_DEALER
+                                        : ZLINK_CORE_SOCKET_PUB,
                                       connected_peer_count,
                                       active_peer_count,
                                       0, 0, true, true, true, true});
 
     const spot_node_hwm_config_t hwm_config = hwm_config_snapshot ();
-    const int router_admission_hwm =
-      spot_node_router_admission_hwm (hwm_config);
+    const int admission_hwm =
+      kind_ == spot_runtime_sender_internal_router
+        ? spot_node_router_admission_hwm (hwm_config)
+        : spot_node_pubsub_admission_hwm (hwm_config);
     const int zero = 0;
     const int linger = 0;
-    socket->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &router_admission_hwm,
-                         sizeof (router_admission_hwm));
+    socket->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &admission_hwm,
+                         sizeof (admission_hwm));
     socket->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero, sizeof (zero));
     socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
     if (socket->connect (target_endpoint.c_str ()) != 0) {
@@ -96,7 +117,8 @@ int spot_runtime_t::close_sender_cache (spot_runtime_sender_kind_t kind_,
         errno = EFAULT;
         return -1;
     }
-    if (kind_ != spot_runtime_sender_internal_router) {
+    if (kind_ != spot_runtime_sender_internal_router
+        && kind_ != spot_runtime_sender_pub_ingress) {
         errno = EINVAL;
         return -1;
     }
@@ -105,10 +127,17 @@ int spot_runtime_t::close_sender_cache (spot_runtime_sender_kind_t kind_,
     std::string endpoint;
     {
         scoped_lock_t lock (owner->_sync);
-        socket = internal_router_tx;
-        endpoint = internal_router_sender_endpoint;
-        internal_router_tx = NULL;
-        internal_router_sender_endpoint.clear ();
+        if (kind_ == spot_runtime_sender_internal_router) {
+            socket = internal_router_tx;
+            endpoint = internal_router_sender_endpoint;
+            internal_router_tx = NULL;
+            internal_router_sender_endpoint.clear ();
+        } else {
+            socket = pub_ingress_tx;
+            endpoint = pub_ingress_sender_endpoint;
+            pub_ingress_tx = NULL;
+            pub_ingress_sender_endpoint.clear ();
+        }
     }
 
     if (!socket)
@@ -124,6 +153,9 @@ int spot_runtime_t::close_sender_caches (int timeout_ms_)
     int first_error = 0;
     preserve_first_error (
       close_sender_cache (spot_runtime_sender_internal_router, timeout_ms_),
+      &first_error);
+    preserve_first_error (
+      close_sender_cache (spot_runtime_sender_pub_ingress, timeout_ms_),
       &first_error);
     if (first_error != 0) {
         errno = first_error;

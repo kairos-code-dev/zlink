@@ -168,6 +168,78 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
     return 0;
 }
 
+int spot_sub_t::apply_aggregate_subscription (const std::string &raw_filter_,
+                                              bool pattern_,
+                                              bool subscribe_)
+{
+    socket_base_t *socket = this->socket ();
+    if (!_node || !socket || raw_filter_.empty ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const uint32_t subject_kind =
+      pattern_ ? ZLINK_SERVICE_EVENT_SUBJECT_PATTERN
+               : ZLINK_SERVICE_EVENT_SUBJECT_TOPIC;
+    const std::string subject = pattern_ ? raw_filter_ + "*" : raw_filter_;
+    bool had_filters = false;
+    bool has_filters = false;
+    bool changed = false;
+    {
+        scoped_lock_t lock (_sync);
+        had_filters = !_topics.empty () || !_patterns.empty ();
+        lock_routing_id ();
+        std::set<std::string> &filters = pattern_ ? _patterns : _topics;
+        if (subscribe_) {
+            changed = filters.count (raw_filter_) == 0;
+            if (changed) {
+                if (socket->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE,
+                                        raw_filter_.data (),
+                                        raw_filter_.size ())
+                    != 0)
+                    return -1;
+                filters.insert (raw_filter_);
+                _delivery_ready_raw_filters.erase (raw_filter_);
+            }
+        } else {
+            changed = filters.count (raw_filter_) != 0;
+            if (changed) {
+                if (socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE,
+                                        raw_filter_.data (),
+                                        raw_filter_.size ())
+                    != 0)
+                    return -1;
+                filters.erase (raw_filter_);
+                _delivery_ready_raw_filters.erase (raw_filter_);
+            }
+        }
+        has_filters = !_topics.empty () || !_patterns.empty ();
+    }
+
+    if (!changed)
+        return 0;
+
+    {
+        scoped_lock_t node_lock (_node->_sync);
+        _node->_summary_state.subject_last_changed_ms[make_subject_key (
+          subject, subject_kind)] = zlink::clock_t ().now_ms ();
+        _node->_summary_state.summary_last_changed_ms =
+          zlink::clock_t ().now_ms ();
+    }
+
+    _node->note_local_sub_filters_changed (had_filters, has_filters);
+    if (subscribe_) {
+        emit_filter_applied_event (subject.c_str (), subject_kind);
+        _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
+    } else {
+        _node->submit_sub_summary (
+          this, has_filters ? ZLINK_TOPOLOGY_STATE_READY
+                            : ZLINK_TOPOLOGY_STATE_CONNECTING,
+          0);
+    }
+    return 0;
+}
+
 int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
 {
     socket_base_t *socket = this->socket ();

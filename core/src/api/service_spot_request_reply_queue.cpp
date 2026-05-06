@@ -82,22 +82,19 @@ int copy_topic_to_output_local (const char *topic_data_,
 }
 
 bool reserve_routed_queue_slot_local (
-  const std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> &state_,
-  zlink::socket_base_t **queue_tx_out_)
+  const std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> &state_)
 {
-    if (!state_ || !queue_tx_out_) {
+    if (!state_) {
         errno = EFAULT;
         return false;
     }
 
     std::lock_guard<std::mutex> lock (state_->mutex);
-    if (!state_->recv.routed_recv_queue.signal.tx
-        || !state_->recv.routed_recv_socket) {
+    if (!state_->recv.routed_recv_queue.signaler.valid ()) {
         errno = ETERM;
         return false;
     }
     ++state_->recv.routed_recv_queue.pending_count;
-    *queue_tx_out_ = state_->recv.routed_recv_queue.signal.tx;
     return true;
 }
 
@@ -112,24 +109,6 @@ void release_routed_queue_slot_local (
         --state_->recv.routed_recv_queue.pending_count;
 }
 
-int send_routed_queue_signal_local (zlink::socket_base_t *queue_tx_)
-{
-    if (!queue_tx_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink_msg_t signal;
-    zlink_msg_init (&signal);
-    if (zlink_msg_init_size (&signal, 0) != 0)
-        return -1;
-    const int rc = zlink::logical_multipart_send (queue_tx_, &signal, 1,
-                                                  ZLINK_DONTWAIT);
-    const int saved_errno = errno;
-    zlink_msg_close (&signal);
-    errno = saved_errno;
-    return rc;
-}
 }
 
 void zlink::spot_reqrep_internal::close_spot_dispatch_parts (
@@ -168,8 +147,7 @@ int zlink::spot_reqrep_internal::queue_spot_message (
         return -1;
     }
 
-    zlink::socket_base_t *queue_tx = NULL;
-    if (!reserve_routed_queue_slot_local (state, &queue_tx)) {
+    if (!reserve_routed_queue_slot_local (state)) {
         const int saved_errno = errno;
         errno = saved_errno;
         zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
@@ -189,29 +167,23 @@ int zlink::spot_reqrep_internal::queue_spot_message (
             zlink_msg_close (&part);
             zlink::request_reply::consume_send_frames_from (
               parts_, i, part_count_);
+            release_routed_queue_slot_local (state);
             return -1;
         }
         message.parts.push_back (part);
     }
 
+    bool should_signal = false;
     {
         std::lock_guard<std::mutex> lock (state->recv.routed_recv_queue.mutex);
         state->recv.routed_recv_queue.pending.push_back (std::move (message));
-    }
-
-    if (send_routed_queue_signal_local (queue_tx)
-        != 0) {
-        const int saved_errno = errno;
-        {
-            std::lock_guard<std::mutex> lock (
-              state->recv.routed_recv_queue.mutex);
-            if (!state->recv.routed_recv_queue.pending.empty ())
-                state->recv.routed_recv_queue.pending.pop_back ();
+        if (!state->recv.routed_recv_queue.signal_armed) {
+            state->recv.routed_recv_queue.signal_armed = true;
+            should_signal = true;
         }
-        release_routed_queue_slot_local (state);
-        errno = saved_errno;
-        return -1;
     }
+    if (should_signal)
+        state->recv.routed_recv_queue.signaler.send ();
 
     maybe_dispatch_spot_info (state.get (),
                               ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE,
@@ -291,41 +263,64 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
   size_t *part_count_out_,
   int flags_)
 {
-    LIBZLINK_UNUSED (flags_);
     if (!state_ || !source_rid_out_ || !spot_rid_out_
         || !request_seq_out_ || !parts_out_ || !part_count_out_) {
         errno = EFAULT;
         return -1;
     }
-    zlink_msg_t signal;
-    zlink_msg_init (&signal);
-    if (state_->recv.routed_recv_socket->recv (
-          reinterpret_cast<zlink::msg_t *> (&signal), flags_)
-        != 0) {
-        zlink_msg_close (&signal);
-        return -1;
-    }
-    zlink_msg_close (&signal);
-
-    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0) {
-        return -1;
+    std::shared_ptr<spot_request_reply_state_t> state =
+      zlink::spot_reqrep_internal::try_find_spot_state (state_->owner);
+    if ((flags_ & ZLINK_DONTWAIT) == 0) {
+        bool input_ready = false;
+        bool signal_ready = false;
+        const int wait_rc = zlink::spot_reqrep_internal::spot_routed_recv_wait (
+          state, -1, &input_ready, &signal_ready);
+        LIBZLINK_UNUSED (signal_ready);
+        if (wait_rc <= 0) {
+            if (wait_rc == 0)
+                errno = EAGAIN;
+            return -1;
+        }
+        if (!input_ready) {
+            errno = EAGAIN;
+            return -1;
+        }
     }
 
     zlink::spot_reqrep_internal::queued_routed_message_t message;
+    bool drain_signal = false;
+    bool resignal = false;
     {
         std::lock_guard<std::mutex> lock (state_->recv.routed_recv_queue.mutex);
         if (state_->recv.routed_recv_queue.pending.empty ()) {
-            zlink::recv_tls_view::abort ();
-            errno = EPROTO;
+            errno = EAGAIN;
             return -1;
         }
         message = std::move (state_->recv.routed_recv_queue.pending.front ());
         state_->recv.routed_recv_queue.pending.pop_front ();
+        drain_signal = state_->recv.routed_recv_queue.signal_armed;
+        if (state_->recv.routed_recv_queue.pending.empty ()) {
+            state_->recv.routed_recv_queue.signal_armed = false;
+        } else if (state_->recv.routed_recv_queue.signal_armed) {
+            resignal = true;
+        }
+    }
+    if (drain_signal
+        && state_->recv.routed_recv_queue.signaler.recv_failable () != 0) {
+        errno = 0;
+    }
+    if (resignal)
+        state_->recv.routed_recv_queue.signaler.send ();
+
+    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0) {
+        release_routed_queue_slot_local (state);
+        return -1;
     }
 
     for (size_t i = 0; i < message.parts.size (); ++i) {
         if (zlink::recv_tls_view::push (&message.parts[i]) != 0) {
             zlink::recv_tls_view::abort ();
+            release_routed_queue_slot_local (state);
             return -1;
         }
     }
@@ -334,8 +329,7 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
     g_spot_recv_spot_rid = message.spot_rid;
 
     *request_seq_out_ = message.request_seq;
-    release_routed_queue_slot_local (
-      zlink::spot_reqrep_internal::try_find_spot_state (state_->owner));
+    release_routed_queue_slot_local (state);
     *source_rid_out_ = &g_spot_recv_source_rid;
     *spot_rid_out_ = g_spot_recv_spot_rid.size > 0 ? &g_spot_recv_spot_rid
                                                     : NULL;

@@ -130,6 +130,9 @@ class spot_sub_t
       std::vector<std::pair<std::string, std::string> > *out_);
     void lock_routing_id ();
     socket_base_t *socket () const;
+    int apply_aggregate_subscription (const std::string &raw_filter_,
+                                      bool pattern_,
+                                      bool subscribe_);
 
     spot_node_t *_node;
     socket_base_t *_socket;

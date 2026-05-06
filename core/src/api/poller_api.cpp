@@ -184,6 +184,16 @@ int fill_public_poller_event (poller_handle_t *poller_,
                 event_out_->events = native_.events;
                 return 0;
             }
+            if (registration.subject_kind == poller_subject_spot_sub
+                || registration.subject_kind == poller_subject_spot_routed) {
+                event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
+                event_out_->socket = registration.subject;
+                event_out_->fd = native_.fd;
+                event_out_->timer = NULL;
+                event_out_->user_data = native_.user_data;
+                event_out_->events = native_.events;
+                return 0;
+            }
 
             event_out_->source_kind = ZLINK_POLLER_SOURCE_FD;
             event_out_->socket = NULL;
@@ -249,6 +259,17 @@ int fill_public_poller_event_from_registration (
         event_out_->fd = native_.fd;
         event_out_->timer = registration_->subject;
         event_out_->user_data = native_.user_data;
+        event_out_->events = native_.events;
+        return 0;
+    }
+
+    if (registration_->subject_kind == poller_subject_spot_sub
+        || registration_->subject_kind == poller_subject_spot_routed) {
+        event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
+        event_out_->socket = registration_->subject;
+        event_out_->fd = native_.fd;
+        event_out_->timer = NULL;
+        event_out_->user_data = registration_->user_data;
         event_out_->events = native_.events;
         return 0;
     }

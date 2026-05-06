@@ -7,6 +7,7 @@
 #include "api/service_handle_internal.hpp"
 #include "api/service_mode_internal.hpp"
 #include "api/service_surface_internal.hpp"
+#include "core/recv_tls_view.hpp"
 
 #include <algorithm>
 #include <string>
@@ -146,7 +147,102 @@ bool logical_subscription_erase (
 
     zlink::scoped_lock_t lock (state_->pubsub_sync);
     return is_pattern_ ? state_->subscription_patterns.erase (raw_filter_) != 0
-                       : state_->subscription_topics.erase (raw_filter_) != 0;
+                      : state_->subscription_topics.erase (raw_filter_) != 0;
+}
+
+int copy_topic_to_output (const std::string &topic_,
+                          char *topic_id_out_,
+                          size_t *topic_id_len_out_)
+{
+    if (!topic_id_len_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+    const size_t capacity = *topic_id_len_out_;
+    *topic_id_len_out_ = topic_.size ();
+    if (!topic_id_out_)
+        return 0;
+    if (capacity < topic_.size ()) {
+        errno = EMSGSIZE;
+        return -1;
+    }
+    if (!topic_.empty ())
+        memcpy (topic_id_out_, topic_.data (), topic_.size ());
+    return 0;
+}
+
+int recv_logical_spot_subscription (
+  spot_handle_t *spot_,
+  zlink_routing_id_t *source_rid_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_)
+{
+    if (!spot_ || !spot_->logical_state || !parts_out_ || !part_count_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    std::shared_ptr<spot_logical_pubsub_message_t> message;
+    bool drain_signal = false;
+    bool resignal = false;
+    {
+        zlink::scoped_lock_t lock (spot_->logical_state->pubsub_sync);
+        if (spot_->logical_state->subscribe_queue.empty ()) {
+            errno = EAGAIN;
+            return -1;
+        }
+        message = spot_->logical_state->subscribe_queue.front ();
+        spot_->logical_state->subscribe_queue.pop_front ();
+        drain_signal = spot_->logical_state->subscribe_signal_armed;
+        if (spot_->logical_state->subscribe_queue.empty ()) {
+            spot_->logical_state->subscribe_signal_armed = false;
+        } else if (spot_->logical_state->subscribe_signal_armed) {
+            resignal = true;
+        }
+    }
+    if (drain_signal && spot_->logical_state->subscribe_signaler.valid ())
+        (void) spot_->logical_state->subscribe_signaler.recv_failable ();
+    if (resignal && spot_->logical_state->subscribe_signaler.valid ())
+        spot_->logical_state->subscribe_signaler.send ();
+    if (!message) {
+        errno = EAGAIN;
+        return -1;
+    }
+
+    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
+        return -1;
+    for (size_t i = 0; i < message->parts.size (); ++i) {
+        zlink_msg_t frame;
+        zlink_msg_init (&frame);
+        if (zlink_msg_init_size (&frame, message->parts[i].size ()) != 0) {
+            zlink_msg_close (&frame);
+            zlink::recv_tls_view::abort ();
+            return -1;
+        }
+        if (!message->parts[i].empty ())
+            memcpy (zlink_msg_data (&frame), message->parts[i].data (),
+                    message->parts[i].size ());
+        if (zlink::recv_tls_view::push (&frame) != 0) {
+            zlink_msg_close (&frame);
+            zlink::recv_tls_view::abort ();
+            return -1;
+        }
+    }
+    if (zlink::recv_tls_view::commit (parts_out_, part_count_out_) != 0) {
+        zlink::recv_tls_view::abort ();
+        return -1;
+    }
+    if (source_rid_out_)
+        *source_rid_out_ = message->source_rid;
+    if (copy_topic_to_output (message->topic_id, topic_id_out_,
+                              topic_id_len_out_)
+        != 0) {
+        zlink::recv_tls_view::abort ();
+        return -1;
+    }
+    return 0;
 }
 } // namespace
 
@@ -175,8 +271,6 @@ int spot_append_subscription_subjects (
         if (!admission.acquired ())
             return -1;
         append_logical_subscription_subjects (spot->logical_state, out_);
-        if (spot->logical_state && spot->logical_state->sub)
-            spot->logical_state->sub->append_all_subjects (out_);
         return 0;
     }
 
@@ -212,19 +306,11 @@ int spot_subject_recv (void *subject_,
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return -1;
-        if (in_spot_dispatch_event_callback (spot))
-            return spot_dispatch_subscribe_recv_internal (
-              spot, source_rid_out_, parts_out_, part_count_out_,
-              topic_id_out_, topic_id_len_out_, flags_);
         if (spot_require_recv_model (spot) != 0)
             return -1;
-        zlink::spot_sub_t *sub = ensure_spot_sub (spot);
-        if (!sub) {
-            errno = ENOTSUP;
-            return -1;
-        }
-        return sub->recv (source_rid_out_, parts_out_, part_count_out_, flags_,
-                          topic_id_out_, topic_id_len_out_);
+        return recv_logical_spot_subscription (
+          spot, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
+          topic_id_len_out_);
     }
 
     if (is_registered_spot_node_handle (subject_)) {
@@ -267,11 +353,6 @@ int spot_subject_set_routing_id (void *handle_,
                  spot->node, spot, data_, size_)
                  != 0)
             return -1;
-        if (!spot->node || spot->node->pubsub_enabled ()) {
-            zlink::spot_pub_t *pub = ensure_spot_pub (spot);
-            if (pub && pub->set_routing_id (data_, size_) != 0)
-                return -1;
-        }
         return 0;
     }
     if (is_registered_spot_node_handle (handle_)) {
@@ -392,17 +473,18 @@ int spot_subject_set_subscription (void *handle_, const char *filter_)
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return -1;
-        zlink::spot_sub_t *sub = ensure_spot_sub (spot);
-        if (!sub) {
-            errno = ENOTSUP;
+        if (!logical_subscription_insert (spot->logical_state, raw_filter,
+                                          is_pattern))
+            return 0;
+        if (!spot->node
+            || spot->node->update_logical_spot_subscription (raw_filter,
+                                                             is_pattern,
+                                                             true)
+                 != 0) {
+            logical_subscription_erase (spot->logical_state, raw_filter,
+                                        is_pattern);
             return -1;
         }
-        const int rc = is_pattern ? sub->subscribe_pattern (filter_)
-                                  : sub->subscribe (filter_);
-        if (rc != 0)
-            return rc;
-        logical_subscription_insert (spot->logical_state, raw_filter,
-                                     is_pattern);
         return 0;
     }
 
@@ -455,16 +537,18 @@ int spot_subject_unset_subscription (void *handle_, const char *filter_)
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return -1;
-        zlink::spot_sub_t *sub = ensure_spot_sub (spot);
-        if (!sub) {
-            errno = ENOTSUP;
+        if (!logical_subscription_erase (spot->logical_state, raw_filter,
+                                         is_pattern))
+            return 0;
+        if (!spot->node
+            || spot->node->update_logical_spot_subscription (raw_filter,
+                                                             is_pattern,
+                                                             false)
+                 != 0) {
+            logical_subscription_insert (spot->logical_state, raw_filter,
+                                         is_pattern);
             return -1;
         }
-        const int rc = sub->unsubscribe (filter_);
-        if (rc != 0)
-            return rc;
-        logical_subscription_erase (spot->logical_state, raw_filter,
-                                    is_pattern);
         return 0;
     }
 

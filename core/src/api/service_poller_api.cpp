@@ -152,16 +152,27 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
         if (increment_spot_subject_poller_ref (socket_, events_) != 0)
             return -1;
 
-        zlink::socket_base_t *poll_socket =
-          is_pub ? resolve_spot_pub_subject_poller_socket (socket_)
-                 : resolve_spot_sub_subject_poller_socket (socket_);
         poller_subject_kind_t subject_kind =
           is_pub ? poller_spot_pub_kind_for_subject (socket_)
                  : poller_spot_sub_kind_for_subject (socket_);
-        if (!poll_socket
-            || poller_add_registration (poller_, poll_socket, user_data_,
-                                        events_, socket_, subject_kind)
-                 != 0) {
+        int add_rc = -1;
+        if (is_pub) {
+            zlink::socket_base_t *poll_socket =
+              resolve_spot_pub_subject_poller_socket (socket_);
+            if (poll_socket) {
+                add_rc = poller_add_registration (
+                  poller_, poll_socket, user_data_, events_, socket_,
+                  subject_kind);
+            }
+        } else {
+            zlink_fd_t poll_fd = zlink::retired_fd;
+            if (resolve_spot_sub_subject_poller_fd (socket_, &poll_fd) == 0) {
+                add_rc = poller_add_fd_registration (
+                  poller_, poll_fd, user_data_, events_, socket_,
+                  subject_kind);
+            }
+        }
+        if (add_rc != 0) {
             poller_registration_t registration;
             registration.subject = socket_;
             registration.subject_kind = subject_kind;
@@ -182,26 +193,14 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
                     errno = err;
                     return -1;
                 }
-                zlink::socket_base_t *routed_socket = NULL;
-                zlink::socket_base_t *completion_socket = NULL;
-                routed_socket =
-                  zlink::spot_reqrep_internal::spot_routed_recv_socket (state);
-                completion_socket =
-                  zlink::spot_reqrep_internal::spot_completion_signal_socket (
-                    state);
-
-                if ((routed_socket
-                     && poller_add_registration (poller_, routed_socket,
-                                                 user_data_, ZLINK_POLLIN,
-                                                 socket_,
-                                                 poller_spot_routed_kind_for_subject (
-                                                   socket_))
-                          != 0)
-                    || (completion_socket
-                        && poller_add_registration (
-                             poller_, completion_socket, user_data_, ZLINK_POLLIN,
-                             socket_, poller_subject_spot_request_completion)
-                             != 0)) {
+                zlink_fd_t routed_fd = zlink::retired_fd;
+                if (zlink::spot_reqrep_internal::spot_routed_recv_fd (
+                      state, &routed_fd)
+                    == 0
+                    && poller_add_fd_registration (
+                         poller_, routed_fd, user_data_, ZLINK_POLLIN,
+                         socket_, poller_spot_routed_kind_for_subject (socket_))
+                         != 0) {
                     const int err = errno;
                     (void) poller_remove_all_registrations_for_subject (
                       poller_, socket_);
@@ -263,9 +262,15 @@ int zlink_service_poller_modify_internal (poller_handle_t *poller_,
         if (increment_spot_subject_poller_ref (socket_, events_) != 0)
             return -1;
         const short old_events = poller_->registrations[index].events;
-        zlink::socket_base_t *socket = static_cast<zlink::socket_base_t *> (
-          poller_->registrations[index].socket);
-        if (poller_->poller.modify (socket, events_) != 0) {
+        const poller_registration_t &registration =
+          poller_->registrations[index];
+        const int modify_rc =
+          registration.socket
+            ? poller_->poller.modify (
+                static_cast<zlink::socket_base_t *> (registration.socket),
+                events_)
+            : poller_->poller.modify_fd (registration.fd, events_);
+        if (modify_rc != 0) {
             decrement_spot_poller_ref (
               static_cast<spot_handle_t *> (socket_), events_);
             return -1;

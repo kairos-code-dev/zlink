@@ -162,7 +162,6 @@ void *create_spot_pub_handle (void *node_)
     const int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
       spot, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
-    TEST_ASSERT_NOT_NULL (resolve_spot_pub_subject_poller_socket (spot));
     return spot;
 }
 

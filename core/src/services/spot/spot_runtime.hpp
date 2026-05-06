@@ -30,7 +30,8 @@ enum spot_attachment_kind_t
 
 enum spot_runtime_sender_kind_t
 {
-    spot_runtime_sender_internal_router = 1
+    spot_runtime_sender_internal_router = 1,
+    spot_runtime_sender_pub_ingress = 2
 };
 
 enum spot_shutdown_phase_t
@@ -189,6 +190,7 @@ struct spot_runtime_t
     socket_base_t *external_router;
     socket_base_t *internal_router;
     socket_base_t *internal_router_tx;
+    socket_base_t *pub_ingress_tx;
     socket_base_t *local_pub_ingress_sub;
     socket_base_t *local_fanout_xpub;
     thread_t data_plane_thread;
@@ -203,6 +205,7 @@ struct spot_runtime_t
     std::string peer_ctrl_endpoint;
     std::string external_router_bind_endpoint;
     std::string internal_router_sender_endpoint;
+    std::string pub_ingress_sender_endpoint;
     std::map<std::string, std::string> external_route_ids_by_endpoint;
     bool faulted;
     int fault_errno;

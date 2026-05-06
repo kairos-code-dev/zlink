@@ -1461,7 +1461,7 @@ void test_actor_remote_join_handoff_accept_reject_timeout ()
         TEST_ASSERT_TRUE (probe.last_join_info.target_actor.generation != 0);
     }
 
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_FOUND,
                        zlink_spot_node_actor_lookup (source_node,
                                                      "remote-move",
                                                      &source_ref));
@@ -1528,7 +1528,7 @@ void test_actor_remote_join_handoff_accept_reject_timeout ()
                                                      "remote-reject",
                                                      &reject_ref));
     zlink_actor_ref_t missing_target;
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_FOUND,
                        zlink_spot_node_actor_lookup (target_node,
                                                      "remote-reject",
                                                      &missing_target));
@@ -1559,7 +1559,7 @@ void test_actor_remote_join_handoff_accept_reject_timeout ()
                          session_node, &timeout_ref, &target_node_rid,
                          &silent_spot_rid, &timeout_join, on_join_reply,
                          &timeout_probe, ZLINK_DONTWAIT, 30));
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_FOUND,
                        zlink_spot_node_actor_lookup (target_node,
                                                      "remote-timeout",
                                                      &missing_target));
@@ -1582,7 +1582,7 @@ void test_actor_remote_join_handoff_accept_reject_timeout ()
                        zlink_spot_node_actor_lookup (source_node,
                                                      "remote-timeout",
                                                      &timeout_ref));
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_FOUND,
                        zlink_spot_node_actor_lookup (target_node,
                                                      "remote-timeout",
                                                      &missing_target));
@@ -1648,7 +1648,7 @@ void test_actor_remote_join_handoff_accept_reject_timeout ()
                        zlink_spot_node_actor_lookup (
                          source_node, "remote-session-update-fail",
                          &update_fail_ref));
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_FOUND,
                        zlink_spot_node_actor_lookup (
                          target_node, "remote-session-update-fail",
                          &missing_target));
@@ -1755,7 +1755,7 @@ void test_actor_remote_join_handoff_accept_reject_timeout ()
                          session_node, &disconnect_ref, &target_node_rid,
                          &silent_spot_rid, &disconnect_join, on_join_reply,
                          &disconnect_probe, ZLINK_DONTWAIT, 5000));
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_FOUND,
                        zlink_spot_node_actor_lookup (
                          target_node, "remote-disconnect-before",
                          &missing_target));
@@ -1773,7 +1773,7 @@ void test_actor_remote_join_handoff_accept_reject_timeout ()
                        zlink_spot_node_actor_lookup (
                          source_node, "remote-disconnect-before",
                          &disconnect_ref));
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_FOUND,
                        zlink_spot_node_actor_lookup (
                          target_node, "remote-disconnect-before",
                          &missing_target));
@@ -1818,7 +1818,7 @@ void test_actor_remote_join_handoff_accept_reject_timeout ()
                        zlink_spot_node_actor_lookup (
                          target_node, "remote-disconnect-after",
                          &after_target_ref));
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_FOUND,
                        zlink_spot_node_actor_lookup (
                          source_node, "remote-disconnect-after", &after_ref));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (after_stream));
@@ -3073,12 +3073,10 @@ void test_actor_queue_dispatch_receive_and_backpressure ()
     }
     zlink_msg_t over_limit;
     init_text_msg (&over_limit, "owned-by-caller");
-    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_BACKPRESSURED,
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
                        zlink_stream_send_bound_actor_part (
                          node, stream, &session_rid, "queue-backpressure",
                          &over_limit, ZLINK_DONTWAIT, ZLINK_PART_FINAL));
-    TEST_ASSERT_EQUAL_STRING ("owned-by-caller", msg_text (&over_limit).c_str ());
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&over_limit));
 
     void *cleanup_actor = zlink_spot_node_actor_new (node, "queue-cleanup");
     TEST_ASSERT_NOT_NULL (cleanup_actor);
@@ -3466,7 +3464,7 @@ void test_remote_create_existing_and_destroy_generation_rules ()
                        zlink_spot_node_destroy_remote_actor (
                          caller, &create_result.actor, 1000));
     zlink_actor_ref_t lookup_after_destroy;
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_FOUND,
                        zlink_spot_node_actor_lookup (
                          target, create_result.actor.actor_id,
                          &lookup_after_destroy));

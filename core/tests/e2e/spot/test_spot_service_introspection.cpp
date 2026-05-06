@@ -83,8 +83,6 @@ static bool wait_for_subscription_ready (void *sub_node_,
 {
     LIBZLINK_UNUSED (endpoint_);
     void *sub_handle = node_sub_spot_handle (sub_node_);
-    if (!resolve_spot_sub_subject_poller_socket (sub_handle))
-        return false;
     if (zlink_set_subscription (sub_handle, topic_) != ZLINK_CONFIG_OK)
         return false;
     return wait_for_spot_node_subject_ready (sub_node_, 3000);

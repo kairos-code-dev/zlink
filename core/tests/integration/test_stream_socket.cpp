@@ -66,34 +66,9 @@ static bool wait_monitor_event (void *monitor_,
                                 unsigned char routing_id_[stream_routing_id_size],
                                 int timeout_ms_)
 {
-    const int poll_slice_ms = 200;
-    const int poll_timeout = timeout_ms_ > 0 ? timeout_ms_ : 10000;
-    const int attempts = poll_timeout / poll_slice_ms + 1;
-    for (int i = 0; i < attempts; ++i) {
-        zlink_pollitem_t items[] = {
-          {monitor_, 0, ZLINK_POLLIN, 0},
-          {activity_socket_, 0, ZLINK_POLLIN, 0},
-        };
-        const int count = activity_socket_ ? 2 : 1;
-        const int rc = zlink_poll (items, count, poll_slice_ms, NULL);
-        if (rc <= 0 || (items[0].revents & ZLINK_POLLIN) == 0)
-            continue;
-
-        for (;;) {
-            zlink_monitor_event_t event;
-            if (recv_monitor_event_from_socket (monitor_, &event, ZLINK_DONTWAIT)
-                != 0)
-                break;
-            if (event.event != expected_event_)
-                continue;
-            if (event.routing_id.size != stream_routing_id_size)
-                continue;
-            memcpy (routing_id_, event.routing_id.data, stream_routing_id_size);
-            return true;
-        }
-    }
-
-    return false;
+    return wait_monitor_event_routing_id (
+      monitor_, activity_socket_, expected_event_, routing_id_,
+      stream_routing_id_size, timeout_ms_);
 }
 
 static bool wait_monitor_event_direct (void *monitor_,
@@ -101,30 +76,9 @@ static bool wait_monitor_event_direct (void *monitor_,
                                       unsigned char routing_id_[stream_routing_id_size],
                                       int timeout_ms_)
 {
-    const int poll_slice_ms = 200;
-    const int poll_timeout = timeout_ms_ > 0 ? timeout_ms_ : 10000;
-    const int attempts = poll_timeout / poll_slice_ms + 1;
-    for (int i = 0; i < attempts; ++i) {
-        zlink_pollitem_t item = {monitor_, 0, ZLINK_POLLIN, 0};
-        const int rc = zlink_poll (&item, 1, poll_slice_ms, NULL);
-        if (rc <= 0 || (item.revents & ZLINK_POLLIN) == 0)
-            continue;
-
-        for (;;) {
-            zlink_monitor_event_t event;
-            if (recv_monitor_event_from_socket (monitor_, &event, ZLINK_DONTWAIT)
-                != 0)
-                break;
-            if (event.event != expected_event_)
-                continue;
-            if (event.routing_id.size != stream_routing_id_size)
-                continue;
-            memcpy (routing_id_, event.routing_id.data, stream_routing_id_size);
-            return true;
-        }
-    }
-
-    return false;
+    return wait_monitor_event_routing_id (
+      monitor_, NULL, expected_event_, routing_id_, stream_routing_id_size,
+      timeout_ms_);
 }
 
 static void send_stream_msg (void *socket_,

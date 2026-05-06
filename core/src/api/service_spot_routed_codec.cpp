@@ -15,13 +15,10 @@ using zlink::spot_reqrep_internal::resolve_spot_node_routing_id;
 enum : uint8_t
 {
     zmp_spot_routed_protocol_id = 0x02,
-    zmp_protocol_version = 0x01,
     zmp_packed_protocol_version = 0x02,
     zmp_spot_class = 0x01,
     zmp_router_class = 0x02
 };
-
-const size_t spot_routed_control_part_count = 8;
 
 bool assign_routing_id_value_local (const char *data_,
                                     size_t size_,
@@ -108,77 +105,6 @@ bool parse_packed_spot_routed_envelope (zlink_msg_t *parts_,
     out_->payload_part_count = part_count_ - 1;
     return true;
 }
-
-bool parse_legacy_spot_routed_envelope (zlink_msg_t *parts_,
-                                        size_t part_count_,
-                                        parsed_spot_envelope_t *out_)
-{
-    if (part_count_ < spot_routed_control_part_count)
-        return false;
-
-    zlink::msg_t *protocol_id = reinterpret_cast<zlink::msg_t *> (&parts_[0]);
-    if (!protocol_id->check ()
-        || !zlink::request_reply::frame_is_single_byte_value (
-          &parts_[0], zmp_spot_routed_protocol_id)
-        || !zlink::request_reply::frame_is_single_byte_value (
-          &parts_[1], zmp_protocol_version)) {
-        return false;
-    }
-    if (!zlink::request_reply::frame_is_single_byte_value (&parts_[2],
-                                                           zmp_spot_class)
-        && !zlink::request_reply::frame_is_single_byte_value (&parts_[2],
-                                                              zmp_router_class))
-        return false;
-    if (!zlink::request_reply::frame_is_single_byte_value (&parts_[5],
-                                                           zmp_spot_class)
-        && !zlink::request_reply::frame_is_single_byte_value (&parts_[5],
-                                                              zmp_router_class))
-        return false;
-
-    out_->source_class =
-      static_cast<const unsigned char *> (zlink_msg_data (&parts_[2]))[0];
-    out_->source_node_rid.assign (
-      static_cast<const char *> (zlink_msg_data (&parts_[3])),
-      zlink_msg_size (&parts_[3]));
-    if (!assign_routing_id_value_local (
-          static_cast<const char *> (zlink_msg_data (&parts_[3])),
-          zlink_msg_size (&parts_[3]),
-          &out_->source_node_rid_value)) {
-        return false;
-    }
-    out_->source_endpoint_rid.assign (
-      static_cast<const char *> (zlink_msg_data (&parts_[4])),
-      zlink_msg_size (&parts_[4]));
-    if (!assign_routing_id_value_local (
-          static_cast<const char *> (zlink_msg_data (&parts_[4])),
-          zlink_msg_size (&parts_[4]),
-          &out_->source_endpoint_rid_value)) {
-        return false;
-    }
-    out_->destination_class =
-      static_cast<const unsigned char *> (zlink_msg_data (&parts_[5]))[0];
-    out_->destination_node_rid.assign (
-      static_cast<const char *> (zlink_msg_data (&parts_[6])),
-      zlink_msg_size (&parts_[6]));
-    if (!assign_routing_id_value_local (
-          static_cast<const char *> (zlink_msg_data (&parts_[6])),
-          zlink_msg_size (&parts_[6]),
-          &out_->destination_node_rid_value)) {
-        return false;
-    }
-    out_->destination_endpoint_rid.assign (
-      static_cast<const char *> (zlink_msg_data (&parts_[7])),
-      zlink_msg_size (&parts_[7]));
-    if (!assign_routing_id_value_local (
-          static_cast<const char *> (zlink_msg_data (&parts_[7])),
-          zlink_msg_size (&parts_[7]),
-          &out_->destination_endpoint_rid_value)) {
-        return false;
-    }
-    out_->payload_parts = parts_ + spot_routed_control_part_count;
-    out_->payload_part_count = part_count_ - spot_routed_control_part_count;
-    return true;
-}
 }
 
 bool zlink::spot_reqrep_internal::parse_spot_routed_envelope (
@@ -200,8 +126,7 @@ bool zlink::spot_reqrep_internal::parse_spot_routed_envelope (
             0,
             sizeof (out_->destination_endpoint_rid_value));
 
-    return parse_packed_spot_routed_envelope (parts_, part_count_, out_)
-           || parse_legacy_spot_routed_envelope (parts_, part_count_, out_);
+    return parse_packed_spot_routed_envelope (parts_, part_count_, out_);
 }
 
 bool zlink::spot_reqrep_internal::resolve_spot_node_routing_id (

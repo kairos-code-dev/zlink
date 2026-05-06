@@ -7,8 +7,4 @@
 #include "api/service_mode_internal.hpp"
 #include "api/service_surface_internal.hpp"
 
-// Compatibility include while callers migrate to narrower seams.
-#include "services/spot/spot_handle.hpp"
-#include "services/spot/spot_subject_access.hpp"
-
 #endif

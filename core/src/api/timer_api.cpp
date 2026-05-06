@@ -10,6 +10,8 @@
 #include "api/recv_result_internal.hpp"
 #include "api/service_api_internal.hpp"
 #include "api/timer_api_internal.hpp"
+#include "services/spot/spot_handle.hpp"
+#include "services/spot/spot_subject_access.hpp"
 
 timer_handle_t *as_timer_handle (void *timer_)
 {

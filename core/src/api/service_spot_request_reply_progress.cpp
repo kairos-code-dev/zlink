@@ -10,6 +10,8 @@
 #include "api/service_spot_dispatch_context_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
+#include "services/spot/spot_handle.hpp"
+#include "services/spot/spot_subject_access.hpp"
 
 namespace
 {

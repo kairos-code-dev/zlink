@@ -4,6 +4,8 @@
 #include "../testutil_unity.hpp"
 
 #include "../src/api/service_api_internal.hpp"
+#include "../src/services/spot/spot_handle.hpp"
+#include "../src/services/spot/spot_subject_access.hpp"
 
 #include <unity.h>
 

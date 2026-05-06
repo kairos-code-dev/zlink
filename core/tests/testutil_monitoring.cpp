@@ -1,9 +1,39 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #include "testutil_monitoring.hpp"
+#include "testutil.hpp"
 #include "testutil_unity.hpp"
 
 #include <stdlib.h>
 #include <string.h>
+
+static void record_monitor_probe_event (const zlink_monitor_event_t *event_,
+                                        void *userdata_);
+
+namespace
+{
+std::mutex g_active_monitor_probe_sync;
+test_monitor_probe_t *g_active_monitor_probe = NULL;
+
+void activate_test_monitor_probe (test_monitor_probe_t *probe_)
+{
+    std::lock_guard<std::mutex> lock (g_active_monitor_probe_sync);
+    g_active_monitor_probe = probe_;
+}
+
+void deactivate_test_monitor_probe (test_monitor_probe_t *probe_)
+{
+    std::lock_guard<std::mutex> lock (g_active_monitor_probe_sync);
+    if (g_active_monitor_probe == probe_)
+        g_active_monitor_probe = NULL;
+}
+
+void record_active_test_monitor_event (const zlink_monitor_event_t *event_,
+                                       void *)
+{
+    std::lock_guard<std::mutex> lock (g_active_monitor_probe_sync);
+    record_monitor_probe_event (event_, g_active_monitor_probe);
+}
+}
 
 static int wait_monitor_readable (void *monitor_, int flags_, long timeout_ms_)
 {
@@ -120,17 +150,6 @@ static void print_unexpected_event (char *buf_,
               "= %i/0x%x)\n",
               event_, err_, err_, expected_event_, expected_err_,
               expected_err_);
-}
-
-void print_unexpected_event_stderr (int event_,
-                                    int err_,
-                                    int expected_event_,
-                                    int expected_err_)
-{
-    char buf[256];
-    print_unexpected_event (buf, sizeof buf, event_, err_, expected_event_,
-                            expected_err_);
-    fputs (buf, stderr);
 }
 
 int expect_monitor_event_multiple (void *server_mon_,
@@ -306,58 +325,132 @@ void expect_monitor_event_v2 (void *monitor_,
     TEST_ASSERT_FALSE_MESSAGE (failed, buf);
 }
 
-
-const char *get_zlinkEventName (uint64_t event)
+static void record_monitor_probe_event (const zlink_monitor_event_t *event_,
+                                        void *userdata_)
 {
-    switch (event) {
-        case ZLINK_EVENT_CONNECTED:
-            return "CONNECTED";
-        case ZLINK_EVENT_CONNECT_DELAYED:
-            return "CONNECT_DELAYED";
-        case ZLINK_EVENT_CONNECT_RETRIED:
-            return "CONNECT_RETRIED";
-        case ZLINK_EVENT_LISTENING:
-            return "LISTENING";
-        case ZLINK_EVENT_BIND_FAILED:
-            return "BIND_FAILED";
-        case ZLINK_EVENT_ACCEPTED:
-            return "ACCEPTED";
-        case ZLINK_EVENT_ACCEPT_FAILED:
-            return "ACCEPT_FAILED";
-        case ZLINK_EVENT_CLOSED:
-            return "CLOSED";
-        case ZLINK_EVENT_CLOSE_FAILED:
-            return "CLOSE_FAILED";
-        case ZLINK_EVENT_DISCONNECTED:
-            return "DISCONNECTED";
-        case ZLINK_EVENT_MONITOR_STOPPED:
-            return "MONITOR_STOPPED";
-        case ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL:
-            return "HANDSHAKE_FAILED_NO_DETAIL";
-        case ZLINK_EVENT_CONNECTION_READY:
-            return "CONNECTION_READY";
-        case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
-            return "HANDSHAKE_FAILED_PROTOCOL";
-        case ZLINK_EVENT_HANDSHAKE_FAILED_AUTH:
-            return "HANDSHAKE_FAILED_AUTH";
-        default:
-            return "UNKNOWN";
-    }
+    test_monitor_probe_t *probe =
+      static_cast<test_monitor_probe_t *> (userdata_);
+    if (!probe || !event_)
+        return;
+
+    std::lock_guard<std::mutex> lock (probe->sync);
+    probe->events.push_back (event_->event);
 }
 
-void print_events (void *socket, int timeout, int limit)
+int test_monitor_probe_count (test_monitor_probe_t *probe_)
 {
-    // print events received
-    int value;
-    char *event_address;
-    int event =
-      get_monitor_event_with_timeout (socket, &value, &event_address, timeout);
-    int i = 0;
-    ;
-    while ((event != -1) && (++i < limit)) {
-        const char *eventName = get_zlinkEventName (event);
-        printf ("Got event: %s\n", eventName);
-        event = get_monitor_event_with_timeout (socket, &value, &event_address,
-                                                timeout);
-    }
+    std::lock_guard<std::mutex> lock (probe_->sync);
+    return static_cast<int> (probe_->events.size ());
+}
+
+uint64_t test_monitor_probe_event_at (test_monitor_probe_t *probe_, int index_)
+{
+    std::lock_guard<std::mutex> lock (probe_->sync);
+    TEST_ASSERT_TRUE (index_ >= 0);
+    TEST_ASSERT_TRUE (index_ < static_cast<int> (probe_->events.size ()));
+    return probe_->events[static_cast<size_t> (index_)];
+}
+
+void *open_test_monitor_probe (void *socket_,
+                               zlink_socket_monitor_event_mask_t events_,
+                               test_monitor_probe_t *probe_)
+{
+    activate_test_monitor_probe (probe_);
+    zlink_socket_monitor_open_options_t opts;
+    memset (&opts, 0, sizeof (opts));
+    opts.events = events_;
+    void *monitor = zlink_socket_monitor_open (socket_, &opts);
+    TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_monitor_handler (monitor, &record_active_test_monitor_event,
+                                    NULL));
+    return monitor;
+}
+
+void close_test_monitor_probe (void **monitor_p_, test_monitor_probe_t *probe_)
+{
+    deactivate_test_monitor_probe (probe_);
+    if (!monitor_p_ || !*monitor_p_)
+        return;
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (*monitor_p_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (monitor_p_));
+}
+
+bool test_monitor_probe_wait_count (test_monitor_probe_t *probe_,
+                                    int expected_,
+                                    int timeout_ms_)
+{
+    return zlink_test_wait_until_step (timeout_ms_, 10, [=] {
+        return test_monitor_probe_count (probe_) >= expected_;
+    });
+}
+
+bool test_monitor_probe_wait_no_additional (test_monitor_probe_t *probe_,
+                                            int baseline_,
+                                            int timeout_ms_)
+{
+    const bool saw_additional =
+      zlink_test_wait_until_step (timeout_ms_, 10, [=] {
+          return test_monitor_probe_count (probe_) > baseline_;
+      });
+    return !saw_additional && test_monitor_probe_count (probe_) == baseline_;
+}
+
+bool test_monitor_probe_wait_event_after (test_monitor_probe_t *probe_,
+                                          uint64_t expected_,
+                                          int start_index_,
+                                          int timeout_ms_,
+                                          int *found_index_out_)
+{
+    return zlink_test_wait_until_step (timeout_ms_, 10, [=] {
+        std::lock_guard<std::mutex> lock (probe_->sync);
+        const int count = static_cast<int> (probe_->events.size ());
+        for (int i = start_index_; i < count; ++i) {
+            if (probe_->events[static_cast<size_t> (i)] != expected_)
+                continue;
+            if (found_index_out_)
+                *found_index_out_ = i;
+            return true;
+        }
+        return false;
+    });
+}
+
+bool wait_monitor_event_routing_id (void *monitor_,
+                                    void *activity_socket_,
+                                    uint64_t expected_event_,
+                                    unsigned char *routing_id_out_,
+                                    size_t routing_id_size_,
+                                    int timeout_ms_)
+{
+    const int poll_slice_ms = 200;
+    const int poll_timeout = timeout_ms_ > 0 ? timeout_ms_ : 10000;
+    return zlink_test_wait_until_step (poll_timeout, poll_slice_ms, [=] {
+        zlink_pollitem_t items[] = {
+          {monitor_, 0, ZLINK_POLLIN, 0},
+          {activity_socket_, 0, ZLINK_POLLIN, 0},
+        };
+        const int count = activity_socket_ ? 2 : 1;
+        const int rc = zlink_poll (items, count, poll_slice_ms, NULL);
+        if (rc <= 0 || (items[0].revents & ZLINK_POLLIN) == 0)
+            return false;
+
+        for (;;) {
+            zlink_monitor_event_t event;
+            if (recv_monitor_event_from_socket (monitor_, &event,
+                                                ZLINK_DONTWAIT)
+                != 0)
+                break;
+            if (event.event != expected_event_)
+                continue;
+            if (event.routing_id.size != routing_id_size_)
+                continue;
+            memcpy (routing_id_out_, event.routing_id.data, routing_id_size_);
+            return true;
+        }
+        return false;
+    });
 }

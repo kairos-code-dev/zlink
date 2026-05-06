@@ -8,6 +8,8 @@
 #include "utils/stdint.hpp"
 
 #include <stddef.h>
+#include <mutex>
+#include <vector>
 
 //  General, i.e. non-security specific, monitor utilities
 
@@ -26,11 +28,6 @@ int get_monitor_event_with_timeout (void *monitor_,
 int get_monitor_event (void *monitor_, int *value_, char **address_);
 
 void expect_monitor_event (void *monitor_, int expected_event_);
-
-void print_unexpected_event_stderr (int event_,
-                                    int err_,
-                                    int expected_event_,
-                                    int expected_err_);
 
 //  expects that one or more occurrences of the expected event are received
 //  via the specified socket monitor
@@ -54,8 +51,38 @@ void expect_monitor_event_v2 (void *monitor_,
                               const char *expected_local_address_ = NULL,
                               const char *expected_remote_address_ = NULL);
 
+struct test_monitor_probe_t
+{
+    std::mutex sync;
+    std::vector<uint64_t> events;
+};
 
-const char *get_zlinkEventName (uint64_t event);
-void print_events (void *socket, int timeout, int limit);
+void *open_test_monitor_probe (void *socket_,
+                               zlink_socket_monitor_event_mask_t events_,
+                               test_monitor_probe_t *probe_);
+void close_test_monitor_probe (void **monitor_p_,
+                               test_monitor_probe_t *probe_);
+
+int test_monitor_probe_count (test_monitor_probe_t *probe_);
+uint64_t test_monitor_probe_event_at (test_monitor_probe_t *probe_,
+                                      int index_);
+bool test_monitor_probe_wait_count (test_monitor_probe_t *probe_,
+                                    int expected_,
+                                    int timeout_ms_);
+bool test_monitor_probe_wait_no_additional (test_monitor_probe_t *probe_,
+                                            int baseline_,
+                                            int timeout_ms_);
+bool test_monitor_probe_wait_event_after (test_monitor_probe_t *probe_,
+                                          uint64_t expected_,
+                                          int start_index_,
+                                          int timeout_ms_,
+                                          int *found_index_out_);
+
+bool wait_monitor_event_routing_id (void *monitor_,
+                                    void *activity_socket_,
+                                    uint64_t expected_event_,
+                                    unsigned char *routing_id_out_,
+                                    size_t routing_id_size_,
+                                    int timeout_ms_);
 
 #endif

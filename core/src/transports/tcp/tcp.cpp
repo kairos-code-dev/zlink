@@ -173,7 +173,6 @@ int zlink::tune_tcp_maxrt (fd_t sockfd_, int timeout_)
                   reinterpret_cast<char *> (&timeout_), sizeof (timeout_));
     assert_success_or_recoverable (sockfd_, rc);
     return rc;
-// FIXME: should be ZLINK_HAVE_TCP_USER_TIMEOUT
 #elif defined(TCP_USER_TIMEOUT)
     int rc = setsockopt (sockfd_, IPPROTO_TCP, TCP_USER_TIMEOUT, &timeout_,
                          sizeof (timeout_));

@@ -13,6 +13,7 @@
 #include "services/spot/spot_handle.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
+#include "services/spot/spot_subject_access.hpp"
 
 namespace
 {

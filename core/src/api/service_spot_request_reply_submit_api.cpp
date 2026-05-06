@@ -19,8 +19,10 @@
 #include "api/socket_request_reply_internal.hpp"
 #include "api/submit_result_internal.hpp"
 #include "core/multipart_send_txn.hpp"
+#include "services/spot/spot_handle.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
+#include "services/spot/spot_subject_access.hpp"
 
 namespace
 {

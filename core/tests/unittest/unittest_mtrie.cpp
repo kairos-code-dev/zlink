@@ -246,9 +246,7 @@ void add_indexed_expect_unique (zlink::generic_mtrie_t<int> &mtrie_,
       reinterpret_cast<zlink::generic_mtrie_t<int>::prefix_t> (names_[i_]);
 
     bool res = mtrie_.add (name_data, getlen (name_data), &pipes_[i_]);
-    TEST_ASSERT_EQUAL (
-      zlink::generic_mtrie_t<int>::last_value_removed,
-      res); // FIXME asserting equality between enum and bool? I think first arg for macro should be "true"
+    TEST_ASSERT_TRUE (res);
 }
 
 void test_rm_nonexistent_between ()

@@ -1041,17 +1041,11 @@ void test_send_ready_self_close_blocks_followup_operational_api ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_recv_handler (server, &discard_socket_message, NULL));
 
-    const int step_ms = 10;
-    const int attempts = 3000 / step_ms;
-    bool callback_observed = false;
-    for (int i = 0; i < attempts; ++i) {
-        if (g_send_ready_self_close_rc.load (std::memory_order_acquire)
-            != INT_MIN) {
-            callback_observed = true;
-            break;
-        }
-        msleep (step_ms);
-    }
+    const bool callback_observed =
+      zlink_test_wait_until_step (3000, 10, [] {
+          return g_send_ready_self_close_rc.load (std::memory_order_acquire)
+                 != INT_MIN;
+      });
     TEST_ASSERT_TRUE (callback_observed);
 
     TEST_ASSERT_EQUAL_INT (0,

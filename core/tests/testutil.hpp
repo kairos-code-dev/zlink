@@ -245,6 +245,20 @@ bool zlink_test_wait_until (int timeout_ms_, Predicate predicate_)
 }
 
 template <typename Predicate>
+bool zlink_test_wait_until_step (int timeout_ms_,
+                                 int step_ms_,
+                                 Predicate predicate_)
+{
+    const int attempts = timeout_ms_ / step_ms_ + 1;
+    for (int i = 0; i < attempts; ++i) {
+        if (predicate_ ())
+            return true;
+        msleep (step_ms_);
+    }
+    return false;
+}
+
+template <typename Predicate>
 bool zlink_test_wait_until_result (int timeout_ms_, Predicate predicate_)
 {
     const int attempts = timeout_ms_ / zlink_test_poll_step_ms;
@@ -255,6 +269,23 @@ bool zlink_test_wait_until_result (int timeout_ms_, Predicate predicate_)
         if (result == zlink_test_wait_failed)
             return false;
         msleep (zlink_test_poll_step_ms);
+    }
+    return false;
+}
+
+template <typename Predicate>
+bool zlink_test_wait_until_result_step (int timeout_ms_,
+                                        int step_ms_,
+                                        Predicate predicate_)
+{
+    const int attempts = timeout_ms_ / step_ms_ + 1;
+    for (int i = 0; i < attempts; ++i) {
+        const zlink_test_wait_step_result_t result = predicate_ ();
+        if (result == zlink_test_wait_done)
+            return true;
+        if (result == zlink_test_wait_failed)
+            return false;
+        msleep (step_ms_);
     }
     return false;
 }

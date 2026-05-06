@@ -354,14 +354,13 @@ bool wait_for_monitor_ready_recv_with_activity (
   size_t *routing_id_size_)
 {
     const int slice_ms = 200;
-    const int attempts = timeout_ms_ / slice_ms + 1;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until_step (timeout_ms_, slice_ms, [=] {
         zlink_pollitem_t items[] = {
           {monitor_, 0, ZLINK_POLLIN, 0},
           {activity_socket_, 0, ZLINK_POLLIN, 0}};
         const int rc = zlink_poll (items, 2, slice_ms, NULL);
         if (rc <= 0 || (items[0].revents & ZLINK_POLLIN) == 0)
-            continue;
+            return false;
 
         for (;;) {
             zlink_monitor_event_t event;
@@ -378,8 +377,8 @@ bool wait_for_monitor_ready_recv_with_activity (
             }
             return true;
         }
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_pubsub_delivery_ready_recv (void *pub_monitor_,

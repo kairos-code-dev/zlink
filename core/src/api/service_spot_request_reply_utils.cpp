@@ -9,10 +9,12 @@
 #include "core/recv_internal.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "core/ctx.hpp"
+#include "services/spot/spot_handle.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_pub.hpp"
+#include "services/spot/spot_subject_access.hpp"
 #include "sockets/socket_base.hpp"
 
 zlink::ctx_t *zlink::spot_reqrep_internal::resolve_spot_ctx (void *spot_)

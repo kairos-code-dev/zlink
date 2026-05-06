@@ -162,16 +162,9 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
             //  was removed, or verbose mode or manual mode are enabled, store it
             //  so that it can be passed to the user on next recv call.
             if (_manual || (options.type == ZLINK_CORE_SOCKET_XPUB && notify)) {
-                //  ZMTP 3.1 hack: we need to support sub/cancel commands, but
-                //  we can't give them back to userspace as it would be an API
-                //  breakage since the payload of the message is completely
-                //  different. Manually craft an old-style message instead.
-                //  Although with other transports it would be possible to simply
-                //  reuse the same buffer and prefix a 0/1 byte to the topic, with
-                //  inproc the subscribe/cancel command string is not present in
-                //  the message, so this optimization is not possible.
-                //  The pushback makes a copy of the data array anyway, so the
-                //  number of buffer copies does not change.
+                //  Translate ZMTP 3.1 sub/cancel commands into the public XPUB
+                //  notification shape. Inproc does not carry the command string,
+                //  so build the notification frame explicitly.
                 blob_t notification (size + 1);
                 if (subscribe)
                     *notification.data () = 1;

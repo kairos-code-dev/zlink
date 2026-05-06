@@ -11,7 +11,9 @@
 #include "api/socket_api_internal.hpp"
 #include "api/handler_result_internal.hpp"
 #include "services/control/service_control_runtime.hpp"
+#include "services/spot/spot_handle.hpp"
 #include "services/spot/spot_node_access.hpp"
+#include "services/spot/spot_subject_access.hpp"
 
 namespace
 {

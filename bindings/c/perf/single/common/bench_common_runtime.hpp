@@ -475,11 +475,13 @@ inline void emit_single_socket_hwm_detail(void *socket_,
               << ",owner_id=0"
               << ",socket=" << socket_name
               << ",socket_type=" << socket_type
-	              << ",role=" << single_auto_hwm_role_name(snapshot.auto_hwm_role)
-	              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
-	              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
-	              << ",effective_message_bytes="
-	              << snapshot.auto_hwm_effective_message_bytes
+              << ",role=" << single_auto_hwm_role_name(snapshot.auto_hwm_role)
+              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+              << ",effective_message_bytes="
+              << snapshot.auto_hwm_effective_message_bytes
+              << ",effective_sndbuf=" << snapshot.auto_hwm_effective_sndbuf
+              << ",effective_rcvbuf=" << snapshot.auto_hwm_effective_rcvbuf
               << ",socket_message_slots="
               << snapshot.auto_hwm_socket_message_slots
               << std::endl;

@@ -167,11 +167,13 @@ void emit_spot_hwm_detail (void *node_,
                   << ",owner_id=" << entry.owner_id
                   << ",socket=" << entry.socket_name
                   << ",socket_type=" << socket_type_name (entry.socket_type)
-	                  << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role)
-	                  << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
-	                  << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
-	                  << ",effective_message_bytes="
-	                  << snapshot.auto_hwm_effective_message_bytes
+                  << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role)
+                  << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+                  << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+                  << ",effective_message_bytes="
+                  << snapshot.auto_hwm_effective_message_bytes
+                  << ",effective_sndbuf=" << snapshot.auto_hwm_effective_sndbuf
+                  << ",effective_rcvbuf=" << snapshot.auto_hwm_effective_rcvbuf
                   << ",socket_message_slots="
                   << snapshot.auto_hwm_socket_message_slots
                   << std::endl;

@@ -36,7 +36,8 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
     out_->detail_flags =
       ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
       | ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS
-      | ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET;
+      | ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET
+      | ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
         if (monitor_ready_count () > 0)
@@ -64,6 +65,8 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
       _auto_hwm_socket_plan.effective_message_bytes;
     out_->auto_hwm_applied_sndhwm = options.sndhwm;
     out_->auto_hwm_applied_rcvhwm = options.rcvhwm;
+    out_->auto_hwm_effective_sndbuf = options.sndbuf;
+    out_->auto_hwm_effective_rcvbuf = options.rcvbuf;
     out_->auto_hwm_last_recalc_ms = _auto_hwm_last_recalc_ms;
     out_->auto_hwm_last_recalc_reason = _auto_hwm_last_recalc_reason;
     out_->auto_hwm_send_blocked_ratio_ppm = compute_blocked_ratio_ppm_local (

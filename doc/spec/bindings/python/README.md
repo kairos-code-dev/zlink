@@ -1151,6 +1151,8 @@ class MonitorSnapshot:
     auto_hwm_effective_message_bytes: int
     auto_hwm_applied_sndhwm: int
     auto_hwm_applied_rcvhwm: int
+    auto_hwm_effective_sndbuf: int
+    auto_hwm_effective_rcvbuf: int
     auto_hwm_last_recalc_ms: int
     auto_hwm_last_recalc_reason: int
     auto_hwm_send_blocked_ratio_ppm: int

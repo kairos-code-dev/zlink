@@ -100,6 +100,8 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_effective_message_bytes;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
+    int32_t auto_hwm_effective_sndbuf;
+    int32_t auto_hwm_effective_rcvbuf;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
@@ -125,6 +127,8 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_effective_message_bytes` | Effective message unit in bytes used by the current policy calculation. |
 | `auto_hwm_applied_sndhwm` | Currently applied send HWM on the socket. |
 | `auto_hwm_applied_rcvhwm` | Currently applied recv HWM on the socket. |
+| `auto_hwm_effective_sndbuf` | Currently applied send buffer size in bytes. |
+| `auto_hwm_effective_rcvbuf` | Currently applied recv buffer size in bytes. |
 | `auto_hwm_last_recalc_ms` | Timestamp of the most recent auto-HWM recalculation in milliseconds. |
 | `auto_hwm_last_recalc_reason` | Enum value that records why the latest recalculation ran. |
 | `auto_hwm_send_blocked_ratio_ppm` | Parts-per-million ratio of send attempts that were blocked by backpressure. |
@@ -159,7 +163,7 @@ typedef enum zlink_monitor_source_kind_t
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` field is populated. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` field is populated. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | Auto-HWM role, profile, unit-budget, message-unit, and applied-HWM fields may be populated. |
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | Compatibility flag kept for ABI stability. Current snapshots do not set it because transport-buffer fields are no longer part of `zlink_monitor_snapshot_t`. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | `auto_hwm_effective_sndbuf` and `auto_hwm_effective_rcvbuf` fields are populated. |
 
 ### Auto-HWM Recalculation Reason
 

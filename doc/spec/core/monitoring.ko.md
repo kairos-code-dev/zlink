@@ -104,6 +104,8 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_effective_message_bytes;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
+    int32_t auto_hwm_effective_sndbuf;
+    int32_t auto_hwm_effective_rcvbuf;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
@@ -129,6 +131,8 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_effective_message_bytes` | 정책이 계산에 사용한 실효 메시지 단위 바이트 |
 | `auto_hwm_applied_sndhwm` | 현재 소켓에 적용된 송신 HWM |
 | `auto_hwm_applied_rcvhwm` | 현재 소켓에 적용된 수신 HWM |
+| `auto_hwm_effective_sndbuf` | 현재 소켓에 적용된 송신 buffer 크기. 단위는 byte |
+| `auto_hwm_effective_rcvbuf` | 현재 소켓에 적용된 수신 buffer 크기. 단위는 byte |
 | `auto_hwm_last_recalc_ms` | 최근 자동 HWM 재계산 시각(ms) |
 | `auto_hwm_last_recalc_reason` | 최근 재계산 사유 enum 값 |
 | `auto_hwm_send_blocked_ratio_ppm` | 최근 송신 시도 중 backpressure 로 막힌 비율(ppm) |
@@ -163,7 +167,7 @@ typedef enum zlink_monitor_source_kind_t
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | auto-HWM role, profile, unit budget, message unit, 적용 HWM 필드가 채워질 수 있음. |
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | ABI 안정을 위해 남긴 호환 flag. transport buffer 필드는 더 이상 `zlink_monitor_snapshot_t`에 없으므로 현재 snapshot은 이 flag를 설정하지 않음. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | `auto_hwm_effective_sndbuf`, `auto_hwm_effective_rcvbuf` 필드가 채워짐. |
 
 ### Auto-HWM 재계산 사유
 

@@ -1354,6 +1354,8 @@ pub struct MonitorSnapshot {
     pub auto_hwm_effective_message_bytes: u64,
     pub auto_hwm_applied_sndhwm: i32,
     pub auto_hwm_applied_rcvhwm: i32,
+    pub auto_hwm_effective_sndbuf: i32,
+    pub auto_hwm_effective_rcvbuf: i32,
     pub auto_hwm_last_recalc_ms: u64,
     pub auto_hwm_last_recalc_reason: u32,
     pub auto_hwm_send_blocked_ratio_ppm: u32,

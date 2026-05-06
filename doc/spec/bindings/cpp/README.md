@@ -1642,6 +1642,8 @@ struct monitor_snapshot_t {
     byte_size_t auto_hwm_effective_message_size;
     int32_t auto_hwm_applied_sndhwm;          // applied send HWM
     int32_t auto_hwm_applied_rcvhwm;          // applied recv HWM
+    byte_size_t auto_hwm_effective_sndbuf;    // applied send buffer size
+    byte_size_t auto_hwm_effective_rcvbuf;    // applied recv buffer size
     std::chrono::milliseconds auto_hwm_last_recalc_age;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;

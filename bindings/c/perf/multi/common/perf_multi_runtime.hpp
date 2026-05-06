@@ -292,6 +292,22 @@ inline std::string perf_auto_hwm_rcvhwm_display(
     return std::to_string(snapshot_.auto_hwm_applied_rcvhwm);
 }
 
+inline std::string perf_auto_hwm_sndbuf_display(
+  const zlink_monitor_snapshot_t &snapshot_, uint32_t socket_type_)
+{
+    if (!perf_auto_hwm_send_side_visible(socket_type_, snapshot_.auto_hwm_role))
+        return "0";
+    return std::to_string(snapshot_.auto_hwm_effective_sndbuf);
+}
+
+inline std::string perf_auto_hwm_rcvbuf_display(
+  const zlink_monitor_snapshot_t &snapshot_, uint32_t socket_type_)
+{
+    if (!perf_auto_hwm_recv_side_visible(socket_type_, snapshot_.auto_hwm_role))
+        return "0";
+    return std::to_string(snapshot_.auto_hwm_effective_rcvbuf);
+}
+
 inline bool perf_auto_hwm_snapshot_row_less(
   const zlink_spot_node_socket_snapshot_entry_t &lhs_,
   const zlink_spot_node_socket_snapshot_entry_t &rhs_)
@@ -410,6 +426,10 @@ inline void perf_emit_spot_node_auto_hwm_detail(
 	              << snapshot.auto_hwm_socket_message_slots
               << ",effective_message_bytes="
               << snapshot.auto_hwm_effective_message_bytes
+              << ",effective_sndbuf="
+              << perf_auto_hwm_sndbuf_display(snapshot, row_.socket_type)
+              << ",effective_rcvbuf="
+              << perf_auto_hwm_rcvbuf_display(snapshot, row_.socket_type)
               << ",last_recalc_reason="
               << perf_auto_hwm_recalc_reason_name(
                    snapshot.auto_hwm_last_recalc_reason)
@@ -530,10 +550,20 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
             snapshot.auto_hwm_applied_sndhwm = value;
         value = 0;
         value_size = sizeof(value);
-	        if (zlink_get_option(handle_, ZLINK_OPT_RCVHWM, &value, &value_size)
-	            == ZLINK_CONFIG_OK)
-	            snapshot.auto_hwm_applied_rcvhwm = value;
-	    }
+        if (zlink_get_option(handle_, ZLINK_OPT_RCVHWM, &value, &value_size)
+            == ZLINK_CONFIG_OK)
+            snapshot.auto_hwm_applied_rcvhwm = value;
+        value = 0;
+        value_size = sizeof(value);
+        if (zlink_get_option(handle_, ZLINK_OPT_SNDBUF, &value, &value_size)
+            == ZLINK_CONFIG_OK)
+            snapshot.auto_hwm_effective_sndbuf = value;
+        value = 0;
+        value_size = sizeof(value);
+        if (zlink_get_option(handle_, ZLINK_OPT_RCVBUF, &value, &value_size)
+            == ZLINK_CONFIG_OK)
+            snapshot.auto_hwm_effective_rcvbuf = value;
+    }
 
     static std::mutex sync;
     static std::set<std::string> emitted;
@@ -556,15 +586,17 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
     const std::string key =
       pattern + "|" + transport + "|" + component + "|" + label + "|"
       + std::to_string(msg_size_) + "|"
-	      + perf_auto_hwm_role_name(snapshot.auto_hwm_role) + "|"
-	      + std::to_string(snapshot.auto_hwm_applied_sndhwm) + "|"
-	      + std::to_string(snapshot.auto_hwm_applied_rcvhwm) + "|"
-	      + std::to_string(snapshot.auto_hwm_profile) + "|"
-	      + std::to_string(snapshot.auto_hwm_policy_class) + "|"
-	      + std::to_string(snapshot.auto_hwm_unit_budget_bytes) + "|"
-	      + std::to_string(snapshot.auto_hwm_size_cap) + "|"
-	      + std::to_string(snapshot.auto_hwm_socket_message_slots) + "|"
-	      + std::to_string(snapshot.auto_hwm_effective_message_bytes);
+      + perf_auto_hwm_role_name(snapshot.auto_hwm_role) + "|"
+      + std::to_string(snapshot.auto_hwm_applied_sndhwm) + "|"
+      + std::to_string(snapshot.auto_hwm_applied_rcvhwm) + "|"
+      + std::to_string(snapshot.auto_hwm_profile) + "|"
+      + std::to_string(snapshot.auto_hwm_policy_class) + "|"
+      + std::to_string(snapshot.auto_hwm_unit_budget_bytes) + "|"
+      + std::to_string(snapshot.auto_hwm_size_cap) + "|"
+      + std::to_string(snapshot.auto_hwm_socket_message_slots) + "|"
+      + std::to_string(snapshot.auto_hwm_effective_message_bytes) + "|"
+      + std::to_string(snapshot.auto_hwm_effective_sndbuf) + "|"
+      + std::to_string(snapshot.auto_hwm_effective_rcvbuf);
 
     {
         std::lock_guard<std::mutex> lock(sync);
@@ -593,16 +625,20 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
               << perf_auto_hwm_policy_class_name(
                    snapshot.auto_hwm_policy_class)
               << ",policy_class_id=" << snapshot.auto_hwm_policy_class
-	              << ",unit_budget_bytes="
-	              << snapshot.auto_hwm_unit_budget_bytes
-	              << ",size_cap=" << snapshot.auto_hwm_size_cap
-	              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
-	              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
-	              << ",socket_message_slots="
-	              << snapshot.auto_hwm_socket_message_slots
-	              << ",effective_message_bytes="
-	              << snapshot.auto_hwm_effective_message_bytes
-	              << ",last_recalc_ms=" << snapshot.auto_hwm_last_recalc_ms
+              << ",unit_budget_bytes="
+              << snapshot.auto_hwm_unit_budget_bytes
+              << ",size_cap=" << snapshot.auto_hwm_size_cap
+              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+              << ",socket_message_slots="
+              << snapshot.auto_hwm_socket_message_slots
+              << ",effective_message_bytes="
+              << snapshot.auto_hwm_effective_message_bytes
+              << ",effective_sndbuf="
+              << perf_auto_hwm_sndbuf_display(snapshot, socket_type_)
+              << ",effective_rcvbuf="
+              << perf_auto_hwm_rcvbuf_display(snapshot, socket_type_)
+              << ",last_recalc_ms=" << snapshot.auto_hwm_last_recalc_ms
               << ",last_recalc_reason="
               << perf_auto_hwm_recalc_reason_name(
                    snapshot.auto_hwm_last_recalc_reason)

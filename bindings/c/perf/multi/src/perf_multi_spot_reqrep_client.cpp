@@ -661,6 +661,32 @@ bool create_spot_slots(ctx_guard_t &ctx,
                   << i << " err=" << zlink_errno() << std::endl;
             return false;
         }
+
+        // Prepare the request-reply state before registering the slot with the
+        // poller so reply completion wakeups are attached from the first request.
+        const zlink_routing_id_t *unused_source_rid = NULL;
+        const zlink_routing_id_t *unused_spot_rid = NULL;
+        uint64_t unused_request_seq = 0;
+        zlink_msg_t *unused_parts = NULL;
+        size_t unused_part_count = 0;
+        const zlink_recv_result_t recv_rc =
+          zlink_spot_recv(slot.socket,
+                          &unused_source_rid,
+                          &unused_spot_rid,
+                          &unused_request_seq,
+                          &unused_parts,
+                          &unused_part_count,
+                          static_cast<zlink_recv_flags_t>(ZLINK_DONTWAIT));
+        if (recv_rc != ZLINK_RECV_NO_DATA || zlink_errno() != EAGAIN) {
+            if (bench_debug_enabled())
+                std::cerr
+                  << "[multi-spot-reqrep-client] spot progress init failed slot="
+                  << i << " rc=" << recv_rc << " err=" << zlink_errno()
+                  << std::endl;
+            if (unused_parts && unused_part_count > 0)
+                zlink_multipart_close(unused_parts, unused_part_count);
+            return false;
+        }
     }
 
     perf_print_auto_hwm_snapshot(

@@ -388,6 +388,12 @@ foreach(test_source ${tests})
         PROPERTIES
           TIMEOUT 60)
     endif()
+    if(${test} STREQUAL "test_spot_poller")
+      set_tests_properties(
+        ${test}
+        PROPERTIES
+          TIMEOUT 30)
+    endif()
     if(${test} STREQUAL "test_multi_stream_benchmark_process")
       set_tests_properties(${test} PROPERTIES TIMEOUT 120)
     endif()

@@ -207,6 +207,20 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
                     errno = err;
                     return -1;
                 }
+                zlink::socket_base_t *completion_socket =
+                  zlink::spot_reqrep_internal::spot_completion_signal_socket (
+                    state);
+                if (!completion_socket
+                    || poller_add_registration (
+                         poller_, completion_socket, NULL, ZLINK_POLLIN,
+                         socket_, poller_subject_spot_request_completion)
+                         != 0) {
+                    const int err = errno ? errno : EFAULT;
+                    (void) poller_remove_all_registrations_for_subject (
+                      poller_, socket_);
+                    errno = err;
+                    return -1;
+                }
             }
         }
         return 0;

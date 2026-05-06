@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 
+#include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_pub.hpp"
@@ -208,7 +209,9 @@ bool spot_node_t::recv_ctrl_reply (socket_base_t *socket_, int *out_errno_)
     std::vector<std::string> frames;
     if (recv_ascii_command (socket_, &frames) != 0)
         return false;
-    if (!frames.empty () && frames[0] == "ok") {
+    if (!frames.empty ()
+        && spot_control_protocol::command_is (
+             frames[0], spot_control_protocol::reply_ok)) {
         if (out_errno_)
             *out_errno_ = 0;
         return true;

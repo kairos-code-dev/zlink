@@ -4,6 +4,7 @@
 
 #include "services/spot/spot_node.hpp"
 
+#include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_mesh_pub_hwm.hpp"
 #include "services/spot/spot_node_control_policy.hpp"
@@ -335,7 +336,8 @@ int spot_node_t::send_ready_ack_update (const std::string &target_endpoint_,
       spot_node_control_policy::make_ready_ack_arg (
         target_endpoint_, raw_filter_, ack_source_id_);
     return send_data_plane_command (
-      subscribe_ ? "ready_ack_handle_state.subscribe" : "ready_ack_unsubscribe",
+      subscribe_ ? spot_control_protocol::cmd_ready_ack_handle_state_subscribe
+                 : spot_control_protocol::cmd_ready_ack_unsubscribe,
       arg.c_str ());
 }
 }

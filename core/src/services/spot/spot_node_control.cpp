@@ -128,7 +128,9 @@ void spot_node_t::emit_pending_subscription_replays ()
 
     if (std::getenv ("ZLINK_DEBUG_SPOT_REPLAY"))
         std::fprintf (stderr, "[spot-replay] emit pending replay\n");
-    if (send_data_plane_command ("replay_handle_state.subscriptions") != 0) {
+    if (send_data_plane_command (
+          spot_control_protocol::cmd_replay_handle_state_subscriptions)
+        != 0) {
         debug_mark_fault (errno);
         return;
     }
@@ -151,7 +153,8 @@ int spot_node_t::send_subscription_update (const std::string &raw_filter_,
     }
 
     return send_data_plane_command (
-      subscribe_ ? "subscription_handle_state.subscribe" : "subscription_unsubscribe",
+      subscribe_ ? spot_control_protocol::cmd_subscription_handle_state_subscribe
+                 : spot_control_protocol::cmd_subscription_unsubscribe,
       raw_filter_.c_str ());
 }
 

@@ -5,6 +5,7 @@
 #include "services/spot/spot_node.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 
+#include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_runtime.hpp"
 
@@ -107,7 +108,9 @@ void spot_node_t::refresh_discovery_peers ()
     }
 
     for (size_t i = 0; i < to_connect.size (); ++i) {
-        if (send_data_plane_command ("connect_peer_pub", to_connect[i].c_str ())
+        if (send_data_plane_command (
+              spot_control_protocol::cmd_connect_peer_pub,
+              to_connect[i].c_str ())
             == 0) {
             scoped_lock_t lock (_sync);
             if (_peer_state.active_endpoints.insert (to_connect[i]).second)
@@ -116,7 +119,8 @@ void spot_node_t::refresh_discovery_peers ()
     }
 
     for (size_t i = 0; i < to_disconnect.size (); ++i) {
-        if (send_data_plane_command ("disconnect_peer_pub",
+        if (send_data_plane_command (
+              spot_control_protocol::cmd_disconnect_peer_pub,
                                      to_disconnect[i].c_str ())
             == 0) {
             scoped_lock_t lock (_sync);
@@ -236,7 +240,9 @@ void spot_node_t::refresh_connected_peer_endpoints ()
     }
 
     if (changed && has_filters) {
-        if (send_data_plane_command ("replay_handle_state.subscriptions") != 0) {
+        if (send_data_plane_command (
+              spot_control_protocol::cmd_replay_handle_state_subscriptions)
+            != 0) {
             debug_mark_fault (errno);
             return;
         }

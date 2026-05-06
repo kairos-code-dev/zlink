@@ -4,6 +4,7 @@
 
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_handle.hpp"
+#include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
@@ -77,7 +78,9 @@ int spot_node_t::bind (const char *endpoint_)
         }
     }
 
-    if (send_data_plane_command ("bind_pub", endpoint_) != 0)
+    if (send_data_plane_command (spot_control_protocol::cmd_bind_pub,
+                                 endpoint_)
+        != 0)
         return -1;
 
     // _endpoint_state.bound_endpoint is set by the data plane handler with the resolved
@@ -131,9 +134,10 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
             need_connect = true;
     }
 
-    if (need_connect && send_data_plane_command ("connect_peer_pub",
-                                                 peer_pub_endpoint_)
-                           != 0) {
+    if (need_connect
+        && send_data_plane_command (
+             spot_control_protocol::cmd_connect_peer_pub, peer_pub_endpoint_)
+             != 0) {
         scoped_lock_t lock (_sync);
         _peer_state.manual_endpoints.erase (peer_pub_endpoint_);
         return -1;
@@ -203,7 +207,9 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
     }
 
     if (need_disconnect
-        && send_data_plane_command ("disconnect_peer_pub", peer_pub_endpoint_)
+        && send_data_plane_command (
+             spot_control_protocol::cmd_disconnect_peer_pub,
+             peer_pub_endpoint_)
              != 0)
         return -1;
 
@@ -269,7 +275,9 @@ int spot_node_t::disconnect_peer_pub_rid (
 
     bool any_disconnected = false;
     for (size_t i = 0; i < endpoints.size (); ++i) {
-        if (send_data_plane_command ("disconnect_peer_pub", endpoints[i].c_str ())
+        if (send_data_plane_command (
+              spot_control_protocol::cmd_disconnect_peer_pub,
+              endpoints[i].c_str ())
             == 0) {
             any_disconnected = true;
             scoped_lock_t lock (_sync);

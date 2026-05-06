@@ -15,48 +15,55 @@ int zlink_ctx_set_ext (void *ctx_,
 
 namespace
 {
+struct public_ctx_option_descriptor_t
+{
+    zlink_ctx_option_t option;
+    bool can_set;
+    bool can_get;
+};
+
+static const public_ctx_option_descriptor_t public_ctx_options[] = {
+  {ZLINK_IO_THREADS, true, true},
+  {ZLINK_MAX_SOCKETS, true, true},
+  {ZLINK_SOCKET_LIMIT, false, true},
+  {ZLINK_THREAD_PRIORITY, true, true},
+  {ZLINK_THREAD_SCHED_POLICY, true, true},
+  {ZLINK_MAX_MSGSZ, true, true},
+  {ZLINK_MSG_T_SIZE, false, true},
+  {ZLINK_THREAD_AFFINITY_CPU_ADD, true, true},
+  {ZLINK_THREAD_AFFINITY_CPU_REMOVE, true, true},
+  {ZLINK_THREAD_NAME_PREFIX, true, true},
+  {ZLINK_CTX_OPT_BLOCKY, true, true},
+  {ZLINK_SPOT_WORKER_THREADS, true, true},
+  {ZLINK_CTX_OPT_AUTO_HWM_ENABLE, true, true},
+  {ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS, true, true},
+  {ZLINK_CTX_OPT_AUTO_HWM_PROFILE, true, true},
+};
+
+static const public_ctx_option_descriptor_t *find_public_ctx_option (
+  int option_)
+{
+    for (size_t i = 0; i < sizeof (public_ctx_options)
+                         / sizeof (public_ctx_options[0]);
+         ++i) {
+        if (public_ctx_options[i].option == option_)
+            return &public_ctx_options[i];
+    }
+    return NULL;
+}
+
 static bool is_public_ctx_set_option (int option_)
 {
-    switch (option_) {
-        case ZLINK_IO_THREADS:
-        case ZLINK_MAX_SOCKETS:
-        case ZLINK_THREAD_PRIORITY:
-        case ZLINK_THREAD_SCHED_POLICY:
-        case ZLINK_MAX_MSGSZ:
-        case ZLINK_THREAD_AFFINITY_CPU_ADD:
-        case ZLINK_THREAD_AFFINITY_CPU_REMOVE:
-        case ZLINK_THREAD_NAME_PREFIX:
-        case ZLINK_CTX_OPT_BLOCKY:
-        case ZLINK_SPOT_WORKER_THREADS:
-        case ZLINK_CTX_OPT_AUTO_HWM_ENABLE:
-        case ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB:
-        case ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS:
-        case ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP:
-        case ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP:
-        case ZLINK_CTX_OPT_AUTO_HWM_PROFILE:
-            return true;
-        default:
-            return false;
-    }
+    const public_ctx_option_descriptor_t *descriptor =
+      find_public_ctx_option (option_);
+    return descriptor && descriptor->can_set;
 }
 
 static bool is_public_ctx_get_option (int option_)
 {
-    return option_ == ZLINK_IO_THREADS || option_ == ZLINK_MAX_SOCKETS
-           || option_ == ZLINK_SOCKET_LIMIT || option_ == ZLINK_THREAD_PRIORITY
-           || option_ == ZLINK_THREAD_SCHED_POLICY
-           || option_ == ZLINK_MAX_MSGSZ || option_ == ZLINK_MSG_T_SIZE
-           || option_ == ZLINK_THREAD_AFFINITY_CPU_ADD
-           || option_ == ZLINK_THREAD_AFFINITY_CPU_REMOVE
-           || option_ == ZLINK_THREAD_NAME_PREFIX
-           || option_ == ZLINK_CTX_OPT_BLOCKY
-           || option_ == ZLINK_SPOT_WORKER_THREADS
-           || option_ == ZLINK_CTX_OPT_AUTO_HWM_ENABLE
-           || option_ == ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB
-           || option_ == ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS
-           || option_ == ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP
-           || option_ == ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP
-           || option_ == ZLINK_CTX_OPT_AUTO_HWM_PROFILE;
+    const public_ctx_option_descriptor_t *descriptor =
+      find_public_ctx_option (option_);
+    return descriptor && descriptor->can_get;
 }
 }
 
@@ -136,6 +143,19 @@ zlink_config_result_t zlink_ctx_set (void *ctx_,
     }
     return zlink::config_result_internal::from_rc (
       zlink_ctx_set_ext (ctx_, option_, &optval_, sizeof (int)));
+}
+
+zlink_config_result_t zlink_ctx_set_data (void *ctx_,
+                                          zlink_ctx_option_t option_,
+                                          const void *optval_,
+                                          size_t optvallen_)
+{
+    if (!is_public_ctx_set_option (option_)) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    return zlink::config_result_internal::from_rc (
+      zlink_ctx_set_ext (ctx_, option_, optval_, optvallen_));
 }
 
 int zlink_ctx_set_ext (void *ctx_,

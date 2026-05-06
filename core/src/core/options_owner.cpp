@@ -142,6 +142,7 @@ zlink::options_owner_t zlink::option_owner_of (int option_)
         case ZLINK_INTERNAL_OPT_XPUB_VERBOSE:
         case ZLINK_INTERNAL_OPT_XPUB_NODROP:
         case ZLINK_INTERNAL_OPT_XPUB_MANUAL:
+        case ZLINK_INTERNAL_OPT_XPUB_MANUAL_LAST_VALUE:
         case ZLINK_INTERNAL_OPT_XPUB_WELCOME_MSG:
         case ZLINK_INTERNAL_OPT_XPUB_VERBOSER:
         case ZLINK_INTERNAL_OPT_TOPICS_COUNT:

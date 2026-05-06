@@ -6,6 +6,7 @@
 
 #include "services/control/service_control_runtime.hpp"
 #include "services/discovery/discovery_owned_service.hpp"
+#include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_runtime_internal.hpp"
@@ -151,10 +152,12 @@ int spot_node_t::destroy ()
                                 &channel_dealer_discoveries,
                                 &active_peer_endpoints, &bound_endpoint);
     for (size_t i = 0; i < active_peer_endpoints.size (); ++i)
-        (void) send_data_plane_command ("disconnect_peer_pub",
+        (void) send_data_plane_command (
+          spot_control_protocol::cmd_disconnect_peer_pub,
                                         active_peer_endpoints[i].c_str ());
     if (!bound_endpoint.empty ())
-        (void) send_data_plane_command ("unbind_pub", bound_endpoint.c_str ());
+        (void) send_data_plane_command (spot_control_protocol::cmd_unbind_pub,
+                                        bound_endpoint.c_str ());
     spot_shutdown_logf_local (false, "step=peer_disconnect node=%p",
                               static_cast<void *> (this));
     if (_runtime)

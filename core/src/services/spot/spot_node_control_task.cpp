@@ -5,6 +5,7 @@
 #include "services/spot/spot_node.hpp"
 
 #include "services/control/service_control_runtime.hpp"
+#include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_node_control_policy.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -44,7 +45,9 @@ int spot_node_t::replay_subscriptions_if_active_peers ()
         return 0;
     if (std::getenv ("ZLINK_DEBUG_SPOT_REPLAY"))
         std::fprintf (stderr, "[spot-replay] immediate replay request\n");
-    if (send_data_plane_command ("replay_handle_state.subscriptions") != 0)
+    if (send_data_plane_command (
+          spot_control_protocol::cmd_replay_handle_state_subscriptions)
+        != 0)
         return -1;
     queue_all_subscription_ready_filters ();
     return 0;

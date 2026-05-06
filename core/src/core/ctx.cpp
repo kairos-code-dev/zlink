@@ -400,11 +400,6 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB:
-            if (is_int)
-                return 0;
-            break;
-
         case ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
@@ -412,16 +407,6 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
                 refresh_auto_hwm = true;
                 break;
             }
-            break;
-
-        case ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP:
-            if (is_int)
-                return 0;
-            break;
-
-        case ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP:
-            if (is_int)
-                return 0;
             break;
 
         case ZLINK_CTX_OPT_AUTO_HWM_PROFILE:
@@ -522,31 +507,10 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             }
             break;
 
-        case ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB:
-            if (is_int) {
-                *value = 0;
-                return 0;
-            }
-            break;
-
         case ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _auto_hwm_recalc_debounce_ms;
-                return 0;
-            }
-            break;
-
-        case ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP:
-            if (is_int) {
-                *value = 0;
-                return 0;
-            }
-            break;
-
-        case ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP:
-            if (is_int) {
-                *value = 0;
                 return 0;
             }
             break;

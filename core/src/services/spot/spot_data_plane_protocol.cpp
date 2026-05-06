@@ -123,14 +123,17 @@ int spot_data_plane_protocol_t::send_errno_reply (socket_base_t *socket_,
 {
     char buf[32];
     snprintf (buf, sizeof (buf), "%d", error_);
-    if (spot_io::send_ascii_frame (socket_, "error", ZLINK_SNDMORE) != 0)
+    if (spot_io::send_ascii_frame (
+          socket_, spot_control_protocol::reply_error, ZLINK_SNDMORE)
+        != 0)
         return -1;
     return spot_io::send_ascii_frame (socket_, buf, 0);
 }
 
 int spot_data_plane_protocol_t::send_ok_reply (socket_base_t *socket_)
 {
-    return spot_io::send_ascii_frame (socket_, "ok", 0);
+    return spot_io::send_ascii_frame (
+      socket_, spot_control_protocol::reply_ok, 0);
 }
 
 uint64_t spot_data_plane_protocol_t::resolve_bootstrap_broadcast_interval_ms (

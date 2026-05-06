@@ -264,10 +264,6 @@ void test_ctx_option_auto_hwm_defaults ()
       ZLINK_CTX_AUTO_HWM_ENABLE_DFLT,
       zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_ENABLE, NULL));
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT,
-      zlink_ctx_get (get_test_context (),
-                     ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB, NULL));
-    TEST_ASSERT_EQUAL_INT (
       ZLINK_CTX_AUTO_HWM_PROFILE_DFLT,
       zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
                      NULL));
@@ -294,23 +290,6 @@ void test_ctx_option_auto_hwm_round_trip ()
     TEST_ASSERT_EQUAL_INT (
       0, zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_ENABLE,
                         NULL));
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
-      get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB, 256));
-    TEST_ASSERT_EQUAL_INT (
-      0,
-      zlink_ctx_get (get_test_context (),
-                     ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB, NULL));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
-      get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP, 10000));
-    TEST_ASSERT_EQUAL_INT (
-      0, zlink_ctx_get (get_test_context (),
-                        ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP, NULL));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
-      get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP, 1000));
-    TEST_ASSERT_EQUAL_INT (
-      0, zlink_ctx_get (get_test_context (),
-                        ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP, NULL));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
       get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,

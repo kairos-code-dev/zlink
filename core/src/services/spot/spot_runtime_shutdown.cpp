@@ -5,6 +5,7 @@
 #include "services/spot/spot_runtime_internal.hpp"
 
 #include "services/control/service_control_runtime.hpp"
+#include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane.hpp"
 #include "services/spot/spot_node.hpp"
 
@@ -170,7 +171,9 @@ int spot_runtime_t::stop_and_join ()
     begin_shutdown ();
     if (data_ctrl_front) {
         scoped_lock_t lock (ctrl_sync);
-        if (send_ascii_frame (data_ctrl_front, "terminate", 0) != 0) {
+        if (send_ascii_frame (
+              data_ctrl_front, spot_control_protocol::cmd_terminate, 0)
+            != 0) {
             const int err = errno != 0 ? errno : EIO;
             if (err != EAGAIN && err != ETIMEDOUT && err != EFSM && err != ETERM
                 && err != EPIPE && err != ENOTSOCK) {

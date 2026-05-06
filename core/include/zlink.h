@@ -120,11 +120,7 @@ ZLINK_EXPORT void zlink_version (int *major_, int *minor_, int *patch_);
 #define ZLINK_THREAD_SCHED_POLICY_DFLT -1
 #define ZLINK_SPOT_WORKER_THREADS_DFLT 0
 #define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT 1
-/* Deprecated compatibility defaults. These options are no-op. */
-#define ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT 0
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
-#define ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT 0
-#define ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT 0
 #define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
 
 /**
@@ -168,6 +164,23 @@ ZLINK_EXPORT zlink_close_result_t zlink_ctx_shutdown (void *context_);
 ZLINK_EXPORT zlink_config_result_t zlink_ctx_set (void *context_,
                                 zlink_ctx_option_t option_,
                                 int optval_);
+
+/**
+ * @brief Set a context option from a byte buffer.
+ *
+ * This is used for context options whose public binding type is not an int,
+ * such as ZLINK_THREAD_NAME_PREFIX.
+ *
+ * @param context_    Context handle.
+ * @param option_     Option name.
+ * @param optval_     Option value bytes.
+ * @param optvallen_  Number of bytes in optval_.
+ * @return ZLINK_CONFIG_OK on success, otherwise a zlink_config_result_t error.
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_ctx_set_data (void *context_,
+                                zlink_ctx_option_t option_,
+                                const void *optval_,
+                                size_t optvallen_);
 
 /**
  * @brief Get a context option.

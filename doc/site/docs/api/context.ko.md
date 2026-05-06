@@ -26,16 +26,14 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 #define ZLINK_CTX_OPT_BLOCKY          10
 #define ZLINK_SPOT_WORKER_THREADS     11
 #define ZLINK_CTX_OPT_AUTO_HWM_ENABLE 12
-#define ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB 13
 #define ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS 14
-#define ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP 15
-#define ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP 16
 #define ZLINK_CTX_OPT_AUTO_HWM_PROFILE 17
 ```
 
 ```c
 typedef enum zlink_auto_hwm_profile_t
 {
+    ZLINK_AUTO_HWM_PROFILE_COMPACT = 0,
     ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY = 1,
     ZLINK_AUTO_HWM_PROFILE_BALANCED = 2,
     ZLINK_AUTO_HWM_PROFILE_THROUGHPUT = 3
@@ -57,10 +55,7 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_CTX_OPT_BLOCKY` | 10 | context 종료 시 블로킹 동작 제어 |
 | `ZLINK_SPOT_WORKER_THREADS` | 11 | `zlink_spot_dispatch_event_handler()` 전용 worker 수 (`0` = 자동) |
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | 자동 HWM 정책 사용 여부 (`0` = 비활성, `1` = 활성) |
-| `ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB` | 13 | deprecated 호환 no-op. `zlink_ctx_set()`은 성공하고, `zlink_ctx_get()`은 `0`을 반환하며, HWM 계산에는 영향을 주지 않음 |
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | 연결 변화가 이어질 때 자동 HWM 재계산을 다시 실행하기 전에 기다리는 최소 디바운스 시간 (ms, `>= 0`) |
-| `ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP` | 15 | deprecated 호환 no-op. `zlink_ctx_set()`은 성공하고, `zlink_ctx_get()`은 `0`을 반환하며, HWM 계산에는 영향을 주지 않음 |
-| `ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP` | 16 | deprecated 호환 no-op. `zlink_ctx_set()`은 성공하고, `zlink_ctx_get()`은 `0`을 반환하며, HWM 계산에는 영향을 주지 않음 |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | 자동 HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). 알 수 없는 값은 `EINVAL`로 실패 |
 
 ## 기본값
@@ -71,11 +66,8 @@ typedef enum zlink_auto_hwm_profile_t
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
 #define ZLINK_SPOT_WORKER_THREADS_DFLT  0
-#define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  0
-#define ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT 0
+#define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
-#define ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT 0
-#define ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT 0
 #define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
 ```
 
@@ -86,11 +78,8 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | 기본 스레드 우선순위 (OS 기본값) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | 기본 스케줄링 정책 (OS 기본값) |
 | `ZLINK_SPOT_WORKER_THREADS_DFLT` | 0 | 기본 Spot worker 수 (`0` = 자동) |
-| `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 0 | 자동 HWM 정책 기본 비활성. 애플리케이션이 명시적으로 켜지 않으면 소켓 HWM 기본값 `1000`이 유지됨 |
-| `ZLINK_CTX_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB_DFLT` | 0 | deprecated no-op 옵션의 호환 기본값 |
+| `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | 자동 HWM 정책 기본 활성. 애플리케이션이 auto-HWM을 끄거나 수동 HWM을 설정하지 않으면 balanced profile을 사용함 |
 | `ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT` | 3000 | 자동 HWM 재계산 기본 디바운스 시간 (ms) |
-| `ZLINK_CTX_AUTO_HWM_STREAM_BOOTSTRAP_DFLT` | 0 | deprecated no-op 옵션의 호환 기본값 |
-| `ZLINK_CTX_AUTO_HWM_SPOT_BOOTSTRAP_DFLT` | 0 | deprecated no-op 옵션의 호환 기본값 |
 | `ZLINK_CTX_AUTO_HWM_PROFILE_DFLT` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 자동 HWM 기본 profile |
 
 ## 함수
@@ -190,11 +179,6 @@ runtime이 시작된 뒤 이 값을 바꾸려 하면 `ZLINK_CONFIG_INVALID_ARGUM
 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 다음 자동 HWM 계산에서 쓰는 profile을
 바꾸며, runtime 중에도 안전하게 조정할 수 있습니다. profile은 자동 HWM
 planner가 쓰는 연결당 단위 예산과 size cap을 고릅니다.
-`ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB`,
-`ZLINK_CTX_OPT_AUTO_HWM_STREAM_BOOTSTRAP`,
-`ZLINK_CTX_OPT_AUTO_HWM_SPOT_BOOTSTRAP`은 source와 ABI 호환을 위해 남긴
-deprecated no-op 옵션입니다. 이 옵션들은 자동 HWM 계산에 영향을 주지
-않습니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 

@@ -251,14 +251,16 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
     const std::string verb = frames_.empty () ? std::string () : frames_[0];
     const std::string arg = frames_.size () > 1 ? frames_[1] : std::string ();
 
-    if (verb == "terminate") {
+    if (spot_control_protocol::command_is (
+          verb, spot_control_protocol::cmd_terminate)) {
         if (send_ok_reply (ctrl_) != 0)
             return -1;
         *running_out_ = false;
         return 0;
     }
 
-    if (verb == "bind_pub") {
+    if (spot_control_protocol::command_is (
+          verb, spot_control_protocol::cmd_bind_pub)) {
         std::string cert;
         std::string key;
         {
@@ -354,7 +356,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         return send_ok_reply (ctrl_);
     }
 
-    if (verb == "connect_peer_pub") {
+    if (spot_control_protocol::command_is (
+          verb, spot_control_protocol::cmd_connect_peer_pub)) {
         std::string ca;
         std::string host;
         int trust = 0;
@@ -438,8 +441,13 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         return send_ok_reply (ctrl_);
     }
 
-    if (verb == "replay_handle_state.subscriptions" || verb == "subscription_handle_state.subscribe"
-        || verb == "subscription_unsubscribe") {
+    if (spot_control_protocol::command_is (
+          verb, spot_control_protocol::cmd_replay_handle_state_subscriptions)
+        || spot_control_protocol::command_is (
+             verb,
+             spot_control_protocol::cmd_subscription_handle_state_subscribe)
+        || spot_control_protocol::command_is (
+             verb, spot_control_protocol::cmd_subscription_unsubscribe)) {
         if (sync_outbound_mesh_subscriptions (mesh_xsub_, node_, state_) != 0) {
             if (send_errno_reply (ctrl_, errno) != 0)
                 return -1;
@@ -455,7 +463,10 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         return send_ok_reply (ctrl_);
     }
 
-    if (verb == "ready_ack_handle_state.subscribe" || verb == "ready_ack_unsubscribe") {
+    if (spot_control_protocol::command_is (
+          verb, spot_control_protocol::cmd_ready_ack_handle_state_subscribe)
+        || spot_control_protocol::command_is (
+             verb, spot_control_protocol::cmd_ready_ack_unsubscribe)) {
         std::string target_endpoint;
         std::string raw_filter;
         std::string ack_source_id;
@@ -475,7 +486,9 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         {
             std::set<std::string> &source_filters =
               state_->outbound_ready_filters[target_endpoint][ack_source_id];
-            if (verb == "ready_ack_handle_state.subscribe")
+            if (spot_control_protocol::command_is (
+                  verb,
+                  spot_control_protocol::cmd_ready_ack_handle_state_subscribe))
                 source_filters.insert (raw_filter);
             else
                 source_filters.erase (raw_filter);
@@ -500,7 +513,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         return send_ok_reply (ctrl_);
     }
 
-    if (verb == "unbind_pub") {
+    if (spot_control_protocol::command_is (
+          verb, spot_control_protocol::cmd_unbind_pub)) {
         clear_snapshot_sources (node_, state_);
         state_->outbound_ready_filters.clear ();
         for (std::map<std::string, std::string>::iterator it =
@@ -542,7 +556,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         return send_ok_reply (ctrl_);
     }
 
-    if (verb == "disconnect_peer_pub") {
+    if (spot_control_protocol::command_is (
+          verb, spot_control_protocol::cmd_disconnect_peer_pub)) {
         const std::map<std::string, std::string>::iterator it =
           state_->peer_ctrl_endpoints.find (arg);
         if (it != state_->peer_ctrl_endpoints.end ()) {

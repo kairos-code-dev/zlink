@@ -7,6 +7,7 @@
 #include "api/service_surface_internal.hpp"
 #include "api/service_spot_dispatch_context_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
+#include "api/request_timeout_scheduler_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "api/submit_result_internal.hpp"
 #include "api/recv_result_internal.hpp"
@@ -20,7 +21,6 @@
 #include "services/spot/spot_subject_access.hpp"
 #include "protocol/wire.hpp"
 #include "utils/clock.hpp"
-#include "utils/sleep.hpp"
 
 #include <algorithm>
 #include <deque>
@@ -128,7 +128,6 @@ struct queued_join_request_t
         handler (NULL),
         userdata (NULL),
         replied (false),
-        has_timeout (false),
         owns_message (false),
         owns_reply (false),
         join_epoch (0),
@@ -160,13 +159,13 @@ struct queued_join_request_t
     zlink_reply_handler_fn handler;
     void *userdata;
     bool replied;
-    bool has_timeout;
     bool owns_message;
     bool owns_reply;
     uint64_t join_epoch;
     actor_handle_t *pending_target;
     zlink_msg_t message;
     zlink_msg_t reply;
+    std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
 };
 
 struct session_binding_t
@@ -208,7 +207,6 @@ std::map<zlink::spot_node_t *, actor_admission_t> g_admission_handlers;
 std::set<zlink::spot_node_t *> g_known_nodes;
 std::set<std::pair<zlink::spot_node_t *, std::string> >
   g_disconnected_actor_routes;
-std::set<queued_join_request_t *> g_retired_join_requests;
 std::set<queued_join_request_t *> g_live_join_requests;
 uint64_t g_actor_protocol_drop_count = 0;
 uint64_t g_next_join_epoch = 1;
@@ -723,24 +721,20 @@ void retire_join_request_locked (queued_join_request_t *request_)
         request_->owns_message = false;
     }
     request_->replied = true;
-    g_retired_join_requests.insert (request_);
 }
 
 void release_join_request_after_completion (queued_join_request_t *request_)
 {
     if (!request_)
         return;
-    bool should_delete = false;
+    std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
     {
         std::lock_guard<std::timed_mutex> lock (g_actor_mutex);
-        if (!request_->has_timeout) {
-            g_retired_join_requests.erase (request_);
-            g_live_join_requests.erase (request_);
-            should_delete = true;
-        }
+        g_live_join_requests.erase (request_);
+        timeout_task.swap (request_->timeout_task);
     }
-    if (should_delete)
-        delete request_;
+    zlink::request_timeout::cancel (timeout_task);
+    delete request_;
 }
 
 void remove_pending_join_request_locked (queued_join_request_t *request_)
@@ -760,37 +754,36 @@ void remove_pending_join_request_locked (queued_join_request_t *request_)
         g_join_queues.erase (key);
 }
 
+void handle_join_timeout (void *userdata_)
+{
+    queued_join_request_t *request =
+      static_cast<queued_join_request_t *> (userdata_);
+    if (!request)
+        return;
+    bool timed_out = false;
+    {
+        std::lock_guard<std::timed_mutex> lock (g_actor_mutex);
+        if (g_live_join_requests.count (request) != 0 && !request->replied) {
+            remove_pending_join_request_locked (request);
+            retire_join_request_locked (request);
+            request->timeout_task.reset ();
+            timed_out = true;
+        }
+    }
+    if (!timed_out)
+        return;
+    complete_join_request (request, ZLINK_REQUEST_TIMED_OUT);
+    delete request;
+}
+
 void schedule_join_timeout (queued_join_request_t *request_,
                             uint32_t timeout_ms_)
 {
     if (!request_ || timeout_ms_ == 0)
         return;
-    request_->has_timeout = true;
-    std::thread ([request_, timeout_ms_] {
-        zlink::sleep_ms (timeout_ms_);
-        bool timed_out = false;
-        bool release_retired = false;
-        {
-            std::lock_guard<std::timed_mutex> lock (g_actor_mutex);
-            if (g_retired_join_requests.count (request_) == 0
-                && !request_->replied) {
-                remove_pending_join_request_locked (request_);
-                retire_join_request_locked (request_);
-                timed_out = true;
-            } else if (g_retired_join_requests.erase (request_) != 0) {
-                release_retired = true;
-            }
-        }
-        if (timed_out) {
-            complete_join_request (request_, ZLINK_REQUEST_TIMED_OUT);
-            {
-                std::lock_guard<std::timed_mutex> lock (g_actor_mutex);
-                g_retired_join_requests.erase (request_);
-            }
-            delete request_;
-        } else if (release_retired)
-            delete request_;
-    }).detach ();
+    request_->timeout_task =
+      zlink::request_timeout::schedule (timeout_ms_, handle_join_timeout,
+                                        request_);
 }
 
 zlink_request_result_t errno_to_request_result (int err_)
@@ -1740,8 +1733,8 @@ extern "C" zlink_submit_result_t zlink_spot_actor_join_reply (
       accepted_ ? ZLINK_REQUEST_OK : ZLINK_REQUEST_REJECTED;
     {
         std::lock_guard<std::timed_mutex> lock (g_actor_mutex);
-        if (g_retired_join_requests.count (request) != 0
-            || request->replied || !request->spot
+        if (g_live_join_requests.count (request) == 0 || request->replied
+            || !request->spot
             || !same_logical_spot (request->spot, spot)) {
             errno = EALREADY;
             return ZLINK_SUBMIT_INVALID_STATE;

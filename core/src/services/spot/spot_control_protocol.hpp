@@ -23,10 +23,33 @@ static const char bootstrap_ctrl_descriptor_topic[] =
   "__zlink.spot.bootstrap.ctrl_descriptor";
 static const char peer_pub_route_topic[] = "__zlink.spot.peer_pub";
 
+static const char cmd_terminate[] = "terminate";
+static const char cmd_bind_pub[] = "bind_pub";
+static const char cmd_connect_peer_pub[] = "connect_peer_pub";
+static const char cmd_disconnect_peer_pub[] = "disconnect_peer_pub";
+static const char cmd_unbind_pub[] = "unbind_pub";
+static const char cmd_replay_handle_state_subscriptions[] =
+  "replay_handle_state.subscriptions";
+static const char cmd_subscription_handle_state_subscribe[] =
+  "subscription_handle_state.subscribe";
+static const char cmd_subscription_unsubscribe[] =
+  "subscription_unsubscribe";
+static const char cmd_ready_ack_handle_state_subscribe[] =
+  "ready_ack_handle_state.subscribe";
+static const char cmd_ready_ack_unsubscribe[] = "ready_ack_unsubscribe";
+
+static const char reply_ok[] = "ok";
+static const char reply_error[] = "error";
+
 inline bool starts_with (const std::string &value_, const char *prefix_)
 {
     return prefix_
            && value_.compare (0, strlen (prefix_), prefix_) == 0;
+}
+
+inline bool command_is (const std::string &value_, const char *command_)
+{
+    return command_ && value_ == command_;
 }
 
 inline bool starts_with (const char *value_,

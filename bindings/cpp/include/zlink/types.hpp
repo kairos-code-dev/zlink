@@ -5,6 +5,7 @@
 #include "common.hpp"
 #include "message.hpp"
 
+#include <chrono>
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
@@ -19,8 +20,14 @@ namespace zlink
 {
 
 class routing_id_t;
+class actor_ref_t;
 class received_t;
 class topic_message_t;
+namespace service
+{
+class spot_node_t;
+class spot_t;
+}
 
 enum class socket_type : int
 {
@@ -50,10 +57,8 @@ enum class context_option : int
     blocky = ZLINK_CTX_OPT_BLOCKY,
     spot_worker_threads = ZLINK_SPOT_WORKER_THREADS,
     auto_hwm_enable = ZLINK_CTX_OPT_AUTO_HWM_ENABLE,
-    // Deprecated compatibility no-op. Set/get succeeds but returns 0 and does
-    // not affect HWM calculation.
-    auto_hwm_total_memory_budget_mb =
-      ZLINK_CTX_OPT_AUTO_HWM_TOTAL_MEMORY_BUDGET_MB,
+    auto_hwm_recalc_debounce_ms =
+      ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS,
     auto_hwm_profile = ZLINK_CTX_OPT_AUTO_HWM_PROFILE
 };
 
@@ -64,6 +69,168 @@ enum class auto_hwm_profile : int
     balanced = ZLINK_AUTO_HWM_PROFILE_BALANCED,
     throughput = ZLINK_AUTO_HWM_PROFILE_THROUGHPUT
 };
+
+enum class thread_scheduling_policy_t : int
+{
+    default_policy = ZLINK_THREAD_SCHED_POLICY_DFLT,
+    other = 0,
+    fifo = 1,
+    round_robin = 2
+};
+
+enum class rid_duplicate_policy_t : int
+{
+    reject = ZLINK_RID_DUPLICATE_REJECT,
+    replace = ZLINK_RID_DUPLICATE_HANDOVER
+};
+
+class io_thread_count_t
+{
+  public:
+    static io_thread_count_t value (int value_) noexcept
+    {
+        return io_thread_count_t (value_);
+    }
+
+    int value () const noexcept { return _value; }
+
+  private:
+    explicit io_thread_count_t (int value_) noexcept : _value (value_) {}
+
+    int _value;
+};
+
+class socket_count_t
+{
+  public:
+    static socket_count_t value (int value_) noexcept
+    {
+        return socket_count_t (value_);
+    }
+
+    int value () const noexcept { return _value; }
+
+  private:
+    explicit socket_count_t (int value_) noexcept : _value (value_) {}
+
+    int _value;
+};
+
+class thread_priority_t
+{
+  public:
+    static thread_priority_t value (int value_) noexcept
+    {
+        return thread_priority_t (value_);
+    }
+
+    int value () const noexcept { return _value; }
+
+  private:
+    explicit thread_priority_t (int value_) noexcept : _value (value_) {}
+
+    int _value;
+};
+
+class cpu_index_t
+{
+  public:
+    static cpu_index_t value (int value_) noexcept { return cpu_index_t (value_); }
+
+    int value () const noexcept { return _value; }
+
+  private:
+    explicit cpu_index_t (int value_) noexcept : _value (value_) {}
+
+    int _value;
+};
+
+class spot_worker_count_t
+{
+  public:
+    static spot_worker_count_t value (int value_) noexcept
+    {
+        return spot_worker_count_t (value_);
+    }
+
+    int value () const noexcept { return _value; }
+
+  private:
+    explicit spot_worker_count_t (int value_) noexcept : _value (value_) {}
+
+    int _value;
+};
+
+class byte_size_t
+{
+  public:
+    static byte_size_t bytes (int64_t value_) noexcept
+    {
+        return byte_size_t (value_);
+    }
+
+    int64_t bytes () const noexcept { return _bytes; }
+
+  private:
+    explicit byte_size_t (int64_t value_) noexcept : _bytes (value_) {}
+
+    int64_t _bytes;
+};
+
+class peer_weight_t
+{
+  public:
+    static peer_weight_t value (uint32_t value_)
+    {
+        if (value_ > 100u)
+            throw std::invalid_argument ("peer_weight_t must be in range 0..100");
+        return peer_weight_t (value_);
+    }
+
+    uint32_t value () const noexcept { return _value; }
+
+  private:
+    explicit peer_weight_t (uint32_t value_) noexcept : _value (value_) {}
+
+    uint32_t _value;
+};
+
+class message_count_t
+{
+  public:
+    static message_count_t value (int value_) noexcept
+    {
+        return message_count_t (value_);
+    }
+
+    int value () const noexcept { return _value; }
+
+  private:
+    explicit message_count_t (int value_) noexcept : _value (value_) {}
+
+    int _value;
+};
+
+class socket_backlog_t
+{
+  public:
+    static socket_backlog_t value (int value_) noexcept
+    {
+        return socket_backlog_t (value_);
+    }
+
+    int value () const noexcept { return _value; }
+
+  private:
+    explicit socket_backlog_t (int value_) noexcept : _value (value_) {}
+
+    int _value;
+};
+
+namespace compat
+{
+namespace options
+{
 
 enum class socket_option : int
 {
@@ -218,6 +385,20 @@ template<typename T> struct stream_option_key_t
     stream_option option;
 };
 
+} // namespace options
+} // namespace compat
+
+namespace detail
+{
+inline routing_id_t native_routing_id (const zlink_routing_id_t &native_);
+inline routing_id_t unchecked_empty_routing_id () noexcept;
+inline zlink_routing_id_t *routing_id_native (routing_id_t &routing_id_) noexcept;
+inline const zlink_routing_id_t *
+routing_id_native (const routing_id_t &routing_id_) noexcept;
+inline bool routing_id_empty (const routing_id_t &routing_id_) noexcept;
+inline const zlink_actor_ref_t *
+actor_ref_native (const actor_ref_t &actor_) noexcept;
+
 inline void validate_no_embedded_null (const std::string &value_,
                                        const char *field_name_)
 {
@@ -237,6 +418,13 @@ inline void validate_bounded_c_string (const std::string &value_,
           + " bytes");
     }
 }
+
+} // namespace detail
+
+namespace compat
+{
+namespace options
+{
 
 namespace socket_options
 {
@@ -357,6 +545,9 @@ namespace stream_options
 static const stream_option_key_t<int> notify (stream_option::notify);
 } // namespace stream_options
 
+} // namespace options
+} // namespace compat
+
 class common_socket_options_t
 {
   public:
@@ -365,42 +556,42 @@ class common_socket_options_t
     {
     }
 
-    int linger () const;
-    void linger (int value);
-    int send_hwm () const;
-    void send_hwm (int value);
-    int recv_hwm () const;
-    void recv_hwm (int value);
-    int send_timeout () const;
-    void send_timeout (int value);
-    int recv_timeout () const;
-    void recv_timeout (int value);
+    std::chrono::milliseconds linger () const;
+    void linger (std::chrono::milliseconds value);
+    message_count_t send_hwm () const;
+    void send_hwm (message_count_t value);
+    message_count_t recv_hwm () const;
+    void recv_hwm (message_count_t value);
+    std::chrono::milliseconds send_timeout () const;
+    void send_timeout (std::chrono::milliseconds value);
+    std::chrono::milliseconds recv_timeout () const;
+    void recv_timeout (std::chrono::milliseconds value);
     bool immediate () const;
     void immediate (bool value);
-    int connect_timeout () const;
-    void connect_timeout (int value);
+    std::chrono::milliseconds connect_timeout () const;
+    void connect_timeout (std::chrono::milliseconds value);
     bool ipv6 () const;
     void ipv6 (bool value);
     bool tcp_no_delay () const;
     void tcp_no_delay (bool value);
     bool tcp_keepalive () const;
     void tcp_keepalive (bool value);
-    int heartbeat_interval () const;
-    void heartbeat_interval (int value);
-    int heartbeat_ttl () const;
-    void heartbeat_ttl (int value);
-    int heartbeat_timeout () const;
-    void heartbeat_timeout (int value);
-    int rid_duplicate_policy () const;
-    void rid_duplicate_policy (int value);
-    int64_t max_message_size () const;
-    void max_message_size (int64_t value);
-    int backlog () const;
-    void backlog (int value);
-    int reconnect_interval () const;
-    void reconnect_interval (int value);
-    int reconnect_interval_max () const;
-    void reconnect_interval_max (int value);
+    std::chrono::milliseconds heartbeat_interval () const;
+    void heartbeat_interval (std::chrono::milliseconds value);
+    std::chrono::milliseconds heartbeat_ttl () const;
+    void heartbeat_ttl (std::chrono::milliseconds value);
+    std::chrono::milliseconds heartbeat_timeout () const;
+    void heartbeat_timeout (std::chrono::milliseconds value);
+    rid_duplicate_policy_t rid_duplicate_policy () const;
+    void rid_duplicate_policy (rid_duplicate_policy_t value);
+    byte_size_t max_message_size () const;
+    void max_message_size (byte_size_t value);
+    socket_backlog_t backlog () const;
+    void backlog (socket_backlog_t value);
+    std::chrono::milliseconds reconnect_interval () const;
+    void reconnect_interval (std::chrono::milliseconds value);
+    std::chrono::milliseconds reconnect_interval_max () const;
+    void reconnect_interval_max (std::chrono::milliseconds value);
     std::string last_endpoint () const;
 
   private:
@@ -423,8 +614,8 @@ class router_socket_options_t
     void probe_router (bool value);
     std::optional<routing_id_t> connect_routing_id () const;
     void connect_routing_id (const routing_id_t &value);
-    uint32_t peer_weight () const;
-    void peer_weight (uint32_t value);
+    peer_weight_t peer_weight () const;
+    void peer_weight (peer_weight_t value);
 
   private:
     void *_handle;
@@ -440,8 +631,8 @@ class dealer_socket_options_t
 
     bool probe_router () const;
     void probe_router (bool value);
-    uint32_t peer_weight () const;
-    void peer_weight (uint32_t value);
+    peer_weight_t peer_weight () const;
+    void peer_weight (peer_weight_t value);
 
   private:
     void *_handle;
@@ -530,7 +721,8 @@ enum class submit_result_t : int
     thread_violation = ZLINK_SUBMIT_THREAD_VIOLATION,
     out_of_memory = ZLINK_SUBMIT_OUT_OF_MEMORY,
     seq_exhausted = ZLINK_SUBMIT_SEQ_EXHAUSTED,
-    internal_error = ZLINK_SUBMIT_INTERNAL_ERROR
+    internal_error = ZLINK_SUBMIT_INTERNAL_ERROR,
+    not_admitted = ZLINK_SUBMIT_NOT_ADMITTED
 };
 
 enum class request_result_t : int
@@ -606,17 +798,11 @@ enum class config_result_t : int
 class routing_id_t
 {
   public:
-    routing_id_t () noexcept : _native ()
+    routing_id_t (const uint8_t *bytes_, size_t size_) : _native ()
     {
         std::memset (&_native, 0, sizeof (_native));
-    }
-
-    routing_id_t (const uint8_t *bytes_, size_t size_) : routing_id_t ()
-    {
         assign (bytes_, size_);
     }
-
-    routing_id_t (const zlink_routing_id_t &native_) : _native (native_) {}
 
     static routing_id_t from_bytes (const uint8_t *bytes_, size_t size_)
     {
@@ -651,7 +837,6 @@ class routing_id_t
 
     const uint8_t *data () const noexcept { return _native.data; }
     size_t size () const noexcept { return _native.size; }
-    bool empty () const noexcept { return _native.size == 0; }
 
     std::vector<uint8_t> to_bytes () const
     {
@@ -661,9 +846,7 @@ class routing_id_t
 
     std::string to_string () const
     {
-        return std::string (
-          reinterpret_cast<const char *> (_native.data),
-          static_cast<size_t> (_native.size));
+        return to_hex ();
     }
 
     std::string to_hex () const
@@ -694,12 +877,18 @@ class routing_id_t
         return !(a_ == b_);
     }
 
-    const zlink_routing_id_t &native () const noexcept { return _native; }
-    operator zlink_routing_id_t () const noexcept { return _native; }
-
   private:
+    routing_id_t () noexcept : _native ()
+    {
+        std::memset (&_native, 0, sizeof (_native));
+    }
+
+    explicit routing_id_t (const zlink_routing_id_t &native_) : _native (native_) {}
+
     void assign (const uint8_t *bytes_, size_t size_)
     {
+        if (size_ == 0)
+            throw std::invalid_argument ("routing id must not be empty");
         if (size_ > sizeof (_native.data))
             throw std::invalid_argument ("routing id exceeds 255 bytes");
         if (size_ > 0 && !bytes_)
@@ -725,10 +914,29 @@ class routing_id_t
         return -1;
     }
 
-    friend inline zlink_routing_id_t *routing_id_native (routing_id_t &) noexcept;
+    friend inline routing_id_t
+    detail::native_routing_id (const zlink_routing_id_t &native_);
+    friend inline routing_id_t detail::unchecked_empty_routing_id () noexcept;
+    friend inline zlink_routing_id_t *
+    detail::routing_id_native (routing_id_t &) noexcept;
     friend inline const zlink_routing_id_t *
-    routing_id_native (const routing_id_t &) noexcept;
+    detail::routing_id_native (const routing_id_t &) noexcept;
+    friend inline bool
+    detail::routing_id_empty (const routing_id_t &) noexcept;
 };
+
+namespace detail
+{
+
+inline routing_id_t native_routing_id (const zlink_routing_id_t &native_)
+{
+    return routing_id_t (native_);
+}
+
+inline routing_id_t unchecked_empty_routing_id () noexcept
+{
+    return routing_id_t ();
+}
 
 inline zlink_routing_id_t empty_routing_id () noexcept
 {
@@ -747,6 +955,13 @@ routing_id_native (const routing_id_t &routing_id_) noexcept
 {
     return &routing_id_._native;
 }
+
+inline bool routing_id_empty (const routing_id_t &routing_id_) noexcept
+{
+    return routing_id_._native.size == 0;
+}
+
+} // namespace detail
 
 template<size_t N> inline std::string fixed_string_to_string (const char (&src_)[N]);
 
@@ -772,7 +987,10 @@ class actor_ref_t
 
     explicit actor_ref_t (const zlink_actor_ref_t &native_) : _native (native_) {}
 
-    const routing_id_t node_rid () const { return routing_id_t (_native.node_rid); }
+    const routing_id_t node_rid () const
+    {
+        return detail::native_routing_id (_native.node_rid);
+    }
 
     const char *actor_id () const noexcept { return _native.actor_id; }
 
@@ -785,12 +1003,17 @@ class actor_ref_t
 
     bool unchecked () const noexcept { return _native.generation == 0u; }
 
-    const zlink_actor_ref_t &native () const noexcept { return _native; }
-    operator zlink_actor_ref_t () const noexcept { return _native; }
-
   private:
+    const zlink_actor_ref_t &native () const noexcept { return _native; }
+
     zlink_actor_ref_t _native;
+
+    friend inline const zlink_actor_ref_t *
+    detail::actor_ref_native (const actor_ref_t &actor_) noexcept;
 };
+
+namespace detail
+{
 
 inline const zlink_actor_ref_t *
 actor_ref_native (const actor_ref_t &actor_) noexcept
@@ -798,14 +1021,22 @@ actor_ref_native (const actor_ref_t &actor_) noexcept
     return &actor_.native ();
 }
 
+} // namespace detail
+
 struct actor_recv_info_t
 {
-    actor_recv_info_t () : actor (), source_node_rid (), source_session_rid (), flags (0) {}
+    actor_recv_info_t ()
+        : actor (),
+          source_node_rid (detail::unchecked_empty_routing_id ()),
+          source_session_rid (detail::unchecked_empty_routing_id ()),
+          flags (0)
+    {
+    }
 
     explicit actor_recv_info_t (const zlink_actor_recv_info_t &native_)
         : actor (native_.actor),
-          source_node_rid (native_.source_node_rid),
-          source_session_rid (native_.source_session_rid),
+          source_node_rid (detail::native_routing_id (native_.source_node_rid)),
+          source_session_rid (detail::native_routing_id (native_.source_session_rid)),
           flags (native_.flags)
     {
     }
@@ -821,43 +1052,27 @@ struct actor_join_info_t
     actor_join_info_t ()
         : source_actor (),
           target_actor (),
-          source_node_rid (),
-          source_spot_rid (),
-          target_node_rid (),
-          target_spot_rid (),
+          source_node_rid (detail::unchecked_empty_routing_id ()),
+          source_spot_rid (detail::unchecked_empty_routing_id ()),
+          target_node_rid (detail::unchecked_empty_routing_id ()),
+          target_spot_rid (detail::unchecked_empty_routing_id ()),
           join_epoch (0),
-          request (NULL),
-          flags (0)
+          flags (0),
+          _request (NULL)
     {
     }
 
     explicit actor_join_info_t (const zlink_actor_join_info_t &native_)
         : source_actor (native_.source_actor),
           target_actor (native_.target_actor),
-          source_node_rid (native_.source_node_rid),
-          source_spot_rid (native_.source_spot_rid),
-          target_node_rid (native_.target_node_rid),
-          target_spot_rid (native_.target_spot_rid),
+          source_node_rid (detail::native_routing_id (native_.source_node_rid)),
+          source_spot_rid (detail::native_routing_id (native_.source_spot_rid)),
+          target_node_rid (detail::native_routing_id (native_.target_node_rid)),
+          target_spot_rid (detail::native_routing_id (native_.target_spot_rid)),
           join_epoch (native_.join_epoch),
-          request (native_.request),
-          flags (native_.flags)
+          flags (native_.flags),
+          _request (native_.request)
     {
-    }
-
-    zlink_actor_join_info_t native () const
-    {
-        zlink_actor_join_info_t out;
-        std::memset (&out, 0, sizeof (out));
-        out.source_actor = source_actor.native ();
-        out.target_actor = target_actor.native ();
-        out.source_node_rid = source_node_rid.native ();
-        out.source_spot_rid = source_spot_rid.native ();
-        out.target_node_rid = target_node_rid.native ();
-        out.target_spot_rid = target_spot_rid.native ();
-        out.join_epoch = join_epoch;
-        out.request = request;
-        out.flags = flags;
-        return out;
     }
 
     actor_ref_t source_actor;
@@ -867,8 +1082,27 @@ struct actor_join_info_t
     routing_id_t target_node_rid;
     routing_id_t target_spot_rid;
     uint64_t join_epoch;
-    void *request;
     uint32_t flags;
+
+  private:
+    zlink_actor_join_info_t native () const
+    {
+        zlink_actor_join_info_t out;
+        std::memset (&out, 0, sizeof (out));
+        out.source_actor = *detail::actor_ref_native (source_actor);
+        out.target_actor = *detail::actor_ref_native (target_actor);
+        out.source_node_rid = *detail::routing_id_native (source_node_rid);
+        out.source_spot_rid = *detail::routing_id_native (source_spot_rid);
+        out.target_node_rid = *detail::routing_id_native (target_node_rid);
+        out.target_spot_rid = *detail::routing_id_native (target_spot_rid);
+        out.join_epoch = join_epoch;
+        out.request = _request;
+        out.flags = flags;
+        return out;
+    }
+
+    void *_request;
+    friend class service::spot_t;
 };
 
 struct actor_create_result_t
@@ -887,18 +1121,22 @@ struct actor_create_result_t
 
 struct actor_route_t
 {
-    actor_route_t () : actor (), joined (false), joined_spot_rid () {}
+    actor_route_t () : actor (), joined (false), joined_spot_rid (std::nullopt) {}
 
     explicit actor_route_t (const zlink_actor_route_t &native_)
         : actor (native_.actor),
           joined (native_.joined != 0),
-          joined_spot_rid (native_.joined_spot_rid)
+          joined_spot_rid (
+            native_.joined_spot_rid.size > 0
+              ? std::optional<routing_id_t> (
+                  detail::native_routing_id (native_.joined_spot_rid))
+              : std::nullopt)
     {
     }
 
     actor_ref_t actor;
     bool joined;
-    routing_id_t joined_spot_rid;
+    std::optional<routing_id_t> joined_spot_rid;
 };
 
 struct actor_part_t
@@ -950,6 +1188,12 @@ struct spot_dispatch_info_t
             static_cast<spot_dispatch_subject_kind_t> (native_.subject_kind)),
           actor (std::nullopt), actor_parts ()
     {
+        if (subject_kind == spot_dispatch_subject_kind_t::actor
+            && native_.subject) {
+            actor =
+              actor_ref_t (*static_cast<const zlink_actor_ref_t *> (
+                native_.subject));
+        }
     }
 
     spot_dispatch_event_t event;
@@ -1083,36 +1327,6 @@ struct subscription_filter_t
     bool is_pattern = false;
 };
 
-template<typename T> class maybe_t
-{
-  public:
-    maybe_t () : _has_value (false), _value () {}
-
-    maybe_t (const T &value_) : _has_value (true), _value (value_) {}
-
-    maybe_t (T &&value_) : _has_value (true), _value (std::move (value_)) {}
-
-    explicit operator bool () const noexcept { return _has_value; }
-    bool has_value () const noexcept { return _has_value; }
-
-    T &value () noexcept { return _value; }
-    const T &value () const noexcept { return _value; }
-
-    T &operator* () noexcept { return _value; }
-    const T &operator* () const noexcept { return _value; }
-
-    T *operator-> () noexcept { return &_value; }
-    const T *operator-> () const noexcept { return &_value; }
-
-  private:
-    bool _has_value;
-    T _value;
-};
-
-struct non_blocking_t
-{
-};
-
 enum class error_code : int
 {
     efsm = EFSM,
@@ -1202,10 +1416,10 @@ enum class disconnect_reason : int
 
 enum class poll_event : short
 {
+    none = 0,
     pollin = ZLINK_POLLIN,
     pollout = ZLINK_POLLOUT,
-    pollerr = ZLINK_POLLERR,
-    pollpri = ZLINK_POLLPRI
+    pollerr = ZLINK_POLLERR
 };
 
 inline poll_event operator| (poll_event a, poll_event b)
@@ -1213,6 +1427,13 @@ inline poll_event operator| (poll_event a, poll_event b)
     return static_cast<poll_event> (static_cast<short> (a)
                                     | static_cast<short> (b));
 }
+
+enum class poll_source_kind_t : int
+{
+    socket = ZLINK_POLLER_SOURCE_SOCKET,
+    fd = ZLINK_POLLER_SOURCE_FD,
+    timer = ZLINK_POLLER_SOURCE_TIMER
+};
 
 enum class auto_connect_type : int
 {
@@ -1255,7 +1476,7 @@ struct monitor_event_t
           value (native_.value),
           routing_id (native_.routing_id.size > 0
                         ? std::optional<routing_id_t> (
-                            routing_id_t (native_.routing_id))
+                            detail::native_routing_id (native_.routing_id))
                         : std::nullopt),
           local_addr (native_.local_addr),
           remote_addr (native_.remote_addr)
@@ -1475,7 +1696,7 @@ struct member_peer_entry_t
           endpoint (fixed_string_to_string (entry_.endpoint)),
           routing_id (entry_.routing_id.size > 0
                         ? std::optional<routing_id_t> (
-                            routing_id_t (entry_.routing_id))
+                            detail::native_routing_id (entry_.routing_id))
                         : std::nullopt),
           weight (entry_.weight),
           value (entry_.value)
@@ -1509,7 +1730,7 @@ struct registry_topology_entry_t
             static_cast<zlink::auto_connect_type> (entry_.auto_connect_type)),
           routing_id (entry_.routing_id.size > 0
                         ? std::optional<routing_id_t> (
-                            routing_id_t (entry_.routing_id))
+                            detail::native_routing_id (entry_.routing_id))
                         : std::nullopt),
           service_kind (static_cast<zlink::service_kind> (entry_.service_kind)),
           service_role (static_cast<zlink::service_role> (entry_.service_role)),
@@ -1555,7 +1776,7 @@ struct spot_node_status_t
           local_endpoint (fixed_string_to_string (status_.local_endpoint)),
           node_routing_id (status_.node_routing_id.size > 0
                              ? std::optional<routing_id_t> (
-                                 routing_id_t (status_.node_routing_id))
+                                 detail::native_routing_id (status_.node_routing_id))
                              : std::nullopt),
           state (static_cast<spot_node_state> (status_.state)),
           configured_peer_count (status_.configured_peer_count),
@@ -1742,7 +1963,14 @@ struct spot_node_subject_filter_t
 struct spot_node_options_t
 {
     spot_node_mode mode = spot_node_mode::all;
+    auto_hwm_profile router_admission_hwm_profile =
+      auto_hwm_profile::balanced;
+    message_count_t router_admission_hwm = message_count_t::value (0);
+    auto_hwm_profile pubsub_admission_hwm_profile =
+      auto_hwm_profile::balanced;
+    message_count_t pubsub_admission_hwm = message_count_t::value (0);
 
+  private:
     zlink_spot_node_options_t native () const
     {
         zlink_spot_node_options_t options;
@@ -1750,6 +1978,8 @@ struct spot_node_options_t
         options.mode = static_cast<zlink_spot_node_mode_t> (mode);
         return options;
     }
+
+    friend class service::spot_node_t;
 };
 
 struct spot_node_socket_snapshot_filter_t
@@ -1792,7 +2022,7 @@ struct spot_node_socket_snapshot_entry_t
 struct spot_node_spot_entry_t
 {
     spot_node_spot_entry_t ()
-        : spot_rid (), dispatch_handler_attached (false),
+        : spot_rid (detail::unchecked_empty_routing_id ()), dispatch_handler_attached (false),
           joined_actor_count (0), pending_actor_join_count (0),
           route_synced (false), last_changed_ms (0)
     {
@@ -1800,7 +2030,7 @@ struct spot_node_spot_entry_t
 
     explicit spot_node_spot_entry_t (
       const zlink_spot_node_spot_entry_t &entry_)
-        : spot_rid (entry_.spot_rid),
+        : spot_rid (detail::native_routing_id (entry_.spot_rid)),
           dispatch_handler_attached (entry_.dispatch_handler_attached != 0),
           joined_actor_count (entry_.joined_actor_count),
           pending_actor_join_count (entry_.pending_actor_join_count),
@@ -1820,7 +2050,7 @@ struct spot_node_spot_entry_t
 struct spot_node_actor_entry_t
 {
     spot_node_actor_entry_t ()
-        : actor (), joined (false), joined_spot_rid (), route_synced (false),
+        : actor (), joined (false), joined_spot_rid (std::nullopt), route_synced (false),
           pending_message_count (0), last_changed_ms (0)
     {
     }
@@ -1829,7 +2059,11 @@ struct spot_node_actor_entry_t
       const zlink_spot_node_actor_entry_t &entry_)
         : actor (entry_.actor),
           joined (entry_.joined != 0),
-          joined_spot_rid (entry_.joined_spot_rid),
+          joined_spot_rid (
+            entry_.joined_spot_rid.size > 0
+              ? std::optional<routing_id_t> (
+                  detail::native_routing_id (entry_.joined_spot_rid))
+              : std::nullopt),
           route_synced (entry_.route_synced != 0),
           pending_message_count (entry_.pending_message_count),
           last_changed_ms (entry_.last_changed_ms)
@@ -1838,7 +2072,7 @@ struct spot_node_actor_entry_t
 
     actor_ref_t actor;
     bool joined;
-    routing_id_t joined_spot_rid;
+    std::optional<routing_id_t> joined_spot_rid;
     bool route_synced;
     uint32_t pending_message_count;
     uint64_t last_changed_ms;
@@ -1882,79 +2116,6 @@ template<size_t N> inline std::string fixed_string_to_string (const char (&src_)
     while (len < N && src_[len] != '\0')
         ++len;
     return std::string (src_, len);
-}
-
-inline int routing_id_from (const void *bytes_,
-                            size_t size_,
-                            routing_id_t *out_)
-{
-    if (!out_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    try {
-        *out_ = routing_id_t::from_bytes (
-          static_cast<const uint8_t *> (bytes_), size_);
-    } catch (const std::invalid_argument &) {
-        errno = size_ > 255u ? EMSGSIZE : EINVAL;
-        return -1;
-    }
-    return 0;
-}
-
-inline int routing_id_from (const std::string &bytes_,
-                            routing_id_t *out_)
-{
-    return routing_id_from (bytes_.data (), bytes_.size (), out_);
-}
-
-inline int routing_id_from (const void *bytes_,
-                            size_t size_,
-                            zlink_routing_id_t *out_)
-{
-    if (!out_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    try {
-        const routing_id_t routing_id = routing_id_t::from_bytes (
-          static_cast<const uint8_t *> (bytes_), size_);
-        *out_ = *routing_id_native (routing_id);
-    } catch (const std::invalid_argument &) {
-        errno = size_ > 255u ? EMSGSIZE : EINVAL;
-        return -1;
-    }
-    return 0;
-}
-
-inline int routing_id_from (const std::string &bytes_,
-                            zlink_routing_id_t *out_)
-{
-    return routing_id_from (bytes_.data (), bytes_.size (), out_);
-}
-
-inline std::vector<uint8_t> routing_id_to_bytes (const routing_id_t &routing_id_)
-{
-    return routing_id_.to_bytes ();
-}
-
-inline std::vector<uint8_t>
-routing_id_to_bytes (const zlink_routing_id_t &routing_id_)
-{
-    return std::vector<uint8_t> (
-      routing_id_.data, routing_id_.data + routing_id_.size);
-}
-
-inline std::string routing_id_to_string (const routing_id_t &routing_id_)
-{
-    return routing_id_.to_string ();
-}
-
-inline std::string routing_id_to_string (const zlink_routing_id_t &routing_id_)
-{
-    return routing_id_t (routing_id_).to_string ();
 }
 
 inline std::string

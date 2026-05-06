@@ -789,6 +789,7 @@ std::shared_ptr<spot_logical_state_t> spot_node_t::create_user_spot_state ()
         return std::shared_ptr<spot_logical_state_t> ();
     }
     state->node = this;
+    state->stable_id = _handle_state.next_spot_stable_id++;
     generate_random_uuid_routing_id (&state->routing_id);
     state->entry = false;
 
@@ -824,6 +825,7 @@ std::shared_ptr<spot_logical_state_t> spot_node_t::entry_spot_state ()
             return std::shared_ptr<spot_logical_state_t> ();
         }
         state->node = this;
+        state->stable_id = _handle_state.next_spot_stable_id++;
         generate_random_uuid_routing_id (&state->routing_id);
         state->entry = true;
         state->rid_locked = _handle_state.entry_spot_rid_locked;
@@ -880,6 +882,14 @@ void spot_node_t::snapshot_spot_states (
          it != _handle_state.spots_by_rid.end (); ++it) {
         out_->push_back (it->second);
     }
+    std::sort (
+      out_->begin (), out_->end (),
+      [] (const std::shared_ptr<spot_logical_state_t> &lhs_,
+          const std::shared_ptr<spot_logical_state_t> &rhs_) {
+          const uint64_t lhs_id = lhs_ ? lhs_->stable_id : 0;
+          const uint64_t rhs_id = rhs_ ? rhs_->stable_id : 0;
+          return lhs_id < rhs_id;
+      });
 }
 
 namespace

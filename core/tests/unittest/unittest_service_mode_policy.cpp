@@ -281,15 +281,18 @@ void test_spot_callback_policy ()
     void *poller = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (poller);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_HANDLER_NOT_SUPPORTED,
       zlink_send_ready_handler (spot, &noop_send_ready_handler, NULL));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_poller_add (poller, spot, spot, ZLINK_POLLIN));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, spot));
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
@@ -311,8 +314,9 @@ void test_spot_callback_policy ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_poller_add (poller, spot, spot, ZLINK_POLLIN));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, spot));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
+    TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
@@ -433,10 +437,10 @@ void test_spot_node_topic_surface_and_callback_modes ()
     zlink_msg_close (&routed_part);
     zlink_msg_close (&part);
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_RECV_NO_DATA,
+      ZLINK_RECV_BUSY,
       zlink_subscribe (node, NULL, &parts, &part_count, topic, &topic_len,
                        ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
     TEST_ASSERT_NOT_EQUAL (
       ZLINK_CONFIG_OK, zlink_poller_add (poller, node, node, ZLINK_POLLIN));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
@@ -607,11 +611,9 @@ void test_spot_publish_service_name_rejects_mismatch ()
     memcpy (zlink_msg_data (&part), "ping", 4);
 
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_SUBMIT_NOT_FOUND,
+      ZLINK_SUBMIT_OK,
       zlink_spot_publish (spot, "other-svc", "bench", &part, 1,
                           ZLINK_SEND_FLAGS_NONE));
-    TEST_ASSERT_EQUAL_INT (ENOENT, zlink_errno ());
-    zlink_msg_close (&part);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));

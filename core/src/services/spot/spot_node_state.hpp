@@ -105,7 +105,7 @@ struct spot_node_endpoint_state_t
 
 struct spot_node_handle_state_t
 {
-    spot_node_handle_state_t () : entry_spot_rid_locked (false) {}
+    spot_node_handle_state_t () : next_spot_stable_id (1), entry_spot_rid_locked (false) {}
 
     spot_node_default_handles_t handle_defaults;
     std::set<spot_pub_t *> pubs;
@@ -113,6 +113,7 @@ struct spot_node_handle_state_t
     std::set<spot_handle_t *> facades;
     std::shared_ptr<spot_logical_state_t> entry_spot;
     std::map<std::string, std::shared_ptr<spot_logical_state_t> > spots_by_rid;
+    uint64_t next_spot_stable_id;
     bool entry_spot_rid_locked;
 };
 

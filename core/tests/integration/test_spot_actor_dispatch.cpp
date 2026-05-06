@@ -1159,8 +1159,13 @@ void test_actor_join_bind_relay_and_dispatch_recv ()
                        zlink_actor_join_spot (actor, spot, &duplicate_join,
                                               on_join_reply, &duplicate_probe,
                                               ZLINK_DONTWAIT, 1000));
-    TEST_ASSERT_TRUE (duplicate_probe.join_done);
-    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, duplicate_probe.join_result);
+    {
+        std::unique_lock<std::mutex> lock (duplicate_probe.mutex);
+        TEST_ASSERT_TRUE (duplicate_probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return duplicate_probe.join_done; }));
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, duplicate_probe.join_result);
+    }
 
     zlink_actor_ref_t joined_rows[1];
     size_t joined_count = 1;

@@ -969,26 +969,6 @@ int spot_node_t::snapshot_internal_sockets (
         != 0)
         return -1;
 
-    uint64_t owner_id = 1;
-    for (std::set<spot_handle_t *>::const_iterator it =
-           _handle_state.facades.begin ();
-         it != _handle_state.facades.end (); ++it, ++owner_id) {
-        spot_handle_t *spot = *it;
-        if (!spot)
-            continue;
-        spot_logical_state_t *logical = spot->logical_state.get ();
-        if (append_socket_snapshot_row (
-              out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT, owner_id,
-              "spot", "pub",
-              logical && logical->pub ? logical->pub->snapshot_socket () : NULL)
-            != 0
-            || append_socket_snapshot_row (
-                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT, owner_id,
-                 "spot", "sub",
-                 logical && logical->sub ? logical->sub->snapshot_socket () : NULL)
-                 != 0)
-            return -1;
-    }
     return 0;
 }
 }

@@ -180,24 +180,10 @@ int spot_subject_set_common_option (void *handle_,
         if (!admission.acquired ())
             return -1;
         if (pub_option >= 0) {
-            zlink::spot_pub_t *pub =
-              spot->logical_state ? spot->logical_state->pub : NULL;
-            if (pub) {
-                if (pub->set_option (pub_option, optval_, optvallen_) != 0)
-                    return -1;
-            } else {
-                store_pending_pub_option (spot, pub_option, optval_, optvallen_);
-            }
+            store_pending_pub_option (spot, pub_option, optval_, optvallen_);
         }
         if (sub_option >= 0) {
-            zlink::spot_sub_t *sub =
-              spot->logical_state ? spot->logical_state->sub : NULL;
-            if (sub) {
-                if (sub->set_option (sub_option, optval_, optvallen_) != 0)
-                    return -1;
-            } else {
-                store_pending_sub_option (spot, sub_option, optval_, optvallen_);
-            }
+            store_pending_sub_option (spot, sub_option, optval_, optvallen_);
         }
         return 0;
     }
@@ -264,24 +250,8 @@ int spot_subject_get_common_option (void *handle_,
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return -1;
-        if (pub_option >= 0) {
-            zlink::spot_pub_t *pub =
-              spot->logical_state ? spot->logical_state->pub : NULL;
-            if (!pub || !pub->poller_socket ()) {
-                errno = ENOTSUP;
-                return -1;
-            }
-            return pub->poller_socket ()->getsockopt (socket_option, optval_,
-                                                      optvallen_);
-        }
-        zlink::spot_sub_t *sub =
-          spot->logical_state ? spot->logical_state->sub : NULL;
-        if (!sub || !sub->poller_socket ()) {
-            errno = ENOTSUP;
-            return -1;
-        }
-        return sub->poller_socket ()->getsockopt (socket_option, optval_,
-                                                  optvallen_);
+        errno = ENOTSUP;
+        return -1;
     }
 
     if (is_registered_spot_node_handle (handle_)) {
@@ -326,12 +296,7 @@ int spot_subject_set_pub_option (void *handle_,
             return -1;
         store_pending_pub_option (spot, ZLINK_SPOT_PUB_OPT_NODROP, optval_,
                                   optvallen_);
-        zlink::spot_pub_t *pub =
-          spot->logical_state ? spot->logical_state->pub : NULL;
-        if (!pub) {
-            return 0;
-        }
-        return pub->set_option (ZLINK_SPOT_PUB_OPT_NODROP, optval_, optvallen_);
+        return 0;
     }
 
     if (is_registered_spot_node_handle (handle_))
@@ -372,14 +337,8 @@ int spot_subject_get_pub_option (void *handle_,
             return copy_option_setting_value (spot->pending_pub_defaults.nodrop,
                                               optval_, optvallen_);
         }
-        zlink::spot_pub_t *pub =
-          spot->logical_state ? spot->logical_state->pub : NULL;
-        if (!pub || !pub->poller_socket ()) {
-            errno = ENOTSUP;
-            return -1;
-        }
-        return pub->poller_socket ()->getsockopt (socket_option, optval_,
-                                                  optvallen_);
+        errno = ENOTSUP;
+        return -1;
     }
 
     if (is_registered_spot_node_handle (handle_)) {
@@ -465,14 +424,8 @@ int spot_subject_get_sub_option (void *handle_,
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return -1;
-        zlink::spot_sub_t *sub =
-          spot->logical_state ? spot->logical_state->sub : NULL;
-        if (!sub || !sub->poller_socket ()) {
-            errno = ENOTSUP;
-            return -1;
-        }
-        return sub->poller_socket ()->getsockopt (socket_option, optval_,
-                                                  optvallen_);
+        errno = ENOTSUP;
+        return -1;
     }
 
     if (is_registered_spot_node_handle (handle_)) {

@@ -13,6 +13,7 @@
 #include "api/socket_api_internal.hpp"
 #include "core/ctx.hpp"
 #include "services/control/service_control_runtime.hpp"
+#include "services/spot/spot_handle.hpp"
 
 namespace
 {
@@ -240,8 +241,8 @@ zlink::spot_reqrep_internal::try_find_spot_state (void *spot_)
         return std::shared_ptr<spot_request_reply_state_t> ();
     }
 
-    if (spot->request_reply_state)
-        return spot->request_reply_state;
+    if (spot->logical_state && spot->logical_state->request_reply_state)
+        return spot->logical_state->request_reply_state;
 
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
     std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator
@@ -257,9 +258,37 @@ void zlink::spot_reqrep_internal::erase_spot_owner_state (void *spot_)
     if (!spot)
         return;
 
-    spot->request_reply_state.reset ();
     std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+    std::shared_ptr<spot_request_reply_state_t> state;
+    std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator
+      owned = spot_owner_states ().find (spot_);
+    if (owned != spot_owner_states ().end ())
+        state = owned->second;
     spot_owner_states ().erase (spot_);
+
+    if (!state && spot->logical_state)
+        state = spot->logical_state->request_reply_state;
+    if (!state)
+        return;
+
+    void *replacement_owner = NULL;
+    for (std::unordered_map<
+           void *,
+           std::shared_ptr<spot_request_reply_state_t> >::const_iterator it =
+           spot_owner_states ().begin ();
+         it != spot_owner_states ().end (); ++it) {
+        if (it->second == state) {
+            replacement_owner = it->first;
+            break;
+        }
+    }
+
+    if (state->owner == spot_)
+        state->owner = replacement_owner;
+    if (!replacement_owner && spot->logical_state
+        && spot->logical_state->request_reply_state == state) {
+        spot->logical_state->request_reply_state.reset ();
+    }
 }
 
 int zlink::spot_reqrep_internal::install_spot_dispatch_event_task (
@@ -362,8 +391,8 @@ zlink::spot_reqrep_internal::find_or_create_spot_state (void *spot_)
     }
 
     std::shared_ptr<spot_request_reply_state_t> state;
-    if (spot->request_reply_state)
-        state = spot->request_reply_state;
+    if (spot->logical_state)
+        state = spot->logical_state->request_reply_state;
     {
         std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
         std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator
@@ -372,12 +401,17 @@ zlink::spot_reqrep_internal::find_or_create_spot_state (void *spot_)
             state = it->second;
         if (!state) {
             state.reset (new spot_request_reply_state_t (spot_));
-            spot_owner_states ()[spot_] = state;
+            if (spot->logical_state)
+                spot->logical_state->request_reply_state = state;
         }
+        spot_owner_states ()[spot_] = state;
     }
     if (!state)
         state.reset (new spot_request_reply_state_t (spot_));
-    spot->request_reply_state = state;
+    if (spot->logical_state)
+        spot->logical_state->request_reply_state = state;
+    if (!state->owner)
+        state->owner = spot_;
 
     refresh_spot_identity_index (spot, state);
     return state;

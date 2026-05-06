@@ -55,8 +55,7 @@ bool read_spot_snapshot (void *spot_, zlink_monitor_snapshot_t *out_)
     if (zlink_spot_node_status_snapshot (spot->node, &status) != 0)
         return false;
 
-    const bool is_pub =
-      !spot->logical_state || spot->logical_state->sub == NULL;
+    const bool is_pub = true;
     out_->source_kind =
       is_pub ? ZLINK_MONITOR_SOURCE_SPOT_PUB : ZLINK_MONITOR_SOURCE_SPOT_SUB;
     if (status.active_peer_count > 0

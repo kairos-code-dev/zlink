@@ -257,7 +257,8 @@ zlink_close_result_t zlink_spot_destroy (void **spot_p_)
         errno = EBUSY;
         return ZLINK_CLOSE_BUSY;
     }
-    zlink::spot_reqrep_internal::unregister_spot_identity (state);
+    if (last_facade)
+        zlink::spot_reqrep_internal::unregister_spot_identity (state);
 
     zlink::part_helper_internal::cleanup_handle (spot);
     zlink_spot_request_reply_cleanup_spot (spot);

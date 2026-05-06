@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -72,11 +73,12 @@ zlink::spot_reqrep_internal::snapshot_spot_states ()
     const std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >
       &owners = spot_owner_states ();
     states.reserve (owners.size ());
+    std::set<spot_request_reply_state_t *> seen;
     for (std::unordered_map<void *,
                             std::shared_ptr<spot_request_reply_state_t> >::const_iterator
            it = owners.begin ();
          it != owners.end (); ++it) {
-        if (it->second)
+        if (it->second && seen.insert (it->second.get ()).second)
             states.push_back (it->second);
     }
     return states;

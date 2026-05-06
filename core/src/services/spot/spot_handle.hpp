@@ -40,10 +40,9 @@ struct spot_logical_state_t
 {
     spot_logical_state_t () :
         node (NULL),
+        stable_id (0),
         entry (false),
         rid_locked (false),
-        pub (NULL),
-        sub (NULL),
         subscribe_signal_armed (false)
     {
         memset (&routing_id, 0, sizeof (routing_id));
@@ -52,11 +51,10 @@ struct spot_logical_state_t
     ~spot_logical_state_t () {}
 
     zlink::spot_node_t *node;
+    uint64_t stable_id;
     zlink_routing_id_t routing_id;
     bool entry;
     bool rid_locked;
-    zlink::spot_pub_t *pub;
-    zlink::spot_sub_t *sub;
     zlink::mutex_t pubsub_sync;
     std::set<std::string> subscription_topics;
     std::set<std::string> subscription_patterns;
@@ -64,6 +62,8 @@ struct spot_logical_state_t
       subscribe_queue;
     zlink::signaler_t subscribe_signaler;
     bool subscribe_signal_armed;
+    std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
+      request_reply_state;
 };
 
 struct spot_handle_t
@@ -90,8 +90,6 @@ struct spot_handle_t
     zlink::spot_node_pub_defaults_t pending_pub_defaults;
     zlink::spot_node_sub_defaults_t pending_sub_defaults;
     zlink::service_mode_state_t mode_state;
-    std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
-      request_reply_state;
 };
 
 #endif

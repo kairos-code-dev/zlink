@@ -1,25 +1,49 @@
-# SPOT Entry Spot과 Transport Queue 정리 초안
+# SPOT Entry Spot과 Transport Queue 정리
 
-이 문서는 **구현 전 초안**이며 현재 공개 계약이 아니다. 이 문서는 Entry Spot,
-Actor join/leave, remote join handoff, Spot transport queue 정리를 위한 **활성 draft
-spec의 단일 기준**이다.
+이 문서는 Entry Spot, Actor join/leave, remote join handoff, Spot transport queue
+정리를 위한 **참조 spec의 단일 기준**이다. 정식 공개 계약은
+`doc/spec/core/service/spot.ko.md`와 `core/include/zlink.h`를 기준으로 한다.
 
 이 문서는 이전 `doc/spec/draft/spot-actor-dispatch.ko.md`의 Actor 모델을 이어받되,
 그 뒤에 결정된 Entry Spot, Actor 이동, remote join, Spot socket 제거 규칙을 한곳에
 모아 독립적으로 정의한다. 구현, 테스트, contract matrix, plan traceability는 이
 문서를 기준으로 맞춘다.
 
-정식 spec 문서와 `core/include/zlink.h`, 구현, 테스트에 반영되기 전까지 응용은
-이 동작에 의존하면 안 된다. 다만 이 문서 안의 API 이름, enum 이름, 에러 매핑,
-내부 구조 설명은 다음 구현 작업의 기준으로 사용한다.
-
-이 문서는 아래 의미를 새 구현 기준으로 정한다.
+이 문서는 아래 의미를 구현 기준으로 정한다.
 
 - Actor 생성 직후 상태
 - Actor `join` / `leave` 의미
 - Actor destroy 허용 조건
 - `Spot` facade와 내부 socket의 관계
 - SPOT pub/sub, routed, channel reply, Actor event의 queue 소유 위치
+
+### 구현 완료 범위
+
+아래 항목은 현재 코드(`core/src/api/service_spot_actor_api.cpp`,
+`core/src/services/spot/`)에 반영된 구현 완료 상태다.
+
+- Entry Spot lifecycle: `SpotNode` 생성 시 자동 생성, destroy 시 자동 정리
+- `zlink_spot_node_entry_spot()` API
+- Actor 생성 직후 Entry Spot 귀속
+- local join/leave/accept/reject/timeout 원자성
+- `Spot` facade의 물리 socket 소유 제거 (transport socket은 모두 `SpotNode` 소유)
+- `spot_logical_state_t` 기반 per-Spot pubsub queue (`subscribe_queue` + `signaler`)
+- `actor_handle_t` 기반 per-Actor unread part queue
+- `g_join_queues` 기반 per-Spot join request queue
+- `zlink_spot_node_actor_join_spot()` / `zlink_spot_actor_join_recv()` /
+  `zlink_spot_actor_join_reply()` 공개 API
+- `zlink_spot_node_actor_leave_spot()` 공개 API
+- `zlink_spot_node_spot_lookup()` / `zlink_spot_node_spots_snapshot()` 공개 API
+- same-process `SpotNode` registry를 통한 remote create-or-get과 remote join 경로
+
+### 후속 구현 범위
+
+아래 항목은 이 문서의 방향성이지만 현재 공개 계약이나 구현 완료 조건이 아니다.
+
+- cross-process control/relay frame (session instance와 Actor/Spot runtime instance
+  분리 배치)
+- session Actor list의 원격 compare-and-swap
+- network backpressure retry와 `JoinOp` tombstone/retry
 
 ## 목적
 
@@ -195,7 +219,8 @@ flowchart LR
 - co-located instance에서 Actor는 local Actor이고, join 대상은 같은 node의 local Spot을
   기본으로 한다.
 - split 배치에서 session instance는 remote Actor ref를 session Actor list에 저장하고,
-  Actor/Spot runtime instance로 control frame과 relay frame을 보낸다.
+  Actor/Spot runtime instance로 control frame과 relay frame을 보낸다. 이 경로는 현재
+  구현 완료 범위가 아니라 후속 cross-process transport 범위다.
 
 ### Sequence diagrams
 
@@ -607,6 +632,8 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_lookup(
 remote create-or-get도 Actor slot을 소유하는 target `SpotNode` 관점에서는 local Actor
 생성과 같은 lifecycle을 따른다. 차이는 Actor 생성 요청이 local API 호출이 아니라
 control request로 들어오고, Actor가 없을 때 admission handler를 거친다는 점뿐이다.
+현재 구현은 같은 process 안 등록 node를 직접 찾는 경로를 사용한다. 실제 network
+control request 인코딩과 전송은 후속 범위다.
 
 ```c
 typedef enum zlink_actor_admission_result_t
@@ -784,6 +811,10 @@ Spot에 남고, target Spot에 전달된 join state payload는 reply 또는 time
 #### Remote join process
 
 remote join은 source node의 Actor를 target node의 target Spot으로 넘기는 handoff다.
+현재 구현은 같은 process 안에 등록된 source/target `SpotNode` 사이에서 이 의미를
+수행한다. process 경계를 지나는 control frame, relay frame, retry 가능한 원격
+`JoinOp`은 후속 범위다.
+
 target Spot의 승인 판단은 local join과 같은 join recv/reply 흐름을 사용한다. 별도
 join handler 등록 API는 만들지 않고, target Spot에 등록된 기존
 `zlink_spot_dispatch_event_handler()`가 `ACTOR_JOIN_READABLE` event를 받아
@@ -871,10 +902,11 @@ active route는 이동하지 않는다.
 - `zlink_spot_node_actor_join_spot()`은 Actor ref, target node rid, target Spot rid를
   받는다.
 - `node_`는 join request를 제출하고 completion handler를 소유하는 request owner
-  `SpotNode` handle이다. session owner, backend service node, source Actor owner node
-  모두 request owner가 될 수 있다.
-- request owner는 session owner와 같을 필요가 없다. session owner는 Actor의 bound
-  session ref에서 읽고, remote join commit 때 relay mapping만 갱신한다.
+  `SpotNode` handle이다. 현재 구현에서는 request owner, source Actor owner, target
+  node가 같은 process 안의 등록된 `SpotNode`여야 한다.
+- request owner가 session owner와 같을 필요가 없는 cross-process 모델은 후속 범위다.
+  그 모델에서는 session owner를 Actor의 bound session ref에서 읽고, remote join commit
+  때 relay mapping만 갱신한다.
 - `dest_node_rid_`가 Actor owner node와 같으면 local join으로 처리하고, 다르면 remote
   join handoff로 처리한다.
 - `dest_node_rid_`와 `dest_spot_rid_`가 가리키는 target Spot을 조회할 수 없으면
@@ -917,16 +949,17 @@ active route는 이동하지 않는다.
 - target Spot은 `zlink_spot_actor_join_recv()`로 payload를 읽고 accept 또는 reject를
   결정한다. target Spot이 payload를 복원할 수 없으면 reject해야 한다.
 - remote join에서 target node는 pending Actor state에 bound session ref를 함께 복사한다.
-- remote join의 coordinator는 source Actor owner node다. request owner가 session service나
-  backend service여도 source node가 join epoch, source Actor fence, session mapping 갱신,
-  target commit을 조율한다.
-- source node는 remote join 시작 시 `JoinOp` 상태를 만든다. `JoinOp`은 join epoch,
-  source Actor ref, target Actor ref, target node/Spot rid, bound session ref, request
-  owner completion handler, 그리고 기존 reply path를 보존한다.
+- 같은 process 안 remote join의 coordinator는 source Actor owner node다. cross-process
+  모델에서는 request owner가 session service나 backend service여도 source node가 join
+  epoch, source Actor fence, session mapping 갱신, target commit을 조율한다.
+- cross-process 모델에서는 source node가 remote join 시작 시 `JoinOp` 상태를 만든다.
+  `JoinOp`은 join epoch, source Actor ref, target Actor ref, target node/Spot rid,
+  bound session ref, request owner completion handler, 그리고 기존 reply path를 보존한다.
 - `JoinOp`의 기존 reply path는 Actor route가 아니라 이 join 요청에 대한 operation reply
   context다. source Actor가 retired 상태가 된 뒤에도 `JoinOp`은 source node에서 session 또는
-  request owner로 completion을 전달할 수 있어야 한다.
-- remote join의 visibility point는 session owner node의
+  request owner로 completion을 전달할 수 있어야 한다. 이 retry 가능한 reply path는 후속
+  cross-process 범위다.
+- cross-process remote join의 visibility point는 session owner node의
   `session -> actor_id -> Actor ref` compare-and-swap 성공이다. 이 compare-and-swap은
   현재 값이 source Actor ref일 때만 target Actor ref로 바꾼다.
 - visibility point 전에는 session relay가 계속 source Actor ref를 사용한다. source Actor는
@@ -969,6 +1002,10 @@ local join 원자성:
 - reject, timeout, target Spot destroy, `SpotNode` shutdown은 source Spot을 유지한다.
 
 remote join 원자성:
+
+아래 항목 중 session owner CAS, commit visible, source tombstone, retry 가능한 `JoinOp`
+정리는 cross-process remote join을 위한 후속 범위다. 현재 구현은 같은 process 안에서
+target Spot accept/reject/timeout과 source/target Actor state 전환 의미를 검증한다.
 
 - source Actor는 commit 전까지 source node와 source Spot에서 active 상태다.
 - target node는 prepare 단계에서 pending Actor state를 만들 수 있지만, 이 Actor는
@@ -1164,7 +1201,8 @@ session owner node는 remote Actor를 만들거나 가져오고, client message�
 Actor로 relay한다. Actor는 Actor/Spot runtime node에서 실행되는 객체이며, current
 Spot도 그 runtime 쪽에 있다. Actor가 현재 Spot owner가 아닌 다른 node의 Spot으로
 join해야 하면 remote join handoff가 필요하다. 이 모델 때문에 remote Actor ref와
-remote Spot join이 필요하다.
+remote Spot join이 필요하다. 다만 실제 process 분리와 network control/relay frame은
+현재 구현 완료 범위가 아니라 후속 범위다.
 
 따라서 remote Actor는 session owner node 안에 있는 Actor 대리 실행체가 아니다. remote
 Actor는 다른 `SpotNode`가 소유한 Actor를 session owner node가 ref로 가리키는 관계다.
@@ -1217,7 +1255,9 @@ owner가 이미 Actor owner이므로 control hop 없이 bind와 relay를 끝낸�
 remote Actor bind에서는 session owner node가 Actor owner node로 bind control request를
 보낸다. bind가 성공하면 session owner node에는 Actor ref가 저장되고, Actor owner
 node에는 bound session ref가 저장된다. 이후 client에서 Actor로 가는 payload는
-session owner node에서 Actor owner node로 relay frame으로 전달된다.
+session owner node에서 Actor owner node로 relay frame으로 전달된다. 현재 구현은 이
+의미를 같은 process 안 등록 node 간 직접 상태 전달로만 다루며, 실제 frame 인코딩과
+network relay는 후속 범위다.
 
 ```mermaid
 sequenceDiagram
@@ -1253,10 +1293,10 @@ sequenceDiagram
   Stream-->>Client: client frame
 ```
 
-remote Actor도 Actor socket이나 Actor별 inproc endpoint를 갖지 않는다. node 사이의
-전송은 `SpotNode` 사이의 control frame과 relay frame이 맡고, target node에 도착한 뒤에는
-Actor owner node가 local Actor와 같은 방식으로 unread 상태와 current Spot dispatch
-event를 갱신한다.
+remote Actor도 Actor socket이나 Actor별 inproc endpoint를 갖지 않는다. 후속
+cross-process 구현에서는 node 사이의 전송을 `SpotNode` 사이의 control frame과 relay
+frame이 맡고, target node에 도착한 뒤에는 Actor owner node가 local Actor와 같은 방식으로
+unread 상태와 current Spot dispatch event를 갱신한다.
 
 두 흐름의 차이는 아래와 같다.
 
@@ -1290,8 +1330,9 @@ ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_close_bound_session(
 ```
 
 `node_`는 send 또는 close request를 제출하는 request owner `SpotNode` handle이다.
-`actor_`의 owner node가 `node_`와 다르면 core는 Actor owner node로 control request를
-route한다. application은 Actor ref를 key로 자기 상태를 관리한다.
+`actor_`의 owner node가 `node_`와 다르면 현재 구현은 같은 process 안 등록 node를
+찾아 처리한다. process 경계를 지나는 control request route는 후속 범위다.
+application은 Actor ref를 key로 자기 상태를 관리한다.
 
 계약:
 
@@ -2158,6 +2199,10 @@ zlink_spot_node_actor_leave_spot()
 
 ## 회귀 테스트
 
+아래 표는 현재 구현에서 통과해야 하는 항목과 후속 cross-process 구현에서 추가로
+검증할 항목을 함께 둔다. 설명에 `후속` 또는 cross-process 전제가 들어간 항목은 현재
+코드 반영 완료 조건에서 제외한다.
+
 ### Entry Spot
 
 | ID | 이름 | 검증 |
@@ -2201,17 +2246,17 @@ zlink_spot_node_actor_leave_spot()
 | ENTRY-ACTOR-16 | remote join timeout keeps source | remote join timeout 뒤 target pending Actor state가 폐기되고 source Actor가 유지된다 |
 | ENTRY-ACTOR-17 | join info source target | local/remote join callback에서 source/target node와 Spot rid, join epoch, remote flag를 확인할 수 있다 |
 | ENTRY-ACTOR-18 | session required user spot | session이 attach되지 않은 Actor는 Entry Spot이 아닌 target Spot으로 join할 수 없다 |
-| ENTRY-ACTOR-19 | remote join updates session | remote join commit 성공 뒤 session owner의 Actor ref가 target node Actor ref로 갱신된다 |
-| ENTRY-ACTOR-20 | session update failure keeps source | remote join 중 session Actor list 갱신 실패 시 source Actor와 source Spot이 유지된다 |
+| ENTRY-ACTOR-19 | remote join updates session | 후속 cross-process: remote join commit 성공 뒤 session owner의 Actor ref가 target node Actor ref로 갱신된다 |
+| ENTRY-ACTOR-20 | session update failure keeps source | 후속 cross-process: remote join 중 session Actor list 갱신 실패 시 source Actor와 source Spot이 유지된다 |
 | ENTRY-ACTOR-21 | unbind user spot denied | user Spot에 있는 Actor의 explicit unbind는 실패하고 Actor는 user Spot에 남는다 |
 | ENTRY-ACTOR-22 | disconnect returns entry | session disconnect cleanup 뒤 Actor current Spot은 Entry Spot이다 |
-| ENTRY-ACTOR-23 | backend request owner | backend service node가 join request owner여도 completion은 backend로 돌아간다 |
-| ENTRY-ACTOR-24 | retire after commit | target Spot accept만으로 source Actor를 제거하지 않고 commit 성공 뒤 source Actor를 retire한다 |
-| ENTRY-ACTOR-25 | session mapping CAS | remote join commit은 session Actor list를 source Actor ref에서 target Actor ref로 compare-and-swap한다 |
-| ENTRY-ACTOR-26 | relay visibility point | session Actor list compare-and-swap 전 relay는 source Actor로, 성공 뒤 새 relay는 target Actor로 간다 |
-| ENTRY-ACTOR-27 | pending target buffer | visibility point 뒤 visible commit 전 target으로 온 relay는 pending Actor state에 buffer된다 |
-| ENTRY-ACTOR-28 | JoinOp reply path | source Actor retire 뒤에도 JoinOp이 기존 reply path로 completion을 전달한다 |
-| ENTRY-ACTOR-29 | JoinOp cleanup | completion 전달 뒤 JoinOp과 source Actor tombstone 또는 operation reference가 정리된다 |
+| ENTRY-ACTOR-23 | backend request owner | 후속 cross-process: backend service node가 join request owner여도 completion은 backend로 돌아간다 |
+| ENTRY-ACTOR-24 | retire after commit | 후속 cross-process: target Spot accept만으로 source Actor를 제거하지 않고 commit 성공 뒤 source Actor를 retire한다 |
+| ENTRY-ACTOR-25 | session mapping CAS | 후속 cross-process: remote join commit은 session Actor list를 source Actor ref에서 target Actor ref로 compare-and-swap한다 |
+| ENTRY-ACTOR-26 | relay visibility point | 후속 cross-process: session Actor list compare-and-swap 전 relay는 source Actor로, 성공 뒤 새 relay는 target Actor로 간다 |
+| ENTRY-ACTOR-27 | pending target buffer | 후속 cross-process: visibility point 뒤 visible commit 전 target으로 온 relay는 pending Actor state에 buffer된다 |
+| ENTRY-ACTOR-28 | JoinOp reply path | 후속 cross-process: source Actor retire 뒤에도 JoinOp이 기존 reply path로 completion을 전달한다 |
+| ENTRY-ACTOR-29 | JoinOp cleanup | 후속 cross-process: completion 전달 뒤 JoinOp과 source Actor tombstone 또는 operation reference가 정리된다 |
 | ENTRY-ACTOR-30 | join dispatch handler | target Spot의 기존 dispatch handler가 remote join request를 recv/reply API로 처리한다 |
 | ENTRY-ACTOR-31 | remote join pending create | remote join prepare가 target node에 pending Actor state를 만들지만 live lookup과 active route에 노출하지 않는다 |
 | ENTRY-ACTOR-32 | remote join no create admission | remote join prepare는 remote create admission handler를 호출하지 않고 target Spot join handler로 승인한다 |
@@ -2222,8 +2267,8 @@ zlink_spot_node_actor_leave_spot()
 | ENTRY-ACTOR-37 | request timeout zero nonblocking | create/leave/destroy/close의 `timeout_ms_ == 0`은 즉시 완료 불가능할 때 timeout 또는 busy 계열 실패를 반환한다 |
 | ENTRY-ACTOR-38 | leave while join pending busy | join pending 중 leave는 `ZLINK_REQUEST_BUSY`로 실패하고 pending join을 취소하지 않는다 |
 | ENTRY-ACTOR-39 | destroy while join pending busy | join pending 중 destroy는 `ZLINK_REQUEST_BUSY` 또는 invalid-state 계열로 실패하고 pending join을 취소하지 않는다 |
-| ENTRY-ACTOR-40 | disconnect before visibility aborts | remote join visibility point 전 session disconnect는 handoff를 abort하고 source Actor를 Entry Spot으로 되돌린다 |
-| ENTRY-ACTOR-41 | disconnect after visibility cleans target | visibility point 뒤 session disconnect는 target Actor를 Entry Spot으로 cleanup하고 source Actor를 되살리지 않는다 |
+| ENTRY-ACTOR-40 | disconnect before visibility aborts | 후속 cross-process: remote join visibility point 전 session disconnect는 handoff를 abort하고 source Actor를 Entry Spot으로 되돌린다 |
+| ENTRY-ACTOR-41 | disconnect after visibility cleans target | 후속 cross-process: visibility point 뒤 session disconnect는 target Actor를 Entry Spot으로 cleanup하고 source Actor를 되살리지 않는다 |
 | ENTRY-ACTOR-42 | handle actor APIs removed | handle 기반 `zlink_actor_*` API와 `zlink_spot_node_destroy_remote_actor()`는 public header에서 제거된다 |
 | ENTRY-ACTOR-43 | close bound session returns entry | bound session close 성공 뒤 Actor는 Entry Spot에 있고 session Actor list 항목이 제거된다 |
 | ENTRY-ACTOR-44 | close unread dispatch entry | close 성공 뒤 unread Actor message가 있으면 Entry Spot에 `ACTOR_READABLE` event가 올라간다 |
@@ -2231,7 +2276,7 @@ zlink_spot_node_actor_leave_spot()
 | ENTRY-ACTOR-46 | recv part flag preserved | ref 기반 Actor recv가 multipart continuation을 `ZLINK_PART_MORE` 또는 `ZLINK_PART_FINAL`로 반환한다 |
 | ENTRY-ACTOR-47 | join info target actor | join recv callback 시점의 `zlink_actor_join_info_t.target_actor`가 target node의 pending Actor state를 식별한다 |
 | ENTRY-ACTOR-48 | actor snapshot current spot | Actor snapshot row의 `joined`는 1이고 `joined_spot_rid`는 Entry Spot 또는 current Spot rid를 반환한다 |
-| ENTRY-ACTOR-49 | actor request owner routing | leave/destroy/send/close는 request owner node에서 호출해도 Actor owner node로 route된다 |
+| ENTRY-ACTOR-49 | actor request owner routing | 현재는 같은 process 등록 node 범위에서 처리한다. process 경계 route는 후속 cross-process 범위다 |
 | ENTRY-ACTOR-50 | recv non-owner denied | Actor owner가 아닌 node에서 `zlink_spot_node_actor_recv_part()`를 호출하면 `ZLINK_RECV_INVALID_HANDLE`로 실패한다 |
 
 ### Spot socket 제거
@@ -2270,6 +2315,8 @@ zlink_spot_node_actor_leave_spot()
 - bound STREAM session 없이 user Spot에 머무는 backend-only Actor. Actor는 Entry Spot에만
   session 없이 존재할 수 있고, user Spot join에는 bound session이 필요하다
 - reliable pub/sub protocol
+- process 경계를 지나는 SpotNode control/relay frame 구현
+- remote join `JoinOp`의 network retry, tombstone, session owner CAS 구현
 - Actor placement 자동 정책
 - Entry Spot application policy
 - Entry Spot rate limit, matchmaking 자동 정책

@@ -476,12 +476,10 @@ void test_spot_subject_access_resolves_composite_and_node_poller_sockets ()
     errno = 0;
     TEST_ASSERT_NULL (resolve_spot_pub_subject_poller_socket (spot));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_NULL (handle->logical_state->pub);
 
     errno = 0;
     TEST_ASSERT_NULL (resolve_spot_sub_subject_poller_socket (spot));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_NULL (handle->logical_state->sub);
 
     zlink_fd_t spot_sub_fd = zlink::retired_fd;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -520,8 +518,6 @@ void test_spot_subject_access_routes_subscription_and_routing_state ()
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_NULL (resolve_spot_sub_subject_poller_socket (spot));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_NULL (handle->logical_state->pub);
-    TEST_ASSERT_NULL (handle->logical_state->sub);
 
     const unsigned char rid_bytes[] = {0x11, 0x22, 0x33};
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -590,20 +586,16 @@ void test_spot_subject_access_routes_composite_and_node_options ()
     TEST_ASSERT_NOT_NULL (handle);
     TEST_ASSERT_NOT_NULL (handle->node);
     TEST_ASSERT_NOT_NULL (handle->logical_state);
-    TEST_ASSERT_NULL (handle->logical_state->pub);
 
     const int linger = 27;
     TEST_ASSERT_SUCCESS_ERRNO (
       spot_subject_set_common_option (spot, ZLINK_OPT_LINGER, &linger,
                                       sizeof (linger)));
-    TEST_ASSERT_NULL (handle->logical_state->pub);
 
     TEST_ASSERT_NULL (resolve_spot_pub_subject_poller_socket (spot));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_NULL (resolve_spot_sub_subject_poller_socket (spot));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_NULL (handle->logical_state->pub);
-    TEST_ASSERT_NULL (handle->logical_state->sub);
 
     int actual = 0;
     size_t actual_size = sizeof (actual);
@@ -650,7 +642,6 @@ void test_spot_subject_access_applies_pending_pub_defaults_on_lazy_create ()
     spot_handle_t *handle = as_spot_handle (spot);
     TEST_ASSERT_NOT_NULL (handle);
     TEST_ASSERT_NOT_NULL (handle->logical_state);
-    TEST_ASSERT_NULL (handle->logical_state->pub);
 
     const int sndhwm = 321;
     const int sndtimeo = 654;
@@ -665,7 +656,6 @@ void test_spot_subject_access_applies_pending_pub_defaults_on_lazy_create ()
     TEST_ASSERT_SUCCESS_ERRNO (
       spot_subject_set_pub_option (spot, ZLINK_PUB_OPT_NODROP, &nodrop,
                                    sizeof (nodrop)));
-    TEST_ASSERT_NULL (handle->logical_state->pub);
     TEST_ASSERT_NULL (resolve_spot_pub_subject_poller_socket (spot));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 

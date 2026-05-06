@@ -402,6 +402,43 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
     uint64_t dispatch_task_id = 0;
     std::shared_ptr<spot_request_reply_state_t> state =
       try_find_spot_state (spot);
+    const bool last_facade =
+      zlink::spot_node_access_t::is_last_spot_facade_for_logical_state (
+        zlink::spot_node_access_t::from_handle (spot->node), spot);
+    if (state && !last_facade) {
+        {
+            std::lock_guard<std::mutex> dispatch_lock (state->dispatch.mutex);
+            if (state->owner == spot_) {
+                state->dispatch.subscribe_pending.clear ();
+                state->dispatch.routed_pending.clear ();
+                state->dispatch.actor_join_pending.clear ();
+                state->dispatch.actor_readable_pending.clear ();
+                state->dispatch.channel_reply_pending.clear ();
+                state->dispatch.timer_pending.clear ();
+                state->dispatch.queued_keys.clear ();
+                state->dispatch.rearm_keys.clear ();
+                state->dispatch.active_info_valid = false;
+                state->dispatch.running = false;
+            }
+        }
+        {
+            std::lock_guard<std::mutex> state_lock (state->mutex);
+            if (state->owner == spot_) {
+                state->recv.request_handler = NULL;
+                state->recv.request_handler_userdata = NULL;
+                state->dispatch.handler = NULL;
+                state->dispatch.handler_userdata = NULL;
+                dispatch_runtime = state->dispatch.runtime;
+                dispatch_task_id = state->dispatch.task_id;
+                state->dispatch.runtime = NULL;
+                state->dispatch.task_id = 0;
+            }
+        }
+        erase_spot_owner_state (spot_);
+        if (dispatch_runtime && dispatch_task_id != 0)
+            (void) dispatch_runtime->remove_task (dispatch_task_id);
+        return;
+    }
     if (state)
         (void) zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (
           spot_);

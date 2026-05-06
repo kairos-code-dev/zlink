@@ -411,6 +411,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         old_msg_sizes = RC.MSG_SIZES
         old_env = os.environ.copy()
         callbacks = []
+        start_callbacks = []
         try:
             RC.ALLOW_MULTI = True
             RC.MSG_SIZES = [65536]
@@ -419,8 +420,12 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             os.environ.pop("PERF_MULTI_SPOT_CLEAN_LATENCY", None)
 
             def fake_run_sizes_test(binary_name, lib_name, transport, sizes,
-                                    pattern_name, result_line_callback=None):
+                                    pattern_name, result_line_callback=None,
+                                    size_start_callback=None):
                 callbacks.append(result_line_callback)
+                if size_start_callback is not None:
+                    size_start_callback(transport, sizes[0])
+                    start_callbacks.append((transport, sizes[0]))
                 if result_line_callback is not None:
                     for metric_name, value in tier1_metrics(999.0):
                         result_line_callback(transport, sizes[0], metric_name, value)
@@ -454,6 +459,8 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
 
             output = stdout.getvalue()
             self.assertEqual(callbacks, [None])
+            self.assertEqual(start_callbacks, [("tcp", 65536)])
+            self.assertIn("Testing tcp | 65536B:", output)
             self.assertIn("1.500 ms", output)
             self.assertNotIn("999.000 ms", output)
         finally:

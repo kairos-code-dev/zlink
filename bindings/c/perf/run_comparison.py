@@ -2850,6 +2850,7 @@ def run_sizes_test(
     sizes,
     pattern_name,
     result_line_callback=None,
+    size_start_callback=None,
 ):
     # Multi policy invariant:
     # each pattern/transport/size case runs in its own isolated server/client
@@ -2937,6 +2938,11 @@ def run_sizes_test(
     for size_index, size in enumerate(size_list):
         normalized_pattern = normalize_multi_pattern_name(pattern_name)
         isolated = None
+        if size_start_callback is not None:
+            try:
+                size_start_callback(transport, size)
+            except Exception:
+                pass
         for attempt in range(size_retry_limit + 1):
             isolated = run_one_size_case(size)
             if (
@@ -3297,14 +3303,27 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                 live_result_callback = (
                     None if defer_live_multi_rows(pattern_name) else on_result_metric
                 )
-                outcome = run_sizes_test(
-                    binary_name,
-                    lib_name,
-                    tr,
-                    sizes,
-                    pattern_name,
-                    result_line_callback=live_result_callback,
-                )
+                try:
+                    outcome = run_sizes_test(
+                        binary_name,
+                        lib_name,
+                        tr,
+                        sizes,
+                        pattern_name,
+                        result_line_callback=live_result_callback,
+                        size_start_callback=lambda _tr, sz: emit_size_section(sz),
+                    )
+                except TypeError as exc:
+                    if "size_start_callback" not in str(exc):
+                        raise
+                    outcome = run_sizes_test(
+                        binary_name,
+                        lib_name,
+                        tr,
+                        sizes,
+                        pattern_name,
+                        result_line_callback=live_result_callback,
+                    )
                 rc = outcome.get("returncode", 0)
                 for warning in outcome.get("warnings", []) or []:
                     print(f"warning: {warning}", file=sys.stderr)

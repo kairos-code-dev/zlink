@@ -78,37 +78,15 @@ type MonitorSnapshot struct {
 	AutoHwmProfile                   uint32
 	AutoHwmRole                      uint32
 	AutoHwmPolicyClass               uint32
-	AutoHwmManagedConnections        uint32
-	AutoHwmActiveHwmConnections      uint32
-	AutoHwmObservedCount             uint32
-	AutoHwmPlanningCount             uint32
-	AutoHwmContextTotalPlanningCount uint32
-	AutoHwmBaseFloorPerConnection    uint32
 	AutoHwmUnitBudgetBytes           uint64
 	AutoHwmSizeCap                   uint32
-	AutoHwmEffectivePublishFanout    uint32
-	AutoHwmAppliedSndHwm             int32
-	AutoHwmAppliedRcvHwm             int32
-	AutoHwmRequestedSndBuf           int32
-	AutoHwmRequestedRcvBuf           int32
-	AutoHwmEffectiveSndBuf           int32
-	AutoHwmEffectiveRcvBuf           int32
-	AutoHwmTotalMemoryBudgetBytes    uint64
-	AutoHwmQueueBudgetBytes          uint64
-	AutoHwmTransportBudgetBytes      uint64
-	AutoHwmRuntimeReserveBytes       uint64
-	AutoHwmSocketQueueShareBytes     uint64
 	AutoHwmSocketMessageSlots        uint64
 	AutoHwmEffectiveMessageBytes     uint64
-	AutoHwmEstimatedMaxMemoryBytes   uint64
+	AutoHwmAppliedSndHwm             int32
+	AutoHwmAppliedRcvHwm             int32
 	AutoHwmLastRecalcMs              uint64
 	AutoHwmLastRecalcReason          uint32
 	AutoHwmSendBlockedRatioPPM       uint32
-	AutoHwmScope                     uint32
-	AutoHwmScopeCount                uint32
-	AutoHwmAutoBufferBytes           uint64
-	AutoHwmManualBufferBytes         uint64
-	AutoHwmBufferConnections         uint32
 	AutoHwmDeferredSndHwm            int32
 	AutoHwmDeferredRcvHwm            int32
 }
@@ -125,43 +103,21 @@ func monitorSnapshotFromC(raw C.zlink_monitor_snapshot_t) MonitorSnapshot {
 		SndPendingMsgs:                   uint64(raw.snd_pending_msgs),
 		RcvPendingMsgs:                   uint64(raw.rcv_pending_msgs),
 		AutoHwmEnabled:                   uint32(raw.auto_hwm_enabled) != 0,
-		AutoHwmProfile:                   uint32(raw.auto_hwm_profile),
-		AutoHwmRole:                      uint32(raw.auto_hwm_role),
-		AutoHwmPolicyClass:               uint32(raw.auto_hwm_policy_class),
-		AutoHwmManagedConnections:        uint32(raw.auto_hwm_managed_connections),
-		AutoHwmActiveHwmConnections:      uint32(raw.auto_hwm_active_hwm_connections),
-		AutoHwmObservedCount:             uint32(raw.auto_hwm_observed_count),
-		AutoHwmPlanningCount:             uint32(raw.auto_hwm_planning_count),
-		AutoHwmContextTotalPlanningCount: uint32(raw.auto_hwm_context_total_planning_count),
-		AutoHwmBaseFloorPerConnection:    uint32(raw.auto_hwm_base_floor_per_connection),
-		AutoHwmUnitBudgetBytes:           uint64(raw.auto_hwm_unit_budget_bytes),
-		AutoHwmSizeCap:                   uint32(raw.auto_hwm_size_cap),
-		AutoHwmEffectivePublishFanout:    uint32(raw.auto_hwm_effective_publish_fanout),
-		AutoHwmAppliedSndHwm:             int32(raw.auto_hwm_applied_sndhwm),
-		AutoHwmAppliedRcvHwm:             int32(raw.auto_hwm_applied_rcvhwm),
-		AutoHwmRequestedSndBuf:           int32(raw.auto_hwm_requested_sndbuf),
-		AutoHwmRequestedRcvBuf:           int32(raw.auto_hwm_requested_rcvbuf),
-		AutoHwmEffectiveSndBuf:           int32(raw.auto_hwm_effective_sndbuf),
-		AutoHwmEffectiveRcvBuf:           int32(raw.auto_hwm_effective_rcvbuf),
-		AutoHwmTotalMemoryBudgetBytes:    uint64(raw.auto_hwm_total_memory_budget_bytes),
-		AutoHwmQueueBudgetBytes:          uint64(raw.auto_hwm_queue_budget_bytes),
-		AutoHwmTransportBudgetBytes:      uint64(raw.auto_hwm_transport_budget_bytes),
-		AutoHwmRuntimeReserveBytes:       uint64(raw.auto_hwm_runtime_reserve_bytes),
-		AutoHwmSocketQueueShareBytes:     uint64(raw.auto_hwm_socket_queue_share_bytes),
-		AutoHwmSocketMessageSlots:        uint64(raw.auto_hwm_socket_message_slots),
-		AutoHwmEffectiveMessageBytes:     uint64(raw.auto_hwm_effective_message_bytes),
-		AutoHwmEstimatedMaxMemoryBytes:   uint64(raw.auto_hwm_estimated_max_memory_bytes),
-		AutoHwmLastRecalcMs:              uint64(raw.auto_hwm_last_recalc_ms),
-		AutoHwmLastRecalcReason:          uint32(raw.auto_hwm_last_recalc_reason),
-		AutoHwmSendBlockedRatioPPM:       uint32(raw.auto_hwm_send_blocked_ratio_ppm),
-		AutoHwmScope:                     uint32(raw.auto_hwm_scope),
-		AutoHwmScopeCount:                uint32(raw.auto_hwm_scope_count),
-		AutoHwmAutoBufferBytes:           uint64(raw.auto_hwm_auto_buffer_bytes),
-		AutoHwmManualBufferBytes:         uint64(raw.auto_hwm_manual_buffer_bytes),
-		AutoHwmBufferConnections:         uint32(raw.auto_hwm_buffer_connections),
-		AutoHwmDeferredSndHwm:            int32(raw.auto_hwm_deferred_sndhwm),
-		AutoHwmDeferredRcvHwm:            int32(raw.auto_hwm_deferred_rcvhwm),
-	}
+			AutoHwmProfile:                   uint32(raw.auto_hwm_profile),
+			AutoHwmRole:                      uint32(raw.auto_hwm_role),
+			AutoHwmPolicyClass:               uint32(raw.auto_hwm_policy_class),
+			AutoHwmUnitBudgetBytes:           uint64(raw.auto_hwm_unit_budget_bytes),
+			AutoHwmSizeCap:                   uint32(raw.auto_hwm_size_cap),
+			AutoHwmSocketMessageSlots:        uint64(raw.auto_hwm_socket_message_slots),
+			AutoHwmEffectiveMessageBytes:     uint64(raw.auto_hwm_effective_message_bytes),
+			AutoHwmAppliedSndHwm:             int32(raw.auto_hwm_applied_sndhwm),
+			AutoHwmAppliedRcvHwm:             int32(raw.auto_hwm_applied_rcvhwm),
+			AutoHwmLastRecalcMs:              uint64(raw.auto_hwm_last_recalc_ms),
+			AutoHwmLastRecalcReason:          uint32(raw.auto_hwm_last_recalc_reason),
+			AutoHwmSendBlockedRatioPPM:       uint32(raw.auto_hwm_send_blocked_ratio_ppm),
+			AutoHwmDeferredSndHwm:            int32(raw.auto_hwm_deferred_sndhwm),
+			AutoHwmDeferredRcvHwm:            int32(raw.auto_hwm_deferred_rcvhwm),
+		}
 }
 
 type SocketMonitor struct {

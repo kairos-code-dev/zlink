@@ -365,3 +365,116 @@ facade를 얻어 dispatch handler를 등록한다. Actor 생성 직후 session r
 user Spot의 logical state는 마지막 facade가 닫힐 때 제거된다. 단 joined Actor나
 pending join request가 남아 있으면 마지막 facade close는 `ZLINK_CLOSE_BUSY`로 실패한다.
 Entry Spot logical state는 facade reference count와 무관하게 `SpotNode`가 소유한다.
+
+## 9. Spot socket 제거 모델
+
+기존 구조에서 `Spot` facade 또는 side handle이 per-Spot socket을 직접 만들고 inproc
+socket을 queue처럼 쓰는 부분이 있었다. `SpotNode`가 메시지를 한 번 받아서 logical
+`Spot`으로 중계하는 구조에서는 per-Spot socket HWM으로 dispatch 상태를 표현하는
+방식이 맞지 않는다. HWM은 `SpotNode`가 소유한 transport socket admission에 두고,
+per-Spot queue는 이미 받은 입력을 어느 dispatch context에서 처리할지 정하는 staging
+상태로만 다룬다.
+
+목표 구조는 아래와 같다.
+
+```mermaid
+flowchart TB
+  Facade["Spot facade
+  rid / dispatch handler ref / options
+  physical socket 없음"]
+  Logical["Spot logical state
+  routed queue / subscribe queue
+  channel reply queues / actor event queues
+  dispatch pending queues"]
+  Runtime["SpotNode runtime
+  physical sockets / demux and fanout
+  transport backpressure / discovery sync"]
+
+  Facade --> Logical
+  Logical --> Runtime
+```
+
+`Spot` facade는 `spot_pub_t`, `spot_sub_t`, routed receive socket 같은 물리 socket을
+직접 갖지 않는다. `Spot`이 필요한 것은 logical state에 대한 reference다.
+
+## 10. STREAM session과 Actor binding
+
+session owner node와 Actor owner node는 같거나 다를 수 있다. 내부 처리 경로가 다르지만
+공개 API는 동일하다.
+
+### 10.1 Local Actor binding (co-located)
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant Stream as STREAM socket
+  participant Node as Session+Actor node
+  participant List as Session actor list
+  participant ActorObj as Local Actor
+  participant Spot as Current Spot
+  participant Handler as Dispatch handler
+
+  Client->>Stream: client frame
+  Stream->>Node: stream callback(session_rid)
+  Node->>List: bind actor_ref
+  List->>ActorObj: attach bound session ref
+  Node->>Node: publish active route on bind success
+
+  Node->>List: relay to actor_id
+  List->>ActorObj: resolve local actor
+  ActorObj->>Spot: enqueue unread part
+  Spot->>Handler: ACTOR_READABLE
+  Handler->>Node: actor_recv_part(actor_ref)
+
+  Handler->>Node: actor_send_bound_session_msg(actor_ref)
+  Node->>List: validate actor ref
+  Node->>Stream: write to session_rid
+  Stream-->>Client: client frame
+```
+
+local Actor는 bind, relay, Actor-to-session send가 같은 node 안에서 끝난다.
+Actor socket이나 Actor별 inproc endpoint가 생기지 않는다.
+
+### 10.2 Remote Actor binding (split deployment)
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant Stream as STREAM socket
+  participant SessNode as Session owner node
+  participant List as Session actor list
+  participant ActorNode as Actor owner node
+  participant ActorObj as Remote Actor
+  participant Spot as Current Spot
+  participant Handler as Dispatch handler
+
+  Client->>Stream: client frame
+  Stream->>SessNode: stream callback(session_rid)
+  SessNode->>ActorNode: bind control request
+  ActorNode->>ActorObj: attach bound session ref
+  ActorNode-->>SessNode: bind OK
+  SessNode->>List: store actor_ref
+  ActorNode->>ActorNode: publish active route on bind success
+
+  SessNode->>List: relay to actor_id
+  List-->>SessNode: actor_ref
+  SessNode->>ActorNode: relay frame
+  ActorNode->>ActorObj: resolve actor
+  ActorObj->>Spot: enqueue unread part
+  Spot->>Handler: ACTOR_READABLE
+  Handler->>ActorNode: actor_recv_part(actor_ref)
+
+  Handler->>ActorNode: actor_send_bound_session_msg(actor_ref)
+  ActorNode->>SessNode: actor-to-session frame
+  SessNode->>List: validate actor ref
+  SessNode->>Stream: write to session_rid
+  Stream-->>Client: client frame
+```
+
+remote Actor는 bind control request, session-to-Actor relay frame, Actor-to-session
+frame이 node 사이를 지난다. session owner는 Actor의 joined Spot을 저장하지 않는다.
+Actor owner는 STREAM session application state를 저장하지 않는다.
+
+bound session disconnect와 remote join handoff가 겹치면 session Actor list
+compare-and-swap 성공 여부가 기준이다. 성공 전 disconnect는 source Actor를 Entry Spot으로
+돌리는 abort이고, 성공 뒤 disconnect는 target Actor의 Entry Spot cleanup이다.

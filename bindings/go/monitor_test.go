@@ -52,7 +52,7 @@ func TestMonitorRecv(t *testing.T) {
 	_ = snapshot.AutoHwmPolicyClass
 	_ = snapshot.AutoHwmUnitBudgetBytes
 	_ = snapshot.AutoHwmSizeCap
-	_ = snapshot.AutoHwmEffectivePublishFanout
+	_ = snapshot.AutoHwmSocketMessageSlots
 }
 
 func TestMonitorOnEventReceivesStateChange(t *testing.T) {

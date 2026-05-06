@@ -20,6 +20,11 @@ final class PerfReport {
             return String.format(Locale.ROOT, "UNSUPPORTED,%s,%s,%s",
                 libTag, result.pattern, result.transport);
         }
+        if ("fail".equals(result.status)) {
+            return String.format(Locale.ROOT, "FAIL,%s,%s,%s,%d,%s",
+                libTag, result.pattern, result.transport, result.size,
+                result.reason);
+        }
         if (!"ok".equals(result.status)) {
             return "";
         }

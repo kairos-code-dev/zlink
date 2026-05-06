@@ -35,6 +35,12 @@ fn main() {
     let mut actor = node
         .create_actor("room-player-1")
         .expect("actor creation failed");
+    let stream = ctx.stream_socket().expect("stream socket failed");
+    let session = zlink::RoutingId::from_bytes(b"room-session");
+    let actor_ref = actor.actor_ref().unwrap();
+    stream
+        .bind_actor(&node, &session, &actor_ref, Duration::from_secs(1))
+        .expect("stream actor bind failed");
 
     let (tx, rx) = mpsc::channel();
     actor
@@ -69,16 +75,6 @@ fn main() {
     })
     .expect("dispatch handler failed");
 
-    let stream = ctx.stream_socket().expect("stream socket failed");
-    let session = zlink::RoutingId::from_bytes(b"room-session");
-    stream
-        .bind_actor(
-            &node,
-            &session,
-            &actor.actor_ref().unwrap(),
-            Duration::from_secs(1),
-        )
-        .expect("stream actor bind failed");
     stream
         .send_bound_actor_part(
             &node,

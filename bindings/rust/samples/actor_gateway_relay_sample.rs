@@ -56,10 +56,16 @@ fn main() {
     let actor_ref = play_node
         .actor_lookup("play-session-actor")
         .expect("actor lookup failed");
+    let stream = ctx.stream_socket().expect("stream socket failed");
+    let session = zlink::RoutingId::from_bytes(b"gateway-session");
+    stream
+        .bind_actor(&gateway_node, &session, &actor_ref, Duration::from_secs(1))
+        .expect("remote stream actor bind failed");
     let (join_tx, join_rx) = mpsc::channel();
     gateway_node
         .join_actor_callback(
             &actor_ref,
+            &play_node.routing_id().unwrap(),
             &play_spot.routing_id().unwrap(),
             Message::copy_from(b"join-play").unwrap(),
             move |result| join_tx.send(result).unwrap(),
@@ -89,11 +95,6 @@ fn main() {
         .unwrap()
         .unwrap();
 
-    let stream = ctx.stream_socket().expect("stream socket failed");
-    let session = zlink::RoutingId::from_bytes(b"gateway-session");
-    stream
-        .bind_actor(&gateway_node, &session, &actor_ref, Duration::from_secs(1))
-        .expect("remote stream actor bind failed");
     stream
         .send_bound_actor_part(
             &gateway_node,
@@ -118,6 +119,6 @@ fn main() {
         )
         .unwrap();
     gateway_node
-        .destroy_remote_actor(&actor_ref, Duration::from_secs(1))
+        .destroy_actor(&actor_ref, Duration::from_secs(1))
         .unwrap();
 }

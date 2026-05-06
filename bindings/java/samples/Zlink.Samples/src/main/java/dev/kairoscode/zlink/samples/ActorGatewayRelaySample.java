@@ -39,29 +39,20 @@ public final class ActorGatewayRelaySample {
                              spot.recvActorJoin(RecvFlags.DONT_WAIT)) {
                         if (request != null) {
                             try (Message reply = Message.copyOfUtf8("ok")) {
-                                spot.replyActorJoin(request.info(), true, reply);
+                                spot.replyActorJoin(request, true, reply);
                             }
                         }
                     }
                     return;
                 }
                 if (info.event() == SpotDispatchEvent.ACTOR_READABLE) {
-                    try (ActorPart part =
-                             info.recvActorPart(RecvFlags.DONT_WAIT)) {
-                        if (part != null) {
+                    for (ActorPart part : info.actorParts()) {
+                        try (part) {
                             payloads.add(part.message().toUtf8String());
                         }
                     }
                 }
             });
-
-            try (Message request = Message.copyOfUtf8("join")) {
-                actor.join(spot, request, (result, messages) -> {
-                    replies.add(result);
-                    messages.forEach(Message::close);
-                }, Duration.ofSeconds(2));
-            }
-            SampleSupport.waitUntil("actor join", () -> !replies.isEmpty());
 
             stream.bind(endpoint);
             try (var client = SampleSupport.connectRawTcp(endpoint)) {
@@ -72,18 +63,25 @@ public final class ActorGatewayRelaySample {
                     sessionRid = received.routingId().orElseThrow();
                 }
                 stream.bindActor(node, sessionRid, actorRef, Duration.ofSeconds(2));
+                try (Message request = Message.copyOfUtf8("join")) {
+                    actor.join(spot, request, (result, messages) -> {
+                        replies.add(result);
+                        messages.forEach(Message::close);
+                    }, Duration.ofSeconds(2));
+                }
+                SampleSupport.waitUntil("actor join", () -> !replies.isEmpty());
                 try (Message payload = Message.copyOfUtf8("client-payload")) {
                     stream.sendBoundActor(node, sessionRid, "player-1", payload);
                 }
                 SampleSupport.waitUntil("actor payload",
                     () -> !payloads.isEmpty());
-            }
 
-            if (!List.of("client-payload").equals(payloads)) {
-                throw new IllegalStateException("unexpected actor payload");
+                if (!List.of("client-payload").equals(payloads)) {
+                    throw new IllegalStateException("unexpected actor payload");
+                }
+                actor.leave(spot);
+                actor.close();
             }
-            actor.leave(spot);
-            actor.close();
             System.out.println("[actor/gateway] stream relayed to actor");
         }
     }

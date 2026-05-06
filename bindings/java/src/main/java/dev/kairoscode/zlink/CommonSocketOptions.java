@@ -13,6 +13,31 @@ class CommonSocketOptions {
         this.socket = socket;
     }
 
+    public long affinity() {
+        return socket.getOption(SocketOptions.AFFINITY);
+    }
+
+    public void affinity(long value) {
+        socket.setOption(SocketOptions.AFFINITY, value);
+    }
+
+    public int rate() {
+        return socket.getOption(SocketOptions.RATE);
+    }
+
+    public void rate(int value) {
+        socket.setOption(SocketOptions.RATE, value);
+    }
+
+    public Duration recoveryInterval() {
+        return Duration.ofMillis(socket.getOption(SocketOptions.RECOVERY_IVL));
+    }
+
+    public void recoveryInterval(Duration value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.RECOVERY_IVL, toIntMillis(value, "value"));
+    }
+
     public Duration linger() {
         return Duration.ofMillis(socket.getOption(SocketOptions.LINGER));
     }
@@ -89,12 +114,30 @@ class CommonSocketOptions {
         socket.setOption(SocketOptions.IMMEDIATE, enabled ? 1 : 0);
     }
 
-    public int ridDuplicatePolicy() {
-        return socket.getOption(SocketOptions.RID_DUPLICATE_POLICY);
+    public RidDuplicatePolicy ridDuplicatePolicy() {
+        return RidDuplicatePolicy.fromValue(
+          socket.getOption(SocketOptions.RID_DUPLICATE_POLICY));
     }
 
-    public void ridDuplicatePolicy(int value) {
-        socket.setOption(SocketOptions.RID_DUPLICATE_POLICY, value);
+    public void ridDuplicatePolicy(RidDuplicatePolicy value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.RID_DUPLICATE_POLICY, value.value());
+    }
+
+    public int routeValueMaxSize() {
+        return socket.getOption(SocketOptions.ROUTE_VALUE_MAX_SIZE);
+    }
+
+    public void routeValueMaxSize(int value) {
+        socket.setOption(SocketOptions.ROUTE_VALUE_MAX_SIZE, value);
+    }
+
+    public int autoHwmMessageUnitBytes() {
+        return socket.getOption(SocketOptions.AUTO_HWM_MSG_UNIT_BYTES);
+    }
+
+    public void autoHwmMessageUnitBytes(int value) {
+        socket.setOption(SocketOptions.AUTO_HWM_MSG_UNIT_BYTES, value);
     }
 
     public Duration connectTimeout() {
@@ -112,6 +155,39 @@ class CommonSocketOptions {
 
     public void ipv6(boolean enabled) {
         socket.setOption(SocketOptions.IPV6, enabled ? 1 : 0);
+    }
+
+    public int tos() {
+        return socket.getOption(SocketOptions.TOS);
+    }
+
+    public void tos(int value) {
+        socket.setOption(SocketOptions.TOS, value);
+    }
+
+    public int multicastHops() {
+        return socket.getOption(SocketOptions.MULTICAST_HOPS);
+    }
+
+    public void multicastHops(int value) {
+        socket.setOption(SocketOptions.MULTICAST_HOPS, value);
+    }
+
+    public int multicastMaxTpdu() {
+        return socket.getOption(SocketOptions.MULTICAST_MAXTPDU);
+    }
+
+    public void multicastMaxTpdu(int value) {
+        socket.setOption(SocketOptions.MULTICAST_MAXTPDU, value);
+    }
+
+    public String bindToDevice() {
+        return socket.getOption(SocketOptions.BINDTODEVICE);
+    }
+
+    public void bindToDevice(String value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.BINDTODEVICE, value);
     }
 
     public boolean tcpNoDelay() {
@@ -189,6 +265,30 @@ class CommonSocketOptions {
         socket.setOption(SocketOptions.HEARTBEAT_TIMEOUT, toIntMillis(value, "value"));
     }
 
+    public boolean conflate() {
+        return socket.getOption(SocketOptions.CONFLATE) != 0;
+    }
+
+    public void conflate(boolean enabled) {
+        socket.setOption(SocketOptions.CONFLATE, enabled ? 1 : 0);
+    }
+
+    public boolean blocky() {
+        return socket.getOption(SocketOptions.BLOCKY) != 0;
+    }
+
+    public void blocky(boolean enabled) {
+        socket.setOption(SocketOptions.BLOCKY, enabled ? 1 : 0);
+    }
+
+    public boolean invertMatching() {
+        return socket.getOption(SocketOptions.INVERT_MATCHING) != 0;
+    }
+
+    public void invertMatching(boolean enabled) {
+        socket.setOption(SocketOptions.INVERT_MATCHING, enabled ? 1 : 0);
+    }
+
     public long maxMsgSize() {
         return socket.getOption(SocketOptions.MAXMSGSIZE);
     }
@@ -221,6 +321,27 @@ class CommonSocketOptions {
     public void reconnectIntervalMax(Duration value) {
         Objects.requireNonNull(value, "value");
         socket.setOption(SocketOptions.RECONNECT_IVL_MAX, toIntMillis(value, "value"));
+    }
+
+    public int fd() {
+        return socket.getOption(SocketOptions.FD);
+    }
+
+    public int events() {
+        return socket.getOption(SocketOptions.EVENTS);
+    }
+
+    public SocketType socketType() {
+        return SocketType.fromValue(socket.getOption(SocketOptions.TYPE));
+    }
+
+    public String lastEndpoint() {
+        return socket.getOption(SocketOptions.LAST_ENDPOINT);
+    }
+
+    public void zmpMetadata(String value) {
+        Objects.requireNonNull(value, "value");
+        socket.setOption(SocketOptions.ZMP_METADATA, value);
     }
 
     private static int toIntMillis(Duration timeout, String name) {

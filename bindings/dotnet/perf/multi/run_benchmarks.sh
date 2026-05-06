@@ -9,6 +9,10 @@ PROJECT_DIR="${DOTNET_DIR}/perf/multi/Zlink.BindingBench.Multi"
 REPO_DIR="$(cd "${DOTNET_DIR}/../.." && pwd)"
 STREAM_CLIENT="${REPO_DIR}/bindings/c/build/perf/perf_stream_client"
 STREAM_BUILD_DIR="${REPO_DIR}/bindings/c/build"
+VERSION_FILE="${REPO_DIR}/VERSION"
+CORE_LIB_DIR="${REPO_DIR}/core/build/lib"
+CORE_VERSION="$(awk -F= '/^LIBZLINK_VERSION=/{print $2}' "${VERSION_FILE}")"
+CORE_LIB="${CORE_LIB_DIR}/libzlink.so.${CORE_VERSION}"
 RESULTS_ROOT="${DOTNET_DIR}/perf/results"
 PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
@@ -101,6 +105,30 @@ ensure_build_output() {
   fi
 
   dotnet build "${PROJECT}" -c "${CONFIGURATION}" >/dev/null
+}
+
+sync_native_dirs() {
+  local search_root="$1"
+  [[ -d "${search_root}" ]] || return 0
+
+  while IFS= read -r native_dir; do
+    rm -f "${native_dir}/libzlink.so" \
+      "${native_dir}/libzlink.so.5" \
+      "${native_dir}/libzlink.so."*
+    cp -f "${CORE_LIB}" "${native_dir}/libzlink.so.${CORE_VERSION}"
+    ln -sfn "libzlink.so.${CORE_VERSION}" "${native_dir}/libzlink.so.5"
+    ln -sfn libzlink.so.5 "${native_dir}/libzlink.so"
+  done < <(find "${search_root}" -type d -path '*linux-x64/native')
+}
+
+prepare_core_runtime() {
+  if [[ ! -f "${CORE_LIB}" ]]; then
+    echo "core runtime not found: ${CORE_LIB}" >&2
+    echo "Build core/build before running dotnet perf." >&2
+    exit 1
+  fi
+  export ZLINK_LIBRARY_PATH="${CORE_LIB}"
+  sync_native_dirs "${PROJECT_DIR}/bin"
 }
 
 ensure_stream_client() {
@@ -641,6 +669,7 @@ run_external_stream_client() {
 }
 
 ensure_build_output
+prepare_core_runtime
 
 if ! PERF_BINARY="$(resolve_perf_binary "${PROJECT_DIR}" "Zlink.BindingBench.Multi")"; then
   echo "multi benchmark binary not found under ${PROJECT_DIR}/bin/${CONFIGURATION}/net8.0." >&2
@@ -657,6 +686,7 @@ print_line "- patterns: ${PATTERN}"
 print_line "- transports: ${TRANSPORTS}"
 print_line "- msg_sizes: ${MSG_SIZES:-default(pattern)}"
 print_line "- clients: ${CLIENTS:-default(pattern)}"
+print_line "- runtime: ${CORE_LIB}"
 print_line "- pin_cpu: off"
 print_line "- case_cooldown_ms: ${CASE_COOLDOWN_MS}"
 print_line ""

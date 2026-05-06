@@ -62,7 +62,6 @@ async function main() {
                 payloads.push(part.message.data().toString());
             }
         });
-        await acceptJoin(actor, spot, 'first-join');
         stream.bind(endpoint);
         client = net.createConnection({ host: '127.0.0.1', port });
         await once(client, 'connect');
@@ -71,6 +70,7 @@ async function main() {
             client.write(Buffer.concat([frame(Buffer.alloc(0)), frame(Buffer.from('open'))]));
         });
         stream.bindActor(node, session, actor.ref(), 2000);
+        await acceptJoin(actor, spot, 'first-join');
         actor.leave(spot);
         stream.sendBoundActor(node, session, 'queue-player-1', Buffer.from('queued'));
         await acceptJoin(actor, spot, 'second-join');

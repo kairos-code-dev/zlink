@@ -94,6 +94,14 @@ func MultiReadyTimeout() time.Duration {
 	return durationFromEnv("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5*time.Second)
 }
 
+func MultiSpotReadySettleDuration() time.Duration {
+	return durationFromEnv("PERF_MULTI_SPOT_READY_SETTLE_MS", time.Second)
+}
+
+func MultiSpotControlSettleDuration() time.Duration {
+	return durationFromEnv("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25*time.Millisecond)
+}
+
 func NewSocketPoller(socket zlink.SocketTarget, events int16) *zlink.Poller {
 	poller, err := zlink.NewPoller()
 	Must(err)

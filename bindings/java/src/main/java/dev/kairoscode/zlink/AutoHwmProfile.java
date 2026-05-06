@@ -14,11 +14,11 @@ public enum AutoHwmProfile {
         this.value = value;
     }
 
-    int value() {
+    public int value() {
         return value;
     }
 
-    static AutoHwmProfile fromValue(int value) {
+    public static AutoHwmProfile fromValue(int value) {
         for (AutoHwmProfile profile : values()) {
             if (profile.value == value)
                 return profile;

@@ -2,6 +2,9 @@
 
 package dev.kairoscode.zlink;
 
+import java.time.Duration;
+import java.util.Objects;
+
 /**
  * Typed facade for context options.
  */
@@ -68,6 +71,33 @@ public final class ContextOptions {
         context.setOption(ContextOption.BLOCKY, enabled ? 1 : 0);
     }
 
+    public int spotWorkerThreads() {
+        return context.getOption(ContextOption.SPOT_WORKER_THREADS);
+    }
+
+    public void spotWorkerThreads(int count) {
+        context.setOption(ContextOption.SPOT_WORKER_THREADS, count);
+    }
+
+    public boolean autoHwmEnabled() {
+        return context.getOption(ContextOption.AUTO_HWM_ENABLE) != 0;
+    }
+
+    public void autoHwmEnabled(boolean enabled) {
+        context.setOption(ContextOption.AUTO_HWM_ENABLE, enabled ? 1 : 0);
+    }
+
+    public Duration autoHwmRecalcDebounce() {
+        return Duration.ofMillis(
+          context.getOption(ContextOption.AUTO_HWM_RECALC_DEBOUNCE_MS));
+    }
+
+    public void autoHwmRecalcDebounce(Duration value) {
+        Objects.requireNonNull(value, "value");
+        context.setOption(ContextOption.AUTO_HWM_RECALC_DEBOUNCE_MS,
+          toIntMillis(value, "value"));
+    }
+
     public AutoHwmProfile autoHwmProfile() {
         return AutoHwmProfile.fromValue(
           context.getOption(ContextOption.AUTO_HWM_PROFILE));
@@ -83,5 +113,14 @@ public final class ContextOptions {
 
     public void removeThreadAffinity(int cpu) {
         context.setOption(ContextOption.THREAD_AFFINITY_CPU_REMOVE, cpu);
+    }
+
+    private static int toIntMillis(Duration timeout, String name) {
+        long millis = timeout.toMillis();
+        if (millis < Integer.MIN_VALUE || millis > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(name + " millis out of int range: "
+                + millis);
+        }
+        return (int) millis;
     }
 }

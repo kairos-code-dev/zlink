@@ -93,7 +93,7 @@ channel send/request, peer routed communication, and publish/subscribe.
 - **Thread-safe** -- a single `spot` / `spot_node` handle admits concurrent
   operational API calls from multiple threads.
 
-See the [SPOT Guide](07-3-spot.md) for details.
+See the [SPOT Guide](07-3-spot.md) and [SPOT Actor Guide](07-4-actor.md) for details.
 
 ### 3.3 Socket Family -- Discovery-Managed Raw Sockets
 

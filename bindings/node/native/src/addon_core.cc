@@ -4060,31 +4060,14 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_value snd_pending, rcv_pending;
     napi_value auto_hwm_enabled, auto_hwm_profile, auto_hwm_role;
     napi_value auto_hwm_policy_class;
-    napi_value auto_hwm_managed_connections, auto_hwm_active_hwm_connections;
-    napi_value auto_hwm_observed_count;
-    napi_value auto_hwm_planning_count;
-    napi_value auto_hwm_context_total_planning_count;
-    napi_value auto_hwm_base_floor_per_connection;
     napi_value auto_hwm_unit_budget_bytes;
-    napi_value auto_hwm_size_cap, auto_hwm_effective_publish_fanout;
-    napi_value auto_hwm_applied_sndhwm, auto_hwm_applied_rcvhwm;
-    napi_value auto_hwm_requested_sndbuf, auto_hwm_requested_rcvbuf;
-    napi_value auto_hwm_effective_sndbuf, auto_hwm_effective_rcvbuf;
-    napi_value auto_hwm_total_memory_budget_bytes;
-    napi_value auto_hwm_queue_budget_bytes;
-    napi_value auto_hwm_transport_budget_bytes;
-    napi_value auto_hwm_runtime_reserve_bytes;
-    napi_value auto_hwm_socket_queue_share_bytes;
+    napi_value auto_hwm_size_cap;
     napi_value auto_hwm_socket_message_slots;
     napi_value auto_hwm_effective_message_bytes;
-    napi_value auto_hwm_estimated_max_memory_bytes;
+    napi_value auto_hwm_applied_sndhwm, auto_hwm_applied_rcvhwm;
     napi_value auto_hwm_last_recalc_ms;
     napi_value auto_hwm_last_recalc_reason;
     napi_value auto_hwm_send_blocked_ratio_ppm;
-    napi_value auto_hwm_scope, auto_hwm_scope_count;
-    napi_value auto_hwm_auto_buffer_bytes;
-    napi_value auto_hwm_manual_buffer_bytes;
-    napi_value auto_hwm_buffer_connections;
     napi_value auto_hwm_deferred_sndhwm, auto_hwm_deferred_rcvhwm;
     napi_create_uint32(env, static_cast<uint32_t>(snapshot.source_kind),
                        &source_kind);
@@ -4099,56 +4082,11 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_create_uint32(env, snapshot.auto_hwm_role, &auto_hwm_role);
     napi_create_uint32(env, snapshot.auto_hwm_policy_class,
                        &auto_hwm_policy_class);
-    napi_create_uint32(env, snapshot.auto_hwm_managed_connections,
-                       &auto_hwm_managed_connections);
-    napi_create_uint32(env, snapshot.auto_hwm_active_hwm_connections,
-                       &auto_hwm_active_hwm_connections);
-    napi_create_uint32(env, snapshot.auto_hwm_observed_count,
-                       &auto_hwm_observed_count);
-    napi_create_uint32(env, snapshot.auto_hwm_planning_count,
-                       &auto_hwm_planning_count);
-    napi_create_uint32(env, snapshot.auto_hwm_context_total_planning_count,
-                       &auto_hwm_context_total_planning_count);
-    napi_create_uint32(env, snapshot.auto_hwm_base_floor_per_connection,
-                       &auto_hwm_base_floor_per_connection);
     napi_create_int64(env,
                       static_cast<int64_t> (
                         snapshot.auto_hwm_unit_budget_bytes),
                       &auto_hwm_unit_budget_bytes);
     napi_create_uint32(env, snapshot.auto_hwm_size_cap, &auto_hwm_size_cap);
-    napi_create_uint32(env, snapshot.auto_hwm_effective_publish_fanout,
-                       &auto_hwm_effective_publish_fanout);
-    napi_create_int32(env, snapshot.auto_hwm_applied_sndhwm,
-                      &auto_hwm_applied_sndhwm);
-    napi_create_int32(env, snapshot.auto_hwm_applied_rcvhwm,
-                      &auto_hwm_applied_rcvhwm);
-    napi_create_int32(env, snapshot.auto_hwm_requested_sndbuf,
-                      &auto_hwm_requested_sndbuf);
-    napi_create_int32(env, snapshot.auto_hwm_requested_rcvbuf,
-                      &auto_hwm_requested_rcvbuf);
-    napi_create_int32(env, snapshot.auto_hwm_effective_sndbuf,
-                      &auto_hwm_effective_sndbuf);
-    napi_create_int32(env, snapshot.auto_hwm_effective_rcvbuf,
-                      &auto_hwm_effective_rcvbuf);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_total_memory_budget_bytes),
-                      &auto_hwm_total_memory_budget_bytes);
-    napi_create_int64(env,
-                      static_cast<int64_t> (snapshot.auto_hwm_queue_budget_bytes),
-                      &auto_hwm_queue_budget_bytes);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_transport_budget_bytes),
-                      &auto_hwm_transport_budget_bytes);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_runtime_reserve_bytes),
-                      &auto_hwm_runtime_reserve_bytes);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_socket_queue_share_bytes),
-                      &auto_hwm_socket_queue_share_bytes);
     napi_create_int64(env,
                       static_cast<int64_t> (
                         snapshot.auto_hwm_socket_message_slots),
@@ -4157,10 +4095,10 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
                       static_cast<int64_t> (
                         snapshot.auto_hwm_effective_message_bytes),
                       &auto_hwm_effective_message_bytes);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_estimated_max_memory_bytes),
-                      &auto_hwm_estimated_max_memory_bytes);
+    napi_create_int32(env, snapshot.auto_hwm_applied_sndhwm,
+                      &auto_hwm_applied_sndhwm);
+    napi_create_int32(env, snapshot.auto_hwm_applied_rcvhwm,
+                      &auto_hwm_applied_rcvhwm);
     napi_create_int64(env,
                       static_cast<int64_t> (snapshot.auto_hwm_last_recalc_ms),
                       &auto_hwm_last_recalc_ms);
@@ -4168,19 +4106,6 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
                        &auto_hwm_last_recalc_reason);
     napi_create_uint32(env, snapshot.auto_hwm_send_blocked_ratio_ppm,
                        &auto_hwm_send_blocked_ratio_ppm);
-    napi_create_uint32(env, snapshot.auto_hwm_scope, &auto_hwm_scope);
-    napi_create_uint32(env, snapshot.auto_hwm_scope_count,
-                       &auto_hwm_scope_count);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_auto_buffer_bytes),
-                      &auto_hwm_auto_buffer_bytes);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_manual_buffer_bytes),
-                      &auto_hwm_manual_buffer_bytes);
-    napi_create_uint32(env, snapshot.auto_hwm_buffer_connections,
-                       &auto_hwm_buffer_connections);
     napi_create_int32(env, snapshot.auto_hwm_deferred_sndhwm,
                       &auto_hwm_deferred_sndhwm);
     napi_create_int32(env, snapshot.auto_hwm_deferred_rcvhwm,
@@ -4195,66 +4120,23 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_set_named_property(env, obj, "autoHwmRole", auto_hwm_role);
     napi_set_named_property(env, obj, "autoHwmPolicyClass",
                             auto_hwm_policy_class);
-    napi_set_named_property(env, obj, "autoHwmManagedConnections",
-                            auto_hwm_managed_connections);
-    napi_set_named_property(env, obj, "autoHwmActiveHwmConnections",
-                            auto_hwm_active_hwm_connections);
-    napi_set_named_property(env, obj, "autoHwmObservedCount",
-                            auto_hwm_observed_count);
-    napi_set_named_property(env, obj, "autoHwmPlanningCount",
-                            auto_hwm_planning_count);
-    napi_set_named_property(env, obj, "autoHwmContextTotalPlanningCount",
-                            auto_hwm_context_total_planning_count);
-    napi_set_named_property(env, obj, "autoHwmBaseFloorPerConnection",
-                            auto_hwm_base_floor_per_connection);
     napi_set_named_property(env, obj, "autoHwmUnitBudgetBytes",
                             auto_hwm_unit_budget_bytes);
     napi_set_named_property(env, obj, "autoHwmSizeCap", auto_hwm_size_cap);
-    napi_set_named_property(env, obj, "autoHwmEffectivePublishFanout",
-                            auto_hwm_effective_publish_fanout);
-    napi_set_named_property(env, obj, "autoHwmAppliedSndHwm",
-                            auto_hwm_applied_sndhwm);
-    napi_set_named_property(env, obj, "autoHwmAppliedRcvHwm",
-                            auto_hwm_applied_rcvhwm);
-    napi_set_named_property(env, obj, "autoHwmRequestedSndBuf",
-                            auto_hwm_requested_sndbuf);
-    napi_set_named_property(env, obj, "autoHwmRequestedRcvBuf",
-                            auto_hwm_requested_rcvbuf);
-    napi_set_named_property(env, obj, "autoHwmEffectiveSndBuf",
-                            auto_hwm_effective_sndbuf);
-    napi_set_named_property(env, obj, "autoHwmEffectiveRcvBuf",
-                            auto_hwm_effective_rcvbuf);
-    napi_set_named_property(env, obj, "autoHwmTotalMemoryBudgetBytes",
-                            auto_hwm_total_memory_budget_bytes);
-    napi_set_named_property(env, obj, "autoHwmQueueBudgetBytes",
-                            auto_hwm_queue_budget_bytes);
-    napi_set_named_property(env, obj, "autoHwmTransportBudgetBytes",
-                            auto_hwm_transport_budget_bytes);
-    napi_set_named_property(env, obj, "autoHwmRuntimeReserveBytes",
-                            auto_hwm_runtime_reserve_bytes);
-    napi_set_named_property(env, obj, "autoHwmSocketQueueShareBytes",
-                            auto_hwm_socket_queue_share_bytes);
     napi_set_named_property(env, obj, "autoHwmSocketMessageSlots",
                             auto_hwm_socket_message_slots);
     napi_set_named_property(env, obj, "autoHwmEffectiveMessageBytes",
                             auto_hwm_effective_message_bytes);
-    napi_set_named_property(env, obj, "autoHwmEstimatedMaxMemoryBytes",
-                            auto_hwm_estimated_max_memory_bytes);
+    napi_set_named_property(env, obj, "autoHwmAppliedSndHwm",
+                            auto_hwm_applied_sndhwm);
+    napi_set_named_property(env, obj, "autoHwmAppliedRcvHwm",
+                            auto_hwm_applied_rcvhwm);
     napi_set_named_property(env, obj, "autoHwmLastRecalcMs",
                             auto_hwm_last_recalc_ms);
     napi_set_named_property(env, obj, "autoHwmLastRecalcReason",
                             auto_hwm_last_recalc_reason);
     napi_set_named_property(env, obj, "autoHwmSendBlockedRatioPpm",
                             auto_hwm_send_blocked_ratio_ppm);
-    napi_set_named_property(env, obj, "autoHwmScope", auto_hwm_scope);
-    napi_set_named_property(env, obj, "autoHwmScopeCount",
-                            auto_hwm_scope_count);
-    napi_set_named_property(env, obj, "autoHwmAutoBufferBytes",
-                            auto_hwm_auto_buffer_bytes);
-    napi_set_named_property(env, obj, "autoHwmManualBufferBytes",
-                            auto_hwm_manual_buffer_bytes);
-    napi_set_named_property(env, obj, "autoHwmBufferConnections",
-                            auto_hwm_buffer_connections);
     napi_set_named_property(env, obj, "autoHwmDeferredSndHwm",
                             auto_hwm_deferred_sndhwm);
     napi_set_named_property(env, obj, "autoHwmDeferredRcvHwm",

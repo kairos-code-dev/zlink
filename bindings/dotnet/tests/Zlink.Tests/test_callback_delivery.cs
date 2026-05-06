@@ -93,7 +93,7 @@ public sealed class test_callback_delivery
     }
 
     [Fact]
-    public void socket_monitor_event_hops_to_registered_context()
+    public void socket_monitor_event_runs_inline()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -128,7 +128,7 @@ public sealed class test_callback_delivery
             client.Connect(endpoint);
 
             Assert.True(callbackSignal.Wait(3000));
-            Assert.Equal(callbackContext.ThreadId, callbackThreadId);
+            Assert.NotEqual(callbackContext.ThreadId, callbackThreadId);
             Assert.NotNull(observed);
             Assert.Equal(MonitorEventType.ConnectionReady, observed!.Event);
         }
@@ -139,7 +139,7 @@ public sealed class test_callback_delivery
     }
 
     [Fact]
-    public void spot_channel_reply_dispatch_and_callback_hop_to_registered_context()
+    public void spot_channel_reply_dispatch_runs_inline_and_callback_hops_to_registered_context()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -166,7 +166,7 @@ public sealed class test_callback_delivery
         int callbackCount = 0;
         RequestResult observedResult = RequestResult.ProtocolError;
         string observedPayload = string.Empty;
-        IntPtr observedSubject = IntPtr.Zero;
+        bool observedChannelReply = false;
         Exception? dispatchError = null;
         Exception? callbackError = null;
 
@@ -177,11 +177,11 @@ public sealed class test_callback_delivery
                 dispatchThreadId = Environment.CurrentManagedThreadId;
                 if (info.Event == SpotDispatchEvent.ChannelReplyReadable)
                 {
-                    observedSubject = info.Subject;
+                    observedChannelReply = true;
                     dispatchCount++;
                     try
                     {
-                        currentSpot.DrainChannelReplyFrom(info.Subject);
+                        info.DrainChannelReply();
                     }
                     catch (Exception ex)
                     {
@@ -229,8 +229,8 @@ public sealed class test_callback_delivery
         Assert.True(callbackSignal.Wait(3000));
         Assert.Null(dispatchError);
         Assert.Null(callbackError);
-        Assert.NotEqual(IntPtr.Zero, observedSubject);
-        Assert.Equal(callbackContext.ThreadId, dispatchThreadId);
+        Assert.True(observedChannelReply);
+        Assert.NotEqual(callbackContext.ThreadId, dispatchThreadId);
         Assert.Equal(callbackContext.ThreadId, callbackThreadId);
         Assert.Equal(1, dispatchCount);
         Assert.Equal(1, callbackCount);

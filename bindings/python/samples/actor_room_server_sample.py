@@ -1,13 +1,17 @@
+import socket
+
 import zlink
 
-from sample_support import wait_until
+from sample_support import tcp_endpoint, wait_socket_monitor_event, wait_until
 
 
 def main():
+    port, endpoint = tcp_endpoint()
     with zlink.Context() as ctx:
         with zlink.SpotNode(ctx) as node:
             with node.create_spot() as spot:
                 actor = node.actor("room-1")
+                actor_ref = actor.ref()
                 replies = []
                 joins = []
 
@@ -29,16 +33,28 @@ def main():
                     for message in messages:
                         message.close()
 
-                actor.join(spot, b"join-room", on_reply, timeout=2)
-                wait_until(lambda: replies, timeout_ms=5000, description="actor join")
+                with zlink.StreamSocket(ctx) as stream:
+                    with stream.monitor_open(zlink.MonitorEventMask.ACCEPTED) as monitor:
+                        stream.bind(endpoint)
+                        with socket.create_connection(("127.0.0.1", port), timeout=3) as client:
+                            wait_socket_monitor_event(
+                                monitor, zlink.MonitorEventMask.ACCEPTED
+                            )
+                            client.sendall(b"seed")
+                            with stream.recv() as stream_msg:
+                                session_rid = stream_msg.routing_id
+                            stream.bind_actor(node, session_rid, actor_ref, timeout=2)
 
-                if joins != [b"join-room"]:
-                    raise AssertionError("unexpected join request")
-                if replies[0] != (zlink.RequestResult.OK, [b"joined"]):
-                    raise AssertionError("unexpected join reply")
-                if spot.actors_snapshot()[0].actor_id != "room-1":
-                    raise AssertionError("joined actor snapshot missing")
-                actor.leave(spot)
+                            actor.join(spot, b"join-room", on_reply, timeout=2)
+                            wait_until(lambda: replies, timeout_ms=5000, description="actor join")
+
+                            if joins != [b"join-room"]:
+                                raise AssertionError("unexpected join request")
+                            if replies[0] != (zlink.RequestResult.OK, [b"joined"]):
+                                raise AssertionError("unexpected join reply")
+                            if spot.actors_snapshot()[0].actor_id != "room-1":
+                                raise AssertionError("joined actor snapshot missing")
+                            actor.leave(spot)
                 actor.close()
                 print("[actor/room] join accepted")
 

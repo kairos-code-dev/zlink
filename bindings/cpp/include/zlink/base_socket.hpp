@@ -10,6 +10,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -1129,6 +1130,15 @@ class base_socket_t : public socket_handle_t
         return zlink_send_ready_handler (handle (), handler_, userdata_);
     }
 
+    void on_send_ready (std::function<void()> handler_)
+    {
+        _send_ready_handler = std::move (handler_);
+        if (on_send_ready (&base_socket_t::send_ready_trampoline, this) != 0)
+            detail::throw_if_failed<handler_error_t> (
+              static_cast<handler_result_t> (
+                detail::handler_result_from_errno (zlink_errno ())));
+    }
+
   protected:
     ZLINK_CPP_NODISCARD int on_receive (zlink_socket_msg_handler_fn handler_,
                                         void *userdata_ = NULL)
@@ -1148,6 +1158,15 @@ class base_socket_t : public socket_handle_t
         return zlink_set_option (
           handle (), static_cast<zlink_option_t> (option_), value_, size_);
     }
+
+    static void send_ready_trampoline (void *, void *userdata_)
+    {
+        base_socket_t *self = static_cast<base_socket_t *> (userdata_);
+        if (self && self->_send_ready_handler)
+            self->_send_ready_handler ();
+    }
+
+    std::function<void()> _send_ready_handler;
 
     template<typename T>
     ZLINK_CPP_NODISCARD

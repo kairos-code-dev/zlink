@@ -37,6 +37,14 @@ public final class Context implements AutoCloseable {
             throw ZlinkException.fromLastError("zlink_ctx_shutdown");
     }
 
+    public void recalculateAutoHwm() {
+        ensureOpen();
+        int rc = Native.ctxAutoHwmRecalculate(handle);
+        if (rc != 0) {
+            throw new ConfigException(ConfigResult.fromValue(rc));
+        }
+    }
+
     @Override
     public void close() {
         if (handle == null || handle.address() == 0)

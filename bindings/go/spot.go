@@ -350,6 +350,47 @@ func (n *SpotNode) Spot() (*Spot, error) {
 	return &Spot{core: core}, nil
 }
 
+func (n *SpotNode) EntrySpot() (*Spot, error) {
+	if n == nil {
+		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.closed || n.closing || n.handle == nil {
+		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	var handle unsafe.Pointer
+	if err := configErrorFromResult(C.zlink_spot_node_entry_spot(n.handle, &handle)); err != nil {
+		return nil, err
+	}
+	core := &spotCore{handle: handle, owner: n}
+	n.spots[core] = struct{}{}
+	return &Spot{core: core}, nil
+}
+
+func (n *SpotNode) SpotLookup(spotRID RoutingID) (*Spot, error) {
+	if n == nil {
+		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	rid := spotRID.toC()
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.closed || n.closing || n.handle == nil {
+		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	var handle unsafe.Pointer
+	if err := configErrorFromResult(C.zlink_spot_node_spot_lookup(
+		n.handle,
+		(*C.zlink_routing_id_t)(unsafe.Pointer(&rid)),
+		&handle,
+	)); err != nil {
+		return nil, err
+	}
+	core := &spotCore{handle: handle, owner: n}
+	n.spots[core] = struct{}{}
+	return &Spot{core: core}, nil
+}
+
 func (n *SpotNode) Close() error {
 	if n == nil {
 		return nil

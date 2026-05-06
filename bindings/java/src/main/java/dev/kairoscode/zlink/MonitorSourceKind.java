@@ -5,8 +5,7 @@ package dev.kairoscode.zlink;
 public enum MonitorSourceKind {
     SOCKET(1),
     SPOT_PUB(3),
-    SPOT_SUB(4),
-    SPOT_NODE(5);
+    SPOT_SUB(4);
 
     private final int value;
 

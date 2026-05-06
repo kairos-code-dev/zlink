@@ -204,6 +204,7 @@ bindings/**/.settings/
 bindings/**/bin/
 bindings/**/obj/
 bindings/**/.vs/
+bindings/**/TestResults/
 bindings/**/*.user
 bindings/**/*.suo
 bindings/**/*.userosscache

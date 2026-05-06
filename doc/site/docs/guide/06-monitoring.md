@@ -308,13 +308,10 @@ Query the current aggregate state from a monitor handle at any time.
 | `auto_hwm_profile` / `auto_hwm_policy_class` | Active auto-HWM profile and planner policy class |
 | `auto_hwm_applied_sndhwm` / `auto_hwm_applied_rcvhwm` | Automatically applied HWM values on the socket |
 | `auto_hwm_unit_budget_bytes` / `auto_hwm_size_cap` | Profile unit budget and message-count cap used by the planner |
-| `auto_hwm_effective_publish_fanout` | SPOT publish fanout diagnostic when available |
-| `auto_hwm_requested_sndbuf` / `auto_hwm_requested_rcvbuf` | Transport-buffer values requested by the automatic policy |
-| `auto_hwm_auto_buffer_bytes` / `auto_hwm_manual_buffer_bytes` | Buffer diagnostics when available |
 | `auto_hwm_effective_message_bytes` | Message unit used to convert the profile envelope into HWM slots |
-| `auto_hwm_observed_count` | Diagnostic observed connection count. Auto-HWM does not reduce per-connection HWM as this value grows. |
 | `auto_hwm_socket_message_slots` | Message slots selected from the profile unit budget and message unit |
-| Deprecated planning and budget fields | Compatibility fields such as planning count, context budget, queue budget, and queue share are filled with `0` and should not be used to explain HWM. |
+| `auto_hwm_last_recalc_reason` / `auto_hwm_send_blocked_ratio_ppm` | Recalculation reason and recent send-blocked ratio |
+| `auto_hwm_deferred_sndhwm` / `auto_hwm_deferred_rcvhwm` | Deferred HWM shrink values, or `-1` when no shrink is deferred |
 
 `snd_pending_msgs` and `rcv_pending_msgs` are directly related to HWM settings.
 When these values approach the HWM, backpressure is occurring.

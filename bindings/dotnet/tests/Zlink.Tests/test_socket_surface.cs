@@ -369,11 +369,14 @@ public sealed class test_socket_surface
             nameof(Spot.ReceiveSubscriptionEvent), typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
             nameof(Spot.OnDispatchEvent), typeof(Action<Spot, SpotDispatchInfo>)));
-        Assert.True(HasPublicInstanceMethod(typeof(Spot),
-            nameof(Spot.DrainChannelReplyFrom), typeof(IntPtr)));
-        Assert.Equal(typeof(IntPtr),
-            typeof(SpotDispatchInfo).GetProperty(nameof(SpotDispatchInfo.Subject))!
+        Assert.False(HasPublicInstanceMethod(typeof(Spot),
+            "DrainChannelReplyFrom", typeof(IntPtr)));
+        Assert.Null(typeof(SpotDispatchInfo).GetProperty("Subject"));
+        Assert.Equal(typeof(Timer),
+            typeof(SpotDispatchInfo).GetProperty(nameof(SpotDispatchInfo.Timer))!
                 .PropertyType);
+        Assert.True(HasPublicInstanceMethod(typeof(SpotDispatchInfo),
+            nameof(SpotDispatchInfo.DrainChannelReply)));
         Assert.True(HasPublicInstanceMethod(typeof(SocketBase),
             nameof(SocketBase.SetChannelName), typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(SocketBase),
@@ -469,6 +472,10 @@ public sealed class test_socket_surface
                 .GetParameters()[0].ParameterType);
         Assert.Equal(typeof(int),
             typeof(Poller).GetProperty(nameof(Poller.Size))!.PropertyType);
+        Assert.True(HasPublicInstanceMethod(typeof(Poller),
+            nameof(Poller.AddTimer), typeof(Timer), typeof(object)));
+        Assert.True(HasPublicInstanceMethod(typeof(Poller),
+            nameof(Poller.Remove), typeof(Timer)));
         ParameterInfo pollerSpanWaitOut =
             typeof(Poller).GetMethod(nameof(Poller.Wait),
                 new[] { typeof(Span<PollEvent>), typeof(int), typeof(int).MakeByRefType() })!
@@ -476,6 +483,8 @@ public sealed class test_socket_surface
         Assert.Equal("totalReady", pollerSpanWaitOut.Name);
         Assert.Equal(typeof(IZlinkSocket),
             typeof(PollEvent).GetProperty(nameof(PollEvent.Socket))!.PropertyType);
+        Assert.Equal(typeof(Timer),
+            typeof(PollEvent).GetProperty(nameof(PollEvent.Timer))!.PropertyType);
         Assert.NotNull(typeof(ZlinkPoll).GetMethod(nameof(ZlinkPoll.Poll),
             new[]
             {

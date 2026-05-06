@@ -95,6 +95,75 @@ func TestServiceLayerEmptySnapshotsAndCanonicalNames(t *testing.T) {
 	}
 }
 
+func TestSpotNodeEntrySpotAndLookup(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	node, err := ctx.SpotNode()
+	if err != nil {
+		t.Fatalf("SpotNode() error = %v", err)
+	}
+	defer node.Close()
+
+	entryA, err := node.EntrySpot()
+	if err != nil {
+		t.Fatalf("EntrySpot() error = %v", err)
+	}
+	defer entryA.Close()
+	entryB, err := node.EntrySpot()
+	if err != nil {
+		t.Fatalf("EntrySpot() second error = %v", err)
+	}
+	defer entryB.Close()
+
+	entryRID, err := entryA.RoutingID()
+	if err != nil {
+		t.Fatalf("entry RoutingID() error = %v", err)
+	}
+	secondEntryRID, err := entryB.RoutingID()
+	if err != nil {
+		t.Fatalf("second entry RoutingID() error = %v", err)
+	}
+	if !entryRID.Equal(secondEntryRID) {
+		t.Fatalf("EntrySpot() facades have different routing ids")
+	}
+
+	lookupEntry, err := node.SpotLookup(entryRID)
+	if err != nil {
+		t.Fatalf("SpotLookup(entry) error = %v", err)
+	}
+	defer lookupEntry.Close()
+	lookupEntryRID, err := lookupEntry.RoutingID()
+	if err != nil {
+		t.Fatalf("lookup entry RoutingID() error = %v", err)
+	}
+	if !lookupEntryRID.Equal(entryRID) {
+		t.Fatalf("SpotLookup(entry) returned routing id %s, want %s", lookupEntryRID.Hex(), entryRID.Hex())
+	}
+
+	spot, err := node.Spot()
+	if err != nil {
+		t.Fatalf("Spot() error = %v", err)
+	}
+	defer spot.Close()
+	spotRID, err := spot.RoutingID()
+	if err != nil {
+		t.Fatalf("spot RoutingID() error = %v", err)
+	}
+	lookupSpot, err := node.SpotLookup(spotRID)
+	if err != nil {
+		t.Fatalf("SpotLookup(user spot) error = %v", err)
+	}
+	defer lookupSpot.Close()
+	lookupSpotRID, err := lookupSpot.RoutingID()
+	if err != nil {
+		t.Fatalf("lookup spot RoutingID() error = %v", err)
+	}
+	if !lookupSpotRID.Equal(spotRID) {
+		t.Fatalf("SpotLookup(user spot) returned routing id %s, want %s", lookupSpotRID.Hex(), spotRID.Hex())
+	}
+}
+
 func TestAttachDiscoveryBlocksManualSocketLifecycleControls(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()

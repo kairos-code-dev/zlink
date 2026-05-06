@@ -83,7 +83,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.SpotNode, "actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "actor_lookup"))
         self.assertTrue(hasattr(zlink.SpotNode, "create_remote_actor"))
-        self.assertTrue(hasattr(zlink.SpotNode, "destroy_remote_actor"))
+        self.assertTrue(hasattr(zlink.SpotNode, "destroy_actor"))
+        self.assertFalse(hasattr(zlink.SpotNode, "destroy_" + "remote_actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "on_actor_admission"))
         self.assertTrue(hasattr(zlink.SpotNode, "join_actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "leave_actor"))
@@ -102,7 +103,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.Actor, "leave"))
         self.assertTrue(hasattr(zlink.Actor, "recv_part"))
         self.assertTrue(hasattr(zlink.Actor, "send_bound_session"))
-        self.assertTrue(hasattr(zlink.Actor, "send_bound_session_packet"))
+        self.assertTrue(hasattr(zlink.Actor, "close_bound_session"))
+        self.assertFalse(hasattr(zlink.Actor, "send_bound_session_" + "packet"))
 
         remote = zlink.remote_actor_ref(zlink.RoutingId(b"node"), "actor")
         self.assertTrue(remote.is_unchecked())
@@ -224,7 +226,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     self.assertTrue(hasattr(snapshot, "auto_hwm_unit_budget_bytes"))
                     self.assertTrue(hasattr(snapshot, "auto_hwm_size_cap"))
                     self.assertTrue(
-                        hasattr(snapshot, "auto_hwm_effective_publish_fanout")
+                        hasattr(snapshot, "auto_hwm_socket_message_slots")
                     )
 
     def test_request_reply_canonical_roundtrip(self):

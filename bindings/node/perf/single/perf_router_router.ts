@@ -25,6 +25,8 @@ const {
   resolveSingleLatencySampleCap,
   resolveSingleIdleDrainMs,
   spawnSenderWorker,
+  waitForWorkerDone,
+  waitForWorkerError,
   waitForMonitorConnectionReady,
   waitForWorkerMessage,
 } = require('./perf_single_common');
@@ -77,7 +79,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
       senderRoutingIdBytes: SENDER_ID,
       options,
     });
-    const workerError = waitForWorkerMessage(worker, 'error');
+    const workerError = waitForWorkerError(worker);
     trace('waiting worker connected');
     await Promise.race([
       waitForWorkerMessage(worker, 'connected'),
@@ -122,7 +124,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
     trace('starting worker');
     worker.postMessage({ type: 'start' });
     await Promise.race([
-      waitForWorkerMessage(worker, 'done'),
+      waitForWorkerDone(worker, options.duration),
       workerError.then((message) => Promise.reject(new Error(message.message)))
     ]);
     trace('worker done');

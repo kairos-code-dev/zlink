@@ -373,7 +373,8 @@ func IsTransient(err error) bool {
 	}
 	switch zerr.InternalErrno() {
 	case int(syscall.EAGAIN), int(syscall.EINTR), int(syscall.ENOENT),
-		int(syscall.ENOTCONN):
+		int(syscall.ENOTCONN), int(syscall.EHOSTUNREACH),
+		int(syscall.ECONNREFUSED), int(syscall.ENETUNREACH):
 		return true
 	default:
 		return false

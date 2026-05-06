@@ -155,9 +155,7 @@ void emit_spot_hwm_detail (void *node_,
             continue;
         const zlink_monitor_snapshot_t &snapshot = entry.snapshot;
         if (snapshot.auto_hwm_applied_sndhwm <= 0
-            && snapshot.auto_hwm_applied_rcvhwm <= 0
-            && snapshot.auto_hwm_effective_sndbuf <= 0
-            && snapshot.auto_hwm_effective_rcvbuf <= 0) {
+            && snapshot.auto_hwm_applied_rcvhwm <= 0) {
             continue;
         }
         std::cout << "AUTO_HWM_DETAIL"
@@ -169,13 +167,11 @@ void emit_spot_hwm_detail (void *node_,
                   << ",owner_id=" << entry.owner_id
                   << ",socket=" << entry.socket_name
                   << ",socket_type=" << socket_type_name (entry.socket_type)
-                  << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role)
-                  << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
-                  << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
-                  << ",effective_sndbuf=" << snapshot.auto_hwm_effective_sndbuf
-                  << ",effective_rcvbuf=" << snapshot.auto_hwm_effective_rcvbuf
-                  << ",effective_message_bytes="
-                  << snapshot.auto_hwm_effective_message_bytes
+	                  << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role)
+	                  << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+	                  << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+	                  << ",effective_message_bytes="
+	                  << snapshot.auto_hwm_effective_message_bytes
                   << ",socket_message_slots="
                   << snapshot.auto_hwm_socket_message_slots
                   << std::endl;

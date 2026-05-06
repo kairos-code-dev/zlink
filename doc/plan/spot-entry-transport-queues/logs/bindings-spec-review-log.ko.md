@@ -2,10 +2,328 @@
 
 - 날짜: 2026-05-06
 - 대상: bindings 순차 적용과 5회 spec 비교
-- 수행한 명령: N/A
+- 수행한 명령:
+  - `rg -n "zlink_actor_(destroy|join|leave|get_ref|send_part|recv_part|recv_msg|send_msg|new|create|get)\\(|void \\*actor|Actor handle|actor handle|ZLINK_SPOT_OPT_ACTOR|zlink_spot_node_actor_request_channel_part|zlink_spot_node_actor_send_channel_part" bindings/c doc/spec/bindings/c/README.md`
+  - `rg -n "zlink_spot_node_actor_new|zlink_spot_node_actor_join_spot|zlink_spot_node_actor_recv_part|generation == 0|Per-Actor queue|unchecked remote ref" doc/spec/bindings/c/README.md bindings/c/samples`
+  - `cmake --build bindings/c/build && bindings/c/samples/run_samples.sh`
+  - `bindings/c/perf/run_benchmarks.sh --transports tcp --msg-sizes 64`
+  - `bindings/c/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64`
 - 확인한 draft spec 절: Public C API 변경 요약, 각 API 상세 계약, 회귀 테스트
-- 발견한 문제: core public surface 구현 전이라 bindings 비교를 시작하지 않음
-- 수정한 파일: N/A
-- 검증 결과: pending
-- 남은 위험: c, cpp, dotnet, go, java, node, python, rust 순서로 언어별 5회 비교 필요
-- 다음 확인: core release와 native library 갱신 뒤 bindings 적용
+- 발견한 문제:
+  - C binding spec은 public C header 계약을 직접 노출하므로 wrapper-specific API mismatch는 없었다.
+  - 제거된 old Actor handle API, Actor HWM option, Actor 전용 channel API는 `bindings/c` public surface와 C binding spec에서 발견되지 않았다.
+- 수정한 파일:
+  - `doc/plan/spot-entry-transport-queues/logs/bindings-spec-review-log.ko.md`
+- 검증 결과:
+  - C binding 1차 비교: Actor ref/type/API 목록이 draft의 Public C API 변경 요약과 일치.
+  - C binding 2차 비교: `generation == 0` unchecked remote ref와 checked ref 의미 반영 확인.
+  - C binding 3차 비교: ownership, timeout, join/leave, remote handoff 관련 API 반영 확인.
+  - C binding 4차 비교: 제거 API와 비목표 API 부재 확인.
+  - C binding 5차 비교: samples가 ref 기반 Actor API와 `zlink_spot_node_actor_recv_part()`를 사용함을 확인.
+  - C sample build와 runner: 13/13 통과.
+  - C perf smoke: `--transports tcp --msg-sizes 64` single/multi 모두 완료.
+    - single result: `bindings/c/perf/results/single/report/perf_c_single_linux_20260506_111213.txt`
+    - multi result: `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260506_111247.txt`
+- 남은 위험: cpp, dotnet, go, java, node, python, rust 순서로 언어별 5회 비교 필요
+- 다음 확인: cpp binding spec/code/sample/perf/POSD gate
+
+## C++ Binding
+
+- 날짜: 2026-05-06
+- 대상: `bindings/cpp`
+- 수행한 명령:
+  - `rg -n "zlink_actor_(destroy|join|leave|get_ref|send_part|recv_part|recv_msg|send_msg|new|create|get)\\(|void \\*actor|Actor handle|actor handle|ZLINK_SPOT_OPT_ACTOR|zlink_spot_node_actor_request_channel_part|zlink_spot_node_actor_send_channel_part" doc/spec/bindings/cpp bindings/cpp/include bindings/cpp/samples bindings/cpp/tests`
+  - `rg -n "actor_ref_t|unchecked|generation == 0|join_actor|recv_actor_join|recv_part|create_remote_actor" doc/spec/bindings/cpp/README.md bindings/cpp/include/zlink/services/spot.hpp bindings/cpp/include/zlink/types.hpp bindings/cpp/samples/actor_*.cpp`
+  - `bindings/cpp/samples/run_samples.sh`
+  - `bindings/cpp/tests/run_tests.sh`
+  - `ctest --test-dir bindings/cpp/build -R '^test_cpp_contract_request_reply$' --output-on-failure`
+  - `ctest --test-dir bindings/cpp/build -L contract --output-on-failure`
+  - `bindings/cpp/perf/run_benchmarks.sh --transports tcp --msg-sizes 64`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64`
+- 확인한 draft spec 절: Public C API 변경 요약, Actor ref, Actor join, STREAM session과 Actor 연결, 회귀 테스트
+- 발견한 문제:
+  - `bindings/cpp/tests/run_tests.sh` 첫 실행에서 `test_cpp_contract_request_reply`가 한 번 timeout됐다.
+  - 단일 재실행과 최종 contract label 전체 재실행은 통과했다.
+  - C++ multi perf의 `MULTI_SPOT`은 runner가 unsupported로 분류했지만 fail은 0이고 status는 complete다.
+- 수정한 파일:
+  - `doc/plan/spot-entry-transport-queues/logs/bindings-spec-review-log.ko.md`
+- 검증 결과:
+  - C++ binding 1차 비교: `actor_ref_t`, `actor_t`, Actor create/lookup/remote create-or-get surface 반영 확인.
+  - C++ binding 2차 비교: `actor_ref_t::unchecked()`가 `generation == 0` 의미를 보존함을 확인.
+  - C++ binding 3차 비교: join/leave/remote handoff/STREAM bind surface 반영 확인.
+  - C++ binding 4차 비교: 제거 API와 비목표 Actor channel API 부재 확인.
+  - C++ binding 5차 비교: Actor samples가 ref 기반 API와 callback subject ref drain을 사용함을 확인.
+  - C++ samples: 14/14 통과.
+  - C++ contract tests: 최종 8/8 통과.
+  - C++ perf smoke: `--transports tcp --msg-sizes 64` single/multi 완료.
+    - single result: `bindings/cpp/perf/results/single/report/perf_cpp_single_linux_20260506_112036.txt`
+    - multi result: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260506_112114.txt`
+- 남은 위험: dotnet, go, java, node, python, rust 순서로 언어별 5회 비교 필요
+- 다음 확인: dotnet binding spec/code/sample/perf/POSD gate
+
+## .NET Binding
+
+- 날짜: 2026-05-06
+- 대상: `bindings/dotnet`
+- 수행한 명령:
+  - `rg -n "void \\*actor|Actor handle|actor handle|ZLINK_SPOT_OPT_ACTOR|zlink_spot_node_actor_request_channel_part|zlink_spot_node_actor_send_channel_part|ActorHwm|ActorHighWater|OnSubscribe|RequestActorChannel|SendActorChannel|ActorChannel" doc/spec/bindings/dotnet bindings/dotnet/src bindings/dotnet/samples bindings/dotnet/tests`
+  - `rg -n "ActorRef|generation == 0|Unchecked|RemoteActorRef|CreateRemoteActor|JoinActor|LeaveActor|RecvActorJoin|ActorReadable|ActorJoinReadable" doc/spec/bindings/dotnet/README.md bindings/dotnet/src bindings/dotnet/samples bindings/dotnet/tests`
+  - `rg -n "SpotDispatchInfo|SubjectKind|ActorParts|RecvActorPart|const zlink_actor_ref|zlink_actor_ref|Actor ref|actor ref" doc/spec/bindings/dotnet/README.md bindings/dotnet/src/Zlink/Service/Spot.cs bindings/dotnet/src/Zlink/Native/NativeServiceModels.cs`
+  - `rg -n "HighWaterMark|Hwm|Capacity|Queue" doc/spec/bindings/dotnet/README.md bindings/dotnet/src/Zlink/Service bindings/dotnet/src/Zlink -g '*.cs'`
+  - `bindings/dotnet/tests/run_tests.sh`
+  - `bindings/dotnet/samples/run_samples.sh`
+  - `bindings/dotnet/perf/run_benchmarks.sh --transports tcp --msg-sizes 64 --clean-build`
+  - `bindings/dotnet/perf/multi/run_benchmarks.sh --transports tcp --msg-sizes 64 --clean-build`
+- 확인한 draft spec 절: Actor ref, unchecked remote ref, Entry Spot, STREAM bind, join/leave, active route, dispatch subject lifetime, snapshot, 제거 API, non-goals
+- 발견한 문제:
+  - `.NET` SPOT perf가 `Subscribe(DontWait)`를 dispatch callback 밖에서 polling해 single perf 정책의 SPOT 수신 모델과 달랐다.
+  - 원인은 binding의 `Spot.OnDispatchEvent(...)`가 handler를 `SynchronizationContext`로 post해서, core가 허용하는 dispatch callback lifetime 밖에서 drain API가 실행되는 구조였다.
+  - `SocketMonitor.OnEvent(...)`도 native callback을 비동기 post하므로 close와 pending callback 사이의 lifetime 경합을 만들 수 있었다.
+  - dotnet perf runner는 `core/build` runtime을 명시하지 않아 packaged runtime에 의존할 수 있었다.
+- 수정한 파일:
+  - `bindings/dotnet/src/Zlink/Service/Spot.cs`
+  - `bindings/dotnet/src/Zlink/Monitor.cs`
+  - `bindings/dotnet/perf/single/Zlink.BindingBench/src/PerfSpot.cs`
+  - `bindings/dotnet/perf/single/run_benchmarks.sh`
+  - `bindings/dotnet/perf/multi/run_benchmarks.sh`
+  - `bindings/dotnet/tests/Zlink.Tests/test_callback_delivery.cs`
+  - `doc/spec/bindings/dotnet/README.md`
+  - `doc/plan/spot-entry-transport-queues/logs/bindings-spec-review-log.ko.md`
+- 검증 결과:
+  - .NET binding 1차 비교: 제거된 Actor handle API, Actor HWM option, Actor 전용 channel API는 public surface에 없음을 확인. `OnSubscribe` 검색 결과는 제거 계약을 검증하는 reflection test와 spec 문장뿐이었다.
+  - .NET binding 2차 비교: `ActorRef`, `ActorRef.Unchecked(...)`, `Generation == 0` unchecked remote ref 의미 반영 확인.
+  - .NET binding 3차 비교: remote Actor create, join/leave, Actor join recv/reply, STREAM bind surface 반영 확인.
+  - .NET binding 4차 비교: dispatch subject는 callback lifetime subject로 문서화하고, Actor readable은 `ActorParts` / `RecvActorPart()`로 소비함을 확인.
+  - .NET binding 5차 비교: Spot/Actor logical queue public capacity option은 없고, SpotNode admission HWM만 노출됨을 확인.
+  - .NET tests: 141/141 통과.
+  - .NET samples: 14/14 통과.
+  - .NET perf smoke: `--transports tcp --msg-sizes 64` single/multi 완료.
+    - single result: `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260506_115005.txt`
+    - multi result: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260506_115052.txt`
+- 남은 위험: go, java, node, python, rust 순서로 언어별 5회 비교 필요
+- 다음 확인: go binding spec/code/sample/perf/POSD gate
+
+## Go Binding
+
+- 날짜: 2026-05-06
+- 대상: `bindings/go`
+- 수행한 명령:
+  - `rg -n "void \\*actor|Actor handle|actor handle|ZLINK_SPOT_OPT_ACTOR|zlink_spot_node_actor_request_channel_part|zlink_spot_node_actor_send_channel_part|ActorHwm|ActorHighWater|ActorChannel|RequestActorChannel|SendActorChannel" doc/spec/bindings/go bindings/go -g '!perf/results/**'`
+  - `rg -n "ActorRef|generation == 0|Unchecked|RemoteActorRef|CreateRemoteActor|JoinActor|LeaveActor|RecvActorJoin|ActorReadable|ActorJoinReadable|EntrySpot|SpotLookup" doc/spec/bindings/go/README.md bindings/go -g '!perf/results/**'`
+  - `rg -n "HighWaterMark|Hwm|Capacity|Queue|Actor.*HWM|Spot.*capacity" doc/spec/bindings/go/README.md bindings/go -g '!perf/results/**'`
+  - `bindings/go/tests/run_tests.sh`
+  - `bindings/go/samples/run_samples.sh`
+  - `bindings/go/perf/run_benchmarks.sh --transports tcp --msg-sizes 64 --clean-build`
+  - `bindings/go/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64 --clean-build`
+- 확인한 draft spec 절: Actor ref, unchecked remote ref, Entry Spot, STREAM bind, join/leave, active route, dispatch subject lifetime, snapshot, 제거 API, non-goals
+- 발견한 문제:
+  - Go `MULTI_SPOT` perf ready gate가 data-plane warmup delivery를 모든 logical spot에 요구했다.
+  - 이 방식은 multi SPOT에서 delivery-ready gate를 금지한 perf policy와 맞지 않아, control/settle barrier로 수정했다.
+- 수정한 파일:
+  - `bindings/go/spot.go`
+  - `bindings/go/contract_test.go`
+  - `bindings/go/surface_test.go`
+  - `bindings/go/perf/internal/perfcommon/runtime.go`
+  - `bindings/go/perf/multi/perf_multi_spot.go`
+  - `bindings/go/perf/multi/perf_multi_spot_ready.go`
+  - `doc/spec/bindings/go/README.md`
+  - `doc/plan/spot-entry-transport-queues/logs/bindings-spec-review-log.ko.md`
+- 검증 결과:
+  - Go binding 1차 비교: 제거된 Actor handle API, Actor HWM option, Actor 전용 channel API는 public surface와 spec에 없음.
+  - Go binding 2차 비교: `ActorRef`, `RemoteActorRef`, `Generation == 0` unchecked remote ref 의미 반영 확인.
+  - Go binding 3차 비교: remote Actor create, join/leave, Actor join recv/reply, STREAM bind surface 반영 확인.
+  - Go binding 4차 비교: `EntrySpot()`과 `SpotLookup()`이 owned Spot facade 계약으로 반영됨을 확인.
+  - Go binding 5차 비교: Spot/Actor logical queue public capacity option은 없고, SpotNode admission HWM만 노출됨을 확인.
+  - Go tests: `go test ./...` 통과.
+  - Go samples: 14/14 통과.
+  - Go perf smoke: `--transports tcp --msg-sizes 64` single/multi 완료.
+    - single result: `bindings/go/perf/results/single/report/perf_go_single_linux_20260506_131606.txt`
+    - multi result: `bindings/go/perf/results/multi/report/perf_go_multi_linux_20260506_132300.txt`
+- 남은 위험: java, node, python, rust 순서로 언어별 5회 비교 필요
+- 다음 확인: java binding spec/code/sample/perf/POSD gate
+
+## Java Binding
+
+- 날짜: 2026-05-06
+- 대상: `bindings/java`
+- 수행한 명령:
+  - `rg -n "void \\*actor|Actor handle|actor handle|ZLINK_SPOT_OPT_ACTOR|zlink_actor_destroy|zlink_actor_get_ref|zlink_actor_join_spot|zlink_actor_leave_spot|zlink_actor_recv_part|zlink_actor_send_bound_session_packet|zlink_spot_node_actor_request_channel_part|zlink_spot_node_actor_send_channel_part|sendBoundSessionPacket|destroyRemoteActor" doc/spec/bindings/java bindings/java/src bindings/java/samples bindings/java/tests`
+  - `rg -n "ActorRef|generation == 0|Unchecked|RemoteActorRef|createRemoteActor|joinActor|leaveActor|recvActorJoin|ActorReadable|ActorJoinReadable|EntrySpot|SpotLookup|closeBoundSession|ActorJoinInfo" doc/spec/bindings/java/README.md bindings/java/src bindings/java/samples bindings/java/tests`
+  - `rg -n "HighWaterMark|Hwm|Capacity|Queue|Actor.*HWM|Spot.*capacity|ActorChannel|RequestActorChannel|SendActorChannel" doc/spec/bindings/java/README.md bindings/java/src bindings/java/samples bindings/java/tests`
+  - `bindings/java/tests/run_tests.sh`
+  - `bindings/java/samples/run_samples.sh`
+  - `bindings/java/perf/run_benchmarks.sh --transports tcp --msg-sizes 64 --clean-build`
+  - `bindings/java/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64 --clean-build`
+- 확인한 draft spec 절: Actor ref, unchecked remote ref, Entry Spot, STREAM bind, join/leave, active route, dispatch subject lifetime, snapshot, 제거 API, non-goals
+- 발견한 문제:
+  - Java binding native downcall과 public Actor facade가 제거된 old Actor handle API 일부를 아직 참조했다.
+  - `ActorJoinInfo` native layout이 core `zlink_actor_join_info_t`보다 작아 sample에서 native write가 Java heap을 손상시켰다.
+  - Actor sample은 user Spot join 전에 bound STREAM session이 있어야 한다는 draft 계약을 일부 흐름에서 명확히 보장하지 않았다.
+  - Java `MULTI_SPOT` perf는 client process당 `SpotNode` 1개와 logical spot N개 topology, START 이후 active window 집계, 실패 이유 출력 측면에서 `doc/perf` 정책과 달랐다.
+- 수정한 파일:
+  - `bindings/java/src/main/java/dev/kairoscode/zlink/internal/Native.java`
+  - `bindings/java/src/main/java/dev/kairoscode/zlink/internal/NativeLayouts.java`
+  - `bindings/java/src/main/java/dev/kairoscode/zlink/internal/LibraryLoader.java`
+  - `bindings/java/src/main/java/dev/kairoscode/zlink/service/spot/Actor.java`
+  - `bindings/java/src/main/java/dev/kairoscode/zlink/service/spot/ActorJoinInfo.java`
+  - `bindings/java/src/main/java/dev/kairoscode/zlink/service/spot/Spot.java`
+  - `bindings/java/src/main/java/dev/kairoscode/zlink/service/spot/SpotNode.java`
+  - `bindings/java/src/main/java/dev/kairoscode/zlink/service/spot/SpotRoutedSupport.java`
+  - `bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/ActorRoomServerSample.java`
+  - `bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/ActorGatewayRelaySample.java`
+  - `bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/ActorSinglePlayerQueueSample.java`
+  - `bindings/java/perf/common/src/main/java/dev/kairoscode/zlink/perf/PerfPolicy.java`
+  - `bindings/java/perf/common/src/main/java/dev/kairoscode/zlink/perf/PerfReport.java`
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/dev/kairoscode/zlink/perf/multi/PerfMultiSpot.java`
+  - `doc/spec/bindings/java/README.md`
+- 검증 결과:
+  - Java binding 1차 비교: 제거된 Actor handle API, Actor HWM option, Actor 전용 channel API가 public surface와 spec에 없음.
+  - Java binding 2차 비교: `ActorRef`, `remoteActorRef`, `generation == 0` unchecked remote ref 의미 반영 확인.
+  - Java binding 3차 비교: remote Actor create, join/leave, Actor join recv/reply, STREAM bind/close-bound-session surface 반영 확인.
+  - Java binding 4차 비교: Actor readable dispatch가 callback lifetime의 Actor ref subject를 사용하고 `zlink_spot_node_actor_recv_part()`로 drain함을 확인.
+  - Java binding 5차 비교: Spot/Actor logical queue public capacity option은 없고, SpotNode admission HWM만 노출됨을 확인.
+  - Java tests: 2/2 task 통과.
+  - Java samples: 14/14 통과.
+  - Java perf smoke: `--transports tcp --msg-sizes 64` single/multi 완료.
+    - single result: `bindings/java/perf/results/single/report/perf_java_single_linux_20260506_135217.txt`
+    - multi result: `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260506_140818.txt`
+- 남은 위험: node, python, rust 순서로 언어별 5회 비교 필요
+- 다음 확인: node binding spec/code/sample/perf/POSD gate
+
+## Node Binding
+
+- 날짜: 2026-05-06
+- 대상: `bindings/node`
+- 수행한 명령:
+  - `rg -n "void \\*actor|Actor handle|actor handle|ZLINK_SPOT_OPT_ACTOR|zlink_actor_destroy|zlink_actor_get_ref|zlink_actor_join_spot|zlink_actor_leave_spot|zlink_actor_recv_part|zlink_actor_send_bound_session_packet|zlink_spot_node_actor_request_channel_part|zlink_spot_node_actor_send_channel_part|sendBoundSessionPacket|destroyRemoteActor|ActorChannel|RequestActorChannel|SendActorChannel" doc/spec/bindings/node bindings/node -g '!perf/results/**' -g '!node_modules/**'`
+  - `rg -n "ActorRef|generation === 0n|generation == 0|Unchecked|RemoteActorRef|createRemoteActor|joinActor|leaveActor|recvActorJoin|ActorReadable|ActorJoinReadable|Entry Spot|closeBoundSession|ActorJoinInfo" doc/spec/bindings/node bindings/node/src bindings/node/native bindings/node/tests bindings/node/samples -g '!node_modules/**'`
+  - `npm run build`
+  - `npm run typecheck`
+  - `bindings/node/tests/run_tests.sh`
+  - `bindings/node/samples/run_samples.sh`
+  - `bindings/node/perf/run_benchmarks.sh --transports tcp --msg-sizes 64`
+  - `bindings/node/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64`
+- 확인한 draft spec 절: Actor ref, unchecked remote ref, Entry Spot, STREAM bind, join/leave, active route, dispatch subject lifetime, snapshot, 제거 API, non-goals
+- 발견한 문제:
+  - Node native addon과 TypeScript facade가 제거된 old Actor handle API 일부를 아직 노출하거나 호출했다.
+  - Node Actor samples는 user Spot join 전에 bound STREAM session이 있어야 한다는 계약을 일부 흐름에서 명확히 보장하지 않았다.
+  - Node single perf worker 감시가 정상 no-error 경로와 active duration 완료 경로를 ready timeout으로 실패 처리했다. 이는 측정 정책 변경이 아니라 하네스 완료 판정 버그였다.
+- 수정한 파일:
+  - `bindings/node/native/src/addon.cc`
+  - `bindings/node/native/src/addon_api.h`
+  - `bindings/node/native/src/addon_spot.cc`
+  - `bindings/node/src/canonical.ts`
+  - `bindings/node/tests/socket_surface.test.ts`
+  - `bindings/node/tests/socket_surface.typecheck.ts`
+  - `bindings/node/samples/actor_room_server_sample.ts`
+  - `bindings/node/samples/actor_gateway_relay_sample.ts`
+  - `bindings/node/samples/actor_single_player_queue_sample.ts`
+  - `bindings/node/perf/single/perf_single_common.ts`
+  - `bindings/node/perf/single/perf_pair.ts`
+  - `bindings/node/perf/single/perf_pubsub.ts`
+  - `bindings/node/perf/single/perf_dealer_dealer.ts`
+  - `bindings/node/perf/single/perf_dealer_router.ts`
+  - `bindings/node/perf/single/perf_router_router.ts`
+  - `doc/spec/bindings/node/README.md`
+- 검증 결과:
+  - Node binding 1차 비교: 제거된 Actor handle API, Actor HWM option, Actor 전용 channel API가 public surface와 spec에 없음.
+  - Node binding 2차 비교: `ActorRef`, `remoteActorRef`, `generation === 0n` unchecked remote ref 의미 반영 확인.
+  - Node binding 3차 비교: remote Actor create, join/leave, Actor join recv/reply, STREAM bind/close-bound-session surface 반영 확인.
+  - Node binding 4차 비교: Actor readable dispatch가 callback lifetime의 Actor ref subject를 사용하고 `spotNodeActorRecvPart()`로 drain함을 확인.
+  - Node binding 5차 비교: Spot/Actor logical queue public capacity option은 없고, SpotNode admission HWM만 노출됨을 확인.
+  - Node typecheck 통과.
+  - Node tests 통과.
+  - Node samples: 14/14 통과.
+  - Node perf smoke: `--transports tcp --msg-sizes 64` single/multi 완료.
+    - single result: `bindings/node/perf/results/single/report/perf_node_single_linux_20260506_142650.txt`
+    - multi result: `bindings/node/perf/results/multi/report/perf_node_multi_linux_20260506_142823.txt`
+- 남은 위험: python, rust 순서로 언어별 5회 비교 필요
+- 다음 확인: python binding spec/code/sample/perf/POSD gate
+
+## Python Binding
+
+- 날짜: 2026-05-06
+- 대상: `bindings/python`
+- 수행한 명령:
+  - `rg -n "void \\*actor|Actor handle|actor handle|ZLINK_SPOT_OPT_ACTOR|zlink_actor_destroy|zlink_actor_get_ref|zlink_actor_join_spot|zlink_actor_leave_spot|zlink_actor_recv_part|zlink_actor_send_bound_session_packet|zlink_actor_send_bound_session_msg|zlink_spot_node_destroy_remote_actor|destroy_remote_actor|send_bound_session_packet|ActorChannel|RequestActorChannel|SendActorChannel" doc/spec/bindings/python bindings/python -g '!perf/results/**' -g '!**/__pycache__/**' -g '!*.pyc'`
+  - `rg -n "ActorRef|generation == 0|unchecked|remote_actor_ref|create_remote_actor|destroy_actor|join_actor|leave_actor|recv_actor_join|ActorJoinInfo|ACTOR_READABLE|ACTOR_JOIN_READABLE|Entry Spot|close_bound_session" doc/spec/bindings/python bindings/python/src bindings/python/tests bindings/python/samples -g '!**/__pycache__/**' -g '!*.pyc'`
+  - `bindings/python/tests/run_tests.sh`
+  - `bindings/python/samples/run_samples.sh`
+  - `bindings/python/perf/run_benchmarks.sh --transports tcp --msg-sizes 64`
+  - `bindings/python/perf/run_benchmarks_multi.sh --pattern MULTI_SPOT --transports tcp --msg-sizes 64`
+  - `bindings/python/perf/run_benchmarks_multi.sh --pattern MULTI_SPOT_REQREP --transports tcp --msg-sizes 64`
+  - `bindings/python/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64`
+- 확인한 draft spec 절: Actor ref, unchecked remote ref, Entry Spot, STREAM bind, join/leave, active route, dispatch subject lifetime, snapshot, 제거 API, non-goals
+- 발견한 문제:
+  - Python FFI와 Actor facade가 제거된 old Actor handle API를 참조했다.
+  - `ActorJoinInfo` 구조가 core `zlink_actor_join_info_t`보다 작고 source/target Actor ref, spot/node rid, join epoch를 반영하지 못했다.
+  - Actor samples는 user Spot join 전에 bound STREAM session이 있어야 한다는 계약을 일부 흐름에서 보장하지 않았다.
+  - Python multi perf runner의 control-line timeout이 blocking readline 때문에 실제 timeout으로 동작하지 않았다.
+  - Python `MULTI_SPOT` perf는 client process당 SpotNode N개 topology와 data-plane warmup delivery gate를 사용해 `doc/perf` 정책과 달랐다.
+  - Python `MULTI_SPOT_REQREP` active loop가 ready timeout을 per-request timeout으로 재사용해 기본 client 수에서 timeout을 만들었다.
+- 수정한 파일:
+  - `bindings/python/src/zlink/_ffi.py`
+  - `bindings/python/src/zlink/_spot.py`
+  - `bindings/python/src/zlink/__init__.py`
+  - `bindings/python/tests/test_core_api_alignment.py`
+  - `bindings/python/samples/actor_room_server_sample.py`
+  - `bindings/python/samples/actor_gateway_relay_sample.py`
+  - `bindings/python/samples/actor_single_player_queue_sample.py`
+  - `bindings/python/perf/multi/run_benchmarks.py`
+  - `bindings/python/perf/multi/perf_multi_spot_client.py`
+  - `bindings/python/perf/multi/perf_multi_spot_server.py`
+  - `bindings/python/perf/multi/perf_multi_spot_reqrep_client.py`
+  - `doc/spec/bindings/python/README.md`
+- 검증 결과:
+  - Python binding 1차 비교: 제거된 Actor handle API, Actor HWM option, Actor 전용 channel API가 public surface와 spec에 없음.
+  - Python binding 2차 비교: `ActorRef`, `remote_actor_ref`, `generation == 0` unchecked remote ref 의미 반영 확인.
+  - Python binding 3차 비교: remote Actor create, destroy, join/leave, Actor join recv/reply, STREAM bind/close-bound-session surface 반영 확인.
+  - Python binding 4차 비교: Actor readable dispatch가 callback lifetime의 Actor ref subject를 복사하고 `zlink_spot_node_actor_recv_part()`로 drain함을 확인.
+  - Python binding 5차 비교: Spot/Actor logical queue public capacity option은 없고, SpotNode admission HWM만 노출됨을 확인.
+  - Python tests: 55 passed, 10 skipped.
+  - Python samples: 14/14 통과.
+  - Python perf smoke: `--transports tcp --msg-sizes 64` single/multi 완료.
+    - single result: `bindings/python/perf/results/single/report/perf_python_single_linux_20260506_143949.txt`
+    - multi result: `bindings/python/perf/results/multi/report/perf_python_multi_linux_20260506_145925.txt`
+- 남은 위험: rust 언어별 5회 비교 필요
+- 다음 확인: rust binding spec/code/sample/perf/POSD gate
+
+## Rust Binding
+
+- 날짜: 2026-05-06
+- 대상: `bindings/rust`
+- 수행한 명령:
+  - `rg -n "void \\*actor|Actor handle|actor handle|zlink_actor_destroy|zlink_actor_get_ref|zlink_actor_join_spot|zlink_actor_leave_spot|zlink_actor_recv_part|zlink_actor_send_bound_session_packet|destroy_remote_actor|send_bound_session_packet" doc/spec/bindings/rust bindings/rust/src bindings/rust/tests bindings/rust/samples`
+  - `cargo check`
+  - `cargo fmt --all --check`
+  - `bindings/rust/tests/run_tests.sh`
+  - `bindings/rust/samples/run_samples.sh`
+  - `bindings/rust/perf/run_benchmarks.sh --transports tcp --msg-sizes 64`
+  - `bindings/rust/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64`
+- 확인한 draft spec 절: Actor ref, unchecked remote ref, Entry Spot, STREAM bind, join/leave, dispatch subject lifetime, snapshot, 제거 API, non-goals
+- 발견한 문제:
+  - Rust FFI와 Actor facade가 제거된 old Actor handle API를 참조했다.
+  - Actor readable dispatch가 Actor subject를 raw pointer로 공개 표면에 남겼다.
+  - Actor samples는 user Spot join 전에 bound STREAM session이 있어야 한다는 계약을 일부 흐름에서 보장하지 않았다.
+  - Rust binding spec의 Actor 요약과 dispatch enum이 현재 core 계약보다 오래됐다.
+- 수정한 파일:
+  - `bindings/rust/src/ffi.rs`
+  - `bindings/rust/src/service.rs`
+  - `bindings/rust/tests/service_surface_tests.rs`
+  - `bindings/rust/samples/actor_room_server_sample.rs`
+  - `bindings/rust/samples/actor_gateway_relay_sample.rs`
+  - `bindings/rust/samples/actor_single_player_queue_sample.rs`
+  - `doc/spec/bindings/rust/README.md`
+- 검증 결과:
+  - Rust binding 1차 비교: 제거된 Actor handle API, Actor HWM option, Actor 전용 channel API가 public surface와 spec에 없음.
+  - Rust binding 2차 비교: `ActorRef`, `remote_actor_ref`, `generation == 0` unchecked remote ref 의미 반영 확인.
+  - Rust binding 3차 비교: remote Actor create, destroy, join/leave, Actor join recv/reply, STREAM bind/close-bound-session surface 반영 확인.
+  - Rust binding 4차 비교: Actor readable dispatch가 callback lifetime의 Actor ref copy를 사용하고 `zlink_spot_node_actor_recv_part()`로 drain함을 확인.
+  - Rust binding 5차 비교: Spot/Actor logical queue public capacity option은 없고, SpotNode admission HWM만 노출됨을 확인.
+  - Rust tests: 10/10 suites 통과.
+  - Rust samples: 14/14 통과.
+  - Rust perf smoke: `--transports tcp --msg-sizes 64` single/multi 완료.
+    - single result: `bindings/rust/perf/results/single/report/perf_rust_single_linux_20260506_150924.txt`
+    - multi result: `bindings/rust/perf/results/multi/report/perf_rust_multi_linux_20260506_151010.txt`
+- 남은 위험: 언어별 binding 5회 비교는 모두 완료
+- 다음 확인: bindings POSD gate log와 최종 종료 절차

@@ -16,10 +16,12 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         "zlink_poller_size",
         "zlink_poller_add",
         "zlink_poller_add_fd",
+        "zlink_poller_add_timer",
         "zlink_poller_modify",
         "zlink_poller_modify_fd",
         "zlink_poller_remove",
         "zlink_poller_remove_fd",
+        "zlink_poller_remove_timer",
         "zlink_poller_wait_all"
     };
 
@@ -77,7 +79,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             ZlinkException.ThrowConfigIfError(rc);
         }
         RegisterItem(new PollItem(PollItemKind.Socket, concreteSocket, userData,
-            concreteSocket.Handle, 0, events, tag));
+            concreteSocket.Handle, 0, null, events, tag));
     }
 
     public void AddFd(int fd, PollEvents events, object? tag = null)
@@ -94,7 +96,25 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             ZlinkException.ThrowConfigIfError(rc);
         }
         RegisterItem(new PollItem(PollItemKind.Fd, null, userData, IntPtr.Zero,
-            fd, events, tag));
+            fd, null, events, tag));
+    }
+
+    public void AddTimer(Timer timer, object? tag = null)
+    {
+        EnsureNotDisposed();
+        if (timer == null)
+            throw new ArgumentNullException(nameof(timer));
+
+        IntPtr userData = AllocateUserData();
+        int rc = NativeMethods.zlink_poller_add_timer(_handle, timer.Handle,
+            userData);
+        if (rc != 0)
+        {
+            ReleaseUserData(userData);
+            ZlinkException.ThrowConfigIfError(rc);
+        }
+        RegisterItem(new PollItem(PollItemKind.Timer, null, userData,
+            IntPtr.Zero, 0, timer, PollEvents.PollIn, tag));
     }
 
     public void Modify(IZlinkSocket socket, PollEvents events)
@@ -141,6 +161,22 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             return false;
 
         int rc = NativeMethods.zlink_poller_remove(_handle, concreteSocket.Handle);
+        ZlinkException.ThrowConfigIfError(rc);
+        UnregisterItem(index);
+        return true;
+    }
+
+    public bool Remove(Timer timer)
+    {
+        EnsureNotDisposed();
+        if (timer == null)
+            throw new ArgumentNullException(nameof(timer));
+
+        int index = FindTimer(timer.Handle);
+        if (index < 0)
+            return false;
+
+        int rc = NativeMethods.zlink_poller_remove_timer(_handle, timer.Handle);
         ZlinkException.ThrowConfigIfError(rc);
         UnregisterItem(index);
         return true;
@@ -302,7 +338,18 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         for (int i = 0; i < _items.Count; i++)
         {
             PollItem item = _items[i];
-            if (!item.IsSocket && item.Fd == fd)
+            if (item.Kind == PollItemKind.Fd && item.Fd == fd)
+                return i;
+        }
+        return -1;
+    }
+
+    private int FindTimer(IntPtr handle)
+    {
+        for (int i = 0; i < _items.Count; i++)
+        {
+            PollItem item = _items[i];
+            if (item.Kind == PollItemKind.Timer && item.Timer?.Handle == handle)
                 return i;
         }
         return -1;
@@ -313,11 +360,15 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         PollItem? item = FindUserDataItem(nativeEvent.UserData);
         item ??= nativeEvent.Socket != IntPtr.Zero
             ? FindSocketItem(nativeEvent.Socket)
-            : FindFdItem(nativeEvent.Fd);
-        int? fd = item?.IsSocket == false ? item.Fd : null;
-        if (!fd.HasValue && nativeEvent.Socket == IntPtr.Zero)
+            : nativeEvent.Timer != IntPtr.Zero
+                ? FindTimerItem(nativeEvent.Timer)
+                : FindFdItem(nativeEvent.Fd);
+        int? fd = item?.Kind == PollItemKind.Fd ? item.Fd : null;
+        Timer? timer = item?.Kind == PollItemKind.Timer ? item.Timer : null;
+        if (!fd.HasValue && timer == null && nativeEvent.Socket == IntPtr.Zero
+            && nativeEvent.Timer == IntPtr.Zero)
             fd = nativeEvent.Fd;
-        return new PollEvent(item?.Socket, fd, item?.Tag,
+        return new PollEvent(item?.Socket, fd, timer, item?.Tag,
             item?.Events ?? (PollEvents)nativeEvent.Events,
             (PollEvents)nativeEvent.Events);
     }
@@ -331,6 +382,12 @@ public sealed class Poller : IDisposable, IAsyncDisposable
     private PollItem? FindFdItem(int fd)
     {
         int index = FindFd(fd);
+        return index >= 0 ? _items[index] : null;
+    }
+
+    private PollItem? FindTimerItem(IntPtr handle)
+    {
+        int index = FindTimer(handle);
         return index >= 0 ? _items[index] : null;
     }
 
@@ -378,19 +435,22 @@ public sealed class Poller : IDisposable, IAsyncDisposable
     private enum PollItemKind
     {
         Socket,
-        Fd
+        Fd,
+        Timer
     }
 
     private sealed class PollItem
     {
         public PollItem(PollItemKind kind, IZlinkSocket? socket, IntPtr userData,
-            IntPtr socketHandle, int fd, PollEvents events, object? tag)
+            IntPtr socketHandle, int fd, Timer? timer, PollEvents events,
+            object? tag)
         {
             Kind = kind;
             Socket = socket;
             UserData = userData;
             SocketHandle = socketHandle;
             Fd = fd;
+            Timer = timer;
             Events = events;
             Tag = tag;
         }
@@ -400,6 +460,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         public IntPtr UserData { get; }
         public IntPtr SocketHandle { get; }
         public int Fd { get; }
+        public Timer? Timer { get; }
         public PollEvents Events { get; set; }
         public object? Tag { get; }
         public bool IsSocket => Kind == PollItemKind.Socket;
@@ -408,11 +469,12 @@ public sealed class Poller : IDisposable, IAsyncDisposable
 
 public readonly struct PollEvent
 {
-    public PollEvent(IZlinkSocket? socket, int? fd, object? tag, PollEvents events,
-        PollEvents revents)
+    public PollEvent(IZlinkSocket? socket, int? fd, Timer? timer, object? tag,
+        PollEvents events, PollEvents revents)
     {
         Socket = socket;
         Fd = fd;
+        Timer = timer;
         Tag = tag;
         Events = events;
         Revents = revents;
@@ -420,6 +482,7 @@ public readonly struct PollEvent
 
     public IZlinkSocket? Socket { get; }
     public int? Fd { get; }
+    public Timer? Timer { get; }
     public object? Tag { get; }
     public PollEvents Events { get; }
     public PollEvents Revents { get; }

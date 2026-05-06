@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
-const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsClient, configureTlsServer, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, spawnSenderWorker, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
+const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsClient, configureTlsServer, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
 const SENDER_ID = Buffer.from('router-perf-sender', 'ascii');
 const RECEIVER_ROUTING_ID = zlink.RoutingId.fromBytes(RECEIVER_ID);
@@ -46,7 +46,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
             senderRoutingIdBytes: SENDER_ID,
             options,
         });
-        const workerError = waitForWorkerMessage(worker, 'error');
+        const workerError = waitForWorkerError(worker);
         trace('waiting worker connected');
         await Promise.race([
             waitForWorkerMessage(worker, 'connected'),
@@ -84,7 +84,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
         trace('starting worker');
         worker.postMessage({ type: 'start' });
         await Promise.race([
-            waitForWorkerMessage(worker, 'done'),
+            waitForWorkerDone(worker, options.duration),
             workerError.then((message) => Promise.reject(new Error(message.message)))
         ]);
         trace('worker done');

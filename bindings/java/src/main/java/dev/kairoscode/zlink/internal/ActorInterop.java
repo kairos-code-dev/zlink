@@ -5,7 +5,6 @@ package dev.kairoscode.zlink.internal;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.service.spot.ActorCreateResult;
 import dev.kairoscode.zlink.service.spot.ActorCreateStatus;
-import dev.kairoscode.zlink.service.spot.ActorJoinInfo;
 import dev.kairoscode.zlink.service.spot.ActorRecvInfo;
 import dev.kairoscode.zlink.service.spot.ActorRef;
 import dev.kairoscode.zlink.service.spot.ActorRoute;
@@ -89,35 +88,6 @@ public final class ActorInterop {
             NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
           view.get(ValueLayout.JAVA_INT,
             NativeLayouts.ACTOR_RECV_INFO_FLAGS_OFFSET));
-    }
-
-    public static ActorJoinInfo actorJoinInfoFromNative(MemorySegment segment) {
-        MemorySegment view = segment.reinterpret(
-          NativeLayouts.ACTOR_JOIN_INFO_LAYOUT.byteSize());
-        return new ActorJoinInfo(
-          actorRefFromNative(view.asSlice(
-            NativeLayouts.ACTOR_JOIN_INFO_ACTOR_OFFSET,
-            NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
-          readRoutingId(view.asSlice(
-            NativeLayouts.ACTOR_JOIN_INFO_SOURCE_NODE_RID_OFFSET,
-            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
-          view.get(ValueLayout.ADDRESS,
-            NativeLayouts.ACTOR_JOIN_INFO_REQUEST_OFFSET),
-          view.get(ValueLayout.JAVA_INT,
-            NativeLayouts.ACTOR_JOIN_INFO_FLAGS_OFFSET));
-    }
-
-    public static void writeActorJoinInfo(MemorySegment out,
-                                          ActorJoinInfo info) {
-        writeActorRef(out.asSlice(NativeLayouts.ACTOR_JOIN_INFO_ACTOR_OFFSET,
-          NativeLayouts.ACTOR_REF_LAYOUT.byteSize()), info.actor());
-        writeRoutingId(out.asSlice(
-          NativeLayouts.ACTOR_JOIN_INFO_SOURCE_NODE_RID_OFFSET,
-          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()), info.sourceNodeRid());
-        out.set(ValueLayout.ADDRESS,
-          NativeLayouts.ACTOR_JOIN_INFO_REQUEST_OFFSET, info.request());
-        out.set(ValueLayout.JAVA_INT,
-          NativeLayouts.ACTOR_JOIN_INFO_FLAGS_OFFSET, info.flags());
     }
 
     public static ActorCreateResult actorCreateResultFromNative(

@@ -13,9 +13,10 @@ inline void ensure_config_handle (void *handle_)
         throw config_error_t (config_result_t::invalid_handle, EINVAL);
 }
 
-inline std::unordered_map<void *, int> &dealer_option_store ()
+inline std::unordered_map<void *, std::unordered_map<int, int>>
+&dealer_option_store ()
 {
-    static std::unordered_map<void *, int> values;
+    static std::unordered_map<void *, std::unordered_map<int, int>> values;
     return values;
 }
 
@@ -104,11 +105,20 @@ template<typename T>
 inline T get_dealer_option_value (void *handle_, dealer_option option_)
 {
     ensure_config_handle (handle_);
-    typename std::unordered_map<void *, int>::const_iterator it =
+    typename std::unordered_map<void *, std::unordered_map<int, int>>::const_iterator it =
       dealer_option_store ().find (handle_);
-    if (it == dealer_option_store ().end ())
+    if (it != dealer_option_store ().end ()) {
+        typename std::unordered_map<int, int>::const_iterator value_it =
+          it->second.find (static_cast<int> (option_));
+        if (value_it != it->second.end ())
+            return static_cast<T> (value_it->second);
+    }
+    switch (option_) {
+    case dealer_option::weight:
+        return static_cast<T> (100);
+    default:
         return T ();
-    return static_cast<T> (it->second);
+    }
 }
 
 template<typename T>
@@ -122,7 +132,8 @@ inline void set_dealer_option_value (void *handle_,
         zlink_set_dealer_option (
           handle_, static_cast<zlink_dealer_option_t> (option_), &value_,
           sizeof (value_))));
-    dealer_option_store ()[handle_] = static_cast<int> (value_);
+    dealer_option_store ()[handle_][static_cast<int> (option_)] =
+      static_cast<int> (value_);
 }
 
 template<typename T>
@@ -434,6 +445,20 @@ inline void router_socket_options_t::mandatory (bool value)
       _handle, router_option::mandatory, value ? 1 : 0);
 }
 
+inline bool router_socket_options_t::handover () const
+{
+    return detail::get_common_option_value<int> (
+             _handle, socket_option::rid_duplicate_policy)
+           == ZLINK_RID_DUPLICATE_HANDOVER;
+}
+
+inline void router_socket_options_t::handover (bool value)
+{
+    detail::set_common_option_value<int> (
+      _handle, socket_option::rid_duplicate_policy,
+      value ? ZLINK_RID_DUPLICATE_HANDOVER : ZLINK_RID_DUPLICATE_REJECT);
+}
+
 inline bool router_socket_options_t::probe_router () const
 {
     return detail::get_router_option_value<int> (_handle, router_option::probe)
@@ -476,6 +501,18 @@ router_socket_options_t::connect_routing_id (const routing_id_t &value)
           native.data, native.size)));
 }
 
+inline uint32_t router_socket_options_t::peer_weight () const
+{
+    return detail::get_router_option_value<uint32_t> (
+      _handle, router_option::weight);
+}
+
+inline void router_socket_options_t::peer_weight (uint32_t value)
+{
+    detail::set_router_option_value<uint32_t> (
+      _handle, router_option::weight, value);
+}
+
 inline bool dealer_socket_options_t::probe_router () const
 {
     return detail::get_dealer_option_value<int> (_handle, dealer_option::probe)
@@ -486,6 +523,18 @@ inline void dealer_socket_options_t::probe_router (bool value)
 {
     detail::set_dealer_option_value<int> (
       _handle, dealer_option::probe, value ? 1 : 0);
+}
+
+inline uint32_t dealer_socket_options_t::peer_weight () const
+{
+    return detail::get_dealer_option_value<uint32_t> (
+      _handle, dealer_option::weight);
+}
+
+inline void dealer_socket_options_t::peer_weight (uint32_t value)
+{
+    detail::set_dealer_option_value<uint32_t> (
+      _handle, dealer_option::weight, value);
 }
 
 inline bool stream_socket_options_t::notify () const

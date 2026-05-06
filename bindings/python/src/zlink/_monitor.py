@@ -45,37 +45,15 @@ class MonitorSnapshot:
         auto_hwm_profile=None,
         auto_hwm_role=None,
         auto_hwm_policy_class=None,
-        auto_hwm_managed_connections=None,
-        auto_hwm_active_hwm_connections=None,
-        auto_hwm_observed_count=None,
-        auto_hwm_planning_count=None,
-        auto_hwm_context_total_planning_count=None,
-        auto_hwm_base_floor_per_connection=None,
         auto_hwm_unit_budget_bytes=None,
         auto_hwm_size_cap=None,
-        auto_hwm_effective_publish_fanout=None,
-        auto_hwm_applied_sndhwm=None,
-        auto_hwm_applied_rcvhwm=None,
-        auto_hwm_requested_sndbuf=None,
-        auto_hwm_requested_rcvbuf=None,
-        auto_hwm_effective_sndbuf=None,
-        auto_hwm_effective_rcvbuf=None,
-        auto_hwm_total_memory_budget_bytes=None,
-        auto_hwm_queue_budget_bytes=None,
-        auto_hwm_transport_budget_bytes=None,
-        auto_hwm_runtime_reserve_bytes=None,
-        auto_hwm_socket_queue_share_bytes=None,
         auto_hwm_socket_message_slots=None,
         auto_hwm_effective_message_bytes=None,
-        auto_hwm_estimated_max_memory_bytes=None,
+        auto_hwm_applied_sndhwm=None,
+        auto_hwm_applied_rcvhwm=None,
         auto_hwm_last_recalc_ms=None,
         auto_hwm_last_recalc_reason=None,
         auto_hwm_send_blocked_ratio_ppm=None,
-        auto_hwm_scope=None,
-        auto_hwm_scope_count=None,
-        auto_hwm_auto_buffer_bytes=None,
-        auto_hwm_manual_buffer_bytes=None,
-        auto_hwm_buffer_connections=None,
         auto_hwm_deferred_sndhwm=None,
         auto_hwm_deferred_rcvhwm=None,
     ):
@@ -88,41 +66,15 @@ class MonitorSnapshot:
         self.auto_hwm_profile = auto_hwm_profile
         self.auto_hwm_role = auto_hwm_role
         self.auto_hwm_policy_class = auto_hwm_policy_class
-        self.auto_hwm_managed_connections = auto_hwm_managed_connections
-        self.auto_hwm_active_hwm_connections = auto_hwm_active_hwm_connections
-        self.auto_hwm_observed_count = auto_hwm_observed_count
-        self.auto_hwm_planning_count = auto_hwm_planning_count
-        self.auto_hwm_context_total_planning_count = (
-            auto_hwm_context_total_planning_count
-        )
-        self.auto_hwm_base_floor_per_connection = auto_hwm_base_floor_per_connection
         self.auto_hwm_unit_budget_bytes = auto_hwm_unit_budget_bytes
         self.auto_hwm_size_cap = auto_hwm_size_cap
-        self.auto_hwm_effective_publish_fanout = auto_hwm_effective_publish_fanout
-        self.auto_hwm_applied_sndhwm = auto_hwm_applied_sndhwm
-        self.auto_hwm_applied_rcvhwm = auto_hwm_applied_rcvhwm
-        self.auto_hwm_requested_sndbuf = auto_hwm_requested_sndbuf
-        self.auto_hwm_requested_rcvbuf = auto_hwm_requested_rcvbuf
-        self.auto_hwm_effective_sndbuf = auto_hwm_effective_sndbuf
-        self.auto_hwm_effective_rcvbuf = auto_hwm_effective_rcvbuf
-        self.auto_hwm_total_memory_budget_bytes = auto_hwm_total_memory_budget_bytes
-        self.auto_hwm_queue_budget_bytes = auto_hwm_queue_budget_bytes
-        self.auto_hwm_transport_budget_bytes = auto_hwm_transport_budget_bytes
-        self.auto_hwm_runtime_reserve_bytes = auto_hwm_runtime_reserve_bytes
-        self.auto_hwm_socket_queue_share_bytes = auto_hwm_socket_queue_share_bytes
         self.auto_hwm_socket_message_slots = auto_hwm_socket_message_slots
         self.auto_hwm_effective_message_bytes = auto_hwm_effective_message_bytes
-        self.auto_hwm_estimated_max_memory_bytes = (
-            auto_hwm_estimated_max_memory_bytes
-        )
+        self.auto_hwm_applied_sndhwm = auto_hwm_applied_sndhwm
+        self.auto_hwm_applied_rcvhwm = auto_hwm_applied_rcvhwm
         self.auto_hwm_last_recalc_ms = auto_hwm_last_recalc_ms
         self.auto_hwm_last_recalc_reason = auto_hwm_last_recalc_reason
         self.auto_hwm_send_blocked_ratio_ppm = auto_hwm_send_blocked_ratio_ppm
-        self.auto_hwm_scope = auto_hwm_scope
-        self.auto_hwm_scope_count = auto_hwm_scope_count
-        self.auto_hwm_auto_buffer_bytes = auto_hwm_auto_buffer_bytes
-        self.auto_hwm_manual_buffer_bytes = auto_hwm_manual_buffer_bytes
-        self.auto_hwm_buffer_connections = auto_hwm_buffer_connections
         self.auto_hwm_deferred_sndhwm = auto_hwm_deferred_sndhwm
         self.auto_hwm_deferred_rcvhwm = auto_hwm_deferred_rcvhwm
 
@@ -153,55 +105,19 @@ def _monitor_snapshot_from_native(snapshot):
         auto_hwm_profile=int(snapshot.auto_hwm_profile),
         auto_hwm_role=int(snapshot.auto_hwm_role),
         auto_hwm_policy_class=int(snapshot.auto_hwm_policy_class),
-        auto_hwm_managed_connections=int(snapshot.auto_hwm_managed_connections),
-        auto_hwm_active_hwm_connections=int(snapshot.auto_hwm_active_hwm_connections),
-        auto_hwm_observed_count=int(snapshot.auto_hwm_observed_count),
-        auto_hwm_planning_count=int(snapshot.auto_hwm_planning_count),
-        auto_hwm_context_total_planning_count=int(
-            snapshot.auto_hwm_context_total_planning_count
-        ),
-        auto_hwm_base_floor_per_connection=int(
-            snapshot.auto_hwm_base_floor_per_connection
-        ),
         auto_hwm_unit_budget_bytes=int(snapshot.auto_hwm_unit_budget_bytes),
         auto_hwm_size_cap=int(snapshot.auto_hwm_size_cap),
-        auto_hwm_effective_publish_fanout=int(
-            snapshot.auto_hwm_effective_publish_fanout
-        ),
-        auto_hwm_applied_sndhwm=int(snapshot.auto_hwm_applied_sndhwm),
-        auto_hwm_applied_rcvhwm=int(snapshot.auto_hwm_applied_rcvhwm),
-        auto_hwm_requested_sndbuf=int(snapshot.auto_hwm_requested_sndbuf),
-        auto_hwm_requested_rcvbuf=int(snapshot.auto_hwm_requested_rcvbuf),
-        auto_hwm_effective_sndbuf=int(snapshot.auto_hwm_effective_sndbuf),
-        auto_hwm_effective_rcvbuf=int(snapshot.auto_hwm_effective_rcvbuf),
-        auto_hwm_total_memory_budget_bytes=int(
-            snapshot.auto_hwm_total_memory_budget_bytes
-        ),
-        auto_hwm_queue_budget_bytes=int(snapshot.auto_hwm_queue_budget_bytes),
-        auto_hwm_transport_budget_bytes=int(
-            snapshot.auto_hwm_transport_budget_bytes
-        ),
-        auto_hwm_runtime_reserve_bytes=int(snapshot.auto_hwm_runtime_reserve_bytes),
-        auto_hwm_socket_queue_share_bytes=int(
-            snapshot.auto_hwm_socket_queue_share_bytes
-        ),
         auto_hwm_socket_message_slots=int(snapshot.auto_hwm_socket_message_slots),
         auto_hwm_effective_message_bytes=int(
             snapshot.auto_hwm_effective_message_bytes
         ),
-        auto_hwm_estimated_max_memory_bytes=int(
-            snapshot.auto_hwm_estimated_max_memory_bytes
-        ),
+        auto_hwm_applied_sndhwm=int(snapshot.auto_hwm_applied_sndhwm),
+        auto_hwm_applied_rcvhwm=int(snapshot.auto_hwm_applied_rcvhwm),
         auto_hwm_last_recalc_ms=int(snapshot.auto_hwm_last_recalc_ms),
         auto_hwm_last_recalc_reason=int(snapshot.auto_hwm_last_recalc_reason),
         auto_hwm_send_blocked_ratio_ppm=int(
             snapshot.auto_hwm_send_blocked_ratio_ppm
         ),
-        auto_hwm_scope=int(snapshot.auto_hwm_scope),
-        auto_hwm_scope_count=int(snapshot.auto_hwm_scope_count),
-        auto_hwm_auto_buffer_bytes=int(snapshot.auto_hwm_auto_buffer_bytes),
-        auto_hwm_manual_buffer_bytes=int(snapshot.auto_hwm_manual_buffer_bytes),
-        auto_hwm_buffer_connections=int(snapshot.auto_hwm_buffer_connections),
         auto_hwm_deferred_sndhwm=int(snapshot.auto_hwm_deferred_sndhwm),
         auto_hwm_deferred_rcvhwm=int(snapshot.auto_hwm_deferred_rcvhwm),
     )

@@ -222,10 +222,7 @@ def main(argv=None):
                     data = _request_spot_reply(
                         spot,
                         payload,
-                        max(
-                            resolve_multi_connect_ready_timeout_ms() / 1000.0,
-                            0.2,
-                        ),
+                        0.2,
                     )
                     if data is None:
                         continue

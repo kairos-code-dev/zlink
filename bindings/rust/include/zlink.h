@@ -6,7 +6,7 @@
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 3
-#define ZLINK_VERSION_PATCH 7
+#define ZLINK_VERSION_PATCH 9
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -216,6 +216,7 @@ typedef struct zlink_routing_id_t
 } zlink_routing_id_t;
 
 #define ZLINK_ACTOR_ID_MAX 256
+#define ZLINK_ACTOR_JOIN_INFO_REMOTE 1u
 
 typedef void (zlink_free_fn) (void *data_, void *hint_);
 
@@ -236,8 +237,13 @@ typedef struct zlink_actor_recv_info_t
 
 typedef struct zlink_actor_join_info_t
 {
-    zlink_actor_ref_t actor;
+    zlink_actor_ref_t source_actor;
+    zlink_actor_ref_t target_actor;
     zlink_routing_id_t source_node_rid;
+    zlink_routing_id_t source_spot_rid;
+    zlink_routing_id_t target_node_rid;
+    zlink_routing_id_t target_spot_rid;
+    uint64_t join_epoch;
     void *request;
     uint32_t flags;
 } zlink_actor_join_info_t;
@@ -487,17 +493,6 @@ ZLINK_EXPORT zlink_submit_result_t zlink_stream_send_bound_actor_part (
   zlink_msg_t *part_,
   zlink_send_flags_t flags_,
   zlink_part_flag_t part_flag_);
-
-ZLINK_EXPORT zlink_submit_result_t zlink_actor_send_bound_session_msg (
-  void *actor_,
-  zlink_msg_t *message_,
-  zlink_send_flags_t flags_);
-
-ZLINK_EXPORT zlink_submit_result_t zlink_actor_send_bound_session_packet (
-  void *actor_,
-  zlink_msg_t *header_,
-  zlink_msg_t *body_,
-  zlink_send_flags_t flags_);
 
 /**
  * @brief Install or replace the send-ready callback for a send-capable subject.
@@ -978,47 +973,64 @@ ZLINK_EXPORT void zlink_monitor_ignore_handler (
 
 typedef struct zlink_monitor_snapshot_t
 {
+    /* snapshot 대상 종류입니다. raw socket, SPOT pub, SPOT sub 중 하나입니다. */
     zlink_monitor_source_kind_t source_kind;
+
+    /* 현재 상태 비트입니다. READY, BOUND_READY, CLOSED 등을 담습니다. */
     zlink_monitor_state_mask_t state_flags;
+
+    /* 어떤 세부 값이 채워졌는지 나타내는 비트마스크입니다. */
     zlink_monitor_snapshot_detail_mask_t detail_flags;
+
+    /* 현재 송신 큐에 남아 있는 메시지 수입니다. */
     uint64_t snd_pending_msgs;
+
+    /* 현재 수신 큐에 남아 있는 메시지 수입니다. 일부 source에서는 근사값입니다. */
     uint64_t rcv_pending_msgs;
+
+    /* 자동 HWM 정책이 이 source에 적용 중이면 1, 아니면 0입니다. */
     uint32_t auto_hwm_enabled;
+
+    /* 현재 자동 HWM profile 값입니다. zlink_auto_hwm_profile_t 값과 같습니다. */
     uint32_t auto_hwm_profile;
+
+    /* 자동 HWM 계산에 사용한 socket 역할입니다. 진단용 값입니다. */
     uint32_t auto_hwm_role;
+
+    /* 역할과 socket type에서 정해진 자동 HWM 정책 분류입니다. */
     uint32_t auto_hwm_policy_class;
-    uint32_t auto_hwm_managed_connections;
-    uint32_t auto_hwm_active_hwm_connections;
-    uint32_t auto_hwm_observed_count;
-    uint32_t auto_hwm_planning_count;
-    uint32_t auto_hwm_context_total_planning_count;
-    uint32_t auto_hwm_base_floor_per_connection;
+
+    /* 이 socket의 메시지 슬롯 계산에 사용한 단위 예산입니다. */
     uint64_t auto_hwm_unit_budget_bytes;
+
+    /* profile과 정책 분류에서 정한 메시지 슬롯 상한입니다. */
     uint32_t auto_hwm_size_cap;
-    uint32_t auto_hwm_effective_publish_fanout;
-    int32_t auto_hwm_applied_sndhwm;
-    int32_t auto_hwm_applied_rcvhwm;
-    int32_t auto_hwm_requested_sndbuf;
-    int32_t auto_hwm_requested_rcvbuf;
-    int32_t auto_hwm_effective_sndbuf;
-    int32_t auto_hwm_effective_rcvbuf;
-    uint64_t auto_hwm_total_memory_budget_bytes;
-    uint64_t auto_hwm_queue_budget_bytes;
-    uint64_t auto_hwm_transport_budget_bytes;
-    uint64_t auto_hwm_runtime_reserve_bytes;
-    uint64_t auto_hwm_socket_queue_share_bytes;
+
+    /* 단위 예산과 메시지 크기로 계산한 메시지 슬롯 수입니다. */
     uint64_t auto_hwm_socket_message_slots;
+
+    /* 자동 HWM 계산에 사용한 메시지 크기입니다. 단위는 byte입니다. */
     uint64_t auto_hwm_effective_message_bytes;
-    uint64_t auto_hwm_estimated_max_memory_bytes;
+
+    /* 현재 socket에 적용된 송신 HWM입니다. */
+    int32_t auto_hwm_applied_sndhwm;
+
+    /* 현재 socket에 적용된 수신 HWM입니다. */
+    int32_t auto_hwm_applied_rcvhwm;
+
+    /* 마지막 자동 HWM 재계산 시각입니다. 단위는 millisecond입니다. */
     uint64_t auto_hwm_last_recalc_ms;
+
+    /* 마지막 자동 HWM 재계산 사유입니다. ZLINK_AUTO_HWM_RECALC_REASON_* 값입니다. */
     uint32_t auto_hwm_last_recalc_reason;
+
+    /* 송신 시도 중 backpressure로 막힌 비율입니다. 단위는 ppm입니다. */
     uint32_t auto_hwm_send_blocked_ratio_ppm;
-    uint32_t auto_hwm_scope;
-    uint32_t auto_hwm_scope_count;
-    uint64_t auto_hwm_auto_buffer_bytes;
-    uint64_t auto_hwm_manual_buffer_bytes;
-    uint32_t auto_hwm_buffer_connections;
+
+    /* HWM 축소가 지연 중이면 목표 송신 HWM, 없으면 -1입니다. */
     int32_t auto_hwm_deferred_sndhwm;
+
+    /* HWM 축소가 지연 중이면 목표 수신 HWM, 없으면 -1입니다. */
     int32_t auto_hwm_deferred_rcvhwm;
 } zlink_monitor_snapshot_t;
 
@@ -1218,17 +1230,19 @@ ZLINK_EXPORT void *zlink_spot_node_new (
  */
 ZLINK_EXPORT zlink_close_result_t zlink_spot_node_destroy (void **node_p);
 
-ZLINK_EXPORT void *zlink_spot_node_actor_new (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_entry_spot (
   void *node_,
-  const char *actor_id_);
+  void **spot_out_);
 
-ZLINK_EXPORT zlink_request_result_t zlink_actor_destroy (
-  void **actor_p_,
-  uint32_t timeout_ms_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup (
+  void *node_,
+  const zlink_routing_id_t *spot_rid_,
+  void **spot_out_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_actor_get_ref (
-  void *actor_,
-  zlink_actor_ref_t *out_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_new (
+  void *node_,
+  const char *actor_id_,
+  zlink_actor_ref_t *actor_out_);
 
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_lookup (
   void *node_,
@@ -1248,7 +1262,7 @@ ZLINK_EXPORT zlink_request_result_t zlink_spot_node_create_remote_actor (
   zlink_actor_create_result_t *out_,
   uint32_t timeout_ms_);
 
-ZLINK_EXPORT zlink_request_result_t zlink_spot_node_destroy_remote_actor (
+ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_destroy (
   void *node_,
   const zlink_actor_ref_t *actor_,
   uint32_t timeout_ms_);
@@ -1258,18 +1272,10 @@ ZLINK_EXPORT zlink_handler_result_t zlink_spot_node_actor_admission_handler (
   zlink_actor_admission_handler_fn handler_,
   void *userdata_);
 
-ZLINK_EXPORT zlink_submit_result_t zlink_actor_join_spot (
-  void *actor_,
-  void *spot_,
-  zlink_msg_t *message_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_);
-
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_join_spot (
   void *node_,
   const zlink_actor_ref_t *actor_,
+  const zlink_routing_id_t *dest_node_rid_,
   const zlink_routing_id_t *dest_spot_rid_,
   zlink_msg_t *message_,
   zlink_reply_handler_fn handler_,
@@ -1289,22 +1295,30 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply (
   uint32_t accepted_,
   zlink_msg_t *message_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_actor_leave_spot (
-  void *actor_,
-  void *spot_);
-
 ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_leave_spot (
   void *node_,
   const zlink_actor_ref_t *actor_,
-  const zlink_routing_id_t *dest_spot_rid_,
+  const zlink_routing_id_t *current_spot_rid_,
   uint32_t timeout_ms_);
 
-ZLINK_EXPORT zlink_recv_result_t zlink_actor_recv_part (
-  void *actor_,
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_node_actor_recv_part (
+  void *node_,
+  const zlink_actor_ref_t *actor_,
   zlink_actor_recv_info_t *info_out_,
   zlink_msg_t *part_out_,
   zlink_part_flag_t *has_more_out_,
   zlink_recv_flags_t flags_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg (
+  void *node_,
+  const zlink_actor_ref_t *actor_,
+  zlink_msg_t *message_,
+  zlink_send_flags_t flags_);
+
+ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_close_bound_session (
+  void *node_,
+  const zlink_actor_ref_t *actor_,
+  uint32_t timeout_ms_);
 
 /** @brief Bind the SPOT node to an endpoint.
  *

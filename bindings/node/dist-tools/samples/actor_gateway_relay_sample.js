@@ -19,14 +19,14 @@ function frame(payload) {
     payload.copy(framed, 4);
     return framed;
 }
-function recvActorPart(actor) {
+function waitForJoin(spot) {
     for (let i = 0; i < 100; i += 1) {
-        const part = actor.recvPart(zlink.RecvFlags.DontWait);
-        if (part)
-            return part;
+        const request = spot.recvActorJoin(zlink.RecvFlags.DontWait);
+        if (request)
+            return request;
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     }
-    throw new Error('actor part not received');
+    throw new Error('actor join request not received');
 }
 async function main() {
     const port = await reservePort();
@@ -34,10 +34,24 @@ async function main() {
     const ctx = new zlink.Context();
     const node = new zlink.SpotNode(ctx);
     const stream = new zlink.StreamSocket(ctx);
+    let spot = null;
     let client = null;
     let actor = null;
     let session = null;
     try {
+        spot = node.createSpot();
+        const payloads = [];
+        spot.onDispatchEvent((info) => {
+            if (info.event !== zlink.SpotDispatchEvent.ActorReadable) {
+                return;
+            }
+            for (;;) {
+                const part = info.recvActorPart(zlink.RecvFlags.DontWait);
+                if (!part)
+                    return;
+                payloads.push(part.message.data().toString());
+            }
+        });
         stream.bind(endpoint);
         actor = node.actor('gateway-player-1');
         client = net.createConnection({ host: '127.0.0.1', port });
@@ -47,9 +61,19 @@ async function main() {
             client.write(Buffer.concat([frame(Buffer.alloc(0)), frame(Buffer.from('open'))]));
         });
         stream.bindActor(node, session, actor.ref(), 2000);
+        const joinReply = new Promise((resolve) => {
+            actor.join(spot, Buffer.from('join-gateway'), (result, parts) => {
+                resolve({ result, parts });
+            }, zlink.SendFlags.None, 2000);
+        });
+        const joinRequest = waitForJoin(spot);
+        spot.replyActorJoin(joinRequest.info, true, Buffer.from('ok'));
+        await joinReply;
         stream.sendBoundActor(node, session, 'gateway-player-1', Buffer.from('relay'));
-        const part = recvActorPart(actor);
-        assert.equal(part.message.data().toString(), 'relay');
+        for (let i = 0; i < 100 && payloads.length === 0; i += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        assert.deepEqual(payloads, ['relay']);
         console.log('[actor/gateway] stream relayed payload to actor: "relay"');
     }
     finally {
@@ -65,6 +89,8 @@ async function main() {
         stream.close();
         if (actor)
             actor.close(2000);
+        if (spot)
+            spot.close();
         node.close();
         ctx.close();
     }

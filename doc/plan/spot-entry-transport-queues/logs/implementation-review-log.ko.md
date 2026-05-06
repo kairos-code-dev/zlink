@@ -556,3 +556,32 @@
   - `git diff --check` 통과.
 - 남은 위험: full binding stale API 정리는 bindings 단계에서 닫아야 한다.
 - 다음 확인: POSD 기반 전체 리팩토링 루프
+
+## 2026-05-06 Bindings 이후 구현 리뷰 종료 확인
+
+- 날짜: 2026-05-06
+- 단계: bindings 순차 적용 이후 구현 리뷰 종료
+- 확인한 draft spec 절: 제거 API, bindings 영향 범위, sample/perf smoke, 비목표
+- 수행한 명령:
+  - `rg -n "zlink_actor_destroy\\(|zlink_actor_get_ref\\(|zlink_actor_join_spot\\(|zlink_actor_leave_spot\\(|zlink_actor_recv_part\\(|zlink_spot_node_destroy_remote_actor\\(|destroy_remote_actor|send_bound_session_packet|ActorChannel|RequestActorChannel|SendActorChannel" bindings/rust/src bindings/rust/tests bindings/rust/samples doc/spec/bindings/rust/README.md`
+  - `bindings/rust/tests/run_tests.sh`
+  - `bindings/rust/samples/run_samples.sh`
+  - `bindings/rust/perf/run_benchmarks.sh --transports tcp --msg-sizes 64`
+  - `bindings/rust/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64`
+- 수정한 파일:
+  - `bindings/rust/src/ffi.rs`
+  - `bindings/rust/src/service.rs`
+  - `bindings/rust/tests/service_surface_tests.rs`
+  - `bindings/rust/samples/actor_room_server_sample.rs`
+  - `bindings/rust/samples/actor_gateway_relay_sample.rs`
+  - `bindings/rust/samples/actor_single_player_queue_sample.rs`
+  - `doc/spec/bindings/rust/README.md`
+  - `doc/plan/spot-entry-transport-queues/logs/implementation-review-log.ko.md`
+- 검증 결과:
+  - Python과 Rust를 포함한 binding stale API 정리가 끝났다.
+  - Rust tests 10/10 suites 통과.
+  - Rust samples 14/14 통과.
+  - Rust perf single/multi smoke 완료.
+  - 제거 API와 Actor 전용 channel API 잔존은 Rust public surface와 Rust binding spec에서 발견되지 않았다.
+- 남은 위험: 없음
+- 다음 확인: 최종 종료 절차

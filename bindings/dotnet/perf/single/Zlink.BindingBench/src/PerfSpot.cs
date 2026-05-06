@@ -13,6 +13,14 @@ internal static class PerfSpot
     private const uint ReadyPhase = 0;
     private const uint ActivePhase = 1;
     private const uint CooldownPhase = 2;
+    private static readonly RoutingId PubNodeRoutingId =
+        RoutingId.FromBytes("z-perf-spot-pub"u8);
+    private static readonly RoutingId SubNodeRoutingId =
+        RoutingId.FromBytes("a-perf-spot-sub"u8);
+    private static readonly RoutingId PubSpotRoutingId =
+        RoutingId.FromBytes("z-perf-spot-pub-s"u8);
+    private static readonly RoutingId SubSpotRoutingId =
+        RoutingId.FromBytes("a-perf-spot-sub-s"u8);
 
     internal static int RunSpot(string transport, int size)
     {
@@ -31,7 +39,10 @@ internal static class PerfSpot
         using var ctx = new Context();
         ApplySingleContextOptions(ctx);
         using var registry = new Registry(ctx);
-        using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh, ServiceName);
+        using var pubDiscovery = new Discovery(ctx, AutoConnectType.SpotMesh,
+            ServiceName);
+        using var subDiscovery = new Discovery(ctx, AutoConnectType.SpotMesh,
+            ServiceName);
         using var pubNode = new SpotNode(ctx);
         using var subNode = new SpotNode(ctx);
         using var spotPub = pubNode.CreateSpot();
@@ -53,6 +64,10 @@ internal static class PerfSpot
             subNode.SubscriberOptions.ReceiveHighWaterMark = rcvHwm;
             subNode.SubscriberOptions.ReceiveTimeout =
                 TimeSpan.FromMilliseconds(rcvTimeo);
+            pubNode.SetRoutingId(PubNodeRoutingId);
+            subNode.SetRoutingId(SubNodeRoutingId);
+            spotPub.SetRoutingId(PubSpotRoutingId);
+            spotSub.SetRoutingId(SubSpotRoutingId);
 
             ConfigureSpotTlsPublisherIfNeeded(pubNode, transport);
             ConfigureSpotTlsSubscriberIfNeeded(subNode, transport);
@@ -61,14 +76,16 @@ internal static class PerfSpot
             string registryRouter = EndpointFor(transport,
                 "spot-registry-router");
             registry.Bind(registryPub, registryRouter);
-            discovery.ConnectRegistry(registryRouter);
-            pubNode.AttachDiscovery(discovery);
-            subNode.AttachDiscovery(discovery);
+            registry.SetBroadcastInterval(50);
+            pubDiscovery.ConnectRegistry(registryRouter);
+            subDiscovery.ConnectRegistry(registryRouter);
 
             string publisherEndpoint = EndpointFor(transport, "spot-publisher");
             string subscriberEndpoint = EndpointFor(transport, "spot-subscriber");
             pubNode.Bind(publisherEndpoint);
             subNode.Bind(subscriberEndpoint);
+            pubNode.AttachDiscovery(pubDiscovery);
+            subNode.AttachDiscovery(subDiscovery);
             spotSub.SetSubscription(Topic);
 
             int payloadSize = Math.Max(size, PerfMetricHeaderSize);
@@ -77,12 +94,12 @@ internal static class PerfSpot
             Array.Fill(probePayload, (byte)'p');
             Array.Fill(activePayload, (byte)'a');
 
-            long received = 0;
-            long sampleSeen = 0;
-            uint rng = 0xA341316Cu;
-            var latencySamples = new List<double>(Math.Max(0, latencySampleCap));
+            var dispatchState = new SpotDispatchState(size, latencySampleCap);
+            spotSub.OnDispatchEvent((currentSpot, info) =>
+                OnSpotDispatchEvent(currentSpot, info, dispatchState));
 
-            if (!WaitForSubscriptionReady(spotPub, spotSub, probePayload, size))
+            if (!WaitForSubscriptionReady(spotPub, dispatchState, probePayload,
+                    size))
             {
                 Console.Error.WriteLine("single_spot_error:subscription_not_ready");
                 return 2;
@@ -91,6 +108,7 @@ internal static class PerfSpot
             Thread.Sleep(Math.Max(1, readySettleMs));
 
             long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
+            dispatchState.BeginActive(deadlineTicks);
             ulong seq = 1;
             while (Stopwatch.GetTimestamp() < deadlineTicks)
             {
@@ -107,9 +125,6 @@ internal static class PerfSpot
                 {
                     continue;
                 }
-
-                DrainSubscriber(spotSub, size, deadlineTicks, ref received,
-                    latencySamples, ref sampleSeen, latencySampleCap, ref rng, true);
             }
 
             StampMetricHeader(activePayload.AsSpan(), RunId, CooldownPhase,
@@ -117,18 +132,11 @@ internal static class PerfSpot
             PerfSocketIo.Publish(spotPub, ServiceName, Topic, activePayload,
                 SendFlags.None);
 
-            long idleDeadline = DeadlineTicksFromMilliseconds(Math.Max(1,
-                recvTimeoutMs));
-            while (Stopwatch.GetTimestamp() < idleDeadline)
-            {
-                if (!DrainSubscriber(spotSub, size, long.MaxValue, ref received,
-                        latencySamples, ref sampleSeen, latencySampleCap,
-                        ref rng, false))
-                {
-                    Thread.Sleep(1);
-                }
-            }
+            if (!dispatchState.WaitForIdleDrain(recvTimeoutMs))
+                return 2;
 
+            long received = dispatchState.Received;
+            List<double> latencySamples = dispatchState.LatencySnapshot();
             if (received <= 0 || latencySamples.Count == 0)
                 return 2;
 
@@ -146,8 +154,8 @@ internal static class PerfSpot
         }
     }
 
-    private static bool WaitForSubscriptionReady(Spot publisher, Spot subscriber,
-        byte[] probePayload, int msgSize)
+    private static bool WaitForSubscriptionReady(Spot publisher,
+        SpotDispatchState state, byte[] probePayload, int msgSize)
     {
         ulong seq = 1;
         long deadlineTicks = DeadlineTicksFromMilliseconds(
@@ -167,98 +175,182 @@ internal static class PerfSpot
             {
             }
 
-            if (ProbeSubscriber(subscriber, msgSize))
-            {
+            if (state.WaitForReady(TimeSpan.FromMilliseconds(50)))
                 return true;
-            }
-
-            Thread.Sleep(10);
         }
 
-        return false;
+        return state.ReadySeen;
     }
 
-    private static bool DrainSubscriber(Spot subscriber, int msgSize,
-        long activeDeadlineTicks, ref long received, List<double> latencySamples,
-        ref long sampleSeen, int latencySampleCap, ref uint rng,
-        bool countActive)
+    private static void OnSpotDispatchEvent(Spot spot, SpotDispatchInfo info,
+        SpotDispatchState state)
     {
-        bool processed = false;
+        if (info.Event != SpotDispatchEvent.SubscribeReadable)
+            return;
+
         while (true)
         {
-            TopicMessage? subscribed = null;
+            TopicMessage? subscribed;
             try
             {
-                subscribed = subscriber.Subscribe(RecvFlags.DontWait);
+                subscribed = spot.Subscribe(RecvFlags.DontWait);
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                             || IsWouldBlock(ex.InternalErrno))
             {
-                return processed;
+                return;
+            }
+            catch
+            {
+                state.MarkFatal();
+                return;
             }
 
             if (subscribed == null)
-                return processed;
+                return;
 
             using (subscribed)
             {
-                Message body = subscribed.FirstPart();
-                ReadOnlySpan<byte> payload = body.AsReadOnlySpan();
-                if (TryDecodeExpectedSingleHeader(payload, msgSize, ReadyPhase,
+                state.Record(subscribed);
+            }
+        }
+    }
+
+    private sealed class SpotDispatchState
+    {
+        private readonly object _gate = new();
+        private readonly int _msgSize;
+        private readonly int _latencySampleCap;
+        private readonly List<double> _latencySamples;
+        private long _sampleSeen;
+        private uint _rng = 0xA341316Cu;
+        private long _activeDeadlineTicks;
+        private long _lastRecvTicks;
+        private bool _collectActive;
+        private bool _fatal;
+        private bool _readySeen;
+        private long _received;
+
+        public SpotDispatchState(int msgSize, int latencySampleCap)
+        {
+            _msgSize = msgSize;
+            _latencySampleCap = latencySampleCap;
+            _latencySamples = new List<double>(Math.Max(0, latencySampleCap));
+            _lastRecvTicks = Stopwatch.GetTimestamp();
+        }
+
+        public bool ReadySeen
+        {
+            get
+            {
+                lock (_gate)
+                    return _readySeen && !_fatal;
+            }
+        }
+
+        public long Received
+        {
+            get
+            {
+                lock (_gate)
+                    return _received;
+            }
+        }
+
+        public void BeginActive(long activeDeadlineTicks)
+        {
+            lock (_gate)
+            {
+                _collectActive = true;
+                _activeDeadlineTicks = activeDeadlineTicks;
+                _received = 0;
+                _latencySamples.Clear();
+                _sampleSeen = 0;
+                _lastRecvTicks = Stopwatch.GetTimestamp();
+            }
+        }
+
+        public void MarkFatal()
+        {
+            lock (_gate)
+            {
+                _fatal = true;
+                Monitor.PulseAll(_gate);
+            }
+        }
+
+        public void Record(TopicMessage subscribed)
+        {
+            Message body = subscribed.FirstPart();
+            ReadOnlySpan<byte> payload = body.AsReadOnlySpan();
+            long recvTicks = Stopwatch.GetTimestamp();
+            lock (_gate)
+            {
+                _lastRecvTicks = recvTicks;
+                if (TryDecodeExpectedSingleHeader(payload, _msgSize, ReadyPhase,
                         out _, RunId))
                 {
-                    return true;
+                    _readySeen = true;
+                    Monitor.PulseAll(_gate);
+                    return;
                 }
 
-                if (!countActive
-                    || Stopwatch.GetTimestamp() > activeDeadlineTicks
-                    || !TryDecodeExpectedSingleHeader(payload, msgSize,
+                if (!_collectActive || recvTicks > _activeDeadlineTicks
+                    || !TryDecodeExpectedSingleHeader(payload, _msgSize,
                         ActivePhase, out var header, RunId))
                 {
-                    processed = true;
-                    continue;
+                    Monitor.PulseAll(_gate);
+                    return;
                 }
 
-                received++;
+                _received++;
                 ulong nowNs = EpochNs();
                 if (nowNs >= header.SentTsNs)
                 {
-                    double latencyNs = nowNs - header.SentTsNs;
-                    ReservoirSample(latencySamples, latencyNs,
-                        ref sampleSeen, latencySampleCap, ref rng);
+                    ReservoirSample(_latencySamples, nowNs - header.SentTsNs,
+                        ref _sampleSeen, _latencySampleCap, ref _rng);
                 }
-                processed = true;
+                Monitor.PulseAll(_gate);
             }
         }
-    }
 
-    private static bool ProbeSubscriber(Spot subscriber, int msgSize)
-    {
-        while (true)
+        public bool WaitForReady(TimeSpan timeout)
         {
-            TopicMessage? subscribed = null;
-            try
+            lock (_gate)
             {
-                subscribed = subscriber.Subscribe(RecvFlags.DontWait);
+                if (_readySeen || _fatal)
+                    return _readySeen && !_fatal;
+                Monitor.Wait(_gate, timeout);
+                return _readySeen && !_fatal;
             }
-            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
-                                            || IsWouldBlock(ex.InternalErrno))
-            {
-                return false;
-            }
+        }
 
-            if (subscribed == null)
-                return false;
-
-            using (subscribed)
+        public bool WaitForIdleDrain(int timeoutMs)
+        {
+            long idleTicks = Math.Max(1,
+                (long)Math.Ceiling(Math.Max(1, timeoutMs)
+                    * Stopwatch.Frequency / 1000.0));
+            lock (_gate)
             {
-                Message body = subscribed.FirstPart();
-                if (TryDecodeExpectedSingleHeader(body.AsReadOnlySpan(), msgSize,
-                        ReadyPhase, out _, RunId))
+                while (!_fatal)
                 {
-                    return true;
+                    long elapsed = Stopwatch.GetTimestamp() - _lastRecvTicks;
+                    if (elapsed >= idleTicks)
+                        return true;
+                    int waitMs = Math.Max(1,
+                        (int)Math.Ceiling((idleTicks - elapsed) * 1000.0
+                            / Stopwatch.Frequency));
+                    Monitor.Wait(_gate, waitMs);
                 }
+
+                return false;
             }
+        }
+
+        public List<double> LatencySnapshot()
+        {
+            lock (_gate)
+                return new List<double>(_latencySamples);
         }
     }
 

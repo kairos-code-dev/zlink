@@ -14,8 +14,8 @@ class monitor_handle_t
 {
   public:
     monitor_handle_t () : _monitor (NULL) {}
-    inline static zlink_monitor_handler_fn ignore_handler =
-      &zlink_monitor_ignore_handler;
+    inline static std::function<void(const monitor_event_t &)> ignore_handler =
+      [] (const monitor_event_t &) {};
 
     template<typename SocketLike>
     static monitor_handle_t open (const SocketLike &socket_,
@@ -74,6 +74,17 @@ class monitor_handle_t
         _event_userdata = userdata_;
     }
 
+    void on_event (std::function<void(const monitor_event_t &)> handler_)
+    {
+        _event_function_handler = std::move (handler_);
+        detail::throw_if_failed<handler_error_t> (
+          static_cast<handler_result_t> (
+            zlink_socket_monitor_handler (
+              _monitor, &monitor_handle_t::event_function_trampoline, this)));
+        _event_handler = NULL;
+        _event_userdata = NULL;
+    }
+
     void on_event (zlink_socket_monitor_handler_fn handler_,
                    void *userdata_ = NULL)
     {
@@ -84,13 +95,18 @@ class monitor_handle_t
         _event_userdata = NULL;
     }
 
-    monitor_event_t recv ()
+    std::optional<monitor_event_t> recv (
+      recv_flags_t flags_ = recv_flags_t::none)
     {
         zlink_monitor_event_t event;
-        detail::throw_if_failed<recv_error_t> (
-          static_cast<recv_result_t> (
-            zlink_socket_monitor_recv (_monitor, &event, ZLINK_RECV_FLAGS_NONE)));
-        return monitor_event_t (event);
+        const recv_result_t result = static_cast<recv_result_t> (
+          zlink_socket_monitor_recv (
+            _monitor, &event, static_cast<zlink_recv_flags_t> (flags_)));
+        if (result == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
+            return std::nullopt;
+        if (result != recv_result_t::ok)
+            throw recv_error_t (result, zlink_errno ());
+        return std::optional<monitor_event_t> (monitor_event_t (event));
     }
 
     maybe_t<monitor_event_t> recv (non_blocking_t)
@@ -124,6 +140,7 @@ class monitor_handle_t
         _monitor = NULL;
         _event_handler = NULL;
         _event_userdata = NULL;
+        _event_function_handler = nullptr;
     }
 
   private:
@@ -141,9 +158,20 @@ class monitor_handle_t
         self->_event_handler (&event, self->_event_userdata);
     }
 
+    static void event_function_trampoline (const zlink_monitor_event_t *event_,
+                                           void *userdata_)
+    {
+        monitor_handle_t *self = static_cast<monitor_handle_t *> (userdata_);
+        if (!self || !self->_event_function_handler || !event_)
+            return;
+        const monitor_event_t event (*event_);
+        self->_event_function_handler (event);
+    }
+
     void *_monitor;
     monitor_event_handler_fn _event_handler = NULL;
     void *_event_userdata = NULL;
+    std::function<void(const monitor_event_t &)> _event_function_handler;
 };
 
 } // namespace zlink

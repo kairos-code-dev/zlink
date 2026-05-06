@@ -16,6 +16,12 @@
   - `cmake --build core/build --target unittest_service_mode_policy -j2`
   - `core/build/bin/unittest_service_mode_policy`
   - `git diff --check`
+  - `git commit -m "Release core 5.3.9"`
+  - `git push origin main`
+  - `git tag core/v5.3.9 && git push origin core/v5.3.9`
+  - `gh run view 25415485632 --json status,conclusion,url,jobs`
+  - `gh run view 25415485633 --json status,conclusion,url,jobs`
+  - `gh release view core/v5.3.9 --json tagName,name,isDraft,isPrerelease,assets,url`
 - 확인한 draft spec 절:
   - `Spot socket 제거 모델`
   - `Pub/sub 처리`
@@ -40,9 +46,13 @@
   - `unittest_service_mode_policy`: 29/29 통과.
   - 전체 core CTest: 106/106 통과.
   - `git diff --check` 통과.
+  - release commit `3b586701e` push 완료.
+  - `core/v5.3.9` tag push 완료.
+  - `Build libzlink Core Libraries` run `25415485632` 성공.
+  - `Release Core Conan Package` run `25415485633` 성공.
+  - GitHub Release `libzlink 5.3.9` 생성 확인.
+  - release asset: checksums, source tarball, Linux/macOS/Windows x64/ARM64 `tar.gz`와 `zip` 확인.
 - 남은 작업:
-  - release commit, push, `core/v5.3.9` tag push.
-  - GitHub Actions build/release 확인.
   - `bindings/update_zlink_libs.sh core/v5.3.9 --expect-version 5.3.9` 실행 뒤 bindings native library 재검증.
 
 ---

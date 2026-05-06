@@ -97,13 +97,13 @@ void test_sub_subscribe_nonblocking_returns_empty_without_data ()
     assert (!received.has_value ());
 }
 
-void test_xpub_receive_subscription_event_nonblocking_throws_without_data ()
+void test_xpub_receive_subscription_event_nonblocking_returns_empty_without_data ()
 {
     zlink::context_t ctx;
     zlink::xpub_socket_t socket (ctx);
-    expect_runtime_error ([&] {
-        (void) socket.receive_subscription_event (zlink::recv_flags_t::dontwait);
-    });
+    const std::optional<zlink::subscription_event_t> event =
+      socket.receive_subscription_event (zlink::recv_flags_t::dontwait);
+    assert (!event.has_value ());
 }
 
 void test_pair_send_without_peer_preserves_submit_surface ()
@@ -204,7 +204,7 @@ int main ()
 {
     test_pair_recv_nonblocking_returns_empty_without_data ();
     test_sub_subscribe_nonblocking_returns_empty_without_data ();
-    test_xpub_receive_subscription_event_nonblocking_throws_without_data ();
+    test_xpub_receive_subscription_event_nonblocking_returns_empty_without_data ();
     test_pair_send_without_peer_preserves_submit_surface ();
     test_router_send_throws_for_closed_socket ();
     test_send_throws_on_general_error ();

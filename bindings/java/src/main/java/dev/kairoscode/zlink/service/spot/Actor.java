@@ -2,8 +2,6 @@
 
 package dev.kairoscode.zlink.service.spot;
 
-import dev.kairoscode.zlink.ConfigException;
-import dev.kairoscode.zlink.ConfigResult;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RecvException;
 import dev.kairoscode.zlink.RecvFlags;
@@ -28,30 +26,21 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 
 public final class Actor implements AutoCloseable {
-    private MemorySegment handle;
+    private SpotNode node;
+    private ActorRef ref;
 
-    Actor(MemorySegment handle) {
-        Objects.requireNonNull(handle, "handle");
-        if (handle.address() == 0) {
-            throw new IllegalArgumentException("actor handle must not be null");
-        }
-        this.handle = handle;
+    Actor(SpotNode node, ActorRef ref) {
+        this.node = Objects.requireNonNull(node, "node");
+        this.ref = Objects.requireNonNull(ref, "ref");
     }
 
-    MemorySegment handle() {
-        return handle;
+    ActorRef refInternal() {
+        return ref;
     }
 
     public ActorRef ref() {
         ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment out = arena.allocate(NativeLayouts.ACTOR_REF_LAYOUT);
-            int rc = Native.actorGetRef(handle, out);
-            if (rc != 0) {
-                throw new ConfigException(ConfigResult.fromValue(rc));
-            }
-            return ActorInterop.actorRefFromNative(out);
-        }
+        return ref;
     }
 
     public boolean join(Spot spot,
@@ -67,8 +56,11 @@ public final class Actor implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
             InternalAccess.messageCopyTo(message, nativeMsg);
-            int rc = Native.actorJoinSpot(handle, InternalAccess.spotHandle(spot),
-              nativeMsg, ActorRequestCallbacks.REPLY_CALLBACK,
+            int rc = Native.spotNodeActorJoinSpot(nodeHandle(),
+              ActorInterop.actorRefToNative(arena, ref),
+              ActorInterop.nativeRoutingId(arena, node.routingId()),
+              ActorInterop.nativeRoutingId(arena, spot.routingId()), nativeMsg,
+              ActorRequestCallbacks.REPLY_CALLBACK,
               MemorySegment.ofAddress(pending.id()), SendFlags.NONE.value(),
               timeoutMillis(timeout));
             if (rc != 0) {
@@ -91,9 +83,13 @@ public final class Actor implements AutoCloseable {
     public void leave(Spot spot) {
         Objects.requireNonNull(spot, "spot");
         ensureOpen();
-        int rc = Native.actorLeaveSpot(handle, InternalAccess.spotHandle(spot));
-        if (rc != 0) {
-            throw new ConfigException(ConfigResult.fromValue(rc));
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.spotNodeActorLeaveSpot(nodeHandle(),
+              ActorInterop.actorRefToNative(arena, ref),
+              ActorInterop.nativeRoutingId(arena, spot.routingId()), 0);
+            if (rc != 0) {
+                throw new RequestException(RequestResult.fromValue(rc));
+            }
         }
     }
 
@@ -107,7 +103,8 @@ public final class Actor implements AutoCloseable {
             Message message = new Message();
             boolean success = false;
             try {
-                int rc = Native.actorRecvPart(handle, infoOut,
+                int rc = Native.spotNodeActorRecvPart(nodeHandle(),
+                  ActorInterop.actorRefToNative(arena, ref), infoOut,
                   InternalAccess.messageNativeHandle(message), hasMoreOut,
                   flags.value());
                 if (rc != 0) {
@@ -141,8 +138,8 @@ public final class Actor implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
             InternalAccess.messageCopyTo(message, nativeMsg);
-            int rc = Native.actorSendBoundSessionMsg(handle, nativeMsg,
-              flags.value());
+            int rc = Native.spotNodeActorSendBoundSessionMsg(nodeHandle(),
+              ActorInterop.actorRefToNative(arena, ref), nativeMsg, flags.value());
             if (rc != 0) {
                 NativeMsg.msgClose(nativeMsg);
                 throw new SubmitException(SubmitResult.fromValue(rc));
@@ -155,31 +152,19 @@ public final class Actor implements AutoCloseable {
         return sendBoundSession(message, SendFlags.NONE);
     }
 
-    public boolean sendBoundSessionPacket(Message header,
-                                          Message body,
-                                          SendFlags flags) {
-        Objects.requireNonNull(header, "header");
-        Objects.requireNonNull(body, "body");
-        Objects.requireNonNull(flags, "flags");
+    public void closeBoundSession(Duration timeout) {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeHeader = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            MemorySegment nativeBody = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            InternalAccess.messageCopyTo(header, nativeHeader);
-            InternalAccess.messageCopyTo(body, nativeBody);
-            int rc = Native.actorSendBoundSessionPacket(handle, nativeHeader,
-              nativeBody, flags.value());
+            int rc = Native.spotNodeActorCloseBoundSession(nodeHandle(),
+              ActorInterop.actorRefToNative(arena, ref), timeoutMillis(timeout));
             if (rc != 0) {
-                NativeMsg.msgClose(nativeHeader);
-                NativeMsg.msgClose(nativeBody);
-                throw new SubmitException(SubmitResult.fromValue(rc));
+                throw new RequestException(RequestResult.fromValue(rc));
             }
-            return true;
         }
     }
 
-    public boolean sendBoundSessionPacket(Message header, Message body) {
-        return sendBoundSessionPacket(header, body, SendFlags.NONE);
+    public void closeBoundSession() {
+        closeBoundSession(Duration.ZERO);
     }
 
     @Override
@@ -188,21 +173,28 @@ public final class Actor implements AutoCloseable {
     }
 
     public void close(Duration timeout) {
-        MemorySegment current = handle;
-        if (current == null || current.address() == 0) {
+        if (node == null) {
             return;
         }
-        int rc = Native.actorDestroy(current, timeoutMillis(timeout));
-        if (rc != 0) {
-            throw new RequestException(RequestResult.fromValue(rc));
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.spotNodeActorDestroy(nodeHandle(),
+              ActorInterop.actorRefToNative(arena, ref), timeoutMillis(timeout));
+            if (rc != 0) {
+                throw new RequestException(RequestResult.fromValue(rc));
+            }
         }
-        handle = MemorySegment.NULL;
+        node = null;
+        ref = null;
     }
 
     private void ensureOpen() {
-        if (handle == null || handle.address() == 0) {
+        if (node == null || ref == null) {
             throw new IllegalStateException("actor is closed");
         }
+    }
+
+    private MemorySegment nodeHandle() {
+        return InternalAccess.spotNodeHandle(node);
     }
 
     private static int timeoutMillis(Duration timeout) {

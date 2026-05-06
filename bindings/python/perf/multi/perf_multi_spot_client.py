@@ -66,9 +66,7 @@ def main(argv=None):
     control_connected = threading.Event()
     started_event = threading.Event()
     started_size = [0]
-    warmup_ready = threading.Event()
     cooldown_ready = threading.Event()
-    ready_seen = set()
     cooldown_seen = set()
     collect_active = [False]
     active_deadline = [0.0]
@@ -121,7 +119,15 @@ def main(argv=None):
 
     with zlink.Context() as ctx:
         clients = []
-        discoveries = []
+        node = zlink.SpotNode(ctx)
+        configure_multi_tls_client(node, args.transport)
+        discovery = zlink.Discovery(ctx, zlink.AutoConnectType.SPOT_MESH, SERVICE_NAME)
+        node.set_routing_id(b"a-python-multi-spot-client")
+        discovery.connect_registry(registry_router_endpoint)
+        apply_multi_spot_node_admission(node)
+        node.bind(benchmark_endpoint(args.transport, "multi-spot-client"))
+        node.attach_discovery(discovery)
+
         def on_dispatch(index, current_spot, info):
             if info.event != zlink.SpotDispatchEvent.SUBSCRIBE_READABLE:
                 return
@@ -148,10 +154,6 @@ def main(argv=None):
                 if header["run_id"] != run_id or header["msg_size"] != args.msg_size:
                     continue
                 if header["phase"] == 0:
-                    with recv_lock:
-                        ready_seen.add(index)
-                        if len(ready_seen) >= len(clients):
-                            warmup_ready.set()
                     continue
                 if header["phase"] == 2:
                     with recv_lock:
@@ -177,21 +179,12 @@ def main(argv=None):
         nonlocal_received = [0]
         for index in range(args.clients):
             _trace(f"create-slot-start index={index}")
-            node = zlink.SpotNode(ctx)
-            configure_multi_tls_client(node, args.transport)
-            discovery = zlink.Discovery(ctx, zlink.AutoConnectType.SPOT_MESH, SERVICE_NAME)
-            node.set_routing_id(f"a-python-multi-spot-client-{index}".encode("utf-8"))
             spot = node.create_spot()
             spot.set_routing_id(
                 f"a-python-multi-spot-client-spot-{index}".encode("utf-8")
             )
-            discovery.connect_registry(registry_router_endpoint)
-            apply_multi_spot_node_admission(node)
-            node.bind(benchmark_endpoint(args.transport, f"multi-spot-client-{index}"))
-            node.attach_discovery(discovery)
             spot.set_subscription(TOPIC)
             spot.on_dispatch_event(partial(on_dispatch, index))
-            discoveries.append(discovery)
             clients.append((node, spot))
             _trace(f"create-slot-done index={index}")
 
@@ -206,12 +199,6 @@ def main(argv=None):
 
         time.sleep(ready_settle_s)
         time.sleep(control_settle_s)
-        _trace("warmup-loop-start")
-        if not warmup_ready.wait(ready_timeout_s):
-            raise RuntimeError(
-                f"spot warmup readiness timeout {len(ready_seen)}/{len(clients)}"
-            )
-        _trace(f"warmup-ready count={len(ready_seen)}")
         ready_sender[0].sendall(b"CONNECTED\n")
         ready_sender[0].sendall(f"READY_COUNT,{args.msg_size},{args.clients}\n".encode("utf-8"))
         print(f"CLIENT_READY,{args.msg_size}", flush=True)

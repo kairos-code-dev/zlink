@@ -8,8 +8,12 @@ import dev.kairoscode.zlink.Socket;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendFlags;
+import dev.kairoscode.zlink.SpotDispatchEvent;
+import dev.kairoscode.zlink.SpotDispatchInfo;
+import dev.kairoscode.zlink.SpotDispatchSubjectKind;
 import java.lang.foreign.MemorySegment;
 import dev.kairoscode.zlink.service.discovery.Discovery;
+import dev.kairoscode.zlink.service.spot.ActorPart;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.util.List;
@@ -39,6 +43,45 @@ public final class InternalAccess {
 
     public static MemorySegment spotNodeHandle(SpotNode node) {
         return dev.kairoscode.zlink.InternalAccess.spotNodeHandle(node);
+    }
+
+    public static MemorySegment spotDispatchSubject(
+      SpotDispatchInfo info) {
+        return dev.kairoscode.zlink.InternalAccess.spotDispatchSubject(info);
+    }
+
+    public static SpotDispatchInfo spotDispatchInfo(
+      SpotDispatchEvent event,
+      SpotDispatchSubjectKind subjectKind,
+      MemorySegment subject) {
+        return dev.kairoscode.zlink.InternalAccess.spotDispatchInfo(event,
+          subjectKind, subject);
+    }
+
+    public static SpotDispatchInfo spotDispatchInfo(
+      SpotDispatchEvent event,
+      SpotDispatchSubjectKind subjectKind,
+      MemorySegment subject,
+      List<ActorPart> actorParts) {
+        return dev.kairoscode.zlink.InternalAccess.spotDispatchInfo(event,
+          subjectKind, subject, actorParts);
+    }
+
+    public static SpotDispatchInfo spotDispatchInfo(
+      SpotDispatchEvent event,
+      SpotDispatchSubjectKind subjectKind,
+      MemorySegment subject,
+      dev.kairoscode.zlink.Timer timer,
+      String channelName,
+      List<ActorPart> actorParts) {
+        return dev.kairoscode.zlink.InternalAccess.spotDispatchInfo(event,
+          subjectKind, subject, timer, channelName, actorParts);
+    }
+
+    public static dev.kairoscode.zlink.Timer timerFromBorrowedHandle(
+      MemorySegment handle) {
+        return dev.kairoscode.zlink.InternalAccess.timerFromBorrowedHandle(
+          handle);
     }
 
     public static MemorySegment messageDataSegment(Message message) {

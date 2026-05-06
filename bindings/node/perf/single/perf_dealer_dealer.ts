@@ -25,6 +25,8 @@ const {
   resolveSingleLatencySampleCap,
   resolveSingleIdleDrainMs,
   spawnSenderWorker,
+  waitForWorkerDone,
+  waitForWorkerError,
   waitForMonitorConnectionReady,
   waitForWorkerMessage,
 } = require('./perf_single_common');
@@ -50,7 +52,7 @@ async function runDealerDealerBenchmark(msgSize, options) {
       runId: options.runId ?? 1,
       options,
     });
-    const workerError = waitForWorkerMessage(worker, 'error');
+    const workerError = waitForWorkerError(worker);
     await Promise.race([
       waitForWorkerMessage(worker, 'ready'),
       workerError.then((message) => Promise.reject(new Error(message.message)))
@@ -81,7 +83,7 @@ async function runDealerDealerBenchmark(msgSize, options) {
 
     worker.postMessage({ type: 'start' });
     await Promise.race([
-      waitForWorkerMessage(worker, 'done'),
+      waitForWorkerDone(worker, options.duration),
       workerError.then((message) => Promise.reject(new Error(message.message)))
     ]);
     const drainDeadlineNs = activeStopNs

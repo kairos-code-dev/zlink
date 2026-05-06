@@ -98,37 +98,15 @@ typedef struct zlink_monitor_snapshot_t
     uint32_t auto_hwm_profile;
     uint32_t auto_hwm_role;
     uint32_t auto_hwm_policy_class;
-    uint32_t auto_hwm_managed_connections;
-    uint32_t auto_hwm_active_hwm_connections;
-    uint32_t auto_hwm_observed_count;
-    uint32_t auto_hwm_planning_count;
-    uint32_t auto_hwm_context_total_planning_count;
-    uint32_t auto_hwm_base_floor_per_connection;
     uint64_t auto_hwm_unit_budget_bytes;
     uint32_t auto_hwm_size_cap;
-    uint32_t auto_hwm_effective_publish_fanout;
-    int32_t auto_hwm_applied_sndhwm;
-    int32_t auto_hwm_applied_rcvhwm;
-    int32_t auto_hwm_requested_sndbuf;
-    int32_t auto_hwm_requested_rcvbuf;
-    int32_t auto_hwm_effective_sndbuf;
-    int32_t auto_hwm_effective_rcvbuf;
-    uint64_t auto_hwm_total_memory_budget_bytes;
-    uint64_t auto_hwm_queue_budget_bytes;
-    uint64_t auto_hwm_transport_budget_bytes;
-    uint64_t auto_hwm_runtime_reserve_bytes;
-    uint64_t auto_hwm_socket_queue_share_bytes;
     uint64_t auto_hwm_socket_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
-    uint64_t auto_hwm_estimated_max_memory_bytes;
+    int32_t auto_hwm_applied_sndhwm;
+    int32_t auto_hwm_applied_rcvhwm;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
-    uint32_t auto_hwm_scope;
-    uint32_t auto_hwm_scope_count;
-    uint64_t auto_hwm_auto_buffer_bytes;
-    uint64_t auto_hwm_manual_buffer_bytes;
-    uint32_t auto_hwm_buffer_connections;
     int32_t auto_hwm_deferred_sndhwm;
     int32_t auto_hwm_deferred_rcvhwm;
 } zlink_monitor_snapshot_t;
@@ -145,37 +123,15 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_profile` | 현재 자동 HWM profile. 값은 `zlink_auto_hwm_profile_t`와 같다 |
 | `auto_hwm_role` | 자동 HWM 진단용 역할 번호. 현재 `1=control`, `2=routed`, `3=fanout`, `4=recv_ingress`, `5=spot_data`, `6=peer_queue`, `7=stream`이며 새 값이 추가될 수 있음 |
 | `auto_hwm_policy_class` | 단위 예산과 size cap 선택에 사용한 planner policy class. 진단용 값이며 새 값이 추가될 수 있음 |
-| `auto_hwm_managed_connections` | 사용할 수 있을 때 채우는 진단용 연결 수. HWM은 이 값으로 나누지 않음 |
-| `auto_hwm_active_hwm_connections` | 사용할 수 있을 때 채우는 진단용 활성 연결 수. HWM은 이 값으로 나누지 않음 |
-| `auto_hwm_observed_count` | 이 소스에서 관찰한 진단용 연결 수. 이 값이 커져도 HWM을 낮추지 않음 |
-| `auto_hwm_planning_count` | deprecated 계획 수 필드. 현재 구현은 `0`을 채우며, 호출자는 이 값을 HWM 계산 근거로 쓰면 안 됨 |
-| `auto_hwm_context_total_planning_count` | deprecated context 계획 수 필드. 현재 구현은 `0`을 채우며, 호출자는 이 값을 HWM 계산 근거로 쓰면 안 됨 |
-| `auto_hwm_base_floor_per_connection` | 호환 진단용 floor 값. 적용 HWM은 profile, policy class, message unit으로 정함 |
 | `auto_hwm_unit_budget_bytes` | 현재 profile과 policy class에서 고른 연결당 단위 예산 |
 | `auto_hwm_size_cap` | 현재 profile, policy class, 실효 메시지 크기에서 고른 메시지 수 상한 |
-| `auto_hwm_effective_publish_fanout` | 사용할 수 있을 때 채우는 SPOT publish fanout 진단값. connection 수로 per-connection HWM을 낮추는 값이 아님. SPOT이 아닌 row는 `0`일 수 있음 |
+| `auto_hwm_socket_message_slots` | 선택된 단위 예산과 실효 메시지 단위로 계산한 메시지 슬롯 수 |
+| `auto_hwm_effective_message_bytes` | 정책이 계산에 사용한 실효 메시지 단위 바이트 |
 | `auto_hwm_applied_sndhwm` | 현재 소켓에 적용된 송신 HWM |
 | `auto_hwm_applied_rcvhwm` | 현재 소켓에 적용된 수신 HWM |
-| `auto_hwm_requested_sndbuf` | 자동 정책이 요청한 `SNDBUF` 값 |
-| `auto_hwm_requested_rcvbuf` | 자동 정책이 요청한 `RCVBUF` 값 |
-| `auto_hwm_effective_sndbuf` | 현재 snapshot에서 보는 유효 `SNDBUF` 값 |
-| `auto_hwm_effective_rcvbuf` | 현재 snapshot에서 보는 유효 `RCVBUF` 값 |
-| `auto_hwm_total_memory_budget_bytes` | deprecated context memory budget 필드. 현재 구현은 `0`을 채움 |
-| `auto_hwm_queue_budget_bytes` | deprecated queue budget 필드. 현재 구현은 `0`을 채움 |
-| `auto_hwm_transport_budget_bytes` | deprecated transport budget 필드. 현재 구현은 `0`을 채움 |
-| `auto_hwm_runtime_reserve_bytes` | deprecated runtime reserve 필드. 현재 구현은 `0`을 채움 |
-| `auto_hwm_socket_queue_share_bytes` | deprecated queue share 필드. 현재 구현은 `0`을 채움 |
-| `auto_hwm_socket_message_slots` | 선택된 단위 예산과 실효 메시지 단위로 계산한 메시지 슬롯 수. context budget share가 아님 |
-| `auto_hwm_effective_message_bytes` | 정책이 계산에 사용한 실효 메시지 단위 바이트 |
-| `auto_hwm_estimated_max_memory_bytes` | 사용할 수 있을 때 채우는 소켓 단위 메모리 envelope 추정값. `0`이면 추정값을 보고하지 않음 |
 | `auto_hwm_last_recalc_ms` | 최근 자동 HWM 재계산 시각(ms) |
 | `auto_hwm_last_recalc_reason` | 최근 재계산 사유 enum 값 |
 | `auto_hwm_send_blocked_ratio_ppm` | 최근 송신 시도 중 backpressure 로 막힌 비율(ppm) |
-| `auto_hwm_scope` | 자동 HWM scope 번호. 현재 `0=none`, `1=shared`, `2=per_spot`이며 새 값이 추가될 수 있음 |
-| `auto_hwm_scope_count` | 진단용 scope 대상 수. HWM은 이 값으로 나누지 않음 |
-| `auto_hwm_auto_buffer_bytes` | 사용할 수 있을 때 채우는 자동 관리 buffer 진단값 |
-| `auto_hwm_manual_buffer_bytes` | 사용할 수 있을 때 채우는 사용자 설정 buffer 진단값 |
-| `auto_hwm_buffer_connections` | deprecated buffer 계산용 connection 필드. 현재 구현은 `0`을 채움 |
 | `auto_hwm_deferred_sndhwm` | 지연 중인 송신 HWM 축소값. 없으면 `-1` |
 | `auto_hwm_deferred_rcvhwm` | 지연 중인 수신 HWM 축소값. 없으면 `-1` |
 
@@ -206,8 +162,8 @@ typedef enum zlink_monitor_source_kind_t
 |------|-----|------|
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` 필드가 채워짐. |
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | ABI 호환을 위해 이름을 유지한 deprecated flag. 설정되면 auto-HWM role, profile, unit budget, message unit, 적용 HWM 필드가 채워질 수 있고 deprecated budget 필드는 `0`으로 유지됨. |
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | auto HWM transport buffer 관련 필드가 채워짐. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | auto-HWM role, profile, unit budget, message unit, 적용 HWM 필드가 채워질 수 있음. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | ABI 안정을 위해 남긴 호환 flag. transport buffer 필드는 더 이상 `zlink_monitor_snapshot_t`에 없으므로 현재 snapshot은 이 flag를 설정하지 않음. |
 
 ### Auto-HWM 재계산 사유
 

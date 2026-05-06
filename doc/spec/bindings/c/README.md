@@ -158,7 +158,8 @@ returns the active profile. Invalid profile values return
 
 `zlink_monitor_snapshot_t` includes the auto-HWM v2 fields
 `auto_hwm_profile`, `auto_hwm_policy_class`, `auto_hwm_unit_budget_bytes`,
-`auto_hwm_size_cap`, and `auto_hwm_effective_publish_fanout`.
+`auto_hwm_size_cap`, `auto_hwm_socket_message_slots`, and
+`auto_hwm_effective_message_bytes`.
 
 SPOT admission HWM defaults follow the current core header. SpotNode exposes
 router and pubsub admission profile/numeric options; relay and delivery HWM are

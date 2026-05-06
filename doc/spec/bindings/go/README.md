@@ -1019,37 +1019,15 @@ type MonitorSnapshot struct {
     AutoHwmProfile                      uint32
     AutoHwmRole                         uint32
     AutoHwmPolicyClass                  uint32
-    AutoHwmManagedConnections           uint32
-    AutoHwmActiveHwmConnections         uint32
-    AutoHwmObservedCount                uint32
-    AutoHwmPlanningCount                uint32
-    AutoHwmContextTotalPlanningCount    uint32
-    AutoHwmBaseFloorPerConnection       uint32
     AutoHwmUnitBudgetBytes              uint64
     AutoHwmSizeCap                      uint32
-    AutoHwmEffectivePublishFanout       uint32
-    AutoHwmAppliedSndHwm                int32
-    AutoHwmAppliedRcvHwm                int32
-    AutoHwmRequestedSndBuf              int32
-    AutoHwmRequestedRcvBuf              int32
-    AutoHwmEffectiveSndBuf              int32
-    AutoHwmEffectiveRcvBuf              int32
-    AutoHwmTotalMemoryBudgetBytes       uint64
-    AutoHwmQueueBudgetBytes             uint64
-    AutoHwmTransportBudgetBytes         uint64
-    AutoHwmRuntimeReserveBytes          uint64
-    AutoHwmSocketQueueShareBytes        uint64
     AutoHwmSocketMessageSlots           uint64
     AutoHwmEffectiveMessageBytes        uint64
-    AutoHwmEstimatedMaxMemoryBytes      uint64
+    AutoHwmAppliedSndHwm                int32
+    AutoHwmAppliedRcvHwm                int32
     AutoHwmLastRecalcMs                 uint64
     AutoHwmLastRecalcReason             uint32
     AutoHwmSendBlockedRatioPPM          uint32
-    AutoHwmScope                        uint32
-    AutoHwmScopeCount                   uint32
-    AutoHwmAutoBufferBytes              uint64
-    AutoHwmManualBufferBytes            uint64
-    AutoHwmBufferConnections            uint32
     AutoHwmDeferredSndHwm               int32
     AutoHwmDeferredRcvHwm               int32
 }
@@ -1170,6 +1148,10 @@ func (n *SpotNode) RoutingID() (RoutingID, error)
 // Spot factory and snapshot queries return *ConfigError on failure.
 // Spot must be created only through this SpotNode factory.
 func (n *SpotNode) Spot() (*Spot, error)
+// EntrySpot returns an owned facade for the node-owned Entry Spot.
+func (n *SpotNode) EntrySpot() (*Spot, error)
+// SpotLookup returns an owned facade for a live node-local Spot routing id.
+func (n *SpotNode) SpotLookup(spotRID RoutingID) (*Spot, error)
 func (n *SpotNode) StatusSnapshot() (*SpotNodeStatus, error)
 func (n *SpotNode) PeersSnapshot() ([]SpotNodePeerEntry, error)
 func (n *SpotNode) PeersQuery(filter *SpotNodePeerFilter) ([]SpotNodePeerEntry, error)
@@ -1180,8 +1162,10 @@ func (n *SpotNode) InternalSocketsSnapshot(filter *SpotNodeSocketSnapshotFilter)
 func (n *SpotNode) Close() error
 ```
 
-`SpotNode` owns the lifecycle. `Spot` is created only through
-`SpotNode.Spot()` and remains valid only while the parent node lives.
+`SpotNode` owns the lifecycle. User `Spot` handles are created through
+`SpotNode.Spot()`, Entry Spot facades through `SpotNode.EntrySpot()`, and
+lookup facades through `SpotNode.SpotLookup()`. A returned `Spot` remains valid
+only while the parent node lives.
 There is no standalone `NewSpot` constructor in the public API.
 
 ### Spot

@@ -27,6 +27,9 @@ func waitMonitorReady(
 		select {
 		case out := <-ch:
 			if out.err != nil {
+				if IsTransient(out.err) {
+					continue
+				}
 				return out.err
 			}
 			if out.event != nil && out.event.IsConnectionReady() {

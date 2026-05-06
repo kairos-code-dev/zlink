@@ -44,8 +44,13 @@ class ZlinkActorRecvInfo(ctypes.Structure):
 
 class ZlinkActorJoinInfo(ctypes.Structure):
     _fields_ = [
-        ("actor", ZlinkActorRef),
+        ("source_actor", ZlinkActorRef),
+        ("target_actor", ZlinkActorRef),
         ("source_node_rid", ZlinkRoutingId),
+        ("source_spot_rid", ZlinkRoutingId),
+        ("target_node_rid", ZlinkRoutingId),
+        ("target_spot_rid", ZlinkRoutingId),
+        ("join_epoch", ctypes.c_uint64),
         ("request", ctypes.c_void_p),
         ("flags", ctypes.c_uint32),
     ]
@@ -91,37 +96,15 @@ class ZlinkMonitorSnapshot(ctypes.Structure):
         ("auto_hwm_profile", ctypes.c_uint32),
         ("auto_hwm_role", ctypes.c_uint32),
         ("auto_hwm_policy_class", ctypes.c_uint32),
-        ("auto_hwm_managed_connections", ctypes.c_uint32),
-        ("auto_hwm_active_hwm_connections", ctypes.c_uint32),
-        ("auto_hwm_observed_count", ctypes.c_uint32),
-        ("auto_hwm_planning_count", ctypes.c_uint32),
-        ("auto_hwm_context_total_planning_count", ctypes.c_uint32),
-        ("auto_hwm_base_floor_per_connection", ctypes.c_uint32),
         ("auto_hwm_unit_budget_bytes", ctypes.c_uint64),
         ("auto_hwm_size_cap", ctypes.c_uint32),
-        ("auto_hwm_effective_publish_fanout", ctypes.c_uint32),
-        ("auto_hwm_applied_sndhwm", ctypes.c_int32),
-        ("auto_hwm_applied_rcvhwm", ctypes.c_int32),
-        ("auto_hwm_requested_sndbuf", ctypes.c_int32),
-        ("auto_hwm_requested_rcvbuf", ctypes.c_int32),
-        ("auto_hwm_effective_sndbuf", ctypes.c_int32),
-        ("auto_hwm_effective_rcvbuf", ctypes.c_int32),
-        ("auto_hwm_total_memory_budget_bytes", ctypes.c_uint64),
-        ("auto_hwm_queue_budget_bytes", ctypes.c_uint64),
-        ("auto_hwm_transport_budget_bytes", ctypes.c_uint64),
-        ("auto_hwm_runtime_reserve_bytes", ctypes.c_uint64),
-        ("auto_hwm_socket_queue_share_bytes", ctypes.c_uint64),
         ("auto_hwm_socket_message_slots", ctypes.c_uint64),
         ("auto_hwm_effective_message_bytes", ctypes.c_uint64),
-        ("auto_hwm_estimated_max_memory_bytes", ctypes.c_uint64),
+        ("auto_hwm_applied_sndhwm", ctypes.c_int32),
+        ("auto_hwm_applied_rcvhwm", ctypes.c_int32),
         ("auto_hwm_last_recalc_ms", ctypes.c_uint64),
         ("auto_hwm_last_recalc_reason", ctypes.c_uint32),
         ("auto_hwm_send_blocked_ratio_ppm", ctypes.c_uint32),
-        ("auto_hwm_scope", ctypes.c_uint32),
-        ("auto_hwm_scope_count", ctypes.c_uint32),
-        ("auto_hwm_auto_buffer_bytes", ctypes.c_uint64),
-        ("auto_hwm_manual_buffer_bytes", ctypes.c_uint64),
-        ("auto_hwm_buffer_connections", ctypes.c_uint32),
         ("auto_hwm_deferred_sndhwm", ctypes.c_int32),
         ("auto_hwm_deferred_rcvhwm", ctypes.c_int32),
     ]
@@ -969,17 +952,7 @@ class _Lib:
         )
         self._require(
             "zlink_spot_node_actor_new",
-            [ctypes.c_void_p, ctypes.c_char_p],
-            ctypes.c_void_p,
-        )
-        self._require(
-            "zlink_actor_destroy",
-            [ctypes.POINTER(ctypes.c_void_p), ctypes.c_uint32],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_actor_get_ref",
-            [ctypes.c_void_p, ctypes.POINTER(ZlinkActorRef)],
+            [ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ZlinkActorRef)],
             ctypes.c_int,
         )
         self._require(
@@ -1009,7 +982,7 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_destroy_remote_actor",
+            "zlink_spot_node_actor_destroy",
             [ctypes.c_void_p, ctypes.POINTER(ZlinkActorRef), ctypes.c_uint32],
             ctypes.c_int,
         )
@@ -1019,23 +992,11 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_actor_join_spot",
-            [
-                ctypes.c_void_p,
-                ctypes.c_void_p,
-                ctypes.POINTER(ZlinkMsg),
-                ctypes.c_void_p,
-                ctypes.c_void_p,
-                ctypes.c_uint32,
-                ctypes.c_uint32,
-            ],
-            ctypes.c_int,
-        )
-        self._require(
             "zlink_spot_node_actor_join_spot",
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkActorRef),
+                ctypes.POINTER(ZlinkRoutingId),
                 ctypes.POINTER(ZlinkRoutingId),
                 ctypes.POINTER(ZlinkMsg),
                 ctypes.c_void_p,
@@ -1066,11 +1027,6 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_actor_leave_spot",
-            [ctypes.c_void_p, ctypes.c_void_p],
-            ctypes.c_int,
-        )
-        self._require(
             "zlink_spot_node_actor_leave_spot",
             [
                 ctypes.c_void_p,
@@ -1081,9 +1037,10 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_actor_recv_part",
+            "zlink_spot_node_actor_recv_part",
             [
                 ctypes.c_void_p,
+                ctypes.POINTER(ZlinkActorRef),
                 ctypes.POINTER(ZlinkActorRecvInfo),
                 ctypes.POINTER(ZlinkMsg),
                 ctypes.POINTER(ctypes.c_int),
@@ -1092,16 +1049,20 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_actor_send_bound_session_msg",
-            [ctypes.c_void_p, ctypes.POINTER(ZlinkMsg), ctypes.c_uint32],
+            "zlink_spot_node_actor_send_bound_session_msg",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkActorRef),
+                ctypes.POINTER(ZlinkMsg),
+                ctypes.c_uint32,
+            ],
             ctypes.c_int,
         )
         self._require(
-            "zlink_actor_send_bound_session_packet",
+            "zlink_spot_node_actor_close_bound_session",
             [
                 ctypes.c_void_p,
-                ctypes.POINTER(ZlinkMsg),
-                ctypes.POINTER(ZlinkMsg),
+                ctypes.POINTER(ZlinkActorRef),
                 ctypes.c_uint32,
             ],
             ctypes.c_int,

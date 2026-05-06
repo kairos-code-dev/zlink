@@ -98,9 +98,9 @@ public sealed class test_system
         using var timer = new Timer();
         timer.Start(5_000_000, 1);
 
-        ulong fireCount = timer.Recv();
+        ulong? fireCount = timer.Recv();
 
-        Assert.Equal(1UL, fireCount);
+        Assert.Equal(1UL, fireCount.GetValueOrDefault());
     }
 
     [Fact]
@@ -116,9 +116,9 @@ public sealed class test_system
 
         timer.Start(5_000_000, 1);
 
-        ulong fireCount = timer.Recv();
+        ulong? fireCount = timer.Recv();
 
-        Assert.Equal(1UL, fireCount);
+        Assert.Equal(1UL, fireCount.GetValueOrDefault());
     }
 
     [Fact]

@@ -45,37 +45,20 @@ public sealed class SpotNodeOptions
     public SpotNodeMode Mode { get; init; } = SpotNodeMode.All;
 }
 
-public sealed class SpotNodeSocketSnapshotFilter
+public sealed record SpotNodeSocketSnapshotFilter(
+    SpotNodeSocketOwner? Owner = null,
+    SpotNodeSocketType? SocketType = null,
+    string? SocketName = null);
+
+public sealed record SpotNodeSocketSnapshotEntry(
+    SpotNodeSocketOwner Owner,
+    ulong OwnerId,
+    string OwnerName,
+    string SocketName,
+    SpotNodeSocketType SocketType,
+    bool AutoHwmVisible,
+    MonitorSnapshot Snapshot)
 {
-    public SpotNodeSocketOwner? Owner { get; init; }
-    public SpotNodeSocketType? SocketType { get; init; }
-    public string? SocketName { get; init; }
-}
-
-public sealed class SpotNodeSocketSnapshotEntry
-{
-    public SpotNodeSocketSnapshotEntry(SpotNodeSocketOwner owner,
-        ulong ownerId, string ownerName, string socketName,
-        SpotNodeSocketType socketType, bool autoHwmVisible,
-        MonitorSnapshot snapshot)
-    {
-        Owner = owner;
-        OwnerId = ownerId;
-        OwnerName = ownerName;
-        SocketName = socketName;
-        SocketType = socketType;
-        AutoHwmVisible = autoHwmVisible;
-        Snapshot = snapshot;
-    }
-
-    public SpotNodeSocketOwner Owner { get; }
-    public ulong OwnerId { get; }
-    public string OwnerName { get; }
-    public string SocketName { get; }
-    public SpotNodeSocketType SocketType { get; }
-    public bool AutoHwmVisible { get; }
-    public MonitorSnapshot Snapshot { get; }
-
     internal static unsafe SpotNodeSocketSnapshotEntry FromNative(
         ref ZlinkSpotNodeSocketSnapshotEntry native)
     {
@@ -1001,7 +984,6 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     private Action<Spot, SpotDispatchInfo>? _dispatchEventHandler;
     private SynchronizationContext? _sendReadyHandlerContext;
     private SynchronizationContext? _routedReceiveHandlerContext;
-    private SynchronizationContext? _dispatchEventHandlerContext;
     private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
     private NativeMethods.ZlinkSpotRequestHandlerDelegate? _routedReceiveHandlerNative;
     private NativeMethods.ZlinkSpotDispatchEventHandlerDelegate? _dispatchEventHandlerNative;
@@ -1656,7 +1638,6 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
         _dispatchEventHandler = handler;
-        _dispatchEventHandlerContext = SynchronizationContext.Current;
         _dispatchEventHandlerNative = OnNativeDispatchEvent;
         int rc = NativeMethods.zlink_spot_dispatch_event_handler(_handle,
             _dispatchEventHandlerNative, IntPtr.Zero);
@@ -1664,7 +1645,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
     }
 
-    public void DrainChannelReplyFrom(IntPtr dealerSubject)
+    private void DrainChannelReplyFrom(IntPtr dealerSubject)
     {
         EnsureNotDisposed();
         if (dealerSubject == IntPtr.Zero)
@@ -1725,7 +1706,6 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         _dispatchEventHandler = null;
         _sendReadyHandlerContext = null;
         _routedReceiveHandlerContext = null;
-        _dispatchEventHandlerContext = null;
         _sendReadyHandlerNative = null;
         _routedReceiveHandlerNative = null;
         _dispatchEventHandlerNative = null;
@@ -2008,10 +1988,25 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             && info->Subject != IntPtr.Zero
                 ? ActorInterop.DrainActorParts(_node.Handle, info->Subject)
                 : null;
+        Timer? timer = eventKind == SpotDispatchEvent.TimerReadable
+            && subjectKind == SpotDispatchSubjectKind.Timer
+                ? Timer.FromDispatchSubject(info->Subject)
+                : null;
+        IntPtr channelDealerSubject = eventKind
+            == SpotDispatchEvent.ChannelReplyReadable
+            && subjectKind == SpotDispatchSubjectKind.ChannelDealer
+                ? info->Subject
+                : IntPtr.Zero;
         SpotDispatchInfo dispatchInfo = new(eventKind, subjectKind,
-            info->Subject, actorParts);
-        CallbackDelivery.Post(_dispatchEventHandlerContext,
-            () => handler(this, dispatchInfo));
+            timer, channelDealerSubject, DrainChannelReplyFrom, actorParts);
+        try
+        {
+            handler(this, dispatchInfo);
+        }
+        catch (Exception ex)
+        {
+            Runtime.ReportUnhandledCallbackException(ex);
+        }
     }
 
     private static void OnRoutedReply(int result, IntPtr parts, nuint partCount,

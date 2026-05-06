@@ -199,7 +199,9 @@ typedef enum zlink_config_result_t
     ZLINK_CONFIG_INVALID_HANDLE   = 701,  /* EFAULT    — NULL or invalid handle */
     ZLINK_CONFIG_INVALID_ARGUMENT = 702,  /* EINVAL    — invalid parameter */
     ZLINK_CONFIG_NOT_SUPPORTED    = 703,  /* ENOTSUP   — unsupported option */
-    ZLINK_CONFIG_INTERNAL_ERROR   = 704   /* internal errno that has no finer config bucket */
+    ZLINK_CONFIG_INTERNAL_ERROR   = 704,  /* internal errno that has no finer config bucket */
+    ZLINK_CONFIG_INVALID_STATE    = 705,  /* EBUSY/ESHUTDOWN — lifecycle state rejects config */
+    ZLINK_CONFIG_NOT_FOUND        = 706   /* ENOENT    — local lookup target not found */
 } zlink_config_result_t;
 
 #endif

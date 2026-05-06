@@ -63,26 +63,59 @@ with the rules here, this section wins.
 Node exposes Actor dispatch through the package public entrypoint only.
 
 ```typescript
-type ActorRef = { nodeRid: RoutingId; actorId: string; generation: bigint };
+const ActorCreateStatus = Object.freeze({
+    Created: 1,
+    Existing: 2
+});
+type ActorCreateStatus =
+    typeof ActorCreateStatus[keyof typeof ActorCreateStatus];
+
+const ActorAdmissionResult = Object.freeze({
+    Accept: 1,
+    Reject: 2
+});
+type ActorAdmissionResult =
+    typeof ActorAdmissionResult[keyof typeof ActorAdmissionResult];
+
+type ActorRef = {
+    nodeRid: RoutingId;
+    actorId: string;
+    generation: bigint;
+    unchecked: boolean;
+    isUnchecked(): boolean;
+};
 type ActorCreateResult = { status: ActorCreateStatus; actor: ActorRef };
 type ActorRoute = { actor: ActorRef; joined: boolean; joinedSpotRid: RoutingId | null };
-type ActorRecvInfo = { actor: ActorRef; sourceNodeRid: RoutingId | null; sourceSessionRid: RoutingId | null; flags: number };
-type ActorJoinInfo = { actor: ActorRef; sourceNodeRid: RoutingId | null; flags: number };
+type ActorRecvInfo = { actor: ActorRef; sourceNodeRid: RoutingId; sourceSessionRid: RoutingId; flags: number };
+type ActorJoinInfo = {
+    actor: ActorRef;
+    sourceActor: ActorRef;
+    targetActor: ActorRef;
+    sourceNodeRid: RoutingId;
+    sourceSpotRid: RoutingId | null;
+    targetNodeRid: RoutingId | null;
+    targetSpotRid: RoutingId | null;
+    joinEpoch: bigint;
+    flags: number;
+};
 type ActorPart = { info: ActorRecvInfo; message: Message; more: boolean };
 type ActorJoinRequest = { info: ActorJoinInfo; message: Message };
 function remoteActorRef(targetNodeRid: RoutingId, actorId: string): ActorRef;
 ```
 
 `SpotNode` exposes `actor`, `actorLookup`, `remoteActorRef`,
-`createRemoteActor`, `destroyRemoteActor`, `onActorAdmission`, `joinActor`,
+`createRemoteActor`, `destroyActor`, `onActorAdmission`, `joinActor`,
 `leaveActor`, `spotsSnapshot`, and `actorsSnapshot`. `Spot` exposes
 `recvActorJoin`, `replyActorJoin`, and `actorsSnapshot`. `StreamSocket`
-exposes `bindActor`, `unbindActor`, and `sendBoundActor`. `Discovery` exposes
-`resolveActor`.
+exposes `bindActor`, `unbindActor`, and `sendBoundActor`. `Actor` exposes
+`actorRef`, `ref`, `join`, `leave`, `recvPart`, `sendBoundSession`,
+`closeBoundSession`, and `close`. `Discovery` exposes `resolveActor`.
 
 `generation === 0n` is an unchecked remote ref. Actor readable dispatch returns
-preloaded parts through the dispatch info because the native callback crosses
-into the JavaScript event loop.
+preloaded parts through the dispatch info using the callback lifetime ActorRef
+subject. Actor creation places the Actor in the Entry Spot. Joining a user Spot
+requires a bound STREAM session. One Actor binds to only one STREAM session, and
+one STREAM session can bind multiple Actors.
 
 ## Core
 
@@ -540,6 +573,20 @@ class StreamSocket {
     onPacket(handler: StreamPacketHandler): void;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
+    /** @throws {ConfigError} */
+    bindActor(node: SpotNode, sessionRid: RoutingId,
+              actor: ActorRef, timeoutMs?: number): void;
+    /** @throws {ConfigError} */
+    unbindActor(node: SpotNode, sessionRid: RoutingId,
+                actorId: string, timeoutMs?: number): void;
+    /** @throws {SubmitError} */
+    sendBoundActor(node: SpotNode, sessionRid: RoutingId,
+                   actorId: string, message: MessageLike,
+                   flags?: SendFlags): boolean;
+    /** @throws {SubmitError} */
+    sendBoundActor(node: SpotNode, sessionRid: RoutingId,
+                   actorId: string, parts: readonly MessageLike[],
+                   flags?: SendFlags): boolean;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -1162,37 +1209,15 @@ interface MonitorSnapshot {
     readonly autoHwmProfile: number;
     readonly autoHwmRole: number;
     readonly autoHwmPolicyClass: number;
-    readonly autoHwmManagedConnections: number;
-    readonly autoHwmActiveHwmConnections: number;
-    readonly autoHwmObservedCount: number;
-    readonly autoHwmPlanningCount: number;
-    readonly autoHwmContextTotalPlanningCount: number;
-    readonly autoHwmBaseFloorPerConnection: number;
     readonly autoHwmUnitBudgetBytes: bigint;
     readonly autoHwmSizeCap: number;
-    readonly autoHwmEffectivePublishFanout: number;
-    readonly autoHwmAppliedSndHwm: number;
-    readonly autoHwmAppliedRcvHwm: number;
-    readonly autoHwmRequestedSndBuf: number;
-    readonly autoHwmRequestedRcvBuf: number;
-    readonly autoHwmEffectiveSndBuf: number;
-    readonly autoHwmEffectiveRcvBuf: number;
-    readonly autoHwmTotalMemoryBudgetBytes: bigint;
-    readonly autoHwmQueueBudgetBytes: bigint;
-    readonly autoHwmTransportBudgetBytes: bigint;
-    readonly autoHwmRuntimeReserveBytes: bigint;
-    readonly autoHwmSocketQueueShareBytes: bigint;
     readonly autoHwmSocketMessageSlots: bigint;
     readonly autoHwmEffectiveMessageBytes: bigint;
-    readonly autoHwmEstimatedMaxMemoryBytes: bigint;
+    readonly autoHwmAppliedSndHwm: number;
+    readonly autoHwmAppliedRcvHwm: number;
     readonly autoHwmLastRecalcMs: bigint;
     readonly autoHwmLastRecalcReason: number;
     readonly autoHwmSendBlockedRatioPpm: number;
-    readonly autoHwmScope: number;
-    readonly autoHwmScopeCount: number;
-    readonly autoHwmAutoBufferBytes: bigint;
-    readonly autoHwmManualBufferBytes: bigint;
-    readonly autoHwmBufferConnections: number;
     readonly autoHwmDeferredSndHwm: number;
     readonly autoHwmDeferredRcvHwm: number;
     /** Convenience helper — returns true when `stateFlags` has the ready bit set. */
@@ -1304,6 +1329,24 @@ class SpotNode {
     /** @throws {ConfigError} */
     createSpot(): Spot;
     /** @throws {ConfigError} */
+    actor(actorId: string): Actor;
+    /** @throws {ConfigError} */
+    actorLookup(actorId: string): ActorRef;
+    remoteActorRef(targetNodeRid: RoutingId, actorId: string): ActorRef;
+    /** @throws {RequestError} */
+    createRemoteActor(targetNodeRid: RoutingId, actorId: string,
+                      message: MessageLike, timeoutMs?: number): ActorCreateResult;
+    /** @throws {CloseError} */
+    destroyActor(actor: ActorRef, timeoutMs?: number): void;
+    /** @throws {HandlerError} */
+    onActorAdmission(handler: ActorAdmissionHandler): void;
+    /** @throws {SubmitError} */
+    joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId,
+              message: MessageLike, callback: RequestResultCallback,
+              flags?: SendFlags, timeout?: number): boolean;
+    /** @throws {ConfigError} */
+    leaveActor(actor: ActorRef, destSpotRid: RoutingId, timeoutMs?: number): void;
+    /** @throws {ConfigError} */
     statusSnapshot(): SpotNodeStatus;
     /** @throws {ConfigError} */
     peersSnapshot(): SpotNodePeerEntry[];
@@ -1311,6 +1354,11 @@ class SpotNode {
     peersQuery(filter?: SpotNodePeerFilter): SpotNodePeerEntry[];
     /** @throws {ConfigError} */
     subjectsSnapshot(filter?: SpotNodeSubjectFilter): SpotNodeSubjectEntry[];
+    /** @throws {ConfigError} */
+    spotsSnapshot(): SpotNodeSpotEntry[];
+    /** @throws {ConfigError} */
+    actorsSnapshot(): SpotNodeActorEntry[];
+    /** @throws {ConfigError} */
     internalSocketsSnapshot(filter?: SpotNodeSocketSnapshotFilter): SpotNodeSocketSnapshotEntry[];
     /** @throws {ConfigError} */
     // --- identity / routing ---
@@ -1330,6 +1378,34 @@ class SpotNode {
 `SpotNode` owns the lifecycle. `Spot` is created only through
 `SpotNode.createSpot()`. Direct `new Spot(node)` construction is internal
 and is not part of the public API contract.
+
+### Actor
+
+```typescript
+class Actor {
+    readonly actorRef: ActorRef;
+    ref(): ActorRef;
+    /** @throws {SubmitError} */
+    join(spot: Spot, message: MessageLike, callback: RequestResultCallback,
+         flags?: SendFlags, timeout?: number): boolean;
+    /** @throws {ConfigError} */
+    leave(spot: Spot): void;
+    /** @throws {RecvError} */
+    recvPart(flags?: RecvFlags): ActorPart | null;
+    /** @throws {SubmitError} */
+    sendBoundSession(message: MessageLike, flags?: SendFlags): boolean;
+    /** @throws {ConfigError} */
+    closeBoundSession(timeoutMs?: number): void;
+    /** @throws {CloseError} */
+    close(timeoutMs?: number): void;
+}
+```
+
+`Actor` is a ref-centered public object. The public contract does not expose a
+native Actor pointer. An Actor belongs to exactly one Spot at a time. Newly
+created Actors start in the Entry Spot. The application cannot remove the
+Entry Spot. Joining a non-entry Spot requires a STREAM session that was
+successfully bound with `StreamSocket.bindActor(...)`.
 
 ### Spot
 
@@ -1458,6 +1534,13 @@ class Spot {
     onRoutedReceive(handler: SpotRoutedHandler): void;
     /** @throws {HandlerError} */
     onDispatchEvent(handler: SpotDispatchEventHandler): void;
+    /** @throws {RecvError} */
+    recvActorJoin(flags?: RecvFlags): ActorJoinRequest | null;
+    /** @throws {SubmitError} */
+    replyActorJoin(info: ActorJoinInfo, accepted: boolean,
+                   message: MessageLike): boolean;
+    /** @throws {ConfigError} */
+    actorsSnapshot(): ActorRef[];
     /** @throws {ConfigError} */
     drainChannelReplyFrom(subjectHandle: bigint): void;
 
@@ -1598,6 +1681,26 @@ interface SpotNodeSubjectEntry {
     readonly lastChangedMs: bigint;          // uint64 epoch ms
 }
 
+/** SpotNode Spot snapshot entry. */
+interface SpotNodeSpotEntry {
+    readonly spotRid: RoutingId;
+    readonly dispatchHandlerAttached: boolean;
+    readonly joinedActorCount: number;
+    readonly pendingActorJoinCount: number;
+    readonly routeSynced: boolean;
+    readonly lastChangedMs: bigint;
+}
+
+/** SpotNode Actor snapshot entry. */
+interface SpotNodeActorEntry {
+    readonly actor: ActorRef;
+    readonly joined: boolean;
+    readonly joinedSpotRid: RoutingId | null;
+    readonly routeSynced: boolean;
+    readonly pendingMessageCount: number;
+    readonly lastChangedMs: bigint;
+}
+
 /** Filter for Registry service summary snapshot. */
 interface RegistryServiceSummaryFilter {
     readonly serviceKind?: number;
@@ -1735,8 +1838,11 @@ interface SpotDispatchInfo {
   event: number;
   subjectKind: number;
   subjectHandle: bigint;
+  recvActorPart(flags?: RecvFlags): ActorPart | null;
 }
 type SpotDispatchSubjectKind = number;
+type ActorAdmissionHandler =
+    (actorId: string, message: Message) => ActorAdmissionResult;
 type SpotDispatchEventHandler = (info: SpotDispatchInfo) => void;
 type RequestResultCallback = (result: RequestResult, parts: Message[]) => void;
 type TimerHandler = (timer: Timer, fireCount: bigint) => void;

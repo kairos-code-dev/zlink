@@ -36,6 +36,12 @@ fn main() {
     let mut actor = node
         .create_actor("single-player")
         .expect("actor creation failed");
+    let stream = ctx.stream_socket().expect("stream socket failed");
+    let session = zlink::RoutingId::from_bytes(b"single-player-session");
+    let actor_ref = actor.actor_ref().unwrap();
+    stream
+        .bind_actor(&node, &session, &actor_ref, Duration::from_secs(1))
+        .expect("stream actor bind failed");
 
     let (first_tx, first_rx) = mpsc::channel();
     actor
@@ -53,12 +59,6 @@ fn main() {
         .unwrap()
         .unwrap();
 
-    let stream = ctx.stream_socket().expect("stream socket failed");
-    let session = zlink::RoutingId::from_bytes(b"single-player-session");
-    let actor_ref = actor.actor_ref().unwrap();
-    stream
-        .bind_actor(&node, &session, &actor_ref, Duration::from_secs(1))
-        .expect("stream actor bind failed");
     stream
         .send_bound_actor_part(
             &node,

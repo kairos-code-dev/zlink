@@ -14,6 +14,9 @@
 namespace zlink
 {
 
+// Compatibility aggregate for the concrete socket classes. Public class
+// entrypoint headers live under zlink/sockets/*.hpp and include this file.
+
 namespace detail
 {
 
@@ -293,6 +296,11 @@ class pair_socket_t : public message_socket_t
             detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
+    void on_send_ready (std::function<void()> handler_)
+    {
+        base_socket_t::on_send_ready (std::move (handler_));
+    }
+
   private:
     using message_socket_t::recv;
     using message_socket_t::send;
@@ -359,6 +367,11 @@ class dealer_socket_t : public message_socket_t
     {
         if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
             detail::throw_handler_error_from_errno (zlink_errno ());
+    }
+
+    void on_send_ready (std::function<void()> handler_)
+    {
+        base_socket_t::on_send_ready (std::move (handler_));
     }
 
     async_result_t<std::vector<message_t>> request (message_t &part_,
@@ -565,6 +578,11 @@ class router_socket_t : public routed_message_socket_t
     {
         if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
             detail::throw_handler_error_from_errno (zlink_errno ());
+    }
+
+    void on_send_ready (std::function<void()> handler_)
+    {
+        base_socket_t::on_send_ready (std::move (handler_));
     }
 
     async_result_t<std::vector<message_t>> request (const routing_id_t &routing_id_,
@@ -966,16 +984,34 @@ class stream_socket_t : public routed_message_socket_t
             detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
+    void on_receive (std::function<void(received_t)> handler_)
+    {
+        _receive_handler = std::move (handler_);
+        on_receive (&stream_socket_t::receive_trampoline, this);
+    }
+
     void on_packet (zlink_stream_packet_handler_fn handler_, void *userdata_ = NULL)
     {
         if (base_socket_t::on_packet (handler_, userdata_) != 0)
             detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
+    void on_packet (
+      std::function<void(const routing_id_t &, message_t, message_t)> handler_)
+    {
+        _packet_handler = std::move (handler_);
+        on_packet (&stream_socket_t::packet_trampoline, this);
+    }
+
     void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
     {
         if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
             detail::throw_handler_error_from_errno (zlink_errno ());
+    }
+
+    void on_send_ready (std::function<void()> handler_)
+    {
+        base_socket_t::on_send_ready (std::move (handler_));
     }
 
     void set_routing_id (const routing_id_t &routing_id_)
@@ -1054,6 +1090,42 @@ class stream_socket_t : public routed_message_socket_t
     }
 
   private:
+    static void receive_trampoline (const zlink_routing_id_t *source_rid_,
+                                    zlink_msg_t *parts_,
+                                    size_t part_count_,
+                                    void *userdata_)
+    {
+        stream_socket_t *self = static_cast<stream_socket_t *> (userdata_);
+        if (!self || !self->_receive_handler)
+            return;
+        self->_receive_handler (
+          detail::make_received (
+            source_rid_, NULL, 0, false, parts_, part_count_));
+    }
+
+    static void packet_trampoline (void *,
+                                   const zlink_routing_id_t *source_rid_,
+                                   zlink_msg_t *header_,
+                                   zlink_msg_t *body_,
+                                   void *userdata_)
+    {
+        stream_socket_t *self = static_cast<stream_socket_t *> (userdata_);
+        if (!self || !self->_packet_handler)
+            return;
+        routing_id_t source;
+        if (source_rid_ && source_rid_->size > 0)
+            source = routing_id_t (*source_rid_);
+        message_t header;
+        message_t body;
+        (void) zlink_msg_move (header.handle (), header_);
+        (void) zlink_msg_move (body.handle (), body_);
+        self->_packet_handler (
+          source, std::move (header), std::move (body));
+    }
+
+    std::function<void(received_t)> _receive_handler;
+    std::function<void(const routing_id_t &, message_t, message_t)>
+      _packet_handler;
     using routed_message_socket_t::recv;
     using routed_message_socket_t::send;
     using base_socket_t::connect;
@@ -1104,6 +1176,11 @@ class pub_socket_t : public publisher_socket_t
     {
         if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
             detail::throw_handler_error_from_errno (zlink_errno ());
+    }
+
+    void on_send_ready (std::function<void()> handler_)
+    {
+        base_socket_t::on_send_ready (std::move (handler_));
     }
 
     template<typename DiscoveryT>
@@ -1169,7 +1246,12 @@ class xpub_socket_t : public publisher_socket_t
             detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
-    subscription_event_t receive_subscription_event (
+    void on_send_ready (std::function<void()> handler_)
+    {
+        base_socket_t::on_send_ready (std::move (handler_));
+    }
+
+    std::optional<subscription_event_t> receive_subscription_event (
       recv_flags_t flags_ = recv_flags_t::none)
     {
         subscription_event_t event;
@@ -1198,9 +1280,12 @@ class xpub_socket_t : public publisher_socket_t
             event.topic.assign (topic_buffer.data (), topic_size);
         }
 
-        if (static_cast<recv_result_t> (rc) != recv_result_t::ok)
-            throw recv_error_t (static_cast<recv_result_t> (rc), zlink_errno ());
-        return event;
+        const recv_result_t result = static_cast<recv_result_t> (rc);
+        if (result == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
+            return std::nullopt;
+        if (result != recv_result_t::ok)
+            throw recv_error_t (result, zlink_errno ());
+        return std::optional<subscription_event_t> (std::move (event));
     }
 
     pub_socket_options_t pub_options ()
@@ -1238,6 +1323,13 @@ class sub_socket_t : public subscriber_socket_t
     {
         if (base_socket_t::subscription_at (index_, filter_out_, is_pattern_out_) != 0)
             detail::throw_config_error_from_errno (zlink_errno ());
+    }
+
+    subscription_filter_t subscription_at (size_t index_)
+    {
+        subscription_filter_t filter;
+        subscription_at (index_, filter.filter, &filter.is_pattern);
+        return filter;
     }
 
     std::optional<topic_message_t> subscribe (recv_flags_t flags_ = recv_flags_t::none)
@@ -1296,6 +1388,13 @@ class xsub_socket_t : public subscriber_socket_t
     {
         if (base_socket_t::subscription_at (index_, filter_out_, is_pattern_out_) != 0)
             detail::throw_config_error_from_errno (zlink_errno ());
+    }
+
+    subscription_filter_t subscription_at (size_t index_)
+    {
+        subscription_filter_t filter;
+        subscription_at (index_, filter.filter, &filter.is_pattern);
+        return filter;
     }
 
     std::optional<topic_message_t> subscribe (recv_flags_t flags_ = recv_flags_t::none)

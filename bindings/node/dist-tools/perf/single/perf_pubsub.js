@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
-const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, spawnSenderWorker, waitForPostReadySettle, waitForConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
+const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, spawnSenderWorker, waitForPostReadySettle, waitForConnectionReady, waitForWorkerDone, waitForWorkerError, waitForWorkerMessage, } = require('./perf_single_common');
 function trace(message) {
     if (process.env.PERF_NODE_TRACE === '1') {
         console.error(`[pubsub] ${message}`);
@@ -37,7 +37,7 @@ async function runPubSubBenchmark(msgSize, options) {
                 noDrop: Number(process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP ?? 0) !== 0
             },
         });
-        const workerError = waitForWorkerMessage(worker, 'error');
+        const workerError = waitForWorkerError(worker);
         trace('waiting for worker bound');
         await Promise.race([
             waitForWorkerMessage(worker, 'bound'),
@@ -70,7 +70,7 @@ async function runPubSubBenchmark(msgSize, options) {
         trace('starting worker');
         worker.postMessage({ type: 'start' });
         await Promise.race([
-            waitForWorkerMessage(worker, 'done'),
+            waitForWorkerDone(worker, options.duration),
             workerError.then((message) => Promise.reject(new Error(message.message)))
         ]);
         trace('worker done');

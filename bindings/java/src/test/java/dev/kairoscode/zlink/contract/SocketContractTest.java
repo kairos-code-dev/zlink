@@ -311,7 +311,9 @@ public class SocketContractTest {
             dev.kairoscode.zlink.SpotRoutedHandler.class));
         assertTrue(hasPublicMethod(Spot.class, "onDispatchEvent",
             dev.kairoscode.zlink.SpotDispatchEventHandler.class));
-        assertTrue(hasPublicMethod(Spot.class, "drainChannelReplyFrom",
+        assertTrue(hasPublicMethod(Spot.class, "drainChannelReply",
+            dev.kairoscode.zlink.SpotDispatchInfo.class));
+        assertFalse(hasPublicMethod(Spot.class, "drainChannelReplyFrom",
             MemorySegment.class));
         assertTrue(hasPublicMethod(Spot.class, "setRoutingId",
             RoutingId.class));
@@ -344,12 +346,12 @@ public class SocketContractTest {
         assertFalse(isPublicClass("dev.kairoscode.zlink.ErrorCode"));
         assertFalse(isPublicClass("dev.kairoscode.zlink.RequestReplyCallback"));
         assertFalse(isPublicClass("dev.kairoscode.zlink.SocketPollSet"));
-        assertFalse(isPublicClass("dev.kairoscode.zlink.DisconnectReason"));
-        assertFalse(isPublicClass("dev.kairoscode.zlink.ProtocolError"));
+        assertTrue(isPublicClass("dev.kairoscode.zlink.DisconnectReason"));
+        assertTrue(isPublicClass("dev.kairoscode.zlink.ProtocolError"));
         assertFalse(isPublicClass("dev.kairoscode.zlink.StreamDispatchMode"));
         assertFalse(isPublicClass("dev.kairoscode.zlink.SubscriptionEntry"));
         assertFalse(isPublicClass("dev.kairoscode.zlink.ZlinkVersion"));
-        assertFalse(isPublicClass("dev.kairoscode.zlink.SocketType"));
+        assertTrue(isPublicClass("dev.kairoscode.zlink.SocketType"));
         assertFalse(hasPublicMethod(dev.kairoscode.zlink.MonitorSocket.class,
             "recv", RecvFlags.class));
     }

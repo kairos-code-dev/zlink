@@ -344,7 +344,7 @@ final class SpotRoutedSupport implements AutoCloseable {
         }
     }
 
-    private static SpotDispatchInfo decodeDispatchInfo(MemorySegment info) {
+    private SpotDispatchInfo decodeDispatchInfo(MemorySegment info) {
         if (info == null || info.address() == 0) {
             throw new IllegalArgumentException("dispatch info must not be null");
         }
@@ -359,13 +359,23 @@ final class SpotRoutedSupport implements AutoCloseable {
         if (event == SpotDispatchEvent.ACTOR_READABLE
             && subjectKind == SpotDispatchSubjectKind.ACTOR
             && subject != null && subject.address() != 0) {
-            return new SpotDispatchInfo(event, subjectKind, subject,
-              drainActorParts(subject), new java.util.concurrent.atomic.AtomicInteger());
+            return InternalAccess.spotDispatchInfo(event, subjectKind, subject,
+              drainActorParts(subject));
         }
-        return new SpotDispatchInfo(event, subjectKind, subject);
+        if (event == SpotDispatchEvent.TIMER_READABLE
+            && subjectKind == SpotDispatchSubjectKind.TIMER
+            && subject != null && subject.address() != 0) {
+            return InternalAccess.spotDispatchInfo(event, subjectKind, subject,
+              InternalAccess.timerFromBorrowedHandle(subject), null, List.of());
+        }
+        return InternalAccess.spotDispatchInfo(event, subjectKind, subject);
     }
 
-    private static List<ActorPart> drainActorParts(MemorySegment actor) {
+    private List<ActorPart> drainActorParts(MemorySegment actor) {
+        MemorySegment node = spot.ownerNodeHandleInternal();
+        if (node == null || node.address() == 0) {
+            return List.of();
+        }
         ArrayList<ActorPart> parts = new ArrayList<>();
         try (Arena arena = Arena.ofConfined()) {
             while (true) {
@@ -375,7 +385,7 @@ final class SpotRoutedSupport implements AutoCloseable {
                 Message message = new Message();
                 boolean success = false;
                 try {
-                    int rc = Native.actorRecvPart(actor, infoOut,
+                    int rc = Native.spotNodeActorRecvPart(node, actor, infoOut,
                       InternalAccess.messageNativeHandle(message), hasMoreOut,
                       RecvFlags.DONT_WAIT.value());
                     if (rc != 0) {

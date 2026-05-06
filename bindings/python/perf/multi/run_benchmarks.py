@@ -1,9 +1,11 @@
 import argparse
 import os
+import queue
 import signal
 import statistics
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -336,11 +338,34 @@ def _status_kind(output):
     return "fail"
 
 
+def _stdout_queue(proc):
+    existing = getattr(proc, "_zlink_stdout_queue", None)
+    if existing is not None:
+        return existing
+    lines = queue.Queue()
+
+    def read_stdout():
+        try:
+            for line in proc.stdout:
+                lines.put(line)
+        finally:
+            lines.put(None)
+
+    threading.Thread(target=read_stdout, daemon=True).start()
+    proc._zlink_stdout_queue = lines
+    return lines
+
+
 def _wait_for_control_line(proc, prefixes, *, timeout_s, stdout_chunks):
     deadline = time.perf_counter() + timeout_s
     prefix_tuple = tuple(prefixes)
+    lines = _stdout_queue(proc)
     while time.perf_counter() < deadline:
-        line = proc.stdout.readline()
+        remaining = max(0.0, deadline - time.perf_counter())
+        try:
+            line = lines.get(timeout=remaining)
+        except queue.Empty:
+            break
         if not line:
             break
         text = line.strip()
@@ -351,6 +376,22 @@ def _wait_for_control_line(proc, prefixes, *, timeout_s, stdout_chunks):
             return text
     wanted = ", ".join(prefixes)
     raise SystemExit(f"missing control line: {wanted}")
+
+
+def _drain_stdout_queue(proc, stdout_chunks):
+    lines = getattr(proc, "_zlink_stdout_queue", None)
+    if lines is None:
+        return
+    while True:
+        try:
+            line = lines.get_nowait()
+        except queue.Empty:
+            return
+        if not line:
+            return
+        text = line.strip()
+        if text:
+            stdout_chunks.append(text)
 
 
 def _terminate_process(proc, *, grace_seconds):
@@ -528,16 +569,20 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             server.stdin.flush()
             client.stdin.write(f"START,{msg_size}\n")
             client.stdin.flush()
-            client_stdout, client_stderr = client.communicate(timeout=client_timeout_s)
-            if client_stdout:
-                stdout_chunks.append(client_stdout.strip())
+            try:
+                client.wait(timeout=client_timeout_s)
+            except subprocess.TimeoutExpired as exc:
+                _drain_stdout_queue(client, stdout_chunks)
+                raise exc
+            _drain_stdout_queue(client, stdout_chunks)
+            client_stderr = client.stderr.read() if client.stderr else ""
             if client_stderr:
                 stderr_chunks.append(client_stderr.strip())
             if client.returncode != 0:
                 raise subprocess.CalledProcessError(
                     client.returncode,
                     client.args,
-                    output=client_stdout,
+                    output="\n".join(stdout_chunks),
                     stderr=client_stderr,
                 )
             return "\n".join(chunk for chunk in stdout_chunks if chunk)
@@ -582,13 +627,22 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             if pattern == "PUBSUB":
                 client.stdin.write(f"PHASE_ACTIVE,{msg_size}\n")
             client.stdin.flush()
-            client_stdout, client_stderr = client.communicate(timeout=client_timeout_s)
-            if client_stdout:
-                stdout_chunks.append(client_stdout.strip())
+            try:
+                client.wait(timeout=client_timeout_s)
+            except subprocess.TimeoutExpired as exc:
+                _drain_stdout_queue(client, stdout_chunks)
+                raise exc
+            _drain_stdout_queue(client, stdout_chunks)
+            client_stderr = client.stderr.read() if client.stderr else ""
             if client_stderr:
                 stderr_chunks.append(client_stderr.strip())
             if client.returncode != 0:
-                raise subprocess.CalledProcessError(client.returncode, client.args, output=client_stdout, stderr=client_stderr)
+                raise subprocess.CalledProcessError(
+                    client.returncode,
+                    client.args,
+                    output="\n".join(stdout_chunks),
+                    stderr=client_stderr,
+                )
         else:
             client_run = subprocess.run(
                 [

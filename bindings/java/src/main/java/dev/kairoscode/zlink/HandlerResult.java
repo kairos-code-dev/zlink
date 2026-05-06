@@ -8,7 +8,8 @@ public enum HandlerResult {
     BUSY(302),
     NOT_SUPPORTED(303),
     DEADLOCK(304),
-    INVALID_HANDLE(305);
+    INVALID_HANDLE(305),
+    INTERNAL_ERROR(306);
 
     private final int value;
 

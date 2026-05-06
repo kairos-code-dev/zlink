@@ -82,7 +82,7 @@ fn socket_monitor_snapshot() {
     let _ = snap.auto_hwm_policy_class;
     let _ = snap.auto_hwm_unit_budget_bytes;
     let _ = snap.auto_hwm_size_cap;
-    let _ = snap.auto_hwm_effective_publish_fanout;
+    let _ = snap.auto_hwm_socket_message_slots;
 }
 
 #[test]

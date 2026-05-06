@@ -115,7 +115,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(typeof spotNode.actorLookup, 'function');
     assert.equal(typeof spotNode.remoteActorRef, 'function');
     assert.equal(typeof spotNode.createRemoteActor, 'function');
-    assert.equal(typeof spotNode.destroyRemoteActor, 'function');
+    assert.equal(typeof spotNode.destroyActor, 'function');
     assert.equal(typeof spotNode.onActorAdmission, 'function');
     assert.equal(typeof spotNode.joinActor, 'function');
     assert.equal(typeof spotNode.leaveActor, 'function');
@@ -132,7 +132,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(typeof actor.leave, 'function');
     assert.equal(typeof actor.recvPart, 'function');
     assert.equal(typeof actor.sendBoundSession, 'function');
-    assert.equal(typeof actor.sendBoundSessionPacket, 'function');
+    assert.equal(typeof actor.closeBoundSession, 'function');
     const spot = spotNode.createSpot();
     assert.equal(typeof spot.publish, 'function');
     assert.equal(typeof spot.sendChannel, 'function');

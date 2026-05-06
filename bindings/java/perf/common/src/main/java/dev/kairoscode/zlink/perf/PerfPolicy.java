@@ -32,10 +32,17 @@ final class PerfPolicy {
     }
 
     private static String sanitizeReason(Throwable failure) {
-        String message = failure == null ? null : failure.getMessage();
+        Throwable selected = failure;
+        String message = null;
+        for (Throwable current = failure; current != null; current = current.getCause()) {
+            if (current.getMessage() != null && !current.getMessage().isBlank()) {
+                selected = current;
+                message = current.getMessage();
+            }
+        }
         if (message == null || message.isBlank()) {
-            return failure == null ? "unknown_error"
-                : failure.getClass().getSimpleName().toLowerCase(Locale.ROOT);
+            return selected == null ? "unknown_error"
+                : selected.getClass().getSimpleName().toLowerCase(Locale.ROOT);
         }
         return message.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_")
             .replaceAll("^_+|_+$", "");

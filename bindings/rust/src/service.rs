@@ -997,6 +997,20 @@ impl ActorRef {
     }
 }
 
+fn routing_id_option(raw: ffi::zlink_routing_id_t) -> Option<RoutingId> {
+    if raw.size == 0 {
+        None
+    } else {
+        Some(RoutingId::from_raw(raw))
+    }
+}
+
+fn routing_id_from_handle(handle: *mut c_void) -> Result<RoutingId, ConfigError> {
+    let mut raw = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
+    check_config_rc(unsafe { ffi::zlink_get_routing_id(handle, raw.as_mut_ptr()) })?;
+    Ok(RoutingId::from_raw(unsafe { raw.assume_init() }))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActorCreateStatus {
     Created,
@@ -1081,16 +1095,30 @@ impl ActorRecvInfo {
 #[derive(Debug, Clone)]
 pub struct ActorJoinInfo {
     pub actor: ActorRef,
+    pub source_actor: ActorRef,
+    pub target_actor: ActorRef,
     pub source_node_rid: RoutingId,
+    pub source_spot_rid: Option<RoutingId>,
+    pub target_node_rid: Option<RoutingId>,
+    pub target_spot_rid: Option<RoutingId>,
+    pub join_epoch: u64,
     pub flags: u32,
     raw: ffi::zlink_actor_join_info_t,
 }
 
 impl ActorJoinInfo {
     fn from_raw(raw: ffi::zlink_actor_join_info_t) -> Self {
+        let source_actor = ActorRef::from_raw(&raw.source_actor);
+        let target_actor = ActorRef::from_raw(&raw.target_actor);
         Self {
-            actor: ActorRef::from_raw(&raw.actor),
+            actor: source_actor.clone(),
+            source_actor,
+            target_actor,
             source_node_rid: RoutingId::from_raw(raw.source_node_rid),
+            source_spot_rid: routing_id_option(raw.source_spot_rid),
+            target_node_rid: routing_id_option(raw.target_node_rid),
+            target_spot_rid: routing_id_option(raw.target_spot_rid),
+            join_epoch: raw.join_epoch,
             flags: raw.flags,
             raw,
         }
@@ -1143,9 +1171,10 @@ impl SpotNodeActorEntry {
     }
 }
 
-/// Owned local Actor handle.
+/// Owned local Actor facade.
 pub struct Actor {
-    handle: *mut c_void,
+    node_handle: *mut c_void,
+    actor_ref: Option<ActorRef>,
 }
 
 unsafe impl Send for Actor {}
@@ -1339,14 +1368,14 @@ impl SpotNode {
 
     pub fn create_actor(&self, actor_id: &str) -> Result<Actor, ConfigError> {
         let c_actor_id = fixed_cstring_config(actor_id, "actor_id")?;
-        let handle = unsafe { ffi::zlink_spot_node_actor_new(self.handle, c_actor_id.as_ptr()) };
-        if handle.is_null() {
-            return Err(ConfigError::new(
-                crate::error::ConfigResult::InvalidArgument,
-                last_errno(),
-            ));
-        }
-        Ok(Actor { handle })
+        let mut raw = MaybeUninit::<ffi::zlink_actor_ref_t>::zeroed();
+        check_config_rc(unsafe {
+            ffi::zlink_spot_node_actor_new(self.handle, c_actor_id.as_ptr(), raw.as_mut_ptr())
+        })?;
+        Ok(Actor {
+            node_handle: self.handle,
+            actor_ref: Some(ActorRef::from_raw(&unsafe { raw.assume_init() })),
+        })
     }
 
     pub fn actor_lookup(&self, actor_id: &str) -> Result<ActorRef, ConfigError> {
@@ -1408,11 +1437,7 @@ impl SpotNode {
         Ok(ActorCreateResult::from_raw(&unsafe { out.assume_init() }))
     }
 
-    pub fn destroy_remote_actor(
-        &self,
-        actor: &ActorRef,
-        timeout: Duration,
-    ) -> Result<(), RequestError> {
+    pub fn destroy_actor(&self, actor: &ActorRef, timeout: Duration) -> Result<(), RequestError> {
         let raw = actor.to_raw().map_err(|err| {
             RequestError::new(
                 crate::error::RequestResult::InvalidArgument,
@@ -1420,11 +1445,7 @@ impl SpotNode {
             )
         })?;
         check_request_result(unsafe {
-            ffi::zlink_spot_node_destroy_remote_actor(
-                self.handle,
-                &raw,
-                timeout_to_timeout_ms(timeout),
-            )
+            ffi::zlink_spot_node_actor_destroy(self.handle, &raw, timeout_to_timeout_ms(timeout))
         })
     }
 
@@ -1451,6 +1472,7 @@ impl SpotNode {
     pub fn join_actor_callback<F>(
         &self,
         actor: &ActorRef,
+        dest_node_rid: &RoutingId,
         dest_spot_rid: &RoutingId,
         mut message: Message,
         callback: F,
@@ -1472,6 +1494,7 @@ impl SpotNode {
             ffi::zlink_spot_node_actor_join_spot(
                 self.handle,
                 &raw_actor,
+                dest_node_rid.as_raw(),
                 dest_spot_rid.as_raw(),
                 &mut native,
                 Some(spot_reply_callback),
@@ -1670,21 +1693,28 @@ impl Drop for SpotNode {
 
 impl Actor {
     pub fn actor_ref(&self) -> Result<ActorRef, ConfigError> {
-        let mut raw = MaybeUninit::<ffi::zlink_actor_ref_t>::zeroed();
-        check_config_rc(unsafe { ffi::zlink_actor_get_ref(self.handle, raw.as_mut_ptr()) })?;
-        Ok(ActorRef::from_raw(&unsafe { raw.assume_init() }))
+        self.actor_ref.as_ref().cloned().ok_or_else(|| {
+            ConfigError::new(crate::error::ConfigResult::InvalidHandle, libc::EINVAL)
+        })
     }
 
     pub fn close_with_timeout(&mut self, timeout: Duration) -> Result<(), RequestError> {
-        if self.handle.is_null() {
+        let Some(actor_ref) = self.actor_ref.take() else {
             return Ok(());
-        }
-        let mut handle = self.handle;
-        check_request_result(unsafe {
-            ffi::zlink_actor_destroy(&mut handle, timeout_to_timeout_ms(timeout))
+        };
+        let raw = actor_ref.to_raw().map_err(|err| {
+            RequestError::new(
+                crate::error::RequestResult::InvalidArgument,
+                err.internal_errno(),
+            )
         })?;
-        self.handle = ptr::null_mut();
-        Ok(())
+        check_request_result(unsafe {
+            ffi::zlink_spot_node_actor_destroy(
+                self.node_handle,
+                &raw,
+                timeout_to_timeout_ms(timeout),
+            )
+        })
     }
 
     pub fn close(&mut self) -> Result<(), RequestError> {
@@ -1702,15 +1732,27 @@ impl Actor {
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
+        let raw_actor = self
+            .actor_ref()
+            .map_err(crate::error::submit_error_from_config)?
+            .to_raw()
+            .map_err(crate::error::submit_error_from_config)?;
+        let dest_node_rid = routing_id_from_handle(spot.node_handle)
+            .map_err(crate::error::submit_error_from_config)?;
+        let dest_spot_rid = spot
+            .routing_id()
+            .map_err(crate::error::submit_error_from_config)?;
         let mut native = take_message_raw(&mut message);
         let state_ptr = Box::into_raw(Box::new(SpotReplyCallbackState {
             callback: Some(Box::new(callback)),
             _progress: Some(RequestProgressGuard::attach_spot(spot.handle)),
         }));
         let rc = unsafe {
-            ffi::zlink_actor_join_spot(
-                self.handle,
-                spot.handle,
+            ffi::zlink_spot_node_actor_join_spot(
+                self.node_handle,
+                &raw_actor,
+                dest_node_rid.as_raw(),
+                dest_spot_rid.as_raw(),
                 &mut native,
                 Some(spot_reply_callback),
                 state_ptr.cast(),
@@ -1730,14 +1772,30 @@ impl Actor {
     }
 
     pub fn leave(&self, spot: &Spot) -> Result<(), ConfigError> {
-        check_config_rc(unsafe { ffi::zlink_actor_leave_spot(self.handle, spot.handle) })
+        let raw_actor = self.actor_ref()?.to_raw()?;
+        let dest_spot_rid = spot.routing_id()?;
+        let result = unsafe {
+            ffi::zlink_spot_node_actor_leave_spot(
+                self.node_handle,
+                &raw_actor,
+                dest_spot_rid.as_raw(),
+                0,
+            )
+        };
+        check_request_result(result).map_err(|err| {
+            ConfigError::new(
+                crate::error::ConfigResult::InvalidArgument,
+                err.internal_errno(),
+            )
+        })
     }
 
     pub fn recv_part_with_flags(
         &self,
         flags: RecvFlags,
     ) -> Result<Option<(ActorRecvInfo, Message, bool)>, RecvError> {
-        recv_actor_part_from_handle(self.handle, flags)
+        let actor_ref = self.actor_ref().map_err(recv_error_from_config)?;
+        recv_actor_part_from_ref(self.node_handle, &actor_ref, flags)
     }
 
     pub fn recv_part(&self) -> Result<(ActorRecvInfo, Message, bool), RecvError> {
@@ -1750,9 +1808,19 @@ impl Actor {
         mut message: Message,
         flags: SendFlags,
     ) -> Result<(), SubmitError> {
+        let raw_actor = self
+            .actor_ref()
+            .map_err(crate::error::submit_error_from_config)?
+            .to_raw()
+            .map_err(crate::error::submit_error_from_config)?;
         let mut native = take_message_raw(&mut message);
         let rc = unsafe {
-            ffi::zlink_actor_send_bound_session_msg(self.handle, &mut native, flags.bits())
+            ffi::zlink_spot_node_actor_send_bound_session_msg(
+                self.node_handle,
+                &raw_actor,
+                &mut native,
+                flags.bits(),
+            )
         };
         if rc != 0 {
             unsafe {
@@ -1762,29 +1830,29 @@ impl Actor {
         check_submit_rc(rc)
     }
 
-    pub fn send_bound_session_packet(
-        &self,
-        mut header: Message,
-        mut body: Message,
-        flags: SendFlags,
-    ) -> Result<(), SubmitError> {
-        let mut native_header = take_message_raw(&mut header);
-        let mut native_body = take_message_raw(&mut body);
-        let rc = unsafe {
-            ffi::zlink_actor_send_bound_session_packet(
-                self.handle,
-                &mut native_header,
-                &mut native_body,
-                flags.bits(),
+    pub fn close_bound_session(&self, timeout: Duration) -> Result<(), RequestError> {
+        let raw_actor = self
+            .actor_ref()
+            .map_err(|err| {
+                RequestError::new(
+                    crate::error::RequestResult::InvalidArgument,
+                    err.internal_errno(),
+                )
+            })?
+            .to_raw()
+            .map_err(|err| {
+                RequestError::new(
+                    crate::error::RequestResult::InvalidArgument,
+                    err.internal_errno(),
+                )
+            })?;
+        check_request_result(unsafe {
+            ffi::zlink_spot_node_actor_close_bound_session(
+                self.node_handle,
+                &raw_actor,
+                timeout_to_timeout_ms(timeout),
             )
-        };
-        if rc != 0 {
-            unsafe {
-                ffi::zlink_msg_close(&mut native_header);
-                ffi::zlink_msg_close(&mut native_body);
-            }
-        }
-        check_submit_rc(rc)
+        })
     }
 }
 
@@ -1804,6 +1872,7 @@ impl Drop for Actor {
 /// exposes the canonical data-plane API (publish, subscribe, etc.).
 pub struct Spot {
     handle: *mut c_void,
+    node_handle: *mut c_void,
     send_ready_cb: Option<CallbackBox>,
     routed_cb: Option<CallbackBox>,
     dispatch_cb: Option<CallbackBox>,
@@ -1822,6 +1891,7 @@ impl Spot {
         }
         Ok(Self {
             handle,
+            node_handle: node.raw(),
             send_ready_cb: None,
             routed_cb: None,
             dispatch_cb: None,
@@ -2318,7 +2388,7 @@ impl Spot {
     where
         F: Fn(SpotDispatchInfo) + Send + 'static,
     {
-        let (cb, userdata) = CallbackBox::new(handler);
+        let (cb, userdata) = CallbackBox::new((self.node_handle, handler));
         let rc = unsafe {
             ffi::zlink_spot_dispatch_event_handler(
                 self.handle,
@@ -2387,11 +2457,13 @@ pub enum SpotDispatchSubjectKind {
     Actor,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpotDispatchInfo {
     pub event: SpotDispatchEvent,
     pub subject_kind: SpotDispatchSubjectKind,
     pub subject: *mut c_void,
+    pub actor: Option<ActorRef>,
+    node_handle: *mut c_void,
 }
 
 impl SpotDispatchInfo {
@@ -2404,7 +2476,11 @@ impl SpotDispatchInfo {
         {
             return Err(RecvError::new(RecvResult::NotSupported, libc::ENOTSUP));
         }
-        recv_actor_part_from_handle(self.subject, flags)
+        let actor = self
+            .actor
+            .as_ref()
+            .ok_or_else(|| RecvError::new(RecvResult::InvalidHandle, libc::EFAULT))?;
+        recv_actor_part_from_ref(self.node_handle, actor, flags)
     }
 }
 
@@ -2510,16 +2586,23 @@ pub(crate) fn check_request_result(raw: ffi::zlink_request_result_t) -> Result<(
     }
 }
 
-fn recv_actor_part_from_handle(
-    actor: *mut c_void,
+fn recv_error_from_config(err: ConfigError) -> RecvError {
+    RecvError::new(RecvResult::InvalidHandle, err.internal_errno())
+}
+
+fn recv_actor_part_from_ref(
+    node: *mut c_void,
+    actor: &ActorRef,
     flags: RecvFlags,
 ) -> Result<Option<(ActorRecvInfo, Message, bool)>, RecvError> {
+    let raw_actor = actor.to_raw().map_err(recv_error_from_config)?;
     let mut raw_info = MaybeUninit::<ffi::zlink_actor_recv_info_t>::zeroed();
     let mut raw_part = MaybeUninit::<ffi::zlink_msg_t>::uninit();
     let mut has_more = ffi::zlink_part_flag_t::ZLINK_PART_FINAL;
     let rc = unsafe {
-        ffi::zlink_actor_recv_part(
-            actor,
+        ffi::zlink_spot_node_actor_recv_part(
+            node,
+            &raw_actor,
             raw_info.as_mut_ptr(),
             raw_part.as_mut_ptr(),
             &mut has_more,
@@ -2777,12 +2860,31 @@ unsafe extern "C" fn spot_dispatch_trampoline<F: Fn(SpotDispatchInfo) + Send + '
     info: *const ffi::zlink_spot_dispatch_info_t,
     userdata: *mut c_void,
 ) {
-    let handler = unsafe { &*(userdata as *const F) };
+    let state = unsafe { &*(userdata as *const (*mut c_void, F)) };
     let info = unsafe { &*info };
-    handler(SpotDispatchInfo {
-        event: SpotDispatchEvent::from_raw(info.event),
-        subject_kind: SpotDispatchSubjectKind::from_raw(info.subject_kind),
-        subject: info.subject,
+    let event = SpotDispatchEvent::from_raw(info.event);
+    let subject_kind = SpotDispatchSubjectKind::from_raw(info.subject_kind);
+    let actor = if event == SpotDispatchEvent::ActorReadable
+        && subject_kind == SpotDispatchSubjectKind::Actor
+        && !info.subject.is_null()
+    {
+        Some(ActorRef::from_raw(unsafe {
+            &*(info.subject as *const ffi::zlink_actor_ref_t)
+        }))
+    } else {
+        None
+    };
+    let subject = if actor.is_some() {
+        ptr::null_mut()
+    } else {
+        info.subject
+    };
+    (state.1)(SpotDispatchInfo {
+        event,
+        subject_kind,
+        subject,
+        actor,
+        node_handle: state.0,
     });
 }
 

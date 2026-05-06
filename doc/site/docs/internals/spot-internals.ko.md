@@ -109,14 +109,14 @@ flowchart LR
     remote_topic --> peer_ctrl_sub
 ```
 
-| 소켓 | 타입 | 역할 | HWM 옵션 축 |
-|------|------|------|-------------|
-| `ingress-sub` | `SUB` | local publish 입력 수신 | `ZLINK_SPOT_NODE_OPT_SUB_HWM` |
-| `local-pub` | `PUB` | 같은 node 안의 subscriber로 fanout | `ZLINK_SPOT_NODE_OPT_PUB_HWM` |
-| `mesh-pub` | `PUB` | remote node로 topic publish 전파 | `ZLINK_SPOT_NODE_OPT_PUB_HWM` |
-| `mesh-xsub` | `XSUB` | remote node에서 topic publish 수신 | `ZLINK_SPOT_NODE_OPT_SUB_HWM` |
-| `internal-router` | `ROUTER` | 같은 node 안의 target `Spot`으로 routed 전달 | routed send/recv HWM |
-| `external-router` | `ROUTER` | peer node와 routed frame 송수신 | routed send/recv HWM |
+| 소켓 | 타입 | 역할 | HWM 정책 |
+|------|------|------|----------|
+| `ingress-sub` | `SUB` | local publish 입력 수신 | pubsub admission RCVHWM |
+| `local-pub` | `PUB` | 같은 node 안의 subscriber로 fanout | relay SNDHWM 0 |
+| `mesh-pub` | `PUB` | remote node로 topic publish 전파 | relay SNDHWM 0 |
+| `mesh-xsub` | `XSUB` | remote node에서 topic publish 수신 | relay RCVHWM 0 |
+| `internal-router` | `ROUTER` | 같은 node 안의 target `Spot`으로 routed 전달 | router admission RCVHWM, delivery SNDHWM 0 |
+| `external-router` | `ROUTER` | peer node와 routed frame 송수신 | relay HWM 0 |
 | `peer_ctrl_pub` | `PUB` | peer control 송신 | control 기본값 |
 | `peer_ctrl_sub` | `SUB` | peer control 수신 | control 기본값 |
 
@@ -191,8 +191,10 @@ sequenceDiagram
     Target->>Target: zlink_spot_recv()
 ```
 
-target `Spot` queue가 hard limit을 넘으면 해당 routed target만 disconnected 상태가
-된다. node 전체를 닫거나 peer 연결을 끊지 않는다.
+local routed 전달은 내부 전달 큐가 커졌다는 이유로 target을 disconnected 상태로
+만들지 않는다. 역압력은 `internal-router` 수신 쪽 admission HWM에서 먼저
+표현되고, 애플리케이션이 큐를 비우면 일반 수신 API가 더 읽을 데이터가 없다고
+알린다.
 
 ### 4.2 Remote routed delivery
 
@@ -216,51 +218,44 @@ remote routed delivery는 peer별 external route id map을 사용한다. 이 map
 `spot_runtime_t` 내부 메서드를 통해서만 갱신한다. 호출자는 map 구조나 lock 규칙을
 알 필요가 없다.
 
-## 5. Queue hard limit
+## 5. Admission HWM
 
-SPOT은 느린 소비자 때문에 node 전체가 막히지 않도록 delivery target 단위 hard
-limit을 둔다.
+SpotNode는 admission HWM 설정만 공개한다. 이 설정은 데이터 평면이 소유하기
+전의 local 입력량을 제한한다.
 
-| 옵션 | 기본값 | 적용 대상 |
-|------|--------|-----------|
-| `ZLINK_SPOT_NODE_OPT_SUB_QUEUE_HARD_LIMIT` | `100` | local subscribe delivery target |
-| `ZLINK_SPOT_NODE_OPT_ROUTED_QUEUE_HARD_LIMIT` | `500` | routed delivery target |
+| 옵션 | admission 경로 | 기본 profile 값 |
+|------|----------------|-----------------|
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE` | topic publish admission | balanced = 16 |
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` | topic publish admission 숫자 override | 양수 값, `0`은 reset |
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE` | routed admission | balanced = 16 |
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | routed admission 숫자 override | 양수 값, `0`은 reset |
 
-limit 초과 시 해당 target만 disconnected로 표시한다. 상태 집계는
-`zlink_spot_node_status_t`의 아래 필드에 반영된다.
+공유 relay와 delivery socket은 HWM `0`을 사용한다. 이렇게 해야 SPOT 내부의 숨은
+peer별 또는 target별 큐 제한이 메시지 손실이나 연결 종료를 결정하지 않는다.
+큐 증가는 명시적인 admission 경계와 애플리케이션의 drain 속도에서 제어한다.
 
-- `disconnected_sub_target_count`
-- `disconnected_routed_target_count`
+`Spot` facade는 만들어질 때의 admission 값을 캡처한다. 이후 `SpotNode` 옵션을
+바꾸면 나중에 만드는 `Spot`에만 적용되고, 이미 존재하는 handle에는 적용되지
+않는다.
 
-## 6. Auto-HWM 적용
-
-SpotNode의 topic socket은 pub/sub 역할에 따라 HWM 축이 갈린다.
-
-| 옵션 | 적용 socket |
-|------|-------------|
-| `ZLINK_SPOT_NODE_OPT_PUB_HWM` | `local-pub`, `mesh-pub` |
-| `ZLINK_SPOT_NODE_OPT_SUB_HWM` | `ingress-sub`, `mesh-xsub` |
-| `ZLINK_SPOT_NODE_OPT_ROUTED_SEND_HWM` | `internal-router`, `external-router` send 축 |
-| `ZLINK_SPOT_NODE_OPT_ROUTED_RECV_HWM` | `internal-router`, `external-router` recv 축 |
-
-수동 옵션이 없으면 context auto HWM 정책이 현재 socket policy class,
-메시지 단위, profile을 기준으로 값을 계산한다. `local-pub`과 `mesh-pub`은
-`spot_data`, `ingress-sub`과 `mesh-xsub`는 `recv_ingress`,
-`internal-router`와 `external-router`는 `routed`, `peer_ctrl_pub/sub`는
-`control`로 계산한다.
-
-SPOT publish 큐 계획은 fanout이 커져도 per-connection HWM을 낮추지 않는다.
-fanout은 진단용 count로는 의미가 있지만 HWM 감소 입력으로 쓰지 않는다.
+SPOT publish 큐 계획은 fanout이 커져도 per-connection admission HWM을 낮추지
+않는다. fanout은 진단용 count로는 의미가 있지만 HWM 감소 입력으로 쓰지 않는다.
 
 ```text
 effective_publish_fanout =
   max(local_sub_spot_count, active_peer_count, observed_scope_count)
 ```
 
-전체 spot 수는 metadata 부담이지 fanout queue count가 아니다. perf runner는
-`core/build` runtime을 사용하고, 실행 전에 해석된 `libzlink` 경로를 출력해야 한다.
+전체 spot 수는 metadata 부담이지 fanout queue count가 아니다. 제거된 방향별
+SpotNode HWM 옵션과 queue hard-limit 옵션은 공개 계약에 포함되지 않는다. 끊긴
+delivery target 수를 보고하던 상태 필드는 ABI 호환을 위해 남아 있지만 항상 `0`을
+보고한다.
 
-## 7. Control plane
+perf runner는 `core/build` runtime을 사용하고, 실행 전에 해석된 `libzlink` 경로를
+출력해야 한다. `Auto-HWM spotnode` 상세 표에서는 topic ingress와 routed ingress
+socket에만 admission HWM이 보이고, relay와 delivery socket은 HWM `0`이어야 한다.
+
+## 6. Control plane
 
 peer control plane은 data plane과 분리된 작은 메시지 흐름이다. 주요 목적은 아래와
 같다.
@@ -370,3 +365,116 @@ facade를 얻어 dispatch handler를 등록한다. Actor 생성 직후 session r
 user Spot의 logical state는 마지막 facade가 닫힐 때 제거된다. 단 joined Actor나
 pending join request가 남아 있으면 마지막 facade close는 `ZLINK_CLOSE_BUSY`로 실패한다.
 Entry Spot logical state는 facade reference count와 무관하게 `SpotNode`가 소유한다.
+
+## 9. Spot socket 제거 모델
+
+기존 구조에서 `Spot` facade 또는 side handle이 per-Spot socket을 직접 만들고 inproc
+socket을 queue처럼 쓰는 부분이 있었다. `SpotNode`가 메시지를 한 번 받아서 logical
+`Spot`으로 중계하는 구조에서는 per-Spot socket HWM으로 dispatch 상태를 표현하는
+방식이 맞지 않는다. HWM은 `SpotNode`가 소유한 transport socket admission에 두고,
+per-Spot queue는 이미 받은 입력을 어느 dispatch context에서 처리할지 정하는 staging
+상태로만 다룬다.
+
+목표 구조는 아래와 같다.
+
+```mermaid
+flowchart TB
+  Facade["Spot facade
+  rid / dispatch handler ref / options
+  physical socket 없음"]
+  Logical["Spot logical state
+  routed queue / subscribe queue
+  channel reply queues / actor event queues
+  dispatch pending queues"]
+  Runtime["SpotNode runtime
+  physical sockets / demux and fanout
+  transport backpressure / discovery sync"]
+
+  Facade --> Logical
+  Logical --> Runtime
+```
+
+`Spot` facade는 `spot_pub_t`, `spot_sub_t`, routed receive socket 같은 물리 socket을
+직접 갖지 않는다. `Spot`이 필요한 것은 logical state에 대한 reference다.
+
+## 10. STREAM session과 Actor binding
+
+session owner node와 Actor owner node는 같거나 다를 수 있다. 내부 처리 경로가 다르지만
+공개 API는 동일하다.
+
+### 10.1 Local Actor binding (co-located)
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant Stream as STREAM socket
+  participant Node as Session+Actor node
+  participant List as Session actor list
+  participant ActorObj as Local Actor
+  participant Spot as Current Spot
+  participant Handler as Dispatch handler
+
+  Client->>Stream: client frame
+  Stream->>Node: stream callback(session_rid)
+  Node->>List: bind actor_ref
+  List->>ActorObj: attach bound session ref
+  Node->>Node: publish active route on bind success
+
+  Node->>List: relay to actor_id
+  List->>ActorObj: resolve local actor
+  ActorObj->>Spot: enqueue unread part
+  Spot->>Handler: ACTOR_READABLE
+  Handler->>Node: actor_recv_part(actor_ref)
+
+  Handler->>Node: actor_send_bound_session_msg(actor_ref)
+  Node->>List: validate actor ref
+  Node->>Stream: write to session_rid
+  Stream-->>Client: client frame
+```
+
+local Actor는 bind, relay, Actor-to-session send가 같은 node 안에서 끝난다.
+Actor socket이나 Actor별 inproc endpoint가 생기지 않는다.
+
+### 10.2 Remote Actor binding (split deployment)
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant Stream as STREAM socket
+  participant SessNode as Session owner node
+  participant List as Session actor list
+  participant ActorNode as Actor owner node
+  participant ActorObj as Remote Actor
+  participant Spot as Current Spot
+  participant Handler as Dispatch handler
+
+  Client->>Stream: client frame
+  Stream->>SessNode: stream callback(session_rid)
+  SessNode->>ActorNode: bind control request
+  ActorNode->>ActorObj: attach bound session ref
+  ActorNode-->>SessNode: bind OK
+  SessNode->>List: store actor_ref
+  ActorNode->>ActorNode: publish active route on bind success
+
+  SessNode->>List: relay to actor_id
+  List-->>SessNode: actor_ref
+  SessNode->>ActorNode: relay frame
+  ActorNode->>ActorObj: resolve actor
+  ActorObj->>Spot: enqueue unread part
+  Spot->>Handler: ACTOR_READABLE
+  Handler->>ActorNode: actor_recv_part(actor_ref)
+
+  Handler->>ActorNode: actor_send_bound_session_msg(actor_ref)
+  ActorNode->>SessNode: actor-to-session frame
+  SessNode->>List: validate actor ref
+  SessNode->>Stream: write to session_rid
+  Stream-->>Client: client frame
+```
+
+remote Actor는 bind control request, session-to-Actor relay frame, Actor-to-session
+frame이 node 사이를 지난다. session owner는 Actor의 joined Spot을 저장하지 않는다.
+Actor owner는 STREAM session application state를 저장하지 않는다.
+
+bound session disconnect와 remote join handoff가 겹치면 session Actor list
+compare-and-swap 성공 여부가 기준이다. 성공 전 disconnect는 source Actor를 Entry Spot으로
+돌리는 abort이고, 성공 뒤 disconnect는 target Actor의 Entry Spot cleanup이다.

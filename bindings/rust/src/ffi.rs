@@ -47,8 +47,13 @@ pub struct zlink_actor_recv_info_t {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct zlink_actor_join_info_t {
-    pub actor: zlink_actor_ref_t,
+    pub source_actor: zlink_actor_ref_t,
+    pub target_actor: zlink_actor_ref_t,
     pub source_node_rid: zlink_routing_id_t,
+    pub source_spot_rid: zlink_routing_id_t,
+    pub target_node_rid: zlink_routing_id_t,
+    pub target_spot_rid: zlink_routing_id_t,
+    pub join_epoch: u64,
     pub request: *mut c_void,
     pub flags: u32,
 }
@@ -407,37 +412,15 @@ pub struct zlink_monitor_snapshot_t {
     pub auto_hwm_profile: u32,
     pub auto_hwm_role: u32,
     pub auto_hwm_policy_class: u32,
-    pub auto_hwm_managed_connections: u32,
-    pub auto_hwm_active_hwm_connections: u32,
-    pub auto_hwm_observed_count: u32,
-    pub auto_hwm_planning_count: u32,
-    pub auto_hwm_context_total_planning_count: u32,
-    pub auto_hwm_base_floor_per_connection: u32,
     pub auto_hwm_unit_budget_bytes: u64,
     pub auto_hwm_size_cap: u32,
-    pub auto_hwm_effective_publish_fanout: u32,
-    pub auto_hwm_applied_sndhwm: i32,
-    pub auto_hwm_applied_rcvhwm: i32,
-    pub auto_hwm_requested_sndbuf: i32,
-    pub auto_hwm_requested_rcvbuf: i32,
-    pub auto_hwm_effective_sndbuf: i32,
-    pub auto_hwm_effective_rcvbuf: i32,
-    pub auto_hwm_total_memory_budget_bytes: u64,
-    pub auto_hwm_queue_budget_bytes: u64,
-    pub auto_hwm_transport_budget_bytes: u64,
-    pub auto_hwm_runtime_reserve_bytes: u64,
-    pub auto_hwm_socket_queue_share_bytes: u64,
     pub auto_hwm_socket_message_slots: u64,
     pub auto_hwm_effective_message_bytes: u64,
-    pub auto_hwm_estimated_max_memory_bytes: u64,
+    pub auto_hwm_applied_sndhwm: i32,
+    pub auto_hwm_applied_rcvhwm: i32,
     pub auto_hwm_last_recalc_ms: u64,
     pub auto_hwm_last_recalc_reason: u32,
     pub auto_hwm_send_blocked_ratio_ppm: u32,
-    pub auto_hwm_scope: u32,
-    pub auto_hwm_scope_count: u32,
-    pub auto_hwm_auto_buffer_bytes: u64,
-    pub auto_hwm_manual_buffer_bytes: u64,
-    pub auto_hwm_buffer_connections: u32,
     pub auto_hwm_deferred_sndhwm: i32,
     pub auto_hwm_deferred_rcvhwm: i32,
 }
@@ -957,17 +940,6 @@ unsafe extern "C" {
         flags: zlink_send_flags_t,
         part_flag: zlink_part_flag_t,
     ) -> c_int;
-    pub fn zlink_actor_send_bound_session_msg(
-        actor: *mut c_void,
-        message: *mut zlink_msg_t,
-        flags: zlink_send_flags_t,
-    ) -> c_int;
-    pub fn zlink_actor_send_bound_session_packet(
-        actor: *mut c_void,
-        header: *mut zlink_msg_t,
-        body: *mut zlink_msg_t,
-        flags: zlink_send_flags_t,
-    ) -> c_int;
     pub fn zlink_subscribe_handler(
         socket: *mut c_void,
         handler: zlink_subscribe_handler_fn,
@@ -1278,12 +1250,11 @@ unsafe extern "C" {
     pub fn zlink_spot_destroy(spot_p: *mut *mut c_void) -> c_int;
     pub fn zlink_spot_node_new(ctx: *mut c_void, options: *const c_void) -> *mut c_void;
     pub fn zlink_spot_node_destroy(node_p: *mut *mut c_void) -> c_int;
-    pub fn zlink_spot_node_actor_new(node: *mut c_void, actor_id: *const c_char) -> *mut c_void;
-    pub fn zlink_actor_destroy(
-        actor_p: *mut *mut c_void,
-        timeout_ms: u32,
-    ) -> zlink_request_result_t;
-    pub fn zlink_actor_get_ref(actor: *mut c_void, out: *mut zlink_actor_ref_t) -> c_int;
+    pub fn zlink_spot_node_actor_new(
+        node: *mut c_void,
+        actor_id: *const c_char,
+        actor_out: *mut zlink_actor_ref_t,
+    ) -> c_int;
     pub fn zlink_spot_node_actor_lookup(
         node: *mut c_void,
         actor_id: *const c_char,
@@ -1302,7 +1273,7 @@ unsafe extern "C" {
         out: *mut zlink_actor_create_result_t,
         timeout_ms: u32,
     ) -> zlink_request_result_t;
-    pub fn zlink_spot_node_destroy_remote_actor(
+    pub fn zlink_spot_node_actor_destroy(
         node: *mut c_void,
         actor: *const zlink_actor_ref_t,
         timeout_ms: u32,
@@ -1312,18 +1283,10 @@ unsafe extern "C" {
         handler: zlink_actor_admission_handler_fn,
         userdata: *mut c_void,
     ) -> c_int;
-    pub fn zlink_actor_join_spot(
-        actor: *mut c_void,
-        spot: *mut c_void,
-        message: *mut zlink_msg_t,
-        handler: Option<zlink_reply_handler_fn>,
-        userdata: *mut c_void,
-        flags: zlink_send_flags_t,
-        timeout_ms: u32,
-    ) -> c_int;
     pub fn zlink_spot_node_actor_join_spot(
         node: *mut c_void,
         actor: *const zlink_actor_ref_t,
+        dest_node_rid: *const zlink_routing_id_t,
         dest_spot_rid: *const zlink_routing_id_t,
         message: *mut zlink_msg_t,
         handler: Option<zlink_reply_handler_fn>,
@@ -1343,20 +1306,31 @@ unsafe extern "C" {
         accepted: u32,
         message: *mut zlink_msg_t,
     ) -> c_int;
-    pub fn zlink_actor_leave_spot(actor: *mut c_void, spot: *mut c_void) -> c_int;
     pub fn zlink_spot_node_actor_leave_spot(
         node: *mut c_void,
         actor: *const zlink_actor_ref_t,
         dest_spot_rid: *const zlink_routing_id_t,
         timeout_ms: u32,
     ) -> zlink_request_result_t;
-    pub fn zlink_actor_recv_part(
-        actor: *mut c_void,
+    pub fn zlink_spot_node_actor_recv_part(
+        node: *mut c_void,
+        actor: *const zlink_actor_ref_t,
         info_out: *mut zlink_actor_recv_info_t,
         part_out: *mut zlink_msg_t,
         has_more_out: *mut zlink_part_flag_t,
         flags: zlink_recv_flags_t,
     ) -> c_int;
+    pub fn zlink_spot_node_actor_send_bound_session_msg(
+        node: *mut c_void,
+        actor: *const zlink_actor_ref_t,
+        message: *mut zlink_msg_t,
+        flags: zlink_send_flags_t,
+    ) -> c_int;
+    pub fn zlink_spot_node_actor_close_bound_session(
+        node: *mut c_void,
+        actor: *const zlink_actor_ref_t,
+        timeout_ms: u32,
+    ) -> zlink_request_result_t;
     pub fn zlink_spot_node_bind(node: *mut c_void, endpoint: *const c_char) -> c_int;
     pub fn zlink_spot_node_connect_peer(node: *mut c_void, peer_endpoint: *const c_char) -> c_int;
     pub fn zlink_spot_node_disconnect_peer(

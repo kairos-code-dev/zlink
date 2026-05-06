@@ -63,11 +63,24 @@ Rust exposes Actor dispatch through public crate items.
 ```rust
 pub struct ActorRef { pub node_rid: RoutingId, pub actor_id: String, pub generation: u64 }
 pub struct ActorCreateResult { pub status: ActorCreateStatus, pub actor: ActorRef }
-pub struct ActorRoute { pub actor: ActorRef, pub joined: bool, pub joined_spot_rid: Option<RoutingId> }
-pub struct ActorRecvInfo { pub actor: ActorRef, pub source_node_rid: Option<RoutingId>, pub source_session_rid: Option<RoutingId>, pub flags: u32 }
-pub struct ActorJoinInfo { /* opaque reply token is not public */ }
-pub struct ActorPart { pub info: ActorRecvInfo, pub message: Message, pub more: bool }
-pub fn remote_actor_ref(target_node_rid: RoutingId, actor_id: &str) -> Result<ActorRef, ConfigError>;
+pub struct ActorRoute { pub actor: ActorRef, pub joined: bool, pub joined_spot_rid: RoutingId }
+pub struct ActorRecvInfo { pub actor: ActorRef, pub source_node_rid: RoutingId, pub source_session_rid: RoutingId, pub flags: u32 }
+pub struct ActorJoinInfo {
+    pub actor: ActorRef,
+    pub source_actor: ActorRef,
+    pub target_actor: ActorRef,
+    pub source_node_rid: RoutingId,
+    pub source_spot_rid: Option<RoutingId>,
+    pub target_node_rid: Option<RoutingId>,
+    pub target_spot_rid: Option<RoutingId>,
+    pub join_epoch: u64,
+    pub flags: u32,
+    // non-public: opaque reply token
+}
+impl SpotNode {
+    pub fn remote_actor_ref(target_node_rid: &RoutingId, actor_id: &str)
+        -> Result<ActorRef, ConfigError>;
+}
 ```
 
 `SpotNode` exposes local Actor lifecycle, remote create-or-get, admission,
@@ -75,8 +88,13 @@ join/leave, and Actor snapshots. `Spot` exposes Actor join receive/reply and
 joined Actor snapshots. `StreamSocket` exposes Actor bind/unbind and bound
 Actor send. `Discovery` exposes Actor route resolve.
 
-`generation == 0` is an unchecked remote ref. Per-Actor queue limit options
-are not part of the Rust public surface.
+`generation == 0` is an unchecked remote ref and is not invalid. Actor handles
+are represented by `ActorRef`; public `void *actor` handles are not exposed.
+Every Actor belongs to exactly one Spot. The Entry Spot is the default Spot
+assigned immediately after Actor creation and cannot be removed by the
+application. Joining a user Spot requires the Actor to have a bound STREAM
+session. One Actor may bind to one STREAM session; one session may bind many
+Actors. Per-Actor queue limit options are not part of the Rust public surface.
 
 ## Core
 
@@ -616,6 +634,17 @@ impl StreamSocket {
     /// # Errors: HandlerError
     pub fn on_packet<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(RoutingId, Message, Message) + Send + 'static;
+    /// Bind an Actor to one STREAM session before user Spot join.
+    /// # Errors: RequestError
+    pub fn bind_actor(&self, node: &SpotNode, session_rid: &RoutingId,
+        actor: &ActorRef, timeout: Duration) -> Result<(), RequestError>;
+    /// # Errors: RequestError
+    pub fn unbind_actor(&self, node: &SpotNode, session_rid: &RoutingId,
+        actor_id: &str, timeout: Duration) -> Result<(), RequestError>;
+    /// # Errors: SubmitError
+    pub fn send_bound_actor_part(&self, node: &SpotNode, session_rid: &RoutingId,
+        actor_id: &str, parts: impl IntoMultipart, flags: SendFlags)
+        -> Result<(), SubmitError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -1272,37 +1301,15 @@ pub struct MonitorSnapshot {
     pub auto_hwm_profile: u32,
     pub auto_hwm_role: u32,
     pub auto_hwm_policy_class: u32,
-    pub auto_hwm_managed_connections: u32,
-    pub auto_hwm_active_hwm_connections: u32,
-    pub auto_hwm_observed_count: u32,
-    pub auto_hwm_planning_count: u32,
-    pub auto_hwm_context_total_planning_count: u32,
-    pub auto_hwm_base_floor_per_connection: u32,
     pub auto_hwm_unit_budget_bytes: u64,
     pub auto_hwm_size_cap: u32,
-    pub auto_hwm_effective_publish_fanout: u32,
-    pub auto_hwm_applied_sndhwm: i32,
-    pub auto_hwm_applied_rcvhwm: i32,
-    pub auto_hwm_requested_sndbuf: i32,
-    pub auto_hwm_requested_rcvbuf: i32,
-    pub auto_hwm_effective_sndbuf: i32,
-    pub auto_hwm_effective_rcvbuf: i32,
-    pub auto_hwm_total_memory_budget_bytes: u64,
-    pub auto_hwm_queue_budget_bytes: u64,
-    pub auto_hwm_transport_budget_bytes: u64,
-    pub auto_hwm_runtime_reserve_bytes: u64,
-    pub auto_hwm_socket_queue_share_bytes: u64,
     pub auto_hwm_socket_message_slots: u64,
     pub auto_hwm_effective_message_bytes: u64,
-    pub auto_hwm_estimated_max_memory_bytes: u64,
+    pub auto_hwm_applied_sndhwm: i32,
+    pub auto_hwm_applied_rcvhwm: i32,
     pub auto_hwm_last_recalc_ms: u64,
     pub auto_hwm_last_recalc_reason: u32,
     pub auto_hwm_send_blocked_ratio_ppm: u32,
-    pub auto_hwm_scope: u32,
-    pub auto_hwm_scope_count: u32,
-    pub auto_hwm_auto_buffer_bytes: u64,
-    pub auto_hwm_manual_buffer_bytes: u64,
-    pub auto_hwm_buffer_connections: u32,
     pub auto_hwm_deferred_sndhwm: i32,
     pub auto_hwm_deferred_rcvhwm: i32,
 }
@@ -1454,6 +1461,35 @@ impl SpotNode {
     /// # Errors: ConfigError
     pub fn create_spot(&self) -> Result<Spot, ConfigError>;
     /// # Errors: ConfigError
+    pub fn create_actor(&self, actor_id: &str) -> Result<Actor, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn actor_lookup(&self, actor_id: &str) -> Result<ActorRef, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn remote_actor_ref(target_node_rid: &RoutingId, actor_id: &str)
+        -> Result<ActorRef, ConfigError>;
+    /// # Errors: RequestError
+    pub fn create_remote_actor(&self, target_node_rid: &RoutingId, actor_id: &str,
+        message: Message, timeout: Duration) -> Result<ActorCreateResult, RequestError>;
+    /// Destroy a local or remote Actor through its ActorRef.
+    /// # Errors: RequestError
+    pub fn destroy_actor(&self, actor: &ActorRef, timeout: Duration)
+        -> Result<(), RequestError>;
+    /// # Errors: HandlerError
+    pub fn on_actor_admission<F>(&mut self, handler: F) -> Result<(), HandlerError>
+        where F: Fn(&str, Message) -> ActorAdmissionResult + Send + 'static;
+    /// # Errors: SubmitError
+    pub fn join_actor_callback<F>(&self, actor: &ActorRef,
+        dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId, message: Message,
+        callback: F, flags: SendFlags, timeout: Duration) -> Result<(), SubmitError>
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
+    /// # Errors: RequestError
+    pub fn leave_actor(&self, actor: &ActorRef, dest_spot_rid: &RoutingId,
+        timeout: Duration) -> Result<(), RequestError>;
+    /// # Errors: ConfigError
+    pub fn spots_snapshot(&self) -> Result<Vec<SpotNodeSpotEntry>, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn actors_snapshot(&self) -> Result<Vec<SpotNodeActorEntry>, ConfigError>;
+    /// # Errors: ConfigError
     pub fn status_snapshot(&self) -> Result<SpotNodeStatus, ConfigError>;
     /// # Errors: ConfigError
     pub fn peers_snapshot(&self) -> Result<Vec<SpotNodePeerEntry>, ConfigError>;
@@ -1483,6 +1519,41 @@ impl SpotNode {
 `SpotNode` owns the lifecycle. `Spot` is created only through
 `SpotNode::create_spot()`. Direct `Spot::new(&node)` construction is
 internal and is not part of the public API contract.
+
+### Actor
+
+```rust
+pub struct Actor { /* owns an ActorRef and borrows its SpotNode handle */ }
+
+impl Actor {
+    /// # Errors: ConfigError
+    pub fn actor_ref(&self) -> Result<ActorRef, ConfigError>;
+    /// # Errors: RequestError
+    pub fn close_with_timeout(&mut self, timeout: Duration) -> Result<(), RequestError>;
+    /// # Errors: RequestError
+    pub fn close(&mut self) -> Result<(), RequestError>;
+    /// # Errors: SubmitError
+    pub fn join_callback<F>(&self, spot: &Spot, message: Message,
+        callback: F, flags: SendFlags, timeout: Duration) -> Result<(), SubmitError>
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
+    /// # Errors: ConfigError
+    pub fn leave(&self, spot: &Spot) -> Result<(), ConfigError>;
+    /// # Errors: RecvError
+    pub fn recv_part_with_flags(&self, flags: RecvFlags)
+        -> Result<Option<(ActorRecvInfo, Message, bool)>, RecvError>;
+    /// # Errors: RecvError
+    pub fn recv_part(&self) -> Result<(ActorRecvInfo, Message, bool), RecvError>;
+    /// # Errors: SubmitError
+    pub fn send_bound_session_msg(&self, message: Message, flags: SendFlags)
+        -> Result<(), SubmitError>;
+    /// # Errors: RequestError
+    pub fn close_bound_session(&self, timeout: Duration) -> Result<(), RequestError>;
+}
+```
+
+`Actor::join_callback` resolves the destination node from the target `Spot`.
+For remote joins where the destination node is already known, use
+`SpotNode::join_actor_callback`.
 
 ### Spot
 
@@ -1577,6 +1648,16 @@ impl Spot {
     pub fn recv_routed(&self) -> Result<Received, RecvError>;
     /// # Errors: RecvError
     pub fn recv_routed_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError>;
+    /// # Errors: RecvError
+    pub fn recv_actor_join_with_flags(&self, flags: RecvFlags)
+        -> Result<Option<(ActorJoinInfo, Message)>, RecvError>;
+    /// # Errors: RecvError
+    pub fn recv_actor_join(&self) -> Result<(ActorJoinInfo, Message), RecvError>;
+    /// # Errors: SubmitError
+    pub fn reply_actor_join(&self, info: &ActorJoinInfo, accepted: bool,
+        message: Message) -> Result<(), SubmitError>;
+    /// # Errors: ConfigError
+    pub fn actors_snapshot(&self) -> Result<Vec<ActorRef>, ConfigError>;
     /// # Errors: HandlerError
     pub fn on_routed_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(RoutingId, RoutingId, u64, Vec<Message>) + Send + 'static;
@@ -1606,18 +1687,29 @@ pub enum SpotDispatchEvent {
     RoutedReadable,
     TimerReadable,
     ChannelReplyReadable,
+    ActorReadable,
+    ActorJoinReadable,
 }
 
 pub enum SpotDispatchSubjectKind {
     Spot,
     Timer,
     ChannelDealer,
+    Actor,
 }
 
 pub struct SpotDispatchInfo {
     pub event: SpotDispatchEvent,
     pub subject_kind: SpotDispatchSubjectKind,
     pub subject: *mut c_void,
+    pub actor: Option<ActorRef>,
+    // non-public: owner SpotNode handle for Actor recv
+}
+
+impl SpotDispatchInfo {
+    /// # Errors: RecvError
+    pub fn recv_actor_part_with_flags(&self, flags: RecvFlags)
+        -> Result<Option<(ActorRecvInfo, Message, bool)>, RecvError>;
 }
 ```
 
@@ -1625,6 +1717,10 @@ pub struct SpotDispatchInfo {
 `SpotDispatchInfo.subject_kind` and `SpotDispatchInfo.subject`. Read the
 logical channel name from that attached DEALER with
 `DealerSocket::channel_name()`.
+
+For `ActorReadable`, `subject` is null and `actor` contains a callback-lifetime
+copy of the readable `ActorRef`. The copied ref may be retained by user code;
+the dispatch subject pointer itself is not part of the public Actor contract.
 
 For `SubscribeReadable` and `RoutedReadable`, callers must keep draining
 `subscribe(...)` / `recv_routed(...)` until the binding reports no data /

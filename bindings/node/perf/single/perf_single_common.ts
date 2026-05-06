@@ -376,6 +376,30 @@ function waitForWorkerMessage(worker, expectedType, timeoutMs = integerEnv('PERF
   });
 }
 
+function waitForWorkerError(worker) {
+  return new Promise((resolve) => {
+    const seen = worker.__seenMessages.find((message) => message && message.type === 'error');
+    if (seen) {
+      resolve(seen);
+      return;
+    }
+
+    worker.__waiters.push((message) => {
+      if (!message || message.type !== 'error') {
+        return false;
+      }
+      resolve(message);
+      return true;
+    });
+  });
+}
+
+function waitForWorkerDone(worker, durationSeconds) {
+  const readyTimeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 5000);
+  const activeMs = Math.ceil(Math.max(0, Number(durationSeconds) || 0) * 1000);
+  return waitForWorkerMessage(worker, 'done', activeMs + readyTimeoutMs);
+}
+
 async function closeSenderWorker(worker) {
   if (!worker) {
     return;
@@ -413,6 +437,8 @@ module.exports = {
   resolveSingleLatencySampleCap,
   resolveSingleIdleDrainMs,
   spawnSenderWorker,
+  waitForWorkerDone,
+  waitForWorkerError,
   waitForWorkerMessage,
   waitForPostReadySettle,
   waitForConnectionReady,

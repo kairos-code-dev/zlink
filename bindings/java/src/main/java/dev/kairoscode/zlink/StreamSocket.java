@@ -25,10 +25,10 @@ public final class StreamSocket extends Socket {
 
     public void bind(String endpoint) { super.bind(endpoint); }
     public void unbind(String endpoint) { super.unbind(endpoint); }
-    public boolean send(int rid, Message part) {
+    boolean send(int rid, Message part) {
         return super.send(RoutingId.fromU32(rid), part, SendFlag.NONE);
     }
-    public boolean send(int rid, Message part, SendFlags flags) {
+    boolean send(int rid, Message part, SendFlags flags) {
         return super.send(RoutingId.fromU32(rid), part, SendFlag.fromValue(flags.value()));
     }
     SendResult sendNoWaitResult(int rid, Message part) {
@@ -67,7 +67,7 @@ public final class StreamSocket extends Socket {
     void onFramedPacketNative(StreamUInt32FramedNativeHandler handler) {
         super.attachStreamPacket(handler);
     }
-    public void detachStream() { super.detachStream(); }
+    void detachStream() { super.detachStream(); }
     public void bindActor(SpotNode node, RoutingId sessionRid, ActorRef actor,
                           Duration timeout) {
         Objects.requireNonNull(node, "node");

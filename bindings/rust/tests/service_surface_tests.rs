@@ -215,16 +215,12 @@ fn actor_surfaces_exist() {
     let _ = node.spots_snapshot().unwrap();
     let _ = node.actors_snapshot().unwrap();
     let _ = spot.actors_snapshot().unwrap();
-    let _ = actor.recv_part_with_flags(RecvFlags::DONT_WAIT).unwrap();
+    let _ = actor.recv_part_with_flags(RecvFlags::DONT_WAIT);
     let _ = actor.send_bound_session_msg(
         Message::copy_from(b"payload").unwrap(),
         SendFlags::DONT_WAIT,
     );
-    let _ = actor.send_bound_session_packet(
-        Message::copy_from(b"h").unwrap(),
-        Message::copy_from(b"b").unwrap(),
-        SendFlags::DONT_WAIT,
-    );
+    let _ = actor.close_bound_session(std::time::Duration::from_millis(1));
     let _ = actor.join_callback(
         &spot,
         Message::copy_from(b"join").unwrap(),
@@ -262,9 +258,10 @@ fn actor_surfaces_exist() {
     );
     let remote =
         SpotNode::remote_actor_ref(&RoutingId::from_bytes(b"remote-node"), "remote-actor").unwrap();
-    let _ = node.destroy_remote_actor(&remote, std::time::Duration::from_millis(1));
+    let _ = node.destroy_actor(&remote, std::time::Duration::from_millis(1));
     let _ = node.join_actor_callback(
         &remote,
+        &RoutingId::from_bytes(b"actor-node"),
         &RoutingId::from_bytes(b"actor-spot"),
         Message::copy_from(b"join").unwrap(),
         |_| {},

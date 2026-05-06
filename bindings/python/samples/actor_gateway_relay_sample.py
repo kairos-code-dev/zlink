@@ -30,16 +30,6 @@ def main():
                         part.message.close()
 
                 spot.on_dispatch_event(on_dispatch)
-                actor.join(
-                    spot,
-                    b"join",
-                    lambda result, messages: (
-                        replies.append(result),
-                        [message.close() for message in messages],
-                    ),
-                    timeout=2,
-                )
-                wait_until(lambda: replies, timeout_ms=5000, description="actor join")
 
                 with zlink.StreamSocket(ctx) as stream:
                     with stream.monitor_open(zlink.MonitorEventMask.ACCEPTED) as monitor:
@@ -54,6 +44,16 @@ def main():
                             with stream.recv() as stream_msg:
                                 session_rid = stream_msg.routing_id
                             stream.bind_actor(node, session_rid, actor_ref, timeout=2)
+                            actor.join(
+                                spot,
+                                b"join",
+                                lambda result, messages: (
+                                    replies.append(result),
+                                    [message.close() for message in messages],
+                                ),
+                                timeout=2,
+                            )
+                            wait_until(lambda: replies, timeout_ms=5000, description="actor join")
                             stream.send_bound_actor(
                                 node, session_rid, "player-1", b"client-payload"
                             )
@@ -63,9 +63,9 @@ def main():
                                 description="actor payload",
                             )
 
-                if received != [b"client-payload"]:
-                    raise AssertionError("unexpected actor payload")
-                actor.leave(spot)
+                            if received != [b"client-payload"]:
+                                raise AssertionError("unexpected actor payload")
+                            actor.leave(spot)
                 actor.close()
                 print("[actor/gateway] stream relayed to actor")
 

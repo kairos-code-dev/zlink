@@ -10,4 +10,18 @@ public record MonitorEvent(MonitorEventType event, long value,
     public MonitorEvent {
         routingId = routingId == null ? Optional.empty() : routingId;
     }
+
+    public Optional<ProtocolError> protocolError() {
+        if (event != MonitorEventType.HANDSHAKE_FAILED_PROTOCOL) {
+            return Optional.empty();
+        }
+        return Optional.of(ProtocolError.fromValue((int) value));
+    }
+
+    public Optional<DisconnectReason> disconnectReason() {
+        if (event != MonitorEventType.DISCONNECTED) {
+            return Optional.empty();
+        }
+        return Optional.of(DisconnectReason.fromValue((int) value));
+    }
 }

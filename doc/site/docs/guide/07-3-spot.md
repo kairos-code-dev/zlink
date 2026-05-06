@@ -258,8 +258,23 @@ Bindings do not need a separate per-dealer progress pump.
 
 ## 6. Unified dispatch event handler
 
-Registering `zlink_spot_dispatch_event_handler()` lets you receive subscribe,
-routed, channel reply, timer, and Actor events in a single callback.
+There are two mutually exclusive handler registration modes for a Spot:
+
+- **`zlink_spot_handler()`** — routed-only direct callback. Routed message
+  payloads are delivered inline inside the callback. Subscribe, channel reply,
+  timer, and Actor events cannot be received through this handler. If any of
+  those event types are needed, this mode cannot be used.
+
+- **`zlink_spot_dispatch_event_handler()`** — unified readiness notification
+  for subscribe, routed, channel reply, timer, Actor join, and Actor readable
+  events. The callback signals that work is ready; data is pulled with the
+  corresponding drain API. Subscribe, channel reply, timer, and Actor events
+  can only be received through this mode.
+
+If Actors are needed, always use `zlink_spot_dispatch_event_handler()`.
+
+Registering `zlink_spot_dispatch_event_handler()` gives a callback with
+`event`, `subject_kind`, and `subject`:
 
 ```c
 void my_dispatch_handler(
@@ -286,7 +301,7 @@ void my_dispatch_handler(
         /* drain with zlink_spot_actor_join_recv() */
         break;
     case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE:
-        /* info_->subject is the Actor handle */
+        /* info_->subject is const zlink_actor_ref_t* */
         break;
     }
 }
@@ -326,107 +341,12 @@ for (;;) {
 ```
 
 Use the same drain-until-EAGAIN pattern for `zlink_spot_subscribe()` and
-`zlink_actor_recv_part()`.
+`zlink_spot_node_actor_recv_part()`.
 
 ## 7. Distributing session messages with Actors
 
-Actors let you route messages from a STREAM client session to a specific
-processing unit and distinguish the drain target in the Spot dispatch callback.
-One session can be bound to multiple Actors; one Actor is bound to at most one
-session at a time.
-
-An Actor belongs to the `Entry Spot` immediately after creation. The `Entry Spot`
-is the default Spot that every `SpotNode` always maintains. Registering a dispatch
-handler on the `Entry Spot` lets the application receive initial Actor messages,
-perform authentication, or select a target Spot.
-
-Obtain an Entry Spot facade as follows:
-
-```c
-void *entry = NULL;
-zlink_spot_node_entry_spot(node, &entry);
-zlink_spot_dispatch_event_handler(entry, my_dispatch_handler, userdata);
-```
-
-Close the facade with `zlink_spot_destroy(&entry)` when done. The Entry Spot itself
-is owned by the `SpotNode` and is not destroyed when the facade is closed.
-
-The minimal flow is:
-
-1. Create an Actor on the `SpotNode`.
-2. Identify the STREAM client session routing id.
-3. Bind session and Actor with `zlink_stream_bind_actor()`.
-4. Inside the STREAM packet handler or app logic, select an Actor id and call
-   `zlink_stream_send_bound_actor_part()`.
-5. When `ACTOR_READABLE` arrives in the dispatch callback, drain the `subject`
-   Actor with `zlink_actor_recv_part()`.
-
-```c
-void *actor = zlink_spot_node_actor_new(node, "player-42");
-zlink_actor_ref_t ref;
-zlink_actor_get_ref(actor, &ref);
-
-zlink_stream_bind_actor(node, stream, &session_rid, &ref, 2000);
-
-zlink_msg_t part;
-zlink_msg_init_size(&part, 5);
-memcpy(zlink_msg_data(&part), "hello", 5);
-zlink_stream_send_bound_actor_part(
-  node,
-  stream,
-  &session_rid,
-  "player-42",
-  &part,
-  0,
-  ZLINK_PART_FINAL);
-```
-
-When the Actor has readable parts the dispatch callback identifies the drain
-target:
-
-```c
-case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
-    void *actor = info_->subject;
-    for (;;) {
-        zlink_actor_recv_info_t recv_info;
-        zlink_msg_t part;
-        zlink_part_flag_t more = ZLINK_PART_FINAL;
-        zlink_recv_result_t rc = zlink_actor_recv_part(
-          actor,
-          &recv_info,
-          &part,
-          &more,
-          ZLINK_DONTWAIT);
-
-        if (rc == ZLINK_RECV_NO_DATA)
-            break;
-        if (rc != ZLINK_RECV_OK)
-            break;
-
-        /* process part */
-        zlink_msg_close(&part);
-    }
-    break;
-}
-```
-
-To make an Actor address discoverable from another node, enable
-`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` on the Actor owner Discovery, bind the
-Actor to a STREAM session, then query with `zlink_discovery_resolve_actor()`.
-Creating an Actor or joining a Spot alone does not publish an active route.
-
-To create an Actor on a remote node, use
-`zlink_spot_node_create_remote_actor()`. When the same actor id already exists
-on the target node, the call returns the existing result without creating a
-new slot. When the target node rejects the request in its admission handler,
-the request ends with a rejected result.
-
-When an Actor needs to join a Spot, send a join request and then call
-`zlink_spot_actor_join_recv()` on the Spot side to read the request message,
-followed by `zlink_spot_actor_join_reply()` to send an accept or reject reply.
-An Actor can be joined to only one Spot at a time. To move an Actor, `leave` the
-current Spot and then `join` the new one. `leave` returns the Actor to the Entry Spot.
-The Actor must be in the Entry Spot before it can join a different user Spot.
+For Actor creation, Spot join/leave, teardown, STREAM session binding, and C
+samples, see the [SPOT Actor Guide](07-4-actor.md).
 
 ## 8. Poller relationship
 
@@ -567,10 +487,4 @@ and recv results, not snapshot values.
 
 ## 14. Actor C samples
 
-C samples showing three Actor patterns:
-
-| Pattern | File |
-|---------|------|
-| Per-room Actor dispatch | `bindings/c/samples/actor_room_server_sample.c` |
-| Gateway session relay to remote Actor | `bindings/c/samples/actor_gateway_relay_sample.c` |
-| Single-user queue serialization | `bindings/c/samples/actor_single_player_queue_sample.c` |
+See the [SPOT Actor Guide](07-4-actor.md#5-actor-c-samples).

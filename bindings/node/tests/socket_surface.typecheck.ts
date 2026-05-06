@@ -107,7 +107,7 @@ spotNode.actorLookup('typed-actor');
 spotNode.remoteActorRef(routingId, 'typed-actor');
 zlink.remoteActorRef(routingId, 'typed-actor');
 spotNode.onActorAdmission((_actorId, _message) => zlink.ActorAdmissionResult.Accept);
-spotNode.joinActor(actorRef, routingId, 'join', (_result, _parts) => {});
+spotNode.joinActor(actorRef, routingId, routingId, 'join', (_result, _parts) => {});
 spotNode.leaveActor(actorRef, routingId);
 spotNode.spotsSnapshot();
 spotNode.actorsSnapshot();

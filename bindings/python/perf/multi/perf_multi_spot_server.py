@@ -140,28 +140,17 @@ def main(argv=None):
             raise RuntimeError("spot server control handshake timeout")
         _trace("control-handshake-ready")
 
-        warmup = bytearray(payload)
         ready_deadline = time.perf_counter() + connect_timeout_s
         ready_ok = False
-        warmup_attempts = 0
         while time.perf_counter() < ready_deadline and not stop.is_set():
-            warmup_attempts += 1
-            sent = spot_publish_nonblocking(
-                data_spot,
-                SERVICE_NAME,
-                TOPIC,
-                [stamp_payload(warmup, phase=0, run_id=run_id)],
-            )
             with ready_lock:
                 ready_ok = ready_count[0] >= args.clients
-            if warmup_attempts == 1 or (warmup_attempts % 1000) == 0:
-                _trace(f"warmup-loop attempts={warmup_attempts} sent={sent} ready_count={ready_count[0]}")
             if ready_ok:
                 break
             time.sleep(0.001)
         if not ready_ok:
-            raise RuntimeError("spot warmup readiness timeout")
-        _trace(f"warmup-ready attempts={warmup_attempts}")
+            raise RuntimeError("spot control readiness timeout")
+        _trace(f"control-ready count={ready_count[0]}")
 
         runner_deadline = time.perf_counter() + connect_timeout_s
         while time.perf_counter() < runner_deadline:
@@ -181,7 +170,7 @@ def main(argv=None):
         cooldown_sent = False
         while not stop.is_set():
             now = time.perf_counter()
-            if now >= idle_deadline and cooldown_sent:
+            if now >= idle_deadline:
                 break
             if now >= active_deadline and cooldown_sent:
                 stop.wait(0.01)

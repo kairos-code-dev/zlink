@@ -178,21 +178,21 @@ comm -23 \
 
 아래 조건이 모두 만족되어야 전체 작업을 완료로 본다.
 
-- [ ] contract matrix의 모든 행이 `reviewed` 상태다.
-- [ ] draft spec의 첫 구현 범위가 core에 모두 구현되어 있다.
-- [ ] public C API, enum, result code, constant, struct, callback typedef가 draft spec과
+- [x] contract matrix의 모든 행이 `reviewed` 상태다.
+- [x] draft spec의 첫 구현 범위가 core에 모두 구현되어 있다.
+- [x] public C API, enum, result code, constant, struct, callback typedef가 draft spec과
       public header에서 일치한다.
-- [ ] draft spec의 제거 API가 core, bindings, samples, 문서에서 사라졌다.
-- [ ] 모든 `ENTRY-*`, `ENTRY-ACTOR-*`, `QUEUE-*` 회귀 테스트가 자동 테스트로 닫혔다.
-- [ ] 기존 SPOT, STREAM, Discovery, Registry 회귀 테스트가 통과한다.
-- [ ] sample smoke와 perf smoke가 통과한다.
-- [ ] POSD 기반 리팩토링 루프를 반복했고 더 진행할 항목이 없다.
-- [ ] draft 내용을 정식 spec, guide, internals, bindings 문서에 목적별로 나누어 반영했다.
-- [ ] 문서 3회 리뷰에서 mismatch가 없다.
-- [ ] core release tag push와 GitHub Actions release를 확인했다.
-- [ ] `bindings/update_zlink_libs.sh`로 bindings native library를 최신화했다.
-- [ ] bindings를 언어별로 순차 적용하고 각 언어의 spec, sample, perf, POSD gate를 닫았다.
-- [ ] 최종 작업트리에는 의도한 변경만 남아 있다.
+- [x] draft spec의 제거 API가 core, bindings, samples, 문서에서 사라졌다.
+- [x] 모든 `ENTRY-*`, `ENTRY-ACTOR-*`, `QUEUE-*` 회귀 테스트가 자동 테스트로 닫혔다.
+- [x] 기존 SPOT, STREAM, Discovery, Registry 회귀 테스트가 통과한다.
+- [x] sample smoke와 perf smoke가 통과한다.
+- [x] POSD 기반 리팩토링 루프를 반복했고 더 진행할 항목이 없다.
+- [x] draft 내용을 정식 spec, guide, internals, bindings 문서에 목적별로 나누어 반영했다.
+- [x] 문서 3회 리뷰에서 mismatch가 없다.
+- [x] core release tag push와 GitHub Actions release를 확인했다.
+- [x] `bindings/update_zlink_libs.sh`로 bindings native library를 최신화했다.
+- [x] bindings를 언어별로 순차 적용하고 각 언어의 spec, sample, perf, POSD gate를 닫았다.
+- [x] 최종 작업트리에는 의도한 변경만 남아 있다.
 
 ## 진행 원칙
 
@@ -648,7 +648,7 @@ core runtime을 바꾼 뒤에는 반드시 `core/build` 기준 runtime을 다시
 - [x] `bindings/c/perf/run_benchmarks_multi.sh` 실행
 - [x] single perf smoke 성공
 - [x] multi perf smoke 성공
-- [x] 기본 패턴별 `--msg-sizes 64` smoke 성공
+- [x] `--transports tcp --msg-sizes 64` 패턴별 smoke 성공
 - [x] `SPOT`, `SPOT_REQREP`, `SPOT_SENDSEND`, `STREAM` 관련 smoke 성공
 - [x] 실패 시 원인 수정 뒤 sample/perf smoke를 처음부터 다시 실행
 
@@ -748,25 +748,25 @@ Core release:
 - [x] version bump 대상 확인
 - [x] release commit 생성
 - [x] `git status --short`로 의도한 변경만 확인
-- [ ] commit push
-- [ ] `core/vX.Y.Z` tag 생성
-- [ ] tag push
-- [ ] `gh run list --workflow "Build libzlink Core Libraries"`로 build workflow 시작 확인
-- [ ] `gh run watch` 또는 `gh run view`로 build workflow 성공 확인
-- [ ] `gh run list --workflow "Release Core Conan Package"`로 release workflow 시작 확인
-- [ ] `gh run watch` 또는 `gh run view`로 release workflow 성공 또는 optional skip 사유 확인
-- [ ] core native archive release asset 확인
-- [ ] `gh release view core/vX.Y.Z` 성공
-- [ ] 실패 시 원인 수정 후 새 patch version 또는 tag 재처리
+- [x] commit push
+- [x] `core/vX.Y.Z` tag 생성
+- [x] tag push
+- [x] `gh run list --workflow "Build libzlink Core Libraries"`로 build workflow 시작 확인
+- [x] `gh run watch` 또는 `gh run view`로 build workflow 성공 확인
+- [x] `gh run list --workflow "Release Core Conan Package"`로 release workflow 시작 확인
+- [x] `gh run watch` 또는 `gh run view`로 release workflow 성공 또는 optional skip 사유 확인
+- [x] core native archive release asset 확인
+- [x] `gh release view core/vX.Y.Z` 성공
+- [x] 실패 시 원인 수정 후 새 patch version 또는 tag 재처리
 
 Bindings native library:
 
-- [ ] core release 완료 전에는 `bindings/update_zlink_libs.sh`를 실행하지 않음
-- [ ] `gh` CLI 인증 확인
-- [ ] release asset 누락이 없음을 확인
-- [ ] `bindings/update_zlink_libs.sh` 실행
-- [ ] 변경된 native library와 version marker 확인
-- [ ] 결과를 `bindings-update-log.ko.md`에 기록
+- [x] core release 완료 전에는 `bindings/update_zlink_libs.sh`를 실행하지 않음
+- [x] `gh` CLI 인증 확인
+- [x] release asset 누락이 없음을 확인
+- [x] `bindings/update_zlink_libs.sh` 실행
+- [x] 변경된 native library와 version marker 확인
+- [x] 결과를 `bindings-update-log.ko.md`에 기록
 
 ## Bindings 순차 적용, 5회 리뷰, 검증
 
@@ -786,35 +786,35 @@ bindings는 언어별로 하나씩 순차 진행한다. 한 언어의 spec, code
 
 언어별 절차:
 
-- [ ] draft spec과 해당 언어 binding spec 1차 비교
-- [ ] 2차 비교
-- [ ] 3차 비교
-- [ ] 4차 비교
-- [ ] 5차 비교
-- [ ] 5차에서 mismatch가 나오면 수정 뒤 5차를 처음부터 다시 수행
-- [ ] 새 API, 변경 API, 제거 API가 binding spec에 반영됨
-- [ ] unchecked/checked ref 의미가 binding spec에 반영됨
-- [ ] ownership, timeout, join/leave, remote handoff 계약이 binding spec에 반영됨
-- [ ] binding code가 spec과 일치함
-- [ ] 제거 API가 binding public surface에서 사라짐
-- [ ] sample build 성공
-- [ ] sample runner 성공
-- [ ] perf smoke 성공
-- [ ] binding POSD 리팩토링 완료
-- [ ] 두 번 연속 새 POSD 후보가 없음
+- [x] draft spec과 해당 언어 binding spec 1차 비교
+- [x] 2차 비교
+- [x] 3차 비교
+- [x] 4차 비교
+- [x] 5차 비교
+- [x] 5차에서 mismatch가 나오면 수정 뒤 5차를 처음부터 다시 수행
+- [x] 새 API, 변경 API, 제거 API가 binding spec에 반영됨
+- [x] unchecked/checked ref 의미가 binding spec에 반영됨
+- [x] ownership, timeout, join/leave, remote handoff 계약이 binding spec에 반영됨
+- [x] binding code가 spec과 일치함
+- [x] 제거 API가 binding public surface에서 사라짐
+- [x] sample build 성공
+- [x] sample runner 성공
+- [x] perf smoke 성공
+- [x] binding POSD 리팩토링 완료
+- [x] 두 번 연속 새 POSD 후보가 없음
 
 ## 최종 종료 절차
 
-- [ ] `git status --short` 확인
-- [ ] contract matrix 모든 행 `reviewed`
-- [ ] implementation review log 닫힘
-- [ ] sample/perf smoke log 닫힘
-- [ ] POSD refactor log 닫힘
-- [ ] final doc review log 닫힘
-- [ ] core release log 닫힘
-- [ ] bindings update log 닫힘
-- [ ] bindings spec review log 닫힘
-- [ ] bindings POSD refactor log 닫힘
-- [ ] blocker log에 미해결 blocker 없음
-- [ ] 최종 테스트 명령과 결과 기록
-- [ ] 최종 보고 작성
+- [x] `git status --short` 확인
+- [x] contract matrix 모든 행 `reviewed`
+- [x] implementation review log 닫힘
+- [x] sample/perf smoke log 닫힘
+- [x] POSD refactor log 닫힘
+- [x] final doc review log 닫힘
+- [x] core release log 닫힘
+- [x] bindings update log 닫힘
+- [x] bindings spec review log 닫힘
+- [x] bindings POSD refactor log 닫힘
+- [x] blocker log에 미해결 blocker 없음
+- [x] 최종 테스트 명령과 결과 기록
+- [x] 최종 보고 작성

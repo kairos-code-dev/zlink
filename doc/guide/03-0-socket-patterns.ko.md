@@ -152,14 +152,21 @@ zlink_recv_result_t zlink_recv (
   `zlink_recv_handler()` (raw callback), `zlink_stream_packet_handler()`
   (packet callback) 세 모델 중 하나를 고른다. 한 handle에서 두 번째 모델로
   전환하려 하면 `EBUSY`로 실패한다.
-- **SPOT (routed)**: `zlink_spot_recv()` / `zlink_spot_handler()` 를
-  사용하며 `(source_rid, spot_rid, request_seq, …)` 를 반환한다.
+- **SPOT**: 두 가지 상호 배타적 handler 등록 방식이 있다.
+  - `zlink_spot_handler()` — routed 전용 직접 callback이다. routed payload를 callback
+    안에서 바로 받는다. subscribe, timer, channel reply, Actor 이벤트는 이 방식으로
+    받을 수 없다.
+  - `zlink_spot_dispatch_event_handler()` — subscribe, routed, channel reply, timer,
+    Actor 이벤트를 readiness 형태로 통합 수신한다. callback은 "읽을 것이 있다"는 신호이며,
+    데이터는 각 drain API(`zlink_spot_recv()`, `zlink_spot_subscribe()` 등)로 읽는다.
 - **monitor / timer**: recv와 callback 두 방식을 모두 지원한다.
 
-즉 data-plane 수신은 `recv + poller`가 기본이며, callback은
-`STREAM`, monitor/timer, SPOT dispatch event처럼 실제 사용 패턴이 분명한
-예외 타입에만 남긴다. request completion callback은 data-plane receive가
-아닌 별도 축의 비동기 작업 완료 통지임에 유의한다.
+즉 data-plane 수신은 `recv + poller`가 기본이며, callback은 `STREAM`,
+monitor/timer처럼 실제 사용 패턴이 분명한 예외 타입에만 남긴다. SPOT은
+`zlink_spot_handler()` (routed 전용 직접 callback)와
+`zlink_spot_dispatch_event_handler()` (전체 이벤트 readiness 통합) 두 방식 중
+하나를 선택해야 하며, 같은 Spot에서 동시에 쓸 수 없다. request completion
+callback은 data-plane receive가 아닌 별도 축의 비동기 작업 완료 통지임에 유의한다.
 
 ## 8. 용어 정리
 

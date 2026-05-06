@@ -137,6 +137,9 @@ func runMultiRouterClient(
 
 		event, err := poller.Wait(25 * time.Millisecond)
 		if err != nil {
+			if perfcommon.IsTransient(err) {
+				continue
+			}
 			perfcommon.Must(fmt.Errorf("multi router/router poll: %w", err))
 		}
 		if event == nil {
@@ -173,6 +176,9 @@ func validateMultiRouterRoutes(serverID zlink.RoutingID, clients []multiRouterCl
 		for time.Now().Before(deadline) {
 			event, err := poller.Wait(time.Until(deadline))
 			if err != nil {
+				if perfcommon.IsTransient(err) {
+					continue
+				}
 				perfcommon.Must(fmt.Errorf("multi router/router route probe[%d] poll: %w", index, err))
 			}
 			if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
@@ -221,6 +227,9 @@ func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, stop <-chan st
 
 		event, err := poller.Wait(25 * time.Millisecond)
 		if err != nil {
+			if perfcommon.IsTransient(err) {
+				continue
+			}
 			perfcommon.Must(fmt.Errorf("multi router/router server poll: %w", err))
 		}
 		if event == nil {

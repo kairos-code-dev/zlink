@@ -171,16 +171,19 @@ class SpotDispatchInfo:
     event: SpotDispatchEvent
     subject_kind: SpotDispatchSubjectKind
     subject: int | None
+    actor: "ActorRef | None" = None
+    _node_handle: ctypes.c_void_p | None = None
 
     def recv_actor_part(self, *, flags=0):
         if (
             self.event != SpotDispatchEvent.ACTOR_READABLE
             or self.subject_kind != SpotDispatchSubjectKind.ACTOR
-            or self.subject is None
+            or self.actor is None
+            or self._node_handle is None
         ):
             raise RecvError(RecvResult.NOT_SUPPORTED, _ERRNO_ENOTSUP)
         try:
-            return _recv_actor_part(ctypes.c_void_p(int(self.subject)), flags)
+            return _recv_actor_part(self._node_handle, self.actor, flags)
         except RecvError as ex:
             if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
                 return None
@@ -225,7 +228,13 @@ class ActorRecvInfo:
 @dataclass
 class ActorJoinInfo:
     actor: ActorRef
+    source_actor: ActorRef
+    target_actor: ActorRef
     source_node_rid: RoutingId
+    source_spot_rid: RoutingId | None
+    target_node_rid: RoutingId | None
+    target_spot_rid: RoutingId | None
+    join_epoch: int
     flags: int
     _native: ZlinkActorJoinInfo
 
@@ -235,6 +244,16 @@ class ActorPart:
     info: ActorRecvInfo
     message: Message
     more: bool
+
+
+@dataclass(frozen=True)
+class ActorJoinRequest:
+    info: ActorJoinInfo
+    message: Message
+
+    def __iter__(self):
+        yield self.info
+        yield self.message
 
 
 @dataclass(frozen=True)
@@ -302,12 +321,18 @@ def remote_actor_ref(target_node_rid, actor_id):
     return _actor_ref_from_native(native_ref)
 
 
-def _recv_actor_part(actor_handle, flags=0):
+def _routing_id_or_none(native):
+    return _routing_id_bytes(native)
+
+
+def _recv_actor_part(node_handle, actor_ref, flags=0):
     info = ZlinkActorRecvInfo()
     part = ZlinkMsg()
     more = ctypes.c_int()
-    rc = lib().zlink_actor_recv_part(
-        actor_handle,
+    native_actor = _actor_ref_to_native(actor_ref)
+    rc = lib().zlink_spot_node_actor_recv_part(
+        node_handle,
+        ctypes.byref(native_actor),
         ctypes.byref(info),
         ctypes.byref(part),
         ctypes.byref(more),
@@ -651,17 +676,18 @@ def _recv_spot_routed(handle, flags, *, reply_sender_factory=None):
 
 
 class Actor:
-    def __init__(self, handle):
-        if not handle:
-            _raise_config_error_from_errno()
-        self._handle = handle
+    def __init__(self, node, actor_ref):
+        if not isinstance(node, SpotNode):
+            raise TypeError("node must be SpotNode")
+        if not isinstance(actor_ref, ActorRef):
+            raise TypeError("actor_ref must be ActorRef")
+        self._node = node
+        self._ref = actor_ref
 
     def ref(self):
-        native = ZlinkActorRef()
-        rc = lib().zlink_actor_get_ref(self._handle, ctypes.byref(native))
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return _actor_ref_from_native(native)
+        if self._ref is None:
+            raise RuntimeError("actor is closed")
+        return self._ref
 
     @property
     def actor_ref(self):
@@ -681,9 +707,14 @@ class Actor:
         spot._request_pending[handle] = pending
         spot._request_progress_targets[handle] = spot._request_progress_target()
         reply_handler = spot._ensure_request_reply_handler()
-        rc = lib().zlink_actor_join_spot(
-            self._handle,
-            spot._handle,
+        native_actor = _actor_ref_to_native(self.ref())
+        native_node = _copy_routing_id(spot._node.routing_id)
+        native_spot = _copy_routing_id(spot.routing_id)
+        rc = lib().zlink_spot_node_actor_join_spot(
+            self._node._handle,
+            ctypes.byref(native_actor),
+            ctypes.byref(native_node),
+            ctypes.byref(native_spot),
             ctypes.byref(native_parts[0]),
             reply_handler,
             ctypes.c_void_p(handle),
@@ -701,13 +732,20 @@ class Actor:
     def leave(self, spot):
         if not isinstance(spot, Spot):
             raise TypeError("spot must be Spot")
-        rc = lib().zlink_actor_leave_spot(self._handle, spot._handle)
+        native_actor = _actor_ref_to_native(self.ref())
+        native_spot = _copy_routing_id(spot.routing_id)
+        rc = lib().zlink_spot_node_actor_leave_spot(
+            self._node._handle,
+            ctypes.byref(native_actor),
+            ctypes.byref(native_spot),
+            0,
+        )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def recv_part(self, *, flags=0):
         try:
-            return _recv_actor_part(ctypes.c_void_p(self._handle), flags)
+            return _recv_actor_part(self._node._handle, self.ref(), flags)
         except RecvError as ex:
             if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
                 return None
@@ -718,20 +756,11 @@ class Actor:
         if len(native_parts) != 1:
             _close_native_parts(native_parts)
             raise ValueError("payload must be a single message")
-        rc = lib().zlink_actor_send_bound_session_msg(
-            self._handle, ctypes.byref(native_parts[0]), int(flags)
-        )
-        if rc != 0:
-            _close_native_parts(native_parts)
-            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
-        return True
-
-    def send_bound_session_packet(self, header, body, *, flags=0):
-        native_parts = _clone_payload([header, body])
-        rc = lib().zlink_actor_send_bound_session_packet(
-            self._handle,
+        native_actor = _actor_ref_to_native(self.ref())
+        rc = lib().zlink_spot_node_actor_send_bound_session_msg(
+            self._node._handle,
+            ctypes.byref(native_actor),
             ctypes.byref(native_parts[0]),
-            ctypes.byref(native_parts[1]),
             int(flags),
         )
         if rc != 0:
@@ -739,14 +768,28 @@ class Actor:
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
         return True
 
-    def close(self, *, timeout=0):
-        if not self._handle:
-            return
-        handle = ctypes.c_void_p(self._handle)
-        rc = lib().zlink_actor_destroy(ctypes.byref(handle), _timeout_to_ms(timeout))
+    def close_bound_session(self, *, timeout=0):
+        native_actor = _actor_ref_to_native(self.ref())
+        rc = lib().zlink_spot_node_actor_close_bound_session(
+            self._node._handle,
+            ctypes.byref(native_actor),
+            _timeout_to_ms(timeout),
+        )
         if rc != 0:
             _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
-        self._handle = None
+
+    def close(self, *, timeout=0):
+        if self._ref is None:
+            return
+        native_actor = _actor_ref_to_native(self._ref)
+        rc = lib().zlink_spot_node_actor_destroy(
+            self._node._handle,
+            ctypes.byref(native_actor),
+            _timeout_to_ms(timeout),
+        )
+        if rc != 0:
+            _raise_result_error(RequestError, RequestResult, rc, lib().zlink_errno())
+        self._ref = None
 
     def __enter__(self):
         return self
@@ -965,8 +1008,15 @@ class SpotNode:
         return Spot._create(self)
 
     def actor(self, actor_id):
-        handle = lib().zlink_spot_node_actor_new(self._handle, _actor_id_bytes(actor_id))
-        return Actor(handle)
+        native = ZlinkActorRef()
+        rc = lib().zlink_spot_node_actor_new(
+            self._handle,
+            _actor_id_bytes(actor_id),
+            ctypes.byref(native),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return Actor(self, _actor_ref_from_native(native))
 
     def actor_lookup(self, actor_id):
         native = ZlinkActorRef()
@@ -1000,9 +1050,9 @@ class SpotNode:
             actor=_actor_ref_from_native(result.actor),
         )
 
-    def destroy_remote_actor(self, actor_ref, *, timeout=0):
+    def destroy_actor(self, actor_ref, *, timeout=0):
         native = _actor_ref_to_native(actor_ref)
-        rc = lib().zlink_spot_node_destroy_remote_actor(
+        rc = lib().zlink_spot_node_actor_destroy(
             self._handle, ctypes.byref(native), _timeout_to_ms(timeout)
         )
         if rc != 0:
@@ -1048,10 +1098,11 @@ class SpotNode:
             received = _make_message_list(parts, part_count)
         pending.resolve(result, received, _request_result_internal_errno(result))
 
-    def join_actor(self, actor_ref, dest_spot_rid, payload, callback, *, flags=0, timeout=0):
+    def join_actor(self, actor_ref, dest_node_rid, dest_spot_rid, payload, callback, *, flags=0, timeout=0):
         if callback is None:
             raise ValueError("callback must not be None")
         native_actor = _actor_ref_to_native(actor_ref)
+        native_node = _copy_routing_id(dest_node_rid)
         native_spot = _copy_routing_id(dest_spot_rid)
         native_parts = _clone_payload(payload)
         if len(native_parts) != 1:
@@ -1063,6 +1114,7 @@ class SpotNode:
         rc = lib().zlink_spot_node_actor_join_spot(
             self._handle,
             ctypes.byref(native_actor),
+            ctypes.byref(native_node),
             ctypes.byref(native_spot),
             ctypes.byref(native_parts[0]),
             self._ensure_actor_reply_handler(),
@@ -2027,16 +2079,29 @@ class Spot:
                 return
             info = info_ptr.contents
             try:
+                actor_ref = None
+                subject = None
+                if info.subject:
+                    if (
+                        int(info.event) == int(SpotDispatchEvent.ACTOR_READABLE)
+                        and int(info.subject_kind) == int(SpotDispatchSubjectKind.ACTOR)
+                    ):
+                        actor_ref = _actor_ref_from_native(
+                            ctypes.cast(
+                                info.subject,
+                                ctypes.POINTER(ZlinkActorRef),
+                            ).contents
+                        )
+                    else:
+                        subject = int(ctypes.cast(info.subject, ctypes.c_void_p).value)
                 handler(
                     self,
                     SpotDispatchInfo(
                         event=SpotDispatchEvent(int(info.event)),
                         subject_kind=SpotDispatchSubjectKind(int(info.subject_kind)),
-                        subject=(
-                            None
-                            if not info.subject
-                            else int(ctypes.cast(info.subject, ctypes.c_void_p).value)
-                        ),
+                        subject=subject,
+                        actor=actor_ref,
+                        _node_handle=self._node._handle,
                     ),
                 )
             except Exception:
@@ -2079,14 +2144,20 @@ class Spot:
                 if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
                     return None
                 raise
-        return (
-            ActorJoinInfo(
-                actor=_actor_ref_from_native(info.actor),
+        return ActorJoinRequest(
+            info=ActorJoinInfo(
+                actor=_actor_ref_from_native(info.source_actor),
+                source_actor=_actor_ref_from_native(info.source_actor),
+                target_actor=_actor_ref_from_native(info.target_actor),
                 source_node_rid=_routing_id_bytes(info.source_node_rid),
+                source_spot_rid=_routing_id_or_none(info.source_spot_rid),
+                target_node_rid=_routing_id_or_none(info.target_node_rid),
+                target_spot_rid=_routing_id_or_none(info.target_spot_rid),
+                join_epoch=int(info.join_epoch),
                 flags=int(info.flags),
                 _native=info,
             ),
-            _message_from_native(message),
+            message=_message_from_native(message),
         )
 
     def reply_actor_join(self, info, accepted, payload):

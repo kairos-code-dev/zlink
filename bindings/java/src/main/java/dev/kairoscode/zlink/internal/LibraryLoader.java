@@ -228,16 +228,14 @@ final class LibraryLoader {
         String arch = normalizeArch(System.getProperty("os.arch"));
         String relative = "native/" + os + "-" + arch;
         Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath();
-        Path[] candidates = new Path[] {
-            cwd.resolve("src/main/resources").resolve(relative).normalize(),
-            cwd.resolve("bindings/java/src/main/resources").resolve(relative).normalize()
-        };
-        for (Path candidate : candidates) {
-            if (Files.exists(candidate.resolve(libraryFileName(os)))) {
-                return candidate;
-            }
+        String required = libraryFileName(os);
+        Path local = cwd.resolve("src/main/resources").resolve(relative)
+            .normalize();
+        if (Files.exists(local.resolve(required))) {
+            return local;
         }
-        return null;
+        return findAncestorRelative(cwd,
+            "bindings/java/src/main/resources/" + relative, required);
     }
 
     private static Path findGeneratedBridgeDir() {
@@ -246,14 +244,23 @@ final class LibraryLoader {
         String relative = "build/generated/zlink-native-resources/main/native/"
             + os + "-" + arch;
         Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath();
-        Path[] candidates = new Path[] {
-            cwd.resolve(relative).normalize(),
-            cwd.resolve("bindings/java").resolve(relative).normalize()
-        };
-        for (Path candidate : candidates) {
-            if (Files.exists(candidate.resolve(bridgeFileName(os)))) {
+        String required = bridgeFileName(os);
+        Path local = cwd.resolve(relative).normalize();
+        if (Files.exists(local.resolve(required))) {
+            return local;
+        }
+        return findAncestorRelative(cwd, "bindings/java/" + relative, required);
+    }
+
+    private static Path findAncestorRelative(Path start, String relative,
+                                             String requiredFile) {
+        Path current = start;
+        while (current != null) {
+            Path candidate = current.resolve(relative).normalize();
+            if (Files.exists(candidate.resolve(requiredFile))) {
                 return candidate;
             }
+            current = current.getParent();
         }
         return null;
     }

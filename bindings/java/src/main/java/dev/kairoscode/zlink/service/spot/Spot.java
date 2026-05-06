@@ -3,6 +3,8 @@
 package dev.kairoscode.zlink.service.spot;
 
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.ConfigException;
+import dev.kairoscode.zlink.ConfigResult;
 import dev.kairoscode.zlink.RequestResult;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RoutingId;
@@ -15,7 +17,10 @@ import dev.kairoscode.zlink.SendReadyHandler;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.SubscriptionEvent;
 import dev.kairoscode.zlink.ZlinkException;
+import dev.kairoscode.zlink.SpotDispatchEvent;
 import dev.kairoscode.zlink.SpotDispatchEventHandler;
+import dev.kairoscode.zlink.SpotDispatchInfo;
+import dev.kairoscode.zlink.SpotDispatchSubjectKind;
 import dev.kairoscode.zlink.SpotRoutedHandler;
 import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.SubmitResult;
@@ -163,6 +168,10 @@ public final class Spot implements AutoCloseable {
     /** Internal bridge for binding helpers. */
     public MemorySegment handleInternal() {
         return handle();
+    }
+
+    MemorySegment ownerNodeHandleInternal() {
+        return ownerNode == null ? MemorySegment.NULL : ownerNode.handleInternal();
     }
 
     /** Sets the logical routing id for this spot. */
@@ -514,7 +523,7 @@ public final class Spot implements AutoCloseable {
             "zlink-spot-request-progress");
     }
 
-    public void drainChannelReplyFrom(MemorySegment dealerSubject) {
+    private void drainChannelReplyFrom(MemorySegment dealerSubject) {
         Objects.requireNonNull(dealerSubject, "dealerSubject");
         ensureOpen();
         int rc = Native.spotChannelReplyProgressFrom(handle, dealerSubject);
@@ -522,6 +531,19 @@ public final class Spot implements AutoCloseable {
             throw ZlinkException.fromLastError(
               "zlink_spot_channel_reply_progress_from");
         }
+    }
+
+    public void drainChannelReply(SpotDispatchInfo info) {
+        Objects.requireNonNull(info, "info");
+        if (info.event() != SpotDispatchEvent.CHANNEL_REPLY_READABLE
+            || info.subjectKind() != SpotDispatchSubjectKind.CHANNEL_DEALER) {
+            throw new ConfigException(ConfigResult.INVALID_ARGUMENT);
+        }
+        MemorySegment subject = InternalAccess.spotDispatchSubject(info);
+        if (subject == null || subject.address() == 0) {
+            throw new ConfigException(ConfigResult.INVALID_HANDLE);
+        }
+        drainChannelReplyFrom(subject);
     }
 
     private SubmitException submitFailure(String apiName) {
@@ -700,8 +722,8 @@ public final class Spot implements AutoCloseable {
                 }
                 InternalAccess.messageFinishReceive(message, false);
                 success = true;
-                return new ActorJoinRequest(
-                  ActorInterop.actorJoinInfoFromNative(infoOut), message);
+                return new ActorJoinRequest(readActorJoinInfo(infoOut),
+                  message);
             } finally {
                 if (!success) {
                     message.close();
@@ -714,17 +736,17 @@ public final class Spot implements AutoCloseable {
         return recvActorJoin(RecvFlags.NONE);
     }
 
-    public void replyActorJoin(ActorJoinInfo info,
+    public void replyActorJoin(ActorJoinRequest request,
                                boolean accepted,
                                Message message) {
-        Objects.requireNonNull(info, "info");
+        Objects.requireNonNull(request, "request");
         Objects.requireNonNull(message, "message");
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeInfo = arena.allocate(
               NativeLayouts.ACTOR_JOIN_INFO_LAYOUT);
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            ActorInterop.writeActorJoinInfo(nativeInfo, info);
+            writeActorJoinInfo(nativeInfo, request.info());
             InternalAccess.messageCopyTo(message, nativeMsg);
             int rc = Native.spotActorJoinReply(handle, nativeInfo,
               accepted ? 1 : 0, nativeMsg);
@@ -732,6 +754,75 @@ public final class Spot implements AutoCloseable {
                 NativeMsg.msgClose(nativeMsg);
                 throw new SubmitException(SubmitResult.fromValue(rc));
             }
+        }
+    }
+
+    private static ActorJoinInfo readActorJoinInfo(MemorySegment segment) {
+        MemorySegment view = segment.reinterpret(
+          NativeLayouts.ACTOR_JOIN_INFO_LAYOUT.byteSize());
+        return ActorJoinInfo.fromNative(
+          ActorInterop.actorRefFromNative(view.asSlice(
+            NativeLayouts.ACTOR_JOIN_INFO_SOURCE_ACTOR_OFFSET,
+            NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
+          ActorInterop.actorRefFromNative(view.asSlice(
+            NativeLayouts.ACTOR_JOIN_INFO_TARGET_ACTOR_OFFSET,
+            NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
+          ActorInterop.readRoutingId(view.asSlice(
+            NativeLayouts.ACTOR_JOIN_INFO_SOURCE_NODE_RID_OFFSET,
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+          ActorInterop.readRoutingId(view.asSlice(
+            NativeLayouts.ACTOR_JOIN_INFO_SOURCE_SPOT_RID_OFFSET,
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+          ActorInterop.readRoutingId(view.asSlice(
+            NativeLayouts.ACTOR_JOIN_INFO_TARGET_NODE_RID_OFFSET,
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+          ActorInterop.readRoutingId(view.asSlice(
+            NativeLayouts.ACTOR_JOIN_INFO_TARGET_SPOT_RID_OFFSET,
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+          view.get(ValueLayout.JAVA_LONG_UNALIGNED,
+            NativeLayouts.ACTOR_JOIN_INFO_JOIN_EPOCH_OFFSET),
+          view.get(ValueLayout.ADDRESS,
+            NativeLayouts.ACTOR_JOIN_INFO_REQUEST_OFFSET),
+          view.get(ValueLayout.JAVA_INT,
+            NativeLayouts.ACTOR_JOIN_INFO_FLAGS_OFFSET));
+    }
+
+    private static void writeActorJoinInfo(MemorySegment out,
+                                           ActorJoinInfo info) {
+        ActorInterop.writeActorRef(out.asSlice(
+          NativeLayouts.ACTOR_JOIN_INFO_SOURCE_ACTOR_OFFSET,
+          NativeLayouts.ACTOR_REF_LAYOUT.byteSize()), info.sourceActor());
+        ActorInterop.writeActorRef(out.asSlice(
+          NativeLayouts.ACTOR_JOIN_INFO_TARGET_ACTOR_OFFSET,
+          NativeLayouts.ACTOR_REF_LAYOUT.byteSize()), info.targetActor());
+        writeRoutingId(out.asSlice(
+          NativeLayouts.ACTOR_JOIN_INFO_SOURCE_NODE_RID_OFFSET,
+          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()), info.sourceNodeRidRaw());
+        writeRoutingId(out.asSlice(
+          NativeLayouts.ACTOR_JOIN_INFO_SOURCE_SPOT_RID_OFFSET,
+          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()), info.sourceSpotRidRaw());
+        writeRoutingId(out.asSlice(
+          NativeLayouts.ACTOR_JOIN_INFO_TARGET_NODE_RID_OFFSET,
+          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()), info.targetNodeRidRaw());
+        writeRoutingId(out.asSlice(
+          NativeLayouts.ACTOR_JOIN_INFO_TARGET_SPOT_RID_OFFSET,
+          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()), info.targetSpotRidRaw());
+        out.set(ValueLayout.JAVA_LONG_UNALIGNED,
+          NativeLayouts.ACTOR_JOIN_INFO_JOIN_EPOCH_OFFSET, info.joinEpoch());
+        out.set(ValueLayout.ADDRESS,
+          NativeLayouts.ACTOR_JOIN_INFO_REQUEST_OFFSET, info.request());
+        out.set(ValueLayout.JAVA_INT,
+          NativeLayouts.ACTOR_JOIN_INFO_FLAGS_OFFSET, info.flags());
+    }
+
+    private static void writeRoutingId(MemorySegment out, RoutingId rid) {
+        byte[] value = rid == null ? new byte[0]
+          : InternalAccess.routingIdTrustedBytes(rid);
+        out.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+          (byte) value.length);
+        if (value.length > 0) {
+            MemorySegment.copy(MemorySegment.ofArray(value), 0, out,
+              NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
         }
     }
 

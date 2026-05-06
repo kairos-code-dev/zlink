@@ -153,15 +153,23 @@ zlink_recv_result_t zlink_recv (
   `zlink_recv()` (raw recv), `zlink_recv_handler()` (raw callback), or
   `zlink_stream_packet_handler()` (packet callback). A second attempt to
   activate a different mode on the same handle fails with `EBUSY`.
-- **SPOT (routed)**: uses `zlink_spot_recv()` / `zlink_spot_handler()`
-  with `(source_rid, spot_rid, request_seq, …)`.
+- **SPOT**: two mutually exclusive handler registration modes exist.
+  - `zlink_spot_handler()` — routed-only direct callback. Routed payload is
+    delivered inline inside the callback. Subscribe, timer, channel reply, and
+    Actor events cannot be received through this mode.
+  - `zlink_spot_dispatch_event_handler()` — unified readiness notification for
+    subscribe, routed, channel reply, timer, and Actor events. The callback
+    signals that work is ready; data is pulled with the corresponding drain API
+    (`zlink_spot_recv()`, `zlink_spot_subscribe()`, etc.).
 - **monitor / timer**: both recv and callback models are supported.
 
 In short, data-plane receive defaults to `recv + poller`. Callback-based
 receive is kept only for exception types whose usage pattern justifies
-it: `STREAM`, monitor/timer, SPOT dispatch events. Request completion
-callbacks live on a separate axis (async operation completion), not on
-the data-plane receive axis.
+it: `STREAM` and monitor/timer. SPOT offers `zlink_spot_handler()` (routed-only
+direct callback) and `zlink_spot_dispatch_event_handler()` (unified readiness
+for all event types); the two are mutually exclusive on the same Spot. Request
+completion callbacks live on a separate axis (async operation completion), not
+on the data-plane receive axis.
 
 ## 8. Terminology
 

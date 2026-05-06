@@ -101,7 +101,7 @@ publish/subscribe를 함께 수행한다.
 - **Thread-safe** — 하나의 `spot` / `spot_node` handle에서 여러 스레드가
   operational API를 동시에 호출 가능
 
-자세한 내용은 [SPOT 가이드](07-3-spot.ko.md)를 참고.
+자세한 내용은 [SPOT 가이드](07-3-spot.ko.md)와 [SPOT Actor 가이드](07-4-actor.ko.md)를 참고.
 
 ### 3.3 소켓 패밀리 — Discovery 관리 raw 소켓
 

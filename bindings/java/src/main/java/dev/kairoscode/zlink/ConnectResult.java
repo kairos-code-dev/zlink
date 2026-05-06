@@ -6,7 +6,11 @@ public enum ConnectResult {
     OK(0),
     INVALID_ARGUMENT(601),
     NOT_SUPPORTED(602),
-    INVALID_HANDLE(603);
+    INVALID_HANDLE(603),
+    INTERNAL_ERROR(604),
+    NOT_FOUND(605),
+    CONFLICT(606),
+    BUSY(607);
 
     private final int value;
 

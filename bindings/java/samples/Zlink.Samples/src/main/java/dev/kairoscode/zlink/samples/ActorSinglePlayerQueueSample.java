@@ -39,33 +39,20 @@ public final class ActorSinglePlayerQueueSample {
                              spot.recvActorJoin(RecvFlags.DONT_WAIT)) {
                         if (request != null) {
                             try (Message reply = Message.copyOfUtf8("ok")) {
-                                spot.replyActorJoin(request.info(), true, reply);
+                                spot.replyActorJoin(request, true, reply);
                             }
                         }
                     }
                     return;
                 }
                 if (info.event() == SpotDispatchEvent.ACTOR_READABLE) {
-                    while (true) {
-                        try (ActorPart part =
-                                 info.recvActorPart(RecvFlags.DONT_WAIT)) {
-                            if (part == null) {
-                                return;
-                            }
+                    for (ActorPart part : info.actorParts()) {
+                        try (part) {
                             payloads.add(part.message().toUtf8String());
                         }
                     }
                 }
             });
-
-            try (Message request = Message.copyOfUtf8("join")) {
-                actor.join(spot, request, (result, messages) -> {
-                    replies.add(result);
-                    messages.forEach(Message::close);
-                }, Duration.ofSeconds(2));
-            }
-            SampleSupport.waitUntil("actor join", () -> !replies.isEmpty());
-            actor.leave(spot);
 
             stream.bind(endpoint);
             try (var client = SampleSupport.connectRawTcp(endpoint)) {
@@ -76,24 +63,33 @@ public final class ActorSinglePlayerQueueSample {
                     sessionRid = received.routingId().orElseThrow();
                 }
                 stream.bindActor(node, sessionRid, actorRef, Duration.ofSeconds(2));
+                try (Message request = Message.copyOfUtf8("join")) {
+                    actor.join(spot, request, (result, messages) -> {
+                        replies.add(result);
+                        messages.forEach(Message::close);
+                    }, Duration.ofSeconds(2));
+                }
+                SampleSupport.waitUntil("actor join", () -> !replies.isEmpty());
+                actor.leave(spot);
                 try (Message payload = Message.copyOfUtf8("queued")) {
                     stream.sendBoundActor(node, sessionRid, "solo", payload);
                 }
-            }
 
-            try (Message request = Message.copyOfUtf8("rejoin")) {
-                actor.join(spot, request, (result, messages) -> {
-                    replies.add(result);
-                    messages.forEach(Message::close);
-                }, Duration.ofSeconds(2));
+                try (Message request = Message.copyOfUtf8("rejoin")) {
+                    actor.join(spot, request, (result, messages) -> {
+                        replies.add(result);
+                        messages.forEach(Message::close);
+                    }, Duration.ofSeconds(2));
+                }
+                SampleSupport.waitUntil("queued actor payload",
+                    () -> !payloads.isEmpty());
+                if (!List.of("queued").equals(payloads)) {
+                    throw new IllegalStateException(
+                      "queued payload was not preserved");
+                }
+                actor.leave(spot);
+                actor.close();
             }
-            SampleSupport.waitUntil("queued actor payload",
-                () -> !payloads.isEmpty());
-            if (!List.of("queued").equals(payloads)) {
-                throw new IllegalStateException("queued payload was not preserved");
-            }
-            actor.leave(spot);
-            actor.close();
             System.out.println("[actor/solo] queued payload preserved across leave");
         }
     }

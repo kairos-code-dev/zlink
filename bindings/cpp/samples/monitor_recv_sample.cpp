@@ -20,10 +20,14 @@ int main ()
     assert (!endpoint.empty ());
     client.connect (endpoint);
 
-    const zlink::monitor_event_t server_event = server_monitor.recv ();
-    const zlink::monitor_event_t client_event = client_monitor.recv ();
-    assert (server_event.event == zlink::monitor_event::connection_ready);
-    assert (client_event.event == zlink::monitor_event::connection_ready);
+    const std::optional<zlink::monitor_event_t> server_event =
+      server_monitor.recv ();
+    const std::optional<zlink::monitor_event_t> client_event =
+      client_monitor.recv ();
+    assert (server_event.has_value ());
+    assert (client_event.has_value ());
+    assert (server_event->event == zlink::monitor_event::connection_ready);
+    assert (client_event->event == zlink::monitor_event::connection_ready);
     assert (!server_monitor.recv (zlink::non_blocking_t {}));
     assert (!client_monitor.recv (zlink::non_blocking_t {}));
 

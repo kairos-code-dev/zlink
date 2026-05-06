@@ -17,12 +17,13 @@ import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.ArrayList;
+import java.util.List;
 
 final class PerfMultiSpot {
     private static final String TOPIC = "bench";
     private static final String SERVICE_NAME = "bench-svc";
+    private static final int MAX_DRAIN_PER_SPOT = 1024;
 
     private PerfMultiSpot() {
     }
@@ -45,7 +46,7 @@ final class PerfMultiSpot {
             node.bind(config.endpoint());
             node.attachDiscovery(discovery);
             PerfControl.emitReady(config.endpoint());
-            sleepQuietly(2500);
+            PerfControl.awaitStart(config.size(), "spot server");
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
                 try (Message active = PerfUtil.payload(config.size(),
@@ -68,86 +69,139 @@ final class PerfMultiSpot {
     static PerfUtil.Result runClient(PerfUtil.Config config) {
         String registryRouterEndpoint = normalizeClientEndpoint(
             derivedEndpoint(config.endpoint(), 2), config.transport());
-        CountDownLatch ready = new CountDownLatch(config.clients());
-        CountDownLatch go = new CountDownLatch(1);
-        AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-        PerfMultiSendLoops.runClients(config.clients(), (index, duration) ->
-            new Thread(() -> runClientSlot(config, registryRouterEndpoint, index, duration,
-                ready, go, metrics, failure), "multi-spot-client-" + index),
-            config.durationSeconds());
-        if (failure.get() != null) {
-            throw new IllegalStateException("spot client failed", failure.get());
-        }
-        return metrics.finishMulti(config);
-    }
-
-    private static void runClientSlot(PerfUtil.Config config,
-                                      String registryRouterEndpoint,
-                                      int index,
-                                      int duration,
-                                      CountDownLatch ready,
-                                      CountDownLatch go,
-                                      PerfUtil.Metrics metrics,
-                                      AtomicReference<Throwable> failure) {
         try (Context ctx = PerfUtil.newContext(config);
              Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH, SERVICE_NAME);
-             SpotNode node = new SpotNode(ctx);
-             Spot subscriber = node.createSpot()) {
-            node.setRoutingId(routingId("a-java-multi-spot-client-" + index));
-            subscriber.setRoutingId(routingId("a-java-multi-spot-client-spot-" + index));
+             SpotNode node = new SpotNode(ctx)) {
+            node.setRoutingId(routingId("a-java-multi-spot-client"));
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureClientTls(node, config.transport());
-            discovery.connectRegistry(registryRouterEndpoint);
-            node.bind(PerfUtil.endpoint(config.transport(),
-                "multi-spot-client-" + index));
-            node.attachDiscovery(discovery);
-            subscriber.setSubscription(TOPIC);
-            settleReadyBarrier();
-            ready.countDown();
-            if (ready.getCount() == 0L) {
-                PerfControl.emitClientReady(config.size());
-                metrics.startActiveWindow();
-                go.countDown();
-            }
-            PerfUtil.await(go, "spot start", Duration.ofSeconds(10));
-            long finishDeadline = System.nanoTime()
-                + Duration.ofSeconds(duration + 5L).toNanos();
-            while (System.nanoTime() < finishDeadline) {
-                try (TopicMessage received = subscriber.subscribe(RecvFlags.DONT_WAIT)) {
-                    if (received == null) {
-                        sleepQuietly(1);
-                        continue;
-                    }
-                    if (handleDelivery(received, metrics, config.size())) {
-                        return;
+
+            List<Spot> subscribers = new ArrayList<>(config.clients());
+            try {
+                for (int i = 0; i < config.clients(); i++) {
+                    Spot subscriber = node.createSpot();
+                    subscriber.setRoutingId(routingId(
+                        "a-java-multi-spot-client-spot-" + i));
+                    subscribers.add(subscriber);
+                }
+                discovery.connectRegistry(registryRouterEndpoint);
+                node.bind(PerfUtil.endpoint(config.transport(),
+                    "multi-spot-client"));
+                node.attachDiscovery(discovery);
+                for (Spot subscriber : subscribers) {
+                    subscriber.setSubscription(TOPIC);
+                }
+                waitForPeerConnected(node, config.connectReadyTimeoutMs());
+                runClientSubscribers(config, subscribers, metrics);
+                return metrics.finishMulti(config);
+            } finally {
+                for (Spot subscriber : subscribers) {
+                    try {
+                        subscriber.close();
+                    } catch (RuntimeException ignored) {
                     }
                 }
             }
-            throw new IllegalStateException("spot client cooldown timed out");
-        } catch (Throwable ex) {
-            failure.compareAndSet(null, ex);
         }
     }
 
-    private static boolean handleDelivery(TopicMessage received,
-                                          PerfUtil.Metrics metrics,
-                                          int expectedSize) {
-        if (received == null || received.parts().isEmpty()) {
+    private static void runClientSubscribers(PerfUtil.Config config,
+                                             List<Spot> subscribers,
+                                             PerfUtil.Metrics metrics) {
+        boolean[] cooldownSeen = new boolean[subscribers.size()];
+        try {
+            settleReadyBarrier();
+            PerfControl.emitClientReady(config.size());
+            PerfControl.awaitStart(config.size(), "spot client");
+            metrics.startActiveWindow();
+            long activeEnd = System.nanoTime()
+                + Duration.ofSeconds(config.durationSeconds()).toNanos();
+            long finishDeadline = activeEnd
+                + Duration.ofMillis(postPhaseSettleMs()).toNanos();
+            while (System.nanoTime() < finishDeadline) {
+                boolean progressed = false;
+                for (int i = 0; i < subscribers.size(); i++) {
+                    if (cooldownSeen[i]) {
+                        continue;
+                    }
+                    for (int drained = 0; drained < MAX_DRAIN_PER_SPOT; drained++) {
+                        try (TopicMessage received =
+                                 subscribers.get(i).subscribe(RecvFlags.DONT_WAIT)) {
+                            if (received == null) {
+                                break;
+                            }
+                            progressed = true;
+                            int phase = handleDelivery(received, metrics,
+                                config.size(), activeEnd);
+                            if (phase == PerfUtil.PHASE_COOLDOWN) {
+                                cooldownSeen[i] = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (allCooldownSeen(cooldownSeen)) {
+                    return;
+                }
+                if (!progressed) {
+                    sleepQuietly(1);
+                }
+            }
+            return;
+        } catch (Throwable ex) {
+            throw new IllegalStateException("spot client failed", ex);
+        }
+    }
+
+    private static boolean allCooldownSeen(boolean[] cooldownSeen) {
+        if (cooldownSeen.length == 0) {
             return false;
+        }
+        for (boolean seen : cooldownSeen) {
+            if (!seen) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static int countCooldownSeen(boolean[] cooldownSeen) {
+        int count = 0;
+        for (boolean seen : cooldownSeen) {
+            if (seen) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int handleDelivery(TopicMessage received,
+                                      PerfUtil.Metrics metrics,
+                                      int expectedSize,
+                                      long activeEnd) {
+        if (received == null || received.parts().isEmpty()) {
+            return PerfUtil.PHASE_UNKNOWN;
         }
         Message payload = received.firstPart();
         PerfUtil.Header header = PerfUtil.decodeHeader(payload, expectedSize);
         if (header == null) {
-            return false;
+            return PerfUtil.PHASE_UNKNOWN;
         }
         if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-            return true;
+            return PerfUtil.PHASE_COOLDOWN;
         }
         if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-            metrics.recordNanos(header.latencyNanos());
+            if (System.nanoTime() <= activeEnd) {
+                metrics.recordNanos(header.latencyNanos());
+            }
+            return PerfUtil.PHASE_ACTIVE;
         }
-        return false;
+        return header.phase();
+    }
+
+    private static int postPhaseSettleMs() {
+        return PerfUtil.intEnv("PERF_MULTI_SPOT_POST_PHASE_SETTLE_MS", 0);
     }
 
     private static void settleReadyBarrier() {
@@ -155,6 +209,23 @@ final class PerfMultiSpot {
         if (settleMs > 0) {
             sleepQuietly(settleMs);
         }
+        int controlSettleMs = PerfUtil.intEnv(
+            "PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25);
+        if (controlSettleMs > 0) {
+            sleepQuietly(controlSettleMs);
+        }
+    }
+
+    private static void waitForPeerConnected(SpotNode node, int timeoutMs) {
+        long deadline = System.nanoTime()
+            + Duration.ofMillis(Math.max(1, timeoutMs)).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (node.statusSnapshot().connectedPeerCount() > 0) {
+                return;
+            }
+            sleepQuietly(10);
+        }
+        throw new IllegalStateException("spot client peer connect timed out");
     }
 
     private static void sleepQuietly(int millis) {

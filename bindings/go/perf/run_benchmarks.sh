@@ -3,11 +3,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_DIR="$(cd "${ROOT_DIR}/../.." && pwd)"
 cd "${ROOT_DIR}"
 
 export GOCACHE="${GOCACHE:-/tmp/zlink-go-cache}"
 export GOTMPDIR="${GOTMPDIR:-/tmp/zlink-go-tmp}"
 mkdir -p "${GOCACHE}" "${GOTMPDIR}"
+
+VERSION_FILE="${REPO_DIR}/VERSION"
+CORE_LIB_DIR="${REPO_DIR}/core/build/lib"
+CORE_VERSION="$(awk -F= '/^LIBZLINK_VERSION=/{print $2}' "${VERSION_FILE}")"
+CORE_LIB="${CORE_LIB_DIR}/libzlink.so.${CORE_VERSION}"
 
 PATTERN="ALL"
 DURATION="5"
@@ -178,6 +184,15 @@ run_go_perf() {
   esac
 }
 
+prepare_core_runtime() {
+  if [[ ! -f "${CORE_LIB}" ]]; then
+    echo "core runtime not found: ${CORE_LIB}" >&2
+    echo "Build core/build before running Go perf." >&2
+    exit 1
+  fi
+  export LD_LIBRARY_PATH="${CORE_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+}
+
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 TAG_SUFFIX=""
 if [[ -n "${RESULTS_TAG}" ]]; then
@@ -187,6 +202,7 @@ RESULTS_DIR="$(resolve_results_dir "${RESULTS_DIR}")"
 RESULTS_FILE="${RESULTS_DIR}/perf_go_single_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
 mkdir -p "${RESULTS_DIR}"
 cleanup_report_dir "${RESULTS_DIR}"
+prepare_core_runtime
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-single.XXXXXX")"
 cleanup() {
   rm -rf "${TMP_DIR}"
@@ -437,6 +453,7 @@ PY
   echo "- patterns: ${EFFECTIVE_PATTERNS_CSV}"
   echo "- transports: ${EFFECTIVE_TRANSPORTS_CSV}"
   echo "- msg_sizes: ${MSG_SIZES}"
+  echo "- runtime: ${CORE_LIB}"
   echo "- pin_cpu: ${PIN_CPU}"
   echo
 } > "${RESULTS_FILE}"
@@ -559,6 +576,7 @@ fi
   echo "- patterns: ${EFFECTIVE_PATTERNS_CSV}"
   echo "- transports: ${EFFECTIVE_TRANSPORTS_CSV}"
   echo "- msg_sizes: ${MSG_SIZES}"
+  echo "- runtime: ${CORE_LIB}"
   echo "- pin_cpu: ${PIN_CPU}"
   echo "- status: ${status}"
   echo "- expected_result_lines: ${expected_result_lines}"

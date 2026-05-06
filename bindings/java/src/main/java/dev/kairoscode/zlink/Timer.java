@@ -53,6 +53,10 @@ public final class Timer implements AutoCloseable {
         return new Timer(handle, true);
     }
 
+    static Timer fromBorrowedHandle(MemorySegment handle) {
+        return new Timer(handle, false);
+    }
+
     public void start(long intervalNs, long repeatCount) {
         ensureOpen();
         int rc = Native.timerStart(handle, intervalNs, repeatCount);
@@ -70,12 +74,13 @@ public final class Timer implements AutoCloseable {
     }
 
     public long recv() {
-        return recv(0);
+        return recv(RecvFlags.NONE);
     }
 
-    public long recv(int flags) {
+    public long recv(RecvFlags flags) {
+        Objects.requireNonNull(flags, "flags");
         ensureOpen();
-        if (flags != 0) {
+        if (flags != RecvFlags.NONE) {
             throw new RecvException(RecvResult.NOT_SUPPORTED);
         }
         try (Arena arena = Arena.ofConfined()) {

@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.service.discovery.Discovery;
+import dev.kairoscode.zlink.service.spot.ActorPart;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import java.lang.foreign.MemorySegment;
@@ -35,6 +36,40 @@ public final class InternalAccess {
 
     public static MemorySegment spotNodeHandle(SpotNode node) {
         return node.handleInternal();
+    }
+
+    public static MemorySegment spotDispatchSubject(SpotDispatchInfo info) {
+        return info.subject();
+    }
+
+    public static SpotDispatchInfo spotDispatchInfo(
+      SpotDispatchEvent event,
+      SpotDispatchSubjectKind subjectKind,
+      MemorySegment subject) {
+        return new SpotDispatchInfo(event, subjectKind, subject);
+    }
+
+    public static SpotDispatchInfo spotDispatchInfo(
+      SpotDispatchEvent event,
+      SpotDispatchSubjectKind subjectKind,
+      MemorySegment subject,
+      List<ActorPart> actorParts) {
+        return new SpotDispatchInfo(event, subjectKind, subject, actorParts);
+    }
+
+    public static SpotDispatchInfo spotDispatchInfo(
+      SpotDispatchEvent event,
+      SpotDispatchSubjectKind subjectKind,
+      MemorySegment subject,
+      Timer timer,
+      String channelName,
+      List<ActorPart> actorParts) {
+        return new SpotDispatchInfo(event, subjectKind, subject, timer,
+          channelName, actorParts);
+    }
+
+    public static Timer timerFromBorrowedHandle(MemorySegment handle) {
+        return Timer.fromBorrowedHandle(handle);
     }
 
     public static MemorySegment messageDataSegment(Message message) {

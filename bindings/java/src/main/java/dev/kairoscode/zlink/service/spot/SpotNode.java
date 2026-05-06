@@ -280,12 +280,14 @@ public final class SpotNode implements AutoCloseable {
         Objects.requireNonNull(actorId, "actorId");
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment actor = Native.spotNodeActorNew(handle,
-              NativeHelpers.toCString(arena, actorId));
-            if (actor == null || actor.address() == 0) {
-                throw ZlinkException.fromLastError("zlink_spot_node_actor_new");
+            MemorySegment out = arena.allocate(NativeLayouts.ACTOR_REF_LAYOUT);
+            int rc = Native.spotNodeActorNew(handle,
+              NativeHelpers.toCString(arena, actorId), out);
+            if (rc != 0) {
+                throw new dev.kairoscode.zlink.ConfigException(
+                  dev.kairoscode.zlink.ConfigResult.fromValue(rc));
             }
-            return new Actor(actor);
+            return new Actor(this, ActorInterop.actorRefFromNative(out));
         }
     }
 
@@ -298,8 +300,8 @@ public final class SpotNode implements AutoCloseable {
             int rc = Native.spotNodeActorLookup(handle,
               NativeHelpers.toCString(arena, actorId), out);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
-                  "zlink_spot_node_actor_lookup");
+                throw new dev.kairoscode.zlink.ConfigException(
+                  dev.kairoscode.zlink.ConfigResult.fromValue(rc));
             }
             return ActorInterop.actorRefFromNative(out);
         }
@@ -316,7 +318,8 @@ public final class SpotNode implements AutoCloseable {
               ActorInterop.nativeRoutingId(arena, targetNodeRid),
               NativeHelpers.toCString(arena, actorId), out);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_remote_actor_get_ref");
+                throw new dev.kairoscode.zlink.ConfigException(
+                  dev.kairoscode.zlink.ConfigResult.fromValue(rc));
             }
             return ActorInterop.actorRefFromNative(out);
         }
@@ -354,11 +357,11 @@ public final class SpotNode implements AutoCloseable {
           Duration.ofMillis(5_000L));
     }
 
-    public void destroyRemoteActor(ActorRef actor, Duration timeout) {
+    public void destroyActor(ActorRef actor, Duration timeout) {
         Objects.requireNonNull(actor, "actor");
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeDestroyRemoteActor(handle,
+            int rc = Native.spotNodeActorDestroy(handle,
               ActorInterop.actorRefToNative(arena, actor), timeoutMillis(timeout));
             if (rc != 0) {
                 throw new RequestException(RequestResult.fromValue(rc));
@@ -366,8 +369,8 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
-    public void destroyRemoteActor(ActorRef actor) {
-        destroyRemoteActor(actor, Duration.ofMillis(5_000L));
+    public void destroyActor(ActorRef actor) {
+        destroyActor(actor, Duration.ofMillis(5_000L));
     }
 
     public void onActorAdmission(ActorAdmissionHandler handler) {
@@ -402,14 +405,28 @@ public final class SpotNode implements AutoCloseable {
     }
 
     public boolean joinActor(ActorRef actor,
+                             RoutingId destNodeRid,
                              RoutingId destSpotRid,
                              Message message,
                              BiConsumer<RequestResult, List<Message>> callback,
                              Duration timeout) {
+        return joinActor(actor, destNodeRid, destSpotRid, message, callback,
+          SendFlags.NONE, timeout);
+    }
+
+    public boolean joinActor(ActorRef actor,
+                             RoutingId destNodeRid,
+                             RoutingId destSpotRid,
+                             Message message,
+                             BiConsumer<RequestResult, List<Message>> callback,
+                             SendFlags flags,
+                             Duration timeout) {
         Objects.requireNonNull(actor, "actor");
+        Objects.requireNonNull(destNodeRid, "destNodeRid");
         Objects.requireNonNull(destSpotRid, "destSpotRid");
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(callback, "callback");
+        Objects.requireNonNull(flags, "flags");
         ensureOpen();
         ActorRequestCallbacks.PendingToken pending =
           ActorRequestCallbacks.register(callback);
@@ -418,9 +435,10 @@ public final class SpotNode implements AutoCloseable {
             InternalAccess.messageCopyTo(message, nativeMsg);
             int rc = Native.spotNodeActorJoinSpot(handle,
               ActorInterop.actorRefToNative(arena, actor),
+              ActorInterop.nativeRoutingId(arena, destNodeRid),
               ActorInterop.nativeRoutingId(arena, destSpotRid),
               nativeMsg, ActorRequestCallbacks.REPLY_CALLBACK,
-              MemorySegment.ofAddress(pending.id()), SendFlags.NONE.value(),
+              MemorySegment.ofAddress(pending.id()), flags.value(),
               timeoutMillis(timeout));
             if (rc != 0) {
                 ActorRequestCallbacks.remove(pending.id());
@@ -432,10 +450,11 @@ public final class SpotNode implements AutoCloseable {
     }
 
     public boolean joinActor(ActorRef actor,
+                             RoutingId destNodeRid,
                              RoutingId destSpotRid,
                              Message message,
                              BiConsumer<RequestResult, List<Message>> callback) {
-        return joinActor(actor, destSpotRid, message, callback,
+        return joinActor(actor, destNodeRid, destSpotRid, message, callback,
           Duration.ofMillis(5_000L));
     }
 

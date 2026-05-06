@@ -6,7 +6,8 @@ public enum CloseResult {
     OK(0),
     BUSY(401),
     SHUTDOWN(402),
-    INVALID_HANDLE(403);
+    INVALID_HANDLE(403),
+    INTERNAL_ERROR(404);
 
     private final int value;
 

@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../dist/canonical');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
-const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsClient, configureTlsServer, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, spawnSenderWorker, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
+const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsClient, configureTlsServer, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 async function runDealerDealerBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     applyContextPolicy(ctx);
@@ -24,7 +24,7 @@ async function runDealerDealerBenchmark(msgSize, options) {
             runId: options.runId ?? 1,
             options,
         });
-        const workerError = waitForWorkerMessage(worker, 'error');
+        const workerError = waitForWorkerError(worker);
         await Promise.race([
             waitForWorkerMessage(worker, 'ready'),
             workerError.then((message) => Promise.reject(new Error(message.message)))
@@ -48,7 +48,7 @@ async function runDealerDealerBenchmark(msgSize, options) {
         }, () => stop);
         worker.postMessage({ type: 'start' });
         await Promise.race([
-            waitForWorkerMessage(worker, 'done'),
+            waitForWorkerDone(worker, options.duration),
             workerError.then((message) => Promise.reject(new Error(message.message)))
         ]);
         const drainDeadlineNs = activeStopNs

@@ -153,7 +153,7 @@ void test_socket_monitor_open_recv_snapshot ()
     (void) snapshot.auto_hwm_policy_class;
     (void) snapshot.auto_hwm_unit_budget_bytes;
     (void) snapshot.auto_hwm_size_cap;
-    (void) snapshot.auto_hwm_effective_publish_fanout;
+    (void) snapshot.auto_hwm_socket_message_slots;
 }
 
 void test_socket_monitor_ignore_handler_and_poller_size ()
@@ -167,7 +167,7 @@ void test_socket_monitor_ignore_handler_and_poller_size ()
     poller.add (server, zlink::poll_event::pollin);
     assert (poller.size () == 1);
 
-    monitor.on_event (zlink::monitor_handle_t::ignore_handler, NULL);
+    monitor.on_event (zlink::monitor_handle_t::ignore_handler);
 
     server.bind ("tcp://127.0.0.1:*");
     const std::string endpoint = server.options ().last_endpoint ();

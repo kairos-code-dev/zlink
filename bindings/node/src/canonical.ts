@@ -155,37 +155,15 @@ export interface MonitorSnapshot {
   readonly autoHwmProfile: number;
   readonly autoHwmRole: number;
   readonly autoHwmPolicyClass: number;
-  readonly autoHwmManagedConnections: number;
-  readonly autoHwmActiveHwmConnections: number;
-  readonly autoHwmObservedCount: number;
-  readonly autoHwmPlanningCount: number;
-  readonly autoHwmContextTotalPlanningCount: number;
-  readonly autoHwmBaseFloorPerConnection: number;
   readonly autoHwmUnitBudgetBytes: bigint;
   readonly autoHwmSizeCap: number;
-  readonly autoHwmEffectivePublishFanout: number;
-  readonly autoHwmAppliedSndHwm: number;
-  readonly autoHwmAppliedRcvHwm: number;
-  readonly autoHwmRequestedSndBuf: number;
-  readonly autoHwmRequestedRcvBuf: number;
-  readonly autoHwmEffectiveSndBuf: number;
-  readonly autoHwmEffectiveRcvBuf: number;
-  readonly autoHwmTotalMemoryBudgetBytes: bigint;
-  readonly autoHwmQueueBudgetBytes: bigint;
-  readonly autoHwmTransportBudgetBytes: bigint;
-  readonly autoHwmRuntimeReserveBytes: bigint;
-  readonly autoHwmSocketQueueShareBytes: bigint;
   readonly autoHwmSocketMessageSlots: bigint;
   readonly autoHwmEffectiveMessageBytes: bigint;
-  readonly autoHwmEstimatedMaxMemoryBytes: bigint;
+  readonly autoHwmAppliedSndHwm: number;
+  readonly autoHwmAppliedRcvHwm: number;
   readonly autoHwmLastRecalcMs: bigint;
   readonly autoHwmLastRecalcReason: number;
   readonly autoHwmSendBlockedRatioPpm: number;
-  readonly autoHwmScope: number;
-  readonly autoHwmScopeCount: number;
-  readonly autoHwmAutoBufferBytes: bigint;
-  readonly autoHwmManualBufferBytes: bigint;
-  readonly autoHwmBufferConnections: number;
   readonly autoHwmDeferredSndHwm: number;
   readonly autoHwmDeferredRcvHwm: number;
   isReady(): boolean;
@@ -201,37 +179,15 @@ interface MonitorSnapshotRaw {
   autoHwmProfile: number;
   autoHwmRole: number;
   autoHwmPolicyClass: number;
-  autoHwmManagedConnections: number;
-  autoHwmActiveHwmConnections: number;
-  autoHwmObservedCount: number;
-  autoHwmPlanningCount: number;
-  autoHwmContextTotalPlanningCount: number;
-  autoHwmBaseFloorPerConnection: number;
   autoHwmUnitBudgetBytes: number | bigint;
   autoHwmSizeCap: number;
-  autoHwmEffectivePublishFanout: number;
-  autoHwmAppliedSndHwm: number;
-  autoHwmAppliedRcvHwm: number;
-  autoHwmRequestedSndBuf: number;
-  autoHwmRequestedRcvBuf: number;
-  autoHwmEffectiveSndBuf: number;
-  autoHwmEffectiveRcvBuf: number;
-  autoHwmTotalMemoryBudgetBytes: number | bigint;
-  autoHwmQueueBudgetBytes: number | bigint;
-  autoHwmTransportBudgetBytes: number | bigint;
-  autoHwmRuntimeReserveBytes: number | bigint;
-  autoHwmSocketQueueShareBytes: number | bigint;
   autoHwmSocketMessageSlots: number | bigint;
   autoHwmEffectiveMessageBytes: number | bigint;
-  autoHwmEstimatedMaxMemoryBytes: number | bigint;
+  autoHwmAppliedSndHwm: number;
+  autoHwmAppliedRcvHwm: number;
   autoHwmLastRecalcMs: number | bigint;
   autoHwmLastRecalcReason: number;
   autoHwmSendBlockedRatioPpm: number;
-  autoHwmScope: number;
-  autoHwmScopeCount: number;
-  autoHwmAutoBufferBytes: number | bigint;
-  autoHwmManualBufferBytes: number | bigint;
-  autoHwmBufferConnections: number;
   autoHwmDeferredSndHwm: number;
   autoHwmDeferredRcvHwm: number;
 }
@@ -470,7 +426,13 @@ export interface ActorRecvInfo {
 }
 export interface ActorJoinInfo {
   readonly actor: ActorRef;
+  readonly sourceActor: ActorRef;
+  readonly targetActor: ActorRef;
   readonly sourceNodeRid: RoutingId;
+  readonly sourceSpotRid: RoutingId | null;
+  readonly targetNodeRid: RoutingId | null;
+  readonly targetSpotRid: RoutingId | null;
+  readonly joinEpoch: bigint;
   readonly flags: number;
 }
 interface NativeActorJoinInfo extends ActorJoinInfo {
@@ -663,37 +625,15 @@ function materializeMonitorSnapshot(raw: MonitorSnapshotRaw): MonitorSnapshot {
     autoHwmProfile: raw.autoHwmProfile,
     autoHwmRole: raw.autoHwmRole,
     autoHwmPolicyClass: raw.autoHwmPolicyClass,
-    autoHwmManagedConnections: raw.autoHwmManagedConnections,
-    autoHwmActiveHwmConnections: raw.autoHwmActiveHwmConnections,
-    autoHwmObservedCount: raw.autoHwmObservedCount,
-    autoHwmPlanningCount: raw.autoHwmPlanningCount,
-    autoHwmContextTotalPlanningCount: raw.autoHwmContextTotalPlanningCount,
-    autoHwmBaseFloorPerConnection: raw.autoHwmBaseFloorPerConnection,
     autoHwmUnitBudgetBytes: BigInt(raw.autoHwmUnitBudgetBytes),
     autoHwmSizeCap: raw.autoHwmSizeCap,
-    autoHwmEffectivePublishFanout: raw.autoHwmEffectivePublishFanout,
-    autoHwmAppliedSndHwm: raw.autoHwmAppliedSndHwm,
-    autoHwmAppliedRcvHwm: raw.autoHwmAppliedRcvHwm,
-    autoHwmRequestedSndBuf: raw.autoHwmRequestedSndBuf,
-    autoHwmRequestedRcvBuf: raw.autoHwmRequestedRcvBuf,
-    autoHwmEffectiveSndBuf: raw.autoHwmEffectiveSndBuf,
-    autoHwmEffectiveRcvBuf: raw.autoHwmEffectiveRcvBuf,
-    autoHwmTotalMemoryBudgetBytes: BigInt(raw.autoHwmTotalMemoryBudgetBytes),
-    autoHwmQueueBudgetBytes: BigInt(raw.autoHwmQueueBudgetBytes),
-    autoHwmTransportBudgetBytes: BigInt(raw.autoHwmTransportBudgetBytes),
-    autoHwmRuntimeReserveBytes: BigInt(raw.autoHwmRuntimeReserveBytes),
-    autoHwmSocketQueueShareBytes: BigInt(raw.autoHwmSocketQueueShareBytes),
     autoHwmSocketMessageSlots: BigInt(raw.autoHwmSocketMessageSlots),
     autoHwmEffectiveMessageBytes: BigInt(raw.autoHwmEffectiveMessageBytes),
-    autoHwmEstimatedMaxMemoryBytes: BigInt(raw.autoHwmEstimatedMaxMemoryBytes),
+    autoHwmAppliedSndHwm: raw.autoHwmAppliedSndHwm,
+    autoHwmAppliedRcvHwm: raw.autoHwmAppliedRcvHwm,
     autoHwmLastRecalcMs: BigInt(raw.autoHwmLastRecalcMs),
     autoHwmLastRecalcReason: raw.autoHwmLastRecalcReason,
     autoHwmSendBlockedRatioPpm: raw.autoHwmSendBlockedRatioPpm,
-    autoHwmScope: raw.autoHwmScope,
-    autoHwmScopeCount: raw.autoHwmScopeCount,
-    autoHwmAutoBufferBytes: BigInt(raw.autoHwmAutoBufferBytes),
-    autoHwmManualBufferBytes: BigInt(raw.autoHwmManualBufferBytes),
-    autoHwmBufferConnections: raw.autoHwmBufferConnections,
     autoHwmDeferredSndHwm: raw.autoHwmDeferredSndHwm,
     autoHwmDeferredRcvHwm: raw.autoHwmDeferredRcvHwm,
     isReady(): boolean {
@@ -928,14 +868,28 @@ function actorPartFromRaw(raw: {
 }
 
 function actorJoinInfoFromRaw(raw: {
-  actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+  actor?: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+  sourceActor?: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+  targetActor?: { nodeRid: Buffer; actorId: string; generation: bigint | number };
   sourceNodeRid: Buffer;
+  sourceSpotRid?: Buffer | null;
+  targetNodeRid?: Buffer | null;
+  targetSpotRid?: Buffer | null;
+  joinEpoch?: bigint | number;
   flags: number;
   requestHandle: bigint;
 }): NativeActorJoinInfo {
+  const sourceActor = actorRefFromRaw(raw.sourceActor ?? raw.actor!);
+  const targetActor = actorRefFromRaw(raw.targetActor ?? raw.actor!);
   return {
-    actor: actorRefFromRaw(raw.actor),
+    actor: sourceActor,
+    sourceActor,
+    targetActor,
     sourceNodeRid: RoutingId.fromBytes(raw.sourceNodeRid),
+    sourceSpotRid: wrapRoutingId(raw.sourceSpotRid ?? null),
+    targetNodeRid: wrapRoutingId(raw.targetNodeRid ?? null),
+    targetSpotRid: wrapRoutingId(raw.targetSpotRid ?? null),
+    joinEpoch: BigInt(raw.joinEpoch ?? 0),
     flags: raw.flags,
     requestHandle: BigInt(raw.requestHandle)
   };
@@ -948,7 +902,13 @@ function actorJoinInfoToRaw(info: ActorJoinInfo): Record<string, unknown> {
   }
   return {
     actor: actorRefToRaw(info.actor),
+    sourceActor: actorRefToRaw(info.sourceActor ?? info.actor),
+    targetActor: actorRefToRaw(info.targetActor ?? info.actor),
     sourceNodeRid: normalizeRoutingId(info.sourceNodeRid, 'info.sourceNodeRid'),
+    sourceSpotRid: info.sourceSpotRid ? normalizeRoutingId(info.sourceSpotRid, 'info.sourceSpotRid') : null,
+    targetNodeRid: info.targetNodeRid ? normalizeRoutingId(info.targetNodeRid, 'info.targetNodeRid') : null,
+    targetSpotRid: info.targetSpotRid ? normalizeRoutingId(info.targetSpotRid, 'info.targetSpotRid') : null,
+    joinEpoch: BigInt(info.joinEpoch ?? 0),
     flags: info.flags | 0,
     requestHandle: nativeInfo.requestHandle
   };
@@ -1804,12 +1764,17 @@ export class RouterSocket extends RoutedMessageSocket {
 }
 
 export class Actor extends NativeHandle {
-  constructor(handle: unknown) {
-    super(handle);
+  private _ref: ActorRef | null;
+  constructor(nodeHandle: unknown, ref: ActorRef) {
+    super(nodeHandle);
+    this._ref = ref;
   }
   nativeHandle(): unknown { return this._native; }
   ref(): ActorRef {
-    return actorRefFromRaw(requireNative().actorGetRef(this._native) as any);
+    if (!this._ref) {
+      throw new Error('actor is closed');
+    }
+    return this._ref;
   }
   get actorRef(): ActorRef {
     return this.ref();
@@ -1821,9 +1786,11 @@ export class Actor extends NativeHandle {
     const { flags: normalizedFlags, timeoutMs } = normalizeCallbackFlagsAndTimeout(flags, timeout);
     const releaseProgress = startRequestProgress(spot.nativeHandle(), (handle) => requireNative().spotRequestProgress(handle));
     try {
-      requireNative().actorJoinSpot(
+      requireNative().spotNodeActorJoinSpot(
         this._native,
-        spot.nativeHandle(),
+        actorRefToRaw(this.ref()),
+        normalizeRoutingId(spot.ownerNodeRoutingId(), 'destNodeRid'),
+        normalizeRoutingId(spot.routingId, 'destSpotRid'),
         [normalizeMessageLikePayload(message)],
         (result: number, replyParts: Buffer[] | null) => {
           releaseProgress();
@@ -1846,33 +1813,43 @@ export class Actor extends NativeHandle {
     if (!(spot instanceof Spot)) {
       throw new TypeError('spot must be a Spot');
     }
-    requireNative().actorLeaveSpot(this._native, spot.nativeHandle());
+    requireNative().spotNodeActorLeaveSpot(
+      this._native,
+      actorRefToRaw(this.ref()),
+      normalizeRoutingId(spot.routingId, 'destSpotRid'),
+      0
+    );
   }
   recvPart(flags: RecvFlags = RecvFlags.None): ActorPart | null {
-    const raw = requireNative().actorRecvPart(this._native, flags | 0) as any | null;
+    const raw = requireNative().spotNodeActorRecvPart(
+      this._native,
+      actorRefToRaw(this.ref()),
+      flags | 0
+    ) as any | null;
     return raw ? actorPartFromRaw(raw) : null;
   }
   sendBoundSession(message: MessageLike, flags: SendFlags = SendFlags.None): boolean {
-    requireNative().actorSendBoundSessionMsg(
+    requireNative().spotNodeActorSendBoundSessionMsg(
       this._native,
+      actorRefToRaw(this.ref()),
       [normalizeMessageLikePayload(message)],
       flags | 0
     );
     return true;
   }
-  sendBoundSessionPacket(header: MessageLike, body: MessageLike, flags: SendFlags = SendFlags.None): boolean {
-    requireNative().actorSendBoundSessionPacket(
+  closeBoundSession(timeoutMs = 0): void {
+    requireNative().spotNodeActorCloseBoundSession(
       this._native,
-      [normalizeMessageLikePayload(header), normalizeMessageLikePayload(body)],
-      flags | 0
+      actorRefToRaw(this.ref()),
+      timeoutMs | 0
     );
-    return true;
   }
   close(timeoutMs = 0): void {
-    if (!this._native) {
+    if (!this._native || !this._ref) {
       return;
     }
-    requireNative().actorDestroy(this._native, timeoutMs | 0);
+    requireNative().spotNodeActorDestroy(this._native, actorRefToRaw(this._ref), timeoutMs | 0);
+    this._ref = null;
     this._native = null;
   }
 }
@@ -2165,10 +2142,11 @@ export class SpotNode extends NativeHandle {
   }
   actor(actorId: string): Actor {
     return new Actor(
-      requireNative().spotNodeActorNew(
+      this._native,
+      actorRefFromRaw(requireNative().spotNodeActorNew(
         this._native,
         validateCString(actorId, 'actorId', 255)
-      )
+      ) as any)
     );
   }
   actorLookup(actorId: string): ActorRef {
@@ -2193,8 +2171,8 @@ export class SpotNode extends NativeHandle {
       ) as any
     );
   }
-  destroyRemoteActor(actor: ActorRef, timeoutMs = 0): void {
-    requireNative().spotNodeDestroyRemoteActor(
+  destroyActor(actor: ActorRef, timeoutMs = 0): void {
+    requireNative().spotNodeActorDestroy(
       this._native,
       actorRefToRaw(actor),
       timeoutMs | 0
@@ -2206,12 +2184,13 @@ export class SpotNode extends NativeHandle {
       (actorId: string, rawMessage: Buffer) => handler(actorId, Message.from(rawMessage)) | 0
     );
   }
-  joinActor(actor: ActorRef, destSpotRid: RoutingId, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean {
+  joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId, message: MessageLike, callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean {
     const { flags: normalizedFlags, timeoutMs } = normalizeCallbackFlagsAndTimeout(flags, timeout);
     try {
       requireNative().spotNodeActorJoinSpot(
         this._native,
         actorRefToRaw(actor),
+        normalizeRoutingId(destNodeRid, 'destNodeRid'),
         normalizeRoutingId(destSpotRid, 'destSpotRid'),
         [normalizeMessageLikePayload(message)],
         (result: number, replyParts: Buffer[] | null) => {
@@ -2321,6 +2300,10 @@ export class Spot extends NativeHandle {
   /** @internal */
   static create(node: SpotNode): Spot {
     return new Spot(node, Spot.CREATE_TOKEN);
+  }
+  /** @internal */
+  ownerNodeRoutingId(): RoutingId {
+    return this._node.routingId;
   }
   setRoutingId(routingId: RoutingId): void {
     requireNative().handleSetRoutingId(this._native, normalizeRoutingId(routingId));
@@ -2540,7 +2523,7 @@ export class Spot extends NativeHandle {
     });
   }
   onDispatchEvent(handler: SpotDispatchEventHandler): void {
-    requireNative().spotDispatchEventHandler(this._native, (raw: {
+    requireNative().spotDispatchEventHandler(this._native, this._node.nativeHandle(), (raw: {
       event: number;
       subjectKind: number;
       subjectHandle: bigint;
@@ -2577,8 +2560,14 @@ export class Spot extends NativeHandle {
   recvActorJoin(flags: RecvFlags = RecvFlags.None): ActorJoinRequest | null {
     const raw = requireNative().spotActorJoinRecv(this._native, flags | 0) as {
       info: {
-        actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+        actor?: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+        sourceActor?: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+        targetActor?: { nodeRid: Buffer; actorId: string; generation: bigint | number };
         sourceNodeRid: Buffer;
+        sourceSpotRid?: Buffer | null;
+        targetNodeRid?: Buffer | null;
+        targetSpotRid?: Buffer | null;
+        joinEpoch?: bigint | number;
         flags: number;
         requestHandle: bigint;
       };

@@ -50,3 +50,25 @@
     언어 순서대로 수행한다.
   - actor runtime module 분리는 public 계약 안정화 뒤 별도 구조 작업 후보로 둔다.
 - 다음 확인: 정식 문서 반영과 3회 리뷰
+
+## 2026-05-06 POSD 종료 확인
+
+- 날짜: 2026-05-06
+- 대상: core POSD와 bindings POSD 종료 연결
+- 수행한 명령:
+  - `tail -80 doc/plan/spot-entry-transport-queues/logs/bindings-posd-refactor-log.ko.md`
+  - `rg -n "destroy_remote_actor|send_bound_session_packet|zlink_actor_destroy|zlink_actor_get_ref|zlink_actor_join_spot|zlink_actor_leave_spot|zlink_actor_recv_part" bindings/rust/src bindings/rust/tests bindings/rust/samples doc/spec/bindings/rust/README.md`
+  - `cargo fmt --all --check`
+  - `bindings/rust/tests/run_tests.sh`
+  - `bindings/rust/samples/run_samples.sh`
+- 확인한 draft spec 절: Actor ref, dispatch subject lifetime, STREAM bind, 비목표
+- 발견한 문제:
+  - core POSD log에 남긴 binding source 위험은 C, C++, .NET, Go, Java, Node, Python, Rust 언어별 gate에서 닫혔다.
+  - actor runtime module 분리는 public 계약 안정화 뒤 별도 구조 작업 후보이며, 현재 plan의 public 계약 완료를 막는 blocker는 아니다.
+- 수정한 파일:
+  - `doc/plan/spot-entry-transport-queues/logs/posd-refactor-log.ko.md`
+- 검증 결과:
+  - bindings POSD log에 언어별 POSD gate 완료가 기록되어 있다.
+  - Rust 최종 언어 gate에서 새 POSD 후보 2회 연속 없음으로 닫혔다.
+- 남은 위험: 없음
+- 다음 확인: 최종 종료 절차

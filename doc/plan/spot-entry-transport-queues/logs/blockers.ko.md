@@ -36,3 +36,25 @@
 - 검증 결과: 시도한 header-level table 이전은 되돌렸고, `test_spot_actor_dispatch`와 `test_spot_dispatch_event` 단독 실행은 다시 통과했다.
 - 남은 위험: Stage 3 ownership 항목은 실제 내부 타입 분리 리팩토링이 필요하므로 아직 닫지 않는다.
 - 다음 확인: Actor runtime state를 별도 internal header로 분리한 뒤 `SpotNode` owned table로 옮긴다.
+
+## 2026-05-06 Final Blocker Review
+
+- 날짜: 2026-05-06
+- 대상: blocker log 종료 확인
+- 수행한 명령:
+  - `rg -n "planned|in_progress|todo" doc/plan/spot-entry-transport-queues/logs/contract-matrix.ko.md`
+  - `comm -23 <(rg -o "(ENTRY-ACTOR|ENTRY|QUEUE-[A-Z]+)-[0-9]+" doc/spec/draft/spot-entry-transport-queues.ko.md | sort -u) <(rg -o "(ENTRY-ACTOR|ENTRY|QUEUE-[A-Z]+)-[0-9]+" doc/plan/spot-entry-transport-queues/logs/contract-matrix.ko.md | sort -u)`
+  - `ctest --test-dir core/build --output-on-failure`
+  - 언어별 binding test/sample/perf smoke runner
+- 확인한 draft spec 절: 전체 contract matrix, 회귀 테스트, bindings 영향 범위
+- 발견한 문제:
+  - 초기 baseline/test note와 Stage 3 ownership note는 이후 구현, POSD, core release, bindings gate에서 재검증이 끝났다.
+- 수정한 파일:
+  - `doc/plan/spot-entry-transport-queues/logs/blockers.ko.md`
+- 검증 결과:
+  - contract matrix에 `planned`, `in_progress`, `todo` 상태가 남아 있지 않다.
+  - draft 테스트 ID는 matrix에 누락 없이 들어 있다.
+  - core release 전 전체 CTest 106/106 통과가 `core-release-log.ko.md`에 기록되어 있다.
+  - C, C++, .NET, Go, Java, Node, Python, Rust binding gate가 모두 완료됐다.
+- 남은 위험: 없음
+- 다음 확인: 최종 종료 절차

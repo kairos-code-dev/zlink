@@ -7,7 +7,8 @@ public enum BindResult {
     INVALID_ARGUMENT(501),
     ADDR_IN_USE(502),
     NOT_SUPPORTED(503),
-    INVALID_HANDLE(504);
+    INVALID_HANDLE(504),
+    INTERNAL_ERROR(505);
 
     private final int value;
 

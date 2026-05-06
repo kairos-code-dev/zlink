@@ -311,13 +311,10 @@ monitor handle에서 현재 aggregate 상태를 바로 조회할 수 있다.
 | `auto_hwm_profile` / `auto_hwm_policy_class` | 활성 auto-HWM profile과 planner policy class |
 | `auto_hwm_applied_sndhwm` / `auto_hwm_applied_rcvhwm` | 현재 적용된 자동 HWM 값 |
 | `auto_hwm_unit_budget_bytes` / `auto_hwm_size_cap` | planner가 사용한 profile 단위 예산과 메시지 수 cap |
-| `auto_hwm_effective_publish_fanout` | 사용할 수 있으면 채우는 SPOT publish fanout 진단값 |
-| `auto_hwm_requested_sndbuf` / `auto_hwm_requested_rcvbuf` | 자동 정책이 요청한 transport buffer 값 |
-| `auto_hwm_auto_buffer_bytes` / `auto_hwm_manual_buffer_bytes` | 사용할 수 있을 때 채우는 buffer 진단값 |
 | `auto_hwm_effective_message_bytes` | profile envelope를 HWM 슬롯으로 바꿀 때 쓴 메시지 단위 |
-| `auto_hwm_observed_count` | 진단용 관찰 연결 수. auto-HWM은 이 값이 커져도 per-connection HWM을 낮추지 않음 |
 | `auto_hwm_socket_message_slots` | profile 단위 예산과 message unit으로 선택된 메시지 슬롯 수 |
-| deprecated planning과 budget 필드 | planning count, context budget, queue budget, queue share 같은 호환 필드는 `0`으로 채워지며 HWM 설명 근거로 쓰면 안 됨 |
+| `auto_hwm_last_recalc_reason` / `auto_hwm_send_blocked_ratio_ppm` | 최근 재계산 사유와 송신 blocked 비율 |
+| `auto_hwm_deferred_sndhwm` / `auto_hwm_deferred_rcvhwm` | 지연 중인 HWM 축소값. 없으면 `-1` |
 
 `snd_pending_msgs`와 `rcv_pending_msgs`는 HWM 설정과 직접 관련된다.
 이 값이 HWM에 근접하면 백프레셔가 발생하고 있다는 의미이다.

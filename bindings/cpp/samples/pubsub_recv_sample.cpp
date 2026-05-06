@@ -19,10 +19,11 @@ int main ()
     const std::string topic = detail::k_pubsub_topic;
     subscriber.set_subscription (topic);
 
-    const zlink::subscription_event_t event =
+    const std::optional<zlink::subscription_event_t> event =
       publisher.receive_subscription_event ();
-    assert (event.subscribed);
-    assert (event.topic == topic);
+    assert (event.has_value ());
+    assert (event->subscribed);
+    assert (event->topic == topic);
 
     const std::string sent = detail::k_pubsub_payload;
     zlink::message_t outbound = detail::make_message (sent);

@@ -94,6 +94,12 @@ final class SocketOptions {
     public static final SocketOptionKey<Integer> RID_DUPLICATE_POLICY =
       SocketOptionKey.int32("RID_DUPLICATE_POLICY",
         SocketOption.RID_DUPLICATE_POLICY, true, true);
+    public static final SocketOptionKey<Integer> ROUTE_VALUE_MAX_SIZE =
+      SocketOptionKey.int32("ROUTE_VALUE_MAX_SIZE",
+        SocketOption.ROUTE_VALUE_MAX_SIZE, true, true);
+    public static final SocketOptionKey<Integer> AUTO_HWM_MSG_UNIT_BYTES =
+      SocketOptionKey.int32("AUTO_HWM_MSG_UNIT_BYTES",
+        SocketOption.AUTO_HWM_MSG_UNIT_BYTES, true, true);
     public static final SocketOptionKey<Integer> XPUB_VERBOSE =
       SocketOptionKey.int32("XPUB_VERBOSE", SocketOption.XPUB_VERBOSE,
         true, true);
@@ -224,7 +230,8 @@ final class SocketOptions {
         LAST_ENDPOINT, ROUTER_MANDATORY, TCP_KEEPALIVE,
         TCP_KEEPALIVE_CNT, TCP_KEEPALIVE_IDLE, TCP_KEEPALIVE_INTVL,
         TCP_NODELAY, IMMEDIATE, XPUB_VERBOSE, IPV6, PROBE_ROUTER,
-        CONFLATE, RID_DUPLICATE_POLICY, TOS,
+        CONFLATE, RID_DUPLICATE_POLICY, ROUTE_VALUE_MAX_SIZE,
+        AUTO_HWM_MSG_UNIT_BYTES, TOS,
         CONNECT_ROUTING_ID, CONNECT_ROUTING_ID_BYTES,
         HANDSHAKE_IVL, XPUB_NODROP, BLOCKY, XPUB_MANUAL,
         XPUB_WELCOME_MSG, XPUB_WELCOME_MSG_BYTES,

@@ -417,10 +417,14 @@ class router_socket_options_t
 
     bool mandatory () const;
     void mandatory (bool value);
+    bool handover () const;
+    void handover (bool value);
     bool probe_router () const;
     void probe_router (bool value);
     std::optional<routing_id_t> connect_routing_id () const;
     void connect_routing_id (const routing_id_t &value);
+    uint32_t peer_weight () const;
+    void peer_weight (uint32_t value);
 
   private:
     void *_handle;
@@ -436,6 +440,8 @@ class dealer_socket_options_t
 
     bool probe_router () const;
     void probe_router (bool value);
+    uint32_t peer_weight () const;
+    void peer_weight (uint32_t value);
 
   private:
     void *_handle;
@@ -911,6 +917,47 @@ struct actor_part_t
     bool has_more;
 };
 
+enum class spot_dispatch_event_t : int
+{
+    subscribe_readable = ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE,
+    routed_readable = ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE,
+    timer_readable = ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE,
+    channel_reply_readable = ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE,
+    actor_readable = ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE,
+    actor_join_readable = ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE
+};
+
+enum class spot_dispatch_subject_kind_t : int
+{
+    spot = ZLINK_SPOT_DISPATCH_SUBJECT_SPOT,
+    timer = ZLINK_SPOT_DISPATCH_SUBJECT_TIMER,
+    channel_dealer = ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER,
+    actor = ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR
+};
+
+struct spot_dispatch_info_t
+{
+    spot_dispatch_info_t ()
+        : event (spot_dispatch_event_t::subscribe_readable),
+          subject_kind (spot_dispatch_subject_kind_t::spot),
+          actor (std::nullopt), actor_parts ()
+    {
+    }
+
+    explicit spot_dispatch_info_t (const zlink_spot_dispatch_info_t &native_)
+        : event (static_cast<spot_dispatch_event_t> (native_.event)),
+          subject_kind (
+            static_cast<spot_dispatch_subject_kind_t> (native_.subject_kind)),
+          actor (std::nullopt), actor_parts ()
+    {
+    }
+
+    spot_dispatch_event_t event;
+    spot_dispatch_subject_kind_t subject_kind;
+    std::optional<actor_ref_t> actor;
+    std::vector<actor_part_t> actor_parts;
+};
+
 class received_t
 {
   public:
@@ -1028,6 +1075,12 @@ struct subscription_event_t
     std::optional<std::string> service_name;
     std::string topic;
     bool subscribed;
+};
+
+struct subscription_filter_t
+{
+    std::string filter;
+    bool is_pattern = false;
 };
 
 template<typename T> class maybe_t
@@ -1223,31 +1276,14 @@ struct monitor_snapshot_t
           detail_flags (0), snd_pending_msgs (0), rcv_pending_msgs (0),
           auto_hwm_enabled (false), auto_hwm_profile_value (0),
           auto_hwm_role (0), auto_hwm_policy_class (0),
-          auto_hwm_managed_connections (0),
-          auto_hwm_active_hwm_connections (0),
-          auto_hwm_observed_count (0), auto_hwm_planning_count (0),
-          auto_hwm_context_total_planning_count (0),
-          auto_hwm_base_floor_per_connection (0),
           auto_hwm_unit_budget_bytes (0), auto_hwm_size_cap (0),
-          auto_hwm_effective_publish_fanout (0),
-          auto_hwm_applied_sndhwm (0), auto_hwm_applied_rcvhwm (0),
-          auto_hwm_requested_sndbuf (0), auto_hwm_requested_rcvbuf (0),
-          auto_hwm_effective_sndbuf (0), auto_hwm_effective_rcvbuf (0),
-          auto_hwm_total_memory_budget_bytes (0),
-          auto_hwm_queue_budget_bytes (0),
-          auto_hwm_transport_budget_bytes (0),
-          auto_hwm_runtime_reserve_bytes (0),
-          auto_hwm_socket_queue_share_bytes (0),
           auto_hwm_socket_message_slots (0),
           auto_hwm_effective_message_bytes (0),
-          auto_hwm_estimated_max_memory_bytes (0),
+          auto_hwm_applied_sndhwm (0), auto_hwm_applied_rcvhwm (0),
           auto_hwm_last_recalc_ms (0),
           auto_hwm_last_recalc_reason (0),
-          auto_hwm_send_blocked_ratio_ppm (0), auto_hwm_scope (0),
-          auto_hwm_scope_count (0), auto_hwm_auto_buffer_bytes (0),
-          auto_hwm_manual_buffer_bytes (0),
-          auto_hwm_buffer_connections (0), auto_hwm_deferred_sndhwm (-1),
-          auto_hwm_deferred_rcvhwm (-1)
+          auto_hwm_send_blocked_ratio_ppm (0),
+          auto_hwm_deferred_sndhwm (-1), auto_hwm_deferred_rcvhwm (-1)
     {
     }
 
@@ -1262,49 +1298,18 @@ struct monitor_snapshot_t
           auto_hwm_profile_value (native_.auto_hwm_profile),
           auto_hwm_role (native_.auto_hwm_role),
           auto_hwm_policy_class (native_.auto_hwm_policy_class),
-          auto_hwm_managed_connections (native_.auto_hwm_managed_connections),
-          auto_hwm_active_hwm_connections (
-            native_.auto_hwm_active_hwm_connections),
-          auto_hwm_observed_count (native_.auto_hwm_observed_count),
-          auto_hwm_planning_count (native_.auto_hwm_planning_count),
-          auto_hwm_context_total_planning_count (
-            native_.auto_hwm_context_total_planning_count),
-          auto_hwm_base_floor_per_connection (
-            native_.auto_hwm_base_floor_per_connection),
           auto_hwm_unit_budget_bytes (native_.auto_hwm_unit_budget_bytes),
           auto_hwm_size_cap (native_.auto_hwm_size_cap),
-          auto_hwm_effective_publish_fanout (
-            native_.auto_hwm_effective_publish_fanout),
-          auto_hwm_applied_sndhwm (native_.auto_hwm_applied_sndhwm),
-          auto_hwm_applied_rcvhwm (native_.auto_hwm_applied_rcvhwm),
-          auto_hwm_requested_sndbuf (native_.auto_hwm_requested_sndbuf),
-          auto_hwm_requested_rcvbuf (native_.auto_hwm_requested_rcvbuf),
-          auto_hwm_effective_sndbuf (native_.auto_hwm_effective_sndbuf),
-          auto_hwm_effective_rcvbuf (native_.auto_hwm_effective_rcvbuf),
-          auto_hwm_total_memory_budget_bytes (
-            native_.auto_hwm_total_memory_budget_bytes),
-          auto_hwm_queue_budget_bytes (native_.auto_hwm_queue_budget_bytes),
-          auto_hwm_transport_budget_bytes (
-            native_.auto_hwm_transport_budget_bytes),
-          auto_hwm_runtime_reserve_bytes (
-            native_.auto_hwm_runtime_reserve_bytes),
-          auto_hwm_socket_queue_share_bytes (
-            native_.auto_hwm_socket_queue_share_bytes),
           auto_hwm_socket_message_slots (
             native_.auto_hwm_socket_message_slots),
           auto_hwm_effective_message_bytes (
             native_.auto_hwm_effective_message_bytes),
-          auto_hwm_estimated_max_memory_bytes (
-            native_.auto_hwm_estimated_max_memory_bytes),
+          auto_hwm_applied_sndhwm (native_.auto_hwm_applied_sndhwm),
+          auto_hwm_applied_rcvhwm (native_.auto_hwm_applied_rcvhwm),
           auto_hwm_last_recalc_ms (native_.auto_hwm_last_recalc_ms),
           auto_hwm_last_recalc_reason (native_.auto_hwm_last_recalc_reason),
           auto_hwm_send_blocked_ratio_ppm (
             native_.auto_hwm_send_blocked_ratio_ppm),
-          auto_hwm_scope (native_.auto_hwm_scope),
-          auto_hwm_scope_count (native_.auto_hwm_scope_count),
-          auto_hwm_auto_buffer_bytes (native_.auto_hwm_auto_buffer_bytes),
-          auto_hwm_manual_buffer_bytes (native_.auto_hwm_manual_buffer_bytes),
-          auto_hwm_buffer_connections (native_.auto_hwm_buffer_connections),
           auto_hwm_deferred_sndhwm (native_.auto_hwm_deferred_sndhwm),
           auto_hwm_deferred_rcvhwm (native_.auto_hwm_deferred_rcvhwm)
     {
@@ -1324,37 +1329,15 @@ struct monitor_snapshot_t
     uint32_t auto_hwm_profile_value;
     uint32_t auto_hwm_role;
     uint32_t auto_hwm_policy_class;
-    uint32_t auto_hwm_managed_connections;
-    uint32_t auto_hwm_active_hwm_connections;
-    uint32_t auto_hwm_observed_count;
-    uint32_t auto_hwm_planning_count;
-    uint32_t auto_hwm_context_total_planning_count;
-    uint32_t auto_hwm_base_floor_per_connection;
     uint64_t auto_hwm_unit_budget_bytes;
     uint32_t auto_hwm_size_cap;
-    uint32_t auto_hwm_effective_publish_fanout;
-    int32_t auto_hwm_applied_sndhwm;
-    int32_t auto_hwm_applied_rcvhwm;
-    int32_t auto_hwm_requested_sndbuf;
-    int32_t auto_hwm_requested_rcvbuf;
-    int32_t auto_hwm_effective_sndbuf;
-    int32_t auto_hwm_effective_rcvbuf;
-    uint64_t auto_hwm_total_memory_budget_bytes;
-    uint64_t auto_hwm_queue_budget_bytes;
-    uint64_t auto_hwm_transport_budget_bytes;
-    uint64_t auto_hwm_runtime_reserve_bytes;
-    uint64_t auto_hwm_socket_queue_share_bytes;
     uint64_t auto_hwm_socket_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
-    uint64_t auto_hwm_estimated_max_memory_bytes;
+    int32_t auto_hwm_applied_sndhwm;
+    int32_t auto_hwm_applied_rcvhwm;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
-    uint32_t auto_hwm_scope;
-    uint32_t auto_hwm_scope_count;
-    uint64_t auto_hwm_auto_buffer_bytes;
-    uint64_t auto_hwm_manual_buffer_bytes;
-    uint32_t auto_hwm_buffer_connections;
     int32_t auto_hwm_deferred_sndhwm;
     int32_t auto_hwm_deferred_rcvhwm;
 };

@@ -33,17 +33,6 @@ def main():
                             part.message.close()
 
                 spot.on_dispatch_event(on_dispatch)
-                actor.join(
-                    spot,
-                    b"join",
-                    lambda result, messages: (
-                        replies.append(result),
-                        [message.close() for message in messages],
-                    ),
-                    timeout=2,
-                )
-                wait_until(lambda: replies, timeout_ms=5000, description="actor join")
-                actor.leave(spot)
 
                 with zlink.StreamSocket(ctx) as stream:
                     with stream.monitor_open(zlink.MonitorEventMask.ACCEPTED) as monitor:
@@ -56,21 +45,32 @@ def main():
                             with stream.recv() as stream_msg:
                                 session_rid = stream_msg.routing_id
                             stream.bind_actor(node, session_rid, actor_ref, timeout=2)
+                            actor.join(
+                                spot,
+                                b"join",
+                                lambda result, messages: (
+                                    replies.append(result),
+                                    [message.close() for message in messages],
+                                ),
+                                timeout=2,
+                            )
+                            wait_until(lambda: replies, timeout_ms=5000, description="actor join")
+                            actor.leave(spot)
                             stream.send_bound_actor(node, session_rid, "solo", b"queued")
 
-                actor.join(
-                    spot,
-                    b"rejoin",
-                    lambda result, messages: (
-                        replies.append(result),
-                        [message.close() for message in messages],
-                    ),
-                    timeout=2,
-                )
-                wait_until(lambda: payloads, timeout_ms=5000, description="queued actor payload")
-                if payloads != [b"queued"]:
-                    raise AssertionError("queued payload was not preserved")
-                actor.leave(spot)
+                            actor.join(
+                                spot,
+                                b"rejoin",
+                                lambda result, messages: (
+                                    replies.append(result),
+                                    [message.close() for message in messages],
+                                ),
+                                timeout=2,
+                            )
+                            wait_until(lambda: payloads, timeout_ms=5000, description="queued actor payload")
+                            if payloads != [b"queued"]:
+                                raise AssertionError("queued payload was not preserved")
+                            actor.leave(spot)
                 actor.close()
                 print("[actor/solo] queued payload preserved across leave")
 

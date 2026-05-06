@@ -3,7 +3,25 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { once } = require('node:events');
+const net = require('node:net');
 const zlink = require('../dist/canonical');
+
+async function reservePort() {
+  const server = net.createServer();
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const { port } = server.address();
+  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  return port;
+}
+
+function frame(payload) {
+  const framed = Buffer.allocUnsafe(payload.length + 4);
+  framed.writeUInt32BE(payload.length, 0);
+  payload.copy(framed, 4);
+  return framed;
+}
 
 function waitForJoin(spot) {
   for (let i = 0; i < 100; i += 1) {
@@ -15,14 +33,28 @@ function waitForJoin(spot) {
 }
 
 async function main() {
+  const port = await reservePort();
+  const endpoint = `tcp://127.0.0.1:${port}`;
   const ctx = new zlink.Context();
   const node = new zlink.SpotNode(ctx);
+  const stream = new zlink.StreamSocket(ctx);
   let spot = null;
   let actor = null;
+  let client = null;
+  let session = null;
 
   try {
     spot = node.createSpot();
     actor = node.actor('room-player-1');
+    stream.bind(endpoint);
+    client = net.createConnection({ host: '127.0.0.1', port });
+    await once(client, 'connect');
+    session = await new Promise((resolve) => {
+      stream.onPacket((sourceRid) => resolve(sourceRid));
+      client.write(Buffer.concat([frame(Buffer.alloc(0)), frame(Buffer.from('open'))]));
+    });
+    stream.bindActor(node, session, actor.ref(), 2000);
+
     const replyPromise = new Promise((resolve) => {
       actor.join(spot, Buffer.from('join-room'), (result, parts) => {
         resolve({ result, parts });
@@ -39,6 +71,14 @@ async function main() {
     actor.leave(spot);
     console.log('[actor/room] join accepted with reply: "welcome"');
   } finally {
+    if (session) {
+      try {
+        stream.unbindActor(node, session, 'room-player-1', 2000);
+      } catch (_) {
+      }
+    }
+    if (client) client.destroy();
+    stream.close();
     if (actor) actor.close(2000);
     if (spot) spot.close();
     node.close();

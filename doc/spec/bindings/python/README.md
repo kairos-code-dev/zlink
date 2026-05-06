@@ -78,14 +78,18 @@ def remote_actor_ref(target_node_rid, actor_id): ...
 ```
 
 `SpotNode` exposes `actor`, `actor_lookup`, `create_remote_actor`,
-`destroy_remote_actor`, `on_actor_admission`, `join_actor`, `leave_actor`,
+`destroy_actor`, `on_actor_admission`, `join_actor`, `leave_actor`,
 `spots_snapshot`, and `actors_snapshot`. `Spot` exposes `recv_actor_join`,
 `reply_actor_join`, and `actors_snapshot`. `StreamSocket` exposes
 `bind_actor`, `unbind_actor`, and `send_bound_actor`. `Discovery` exposes
 `resolve_actor`.
 
-`ActorRef.generation == 0` is an unchecked remote ref. One Actor can join only
-one Spot at a time, and a STREAM session can bind multiple Actors.
+`ActorRef.generation == 0` is an unchecked remote ref. Actor creation places
+the Actor in the Entry Spot. The application cannot remove the Entry Spot.
+Joining a user Spot requires a bound STREAM session. One Actor can join only
+one Spot at a time, and a STREAM session can bind multiple Actors. Actor
+readable dispatch uses a callback-lifetime ActorRef subject, not a native
+Actor pointer.
 
 ## Core
 
@@ -376,6 +380,13 @@ class XPubSocket:
     def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
     def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
+    def bind_actor(self, node: SpotNode, session_rid: RoutingId,
+                   actor: ActorRef, *, timeout: int = 0) -> None: ...            # Raises: ConfigError
+    def unbind_actor(self, node: SpotNode, session_rid: RoutingId,
+                     actor_id: str, *, timeout: int = 0) -> None: ...            # Raises: ConfigError
+    def send_bound_actor(self, node: SpotNode, session_rid: RoutingId,
+                         actor_id: str, payload: Message | bytes | list,
+                         *, flags: int = 0) -> bool: ...                        # Raises: SubmitError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -994,37 +1005,15 @@ class MonitorSnapshot:
     auto_hwm_profile: int
     auto_hwm_role: int
     auto_hwm_policy_class: int
-    auto_hwm_managed_connections: int
-    auto_hwm_active_hwm_connections: int
-    auto_hwm_observed_count: int
-    auto_hwm_planning_count: int
-    auto_hwm_context_total_planning_count: int
-    auto_hwm_base_floor_per_connection: int
     auto_hwm_unit_budget_bytes: int
     auto_hwm_size_cap: int
-    auto_hwm_effective_publish_fanout: int
-    auto_hwm_applied_sndhwm: int
-    auto_hwm_applied_rcvhwm: int
-    auto_hwm_requested_sndbuf: int
-    auto_hwm_requested_rcvbuf: int
-    auto_hwm_effective_sndbuf: int
-    auto_hwm_effective_rcvbuf: int
-    auto_hwm_total_memory_budget_bytes: int
-    auto_hwm_queue_budget_bytes: int
-    auto_hwm_transport_budget_bytes: int
-    auto_hwm_runtime_reserve_bytes: int
-    auto_hwm_socket_queue_share_bytes: int
     auto_hwm_socket_message_slots: int
     auto_hwm_effective_message_bytes: int
-    auto_hwm_estimated_max_memory_bytes: int
+    auto_hwm_applied_sndhwm: int
+    auto_hwm_applied_rcvhwm: int
     auto_hwm_last_recalc_ms: int
     auto_hwm_last_recalc_reason: int
     auto_hwm_send_blocked_ratio_ppm: int
-    auto_hwm_scope: int
-    auto_hwm_scope_count: int
-    auto_hwm_auto_buffer_bytes: int
-    auto_hwm_manual_buffer_bytes: int
-    auto_hwm_buffer_connections: int
     auto_hwm_deferred_sndhwm: int
     auto_hwm_deferred_rcvhwm: int
 
@@ -1145,6 +1134,20 @@ class SpotNode:
     def set_tls_client(self, ca_cert: str | None, hostname: str | None,
                        trust_system: bool = False) -> None: ...                  # Raises: ConfigError
     def create_spot(self) -> Spot: ...                                           # Raises: ConfigError
+    def actor(self, actor_id: str) -> Actor: ...                                 # Raises: ConfigError
+    def actor_lookup(self, actor_id: str) -> ActorRef: ...                       # Raises: ConfigError
+    def create_remote_actor(self, target_node_rid: RoutingId, actor_id: str,
+                            payload: Message | bytes, *, timeout: int = 0
+                            ) -> ActorCreateResult: ...                         # Raises: RequestError
+    def destroy_actor(self, actor_ref: ActorRef, *, timeout: int = 0) -> None: ...  # Raises: RequestError
+    def on_actor_admission(self, handler: Callable[[str, Message], ActorAdmissionResult]) -> None: ...  # Raises: HandlerError
+    def join_actor(self, actor_ref: ActorRef,
+                   dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
+                   payload: Message | bytes,
+                   callback: Callable[[RequestResult, list[Message]], None],
+                   *, flags: int = 0, timeout: int = 0) -> bool: ...             # Raises: SubmitError
+    def leave_actor(self, actor_ref: ActorRef, dest_spot_rid: RoutingId,
+                    *, timeout: int = 0) -> None: ...                            # Raises: RequestError
     def status_snapshot(self) -> SpotNodeStatus: ...                             # Raises: ConfigError
     def peers_snapshot(self) -> list[SpotNodePeerEntry]: ...                     # Raises: ConfigError
     def peers_query(self, filter_: SpotNodePeerFilter | None = None
@@ -1162,6 +1165,27 @@ class SpotNode:
 `SpotNode` owns the lifecycle. `Spot` is created only through
 `SpotNode.create_spot()`. Direct `Spot(node)` construction is internal
 and is not part of the public API contract.
+
+### Actor
+
+```python
+class Actor:
+    @property
+    def actor_ref(self) -> ActorRef: ...
+    def ref(self) -> ActorRef: ...
+    def join(self, spot: Spot, payload: Message | bytes,
+             callback: Callable[[RequestResult, list[Message]], None],
+             *, flags: int = 0, timeout: int = 0) -> bool: ...                  # Raises: SubmitError
+    def leave(self, spot: Spot) -> None: ...                                    # Raises: ConfigError
+    def recv_part(self, *, flags: int = 0) -> ActorPart | None: ...             # Raises: RecvError
+    def send_bound_session(self, payload: Message | bytes,
+                           *, flags: int = 0) -> bool: ...                     # Raises: SubmitError
+    def close_bound_session(self, *, timeout: int = 0) -> None: ...             # Raises: RequestError
+    def close(self, *, timeout: int = 0) -> None: ...                           # Raises: RequestError
+```
+
+`Actor` is a ref-centered public object. The public contract does not expose a
+native Actor pointer.
 
 ### Spot
 
@@ -1239,6 +1263,10 @@ class Spot:
     def recv_routed(self, *, flags: int = 0) -> Received: ...                    # Raises: RecvError
     def on_routed_receive(self, handler: Callable) -> None: ...                  # Raises: HandlerError
     def on_dispatch_event(self, handler: Callable[[Spot, SpotDispatchInfo], None]) -> None: ...  # Raises: HandlerError
+    def recv_actor_join(self, *, flags: int = 0) -> ActorJoinRequest | None: ...  # Raises: RecvError
+    def reply_actor_join(self, info: ActorJoinInfo, accepted: bool,
+                         payload: Message | bytes) -> bool: ...                 # Raises: SubmitError
+    def actors_snapshot(self) -> list[ActorRef]: ...                            # Raises: ConfigError
     def drain_channel_reply_from(self, subject) -> None: ...                     # Raises: ConfigError
 
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -1250,17 +1278,22 @@ class SpotDispatchEvent(IntEnum):
     ROUTED_READABLE = 2
     TIMER_READABLE = 3
     CHANNEL_REPLY_READABLE = 4
+    ACTOR_READABLE = 5
+    ACTOR_JOIN_READABLE = 6
 
 class SpotDispatchSubjectKind(IntEnum):
     SPOT = 1
     TIMER = 2
     CHANNEL_DEALER = 3
+    ACTOR = 4
 
 @dataclass(frozen=True)
 class SpotDispatchInfo:
     event: SpotDispatchEvent
     subject_kind: SpotDispatchSubjectKind
-    subject: object
+    subject: object | None
+    actor: ActorRef | None
+    def recv_actor_part(self, *, flags: int = 0) -> ActorPart | None: ...
 ```
 
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining

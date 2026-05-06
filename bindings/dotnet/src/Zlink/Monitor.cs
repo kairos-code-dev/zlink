@@ -18,7 +18,6 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 
     private IntPtr _handle;
     private Action<MonitorEvent>? _handler;
-    private SynchronizationContext? _handlerContext;
     private GCHandle _selfHandle;
     private bool _selfHandleAllocated;
 
@@ -39,7 +38,6 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 
         bool useNativeIgnore = ReferenceEquals(handler, IgnoreHandler);
         _handler = useNativeIgnore ? null : handler;
-        _handlerContext = useNativeIgnore ? null : SynchronizationContext.Current;
         if (!useNativeIgnore)
             EnsureSelfHandle();
         int rc = NativeMethods.zlink_socket_monitor_handler(_handle,
@@ -94,7 +92,6 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
         if (_handle == IntPtr.Zero)
             return;
         _handler = null;
-        _handlerContext = null;
         int rc = NativeMethods.zlink_monitor_close(ref _handle);
         if (rc != 0)
             throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
@@ -166,7 +163,7 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
         try
         {
             MonitorEvent monitorEvent = MonitorEvent.FromNative(ref native);
-            CallbackDelivery.Post(_handlerContext, () => handler(monitorEvent));
+            handler(monitorEvent);
         }
         catch (Exception ex)
         {
@@ -219,24 +216,11 @@ public sealed class MonitorSnapshot
         uint detailFlags, ulong sndPendingMsgs, ulong rcvPendingMsgs,
         uint autoHwmEnabled, uint autoHwmProfile, uint autoHwmRole,
         uint autoHwmPolicyClass,
-        uint autoHwmManagedConnections, uint autoHwmActiveHwmConnections,
-        uint autoHwmObservedCount,
-        uint autoHwmPlanningCount,
-        uint autoHwmContextTotalPlanningCount,
-        uint autoHwmBaseFloorPerConnection, ulong autoHwmUnitBudgetBytes,
-        uint autoHwmSizeCap, uint autoHwmEffectivePublishFanout,
-        int autoHwmAppliedSndHwm,
-        int autoHwmAppliedRcvHwm, int autoHwmRequestedSndBuf,
-        int autoHwmRequestedRcvBuf, int autoHwmEffectiveSndBuf,
-        int autoHwmEffectiveRcvBuf, ulong autoHwmTotalMemoryBudgetBytes,
-        ulong autoHwmQueueBudgetBytes, ulong autoHwmTransportBudgetBytes,
-        ulong autoHwmRuntimeReserveBytes, ulong autoHwmSocketQueueShareBytes,
+        ulong autoHwmUnitBudgetBytes, uint autoHwmSizeCap,
         ulong autoHwmSocketMessageSlots, ulong autoHwmEffectiveMessageBytes,
-        ulong autoHwmEstimatedMaxMemoryBytes, ulong autoHwmLastRecalcMs,
+        int autoHwmAppliedSndHwm,
+        int autoHwmAppliedRcvHwm, ulong autoHwmLastRecalcMs,
         uint autoHwmLastRecalcReason, uint autoHwmSendBlockedRatioPpm,
-        uint autoHwmScope, uint autoHwmScopeCount,
-        ulong autoHwmAutoBufferBytes, ulong autoHwmManualBufferBytes,
-        uint autoHwmBufferConnections,
         int autoHwmDeferredSndHwm, int autoHwmDeferredRcvHwm)
     {
         SourceKind = sourceKind;
@@ -248,37 +232,15 @@ public sealed class MonitorSnapshot
         AutoHwmProfile = autoHwmProfile;
         AutoHwmRole = autoHwmRole;
         AutoHwmPolicyClass = autoHwmPolicyClass;
-        AutoHwmManagedConnections = autoHwmManagedConnections;
-        AutoHwmActiveHwmConnections = autoHwmActiveHwmConnections;
-        AutoHwmObservedCount = autoHwmObservedCount;
-        AutoHwmPlanningCount = autoHwmPlanningCount;
-        AutoHwmContextTotalPlanningCount = autoHwmContextTotalPlanningCount;
-        AutoHwmBaseFloorPerConnection = autoHwmBaseFloorPerConnection;
         AutoHwmUnitBudgetBytes = autoHwmUnitBudgetBytes;
         AutoHwmSizeCap = autoHwmSizeCap;
-        AutoHwmEffectivePublishFanout = autoHwmEffectivePublishFanout;
-        AutoHwmAppliedSndHwm = autoHwmAppliedSndHwm;
-        AutoHwmAppliedRcvHwm = autoHwmAppliedRcvHwm;
-        AutoHwmRequestedSndBuf = autoHwmRequestedSndBuf;
-        AutoHwmRequestedRcvBuf = autoHwmRequestedRcvBuf;
-        AutoHwmEffectiveSndBuf = autoHwmEffectiveSndBuf;
-        AutoHwmEffectiveRcvBuf = autoHwmEffectiveRcvBuf;
-        AutoHwmTotalMemoryBudgetBytes = autoHwmTotalMemoryBudgetBytes;
-        AutoHwmQueueBudgetBytes = autoHwmQueueBudgetBytes;
-        AutoHwmTransportBudgetBytes = autoHwmTransportBudgetBytes;
-        AutoHwmRuntimeReserveBytes = autoHwmRuntimeReserveBytes;
-        AutoHwmSocketQueueShareBytes = autoHwmSocketQueueShareBytes;
         AutoHwmSocketMessageSlots = autoHwmSocketMessageSlots;
         AutoHwmEffectiveMessageBytes = autoHwmEffectiveMessageBytes;
-        AutoHwmEstimatedMaxMemoryBytes = autoHwmEstimatedMaxMemoryBytes;
+        AutoHwmAppliedSndHwm = autoHwmAppliedSndHwm;
+        AutoHwmAppliedRcvHwm = autoHwmAppliedRcvHwm;
         AutoHwmLastRecalcMs = autoHwmLastRecalcMs;
         AutoHwmLastRecalcReason = autoHwmLastRecalcReason;
         AutoHwmSendBlockedRatioPpm = autoHwmSendBlockedRatioPpm;
-        AutoHwmScope = autoHwmScope;
-        AutoHwmScopeCount = autoHwmScopeCount;
-        AutoHwmAutoBufferBytes = autoHwmAutoBufferBytes;
-        AutoHwmManualBufferBytes = autoHwmManualBufferBytes;
-        AutoHwmBufferConnections = autoHwmBufferConnections;
         AutoHwmDeferredSndHwm = autoHwmDeferredSndHwm;
         AutoHwmDeferredRcvHwm = autoHwmDeferredRcvHwm;
     }
@@ -292,37 +254,15 @@ public sealed class MonitorSnapshot
     public uint AutoHwmProfile { get; }
     public uint AutoHwmRole { get; }
     public uint AutoHwmPolicyClass { get; }
-    public uint AutoHwmManagedConnections { get; }
-    public uint AutoHwmActiveHwmConnections { get; }
-    public uint AutoHwmObservedCount { get; }
-    public uint AutoHwmPlanningCount { get; }
-    public uint AutoHwmContextTotalPlanningCount { get; }
-    public uint AutoHwmBaseFloorPerConnection { get; }
     public ulong AutoHwmUnitBudgetBytes { get; }
     public uint AutoHwmSizeCap { get; }
-    public uint AutoHwmEffectivePublishFanout { get; }
-    public int AutoHwmAppliedSndHwm { get; }
-    public int AutoHwmAppliedRcvHwm { get; }
-    public int AutoHwmRequestedSndBuf { get; }
-    public int AutoHwmRequestedRcvBuf { get; }
-    public int AutoHwmEffectiveSndBuf { get; }
-    public int AutoHwmEffectiveRcvBuf { get; }
-    public ulong AutoHwmTotalMemoryBudgetBytes { get; }
-    public ulong AutoHwmQueueBudgetBytes { get; }
-    public ulong AutoHwmTransportBudgetBytes { get; }
-    public ulong AutoHwmRuntimeReserveBytes { get; }
-    public ulong AutoHwmSocketQueueShareBytes { get; }
     public ulong AutoHwmSocketMessageSlots { get; }
     public ulong AutoHwmEffectiveMessageBytes { get; }
-    public ulong AutoHwmEstimatedMaxMemoryBytes { get; }
+    public int AutoHwmAppliedSndHwm { get; }
+    public int AutoHwmAppliedRcvHwm { get; }
     public ulong AutoHwmLastRecalcMs { get; }
     public uint AutoHwmLastRecalcReason { get; }
     public uint AutoHwmSendBlockedRatioPpm { get; }
-    public uint AutoHwmScope { get; }
-    public uint AutoHwmScopeCount { get; }
-    public ulong AutoHwmAutoBufferBytes { get; }
-    public ulong AutoHwmManualBufferBytes { get; }
-    public uint AutoHwmBufferConnections { get; }
     public int AutoHwmDeferredSndHwm { get; }
     public int AutoHwmDeferredRcvHwm { get; }
     public bool IsReady => SourceKind == SourceKind.Socket
@@ -335,34 +275,14 @@ public sealed class MonitorSnapshot
             native.RcvPendingMsgs, native.AutoHwmEnabled,
             native.AutoHwmProfile, native.AutoHwmRole,
             native.AutoHwmPolicyClass,
-            native.AutoHwmManagedConnections,
-            native.AutoHwmActiveHwmConnections,
-            native.AutoHwmObservedCount,
-            native.AutoHwmPlanningCount,
-            native.AutoHwmContextTotalPlanningCount,
-            native.AutoHwmBaseFloorPerConnection,
             native.AutoHwmUnitBudgetBytes,
             native.AutoHwmSizeCap,
-            native.AutoHwmEffectivePublishFanout,
-            native.AutoHwmAppliedSndHwm, native.AutoHwmAppliedRcvHwm,
-            native.AutoHwmRequestedSndBuf, native.AutoHwmRequestedRcvBuf,
-            native.AutoHwmEffectiveSndBuf, native.AutoHwmEffectiveRcvBuf,
-            native.AutoHwmTotalMemoryBudgetBytes,
-            native.AutoHwmQueueBudgetBytes,
-            native.AutoHwmTransportBudgetBytes,
-            native.AutoHwmRuntimeReserveBytes,
-            native.AutoHwmSocketQueueShareBytes,
             native.AutoHwmSocketMessageSlots,
             native.AutoHwmEffectiveMessageBytes,
-            native.AutoHwmEstimatedMaxMemoryBytes,
+            native.AutoHwmAppliedSndHwm, native.AutoHwmAppliedRcvHwm,
             native.AutoHwmLastRecalcMs,
             native.AutoHwmLastRecalcReason,
             native.AutoHwmSendBlockedRatioPpm,
-            native.AutoHwmScope,
-            native.AutoHwmScopeCount,
-            native.AutoHwmAutoBufferBytes,
-            native.AutoHwmManualBufferBytes,
-            native.AutoHwmBufferConnections,
             native.AutoHwmDeferredSndHwm,
             native.AutoHwmDeferredRcvHwm);
     }

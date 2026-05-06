@@ -412,6 +412,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         old_env = os.environ.copy()
         callbacks = []
         start_callbacks = []
+        result_callbacks = []
         try:
             RC.ALLOW_MULTI = True
             RC.MSG_SIZES = [65536]
@@ -421,7 +422,8 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
 
             def fake_run_sizes_test(binary_name, lib_name, transport, sizes,
                                     pattern_name, result_line_callback=None,
-                                    size_start_callback=None):
+                                    size_start_callback=None,
+                                    size_result_callback=None):
                 callbacks.append(result_line_callback)
                 if size_start_callback is not None:
                     size_start_callback(transport, sizes[0])
@@ -429,7 +431,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                 if result_line_callback is not None:
                     for metric_name, value in tier1_metrics(999.0):
                         result_line_callback(transport, sizes[0], metric_name, value)
-                return {
+                outcome = {
                     "status": "success",
                     "parsed": {
                         "tcp|65536|throughput": 123.0,
@@ -443,6 +445,10 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                     "reason": "",
                     "warnings": [],
                 }
+                if size_result_callback is not None:
+                    size_result_callback(transport, sizes[0], outcome)
+                    result_callbacks.append((transport, sizes[0]))
+                return outcome
 
             RC.run_sizes_test = fake_run_sizes_test
 
@@ -460,6 +466,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             output = stdout.getvalue()
             self.assertEqual(callbacks, [None])
             self.assertEqual(start_callbacks, [("tcp", 65536)])
+            self.assertEqual(result_callbacks, [("tcp", 65536)])
             self.assertIn("Testing tcp | 65536B:", output)
             self.assertIn("1.500 ms", output)
             self.assertNotIn("999.000 ms", output)

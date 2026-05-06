@@ -2851,6 +2851,7 @@ def run_sizes_test(
     pattern_name,
     result_line_callback=None,
     size_start_callback=None,
+    size_result_callback=None,
 ):
     # Multi policy invariant:
     # each pattern/transport/size case runs in its own isolated server/client
@@ -2986,6 +2987,12 @@ def run_sizes_test(
             reason = isolated.get("reason", "size_case_failed")
             merged["reason"] = f"{reason}_size_{size}"
             return merged
+
+        if size_result_callback is not None:
+            try:
+                size_result_callback(transport, size, isolated)
+            except Exception:
+                pass
 
     return merged
 
@@ -3300,9 +3307,43 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     live_metrics[key] = value
                     maybe_emit_live_row(line_size)
 
-                live_result_callback = (
-                    None if defer_live_multi_rows(pattern_name) else on_result_metric
-                )
+                defer_rows = defer_live_multi_rows(pattern_name)
+                live_result_callback = None if defer_rows else on_result_metric
+
+                def on_size_result(line_transport, line_size, size_outcome):
+                    if not defer_rows:
+                        return
+                    if line_transport != tr.lower() or line_size not in sizes:
+                        return
+                    if line_size in live_emitted_sizes:
+                        return
+                    if size_outcome.get("status") != "success":
+                        return
+                    parsed = size_outcome.get("parsed", {}) or {}
+                    tp_key = f"{tr}|{line_size}|throughput"
+                    bw_key = f"{tr}|{line_size}|bandwidth"
+                    lat_key = f"{tr}|{line_size}|latency"
+                    lat95_key = f"{tr}|{line_size}|{LATENCY_P95_METRIC}"
+                    lat99_key = f"{tr}|{line_size}|{LATENCY_P99_METRIC}"
+                    if (
+                        tp_key not in parsed
+                        or bw_key not in parsed
+                        or lat_key not in parsed
+                        or lat95_key not in parsed
+                        or lat99_key not in parsed
+                    ):
+                        return
+                    emit_size_row(
+                        line_size,
+                        "success",
+                        throughput=parsed.get(tp_key, 0.0),
+                        bandwidth=parsed.get(bw_key, 0.0),
+                        latency=parsed.get(lat_key, 0.0),
+                        latency_p95=parsed.get(lat95_key),
+                        latency_p99=parsed.get(lat99_key),
+                    )
+                    live_emitted_sizes.add(line_size)
+
                 try:
                     outcome = run_sizes_test(
                         binary_name,
@@ -3312,9 +3353,13 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         pattern_name,
                         result_line_callback=live_result_callback,
                         size_start_callback=lambda _tr, sz: emit_size_section(sz),
+                        size_result_callback=on_size_result,
                     )
                 except TypeError as exc:
-                    if "size_start_callback" not in str(exc):
+                    if (
+                        "size_start_callback" not in str(exc)
+                        and "size_result_callback" not in str(exc)
+                    ):
                         raise
                     outcome = run_sizes_test(
                         binary_name,

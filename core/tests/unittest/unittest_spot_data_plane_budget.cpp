@@ -480,6 +480,46 @@ void test_auto_hwm_v2_hwm_is_independent_from_observed_count ()
     TEST_ASSERT_EQUAL_INT (1024, socket_plan.sndhwm);
 }
 
+void test_auto_hwm_profile_selects_buffer_floor ()
+{
+    zlink::auto_hwm_context_plan_t context_plan;
+    zlink::auto_hwm_socket_plan_t socket_plan;
+
+    zlink::auto_hwm_context_plan_make (
+      true, ZLINK_AUTO_HWM_PROFILE_COMPACT, &context_plan);
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER, 1, 1,
+      &socket_plan, 64, -1, -1, false, false, zlink::auto_hwm_scope_shared, 1,
+      true);
+    TEST_ASSERT_EQUAL_INT (128 * 1024, socket_plan.requested_sndbuf);
+    TEST_ASSERT_EQUAL_INT (128 * 1024, socket_plan.requested_rcvbuf);
+
+    zlink::auto_hwm_context_plan_make (
+      true, ZLINK_AUTO_HWM_PROFILE_BALANCED, &context_plan);
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER, 1, 1,
+      &socket_plan, 64, -1, -1, false, false, zlink::auto_hwm_scope_shared, 1,
+      true);
+    TEST_ASSERT_EQUAL_INT (256 * 1024, socket_plan.requested_sndbuf);
+    TEST_ASSERT_EQUAL_INT (256 * 1024, socket_plan.requested_rcvbuf);
+
+    zlink::auto_hwm_context_plan_make (
+      true, ZLINK_AUTO_HWM_PROFILE_COMPACT, &context_plan);
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER, 1, 1,
+      &socket_plan, 65536, -1, -1, false, false,
+      zlink::auto_hwm_scope_shared, 1, true);
+    TEST_ASSERT_EQUAL_INT (256 * 1024, socket_plan.requested_sndbuf);
+    TEST_ASSERT_EQUAL_INT (256 * 1024, socket_plan.requested_rcvbuf);
+
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER, 1, 1,
+      &socket_plan, 64, 1024 * 1024, 2 * 1024 * 1024, true, true,
+      zlink::auto_hwm_scope_shared, 1, true);
+    TEST_ASSERT_EQUAL_INT (1024 * 1024, socket_plan.requested_sndbuf);
+    TEST_ASSERT_EQUAL_INT (2 * 1024 * 1024, socket_plan.requested_rcvbuf);
+}
+
 void test_mesh_pub_hwm_hint_updates_private_runtime_owner ()
 {
     zlink::spot_runtime_t runtime (NULL);
@@ -670,6 +710,7 @@ int main (int argc, char **argv)
     RUN_TEST (test_auto_hwm_pc_profile_table_and_message_unit_scaling);
     RUN_TEST (test_auto_hwm_v2_policy_class_mapping_and_spot_fanout_limit);
     RUN_TEST (test_auto_hwm_v2_hwm_is_independent_from_observed_count);
+    RUN_TEST (test_auto_hwm_profile_selects_buffer_floor);
     RUN_TEST (test_mesh_pub_hwm_hint_updates_private_runtime_owner);
     RUN_TEST (test_mesh_pub_hwm_runtime_owner_uses_bound_endpoint);
     RUN_TEST (

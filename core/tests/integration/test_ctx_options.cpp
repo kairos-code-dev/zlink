@@ -344,6 +344,39 @@ void test_ctx_option_auto_hwm_enabled_applies_profile ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_RCVHWM, &hwm, &hwm_size));
     TEST_ASSERT_EQUAL_INT (256, hwm);
+    int buffer = -1;
+    size_t buffer_size = sizeof (buffer);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (router, ZLINK_OPT_SNDBUF, &buffer, &buffer_size));
+    TEST_ASSERT_EQUAL_INT (256 * 1024, buffer);
+    buffer = -1;
+    buffer_size = sizeof (buffer);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (router, ZLINK_OPT_RCVBUF, &buffer, &buffer_size));
+    TEST_ASSERT_EQUAL_INT (256 * 1024, buffer);
+
+    test_context_socket_close (router);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
+      get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
+      ZLINK_AUTO_HWM_PROFILE_COMPACT));
+    router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (router);
+    hwm = -1;
+    hwm_size = sizeof (hwm);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm, &hwm_size));
+    TEST_ASSERT_EQUAL_INT (64, hwm);
+    buffer = -1;
+    buffer_size = sizeof (buffer);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (router, ZLINK_OPT_SNDBUF, &buffer, &buffer_size));
+    TEST_ASSERT_EQUAL_INT (128 * 1024, buffer);
+    buffer = -1;
+    buffer_size = sizeof (buffer);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (router, ZLINK_OPT_RCVBUF, &buffer, &buffer_size));
+    TEST_ASSERT_EQUAL_INT (128 * 1024, buffer);
 
     test_context_socket_close (router);
     TEST_ASSERT_SUCCESS_ERRNO (

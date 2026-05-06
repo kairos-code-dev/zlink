@@ -82,6 +82,11 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT` | 3000 | 자동 HWM 재계산 기본 디바운스 시간 (ms) |
 | `ZLINK_CTX_AUTO_HWM_PROFILE_DFLT` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 자동 HWM 기본 profile |
 
+자동 buffer 하한은 profile에 따라 달라집니다. `COMPACT`는 `SNDBUF` /
+`RCVBUF` 하한으로 128 KiB를 사용합니다. `LOW_LATENCY`, `BALANCED`,
+`THROUGHPUT`은 256 KiB를 사용합니다. 실효 메시지 단위가 더 큰 buffer를
+필요로 하면 planner는 이 하한보다 큰 값을 요청합니다.
+
 ## 함수
 
 ### zlink_ctx_new
@@ -178,7 +183,8 @@ runtime이 시작된 뒤 이 값을 바꾸려 하면 `ZLINK_CONFIG_INVALID_ARGUM
 주지 않은 소켓만 자동 정책으로 다시 계산합니다.
 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 다음 자동 HWM 계산에서 쓰는 profile을
 바꾸며, runtime 중에도 안전하게 조정할 수 있습니다. profile은 자동 HWM
-planner가 쓰는 연결당 단위 예산과 size cap을 고릅니다.
+planner가 쓰는 연결당 단위 예산, size cap, 자동 `SNDBUF` / `RCVBUF`
+하한을 고릅니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 

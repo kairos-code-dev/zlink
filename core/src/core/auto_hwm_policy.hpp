@@ -64,6 +64,8 @@ struct auto_hwm_socket_plan_t
     uint64_t pending_messages;
     int sndhwm;
     int rcvhwm;
+    bool manual_sndbuf;
+    bool manual_rcvbuf;
     int requested_sndbuf;
     int requested_rcvbuf;
     int effective_sndbuf;

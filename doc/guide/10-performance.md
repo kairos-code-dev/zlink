@@ -62,6 +62,8 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 |------|--------|------|
 | `ZLINK_OPT_SNDHWM` | automatic | Chosen from the default balanced auto-HWM profile. Manual settings override it |
 | `ZLINK_OPT_RCVHWM` | automatic | Chosen from the default balanced auto-HWM profile. Manual settings override it |
+| `ZLINK_OPT_SNDBUF` | automatic | Chosen from the active auto-HWM profile and effective message unit. Compact uses a 128 KiB floor; other profiles use 256 KiB |
+| `ZLINK_OPT_RCVBUF` | automatic | Chosen from the active auto-HWM profile and effective message unit. Compact uses a 128 KiB floor; other profiles use 256 KiB |
 
 ### Backpressure Behavior
 

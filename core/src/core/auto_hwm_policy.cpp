@@ -14,8 +14,8 @@ namespace
 const uint64_t mib = 1024ull * 1024ull;
 const uint64_t auto_hwm_stream_message_bytes = 1024ull;
 const uint64_t auto_hwm_message_bytes = 4096ull;
-const int auto_hwm_default_sndbuf = 262144;
-const int auto_hwm_default_rcvbuf = 262144;
+const int auto_hwm_compact_buffer_floor = 128 * 1024;
+const int auto_hwm_default_buffer_floor = 256 * 1024;
 const uint64_t auto_hwm_max_buffer_bytes = 16ull * mib;
 
 struct profile_hwm_t
@@ -101,6 +101,13 @@ uint32_t size_cap_for_class (zlink_auto_hwm_profile_t profile_,
                                                : hwm.message_cap;
 }
 
+int buffer_floor_for_profile (zlink_auto_hwm_profile_t profile_)
+{
+    return normalize_profile (profile_) == ZLINK_AUTO_HWM_PROFILE_COMPACT
+             ? auto_hwm_compact_buffer_floor
+             : auto_hwm_default_buffer_floor;
+}
+
 uint64_t effective_message_bytes (int socket_type_, int override_)
 {
     if (override_ > 0)
@@ -161,6 +168,8 @@ zlink::auto_hwm_socket_plan_t::auto_hwm_socket_plan_t () :
     pending_messages (0),
     sndhwm (0),
     rcvhwm (0),
+    manual_sndbuf (false),
+    manual_rcvbuf (false),
     requested_sndbuf (-1),
     requested_rcvbuf (-1),
     effective_sndbuf (-1),
@@ -270,6 +279,8 @@ void zlink::auto_hwm_socket_plan_prepare (
     out_->role = role_;
     out_->policy_class = auto_hwm_policy_class_for_role (role_, socket_type_);
     out_->scope = scope_;
+    out_->manual_sndbuf = manual_sndbuf_;
+    out_->manual_rcvbuf = manual_rcvbuf_;
     out_->effective_message_bytes =
       effective_message_bytes (socket_type_, message_unit_bytes_);
     const uint32_t buffer_connections =
@@ -278,10 +289,12 @@ void zlink::auto_hwm_socket_plan_prepare (
           std::max (managed_connections_, active_hwm_connections_)),
         1u);
 
+    const int auto_buffer_floor =
+      buffer_floor_for_profile (ZLINK_CTX_AUTO_HWM_PROFILE_DFLT);
     const int auto_sndbuf_value = auto_buffer_bytes_for_message (
-      out_->effective_message_bytes, auto_hwm_default_sndbuf);
+      out_->effective_message_bytes, auto_buffer_floor);
     const int auto_rcvbuf_value = auto_buffer_bytes_for_message (
-      out_->effective_message_bytes, auto_hwm_default_rcvbuf);
+      out_->effective_message_bytes, auto_buffer_floor);
 
     out_->requested_sndbuf = manual_sndbuf_ ? sndbuf_ : auto_sndbuf_value;
     out_->requested_rcvbuf = manual_rcvbuf_ ? rcvbuf_ : auto_rcvbuf_value;
@@ -318,6 +331,18 @@ void zlink::auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
           static_cast<uint64_t> (basis_hwm) * basis_message_bytes;
         plan.size_cap = size_cap_for_class (context_->profile,
                                             plan.policy_class);
+        const int auto_buffer_floor =
+          buffer_floor_for_profile (context_->profile);
+        if (!plan.manual_sndbuf) {
+            plan.requested_sndbuf = auto_buffer_bytes_for_message (
+              plan.effective_message_bytes, auto_buffer_floor);
+            plan.effective_sndbuf = plan.requested_sndbuf;
+        }
+        if (!plan.manual_rcvbuf) {
+            plan.requested_rcvbuf = auto_buffer_bytes_for_message (
+              plan.effective_message_bytes, auto_buffer_floor);
+            plan.effective_rcvbuf = plan.requested_rcvbuf;
+        }
         plan.socket_message_slots =
           ceil_div (plan.unit_budget_bytes, plan.effective_message_bytes);
 

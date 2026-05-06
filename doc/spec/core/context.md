@@ -86,6 +86,11 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT` | 3000 | Default debounce window for automatic HWM recalculation (ms) |
 | `ZLINK_CTX_AUTO_HWM_PROFILE_DFLT` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | Default automatic HWM profile |
 
+The automatic buffer floor is profile-dependent. `COMPACT` uses a 128 KiB
+`SNDBUF` / `RCVBUF` floor. `LOW_LATENCY`, `BALANCED`, and `THROUGHPUT` use a
+256 KiB floor. The planner still raises the requested buffer above that floor
+when the effective message unit requires it.
+
 ## Functions
 
 ### zlink_ctx_new
@@ -182,8 +187,8 @@ immediately, but only for sockets that still use automatic `SNDHWM` /
 `RCVHWM` / `SNDBUF` / `RCVBUF` values rather than manual overrides.
 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` updates the profile used by the next
 automatic HWM calculation and is safe to change while the context is live.
-The profile selects the per-connection unit budget and size cap used by the
-automatic HWM planner.
+The profile selects the per-connection unit budget, size cap, and automatic
+`SNDBUF` / `RCVBUF` floor used by the automatic HWM planner.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 

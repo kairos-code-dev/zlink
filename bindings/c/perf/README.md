@@ -72,6 +72,7 @@ Profile guidance after the auto-HWM message-unit change:
 
 | Profile | Use case |
 |---------|----------|
+| `compact` | smallest queue depth and 128 KiB socket-buffer floor for memory-sensitive runs |
 | `low_latency` | lower per-connection queue depth for small latency-focused tests |
 | `balanced` | default profile for ordinary service messages |
 | `throughput` | larger per-connection queue depth for high throughput sweeps |

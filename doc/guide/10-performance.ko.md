@@ -64,6 +64,8 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 |------|--------|------|
 | `ZLINK_OPT_SNDHWM` | 자동 | 기본 balanced auto-HWM profile에서 정한다. 수동 설정이 우선 |
 | `ZLINK_OPT_RCVHWM` | 자동 | 기본 balanced auto-HWM profile에서 정한다. 수동 설정이 우선 |
+| `ZLINK_OPT_SNDBUF` | 자동 | 활성 auto-HWM profile과 실효 메시지 단위로 정한다. compact는 128 KiB 하한을 쓰고, 다른 profile은 256 KiB 하한을 쓴다 |
+| `ZLINK_OPT_RCVBUF` | 자동 | 활성 auto-HWM profile과 실효 메시지 단위로 정한다. compact는 128 KiB 하한을 쓰고, 다른 profile은 256 KiB 하한을 쓴다 |
 
 ### Backpressure 동작
 

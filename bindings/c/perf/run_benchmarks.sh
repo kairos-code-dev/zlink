@@ -120,6 +120,7 @@ Options:
                              Requires PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1.
   --send-hwm N                Debug-only PERF_SINGLE_SNDHWM override.
   --recv-hwm N                Debug-only PERF_SINGLE_RCVHWM override.
+  --buf SIZE                  Debug-only override for both PERF_SINGLE_SNDBUF and PERF_SINGLE_RCVBUF.
   --sndbuf SIZE               Debug-only PERF_SINGLE_SNDBUF override (e.g. 64b, 1k, 64k).
   --rcvbuf SIZE               Debug-only PERF_SINGLE_RCVBUF override (e.g. 64b, 1k, 64k).
   --sndtimeo N                Override PERF_SINGLE_SNDTIMEO_MS (default: 200).
@@ -301,6 +302,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --recv-hwm)
       SINGLE_RCVHWM="${2:-}"
+      shift
+      ;;
+    --buf)
+      SINGLE_SNDBUF="${2:-}"
+      SINGLE_RCVBUF="${2:-}"
       shift
       ;;
     --sndbuf)
@@ -749,7 +755,7 @@ print_effective_option() {
 if [[ -n "${SINGLE_HWM}${SINGLE_SNDHWM}${SINGLE_RCVHWM}${SINGLE_SNDBUF}${SINGLE_RCVBUF}" ]]; then
   if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" != "1" ]]; then
     echo "Error: single manual HWM/SNDBUF/RCVBUF overrides are debug-only." >&2
-    echo "Set PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1 to use --hwm/--send-hwm/--recv-hwm/--sndbuf/--rcvbuf." >&2
+    echo "Set PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1 to use --hwm/--send-hwm/--recv-hwm/--buf/--sndbuf/--rcvbuf." >&2
     exit 1
   fi
 fi

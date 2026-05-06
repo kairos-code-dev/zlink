@@ -32,7 +32,10 @@ Runner defaults do not inject numeric `SNDHWM`, `RCVHWM`, `SNDBUF`, or
 set `PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1` or
 `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` (or the shared
 `PERF_ALLOW_MANUAL_SOCKET_OVERRIDES=1`) and then pass explicit
-`PERF_SINGLE_*` / `PERF_MULTI_*` socket values.
+`PERF_SINGLE_*` / `PERF_MULTI_*` socket values. The runner option `--buf 128k`
+is a shortcut that sets both send and receive socket buffers to the same value;
+`--sndbuf` and `--rcvbuf` are still available when each direction needs a
+different value.
 
 Multi benchmarks set `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` from the current
 message size before each run:
@@ -40,6 +43,11 @@ message size before each run:
 | Socket family | Message unit used by perf |
 |---------------|---------------------------|
 | all multi perf sockets | `msg_size` |
+
+Single SPOT sets the SpotNode data-path message unit to
+`min(msg_size, 4096)`. This gives small messages the same deeper auto-HWM queue
+as the other single benchmarks while keeping large one-way SPOT probes from
+starting with an overly shallow queue.
 
 For non-SPOT patterns, the auto-HWM detail table is printed after the result
 rows. It uses the cached runtime snapshots and includes the applied HWM and

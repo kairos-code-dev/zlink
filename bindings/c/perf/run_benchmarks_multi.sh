@@ -340,6 +340,7 @@ Options:
                          Requires PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1.
   --send-hwm N           Debug-only override PERF_MULTI_SNDHWM (fallback: --hwm).
   --recv-hwm N           Debug-only override PERF_MULTI_RCVHWM (fallback: --hwm).
+  --buf SIZE             Debug-only override for both PERF_MULTI_SNDBUF and PERF_MULTI_RCVBUF.
   --sndbuf SIZE          Debug-only override PERF_MULTI_SNDBUF (e.g. 64b, 1k, 64k).
   --rcvbuf SIZE          Debug-only override PERF_MULTI_RCVBUF (e.g. 64b, 1k, 64k).
   --sndtimeo N           Override PERF_MULTI_SNDTIMEO_MS (default: 200).
@@ -713,6 +714,15 @@ while [[ $# -gt 0 ]]; do
       RCVHWM="${2}"
       shift 2
       ;;
+    --buf)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      SNDBUF="${2}"
+      RCVBUF="${2}"
+      shift 2
+      ;;
     --sndbuf)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
@@ -833,7 +843,7 @@ done
 if [[ -n "${HWM}" || -n "${SNDHWM}" || -n "${RCVHWM}" || -n "${SNDBUF}" || -n "${RCVBUF}" ]]; then
   if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" != "1" ]]; then
     echo "Error: manual HWM/SNDBUF/RCVBUF overrides are debug-only." >&2
-    echo "Set PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1 to use --hwm/--send-hwm/--recv-hwm/--sndbuf/--rcvbuf." >&2
+    echo "Set PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1 to use --hwm/--send-hwm/--recv-hwm/--buf/--sndbuf/--rcvbuf." >&2
     exit 1
   fi
 fi

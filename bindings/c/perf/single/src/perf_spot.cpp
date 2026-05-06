@@ -59,6 +59,14 @@ int resolve_spot_subscription_ready_timeout_ms (const std::string &transport_)
                                connect_timeout_ms);
 }
 
+size_t spot_auto_hwm_msg_unit (size_t msg_size_)
+{
+    static const size_t k_max_spot_msg_unit = 4096;
+    if (msg_size_ == 0)
+        return k_max_spot_msg_unit;
+    return std::min (msg_size_, k_max_spot_msg_unit);
+}
+
 bool topic_matches (const char *topic_, size_t topic_len_)
 {
     if (!topic_)
@@ -219,6 +227,15 @@ int recv_spot_header_flags (void *subscriber_,
     return 1;
 }
 
+void apply_spot_node_auto_hwm_msg_unit (void *publisher_node_,
+                                        void *subscriber_node_,
+                                        size_t msg_size_)
+{
+    const size_t msg_unit = spot_auto_hwm_msg_unit (msg_size_);
+    apply_single_auto_hwm_msg_unit (publisher_node_, msg_unit);
+    apply_single_auto_hwm_msg_unit (subscriber_node_, msg_unit);
+}
+
 bool publish_metric_payload (void *publisher_,
                              std::vector<char> *payload_,
                              size_t msg_size_,
@@ -296,7 +313,7 @@ bool wait_for_spot_ready_barrier (void *publisher_,
                                      msg_size_,
                                      state_->run_id,
                                      0,
-                                     perf_single_metric::phase_active,
+                                     perf_single_metric::phase_warmup,
                                      ZLINK_DONTWAIT)) {
             if (bench_debug_enabled ())
                 std::cerr << "[perf-spot] probe publish failed" << std::endl;
@@ -316,9 +333,15 @@ bool wait_for_spot_ready_barrier (void *publisher_,
             if (recv_rc > 0) {
                 progressed = true;
                 if (header_ok) {
-                    (void) single_record_active_header (state_, header);
-                    if (state_->active_received.load (std::memory_order_acquire)
-                        > 0) {
+                    const bool ready_seen =
+                      header.magic == perf_single_metric::k_magic
+                      && header.run_id == state_->run_id
+                      && header.phase
+                           == static_cast<uint8_t> (
+                             perf_single_metric::phase_warmup)
+                      && header.msg_size
+                           == static_cast<uint32_t> (state_->msg_size);
+                    if (ready_seen) {
                         if (bench_debug_enabled ())
                             std::cerr << "[perf-spot] ready barrier complete"
                                       << std::endl;
@@ -337,7 +360,7 @@ bool wait_for_spot_ready_barrier (void *publisher_,
         }
     }
 
-    return state_->active_received.load (std::memory_order_acquire) > 0;
+    return false;
 }
 
 bool run_spot_post_ready_settle ()
@@ -607,6 +630,9 @@ int run_case (const std::string &lib_name_,
         print_fail ();
         return 1;
     }
+
+    apply_spot_node_auto_hwm_msg_unit (
+      publisher_node, subscriber_node, msg_size_);
 
     const int base_port = 25000 + (current_process_id () % 32) * 512;
     publisher = zlink_spot_new (publisher_node);

@@ -10,6 +10,7 @@
 #endif
 #include "../include/zlink.h"
 #include "../src/core/internal_defs.hpp"
+#include "../src/utils/fd.hpp"
 #include "utils/stdint.hpp"
 #include <stdio.h>
 #include <stdlib.h>
@@ -103,7 +104,6 @@ static inline const char *endpoint_3 ()
 #define MSG_NOSIGNAL 0
 #endif
 
-// duplicated from fd.hpp
 #ifdef ZLINK_HAVE_WINDOWS
 #ifndef NOMINMAX
 #define NOMINMAX // Macros min(a,b) and max(a,b)
@@ -128,29 +128,8 @@ inline const void *as_setsockopt_opt_t (const void *opt_)
 }
 #endif
 
-// duplicated from fd.hpp
-typedef zlink_fd_t fd_t;
-#ifdef ZLINK_HAVE_WINDOWS
-#if defined _MSC_VER && _MSC_VER <= 1400
-enum
-{
-    retired_fd = (zlink_fd_t) (~0)
-};
-#else
-enum
-#if _MSC_VER >= 1800
-  : zlink_fd_t
-#endif
-{
-    retired_fd = INVALID_SOCKET
-};
-#endif
-#else
-enum
-{
-    retired_fd = -1
-};
-#endif
+using zlink::fd_t;
+using zlink::retired_fd;
 
 //  In MSVC prior to v14, snprintf is not available
 //  The closest implementation is the _snprintf_s function

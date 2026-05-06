@@ -52,35 +52,6 @@ void close_routed_serialized_parts_local (zlink_msg_t *parts_, size_t count_)
         zlink_msg_close (&parts_[i]);
 }
 
-int copy_topic_to_output_local (const char *topic_data_,
-                                size_t topic_size_,
-                                char *topic_id_out_,
-                                size_t *topic_id_len_out_)
-{
-    if (!topic_id_len_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    if (!topic_id_out_) {
-        *topic_id_len_out_ = topic_size_;
-        errno = 0;
-        return 0;
-    }
-
-    if (*topic_id_len_out_ < topic_size_) {
-        *topic_id_len_out_ = topic_size_;
-        errno = EMSGSIZE;
-        return -1;
-    }
-
-    if (topic_size_ > 0)
-        memcpy (topic_id_out_, topic_data_, topic_size_);
-    *topic_id_len_out_ = topic_size_;
-    errno = 0;
-    return 0;
-}
-
 bool reserve_routed_queue_slot_local (
   const std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> &state_)
 {
@@ -374,10 +345,9 @@ int zlink::spot_reqrep_internal::recv_internal_spot_subscribe_queue (
     if (source_rid_out_)
         *source_rid_out_ = message.source_rid;
 
-    if (copy_topic_to_output_local (message.topic.data (),
-                                    message.topic.size (),
-                                    topic_id_out_,
-                                    topic_id_len_out_)
+    if (zlink::copy_bytes_to_sized_output (
+          message.topic.data (), message.topic.size (), topic_id_out_,
+          topic_id_len_out_)
         != 0) {
         return -1;
     }

@@ -5,6 +5,7 @@
 
 #include <zlink.h>
 
+#include <errno.h>
 #include <string.h>
 
 namespace zlink
@@ -53,6 +54,38 @@ inline void copy_fixed_c_string_from_cstr (char *dst_,
 {
     const size_t src_size = src_ ? strlen (src_) : 0;
     copy_fixed_c_string_from_bytes (dst_, dst_size_, src_, src_size);
+}
+
+inline int copy_bytes_to_sized_output (const void *src_,
+                                       size_t src_size_,
+                                       char *dst_,
+                                       size_t *dst_size_inout_)
+{
+    if (!dst_size_inout_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const size_t capacity = *dst_size_inout_;
+    *dst_size_inout_ = src_size_;
+
+    if (!dst_) {
+        errno = 0;
+        return 0;
+    }
+    if (capacity < src_size_) {
+        errno = EMSGSIZE;
+        return -1;
+    }
+    if (src_size_ > 0 && !src_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (src_size_ > 0)
+        memcpy (dst_, src_, src_size_);
+
+    errno = 0;
+    return 0;
 }
 
 }

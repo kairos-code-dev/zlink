@@ -31,34 +31,6 @@ bool is_direct_public_routed_recv_fast_type (int type_)
     return false;
 }
 
-int copy_topic_to_output (const char *topic_data_,
-                          size_t topic_size_,
-                          char *topic_id_out_,
-                          size_t *topic_id_len_out_)
-{
-    if (!topic_id_len_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    if (!topic_id_out_) {
-        *topic_id_len_out_ = topic_size_;
-        errno = 0;
-        return 0;
-    }
-
-    if (*topic_id_len_out_ < topic_size_) {
-        *topic_id_len_out_ = topic_size_;
-        errno = EMSGSIZE;
-        return -1;
-    }
-
-    if (topic_size_ > 0)
-        memcpy (topic_id_out_, topic_data_, topic_size_);
-    *topic_id_len_out_ = topic_size_;
-    return 0;
-}
-
 int recv_socket_subscribe_parts (socket_handle_t handle_,
                                  zlink_routing_id_t *source_rid_out_,
                                  zlink_msg_t **parts_out_,
@@ -105,7 +77,7 @@ int recv_socket_subscribe_parts (socket_handle_t handle_,
         return -1;
     }
 
-    if (copy_topic_to_output (
+    if (zlink::copy_bytes_to_sized_output (
           static_cast<const char *> (zlink_msg_data (&topic_frame)),
           zlink_msg_size (&topic_frame), topic_id_out_, topic_id_len_out_)
         != 0) {

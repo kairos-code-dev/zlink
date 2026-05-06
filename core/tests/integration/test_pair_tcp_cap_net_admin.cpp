@@ -14,7 +14,6 @@ void set_sockopt_bind_to_device (void *socket)
       zlink_set_option (socket, ZLINK_OPT_BINDTODEVICE, &device, sizeof (device) - 1));
 }
 
-//  TODO this is duplicated from test_pair_tcp
 void test_pair_tcp (extra_func_t extra_func_ = NULL)
 {
     void *sb = test_context_socket (ZLINK_SOCKET_PAIR);

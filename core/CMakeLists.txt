@@ -306,50 +306,6 @@ if(WITH_OPENPGM)
 endif()
 
 
-# zlink: WebSocket block disabled (files removed)
-# if(ENABLE_WS)
-#   list(
-#     APPEND
-#     sources
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_address.cpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_connecter.cpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_decoder.cpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_encoder.cpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_engine.cpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_listener.cpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_address.hpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_connecter.hpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_decoder.hpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_encoder.hpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_engine.hpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_listener.hpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_protocol.hpp)
-#   set(ZLINK_HAVE_WS 1)
-# 
-#   message(STATUS "Enable WebSocket transport")
-# 
-#   option(WITH_TLS "Use TLS for WSS support" ON)
-#   option(WITH_NSS "Use NSS instead of builtin sha1" OFF)
-# 
-#   if(WITH_TLS)
-#     find_package("GnuTLS" 3.6.7)
-#     if(GNUTLS_FOUND)
-#       set(pkg_config_names_private "${pkg_config_names_private} gnutls")
-#       list(APPEND sources ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_address.hpp
-#            ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_address.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_engine.hpp
-#            ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_engine.cpp)
-# 
-#       message(STATUS "Enable WSS transport")
-#       set(ZLINK_USE_GNUTLS 1)
-#       set(ZLINK_HAVE_WSS 1)
-#     else()
-#       message(WARNING "No WSS support, you may want to install GnuTLS and run cmake again")
-#     endif()
-#   endif()
-# endif()
-
-# zlink: GNUTLS/NSS paths removed; ASIO SSL is handled via OpenSSL.
-
 if(NOT MSVC)
   option(WITH_LIBBSD "Use libbsd instead of builtin strlcpy" ON)
   if(WITH_LIBBSD)
@@ -451,87 +407,7 @@ if(NOT POLLER STREQUAL "asio")
 endif()
 
 message(STATUS "Using polling method in I/O threads: ${POLLER}")
-# ASIO is the only supported I/O poller backend
 set(ZLINK_IOTHREAD_POLLER_USE_ASIO 1)
-
-# Add Asio poller source files when using Asio backend
-if(POLLER STREQUAL "asio")
-  list(APPEND sources
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_poller.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_poller.hpp
-    # ASIO-based TCP listener and connecter
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_listener.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_listener.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_connecter.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_connecter.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ipc_connecter.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ipc_connecter.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ipc_listener.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ipc_listener.hpp
-    # Phase 1-C: ASIO engine (True Proactor Mode)
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_engine.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_engine.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmp_engine.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmp_engine.hpp
-    # Transport abstraction layer (R3 refactoring)
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/i_asio_transport.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/tcp_transport.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ipc_transport.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/tcp_transport.hpp
-    # Utility headers (R2, R4 refactoring)
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_debug.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_error_handler.hpp)
-endif()
-
-# Phase 2: Add SSL transport when enabled
-if(ZLINK_HAVE_ASIO_SSL)
-  list(APPEND sources
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_transport.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_transport.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_context_helper.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_context_helper.hpp
-    # Phase 4: TLS connecter and listener with SSL/TLS encryption
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tls_connecter.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tls_connecter.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tls_listener.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tls_listener.hpp)
-endif()
-
-# Phase 3: Add WebSocket transport when enabled
-if(ZLINK_HAVE_ASIO_WS)
-  list(APPEND sources
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ws_transport.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ws_transport.hpp)
-endif()
-
-# Phase 3: Add WSS (Secure WebSocket) transport when both WS and SSL are enabled
-if(ZLINK_HAVE_ASIO_WSS)
-  list(APPEND sources
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/wss_transport.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/wss_transport.hpp)
-endif()
-
-# Phase 3-B: Add WebSocket ZLINK integration files (listener, connecter, engine, address)
-if(ZLINK_HAVE_WS)
-  list(APPEND sources
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_address.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_address.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_listener.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_listener.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_connecter.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_connecter.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_engine.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_engine.hpp)
-endif()
-
-# Phase 3-B: Add WSS ZLINK integration files
-if(ZLINK_HAVE_WSS)
-  list(APPEND sources
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_address.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_address.hpp)
-endif()
-
-# wepoll is not needed with ASIO poller
 
 if(API_POLLER STREQUAL "")
   if(POLLER STREQUAL "select")

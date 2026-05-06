@@ -8,6 +8,7 @@
 #include "api/socket_message_api_internal.hpp"
 #include "api/recv_result_internal.hpp"
 #include "api/submit_result_internal.hpp"
+#include "core/c_api_copy_internal.hpp"
 #include "core/recv_tls_view.hpp"
 #include "services/spot/spot_handle.hpp"
 #include "services/spot/spot_node.hpp"
@@ -18,32 +19,6 @@
 
 namespace
 {
-int copy_service_name_to_output (const std::string &service_name_,
-                                 char *service_name_out_,
-                                 size_t *service_name_len_out_)
-{
-    if (!service_name_len_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    if (!service_name_out_) {
-        *service_name_len_out_ = service_name_.size ();
-        return 0;
-    }
-
-    if (*service_name_len_out_ < service_name_.size ()) {
-        *service_name_len_out_ = service_name_.size ();
-        errno = EMSGSIZE;
-        return -1;
-    }
-
-    if (!service_name_.empty ())
-        memcpy (service_name_out_, service_name_.data (), service_name_.size ());
-    *service_name_len_out_ = service_name_.size ();
-    return 0;
-}
-
 int resolve_spot_bound_service_name (spot_handle_t *spot_,
                                      std::string *service_name_out_)
 {
@@ -67,21 +42,8 @@ int copy_text_to_output (const std::string &value_,
                          char *out_,
                          size_t *len_inout_)
 {
-    if (!len_inout_) {
-        errno = EFAULT;
-        return -1;
-    }
-    const size_t capacity = *len_inout_;
-    *len_inout_ = value_.size ();
-    if (!out_)
-        return 0;
-    if (capacity < value_.size ()) {
-        errno = EMSGSIZE;
-        return -1;
-    }
-    if (!value_.empty ())
-        memcpy (out_, value_.data (), value_.size ());
-    return 0;
+    return zlink::copy_bytes_to_sized_output (value_.data (), value_.size (),
+                                              out_, len_inout_);
 }
 
 zlink_recv_result_t try_dequeue_logical_subscribe (
@@ -472,7 +434,7 @@ zlink_recv_result_t spot_subscribe_impl (void *spot_,
     std::string bound_service_name;
     if (resolve_spot_bound_service_name (spot, &bound_service_name) != 0)
         return zlink::recv_result_internal::from_errno (errno);
-    return zlink::recv_result_internal::from_rc (copy_service_name_to_output (
+    return zlink::recv_result_internal::from_rc (copy_text_to_output (
       bound_service_name, service_name_out_, service_name_len_out_));
 }
 

@@ -10,6 +10,38 @@ set(SPLIT_ONLY_TEST_TARGETS)
 set(INTEGRATION_TEST_ROOT "integration")
 set(E2E_TEST_ROOT "e2e")
 
+function(zlink_warn_unregistered_tests root_dir glob_pattern)
+  set(options SKIP_FUZZERS)
+  set(one_value_args LIST_FILE)
+  set(multi_value_args ALLOWLIST)
+  cmake_parse_arguments(ZLINK_TEST_SCAN "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+
+  if(NOT ZLINK_TEST_SCAN_LIST_FILE)
+    set(ZLINK_TEST_SCAN_LIST_FILE "${CMAKE_CURRENT_LIST_FILE}")
+  endif()
+
+  file(READ "${ZLINK_TEST_SCAN_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)
+  file(GLOB_RECURSE ALL_TEST_SOURCES "${root_dir}/${glob_pattern}")
+
+  foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
+    get_filename_component(TESTNAME "${TEST_SOURCE}" NAME_WE)
+
+    if(ZLINK_TEST_SCAN_SKIP_FUZZERS AND TESTNAME MATCHES "_fuzzer$")
+      continue()
+    endif()
+
+    list(FIND ZLINK_TEST_SCAN_ALLOWLIST "${TESTNAME}" TEST_ALLOWLIST_INDEX)
+    if(TEST_ALLOWLIST_INDEX GREATER -1)
+      continue()
+    endif()
+
+    string(REGEX MATCH "(^|[^A-Za-z0-9_])${TESTNAME}([^A-Za-z0-9_]|$)" MATCH_TESTNAME "${CURRENT_LIST_FILE_CONTENT}")
+    if(NOT MATCH_TESTNAME)
+      message(AUTHOR_WARNING "Test '${TESTNAME}' is not known to CTest.")
+    endif()
+  endforeach()
+endfunction()
+
 set(STREAM_SCENARIO_ROOT
     "${ZLINK_REPO_ROOT}/bindings/c/bench/with_stream/stacks")
 if(NOT EXISTS "${STREAM_SCENARIO_ROOT}")
@@ -192,9 +224,6 @@ else()
       "stream scenario zmq test disabled: libzmq bundle not found under ${STREAM_SCENARIO_ZMQ_ROOT}")
 endif()
 
-if(NOT WIN32)
-endif()
-
 option(ENABLE_CAPSH "Run tests that require sudo and capsh (for cap_net_admin)" OFF)
 
 if(ENABLE_CAPSH)
@@ -205,9 +234,6 @@ if(ENABLE_CAPSH)
   else()
     message(STATUS "capsh not found, skipping tests that require CAP_NET_ADMIN")
   endif()
-endif()
-
-if(ZLINK_HAVE_IPC)
 endif()
 
 if(ZLINK_HAVE_OPENPGM)
@@ -973,10 +999,6 @@ if(REGRESSION_SERIAL_TESTS)
     LABELS "regression;serial")
 endif()
 
-# Check whether all tests in the current folder are present
-file(READ "${CMAKE_CURRENT_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)
-file(GLOB_RECURSE ALL_TEST_SOURCES "test_*.cpp")
-
 set(UNREGISTERED_TEST_ALLOWLIST
     test_asio_connect
     test_asio_poller
@@ -1007,6 +1029,7 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_msg_flags
     test_pair_inproc
     test_pair_ipc
+    test_pair_tcp
     test_pair_send_blocking_wakeup
     test_pgm_smoke
     test_probe_router
@@ -1040,19 +1063,9 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_zmp_ws_wss
     test_z85_decode_fuzzer)
 
-foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
-  get_filename_component(TESTNAME "${TEST_SOURCE}" NAME_WE)
-  string(REGEX MATCH "${TESTNAME}" MATCH_TESTNAME "${CURRENT_LIST_FILE_CONTENT}")
-
-  if(TESTNAME MATCHES "_fuzzer$")
-    continue()
-  endif()
-  list(FIND UNREGISTERED_TEST_ALLOWLIST "${TESTNAME}" TEST_ALLOWLIST_INDEX)
-  if(TEST_ALLOWLIST_INDEX GREATER -1)
-    continue()
-  endif()
-
-  if(NOT MATCH_TESTNAME)
-    message(AUTHOR_WARNING "Test '${TESTNAME}' is not known to CTest.")
-  endif()
-endforeach()
+zlink_warn_unregistered_tests(
+  "${CMAKE_CURRENT_LIST_DIR}"
+  "test_*.cpp"
+  LIST_FILE "${CMAKE_CURRENT_LIST_FILE}"
+  ALLOWLIST ${UNREGISTERED_TEST_ALLOWLIST}
+  SKIP_FUZZERS)

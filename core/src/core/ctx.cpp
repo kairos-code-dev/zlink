@@ -26,14 +26,6 @@
 #include "utils/err.hpp"
 #include "utils/random.hpp"
 
-#ifdef ZLINK_USE_NSS
-#include <nss.h>
-#endif
-
-#ifdef ZLINK_USE_GNUTLS
-#include <gnutls/gnutls.h>
-#endif
-
 #define ZLINK_CTX_TAG_VALUE_GOOD 0xabadcafe
 #define ZLINK_CTX_TAG_VALUE_BAD 0xdeadbeef
 

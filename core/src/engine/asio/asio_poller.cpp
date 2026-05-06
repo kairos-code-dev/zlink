@@ -456,7 +456,7 @@ void zlink::asio_poller_t::loop ()
             _io_context.restart ();
         }
 
-        //  Phase 1 Optimization: Event Batching
+        //  Batch queued events before returning to the reactor.
         //  Instead of always blocking with run_for(), we first try to process
         //  all ready events non-blocking with poll(). Only if no events are
         //  ready do we block with run_for(). This batches multiple ready events

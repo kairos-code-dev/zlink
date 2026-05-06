@@ -3,7 +3,7 @@
 #ifndef __ZLINK_ASIO_HANDLER_ALLOCATOR_HPP_INCLUDED__
 #define __ZLINK_ASIO_HANDLER_ALLOCATOR_HPP_INCLUDED__
 
-//  Phase 2 Optimization: Zero-allocation Handlers
+//  Zero-allocation handlers.
 //
 //  This header provides a custom allocator for ASIO async handlers that
 //  avoids heap allocations for small lambda captures. Each poll_entry_t

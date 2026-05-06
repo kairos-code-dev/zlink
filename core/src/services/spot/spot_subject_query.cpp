@@ -7,6 +7,7 @@
 #include "api/service_handle_internal.hpp"
 #include "api/service_mode_internal.hpp"
 #include "api/service_surface_internal.hpp"
+#include "core/c_api_copy_internal.hpp"
 #include "core/recv_tls_view.hpp"
 
 #include <algorithm>
@@ -154,21 +155,8 @@ int copy_topic_to_output (const std::string &topic_,
                           char *topic_id_out_,
                           size_t *topic_id_len_out_)
 {
-    if (!topic_id_len_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-    const size_t capacity = *topic_id_len_out_;
-    *topic_id_len_out_ = topic_.size ();
-    if (!topic_id_out_)
-        return 0;
-    if (capacity < topic_.size ()) {
-        errno = EMSGSIZE;
-        return -1;
-    }
-    if (!topic_.empty ())
-        memcpy (topic_id_out_, topic_.data (), topic_.size ());
-    return 0;
+    return zlink::copy_bytes_to_sized_output (
+      topic_.data (), topic_.size (), topic_id_out_, topic_id_len_out_);
 }
 
 int recv_logical_spot_subscription (

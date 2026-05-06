@@ -6,7 +6,7 @@
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 3
-#define ZLINK_VERSION_PATCH 8
+#define ZLINK_VERSION_PATCH 9
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -973,47 +973,64 @@ ZLINK_EXPORT void zlink_monitor_ignore_handler (
 
 typedef struct zlink_monitor_snapshot_t
 {
+    /* snapshot 대상 종류입니다. raw socket, SPOT pub, SPOT sub 중 하나입니다. */
     zlink_monitor_source_kind_t source_kind;
+
+    /* 현재 상태 비트입니다. READY, BOUND_READY, CLOSED 등을 담습니다. */
     zlink_monitor_state_mask_t state_flags;
+
+    /* 어떤 세부 값이 채워졌는지 나타내는 비트마스크입니다. */
     zlink_monitor_snapshot_detail_mask_t detail_flags;
+
+    /* 현재 송신 큐에 남아 있는 메시지 수입니다. */
     uint64_t snd_pending_msgs;
+
+    /* 현재 수신 큐에 남아 있는 메시지 수입니다. 일부 source에서는 근사값입니다. */
     uint64_t rcv_pending_msgs;
+
+    /* 자동 HWM 정책이 이 source에 적용 중이면 1, 아니면 0입니다. */
     uint32_t auto_hwm_enabled;
+
+    /* 현재 자동 HWM profile 값입니다. zlink_auto_hwm_profile_t 값과 같습니다. */
     uint32_t auto_hwm_profile;
+
+    /* 자동 HWM 계산에 사용한 socket 역할입니다. 진단용 값입니다. */
     uint32_t auto_hwm_role;
+
+    /* 역할과 socket type에서 정해진 자동 HWM 정책 분류입니다. */
     uint32_t auto_hwm_policy_class;
-    uint32_t auto_hwm_managed_connections;
-    uint32_t auto_hwm_active_hwm_connections;
-    uint32_t auto_hwm_observed_count;
-    uint32_t auto_hwm_planning_count;
-    uint32_t auto_hwm_context_total_planning_count;
-    uint32_t auto_hwm_base_floor_per_connection;
+
+    /* 이 socket의 메시지 슬롯 계산에 사용한 단위 예산입니다. */
     uint64_t auto_hwm_unit_budget_bytes;
+
+    /* profile과 정책 분류에서 정한 메시지 슬롯 상한입니다. */
     uint32_t auto_hwm_size_cap;
-    uint32_t auto_hwm_effective_publish_fanout;
-    int32_t auto_hwm_applied_sndhwm;
-    int32_t auto_hwm_applied_rcvhwm;
-    int32_t auto_hwm_requested_sndbuf;
-    int32_t auto_hwm_requested_rcvbuf;
-    int32_t auto_hwm_effective_sndbuf;
-    int32_t auto_hwm_effective_rcvbuf;
-    uint64_t auto_hwm_total_memory_budget_bytes;
-    uint64_t auto_hwm_queue_budget_bytes;
-    uint64_t auto_hwm_transport_budget_bytes;
-    uint64_t auto_hwm_runtime_reserve_bytes;
-    uint64_t auto_hwm_socket_queue_share_bytes;
+
+    /* 단위 예산과 메시지 크기로 계산한 메시지 슬롯 수입니다. */
     uint64_t auto_hwm_socket_message_slots;
+
+    /* 자동 HWM 계산에 사용한 메시지 크기입니다. 단위는 byte입니다. */
     uint64_t auto_hwm_effective_message_bytes;
-    uint64_t auto_hwm_estimated_max_memory_bytes;
+
+    /* 현재 socket에 적용된 송신 HWM입니다. */
+    int32_t auto_hwm_applied_sndhwm;
+
+    /* 현재 socket에 적용된 수신 HWM입니다. */
+    int32_t auto_hwm_applied_rcvhwm;
+
+    /* 마지막 자동 HWM 재계산 시각입니다. 단위는 millisecond입니다. */
     uint64_t auto_hwm_last_recalc_ms;
+
+    /* 마지막 자동 HWM 재계산 사유입니다. ZLINK_AUTO_HWM_RECALC_REASON_* 값입니다. */
     uint32_t auto_hwm_last_recalc_reason;
+
+    /* 송신 시도 중 backpressure로 막힌 비율입니다. 단위는 ppm입니다. */
     uint32_t auto_hwm_send_blocked_ratio_ppm;
-    uint32_t auto_hwm_scope;
-    uint32_t auto_hwm_scope_count;
-    uint64_t auto_hwm_auto_buffer_bytes;
-    uint64_t auto_hwm_manual_buffer_bytes;
-    uint32_t auto_hwm_buffer_connections;
+
+    /* HWM 축소가 지연 중이면 목표 송신 HWM, 없으면 -1입니다. */
     int32_t auto_hwm_deferred_sndhwm;
+
+    /* HWM 축소가 지연 중이면 목표 수신 HWM, 없으면 -1입니다. */
     int32_t auto_hwm_deferred_rcvhwm;
 } zlink_monitor_snapshot_t;
 

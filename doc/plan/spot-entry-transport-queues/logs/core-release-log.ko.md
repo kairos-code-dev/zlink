@@ -1,5 +1,54 @@
 # Core Release Log
 
+## 5.3.9 추가 release
+
+- 날짜: 2026-05-06
+- 대상: Core release `core/v5.3.9`
+- release 사유:
+  - Go `MULTI_SPOT` smoke에서 `doc/perf/PERF_MULTI_TEST_POLICY.md`의 기본 topology를 확인하던 중 core lifecycle guard가 여러 Spot facade와 Discovery/service attachment 조합을 막는 문제가 드러났다.
+  - draft spec의 Spot/Actor logical queue 설계에서는 physical transport를 `SpotNode`가 소유하고, Spot facade는 logical state를 가리키는 handle이다. 따라서 같은 `SpotNode`에 여러 Spot facade가 붙은 상태에서도 Discovery와 수동 service attachment가 가능해야 한다.
+  - 이 문제는 perf runner 임의 변경 대상이 아니라 core lifecycle 계약 불일치이므로 core를 수정하고 patch release로 닫는다.
+  - binding alignment 중 정리한 monitor snapshot canonical field 계약도 core header, 구현, core spec에 맞춰 같은 patch release에 포함한다.
+- 수행한 명령:
+  - `cmake -S core -B core/build`
+  - `cmake --build core/build -j2`
+  - `ctest --test-dir core/build --output-on-failure`
+  - `cmake --build core/build --target unittest_service_mode_policy -j2`
+  - `core/build/bin/unittest_service_mode_policy`
+  - `git diff --check`
+- 확인한 draft spec 절:
+  - `Spot socket 제거 모델`
+  - `Pub/sub 처리`
+  - `Queue와 backpressure`
+  - `회귀 테스트`
+- 수정한 파일:
+  - `VERSION`
+  - `core/CMakeLists.txt`
+  - `core/include/zlink.h`
+  - `core/packaging/conan/conandata.yml`
+  - `core/src/services/spot/spot_node_lifecycle.cpp`
+  - `core/src/services/spot/spot_node_summary.cpp`
+  - `core/src/sockets/socket_base_monitor.cpp`
+  - `core/tests/integration/monitoring/test_monitor_socket_contract.cpp`
+  - `core/tests/integration/test_ctx_options.cpp`
+  - `core/tests/unittest/unittest_service_mode_policy.cpp`
+  - `doc/spec/core/monitoring.ko.md`
+  - `doc/spec/core/monitoring.md`
+  - `doc/spec/core/service/spot.ko.md`
+  - `doc/spec/core/service/spot.md`
+- 검증 결과:
+  - `unittest_service_mode_policy`: 29/29 통과.
+  - 전체 core CTest: 106/106 통과.
+  - `git diff --check` 통과.
+- 남은 작업:
+  - release commit, push, `core/v5.3.9` tag push.
+  - GitHub Actions build/release 확인.
+  - `bindings/update_zlink_libs.sh core/v5.3.9 --expect-version 5.3.9` 실행 뒤 bindings native library 재검증.
+
+---
+
+## 5.3.8 release
+
 - 날짜: 2026-05-06
 - 대상: Core release
 - 수행한 명령:
@@ -11,6 +60,15 @@
   - `git tag --list 'core/v5.3.8'`
   - `gh auth status`
   - `git diff --check`
+  - `git push origin main`
+  - `git tag core/v5.3.8 && git push origin core/v5.3.8`
+  - `gh run list --workflow "Build libzlink Core Libraries" --limit 5`
+  - `gh run list --workflow "Release Core Conan Package" --limit 5`
+  - `gh run watch 25412196494 --exit-status`
+  - `gh run watch 25412196488 --exit-status`
+  - `gh run view 25412196494 --json status,conclusion,url,jobs`
+  - `gh run view 25412196488 --json status,conclusion,url,jobs`
+  - `gh release view core/v5.3.8 --json tagName,name,isDraft,isPrerelease,assets,url`
 - 확인한 draft spec 절: Public C API 변경 요약, 회귀 테스트
 - 발견한 문제:
   - version bump 뒤 CTest split-case coverage 검증에서 queue 테스트 4개가 빠져 configure가 실패했다.
@@ -22,5 +80,11 @@
   - 최종 `ctest --test-dir core/build --output-on-failure`: 106/106 통과, 100.41초.
   - `core/v5.3.8` local tag 없음.
   - `gh auth status` 통과. active account: `kairos-code-dev`.
-- 남은 위험: release commit, push, `core/v5.3.8` tag push, GitHub Actions 확인 필요
-- 다음 확인: release commit 생성 뒤 tag push와 workflow monitor
+  - release commit `15d05712f` push 완료.
+  - `core/v5.3.8` tag push 완료.
+  - `Build libzlink Core Libraries` run `25412196494` 성공.
+  - `Release Core Conan Package` run `25412196488` 성공.
+  - GitHub Release `libzlink 5.3.8` 생성 확인.
+  - release asset: checksums, source tarball, Linux/macOS/Windows x64/ARM64 `tar.gz`와 `zip` 확인.
+- 남은 위험: bindings native library 갱신과 언어별 bindings gate 필요
+- 다음 확인: `bindings/update_zlink_libs.sh core/v5.3.8 --expect-version 5.3.8`

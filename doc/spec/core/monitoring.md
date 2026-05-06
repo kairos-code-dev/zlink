@@ -94,37 +94,15 @@ typedef struct zlink_monitor_snapshot_t
     uint32_t auto_hwm_profile;
     uint32_t auto_hwm_role;
     uint32_t auto_hwm_policy_class;
-    uint32_t auto_hwm_managed_connections;
-    uint32_t auto_hwm_active_hwm_connections;
-    uint32_t auto_hwm_observed_count;
-    uint32_t auto_hwm_planning_count;
-    uint32_t auto_hwm_context_total_planning_count;
-    uint32_t auto_hwm_base_floor_per_connection;
     uint64_t auto_hwm_unit_budget_bytes;
     uint32_t auto_hwm_size_cap;
-    uint32_t auto_hwm_effective_publish_fanout;
-    int32_t auto_hwm_applied_sndhwm;
-    int32_t auto_hwm_applied_rcvhwm;
-    int32_t auto_hwm_requested_sndbuf;
-    int32_t auto_hwm_requested_rcvbuf;
-    int32_t auto_hwm_effective_sndbuf;
-    int32_t auto_hwm_effective_rcvbuf;
-    uint64_t auto_hwm_total_memory_budget_bytes;
-    uint64_t auto_hwm_queue_budget_bytes;
-    uint64_t auto_hwm_transport_budget_bytes;
-    uint64_t auto_hwm_runtime_reserve_bytes;
-    uint64_t auto_hwm_socket_queue_share_bytes;
     uint64_t auto_hwm_socket_message_slots;
     uint64_t auto_hwm_effective_message_bytes;
-    uint64_t auto_hwm_estimated_max_memory_bytes;
+    int32_t auto_hwm_applied_sndhwm;
+    int32_t auto_hwm_applied_rcvhwm;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
-    uint32_t auto_hwm_scope;
-    uint32_t auto_hwm_scope_count;
-    uint64_t auto_hwm_auto_buffer_bytes;
-    uint64_t auto_hwm_manual_buffer_bytes;
-    uint32_t auto_hwm_buffer_connections;
     int32_t auto_hwm_deferred_sndhwm;
     int32_t auto_hwm_deferred_rcvhwm;
 } zlink_monitor_snapshot_t;
@@ -141,37 +119,15 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_profile` | Current automatic HWM profile. Values match `zlink_auto_hwm_profile_t`. |
 | `auto_hwm_role` | Diagnostic role id. Current values are `1=control`, `2=routed`, `3=fanout`, `4=recv_ingress`, `5=spot_data`, `6=peer_queue`, `7=stream`; callers must tolerate future values. |
 | `auto_hwm_policy_class` | Planner policy class used for unit-budget and size-cap selection. This is diagnostic and may grow. |
-| `auto_hwm_managed_connections` | Diagnostic connection count when available. HWM is not divided by this value. |
-| `auto_hwm_active_hwm_connections` | Diagnostic active connection count when available. HWM is not divided by this value. |
-| `auto_hwm_observed_count` | Diagnostic observed connection count for this socket source. HWM is not reduced when this value grows. |
-| `auto_hwm_planning_count` | Deprecated planning-count field. Current implementations fill `0`; callers must not use it as an HWM calculation input. |
-| `auto_hwm_context_total_planning_count` | Deprecated context planning-count field. Current implementations fill `0`; callers must not use it as an HWM calculation input. |
-| `auto_hwm_base_floor_per_connection` | Compatibility diagnostic floor value. The applied HWM is selected by profile, policy class, and message unit. |
 | `auto_hwm_unit_budget_bytes` | Per-connection unit budget selected from the active profile and policy class. |
 | `auto_hwm_size_cap` | Message-count cap selected from the active profile, policy class, and effective message size. |
-| `auto_hwm_effective_publish_fanout` | SPOT publish fanout diagnostic when available. It does not make connection count reduce per-connection HWM. Non-SPOT rows may report `0`. |
+| `auto_hwm_socket_message_slots` | Message slots derived from the selected unit budget and effective message unit. |
+| `auto_hwm_effective_message_bytes` | Effective message unit in bytes used by the current policy calculation. |
 | `auto_hwm_applied_sndhwm` | Currently applied send HWM on the socket. |
 | `auto_hwm_applied_rcvhwm` | Currently applied recv HWM on the socket. |
-| `auto_hwm_requested_sndbuf` | `SNDBUF` value requested by automatic policy. |
-| `auto_hwm_requested_rcvbuf` | `RCVBUF` value requested by automatic policy. |
-| `auto_hwm_effective_sndbuf` | Effective send buffer value reported in the snapshot. |
-| `auto_hwm_effective_rcvbuf` | Effective recv buffer value reported in the snapshot. |
-| `auto_hwm_total_memory_budget_bytes` | Deprecated context memory-budget field. Current implementations fill `0`. |
-| `auto_hwm_queue_budget_bytes` | Deprecated queue-budget field. Current implementations fill `0`. |
-| `auto_hwm_transport_budget_bytes` | Deprecated transport-budget field. Current implementations fill `0`. |
-| `auto_hwm_runtime_reserve_bytes` | Deprecated runtime-reserve field. Current implementations fill `0`. |
-| `auto_hwm_socket_queue_share_bytes` | Deprecated queue-share field. Current implementations fill `0`. |
-| `auto_hwm_socket_message_slots` | Message slots derived from the selected unit budget and effective message unit. This is not a context-budget share. |
-| `auto_hwm_effective_message_bytes` | Effective message unit in bytes used by the current policy calculation. |
-| `auto_hwm_estimated_max_memory_bytes` | Estimated per-socket memory envelope when available; `0` means no estimate is reported. |
 | `auto_hwm_last_recalc_ms` | Timestamp of the most recent auto-HWM recalculation in milliseconds. |
 | `auto_hwm_last_recalc_reason` | Enum value that records why the latest recalculation ran. |
 | `auto_hwm_send_blocked_ratio_ppm` | Parts-per-million ratio of send attempts that were blocked by backpressure. |
-| `auto_hwm_scope` | Automatic HWM scope id. Current values are `0=none`, `1=shared`, `2=per_spot`; callers must tolerate future values. |
-| `auto_hwm_scope_count` | Diagnostic scope target count. HWM is not divided by this value. |
-| `auto_hwm_auto_buffer_bytes` | Auto-managed buffer diagnostic value when available. |
-| `auto_hwm_manual_buffer_bytes` | User-managed buffer diagnostic value when available. |
-| `auto_hwm_buffer_connections` | Deprecated buffer-accounting connection field. Current implementations fill `0`. |
 | `auto_hwm_deferred_sndhwm` | Pending deferred send-HWM shrink, or `-1` when no shrink is deferred. |
 | `auto_hwm_deferred_rcvhwm` | Pending deferred recv-HWM shrink, or `-1` when no shrink is deferred. |
 
@@ -202,8 +158,8 @@ typedef enum zlink_monitor_source_kind_t
 |----------|-------|-------------|
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` field is populated. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` field is populated. |
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | Deprecated name kept for ABI compatibility. When set, auto-HWM role, profile, unit-budget, message-unit, and applied-HWM fields may be populated. Deprecated budget fields remain `0`. |
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | Auto-HWM transport-buffer fields are populated. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | Auto-HWM role, profile, unit-budget, message-unit, and applied-HWM fields may be populated. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | Compatibility flag kept for ABI stability. Current snapshots do not set it because transport-buffer fields are no longer part of `zlink_monitor_snapshot_t`. |
 
 ### Auto-HWM Recalculation Reason
 

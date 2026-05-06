@@ -196,7 +196,7 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
 - `auto_hwm_visible == 1` marks a row for default Auto-HWM perf output.
 - `snapshot.auto_hwm_profile`, `snapshot.auto_hwm_policy_class`,
   `snapshot.auto_hwm_unit_budget_bytes`, `snapshot.auto_hwm_size_cap`, and
-  `snapshot.auto_hwm_effective_publish_fanout` expose the active automatic HWM
+  `snapshot.auto_hwm_socket_message_slots` expose the active automatic HWM
   planner result for diagnostics.
 - The current SPOT topology exposes these main node socket names:
   `ingress-sub`, `local-pub`, `mesh-pub`, `mesh-xsub`, `internal-router`, and
@@ -469,17 +469,27 @@ zlink_config_result_t zlink_socket_get_channel_name(
   size_t *channel_name_len_out);
 ```
 
-- `zlink_spot_dispatch_event_handler()` serializes all dispatch callbacks for
-  the same `Spot`.
-- After `SUBSCRIBE_READABLE` or `ROUTED_READABLE`, callers must drain until the
-  corresponding pull API returns `ZLINK_RECV_NO_DATA` / `EAGAIN`.
-- Node-wide broad subscribe fan-out is not part of the public contract.
-- `zlink_spot_channel_reply_progress_from()` drains channel reply completions
-  for the attached dealer identified by the dispatch `subject`.
-- `zlink_socket_set_channel_name()` stores fixed logical channel metadata on a
-  socket. It does not change transport routing or discovery by itself.
-- `zlink_socket_get_channel_name()` returns that fixed metadata and fails with
-  `ENOENT` when the socket has no channel binding metadata.
+`zlink_spot_handler()` is a **routed-only direct callback**. The callback receives
+routed message payloads inline. Subscribe, channel reply, timer, and Actor events
+are not delivered through this handler. If any of those event types are needed,
+`zlink_spot_handler()` cannot be used.
+
+`zlink_spot_dispatch_event_handler()` is a **unified readiness notification**. It
+covers all event types (subscribe, routed, channel reply, timer, Actor join, Actor
+readable). The callback signals that data is available; the caller reads it with the
+corresponding drain API (`zlink_spot_recv()`, `zlink_spot_subscribe()`, etc.).
+
+Subscribe, channel reply, timer, and Actor events have **no direct callback mode**.
+They can only be consumed via `zlink_spot_dispatch_event_handler()` readiness.
+
+The two handlers are mutually exclusive. Registering one while the other is active
+fails with `ZLINK_HANDLER_BUSY`. Choosing `zlink_spot_handler()` means the Spot
+cannot receive subscribe, channel reply, timer, or Actor events.
+
+After `SUBSCRIBE_READABLE` or `ROUTED_READABLE`, callers must drain until the
+corresponding pull API returns `ZLINK_RECV_NO_DATA` / `EAGAIN`.
+`zlink_spot_channel_reply_progress_from()` drains channel reply completions
+for the attached dealer identified by the dispatch `subject`.
 
 ## Spot routed request initiation
 
@@ -674,11 +684,7 @@ option, inproc endpoint, or transport endpoint. There is no per-Actor HWM
 option. Unread parts that arrive at an Actor are read only through
 `zlink_spot_node_actor_recv_part()`.
 
-An actor id is a NUL-terminated string treated as a UTF-8 byte sequence. The
-public buffer size is `ZLINK_ACTOR_ID_MAX`. Empty ids, ids longer than
-`ZLINK_ACTOR_ID_MAX`, and NULL ids fail with `EINVAL`. Within a single
-`SpotNode` all live actor ids are unique. Different `SpotNode` instances may
-hold Actors with the same actor id simultaneously.
+### Actor ref types
 
 ```c
 #define ZLINK_ACTOR_ID_MAX 256
@@ -730,48 +736,59 @@ typedef zlink_actor_admission_result_t (*zlink_actor_admission_handler_fn)(
   void *userdata);
 ```
 
+An actor id is a NUL-terminated UTF-8 byte sequence. The valid maximum length
+is `ZLINK_ACTOR_ID_MAX - 1` (255 bytes). Empty ids, NULL ids, and ids longer
+than 255 bytes fail with `EINVAL`. Within a single `SpotNode` all live actor
+ids are unique. Different `SpotNode` instances may hold Actors with the same
+actor id simultaneously.
+
 `zlink_actor_ref_t.generation == 0` is an unchecked ref. An unchecked ref is
 not an error; ref-based APIs interpret it as targeting the current Actor with
 the same actor id on the target node. A checked ref (`generation != 0`) must
 match the target Actor's current generation. A mismatch results in a stale or
 conflict-class failure.
 
-### Creation, lookup, and teardown
+There is no per-Actor dispatch context and no Actor-specific callback handler.
+Actor events are always dispatched through the current Spot's dispatch stream,
+which eliminates the dispatch context gap that would arise if Actors could
+switch Spots while a separate dispatch context was still active.
+
+### Creation and lookup
 
 ```c
 zlink_config_result_t zlink_spot_node_actor_new(
   void *node,
   const char *actor_id,
   zlink_actor_ref_t *actor_out);
+
 zlink_config_result_t zlink_spot_node_actor_lookup(
   void *node,
   const char *actor_id,
   zlink_actor_ref_t *out);
+
 zlink_config_result_t zlink_remote_actor_get_ref(
   const zlink_routing_id_t *target_node_rid,
   const char *actor_id,
   zlink_actor_ref_t *out);
-zlink_request_result_t zlink_spot_node_actor_destroy(
-  void *node,
-  const zlink_actor_ref_t *actor,
-  uint32_t timeout_ms);
 ```
 
 - `zlink_spot_node_actor_new()` creates a local Actor in the Entry Spot and
-  returns a checked ref in `actor_out`.
-- Creating with a live actor id that already exists on the same node fails.
-- `zlink_spot_node_actor_destroy()` succeeds only while the Actor is in the
-  Entry Spot. User Spot membership or a pending join fails with
-  `ZLINK_REQUEST_BUSY` or `ZLINK_REQUEST_INVALID_STATE`.
-- On successful destroy, the Actor ref becomes stale.
-- If the required control lock or detach does not complete within `timeout_ms`,
-  the call returns `ZLINK_REQUEST_TIMED_OUT` and leaves the handle unchanged.
-- `zlink_spot_node_actor_lookup()` returns checked refs.
-- `zlink_remote_actor_get_ref()` builds an unchecked remote ref from a target
-  node rid and actor id only. It does not verify the peer connection, perform a
-  handshake, or confirm that the target Actor exists.
+  returns a checked ref in `actor_out`. Actor creation does not go through the
+  Entry Spot dispatch handler or any join request handler.
+- Creating with a live actor id that already exists on the same node fails with
+  an `EBUSY`-class result.
+- `node == NULL` fails with `ZLINK_CONFIG_INVALID_HANDLE`; `errno` is `EFAULT`.
+- `actor_id == NULL` or `actor_out == NULL` fails with
+  `ZLINK_CONFIG_INVALID_ARGUMENT`; `errno` is `EINVAL`.
+- `zlink_spot_node_actor_lookup()` queries a live local Actor owned by the
+  caller node and returns a checked ref. If no live Actor with that id exists,
+  the result is a not-found-class failure.
+- `zlink_remote_actor_get_ref()` builds an unchecked ref (generation 0) from a
+  target node rid and actor id only. It does not verify the peer connection,
+  perform a handshake, or confirm that the target Actor exists. The result is
+  used as input to ref-based APIs.
 
-### Remote Actor create-or-get and destroy
+### Remote create-or-get
 
 ```c
 zlink_request_result_t zlink_spot_node_create_remote_actor(
@@ -788,21 +805,25 @@ zlink_handler_result_t zlink_spot_node_actor_admission_handler(
   void *userdata);
 ```
 
-- create-or-get calls the admission handler only when the target node has no
-  Actor with that id.
+- The admission handler is called only when the target node has no Actor with
+  that id.
 - When the target Actor already exists the handler is not called and
-  `ZLINK_ACTOR_CREATE_EXISTING` is returned.
-- When the handler accepts, the Actor is created and `ZLINK_ACTOR_CREATE_CREATED`
-  is returned.
+  `ZLINK_ACTOR_CREATE_EXISTING` is returned. The existing Actor's current Spot
+  is not changed.
+- When the handler accepts, the Actor is created in the target node's Entry Spot
+  and `ZLINK_ACTOR_CREATE_CREATED` is returned.
 - When the handler rejects, the call ends with `ZLINK_REQUEST_REJECTED`.
+- Remote create-or-get does not go through the target Spot join handler. Spot
+  admission is decided by a subsequent `join` request, not by create-or-get.
+- `timeout_ms == 0` is a nonblocking request. If the call cannot complete
+  immediately, it fails with a timeout or busy-class result.
 - On successful submit, `message` ownership transfers to the library. Ownership
   stays with the caller on validation or submit failure.
 - Remote Actors are destroyed through the ref-based
-  `zlink_spot_node_actor_destroy()` API.
-- An unreachable target node or a checked ref generation mismatch does not
-  remove the Actor slot.
+  `zlink_spot_node_actor_destroy()` API. An unreachable target node or a checked
+  ref generation mismatch does not remove the Actor slot.
 
-### Actor and Spot join/leave
+### Spot join
 
 ```c
 zlink_submit_result_t zlink_spot_node_actor_join_spot(
@@ -827,7 +848,78 @@ zlink_submit_result_t zlink_spot_actor_join_reply(
   const zlink_actor_join_info_t *info,
   uint32_t accepted,
   zlink_msg_t *message);
+```
 
+`join` moves an Actor from its current Spot to the target Spot. On accept, the
+Actor's current Spot changes to the target.
+
+`zlink_spot_node_actor_join_spot()` contracts:
+
+- `node` is the request-owner `SpotNode` that submits the join request. The
+  session owner, backend service node, and source Actor owner node may all act
+  as request owner.
+- When `dest_node_rid` matches the Actor owner node, this is a local join.
+  Otherwise it is a remote handoff join.
+- Joining a user Spot outside Entry requires the source Actor to have a bound
+  STREAM session. Attempting a user Spot join without a bound session fails with
+  an invalid-state-class result.
+- If the Actor is already at the target Spot, the join completes as an
+  asynchronous idempotent success without going through the join request handler.
+- A new join, leave, or destroy while a join is pending fails with a busy or
+  invalid-state-class result.
+- `ZLINK_SUBMIT_OK` means the join operation was accepted for processing, not
+  that it was accepted by the target Spot. The accept or reject outcome is
+  delivered through the `zlink_reply_handler_fn` completion.
+- `timeout_ms` is the operation timeout for the join reply and remote handoff to
+  complete after a successful submit. `timeout_ms == 0` installs no operation
+  timeout. This is not a nonblocking submit directive. Whether the submit stage
+  returns immediately on failure is controlled by `ZLINK_DONTWAIT` in `flags`.
+- On successful submit, `message` ownership transfers to the library. On local
+  validation or pre-submit failure, ownership stays with the caller.
+- A join request carries a single `zlink_msg_t` payload. The target Spot reads
+  this payload to decide accept or reject.
+
+`zlink_spot_actor_join_recv()` contracts:
+
+- Call this API to drain the Spot after an `ACTOR_JOIN_READABLE` dispatch event.
+- On success, join message ownership transfers to the caller.
+- If `zlink_actor_join_info_t.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE` is nonzero,
+  this is a remote handoff join. If Actor state cannot be restored from the
+  payload, the Spot must reject.
+- A remote join prepare does not call `zlink_spot_node_actor_admission_handler()`.
+  The target Spot join handler decides both Actor creation and Spot admission.
+- `zlink_actor_join_info_t.request` is an opaque one-shot handle. The
+  application must not dereference or store it directly; pass the `info` struct
+  as-is to the reply call.
+
+`zlink_spot_actor_join_reply()` contracts:
+
+- `accepted` must be `0` (reject) or `1` (accept). Any other value fails with
+  `ZLINK_SUBMIT_INVALID_ARGUMENT`; `errno` is `EINVAL`.
+- `info == NULL` fails with `ZLINK_SUBMIT_INVALID_ARGUMENT`; `errno` is `EINVAL`.
+- `message == NULL` sends a completion with no payload.
+- On successful submit, reply message ownership transfers to the library. On
+  validation failure or duplicate reply failure, ownership stays with the caller.
+- Sending a second reply for the same `info.request` fails with
+  `ZLINK_SUBMIT_INVALID_STATE`; `errno` is `EALREADY` or `EINVAL`.
+- A reply that arrives late after a join timeout, target Spot destroy, or
+  `SpotNode` shutdown fails with `ZLINK_SUBMIT_INVALID_STATE`.
+- The lifetime of `info.request` extends until the join request ends through a
+  reply, timeout, reject cleanup, Spot destroy, or node shutdown.
+
+Join atomicity:
+
+- The source Spot remains the current Spot until the target Spot accepts.
+- On target reject or timeout, the Actor remains in the source Spot.
+- In a remote join, the source Actor is removed from the source Spot only after
+  the session Actor list compare-and-swap succeeds and the target Actor
+  activation and active route update complete.
+- Message ordering across a join is preserved by Actor queue arrival order.
+- Destroying a Spot fails while joined Actors or pending join requests remain.
+
+### Spot leave
+
+```c
 zlink_request_result_t zlink_spot_node_actor_leave_spot(
   void *node,
   const zlink_actor_ref_t *actor,
@@ -835,29 +927,57 @@ zlink_request_result_t zlink_spot_node_actor_leave_spot(
   uint32_t timeout_ms);
 ```
 
-- One Actor always belongs to exactly one Spot.
-- Multiple Actors can be joined to the same Spot simultaneously.
-- The Entry Spot is the default Spot immediately after Actor creation, and
-  applications cannot remove the Entry logical Spot.
-- Joining a user Spot outside Entry requires the Actor to have a bound STREAM
-  session.
-- Joining the same Actor and target Spot a second time succeeds.
-- A new join, leave, or destroy while a join is pending fails with a busy or
-  invalid-state result.
-- A join request carries a single `zlink_msg_t` message.
-- On successful `zlink_spot_actor_join_recv()` the join message ownership
-  transfers to the caller.
-- `zlink_spot_actor_join_reply()` with `accepted != 0` accepts; `accepted == 0`
-  rejects. The reply message is delivered to the caller's join completion.
-- `zlink_actor_join_info_t.request` is an opaque one-shot handle. Sending a
-  second reply for the same request is not allowed.
-- `info.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE` identifies a remote handoff join.
-- `zlink_spot_node_actor_leave_spot()` moves the Actor to Entry only when
-  `current_spot_rid` matches the Actor's current Spot. A stale current Spot
-  fails with a not-found or invalid-state class result.
-- Destroying a Spot fails while joined Actors or pending join requests remain.
+`leave` moves an Actor from its current Spot back to the Entry Spot.
 
-### Actor recv and bound session send
+- If the Actor is already in the Entry Spot, the result is idempotent success.
+- `current_spot_rid` must match the Actor's actual current Spot. If the caller's
+  view of the current Spot differs from the actual current Spot, the call fails
+  with an invalid-state-class result to prevent a stale leave.
+- If a join request is pending, the call fails with `ZLINK_REQUEST_BUSY`;
+  `errno` is `EBUSY`. Leave does not cancel a pending join.
+- Leave does not go through the Entry Spot dispatch handler or any join request
+  handler.
+- After a successful leave, Actor messages surface through the Entry Spot
+  dispatch event. Leave does not clear the Actor queue; message order is
+  preserved across the leave.
+- `node == NULL` fails with `ZLINK_REQUEST_INVALID_ARGUMENT`; `errno` is
+  `EFAULT`.
+- `actor == NULL` or `current_spot_rid == NULL` fails with
+  `ZLINK_REQUEST_INVALID_ARGUMENT`; `errno` is `EINVAL`.
+- `timeout_ms == 0` is a nonblocking request. If the call cannot complete
+  immediately, it fails with a timeout or busy-class result.
+
+### Teardown
+
+```c
+zlink_request_result_t zlink_spot_node_actor_destroy(
+  void *node,
+  const zlink_actor_ref_t *actor,
+  uint32_t timeout_ms);
+```
+
+- Actor destroy is permitted only while the Actor is in the Entry Spot. If the
+  Actor is in a user Spot, the call fails with `ZLINK_REQUEST_INVALID_STATE`;
+  `errno` is `EBUSY`. The application must call `leave` to return the Actor to
+  Entry before calling destroy.
+- If a join request is pending, the call fails with `ZLINK_REQUEST_BUSY` or
+  `ZLINK_REQUEST_INVALID_STATE`; `errno` is `EBUSY`. Destroy does not cancel a
+  pending join.
+- If a bound STREAM session exists, destroy first removes the session Actor list
+  entry and the Actor's bound session ref. This cleanup does not close the
+  client STREAM connection itself.
+- If bound session cleanup cannot be confirmed within `timeout_ms`, the call
+  fails with a timeout-class result and the Actor slot and Entry Spot membership
+  are preserved. Call `zlink_spot_node_actor_close_bound_session()` before
+  destroy if the client connection must also be closed.
+- On successful destroy, the Actor ref becomes stale.
+- `node == NULL` fails with `ZLINK_REQUEST_INVALID_ARGUMENT`; `errno` is
+  `EFAULT`.
+- `actor == NULL` fails with `ZLINK_REQUEST_INVALID_ARGUMENT`; `errno` is
+  `EINVAL`.
+- `timeout_ms == 0` is a nonblocking request.
+
+### Message recv
 
 ```c
 zlink_recv_result_t zlink_spot_node_actor_recv_part(
@@ -867,7 +987,28 @@ zlink_recv_result_t zlink_spot_node_actor_recv_part(
   zlink_msg_t *part_out,
   zlink_part_flag_t *has_more_out,
   zlink_recv_flags_t flags);
+```
 
+- Call after receiving an `ACTOR_READABLE` event from the current Spot dispatch
+  context.
+- `node` must be the Actor owner `SpotNode`. No remote routing is performed.
+- `node == NULL` or `node` is not the Actor owner fails with
+  `ZLINK_RECV_INVALID_HANDLE`; `errno` is `EFAULT`.
+- `actor == NULL`, `info_out == NULL`, `part_out == NULL`, or
+  `has_more_out == NULL` fails with `ZLINK_RECV_INVALID_HANDLE`; `errno` is
+  `EFAULT`. (`zlink_recv_result_t` has no invalid-argument bucket, so NULL
+  output pointer errors are unified under the recv invalid-handle failure.)
+- With `ZLINK_DONTWAIT` and no parts available, returns `ZLINK_RECV_NO_DATA`.
+- On success, `part_out` ownership transfers to the caller.
+- `has_more_out` returns `ZLINK_PART_MORE` or `ZLINK_PART_FINAL`.
+- `info_out->actor` is the draining Actor ref; `source_node_rid` and
+  `source_session_rid` identify the STREAM session that sent the message.
+- `info_out->flags` is currently `0`. Unknown bits must be treated as an invalid
+  protocol condition.
+
+### STREAM session binding
+
+```c
 zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg(
   void *node,
   const zlink_actor_ref_t *actor,
@@ -880,18 +1021,45 @@ zlink_request_result_t zlink_spot_node_actor_close_bound_session(
   uint32_t timeout_ms);
 ```
 
-- `zlink_spot_node_actor_recv_part()` reads one part from the Actor unread state.
-- On success `part_out` ownership transfers to the caller.
-- With `ZLINK_DONTWAIT` and no parts available, returns `ZLINK_RECV_NO_DATA`.
-- `has_more_out` returns `ZLINK_PART_MORE` or `ZLINK_PART_FINAL`.
-- `info_out->actor` is the receiving Actor ref; `source_node_rid` and
-  `source_session_rid` identify the sender session.
-- Sending to a bound STREAM session requires the Actor to be in the session
-  Actor list. Without a binding, `ZLINK_SUBMIT_NOT_FOUND` is returned.
-- On successful send, message ownership transfers to the library. Ownership
-  stays with the caller on failure.
-- `zlink_spot_node_actor_close_bound_session()` moves the Actor back to Entry
-  after closing the binding.
+The session owner node and the Actor owner node may be the same or different:
+
+- **Local Actor**: session owner node and Actor owner node are the same. Bind,
+  relay, and Actor-to-session send all complete within a single node.
+- **Remote Actor**: session owner node and Actor owner node differ. The bind
+  control request, session-to-Actor relay frame, and Actor-to-session frame all
+  travel between nodes.
+
+The session owner does not store the Actor's joined Spot state. The Actor owner
+does not store the STREAM session's application state. The Actor's active route
+is published by the Actor owner node's Discovery at bind success time, not at
+Actor creation time.
+
+`zlink_spot_node_actor_send_bound_session_msg()` contracts:
+
+- Sends `message` to the Actor's bound STREAM session as a **fire-and-forget**
+  submit. There is no completion handler; the return value only indicates whether
+  the command was accepted.
+- When `node` is the Actor owner and the Actor is confirmed not live, the ref is
+  stale, or there is no bound session before submit, the call fails immediately
+  with `ZLINK_SUBMIT_NOT_FOUND` or an invalid-state-class result.
+- When `node` is not the Actor owner, staleness, missing Actor, and missing bound
+  session are not guaranteed synchronously at submit time. If the Actor owner
+  discovers these conditions when processing the command, it closes the message
+  and increments the protocol drop counter.
+- On successful submit, `message` ownership transfers to the library. On
+  pre-submit validation failure, ownership stays with the caller.
+
+`zlink_spot_node_actor_close_bound_session()` contracts:
+
+- Closes the Actor's bound STREAM session and removes the session Actor list
+  entry and the Actor's bound session ref.
+- If no bound STREAM session exists, the call fails with a
+  `ZLINK_REQUEST_NOT_FOUND`-class result.
+- On successful close, the Actor moves to the Entry Spot. If the Actor is
+  already in the Entry Spot, it remains there.
+- After a successful close, if unread messages remain in the Actor queue, an
+  `ACTOR_READABLE` event is raised on the Entry Spot dispatch handler.
+- `timeout_ms == 0` is a nonblocking request.
 
 ## Constraint summary
 

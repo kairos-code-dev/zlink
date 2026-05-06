@@ -194,7 +194,7 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
 - `auto_hwm_visible == 1`인 row는 기본 Auto-HWM perf 출력 대상이다.
 - `snapshot.auto_hwm_profile`, `snapshot.auto_hwm_policy_class`,
   `snapshot.auto_hwm_unit_budget_bytes`, `snapshot.auto_hwm_size_cap`,
-  `snapshot.auto_hwm_effective_publish_fanout`은 진단용 자동 HWM planner 결과다.
+  `snapshot.auto_hwm_socket_message_slots`는 진단용 자동 HWM planner 결과다.
 - 현재 SPOT topology의 주요 node socket 이름은 `ingress-sub`, `local-pub`,
   `mesh-pub`, `mesh-xsub`, `internal-router`, `external-router`다.
 - `PUBSUB` mode에서는 routed socket이 생성되지 않고, `ROUTED` mode에서는 topic
@@ -520,11 +520,21 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(
   void *userdata);
 ```
 
-- `zlink_spot_handler()`는 routed callback surface다.
-- `zlink_spot_dispatch_event_handler()`는 readable/send-ready plane을 알리는
-  dispatch callback이다.
-- 두 handler는 상호 배타적이다. 하나가 등록된 상태에서 다른 쪽을 등록하면
-  `ZLINK_HANDLER_BUSY`로 실패한다.
+`zlink_spot_handler()`는 **routed 전용 직접 callback**이다. callback 안에서 routed
+message payload를 직접 받는다. subscribe, channel reply, timer, Actor 이벤트는
+이 handler에 전달되지 않는다. routed 이외 이벤트가 필요하면 이 handler를 쓸 수 없다.
+
+`zlink_spot_dispatch_event_handler()`는 **통합 readiness notification**이다. 모든
+이벤트 종류(subscribe, routed, channel reply, timer, Actor join, Actor readable)를
+readiness 형태로 알린다. callback은 "읽을 것이 있다"는 신호이며, 실제 데이터는
+각 plane의 drain API(`zlink_spot_recv()`, `zlink_spot_subscribe()` 등)로 읽는다.
+
+subscribe, channel reply, timer, Actor 이벤트는 **직접 callback 모드가 없다**.
+이 이벤트들은 `zlink_spot_dispatch_event_handler()` readiness 모드로만 소비할 수 있다.
+
+두 handler는 상호 배타적이다. 하나가 등록된 상태에서 다른 쪽을 등록하면
+`ZLINK_HANDLER_BUSY`로 실패한다. `zlink_spot_handler()`를 선택하면 해당 Spot에서
+subscribe, channel reply, timer, Actor 이벤트를 받을 수 없다.
 
 ### Poller와의 관계
 
@@ -539,14 +549,18 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(
 ## Actor 계약
 
 Actor는 `SpotNode`가 소유하는 routing target이다. Actor는 public `void *` handle이
-아니라 `zlink_actor_ref_t`로 식별한다. Actor는 socket handle, public socket option,
-inproc endpoint, transport endpoint를 갖지 않는다. Actor별 HWM 설정은 공개 계약에
-없다. Actor로 들어온 unread part는 `zlink_spot_node_actor_recv_part()`로만 읽는다.
+아니라 `zlink_actor_ref_t`로 식별한다. Actor는 socket, inproc endpoint, transport
+endpoint를 소유하지 않는다. Actor별 HWM 설정은 공개 계약에 없다.
 
-Actor id는 UTF-8 바이트열로 취급하는 NUL 종료 문자열이며, public buffer 크기는
-`ZLINK_ACTOR_ID_MAX`다. 비어 있는 id, `ZLINK_ACTOR_ID_MAX` 이상으로 길어지는 id,
-NULL id는 `EINVAL` 계열 실패다. 같은 `SpotNode` 안에서는 live Actor id가 유일하다.
-서로 다른 `SpotNode`에는 같은 Actor id가 동시에 존재할 수 있다.
+Actor는 항상 정확히 하나의 `Spot`에 속한다. 생성 직후에는 Entry Spot에 속하고,
+`join`으로 user Spot으로 이동하며, `leave`로 Entry Spot으로 돌아온다. Actor가
+dispatch context 없이 남는 구간은 없다. Actor로 들어오는 session relay message는
+항상 current Spot dispatch event에서 `zlink_spot_node_actor_recv_part()`로 읽는다.
+
+Actor 전용 dispatch context나 Actor 전용 callback은 제공하지 않는다. 이렇게 해야
+join 전후 처리의 동기화 모델이 같은 Spot dispatch context 안에서 유지된다.
+
+### Actor ref 타입
 
 ```c
 #define ZLINK_ACTOR_ID_MAX 256
@@ -598,46 +612,49 @@ typedef zlink_actor_admission_result_t (*zlink_actor_admission_handler_fn)(
   void *userdata);
 ```
 
-`zlink_actor_ref_t.generation == 0`은 unchecked ref다. unchecked ref는 잘못된 값이
-아니며, ref 기반 API는 target node의 현재 같은 Actor id를 대상으로 해석한다.
-`generation != 0`인 checked ref는 target Actor의 현재 generation과 일치해야 한다.
-일치하지 않으면 stale 또는 conflict 계열 실패로 끝난다.
+Actor id는 NUL 종료 UTF-8 바이트열이며, 유효 최대 길이는 `ZLINK_ACTOR_ID_MAX - 1`
+(255바이트)다. 빈 id, NULL id, 255바이트를 넘는 id는 `EINVAL` 계열 실패다.
+같은 `SpotNode` 안에서 live Actor id는 유일하다. 서로 다른 `SpotNode`에는 같은
+Actor id가 동시에 존재할 수 있다.
 
-### 생성, 조회, 종료
+`zlink_actor_ref_t.generation == 0`은 unchecked ref다. unchecked ref는 잘못된 값이
+아니며, target node의 현재 같은 Actor id를 대상으로 해석한다. `generation != 0`인
+checked ref는 target Actor의 현재 generation과 일치해야 한다. 일치하지 않으면
+stale 또는 conflict 계열 실패로 끝난다.
+
+### 생성과 조회
 
 ```c
 zlink_config_result_t zlink_spot_node_actor_new(
   void *node,
   const char *actor_id,
   zlink_actor_ref_t *actor_out);
+
 zlink_config_result_t zlink_spot_node_actor_lookup(
   void *node,
   const char *actor_id,
   zlink_actor_ref_t *out);
+
 zlink_config_result_t zlink_remote_actor_get_ref(
   const zlink_routing_id_t *target_node_rid,
   const char *actor_id,
   zlink_actor_ref_t *out);
-zlink_request_result_t zlink_spot_node_actor_destroy(
-  void *node,
-  const zlink_actor_ref_t *actor,
-  uint32_t timeout_ms);
 ```
 
 - `zlink_spot_node_actor_new()`는 local Actor를 Entry Spot에 만들고 checked ref를
-  `actor_out`에 반환한다.
-- 같은 node에 같은 live Actor id가 이미 있으면 생성은 실패한다.
-- `zlink_spot_node_actor_destroy()`는 Actor가 Entry Spot에 있을 때만 성공한다.
-  user Spot에 있거나 join pending이면 `ZLINK_REQUEST_BUSY` 또는
-  `ZLINK_REQUEST_INVALID_STATE` 계열로 실패한다.
-- destroy 성공 뒤 해당 Actor ref는 stale이 된다.
-- `timeout_ms` 안에 필요한 control lock이나 detach가 완료되지 않으면
-  `ZLINK_REQUEST_TIMED_OUT`으로 실패하고 호출 전 상태를 유지한다.
-- `zlink_spot_node_actor_lookup()`은 checked ref를 반환한다.
-- `zlink_remote_actor_get_ref()`는 target node rid와 Actor id만으로 unchecked remote
-  ref를 만든다. peer 연결, handshake, target Actor 존재 여부는 확인하지 않는다.
+  `actor_out`에 반환한다. Actor 생성은 Entry Spot dispatch handler나 join request
+  handler를 거치지 않는다.
+- 같은 node에 같은 live Actor id가 이미 있으면 생성은 `EBUSY` 계열로 실패한다.
+- `node_ == NULL`이면 `ZLINK_CONFIG_INVALID_HANDLE`로 실패하고 `errno`는 `EFAULT`다.
+- `actor_id_ == NULL` 또는 `actor_out_ == NULL`이면 `ZLINK_CONFIG_INVALID_ARGUMENT`로
+  실패하고 `errno`는 `EINVAL`이다.
+- `zlink_spot_node_actor_lookup()`은 caller node가 소유한 live local Actor를 조회하고
+  checked ref를 반환한다. 같은 Actor id의 live Actor가 없으면 not-found 계열 실패다.
+- `zlink_remote_actor_get_ref()`는 target node rid와 Actor id만으로 unchecked ref
+  (generation 0)를 만든다. peer 연결, handshake, target Actor 존재 여부는 확인하지
+  않는다. 조회 결과는 ref 기반 API의 입력으로 사용한다.
 
-### Remote Actor create-or-get과 destroy
+### Remote create-or-get
 
 ```c
 zlink_request_result_t zlink_spot_node_create_remote_actor(
@@ -654,18 +671,23 @@ zlink_handler_result_t zlink_spot_node_actor_admission_handler(
   void *userdata);
 ```
 
-- create-or-get은 target node에 Actor가 없을 때만 admission handler를 호출한다.
+- target node에 해당 Actor id가 없을 때만 admission handler를 호출한다.
 - target Actor가 이미 있으면 handler 호출 없이 `ZLINK_ACTOR_CREATE_EXISTING`을
-  반환한다.
-- handler가 accept하면 Actor를 만들고 `ZLINK_ACTOR_CREATE_CREATED`를 반환한다.
+  반환한다. 이미 있는 Actor의 current Spot은 바꾸지 않는다.
+- handler가 accept하면 Actor를 target node의 Entry Spot에 만들고
+  `ZLINK_ACTOR_CREATE_CREATED`를 반환한다.
 - handler가 reject하면 `ZLINK_REQUEST_REJECTED`로 끝난다.
-- create submit 성공 시 `message` 소유권은 라이브러리로 이전된다. validation 실패나
-  submit 실패에서는 호출자에게 남는다.
-- remote Actor도 `zlink_spot_node_actor_destroy()`로 ref 기반 destroy를 요청한다.
-- target node에 도달할 수 없거나 checked ref generation이 맞지 않으면 Actor slot을
+- remote create-or-get은 target Spot join handler를 거치지 않는다. target Spot 입장
+  승인은 create-or-get 호출이 아니라 이후 `join` 요청이 결정한다.
+- `timeout_ms == 0`은 nonblocking request다. 즉시 완료할 수 없으면 timeout 또는
+  busy 계열 결과로 실패한다.
+- submit 성공 시 `message` 소유권은 라이브러리로 이전된다. validation 실패나
+  submit 전 실패에서는 호출자에게 남는다.
+- remote Actor destroy도 `zlink_spot_node_actor_destroy()`로 ref 기반 요청을 보낸다.
+  target node에 도달할 수 없거나 checked ref generation이 맞지 않으면 Actor slot을
   제거하지 않는 실패다.
 
-### Actor와 Spot join/leave
+### Spot join
 
 ```c
 zlink_submit_result_t zlink_spot_node_actor_join_spot(
@@ -690,7 +712,72 @@ zlink_submit_result_t zlink_spot_actor_join_reply(
   const zlink_actor_join_info_t *info,
   uint32_t accepted,
   zlink_msg_t *message);
+```
 
+`join`은 Actor를 현재 Spot에서 target Spot으로 이동하는 요청이다. `join`이 성공하면
+Actor의 current Spot이 target으로 바뀐다.
+
+`zlink_spot_node_actor_join_spot()` 계약:
+
+- `node`는 join request를 제출하는 request owner `SpotNode`다. session owner, backend
+  service node, source Actor owner node 모두 request owner가 될 수 있다.
+- `dest_node_rid`가 Actor owner node와 같으면 local join으로, 다르면 remote join
+  handoff로 처리한다.
+- Entry Spot이 아닌 user Spot으로 join하려면 source Actor에 bound STREAM session이
+  있어야 한다. bound session이 없는 Actor의 user Spot join은 invalid-state 계열 실패다.
+- 이미 대상 Spot에 있으면 join request handler를 거치지 않고 비동기 idempotent success
+  completion으로 완료한다.
+- join request가 pending 중인 Actor에 새 join, leave, destroy를 요청하면 busy 또는
+  invalid-state 계열 실패다.
+- return이 `ZLINK_SUBMIT_OK`이면 join operation이 접수된 것이지 accept가 된 것은 아니다.
+  accept/reject 결과는 `zlink_reply_handler_fn` completion으로 전달한다.
+- `timeout_ms`는 submit 성공 뒤 join reply와 remote handoff가 완료되기까지의 operation
+  timeout이다. `timeout_ms == 0`이면 operation timeout을 설치하지 않는다. 이는 submit
+  nonblocking 지시가 아니다. submit 단계의 즉시 실패 여부는 `flags`의 `ZLINK_DONTWAIT`가
+  결정한다.
+- submit 성공 시 `message` 소유권은 라이브러리로 이전된다. local validation 또는
+  submit 전 실패가 발생하면 소유권은 caller에게 남는다.
+- join request는 단일 `zlink_msg_t` payload를 싣는다. target Spot은 이 payload를 읽고
+  accept 또는 reject를 결정한다.
+
+`zlink_spot_actor_join_recv()` 계약:
+
+- `ACTOR_JOIN_READABLE` dispatch event가 뜨면 해당 Spot에서 이 API로 drain한다.
+- 성공 시 join message 소유권은 호출자에게 이전된다.
+- `zlink_actor_join_info_t.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE`가 0이 아니면
+  remote handoff join이다. payload에서 Actor state를 복원할 수 없으면 reject해야 한다.
+- remote join prepare는 `zlink_spot_node_actor_admission_handler()`를 호출하지 않는다.
+  target Spot join handler가 Actor 생성과 입장 승인을 함께 결정한다.
+- `zlink_actor_join_info_t.request`는 opaque one-shot handle이다. application은 이
+  값을 역참조하거나 직접 저장하지 않는다. reply 호출에서 `info` 구조체를 그대로 넘긴다.
+
+`zlink_spot_actor_join_reply()` 계약:
+
+- `accepted`는 반드시 `0`(reject) 또는 `1`(accept)이어야 한다. 다른 값은
+  `ZLINK_SUBMIT_INVALID_ARGUMENT`로 실패하고 `errno`는 `EINVAL`이다.
+- `info == NULL`이면 `ZLINK_SUBMIT_INVALID_ARGUMENT`로 실패하고 `errno`는 `EINVAL`이다.
+- `message == NULL`이면 payload 없는 completion이다.
+- submit 성공 시 reply message 소유권은 라이브러리로 이전된다. validation 실패 또는
+  duplicate reply 실패 시 소유권은 caller에게 남는다.
+- 같은 `info.request`에 두 번 reply하면 두 번째는 `ZLINK_SUBMIT_INVALID_STATE`로 실패하고
+  `errno`는 `EALREADY` 또는 `EINVAL`이다.
+- join timeout, target Spot destroy, SpotNode shutdown 뒤 늦게 도착한 reply는
+  `ZLINK_SUBMIT_INVALID_STATE`로 실패한다.
+- `info.request`의 lifetime은 join request가 reply, timeout, reject cleanup, Spot
+  destroy, node shutdown으로 끝날 때까지다.
+
+join 원자성:
+
+- accept 전까지 source Spot이 current Spot이다.
+- target Spot이 reject하거나 timeout되면 Actor는 source Spot에 그대로 남는다.
+- remote join에서 source Actor는 session Actor list compare-and-swap이 성공하고
+  target Actor activate와 active route 갱신이 끝난 뒤 source Spot에서 제거된다.
+- join 전후에 도착한 Actor queue message의 순서는 Actor queue 도착 순서로 보존한다.
+- Spot destroy는 joined Actor나 pending join request가 남아 있으면 busy로 실패한다.
+
+### Spot leave
+
+```c
 zlink_request_result_t zlink_spot_node_actor_leave_spot(
   void *node,
   const zlink_actor_ref_t *actor,
@@ -698,27 +785,48 @@ zlink_request_result_t zlink_spot_node_actor_leave_spot(
   uint32_t timeout_ms);
 ```
 
-- 한 Actor는 항상 정확히 하나의 Spot에 속한다.
-- 한 Spot에는 여러 Actor가 join할 수 있다.
-- Actor가 생성 직후 속하는 기본 Spot은 Entry Spot이다. application은 Entry Spot
-  logical state를 제거할 수 없다.
-- Entry Spot 밖 user Spot으로 join하려면 Actor에 bound STREAM session이 있어야 한다.
-- 같은 Actor와 같은 target Spot의 중복 join은 성공으로 끝난다.
-- join pending 중 새 join, leave, destroy는 busy 또는 invalid-state 계열 실패다.
-- join request는 단일 `zlink_msg_t` message를 싣는다.
-- `zlink_spot_actor_join_recv()` 성공 시 join message 소유권은 호출자에게 이전된다.
-- `zlink_spot_actor_join_reply()`의 `accepted != 0`은 join accept이고,
-  `accepted == 0`은 reject다. reply message는 caller의 join completion으로 전달된다.
-- `zlink_actor_join_info_t.request`는 opaque one-shot handle이며, 같은 request에 대해
-  reply를 두 번 보낼 수 없다.
-- `zlink_actor_join_info_t.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE`가 0이 아니면 remote
-  handoff join이다.
-- `zlink_spot_node_actor_leave_spot()`은 `current_spot_rid`가 Actor의 현재 Spot과
-  일치할 때 Entry Spot으로 이동한다. stale current Spot이면 not-found 또는
-  invalid-state 계열 실패다.
-- Spot destroy는 joined Actor나 pending join request가 남아 있으면 busy로 실패한다.
+`leave`는 Actor를 현재 Spot에서 Entry Spot으로 돌려보내는 요청이다.
 
-### Actor recv와 bound session send
+- Actor가 이미 Entry Spot에 있으면 idempotent success다.
+- `current_spot_rid`는 Actor의 현재 Spot이어야 한다. caller가 본 current Spot과
+  실제 current Spot이 다르면 stale leave를 막기 위해 invalid-state 계열로 실패한다.
+- Actor에 join request가 pending이면 `ZLINK_REQUEST_BUSY`로 실패하고 `errno`는
+  `EBUSY`다. leave는 pending join을 취소하지 않는다.
+- leave는 Entry Spot dispatch handler나 join request handler를 거치지 않는다.
+- leave 성공 뒤 Actor message는 Entry Spot dispatch event로 올라간다.
+- leave는 Actor queue를 비우지 않는다. leave 전후 message 순서는 보존한다.
+- `node_ == NULL`이면 `ZLINK_REQUEST_INVALID_ARGUMENT`로 실패하고 `errno`는 `EFAULT`다.
+- `actor_ == NULL` 또는 `current_spot_rid_ == NULL`이면
+  `ZLINK_REQUEST_INVALID_ARGUMENT`로 실패하고 `errno`는 `EINVAL`이다.
+- `timeout_ms == 0`은 nonblocking request다. 즉시 완료할 수 없으면 timeout 또는
+  busy 계열 결과로 실패한다.
+
+### 종료
+
+```c
+zlink_request_result_t zlink_spot_node_actor_destroy(
+  void *node,
+  const zlink_actor_ref_t *actor,
+  uint32_t timeout_ms);
+```
+
+- Actor destroy는 Actor가 Entry Spot에 있을 때만 허용한다.
+- Actor가 user Spot에 있으면 `ZLINK_REQUEST_INVALID_STATE`로 실패하고 `errno`는
+  `EBUSY`다. application은 먼저 `leave`로 Entry Spot에 돌려보낸 뒤 destroy한다.
+- join request가 pending이면 `ZLINK_REQUEST_BUSY` 또는 `ZLINK_REQUEST_INVALID_STATE`로
+  실패하고 `errno`는 `EBUSY`다. destroy는 pending join을 취소하지 않는다.
+- bound STREAM session이 있으면 destroy는 먼저 session Actor list 항목과 Actor의
+  bound session ref를 제거한다. 이 cleanup은 client STREAM connection 자체를 닫지
+  않는다.
+- bound session cleanup을 `timeout_ms` 안에 확인할 수 없으면 timeout 계열로 실패하고
+  Actor slot과 Entry Spot membership은 유지한다. client connection까지 닫아야 하면
+  destroy 전에 `zlink_spot_node_actor_close_bound_session()`을 호출한다.
+- destroy 성공 뒤 해당 Actor ref는 stale이 된다.
+- `node_ == NULL`이면 `ZLINK_REQUEST_INVALID_ARGUMENT`로 실패하고 `errno`는 `EFAULT`다.
+- `actor_ == NULL`이면 `ZLINK_REQUEST_INVALID_ARGUMENT`로 실패하고 `errno`는 `EINVAL`이다.
+- `timeout_ms == 0`은 nonblocking request다.
+
+### Message recv
 
 ```c
 zlink_recv_result_t zlink_spot_node_actor_recv_part(
@@ -728,7 +836,26 @@ zlink_recv_result_t zlink_spot_node_actor_recv_part(
   zlink_msg_t *part_out,
   zlink_part_flag_t *has_more_out,
   zlink_recv_flags_t flags);
+```
 
+- current Spot dispatch context에서 `ACTOR_READABLE` event를 받은 뒤 호출한다.
+- `node`는 Actor owner `SpotNode`여야 한다. remote route는 수행하지 않는다.
+- `node == NULL`이거나 `node`가 Actor owner가 아니면 `ZLINK_RECV_INVALID_HANDLE`로
+  실패하고 `errno`는 `EFAULT`다.
+- `actor == NULL`, `info_out == NULL`, `part_out == NULL`, `has_more_out == NULL`이면
+  `ZLINK_RECV_INVALID_HANDLE`로 실패하고 `errno`는 `EFAULT`다.
+  (`zlink_recv_result_t`에는 invalid-argument bucket이 없으므로 NULL output pointer도
+  recv 계열 invalid-handle failure로 통일한다.)
+- 읽을 part가 없고 `ZLINK_DONTWAIT`이면 `ZLINK_RECV_NO_DATA`다.
+- 성공 시 `part_out` 소유권은 호출자에게 이전된다.
+- `has_more_out`은 `ZLINK_PART_MORE` 또는 `ZLINK_PART_FINAL`을 반환한다.
+- `info_out->actor`는 drain 대상 Actor ref이고, `source_node_rid`와
+  `source_session_rid`는 message를 보낸 STREAM session을 식별한다.
+- `info_out->flags`는 현재 `0`이다. 알 수 없는 bit는 invalid protocol로 처리한다.
+
+### STREAM session 연결
+
+```c
 zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg(
   void *node,
   const zlink_actor_ref_t *actor,
@@ -741,18 +868,40 @@ zlink_request_result_t zlink_spot_node_actor_close_bound_session(
   uint32_t timeout_ms);
 ```
 
-- `zlink_spot_node_actor_recv_part()`는 Actor unread state에서 part 하나를 읽는다.
-- 성공 시 `part_out` 소유권은 호출자에게 이전된다.
-- 읽을 part가 없고 `ZLINK_DONTWAIT`이면 `ZLINK_RECV_NO_DATA`다.
-- `has_more_out`은 multipart continuation 여부를 `ZLINK_PART_MORE` 또는
-  `ZLINK_PART_FINAL`로 돌려준다.
-- `info_out->actor`는 수신 대상 Actor ref이고, `source_node_rid`와
-  `source_session_rid`는 sender session을 식별한다.
-- Actor가 bound STREAM session으로 보내려면 Actor가 현재 session Actor list에 bind된
-  상태여야 한다. 없으면 `ZLINK_SUBMIT_NOT_FOUND` 계열 실패다.
-- Actor send 성공 시 message 소유권은 라이브러리로 이전된다. 실패 시 호출자에게
-  남는다.
-- `zlink_spot_node_actor_close_bound_session()` 성공 뒤 Actor는 Entry Spot으로 이동한다.
+session owner node와 Actor owner node는 같을 수도 다를 수도 있다.
+
+- **local Actor**: session owner node와 Actor owner node가 같다. bind, relay,
+  Actor-to-session send가 같은 node 안에서 끝난다.
+- **remote Actor**: session owner node와 Actor owner node가 다르다. bind control
+  request, session-to-Actor relay frame, Actor-to-session frame이 node 사이를 지난다.
+- session owner는 Actor의 joined Spot 상태를 저장하지 않는다.
+- Actor owner는 STREAM session의 application state를 저장하지 않는다.
+- Actor active route는 Actor 생성 시점이 아니라 STREAM session bind 성공 시점에
+  Actor owner node의 Discovery가 publish한다.
+
+`zlink_spot_node_actor_send_bound_session_msg()` 계약:
+
+- Actor의 bound STREAM session으로 `message`를 보내는 **fire-and-forget** submit이다.
+  completion handler가 없으며 return 값은 command 접수 여부만 나타낸다.
+- `node`가 Actor owner와 같고 submit 전에 Actor가 live 상태가 아님, stale ref, bound
+  session 없음을 확인할 수 있으면 `ZLINK_SUBMIT_NOT_FOUND` 또는
+  `ZLINK_SUBMIT_INVALID_STATE` 계열로 즉시 실패한다.
+- `node`가 Actor owner와 다르면 stale ref, missing Actor, missing bound session은
+  submit 시점에 동기적으로 보장하지 않는다. Actor owner가 command를 처리할 때 이
+  조건을 발견하면 message를 닫고 protocol drop counter를 증가시킨다.
+- submit 성공 시 `message` 소유권은 라이브러리로 이전된다. submit 전 validation 실패
+  시 소유권은 caller에게 남는다.
+
+`zlink_spot_node_actor_close_bound_session()` 계약:
+
+- Actor의 bound STREAM session을 닫고 session Actor list 항목과 Actor의 bound session
+  ref를 제거한다.
+- bound STREAM session이 없으면 `ZLINK_REQUEST_NOT_FOUND` 계열로 실패한다.
+- close 성공 뒤 Actor는 Entry Spot으로 이동한다. 이미 Entry Spot에 있으면 current Spot은
+  그대로 Entry Spot이다.
+- close 성공 뒤 Actor queue에 unread message가 남아 있으면 Entry Spot dispatch handler에
+  `ACTOR_READABLE` event를 올린다.
+- `timeout_ms == 0`은 nonblocking request다.
 
 ## Spot routed request 시작
 

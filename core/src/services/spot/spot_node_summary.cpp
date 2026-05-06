@@ -161,9 +161,7 @@ static bool auto_hwm_visible_from_snapshot (
 {
     return snapshot_.auto_hwm_enabled != 0 || snapshot_.auto_hwm_role != 0
            || snapshot_.auto_hwm_applied_sndhwm != 0
-           || snapshot_.auto_hwm_applied_rcvhwm != 0
-           || snapshot_.auto_hwm_effective_sndbuf != 0
-           || snapshot_.auto_hwm_effective_rcvbuf != 0;
+           || snapshot_.auto_hwm_applied_rcvhwm != 0;
 }
 
 static bool socket_snapshot_matches_filter (

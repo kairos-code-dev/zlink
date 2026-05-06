@@ -479,7 +479,7 @@ void test_spot_tls_configuration_is_node_owned ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_discovery_attach_limits_service_aware_facades ()
+void test_spot_node_discovery_attach_allows_multiple_spot_facades ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -493,20 +493,19 @@ void test_spot_node_discovery_attach_limits_service_aware_facades ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_attach_discovery (node, discovery));
 
-    void *spot = zlink_spot_new (node);
-    TEST_ASSERT_NOT_NULL (spot);
+    void *spot_a = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot_a);
+    void *spot_b = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot_b);
 
-    errno = 0;
-    TEST_ASSERT_NULL (zlink_spot_new (node));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_attach_discovery_rejects_preexisting_multiple_facades ()
+void test_spot_node_attach_discovery_allows_preexisting_multiple_facades ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -523,10 +522,7 @@ void test_spot_node_attach_discovery_rejects_preexisting_multiple_facades ()
     void *spot_b = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot_b);
 
-    errno = 0;
-    TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK, zlink_spot_node_attach_discovery (node, discovery));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_attach_discovery (node, discovery));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
@@ -623,7 +619,7 @@ void test_spot_publish_service_name_rejects_mismatch ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_manual_service_attachment_limits_service_aware_facades ()
+void test_spot_node_manual_service_attachment_allows_multiple_spot_facades ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -640,10 +636,10 @@ void test_spot_node_manual_service_attachment_limits_service_aware_facades ()
       zlink_spot_node_attach_channel_dealer_manual (node, "chan-router",
                                                     dealer));
 
-    errno = 0;
-    TEST_ASSERT_NULL (zlink_spot_new (node));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    void *second_spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (second_spot);
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&second_spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     close_zero_linger (dealer);
@@ -1163,12 +1159,12 @@ int main (void)
     RUN_TEST (test_spot_callback_policy);
     RUN_TEST (test_spot_node_topic_surface_and_callback_modes);
     RUN_TEST (test_spot_tls_configuration_is_node_owned);
-    RUN_TEST (test_spot_node_discovery_attach_limits_service_aware_facades);
-    RUN_TEST (test_spot_node_attach_discovery_rejects_preexisting_multiple_facades);
+    RUN_TEST (test_spot_node_discovery_attach_allows_multiple_spot_facades);
+    RUN_TEST (test_spot_node_attach_discovery_allows_preexisting_multiple_facades);
     RUN_TEST (test_spot_node_attach_discovery_rejects_duplicate_discovery);
     RUN_TEST (test_spot_publish_service_name_matches_attached_discovery);
     RUN_TEST (test_spot_publish_service_name_rejects_mismatch);
-    RUN_TEST (test_spot_node_manual_service_attachment_limits_service_aware_facades);
+    RUN_TEST (test_spot_node_manual_service_attachment_allows_multiple_spot_facades);
     RUN_TEST (test_spot_service_send_and_request_fail_for_missing_service);
     RUN_TEST (test_spot_send_channel_rejects_inactive_dealer_attachment);
     RUN_TEST (test_spot_node_attach_channel_dealer_manual_rejects_duplicate_channel);

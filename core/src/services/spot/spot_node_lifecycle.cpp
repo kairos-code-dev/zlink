@@ -391,10 +391,6 @@ int spot_node_t::validate_socket_service_discovery_attach_locked (
             return -1;
         }
     }
-    if (_handle_state.facades.size () > 1) {
-        errno = EBUSY;
-        return -1;
-    }
     if (_service_attachment_state.discoveries.count (service_name_) != 0) {
         errno = EBUSY;
         return -1;
@@ -450,10 +446,6 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
     {
         scoped_lock_t lock (_sync);
         if (_discovery_state.discovery == discovery_) {
-            errno = EBUSY;
-            return -1;
-        }
-        if (_handle_state.facades.size () > 1) {
             errno = EBUSY;
             return -1;
         }
@@ -724,12 +716,6 @@ int spot_node_t::try_register_spot_facade (spot_handle_t *spot_)
     }
 
     scoped_lock_t lock (_sync);
-    if ((_discovery_state.discovery != NULL || !_service_attachment_state.discoveries.empty ()
-         || !_service_attachment_state.attachments.empty ())
-        && !_handle_state.facades.empty ()) {
-        errno = EBUSY;
-        return -1;
-    }
     if (_handle_state.facades.insert (spot_).second)
         return 0;
 

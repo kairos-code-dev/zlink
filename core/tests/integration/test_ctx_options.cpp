@@ -405,7 +405,6 @@ void test_socket_option_auto_hwm_msg_unit_round_trip ()
     TEST_ASSERT_GREATER_THAN_UINT64 (0u,
                                      snapshot.auto_hwm_unit_budget_bytes);
     TEST_ASSERT_GREATER_THAN_UINT32 (0u, snapshot.auto_hwm_size_cap);
-    TEST_ASSERT_EQUAL_UINT32 (0u, snapshot.auto_hwm_effective_publish_fanout);
 
     value = 8192;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
@@ -454,25 +453,15 @@ void test_socket_option_auto_hwm_stream_default_msg_unit ()
     test_context_socket_close (stream);
 }
 
-void test_socket_option_auto_hwm_buffer_accounting ()
+void test_socket_option_auto_hwm_buffer_options_do_not_change_snapshot_contract ()
 {
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (router);
 
     zlink_monitor_snapshot_t snapshot;
     read_socket_auto_hwm_snapshot (router, &snapshot);
-    TEST_ASSERT_EQUAL_UINT32 (0u, snapshot.auto_hwm_buffer_connections);
-    TEST_ASSERT_EQUAL_UINT64 (0u, snapshot.auto_hwm_auto_buffer_bytes);
-    TEST_ASSERT_EQUAL_UINT64 (0u, snapshot.auto_hwm_manual_buffer_bytes);
-    TEST_ASSERT_EQUAL_UINT64 (0u, snapshot.auto_hwm_total_memory_budget_bytes);
-    TEST_ASSERT_EQUAL_UINT64 (0u, snapshot.auto_hwm_runtime_reserve_bytes);
-    TEST_ASSERT_EQUAL_UINT64 (0u, snapshot.auto_hwm_queue_budget_bytes);
-    TEST_ASSERT_EQUAL_UINT32 (0u, snapshot.auto_hwm_observed_count);
-    TEST_ASSERT_EQUAL_UINT32 (0u, snapshot.auto_hwm_managed_connections);
-    TEST_ASSERT_EQUAL_UINT32 (0u, snapshot.auto_hwm_planning_count);
-    TEST_ASSERT_EQUAL_UINT32 (0u,
-                              snapshot.auto_hwm_context_total_planning_count);
-    TEST_ASSERT_EQUAL_UINT64 (0u, snapshot.auto_hwm_socket_queue_share_bytes);
+    const int initial_sndhwm = snapshot.auto_hwm_applied_sndhwm;
+    const int initial_rcvhwm = snapshot.auto_hwm_applied_rcvhwm;
 
     const int sndbuf = 1048576;
     const int rcvbuf = 2097152;
@@ -482,13 +471,8 @@ void test_socket_option_auto_hwm_buffer_accounting ()
       router, ZLINK_OPT_RCVBUF, &rcvbuf, sizeof (rcvbuf)));
 
     read_socket_auto_hwm_snapshot (router, &snapshot);
-    TEST_ASSERT_EQUAL_UINT64 (0u, snapshot.auto_hwm_auto_buffer_bytes);
-    TEST_ASSERT_EQUAL_UINT64 (0u, snapshot.auto_hwm_manual_buffer_bytes);
-    TEST_ASSERT_EQUAL_UINT32 (0u, snapshot.auto_hwm_buffer_connections);
-    TEST_ASSERT_EQUAL_INT32 (sndbuf, snapshot.auto_hwm_effective_sndbuf);
-    TEST_ASSERT_EQUAL_INT32 (rcvbuf, snapshot.auto_hwm_effective_rcvbuf);
-    TEST_ASSERT_EQUAL_UINT64 (0u, snapshot.auto_hwm_queue_budget_bytes);
-    TEST_ASSERT_EQUAL_UINT64 (0u, snapshot.auto_hwm_socket_queue_share_bytes);
+    TEST_ASSERT_EQUAL_INT32 (initial_sndhwm, snapshot.auto_hwm_applied_sndhwm);
+    TEST_ASSERT_EQUAL_INT32 (initial_rcvhwm, snapshot.auto_hwm_applied_rcvhwm);
 
     test_context_socket_close (router);
 }
@@ -523,7 +507,7 @@ int main (void)
     RUN_TEST (test_ctx_option_auto_hwm_enabled_applies_profile);
     RUN_TEST (test_socket_option_auto_hwm_msg_unit_round_trip);
     RUN_TEST (test_socket_option_auto_hwm_stream_default_msg_unit);
-    RUN_TEST (test_socket_option_auto_hwm_buffer_accounting);
+    RUN_TEST (test_socket_option_auto_hwm_buffer_options_do_not_change_snapshot_contract);
     RUN_TEST (test_ctx_option_invalid);
     return UNITY_END ();
 }

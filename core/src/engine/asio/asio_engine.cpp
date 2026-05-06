@@ -2092,13 +2092,6 @@ bool zlink::asio_engine_t::init_properties (properties_t &properties_)
         return false;
     properties_.ZLINK_MAP_INSERT_OR_EMPLACE (
       std::string (ZLINK_MSG_PROPERTY_PEER_ADDRESS), _peer_address);
-
-    //  Private property to support deprecated SRCFD
-    std::ostringstream stream;
-    stream << static_cast<int> (_transport_adapter.fd);
-    std::string fd_string = stream.str ();
-    properties_.ZLINK_MAP_INSERT_OR_EMPLACE (std::string ("__fd"),
-                                           ZLINK_MOVE (fd_string));
     return true;
 }
 

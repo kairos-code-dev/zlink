@@ -357,9 +357,7 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 /******************************************************************************/
 /*  0MQ socket definition.                                                    */
 /******************************************************************************/
-/*  Backward-compatible aliases for send/recv flag enum values.               */
-#define ZLINK_DONTWAIT           ZLINK_SEND_FLAGS_DONTWAIT
-#define ZLINK_SEND_FLAG_DONTWAIT ZLINK_SEND_FLAGS_DONTWAIT
+#define ZLINK_DONTWAIT ZLINK_SEND_FLAGS_DONTWAIT
 
 #define ZLINK_NULL 0
 #define ZLINK_PLAIN 1

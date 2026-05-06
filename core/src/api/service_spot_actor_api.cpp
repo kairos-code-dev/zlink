@@ -691,17 +691,46 @@ zlink_submit_result_t complete_immediate_join_result (
     return ZLINK_SUBMIT_OK;
 }
 
+struct idempotent_join_completion_t
+{
+    zlink_reply_handler_fn handler;
+    void *userdata;
+};
+
+void complete_idempotent_join_scheduled (void *userdata_)
+{
+    idempotent_join_completion_t *completion =
+      static_cast<idempotent_join_completion_t *> (userdata_);
+    if (!completion)
+        return;
+    zlink_msg_t reply;
+    zlink_msg_init (&reply);
+    completion->handler (ZLINK_REQUEST_OK, &reply, 1, completion->userdata);
+    (void) zlink_msg_close (&reply);
+    delete completion;
+}
+
+void cleanup_idempotent_join_completion (void *userdata_)
+{
+    delete static_cast<idempotent_join_completion_t *> (userdata_);
+}
+
 zlink_submit_result_t complete_idempotent_join_async (
   zlink_msg_t *message_, zlink_reply_handler_fn handler_, void *userdata_)
 {
     (void) zlink_msg_close (message_);
     (void) zlink_msg_init (message_);
-    std::thread ([handler_, userdata_] {
-        zlink_msg_t reply;
-        zlink_msg_init (&reply);
-        handler_ (ZLINK_REQUEST_OK, &reply, 1, userdata_);
-        (void) zlink_msg_close (&reply);
-    }).detach ();
+    idempotent_join_completion_t *completion =
+      new (std::nothrow) idempotent_join_completion_t;
+    if (!completion) {
+        errno = ENOMEM;
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    }
+    completion->handler = handler_;
+    completion->userdata = userdata_;
+    (void) zlink::request_timeout::schedule (
+      1, complete_idempotent_join_scheduled, completion,
+      cleanup_idempotent_join_completion);
     return ZLINK_SUBMIT_OK;
 }
 

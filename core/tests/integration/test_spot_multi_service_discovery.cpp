@@ -33,8 +33,7 @@ bool wait_for_spot_node_provider_weight_local (void *registry_,
                                                uint32_t expected_weight_,
                                                int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_member_peer_entry_t entries[8];
         size_t count = 8;
         if (zlink_registry_member_peers (registry_, service_name_, entries,
@@ -48,9 +47,8 @@ bool wait_for_spot_node_provider_weight_local (void *registry_,
                 }
             }
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 void test_spot_service_discovery_replays_existing_filters_end_to_end ()

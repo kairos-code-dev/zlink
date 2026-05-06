@@ -147,7 +147,6 @@ mkdir -p "$INCLUDE_DIR"
 cp install/include/zlink.h "$INCLUDE_DIR/"
 cp install/include/zlink_enum.h "$INCLUDE_DIR/"
 cp install/include/zlink_errno.h "$INCLUDE_DIR/"
-cp install/include/zlink_utils.h "$INCLUDE_DIR/"
 echo "Copied public headers -> $INCLUDE_DIR/"
 
 cd "$REPO_ROOT"

@@ -303,15 +303,13 @@ bool wait_for_send_delivery_local (void *sender_,
                                    const char *text_,
                                    int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         const zlink_submit_result_t rc =
           send_text_local (sender_, text_, ZLINK_DONTWAIT);
         if (rc == ZLINK_SUBMIT_OK && recv_text_local (receiver_, text_, NULL, 1000))
             return true;
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_routed_delivery_local (void *sender_,
@@ -320,16 +318,14 @@ bool wait_for_routed_delivery_local (void *sender_,
                                      const char *text_,
                                      int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         const zlink_submit_result_t rc =
           send_text_rid_local (sender_, target_rid_, text_, ZLINK_DONTWAIT);
         if (rc == ZLINK_SUBMIT_OK
             && recv_router_text_local (receiver_, text_, NULL, 1000))
             return true;
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_router_envelope_delivery_local (void *sender_,
@@ -339,8 +335,7 @@ bool wait_for_router_envelope_delivery_local (void *sender_,
                                               const char *text_,
                                               int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         const int route_rc =
           zlink_send (sender_, target_rid_->data, target_rid_->size,
                       ZLINK_SNDMORE | ZLINK_DONTWAIT);
@@ -354,9 +349,8 @@ bool wait_for_router_envelope_delivery_local (void *sender_,
                 return true;
             }
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_socket_peer_weight_event_local (
@@ -365,8 +359,7 @@ bool wait_for_socket_peer_weight_event_local (
   uint32_t expected_weight_,
   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_monitor_event_t event;
         memset (&event, 0, sizeof (event));
         if (recv_monitor_event_from_socket (monitor_, &event, ZLINK_DONTWAIT)
@@ -379,12 +372,11 @@ bool wait_for_socket_peer_weight_event_local (
                 && routing_id_ok) {
                 return true;
             }
-            continue;
+            return false;
         }
         TEST_ASSERT_TRUE (errno == EAGAIN || errno == EINTR);
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_discovery_peer_weight_local (void *discovery_,
@@ -392,8 +384,7 @@ bool wait_for_discovery_peer_weight_local (void *discovery_,
                                           uint32_t expected_,
                                           int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_member_peer_entry_t entries[8];
         size_t count = 8;
         if (zlink_discovery_member_peers (discovery_, entries, &count)
@@ -405,9 +396,8 @@ bool wait_for_discovery_peer_weight_local (void *discovery_,
                 }
             }
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_submit_result_local (void *socket_,
@@ -415,13 +405,11 @@ bool wait_for_submit_result_local (void *socket_,
                                    zlink_submit_result_t expected_,
                                    int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         if (send_text_local (socket_, text_, ZLINK_DONTWAIT) == expected_)
             return true;
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_router_submit_result_local (void *socket_,
@@ -430,15 +418,13 @@ bool wait_for_router_submit_result_local (void *socket_,
                                           zlink_submit_result_t expected_,
                                           int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         if (send_text_rid_local (socket_, rid_, text_, ZLINK_DONTWAIT)
             == expected_) {
             return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_dealer_request_result_local (void *dealer_,
@@ -446,13 +432,11 @@ bool wait_for_dealer_request_result_local (void *dealer_,
                                            zlink_submit_result_t expected_,
                                            int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         if (dealer_request_text_local (dealer_, text_) == expected_)
             return true;
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_router_request_result_local (void *router_,
@@ -461,28 +445,24 @@ bool wait_for_router_request_result_local (void *router_,
                                            zlink_submit_result_t expected_,
                                            int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         if (router_request_text_local (router_, rid_, text_) == expected_)
             return true;
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool connect_discovery_registry_with_retry_local (void *discovery_,
                                                   const char *endpoint_,
                                                   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         if (zlink_discovery_connect_registry (discovery_, endpoint_)
             == ZLINK_CONNECT_OK) {
             return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 void send_weight_sample_local (void *sender_, int count_)
@@ -606,7 +586,7 @@ void test_dealer_router_weighted_ratio_100_50 ()
                                                5000));
 
     send_weight_sample_local (dealer, 15);
-    msleep (25);
+    msleep (zlink_test_poll_step_ms);
     const int count_a = drain_router_messages_local (router_a, 15);
     const int count_b = drain_router_messages_local (router_b, 15);
     TEST_ASSERT_EQUAL_INT (10, count_a);
@@ -659,7 +639,7 @@ void test_dealer_dealer_weighted_ratio_100_50 ()
                                                5000));
 
     send_weight_sample_local (sender, 15);
-    msleep (25);
+    msleep (zlink_test_poll_step_ms);
     const int count_a = drain_dealer_messages_local (dealer_a, 15);
     const int count_b = drain_dealer_messages_local (dealer_b, 15);
     TEST_ASSERT_EQUAL_INT (10, count_a);

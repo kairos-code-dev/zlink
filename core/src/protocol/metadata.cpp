@@ -16,13 +16,8 @@ zlink::metadata_t::metadata_t (const dict_t &dict_) : _ref_cnt (1), _dict (dict_
 const char *zlink::metadata_t::get (const std::string &property_) const
 {
     const dict_t::const_iterator it = _dict.find (property_);
-    if (it == _dict.end ()) {
-        /** \todo remove this when support for the deprecated name "Identity" is dropped */
-        if (property_ == "Identity")
-            return get (ZLINK_MSG_PROPERTY_ROUTING_ID);
-
+    if (it == _dict.end ())
         return NULL;
-    }
     return it->second.c_str ();
 }
 

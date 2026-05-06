@@ -170,7 +170,6 @@ autoreconf -fi
 %files devel
 %defattr(-,root,root,-)
 %{_includedir}/zlink.h
-%{_includedir}/zlink_utils.h
 
 %{_libdir}/libzlink.a
 %{_libdir}/pkgconfig/libzlink.pc

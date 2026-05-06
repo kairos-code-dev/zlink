@@ -122,28 +122,24 @@ bool connect_discovery_registry_with_retry_local (void *discovery_,
                                                   const char *endpoint_,
                                                   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         if (zlink_discovery_connect_registry (discovery_, endpoint_)
             == ZLINK_CONNECT_OK) {
             return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool destroy_discovery_with_retry_local (void **discovery_p_, int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until_result (timeout_ms_, [=] {
         if (zlink_discovery_destroy (discovery_p_) == ZLINK_CLOSE_OK)
-            return true;
+            return zlink_test_wait_done;
         if (zlink_errno () != EBUSY)
-            return false;
-        msleep (25);
-    }
-    return false;
+            return zlink_test_wait_failed;
+        return zlink_test_wait_retry;
+    });
 }
 
 bool wait_for_discovery_member_role_count_local (
@@ -152,8 +148,7 @@ bool wait_for_discovery_member_role_count_local (
   size_t expected_count_,
   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_member_peer_entry_t entries[8];
         size_t count = 8;
         if (zlink_discovery_member_peers (discovery_, entries, &count)
@@ -166,9 +161,8 @@ bool wait_for_discovery_member_role_count_local (
             if (matched >= expected_count_)
                 return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_topology_entry_local (
@@ -178,8 +172,7 @@ bool wait_for_topology_entry_local (
   uint32_t desired_count_,
   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_registry_topology_entry_t entries[8];
         size_t count = 8;
         if (zlink_registry_topology_query (registry_, filter_, entries, &count)
@@ -192,9 +185,8 @@ bool wait_for_topology_entry_local (
                 return true;
             }
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_registry_member_count_local (void *registry_,
@@ -202,8 +194,7 @@ bool wait_for_registry_member_count_local (void *registry_,
                                            size_t expected_count_,
                                            int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_member_peer_entry_t entries[8];
         size_t count = 8;
         memset (entries, 0, sizeof (entries));
@@ -212,9 +203,8 @@ bool wait_for_registry_member_count_local (void *registry_,
               == ZLINK_CONFIG_OK
             && count == expected_count_)
             return true;
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_service_summary_count_local (
@@ -223,8 +213,7 @@ bool wait_for_service_summary_count_local (
   size_t expected_count_,
   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_registry_service_summary_entry_t entries[8];
         size_t count = 8;
         memset (entries, 0, sizeof (entries));
@@ -233,9 +222,8 @@ bool wait_for_service_summary_count_local (
               == ZLINK_CONFIG_OK
             && count == expected_count_)
             return true;
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_topology_desired_total_local (
@@ -245,8 +233,7 @@ bool wait_for_topology_desired_total_local (
   uint32_t expected_desired_total_,
   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_registry_topology_entry_t entries[8];
         size_t count = 8;
         memset (entries, 0, sizeof (entries));
@@ -259,9 +246,8 @@ bool wait_for_topology_desired_total_local (
             if (desired_total == expected_desired_total_)
                 return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 void init_socket_topology_filter_local (
@@ -299,24 +285,21 @@ bool connect_discovery_expect_errno_local (void *discovery_,
                                            int expected_errno_,
                                            int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         errno = 0;
         if (zlink_discovery_connect_registry (discovery_, endpoint_)
               != ZLINK_CONNECT_OK
             && zlink_errno () == expected_errno_)
             return true;
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_router_payload_local (void *router_,
                                     const char *expected_,
                                     int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         const zlink_routing_id_t *source_node_rid = NULL;
         const zlink_routing_id_t *source_spot_rid = NULL;
         uint64_t request_seq = 0;
@@ -336,9 +319,8 @@ bool wait_for_router_payload_local (void *router_,
             if (matched)
                 return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_dealer_router_delivery_local (void *dealer_,
@@ -346,13 +328,13 @@ bool wait_for_dealer_router_delivery_local (void *dealer_,
                                             const char *text_,
                                             int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         (void) zlink_send (dealer_, text_, strlen (text_), ZLINK_DONTWAIT);
-        if (wait_for_router_payload_local (router_, text_, 25))
+        if (wait_for_router_payload_local (
+              router_, text_, zlink_test_poll_step_ms))
             return true;
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_pubsub_delivery_local (void *pub_,
@@ -360,8 +342,7 @@ bool wait_for_pubsub_delivery_local (void *pub_,
                                      const char *text_,
                                      int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         (void) zlink_send (pub_, text_, strlen (text_), ZLINK_DONTWAIT);
         char buffer[128];
         memset (buffer, 0, sizeof (buffer));
@@ -369,9 +350,8 @@ bool wait_for_pubsub_delivery_local (void *pub_,
         if (rc == static_cast<int> (strlen (text_))
             && memcmp (buffer, text_, strlen (text_)) == 0)
             return true;
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 void test_socket_discovery_default_dealer_mode_targets_router ()
@@ -610,22 +590,8 @@ void test_socket_discovery_explicit_dealer_mode_targets_dealer ()
     zlink_registry_topology_filter_t filter;
     init_socket_topology_filter_local (&filter, "socket-auto-dealer",
                                        ZLINK_SERVICE_ROLE_DEALER, NULL);
-    bool saw_dealer_mesh_topology = false;
-    for (int i = 0; i < 400 && !saw_dealer_mesh_topology; ++i) {
-        zlink_registry_topology_entry_t entries[4];
-        size_t count = 4;
-        memset (entries, 0, sizeof (entries));
-        if (zlink_registry_topology_query (registry, &filter, entries, &count)
-              == ZLINK_CONFIG_OK
-            && count >= 2) {
-            uint32_t desired_total = 0;
-            for (size_t j = 0; j < count; ++j)
-                desired_total += entries[j].desired_count;
-            saw_dealer_mesh_topology = desired_total == 1u;
-        }
-        if (!saw_dealer_mesh_topology)
-            msleep (25);
-    }
+    bool saw_dealer_mesh_topology = wait_for_topology_desired_total_local (
+      registry, &filter, 2, 1, 10000);
     TEST_ASSERT_TRUE (saw_dealer_mesh_topology);
 
     TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_b, 3000));
@@ -698,22 +664,8 @@ void test_socket_discovery_router_router_uses_single_initiator ()
     zlink_registry_topology_filter_t filter;
     init_socket_topology_filter_local (&filter, "socket-auto-router-router",
                                        ZLINK_SERVICE_ROLE_ROUTER, NULL);
-    bool single_initiator = false;
-    for (int i = 0; i < 400 && !single_initiator; ++i) {
-        zlink_registry_topology_entry_t entries[4];
-        size_t count = 4;
-        memset (entries, 0, sizeof (entries));
-        if (zlink_registry_topology_query (registry, &filter, entries, &count)
-              == ZLINK_CONFIG_OK
-            && count >= 2) {
-            uint32_t desired_total = 0;
-            for (size_t j = 0; j < count; ++j)
-                desired_total += entries[j].desired_count;
-            single_initiator = desired_total == 1u;
-        }
-        if (!single_initiator)
-            msleep (25);
-    }
+    bool single_initiator = wait_for_topology_desired_total_local (
+      registry, &filter, 2, 1, 10000);
 
     TEST_ASSERT_TRUE (single_initiator);
 
@@ -1097,8 +1049,7 @@ void test_registry_peer_sync_conflict_keeps_deterministic_winner_projection ()
 
     TEST_ASSERT_TRUE (wait_for_registry_member_count_local (
       winner_registry, "registry-sync-conflict", 1, 10000));
-    bool saw_winner_projection = false;
-    for (int i = 0; i < 400 && !saw_winner_projection; ++i) {
+    bool saw_winner_projection = zlink_test_wait_until (10000, [=] {
         zlink_member_peer_entry_t entries[4];
         size_t count = 4;
         memset (entries, 0, sizeof (entries));
@@ -1110,11 +1061,10 @@ void test_registry_peer_sync_conflict_keeps_deterministic_winner_projection ()
                  == ZLINK_AUTO_CONNECT_CLIENT_SERVER
             && entries[0].service_role == ZLINK_SERVICE_ROLE_ROUTER
             && strcmp (entries[0].endpoint, winner_endpoint) == 0) {
-            saw_winner_projection = true;
+            return true;
         }
-        if (!saw_winner_projection)
-            msleep (25);
-    }
+        return false;
+    });
     TEST_ASSERT_TRUE (saw_winner_projection);
 
     void *late_loser =

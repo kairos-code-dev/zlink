@@ -25,22 +25,19 @@ inline void teardown_diagf_local (const char *stage_)
 inline bool connect_discovery_registry_with_retry_local (
   void *discovery_, const char *endpoint_, int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         if (zlink_discovery_connect_registry (discovery_, endpoint_)
             == ZLINK_CONNECT_OK) {
             return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 inline bool wait_for_service_summary_count_local (
   void *discovery_, uint16_t service_role_, size_t expected_count_, int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_member_peer_entry_t entries[8];
         size_t count = 8;
         if (zlink_discovery_member_peers (discovery_, entries, &count)
@@ -53,9 +50,8 @@ inline bool wait_for_service_summary_count_local (
             if (matched >= expected_count_)
                 return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 inline bool wait_for_service_attachment_shape_local (
@@ -66,8 +62,7 @@ inline bool wait_for_service_attachment_shape_local (
   uint32_t auto_sub_count_,
   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         size_t count = 0;
         if (zlink_spot_node_service_attachment_count (node_, &count)
             == ZLINK_CONFIG_OK) {
@@ -87,16 +82,14 @@ inline bool wait_for_service_attachment_shape_local (
                 }
             }
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 inline bool wait_for_subscription_event_local (
   void *xpub_, const char *expected_topic_, int *subscribed_out_, int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_routing_id_t source_rid;
         char topic[64];
         size_t topic_len = sizeof (topic);
@@ -112,9 +105,8 @@ inline bool wait_for_subscription_event_local (
                 return true;
             }
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 inline bool wait_for_spot_service_message_local (
@@ -124,8 +116,7 @@ inline bool wait_for_spot_service_message_local (
   const char *expected_payload_,
   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
         zlink_routing_id_t source_rid;
@@ -153,9 +144,8 @@ inline bool wait_for_spot_service_message_local (
             if (matched)
                 return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 inline bool wait_for_publish_and_spot_service_message_local (
@@ -166,8 +156,7 @@ inline bool wait_for_publish_and_spot_service_message_local (
   const char *expected_payload_,
   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_msg_t part;
         const size_t payload_size = strlen (expected_payload_);
         TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, payload_size));
@@ -175,12 +164,12 @@ inline bool wait_for_publish_and_spot_service_message_local (
         TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
                                zlink_publish (xpub_, expected_topic_, &part, 1, 0));
         if (wait_for_spot_service_message_local (
-              spot_, expected_service_, expected_topic_, expected_payload_, 25)) {
+              spot_, expected_service_, expected_topic_, expected_payload_,
+              zlink_test_poll_step_ms)) {
             return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 inline bool try_recv_router_payload_local (void *router_,
@@ -212,11 +201,10 @@ inline bool wait_for_router_distribution_local (void *spot_,
                                                 void *router_b_,
                                                 int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
     bool saw_a = false;
     bool saw_b = false;
     int sent = 0;
-    for (int i = 0; i < attempts && (!saw_a || !saw_b); ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=, &saw_a, &saw_b, &sent] {
         char payload[32];
         snprintf (payload, sizeof (payload), "msg-%d", sent++);
 
@@ -235,9 +223,8 @@ inline bool wait_for_router_distribution_local (void *spot_,
             saw_a = true;
         if (!saw_b && try_recv_router_payload_local (router_b_, &recv_payload))
             saw_b = true;
-        msleep (25);
-    }
-    return saw_a && saw_b;
+        return saw_a && saw_b;
+    });
 }
 
 inline bool wait_for_router_set_distribution_local (
@@ -246,12 +233,12 @@ inline bool wait_for_router_set_distribution_local (
   const std::vector<void *> &routers_,
   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
     std::vector<bool> seen (routers_.size (), false);
     size_t seen_count = 0;
     int sent = 0;
 
-    for (int i = 0; i < attempts && seen_count < routers_.size (); ++i) {
+    return zlink_test_wait_until (
+      timeout_ms_, [=, &seen, &seen_count, &sent, &routers_] {
         char payload[32];
         snprintf (payload, sizeof (payload), "fanout-%d", sent++);
 
@@ -275,10 +262,8 @@ inline bool wait_for_router_set_distribution_local (
                 ++seen_count;
             }
         }
-        msleep (25);
-    }
-
-    return seen_count == routers_.size ();
+        return seen_count == routers_.size ();
+    });
 }
 
 inline void destroy_multi_service_fixture_local (void **spot_,

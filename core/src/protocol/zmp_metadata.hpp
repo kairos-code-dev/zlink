@@ -79,7 +79,7 @@ static inline void add_basic_properties (const options_t &options_,
     append_property (buf_, "Socket-Type", socket_type, strlen (socket_type));
 
     if (options_.type == ZLINK_CORE_SOCKET_DEALER || options_.type == ZLINK_CORE_SOCKET_ROUTER) {
-        append_property (buf_, "Identity", options_.routing_id,
+        append_property (buf_, "Routing-Id", options_.routing_id,
                          options_.routing_id_size);
     }
 }

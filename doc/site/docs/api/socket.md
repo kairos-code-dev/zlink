@@ -162,15 +162,14 @@ typedef enum zlink_send_flags_t
 } zlink_send_flags_t;
 ```
 
-`ZLINK_DONTWAIT` and `ZLINK_SEND_FLAG_DONTWAIT` remain in the header as
-backward-compatible aliases for `ZLINK_SEND_FLAGS_DONTWAIT`.
+`ZLINK_DONTWAIT` is the short public name for
+`ZLINK_SEND_FLAGS_DONTWAIT`.
 
 | Constant | Description |
 |---|---|
 | `ZLINK_SEND_FLAGS_NONE` | No flags; blocking send semantics. |
 | `ZLINK_SEND_FLAGS_DONTWAIT` | Non-blocking operation; return immediately with `ZLINK_SUBMIT_BACKPRESSURED` if the operation would block |
-| `ZLINK_DONTWAIT` | Backward-compatible alias of `ZLINK_SEND_FLAGS_DONTWAIT` |
-| `ZLINK_SEND_FLAG_DONTWAIT` | Backward-compatible alias of `ZLINK_SEND_FLAGS_DONTWAIT` |
+| `ZLINK_DONTWAIT` | Short name for `ZLINK_SEND_FLAGS_DONTWAIT` |
 
 ### Recv Flags
 

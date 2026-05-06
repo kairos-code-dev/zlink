@@ -411,14 +411,12 @@ bool connect_registry_with_retry (void *discovery_,
                                   const char *router_endpoint_,
                                   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         if (zlink_discovery_connect_registry (discovery_, router_endpoint_)
             == ZLINK_CONNECT_OK)
             return true;
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool rid_equals (const zlink_routing_id_t &lhs_,

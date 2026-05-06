@@ -159,15 +159,13 @@ typedef enum zlink_send_flags_t
 } zlink_send_flags_t;
 ```
 
-`ZLINK_DONTWAIT` 와 `ZLINK_SEND_FLAG_DONTWAIT` 는 헤더에
-`ZLINK_SEND_FLAGS_DONTWAIT` 의 backward-compatible alias 로 남아 있습니다.
+`ZLINK_DONTWAIT` 는 `ZLINK_SEND_FLAGS_DONTWAIT` 를 짧게 쓰는 공개 이름이다.
 
 | 상수 | 설명 |
 |---|---|
 | `ZLINK_SEND_FLAGS_NONE` | 플래그 없음; 블로킹 송신 동작. |
 | `ZLINK_SEND_FLAGS_DONTWAIT` | 논블로킹 모드; 블로킹 시 `ZLINK_SUBMIT_BACKPRESSURED` 반환 |
-| `ZLINK_DONTWAIT` | `ZLINK_SEND_FLAGS_DONTWAIT` 의 backward-compatible alias |
-| `ZLINK_SEND_FLAG_DONTWAIT` | `ZLINK_SEND_FLAGS_DONTWAIT` 의 backward-compatible alias |
+| `ZLINK_DONTWAIT` | `ZLINK_SEND_FLAGS_DONTWAIT` 를 짧게 쓰는 이름 |
 
 ### 수신 플래그
 

@@ -276,7 +276,6 @@ try {
         Copy-Item (Join-Path $RepoRoot "core\\include\\zlink.h") $IncludeDir
         Copy-Item (Join-Path $RepoRoot "core\\include\\zlink_enum.h") $IncludeDir
         Copy-Item (Join-Path $RepoRoot "core\\include\\zlink_errno.h") $IncludeDir
-        Copy-Item (Join-Path $RepoRoot "core\\include\\zlink_utils.h") $IncludeDir
         Write-Host "Copied public headers -> $IncludeDir"
     } else {
         throw "zlink.dll not found!"

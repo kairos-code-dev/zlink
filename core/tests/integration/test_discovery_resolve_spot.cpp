@@ -114,15 +114,13 @@ bool connect_discovery_registry_with_retry_local (void *discovery_,
                                                   const char *endpoint_,
                                                   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         if (zlink_discovery_connect_registry (discovery_, endpoint_)
             == ZLINK_CONNECT_OK) {
             return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 void enable_spot_owner_sync_local (void *discovery_)
@@ -138,16 +136,14 @@ bool wait_for_resolve_spot_local (void *discovery_,
                                   zlink_routing_id_t *owner_node_rid_out_,
                                   int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=] {
         if (zlink_discovery_resolve_spot (discovery_, spot_rid_,
                                           owner_node_rid_out_)
             == ZLINK_CONFIG_OK) {
             return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_resolve_owner_local (void *discovery_,
@@ -155,10 +151,9 @@ bool wait_for_resolve_owner_local (void *discovery_,
                                    const zlink_routing_id_t *expected_owner_,
                                    int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
     zlink_routing_id_t resolved_owner;
     memset (&resolved_owner, 0, sizeof (resolved_owner));
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=, &resolved_owner] {
         if (zlink_discovery_resolve_spot (discovery_, spot_rid_,
                                           &resolved_owner)
               == ZLINK_CONFIG_OK
@@ -169,9 +164,8 @@ bool wait_for_resolve_owner_local (void *discovery_,
                  == 0) {
             return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_resolve_spot_errno_local (void *discovery_,
@@ -179,10 +173,9 @@ bool wait_for_resolve_spot_errno_local (void *discovery_,
                                         int expected_errno_,
                                         int timeout_ms_)
 {
-    const int attempts = timeout_ms_ / 25;
     zlink_routing_id_t owner_node_rid;
     memset (&owner_node_rid, 0, sizeof (owner_node_rid));
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=, &owner_node_rid] {
         errno = 0;
         if (zlink_discovery_resolve_spot (discovery_, spot_rid_,
                                           &owner_node_rid)
@@ -190,9 +183,8 @@ bool wait_for_resolve_spot_errno_local (void *discovery_,
             && errno == expected_errno_) {
             return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_spot_owner_topology_entry_local (
@@ -205,7 +197,6 @@ bool wait_for_spot_owner_topology_entry_local (
     if (!registry_ || !service_name_ || !spot_rid_ || !expected_endpoint_)
         return false;
 
-    const int attempts = timeout_ms_ / 25;
     zlink_registry_topology_filter_t filter;
     memset (&filter, 0, sizeof (filter));
     filter.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
@@ -215,7 +206,7 @@ bool wait_for_spot_owner_topology_entry_local (
              sizeof (filter.channel_name) - 1);
     filter.routing_id = *spot_rid_;
 
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=, &filter] {
         zlink_registry_topology_entry_t entries[4];
         size_t count = 4;
         if (zlink_registry_topology_query (registry_, &filter, entries, &count)
@@ -227,9 +218,8 @@ bool wait_for_spot_owner_topology_entry_local (
                  == 0) {
             return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 bool wait_for_no_spot_owner_topology_entry_local (
@@ -241,7 +231,6 @@ bool wait_for_no_spot_owner_topology_entry_local (
     if (!registry_ || !service_name_ || !spot_rid_)
         return false;
 
-    const int attempts = timeout_ms_ / 25;
     zlink_registry_topology_filter_t filter;
     memset (&filter, 0, sizeof (filter));
     filter.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
@@ -251,7 +240,7 @@ bool wait_for_no_spot_owner_topology_entry_local (
              sizeof (filter.channel_name) - 1);
     filter.routing_id = *spot_rid_;
 
-    for (int i = 0; i < attempts; ++i) {
+    return zlink_test_wait_until (timeout_ms_, [=, &filter] {
         zlink_registry_topology_entry_t entries[4];
         size_t count = 4;
         if (zlink_registry_topology_query (registry_, &filter, entries, &count)
@@ -259,9 +248,8 @@ bool wait_for_no_spot_owner_topology_entry_local (
             && count == 0) {
             return true;
         }
-        msleep (25);
-    }
-    return false;
+        return false;
+    });
 }
 
 void test_discovery_resolve_spot_returns_owner_node_rid ()

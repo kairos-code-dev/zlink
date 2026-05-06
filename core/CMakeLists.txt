@@ -1275,7 +1275,7 @@ if(MINGW)
   endif()
 endif()
 
-set(public_headers include/zlink.h include/zlink_enum.h include/zlink_errno.h include/zlink_utils.h)
+set(public_headers include/zlink.h include/zlink_enum.h include/zlink_errno.h)
 
 set(readme-docs
     ${ZLINK_REPO_ROOT}/LICENSE)

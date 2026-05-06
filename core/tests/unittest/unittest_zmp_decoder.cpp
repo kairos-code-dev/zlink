@@ -150,7 +150,7 @@ void test_metadata_add_basic_properties ()
     const int rc = zlink::zmp_metadata::parse (&buf[0], buf.size (), out);
     TEST_ASSERT_EQUAL_INT (0, rc);
     TEST_ASSERT_EQUAL_STRING ("ROUTER", out["Socket-Type"].c_str ());
-    TEST_ASSERT_EQUAL_STRING ("RID", out["Identity"].c_str ());
+    TEST_ASSERT_EQUAL_STRING ("RID", out["Routing-Id"].c_str ());
 }
 
 void test_effective_ttl ()

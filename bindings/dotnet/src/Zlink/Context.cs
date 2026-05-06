@@ -50,6 +50,14 @@ public sealed class Context : IDisposable, IAsyncDisposable
             throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
     }
 
+    public void RecalculateAutoHwm()
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_ctx_auto_hwm_recalculate(_handle);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+    }
+
     public void Dispose()
     {
         if (_handle == IntPtr.Zero)

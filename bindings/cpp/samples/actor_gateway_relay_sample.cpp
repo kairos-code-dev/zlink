@@ -2,12 +2,6 @@
 
 #include "actor_sample_common.hpp"
 
-static zlink_actor_admission_result_t accept_actor (
-  void *, const char *, const zlink_msg_t *, void *)
-{
-    return ZLINK_ACTOR_ADMISSION_ACCEPT;
-}
-
 int main ()
 {
     zlink::context_t ctx;
@@ -16,49 +10,24 @@ int main ()
     zlink::service::spot_t play_spot = play_node.create_spot ();
 
     actor_sample_capture_t capture;
-    play_node.on_actor_admission (&accept_actor);
+    play_node.on_actor_admission (
+      [] (const std::string &, const zlink::message_t &) {
+          return zlink::actor_admission_result_t::accept;
+      });
 
     zlink::routing_id_t play_node_rid = play_node.routing_id ();
-    zlink::message_t create_message = zlink::message_t::from_string ("spawn");
-    zlink::actor_create_result_t created = gateway_node.create_remote_actor (
-      play_node_rid, "play-session-actor", create_message,
-      std::chrono::milliseconds (1000));
-    assert (created.status == zlink::actor_create_status_t::created);
+    zlink::service::actor_t play_actor =
+      play_node.create_actor ("play-session-actor");
+    assert (play_actor.valid ());
+    zlink::actor_ref_t concrete = play_actor.ref ();
 
-    zlink::actor_ref_t concrete = created.actor;
-
-    actor_sample_dispatch_state_t state {&play_spot, &play_node, &capture};
-    play_spot.on_dispatch_event ([] (void *,
-                                     const zlink_spot_dispatch_info_t *info,
-                                     void *userdata) {
-        actor_sample_dispatch_state_t *state =
-          static_cast<actor_sample_dispatch_state_t *> (userdata);
-        if (info->event == ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE) {
-            auto request =
-              state->spot->recv_actor_join (zlink::recv_flags_t::dontwait);
-            assert (request.has_value ());
-            zlink::message_t reply = zlink::message_t::from_string ("accepted");
-            state->spot->reply_actor_join (request->first, true, reply);
-            return;
-        }
-        if (info->event == ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE) {
-            zlink_actor_recv_info_t recv_info;
-            zlink_msg_t part;
-            zlink_part_flag_t more = ZLINK_PART_FINAL;
-            assert (zlink_spot_node_actor_recv_part (
-                      state->node->handle (),
-                      static_cast<const zlink_actor_ref_t *> (info->subject),
-                      &recv_info, &part, &more,
-                      ZLINK_RECV_FLAGS_DONTWAIT)
-                    == ZLINK_RECV_OK);
-            zlink::message_t msg;
-            assert (zlink_msg_move (msg.handle (), &part) == 0);
-            std::lock_guard<std::mutex> lock (state->capture->mutex);
-            state->capture->payload = msg.to_string ();
-            state->capture->actor_read = true;
-            state->capture->cv.notify_all ();
-        }
-    }, &state);
+    actor_sample_dispatch_state_t state {
+      &play_spot, &play_node, &play_actor, &capture};
+    play_spot.on_dispatch_event (
+      [&state] (zlink::service::spot_t &,
+                const zlink::spot_dispatch_info_t &info) {
+          actor_sample_dispatch (state, info);
+      });
 
     zlink::stream_socket_t stream (ctx);
     zlink::routing_id_t session = sample_rid ("gateway-session");

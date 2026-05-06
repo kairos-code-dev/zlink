@@ -10,6 +10,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -23,14 +24,15 @@ inline bool apply_spot_node_admission_hwm (SpotNode &node_,
 {
     const int pubsub = pubsub_hwm_ > 0 ? pubsub_hwm_ : 1;
     const int router = router_hwm_ > 0 ? router_hwm_ : 1;
-    return zlink_set_spot_node_option (
-             node_.handle (), ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, &pubsub,
-             sizeof (pubsub))
-             == ZLINK_CONFIG_OK
-           && zlink_set_spot_node_option (
-                node_.handle (), ZLINK_SPOT_NODE_OPT_ROUTER_HWM, &router,
-                sizeof (router))
-                == ZLINK_CONFIG_OK;
+    try {
+        node_.pubsub_admission_hwm (zlink::message_count_t::value (pubsub));
+        node_.router_admission_hwm (zlink::message_count_t::value (router));
+        return true;
+    }
+    catch (const zlink::config_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
 }
 
 struct control_connect_gate_t
@@ -108,14 +110,14 @@ try_publish_nowait (SpotHandle &spot_,
 }
 
 template<typename SpotHandle>
-inline zlink::maybe_t<zlink::topic_message_t>
+inline std::optional<zlink::topic_message_t>
 try_subscribe_nowait (SpotHandle &spot_)
 {
     std::optional<zlink::topic_message_t> message =
       spot_.subscribe (zlink::recv_flags_t::dontwait);
     if (!message.has_value ())
-        return zlink::maybe_t<zlink::topic_message_t> ();
-    return zlink::maybe_t<zlink::topic_message_t> (std::move (*message));
+        return std::nullopt;
+    return std::optional<zlink::topic_message_t> (std::move (*message));
 }
 
 inline void start_client_start_watcher (start_signal_state_t *start_gate_)
@@ -382,7 +384,7 @@ inline bool wait_for_ready_counts (SpotHandle &spot_,
                           + std::chrono::milliseconds (
                             std::max (1, timeout_ms_));
     while (std::chrono::steady_clock::now () < deadline) {
-        const zlink::maybe_t<zlink::topic_message_t> maybe_received =
+        const std::optional<zlink::topic_message_t> maybe_received =
           try_subscribe_nowait (spot_);
         if (!maybe_received) {
             if (!idle_fn_ ())
@@ -473,8 +475,10 @@ inline bool initialize_client_control_session (
     if (!control_spot->valid ())
         return false;
 
-    control_spot->options ().send_timeout (settings_.sndtimeo_ms);
-    control_spot->options ().recv_timeout (settings_.rcvtimeo_ms);
+    control_spot->options ().send_timeout (
+      std::chrono::milliseconds (settings_.sndtimeo_ms));
+    control_spot->options ().recv_timeout (
+      std::chrono::milliseconds (settings_.rcvtimeo_ms));
     control_spot->set_subscription (control_topic_.c_str ());
 
     *local_control_endpoint_out_ = local_control_endpoint;
@@ -519,7 +523,8 @@ inline bool initialize_client_slot (
         return false;
     }
 
-    slot_->spot->options ().recv_timeout (settings_.rcvtimeo_ms);
+    slot_->spot->options ().recv_timeout (
+      std::chrono::milliseconds (settings_.rcvtimeo_ms));
     slot_->spot->set_subscription (topic_);
 
     return true;

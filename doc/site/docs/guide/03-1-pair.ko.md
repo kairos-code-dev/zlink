@@ -1,3 +1,4 @@
+[English](03-1-pair.md) | [한국어](03-1-pair.ko.md)
 
 # PAIR 소켓
 
@@ -25,63 +26,44 @@ flowchart LR
 void *ctx = zlink_ctx_new();
 
 /* Server side */
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(server, "tcp://*:5555");
 
 /* Client side */
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, "tcp://127.0.0.1:5555");
 ```
 
 ### 메시지 교환
 
+PAIR는 recv-only 타입이다. 수신은 `zlink_recv()`와 poller를 조합해서
+처리한다. 양쪽 모두 send와 recv를 자유롭게 호출할 수 있다.
+
 ```c
-/* Define receive handler */
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    printf("Received: %.*s\n",
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-
-/* Server stays in recv model */
-void *server = zlink_socket(ctx, ZLINK_PAIR);
-
-/* Client (send only) */
-void *client = zlink_socket(ctx, ZLINK_PAIR);
-
-/* ... bind/connect ... */
-
 /* Client → Server */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 5);
 memcpy(zlink_msg_data(&msg), "Hello", 5);
 zlink_send(client, &msg, 1, 0);
-/* Server receives with zlink_recv() or poller + zlink_recv() */
 
-/* Server → Client (bidirectional, but client needs handler too for receiving) */
+/* Server receives with zlink_recv() (typically inside a poller loop) */
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+if (zlink_recv(server, &source_rid, &parts, &part_count, 0) == ZLINK_RECV_OK) {
+    printf("Received: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    zlink_multipart_close(parts, part_count);
+    free(parts);
+}
+
+/* Server → Client (bidirectional; client uses the same recv+poller pattern) */
 zlink_msg_t reply;
 zlink_msg_init_size(&reply, 5);
 memcpy(zlink_msg_data(&reply), "World", 5);
 zlink_send(server, &reply, 1, 0);
 ```
-
-??? example "Full Sample Code"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [pair_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/pair_callback_sample.c) |
-    | C++ | [pair_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pair_callback_sample.cpp) |
-    | Java | [PairCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PairCallbackSample.java) |
-    | Python | [pair_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pair_callback.py) |
-    | Node | [pair_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pair_callback_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PairCallback/Program.cs) |
-    | Rust | [pair_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_callback_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_callback_sample/main.go) |
 
 ### 멀티파트 데이터 전송
 
@@ -99,7 +81,7 @@ zlink_send(server, parts, 2, 0);
    parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
 ```
 
-> 참고: `core/tests/test_pair_inproc.cpp` — `test_zlink_send_multipart()` 테스트
+> 참고: `core/tests/integration/test_pair_inproc.cpp` — `test_zlink_send_multipart()` 테스트
 
 ### 수신 모드
 
@@ -107,21 +89,22 @@ PAIR의 public API는 recv/poller-only다.
 `zlink_recv()`로 동기 수신한다.
 
 ```c
-void *pair = zlink_socket(ctx, ZLINK_PAIR);
+void *pair = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(pair, "tcp://*:5556");
 
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-int rc = zlink_recv(pair, &source_rid, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_recv(
+    pair, &source_rid, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
 }
 ```
 
 > HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
-> `EAGAIN`을 반환한다. 고급 backpressure 패턴은
+> `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 고급 backpressure 패턴은
 > [성능 가이드](10-performance.ko.md)를 참고.
 
 ??? example "Full Sample Code"
@@ -182,15 +165,15 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 
 ### 패턴 1: 스레드 간 시그널링 (inproc)
 
-가장 일반적인 PAIR 사용 사례. inproc transport로 스레드 간 zero-copy 통신.
+가장 일반적인 PAIR 사용 사례. inproc transport로 스레드 간 제로카피(zero-copy, 메모리 복사 없이 전달) 통신.
 
 ```c
 /* Main thread */
-void *signal = zlink_socket(ctx, ZLINK_PAIR);
+void *signal = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(signal, "inproc://signal");
 
 /* Worker thread */
-void *worker_signal = zlink_socket(ctx, ZLINK_PAIR);
+void *worker_signal = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(worker_signal, "inproc://signal");
 
 /* Worker → Main: task completion signal */
@@ -202,7 +185,7 @@ zlink_send(worker_signal, &msg, 1, 0);
 /* Main: on_signal callback receives "DONE" asynchronously */
 ```
 
-> 참고: `core/tests/test_pair_inproc.cpp` — bind → connect → bounce 패턴
+> 참고: `core/tests/integration/test_pair_inproc.cpp` — bind → connect → bounce 패턴
 
 ### 패턴 2: TCP 통신
 
@@ -210,7 +193,7 @@ zlink_send(worker_signal, &msg, 1, 0);
 
 ```c
 /* Server: wildcard port */
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(server, "tcp://127.0.0.1:*");
 
 /* Query the assigned endpoint */
@@ -219,36 +202,36 @@ size_t len = sizeof(endpoint);
 zlink_get_option(server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* Client: connect using the queried endpoint */
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, endpoint);
 ```
 
-> 참고: `core/tests/test_pair_tcp.cpp` — `bind_loopback_ipv4()` + 와일드카드 바인드
+> 참고: `core/tests/integration/test_pair_tcp.cpp` — `bind_loopback_ipv4()` + 와일드카드 바인드
 
 ### 패턴 3: DNS 이름 연결
 
 호스트명으로도 연결 가능하다.
 
 ```c
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, "tcp://localhost:5555");
 ```
 
-> 참고: `core/tests/test_pair_tcp.cpp` — `test_pair_tcp_connect_by_name()`
+> 참고: `core/tests/integration/test_pair_tcp.cpp` — `test_pair_tcp_connect_by_name()`
 
 ### 패턴 4: IPC 통신
 
 같은 머신의 프로세스 간 통신 (Linux/macOS).
 
 ```c
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(server, "ipc:///tmp/myapp.ipc");
 
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, "ipc:///tmp/myapp.ipc");
 ```
 
-> 참고: `core/tests/test_pair_ipc.cpp` — IPC 경로 길이 검증 포함
+> 참고: `core/tests/integration/test_pair_ipc.cpp` — IPC 경로 길이 검증 포함
 
 ## 6. 주의사항
 
@@ -287,11 +270,11 @@ IPC 엔드포인트의 파일 경로는 시스템 제한(보통 108자)을 초�
 zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
 ```
 
-> 참고: `core/tests/test_pair_ipc.cpp` — `test_endpoint_too_long()`
+> 참고: `core/tests/integration/test_pair_ipc.cpp` — `test_endpoint_too_long()`
 
 ### HWM 동작
 
-피어가 없거나 느릴 때, 송신 메시지는 HWM까지 큐잉된다. HWM 초과 시 `zlink_send()`가 블록(기본) 또는 `EAGAIN` 반환(`ZLINK_DONTWAIT`).
+피어가 없거나 느릴 때, 송신 메시지는 HWM까지 큐잉된다. HWM 초과 시 `zlink_send()`가 블록(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환(`ZLINK_DONTWAIT`).
 
 ### LINGER 설정
 

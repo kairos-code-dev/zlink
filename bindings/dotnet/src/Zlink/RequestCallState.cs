@@ -54,6 +54,11 @@ internal sealed class RequestCallState
         _timeoutTimer = timeoutTimer;
     }
 
+    internal void Dispose()
+    {
+        DisposeRegistrations();
+    }
+
     private void DisposeRegistrations()
     {
         _timeoutTimer?.Dispose();

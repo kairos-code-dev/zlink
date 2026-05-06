@@ -22,6 +22,7 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -89,17 +90,19 @@ class ctx_guard_t
         zlink::context_options_t options = _ctx.options ();
         const int io_threads = bench_io_threads ();
         if (io_threads > 0)
-            (void) options.ioThreads (io_threads);
+            (void) options.io_threads (
+              zlink::io_thread_count_t::value (io_threads));
 
         const int max_sockets = bench_max_sockets ();
         if (max_sockets > 0)
-            (void) options.maxSockets (max_sockets);
+            (void) options.max_sockets (
+              zlink::socket_count_t::value (max_sockets));
 
     }
 
     ~ctx_guard_t ()
     {
-        if (_ctx.handle ())
+        if (_ctx.valid ())
             (void) _ctx.shutdown ();
     }
 
@@ -141,19 +144,19 @@ inline void apply_benchmark_hwm (perf_socket_t &socket,
 {
     const int snd_value = sndhwm > 0 ? sndhwm : 1;
     const int rcv_value = rcvhwm > 0 ? rcvhwm : 1;
-    (void) socket.set_option (zlink::socket_options::sndhwm, snd_value);
-    (void) socket.set_option (zlink::socket_options::rcvhwm, rcv_value);
+    (void) socket.set_option (zlink::compat::options::socket_options::sndhwm, snd_value);
+    (void) socket.set_option (zlink::compat::options::socket_options::rcvhwm, rcv_value);
 }
 
 inline void apply_debug_timeouts (perf_socket_t &socket,
                                   const std::string &)
 {
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
-    (void) socket.set_option (zlink::socket_options::sndtimeo,
+    (void) socket.set_option (zlink::compat::options::socket_options::sndtimeo,
                               settings.sndtimeo_ms);
-    (void) socket.set_option (zlink::socket_options::rcvtimeo,
+    (void) socket.set_option (zlink::compat::options::socket_options::rcvtimeo,
                               settings.rcvtimeo_ms);
-    (void) socket.set_option (zlink::socket_options::linger, 0);
+    (void) socket.set_option (zlink::compat::options::socket_options::linger, 0);
 }
 
 inline void apply_benchmark_socket_options (perf_socket_t &socket,
@@ -195,8 +198,8 @@ inline int poll_connect_ready_count (connect_monitor_t &mon)
 
     int ready = 0;
     for (;;) {
-        const zlink::maybe_t<zlink::monitor_event_t> ev =
-          mon.monitor->recv (zlink::non_blocking_t {});
+        const std::optional<zlink::monitor_event_t> ev =
+          mon.monitor->recv (zlink::recv_flags_t::dontwait);
         if (!ev)
             break;
         if (static_cast<uint64_t> (ev->event)
@@ -227,7 +230,7 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon,
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
     try {
-        poller.add (*mon.monitor, zlink::poll_event::pollin, NULL);
+        poller.add (*mon.monitor, zlink::poll_event::pollin, 0);
     }
     catch (const zlink::zlink_error_t &) {
         return false;
@@ -246,7 +249,8 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        const int rc = poller.wait_all (events, wait_ms);
+        events = poller.wait_all (wait_ms);
+        const int rc = static_cast<int> (events.size ());
         if (rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
@@ -297,7 +301,7 @@ inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
     try {
         for (size_t i = 0; i < active_indices.size (); ++i) {
             poller.add (*monitors[active_indices[i]].monitor,
-                        zlink::poll_event::pollin, NULL);
+                        zlink::poll_event::pollin, 0);
         }
     }
     catch (const zlink::zlink_error_t &) {
@@ -317,7 +321,8 @@ inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        const int rc = poller.wait_all (events, wait_ms);
+        events = poller.wait_all (wait_ms);
+        const int rc = static_cast<int> (events.size ());
         if (rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
@@ -408,7 +413,7 @@ inline std::string bind_and_resolve_endpoint (perf_socket_t &socket,
         return endpoint;
 
     std::string last;
-    if (socket.get_option (zlink::socket_options::last_endpoint, last) != 0)
+    if (socket.get_option (zlink::compat::options::socket_options::last_endpoint, last) != 0)
         return std::string ();
 
     return normalize_endpoint_host (last);

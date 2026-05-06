@@ -3,6 +3,9 @@
 package dev.kairoscode.zlink.service.spot;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.AutoHwmProfile;
+import dev.kairoscode.zlink.ConfigException;
+import dev.kairoscode.zlink.ConfigResult;
 import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RoutingId;
@@ -33,6 +36,7 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
@@ -40,6 +44,10 @@ import java.util.function.BiConsumer;
 public final class SpotNode implements AutoCloseable {
     private static final int OPT_SNDHWM = 23;
     private static final int OPT_RCVHWM = 24;
+    private static final int OPT_ROUTER_HWM_PROFILE = 0x360E;
+    private static final int OPT_ROUTER_HWM = 0x360F;
+    private static final int OPT_PUBSUB_HWM_PROFILE = 0x3610;
+    private static final int OPT_PUBSUB_HWM = 0x3611;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_ACTOR_ADMISSION =
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -267,12 +275,39 @@ public final class SpotNode implements AutoCloseable {
         synchronized (lifecycleLock) {
             if (isClosed()) {
                 spot.close();
-                throw new dev.kairoscode.zlink.ConfigException(
-                  dev.kairoscode.zlink.ConfigResult.INVALID_HANDLE);
+                throw new ConfigException(ConfigResult.INVALID_HANDLE);
             }
             liveSpots.add(spot);
         }
         return spot;
+    }
+
+    /** Returns a facade for the node entry spot. */
+    public Spot entrySpot() {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+            int rc = Native.spotNodeEntrySpot(handle, out);
+            if (rc != 0)
+                throw new ConfigException(ConfigResult.fromValue(rc));
+            return adoptSpot(out.get(ValueLayout.ADDRESS, 0));
+        }
+    }
+
+    /** Looks up a local spot by routing id and returns a facade when present. */
+    public Optional<Spot> spotLookup(RoutingId spotRid) {
+        Objects.requireNonNull(spotRid, "spotRid");
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+            int rc = Native.spotNodeSpotLookup(handle,
+              ActorInterop.nativeRoutingId(arena, spotRid), out);
+            if (rc == ConfigResult.NOT_FOUND.value())
+                return Optional.empty();
+            if (rc != 0)
+                throw new ConfigException(ConfigResult.fromValue(rc));
+            return Optional.of(adoptSpot(out.get(ValueLayout.ADDRESS, 0)));
+        }
     }
 
     /** Creates one local Actor owned by this node. */
@@ -486,6 +521,40 @@ public final class SpotNode implements AutoCloseable {
         socketOptions.setSubIntOption(OPT_RCVHWM, value);
     }
 
+    public AutoHwmProfile routerHwmProfile() {
+        return AutoHwmProfile.fromValue(getIntOption(OPT_ROUTER_HWM_PROFILE));
+    }
+
+    public void routerHwmProfile(AutoHwmProfile profile) {
+        Objects.requireNonNull(profile, "profile");
+        setIntOption(OPT_ROUTER_HWM_PROFILE, profile.value());
+    }
+
+    public int routerHwm() {
+        return getIntOption(OPT_ROUTER_HWM);
+    }
+
+    public void routerHwm(int value) {
+        setIntOption(OPT_ROUTER_HWM, value);
+    }
+
+    public AutoHwmProfile pubsubHwmProfile() {
+        return AutoHwmProfile.fromValue(getIntOption(OPT_PUBSUB_HWM_PROFILE));
+    }
+
+    public void pubsubHwmProfile(AutoHwmProfile profile) {
+        Objects.requireNonNull(profile, "profile");
+        setIntOption(OPT_PUBSUB_HWM_PROFILE, profile.value());
+    }
+
+    public int pubsubHwm() {
+        return getIntOption(OPT_PUBSUB_HWM);
+    }
+
+    public void pubsubHwm(int value) {
+        setIntOption(OPT_PUBSUB_HWM, value);
+    }
+
     /** Returns the current node status snapshot. */
     public SpotNodeStatus statusSnapshot() {
         try (Arena arena = Arena.ofConfined()) {
@@ -553,9 +622,9 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
-    /** Returns internal socket rows that actually exist on this node. */
-    public List<SpotNodeSocketSnapshotEntry> internalSocketsSnapshot() {
-        return internalSocketsSnapshot(null);
+    /** Returns diagnostic socket snapshot rows that exist on this node. */
+    public List<SpotNodeSocketSnapshotEntry> socketSnapshots() {
+        return socketSnapshots(null);
     }
 
     public List<SpotNodeSpotEntry> spotsSnapshot() {
@@ -624,8 +693,8 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
-    /** Returns internal socket rows matching the supplied filter. */
-    public List<SpotNodeSocketSnapshotEntry> internalSocketsSnapshot(
+    /** Returns diagnostic socket snapshot rows matching the supplied filter. */
+    public List<SpotNodeSocketSnapshotEntry> socketSnapshots(
       SpotNodeSocketSnapshotFilter filter) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
@@ -700,6 +769,45 @@ public final class SpotNode implements AutoCloseable {
     void releaseSpot(Spot spot) {
         synchronized (lifecycleLock) {
             liveSpots.remove(spot);
+        }
+    }
+
+    private Spot adoptSpot(MemorySegment spotHandle) {
+        if (spotHandle == null || spotHandle.address() == 0)
+            throw new ConfigException(ConfigResult.INVALID_HANDLE);
+        Spot spot = new Spot(this, spotHandle);
+        synchronized (lifecycleLock) {
+            if (isClosed()) {
+                spot.close();
+                throw new ConfigException(ConfigResult.INVALID_HANDLE);
+            }
+            liveSpots.add(spot);
+        }
+        return spot;
+    }
+
+    private int getIntOption(int option) {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
+            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
+            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
+            int rc = Native.getSpotNodeOption(handle, option, nativeValue, len);
+            if (rc != 0)
+                throw new ConfigException(ConfigResult.fromValue(rc));
+            return nativeValue.get(ValueLayout.JAVA_INT, 0);
+        }
+    }
+
+    private void setIntOption(int option, int value) {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
+            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
+            int rc = Native.setSpotNodeOption(handle, option, nativeValue,
+              ValueLayout.JAVA_INT.byteSize());
+            if (rc != 0)
+                throw new ConfigException(ConfigResult.fromValue(rc));
         }
     }
 

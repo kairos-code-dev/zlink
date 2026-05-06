@@ -381,7 +381,7 @@ stream에서 처리된다**.
 Actor 생성, Spot join/leave, 종료, STREAM session bind, C sample은
 [SPOT Actor 가이드](07-4-actor.ko.md)를 본다.
 
-## 8. 지금 공개된 poller와의 관계
+## 8. 지금 공개된 poller와의 관계, Spot 타이머
 
 현재 public poller는 `Spot` 전용 event kind와 subject를 함께 돌려주지 않는다.
 즉 지금 공개 계약에서는 `Spot`을 poller에 등록해서 dispatch callback과 같은 의미를
@@ -390,6 +390,19 @@ Actor 생성, Spot join/leave, 종료, STREAM session bind, C sample은
 따라서 SPOT의 subscribe, routed recv, channel reply, timer를 한 owner 기준으로
 순차 처리하려면 현재는 `zlink_spot_dispatch_event_handler()`를 사용하는 쪽이 맞다.
 `Spot` progress 하나만으로 channel reply completion을 포함한 모든 work가 진전된다.
+
+Spot의 I/O 스레드에서 실행되는 타이머를 만들려면 `zlink_timer_new()` 대신
+`zlink_spot_timer_new()`를 사용한다:
+
+```c
+void *timer = zlink_spot_timer_new(spot);
+zlink_timer_start(timer, 1000000000ULL, 0);  /* 1초 간격, 무한 반복 */
+zlink_timer_handler(timer, my_timer_fn, userdata);
+zlink_timer_destroy(&timer);
+```
+
+`zlink_spot_timer_new()`는 Spot 내부 I/O 컨텍스트에 타이머를 붙인다.
+타이머 콜백에서 외부 동기화 없이 Spot dispatch와 협력해야 할 때 사용한다.
 
 ## 9. Routed receive와 reply
 
@@ -524,6 +537,20 @@ Actor 상태 확인에는 `zlink_spot_node_actors_snapshot()`과
 `zlink_spot_actors_snapshot()`을 사용한다. snapshot의 unread count와 joined 상태는
 운영 진단용이다. 메시지를 처리하거나 흐름 제어를 결정할 때는 dispatch event와 recv
 결과를 기준으로 삼는다.
+
+routing id로 기존 `Spot` facade를 조회하려면:
+
+```c
+void *spot = NULL;
+zlink_config_result_t rc = zlink_spot_node_spot_lookup(node, &spot_rid, &spot);
+if (rc == ZLINK_CONFIG_OK) {
+    /* spot 사용 */
+    zlink_spot_destroy(&spot);  /* 사용 후 borrow된 facade를 닫는다 */
+}
+```
+
+반환된 facade는 borrow 관계다. 사용 후 `zlink_spot_destroy()`로 닫는다.
+기저 `SpotNode`는 영향받지 않는다.
 
 ## 14. Actor C sample
 

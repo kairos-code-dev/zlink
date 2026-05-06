@@ -49,7 +49,7 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 |------|------|
 | **하는 일** | pipe의 최대 메시지 수를 제한 |
 | **적용 위치** | `pipe_t::check_write()` |
-| **기본값** | context auto-HWM의 balanced profile. context auto-HWM을 끄면 `1000` 사용 |
+| **기본값** | balanced profile을 쓰는 자동 HWM. context auto-HWM을 끄면 `1000` 사용 |
 | **0** | 무제한 |
 | **영향** | HWM 도달 시 block 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환. LWM 이하로 drain되면 복구 |
 
@@ -121,6 +121,20 @@ zlink_set_option(socket, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
 
 음수는 `EINVAL`로 실패하며 기존 설정을 바꾸지 않는다. `ZLINK_OPT_SNDHWM` 또는
 `ZLINK_OPT_RCVHWM`을 직접 설정한 소켓에서는 그 수동 HWM이 계속 우선한다.
+
+### 수동 재계산 트리거
+
+런타임에 auto-HWM 프로파일이나 메시지 단위를 변경한 후, context 내 모든
+소켓에 즉시 재계산을 트리거하려면:
+
+```c
+zlink_ctx_auto_hwm_recalculate(ctx);
+```
+
+auto HWM이 비활성화(`ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 0`)된 경우 no-op이다.
+컨텍스트 레벨의 `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` 설정은 자동
+백그라운드 재계산 빈도를 제어한다. `zlink_ctx_auto_hwm_recalculate()` 호출은
+디바운스를 우회하고 즉시 실행된다.
 
 ---
 
@@ -519,6 +533,25 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 | XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (기본 `1`), `MANUAL`, `WELCOME_MSG` |
 | SUB/XSUB | `zlink_set_sub_option()` | 구독 관련 |
 | STREAM | `zlink_set_stream_option()` | `NOTIFY` |
+
+---
+
+## 소켓 Channel 이름
+
+Discovery 및 Registry 사용을 위해 임의의 소켓에 논리적 channel 이름을 지정한다.
+channel 이름은 Discovery와 Registry가 소켓의 서비스 역할을 식별하는 데 사용한다.
+
+```c
+/* channel 이름 설정 */
+zlink_socket_set_channel_name(socket, "price-feed");
+
+/* 읽기 */
+char buf[256];
+size_t len = 0;
+zlink_socket_get_channel_name(socket, buf, sizeof(buf), &len);
+```
+
+소켓이 Discovery에 attach된 이후에는 channel 이름 변경이 지원되지 않는다.
 
 ---
 [← 스레드 안전성](11-thread-safety.ko.md)

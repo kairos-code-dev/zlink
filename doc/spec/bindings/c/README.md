@@ -19,6 +19,27 @@ This means:
 - C does not add `try_send` / `try_recv` convenience functions as separate
   public surface
 
+## Design Basis
+
+The C binding follows the repository POSD design policy. The installed public
+header remains the simple interface; private helper headers, build layout, and
+runtime wiring stay hidden from callers.
+
+The C surface is intentionally close to `core/include/zlink.h`; that is a
+design constraint, not permission to add another shallow wrapper layer. A C API
+addition is valid only when it belongs in the core public header and gives the
+caller a stable contract. Local alias functions, alternate option bags, or
+compatibility names that merely forward to another `zlink_*` function increase
+the surface without reducing caller complexity and are not part of the binding
+contract.
+
+When a rule must be enforced in C, keep it in the narrowest owner:
+
+- value-size and enum validation belong at the public C entrypoint boundary
+- ownership transfer belongs to the message and part function contract
+- helper sequencing for higher-level bindings stays outside the public C API
+- build, packaging, and private helper layout do not change the public contract
+
 ## Public vs Internal Boundary
 
 For C, the public binding surface is the installed public header only.

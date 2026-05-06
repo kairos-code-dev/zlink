@@ -1,24 +1,13 @@
+[English](utilities.md) | [한국어](utilities.ko.md)
+
+[Spec Index](../README.md) · [Core Index](README.md)
 
 # Utilities
 
-Helper functions for atomic counters, scheduling timers, high-resolution
-timing, thread management, and miscellaneous operations. These utilities
-complement the core messaging API and are useful for building event loops,
-benchmarking, and managing background threads.
-
-## Callback Types
-
-```c
-typedef void (zlink_timer_fn)(int timer_id, void *arg);
-typedef void (zlink_thread_fn)(void *);
-```
-
-`zlink_timer_fn` is the callback signature for timer expiry notifications.
-The `timer_id` identifies which timer fired and `arg` is the user-provided
-context pointer passed when the timer was created.
-
-`zlink_thread_fn` is the entry-point signature for threads started with
-`zlink_thread_start`.
+Helper functions for atomic counters, timers, high-resolution timing, thread
+management, and miscellaneous operations. These utilities complement the core
+messaging API and are useful for building event loops, benchmarking, and
+managing background threads.
 
 ## Atomic Counter
 
@@ -36,7 +25,7 @@ must be destroyed with `zlink_atomic_counter_destroy`.
 Create a new atomic counter initialized to zero.
 
 ```c
-void *zlink_atomic_counter_new(void);
+void *zlink_atomic_counter_new (void);
 ```
 
 Allocates and returns an opaque handle to an atomic counter with an initial
@@ -55,7 +44,7 @@ value of zero.
 Set the counter to an explicit value.
 
 ```c
-void zlink_atomic_counter_set(void *counter_, int value_);
+void zlink_atomic_counter_set (void *counter_, int value_);
 ```
 
 Atomically replaces the current counter value with `value_`.
@@ -71,7 +60,7 @@ Atomically replaces the current counter value with `value_`.
 Increment the counter by one.
 
 ```c
-int zlink_atomic_counter_inc(void *counter_);
+int zlink_atomic_counter_inc (void *counter_);
 ```
 
 Atomically increments the counter and returns the previous value (the value
@@ -90,7 +79,7 @@ immediately before the increment).
 Decrement the counter by one.
 
 ```c
-int zlink_atomic_counter_dec(void *counter_);
+int zlink_atomic_counter_dec (void *counter_);
 ```
 
 Atomically decrements the counter and returns the previous value (the value
@@ -109,7 +98,7 @@ immediately before the decrement).
 Return the current counter value.
 
 ```c
-int zlink_atomic_counter_value(void *counter_);
+int zlink_atomic_counter_value (void *counter_);
 ```
 
 Reads the current value of the counter atomically.
@@ -127,7 +116,7 @@ Reads the current value of the counter atomically.
 Destroy the counter and release its memory.
 
 ```c
-void zlink_atomic_counter_destroy(void **counter_p_);
+void zlink_atomic_counter_destroy (void **counter_p_);
 ```
 
 Releases the counter handle. The pointer at `*counter_p_` is set to `NULL`
@@ -140,172 +129,212 @@ same counter.
 
 ---
 
-## Timers
-
-Scheduling timers allow you to register callbacks that fire after a specified
-interval. Timers are managed as a set: create a set with `zlink_timers_new`,
-add individual timers with `zlink_timers_add`, and drive execution by calling
-`zlink_timers_execute` from your event loop.
-
-### zlink_timers_new
-
-Create a new timer set.
+## Callback Types
 
 ```c
-void *zlink_timers_new(void);
+typedef void (*zlink_timer_handler_fn) (void *timer_,
+                                        uint64_t fire_count_,
+                                        void *userdata_);
+
+typedef void (zlink_thread_fn) (void *);
 ```
 
-Allocates and returns an opaque handle to an empty timer set.
+`zlink_timer_handler_fn` is the callback signature for timer fire
+notifications. `timer_` is the timer handle, `fire_count_` is the cumulative
+number of times the timer has fired, and `userdata_` is the pointer supplied
+when the handler was attached.
 
-**Returns:** Timer-set handle on success, or `NULL` on failure.
+`zlink_thread_fn` is the entry-point signature for threads started with
+`zlink_thread_start`.
+
+## Timers
+
+Timers provide nanosecond-resolution periodic or one-shot scheduling. Create
+a standalone timer with `zlink_timer_new`, or a timer associated with a spot
+handle using `zlink_spot_timer_new`. Timers can be consumed synchronously with
+`zlink_timer_recv` or driven by a callback with `zlink_timer_handler`. They
+can also be integrated into a poller with `zlink_poller_add_timer`.
+
+### zlink_timer_new
+
+Create a new standalone timer.
+
+```c
+void *zlink_timer_new (void);
+```
+
+Allocates and returns an opaque timer handle. Destroy with
+`zlink_timer_destroy` when no longer needed.
+
+**Returns:** Timer handle on success, or `NULL` on failure (errno is set).
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_timers_destroy`, `zlink_timers_add`
+**See also:** `zlink_spot_timer_new`, `zlink_timer_destroy`
 
 ---
 
-### zlink_timers_destroy
+### zlink_spot_timer_new
 
-Destroy a timer set and release all resources.
+Create a timer associated with a spot handle.
 
 ```c
-int zlink_timers_destroy(void **timers_p);
+void *zlink_spot_timer_new (void *spot_);
 ```
 
-Cancels all timers in the set and frees the handle. The pointer at
-`*timers_p` is set to `NULL` after destruction.
+Creates a timer that is bound to the given spot. The timer's lifecycle and
+event delivery are tied to the associated spot.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Parameters:**
 
-**Thread safety:** Must not be called while other threads are operating on the
-same timer set.
+| Name | Description |
+|------|-------------|
+| `spot_` | Spot handle to associate with the timer |
 
-**See also:** `zlink_timers_new`
+**Returns:** Timer handle on success, or `NULL` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread unless another operation is
+simultaneously mutating the same timer handle.
+
+**See also:** `zlink_timer_new`, `zlink_timer_destroy`
 
 ---
 
-### zlink_timers_add
+### zlink_timer_destroy
 
-Add a timer with the given interval and callback.
+Destroy a timer and release its resources.
 
 ```c
-int zlink_timers_add(void *timers, size_t interval, zlink_timer_fn handler, void *arg);
+zlink_close_result_t zlink_timer_destroy (void **timer_p_);
 ```
 
-Registers a new timer that fires after `interval` milliseconds. When the timer
-expires, `handler` is called with the timer's ID and the user-provided `arg`.
-The timer repeats automatically at the same interval until cancelled.
+Stops the timer if running and frees the handle. The pointer at `*timer_p_`
+is set to `NULL` after destruction.
 
-**Returns:** A non-negative timer ID on success, or `-1` on failure (errno is
-set).
+**Returns:** `ZLINK_CLOSE_OK` on success; otherwise a `zlink_close_result_t`
+value. `zlink_errno()` retains the detailed internal errno for diagnostics.
+
+**Thread safety:** Must not be called while another thread is using the same
+timer.
+
+**See also:** `zlink_timer_new`
+
+---
+
+### zlink_timer_start
+
+Start the timer with a nanosecond interval and repeat count.
+
+```c
+zlink_config_result_t zlink_timer_start (void *timer_,
+                                         uint64_t interval_ns_,
+                                         uint64_t repeat_count_);
+```
+
+Arms the timer to fire after `interval_ns_` nanoseconds. If `repeat_count_`
+is greater than zero, the timer fires that many times then stops automatically.
+If `repeat_count_` is zero, the timer repeats indefinitely until explicitly
+stopped.
+
+**Parameters:**
+
+| Name | Description |
+|------|-------------|
+| `timer_` | Timer handle |
+| `interval_ns_` | Interval between fires in nanoseconds |
+| `repeat_count_` | Number of times to fire (`0` = indefinite) |
+
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t`
+value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
-the same timer set.
+the same timer.
 
-**See also:** `zlink_timers_cancel`, `zlink_timers_set_interval`
-
----
-
-### zlink_timers_cancel
-
-Cancel a timer by its ID.
-
-```c
-int zlink_timers_cancel(void *timers, int timer_id);
-```
-
-Removes the timer from the set. Its callback will no longer be invoked.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Thread safety:** Must not be called concurrently with other operations on
-the same timer set.
-
-**See also:** `zlink_timers_add`
+**See also:** `zlink_timer_stop`
 
 ---
 
-### zlink_timers_set_interval
+### zlink_timer_stop
 
-Change the interval of an existing timer.
+Stop a running timer.
 
 ```c
-int zlink_timers_set_interval(void *timers, int timer_id, size_t interval);
+zlink_config_result_t zlink_timer_stop (void *timer_);
 ```
 
-Updates the timer's interval to `interval` milliseconds. The new interval
-takes effect after the current cycle completes.
+Disarms the timer. No further fire events will be generated until the timer
+is started again.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t`
+value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
-the same timer set.
+the same timer.
 
-**See also:** `zlink_timers_add`, `zlink_timers_reset`
+**See also:** `zlink_timer_start`
 
 ---
 
-### zlink_timers_reset
+### zlink_timer_recv
 
-Reset a timer's countdown to its full interval.
+Synchronously receive a timer fire event.
 
 ```c
-int zlink_timers_reset(void *timers, int timer_id);
+zlink_recv_result_t zlink_timer_recv (void *timer_, uint64_t *fire_count_out_);
 ```
 
-Restarts the timer's countdown from the beginning of its current interval,
-effectively postponing the next expiry.
+Waits for the timer to fire and writes the cumulative fire count into
+`fire_count_out_`. This provides a synchronous, poll-style interface to the
+timer.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Parameters:**
+
+| Name | Description |
+|------|-------------|
+| `timer_` | Timer handle |
+| `fire_count_out_` | Pointer to receive the cumulative fire count |
+
+**Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t`
+value. `ZLINK_RECV_NO_DATA` (internal `EAGAIN`) when the timer has stopped
+and no fire event remains to receive. `zlink_errno()` retains the detailed
+internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
-the same timer set.
+the same timer.
 
-**See also:** `zlink_timers_set_interval`
+**See also:** `zlink_timer_handler`, `zlink_timer_start`
 
 ---
 
-### zlink_timers_timeout
+### zlink_timer_handler
 
-Return the time until the next timer fires.
-
-```c
-long zlink_timers_timeout(void *timers);
-```
-
-Computes the number of milliseconds remaining until the earliest timer in the
-set expires. This value is suitable for passing directly as the `timeout_`
-argument to `zlink_poll`.
-
-**Returns:** Milliseconds until the next expiry, or `-1` if no timers are
-registered.
-
-**Thread safety:** Must not be called concurrently with other operations on
-the same timer set.
-
-**See also:** `zlink_timers_execute`, `zlink_poll`
-
----
-
-### zlink_timers_execute
-
-Execute all expired timers.
+Attach a callback handler to the timer.
 
 ```c
-int zlink_timers_execute(void *timers);
+zlink_handler_result_t zlink_timer_handler (void *timer_,
+                                            zlink_timer_handler_fn handler_,
+                                            void *userdata_);
 ```
 
-Checks every timer in the set and invokes the callback for each one whose
-interval has elapsed. Typically called in a loop together with
-`zlink_timers_timeout` and `zlink_poll`.
+Registers `handler_` to be called each time the timer fires. The callback
+receives the timer handle, cumulative fire count, and `userdata_`. Set
+`handler_` to `NULL` to detach a previously registered callback.
 
-**Returns:** `0` on success, or `-1` on failure (errno is set).
+**Parameters:**
+
+| Name | Description |
+|------|-------------|
+| `timer_` | Timer handle |
+| `handler_` | Callback function, or `NULL` to detach |
+| `userdata_` | Opaque pointer passed to the callback |
+
+**Returns:** `ZLINK_HANDLER_OK` on success; otherwise a `zlink_handler_result_t`
+value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
-the same timer set.
+the same timer.
 
-**See also:** `zlink_timers_timeout`, `zlink_timers_add`
+**See also:** `zlink_timer_recv`, `zlink_timer_start`
 
 ---
 
@@ -320,7 +349,7 @@ time in microseconds.
 Start a high-resolution stopwatch.
 
 ```c
-void *zlink_stopwatch_start(void);
+void *zlink_stopwatch_start (void);
 ```
 
 Captures the current time and returns an opaque handle used to measure elapsed
@@ -340,7 +369,7 @@ used by one thread at a time.
 Return elapsed microseconds without stopping the stopwatch.
 
 ```c
-unsigned long zlink_stopwatch_intermediate(void *watch_);
+unsigned long zlink_stopwatch_intermediate (void *watch_);
 ```
 
 Reads the elapsed time since `zlink_stopwatch_start` was called, without
@@ -361,7 +390,7 @@ on the same handle.
 Stop the stopwatch and return total elapsed microseconds.
 
 ```c
-unsigned long zlink_stopwatch_stop(void *watch_);
+unsigned long zlink_stopwatch_stop (void *watch_);
 ```
 
 Returns the total elapsed time since `zlink_stopwatch_start` was called and
@@ -383,7 +412,7 @@ the same handle.
 Sleep for the given number of seconds.
 
 ```c
-void zlink_sleep(int seconds_);
+void zlink_sleep (int seconds_);
 ```
 
 Suspends the calling thread for at least `seconds_` seconds. This is a
@@ -400,7 +429,7 @@ portable convenience wrapper around platform-specific sleep functions.
 Start a new thread running the given function.
 
 ```c
-void *zlink_thread_start(zlink_thread_fn *func_, void *arg_);
+void *zlink_thread_start (zlink_thread_fn *func_, void *arg_);
 ```
 
 Creates and starts a new operating-system thread that executes `func_` with
@@ -420,7 +449,7 @@ Creates and starts a new operating-system thread that executes `func_` with
 Wait for a thread to finish and release its handle.
 
 ```c
-void zlink_thread_join(void *thread_);
+void zlink_thread_join (void *thread_);
 ```
 
 Blocks the calling thread until the thread identified by `thread_` has

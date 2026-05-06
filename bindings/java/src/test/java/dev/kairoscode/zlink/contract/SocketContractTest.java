@@ -5,6 +5,7 @@ import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.PairSocket;
+import dev.kairoscode.zlink.Poller;
 import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.PubSocketOptions;
 import dev.kairoscode.zlink.RecvException;
@@ -22,6 +23,7 @@ import dev.kairoscode.zlink.StreamSocket;
 import dev.kairoscode.zlink.SubSocket;
 import dev.kairoscode.zlink.SubSocketOptions;
 import dev.kairoscode.zlink.TestSupport;
+import dev.kairoscode.zlink.Timer;
 import dev.kairoscode.zlink.TopicMessage;
 import dev.kairoscode.zlink.XPubSocket;
 import dev.kairoscode.zlink.XSubSocket;
@@ -30,7 +32,10 @@ import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.spot.SpotNode;
 import dev.kairoscode.zlink.service.registry.Registry;
+import dev.kairoscode.zlink.service.spot.ActorRef;
+import dev.kairoscode.zlink.service.spot.ActorRoute;
 import dev.kairoscode.zlink.service.spot.Spot;
+import dev.kairoscode.zlink.service.spot.SpotNodeActorEntry;
 import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -39,6 +44,7 @@ import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.CountDownLatch;
@@ -324,6 +330,17 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(SpotNode.class, "setRoutingId",
             RoutingId.class));
         assertTrue(hasPublicMethod(SpotNode.class, "routingId"));
+        assertTrue(hasPublicMethod(SpotNode.class, "entrySpot"));
+        assertTrue(hasPublicMethod(SpotNode.class, "spotLookup",
+            RoutingId.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "socketSnapshots"));
+        assertTrue(hasPublicMethod(SpotNode.class, "socketSnapshots",
+            dev.kairoscode.zlink.service.spot.SpotNodeSocketSnapshotFilter.class));
+        assertFalse(hasPublicMethod(SpotNode.class, "internalSocketsSnapshot"));
+        assertTrue(hasPublicMethod(SpotNode.class, "routerHwmProfile"));
+        assertTrue(hasPublicMethod(SpotNode.class, "routerHwm", int.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "pubsubHwmProfile"));
+        assertTrue(hasPublicMethod(SpotNode.class, "pubsubHwm", int.class));
         assertTrue(hasPublicMethod(Discovery.class, "resolveSpot",
             RoutingId.class));
         assertFalse(hasPublicMethod(Discovery.class, "bindRoute",
@@ -349,11 +366,36 @@ public class SocketContractTest {
         assertTrue(isPublicClass("dev.kairoscode.zlink.DisconnectReason"));
         assertTrue(isPublicClass("dev.kairoscode.zlink.ProtocolError"));
         assertFalse(isPublicClass("dev.kairoscode.zlink.StreamDispatchMode"));
-        assertFalse(isPublicClass("dev.kairoscode.zlink.SubscriptionEntry"));
+        assertTrue(isPublicClass("dev.kairoscode.zlink.SubscriptionEntry"));
         assertFalse(isPublicClass("dev.kairoscode.zlink.ZlinkVersion"));
         assertTrue(isPublicClass("dev.kairoscode.zlink.SocketType"));
-        assertFalse(hasPublicMethod(dev.kairoscode.zlink.MonitorSocket.class,
+        assertTrue(hasPublicMethod(SubSocketOptions.class, "subscriptionAt",
+            int.class));
+        assertTrue(hasPublicMethod(Spot.class, "options"));
+        assertTrue(hasPublicMethod(Poller.class, "add", Timer.class));
+        assertTrue(hasPublicMethod(Poller.class, "add", Timer.class,
+            Object.class));
+        assertTrue(hasPublicMethod(Poller.class, "remove", Timer.class));
+        assertTrue(hasPublicMethod(Poller.class, "readyTimer", int.class));
+        assertTrue(hasPublicMethod(dev.kairoscode.zlink.MonitorSocket.class,
             "recv", RecvFlags.class));
+    }
+
+    @Test
+    public void actorRouteSnapshotsUseOptionalJoinedSpotRid() {
+        RoutingId nodeRid = RoutingId.fromBytes(new byte[] {1});
+        ActorRef actor = new ActorRef(nodeRid, "actor", 1L);
+        Optional<RoutingId> joinedSpotRid =
+            Optional.of(RoutingId.fromBytes(new byte[] {2}));
+
+        ActorRoute route = new ActorRoute(actor, true, joinedSpotRid);
+        Optional<RoutingId> routeSpot = route.joinedSpotRid();
+        assertEquals(joinedSpotRid, routeSpot);
+
+        SpotNodeActorEntry entry = new SpotNodeActorEntry(actor, true,
+            joinedSpotRid, true, 0, 0L);
+        Optional<RoutingId> entrySpot = entry.joinedSpotRid();
+        assertEquals(joinedSpotRid, entrySpot);
     }
 
     @Test
@@ -495,7 +537,7 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(Spot.class, "monitorOpen", int.class));
             assertFalse(hasPublicMethod(dev.kairoscode.zlink.service.spot.SpotNode.class,
                 "monitorOpen", int.class));
-            assertFalse(hasPublicMethod(MonitorSocket.class, "recv",
+            assertTrue(hasPublicMethod(MonitorSocket.class, "recv",
                 RecvFlags.class));
             assertTrue(hasPublicMethod(PairSocket.class, "send", Message.class,
                 SendFlags.class));

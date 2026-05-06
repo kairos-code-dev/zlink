@@ -295,6 +295,32 @@ template<typename T> class has_routing_id_getter_t
     static const bool value = decltype (test<T> (0))::value;
 };
 
+template<typename T> class has_spot_node_hwm_options_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (
+        std::declval<const U &> ().router_admission_hwm_profile (),
+        std::declval<U &> ().router_admission_hwm_profile (
+          zlink::auto_hwm_profile::balanced),
+        std::declval<const U &> ().router_admission_hwm (),
+        std::declval<U &> ().router_admission_hwm (
+          zlink::message_count_t::value (1)),
+        std::declval<const U &> ().pubsub_admission_hwm_profile (),
+        std::declval<U &> ().pubsub_admission_hwm_profile (
+          zlink::auto_hwm_profile::balanced),
+        std::declval<const U &> ().pubsub_admission_hwm (),
+        std::declval<U &> ().pubsub_admission_hwm (
+          zlink::message_count_t::value (1)),
+        std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
 static_assert (has_subscribe_result_t<zlink::service::spot_t>::value,
                "spot_t must expose subscribe receive");
 static_assert (!has_try_subscribe_result_t<zlink::service::spot_t>::value,
@@ -344,6 +370,8 @@ static_assert (has_routing_id_getter_t<zlink::service::spot_t>::value,
                "spot_t must expose routing_id()");
 static_assert (has_routing_id_getter_t<zlink::service::spot_node_t>::value,
                "spot_node_t must expose routing_id()");
+static_assert (has_spot_node_hwm_options_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must expose typed admission HWM options");
 void test_registry_query_and_discovery_metadata ()
 {
     zlink::context_t ctx;
@@ -402,7 +430,22 @@ void test_spot_node_snapshot_contract ()
     const zlink::routing_id_t node_rid = zlink::routing_id_t::from_bytes (
       reinterpret_cast<const uint8_t *> ("spot-node-rid"), 13);
     node.set_routing_id (node_rid);
-    assert (node.routing_id ().to_string () == "spot-node-rid");
+    assert (node.routing_id ().to_bytes ()
+            == std::vector<uint8_t> ({'s', 'p', 'o', 't', '-', 'n', 'o',
+                                      'd', 'e', '-', 'r', 'i', 'd'}));
+
+    node.router_admission_hwm (zlink::message_count_t::value (2));
+    node.pubsub_admission_hwm (zlink::message_count_t::value (3));
+    assert (node.router_admission_hwm ().value () == 2);
+    assert (node.pubsub_admission_hwm ().value () == 3);
+    node.router_admission_hwm_profile (zlink::auto_hwm_profile::throughput);
+    node.pubsub_admission_hwm_profile (zlink::auto_hwm_profile::low_latency);
+    assert (
+      node.router_admission_hwm_profile ()
+      == zlink::auto_hwm_profile::throughput);
+    assert (
+      node.pubsub_admission_hwm_profile ()
+      == zlink::auto_hwm_profile::low_latency);
 }
 
 void test_unified_spot_self_delivery_recv_contract ()
@@ -434,7 +477,9 @@ void test_unified_spot_self_delivery_recv_contract ()
     const zlink::routing_id_t spot_rid = zlink::routing_id_t::from_bytes (
       reinterpret_cast<const uint8_t *> ("spot-self-rid"), 13);
     spot.set_routing_id (spot_rid);
-    assert (spot.routing_id ().to_string () == "spot-self-rid");
+    assert (spot.routing_id ().to_bytes ()
+            == std::vector<uint8_t> ({'s', 'p', 'o', 't', '-', 's', 'e',
+                                      'l', 'f', '-', 'r', 'i', 'd'}));
     spot.publish (service_name, "topic:service-self", outbound);
 
     std::optional<zlink::topic_message_t> inbound;

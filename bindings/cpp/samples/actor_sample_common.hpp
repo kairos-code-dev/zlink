@@ -25,6 +25,7 @@ struct actor_sample_dispatch_state_t
 {
     zlink::service::spot_t *spot;
     zlink::service::spot_node_t *node;
+    zlink::service::actor_t *actor;
     actor_sample_capture_t *capture;
 };
 
@@ -43,38 +44,29 @@ inline zlink::routing_id_t sample_rid (const char *text_)
       reinterpret_cast<const uint8_t *> (text_), std::strlen (text_));
 }
 
-inline void actor_sample_dispatch (void *,
-                                   const zlink_spot_dispatch_info_t *info_,
-                                   void *userdata_)
+inline void actor_sample_dispatch (
+  actor_sample_dispatch_state_t &state_,
+  const zlink::spot_dispatch_info_t &info_)
 {
-    actor_sample_dispatch_state_t *state =
-      static_cast<actor_sample_dispatch_state_t *> (userdata_);
-    if (info_->event == ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE) {
-        auto request = state->spot->recv_actor_join (zlink::recv_flags_t::dontwait);
+    if (info_.event == zlink::spot_dispatch_event_t::actor_join_readable) {
+        auto request = state_.spot->recv_actor_join (zlink::recv_flags_t::dontwait);
         assert (request.has_value ());
         zlink::message_t reply = zlink::message_t::from_string ("accepted");
-        state->spot->reply_actor_join (request->first, true, reply);
+        state_.spot->reply_actor_join (request->first, true, reply);
         return;
     }
 
-    if (info_->event == ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE) {
+    if (info_.event == zlink::spot_dispatch_event_t::actor_readable) {
+        assert (info_.actor.has_value ());
         for (;;) {
-            zlink_actor_recv_info_t recv_info;
-            zlink_msg_t native_part;
-            zlink_part_flag_t more = ZLINK_PART_FINAL;
-            zlink_recv_result_t rc = zlink_spot_node_actor_recv_part (
-              state->node->handle (),
-              static_cast<const zlink_actor_ref_t *> (info_->subject),
-              &recv_info, &native_part, &more, ZLINK_RECV_FLAGS_DONTWAIT);
-            if (rc == ZLINK_RECV_NO_DATA)
+            std::optional<zlink::actor_part_t> part =
+              state_.actor->recv_part (zlink::recv_flags_t::dontwait);
+            if (!part)
                 break;
-            assert (rc == ZLINK_RECV_OK);
-            zlink::message_t part;
-            assert (zlink_msg_move (part.handle (), &native_part) == 0);
-            std::lock_guard<std::mutex> lock (state->capture->mutex);
-            state->capture->payload += part.to_string ();
-            state->capture->actor_read = true;
-            state->capture->cv.notify_all ();
+            std::lock_guard<std::mutex> lock (state_.capture->mutex);
+            state_.capture->payload += part->part.to_string ();
+            state_.capture->actor_read = true;
+            state_.capture->cv.notify_all ();
         }
     }
 }

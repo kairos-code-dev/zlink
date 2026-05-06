@@ -7,6 +7,7 @@
 
 #include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <vector>
 
 namespace {
@@ -14,6 +15,12 @@ namespace {
 bool perf_debug_enabled ()
 {
     return std::getenv ("PERF_DEBUG") != NULL;
+}
+
+zlink::routing_id_t routing_id_from_ascii (const char *value_)
+{
+    return zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> (value_), std::strlen (value_));
 }
 
 void debug_log (const std::string &message_)
@@ -48,12 +55,12 @@ bool take_router_payload (std::vector<zlink::message_t> &parts,
 struct reply_state_t
 {
     bool pending;
-    zlink_routing_id_t client_id;
+    zlink::routing_id_t client_id;
     zlink::message_t payload;
 
     reply_state_t ()
         : pending (false),
-          client_id (zlink::empty_routing_id ()),
+          client_id (routing_id_from_ascii ("x")),
           payload ()
     {
     }
@@ -96,7 +103,7 @@ bool try_send_reply (::perf::socket_t &sock,
     }
 
     reply.pending = false;
-    reply.client_id = zlink::empty_routing_id ();
+    reply.client_id = routing_id_from_ascii ("x");
     reply.payload = zlink::message_t ();
     try {
         poller.modify (sock, zlink::poll_event::pollin);
@@ -132,7 +139,7 @@ bool perf_router_router_server (const std::string &lib_name,
 
     if (perf_debug_enabled ()) {
         int type = 0;
-        if (server.sock ().get_option (zlink::socket_options::type, &type) == 0)
+        if (server.sock ().get_option (zlink::compat::options::socket_options::type, &type) == 0)
             debug_log ("socket type=" + std::to_string (type));
         else
             debug_log ("socket type read failed errno=" + std::to_string (errno));
@@ -160,7 +167,9 @@ bool perf_router_router_server (const std::string &lib_name,
                           + std::chrono::seconds (deadline_seconds);
 
     zlink::poller_t poller;
-    (void) poller.add (server.sock (), zlink::poll_event::pollin, &server.sock ());
+    (void) poller.add (
+      server.sock (), zlink::poll_event::pollin,
+      reinterpret_cast<std::uintptr_t> (&server.sock ()));
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
     reply_state_t reply;
@@ -168,8 +177,8 @@ bool perf_router_router_server (const std::string &lib_name,
     bool stop_requested = false;
     bool failed = false;
     while (!stop_requested && std::chrono::steady_clock::now () < deadline) {
-        const int poll_rc =
-          poller.wait_all (events, compute_wait_ms (deadline));
+        events = poller.wait_all (compute_wait_ms (deadline));
+        const int poll_rc = static_cast<int> (events.size ());
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
@@ -181,11 +190,11 @@ bool perf_router_router_server (const std::string &lib_name,
 
         for (size_t i = 0; i < events.size () && !stop_requested; ++i) {
             ::perf::socket_t *sock =
-              static_cast<::perf::socket_t *> (events[i].user);
+              static_cast<::perf::socket_t *> (reinterpret_cast<void *> (events[i].user_token));
             if (!sock)
                 continue;
 
-            if ((events[i].revents & static_cast<short> (zlink::poll_event::pollout))
+            if ((static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event::pollout))
                 && reply.pending) {
                 if (!try_send_reply (*sock, poller, reply)) {
                     stop_requested = true;
@@ -196,8 +205,7 @@ bool perf_router_router_server (const std::string &lib_name,
                     continue;
             }
 
-            if (!(events[i].revents
-                  & static_cast<short> (zlink::poll_event::pollin))) {
+            if (!(static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event::pollin))) {
                 continue;
             }
 
@@ -246,7 +254,7 @@ bool perf_router_router_server (const std::string &lib_name,
                 }
 
                 reply.pending = true;
-                reply.client_id = *zlink::routing_id_native (*client_rid);
+                reply.client_id = *client_rid;
                 reply.payload = std::move (payload);
                 if (!try_send_reply (*sock, poller, reply)) {
                     debug_log ("try_send_reply failed errno=" + std::to_string (errno));

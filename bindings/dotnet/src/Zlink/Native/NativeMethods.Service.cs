@@ -187,6 +187,18 @@ internal static partial class NativeMethods
         SpotNodeOption option, IntPtr value, nuint valueSize);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_get_spot_node_option(IntPtr node,
+        SpotNodeOption option, IntPtr value, ref nuint valueSize);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_entry_spot(IntPtr node,
+        out IntPtr spot);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_spot_lookup(IntPtr node,
+        ref ZlinkRoutingId spotRid, out IntPtr spot);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_status_snapshot(IntPtr node,
         out ZlinkSpotNodeStatus status);
 
@@ -319,6 +331,19 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_request_progress_internal(IntPtr spot);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_set_spot_option(IntPtr spot,
+        SpotOption option, IntPtr value, nuint valueSize);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_get_spot_option(IntPtr spot,
+        SpotOption option, IntPtr value, ref nuint valueSize);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_subscription_at(IntPtr handle,
+        nuint index, IntPtr filterOut, ref nuint filterLength,
+        out int isPattern);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_publish_part(IntPtr spot,

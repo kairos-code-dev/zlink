@@ -43,7 +43,7 @@ template<typename SocketT> class has_raw_common_option_set_t
     template<typename T>
     static auto test (int)
       -> decltype (std::declval<T &> ().set_option (
-                      zlink::socket_option::linger, 0),
+                      zlink::compat::options::socket_option::linger, 0),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -58,7 +58,7 @@ template<typename SocketT> class has_raw_common_option_get_t
     template<typename T>
     static auto test (int)
       -> decltype (std::declval<T &> ().get_option (
-                      zlink::socket_option::linger,
+                      zlink::compat::options::socket_option::linger,
                       static_cast<int *> (NULL)),
                     std::true_type ());
 

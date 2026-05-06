@@ -138,7 +138,8 @@ class dealer_router_client_bench_t
               std::max<size_t> (_msg_size, perf_metric::header_size ()),
               k_payload_fill);
             (void) _poller.add (
-              sock, zlink::poll_event::pollin, &slot);
+              sock, zlink::poll_event::pollin,
+              reinterpret_cast<std::uintptr_t> (&slot));
         }
 
         const bool ready = perf::multi::wait_all_connect_ready (
@@ -285,8 +286,8 @@ class dealer_router_client_bench_t
         }
 
         while (std::chrono::steady_clock::now () < deadline) {
-            const int poll_rc =
-              _poller.wait_all (_poll_events, compute_wait_ms (deadline));
+            _poll_events = _poller.wait_all (compute_wait_ms (deadline));
+            const int poll_rc = static_cast<int> (_poll_events.size ());
             if (poll_rc < 0) {
                 if (errno == EINTR || errno == EAGAIN)
                     continue;
@@ -297,14 +298,12 @@ class dealer_router_client_bench_t
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 socket_state_t *state =
-                  static_cast<socket_state_t *> (_poll_events[i].user);
+                  static_cast<socket_state_t *> (reinterpret_cast<void *> (_poll_events[i].user_token));
                 if (!state || !state->sock)
                     continue;
 
-                if (!(_poll_events[i].revents
-                      & static_cast<short> (zlink::poll_event::pollin))) {
-                    if ((_poll_events[i].revents
-                         & static_cast<short> (zlink::poll_event::pollout))
+                if (!(static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event::pollin))) {
+                    if ((static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event::pollout))
                         && state->send_pending) {
                         if (!try_send_request (*state, phase))
                             return false;
@@ -350,8 +349,7 @@ class dealer_router_client_bench_t
                         return false;
                 }
 
-                if ((_poll_events[i].revents
-                     & static_cast<short> (zlink::poll_event::pollout))
+                if ((static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event::pollout))
                     && state->send_pending) {
                     if (!try_send_request (*state, phase))
                         return false;

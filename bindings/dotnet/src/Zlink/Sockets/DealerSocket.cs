@@ -40,6 +40,16 @@ public sealed class DealerSocket : MessageSocketBase
         Kernel.AttachDiscovery(discovery);
     }
 
+    public void SetChannelName(string channelName)
+    {
+        SetChannelNameCore(channelName);
+    }
+
+    public string GetChannelName()
+    {
+        return GetChannelNameCore();
+    }
+
     public Task<IReadOnlyList<Message>> RequestAsync(Message part,
         CancellationToken ct = default)
         => RequestAsync(new[] { part }, ct);

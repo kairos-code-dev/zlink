@@ -4,6 +4,8 @@
 
 #include "common.hpp"
 
+#include <functional>
+
 namespace zlink
 {
 
@@ -18,14 +20,14 @@ class thread_t
      */
     thread_t () : _thread (NULL) {}
 
-    /**
-     * @brief Start a new background thread.
-     * @param fn_ Thread function.
-     * @param arg_ User argument passed to `fn_`.
-     */
-    explicit thread_t (zlink_thread_fn *fn_, void *arg_)
-        : _thread (zlink_thread_start (fn_, arg_))
+    explicit thread_t (std::function<void()> fn_)
+        : _thread (NULL)
     {
+        std::function<void()> *state =
+          new std::function<void()> (std::move (fn_));
+        _thread = zlink_thread_start (&thread_t::run, state);
+        if (!_thread)
+            delete state;
     }
 
     /**
@@ -64,6 +66,19 @@ class thread_t
     }
 
   private:
+    static void run (void *arg_)
+    {
+        std::function<void()> *fn =
+          static_cast<std::function<void()> *> (arg_);
+        if (!fn)
+            return;
+        try {
+            (*fn) ();
+        } catch (...) {
+        }
+        delete fn;
+    }
+
     void *_thread;
 };
 

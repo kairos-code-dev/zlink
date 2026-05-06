@@ -96,6 +96,18 @@ Actor to a STREAM session, then query with `zlink_discovery_resolve_actor()`.
 Creating an Actor or joining a Spot alone does not publish an active route.
 **Active route is published only at STREAM session bind success.**
 
+To look up an existing Actor by id on the local node:
+
+```c
+zlink_actor_ref_t ref;
+zlink_config_result_t rc = zlink_spot_node_actor_lookup(node, "player-42", &ref);
+if (rc == ZLINK_CONFIG_OK) {
+    /* actor exists — use ref */
+} else if (rc == ZLINK_CONFIG_NOT_FOUND) {
+    /* no actor with that id */
+}
+```
+
 To create an Actor on a remote node, use
 `zlink_spot_node_create_remote_actor()`. When the same actor id already exists
 on the target node, the call returns the existing result without creating a
@@ -103,6 +115,29 @@ new slot. When the target node rejects the request in its admission handler,
 the request ends with a rejected result. Remote create-or-get does not go through
 the target Spot join handler. A newly created remote Actor belongs to the target
 node's Entry Spot.
+
+To control whether remote actor creation is permitted, register an admission
+handler on the `SpotNode`. The handler runs synchronously for every
+`zlink_spot_node_create_remote_actor()` request addressed to this node:
+
+```c
+zlink_actor_admission_result_t my_admission(
+  void *node_,
+  const char *actor_id_,
+  const zlink_msg_t *message_,
+  void *userdata_)
+{
+    /* inspect actor_id and optional payload message */
+    if (/* reject condition */)
+        return ZLINK_ACTOR_ADMISSION_REJECT;
+    return ZLINK_ACTOR_ADMISSION_ACCEPT;
+}
+
+zlink_spot_node_actor_admission_handler(node, my_admission, userdata);
+```
+
+Pass `NULL` as the handler to remove a previously registered handler (all
+remote create requests are accepted by default).
 
 ## 2. Spot join
 
@@ -177,6 +212,18 @@ If a bound STREAM session exists when destroy is called, the session Actor list
 entry and the Actor's bound session ref are cleaned up first. The client
 connection itself is not closed. To close the connection as well, call
 `zlink_spot_node_actor_close_bound_session()` before destroy.
+
+To push a message to the STREAM client from the Actor side (without a recv
+triggering it), use `zlink_spot_node_actor_send_bound_session_msg()`. This
+sends directly on the bound STREAM session. The Actor must have an active bound
+session; otherwise the call fails.
+
+```c
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 5);
+memcpy(zlink_msg_data(&msg), "push!", 5);
+zlink_spot_node_actor_send_bound_session_msg(node, &ref, &msg, 0);
+```
 
 ## 5. Actor C samples
 

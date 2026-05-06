@@ -1,3 +1,4 @@
+[English](03-1-pair.md) | [한국어](03-1-pair.ko.md)
 
 # PAIR Socket
 
@@ -25,63 +26,44 @@ flowchart LR
 void *ctx = zlink_ctx_new();
 
 /* Server side */
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(server, "tcp://*:5555");
 
 /* Client side */
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, "tcp://127.0.0.1:5555");
 ```
 
 ### Message Exchange
 
+PAIR is a recv-only type: receive is performed with `zlink_recv()`,
+typically inside a poller loop. Both peers can send and receive freely.
+
 ```c
-/* Define receive handler */
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    printf("Received: %.*s\n",
-           (int)zlink_msg_size(&parts[0]),
-           (char *)zlink_msg_data(&parts[0]));
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-
-/* Server stays in recv model */
-void *server = zlink_socket(ctx, ZLINK_PAIR);
-
-/* Client (send only) */
-void *client = zlink_socket(ctx, ZLINK_PAIR);
-
-/* ... bind/connect ... */
-
 /* Client → Server */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 5);
 memcpy(zlink_msg_data(&msg), "Hello", 5);
 zlink_send(client, &msg, 1, 0);
-/* Server receives with zlink_recv() or poller + zlink_recv() */
 
-/* Server → Client (bidirectional, but client needs handler too for receiving) */
+/* Server receives with zlink_recv() (typically inside a poller loop) */
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+if (zlink_recv(server, &source_rid, &parts, &part_count, 0) == ZLINK_RECV_OK) {
+    printf("Received: %.*s\n",
+           (int)zlink_msg_size(&parts[0]),
+           (char *)zlink_msg_data(&parts[0]));
+    zlink_multipart_close(parts, part_count);
+    free(parts);
+}
+
+/* Server → Client (bidirectional; client uses the same recv+poller pattern) */
 zlink_msg_t reply;
 zlink_msg_init_size(&reply, 5);
 memcpy(zlink_msg_data(&reply), "World", 5);
 zlink_send(server, &reply, 1, 0);
 ```
-
-??? example "Full Sample Code"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [pair_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/pair_callback_sample.c) |
-    | C++ | [pair_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pair_callback_sample.cpp) |
-    | Java | [PairCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PairCallbackSample.java) |
-    | Python | [pair_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pair_callback.py) |
-    | Node | [pair_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pair_callback_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PairCallback/Program.cs) |
-    | Rust | [pair_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pair_callback_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pair_callback_sample/main.go) |
 
 ### Sending Multipart Data
 
@@ -99,7 +81,7 @@ zlink_send(server, parts, 2, 0);
    parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
 ```
 
-> Reference: `core/tests/test_pair_inproc.cpp` -- `test_zlink_send_multipart()` test
+> Reference: `core/tests/integration/test_pair_inproc.cpp` -- `test_zlink_send_multipart()` test
 
 ### Receive Modes
 
@@ -107,21 +89,23 @@ PAIR is recv/poller-only in the public API.
 Use `zlink_recv()` to receive synchronously.
 
 ```c
-void *pair = zlink_socket(ctx, ZLINK_PAIR);
+void *pair = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(pair, "tcp://*:5556");
 
 zlink_routing_id_t source_rid;
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
-int rc = zlink_recv(pair, &source_rid, &parts, &part_count, 0);
-if (rc == 0) {
+zlink_recv_result_t rc = zlink_recv(
+    pair, &source_rid, &parts, &part_count, 0 /* flags */);
+if (rc == ZLINK_RECV_OK) {
     /* process parts[0..part_count-1] */
     zlink_multipart_close(parts, part_count);
 }
 ```
 
 > When HWM is reached, `zlink_send()` blocks (default) or returns
-> `EAGAIN` with `ZLINK_DONTWAIT`. For advanced backpressure patterns,
+> `ZLINK_SUBMIT_BACKPRESSURED` with `ZLINK_DONTWAIT`. For advanced
+> backpressure patterns,
 > see [Performance Guide](10-performance.md).
 
 ??? example "Full Sample Code"
@@ -186,11 +170,11 @@ The most common PAIR use case. Zero-copy communication between threads via the i
 
 ```c
 /* Main thread */
-void *signal = zlink_socket(ctx, ZLINK_PAIR);
+void *signal = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(signal, "inproc://signal");
 
 /* Worker thread */
-void *worker_signal = zlink_socket(ctx, ZLINK_PAIR);
+void *worker_signal = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(worker_signal, "inproc://signal");
 
 /* Worker → Main: task completion signal */
@@ -202,7 +186,7 @@ zlink_send(worker_signal, &msg, 1, 0);
 /* Main: on_signal callback receives "DONE" asynchronously */
 ```
 
-> Reference: `core/tests/test_pair_inproc.cpp` -- bind → connect → bounce pattern
+> Reference: `core/tests/integration/test_pair_inproc.cpp` -- bind → connect → bounce pattern
 
 ### Pattern 2: TCP Communication
 
@@ -210,7 +194,7 @@ zlink_send(worker_signal, &msg, 1, 0);
 
 ```c
 /* Server: wildcard port */
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(server, "tcp://127.0.0.1:*");
 
 /* Query the assigned endpoint */
@@ -219,36 +203,36 @@ size_t len = sizeof(endpoint);
 zlink_get_option(server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* Client: connect using the queried endpoint */
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, endpoint);
 ```
 
-> Reference: `core/tests/test_pair_tcp.cpp` -- `bind_loopback_ipv4()` + wildcard bind
+> Reference: `core/tests/integration/test_pair_tcp.cpp` -- `bind_loopback_ipv4()` + wildcard bind
 
 ### Pattern 3: Connection by DNS Name
 
 You can also connect using a hostname.
 
 ```c
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, "tcp://localhost:5555");
 ```
 
-> Reference: `core/tests/test_pair_tcp.cpp` -- `test_pair_tcp_connect_by_name()`
+> Reference: `core/tests/integration/test_pair_tcp.cpp` -- `test_pair_tcp_connect_by_name()`
 
 ### Pattern 4: IPC Communication
 
 Inter-process communication on the same machine (Linux/macOS).
 
 ```c
-void *server = zlink_socket(ctx, ZLINK_PAIR);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_bind(server, "ipc:///tmp/myapp.ipc");
 
-void *client = zlink_socket(ctx, ZLINK_PAIR);
+void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
 zlink_connect(client, "ipc:///tmp/myapp.ipc");
 ```
 
-> Reference: `core/tests/test_pair_ipc.cpp` -- includes IPC path length validation
+> Reference: `core/tests/integration/test_pair_ipc.cpp` -- includes IPC path length validation
 
 ## 6. Caveats
 
@@ -287,11 +271,11 @@ The file path of an IPC endpoint cannot exceed the system limit (typically 108 c
 zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
 ```
 
-> Reference: `core/tests/test_pair_ipc.cpp` -- `test_endpoint_too_long()`
+> Reference: `core/tests/integration/test_pair_ipc.cpp` -- `test_endpoint_too_long()`
 
 ### HWM Behavior
 
-When there is no peer or the peer is slow, outgoing messages are queued up to the HWM. When the HWM is exceeded, `zlink_send()` blocks (default) or returns `EAGAIN` (`ZLINK_DONTWAIT`).
+When there is no peer or the peer is slow, outgoing messages are queued up to the HWM. When the HWM is exceeded, `zlink_send()` blocks (default) or returns `ZLINK_SUBMIT_BACKPRESSURED` (`ZLINK_DONTWAIT`).
 
 ### LINGER Setting
 

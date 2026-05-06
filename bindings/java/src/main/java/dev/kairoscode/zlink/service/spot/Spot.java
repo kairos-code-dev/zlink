@@ -140,15 +140,29 @@ public final class Spot implements AutoCloseable {
     private volatile RuntimeException callbackFailure;
     private final SpotRoutedSupport routedSupport;
     private final SpotNode ownerNode;
+    private final SpotOptions options;
 
     /** Creates a unified spot facade bound to the supplied node. */
     Spot(SpotNode node) {
         Objects.requireNonNull(node, "node");
-        this.ownerNode = node;
-        this.handle = Native.spotNew(node.handle());
-        if (handle == null || handle.address() == 0)
+        MemorySegment nativeHandle = Native.spotNew(node.handle());
+        if (nativeHandle == null || nativeHandle.address() == 0)
             throw ZlinkException.fromLastError("zlink_spot_new");
+        this.ownerNode = node;
+        this.handle = nativeHandle;
         this.routedSupport = new SpotRoutedSupport(this);
+        this.options = new SpotOptions(this);
+    }
+
+    Spot(SpotNode node, MemorySegment handle) {
+        Objects.requireNonNull(node, "node");
+        Objects.requireNonNull(handle, "handle");
+        if (handle.address() == 0)
+            throw new IllegalArgumentException("spot handle must not be null");
+        this.ownerNode = node;
+        this.handle = handle;
+        this.routedSupport = new SpotRoutedSupport(this);
+        this.options = new SpotOptions(this);
     }
 
     Spot(MemorySegment handle) {
@@ -158,6 +172,7 @@ public final class Spot implements AutoCloseable {
         this.ownerNode = null;
         this.handle = handle;
         this.routedSupport = new SpotRoutedSupport(this);
+        this.options = new SpotOptions(this);
     }
 
     /** Returns the native spot handle. */
@@ -172,6 +187,11 @@ public final class Spot implements AutoCloseable {
 
     MemorySegment ownerNodeHandleInternal() {
         return ownerNode == null ? MemorySegment.NULL : ownerNode.handleInternal();
+    }
+
+    public SpotOptions options() {
+        ensureOpen();
+        return options;
     }
 
     /** Sets the logical routing id for this spot. */

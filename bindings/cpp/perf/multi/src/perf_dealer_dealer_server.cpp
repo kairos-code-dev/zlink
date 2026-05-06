@@ -56,7 +56,9 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
                           + std::chrono::seconds (active_seconds);
 
     zlink::poller_t poller;
-    (void) poller.add (server.sock (), zlink::poll_event::pollin, &server.sock ());
+    (void) poller.add (
+      server.sock (), zlink::poll_event::pollin,
+      reinterpret_cast<std::uintptr_t> (&server.sock ()));
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
     bool stop_requested = false;
@@ -74,7 +76,8 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        const int poll_rc = poller.wait_all (events, wait_ms);
+        events = poller.wait_all (wait_ms);
+        const int poll_rc = static_cast<int> (events.size ());
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
@@ -86,7 +89,7 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
 
         for (size_t i = 0; i < events.size () && !stop_requested; ++i) {
             ::perf::socket_t *sock =
-              static_cast<::perf::socket_t *> (events[i].user);
+              static_cast<::perf::socket_t *> (reinterpret_cast<void *> (events[i].user_token));
             if (!sock)
                 continue;
 

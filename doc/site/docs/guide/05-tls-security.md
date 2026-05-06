@@ -9,12 +9,12 @@ zlink natively supports `tls://` and `wss://` transports through OpenSSL. Encryp
 For SPOT services, TLS/WSS configuration is node-owned. Apply
 `zlink_set_tls_server()` / `zlink_set_tls_client()` to the `SpotNode`
 handle before bind/connect. Unified `spot` and SPOT child pub/sub handles
-are not TLS configuration surfaces and fail with `ENOTSUP`.
+are not TLS configuration surfaces and return `ZLINK_CONFIG_NOT_SUPPORTED`.
 
 ## 2. TLS Server Setup
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_ROUTER);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 
 /* Set certificate and key (before bind) */
 zlink_set_tls_server(socket, "/path/to/server.crt", "/path/to/server.key", 0);
@@ -26,7 +26,7 @@ zlink_bind(socket, "tls://*:5555");
 ## 3. TLS Client Setup
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_DEALER);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 
 /* Set CA certificate and hostname verification */
 zlink_set_tls_client(socket, "/path/to/ca.crt", "server.example.com", 0);
@@ -42,7 +42,7 @@ WSS is a transport that adds TLS encryption to ws. It requires additional config
 ### WSS Server
 
 ```c
-void *socket = zlink_socket(ctx, ZLINK_STREAM);
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_STREAM);
 
 /* Set TLS certificate/key */
 zlink_set_tls_server(socket, "/path/to/cert.pem", "/path/to/key.pem", 0);
@@ -53,7 +53,7 @@ zlink_bind(socket, "wss://*:8443");
 
 ### WSS Client (External Raw Client)
 
-`ZLINK_STREAM` is server-only. For WSS clients, use an external WebSocket/TLS client stack.
+`ZLINK_SOCKET_STREAM` is server-only. For WSS clients, use an external WebSocket/TLS client stack.
 
 Conceptual client requirements:
 
@@ -265,12 +265,12 @@ int main(void) {
     void *ctx = zlink_ctx_new();
 
     /* TLS Server */
-    void *server = zlink_socket(ctx, ZLINK_PAIR);
+    void *server = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
     zlink_set_tls_server(server, "server.crt", "server.key", 0);
     zlink_bind(server, "tls://*:5555");
 
     /* TLS Client */
-    void *client = zlink_socket(ctx, ZLINK_PAIR);
+    void *client = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
     zlink_set_tls_client(client, "ca.crt", "localhost", 0);
     zlink_connect(client, "tls://127.0.0.1:5555");
 
@@ -295,7 +295,7 @@ int main(void) {
 void *ctx = zlink_ctx_new();
 
 /* WSS Server (STREAM) */
-void *server = zlink_socket(ctx, ZLINK_STREAM);
+void *server = zlink_socket(ctx, ZLINK_SOCKET_STREAM);
 zlink_set_tls_server(server, "server.crt", "server.key", 0);
 int linger = 0;
 zlink_set_option(server, ZLINK_OPT_LINGER, &linger, sizeof(linger));

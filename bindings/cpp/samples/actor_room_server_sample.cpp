@@ -10,8 +10,12 @@ int main ()
     zlink::service::actor_t actor = node.create_actor ("room-player-1");
 
     actor_sample_capture_t capture;
-    actor_sample_dispatch_state_t state {&spot, &node, &capture};
-    spot.on_dispatch_event (&actor_sample_dispatch, &state);
+    actor_sample_dispatch_state_t state {&spot, &node, &actor, &capture};
+    spot.on_dispatch_event (
+      [&state] (zlink::service::spot_t &,
+                const zlink::spot_dispatch_info_t &info) {
+          actor_sample_dispatch (state, info);
+      });
 
     zlink::stream_socket_t stream (ctx);
     zlink::routing_id_t session = sample_rid ("room-session");

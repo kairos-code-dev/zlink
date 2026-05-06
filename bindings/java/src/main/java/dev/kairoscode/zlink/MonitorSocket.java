@@ -74,20 +74,26 @@ public final class MonitorSocket implements AutoCloseable {
     }
 
     public MonitorEvent recv() {
+        return recv(RecvFlags.NONE);
+    }
+
+    public MonitorEvent recv(RecvFlags flags) {
+        Objects.requireNonNull(flags, "flags");
         ensureOpen();
-        return Native.monitorRecv(handle, RecvFlags.NONE.value());
+        try {
+            return Native.monitorRecv(handle, flags.value());
+        } catch (RecvException ex) {
+            if (flags == RecvFlags.DONT_WAIT
+                && ex.getResult() == RecvResult.NO_DATA) {
+                return null;
+            }
+            throw ex;
+        }
     }
 
     Optional<MonitorEvent> recvNoWait() {
         ensureOpen();
-        try {
-            return Optional.of(Native.monitorRecv(handle,
-              RecvFlags.DONT_WAIT.value()));
-        } catch (RecvException ex) {
-            if (ex.getResult() == RecvResult.NO_DATA)
-                return Optional.empty();
-            throw ex;
-        }
+        return Optional.ofNullable(recv(RecvFlags.DONT_WAIT));
     }
 
     public MonitorSnapshot snapshot() {

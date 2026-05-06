@@ -104,8 +104,8 @@ bool run_phase (::perf::socket_t &publisher,
             return false;
         }
 
-        const int poll_rc =
-          poller.wait_all (events, compute_wait_ms (settings, deadline));
+        events = poller.wait_all (compute_wait_ms (settings, deadline));
+        const int poll_rc = static_cast<int> (events.size ());
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;

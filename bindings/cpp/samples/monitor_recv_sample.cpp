@@ -12,8 +12,8 @@ int main ()
     zlink::monitor_handle_t client_monitor =
       client.monitor_handle (zlink::monitor_event::connection_ready);
 
-    assert (!server_monitor.recv (zlink::non_blocking_t {}));
-    assert (!client_monitor.recv (zlink::non_blocking_t {}));
+    assert (!server_monitor.recv (zlink::recv_flags_t::dontwait));
+    assert (!client_monitor.recv (zlink::recv_flags_t::dontwait));
 
     server.bind ("tcp://127.0.0.1:0");
     const std::string endpoint = server.options ().last_endpoint ();
@@ -28,8 +28,8 @@ int main ()
     assert (client_event.has_value ());
     assert (server_event->event == zlink::monitor_event::connection_ready);
     assert (client_event->event == zlink::monitor_event::connection_ready);
-    assert (!server_monitor.recv (zlink::non_blocking_t {}));
-    assert (!client_monitor.recv (zlink::non_blocking_t {}));
+    assert (!server_monitor.recv (zlink::recv_flags_t::dontwait));
+    assert (!client_monitor.recv (zlink::recv_flags_t::dontwait));
 
     std::printf (
       "[monitor/recv] recv: \"connection-ready\" -> recv(non_blocking): empty\n");

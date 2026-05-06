@@ -59,11 +59,13 @@ void apply_socket_options (SocketLike &socket_,
                            const perf::multi::multi_bench_settings_t &settings_)
 {
     zlink::common_socket_options_t options = socket_.options ();
-    options.send_hwm (settings_.sndhwm > 0 ? settings_.sndhwm : 1);
-    options.recv_hwm (settings_.rcvhwm > 0 ? settings_.rcvhwm : 1);
-    options.send_timeout (settings_.sndtimeo_ms);
-    options.recv_timeout (settings_.rcvtimeo_ms);
-    options.linger (0);
+    options.send_hwm (
+      zlink::message_count_t::value (settings_.sndhwm > 0 ? settings_.sndhwm : 1));
+    options.recv_hwm (
+      zlink::message_count_t::value (settings_.rcvhwm > 0 ? settings_.rcvhwm : 1));
+    options.send_timeout (std::chrono::milliseconds (settings_.sndtimeo_ms));
+    options.recv_timeout (std::chrono::milliseconds (settings_.rcvtimeo_ms));
+    options.linger (std::chrono::milliseconds (0));
 }
 
 class spot_reqrep_client_bench_t

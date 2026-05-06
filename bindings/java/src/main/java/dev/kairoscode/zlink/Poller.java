@@ -16,6 +16,7 @@ public final class Poller implements AutoCloseable {
     private static final long POLLER_EVENT_SIZE = 48;
     private static final long EVENT_SOCKET_OFFSET = 8;
     private static final long EVENT_FD_OFFSET = 16;
+    private static final long EVENT_TIMER_OFFSET = 24;
     private static final long EVENT_USER_DATA_OFFSET = 32;
     private static final long EVENT_EVENTS_OFFSET = 40;
 
@@ -84,6 +85,22 @@ public final class Poller implements AutoCloseable {
         addFd(fd, PollEventType.combine(events), tag);
     }
 
+    public void add(Timer timer) {
+        add(timer, null);
+    }
+
+    public void add(Timer timer, Object tag) {
+        ensureOpen();
+        Objects.requireNonNull(timer, "timer");
+        MemorySegment timerHandle = timer.handle();
+        PollItem item = newPollItem(null, MemorySegment.NULL, timer,
+          timerHandle, 0, 0, tag, false, true);
+        int rc = Native.pollerAddTimer(handle, timerHandle, item.userData);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_poller_add_timer");
+        registerItem(item);
+    }
+
     public void modify(Socket socket, int events) {
         ensureOpen();
         Objects.requireNonNull(socket, "socket");
@@ -140,6 +157,19 @@ public final class Poller implements AutoCloseable {
         return true;
     }
 
+    public boolean remove(Timer timer) {
+        ensureOpen();
+        Objects.requireNonNull(timer, "timer");
+        int index = findTimer(timer.handle());
+        if (index < 0)
+            return false;
+        int rc = Native.pollerRemoveTimer(handle, timer.handle());
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_poller_remove_timer");
+        unregisterItem(index);
+        return true;
+    }
+
     public void clear() {
         ensureOpen();
         int rc = Native.pollerDestroy(handle);
@@ -172,24 +202,19 @@ public final class Poller implements AutoCloseable {
             lastReadyCount = 0;
             return 0;
         }
-        MemorySegment event = ensureNativeEvents(1);
-        int readyCount = 0;
-        int timeout = timeoutMs;
-        while (readyCount < items.size()) {
-            int rc = Native.pollerWait(handle, event, timeout);
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_poller_wait");
-            if (rc == 0)
-                break;
-            ensureReadyCacheCapacity(readyCount + 1);
-            long base = 0L;
-            readyReventsCache[readyCount] = event.get(ValueLayout.JAVA_SHORT,
+        MemorySegment events = ensureNativeEvents(items.size());
+        int readyCount = Native.pollerWaitAll(handle, events, items.size(),
+          timeoutMs);
+        if (readyCount < 0)
+            throw ZlinkException.fromLastError("zlink_poller_wait_all");
+        ensureReadyCacheCapacity(readyCount);
+        for (int i = 0; i < readyCount; i++) {
+            long base = (long) i * POLLER_EVENT_SIZE;
+            readyReventsCache[i] = events.get(ValueLayout.JAVA_SHORT,
               base + EVENT_EVENTS_OFFSET);
-            readyFdCache[readyCount] = event.get(ValueLayout.JAVA_INT,
+            readyFdCache[i] = events.get(ValueLayout.JAVA_INT,
               base + EVENT_FD_OFFSET);
-            readyItemsCache[readyCount] = resolveReadyItem(event, base);
-            readyCount++;
-            timeout = 0;
+            readyItemsCache[i] = resolveReadyItem(events, base);
         }
         lastReadyCount = readyCount;
         return readyCount;
@@ -224,6 +249,11 @@ public final class Poller implements AutoCloseable {
     public Socket readySocket(int index) {
         PollItem item = cachedReadyItem(index);
         return item == null ? null : item.socket;
+    }
+
+    public Timer readyTimer(int index) {
+        PollItem item = cachedReadyItem(index);
+        return item == null ? null : item.timer;
     }
 
     public Object readyTag(int index) {
@@ -294,9 +324,13 @@ public final class Poller implements AutoCloseable {
         MemorySegment socketHandle = events.get(ValueLayout.ADDRESS,
           base + EVENT_SOCKET_OFFSET);
         int fd = events.get(ValueLayout.JAVA_INT, base + EVENT_FD_OFFSET);
-        return socketHandle.address() != 0
-          ? findSocketItem(socketHandle)
-          : findFdItem(fd);
+        if (socketHandle.address() != 0)
+            return findSocketItem(socketHandle);
+        MemorySegment timerHandle = events.get(ValueLayout.ADDRESS,
+          base + EVENT_TIMER_OFFSET);
+        if (timerHandle.address() != 0)
+            return findTimerItem(timerHandle);
+        return findFdItem(fd);
     }
 
     private void ensureReadyCacheCapacity(int requiredCount) {
@@ -326,8 +360,19 @@ public final class Poller implements AutoCloseable {
     private int findFd(int fd) {
         for (int i = 0; i < items.size(); i++) {
             PollItem item = items.get(i);
-            if (!item.isSocket && item.fd == fd)
+            if (!item.isSocket && !item.isTimer && item.fd == fd)
                 return i;
+        }
+        return -1;
+    }
+
+    private int findTimer(MemorySegment timerHandle) {
+        for (int i = 0; i < items.size(); i++) {
+            PollItem item = items.get(i);
+            if (item.isTimer && item.timerHandle.address()
+              == timerHandle.address()) {
+                return i;
+            }
         }
         return -1;
     }
@@ -342,14 +387,27 @@ public final class Poller implements AutoCloseable {
         return index >= 0 ? items.get(index) : null;
     }
 
+    private PollItem findTimerItem(MemorySegment timerHandle) {
+        int index = findTimer(timerHandle);
+        return index >= 0 ? items.get(index) : null;
+    }
+
     private PollItem newPollItem(Socket socket, MemorySegment socketHandle,
                                  int fd, int events, Object tag,
                                  boolean isSocket) {
+        return newPollItem(socket, socketHandle, null, MemorySegment.NULL, fd,
+          events, tag, isSocket, false);
+    }
+
+    private PollItem newPollItem(Socket socket, MemorySegment socketHandle,
+                                 Timer timer, MemorySegment timerHandle,
+                                 int fd, int events, Object tag,
+                                 boolean isSocket, boolean isTimer) {
         long token = nextToken++;
         MemorySegment userData = tagArena.allocate(ValueLayout.JAVA_LONG);
         userData.set(ValueLayout.JAVA_LONG, 0, token);
-        return new PollItem(socket, socketHandle, fd, events, tag, isSocket,
-          token, userData);
+        return new PollItem(socket, socketHandle, timer, timerHandle, fd,
+          events, tag, isSocket, isTimer, token, userData);
     }
 
     private void registerItem(PollItem item) {
@@ -377,22 +435,29 @@ public final class Poller implements AutoCloseable {
     private static final class PollItem {
         public final Socket socket;
         public final MemorySegment socketHandle;
+        public final Timer timer;
+        public final MemorySegment timerHandle;
         public final int fd;
         public int events;
         public final Object tag;
         public final boolean isSocket;
+        public final boolean isTimer;
         public final long token;
         public final MemorySegment userData;
 
-        PollItem(Socket socket, MemorySegment socketHandle, int fd, int events,
-                 Object tag, boolean isSocket, long token,
+        PollItem(Socket socket, MemorySegment socketHandle, Timer timer,
+                 MemorySegment timerHandle, int fd, int events,
+                 Object tag, boolean isSocket, boolean isTimer, long token,
                  MemorySegment userData) {
             this.socket = socket;
             this.socketHandle = socketHandle;
+            this.timer = timer;
+            this.timerHandle = timerHandle;
             this.fd = fd;
             this.events = events;
             this.tag = tag;
             this.isSocket = isSocket;
+            this.isTimer = isTimer;
             this.token = token;
             this.userData = userData;
         }

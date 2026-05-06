@@ -122,8 +122,8 @@ bool run_pattern_dealer_router (const std::string &transport,
     zlink::poller_t poller;
     poller.add (router.sock (), zlink::poll_event::pollin);
     while (!sender_done.load (std::memory_order_acquire)) {
-        zlink::poll_event_t event = {};
-        const int poll_rc = poller.wait (&event, 5);
+        std::optional<zlink::poll_event_t> event = poller.wait (5);
+        const int poll_rc = event ? 1 : 0;
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
@@ -131,7 +131,7 @@ bool run_pattern_dealer_router (const std::string &transport,
             break;
         }
         if (poll_rc == 0
-            || (event.revents & static_cast<short> (zlink::poll_event::pollin))
+            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event::pollin))
                  == 0) {
             continue;
         }

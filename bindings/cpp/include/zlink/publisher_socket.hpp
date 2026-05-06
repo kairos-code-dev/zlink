@@ -23,13 +23,6 @@ class publisher_socket_t : public base_socket_t
         throw_on_error (rc);
     }
 
-    ZLINK_CPP_NODISCARD int
-    on_send_ready (zlink_send_ready_handler_fn handler_,
-                   void *userdata_ = NULL)
-    {
-        return base_socket_t::on_send_ready (handler_, userdata_);
-    }
-
   protected:
     publisher_socket_t (context_t &ctx_, socket_type type_) : base_socket_t (ctx_, type_) {}
 };

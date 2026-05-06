@@ -46,7 +46,7 @@ void test_msg_init_ffn ()
     std::memcpy (hint, "hint", 4);
     assert (zlink_msg_init_data (&msg, data, sizeof (data), ffn, hint) == 0);
     zlink::message_t outbound;
-    assert (zlink_msg_move (outbound.handle (), &msg) == 0);
+    assert (zlink_msg_move (zlink::detail::native_handle (outbound), &msg) == 0);
     assert (dealer.send (outbound) == 0);
 
     char buf[255];
@@ -61,7 +61,7 @@ void test_msg_init_ffn ()
     assert (zlink_msg_init_data (&msg, data, sizeof (data), ffn, hint) == 0);
     assert (zlink_msg_copy (&msg2, &msg) == 0);
     zlink::message_t outbound_copy;
-    assert (zlink_msg_move (outbound_copy.handle (), &msg) == 0);
+    assert (zlink_msg_move (zlink::detail::native_handle (outbound_copy), &msg) == 0);
     assert (dealer.send (outbound_copy) == 0);
     assert (recv_with_timeout (router, buf, sizeof (buf), 2000) >= 0);
     assert (recv_with_timeout (router, buf, sizeof (buf), 2000) == 255);

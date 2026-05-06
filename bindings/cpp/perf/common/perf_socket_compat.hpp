@@ -15,6 +15,19 @@
 namespace zlink
 {
 
+using compat::options::dealer_option;
+using compat::options::dealer_option_key_t;
+using compat::options::pub_option;
+using compat::options::pub_option_key_t;
+using compat::options::router_option;
+using compat::options::router_option_key_t;
+using compat::options::socket_option;
+using compat::options::socket_option_key_t;
+using compat::options::stream_option;
+using compat::options::stream_option_key_t;
+using compat::options::sub_option;
+using compat::options::sub_option_key_t;
+
 class socket_t
 {
   private:
@@ -79,7 +92,7 @@ class socket_t
             if constexpr (std::is_same<socket_type_t, std::monostate>::value)
                 return NULL;
             else
-                return socket_.handle ();
+                return detail::native_handle (socket_);
         });
     }
 
@@ -90,7 +103,7 @@ class socket_t
             if constexpr (std::is_same<socket_type_t, std::monostate>::value)
                 return NULL;
             else
-                return socket_.handle ();
+                return detail::native_handle (socket_);
         });
     }
 
@@ -253,16 +266,17 @@ class socket_t
 
     int set_routing_id (const void *data_, size_t size_)
     {
-        routing_id_t routing_id;
-        if (routing_id_from (data_, size_, &routing_id) != 0)
+        routing_id_t routing_id = zlink::detail::unchecked_empty_routing_id ();
+        if (routing_id_from_bytes (data_, size_, routing_id) != 0)
             return -1;
         return invoke_routing_id_set (routing_id);
     }
 
     int set_routing_id (const std::string &routing_id_)
     {
-        routing_id_t routing_id;
-        if (routing_id_from (routing_id_, &routing_id) != 0)
+        routing_id_t routing_id = zlink::detail::unchecked_empty_routing_id ();
+        if (routing_id_from_bytes (
+              routing_id_.data (), routing_id_.size (), routing_id) != 0)
             return -1;
         return invoke_routing_id_set (routing_id);
     }
@@ -274,7 +288,7 @@ class socket_t
 
     int get_routing_id (std::string &routing_id_) const
     {
-        routing_id_t routing_id;
+        routing_id_t routing_id = zlink::detail::unchecked_empty_routing_id ();
         if (get_routing_id (routing_id) != 0)
             return -1;
         routing_id_.assign (
@@ -335,7 +349,7 @@ class socket_t
               message_t &part_,
               send_flags_t flags_ = send_flags_t::none)
     {
-        return send (routing_id_t (routing_id_), part_, flags_);
+        return send (zlink::detail::native_routing_id (routing_id_), part_, flags_);
     }
 
     int publish (const std::string &topic_id_,
@@ -389,11 +403,11 @@ class socket_t
               message_t &part_,
               recv_flags_t flags_ = recv_flags_t::none)
     {
-        routing_id_t routing_id;
+        routing_id_t routing_id = zlink::detail::unchecked_empty_routing_id ();
         const int rc = recv (routing_id, part_, flags_);
         if (rc != 0)
             return rc;
-        source_rid_out_ = routing_id.native ();
+        source_rid_out_ = *zlink::detail::routing_id_native (routing_id);
         return 0;
     }
 
@@ -450,14 +464,8 @@ class socket_t
         return visit ([&] (auto &socket_) -> int {
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
             if constexpr (std::is_same<socket_type_t, stream_socket_t>::value) {
-                try {
-                    socket_.on_packet (handler_, userdata_);
-                    return 0;
-                }
-                catch (const zlink_error_t &err) {
-                    errno = err.internal_errno ();
-                    return -1;
-                }
+                return zlink_stream_packet_handler (
+                  detail::native_handle (socket_), handler_, userdata_);
             } else {
                 errno = EOPNOTSUPP;
                 return -1;
@@ -562,25 +570,31 @@ class socket_t
                     common_socket_options_t options = socket_.options ();
                     switch (option_) {
                     case socket_option::linger:
-                        options.linger (static_cast<int> (value_));
+                        options.linger (std::chrono::milliseconds (
+                          static_cast<int> (value_)));
                         return 0;
                     case socket_option::sndhwm:
-                        options.send_hwm (static_cast<int> (value_));
+                        options.send_hwm (message_count_t::value (
+                          static_cast<int> (value_)));
                         return 0;
                     case socket_option::rcvhwm:
-                        options.recv_hwm (static_cast<int> (value_));
+                        options.recv_hwm (message_count_t::value (
+                          static_cast<int> (value_)));
                         return 0;
                     case socket_option::sndtimeo:
-                        options.send_timeout (static_cast<int> (value_));
+                        options.send_timeout (std::chrono::milliseconds (
+                          static_cast<int> (value_)));
                         return 0;
                     case socket_option::rcvtimeo:
-                        options.recv_timeout (static_cast<int> (value_));
+                        options.recv_timeout (std::chrono::milliseconds (
+                          static_cast<int> (value_)));
                         return 0;
                     case socket_option::tcp_nodelay:
                         options.tcp_no_delay (static_cast<int> (value_) != 0);
                         return 0;
                     case socket_option::connect_timeout:
-                        options.connect_timeout (static_cast<int> (value_));
+                        options.connect_timeout (std::chrono::milliseconds (
+                          static_cast<int> (value_)));
                         return 0;
                     default:
                         errno = EOPNOTSUPP;
@@ -698,8 +712,10 @@ class socket_t
                         errno = EOPNOTSUPP;
                         return -1;
                     }
-                    routing_id_t routing_id;
-                    if (routing_id_from (value_, &routing_id) != 0)
+                    routing_id_t routing_id =
+                      zlink::detail::unchecked_empty_routing_id ();
+                    if (routing_id_from_bytes (
+                          value_.data (), value_.size (), routing_id) != 0)
                         return -1;
                     socket_.router_options ().connect_routing_id (routing_id);
                     return 0;
@@ -968,6 +984,21 @@ class socket_t
             return 0;
         errno = EAGAIN;
         return -1;
+    }
+
+    static int routing_id_from_bytes (const void *data_,
+                                      size_t size_,
+                                      routing_id_t &routing_id_out_)
+    {
+        try {
+            routing_id_out_ = routing_id_t::from_bytes (
+              static_cast<const uint8_t *> (data_), size_);
+            return 0;
+        }
+        catch (const std::invalid_argument &) {
+            errno = size_ > 255u ? EMSGSIZE : EINVAL;
+            return -1;
+        }
     }
 
     socket_variant_t _socket;

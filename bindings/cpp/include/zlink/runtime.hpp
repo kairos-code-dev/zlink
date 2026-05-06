@@ -4,6 +4,7 @@
 
 #include "common.hpp"
 #include "error.hpp"
+#include "socket_handle.hpp"
 
 namespace zlink
 {
@@ -18,19 +19,42 @@ inline const char *zlink_strerror (int errnum_)
     return ::zlink_strerror (errnum_);
 }
 
-inline void proxy (void *frontend_, void *backend_, void *capture_ = NULL)
+template<typename FrontendSocket, typename BackendSocket>
+inline void proxy (FrontendSocket &frontend_, BackendSocket &backend_)
 {
-    if (zlink_proxy (frontend_, backend_, capture_) != 0)
-        throw last_error ();
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        zlink_proxy (detail::native_handle (frontend_),
+                     detail::native_handle (backend_), NULL)));
 }
 
-inline void proxy_steerable (void *frontend_,
-                             void *backend_,
-                             void *capture_,
-                             void *control_)
+template<typename FrontendSocket, typename BackendSocket, typename CaptureSocket>
+inline void proxy (FrontendSocket &frontend_,
+                   BackendSocket &backend_,
+                   CaptureSocket &capture_)
 {
-    if (zlink_proxy_steerable (frontend_, backend_, capture_, control_) != 0)
-        throw last_error ();
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        zlink_proxy (detail::native_handle (frontend_),
+                     detail::native_handle (backend_),
+                     detail::native_handle (capture_))));
+}
+
+template<typename FrontendSocket,
+         typename BackendSocket,
+         typename CaptureSocket,
+         typename ControlSocket>
+inline void proxy_steerable (FrontendSocket &frontend_,
+                             BackendSocket &backend_,
+                             CaptureSocket &capture_,
+                             ControlSocket &control_)
+{
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        zlink_proxy_steerable (detail::native_handle (frontend_),
+                               detail::native_handle (backend_),
+                               detail::native_handle (capture_),
+                               detail::native_handle (control_))));
 }
 
 inline bool has (const std::string &capability_)
@@ -41,11 +65,6 @@ inline bool has (const std::string &capability_)
 inline void sleep (int seconds_)
 {
     zlink_sleep (seconds_);
-}
-
-inline void multipart_close (zlink_msg_t *parts_, size_t count_)
-{
-    zlink_multipart_close (parts_, count_);
 }
 
 } // namespace zlink

@@ -6,24 +6,56 @@ This document defines the public contract surface of the Java binding.
 Every exported API class, its purpose, and all public method signatures are
 listed. Internal helpers and implementation details are omitted.
 
-When this document lists an API that is not yet present in the Java source,
-the document is the implementation target. Java binding work must add that
-API or explicitly change this specification before claiming core alignment.
+When this document lists an API absent from the Java source, this document is
+the implementation target. Java binding work must add that API or explicitly
+change this specification before claiming core alignment.
 
-All types live in the `dev.kairoscode.zlink` package.
-Service types live in `dev.kairoscode.zlink.service.registry`,
+Core binding types live in the `dev.kairoscode.zlink` package.
+Service extension types live in `dev.kairoscode.zlink.service.registry`,
 `dev.kairoscode.zlink.service.discovery`, and
 `dev.kairoscode.zlink.service.spot`.
-Netty buffer extension types live in `dev.kairoscode.zlink.netty`.
+Codec and Netty adapter contracts are specified in separate extension
+documents linked from the `Message` section.
 
 Only the packages and types listed in this document are public contract.
-`dev.kairoscode.zlink.internal` and other implementation packages are internal
-implementation detail. Public classes may exist in those packages for local
-implementation use, but they are not contract and must not be exported as
-public API packages. If the binding uses JPMS/module export control, only
-documented public packages may be exported. Perf, samples, and tests must use
-the public Java entrypoint only and must not import internal packages or helper
-classes.
+Packages, classes, and methods not listed here are implementation detail,
+even when Java visibility is broader for package wiring. If the binding uses
+JPMS/module export control, only documented public packages may be exported.
+Perf, samples, and tests must use the documented Java entrypoint only.
+
+Notation:
+
+- `@Nullable T` means the method may return `null` only for the no-data case
+  described next to that API. Other failures still raise the documented
+  exception type.
+- `Optional<T>` means absence is part of the value contract and callers must
+  handle it without relying on `null`.
+
+## Design Basis
+
+The Java binding follows the repository POSD design policy. Public classes
+must hide native sequencing, ownership, and option encoding behind typed,
+deep interfaces so callers do not need core implementation details.
+
+The public Java surface must model stable domain concepts, not native downcall
+steps. Public classes are justified when they own context/socket lifetime,
+message ownership, receive metadata, service membership, callbacks, or typed
+options. Panama/JNI handles, part-loop sequencing, request tokens, callback
+userdata, and raw option encoding stay inside non-exported implementation
+packages.
+
+Design review uses these POSD constraints:
+
+- shared send/recv, nonblocking, ownership, and exception mapping rules live
+  in one internal owner rather than being copied across socket classes
+- canonical result and facade methods do not ask callers to pass state already
+  captured by the object, such as a source socket, request sequence, or
+  service address
+- compatibility aliases, if retained, are clearly outside the canonical API and
+  are not used by new docs, samples, or tests
+- a public class or method that only forwards to a native call without adding
+  validation, ownership, lifetime, or result-shape semantics is too shallow and
+  must be removed or moved to an internal package
 
 ## High-Performance Requirements
 
@@ -37,16 +69,11 @@ into Java collections.
 
 Reflection is not an acceptable implementation fallback for Java API alignment.
 Missing public APIs must be implemented with typed facades over direct Panama
-downcalls or with direct internal bridges. Callback stub creation may resolve a
-`MethodHandle` during setup, but message send/recv, request/reply, dispatch,
-poller, and timer progress must not perform reflection or reflective lookup in
-the processing loop.
-
-`InternalAccess`, `handleInternal`, and classes under
-`dev.kairoscode.zlink.internal` are direct implementation bridges used to keep
-that no-reflection cost model. They are not public contract, even when Java
-visibility is public for package-wiring reasons. Applications, samples, perf
-tools, and contract tests must not depend on those bridge APIs.
+downcalls or with direct implementation bridges. Callback stub creation may
+resolve a `MethodHandle` during setup, but message send/recv, request/reply,
+dispatch, poller, and timer progress must not perform reflection or
+reflective lookup in the processing loop. Implementation bridges are not
+public contract and applications must not depend on them.
 
 ## Core Feature Coverage
 
@@ -69,7 +96,7 @@ ways:
 | Runtime errors and version | `zlink_errno`, `zlink_strerror`, `zlink_version` | `Zlink.strerror`, `Zlink.version`, `ZlinkException.getInternalErrno` | Public API; raw `errno()` stays internal |
 | Capabilities | `zlink_has` | `Zlink.has` | Public API |
 | Context lifecycle | `zlink_ctx_new`, `zlink_ctx_shutdown`, `zlink_ctx_term` | `Context`, `Context.shutdown`, `Context.close` | Public API |
-| Context options | `zlink_ctx_set`, `zlink_ctx_get` | `ContextOptions` | Typed facade |
+| Context options | `zlink_ctx_set`, `zlink_ctx_set_data`, `zlink_ctx_get` | `ContextOptions` | Typed facade |
 | Context auto HWM recalculation | `zlink_ctx_auto_hwm_recalculate` | `Context.recalculateAutoHwm()` | Required Java API |
 | Message ownership and copying | `zlink_msg_init`, `zlink_msg_init_size`, `zlink_msg_close`, `zlink_msg_move`, `zlink_msg_copy`, `zlink_msg_adopt`, `zlink_msg_data`, `zlink_msg_size`, `zlink_msg_refcnt`, `zlink_msg_gets` | `Message` constructors, `Message.copyOf`, `move`, `data`, `size`, `refCount`, `getProperty`, `close` | Public API / typed facade |
 | Borrowed external message storage | `zlink_msg_init_data` with caller free hook | No public borrowed-wrap API; public adapters copy into owned `Message` | Internal primitive |
@@ -93,13 +120,13 @@ ways:
 | Socket monitoring | socket monitor entrypoints | `MonitorSocket`, `MonitorEvent`, `MonitorSnapshot`, `IGNORE_HANDLER` | Public API |
 | Registry service | `zlink_registry_*` | `Registry`, `RegistryStatus`, service summary, member peer, topology entries | Public API |
 | Discovery service | `zlink_discovery_*` | `Discovery`, `resolveSpot`, `resolveActor`, `memberPeers`, value and registry connection methods | Public API |
-| Spot lifecycle | spot and spot-node creation/destruction/lookup entrypoints | `SpotNode`, `entrySpot`, `createSpot`, `spotLookup`, `close` | Required Java API |
+| Spot lifecycle | `zlink_spot_new`, `zlink_spot_destroy`, `zlink_spot_node_new`, `zlink_spot_node_destroy`, `zlink_spot_node_entry_spot`, `zlink_spot_node_spot_lookup` | `SpotNode`, `entrySpot`, `createSpot`, `spotLookup`, `close` | Required Java API |
 | Spot node peer wiring | `zlink_spot_node_bind`, peer connect/disconnect, attach APIs | `SpotNode.bind`, `connectPeer`, `disconnectPeer`, `disconnectPeerRid`, attachment methods | Public API |
 | Spot data plane | spot send, publish, subscribe, subscription-event, and routed recv entrypoints | `Spot.sendChannel`, `publish`, `subscribe`, `receiveSubscriptionEvent`, `recvRouted` | Public API |
 | Spot request/reply | spot request, send, reply, and channel-reply progress entrypoints | `Spot.requestChannel`, `requestToSpot`, `requestToRouter`, `sendToSpot`, `replyToSpot`, `replyToRouter`, `drainChannelReply` | Public API |
 | Spot dispatch callbacks | `zlink_spot_handler`, `zlink_spot_dispatch_event_handler` | `Spot.onRoutedReceive`, `Spot.onDispatchEvent`, `SpotDispatchInfo` | Public API |
 | Actor dispatch | actor create, lookup, admission, join, leave, recv, and bound-session entrypoints | `Actor`, `ActorRef`, actor result/info records, `SpotNode` actor methods, `Spot.recvActorJoin`, `Spot.replyActorJoin` | Public API |
-| Spot snapshots | spot-node, registry, discovery, topology, and actor snapshot entrypoints | snapshot records and snapshot/query methods | Public API |
+| Spot snapshots | spot-node, registry, discovery, topology, and actor snapshot entrypoints | `statusSnapshot`, peer/subject/socket/spot/actor snapshot methods, registry/discovery topology records | Public API |
 | Polling | `zlink_poll`, `zlink_poller_*` | `Poller`, `PollEvent`, `PollEventType` | Public API; legacy array `zlink_poll` is intentionally not exposed |
 | Poller timers | `zlink_poller_add_timer`, `zlink_poller_remove_timer` | `Poller.add(Timer, Object)`, `Poller.remove(Timer)`, `readyTimer` | Required Java API |
 | Proxy | `zlink_proxy`, `zlink_proxy_steerable` | `Zlink.proxy`, `Zlink.proxySteerable` | Public API |
@@ -109,107 +136,33 @@ ways:
 | Atomic counter | `zlink_atomic_counter_*` | `AtomicCounter` | Public API |
 | Multipart cleanup | `zlink_multipart_close` | `Message.closeAll`, `Zlink.multipartClose` | Public API |
 
-Wildcard traceability:
-
-- Socket monitoring maps `zlink_socket_monitor_open`,
-  `zlink_socket_monitor_handler`, `zlink_socket_monitor_recv`,
-  `zlink_monitor_snapshot`, and `zlink_monitor_close` to `MonitorSocket`.
-- Registry maps `zlink_registry_new`, `zlink_registry_bind`,
-  `zlink_registry_set_id`, `zlink_registry_add_peer`,
-  `zlink_registry_set_heartbeat`, `zlink_registry_set_broadcast_interval`,
-  `zlink_registry_status_snapshot`, `zlink_registry_service_summary_snapshot`,
-  `zlink_registry_member_peers`, `zlink_registry_topology_snapshot`,
-  `zlink_registry_topology_query`, and `zlink_registry_destroy` to
-  `Registry`.
-- Discovery maps `zlink_discovery_new`, `zlink_discovery_connect_registry`,
-  `zlink_discovery_resolve_spot`, `zlink_discovery_resolve_actor`,
-  `zlink_discovery_set_value`, `zlink_discovery_get_value`,
-  `zlink_discovery_member_peers`, and `zlink_discovery_destroy` to
-  `Discovery`.
-- Registry query maps `zlink_registry_query_client_new`,
-  `zlink_registry_query_client_connect`, `zlink_registry_query_snapshot`, and
-  `zlink_registry_query_destroy` to `RegistryQueryClient`.
-- SPOT lifecycle and data plane map `zlink_spot_new`, `zlink_spot_destroy`,
-  `zlink_spot_send_channel_part`, `zlink_spot_publish_part`,
-  `zlink_spot_subscribe_part`, `zlink_spot_subscription_event_recv`,
-  `zlink_spot_request_channel_part`, `zlink_spot_request_spot_part`,
-  `zlink_spot_request_router_part`, `zlink_spot_send_spot_part`,
-  `zlink_spot_reply_spot_part`, `zlink_spot_reply_router_part`,
-  `zlink_spot_channel_reply_progress_from`, and `zlink_spot_recv_part` to
-  `Spot`.
-- SPOT node lifecycle, peer wiring, and snapshots map `zlink_spot_node_new`,
-  `zlink_spot_node_destroy`, `zlink_spot_node_connect_peer`,
-  `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid`,
-  `zlink_spot_node_attach_discovery`, `zlink_spot_node_attach_channel_dealer`,
-  `zlink_spot_node_attach_channel_dealer_manual`,
-  `zlink_spot_node_attach_pub_ingress`, `zlink_spot_node_status_snapshot`,
-  `zlink_spot_node_peers_snapshot`, `zlink_spot_node_peers_query`,
-  `zlink_spot_node_subjects_snapshot`,
-  `zlink_spot_node_internal_sockets_snapshot`,
-  `zlink_spot_node_spots_snapshot`, `zlink_spot_node_actors_snapshot`, and
-  `zlink_spot_actors_snapshot` to `SpotNode` and snapshot records.
-- Actor dispatch maps `zlink_spot_node_actor_new`,
-  `zlink_spot_node_actor_lookup`, `zlink_remote_actor_get_ref`,
-  `zlink_spot_node_create_remote_actor`, `zlink_spot_node_actor_destroy`,
-  `zlink_spot_node_actor_admission_handler`,
-  `zlink_spot_node_actor_join_spot`, `zlink_spot_actor_join_recv`,
-  `zlink_spot_actor_join_reply`, `zlink_spot_node_actor_leave_spot`,
-  `zlink_spot_node_actor_recv_part`,
-  `zlink_spot_node_actor_send_bound_session_msg`, and
-  `zlink_spot_node_actor_close_bound_session` to `Actor`, `ActorRef`,
-  `SpotNode`, and `Spot` actor methods.
-- Poller maps `zlink_poller_new`, `zlink_poller_destroy`,
-  `zlink_poller_size`, `zlink_poller_add`, `zlink_poller_modify`,
-  `zlink_poller_remove`, `zlink_poller_add_fd`, `zlink_poller_modify_fd`,
-  `zlink_poller_remove_fd`, `zlink_poller_add_timer`,
-  `zlink_poller_remove_timer`, `zlink_poller_wait`, and
-  `zlink_poller_wait_all` to `Poller`.
-- Timer maps `zlink_timer_new`, `zlink_spot_timer_new`,
-  `zlink_timer_destroy`, `zlink_timer_start`, `zlink_timer_stop`,
-  `zlink_timer_recv`, and `zlink_timer_handler` to `Timer`.
-- Stopwatch maps `zlink_stopwatch_start`, `zlink_stopwatch_intermediate`, and
-  `zlink_stopwatch_stop` to `Stopwatch`.
-- Atomic counter maps `zlink_atomic_counter_new`, `zlink_atomic_counter_set`,
-  `zlink_atomic_counter_inc`, `zlink_atomic_counter_dec`,
-  `zlink_atomic_counter_value`, and `zlink_atomic_counter_destroy` to
-  `AtomicCounter`.
+Detailed C-symbol traceability is intentionally kept out of this contract
+file to avoid duplicating the method signatures below. Use the coverage table
+above for review scope, then use the API sections below as the single source
+of Java public signatures.
 
 Java implementation alignment rule:
 
 If an entry below is absent from the current Java source, that is an
-implementation gap, not a documentation exception. The Java binding must be
-updated to expose the public API defined in this document.
-
-Known implementation gaps at the time of this review:
-
-- No remaining gap is known for the core-alignment items listed in this
-  section. If a future review finds a mismatch between this document and the
-  Java source, that mismatch is treated as an implementation gap unless this
-  specification is changed first.
-
-Implementation follow-up:
-- `InternalAccess` and `handleInternal` are no-reflection direct bridges, not
-  user API. A future JPMS/package-boundary cleanup should hide or relocate them
-  without replacing them with reflection.
-- `SocketCore`, `MessagePlane`, request/reply support helper 같은 구현 중심
-  타입은 internal 또는 implementation package로 이동하는 방향이 맞다.
-- JPMS를 도입하면 documented public package만 export 하도록 맞춰야 한다.
+implementation alignment issue, not a documentation exception. The Java
+binding must expose the public API defined in this document, or this
+specification must be changed first.
 
 ---
 
-## Current Core Alignment Overrides
+## Core Alignment Rules
 
-The detailed sections below are the canonical Java binding contract. The rules
-in this section call out core-alignment constraints that must not be weakened
-by older samples or implementation leftovers.
+The detailed sections below are the canonical Java binding contract. This
+section states cross-cutting constraints once so the per-type API lists can
+stay focused on signatures.
 
-- `PairSocket`, `DealerSocket`, and `RouterSocket` are recv-only on the data
-  plane. Remove `onReceive(...)` from their public contract.
-- `SubSocket` and `XSubSocket` are recv-only. Remove `onSubscribe(...)` from
-  their public contract.
+- `PairSocket`, `DealerSocket`, and `RouterSocket` keep their documented
+  send, recv, request, and reply methods, but they do not expose direct
+  data-plane receive callbacks such as `onReceive(...)`.
+- `SubSocket` and `XSubSocket` are receive-only topic sockets and do not
+  expose direct topic callbacks such as `onSubscribe(...)`.
 - `StreamSocket` keeps `recv(...)` and exposes a packet callback surface
-  mapped to `zlink_stream_packet_handler()`. Recommended canonical name:
-  `onPacket(...)`.
+  mapped to `zlink_stream_packet_handler()` as `onPacket(...)`.
 - `SpotNode` must expose channel-aware attachment APIs:
   `attachDiscovery(Discovery discovery)`,
   `attachChannelDealer(Discovery discovery, DealerSocket dealer)`,
@@ -225,16 +178,17 @@ by older samples or implementation leftovers.
 - `SpotDispatchEvent.SUBSCRIBE_READABLE` and `.ROUTED_READABLE` are readiness
   notifications, not one-event-per-message delivery counters. Binding docs and
   samples must drain until the recv path reports `EAGAIN`.
-- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through typed option/property surfaces. The value range is `0..100`, default `100`; `0` drains new outbound selection. Submit attempts to a weight-`0` peer raise `SubmitException` with
-  `getCode() == SubmitResult.NOT_ADMITTED`.
+- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through
+  typed option/property surfaces. The value range is `0..100`, default `100`;
+  `0` drains new outbound selection. Submit attempts to a weight-`0` peer
+  raise `SubmitException` with `getCode() == SubmitResult.NOT_ADMITTED`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `onSendReady(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `mandatory =
   true`, `handover = false`, `nodrop = true`.
 - SPOT admission HWM defaults follow the core header. Router and pubsub
   admission profile/numeric options are exposed; relay and delivery HWM stay
-  `0`. Binding native linux-x86_64 runtime libraries and packaged resources
-  must be synchronized from `core/build` before validation.
+  `0` and are not public Java options.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routingId, advertiseEndpoint)`. Users do not configure this.
@@ -243,18 +197,6 @@ by older samples or implementation leftovers.
 
 Java exposes Actor dispatch through public classes in
 `dev.kairoscode.zlink.service.spot` and related service packages.
-
-```java
-record ActorRef(RoutingId nodeRid, String actorId, long generation) {}
-record ActorCreateResult(ActorCreateStatus status, ActorRef actor) {}
-record ActorRoute(ActorRef actor, boolean joined, Optional<RoutingId> joinedSpotRid) {}
-record ActorRecvInfo(ActorRef actor, RoutingId sourceNodeRid,
-                     RoutingId sourceSessionRid, int flags) {}
-record ActorPart(ActorRecvInfo info, Message message, boolean more) {}
-final class ActorJoinInfo { ... }
-final class ActorJoinRequest implements AutoCloseable { ... }
-final class Actor implements AutoCloseable { ... }
-```
 
 `SpotNode` exposes `actor`, `actorLookup`, `remoteActorRef`,
 `createRemoteActor`, `destroyActor`, `onActorAdmission`, `joinActor`,
@@ -265,6 +207,7 @@ exposes `bindActor`, `unbindActor`, and `sendBoundActor`. `Discovery` exposes
 
 `generation == 0` is an unchecked remote ref. Actor readable dispatch uses
 preloaded parts when Java moves native callbacks to managed executors.
+The exact public signatures are defined once in the Actor section below.
 
 ## Core
 
@@ -368,9 +311,10 @@ void setTlsClient(String caCertPem, String hostname,
 when `SendFlags.DONT_WAIT` is used. Blocking submit returns `true` on success.
 Route-not-ready and other submit failures still raise `SubmitException`.
 `recv(...)`, `subscribe(...)`, `receiveSubscriptionEvent(...)`,
-`recvRouted(...)`, monitor `recv(...)`, and timer `recv()` return `null` when
-the core reports no data. They still raise `RecvException` for real recv
-failures.
+`recvRouted(...)`, and monitor `recv(...)` return `null` when the core reports
+no data. Timer `recv(...)` reports no data through `RecvException` with
+`RecvResult.NO_DATA`. All receive paths still raise `RecvException` for real
+recv failures.
 
 ### CommonSocketOptions
 
@@ -379,14 +323,27 @@ socket option objects. Socket-specific option classes extend this facade.
 
 ```java
 class CommonSocketOptions {
+    // --- affinity and pacing ---
     long affinity();                                                 // @throws ConfigException
     void affinity(long value);                                       // @throws ConfigException
     int rate();                                                      // @throws ConfigException
     void rate(int value);                                            // @throws ConfigException
     Duration recoveryInterval();                                     // @throws ConfigException
     void recoveryInterval(Duration value);                           // @throws ConfigException
+
+    // --- lifecycle and timeout policy ---
     Duration linger();                                              // @throws ConfigException
     void linger(Duration value);                                    // @throws ConfigException
+    Duration sendTimeout();                                         // @throws ConfigException
+    void sendTimeout(Duration value);                               // @throws ConfigException
+    Duration recvTimeout();                                         // @throws ConfigException
+    void recvTimeout(Duration value);                               // @throws ConfigException
+    Duration handshakeInterval();                                   // @throws ConfigException
+    void handshakeInterval(Duration value);                         // @throws ConfigException
+    Duration connectTimeout();                                      // @throws ConfigException
+    void connectTimeout(Duration value);                            // @throws ConfigException
+
+    // --- buffering and admission ---
     int sendHwm();                                                  // @throws ConfigException
     void sendHwm(int value);                                        // @throws ConfigException
     int recvHwm();                                                  // @throws ConfigException
@@ -395,12 +352,6 @@ class CommonSocketOptions {
     void sendBuffer(int value);                                     // @throws ConfigException
     int recvBuffer();                                               // @throws ConfigException
     void recvBuffer(int value);                                     // @throws ConfigException
-    Duration sendTimeout();                                         // @throws ConfigException
-    void sendTimeout(Duration value);                               // @throws ConfigException
-    Duration recvTimeout();                                         // @throws ConfigException
-    void recvTimeout(Duration value);                               // @throws ConfigException
-    Duration handshakeInterval();                                   // @throws ConfigException
-    void handshakeInterval(Duration value);                         // @throws ConfigException
     boolean immediate();                                            // @throws ConfigException
     void immediate(boolean enabled);                                // @throws ConfigException
     RidDuplicatePolicy ridDuplicatePolicy();                        // @throws ConfigException
@@ -409,8 +360,8 @@ class CommonSocketOptions {
     void routeValueMaxSize(int value);                              // @throws ConfigException
     int autoHwmMessageUnitBytes();                                  // @throws ConfigException
     void autoHwmMessageUnitBytes(int value);                        // @throws ConfigException
-    Duration connectTimeout();                                      // @throws ConfigException
-    void connectTimeout(Duration value);                            // @throws ConfigException
+
+    // --- transport and address-family policy ---
     boolean ipv6();                                                 // @throws ConfigException
     void ipv6(boolean enabled);                                     // @throws ConfigException
     int tos();                                                       // @throws ConfigException
@@ -433,6 +384,8 @@ class CommonSocketOptions {
     void tcpKeepaliveInterval(int value);                           // @throws ConfigException
     int tcpMaxRt();                                                 // @throws ConfigException
     void tcpMaxRt(int value);                                       // @throws ConfigException
+
+    // --- heartbeat and reconnect policy ---
     Duration heartbeatInterval();                                   // @throws ConfigException
     void heartbeatInterval(Duration value);                         // @throws ConfigException
     Duration heartbeatTtl();                                        // @throws ConfigException
@@ -453,6 +406,8 @@ class CommonSocketOptions {
     void reconnectInterval(Duration value);                         // @throws ConfigException
     Duration reconnectIntervalMax();                                // @throws ConfigException
     void reconnectIntervalMax(Duration value);                      // @throws ConfigException
+
+    // --- read-only diagnostics and metadata ---
     int fd();                                                       // @throws ConfigException
     int events();                                                   // @throws ConfigException
     SocketType socketType();                                        // @throws ConfigException
@@ -970,105 +925,16 @@ does not take a mandatory Netty dependency.
 
 ### Codec Extensions
 
-The binding exposes separate codec extension libraries. The exported public
-distribution artifacts and public package names are fixed to:
-
-- Maven `zlink-codec-protobuf`
-- Maven `zlink-codec-json`
-- Maven `zlink-codec-messagepack`
-
-- `dev.kairoscode.zlink.codec.protobuf`
-- `dev.kairoscode.zlink.codec.json`
-- `dev.kairoscode.zlink.codec.messagepack`
-
-These packages are separate public modules layered on top of the core binding.
-The public codec API stays in these packages and is published as separate
-artifacts. The core module may still keep supporting implementation
-dependencies, but codec entrypoints are not part of `dev.kairoscode.zlink`.
-
-JSON codec baseline: `Jackson`.
-MessagePack codec baseline: `jackson-dataformat-msgpack`.
-
-```java
-package dev.kairoscode.zlink.codec.protobuf;
-
-public final class ProtobufCodec {
-    public static <T extends com.google.protobuf.MessageLite> T parseProto(
-        dev.kairoscode.zlink.Message message,
-        com.google.protobuf.Parser<T> parser);
-
-    public static dev.kairoscode.zlink.Message toMessage(
-        com.google.protobuf.MessageLite value);
-}
-```
-
-```java
-package dev.kairoscode.zlink.codec.json;
-
-public final class JsonCodec {
-    public static <T> T parseJson(
-        dev.kairoscode.zlink.Message message,
-        Class<T> type);
-
-    public static dev.kairoscode.zlink.Message toMessage(Object value);
-}
-```
-
-```java
-package dev.kairoscode.zlink.codec.messagepack;
-
-public final class MessagePackCodec {
-    public static <T> T parseMessagePack(
-        dev.kairoscode.zlink.Message message,
-        Class<T> type);
-
-    public static dev.kairoscode.zlink.Message toMessage(Object value);
-}
-```
+Codec adapters are separate public extension artifacts layered on top of the
+core binding. Their contract lives in [Java Codec Extension Specification](codec.md).
+The core module does not expose codec entrypoints from
+`dev.kairoscode.zlink`.
 
 ### Netty Buffer Extension
 
-Netty `ByteBuf` support is a separate public extension layered on top of the
-core binding. The public adapter surface lives in `dev.kairoscode.zlink.netty`
-and is published as `zlink-ext-netty`.
-
-The exported public distribution artifact and public package name are fixed to:
-
-- Maven `zlink-ext-netty`
-- `dev.kairoscode.zlink.netty`
-
-This extension exists because `ByteBuf` is valuable in Java network stacks,
-but it is still a third-party dependency. The public `ByteBuf` adapter stays
-separate so Netty-specific entrypoints do not become part of the core package.
-Current core implementation may still use optional `netty-buffer`
-dependencies for internal low-level fast paths; that internal detail is not
-part of the public Java contract.
-
-Ownership rules:
-
-- `copyOf(ByteBuf)` copies the readable bytes between `readerIndex` and
-  `writerIndex`.
-- `copyOf(ByteBuf)` must not change `readerIndex` or `writerIndex`.
-- the extension must not call `retain()` or `release()` on caller-owned
-  `ByteBuf`.
-- `copyTo(Message, ByteBuf)` copies the full message at the current
-  `writerIndex`.
-- `copyTo(Message, ByteBuf)` may advance `writerIndex` by the copied byte
-  count, but must not change `readerIndex`.
-- `copyTo(Message, ByteBuf)` must not call `retain()` or `release()`.
-
-```java
-package dev.kairoscode.zlink.netty;
-
-public final class NettyMessages {
-    public static dev.kairoscode.zlink.Message copyOf(
-        io.netty.buffer.ByteBuf source);
-
-    public static int copyTo(
-        dev.kairoscode.zlink.Message message,
-        io.netty.buffer.ByteBuf destination);
-}
-```
+Netty `ByteBuf` support is a separate public extension. Its contract lives in
+[Java Netty Extension Specification](netty.md). Netty-specific entrypoints are
+not part of the core `dev.kairoscode.zlink` package.
 
 ### RoutingId
 
@@ -1635,14 +1501,14 @@ sequence, and message parts. Implements `AutoCloseable`.
 ```java
 public final class Received implements AutoCloseable {
     Optional<RoutingId> routingId();               // peer_rid (Router) / source_node_rid (Spot)
-    Optional<RoutingId> spotRid();                 // SPOT routed recv 에서만 값 있음
-    Optional<Long> requestSeq();                   // 값이 있으면 request, 없으면 ordinary message
+    Optional<RoutingId> spotRid();                 // present only for SPOT routed recv
+    Optional<Long> requestSeq();                   // present for request messages only
     List<Message> parts();
     boolean isSinglePart();
     Message firstPart();                                             // @throws RecvException
     Message singlePartOrThrow();                                     // @throws RecvException
 
-    // reply — requestSeq 가 있을 때만 유효. 없거나 invalid reply context 이면 SubmitException.
+    // Valid only when requestSeq is present and the reply context is live.
     void reply(Message part);                                        // @throws SubmitException
     void reply(Message part, SendFlags flags);                       // @throws SubmitException
     void reply(List<Message> parts);                                 // @throws SubmitException
@@ -1652,10 +1518,11 @@ public final class Received implements AutoCloseable {
 }
 ```
 
-Received 는 내부적으로 source socket 참조를 보유한다 (binding 이 recv /
-handler 에서 만들 때 주입). `reply()` 호출 시 `routingId` + `spotRid` +
-`requestSeq` 를 캡슐화해 원래 socket 으로 전달. socket 이 close 된 후
-`reply()` 호출하면 `SubmitException(ZLINK_SUBMIT_TERMINATED)`.
+`Received` owns the reply context needed to answer the original sender.
+`reply(...)` encapsulates routing id, optional spot id, and request sequence
+so callers do not need to rebuild the route. Calling `reply(...)` after the
+source socket is closed raises `SubmitException` with the terminated submit
+result.
 
 ### TopicMessage
 
@@ -1775,7 +1642,7 @@ public record MonitorSnapshot(MonitorSourceKind sourceKind,
                               int autoHwmSendBlockedRatioPpm,
                               int autoHwmDeferredSndHwm,
                               int autoHwmDeferredRcvHwm) {
-    // Raw socket monitor source에서만 ready 의미를 사용한다.
+    // Ready is meaningful only for raw socket monitor sources.
     boolean isReady();
 }
 ```
@@ -1871,12 +1738,11 @@ public final class SpotNode implements AutoCloseable {
     void setTlsClient(String caCertPem, String hostname, boolean trustSystem);   // @throws ConfigException
 
     // --- identity / routing ---
-    // SpotNode 의 logical address. zlink_set_routing_id(node, ...) /
-    // zlink_get_routing_id(node, ...) 매핑.
+    // Logical address used for routed ownership.
     void setRoutingId(RoutingId rid);                                // @throws ConfigException
     RoutingId routingId();                                           // @throws ConfigException
 
-    // --- factory: Spot 생성은 반드시 SpotNode 에서만 ---
+    // --- Spot factories owned by the node ---
     Spot entrySpot();                                                // @throws ConfigException
     Spot createSpot();                                               // @throws ConfigException
     Optional<Spot> spotLookup(RoutingId spotRid);                    // @throws ConfigException
@@ -1924,32 +1790,29 @@ public final class SpotNode implements AutoCloseable {
     List<SpotNodePeerEntry> peersQuery(SpotNodePeerFilter filter);   // @throws ConfigException
     List<SpotNodeSubjectEntry> subjectsSnapshot();                   // @throws ConfigException
     List<SpotNodeSubjectEntry> subjectsSnapshot(SpotNodeSubjectFilter filter); // @throws ConfigException
-    List<SpotNodeSocketSnapshotEntry> internalSocketsSnapshot();      // @throws ConfigException
-    List<SpotNodeSocketSnapshotEntry> internalSocketsSnapshot(
+    List<SpotNodeSocketSnapshotEntry> socketSnapshots();             // @throws ConfigException
+    List<SpotNodeSocketSnapshotEntry> socketSnapshots(
         SpotNodeSocketSnapshotFilter filter);                        // @throws ConfigException
     List<SpotNodeSpotEntry> spotsSnapshot();                         // @throws ConfigException
     List<SpotNodeActorEntry> actorsSnapshot();                       // @throws ConfigException
-    // close() cascades: 모든 live Spot 먼저 close 한 후 node 종료
+    // close() first closes every live Spot owned by this node.
     void close();                                                    // @throws CloseException
 }
 ```
 
-`SpotNode` 가 lifecycle 소유자. `Spot` 은 반드시 `SpotNode.createSpot()`
-factory 로만 생성한다. 직접 `new Spot(node)` 호출은 internal 로 격하된다
-(spec 상 public 생성자 아님).
+`SpotNode` owns `Spot` lifecycles. Public `Spot` instances are created through
+`entrySpot()`, `createSpot()`, or `spotLookup(...)`. Direct `Spot` constructors
+are not public contract.
 
 ### Spot
 
 Spot messaging endpoint. Provides service-aware pub/sub and routed messaging.
-Implements `AutoCloseable`. **`SpotNode.createSpot()` 로만 생성**.
+Implements `AutoCloseable`. Public instances are created by `SpotNode`.
 
 ```java
 public final class Spot implements AutoCloseable {
-    // Spot(SpotNode node) 는 internal. public 생성은 SpotNode.createSpot() 사용.
-
     // --- identity / routing ---
-    // Spot 의 logical address / routed ownership key.
-    // zlink_set_routing_id(spot, ...) / zlink_get_routing_id(spot, ...) 매핑.
+    // Logical address and routed ownership key.
     void setRoutingId(RoutingId rid);                                // @throws ConfigException
     RoutingId routingId();                                           // @throws ConfigException
     SpotOptions options();
@@ -2197,10 +2060,10 @@ public record ActorPart(ActorRecvInfo info,
 public final class ActorJoinInfo {
     ActorRef sourceActor();
     ActorRef targetActor();
-    RoutingId sourceNodeRid();
-    RoutingId sourceSpotRid();
-    RoutingId targetNodeRid();
-    RoutingId targetSpotRid();
+    Optional<RoutingId> sourceNodeRid();
+    Optional<RoutingId> sourceSpotRid();
+    Optional<RoutingId> targetNodeRid();
+    Optional<RoutingId> targetSpotRid();
     long joinEpoch();
     int flags();
 }
@@ -2326,9 +2189,10 @@ public final class SpotDispatchInfo {
 }
 ```
 
-`SpotDispatchInfo` may retain opaque native subject state internally so
-`Spot.drainChannelReply(info)` can progress channel replies. That native state
-is not part of the public value surface.
+`SpotDispatchInfo` may carry an opaque dispatch token used only by
+`Spot.drainChannelReply(info)` to progress channel replies. Callers must treat
+that token as non-inspectable state; it is not part of the public value
+surface.
 
 Advanced / Diagnostic entry types and filters:
 
@@ -2397,8 +2261,11 @@ public record SpotNodeSubjectEntry(SpotRole role,
 
 ### SpotNodeSocketSnapshotEntry
 
-Spot node internal socket snapshot entry returned by
-`SpotNode.internalSocketsSnapshot`.
+Diagnostic socket snapshot entry returned by
+`SpotNode.socketSnapshots(...)`. The snapshot exposes monitor-level
+diagnostics, not mutable implementation handles. The Java public contract uses
+the diagnostic purpose as the API name instead of exposing the lower-level
+core symbol name.
 
 ```java
 public record SpotNodeSocketSnapshotEntry(
@@ -2459,7 +2326,8 @@ public record SpotNodeSubjectFilter(SpotRole role,
 
 ### SpotNodeSocketSnapshotFilter
 
-Filter for `SpotNode.internalSocketsSnapshot`.
+Filter for diagnostic socket snapshots returned by
+`SpotNode.socketSnapshots(...)`.
 
 ```java
 public record SpotNodeSocketSnapshotFilter(
@@ -2499,9 +2367,9 @@ public record RegistryTopologyFilter(ServiceKind serviceKind,
 
 Event poller for multiplexing socket and file descriptor readiness.
 
-The current public poller contract is still generic. It does not yet expose a
-Spot-aware result carrying owner `Spot`, dispatch event kind, and drain
-subject together.
+The public poller contract is generic. It reports socket, file descriptor,
+and timer readiness. SPOT dispatch ownership and drain semantics stay behind
+`Spot.onDispatchEvent(...)`.
 Implements `AutoCloseable`.
 
 ```java
@@ -2568,12 +2436,18 @@ public final class Timer implements AutoCloseable {
 
     void start(long intervalNs, long repeatCount);                   // @throws ConfigException
     void stop();                                                     // @throws ConfigException
-    @Nullable Long recv();                                           // @throws RecvException
+    long recv();                                                     // @throws RecvException
+    long recv(RecvFlags flags);                                      // @throws RecvException
     void onFire(TimerHandler handler);                               // @throws HandlerException
 
     void close();                                                    // @throws CloseException
 }
 ```
+
+`recv()` returns the timer fire count reported by core. `RecvFlags.NONE` is
+the supported receive flag. Unsupported flags raise `RecvException` with
+`RecvResult.NOT_SUPPORTED`; no-data raises `RecvException` with
+`RecvResult.NO_DATA`.
 
 ### TimerHandler
 
@@ -2596,7 +2470,7 @@ Static utility class for global library operations.
 public final class Zlink {
     private Zlink() {}
 
-    // Zlink.errno() is NOT public. Access internal errno through
+    // Raw errno is not public. Access OS-level errno through
     // ZlinkException.getInternalErrno() on the caught exception.
 
     /// Return a human-readable string for the given error number.

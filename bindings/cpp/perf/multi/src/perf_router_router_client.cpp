@@ -35,10 +35,10 @@ void debug_log (const std::string &message_)
     std::cerr << "router_router client: " << message_ << std::endl;
 }
 
-bool same_routing_id (const zlink_routing_id_t &lhs, const zlink_routing_id_t &rhs)
+zlink::routing_id_t routing_id_from_ascii (const std::string &value_)
 {
-    return lhs.size == rhs.size
-           && std::memcmp (lhs.data, rhs.data, lhs.size) == 0;
+    return zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> (value_.data ()), value_.size ());
 }
 
 struct phase_config_t
@@ -99,7 +99,7 @@ class router_router_client_bench_t
           _run_id (1U),
           _seq (1),
           _server_id ("SERVER"),
-          _server_rid (zlink::empty_routing_id ()),
+          _server_rid (routing_id_from_ascii (_server_id)),
           _phase_cfg (),
           _result ()
     {
@@ -109,7 +109,6 @@ class router_router_client_bench_t
         _poll_events.reserve (_settings.clients);
 
         _phase_cfg.active_seconds = std::max (1, _settings.duration_seconds);
-        (void) zlink::routing_id_from (_server_id, &_server_rid);
     }
 
     bool run ()
@@ -157,7 +156,7 @@ class router_router_client_bench_t
 
             const std::string routing_id = std::string ("rr_") + std::to_string (i);
             (void) sock.set_routing_id (routing_id);
-            (void) sock.set (zlink::router_options::connect_routing_id,
+            (void) sock.set (zlink::compat::options::router_options::connect_routing_id,
                              std::string ("SERVER"));
 
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
@@ -181,7 +180,9 @@ class router_router_client_bench_t
             slot.payload_size =
               std::max<size_t> (_msg_size, perf_metric::header_size ());
             slot.request_buffer.assign (slot.payload_size, k_payload_fill);
-            (void) _poller.add (sock, zlink::poll_event::pollin, &_socket_states.back ());
+            (void) _poller.add (
+              sock, zlink::poll_event::pollin,
+              reinterpret_cast<std::uintptr_t> (&_socket_states.back ()));
         }
 
         const bool ready = perf::multi::wait_all_connect_ready (
@@ -220,8 +221,8 @@ class router_router_client_bench_t
         }
 
         while (remaining > 0 && std::chrono::steady_clock::now () < deadline) {
-            const int poll_rc =
-              _poller.wait_all (_poll_events, compute_wait_ms (deadline));
+            _poll_events = _poller.wait_all (compute_wait_ms (deadline));
+            const int poll_rc = static_cast<int> (_poll_events.size ());
             if (poll_rc < 0) {
                 if (errno == EINTR || errno == EAGAIN)
                     continue;
@@ -232,7 +233,7 @@ class router_router_client_bench_t
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 socket_state_t *state =
-                  static_cast<socket_state_t *> (_poll_events[i].user);
+                  static_cast<socket_state_t *> (reinterpret_cast<void *> (_poll_events[i].user_token));
                 if (!state || !state->sock)
                     continue;
 
@@ -241,20 +242,18 @@ class router_router_client_bench_t
                 if (slot_index >= validated.size ())
                     return false;
 
-                if ((_poll_events[i].revents
-                     & static_cast<short> (zlink::poll_event::pollout))
+                if ((static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event::pollout))
                     && state->send_pending) {
                     if (!try_send_request (*state, perf_metric::phase_warmup))
                         return false;
                 }
 
-                if (!(_poll_events[i].revents
-                      & static_cast<short> (zlink::poll_event::pollin))) {
+                if (!(static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event::pollin))) {
                     continue;
                 }
 
                 for (;;) {
-                    zlink_routing_id_t source_rid = zlink::empty_routing_id ();
+                    zlink::routing_id_t source_rid = routing_id_from_ascii ("x");
                     perf_metric::header_t header;
                     const int recv_rc =
                       recv_reply (*state, &source_rid, &header);
@@ -273,7 +272,7 @@ class router_router_client_bench_t
                         debug_log ("validate recv ignored rc=" + std::to_string (recv_rc));
                         continue;
                     }
-                    if (!same_routing_id (source_rid, _server_rid)) {
+                    if (source_rid != _server_rid) {
                         debug_log ("validate source routing id mismatch");
                         continue;
                     }
@@ -380,7 +379,7 @@ class router_router_client_bench_t
     }
 
     int recv_reply (socket_state_t &state,
-                    zlink_routing_id_t *source_rid_out,
+                    zlink::routing_id_t *source_rid_out,
                     perf_metric::header_t *header_out)
     {
         if (!state.sock || !source_rid_out || !header_out) {
@@ -389,7 +388,7 @@ class router_router_client_bench_t
         }
 
         zlink::message_t reply;
-        zlink_routing_id_t source_rid = zlink::empty_routing_id ();
+        zlink::routing_id_t source_rid = routing_id_from_ascii ("x");
         const int rc =
           state.sock->recv (source_rid, reply, zlink::recv_flags_t::dontwait);
         if (rc != 0)
@@ -441,8 +440,8 @@ class router_router_client_bench_t
         }
 
         while (std::chrono::steady_clock::now () < deadline) {
-            const int poll_rc =
-              _poller.wait_all (_poll_events, compute_wait_ms (deadline));
+            _poll_events = _poller.wait_all (compute_wait_ms (deadline));
+            const int poll_rc = static_cast<int> (_poll_events.size ());
             if (poll_rc < 0) {
                 if (errno == EINTR || errno == EAGAIN)
                     continue;
@@ -453,14 +452,12 @@ class router_router_client_bench_t
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 socket_state_t *state =
-                  static_cast<socket_state_t *> (_poll_events[i].user);
+                  static_cast<socket_state_t *> (reinterpret_cast<void *> (_poll_events[i].user_token));
                 if (!state || !state->sock)
                     continue;
 
-                if (!(_poll_events[i].revents
-                      & static_cast<short> (zlink::poll_event::pollin))) {
-                    if ((_poll_events[i].revents
-                         & static_cast<short> (zlink::poll_event::pollout))
+                if (!(static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event::pollin))) {
+                    if ((static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event::pollout))
                         && state->send_pending) {
                         if (!try_send_request (*state, phase))
                             return false;
@@ -469,7 +466,7 @@ class router_router_client_bench_t
                 }
 
                 for (;;) {
-                    zlink_routing_id_t source_rid = zlink::empty_routing_id ();
+                    zlink::routing_id_t source_rid = routing_id_from_ascii ("x");
                     perf_metric::header_t header;
                     const int recv_rc =
                       recv_reply (*state, &source_rid, &header);
@@ -486,7 +483,7 @@ class router_router_client_bench_t
 
                     if (recv_rc != 0) {
                         debug_log ("active recv ignored rc=" + std::to_string (recv_rc));
-                    } else if (!same_routing_id (source_rid, _server_rid)) {
+                    } else if (source_rid != _server_rid) {
                         debug_log ("active source routing id mismatch");
                     } else if (perf_metric::is_expected (
                                  header, _run_id, phase, _msg_size)) {
@@ -513,8 +510,7 @@ class router_router_client_bench_t
                     }
                 }
 
-                if ((_poll_events[i].revents
-                     & static_cast<short> (zlink::poll_event::pollout))
+                if ((static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event::pollout))
                     && state->send_pending) {
                     if (!try_send_request (*state, phase))
                         return false;
@@ -575,7 +571,7 @@ class router_router_client_bench_t
     const uint32_t _run_id;
     uint64_t _seq;
     const std::string _server_id;
-    zlink_routing_id_t _server_rid;
+    zlink::routing_id_t _server_rid;
 
     phase_config_t _phase_cfg;
     bench_result_t _result;

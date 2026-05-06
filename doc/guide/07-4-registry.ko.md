@@ -266,6 +266,87 @@ Registry는 글로벌 서비스 토폴로지를 조회하는 API를 제공한다
 프로세스)과 **원격**(다른 프로세스, 쿼리 클라이언트 사용) 두 가지 접근
 방식이 있다.
 
+### 6.0 Registry 상태 조회
+
+Registry 자체의 운영 상태를 조회한다:
+
+```c
+zlink_registry_status_t status;
+zlink_registry_status_snapshot(registry, &status);
+
+printf("registry_id=%u  state=%d  entries=%u  peers=%u/%u\n",
+       status.registry_id,
+       status.state,
+       status.topology_entry_count,
+       status.connected_peer_registry_count,
+       status.peer_registry_count);
+```
+
+`zlink_registry_status_t` 필드:
+
+| 필드 | 설명 |
+|------|------|
+| `registry_id` | 숫자 Registry ID |
+| `bind_endpoint` | 현재 바인드 엔드포인트 |
+| `state` | 현재 Registry 상태 |
+| `topology_entry_count` | 토폴로지 테이블 전체 엔트리 수 |
+| `peer_registry_count` | 설정된 피어 Registry 수 |
+| `connected_peer_registry_count` | 현재 연결된 피어 Registry 수 |
+| `list_seq` | 마지막 발행된 서비스 목록의 단조 증가 시퀀스 번호 |
+| `last_error` | 마지막 오류 코드 (`0` = 없음) |
+| `last_changed_ms` | 가장 최근 상태 변경의 epoch ms |
+
+#### 서비스 요약 (Service Summary)
+
+토폴로지 전체의 channel별 집계 통계:
+
+```c
+/* 전체 channel 요약 */
+size_t count = 0;
+zlink_registry_service_summary_snapshot(registry, NULL, NULL, &count);
+
+zlink_registry_service_summary_entry_t *entries = malloc(
+    count * sizeof(zlink_registry_service_summary_entry_t));
+zlink_registry_service_summary_snapshot(registry, NULL, entries, &count);
+
+for (size_t i = 0; i < count; i++) {
+    printf("channel=%s  total=%u  ready=%u  err=%u\n",
+           entries[i].channel_name,
+           entries[i].total_count,
+           entries[i].ready_count,
+           entries[i].error_count);
+}
+free(entries);
+```
+
+`zlink_registry_service_summary_entry_t` 필드:
+
+| 필드 | 설명 |
+|------|------|
+| `auto_connect_type` | 자동 연결 channel 타입 |
+| `service_role` | 서비스 역할 |
+| `channel_name` | 논리적 channel 이름 |
+| `total_count` | 전체 등록된 인스턴스 수 |
+| `connecting_count` | 현재 연결 중인 인스턴스 수 |
+| `ready_count` | 현재 ready 상태 인스턴스 수 |
+| `error_count` | 오류 상태 인스턴스 수 |
+| `stopped_count` | 중지된 인스턴스 수 |
+| `last_reported_ms` | 가장 최근 heartbeat의 epoch ms |
+
+`auto_connect_type`, `service_role`, `channel_name`으로 필터링 가능
+(0 값은 와일드카드):
+
+```c
+zlink_registry_service_summary_filter_t filter;
+memset(&filter, 0, sizeof(filter));
+strncpy(filter.channel_name, "payment-service",
+        sizeof(filter.channel_name) - 1);
+
+size_t count = 64;
+zlink_registry_service_summary_entry_t entries[64];
+zlink_registry_service_summary_snapshot(registry, &filter, entries, &count);
+```
+
 ### 6.1 로컬 조회 (같은 프로세스)
 
 #### 전체 스냅샷
@@ -282,7 +363,7 @@ zlink_registry_topology_snapshot(registry, entries, &count);
 
 for (size_t i = 0; i < count; i++) {
     printf("channel=%s endpoint=%s state=%d\n",
-           entries[i].service_name,
+           entries[i].channel_name,
            entries[i].endpoint,
            entries[i].state);
 }
@@ -317,7 +398,7 @@ for (size_t i = 0; i < count; i++) {
 |------|------|
 | `routing_id` | 서비스 인스턴스의 라우팅 ID |
 | `service_kind` | `SPOT_PUB`, `SPOT_SUB`, `SOCKET`, 또는 `DISCOVERY` |
-| `service_name` | 논리적 channel 이름 |
+| `channel_name` | 논리적 channel 이름 |
 | `endpoint` | 광고된 엔드포인트 |
 | `source` | 추가 방식 (`MANUAL`/`DISCOVERY`/`REGISTRY`) |
 | `state` | `DISCOVERED`/`CONNECTING`/`READY`/`LOST`/`ERROR`/`STOPPED` |
@@ -334,7 +415,7 @@ for (size_t i = 0; i < count; i++) {
 | 필드 | 설명 |
 |------|------|
 | `service_kind` | 서비스 종류로 필터링 |
-| `service_name` | channel 이름으로 필터링 |
+| `channel_name` | channel 이름으로 필터링 |
 | `routing_id` | 라우팅 ID로 필터링 |
 | `state` | 토폴로지 상태로 필터링 |
 | `source` | 토폴로지 소스로 필터링 |
@@ -371,7 +452,7 @@ for (size_t i = 0; i < count; i++) {
         kind_str = "DISC";
     printf("[%s] %s @ %s  state=%d  ready=%u/%u\n",
            kind_str,
-           entries[i].service_name,
+           entries[i].channel_name,
            entries[i].endpoint,
            entries[i].state,
            entries[i].ready_count,

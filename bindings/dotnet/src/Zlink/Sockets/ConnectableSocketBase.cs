@@ -41,4 +41,16 @@ public abstract class ConnectableSocketBase : SocketBase
             throw ZlinkException.CreateConnectException(ex.InternalErrno);
         }
     }
+
+    public void DisconnectRid(RoutingId peerRid)
+    {
+        try
+        {
+            Kernel.DisconnectRid(peerRid);
+        }
+        catch (ZlinkException ex)
+        {
+            throw ZlinkException.CreateConnectException(ex.InternalErrno);
+        }
+    }
 }

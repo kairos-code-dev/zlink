@@ -1,3 +1,4 @@
+[English](03-2-pubsub.md) | [한국어](03-2-pubsub.ko.md)
 
 # PUB/SUB/XPUB/XSUB Publish-Subscribe
 
@@ -51,7 +52,7 @@ flowchart LR
 ```
 
 - XSUB passes all messages from PUB without subscription state.
-- XPUB exposes SUB subscription events via `zlink_subscription_event()`,
+- XPUB exposes SUB subscription events via `zlink_xpub_recv_part()`,
   allowing the proxy to inject subscription management logic
   (filtering, logging, authorization, etc.).
 - Plain SUB/PUB cannot build this relay structure.
@@ -71,7 +72,7 @@ flowchart LR
 ### Publisher (PUB)
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
 /* Publish message -- dropped if there are no subscribers */
@@ -97,37 +98,40 @@ void on_topic(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* Subscribe to topic -- set after connect */
 zlink_set_subscription(sub, "weather");
 
-/* Use zlink_subscribe() or zlink_subscribe_handler() to receive */
+/* Use zlink_subscribe() (typically inside a poller loop) to receive */
 ```
 
-> Reference: `core/tests/test_pubsub.cpp` -- empty subscription ("") → receives all messages
+> Reference: `core/tests/integration/test_pubsub.cpp` -- empty subscription ("") → receives all messages
 
 ### Sending and Receiving Summary
 
 | Socket | Direction | Receive API | Notes |
 |--------|-----------|-------------|-------|
-| PUB | Send only | N/A | Cannot receive (`ENOTSUP`) |
-| SUB | Receive only | `zlink_subscribe()` / `zlink_subscribe_handler()` | Topic + data separated |
-| XPUB | Bidirectional | `zlink_subscription_event()` | Receives subscription events |
-| XSUB | Receive only | `zlink_subscribe()` / `zlink_subscribe_handler()` | No local filter; receives all |
+| PUB | Send only | N/A | Cannot receive (`ZLINK_RECV_NOT_SUPPORTED`) |
+| SUB | Receive only | `zlink_subscribe()` | Topic + data separated |
+| XPUB | Bidirectional | `zlink_xpub_recv_part()` | Receives subscription events |
+| XSUB | Receive only | `zlink_subscribe()` | No local filter; receives all |
 
-> **Note:** `zlink_send()` / `zlink_recv()` return `ENOTSUP` on all 4
+> **Note:** `zlink_send()` / `zlink_recv()` return
+> `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` on all 4
 > PUB/SUB sockets. Use `zlink_publish()` for publishing and
-> `zlink_subscribe()` / `zlink_subscribe_handler()` for receiving.
+> `zlink_subscribe()` for receiving.
 
-PUB/SUB sockets support two receive modes:
+SUB / XSUB are recv-only types. The intended pattern is to observe
+`ZLINK_POLLIN` from a poller and then pull topic messages with
+`zlink_subscribe()`. No direct topic callback surface is provided.
 
-- **Pull mode** (default): `zlink_subscribe()` returns topic and data separately
-- **Callback mode**: `zlink_subscribe_handler()` registers a callback for automatic dispatch
-
-After callback attach, `zlink_subscribe()` and data-plane `ZLINK_POLLIN`
-return `EBUSY`.
+> **PUB / XPUB default:** `ZLINK_PUB_OPT_NODROP` defaults to `1`.
+> Instead of silently dropping when the HWM is reached,
+> `zlink_publish()` returns `ZLINK_SUBMIT_BACKPRESSURED`. Callers that
+> want loss-tolerant behavior must set `ZLINK_PUB_OPT_NODROP` to `0`
+> explicitly.
 
 ??? example "Full Sample Code -- Recv"
 
@@ -142,22 +146,10 @@ return `EBUSY`.
     | Rust | [pubsub_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_recv_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_recv_sample/main.go) |
 
-??? example "Full Sample Code -- Callback"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [pubsub_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/pubsub_callback_sample.c) |
-    | C++ | [pubsub_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pubsub_callback_sample.cpp) |
-    | Java | [PubSubCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PubSubCallbackSample.java) |
-    | Python | [pubsub_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pubsub_callback.py) |
-    | Node | [pubsub_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pubsub_callback_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PubSubCallback/Program.cs) |
-    | Rust | [pubsub_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_callback_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_callback_sample/main.go) |
-
-> When PUB's send queue is full (HWM), messages are **dropped** rather
-> than blocking. For details, see
-> [Performance Guide](10-performance.md).
+> When PUB's send queue is full (HWM), the default
+> (`ZLINK_PUB_OPT_NODROP=1`) makes `zlink_publish()` return
+> `ZLINK_SUBMIT_BACKPRESSURED` instead of silently dropping. For details,
+> see [Performance Guide](10-performance.md).
 
 ## 3. Topic Filtering
 
@@ -188,7 +180,7 @@ zlink_unset_subscription(sub, "sports");
 zlink_set_subscription(sub, "");
 ```
 
-> Reference: `core/tests/test_pubsub.cpp` -- `zlink_set_subscription(subscriber, "")`
+> Reference: `core/tests/integration/test_pubsub.cpp` -- `zlink_set_subscription(subscriber, "")`
 
 ## 4. Message Format
 
@@ -219,13 +211,14 @@ zlink_publish(pub, "sensor:cpu", parts, 2, 0);
    parts[1]  = "73" */
 ```
 
-The topic is sent on the wire as the first frame. `zlink_subscribe()` /
-`zlink_subscribe_handler()` separate the topic from data on the receive
-side. Callers never need to assemble topic frames manually.
+The topic is sent on the wire as the first frame. `zlink_subscribe()`
+separates the topic from data on the receive side. Callers never need to
+assemble topic frames manually.
 
 > **Note:** Passing `NULL` as topic (`zlink_publish(pub, NULL, parts, ...)`)
-> activates a legacy path where parts[0] is used as the topic frame.
-> This is not recommended. Always pass the `topic_id` parameter explicitly.
+> activates a compatibility path where parts[0] is used as the topic
+> frame. This is not recommended. Always pass the `topic_id` parameter
+> explicitly.
 
 ## 5. PUB/SUB Socket Options
 
@@ -250,11 +243,11 @@ side. Callers never need to assemble topic frames manually.
 
 ```c
 /* PUB */
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
 /* SUB -- receive all messages */
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 zlink_set_subscription(sub, "");
 
@@ -268,21 +261,21 @@ zlink_publish(pub, NULL, &msg, 1, 0);
 /* on_topic callback receives "test" asynchronously */
 ```
 
-> Reference: `core/tests/test_pubsub.cpp` -- `test_tcp()`
+> Reference: `core/tests/integration/test_pubsub.cpp` -- `test_tcp()`
 
 ### Pattern 2: Multiple SUBs
 
 Multiple SUBs connect to a single PUB. Each SUB receives only its own topics.
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
-void *sub_weather = zlink_socket(ctx, ZLINK_SUB);
+void *sub_weather = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub_weather, "tcp://127.0.0.1:5556");
 zlink_set_subscription(sub_weather, "weather");
 
-void *sub_sports = zlink_socket(ctx, ZLINK_SUB);
+void *sub_sports = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub_sports, "tcp://127.0.0.1:5556");
 zlink_set_subscription(sub_sports, "sports");
 
@@ -294,7 +287,7 @@ zlink_set_subscription(sub_sports, "sports");
 A SUB can connect to multiple PUBs. It receives messages from all PUBs via fair-queue.
 
 ```c
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_set_subscription(sub, "");
 zlink_connect(sub, "tcp://pub1:5556");
 zlink_connect(sub, "tcp://pub2:5557");
@@ -317,21 +310,22 @@ zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 #### XPUB_NODROP — Backpressure Instead of Drop
 
 Setting `ZLINK_PUB_OPT_NODROP` disables lossy mode. When the HWM is
-reached, instead of dropping messages, `EAGAIN` is returned so the
+reached, instead of dropping messages, `ZLINK_SUBMIT_BACKPRESSURED` is returned so the
 caller can handle backpressure directly.
 
 ```c
 /* Enable NODROP on XPUB */
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 int nodrop = 1;
 zlink_set_pub_option(xpub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
 
-/* On HWM, send returns EAGAIN instead of dropping */
+/* On HWM, publish returns BACKPRESSURED instead of dropping */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 5);
 memcpy(zlink_msg_data(&msg), "hello", 5);
-int rc = zlink_publish(xpub, NULL, &msg, 1, ZLINK_DONTWAIT);
-if (rc == -1 && zlink_errno() == EAGAIN) {
+zlink_submit_result_t rc = zlink_publish(
+    xpub, NULL, &msg, 1, ZLINK_DONTWAIT);
+if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
     /* HWM reached — retry or apply backpressure logic */
     zlink_msg_close(&msg);
 }
@@ -340,7 +334,7 @@ if (rc == -1 && zlink_errno() == EAGAIN) {
 | Mode | Behavior on HWM | When to Use |
 |------|-----------------|-------------|
 | Default (lossy) | Silent drop — no error, message lost | Only latest data matters (sensor, tick) |
-| `XPUB_NODROP=1` | Returns `EAGAIN` — caller controls | Message loss is not acceptable |
+| `XPUB_NODROP=1` | Returns `ZLINK_SUBMIT_BACKPRESSURED` — caller controls | Message loss is not acceptable |
 
 > `ZLINK_PUB_OPT_NODROP` is an XPUB-only socket option.
 > It is not available on regular PUB sockets.
@@ -368,12 +362,12 @@ zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "sunny", 5);
 zlink_publish(pub, "weather", &part, 1, 0);  /* OK */
 
-/* Using zlink_send() on PUB → ENOTSUP */
-zlink_send(pub, &part, 1, 0);  /* errno = ENOTSUP */
+/* Using zlink_send() on PUB → returns ZLINK_SUBMIT_NOT_SUPPORTED */
+zlink_send(pub, &part, 1, 0);  /* returns ZLINK_SUBMIT_NOT_SUPPORTED */
 
 /* SUB: receive via zlink_subscribe(). Cannot send/publish */
-zlink_publish(sub, "weather", &part, 1, 0);  /* errno = ENOTSUP */
-zlink_send(sub, &part, 1, 0);               /* errno = ENOTSUP */
+zlink_publish(sub, "weather", &part, 1, 0);  /* ZLINK_SUBMIT_NOT_SUPPORTED */
+zlink_send(sub, &part, 1, 0);                /* ZLINK_SUBMIT_NOT_SUPPORTED */
 ```
 
 ---
@@ -403,7 +397,7 @@ identically via `zlink_set_subscription()` on both.
 | | PUB | XPUB |
 |---|-----|------|
 | **Message publish** | `zlink_publish()` | `zlink_publish()` (same) |
-| **Subscription events** | Not exposed | `zlink_subscription_event()` |
+| **Subscription events** | Not exposed | `zlink_xpub_recv_part()` |
 
 XPUB can observe which clients subscribe to or unsubscribe from which topics.
 
@@ -441,7 +435,7 @@ flowchart LR
 | Step | Actor | Action | API |
 |------|-------|--------|-----|
 | 1 | SUB | Subscribe → arrives at XPUB via wire | `zlink_set_subscription(sub, "weather")` |
-| 2 | proxy app | Receive subscription event from XPUB | `zlink_subscription_event(xpub, ...)` |
+| 2 | proxy app | Receive subscription event from XPUB | `zlink_xpub_recv_part(xpub, ...)` |
 | 3 | proxy app | Register on XSUB → propagates to PUB via wire | `zlink_set_subscription(xsub, "weather")` |
 | 4 | PUB | Publish matching data | `zlink_publish(pub, "weather", ...)` |
 | 5 | data flow | XSUB → XPUB → SUB | Handled by `zlink_proxy()` |
@@ -465,12 +459,11 @@ flowchart LR
 |------------|-----|-----|------|------|
 | `zlink_publish()` | OK | — | OK | — |
 | `zlink_subscribe()` | — | OK | — | OK |
-| `zlink_subscribe_handler()` | — | OK | — | OK |
 | `zlink_set_subscription()` | — | OK | — | OK |
-| `zlink_subscription_event()` | — | — | OK | — |
+| `zlink_xpub_recv_part()` | — | — | OK | — |
 | Local filter | N/A | **On** | N/A | **Off** |
 
-> `zlink_send()` / `zlink_recv()` return `ENOTSUP` on all 4 PUB/SUB sockets.
+> `zlink_send()` / `zlink_recv()` return `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` on all 4 PUB/SUB sockets.
 > Use `zlink_publish()` for publishing and `zlink_subscribe()` for receiving.
 
 > Proxy patterns (built-in `zlink_proxy()`, manual proxy construction,
@@ -494,22 +487,22 @@ zlink_set_subscription(xsub, "A");
 zlink_unset_subscription(xsub, "A");
 ```
 
-XPUB receives subscription frames with `zlink_subscription_event()`:
+XPUB receives subscription frames with `zlink_xpub_recv_part()`:
 
 ```c
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
-zlink_routing_id_t source_rid;
+const zlink_routing_id_t *source_rid = NULL;
 int subscribed = 0;
 char topic[256];
-size_t topic_len = sizeof(topic);
+size_t topic_len = 0;
 
-zlink_subscription_event(
-  xpub, &source_rid, &subscribed, topic, &topic_len, 0);
+zlink_recv_result_t rc = zlink_xpub_recv_part(
+  xpub, &source_rid, &subscribed, topic, sizeof(topic), &topic_len, 0);
 ```
 
-> Reference: `core/tests/test_xpub_manual.cpp` -- `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
+> Reference: `core/tests/integration/test_xpub_manual.cpp` -- `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
 
 ## 10. XPUB Socket Options
 
@@ -529,7 +522,7 @@ By default, XPUB processes SUB subscriptions automatically. In MANUAL mode, afte
 int manual = 1;
 zlink_set_pub_option(xpub, ZLINK_PUB_OPT_MANUAL, &manual, sizeof(manual));
 
-/* zlink_subscription_event() returns subscribed=1, topic="A"
+/* zlink_xpub_recv_part() returns subscribed=1, topic="A"
    Then apply transformed subscription: */
 zlink_set_subscription(xpub, "XA");
 
@@ -545,7 +538,7 @@ memcpy(zlink_msg_data(&msg_xa), "XA", 2);
 zlink_publish(xpub, NULL, &msg_xa, 1, 0);  /* subscriber receives this */
 ```
 
-> Reference: `core/tests/test_xpub_manual.cpp` -- `test_basic()`: subscription request for A → transformed to B
+> Reference: `core/tests/integration/test_xpub_manual.cpp` -- `test_basic()`: subscription request for A → transformed to B
 
 ## 11. XPUB/XSUB Usage Patterns
 
@@ -555,11 +548,11 @@ Build a PUB/SUB proxy using XSUB (frontend) + XPUB (backend).
 
 ```c
 /* Proxy frontend: PUBs connect here */
-void *xsub = zlink_socket(ctx, ZLINK_XSUB);
+void *xsub = zlink_socket(ctx, ZLINK_SOCKET_XSUB);
 zlink_bind(xsub, "tcp://*:5556");
 
 /* Proxy backend: SUBs connect here */
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
 /* Run proxy (forwards messages and subscriptions bidirectionally) */
@@ -575,13 +568,15 @@ int manual = 1;
 zlink_set_pub_option(xpub, ZLINK_PUB_OPT_MANUAL, &manual, sizeof(manual));
 
 for (;;) {
-    zlink_routing_id_t source_rid;
+    const zlink_routing_id_t *source_rid = NULL;
     int subscribed = 0;
     char topic[256];
-    size_t topic_len = sizeof(topic);
+    size_t topic_len = 0;
 
-    zlink_subscription_event(
-      xpub, &source_rid, &subscribed, topic, &topic_len, 0);
+    zlink_recv_result_t rc = zlink_xpub_recv_part(
+      xpub, &source_rid, &subscribed, topic, sizeof(topic), &topic_len, 0);
+    if (rc != ZLINK_RECV_OK)
+        break;
 
     if (subscribed) {
         /* Register subscription */
@@ -598,24 +593,26 @@ for (;;) {
 }
 ```
 
-> Reference: `core/tests/test_xpub_manual.cpp` -- `test_xpub_proxy_unsubscribe_on_disconnect()`
+> Reference: `core/tests/integration/test_xpub_manual.cpp` -- `test_xpub_proxy_unsubscribe_on_disconnect()`
 
 ### Pattern 3: Subscription Monitoring
 
 Use XPUB to observe which clients subscribe to which topics.
 
 ```c
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
 for (;;) {
-    zlink_routing_id_t source_rid;
+    const zlink_routing_id_t *source_rid = NULL;
     int subscribed = 0;
     char topic[256];
-    size_t topic_len = sizeof(topic);
+    size_t topic_len = 0;
 
-    zlink_subscription_event(
-      xpub, &source_rid, &subscribed, topic, &topic_len, 0);
+    zlink_recv_result_t rc = zlink_xpub_recv_part(
+      xpub, &source_rid, &subscribed, topic, sizeof(topic), &topic_len, 0);
+    if (rc != ZLINK_RECV_OK)
+        break;
     printf("%s: %.*s\n", subscribed ? "New subscription" : "Unsubscription",
            (int) topic_len, topic);
 }
@@ -629,11 +626,11 @@ When a SUB disconnects, an unsubscribe frame is automatically delivered to XPUB.
 /* After SUB disconnects */
 zlink_close(sub);
 
-/* The next zlink_subscription_event() returns
+/* The next zlink_xpub_recv_part() returns
    subscribed=0 and the previously subscribed topic */
 ```
 
-> Reference: `core/tests/test_xpub_manual.cpp` -- `test_xpub_proxy_unsubscribe_on_disconnect()`
+> Reference: `core/tests/integration/test_xpub_manual.cpp` -- `test_xpub_proxy_unsubscribe_on_disconnect()`
 
 ## 12. Caveats
 
@@ -657,7 +654,7 @@ In MANUAL mode, if `zlink_set_subscription()` is not called after receiving a su
 
 When multiple SUBs subscribe to the same topic, the XPUB subscription is maintained until all SUBs have unsubscribed.
 
-> Reference: `core/tests/test_xpub_manual.cpp` -- `test_missing_subscriptions()`: processing two subscribers sequentially to prevent omissions
+> Reference: `core/tests/integration/test_xpub_manual.cpp` -- `test_missing_subscriptions()`: processing two subscribers sequentially to prevent omissions
 
 ---
 [← PAIR](03-1-pair.md) | [DEALER →](03-3-dealer.md)

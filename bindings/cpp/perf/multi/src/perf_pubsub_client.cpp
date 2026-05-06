@@ -139,7 +139,9 @@ class pubsub_client_bench_t
             }
 
             _sockets.push_back (&sock);
-            (void) _poller.add (sock, zlink::poll_event::pollin, &sock);
+            (void) _poller.add (
+              sock, zlink::poll_event::pollin,
+              reinterpret_cast<std::uintptr_t> (&sock));
         }
         return !_sockets.empty ();
     }
@@ -176,7 +178,8 @@ class pubsub_client_bench_t
             if (wait_ms < 1)
                 wait_ms = 1;
 
-            const int poll_rc = _poller.wait_all (_poll_events, wait_ms);
+            _poll_events = _poller.wait_all (wait_ms);
+        const int poll_rc = static_cast<int> (_poll_events.size ());
             if (poll_rc < 0) {
                 if (errno == EINTR || errno == EAGAIN)
                     continue;
@@ -187,7 +190,7 @@ class pubsub_client_bench_t
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 ::perf::socket_t *sock =
-                  static_cast<::perf::socket_t *> (_poll_events[i].user);
+                  static_cast<::perf::socket_t *> (reinterpret_cast<void *> (_poll_events[i].user_token));
                 if (!sock)
                     continue;
 

@@ -12,6 +12,32 @@ non-exported modules are internal. Package `exports` should expose only the
 documented public surface. Perf, samples, and tests must import the public
 package entrypoint only.
 
+## Design Basis
+
+The Node/TypeScript binding follows the repository POSD design policy. Public
+classes must hide native sequencing, ownership, and option encoding behind
+typed, deep interfaces so callers do not need core implementation details.
+
+The public package surface must model stable domain concepts, not native addon
+steps. Public classes and exported types are justified when they own
+context/socket lifetime, message ownership, receive metadata, service
+membership, callbacks, or typed options. Native object handles, part-loop
+sequencing, request tokens, callback userdata, and raw option encoding stay
+inside non-exported modules.
+
+Design review uses these POSD constraints:
+
+- shared send/recv, nonblocking, ownership, and error mapping rules are
+  centralized instead of copied across socket classes
+- canonical result and facade methods do not ask callers to pass state already
+  captured by the object, such as a source socket, request sequence, or
+  service address
+- compatibility exports, if retained, are not the canonical API and are not
+  used by new docs, samples, or tests
+- an exported wrapper that only forwards to the native addon without adding
+  validation, ownership, lifetime, or result-shape semantics is too shallow and
+  must be removed or kept private
+
 ---
 
 ## High-Performance Requirements
@@ -24,18 +50,19 @@ Native addon code must construct public `Message` and result objects directly
 from the core `*_part` substrate and must not create native aggregate arrays
 only to copy them into JavaScript arrays.
 
-## Current Core Alignment Overrides
+## Core Alignment Rules
 
-The sections below still contain some older signatures. When they conflict
-with the rules here, this section wins.
+The detailed sections below are the canonical Node/TypeScript binding
+contract. This section states cross-cutting constraints once so the per-type
+API lists can stay focused on signatures.
 
-- `PairSocket`, `DealerSocket`, and `RouterSocket` are recv-only on the data
-  plane. Remove `onReceive(...)` from their public contract.
-- `SubSocket` and `XSubSocket` are recv-only. Remove `onSubscribe(...)` from
-  their public contract.
+- `PairSocket`, `DealerSocket`, and `RouterSocket` keep their documented
+  send, recv, request, and reply methods, but they do not expose direct
+  data-plane receive callbacks such as `onReceive(...)`.
+- `SubSocket` and `XSubSocket` are receive-only topic sockets and do not
+  expose direct topic callbacks such as `onSubscribe(...)`.
 - `StreamSocket` keeps `recv(...)` and exposes a packet callback surface
-  mapped to `zlink_stream_packet_handler()`. Recommended canonical name:
-  `onPacket(...)`.
+  mapped to `zlink_stream_packet_handler()` as `onPacket(...)`.
 - `SpotNode` must expose channel-aware attachment APIs:
   `attachDiscovery(discovery)`,
   `attachChannelDealer(discovery, dealer)`,
@@ -62,8 +89,7 @@ with the rules here, this section wins.
   true`, `handover = false`, `nodrop = true`.
 - SPOT admission HWM defaults follow the core header. Router and pubsub
   admission profile/numeric options are exposed; relay and delivery HWM stay
-  `0`. Binding native linux-x86_64 runtime libraries must be synchronized from
-  `core/build` before validation.
+  `0` and are not public Node/TypeScript options.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routingId, advertiseEndpoint)`. Users do not configure this.
@@ -486,12 +512,12 @@ class RouterSocket {
     replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                 requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
 
-    // NOTE: RouterSocket 의 routed 수신 plane 은 단일 recv 표면이다. 일반
-    // ROUTER 트래픽과 spot-origin routed 트래픽을 모두 recv 로 받는다.
-    // `Received.routingId` 는 source_node_rid, `Received.spotRid` 는
-    // spot-origin 트래픽에서만 값이 있다. data-plane callback install
-    // surface (예: onReceive) 는 ROUTER 에 제공하지 않는다. request
-    // completion 은 request() 경로에서만 유지된다.
+    // NOTE: RouterSocket has one routed receive surface. recv receives both
+    // regular ROUTER traffic and spot-origin routed traffic.
+    // `Received.routingId` is source_node_rid, and `Received.spotRid` is set
+    // only for spot-origin traffic. ROUTER does not expose a data-plane
+    // callback install surface such as onReceive. Request completion remains
+    // available only through request().
 
     /** @throws {CloseError} */
     close(): void;
@@ -813,7 +839,7 @@ recv paths. Canonical shape shared with `TopicMessage` except that
 ```typescript
 class Received {
     readonly routingId: RoutingId | null;    // peer_rid (Router) / source_node_rid (Spot)
-    readonly spotRid: RoutingId | null;      // SPOT routed recv 에서만 값 있음
+    readonly spotRid: RoutingId | null;      // set only for SPOT routed recv
     readonly requestSeq: bigint | null;      // set on request-reply recv paths, else null
     readonly parts: Message[];
 
@@ -823,7 +849,7 @@ class Received {
     /** @throws {RecvError} */
     singlePartOrThrow(): Message;
 
-    /** reply — requestSeq 가 null 이 아니어야 함. null 또는 invalid reply context 는 SubmitError. */
+    /** reply requires requestSeq; null or invalid reply context raises SubmitError. */
     /** @throws {SubmitError} */
     reply(part: Message): void;
     /** @throws {SubmitError} */
@@ -933,6 +959,14 @@ const RequestResult = {
     NotFound: 102,
     Terminated: 103,
     ProtocolError: 104,
+    InternalError: 105,
+    Rejected: 106,
+    Conflict: 107,
+    Busy: 108,
+    NotConnected: 109,
+    InvalidArgument: 110,
+    InvalidState: 111,
+    NotSupported: 112,
 } as const;
 
 type RequestResult = typeof RequestResult[keyof typeof RequestResult];
@@ -950,6 +984,7 @@ const RecvResult = {
     Terminated: 203,
     InvalidHandle: 204,
     NotSupported: 205,
+    InternalError: 206,
 } as const;
 
 type RecvResult = typeof RecvResult[keyof typeof RecvResult];
@@ -968,6 +1003,7 @@ const HandlerResult = {
     NotSupported: 303,
     Deadlock: 304,
     InvalidHandle: 305,
+    InternalError: 306,
 } as const;
 
 type HandlerResult = typeof HandlerResult[keyof typeof HandlerResult];
@@ -983,6 +1019,7 @@ const CloseResult = {
     Busy: 401,
     Shutdown: 402,
     InvalidHandle: 403,
+    InternalError: 404,
 } as const;
 
 type CloseResult = typeof CloseResult[keyof typeof CloseResult];
@@ -999,6 +1036,7 @@ const BindResult = {
     AddrInUse: 502,
     NotSupported: 503,
     InvalidHandle: 504,
+    InternalError: 505,
 } as const;
 
 type BindResult = typeof BindResult[keyof typeof BindResult];
@@ -1014,6 +1052,10 @@ const ConnectResult = {
     InvalidArgument: 601,
     NotSupported: 602,
     InvalidHandle: 603,
+    InternalError: 604,
+    NotFound: 605,
+    Conflict: 606,
+    Busy: 607,
 } as const;
 
 type ConnectResult = typeof ConnectResult[keyof typeof ConnectResult];
@@ -1029,6 +1071,9 @@ const ConfigResult = {
     InvalidHandle: 701,
     InvalidArgument: 702,
     NotSupported: 703,
+    InternalError: 704,
+    InvalidState: 705,
+    NotFound: 706,
 } as const;
 
 type ConfigResult = typeof ConfigResult[keyof typeof ConfigResult];
@@ -1309,8 +1354,15 @@ class Discovery {
      * the publishing Discovery to enable ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC.
      */
     resolveSpot(spotRid: RoutingId): RoutingId;
+    /**
+     * Resolve the current route for an actor id in this discovery channel.
+     * Maps to zlink_discovery_resolve_actor.
+     */
+    resolveActor(actorId: string): ActorRoute;
     /** Publish SPOT owner rows to Registry when true. */
     spotOwnerSyncEnabled: boolean;
+    /** Publish actor route rows to Registry when true. */
+    actorRouteSyncEnabled: boolean;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -1328,6 +1380,8 @@ class SpotNode {
     connectPeer(endpoint: string): void;
     /** @throws {ConnectError} */
     disconnectPeer(endpoint: string): void;
+    /** @throws {ConnectError} */
+    disconnectPeerRid(targetNodeRid: RoutingId): void;
     /** @throws {ConfigError} */
     attachDiscovery(discovery: Discovery): void;
     /** @throws {ConfigError} */
@@ -1341,7 +1395,11 @@ class SpotNode {
     /** @throws {ConfigError} */
     setTlsClient(ca: string, host: string, trust?: number): void;
     /** @throws {ConfigError} */
+    entrySpot(): Spot;
+    /** @throws {ConfigError} */
     createSpot(): Spot;
+    /** @throws {ConfigError} */
+    spotLookup(spotRid: RoutingId): Spot | null;
     /** @throws {ConfigError} */
     actor(actorId: string): Actor;
     /** @throws {ConfigError} */
@@ -1350,7 +1408,7 @@ class SpotNode {
     /** @throws {RequestError} */
     createRemoteActor(targetNodeRid: RoutingId, actorId: string,
                       message: MessageLike, timeoutMs?: number): ActorCreateResult;
-    /** @throws {CloseError} */
+    /** @throws {RequestError} */
     destroyActor(actor: ActorRef, timeoutMs?: number): void;
     /** @throws {HandlerError} */
     onActorAdmission(handler: ActorAdmissionHandler): void;
@@ -1358,7 +1416,7 @@ class SpotNode {
     joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId,
               message: MessageLike, callback: RequestResultCallback,
               flags?: SendFlags, timeout?: number): boolean;
-    /** @throws {ConfigError} */
+    /** @throws {RequestError} */
     leaveActor(actor: ActorRef, destSpotRid: RoutingId, timeoutMs?: number): void;
     /** @throws {ConfigError} */
     statusSnapshot(): SpotNodeStatus;
@@ -1374,11 +1432,11 @@ class SpotNode {
     actorsSnapshot(): SpotNodeActorEntry[];
     /** @throws {ConfigError} */
     internalSocketsSnapshot(filter?: SpotNodeSocketSnapshotFilter): SpotNodeSocketSnapshotEntry[];
-    /** @throws {ConfigError} */
     // --- identity / routing ---
     /**
      * SpotNode's logical address. Maps to zlink_set_routing_id(node, ...) /
      * zlink_get_routing_id(node, ...).
+     * @throws {ConfigError}
      */
     setRoutingId(rid: RoutingId): void;
     readonly routingId: RoutingId;
@@ -1389,9 +1447,11 @@ class SpotNode {
 }
 ```
 
-`SpotNode` owns the lifecycle. `Spot` is created only through
-`SpotNode.createSpot()`. Direct `new Spot(node)` construction is internal
-and is not part of the public API contract.
+`SpotNode` owns the lifecycle. `Spot` handles are created through
+`SpotNode.createSpot()`, Entry Spot facades through `SpotNode.entrySpot()`,
+and lookup facades through `SpotNode.spotLookup(...)`. Direct
+`new Spot(node)` construction is internal and is not part of the public API
+contract.
 
 ### Actor
 
@@ -1425,7 +1485,8 @@ successfully bound with `StreamSocket.bindActor(...)`.
 
 ```typescript
 class Spot {
-    // The SpotNode constructor path is internal. Public code must use SpotNode.createSpot().
+    // The SpotNode constructor path is internal. Public code obtains Spot
+    // handles through SpotNode factories.
     /** @throws {SubmitError} */
     publish(serviceName: string, topic: string, payload: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */

@@ -142,11 +142,11 @@ bool perf_stream_server (const std::string &lib_name,
       server.sock (), settings, transport);
 
     const int io_timeout_ms = std::max (settings.sndtimeo_ms, settings.rcvtimeo_ms);
-    (void) server.sock ().set_option (zlink::socket_options::sndtimeo,
+    (void) server.sock ().set_option (zlink::compat::options::socket_options::sndtimeo,
                                       io_timeout_ms);
-    (void) server.sock ().set_option (zlink::socket_options::rcvtimeo,
+    (void) server.sock ().set_option (zlink::compat::options::socket_options::rcvtimeo,
                                       io_timeout_ms);
-    (void) server.sock ().set_option (zlink::socket_options::tcp_nodelay, 1);
+    (void) server.sock ().set_option (zlink::compat::options::socket_options::tcp_nodelay, 1);
 
     if (!perf::multi::setup_tls_server (server.sock (), transport))
         return false;

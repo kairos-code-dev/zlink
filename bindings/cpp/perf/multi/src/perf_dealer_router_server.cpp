@@ -6,13 +6,20 @@
 #include "../common/perf_entry.hpp"
 
 #include <cerrno>
+#include <cstring>
 #include <deque>
 
 namespace {
 
+zlink::routing_id_t routing_id_from_ascii (const char *value_)
+{
+    return zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> (value_), std::strlen (value_));
+}
+
 struct pending_reply_t
 {
-    pending_reply_t () : client_id (), payload () {}
+    pending_reply_t () : client_id (routing_id_from_ascii ("x")), payload () {}
 
     zlink::routing_id_t client_id;
     zlink::message_t payload;
@@ -123,7 +130,8 @@ bool perf_dealer_router_server (const std::string &lib_name,
             break;
         }
 
-        const int poll_rc = poller.wait_all (events, 50);
+        events = poller.wait_all (50);
+        const int poll_rc = static_cast<int> (events.size ());
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
@@ -134,22 +142,20 @@ bool perf_dealer_router_server (const std::string &lib_name,
             continue;
 
         for (size_t i = 0; i < events.size () && !stop_requested; ++i) {
-            if ((events[i].revents
-                 & static_cast<short> (zlink::poll_event::pollout))
+            if ((static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event::pollout))
                 != 0
                 && !flush_pending_replies (server.sock (), pending_replies)) {
                 failed = true;
                 break;
             }
 
-            if ((events[i].revents
-                 & static_cast<short> (zlink::poll_event::pollin))
+            if ((static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event::pollin))
                 == 0) {
                 continue;
             }
 
             for (;;) {
-                zlink::routing_id_t source_rid;
+                zlink::routing_id_t source_rid = routing_id_from_ascii ("x");
                 zlink::message_t part;
                 const int recv_rc = server.sock ().recv (
                   source_rid, part, zlink::recv_flags_t::dontwait);

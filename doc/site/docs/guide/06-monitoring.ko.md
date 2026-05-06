@@ -595,5 +595,112 @@ zlink_registry_status_snapshot(registry, &status);
 printf("state=%d\n", status.state);
 ```
 
+## 12. Poller API
+
+Poller API(`zlink_poller_*`)는 zlink 소켓, 원시 파일 디스크립터(fd), 타이머를
+단일 `wait` 호출로 멀티플렉싱하는 이벤트 루프를 제공한다. 여러 소스를 관리하는
+이벤트 기반 애플리케이션에서 권장되는 방식이다.
+
+### 12.1 기본 사용법
+
+```c
+void *poller = zlink_poller_new();
+
+/* 소켓 추가 (POLLIN) */
+zlink_poller_add(poller, router, my_router_ctx, ZMQ_POLLIN);
+
+/* 원시 fd 추가 */
+zlink_poller_add_fd(poller, event_fd, my_fd_ctx, ZMQ_POLLIN);
+
+/* 타이머 추가 */
+void *timer = zlink_timer_new(ctx, 1000);  /* 1초 간격 */
+zlink_poller_add_timer(poller, timer, my_timer_ctx);
+
+for (;;) {
+    zlink_poller_event_t event;
+    int rc = zlink_poller_wait(poller, &event, -1, NULL);
+    if (rc < 0)
+        break;
+
+    switch (event.source_kind) {
+    case ZLINK_POLLER_SOURCE_SOCKET:
+        handle_socket(event.socket, event.user_data);
+        break;
+    case ZLINK_POLLER_SOURCE_FD:
+        handle_fd(event.fd, event.user_data);
+        break;
+    case ZLINK_POLLER_SOURCE_TIMER:
+        handle_timer(event.timer, event.user_data);
+        break;
+    }
+}
+
+zlink_poller_destroy(&poller);
+```
+
+`zlink_poller_wait()`는 이벤트가 1개 준비되면 `1`, timeout이면 `0`,
+오류 시 `-1`을 반환한다. `timeout`은 밀리초 단위이며, `-1`은 무기한 대기,
+`0`은 non-blocking이다.
+
+### 12.2 일괄 대기
+
+폴 루프에 재진입하지 않고 준비된 이벤트를 한 번에 drain하려면:
+
+```c
+zlink_poller_event_t events[16];
+int n = zlink_poller_wait_all(poller, events, 16, 0, NULL);
+for (int i = 0; i < n; i++) {
+    /* events[i] 처리 */
+}
+```
+
+### 12.3 수정 및 제거
+
+```c
+/* 기존 소켓의 감시 이벤트 변경 */
+zlink_poller_modify(poller, router, ZMQ_POLLIN | ZMQ_POLLOUT);
+
+/* 소켓 제거 */
+zlink_poller_remove(poller, router);
+
+/* fd 제거 */
+zlink_poller_remove_fd(poller, event_fd);
+
+/* 타이머 제거 */
+zlink_poller_remove_timer(poller, timer);
+```
+
+### 12.4 `zlink_poller_event_t` 필드
+
+| 필드 | 설명 |
+|------|------|
+| `source_kind` | `ZLINK_POLLER_SOURCE_SOCKET`, `_FD`, `_TIMER` 중 하나 |
+| `socket` | 소켓 핸들 (`source_kind == SOCKET`일 때 유효) |
+| `fd` | 파일 디스크립터 (`source_kind == FD`일 때 유효) |
+| `timer` | 타이머 핸들 (`source_kind == TIMER`일 때 유효) |
+| `user_data` | `add`/`add_fd`/`add_timer`로 등록한 포인터 |
+| `events` | 준비된 이벤트 플래그 (`ZMQ_POLLIN` / `ZMQ_POLLOUT`) |
+
+### 12.5 저수준 `zlink_poll`
+
+Poller 객체 없이 일회성 폴링이 필요하면 `zlink_poll()`을 사용한다:
+
+```c
+zlink_pollitem_t items[2];
+items[0].socket = router;
+items[0].fd     = 0;
+items[0].events = ZMQ_POLLIN;
+items[1].socket = NULL;
+items[1].fd     = pipe_fd;
+items[1].events = ZMQ_POLLIN;
+
+int n = zlink_poll(items, 2, 1000, NULL);
+if (items[0].revents & ZMQ_POLLIN)
+    /* router에 데이터 있음 */;
+```
+
+`zlink_poll()`은 저수준이며 타이머를 지원하지 않는다. 프로덕션 이벤트
+루프에는 Poller API를 사용한다.
+
 ---
 [← TLS 보안](05-tls-security.ko.md) | [서비스 개요 →](07-0-services.ko.md)

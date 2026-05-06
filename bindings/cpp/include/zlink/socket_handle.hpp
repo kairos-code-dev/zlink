@@ -7,6 +7,13 @@
 namespace zlink
 {
 
+class socket_handle_t;
+namespace detail
+{
+inline void *native_handle (socket_handle_t &socket_) noexcept;
+inline const void *native_handle (const socket_handle_t &socket_) noexcept;
+} // namespace detail
+
 class socket_handle_t
 {
   public:
@@ -43,8 +50,6 @@ class socket_handle_t
     socket_handle_t &operator= (const socket_handle_t &) = delete;
 
     bool valid () const noexcept { return _socket != NULL; }
-    void *handle () noexcept { return _socket; }
-    const void *handle () const noexcept { return _socket; }
 
     ZLINK_CPP_NODISCARD int close () noexcept
     {
@@ -68,6 +73,9 @@ class socket_handle_t
     }
 
   protected:
+    void *handle () noexcept { return _socket; }
+    const void *handle () const noexcept { return _socket; }
+
     void reset_handle (void *socket_, bool own_) noexcept
     {
         _socket = socket_;
@@ -75,9 +83,40 @@ class socket_handle_t
     }
 
   private:
+    friend void *detail::native_handle (socket_handle_t &socket_) noexcept;
+    friend const void *
+    detail::native_handle (const socket_handle_t &socket_) noexcept;
+
     void *_socket;
     bool _own;
 };
+
+namespace detail
+{
+inline void *native_handle (socket_handle_t &socket_) noexcept
+{
+    return socket_._socket;
+}
+
+inline const void *native_handle (const socket_handle_t &socket_) noexcept
+{
+    return socket_._socket;
+}
+
+template<typename T>
+inline auto native_handle (T &handle_owner_) noexcept
+  -> decltype (handle_owner_.handle ())
+{
+    return handle_owner_.handle ();
+}
+
+template<typename T>
+inline auto native_handle (const T &handle_owner_) noexcept
+  -> decltype (handle_owner_.handle ())
+{
+    return handle_owner_.handle ();
+}
+} // namespace detail
 
 } // namespace zlink
 

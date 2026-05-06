@@ -27,6 +27,8 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
 
     internal IntPtr Handle => _handle;
 
+    public int RouteValueMaxSize => GetOption(SocketOption.RouteValueMaxSize);
+
     public void ConnectRegistry(string registryPubEndpoint)
     {
         BoundaryValidation.ValidateFixedUtf8(registryPubEndpoint,
@@ -52,6 +54,17 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         return value;
     }
 
+    private unsafe int GetOption(SocketOption option)
+    {
+        EnsureNotDisposed();
+        int value = 0;
+        nuint size = (nuint)sizeof(int);
+        int rc = NativeMethods.zlink_get_option(_handle, (int)option,
+            (IntPtr)(&value), ref size);
+        ZlinkException.ThrowConfigIfError(rc);
+        return value;
+    }
+
     public bool SpotOwnerSyncEnabled
     {
         get => GetSpotOwnerSyncEnabled();
@@ -64,7 +77,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         set => SetActorRouteSyncEnabled(value);
     }
 
-    public unsafe void SetSpotOwnerSyncEnabled(bool enabled)
+    private unsafe void SetSpotOwnerSyncEnabled(bool enabled)
     {
         EnsureNotDisposed();
         int raw = enabled ? 1 : 0;
@@ -74,7 +87,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         ZlinkException.ThrowConfigIfError(rc);
     }
 
-    public unsafe bool GetSpotOwnerSyncEnabled()
+    private unsafe bool GetSpotOwnerSyncEnabled()
     {
         EnsureNotDisposed();
         int raw = 0;
@@ -85,7 +98,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         return raw != 0;
     }
 
-    public unsafe void SetActorRouteSyncEnabled(bool enabled)
+    private unsafe void SetActorRouteSyncEnabled(bool enabled)
     {
         EnsureNotDisposed();
         int raw = enabled ? 1 : 0;
@@ -95,7 +108,7 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         ZlinkException.ThrowConfigIfError(rc);
     }
 
-    public unsafe bool GetActorRouteSyncEnabled()
+    private unsafe bool GetActorRouteSyncEnabled()
     {
         EnsureNotDisposed();
         int raw = 0;

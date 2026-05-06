@@ -53,18 +53,6 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         }
     }
 
-    public void DisconnectRid(RoutingId peerRid)
-    {
-        try
-        {
-            _kernel.DisconnectRid(peerRid);
-        }
-        catch (ZlinkException ex)
-        {
-            throw ZlinkException.CreateConnectException(ex.InternalErrno);
-        }
-    }
-
     public SocketMonitor MonitorOpen(SocketEvent events = SocketEvent.All)
     {
         EnumValidation.EnsureSocketEvents(events, nameof(events));
@@ -78,7 +66,7 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         }
     }
 
-    public void SetChannelName(string channelName)
+    internal void SetChannelNameCore(string channelName)
     {
         if (channelName == null)
             throw new ArgumentNullException(nameof(channelName));
@@ -87,7 +75,7 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
-    public string GetChannelName()
+    internal string GetChannelNameCore()
     {
         byte[] buffer = new byte[256];
         int rc = NativeMethods.zlink_socket_get_channel_name(Handle, buffer,

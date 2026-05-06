@@ -28,6 +28,11 @@ public abstract class SubscriberSocketBase : ConnectableSocketBase
         Kernel.UnsetSubscription(topicOrPattern);
     }
 
+    public SubscriptionInfo SubscriptionAt(int index)
+    {
+        return SubscriptionIntrospection.At(Handle, index);
+    }
+
     public TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None)
     {
         return (flags & RecvFlags.DontWait) != 0

@@ -68,8 +68,8 @@ and SPOT routers use `routed`.
 
 The context option `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` selects one of four
 profiles. The default is `ZLINK_AUTO_HWM_PROFILE_BALANCED`, and auto-HWM is
-enabled by default. Set `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` to `0` only when a
-context must keep the legacy fixed HWM default `1000`.
+enabled by default. Set `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` to `0` when a context
+must keep the legacy fixed HWM default `1000`.
 
 | Socket group | `compact` | `low_latency` | `balanced` | `throughput` |
 |---|---:|---:|---:|---:|
@@ -128,6 +128,21 @@ zlink_set_option(socket, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
 Negative values fail with `EINVAL` and do not change the existing setting.
 When a fixed HWM is set manually with `ZLINK_OPT_SNDHWM` or
 `ZLINK_OPT_RCVHWM`, that manual HWM remains in force.
+
+### Manual Recalculation Trigger
+
+After changing the auto-HWM profile or message unit at runtime, trigger an
+immediate recalculation across all sockets in the context:
+
+```c
+zlink_ctx_auto_hwm_recalculate(ctx);
+```
+
+This is a no-op when auto HWM is disabled (`ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 0`).
+The context-level `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` setting
+controls how frequently automatic background recalculations run; calling
+`zlink_ctx_auto_hwm_recalculate()` bypasses the debounce and runs
+immediately.
 
 ---
 
@@ -512,6 +527,28 @@ Beyond common options, socket-type-specific options use dedicated APIs:
 | XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (default `1`), `MANUAL`, `WELCOME_MSG` |
 | SUB/XSUB | `zlink_set_sub_option()` | Subscription-related |
 | STREAM | `zlink_set_stream_option()` | `NOTIFY` |
+
+---
+
+## Socket Channel Name
+
+Assign a logical channel name to any socket for use with Discovery and
+Registry. The channel name is what Discovery and Registry use to identify the
+service role of the socket.
+
+```c
+/* Set the channel name */
+zlink_socket_set_channel_name(socket, "price-feed");
+
+/* Read it back */
+char buf[256];
+size_t len = 0;
+zlink_socket_get_channel_name(socket, buf, sizeof(buf), &len);
+```
+
+This is equivalent to setting the channel name at socket-attach time.
+Changing the channel name after a socket is attached to a Discovery is not
+supported.
 
 ---
 [← Thread Safety](11-thread-safety.md)

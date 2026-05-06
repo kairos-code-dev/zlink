@@ -57,6 +57,11 @@ public final class Timer implements AutoCloseable {
         return new Timer(handle, false);
     }
 
+    MemorySegment handle() {
+        ensureOpen();
+        return handle;
+    }
+
     public void start(long intervalNs, long repeatCount) {
         ensureOpen();
         int rc = Native.timerStart(handle, intervalNs, repeatCount);

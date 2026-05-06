@@ -32,8 +32,6 @@ public sealed class test_discovery_router_socket
         leftDiscovery.ConnectRegistry(registryRouter);
         rightDiscovery.ConnectRegistry(registryRouter);
 
-        left.SetChannelName("routed-discovery");
-        right.SetChannelName("routed-discovery");
         left.RouterOptions.RoutingId = leftRid;
         right.RouterOptions.RoutingId = rightRid;
         left.AttachDiscovery(leftDiscovery);

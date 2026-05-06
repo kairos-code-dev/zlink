@@ -337,6 +337,25 @@ Rules to keep in mind:
 - **Discovery destroy removes its peer set.** Destroying a Discovery
   removes only the automatic connections it was supplying.
 
+## 4.3 Peer Value
+
+Each Discovery instance carries a single `int64_t` value that is broadcast
+to all peers alongside the service registration. Remote observers read it from
+the `value` field of `zlink_member_peer_entry_t`. This is useful for
+weighted load-balancing and priority-based routing.
+
+```c
+/* Set this instance's advertised numeric value */
+zlink_discovery_set_value(discovery, 100);
+
+/* Read it back */
+int64_t v = 0;
+zlink_discovery_get_value(discovery, &v);
+```
+
+The value is transmitted on the next heartbeat cycle. Remote peers see it via
+`zlink_discovery_member_peers()` or `zlink_registry_member_peers()`.
+
 ## 5. Liveness and Summary Updates
 
 ```mermaid

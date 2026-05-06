@@ -37,10 +37,15 @@
 
 바인딩 스펙은 코어 C 계약이 각 대상 언어로 어떻게 투영되는지 정의한다.
 cross-language 정책과 언어별 스펙을 충족하는 구현체는 적합한 zlink 바인딩을 구성한다.
+바인딩 라이브러리를 설계할 때는
+[POSD 설계 원칙](../principal/software-design-principles.md)을 따른다.
+이는 언어별 API가 내부 구현 세부사항을 드러내지 않고, 호출자가 알아야 할
+개념을 줄이며, 깊은 모듈과 낮은 변경 파급을 유지하도록 하기 위한 기준이다.
 
 | 문서 | 설명 |
 |------|------|
 | [정책](bindings/README.md) | Cross-language 바인딩 계약 (POSD, capability matrix, naming, domain object) |
+| [C](bindings/c/README.md) | C 바인딩 스펙 |
 | [C++](bindings/cpp/README.md) | C++ 바인딩 스펙 |
 | [Java](bindings/java/README.md) | Java 바인딩 스펙 |
 | [.NET](bindings/dotnet/README.md) | .NET 바인딩 스펙 |

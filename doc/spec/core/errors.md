@@ -47,6 +47,7 @@ the standard values are used directly.
 | `ETIMEDOUT` | ZLINK_HAUSNUMERO + 16 | Connection timed out |
 | `EHOSTUNREACH` | ZLINK_HAUSNUMERO + 17 | Host unreachable |
 | `ENETRESET` | ZLINK_HAUSNUMERO + 18 | Network reset |
+| `ESTALE` | ZLINK_HAUSNUMERO + 19 | Stale reference (e.g. stale file handle, stale actor ref) |
 
 ### zlink-specific error codes
 
@@ -67,7 +68,7 @@ defined in `<zlink.h>`:
 ```c
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 3
-#define ZLINK_VERSION_PATCH 0
+#define ZLINK_VERSION_PATCH 9
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) \
     ((major) * 10000 + (minor) * 100 + (patch))

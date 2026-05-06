@@ -4,8 +4,21 @@
 
 #include "common.hpp"
 
+#include <optional>
+
 namespace zlink
 {
+
+class message_t;
+
+namespace detail
+{
+inline zlink_msg_t *native_handle (message_t &message_) noexcept;
+inline const zlink_msg_t *native_handle (const message_t &message_) noexcept;
+inline void adopt_native_message (message_t &message_, zlink_msg_t *src_);
+inline void move_to_native (message_t &message_, zlink_msg_t *dest_);
+inline void copy_to_native (const message_t &message_, zlink_msg_t *dest_);
+} // namespace detail
 
 /**
  * @brief RAII wrapper for `zlink_msg_t`.
@@ -235,23 +248,12 @@ class message_t
      * @param property_ Property name.
      * @return Property string or `NULL` on failure.
      */
-    const char *get_property (const std::string &property_) const
-    {
-        if (!_valid || property_.empty ())
-            return NULL;
-        return zlink_msg_gets (&_msg, property_.c_str ());
-    }
-
-    /**
-     * @brief Get string property from a message into `std::string`.
-     * @param property_ Property name.
-     * @param out_ Output string.
-     * @return 0 on success, -1 on failure.
-     */
-    void get_property (const std::string &property_, std::string &out_) const
+    std::optional<std::string> property (const std::string &property_) const
     {
         const char *value = get_property (property_);
-        out_.assign (value ? value : "");
+        if (!value)
+            return std::nullopt;
+        return std::optional<std::string> (std::string (value));
     }
 
     // -- Conversions ----------------------------------------------------------
@@ -281,15 +283,25 @@ class message_t
         _valid = false;
     }
 
-    /**
-     * @brief Access raw mutable `zlink_msg_t`.
-     * @return Message handle pointer.
-     */
+  private:
+    friend zlink_msg_t *detail::native_handle (message_t &message_) noexcept;
+    friend const zlink_msg_t *
+    detail::native_handle (const message_t &message_) noexcept;
+    friend void detail::adopt_native_message (message_t &message_,
+                                              zlink_msg_t *src_);
+    friend void detail::move_to_native (message_t &message_,
+                                        zlink_msg_t *dest_);
+    friend void detail::copy_to_native (const message_t &message_,
+                                        zlink_msg_t *dest_);
+
+    const char *get_property (const std::string &property_) const
+    {
+        if (!_valid || property_.empty ())
+            return NULL;
+        return zlink_msg_gets (&_msg, property_.c_str ());
+    }
+
     zlink_msg_t *handle () noexcept { return &_msg; }
-    /**
-     * @brief Access raw const `zlink_msg_t`.
-     * @return Message handle pointer.
-     */
     const zlink_msg_t *handle () const noexcept { return &_msg; }
 
     /**
@@ -351,10 +363,37 @@ class message_t
         zlink_msg_close (dest_);
     }
 
-  private:
     zlink_msg_t _msg;
     bool _valid;
 };
+
+namespace detail
+{
+inline zlink_msg_t *native_handle (message_t &message_) noexcept
+{
+    return message_.handle ();
+}
+
+inline const zlink_msg_t *native_handle (const message_t &message_) noexcept
+{
+    return message_.handle ();
+}
+
+inline void adopt_native_message (message_t &message_, zlink_msg_t *src_)
+{
+    message_.adopt (src_);
+}
+
+inline void move_to_native (message_t &message_, zlink_msg_t *dest_)
+{
+    message_.move_to (dest_);
+}
+
+inline void copy_to_native (const message_t &message_, zlink_msg_t *dest_)
+{
+    message_.copy_to (dest_);
+}
+} // namespace detail
 
 } // namespace zlink
 

@@ -4,8 +4,9 @@ using System;
 
 namespace Zlink;
 
-internal enum SocketType
+public enum SocketType
 {
+    Any = 0,
     Pair = 0x1001,
     Pub = 0x1002,
     Sub = 0x1003,
@@ -29,6 +30,9 @@ internal enum ContextOption
     ThreadAffinityCpuRemove = 8,
     ThreadNamePrefix = 9,
     Blocky = 10,
+    SpotWorkerThreads = 11,
+    AutoHwmEnabled = 12,
+    AutoHwmRecalcDebounce = 14,
     AutoHwmProfile = 17
 }
 
@@ -93,6 +97,7 @@ internal enum SocketOption
     TlsPassword = 0x302F,
     ZmpMetadata = 0x3030,
     TcpNoDelay = 0x3031,
+    RouteValueMaxSize = 0x3032,
     RidDuplicatePolicy = 0x3033,
     AutoHwmMsgUnitBytes = 0x3034,
     DiscoverySpotOwnerSync = 0x3035,
@@ -100,6 +105,10 @@ internal enum SocketOption
     RouterMandatory = 0x3101,
     ProbeRouter = 0x3103,
     ConnectRoutingId = 0x3104,
+    RouterRequestTimeout = 0x3105,
+    RouterWeight = 0x3106,
+    DealerRequestTimeout = 0x3202,
+    DealerWeight = 0x3203,
     XPubVerbose = 0x3301,
     XPubVerboser = 0x3302,
     XPubManual = 0x3303,
@@ -107,10 +116,18 @@ internal enum SocketOption
     XPubNoDrop = 0x3305,
     XPubWelcomeMsg = 0x3306,
     TopicsCount = 0x3307,
+    XPubApproveSubscribe = 0x3308,
+    XPubRejectSubscribe = 0x3309,
     StreamNotify = 0x3501,
     SubTopicsCount = 0x3400,
     UseFd = 0x7F000005,
     OnlyFirstSubscribe = 0x7F000006
+}
+
+public enum RidDuplicatePolicy
+{
+    Reject = 0,
+    Handover = 1
 }
 
 internal enum SendResult
@@ -159,14 +176,14 @@ public enum RequestResult
     NotFound = 102,
     Terminated = 103,
     ProtocolError = 104,
-    NotConnected = 105,
-    NotAdmitted = 106,
-    Rejected = 107,
-    Conflict = 108,
-    InvalidArgument = 109,
-    InvalidState = 110,
-    ThreadViolation = 111,
-    InternalError = 112
+    InternalError = 105,
+    Rejected = 106,
+    Conflict = 107,
+    Busy = 108,
+    NotConnected = 109,
+    InvalidArgument = 110,
+    InvalidState = 111,
+    NotSupported = 112
 }
 
 public enum ActorCreateStatus
@@ -188,7 +205,8 @@ public enum RecvResult
     Busy = 202,
     Terminated = 203,
     InvalidHandle = 204,
-    NotSupported = 205
+    NotSupported = 205,
+    InternalError = 206
 }
 
 public enum HandlerResult
@@ -198,7 +216,8 @@ public enum HandlerResult
     Busy = 302,
     NotSupported = 303,
     Deadlock = 304,
-    InvalidHandle = 305
+    InvalidHandle = 305,
+    InternalError = 306
 }
 
 public enum CloseResult
@@ -206,7 +225,8 @@ public enum CloseResult
     Ok = 0,
     Busy = 401,
     Shutdown = 402,
-    InvalidHandle = 403
+    InvalidHandle = 403,
+    InternalError = 404
 }
 
 public enum BindResult
@@ -215,7 +235,8 @@ public enum BindResult
     InvalidArgument = 501,
     AddrInUse = 502,
     NotSupported = 503,
-    InvalidHandle = 504
+    InvalidHandle = 504,
+    InternalError = 505
 }
 
 public enum ConnectResult
@@ -223,7 +244,11 @@ public enum ConnectResult
     Ok = 0,
     InvalidArgument = 601,
     NotSupported = 602,
-    InvalidHandle = 603
+    InvalidHandle = 603,
+    InternalError = 604,
+    NotFound = 605,
+    Conflict = 606,
+    Busy = 607
 }
 
 public enum ConfigResult
@@ -231,7 +256,15 @@ public enum ConfigResult
     Ok = 0,
     InvalidHandle = 701,
     InvalidArgument = 702,
-    NotSupported = 703
+    NotSupported = 703,
+    InternalError = 704,
+    InvalidState = 705,
+    NotFound = 706
+}
+
+internal enum SpotOption
+{
+    RequestTimeout = 0x3701
 }
 
 internal enum ErrorCode

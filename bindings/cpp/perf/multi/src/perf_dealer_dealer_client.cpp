@@ -143,9 +143,9 @@ class dealer_dealer_client_bench_t
             socket_state_t state;
             state.sock = &sock;
             _socket_states.push_back (state);
-            (void) _poller.add (sock,
-                                zlink::poll_event::pollout,
-                                &_socket_states.back ());
+            (void) _poller.add (
+              sock, zlink::poll_event::pollout,
+              reinterpret_cast<std::uintptr_t> (&_socket_states.back ()));
             (void) _poller.modify (sock, static_cast<zlink::poll_event> (0));
         }
 
@@ -293,7 +293,8 @@ class dealer_dealer_client_bench_t
             if (wait_ms < 1)
                 wait_ms = 1;
 
-            const int poll_rc = _poller.wait_all (_poll_events, wait_ms);
+            _poll_events = _poller.wait_all (wait_ms);
+        const int poll_rc = static_cast<int> (_poll_events.size ());
             if (poll_rc < 0) {
                 if (errno == EINTR || errno == EAGAIN)
                     continue;
@@ -305,10 +306,9 @@ class dealer_dealer_client_bench_t
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
                 socket_state_t *state =
-                  static_cast<socket_state_t *> (_poll_events[i].user);
+                  static_cast<socket_state_t *> (reinterpret_cast<void *> (_poll_events[i].user_token));
                 if (!state || !state->pending
-                    || !(_poll_events[i].revents
-                         & static_cast<short> (zlink::poll_event::pollout))) {
+                    || !(static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event::pollout))) {
                     continue;
                 }
                 if (!try_send_once (*state, phase, &count, &latency))

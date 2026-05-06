@@ -110,7 +110,7 @@ bool run_pattern_pubsub (const std::string &transport,
     }
 
     const int recv_timeout = perf::single::resolve_single_pubsub_recv_timeout_ms ();
-    subscriber.options ().recv_timeout (recv_timeout);
+    subscriber.options ().recv_timeout (std::chrono::milliseconds (recv_timeout));
     (void) subscriber.set_subscription (std::string (k_topic));
 
     std::this_thread::sleep_for (std::chrono::milliseconds (
@@ -154,8 +154,8 @@ bool run_pattern_pubsub (const std::string &transport,
     zlink::poller_t poller;
     poller.add (subscriber, zlink::poll_event::pollin);
     while (!sender_done.load (std::memory_order_acquire)) {
-        zlink::poll_event_t event = {};
-        const int poll_rc = poller.wait (&event, 5);
+        std::optional<zlink::poll_event_t> event = poller.wait (5);
+        const int poll_rc = event ? 1 : 0;
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
@@ -163,7 +163,7 @@ bool run_pattern_pubsub (const std::string &transport,
             break;
         }
         if (poll_rc == 0
-            || (event.revents & static_cast<short> (zlink::poll_event::pollin))
+            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event::pollin))
                  == 0) {
             continue;
         }

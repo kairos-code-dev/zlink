@@ -8,8 +8,6 @@
 #include "../common/perf_spot_client_recv.hpp"
 #include "../common/perf_spot_phase.hpp"
 
-#include <zlink_c.h>
-
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
@@ -85,28 +83,6 @@ bool wait_for_spot_control_progress ()
     return perf_idle_wait_ms (1) >= 0;
 }
 
-void close_raw_parts (zlink_msg_t *parts_, size_t part_count_)
-{
-    if (!parts_)
-        return;
-    for (size_t i = 0; i < part_count_; ++i)
-        (void) zlink_msg_close (&parts_[i]);
-}
-
-bool control_topic_matches (const char *actual_topic_,
-                            size_t actual_topic_len_,
-                            const char *expected_topic_)
-{
-    if (!actual_topic_ || !expected_topic_ || !*expected_topic_)
-        return false;
-
-    const size_t expected_len = std::strlen (expected_topic_);
-    if (actual_topic_len_ > 0 && actual_topic_[actual_topic_len_ - 1] == '\0')
-        --actual_topic_len_;
-    return actual_topic_len_ == expected_len
-           && std::memcmp (actual_topic_, expected_topic_, expected_len) == 0;
-}
-
 bool recv_raw_control_payload (zlink::service::spot_t &spot_,
                                const char *service_name_,
                                std::string *payload_out_,
@@ -117,19 +93,24 @@ bool recv_raw_control_payload (zlink::service::spot_t &spot_,
     if (payload_out_)
         payload_out_->clear ();
 
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    char topic[256];
-    size_t topic_len = sizeof (topic) - 1;
-    const zlink_recv_result_t rc = zlink_subscribe (
-      spot_.handle (),
-      NULL,
-      &parts,
-      &part_count,
-      topic,
-      &topic_len,
-      ZLINK_RECV_FLAGS_DONTWAIT);
-    if (rc != ZLINK_RECV_OK) {
+    try {
+        const std::optional<zlink::topic_message_t> received =
+          spot_.subscribe (zlink::recv_flags_t::dontwait);
+        if (!received.has_value ())
+            return true;
+
+        if (received_out_)
+            *received_out_ = true;
+        (void) service_name_;
+        if (payload_out_ && received->topic () == k_control_topic
+            && !received->parts ().empty ()) {
+            const zlink::message_t &part = received->parts ()[0];
+            payload_out_->assign (
+              static_cast<const char *> (part.data ()), part.size ());
+        }
+        return true;
+    }
+    catch (const zlink::recv_error_t &) {
         const int err = zlink_errno () != 0 ? zlink_errno () : errno;
         if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK
             || err == ETIMEDOUT) {
@@ -138,18 +119,6 @@ bool recv_raw_control_payload (zlink::service::spot_t &spot_,
         errno = err;
         return false;
     }
-
-    if (received_out_)
-        *received_out_ = true;
-    (void) service_name_;
-    if (payload_out_ && control_topic_matches (topic, topic_len, k_control_topic)
-        && part_count > 0) {
-        payload_out_->assign (
-          static_cast<const char *> (zlink_msg_data (&parts[0])),
-          zlink_msg_size (&parts[0]));
-    }
-    close_raw_parts (parts, part_count);
-    return true;
 }
 
 bool publish_raw_control_payload (zlink::service::spot_t &spot_,
@@ -157,25 +126,25 @@ bool publish_raw_control_payload (zlink::service::spot_t &spot_,
                                   const std::string &payload_,
                                   int timeout_ms_)
 {
-    (void) service_name_;
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (
                             std::max (1, timeout_ms_));
     while (std::chrono::steady_clock::now () < deadline) {
-        zlink_msg_t part;
-        if (zlink_msg_init_size (&part, payload_.size ()) != 0)
+        zlink::message_t part (payload_.size ());
+        if (!part.valid ())
             return false;
         if (!payload_.empty ())
-            std::memcpy (zlink_msg_data (&part), payload_.data (), payload_.size ());
+            std::memcpy (part.data (), payload_.data (), payload_.size ());
 
-        const zlink_submit_result_t rc = zlink_publish (
-          spot_.handle (),
-          k_control_topic,
-          &part,
-          1,
-          ZLINK_SEND_FLAGS_NONE);
-        const int saved_errno = rc == ZLINK_SUBMIT_OK ? 0 : errno;
-        if (rc == ZLINK_SUBMIT_OK)
+        try {
+            if (spot_.publish (
+                  service_name_, k_control_topic, part, zlink::send_flags_t::none))
+                return true;
+        }
+        catch (const zlink::submit_error_t &) {
+        }
+        const int saved_errno = errno;
+        if (saved_errno == 0)
             return true;
         if (saved_errno != EAGAIN && saved_errno != EWOULDBLOCK
             && saved_errno != ETIMEDOUT) {
@@ -500,11 +469,13 @@ class spot_client_bench_t
             return false;
         }
 
-        _control_pub->options ().linger (0);
-        _control_pub->options ().send_timeout (control_timeout_ms);
+        _control_pub->options ().linger (std::chrono::milliseconds (0));
+        _control_pub->options ().send_timeout (
+          std::chrono::milliseconds (control_timeout_ms));
         _control_pub->publisher_options ().no_drop (true);
-        _control_sub->options ().linger (0);
-        _control_sub->options ().recv_timeout (control_timeout_ms);
+        _control_sub->options ().linger (std::chrono::milliseconds (0));
+        _control_sub->options ().recv_timeout (
+          std::chrono::milliseconds (control_timeout_ms));
         _control_sub->set_subscription (k_control_topic);
 
         _control_service_name = k_control_service;
@@ -628,19 +599,11 @@ class spot_client_bench_t
     bool drain_recv (client_slot_t &slot_, bool sync_only_, bool *progressed_out_)
     {
         for (;;) {
-            zlink_msg_t *parts = NULL;
-            size_t part_count = 0;
-            char topic[256];
-            size_t topic_len = sizeof (topic) - 1;
-            const zlink_recv_result_t rc = zlink_subscribe (
-              slot_.spot->handle (),
-              NULL,
-              &parts,
-              &part_count,
-              topic,
-              &topic_len,
-              ZLINK_RECV_FLAGS_DONTWAIT);
-            if (rc != ZLINK_RECV_OK) {
+            std::optional<zlink::topic_message_t> subscribed;
+            try {
+                subscribed = slot_.spot->subscribe (zlink::recv_flags_t::dontwait);
+            }
+            catch (const zlink::recv_error_t &) {
                 const int err = zlink_errno () != 0 ? zlink_errno () : errno;
                 if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK
                     || err == ETIMEDOUT) {
@@ -649,25 +612,25 @@ class spot_client_bench_t
                 errno = err;
                 return false;
             }
+            if (!subscribed.has_value ())
+                return true;
 
             if (progressed_out_)
                 *progressed_out_ = true;
 
-            if (!control_topic_matches (topic, topic_len, k_topic)
-                || part_count != 1) {
-                close_raw_parts (parts, part_count);
+            if (subscribed->topic () != k_topic
+                || subscribed->parts ().size () != 1) {
                 continue;
             }
 
+            const zlink::message_t &part = subscribed->parts ()[0];
             perf_metric::header_t header;
-            if (!perf_metric::decode_payload_header (zlink_msg_data (&parts[0]),
-                                                     zlink_msg_size (&parts[0]),
+            if (!perf_metric::decode_payload_header (part.data (),
+                                                     part.size (),
                                                      &header)
                 || header.msg_size != static_cast<uint32_t> (_msg_size)) {
-                close_raw_parts (parts, part_count);
                 continue;
             }
-            close_raw_parts (parts, part_count);
 
             if (!slot_.synced.load (std::memory_order_relaxed))
                 slot_.synced.store (true, std::memory_order_release);
@@ -747,7 +710,8 @@ class spot_client_bench_t
         spot_client_bench_t *bench = first_slot->owner;
 
         while (!bench->_recv_stop.load (std::memory_order_acquire)) {
-            const int poll_rc = worker_->poller.wait_all (worker_->events, 5);
+            worker_->events = worker_->poller.wait_all (5);
+        const int poll_rc = static_cast<int> (worker_->events.size ());
             if (poll_rc < 0) {
                 if (bench->_recv_stop.load (std::memory_order_acquire))
                     break;
@@ -758,17 +722,16 @@ class spot_client_bench_t
             }
 
             for (int i = 0; i < poll_rc; ++i) {
-                if ((worker_->events[static_cast<size_t> (i)].revents
-                     & static_cast<short> (zlink::poll_event::pollin))
+                if ((static_cast<short> (worker_->events[static_cast<size_t> (i)].revents) & static_cast<short> (zlink::poll_event::pollin))
                     == 0) {
                     continue;
                 }
 
                 client_slot_t *slot = static_cast<client_slot_t *> (
-                  worker_->events[static_cast<size_t> (i)].user);
+                  reinterpret_cast<void *> (worker_->events[static_cast<size_t> (i)].user_token));
                 if (!slot || !slot->owner)
                     continue;
-                if (!slot->owner->drain_recv (*slot, false, NULL)) {
+                if (!slot->owner->drain_recv (*slot, false, 0)) {
                     slot->owner->_recv_fatal.store (true,
                                                     std::memory_order_release);
                     return;
@@ -795,7 +758,9 @@ class spot_client_bench_t
                 return false;
             }
             try {
-                worker.poller.add (*slot->spot, zlink::poll_event::pollin, slot);
+                worker.poller.add (
+                  *slot->spot, zlink::poll_event::pollin,
+                  reinterpret_cast<std::uintptr_t> (slot));
             }
             catch (const zlink::config_error_t &err) {
                 debug_log ("recv worker poller add failed result="

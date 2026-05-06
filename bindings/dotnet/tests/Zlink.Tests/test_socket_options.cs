@@ -29,13 +29,14 @@ public sealed class test_socket_options
         nameof(SocketOptions.Unsubscribe),
         nameof(SocketOptions.LastEndpoint),
         nameof(SocketOptions.XPubWelcomeMsg),
+        nameof(SocketOptions.XPubApproveSubscribe),
+        nameof(SocketOptions.XPubRejectSubscribe),
         nameof(SocketOptions.BindToDevice),
         nameof(SocketOptions.TlsCert),
         nameof(SocketOptions.TlsKey),
         nameof(SocketOptions.TlsCa),
         nameof(SocketOptions.TlsHostname),
-        nameof(SocketOptions.TlsPassword),
-        nameof(SocketOptions.ZmpMetadata)
+        nameof(SocketOptions.TlsPassword)
     };
 
     [Fact]

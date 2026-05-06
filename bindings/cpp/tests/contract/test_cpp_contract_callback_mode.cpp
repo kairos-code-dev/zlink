@@ -69,7 +69,7 @@ int main ()
     node.attach_discovery (discovery);
     node.bind (endpoint);
     spot.set_subscription ("topic:alpha");
-    assert (wait_for_spot_ready (node, true, 0u, 10000));
+    assert (wait_for_spot_ready (node, false, 0u, 10000));
 
     std::optional<zlink::topic_message_t> inbound;
     const std::chrono::steady_clock::time_point deadline =

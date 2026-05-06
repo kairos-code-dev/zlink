@@ -13,11 +13,26 @@ namespace zlink
 namespace service
 {
 
+class registry_query_client_t;
+
+} // namespace service
+
+namespace detail
+{
+inline void *
+native_handle (service::registry_query_client_t &client_) noexcept;
+inline const void *
+native_handle (const service::registry_query_client_t &client_) noexcept;
+} // namespace detail
+
+namespace service
+{
+
 class registry_query_client_t
 {
   public:
     explicit registry_query_client_t (context_t &ctx_)
-        : _client (zlink_registry_query_client_new (ctx_.handle ())),
+        : _client (zlink_registry_query_client_new (detail::native_handle (ctx_))),
           _last_error (0)
     {
         if (!_client)
@@ -61,11 +76,9 @@ class registry_query_client_t
 
     bool valid () const noexcept { return _client != NULL; }
 
-    int last_error () const noexcept { return _last_error; }
-
     void connect (const std::string &endpoint_)
     {
-        validate_bounded_c_string (endpoint_, 255u, "endpoint");
+        zlink::detail::validate_bounded_c_string (endpoint_, 255u, "endpoint");
         detail::throw_if_failed<connect_error_t> (
           static_cast<connect_result_t> (
             zlink_registry_query_client_connect (_client, endpoint_.c_str ())));
@@ -93,7 +106,8 @@ class registry_query_client_t
             native_filter.source =
               static_cast<zlink_topology_source_t> (filter_->source);
             if (filter_->routing_id)
-                native_filter.routing_id = filter_->routing_id->native ();
+                native_filter.routing_id =
+                  *zlink::detail::routing_id_native (*filter_->routing_id);
             filter_ptr = &native_filter;
         }
 
@@ -127,14 +141,33 @@ class registry_query_client_t
         _client = NULL;
     }
 
-    void *handle () const { return _client; }
-
   private:
+    friend void *
+    zlink::detail::native_handle (registry_query_client_t &client_) noexcept;
+    friend const void *
+    zlink::detail::native_handle (const registry_query_client_t &client_) noexcept;
+
     void *_client;
     int _last_error;
 };
 
 } // namespace service
+
+namespace detail
+{
+inline void *
+native_handle (service::registry_query_client_t &client_) noexcept
+{
+    return client_._client;
+}
+
+inline const void *
+native_handle (const service::registry_query_client_t &client_) noexcept
+{
+    return client_._client;
+}
+} // namespace detail
+
 } // namespace zlink
 
 #endif

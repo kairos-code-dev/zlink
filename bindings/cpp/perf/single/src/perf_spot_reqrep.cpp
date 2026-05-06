@@ -200,8 +200,8 @@ bool run_pattern_spot_reqrep (const std::string &transport,
         }
 
         while (!stop_requested.load (std::memory_order_acquire)) {
-            zlink::poll_event_t event = {};
-            const int poll_rc = poller.wait (&event, 10);
+            std::optional<zlink::poll_event_t> event = poller.wait (10);
+        const int poll_rc = event ? 1 : 0;
             if (poll_rc < 0) {
                 if (errno == EINTR || errno == EAGAIN)
                     continue;
@@ -209,7 +209,7 @@ bool run_pattern_spot_reqrep (const std::string &transport,
                 return;
             }
             if (poll_rc == 0
-                || (event.revents & static_cast<short> (zlink::poll_event::pollin))
+                || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event::pollin))
                      == 0) {
                 continue;
             }

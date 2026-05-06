@@ -332,6 +332,26 @@ attach 시 지켜야 하는 규칙:
 - **Discovery destroy는 그 peer set만 내린다.** 특정 Discovery만 파괴하면 그
   Discovery가 공급하던 자동 연결만 제거된다.
 
+## 4.3 Peer Value
+
+각 Discovery 인스턴스는 서비스 등록 시 피어들에게 함께 broadcast되는
+`int64_t` 값을 하나 가진다. 원격 관찰자는 `zlink_member_peer_entry_t`의
+`value` 필드로 이 값을 읽는다. 가중 부하 분산(weighted load-balancing)이나
+우선순위 라우팅에 활용한다.
+
+```c
+/* 이 인스턴스의 광고 값 설정 */
+zlink_discovery_set_value(discovery, 100);
+
+/* 값 읽기 */
+int64_t v = 0;
+zlink_discovery_get_value(discovery, &v);
+```
+
+값은 다음 heartbeat 주기에 전송된다. 원격 피어는
+`zlink_discovery_member_peers()` 또는 `zlink_registry_member_peers()`로
+확인할 수 있다.
+
 ## 5. Liveness 및 Summary 업데이트
 
 ```mermaid

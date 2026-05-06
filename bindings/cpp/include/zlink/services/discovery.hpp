@@ -13,6 +13,16 @@ namespace zlink
 {
 namespace service
 {
+class discovery_t;
+} // namespace service
+namespace detail
+{
+inline void *native_handle (service::discovery_t &discovery_) noexcept;
+inline const void *
+native_handle (const service::discovery_t &discovery_) noexcept;
+} // namespace detail
+namespace service
+{
 
 class discovery_t
 {
@@ -23,9 +33,9 @@ class discovery_t
         : _discovery (NULL),
           _last_error (0)
     {
-        validate_bounded_c_string (channel_name_, 255u, "channel_name");
+        zlink::detail::validate_bounded_c_string (channel_name_, 255u, "channel_name");
         _discovery = zlink_discovery_new (
-          ctx_.handle (),
+          detail::native_handle (ctx_),
           static_cast<zlink_auto_connect_type_t> (auto_connect_type_),
           channel_name_.c_str ());
         if (!_discovery)
@@ -68,11 +78,9 @@ class discovery_t
 
     bool valid () const noexcept { return _discovery != NULL; }
 
-    int last_error () const noexcept { return _last_error; }
-
     void connect_registry (const std::string &endpoint_)
     {
-        validate_bounded_c_string (endpoint_, 255u, "endpoint");
+        zlink::detail::validate_bounded_c_string (endpoint_, 255u, "endpoint");
         detail::throw_if_failed<connect_error_t> (
           static_cast<connect_result_t> (
             zlink_discovery_connect_registry (_discovery, endpoint_.c_str ())));
@@ -160,18 +168,19 @@ class discovery_t
 
     routing_id_t resolve_spot (const routing_id_t &spot_rid_)
     {
-        routing_id_t owner_node_rid;
+        routing_id_t owner_node_rid =
+          zlink::detail::unchecked_empty_routing_id ();
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
             zlink_discovery_resolve_spot (
-              _discovery, routing_id_native (spot_rid_),
-              routing_id_native (owner_node_rid))));
+              _discovery, zlink::detail::routing_id_native (spot_rid_),
+              zlink::detail::routing_id_native (owner_node_rid))));
         return owner_node_rid;
     }
 
     actor_route_t resolve_actor (const std::string &actor_id_)
     {
-        validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
+        zlink::detail::validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
                                    "actor_id");
         zlink_actor_route_t native;
         std::memset (&native, 0, sizeof (native));
@@ -193,14 +202,31 @@ class discovery_t
         _discovery = NULL;
     }
 
-    void *handle () const { return _discovery; }
-
   private:
+    friend void *
+    zlink::detail::native_handle (discovery_t &discovery_) noexcept;
+    friend const void *
+    zlink::detail::native_handle (const discovery_t &discovery_) noexcept;
+
     void *_discovery;
     int _last_error;
 };
 
 } // namespace service
+
+namespace detail
+{
+inline void *native_handle (service::discovery_t &discovery_) noexcept
+{
+    return discovery_._discovery;
+}
+
+inline const void *
+native_handle (const service::discovery_t &discovery_) noexcept
+{
+    return discovery_._discovery;
+}
+} // namespace detail
 } // namespace zlink
 
 #endif

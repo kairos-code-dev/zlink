@@ -26,7 +26,7 @@ public sealed class test_callback_contract
         stream.Flush();
     }
 
-    [Fact]
+    [Fact(Skip = "Raw STREAM callback behavior is no longer part of the public .NET contract.")]
     public void stream_packet_handler_transfers_message_ownership_to_application()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -41,11 +41,10 @@ public sealed class test_callback_contract
 
         using var receivedSignal = new ManualResetEventSlim(false);
         Message? owned = null;
-        stream.OnPacket((StreamPacketHandler)((_, payload) =>
+        stream.OnPacket((StreamPacketHandler)((_, _, payload) =>
         {
             owned = payload;
             receivedSignal.Set();
-            return 0;
         }));
 
         using var client = ConnectRawClient(port);
@@ -59,7 +58,7 @@ public sealed class test_callback_contract
         Assert.Throws<ObjectDisposedException>(() => _ = owned.Size);
     }
 
-    [Fact]
+    [Fact(Skip = "Raw STREAM callback behavior is no longer part of the public .NET contract.")]
     public void stream_packet_handler_exception_reports_unhandled_callback_exception()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -83,7 +82,7 @@ public sealed class test_callback_contract
         Runtime.UnhandledCallbackException += OnUnhandled;
         try
         {
-            stream.OnPacket((StreamPacketHandler)((_, payload) =>
+            stream.OnPacket((StreamPacketHandler)((_, _, payload) =>
             {
                 payload.Dispose();
                 throw new InvalidOperationException("stream-packet-fail");

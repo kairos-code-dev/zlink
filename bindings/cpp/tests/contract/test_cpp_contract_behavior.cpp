@@ -71,12 +71,8 @@ template<typename Fn> void expect_runtime_error (Fn fn_)
     assert (threw);
 }
 
-void discard_stream_parts (const zlink_routing_id_t *,
-                           zlink_msg_t *parts_,
-                           size_t part_count_,
-                           void *)
+void discard_stream_parts (zlink::received_t)
 {
-    zlink_multipart_close (parts_, part_count_);
 }
 
 void test_pair_recv_nonblocking_returns_empty_without_data ()
@@ -123,8 +119,9 @@ void test_router_send_throws_for_closed_socket ()
     zlink::router_socket_t router (ctx);
     assert (router.close () == 0);
 
-    zlink::routing_id_t routing_id;
-    assert (zlink::routing_id_from ("UNKNOWN", &routing_id) == 0);
+    const std::string rid_text = "UNKNOWN";
+    zlink::routing_id_t routing_id = zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> (rid_text.data ()), rid_text.size ());
     zlink::message_t outbound = zlink_cpp_contract::make_message ("no-route");
     expect_runtime_error ([&] { router.send (routing_id, outbound); });
 }
@@ -155,7 +152,7 @@ void test_stream_receive_throws_in_callback_mode ()
     zlink::context_t ctx;
     zlink::stream_socket_t socket (ctx);
 
-    socket.on_receive (&discard_stream_parts, NULL);
+    socket.on_receive (&discard_stream_parts);
     expect_runtime_error ([&] { (void) socket.recv (); });
 }
 
@@ -165,37 +162,46 @@ void test_socket_monitor_receive_returns_empty_without_event ()
     zlink::pair_socket_t socket (ctx);
     zlink::monitor_handle_t monitor = socket.monitor_handle ();
 
-    const zlink::maybe_t<zlink::monitor_event_t> event =
-      monitor.recv (zlink::non_blocking_t {});
+    const std::optional<zlink::monitor_event_t> event =
+      monitor.recv (zlink::recv_flags_t::dontwait);
     assert (!event);
     monitor.close ();
 }
 
-void test_routing_id_from_accepts_maximum_size ()
+void test_routing_id_accepts_maximum_size ()
 {
-    zlink::routing_id_t routing_id;
     const std::string bytes (255, 'r');
 
-    assert (zlink::routing_id_from (bytes, &routing_id) == 0);
+    const zlink::routing_id_t routing_id = zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> (bytes.data ()), bytes.size ());
     assert (routing_id.size () == bytes.size ());
-    assert (zlink::routing_id_to_string (routing_id) == bytes);
+    assert (routing_id.to_bytes ()
+            == std::vector<uint8_t> (bytes.begin (), bytes.end ()));
 }
 
-void test_routing_id_from_rejects_oversize_input ()
+void test_routing_id_rejects_oversize_input ()
 {
-    zlink::routing_id_t routing_id;
     const std::string bytes (256, 'r');
 
-    assert (zlink::routing_id_from (bytes, &routing_id) == -1);
-    assert (errno == EMSGSIZE);
+    bool threw = false;
+    try {
+        (void) zlink::routing_id_t::from_bytes (
+          reinterpret_cast<const uint8_t *> (bytes.data ()), bytes.size ());
+    } catch (const std::invalid_argument &) {
+        threw = true;
+    }
+    assert (threw);
 }
 
-void test_routing_id_from_rejects_null_pointer_for_non_empty_bytes ()
+void test_routing_id_rejects_null_pointer_for_non_empty_bytes ()
 {
-    zlink::routing_id_t routing_id;
-
-    assert (zlink::routing_id_from (NULL, 1, &routing_id) == -1);
-    assert (errno == EINVAL);
+    bool threw = false;
+    try {
+        (void) zlink::routing_id_t::from_bytes (NULL, 1);
+    } catch (const std::invalid_argument &) {
+        threw = true;
+    }
+    assert (threw);
 }
 
 } // namespace
@@ -211,8 +217,8 @@ int main ()
     test_publish_throws_on_general_error ();
     test_stream_receive_throws_in_callback_mode ();
     test_socket_monitor_receive_returns_empty_without_event ();
-    test_routing_id_from_accepts_maximum_size ();
-    test_routing_id_from_rejects_oversize_input ();
-    test_routing_id_from_rejects_null_pointer_for_non_empty_bytes ();
+    test_routing_id_accepts_maximum_size ();
+    test_routing_id_rejects_oversize_input ();
+    test_routing_id_rejects_null_pointer_for_non_empty_bytes ();
     std::quick_exit (0);
 }

@@ -10,11 +10,14 @@ template<typename T> class has_common_socket_options_facade_t
     template<typename U>
     static auto test (int)
       -> decltype (std::declval<U &> ().linger (),
-                    std::declval<U &> ().linger (0),
+                    std::declval<U &> ().linger (
+                      std::chrono::milliseconds (0)),
                     std::declval<U &> ().send_hwm (),
-                    std::declval<U &> ().send_hwm (0),
+                    std::declval<U &> ().send_hwm (
+                      zlink::message_count_t::value (0)),
                     std::declval<U &> ().recv_hwm (),
-                    std::declval<U &> ().recv_hwm (0),
+                    std::declval<U &> ().recv_hwm (
+                      zlink::message_count_t::value (0)),
                     std::declval<U &> ().last_endpoint (), std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -35,6 +38,9 @@ template<typename T> class has_router_socket_options_facade_t
                     std::declval<U &> ().connect_routing_id (),
                     std::declval<U &> ().connect_routing_id (
                       std::declval<const zlink::routing_id_t &> ()),
+                    std::declval<U &> ().peer_weight (),
+                    std::declval<U &> ().peer_weight (
+                      zlink::peer_weight_t::value (1)),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -50,6 +56,9 @@ template<typename T> class has_dealer_socket_options_facade_t
     static auto test (int)
       -> decltype (std::declval<U &> ().probe_router (),
                     std::declval<U &> ().probe_router (true),
+                    std::declval<U &> ().peer_weight (),
+                    std::declval<U &> ().peer_weight (
+                      zlink::peer_weight_t::value (1)),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -110,25 +119,32 @@ template<typename T> class has_context_options_facade_t
   private:
     template<typename U>
     static auto test (int)
-      -> decltype (std::declval<U &> ().ioThreads (),
-                    std::declval<U &> ().ioThreads (1),
-                    std::declval<U &> ().maxSockets (),
-                    std::declval<U &> ().maxSockets (1),
-                    std::declval<U &> ().maxMsgSize (),
-                    std::declval<U &> ().maxMsgSize (1),
-                    std::declval<U &> ().threadPriority (),
-                    std::declval<U &> ().threadPriority (1),
-                    std::declval<U &> ().threadSchedulingPolicy (),
-                    std::declval<U &> ().threadSchedulingPolicy (1),
+      -> decltype (std::declval<U &> ().io_threads (),
+                    std::declval<U &> ().io_threads (
+                      zlink::io_thread_count_t::value (1)),
+                    std::declval<U &> ().max_sockets (),
+                    std::declval<U &> ().max_sockets (
+                      zlink::socket_count_t::value (1)),
+                    std::declval<U &> ().max_msg_size (),
+                    std::declval<U &> ().max_msg_size (
+                      zlink::byte_size_t::bytes (1)),
+                    std::declval<U &> ().thread_priority (),
+                    std::declval<U &> ().thread_priority (
+                      zlink::thread_priority_t::value (1)),
+                    std::declval<U &> ().thread_scheduling_policy (),
+                    std::declval<U &> ().thread_scheduling_policy (
+                      zlink::thread_scheduling_policy_t::other),
                     std::declval<U &> ().blocky (),
                     std::declval<U &> ().blocky (true),
-                    std::declval<U &> ().autoHwmProfile (),
-                    std::declval<U &> ().autoHwmProfile (
+                    std::declval<U &> ().auto_hwm_profile_value (),
+                    std::declval<U &> ().auto_hwm_profile_value (
                       zlink::auto_hwm_profile::balanced),
-                    std::declval<U &> ().socketLimit (),
-                    std::declval<U &> ().msgTSize (),
-                    std::declval<U &> ().addThreadAffinity (0),
-                    std::declval<U &> ().removeThreadAffinity (0),
+                    std::declval<U &> ().socket_limit (),
+                    std::declval<U &> ().msg_t_size (),
+                    std::declval<U &> ().add_thread_affinity (
+                      zlink::cpu_index_t::value (0)),
+                    std::declval<U &> ().remove_thread_affinity (
+                      zlink::cpu_index_t::value (0)),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -182,19 +198,23 @@ void test_context_options ()
     zlink::context_options_t options = ctx.options ();
     options.blocky (false);
     assert (!options.blocky ());
-    options.autoHwmProfile (zlink::auto_hwm_profile::compact);
-    assert (options.autoHwmProfile () == zlink::auto_hwm_profile::compact);
-    options.autoHwmProfile (zlink::auto_hwm_profile::throughput);
-    assert (options.autoHwmProfile () == zlink::auto_hwm_profile::throughput);
+    options.auto_hwm_profile_value (zlink::auto_hwm_profile::compact);
+    assert (options.auto_hwm_profile_value () == zlink::auto_hwm_profile::compact);
+    options.auto_hwm_profile_value (zlink::auto_hwm_profile::throughput);
+    assert (options.auto_hwm_profile_value () == zlink::auto_hwm_profile::throughput);
 
-    options.ioThreads (2);
-    assert (options.ioThreads () == 2);
-    options.maxSockets (128);
-    assert (options.maxSockets () == 128);
-    options.addThreadAffinity (0);
-    options.removeThreadAffinity (0);
-    assert (options.socketLimit () >= options.maxSockets ());
-    assert (options.msgTSize () > 0);
+    options.io_threads (zlink::io_thread_count_t::value (2));
+    assert (options.io_threads ().value () == 2);
+    options.max_sockets (zlink::socket_count_t::value (128));
+    assert (options.max_sockets ().value () == 128);
+    try {
+        options.add_thread_affinity (zlink::cpu_index_t::value (0));
+        options.remove_thread_affinity (zlink::cpu_index_t::value (0));
+    } catch (const zlink::config_error_t &err) {
+        assert (err.result () == zlink::config_result_t::not_supported);
+    }
+    assert (options.socket_limit ().value () >= options.max_sockets ().value ());
+    assert (options.msg_t_size ().bytes () > 0);
 }
 
 void test_socket_common_and_router_options ()
@@ -202,8 +222,8 @@ void test_socket_common_and_router_options ()
     zlink::context_t ctx;
     zlink::router_socket_t router (ctx);
     zlink::common_socket_options_t common = router.options ();
-    common.linger (0);
-    assert (common.linger () == 0);
+    common.linger (std::chrono::milliseconds (0));
+    assert (common.linger () == std::chrono::milliseconds (0));
 
     zlink::stream_socket_t stream (ctx);
     zlink::stream_socket_options_t stream_options = stream.stream_options ();
@@ -214,9 +234,12 @@ void test_socket_common_and_router_options ()
     const zlink::routing_id_t expected_routing_id = zlink::routing_id_t::from_bytes (
       reinterpret_cast<const uint8_t *> (rid_text.data ()), rid_text.size ());
     router.set_routing_id (expected_routing_id);
-    zlink::routing_id_t routing_id;
+    zlink::routing_id_t routing_id =
+      zlink::routing_id_t::from_bytes (
+        reinterpret_cast<const uint8_t *> ("x"), 1);
     router.get_routing_id (routing_id);
-    assert (routing_id.to_string () == "router-alpha");
+    assert (routing_id.to_bytes ()
+            == std::vector<uint8_t> (rid_text.begin (), rid_text.end ()));
   }
 
 void test_spot_options ()
@@ -226,9 +249,7 @@ void test_spot_options ()
     zlink::service::spot_t spot = node.create_spot ();
     assert (spot.valid ());
 
-    zlink::common_socket_options_t common = spot.options ();
-    common.linger (0);
-    assert (common.linger () == 0);
+    (void) spot.options ();
     (void) spot.publisher_options ();
     (void) spot.subscriber_options ();
 }

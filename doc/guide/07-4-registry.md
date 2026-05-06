@@ -270,6 +270,87 @@ Registry provides APIs to inspect the global service topology. There are
 two access modes: **local** (same process) and **remote** (different
 process via query client).
 
+### 6.0 Registry Status
+
+Query the operational state of the Registry itself:
+
+```c
+zlink_registry_status_t status;
+zlink_registry_status_snapshot(registry, &status);
+
+printf("registry_id=%u  state=%d  entries=%u  peers=%u/%u\n",
+       status.registry_id,
+       status.state,
+       status.topology_entry_count,
+       status.connected_peer_registry_count,
+       status.peer_registry_count);
+```
+
+`zlink_registry_status_t` fields:
+
+| Field | Description |
+|-------|-------------|
+| `registry_id` | Numeric registry identity |
+| `bind_endpoint` | Active bind endpoint |
+| `state` | Current registry state |
+| `topology_entry_count` | Total entries in topology table |
+| `peer_registry_count` | Number of configured peer registries |
+| `connected_peer_registry_count` | Number of peer registries currently connected |
+| `list_seq` | Monotonic sequence number of the last published service list |
+| `last_error` | Last error code (`0` = none) |
+| `last_changed_ms` | Epoch ms of the most recent state change |
+
+#### Service Summary
+
+Aggregate per-channel statistics across the topology:
+
+```c
+/* Summary of all channels */
+size_t count = 0;
+zlink_registry_service_summary_snapshot(registry, NULL, NULL, &count);
+
+zlink_registry_service_summary_entry_t *entries = malloc(
+    count * sizeof(zlink_registry_service_summary_entry_t));
+zlink_registry_service_summary_snapshot(registry, NULL, entries, &count);
+
+for (size_t i = 0; i < count; i++) {
+    printf("channel=%s  total=%u  ready=%u  err=%u\n",
+           entries[i].channel_name,
+           entries[i].total_count,
+           entries[i].ready_count,
+           entries[i].error_count);
+}
+free(entries);
+```
+
+`zlink_registry_service_summary_entry_t` fields:
+
+| Field | Description |
+|-------|-------------|
+| `auto_connect_type` | Auto-connect channel type |
+| `service_role` | Role of the service |
+| `channel_name` | Logical channel name |
+| `total_count` | Total registered instances |
+| `connecting_count` | Instances currently connecting |
+| `ready_count` | Instances currently ready |
+| `error_count` | Instances in error state |
+| `stopped_count` | Instances stopped |
+| `last_reported_ms` | Epoch ms of the most recent heartbeat |
+
+Filter by `auto_connect_type`, `service_role`, or `channel_name`
+(zero-values are wildcards):
+
+```c
+zlink_registry_service_summary_filter_t filter;
+memset(&filter, 0, sizeof(filter));
+strncpy(filter.channel_name, "payment-service",
+        sizeof(filter.channel_name) - 1);
+
+size_t count = 64;
+zlink_registry_service_summary_entry_t entries[64];
+zlink_registry_service_summary_snapshot(registry, &filter, entries, &count);
+```
+
 ### 6.1 Local Query (Same Process)
 
 #### Full Snapshot
@@ -286,7 +367,7 @@ zlink_registry_topology_snapshot(registry, entries, &count);
 
 for (size_t i = 0; i < count; i++) {
     printf("channel=%s endpoint=%s state=%d\n",
-           entries[i].service_name,
+           entries[i].channel_name,
            entries[i].endpoint,
            entries[i].state);
 }
@@ -321,7 +402,7 @@ for (size_t i = 0; i < count; i++) {
 |-------|-------------|
 | `routing_id` | Routing identity of the service instance |
 | `service_kind` | `SPOT_PUB`, `SPOT_SUB`, `SOCKET`, or `DISCOVERY` |
-| `service_name` | Logical channel name |
+| `channel_name` | Logical channel name |
 | `endpoint` | Advertised endpoint |
 | `source` | How the entry was added (`MANUAL`, `DISCOVERY`, `REGISTRY`) |
 | `state` | `DISCOVERED`, `CONNECTING`, `READY`, `LOST`, `ERROR`, `STOPPED` |
@@ -338,7 +419,7 @@ fields are treated as wildcards (match all).
 | Field | Description |
 |-------|-------------|
 | `service_kind` | Filter by service kind |
-| `service_name` | Filter by channel name |
+| `channel_name` | Filter by channel name |
 | `routing_id` | Filter by routing identity |
 | `state` | Filter by topology state |
 | `source` | Filter by topology source |
@@ -375,7 +456,7 @@ for (size_t i = 0; i < count; i++) {
         kind_str = "DISC";
     printf("[%s] %s @ %s  state=%d  ready=%u/%u\n",
            kind_str,
-           entries[i].service_name,
+           entries[i].channel_name,
            entries[i].endpoint,
            entries[i].state,
            entries[i].ready_count,

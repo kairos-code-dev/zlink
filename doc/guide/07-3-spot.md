@@ -348,7 +348,7 @@ Use the same drain-until-EAGAIN pattern for `zlink_spot_subscribe()` and
 For Actor creation, Spot join/leave, teardown, STREAM session binding, and C
 samples, see the [SPOT Actor Guide](07-4-actor.md).
 
-## 8. Poller relationship
+## 8. Poller relationship and Spot timers
 
 The current public poller does not return a Spot-aware result that carries
 "which Spot, which event kind, and which drain target".
@@ -356,6 +356,20 @@ The current public poller does not return a Spot-aware result that carries
 For a single unified readiness surface for SPOT use
 `zlink_spot_dispatch_event_handler()`. One Spot progress call advances all
 work including channel reply completions.
+
+To create a timer that fires on the Spot's I/O thread (integrated with the
+dispatch event loop), use `zlink_spot_timer_new()` instead of `zlink_timer_new()`:
+
+```c
+void *timer = zlink_spot_timer_new(spot);
+zlink_timer_start(timer, 1000000000ULL, 0);  /* 1 s, repeat indefinitely */
+zlink_timer_handler(timer, my_timer_fn, userdata);
+zlink_timer_destroy(&timer);
+```
+
+`zlink_spot_timer_new()` attaches the timer to the Spot's internal I/O context.
+Use it when the timer callback needs to coordinate with Spot dispatch without
+external synchronization.
 
 ## 9. Routed recv and reply
 
@@ -484,6 +498,20 @@ For Actor state, use `zlink_spot_node_actors_snapshot()` and
 `zlink_spot_actors_snapshot()`. The unread count and joined state in a snapshot
 are for operational diagnostics. Base flow-control decisions on dispatch events
 and recv results, not snapshot values.
+
+To look up an existing `Spot` facade by routing id (e.g. from a stored rid):
+
+```c
+void *spot = NULL;
+zlink_config_result_t rc = zlink_spot_node_spot_lookup(node, &spot_rid, &spot);
+if (rc == ZLINK_CONFIG_OK) {
+    /* use spot */
+    zlink_spot_destroy(&spot);  /* close the borrowed facade when done */
+}
+```
+
+The returned facade is borrowed; close it with `zlink_spot_destroy()` when done.
+The underlying `SpotNode` is not affected.
 
 ## 14. Actor C samples
 

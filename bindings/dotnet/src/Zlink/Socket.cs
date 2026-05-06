@@ -7,20 +7,22 @@ using Zlink.Sockets.Internal;
 namespace Zlink;
 
 /// <summary>
-/// STREAM callback for per-packet dispatch.
-/// Message ownership is transferred to the callback.
-/// The callback must dispose each message exactly once.
-/// </summary>
-public delegate int StreamPacketHandler(string routingId, Message payload);
-/// <summary>
 /// STREAM callback for framed packet dispatch.
 /// Message ownership is transferred to the callback.
 /// The callback must dispose each message exactly once.
 /// </summary>
-public delegate void StreamFramedPacketHandler(
+public delegate void StreamPacketHandler(RoutingId routingId, Message header,
+    Message body);
+/// <summary>
+/// STREAM callback for framed packet dispatch with public string routing id.
+/// Message ownership is transferred to the callback.
+/// The callback must dispose each message exactly once.
+/// </summary>
+internal delegate void StreamFramedPacketHandler(
     string routingId,
     Message header,
     Message body);
+internal delegate int StreamRawPacketHandler(string routingId, Message payload);
 internal delegate int StreamUInt32PacketHandler(uint routingId, Message payload);
 internal delegate void StreamUInt32FramedPacketHandler(uint routingId,
     Message header, Message body);
@@ -47,7 +49,7 @@ internal sealed class Socket : ConnectableSocketBase
 
     internal SocketType Type => Kernel.Type;
 
-    public void AttachStreamRaw(StreamPacketHandler handler)
+    public void AttachStreamRaw(StreamRawPacketHandler handler)
     {
         Kernel.AttachStreamRaw(handler);
     }

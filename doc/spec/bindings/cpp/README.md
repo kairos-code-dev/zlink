@@ -18,6 +18,31 @@ native bridge headers, and source-tree-only utilities are internal. Perf,
 samples, and tests must include the public C++ headers only and must not rely
 on non-installed internal headers.
 
+## Design Basis
+
+The C++ binding follows the repository POSD design policy. Public classes must
+hide native sequencing, ownership, and option encoding behind typed, deep
+interfaces so callers do not need core implementation details.
+
+The public C++ surface must be a set of deep types, not a class-shaped mirror
+of the C API. A public type is justified only when it owns a domain concept
+such as context lifetime, socket capability, message ownership, routed receive
+metadata, service membership, or typed options. Native handles, part-loop
+sequencing, request tokens, callback userdata, and raw option encoding remain
+inside the implementation.
+
+Design review uses these POSD constraints:
+
+- common send/recv, nonblocking, ownership, and error rules are implemented in
+  shared internal owners instead of repeated in every socket class
+- canonical result and facade methods do not require callers to pass values
+  the object already captures, such as the source socket, request sequence, or
+  service address
+- compatibility headers and namespaces may preserve source compatibility, but
+  new docs, samples, and tests use the canonical typed classes
+- a wrapper that only forwards to a native call without adding validation,
+  ownership, or shape semantics is internal, not a public module
+
 ## High-Performance Requirements
 
 The C++ binding is part of a high-performance messaging library. Public APIs
@@ -37,10 +62,10 @@ with these rules, the API listing must be corrected to match this section.
 
 - `pair_socket_t`, `dealer_socket_t`, and `router_socket_t` do not expose
   direct data-plane receive callbacks. They keep their typed send/recv,
-  request, and reply methods according to the socket capability matrix, but
-  remove `on_receive(...)` from their public contract.
-- `sub_socket_t` and `xsub_socket_t` are recv-only and do not expose
-  `on_subscribe(...)`.
+  request, and reply methods according to the socket capability matrix.
+  `on_receive(...)` is not part of their public contract.
+- `sub_socket_t` and `xsub_socket_t` are receive-only topic sockets and do not
+  expose `on_subscribe(...)`.
 - `stream_socket_t` keeps `recv(...)` and typed `on_receive(...)`, and must also
   expose a dedicated packet callback surface named `on_packet(...)`, mapped to
   `zlink_stream_packet_handler()`.
@@ -51,9 +76,9 @@ with these rules, the API listing must be corrected to match this section.
 - `service::spot_t` must expose channel-aware data-plane methods:
   `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
   `publish(const std::string& service_name, const std::string& topic, ...)`.
-- `service::spot_t::subscribe(...)` returns a service-aware `topic_message_t`.
-  `topic_message_t` therefore needs `std::optional<std::string> service_name()`
-  populated for SPOT subscribe results and empty for raw `SUB` / `XSUB`.
+- `service::spot_t::subscribe(...)` returns `service_topic_message_t`.
+  Raw `SUB` / `XSUB` return `topic_message_t`. Service-aware fields are not
+  optional on raw topic messages.
 - `service::spot_t` must not expose `on_subscribe(...)`. SPOT topic readable
   notifications come from `on_dispatch_event(...)`, then callers drain with
   `subscribe(...)` / `recv_routed(...)` / timer recv.
@@ -74,8 +99,7 @@ with these rules, the API listing must be corrected to match this section.
   `mandatory = true`, `handover = false`, `nodrop = true`.
 - SPOT admission HWM defaults follow the core header. Router and pubsub
   admission profile/numeric options are exposed; relay and delivery HWM stay
-  `0`. Binding native headers and linux-x86_64 runtime libraries must be
-  synchronized from `core/include` and `core/build` before validation.
+  `0` and are not public C++ options.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs via
   Discovery, the library picks one initiator per pair by total order on
   `(routing_id, advertise endpoint)`. Users do not configure this.
@@ -122,13 +146,14 @@ updated to match this document.
 - Error/version: `zlink_strerror(...)`, `zlink_version(...)`, and
   `zlink_error_t`-derived exceptions.
 - Context lifecycle: `context_t`, `shutdown()`, and `term()`.
-- Context options: `context_options_t`, including typed auto-HWM configuration.
+- Context options: `context_options_t`, including typed thread, duration,
+  byte-size, and auto-HWM configuration.
 - Context auto-HWM recalculation: `context_t` must expose an explicit
   recalculation method mapped to `zlink_ctx_auto_hwm_recalculate(...)`.
-- Message lifecycle and zero-copy data: `message_t`, `multipart_t`, and codec
-  extension helpers.
-- Routing identities and Actor refs: `routing_id_t`, `actor_ref_t`, and
-  `service::spot_node_t::remote_actor_ref(...)`.
+- Message lifecycle: owned `message_t`, `multipart_t`, advanced external
+  message wrappers, and codec extension helpers.
+- Routing identities and service addresses: `routing_id_t`, `spot_address_t`,
+  `actor_ref_t`, and `service::spot_node_t::remote_actor_ref(...)`.
 - Raw socket creation/lifecycle: typed socket classes only. Native socket
   handles are internal implementation details and are not part of the
   canonical public binding API.
@@ -139,7 +164,7 @@ updated to match this document.
   key wrappers, if retained, live only under `compat::options`.
 - Socket-specific options: `pub_socket_options_t`, `sub_socket_options_t`,
   `dealer_socket_options_t`, `router_socket_options_t`, and
-  `stream_socket_options_t`.
+  `stream_socket_options_t`. Raw integer policy values are not canonical.
 - SPOT and SPOT-node native options: node mode is exposed through
   `spot_node_options_t`; SPOT request timeout and SPOT-node HWM admission
   options must have typed option surfaces.
@@ -156,7 +181,9 @@ updated to match this document.
   `reply(...)`, `send_to_spot(...)`, `request_to_spot(...)`, and
   `reply_to_spot(...)`.
 - STREAM: `stream_socket_t::recv(...)`, `on_receive(...)`, `on_packet(...)`,
-  `bind_actor(...)`, `unbind_actor(...)`, and `send_bound_actor_part(...)`.
+  and `stream_session_t` for per-session send and Actor binding. A
+  `stream_session_t` captures both the session routing id and the owning
+  `service::spot_node_t`.
 - Send-ready callbacks and `pollout`: `on_send_ready(...)` on send-capable
   sockets and SPOT.
 - Socket monitoring: `monitor_handle_t`, `monitor_event_t`, and
@@ -169,7 +196,8 @@ updated to match this document.
   `send_channel(...)`, `request_channel(...)`, and `subscribe(...)`.
 - SPOT routed data plane: `send_to_spot(...)`, `request_to_spot(...)`,
   `request_to_router(...)`, `reply_to_spot(...)`, `reply_to_router(...)`,
-  and `recv_routed(...)`.
+  and `recv_routed(...)`. Spot destinations use `spot_address_t` instead of
+  repeated node/spot routing-id pairs.
 - SPOT dispatch events: `service::spot_t::on_dispatch_event(...)`.
   Dispatch info is exposed through C++ typed value objects, not raw native
   `zlink_spot_dispatch_info_t` pointers.
@@ -211,8 +239,9 @@ class actor_t;
 
 `spot_node_t` exposes Actor factory/lookup, remote create-or-get, admission,
 join/leave, and Actor snapshots. `spot_t` exposes Actor join receive/reply and
-joined Actor snapshots. `stream_socket_t` exposes Actor bind/unbind and bound
-Actor send. Discovery exposes Actor route resolve.
+joined Actor snapshots. `stream_socket_t` creates `stream_session_t` facades;
+`stream_session_t` captures the owner node and exposes Actor bind/unbind and
+bound Actor send for one STREAM session. Discovery exposes Actor route resolve.
 
 `generation == 0` is an unchecked remote ref. One Actor can join only one Spot
 at a time; one STREAM session can bind multiple Actors.
@@ -226,7 +255,7 @@ RAII wrapper for a zlink context. Manages the lifecycle of IO threads and socket
 ```cpp
 class context_t {
     context_t();
-    explicit context_t(int io_threads);
+    explicit context_t(io_thread_count_t io_threads);
     ~context_t();
 
     context_t(context_t&& other) noexcept;
@@ -255,33 +284,33 @@ class context_options_t {
 
     // All option setters/getters throw config_error_t on failure.
     /// @throws config_error_t
-    int io_threads() const;
+    io_thread_count_t io_threads() const;
     /// @throws config_error_t
-    void io_threads(int value);
+    void io_threads(io_thread_count_t value);
     /// @throws config_error_t
-    int max_sockets() const;
+    socket_count_t max_sockets() const;
     /// @throws config_error_t
-    void max_sockets(int value);
+    void max_sockets(socket_count_t value);
     /// @throws config_error_t
-    int max_msg_size() const;
+    byte_size_t max_msg_size() const;
     /// @throws config_error_t
-    void max_msg_size(int value);
+    void max_msg_size(byte_size_t value);
     /// @throws config_error_t
-    int thread_priority() const;
+    std::optional<thread_priority_t> thread_priority() const;
     /// @throws config_error_t
-    void thread_priority(int value);
+    void thread_priority(thread_priority_t value);
     /// @throws config_error_t
-    int thread_scheduling_policy() const;
+    thread_scheduling_policy_t thread_scheduling_policy() const;
     /// @throws config_error_t
-    void thread_scheduling_policy(int value);
+    void thread_scheduling_policy(thread_scheduling_policy_t value);
     /// @throws config_error_t
     std::string thread_name_prefix() const;
     /// @throws config_error_t
     void thread_name_prefix(const std::string& value);
     /// @throws config_error_t
-    int spot_worker_threads() const;
+    spot_worker_count_t spot_worker_threads() const;
     /// @throws config_error_t
-    void spot_worker_threads(int value);
+    void spot_worker_threads(spot_worker_count_t value);
     /// @throws config_error_t
     bool blocky() const;
     /// @throws config_error_t
@@ -299,13 +328,13 @@ class context_options_t {
     /// @throws config_error_t
     void auto_hwm_profile_value(auto_hwm_profile profile);
     /// @throws config_error_t
-    int socket_limit() const;
+    socket_count_t socket_limit() const;
     /// @throws config_error_t
-    int msg_t_size() const;
+    byte_size_t msg_t_size() const;
     /// @throws config_error_t
-    void add_thread_affinity(int cpu);
+    void add_thread_affinity(cpu_index_t cpu);
     /// @throws config_error_t
-    void remove_thread_affinity(int cpu);
+    void remove_thread_affinity(cpu_index_t cpu);
 };
 ```
 
@@ -316,11 +345,72 @@ enum class auto_hwm_profile : int {
     balanced = ZLINK_AUTO_HWM_PROFILE_BALANCED,
     throughput = ZLINK_AUTO_HWM_PROFILE_THROUGHPUT
 };
+
+enum class thread_scheduling_policy_t : int {
+    default_policy = -1,
+    other,
+    fifo,
+    round_robin
+};
+
+enum class rid_duplicate_policy_t : int {
+    reject,
+    replace
+};
+
+class io_thread_count_t {
+    static io_thread_count_t value(int value);
+    int value() const noexcept;
+};
+
+class socket_count_t {
+    static socket_count_t value(int value);
+    int value() const noexcept;
+};
+
+class thread_priority_t {
+    static thread_priority_t value(int value);
+    int value() const noexcept;
+};
+
+class cpu_index_t {
+    static cpu_index_t value(int value);
+    int value() const noexcept;
+};
+
+class spot_worker_count_t {
+    static spot_worker_count_t value(int value);
+    int value() const noexcept;
+};
+
+class byte_size_t {
+    static byte_size_t bytes(int64_t value);
+    int64_t bytes() const noexcept;
+};
+
+class peer_weight_t {
+    static peer_weight_t value(uint32_t value); // valid range: 0..100
+    uint32_t value() const noexcept;
+};
+
+class message_count_t {
+    static message_count_t value(int value);
+    int value() const noexcept;
+};
+
+class socket_backlog_t {
+    static socket_backlog_t value(int value);
+    int value() const noexcept;
+};
 ```
 
 ---
 
 ## Socket Types
+
+The socket signatures below use shared domain types declared in
+`zlink/types.hpp`, including `request_options_t`, `request_callback_t`,
+`spot_address_t`, and `stream_session_t`.
 
 ### Common base methods
 
@@ -384,7 +474,8 @@ class pair_socket_t : public message_socket_t {
     /// @throws recv_error_t
     std::optional<received_t> recv(recv_flags_t flags = recv_flags_t::none);
     /// @throws handler_error_t
-    void on_send_ready(std::function<void()> handler);
+    template<class Handler>
+    void on_send_ready(Handler&& handler);
 };
 ```
 
@@ -398,11 +489,16 @@ class pub_socket_t : public publisher_socket_t {
 
     // --- publish ---
     /// @throws submit_error_t
-    bool publish(const std::string& topic, message_t& part, send_flags_t flags = send_flags_t::none);
+    bool publish(const std::string& topic,
+                 message_t& part,
+                 send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    bool publish(const std::string& topic, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    bool publish(const std::string& topic,
+                 std::vector<message_t>& parts,
+                 send_flags_t flags = send_flags_t::none);
     /// @throws handler_error_t
-    void on_send_ready(std::function<void()> handler);
+    template<class Handler>
+    void on_send_ready(Handler&& handler);
 
     // --- pub-specific options ---
     /// @throws config_error_t
@@ -410,7 +506,7 @@ class pub_socket_t : public publisher_socket_t {
 
     // --- discovery ---
     /// @throws config_error_t
-    void attach_discovery(DiscoveryT& discovery);
+    void attach_discovery(service::discovery_t& discovery);
 };
 ```
 
@@ -439,7 +535,7 @@ class sub_socket_t : public subscriber_socket_t {
 
     // --- discovery ---
     /// @throws config_error_t
-    void attach_discovery(DiscoveryT& discovery);
+    void attach_discovery(service::discovery_t& discovery);
 };
 ```
 
@@ -461,32 +557,26 @@ class dealer_socket_t : public message_socket_t {
     /// @throws recv_error_t
     std::optional<received_t> recv(recv_flags_t flags = recv_flags_t::none);
     /// @throws handler_error_t
-    void on_send_ready(std::function<void()> handler);
+    template<class Handler>
+    void on_send_ready(Handler&& handler);
 
     // --- request (coroutine, blocking submit — no flags) ---
     /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request(message_t& part,
-                                                   std::chrono::milliseconds timeout = {});
+                                                   request_options_t options = {});
     /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request(std::vector<message_t>& parts,
-                                                   std::chrono::milliseconds timeout = {});
+                                                   request_options_t options = {});
 
-    // --- request (callback submit; callback receives request_result_t) ---
+    // --- request (callback submit; callback receives request_completion_t) ---
     /// @throws submit_error_t
     bool request(message_t& part,
-                 std::function<void(request_result_t, std::vector<message_t>)> callback,
-                 send_flags_t flags = send_flags_t::none,
-                 std::chrono::milliseconds timeout = {});
+                 request_callback_t callback,
+                 request_options_t options = {});
     /// @throws submit_error_t
     bool request(std::vector<message_t>& parts,
-                 std::function<void(request_result_t, std::vector<message_t>)> callback,
-                 send_flags_t flags = send_flags_t::none,
-                 std::chrono::milliseconds timeout = {});
-
-    // --- request configuration ---
-    /// @throws config_error_t
-    void set_default_request_timeout(std::chrono::milliseconds timeout);
-    std::chrono::milliseconds get_default_request_timeout() const;
+                 request_callback_t callback,
+                 request_options_t options = {});
 
     // --- identity / routing ---
     /// @throws config_error_t
@@ -500,7 +590,7 @@ class dealer_socket_t : public message_socket_t {
 
     // --- discovery ---
     /// @throws config_error_t
-    void attach_discovery(DiscoveryT& discovery);
+    void attach_discovery(service::discovery_t& discovery);
 };
 ```
 
@@ -514,18 +604,23 @@ class router_socket_t : public routed_message_socket_t {
 
     // --- routed send ---
     /// @throws submit_error_t
-    bool send(const routing_id_t& target_rid, message_t& part, send_flags_t flags = send_flags_t::none);
+    bool send(const routing_id_t& target_rid,
+              message_t& part,
+              send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    bool send(const routing_id_t& target_rid, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    bool send(const routing_id_t& target_rid,
+              std::vector<message_t>& parts,
+              send_flags_t flags = send_flags_t::none);
 
     // --- receive (unified routed surface) ---
     // One recv surface covers regular ROUTER traffic and spot-origin routed
-    // traffic. Empty received_t::spot_rid() means regular ROUTER traffic.
+    // traffic. Empty routed_received_t::spot_rid() means regular ROUTER traffic.
     // A populated spot_rid() means reply_to_spot must be used.
     /// @throws recv_error_t
-    std::optional<received_t> recv(recv_flags_t flags = recv_flags_t::none);
+    std::optional<routed_received_t> recv(recv_flags_t flags = recv_flags_t::none);
     /// @throws handler_error_t
-    void on_send_ready(std::function<void()> handler);
+    template<class Handler>
+    void on_send_ready(Handler&& handler);
 
     // --- identity / routing ---
     /// @throws config_error_t
@@ -537,67 +632,59 @@ class router_socket_t : public routed_message_socket_t {
     /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request(const routing_id_t& peer_rid,
                                                    message_t& part,
-                                                   std::chrono::milliseconds timeout = {});
+                                                   request_options_t options = {});
     /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request(const routing_id_t& peer_rid,
                                                    std::vector<message_t>& parts,
-                                                   std::chrono::milliseconds timeout = {});
+                                                   request_options_t options = {});
 
-    // --- request (callback submit; callback receives request_result_t) ---
+    // --- request (callback submit; callback receives request_completion_t) ---
     /// @throws submit_error_t
     bool request(const routing_id_t& peer_rid,
                  message_t& part,
-                 std::function<void(request_result_t, std::vector<message_t>)> callback,
-                 send_flags_t flags = send_flags_t::none,
-                 std::chrono::milliseconds timeout = {});
+                 request_callback_t callback,
+                 request_options_t options = {});
     /// @throws submit_error_t
     bool request(const routing_id_t& peer_rid,
                  std::vector<message_t>& parts,
-                 std::function<void(request_result_t, std::vector<message_t>)> callback,
-                 send_flags_t flags = send_flags_t::none,
-                 std::chrono::milliseconds timeout = {});
+                 request_callback_t callback,
+                 request_options_t options = {});
 
     // --- reply ---
     /// @throws submit_error_t
-    void reply(const routing_id_t& rid, uint64_t request_seq,
+    void reply(const routing_id_t& rid, request_sequence_t request,
                message_t& part, send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    void reply(const routing_id_t& rid, uint64_t request_seq,
+    void reply(const routing_id_t& rid, request_sequence_t request,
                std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
-
-    // --- request configuration ---
-    /// @throws config_error_t
-    void set_default_request_timeout(std::chrono::milliseconds timeout);
-    std::chrono::milliseconds get_default_request_timeout() const;
 
     // --- router → spot routed send ---
     /// @throws submit_error_t
-    bool send_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
+    bool send_to_spot(const spot_address_t& dest,
                       message_t& part, send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    bool send_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
+    bool send_to_spot(const spot_address_t& dest,
                       std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
 
     // --- router → spot routed request (coroutine, blocking submit — no flags) ---
     /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request_to_spot(const routing_id_t& dest_node_rid,
-                                                           const routing_id_t& dest_spot_rid,
+    async_result_t<std::vector<message_t>> request_to_spot(const spot_address_t& dest,
                                                            message_t message,
-                                                           std::chrono::milliseconds timeout = {});
+                                                           request_options_t options = {});
 
-    // --- router → spot routed request (callback; callback receives request_result_t) ---
+    // --- router → spot routed request (callback receives request_completion_t) ---
     /// @throws submit_error_t
-    bool request_to_spot(const routing_id_t& dest_node_rid,
-                         const routing_id_t& dest_spot_rid,
+    bool request_to_spot(const spot_address_t& dest,
                          message_t message,
-                         std::function<void(request_result_t, std::vector<message_t>)> callback,
-                         send_flags_t flags = send_flags_t::none,
-                         std::chrono::milliseconds timeout = {});
+                         request_callback_t callback,
+                         request_options_t options = {});
 
     // --- router → spot routed reply ---
     /// @throws submit_error_t
-    void reply_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
-                       uint64_t request_seq, message_t message, send_flags_t flags = send_flags_t::none);
+    void reply_to_spot(const spot_address_t& dest,
+                       request_sequence_t request,
+                       message_t message,
+                       send_flags_t flags = send_flags_t::none);
 
     // --- router-specific options ---
     /// @throws config_error_t
@@ -605,7 +692,7 @@ class router_socket_t : public routed_message_socket_t {
 
     // --- discovery ---
     /// @throws config_error_t
-    void attach_discovery(DiscoveryT& discovery);
+    void attach_discovery(service::discovery_t& discovery);
 };
 ```
 
@@ -619,11 +706,16 @@ class xpub_socket_t : public publisher_socket_t {
 
     // --- publish ---
     /// @throws submit_error_t
-    bool publish(const std::string& topic, message_t& part, send_flags_t flags = send_flags_t::none);
+    bool publish(const std::string& topic,
+                 message_t& part,
+                 send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    bool publish(const std::string& topic, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    bool publish(const std::string& topic,
+                 std::vector<message_t>& parts,
+                 send_flags_t flags = send_flags_t::none);
     /// @throws handler_error_t
-    void on_send_ready(std::function<void()> handler);
+    template<class Handler>
+    void on_send_ready(Handler&& handler);
 
     // --- subscription events ---
     /// @throws recv_error_t
@@ -664,19 +756,22 @@ class xsub_socket_t : public subscriber_socket_t {
 
 ### stream_socket_t
 
-Raw TCP stream socket. Bind-only; connect is deleted.
+Raw TCP stream socket. Bind-only; it does not expose `connect` or
+`disconnect`.
 
 ```cpp
 class stream_socket_t : public routed_message_socket_t {
     explicit stream_socket_t(context_t& ctx);
 
-    void connect(const std::string&) = delete;
-
     // --- routed send ---
     /// @throws submit_error_t
-    bool send(const routing_id_t& target_rid, message_t& part, send_flags_t flags = send_flags_t::none);
+    bool send(const routing_id_t& target_rid,
+              message_t& part,
+              send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    bool send(const routing_id_t& target_rid, std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    bool send(const routing_id_t& target_rid,
+              std::vector<message_t>& parts,
+              send_flags_t flags = send_flags_t::none);
 
     // --- receive (three mutually-exclusive modes) ---
     /// (1) raw recv. Returns a multipart received_t.
@@ -686,7 +781,8 @@ class stream_socket_t : public routed_message_socket_t {
     /// with recv() and on_packet(). Second attach on the same stream returns
     /// BUSY (EBUSY).
     /// @throws handler_error_t
-    void on_receive(std::function<void(received_t)> handler);
+    template<class Handler>
+    void on_receive(Handler&& handler);
     /// (3) framed packet callback (zlink_stream_packet_handler). Wire frame
     /// is big-endian u16 header_size + u32 body_size + header + body.
     /// Handler receives the source routing_id, a header message_t, and a
@@ -694,9 +790,11 @@ class stream_socket_t : public routed_message_socket_t {
     /// Mutually exclusive with recv() and on_receive() on the same stream;
     /// second attach returns BUSY.
     /// @throws handler_error_t
-    void on_packet(std::function<void(const routing_id_t&, message_t, message_t)> handler);
+    template<class Handler>
+    void on_packet(Handler&& handler);
     /// @throws handler_error_t
-    void on_send_ready(std::function<void()> handler);
+    template<class Handler>
+    void on_send_ready(Handler&& handler);
 
     // --- identity ---
     /// @throws config_error_t
@@ -708,21 +806,34 @@ class stream_socket_t : public routed_message_socket_t {
     /// @throws config_error_t
     stream_socket_options_t stream_options();
 
-    // --- Actor-bound stream sessions ---
-    /// @throws request_error_t
-    template<typename SpotNodeT>
-    void bind_actor(SpotNodeT& node, const routing_id_t& session_rid,
-                    const actor_ref_t& actor,
-                    std::chrono::milliseconds timeout = {});
-    /// @throws request_error_t
-    template<typename SpotNodeT>
-    void unbind_actor(SpotNodeT& node, const routing_id_t& session_rid,
-                      const std::string& actor_id,
-                      std::chrono::milliseconds timeout = {});
+    // --- per-session facade ---
+    stream_session_t session(service::spot_node_t& owner_node,
+                             const routing_id_t& session_rid);
+};
+```
+
+### stream_session_t
+
+Per-session facade for one STREAM client session routing id owned by one
+`service::spot_node_t`. This type hides both `session_rid` and owner-node
+plumbing from repeated calls and keeps STREAM session Actor binding as session
+behavior instead of socket-wide behavior.
+
+```cpp
+class stream_session_t {
+    const routing_id_t& routing_id() const noexcept;
+
     /// @throws submit_error_t
-    template<typename SpotNodeT>
-    bool send_bound_actor_part(SpotNodeT& node, const routing_id_t& session_rid,
-                               const std::string& actor_id, message_t& part,
+    bool send(message_t& part, send_flags_t flags = send_flags_t::none);
+    /// @throws submit_error_t
+    bool send(std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+
+    /// @throws request_error_t
+    void bind_actor(const actor_ref_t& actor, std::chrono::milliseconds timeout = {});
+    /// @throws request_error_t
+    void unbind_actor(const std::string& actor_id, std::chrono::milliseconds timeout = {});
+    /// @throws submit_error_t
+    bool send_bound_actor_part(const std::string& actor_id, message_t& part,
                                send_flags_t flags = send_flags_t::none);
 };
 ```
@@ -735,33 +846,33 @@ canonical public API. C++ exposes typed option facades instead.
 ```cpp
 class common_socket_options_t {
     /// @throws config_error_t
-    int linger() const;
+    std::chrono::milliseconds linger() const;
     /// @throws config_error_t
-    void linger(int value);
+    void linger(std::chrono::milliseconds value);
     /// @throws config_error_t
-    int send_hwm() const;
+    message_count_t send_hwm() const;
     /// @throws config_error_t
-    void send_hwm(int value);
+    void send_hwm(message_count_t value);
     /// @throws config_error_t
-    int recv_hwm() const;
+    message_count_t recv_hwm() const;
     /// @throws config_error_t
-    void recv_hwm(int value);
+    void recv_hwm(message_count_t value);
     /// @throws config_error_t
-    int send_timeout() const;
+    std::chrono::milliseconds send_timeout() const;
     /// @throws config_error_t
-    void send_timeout(int value);
+    void send_timeout(std::chrono::milliseconds value);
     /// @throws config_error_t
-    int recv_timeout() const;
+    std::chrono::milliseconds recv_timeout() const;
     /// @throws config_error_t
-    void recv_timeout(int value);
+    void recv_timeout(std::chrono::milliseconds value);
     /// @throws config_error_t
     bool immediate() const;
     /// @throws config_error_t
     void immediate(bool value);
     /// @throws config_error_t
-    int connect_timeout() const;
+    std::chrono::milliseconds connect_timeout() const;
     /// @throws config_error_t
-    void connect_timeout(int value);
+    void connect_timeout(std::chrono::milliseconds value);
     /// @throws config_error_t
     bool ipv6() const;
     /// @throws config_error_t
@@ -775,37 +886,37 @@ class common_socket_options_t {
     /// @throws config_error_t
     void tcp_keepalive(bool value);
     /// @throws config_error_t
-    int heartbeat_interval() const;
+    std::chrono::milliseconds heartbeat_interval() const;
     /// @throws config_error_t
-    void heartbeat_interval(int value);
+    void heartbeat_interval(std::chrono::milliseconds value);
     /// @throws config_error_t
-    int heartbeat_ttl() const;
+    std::chrono::milliseconds heartbeat_ttl() const;
     /// @throws config_error_t
-    void heartbeat_ttl(int value);
+    void heartbeat_ttl(std::chrono::milliseconds value);
     /// @throws config_error_t
-    int heartbeat_timeout() const;
+    std::chrono::milliseconds heartbeat_timeout() const;
     /// @throws config_error_t
-    void heartbeat_timeout(int value);
+    void heartbeat_timeout(std::chrono::milliseconds value);
     /// @throws config_error_t
-    int rid_duplicate_policy() const;
+    rid_duplicate_policy_t rid_duplicate_policy() const;
     /// @throws config_error_t
-    void rid_duplicate_policy(int value);
+    void rid_duplicate_policy(rid_duplicate_policy_t value);
     /// @throws config_error_t
-    int64_t max_message_size() const;
+    byte_size_t max_message_size() const;
     /// @throws config_error_t
-    void max_message_size(int64_t value);
+    void max_message_size(byte_size_t value);
     /// @throws config_error_t
-    int backlog() const;
+    socket_backlog_t backlog() const;
     /// @throws config_error_t
-    void backlog(int value);
+    void backlog(socket_backlog_t value);
     /// @throws config_error_t
-    int reconnect_interval() const;
+    std::chrono::milliseconds reconnect_interval() const;
     /// @throws config_error_t
-    void reconnect_interval(int value);
+    void reconnect_interval(std::chrono::milliseconds value);
     /// @throws config_error_t
-    int reconnect_interval_max() const;
+    std::chrono::milliseconds reconnect_interval_max() const;
     /// @throws config_error_t
-    void reconnect_interval_max(int value);
+    void reconnect_interval_max(std::chrono::milliseconds value);
     /// @throws config_error_t
     std::string last_endpoint() const;
 };
@@ -840,9 +951,9 @@ class dealer_socket_options_t {
     /// @throws config_error_t
     void probe_router(bool value);
     /// @throws config_error_t
-    uint32_t peer_weight() const;
+    peer_weight_t peer_weight() const;
     /// @throws config_error_t
-    void peer_weight(uint32_t value);
+    void peer_weight(peer_weight_t value);
 };
 
 class router_socket_options_t {
@@ -863,9 +974,9 @@ class router_socket_options_t {
     /// @throws config_error_t
     void connect_routing_id(const routing_id_t& value);
     /// @throws config_error_t
-    uint32_t peer_weight() const;
+    peer_weight_t peer_weight() const;
     /// @throws config_error_t
-    void peer_weight(uint32_t value);
+    void peer_weight(peer_weight_t value);
 };
 
 class stream_socket_options_t {
@@ -925,23 +1036,17 @@ class message_t {
 
     // --- factories ---
     // copy-based factories
-    static message_t from_bytes(const void* data, size_t size);
+    static message_t from_bytes(std::span<const std::byte> bytes);
     static message_t from_bytes(const std::vector<uint8_t>& bytes);
     static message_t from_string(const std::string& text);
-    // external attach with explicit release hook — C++ is the only binding
-    // that exposes this generic public path.
-    static message_t from_external(void* data, size_t size,
-                                   zlink_free_fn* ffn = nullptr, void* hint = nullptr);
-
     // --- init ---
     void init();
     void init(size_t size);
-    // external attach with explicit release hook.
-    void init(void* data, size_t size, zlink_free_fn* ffn = nullptr, void* hint = nullptr);
 
     // --- accessors ---
-    void* data() noexcept;
-    const void* data() const noexcept;
+    std::span<std::byte> bytes() noexcept;
+    std::span<const std::byte> bytes() const noexcept;
+    // Compatibility views for existing code live in compat::message.
     size_t size() const noexcept;
     int ref_count() const noexcept;
     std::optional<std::string> property(const std::string& name) const;
@@ -953,6 +1058,24 @@ class message_t {
     // --- lifecycle ---
     void close() noexcept;
 };
+```
+
+### advanced::external_message_t
+
+External-buffer messages are an advanced C++-only escape hatch. They are kept
+outside the canonical `message_t` factory surface because callers must
+understand buffer lifetime and release callbacks. Normal application code,
+samples, tests, and codec helpers use owned `message_t` construction.
+
+```cpp
+namespace zlink::advanced {
+
+class external_message_t {
+    static message_t adopt(void* data, size_t size,
+                           zlink_free_fn* release, void* hint = nullptr);
+};
+
+} // namespace zlink::advanced
 ```
 
 ### multipart_t
@@ -1074,7 +1197,8 @@ class routing_id_t {
     /// Named factories (equivalent to the primary byte constructor).
     static routing_id_t from_bytes(const uint8_t* bytes, size_t size);
     static routing_id_t from_bytes(const std::vector<uint8_t>& bytes);
-    static routing_id_t from_string(const std::string& value); // parses hex; invalid or >255 decoded bytes throws
+    // Parses hex; invalid or >255 decoded bytes throws.
+    static routing_id_t from_string(const std::string& value);
 
     // --- binary accessors ---
     const uint8_t* data() const noexcept;
@@ -1108,11 +1232,79 @@ Rules:
   metadata uses `std::optional<routing_id_t>` instead of an empty routing id.
 - Immutable after construction.
 
+### spot_address_t
+
+Logical address for a remote Spot. This value object prevents repeated
+destination identity fields from leaking through routed Spot APIs.
+
+```cpp
+class spot_address_t {
+    spot_address_t(routing_id_t node_rid, routing_id_t spot_rid);
+
+    const routing_id_t& node_rid() const noexcept;
+    const routing_id_t& spot_rid() const noexcept;
+};
+
+class local_spot_address_t {
+    explicit local_spot_address_t(routing_id_t spot_rid);
+
+    const routing_id_t& spot_rid() const noexcept;
+};
+```
+
+### request_options_t / request_completion_t
+
+Shared request-reply support types. They keep timeout and completion semantics
+in one place instead of repeating callback signatures on every socket and
+service facade.
+
+```cpp
+struct request_options_t {
+    std::chrono::milliseconds timeout{};
+    send_flags_t flags = send_flags_t::none;
+};
+
+class request_sequence_t {
+    static request_sequence_t value(uint64_t value);
+    uint64_t value() const noexcept;
+};
+
+class request_completion_t {
+    request_result_t result() const noexcept;
+    const std::vector<message_t>& parts() const noexcept;
+    std::vector<message_t>& parts() noexcept;
+    bool ok() const noexcept;
+};
+
+class request_callback_t {
+    template<class Fn>
+    request_callback_t(Fn&& fn);
+    void operator()(request_completion_t completion);
+};
+```
+
+### fd_handle_t
+
+File descriptor value object for poller registration. It prevents OS handle
+ownership and integer validity rules from leaking into `poller_t`.
+
+```cpp
+class fd_handle_t {
+    explicit fd_handle_t(zlink_fd_t fd);
+
+    zlink_fd_t native() const noexcept;
+    bool valid() const noexcept;
+};
+```
+
 ### Actor Domain Types
 
 Actor value types mirror the C structs used by SPOT Actor dispatch.
 
 ```cpp
+class routed_received_t;
+class service_topic_message_t;
+
 enum class actor_create_status_t : int {
     created = ZLINK_ACTOR_CREATE_CREATED,
     existing = ZLINK_ACTOR_CREATE_EXISTING
@@ -1183,32 +1375,61 @@ enum class spot_dispatch_subject_kind_t : int {
     actor = ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR
 };
 
-struct spot_dispatch_info_t {
-    spot_dispatch_event_t event;
-    spot_dispatch_subject_kind_t subject_kind;
-    std::optional<actor_ref_t> actor;
-    std::vector<actor_part_t> actor_parts;
+struct spot_subscribe_ready_t {
+    std::vector<service_topic_message_t> drain();
 };
+
+struct spot_routed_ready_t {
+    std::vector<routed_received_t> drain();
+};
+
+struct spot_timer_ready_t {
+    std::vector<uint64_t> drain();
+};
+
+struct spot_channel_reply_ready_t {
+    void progress();
+};
+
+struct spot_actor_ready_t {
+    actor_ref_t actor;
+    std::vector<actor_part_t> drain();
+};
+
+struct spot_actor_join_ready_t {
+    std::vector<std::pair<actor_join_info_t, message_t>> drain();
+};
+
+using spot_dispatch_info_t = std::variant<
+    spot_subscribe_ready_t,
+    spot_routed_ready_t,
+    spot_timer_ready_t,
+    spot_channel_reply_ready_t,
+    spot_actor_ready_t,
+    spot_actor_join_ready_t>;
 ```
 
-`spot_dispatch_info_t` never exposes the native `void* subject` pointer. For
-`actor_readable`, `actor` identifies the Actor to drain. If the binding moves
-the callback to another execution context, it pre-drains available Actor parts
-nonblocking and returns them in `actor_parts`.
+`spot_dispatch_info_t` never exposes the native `void* subject` pointer or
+requires callers to switch on raw subject kind. Each variant owns the minimal
+drain/progress helper for that readiness source. If the binding moves the
+callback to another execution context, it pre-drains nonblocking where needed
+and stores the public values in the variant.
 
-### received_t
+### received_t / routed_received_t
 
-Aggregates one recv result used by PAIR / DEALER / ROUTER / STREAM /
-Spot routed receive paths. Owns `message_t` parts; destructor releases
-them. Matches the canonical `Received` shape (see
-[Bindings Policy — 도메인 객체 Canonical Shape](../README.md#도메인-객체-canonical-shape-모든-바인딩-공통)).
+`received_t` aggregates one non-replyable recv result used by PAIR / DEALER /
+STREAM paths. `routed_received_t` is the replyable routed variant used by
+ROUTER and Spot routed receive paths. Splitting the types prevents callers
+from calling `reply(...)` on a message that has no reply context. Both types
+own `message_t` parts; destructors release them. They match the canonical
+`Received` shape (see
+[Bindings Policy - Domain Object Policy](../README.md)).
 
 ```cpp
 class received_t {
 public:
-    const std::optional<routing_id_t>& routing_id() const noexcept;  // peer_rid (Router) / source_node_rid (Spot); nullopt if transport carries no source id
-    const std::optional<routing_id_t>& spot_rid() const noexcept;    // set only for SPOT routed recv
-    const std::optional<uint64_t>& request_seq() const noexcept;     // set only for request-reply recv paths
+    // nullopt if transport carries no source id
+    const std::optional<routing_id_t>& routing_id() const noexcept;
     const std::vector<message_t>& parts() const noexcept;
     std::vector<message_t>& parts() noexcept;
 
@@ -1218,9 +1439,27 @@ public:
     /// @throws recv_error_t
     message_t single_part_or_throw();
 
-    // Valid only when request_seq() is set. Otherwise submit_error_t reports
-    // an invalid reply context. Routing metadata is encapsulated, so callers
-    // do not pass routing_id, spot_rid, or request_seq again.
+    /// @throws close_error_t
+    void close();
+};
+
+class routed_received_t {
+public:
+    // peer_rid for Router, source_node_rid for Spot
+    const routing_id_t& routing_id() const noexcept;
+    // Set only for SPOT-origin routed recv.
+    const std::optional<routing_id_t>& spot_rid() const noexcept;
+    const std::vector<message_t>& parts() const noexcept;
+    std::vector<message_t>& parts() noexcept;
+
+    bool is_single_part() const noexcept;
+    /// @throws recv_error_t
+    message_t& first_part();
+    /// @throws recv_error_t
+    message_t single_part_or_throw();
+
+    // Routing metadata and request sequence are encapsulated. Callers do not
+    // pass routing_id, spot_rid, or request_sequence_t again.
     /// @throws submit_error_t
     void reply(message_t& part);
     /// @throws submit_error_t
@@ -1235,26 +1474,49 @@ public:
 };
 ```
 
-`received_t` 는 내부적으로 source socket 참조를 보유한다. binding 이 recv /
-handler 에서 `received_t` 를 만들 때 주입하며, `reply()` 는 그 참조를 사용해
-원래 socket 으로 reply 한다.
+`routed_received_t` stores the source socket reference internally. The binding
+injects that reference when it creates `routed_received_t` from `recv` or a
+handler, and `reply()` uses it to reply on the original socket.
 
-### topic_message_t
+### topic_message_t / service_topic_message_t
 
-Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
-Owns `message_t` parts; destructor releases them.
+Topic-aware recv result used by raw SUB / XSUB paths. `service_topic_message_t`
+is the service-aware Spot subscribe variant. Both own `message_t` parts;
+destructors release them.
 
 ```cpp
 class topic_message_t {
 public:
     topic_message_t(std::optional<routing_id_t> routing_id,
-                    std::optional<std::string> service_name,
                     std::string topic,
                     std::vector<message_t> parts);
 
-    const std::optional<routing_id_t>& routing_id() const noexcept;  // nullopt if transport carries no source id
-    const std::optional<std::string>& service_name() const noexcept; // Spot subscribe only; empty for raw SUB / XSUB
+    // nullopt if transport carries no source id
+    const std::optional<routing_id_t>& routing_id() const noexcept;
     const std::string& topic() const noexcept;                       // UTF-8
+    const std::vector<message_t>& parts() const noexcept;
+    std::vector<message_t>& parts() noexcept;
+
+    bool is_single_part() const noexcept;
+    /// @throws recv_error_t
+    message_t& first_part();
+    /// @throws recv_error_t
+    message_t single_part_or_throw();
+
+    /// @throws close_error_t
+    void close();
+};
+
+class service_topic_message_t {
+public:
+    service_topic_message_t(std::optional<routing_id_t> routing_id,
+                            std::string service_name,
+                            std::string topic,
+                            std::vector<message_t> parts);
+
+    const std::optional<routing_id_t>& routing_id() const noexcept;
+    const std::string& service_name() const noexcept;
+    const std::string& topic() const noexcept;
     const std::vector<message_t>& parts() const noexcept;
     std::vector<message_t>& parts() noexcept;
 
@@ -1269,10 +1531,10 @@ public:
 };
 ```
 
-### subscription_event_t
+### subscription_event_t / service_subscription_event_t
 
 Reports a subscribe/unsubscribe event from xpub sockets and Spot
-subscription event recv. Plain value struct — no methods, no lifecycle.
+subscription event recv. Plain value structs — no methods, no lifecycle.
 
 ```cpp
 struct subscription_filter_t {
@@ -1282,67 +1544,120 @@ struct subscription_filter_t {
 
 struct subscription_event_t {
     std::optional<routing_id_t> routing_id;  // nullopt if transport carries no subscriber id
-    std::optional<std::string> service_name; // Spot subscription event only; empty for XPub
     std::string topic;                        // UTF-8
     bool subscribed;                          // true = subscribe, false = unsubscribe
+};
+
+struct service_subscription_event_t {
+    std::optional<routing_id_t> routing_id;
+    std::string service_name;
+    std::string topic;
+    bool subscribed;
 };
 ```
 
 ### monitor_event_t
 
-Socket monitor event payload. Value struct returned by
-`monitor_handle_t::recv()`.
+Socket monitor event payload returned by `monitor_handle_t::recv()`.
+Event-specific payload is represented as typed variants instead of a shared
+integer detail field.
 
 ```cpp
-struct monitor_event_t {
-    monitor_event_type_t event;               // event kind (CONNECTED, DISCONNECTED, CONNECTION_READY, PEER_WEIGHT_CHANGED, ...)
-    uint32_t value;                           // event-specific detail (e.g., DISCONNECTED reason code, PEER_WEIGHT_CHANGED -> 0..100 weight)
-    std::optional<routing_id_t> routing_id;   // peer routing id; nullopt when event carries none
-    std::string local_addr;                   // local endpoint
-    std::string remote_addr;                  // remote endpoint
+enum class disconnect_reason : int {
+    unknown,
+    handshake_failed,
+    transport_error,
+    ctx_term
 };
-```
 
-`monitor_event_type_t` includes `peer_weight_changed` (bit 15). When this
-event fires, `value` holds the new `0..100` weight for the peer.
+struct monitor_endpoint_t {
+    std::optional<routing_id_t> routing_id;
+    std::string local_addr;
+    std::string remote_addr;
+};
+
+struct monitor_connected_t {
+    monitor_endpoint_t endpoint;
+};
+
+struct monitor_disconnected_t {
+    monitor_endpoint_t endpoint;
+    disconnect_reason reason;
+};
+
+struct monitor_connection_ready_t {
+    monitor_endpoint_t endpoint;
+};
+
+struct monitor_peer_weight_changed_t {
+    monitor_endpoint_t endpoint;
+    peer_weight_t weight;
+};
+
+using monitor_event_t = std::variant<
+    monitor_connected_t,
+    monitor_disconnected_t,
+    monitor_connection_ready_t,
+    monitor_peer_weight_changed_t>;
+```
 
 ### monitor_snapshot_t
 
 Runtime status snapshot returned by `monitor_handle_t::snapshot()`.
 
 ```cpp
+enum class monitor_source_kind : int {
+    socket,
+    spot_pub,
+    spot_sub
+};
+
+enum class monitor_state : uint32_t {
+    ready,
+    bound_ready,
+    send_ready,
+    closed
+};
+
+enum class monitor_snapshot_detail : uint32_t {
+    snd_pending_msgs,
+    rcv_pending_msgs,
+    auto_hwm_budget,
+    auto_hwm_buffers
+};
+
 struct monitor_snapshot_t {
     monitor_source_kind_t source_kind;        // monitor target kind
-    uint32_t state_flags;                     // state bitmask
-    uint32_t detail_flags;                    // detail bitmask
+    std::set<monitor_state> states;
+    std::set<monitor_snapshot_detail> details;
     uint64_t snd_pending_msgs;                // send-queue pending message count
     uint64_t rcv_pending_msgs;                // recv-queue pending message count
     bool auto_hwm_enabled;                    // automatic HWM currently active
-    uint32_t auto_hwm_profile_value;          // selected auto-HWM profile
+    auto_hwm_profile auto_hwm_profile_value;  // selected auto-HWM profile
     uint32_t auto_hwm_role;                   // diagnostic role bucket
     uint32_t auto_hwm_policy_class;           // planner policy class
-    uint64_t auto_hwm_unit_budget_bytes;
+    byte_size_t auto_hwm_unit_budget;
     uint32_t auto_hwm_size_cap;
     uint64_t auto_hwm_socket_message_slots;
-    uint64_t auto_hwm_effective_message_bytes;
+    byte_size_t auto_hwm_effective_message_size;
     int32_t auto_hwm_applied_sndhwm;          // applied send HWM
     int32_t auto_hwm_applied_rcvhwm;          // applied recv HWM
-    uint64_t auto_hwm_last_recalc_ms;
+    std::chrono::milliseconds auto_hwm_last_recalc_age;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
     int32_t auto_hwm_deferred_sndhwm;
     int32_t auto_hwm_deferred_rcvhwm;
 
-    bool is_ready() const noexcept;           // convenience: checks ready bit in state_flags
+    bool is_ready() const noexcept;
 };
 ```
 
-### Compatibility Enums and Aliases
+### Compatibility Appendix: Enums and Aliases
 
-The installed public headers also expose a set of low-level enums and
-aliases that back the higher-level typed surface above. They are part of
-the public compatibility contract even when typical users never touch
-them directly.
+The installed public headers may expose the low-level enums and aliases below
+only for source compatibility. They are not the canonical C++ API surface.
+New docs, samples, tests, and application code must use the typed classes above
+instead of these names.
 
 Deprecated no-op context options are compatibility-only names. They must
 not be added back as canonical typed `context_options_t` getters or setters.
@@ -1401,32 +1716,6 @@ enum class protocol_error : int {
     zmp_malformed_command_hello
 };
 
-enum class monitor_source_kind : int {
-    socket,
-    spot_pub,
-    spot_sub
-};
-
-enum class monitor_state : uint32_t {
-    ready,
-    bound_ready,
-    send_ready,
-    closed
-};
-
-enum class monitor_snapshot_detail : uint32_t {
-    snd_pending_msgs,
-    rcv_pending_msgs,
-    auto_hwm_budget,
-    auto_hwm_buffers
-};
-
-enum class disconnect_reason : int {
-    unknown,
-    handshake_failed,
-    transport_error,
-    ctx_term
-};
 ```
 
 #### Spot and topology enums
@@ -1445,11 +1734,10 @@ enum class registry_socket_role : int {
     peer_sub
 };
 
-namespace zlink::service {
+enum class service_role : int {
     router,
     dealer
 };
-}
 
 enum class discovery_socket_role : int {
     sub
@@ -1570,15 +1858,23 @@ enum class submit_result_t : int {
 #### request_result_t
 
 Maps to C API `zlink_request_result_t`.
-Values are offset to 101-104 to avoid collision with `submit_result_t` codes.
+Values are offset to 101-112 to avoid collision with `submit_result_t` codes.
 
 ```cpp
 enum class request_result_t : int {
-    ok             = 0,
-    timed_out      = 101,
-    not_found      = 102,
-    terminated     = 103,
-    protocol_error = 104
+    ok               = 0,
+    timed_out        = 101,
+    not_found        = 102,
+    terminated       = 103,
+    protocol_error   = 104,
+    internal_error   = 105,
+    rejected         = 106,
+    conflict         = 107,
+    busy             = 108,
+    not_connected    = 109,
+    invalid_argument = 110,
+    invalid_state    = 111,
+    not_supported    = 112
 };
 ```
 
@@ -1594,7 +1890,8 @@ enum class recv_result_t : int {
     busy           = 202,
     terminated     = 203,
     invalid_handle = 204,
-    not_supported  = 205
+    not_supported  = 205,
+    internal_error = 206
 };
 ```
 
@@ -1611,7 +1908,8 @@ enum class handler_result_t : int {
     busy             = 302,
     not_supported    = 303,
     deadlock         = 304,
-    invalid_handle   = 305
+    invalid_handle   = 305,
+    internal_error   = 306
 };
 ```
 
@@ -1625,7 +1923,8 @@ enum class close_result_t : int {
     ok             = 0,
     busy           = 401,
     shutdown       = 402,
-    invalid_handle = 403
+    invalid_handle = 403,
+    internal_error = 404
 };
 ```
 
@@ -1640,7 +1939,8 @@ enum class bind_result_t : int {
     invalid_argument = 501,
     addr_in_use      = 502,
     not_supported    = 503,
-    invalid_handle   = 504
+    invalid_handle   = 504,
+    internal_error   = 505
 };
 ```
 
@@ -1654,7 +1954,11 @@ enum class connect_result_t : int {
     ok               = 0,
     invalid_argument = 601,
     not_supported    = 602,
-    invalid_handle   = 603
+    invalid_handle   = 603,
+    internal_error   = 604,
+    not_found        = 605,
+    conflict         = 606,
+    busy             = 607
 };
 ```
 
@@ -1668,7 +1972,10 @@ enum class config_result_t : int {
     ok               = 0,
     invalid_handle   = 701,
     invalid_argument = 702,
-    not_supported    = 703
+    not_supported    = 703,
+    internal_error   = 704,
+    invalid_state    = 705,
+    not_found        = 706
 };
 ```
 
@@ -1843,7 +2150,7 @@ Wraps `config_result_t`. Thrown by option setters/getters
 identity setters/getters (`set_routing_id` / `get_routing_id`),
 snapshot and query methods, poller mutations (`add` / `modify` /
 `remove`), timer configuration (`start` / `stop`),
-`attach_discovery(...)`, `set_default_request_timeout(...)`, and
+`attach_discovery(...)` and
 similar configuration-surface operations.
 
 ```cpp
@@ -1882,7 +2189,8 @@ Future wrapper for asynchronous request-reply results. Supports `co_await` in C+
 template<typename T>
 class async_result_t {
     explicit async_result_t(std::future<T> future);
-    async_result_t(std::future<T> future, std::function<void()> progress);
+    template<class Progress>
+    async_result_t(std::future<T> future, Progress&& progress);
 
     bool valid() const;
     void wait() const;
@@ -1926,7 +2234,8 @@ class monitor_handle_t {
     bool valid() const noexcept;
 
     /// @throws handler_error_t
-    void on_event(std::function<void(const monitor_event_t&)> handler);
+    template<class Handler>
+    void on_event(Handler&& handler);
     /// @throws recv_error_t
     std::optional<monitor_event_t> recv(recv_flags_t flags = recv_flags_t::none);
     /// @throws config_error_t
@@ -1938,7 +2247,7 @@ class monitor_handle_t {
     // is in callback-only model and recv(...) fails with busy (snapshot()
     // still works). To drive the monitor through snapshot() / recv(...) instead,
     // leave on_event unset.
-    static std::function<void(const monitor_event_t&)> ignore_handler;
+    static void ignore_event(const monitor_event_t&) noexcept;
 };
 ```
 
@@ -1989,7 +2298,7 @@ struct registry_topology_entry_t {
     uint32_t desired_count;
     uint32_t ready_count;
     uint32_t error_code;
-    uint64_t last_reported_ms;
+    std::chrono::milliseconds last_reported;
 };
 ```
 
@@ -2011,7 +2320,7 @@ struct spot_node_status_t {
     uint32_t disconnected_sub_target_count;
     uint32_t disconnected_routed_target_count;
     int32_t last_error;
-    uint64_t last_changed_ms;
+    std::chrono::milliseconds last_changed;
 };
 ```
 
@@ -2032,7 +2341,7 @@ struct registry_service_summary_entry_t {
     uint32_t ready_count;
     uint32_t error_count;
     uint32_t stopped_count;
-    uint64_t last_reported_ms;
+    std::chrono::milliseconds last_reported;
 };
 
 struct registry_service_summary_filter_t {
@@ -2056,7 +2365,7 @@ struct registry_status_t {
     uint32_t connected_peer_registry_count;
     uint64_t list_seq;
     int32_t last_error;
-    uint64_t last_changed_ms;
+    std::chrono::milliseconds last_changed;
 };
 ```
 
@@ -2073,8 +2382,8 @@ struct spot_node_peer_entry_t {
     spot_peer_source_t source;
     spot_peer_state_t state;
     uint32_t weight;
-    uint64_t connected_since_ms;
-    uint64_t last_changed_ms;
+    std::chrono::milliseconds connected_since;
+    std::chrono::milliseconds last_changed;
 };
 
 struct spot_node_peer_filter_t {
@@ -2095,7 +2404,7 @@ struct spot_node_subject_entry_t {
     subject_kind_t subject_kind;
     uint32_t ready_peer_count;
     uint32_t active_peer_count;
-    uint64_t last_changed_ms;
+    std::chrono::milliseconds last_changed;
 };
 
 enum class spot_service_attachment_role_t {
@@ -2122,6 +2431,10 @@ struct spot_node_subject_filter_t {
 
 struct spot_node_options_t {
     spot_node_mode_t mode;
+    auto_hwm_profile router_admission_hwm_profile = auto_hwm_profile::balanced;
+    message_count_t router_admission_hwm;
+    auto_hwm_profile pubsub_admission_hwm_profile = auto_hwm_profile::balanced;
+    message_count_t pubsub_admission_hwm;
 };
 
 struct spot_node_socket_snapshot_filter_t {
@@ -2146,7 +2459,7 @@ struct spot_node_spot_entry_t {
     uint32_t joined_actor_count;
     uint32_t pending_actor_join_count;
     bool route_synced;
-    uint64_t last_changed_ms;
+    std::chrono::milliseconds last_changed;
 };
 
 struct spot_node_actor_entry_t {
@@ -2155,7 +2468,7 @@ struct spot_node_actor_entry_t {
     std::optional<routing_id_t> joined_spot_rid;
     bool route_synced;
     uint32_t pending_message_count;
-    uint64_t last_changed_ms;
+    std::chrono::milliseconds last_changed;
 };
 
 struct registry_topology_filter_t {
@@ -2192,9 +2505,10 @@ class registry_t {
     /// @throws connect_error_t
     void add_peer(const std::string& peer_pub_endpoint);
     /// @throws config_error_t
-    void set_heartbeat(uint32_t interval_ms, uint32_t timeout_ms);
+    void set_heartbeat(std::chrono::milliseconds interval,
+                       std::chrono::milliseconds timeout);
     /// @throws config_error_t
-    void set_broadcast_interval(uint32_t interval_ms);
+    void set_broadcast_interval(std::chrono::milliseconds interval);
 
     /// @throws config_error_t
     registry_status_t status_snapshot() const;
@@ -2226,7 +2540,9 @@ Fixed-channel discovery view. Tracks one auto-connect type and channel name.
 namespace service {
 
 class discovery_t {
-    discovery_t(context_t& ctx, auto_connect_type auto_connect_type, const std::string& channel_name);
+    discovery_t(context_t& ctx,
+                auto_connect_type auto_connect_type,
+                const std::string& channel_name);
     ~discovery_t();
 
     discovery_t(discovery_t&& other) noexcept;
@@ -2298,15 +2614,12 @@ class spot_node_t {
     /// @throws config_error_t
     void attach_discovery(discovery_t& discovery);
     /// @throws config_error_t
-    template<typename DealerT>
-    void attach_channel_dealer(discovery_t& discovery, DealerT& dealer);
+    void attach_channel_dealer(discovery_t& discovery, dealer_socket_t& dealer);
     /// @throws config_error_t
-    template<typename DealerT>
     void attach_channel_dealer_manual(const std::string& channel_name,
-                                      DealerT& dealer);
+                                      dealer_socket_t& dealer);
     /// @throws config_error_t
-    template<typename PubT>
-    void attach_pub_ingress(PubT& pub);
+    void attach_pub_ingress(pub_socket_t& pub);
 
     // --- identity / routing ---
     /// Logical address / spot-level routed ownership key.
@@ -2329,6 +2642,22 @@ class spot_node_t {
     pub_socket_options_t publisher_options();
     /// @throws config_error_t
     sub_socket_options_t subscriber_options();
+    /// @throws config_error_t
+    auto_hwm_profile router_admission_hwm_profile() const;
+    /// @throws config_error_t
+    void router_admission_hwm_profile(auto_hwm_profile profile);
+    /// @throws config_error_t
+    message_count_t router_admission_hwm() const;
+    /// @throws config_error_t
+    void router_admission_hwm(message_count_t value);
+    /// @throws config_error_t
+    auto_hwm_profile pubsub_admission_hwm_profile() const;
+    /// @throws config_error_t
+    void pubsub_admission_hwm_profile(auto_hwm_profile profile);
+    /// @throws config_error_t
+    message_count_t pubsub_admission_hwm() const;
+    /// @throws config_error_t
+    void pubsub_admission_hwm(message_count_t value);
 
     // --- snapshots ---
     /// @throws config_error_t
@@ -2366,22 +2695,22 @@ class spot_node_t {
     void destroy_actor(const actor_ref_t& actor,
                        std::chrono::milliseconds timeout = {});
     /// @throws handler_error_t
-    void on_actor_admission(
-        std::function<actor_admission_result_t(const std::string&, const message_t&)> handler);
+    template<class Handler>
+    void on_actor_admission(Handler&& handler);
     /// @throws submit_error_t
-    bool join_actor(const actor_ref_t& actor, const routing_id_t& dest_node_rid,
-                    const routing_id_t& dest_spot_rid, message_t& message,
-                    std::function<void(request_result_t, std::vector<message_t>)> callback,
-                    send_flags_t flags = send_flags_t::none,
-                    std::chrono::milliseconds timeout = {});
-    /// @throws submit_error_t
-    bool join_actor(const actor_ref_t& actor, const routing_id_t& dest_spot_rid,
+    bool join_actor(const actor_ref_t& actor, const spot_address_t& dest,
                     message_t& message,
-                    std::function<void(request_result_t, std::vector<message_t>)> callback,
-                    send_flags_t flags = send_flags_t::none,
-                    std::chrono::milliseconds timeout = {});
+                    request_callback_t callback,
+                    request_options_t options = {});
+    /// @throws submit_error_t
+    bool join_local_actor(const actor_ref_t& actor,
+                          const local_spot_address_t& dest,
+                          message_t& message,
+                          request_callback_t callback,
+                          request_options_t options = {});
     /// @throws request_error_t
-    void leave_actor(const actor_ref_t& actor, const routing_id_t& current_spot_rid,
+    void leave_actor(const actor_ref_t& actor,
+                     const local_spot_address_t& current_spot,
                      std::chrono::milliseconds timeout = {});
     /// @throws config_error_t
     std::vector<spot_node_spot_entry_t> spots_snapshot() const;
@@ -2404,21 +2733,22 @@ class spot_node_t {
 } // namespace service
 ```
 
-`spot_node_t` 가 lifecycle 소유자. `spot_t` 는 반드시
-`spot_node_t::create_spot()` factory 로만 생성한다. 직접 `spot_t(node)`
-호출은 internal (public 생성자 아님).
+`spot_node_t` owns the lifecycle. Public callers obtain `spot_t` handles only
+through `spot_node_t::create_spot()`, `spot_node_t::entry_spot()`, or
+`spot_node_t::spot_lookup(...)`. Direct `spot_t(node)` construction is
+internal and is not a public constructor.
 
 ### service::spot_t
 
-Spot messaging endpoint. Provides pub/sub, direct messaging, and subscription management.
-**`spot_node_t::create_spot()` 로만 생성**.
+Spot messaging endpoint. Provides pub/sub, direct messaging, and subscription
+management. Public callers obtain it only through `spot_node_t` factories.
 
 ```cpp
 namespace service {
 
 class spot_t {
     // explicit spot_t(spot_node_t&) is internal. User code creates a Spot
-    // through spot_node_t::create_spot().
+    // through spot_node_t factories.
     ~spot_t();
 
     spot_t(spot_t&& other) noexcept;
@@ -2444,29 +2774,27 @@ class spot_t {
     /// @throws submit_error_t
     async_result_t<std::vector<message_t>> request_channel(const std::string& channel_name,
                                                            message_t& part,
-                                                           std::chrono::milliseconds timeout = {});
+                                                           request_options_t options = {});
     /// @throws submit_error_t
     async_result_t<std::vector<message_t>> request_channel(const std::string& channel_name,
                                                            std::vector<message_t>& parts,
-                                                           std::chrono::milliseconds timeout = {});
+                                                           request_options_t options = {});
     /// @throws submit_error_t
     bool request_channel(const std::string& channel_name,
                          message_t& part,
-                         std::function<void(request_result_t, std::vector<message_t>)> callback,
-                         send_flags_t flags = send_flags_t::none,
-                         std::chrono::milliseconds timeout = {});
+                         request_callback_t callback,
+                         request_options_t options = {});
     /// @throws submit_error_t
     bool request_channel(const std::string& channel_name,
                          std::vector<message_t>& parts,
-                         std::function<void(request_result_t, std::vector<message_t>)> callback,
-                         send_flags_t flags = send_flags_t::none,
-                         std::chrono::milliseconds timeout = {});
+                         request_callback_t callback,
+                         request_options_t options = {});
 
     // --- subscribe ---
     /// @throws recv_error_t
-    std::optional<topic_message_t> subscribe(recv_flags_t flags = recv_flags_t::none);
+    std::optional<service_topic_message_t> subscribe(recv_flags_t flags = recv_flags_t::none);
     /// @throws recv_error_t
-    std::optional<subscription_event_t> receive_subscription_event(
+    std::optional<service_subscription_event_t> receive_subscription_event(
         recv_flags_t flags = recv_flags_t::none);
     /// @throws config_error_t
     void set_subscription(const std::string& filter);
@@ -2475,7 +2803,8 @@ class spot_t {
     /// @throws config_error_t
     subscription_filter_t subscription_at(size_t index) const;
     /// @throws handler_error_t
-    void on_send_ready(std::function<void()> handler);
+    template<class Handler>
+    void on_send_ready(Handler&& handler);
 
     // --- identity / routing ---
     /// Logical address / spot-level routed ownership key.
@@ -2489,66 +2818,67 @@ class spot_t {
 
     // --- routed send (spot -> spot) ---
     /// @throws submit_error_t
-    bool send_to_spot(const routing_id_t& dest_node_rid,
-                      const routing_id_t& dest_spot_rid,
+    bool send_to_spot(const spot_address_t& dest,
                       message_t message,
                       send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    bool send_to_spot(const routing_id_t& dest_node_rid,
-                      const routing_id_t& dest_spot_rid,
+    bool send_to_spot(const spot_address_t& dest,
                       std::vector<message_t>& parts,
                       send_flags_t flags = send_flags_t::none);
 
     // --- routed request (spot -> spot, coroutine, blocking submit — no flags) ---
     /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request_to_spot(
-        const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
+        const spot_address_t& dest,
         message_t message,
-        std::chrono::milliseconds timeout = {});
+        request_options_t options = {});
 
     // --- routed request (spot -> spot, callback) ---
     /// @throws submit_error_t
     bool request_to_spot(
-        const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
+        const spot_address_t& dest,
         message_t message,
-        std::function<void(request_result_t, std::vector<message_t>)> callback,
-        send_flags_t flags = send_flags_t::none,
-        std::chrono::milliseconds timeout = {});
+        request_callback_t callback,
+        request_options_t options = {});
 
     // --- routed request (spot -> router, coroutine, blocking submit — no flags) ---
     /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request_to_router(
         const routing_id_t& peer_rid,
         message_t message,
-        std::chrono::milliseconds timeout = {});
+        request_options_t options = {});
 
     // --- routed request (spot -> router, callback) ---
     /// @throws submit_error_t
     bool request_to_router(
         const routing_id_t& peer_rid,
         message_t message,
-        std::function<void(request_result_t, std::vector<message_t>)> callback,
-        send_flags_t flags = send_flags_t::none,
-        std::chrono::milliseconds timeout = {});
+        request_callback_t callback,
+        request_options_t options = {});
 
     // --- routed reply (spot → spot) ---
     /// @throws submit_error_t
-    void reply_to_spot(const routing_id_t& dest_node_rid, const routing_id_t& dest_spot_rid,
-                       uint64_t request_seq, message_t message, send_flags_t flags = send_flags_t::none);
+    void reply_to_spot(const spot_address_t& dest,
+                       request_sequence_t request,
+                       message_t message,
+                       send_flags_t flags = send_flags_t::none);
 
     // --- routed reply (spot → router) ---
     /// @throws submit_error_t
-    void reply_to_router(const routing_id_t& peer_rid, uint64_t request_seq,
-                         message_t message, send_flags_t flags = send_flags_t::none);
+    void reply_to_router(const routing_id_t& peer_rid,
+                         request_sequence_t request,
+                         message_t message,
+                         send_flags_t flags = send_flags_t::none);
 
     // --- routed receive ---
     /// @throws recv_error_t
-    std::optional<received_t> recv_routed(recv_flags_t flags = recv_flags_t::none);
+    std::optional<routed_received_t> recv_routed(recv_flags_t flags = recv_flags_t::none);
     /// @throws handler_error_t
-    void on_routed_receive(std::function<void(received_t)> handler);
+    template<class Handler>
+    void on_routed_receive(Handler&& handler);
     /// @throws handler_error_t
-    void on_dispatch_event(
-        std::function<void(spot_t&, const spot_dispatch_info_t&)> handler);
+    template<class Handler>
+    void on_dispatch_event(Handler&& handler);
 
     // --- Actor dispatch ---
     /// @throws recv_error_t
@@ -2600,9 +2930,8 @@ class actor_t {
     void close(std::chrono::milliseconds timeout = {});
     /// @throws submit_error_t
     bool join(spot_t& spot, message_t& message,
-              std::function<void(request_result_t, std::vector<message_t>)> callback,
-              send_flags_t flags = send_flags_t::none,
-              std::chrono::milliseconds timeout = {});
+              request_callback_t callback,
+              request_options_t options = {});
     /// @throws request_error_t
     void leave(spot_t& spot, std::chrono::milliseconds timeout = {});
     /// @throws recv_error_t
@@ -2668,25 +2997,46 @@ enum class poll_event : short {
 enum class poll_source_kind_t {
     socket,
     fd,
-    timer
+    timer,
+    spot
 };
 
-struct poll_event_t {
-    poll_source_kind_t source_kind;
-    zlink_fd_t fd;
-    std::uintptr_t user_token;
-    poll_event events;
-    poll_event revents;
+class poll_registration_t {
+    bool valid() const noexcept;
 };
+
+struct socket_poll_event_t {
+    poll_registration_t registration;
+    poll_event events;
+};
+
+struct fd_poll_event_t {
+    poll_registration_t registration;
+    fd_handle_t fd;
+    poll_event events;
+};
+
+struct timer_poll_event_t {
+    poll_registration_t registration;
+    uint64_t fire_count;
+};
+
+struct spot_poll_event_t {
+    poll_registration_t registration;
+    spot_dispatch_info_t dispatch;
+};
+
+using poll_event_t = std::variant<
+    socket_poll_event_t,
+    fd_poll_event_t,
+    timer_poll_event_t,
+    spot_poll_event_t>;
 ```
 
 ### poller_t
 
-Event poller for multiplexing socket, file descriptor, and timer readiness.
-
-The current public poller contract is still generic. It does not yet expose a
-Spot-aware result carrying owner `Spot`, dispatch event kind, and drain
-subject together.
+Event poller for multiplexing socket, file descriptor, timer, and Spot
+dispatch readiness.
 
 ```cpp
 class poller_t {
@@ -2703,7 +3053,7 @@ class poller_t {
     // --- socket registration ---
     /// @throws config_error_t
     template<typename SocketLike>
-    void add(SocketLike& socket, poll_event events, std::uintptr_t user_token = 0);
+    poll_registration_t add(SocketLike& socket, poll_event events);
     /// @throws config_error_t
     template<typename SocketLike>
     void modify(SocketLike& socket, poll_event events);
@@ -2713,23 +3063,25 @@ class poller_t {
 
     // --- file descriptor registration ---
     /// @throws config_error_t
-    void add(zlink_fd_t fd, poll_event events, std::uintptr_t user_token = 0);
+    poll_registration_t add(fd_handle_t fd, poll_event events);
     /// @throws config_error_t
-    void modify(zlink_fd_t fd, poll_event events);
+    void modify(fd_handle_t fd, poll_event events);
     /// @throws config_error_t
-    void remove(zlink_fd_t fd);
+    void remove(fd_handle_t fd);
 
     // --- timer registration ---
     /// @throws config_error_t
-    void add(timer_t& timer, std::uintptr_t user_token = 0);
+    poll_registration_t add(timer_t& timer);
     /// @throws config_error_t
     void remove(timer_t& timer);
 
     // --- wait ---
     /// @throws recv_error_t
-    std::optional<poll_event_t> wait(long timeout = -1);
+    std::optional<poll_event_t> wait(
+        std::optional<std::chrono::milliseconds> timeout = std::nullopt);
     /// @throws recv_error_t
-    std::vector<poll_event_t> wait_all(long timeout = -1);
+    std::vector<poll_event_t> wait_all(
+        std::optional<std::chrono::milliseconds> timeout = std::nullopt);
 
     void destroy() noexcept;
 };
@@ -2752,19 +3104,21 @@ class timer_t {
     timer_t& operator=(timer_t&& other) noexcept;
 
     /// @throws config_error_t
-    template<typename SpotLike>
-    static timer_t from_spot(SpotLike& spot);
+    static timer_t from_spot(service::spot_t& spot);
 
     bool valid() const noexcept;
 
     /// @throws config_error_t
-    void start(uint64_t interval_ns, uint64_t repeat_count);
+    template<class Rep, class Period>
+    void start(std::chrono::duration<Rep, Period> interval,
+               uint64_t repeat_count = 0);
     /// @throws config_error_t
     void stop();
     /// @throws recv_error_t
     std::optional<uint64_t> recv();
     /// @throws handler_error_t
-    void set_handler(std::function<void(uint64_t)> handler);
+    template<class Handler>
+    void set_handler(Handler&& handler);
     /// @throws close_error_t
     void destroy();
 };
@@ -2776,7 +3130,9 @@ class timer_t {
 
 ### stopwatch_t
 
-Simple elapsed-time stopwatch.
+Compatibility elapsed-time stopwatch. Canonical C++ application code should
+prefer `std::chrono` unless it needs to compare directly with the core
+stopwatch helper.
 
 ```cpp
 class stopwatch_t {
@@ -2793,12 +3149,15 @@ class stopwatch_t {
 
 ### thread_t
 
-RAII wrapper for a background zlink thread.
+Compatibility RAII wrapper for a background zlink thread. Canonical C++
+application code should prefer `std::jthread` / `std::thread`; this wrapper is
+only for code that intentionally exercises the core thread helper.
 
 ```cpp
 class thread_t {
     thread_t();
-    explicit thread_t(std::function<void()> fn);
+    template<class Fn>
+    explicit thread_t(Fn&& fn);
     ~thread_t();
 
     thread_t(thread_t&& other) noexcept;
@@ -2810,7 +3169,9 @@ class thread_t {
 
 ### atomic_counter_t
 
-Lock-free atomic counter.
+Compatibility wrapper for the core atomic counter helper. Canonical C++ code
+should prefer `std::atomic`; this type remains for parity with the C utility
+surface and tests that explicitly validate it.
 
 ```cpp
 class atomic_counter_t {
@@ -2859,8 +3220,9 @@ void proxy_steerable(FrontendSocket& frontend, BackendSocket& backend,
 /// Check if the library supports a given capability (e.g. "ipc", "tls").
 bool has(const std::string& capability);
 
-/// Sleep for the given number of seconds.
-void sleep(int seconds);
+/// Sleep for the given duration.
+template<class Rep, class Period>
+void sleep(std::chrono::duration<Rep, Period> duration);
 ```
 
 ## Peer Disconnect by Routing ID

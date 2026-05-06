@@ -14,11 +14,24 @@ namespace zlink
 namespace service
 {
 
+class registry_t;
+
+} // namespace service
+
+namespace detail
+{
+inline void *native_handle (service::registry_t &registry_) noexcept;
+inline const void *native_handle (const service::registry_t &registry_) noexcept;
+} // namespace detail
+
+namespace service
+{
+
 class registry_t
 {
   public:
     explicit registry_t (context_t &ctx_)
-        : _registry (zlink_registry_new (ctx_.handle ())), _last_error (0)
+        : _registry (zlink_registry_new (detail::native_handle (ctx_))), _last_error (0)
     {
         if (!_registry)
             _last_error = errno != 0 ? errno : EFAULT;
@@ -60,12 +73,10 @@ class registry_t
 
     bool valid () const noexcept { return _registry != NULL; }
 
-    int last_error () const noexcept { return _last_error; }
-
     void bind (const std::string &pub_endpoint_, const std::string &router_endpoint_)
     {
-        validate_bounded_c_string (pub_endpoint_, 255u, "endpoint");
-        validate_bounded_c_string (router_endpoint_, 255u, "endpoint");
+        zlink::detail::validate_bounded_c_string (pub_endpoint_, 255u, "endpoint");
+        zlink::detail::validate_bounded_c_string (router_endpoint_, 255u, "endpoint");
         detail::throw_if_failed<bind_error_t> (
           static_cast<bind_result_t> (zlink_registry_bind (
             _registry, pub_endpoint_.c_str (), router_endpoint_.c_str ())));
@@ -80,7 +91,7 @@ class registry_t
 
     void add_peer (const std::string &peer_pub_endpoint_)
     {
-        validate_bounded_c_string (peer_pub_endpoint_, 255u, "endpoint");
+        zlink::detail::validate_bounded_c_string (peer_pub_endpoint_, 255u, "endpoint");
         detail::throw_if_failed<connect_error_t> (
           static_cast<connect_result_t> (
             zlink_registry_add_peer (_registry, peer_pub_endpoint_.c_str ())));
@@ -188,7 +199,8 @@ class registry_t
         native_filter.source =
           static_cast<zlink_topology_source_t> (filter_.source);
         if (filter_.routing_id)
-            native_filter.routing_id = filter_.routing_id->native ();
+            native_filter.routing_id =
+              *zlink::detail::routing_id_native (*filter_.routing_id);
 
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
@@ -213,7 +225,7 @@ class registry_t
     std::vector<member_peer_entry_t>
     member_peers (const std::string &channel_name_) const
     {
-        validate_bounded_c_string (channel_name_, 255u, "channel_name");
+        zlink::detail::validate_bounded_c_string (channel_name_, 255u, "channel_name");
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
@@ -245,14 +257,30 @@ class registry_t
         _registry = NULL;
     }
 
-    void *handle () const { return _registry; }
-
   private:
+    friend void *zlink::detail::native_handle (registry_t &registry_) noexcept;
+    friend const void *
+    zlink::detail::native_handle (const registry_t &registry_) noexcept;
+
     void *_registry;
     int _last_error;
 };
 
 } // namespace service
+
+namespace detail
+{
+inline void *native_handle (service::registry_t &registry_) noexcept
+{
+    return registry_._registry;
+}
+
+inline const void *native_handle (const service::registry_t &registry_) noexcept
+{
+    return registry_._registry;
+}
+} // namespace detail
+
 } // namespace zlink
 
 #endif

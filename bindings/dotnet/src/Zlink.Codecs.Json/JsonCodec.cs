@@ -5,30 +5,20 @@ using Zlink;
 
 namespace Zlink.Codecs.Json;
 
-public static class ZlinkJsonCodec
-{
-    private static JsonSerializerOptions _serializerOptions = new(JsonSerializerDefaults.Web);
-
-    public static JsonSerializerOptions SerializerOptions => _serializerOptions;
-
-    public static void Configure(JsonSerializerOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        _serializerOptions = options;
-    }
-}
-
 public static class JsonMessageExtensions
 {
-    public static T FromJson<T>(this Message message)
+    public static T FromJson<T>(this Message message,
+        JsonSerializerOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(message);
-        return JsonSerializer.Deserialize<T>(message.AsReadOnlySpan(), ZlinkJsonCodec.SerializerOptions)!;
+        return JsonSerializer.Deserialize<T>(message.AsReadOnlySpan(),
+            options)!;
     }
 
-    public static Message ToJson<T>(this T value)
+    public static Message ToJson<T>(this T value,
+        JsonSerializerOptions? options = null)
     {
-        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(value, ZlinkJsonCodec.SerializerOptions);
-        return Message.FromOwnedBytes(payload);
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(value, options);
+        return Message.FromBytes(payload);
     }
 }

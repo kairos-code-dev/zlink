@@ -43,6 +43,7 @@ policy and the per-language spec produces a conforming zlink binding.
 | Document | Description |
 |----------|-------------|
 | [policy](bindings/README.md) | Cross-language binding contract (POSD, capability matrix, naming, domain objects) |
+| [C](bindings/c/README.md) | C binding specification |
 | [C++](bindings/cpp/README.md) | C++ binding specification |
 | [Java](bindings/java/README.md) | Java binding specification |
 | [.NET](bindings/dotnet/README.md) | .NET binding specification |

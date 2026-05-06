@@ -28,11 +28,13 @@ void apply_socket_options (SocketLike &socket_,
                            const perf::multi::multi_bench_settings_t &settings_)
 {
     zlink::common_socket_options_t options = socket_.options ();
-    options.send_hwm (settings_.sndhwm > 0 ? settings_.sndhwm : 1);
-    options.recv_hwm (settings_.rcvhwm > 0 ? settings_.rcvhwm : 1);
-    options.send_timeout (settings_.sndtimeo_ms);
-    options.recv_timeout (settings_.rcvtimeo_ms);
-    options.linger (0);
+    options.send_hwm (
+      zlink::message_count_t::value (settings_.sndhwm > 0 ? settings_.sndhwm : 1));
+    options.recv_hwm (
+      zlink::message_count_t::value (settings_.rcvhwm > 0 ? settings_.rcvhwm : 1));
+    options.send_timeout (std::chrono::milliseconds (settings_.sndtimeo_ms));
+    options.recv_timeout (std::chrono::milliseconds (settings_.rcvtimeo_ms));
+    options.linger (std::chrono::milliseconds (0));
 }
 
 template<typename SocketLike>
@@ -142,8 +144,8 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
 
     bool failed = false;
     while (!stop_requested.load (std::memory_order_acquire)) {
-        zlink::poll_event_t event = {};
-        const int poll_rc = poller.wait (&event, 20);
+        std::optional<zlink::poll_event_t> event = poller.wait (20);
+        const int poll_rc = event ? 1 : 0;
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
@@ -151,7 +153,7 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
             break;
         }
         if (poll_rc == 0
-            || (event.revents & static_cast<short> (zlink::poll_event::pollin))
+            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event::pollin))
                  == 0) {
             continue;
         }

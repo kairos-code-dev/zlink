@@ -5,7 +5,7 @@ package dev.kairoscode.zlink;
 import java.nio.charset.StandardCharsets;
 
 /** Snapshot entry returned from SUB/XSUB/XPUB subscription snapshots. */
-record SubscriptionEntry(String filter, boolean pattern) {
+public record SubscriptionEntry(String filter, boolean pattern) {
     public SubscriptionEntry {
         filter = filter == null ? "" : filter;
     }

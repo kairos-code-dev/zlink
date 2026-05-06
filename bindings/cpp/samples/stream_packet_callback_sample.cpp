@@ -6,17 +6,15 @@ namespace {
 
 struct callback_result_t
 {
-    zlink::routing_id_t routing_id;
+    std::optional<zlink::routing_id_t> routing_id;
     std::string payload;
 };
 
-std::string packet_payload (zlink_msg_t *header_, zlink_msg_t *body_)
+std::string packet_payload (const zlink::message_t &header_,
+                            const zlink::message_t &body_)
 {
-    assert (header_ != NULL);
-    assert (body_ != NULL);
-    assert (zlink_msg_size (header_) == 0);
-    return std::string (static_cast<const char *> (zlink_msg_data (body_)),
-                        zlink_msg_size (body_));
+    assert (header_.size () == 0);
+    return body_.to_string ();
 }
 
 std::vector<unsigned char> encode_packet_frame (const std::string &payload_)
@@ -31,29 +29,6 @@ std::vector<unsigned char> encode_packet_frame (const std::string &payload_)
         std::memcpy (frame.data () + 6u, payload_.data (), payload_.size ());
     }
     return frame;
-}
-
-void stream_packet_callback (void *,
-                             const zlink_routing_id_t *source_rid_,
-                             zlink_msg_t *header_,
-                             zlink_msg_t *body_,
-                             void *userdata_)
-{
-    std::promise<callback_result_t> *result_promise =
-      static_cast<std::promise<callback_result_t> *> (userdata_);
-    assert (result_promise != NULL);
-    assert (source_rid_ != NULL);
-    assert (header_ != NULL);
-    assert (body_ != NULL);
-
-    callback_result_t result;
-    result.routing_id = zlink::routing_id_t::from_bytes (
-      reinterpret_cast<const uint8_t *> (source_rid_->data), source_rid_->size);
-    result.payload = packet_payload (header_, body_);
-
-    (void) zlink_msg_close (header_);
-    (void) zlink_msg_close (body_);
-    result_promise->set_value (result);
 }
 
 } // namespace
@@ -71,7 +46,14 @@ int main ()
 
     std::promise<callback_result_t> result_promise;
     std::future<callback_result_t> result_future = result_promise.get_future ();
-    server.on_packet (&stream_packet_callback, &result_promise);
+    server.on_packet (
+      [&result_promise] (const zlink::routing_id_t &source_rid_,
+                         zlink::message_t header_, zlink::message_t body_) {
+          callback_result_t result;
+          result.routing_id = source_rid_;
+          result.payload = packet_payload (header_, body_);
+          result_promise.set_value (result);
+      });
 
     detail::raw_tcp_client_t client (endpoint);
     assert (detail::wait_stream_connected (server_monitor));
@@ -85,7 +67,8 @@ int main ()
     assert (result.payload == detail::k_stream_payload);
 
     zlink::message_t reply = detail::make_message (detail::k_stream_payload);
-    server.send (result.routing_id, reply);
+    assert (result.routing_id.has_value ());
+    server.send (*result.routing_id, reply);
 
     char response[64];
     const int received = client.recv_exact (response, request.size ());

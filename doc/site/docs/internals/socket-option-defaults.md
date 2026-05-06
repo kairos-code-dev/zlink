@@ -23,8 +23,8 @@ For detailed behavior and scope of each option, see the
 |---|---:|---|
 | `ZLINK_OPT_AFFINITY` | `0` | No I/O thread affinity mask |
 | `zlink_get_routing_id()` | auto | 16-byte random ID per socket (set via `zlink_set_routing_id()`) |
-| `ZLINK_OPT_SNDHWM` | `1000` unless auto-HWM is enabled | With auto-HWM enabled, calculated from profile, policy class, and message unit. Connection count does not reduce the per-connection HWM. |
-| `ZLINK_OPT_RCVHWM` | `1000` unless auto-HWM is enabled | With auto-HWM enabled, calculated from profile, policy class, and message unit. Connection count does not reduce the per-connection HWM. |
+| `ZLINK_OPT_SNDHWM` | auto-HWM balanced value | Calculated from profile, policy class, and message unit. If context auto-HWM is disabled, the legacy default is `1000`. |
+| `ZLINK_OPT_RCVHWM` | auto-HWM balanced value | Calculated from profile, policy class, and message unit. If context auto-HWM is disabled, the legacy default is `1000`. |
 | `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | `0` | Raw `0` means socket-type default: `1024` for STREAM, `4096` for other sockets |
 | `ZLINK_OPT_RATE` | `100` | Multicast rate (kb/s) |
 | `ZLINK_OPT_RECOVERY_IVL` | `10000` | Multicast recovery interval (ms) |
@@ -103,13 +103,12 @@ The helper call itself supplies policy values such as
 ## 5. Important Notes
 
 - The default `ZLINK_OPT_LINGER` value comes from the context's blocky mode.
-- The default `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM` values are `1000`.
-  Enabling context auto-HWM replaces them with profile-based values for
-  sockets that do not have manual HWM settings. Manual settings override the
-  automatic policy.
+- The default `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM` values come from
+  context auto-HWM with the balanced profile. Disabling context auto-HWM uses
+  the legacy fixed value `1000`. Manual settings override the automatic policy.
 - `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` selects the planner's profile. The public
-  values are `LOW_LATENCY`, `BALANCED`, and `THROUGHPUT`; the default is
-  `BALANCED`.
+  values are `COMPACT`, `LOW_LATENCY`, `BALANCED`, and `THROUGHPUT`; the
+  default is `BALANCED`.
 - The deprecated context memory-budget and bootstrap context options are
   no-op compatibility fields. They do not influence socket defaults or HWM.
 - `auto_hwm_effective_message_bytes` is socket-specific. It uses

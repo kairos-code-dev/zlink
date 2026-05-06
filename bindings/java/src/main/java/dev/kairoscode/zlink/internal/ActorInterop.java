@@ -14,6 +14,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 
 public final class ActorInterop {
     private ActorInterop() {
@@ -105,15 +106,18 @@ public final class ActorInterop {
     public static ActorRoute actorRouteFromNative(MemorySegment segment) {
         MemorySegment view = segment.reinterpret(
           NativeLayouts.ACTOR_ROUTE_LAYOUT.byteSize());
+        boolean joined = view.get(ValueLayout.JAVA_INT,
+          NativeLayouts.ACTOR_ROUTE_JOINED_OFFSET) != 0;
         return new ActorRoute(
           actorRefFromNative(view.asSlice(
             NativeLayouts.ACTOR_ROUTE_ACTOR_OFFSET,
             NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
-          view.get(ValueLayout.JAVA_INT,
-            NativeLayouts.ACTOR_ROUTE_JOINED_OFFSET) != 0,
-          readRoutingId(view.asSlice(
-            NativeLayouts.ACTOR_ROUTE_JOINED_SPOT_RID_OFFSET,
-            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())));
+          joined,
+          joined
+            ? Optional.ofNullable(readRoutingId(view.asSlice(
+                NativeLayouts.ACTOR_ROUTE_JOINED_SPOT_RID_OFFSET,
+                NativeLayouts.ROUTING_ID_LAYOUT.byteSize())))
+            : Optional.empty());
     }
 
     public static SpotNodeSpotEntry spotEntryFromNative(MemorySegment segment) {
@@ -139,15 +143,18 @@ public final class ActorInterop {
       MemorySegment segment) {
         MemorySegment view = segment.reinterpret(
           NativeLayouts.SPOT_NODE_ACTOR_ENTRY_LAYOUT.byteSize());
+        boolean joined = view.get(ValueLayout.JAVA_INT,
+          NativeLayouts.SPOT_NODE_ACTOR_ENTRY_JOINED_OFFSET) != 0;
         return new SpotNodeActorEntry(
           actorRefFromNative(view.asSlice(
             NativeLayouts.SPOT_NODE_ACTOR_ENTRY_ACTOR_OFFSET,
             NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
-          view.get(ValueLayout.JAVA_INT,
-            NativeLayouts.SPOT_NODE_ACTOR_ENTRY_JOINED_OFFSET) != 0,
-          readRoutingId(view.asSlice(
-            NativeLayouts.SPOT_NODE_ACTOR_ENTRY_JOINED_SPOT_RID_OFFSET,
-            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+          joined,
+          joined
+            ? Optional.ofNullable(readRoutingId(view.asSlice(
+                NativeLayouts.SPOT_NODE_ACTOR_ENTRY_JOINED_SPOT_RID_OFFSET,
+                NativeLayouts.ROUTING_ID_LAYOUT.byteSize())))
+            : Optional.empty(),
           view.get(ValueLayout.JAVA_INT,
             NativeLayouts.SPOT_NODE_ACTOR_ENTRY_ROUTE_SYNCED_OFFSET) != 0,
           view.get(ValueLayout.JAVA_INT,

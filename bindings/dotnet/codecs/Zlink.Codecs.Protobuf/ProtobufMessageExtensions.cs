@@ -22,6 +22,6 @@ public static class ProtobufMessageExtensions
         where T : IMessage<T>
     {
         ArgumentNullException.ThrowIfNull(value);
-        return Message.FromOwnedBytes(value.ToByteArray());
+        return Message.FromBytes(value.ToByteArray());
     }
 }

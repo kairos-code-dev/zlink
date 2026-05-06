@@ -9,6 +9,12 @@ namespace zlink
 {
 
 class base_socket_t;
+class monitor_handle_t;
+namespace detail
+{
+inline void *native_handle (monitor_handle_t &monitor_) noexcept;
+inline const void *native_handle (const monitor_handle_t &monitor_) noexcept;
+} // namespace detail
 
 class monitor_handle_t
 {
@@ -25,7 +31,7 @@ class monitor_handle_t
         options.events =
           static_cast<zlink_socket_monitor_event_mask_t> (events_);
         void *monitor = zlink_socket_monitor_open (
-          const_cast<void *> (socket_.handle ()), &options);
+          const_cast<void *> (detail::native_handle (socket_)), &options);
         if (!monitor)
             throw config_error_t (
               config_result_t::invalid_handle, zlink_errno ());
@@ -61,18 +67,6 @@ class monitor_handle_t
     monitor_handle_t &operator= (const monitor_handle_t &) = delete;
 
     bool valid () const noexcept { return _monitor != NULL; }
-    void *handle () noexcept { return _monitor; }
-    const void *handle () const noexcept { return _monitor; }
-
-    void on_event (monitor_event_handler_fn handler_, void *userdata_ = NULL)
-    {
-        detail::throw_if_failed<handler_error_t> (
-          static_cast<handler_result_t> (
-            zlink_socket_monitor_handler (
-              _monitor, &monitor_handle_t::event_trampoline, this)));
-        _event_handler = handler_;
-        _event_userdata = userdata_;
-    }
 
     void on_event (std::function<void(const monitor_event_t &)> handler_)
     {
@@ -81,16 +75,6 @@ class monitor_handle_t
           static_cast<handler_result_t> (
             zlink_socket_monitor_handler (
               _monitor, &monitor_handle_t::event_function_trampoline, this)));
-        _event_handler = NULL;
-        _event_userdata = NULL;
-    }
-
-    void on_event (zlink_socket_monitor_handler_fn handler_,
-                   void *userdata_ = NULL)
-    {
-        detail::throw_if_failed<handler_error_t> (
-          static_cast<handler_result_t> (
-            zlink_socket_monitor_handler (_monitor, handler_, userdata_)));
         _event_handler = NULL;
         _event_userdata = NULL;
     }
@@ -107,19 +91,6 @@ class monitor_handle_t
         if (result != recv_result_t::ok)
             throw recv_error_t (result, zlink_errno ());
         return std::optional<monitor_event_t> (monitor_event_t (event));
-    }
-
-    maybe_t<monitor_event_t> recv (non_blocking_t)
-    {
-        zlink_monitor_event_t event;
-        const recv_result_t result = static_cast<recv_result_t> (
-          zlink_socket_monitor_recv (
-            _monitor, &event, ZLINK_RECV_FLAGS_DONTWAIT));
-        if (result == recv_result_t::ok)
-            return maybe_t<monitor_event_t> (monitor_event_t (event));
-        if (result == recv_result_t::no_data)
-            return maybe_t<monitor_event_t> ();
-        throw recv_error_t (result, zlink_errno ());
     }
 
     monitor_snapshot_t snapshot () const
@@ -147,6 +118,9 @@ class monitor_handle_t
     explicit monitor_handle_t (void *monitor_) : _monitor (monitor_) {}
 
     friend class base_socket_t;
+    friend void *detail::native_handle (monitor_handle_t &monitor_) noexcept;
+    friend const void *
+    detail::native_handle (const monitor_handle_t &monitor_) noexcept;
 
     static void event_trampoline (const zlink_monitor_event_t *event_,
                                   void *userdata_)
@@ -173,6 +147,19 @@ class monitor_handle_t
     void *_event_userdata = NULL;
     std::function<void(const monitor_event_t &)> _event_function_handler;
 };
+
+namespace detail
+{
+inline void *native_handle (monitor_handle_t &monitor_) noexcept
+{
+    return monitor_._monitor;
+}
+
+inline const void *native_handle (const monitor_handle_t &monitor_) noexcept
+{
+    return monitor_._monitor;
+}
+} // namespace detail
 
 } // namespace zlink
 

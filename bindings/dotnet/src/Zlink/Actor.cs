@@ -160,15 +160,25 @@ public sealed class Actor : IDisposable, IAsyncDisposable
         }
     }
 
-    public void Join(Spot spot, Message message,
+    public bool Join(Spot spot, Message message,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan? timeout = null, SendFlags flags = SendFlags.None)
     {
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
-        ActorInterop.AttachPartsCallback(
-            () => JoinAsync(spot, message, timeout ?? TimeSpan.Zero, flags),
-            callback);
+        try
+        {
+            ActorInterop.AttachPartsCallback(
+                () => JoinAsync(spot, message, timeout ?? TimeSpan.Zero, flags),
+                callback);
+            return true;
+        }
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
+        {
+            return false;
+        }
     }
 
     public void Leave(Spot spot)
@@ -222,6 +232,16 @@ public sealed class Actor : IDisposable, IAsyncDisposable
             if (!submitted)
                 NativeMethods.zlink_msg_close(ref nativePart);
         }
+    }
+
+    public void CloseBoundSession(TimeSpan timeout = default)
+    {
+        EnsureNotDisposed();
+        ZlinkActorRef nativeActor = ActorInterop.ToNative(_ref);
+        int rc = NativeMethods.zlink_spot_node_actor_close_bound_session(
+            _node.Handle, ref nativeActor, ActorInterop.NormalizeTimeout(timeout));
+        if (rc != 0)
+            throw ZlinkException.CreateRequestException(NativeMethods.zlink_errno());
     }
 
     public void Close(TimeSpan timeout = default)

@@ -221,6 +221,31 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SET_DEALER_OPTION = downcall(
+            "zlink_set_dealer_option",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_SET_SPOT_OPTION = downcall(
+            "zlink_set_spot_option",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_GET_SPOT_OPTION = downcall(
+            "zlink_get_spot_option",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SET_SPOT_NODE_OPTION = downcall(
+            "zlink_set_spot_node_option",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_GET_SPOT_NODE_OPTION = downcall(
+            "zlink_get_spot_node_option",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_SET_PUB_OPTION = downcall(
             "zlink_set_pub_option",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -303,6 +328,9 @@ public final class Native {
     private static final MethodHandle MH_POLLER_ADD_FD = downcall("zlink_poller_add_fd",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
+    private static final MethodHandle MH_POLLER_ADD_TIMER = downcall("zlink_poller_add_timer",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_POLLER_MODIFY = downcall("zlink_poller_modify",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
@@ -327,6 +355,9 @@ public final class Native {
     private static final MethodHandle MH_POLLER_REMOVE_FD = downcall("zlink_poller_remove_fd",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_POLLER_REMOVE_TIMER = downcall("zlink_poller_remove_timer",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_POLLER_WAIT = downcall("zlink_poller_wait",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
@@ -719,6 +750,14 @@ public final class Native {
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_DESTROY = downcall("zlink_spot_node_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_ENTRY_SPOT = downcall(
+            "zlink_spot_node_entry_spot",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_SPOT_LOOKUP = downcall(
+            "zlink_spot_node_spot_lookup",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_BIND = downcall("zlink_spot_node_bind",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_CONN_PEER = downcall("zlink_spot_node_connect_peer",
@@ -1455,6 +1494,57 @@ public final class Native {
               len);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_get_router_option failed", t);
+        }
+    }
+
+    public static int setDealerOption(MemorySegment handle, int option,
+                                      MemorySegment value, long len) {
+        try {
+            return (int) MH_SET_DEALER_OPTION.invokeExact(handle, option, value,
+              len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_set_dealer_option failed", t);
+        }
+    }
+
+    public static int setSpotOption(MemorySegment handle, int option,
+                                    MemorySegment value, long len) {
+        try {
+            return (int) MH_SET_SPOT_OPTION.invokeExact(handle, option, value,
+              len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_set_spot_option failed", t);
+        }
+    }
+
+    public static int getSpotOption(MemorySegment handle, int option,
+                                    MemorySegment value, MemorySegment len) {
+        try {
+            return (int) MH_GET_SPOT_OPTION.invokeExact(handle, option, value,
+              len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_get_spot_option failed", t);
+        }
+    }
+
+    public static int setSpotNodeOption(MemorySegment handle, int option,
+                                        MemorySegment value, long len) {
+        try {
+            return (int) MH_SET_SPOT_NODE_OPTION.invokeExact(handle, option,
+              value, len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_set_spot_node_option failed", t);
+        }
+    }
+
+    public static int getSpotNodeOption(MemorySegment handle, int option,
+                                        MemorySegment value,
+                                        MemorySegment len) {
+        try {
+            return (int) MH_GET_SPOT_NODE_OPTION.invokeExact(handle, option,
+              value, len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_get_spot_node_option failed", t);
         }
     }
 
@@ -2386,6 +2476,16 @@ public final class Native {
         }
     }
 
+    public static int pollerAddTimer(MemorySegment poller, MemorySegment timer,
+                                     MemorySegment userData) {
+        try {
+            return (int) MH_POLLER_ADD_TIMER.invokeExact(poller, timer,
+              userData);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_add_timer failed", t);
+        }
+    }
+
     public static int pollerModify(MemorySegment poller, MemorySegment socket,
                                    int events) {
         try {
@@ -2485,6 +2585,15 @@ public final class Native {
             return (int) MH_POLLER_REMOVE_FD.invokeExact(poller, fd);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_poller_remove_fd failed", t);
+        }
+    }
+
+    public static int pollerRemoveTimer(MemorySegment poller,
+                                        MemorySegment timer) {
+        try {
+            return (int) MH_POLLER_REMOVE_TIMER.invokeExact(poller, timer);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_poller_remove_timer failed", t);
         }
     }
 
@@ -2969,6 +3078,26 @@ public final class Native {
             return (int) MH_SPOT_NODE_DESTROY.invokeExact(p);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_destroy failed", t);
+        }
+    }
+
+    public static int spotNodeEntrySpot(MemorySegment node,
+                                        MemorySegment spotOut) {
+        try {
+            return (int) MH_SPOT_NODE_ENTRY_SPOT.invokeExact(node, spotOut);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_entry_spot failed", t);
+        }
+    }
+
+    public static int spotNodeSpotLookup(MemorySegment node,
+                                         MemorySegment spotRid,
+                                         MemorySegment spotOut) {
+        try {
+            return (int) MH_SPOT_NODE_SPOT_LOOKUP.invokeExact(node, spotRid,
+              spotOut);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_spot_lookup failed", t);
         }
     }
 

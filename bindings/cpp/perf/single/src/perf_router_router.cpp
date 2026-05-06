@@ -16,6 +16,12 @@ bool perf_debug_enabled ()
     return std::getenv ("PERF_DEBUG") != NULL;
 }
 
+zlink::routing_id_t routing_id_from_ascii (const char *value_)
+{
+    return zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> (value_), std::strlen (value_));
+}
+
 struct router_router_recv_state_t
 {
     router_router_recv_state_t ()
@@ -36,13 +42,11 @@ struct router_router_recv_state_t
 
 bool complete_handshake (::perf::socket_t &receiver, ::perf::socket_t &sender)
 {
-    zlink_routing_id_t receiver_rid = zlink::empty_routing_id ();
-    zlink_routing_id_t sender_rid = zlink::empty_routing_id ();
+    zlink::routing_id_t receiver_rid = routing_id_from_ascii (k_receiver_id);
+    zlink::routing_id_t sender_rid = routing_id_from_ascii (k_sender_id);
     zlink::message_t outbound = zlink::message_t::from_string ("PING");
 
-    if (zlink::routing_id_from (k_receiver_id, &receiver_rid) != 0
-        || zlink::routing_id_from (k_sender_id, &sender_rid) != 0
-        || !outbound.valid () || sender.send (receiver_rid, outbound) != 0) {
+    if (!outbound.valid () || sender.send (receiver_rid, outbound) != 0) {
         if (perf_debug_enabled ())
             std::cerr << "router_router: handshake request failed errno="
                       << errno << std::endl;
@@ -146,9 +150,7 @@ bool send_router_samples (::perf::socket_t *sender_,
             return false;
         }
 
-        zlink_routing_id_t target = zlink::empty_routing_id ();
-        if (zlink::routing_id_from (k_receiver_id, &target) != 0)
-            return false;
+        const zlink::routing_id_t target = routing_id_from_ascii (k_receiver_id);
 
         zlink::message_t msg =
           zlink::message_t::from_bytes (payload_->data (), payload_->size ());
@@ -195,8 +197,8 @@ bool run_pattern_router_router (const std::string &transport,
 
     (void) receiver.sock ().set_routing_id (std::string (k_receiver_id));
     (void) sender.sock ().set_routing_id (std::string (k_sender_id));
-    (void) receiver.sock ().set (zlink::router_options::mandatory, 1);
-    (void) sender.sock ().set (zlink::router_options::mandatory, 1);
+    (void) receiver.sock ().set (zlink::compat::options::router_options::mandatory, 1);
+    (void) sender.sock ().set (zlink::compat::options::router_options::mandatory, 1);
 
     if (!perf::single::setup_connected_pair (receiver.sock (),
                                              sender.sock (),
@@ -209,9 +211,9 @@ bool run_pattern_router_router (const std::string &transport,
     }
 
     const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();
-    (void) receiver.sock ().set_option (zlink::socket_options::rcvtimeo, recv_timeout);
+    (void) receiver.sock ().set_option (zlink::compat::options::socket_options::rcvtimeo, recv_timeout);
     (void) sender.sock ().set_option (
-      zlink::socket_options::sndtimeo, perf::single::resolve_single_send_timeout_ms ());
+      zlink::compat::options::socket_options::sndtimeo, perf::single::resolve_single_send_timeout_ms ());
 
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
@@ -240,8 +242,8 @@ bool run_pattern_router_router (const std::string &transport,
     zlink::poller_t poller;
     poller.add (receiver.sock (), zlink::poll_event::pollin);
     while (!sender_done.load (std::memory_order_acquire)) {
-        zlink::poll_event_t event = {};
-        const int poll_rc = poller.wait (&event, 5);
+        std::optional<zlink::poll_event_t> event = poller.wait (5);
+        const int poll_rc = event ? 1 : 0;
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
@@ -249,7 +251,7 @@ bool run_pattern_router_router (const std::string &transport,
             break;
         }
         if (poll_rc == 0
-            || (event.revents & static_cast<short> (zlink::poll_event::pollin))
+            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event::pollin))
                  == 0) {
             continue;
         }

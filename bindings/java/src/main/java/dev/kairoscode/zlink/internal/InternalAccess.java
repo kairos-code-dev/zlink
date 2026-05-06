@@ -22,6 +22,7 @@ import java.util.function.BiConsumer;
 /**
  * Compatibility wrapper that forwards to the direct root-package bridge.
  */
+@SuppressWarnings("removal")
 public final class InternalAccess {
     private InternalAccess() {}
 

@@ -1,3 +1,4 @@
+[English](03-6-proxy.md) | [한국어](03-6-proxy.ko.md)
 
 # Proxy Pattern
 
@@ -17,7 +18,7 @@ int zlink_proxy (void *frontend, void *backend, void *capture);
 - If `capture` is non-NULL, copies all passing messages to the capture socket
 - **Blocking function** — run in a dedicated thread
 - **No socket type restriction** — internally calls `socket_base_t` internal
-  recv/send methods, independent of public API `ENOTSUP` restrictions
+  recv/send methods, independent of public API `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` restrictions
 
 ### Supported Socket Combinations
 
@@ -45,13 +46,13 @@ flowchart LR
 ### 3.1 Built-in Proxy
 
 ```c
-void *xsub = zlink_socket(ctx, ZLINK_XSUB);
+void *xsub = zlink_socket(ctx, ZLINK_SOCKET_XSUB);
 zlink_bind(xsub, "tcp://*:5556");      /* PUBs connect here */
 
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");      /* SUBs connect here */
 
-void *capture = zlink_socket(ctx, ZLINK_PUB);
+void *capture = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(capture, "tcp://*:5558");   /* optional: message recording */
 
 zlink_proxy(xsub, xpub, capture);      /* blocking */
@@ -78,15 +79,15 @@ build a manual proxy using public APIs only.
 
 | Step | Socket | API | Description |
 |------|--------|-----|-------------|
-| 1 | XPUB | `zlink_subscription_event(xpub, ...)` | Receive SUB subscribe/unsubscribe events |
+| 1 | XPUB | `zlink_xpub_recv_part(xpub, ...)` | Receive SUB subscribe/unsubscribe events |
 | 2 | App | Custom logic | Authorization, topic remapping |
 | 3 | XSUB | `zlink_set_subscription(xsub, topic)` | Propagate to upstream PUB |
 
 #### Full Code
 
 ```c
-void *xsub = zlink_socket(ctx, ZLINK_XSUB);
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xsub = zlink_socket(ctx, ZLINK_SOCKET_XSUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xsub, "tcp://*:5556");
 zlink_bind(xpub, "tcp://*:5557");
 
@@ -97,20 +98,22 @@ while (running) {
     size_t count = 0;
     char topic[256];
     size_t topic_len = sizeof(topic);
-    int rc = zlink_subscribe(xsub, &rid, &parts, &count,
+    zlink_recv_result_t rc = zlink_subscribe(xsub, &rid, &parts, &count,
                              topic, &topic_len, ZLINK_DONTWAIT);
-    if (rc == 0) {
+    if (rc == ZLINK_RECV_OK) {
         /* Insert custom logic here (filtering, logging, etc.) */
         zlink_publish(xpub, topic, parts, count, 0);
     }
 
     /* Subscription propagation: XPUB → app → XSUB */
+    const zlink_routing_id_t *sub_rid = NULL;
     int subscribed;
     char sub_topic[256];
-    size_t sub_len = sizeof(sub_topic);
-    rc = zlink_subscription_event(xpub, &rid, &subscribed,
-                                  sub_topic, &sub_len, ZLINK_DONTWAIT);
-    if (rc == 0) {
+    size_t sub_len = 0;
+    rc = zlink_xpub_recv_part(xpub, &sub_rid, &subscribed,
+                              sub_topic, sizeof(sub_topic), &sub_len,
+                              ZLINK_DONTWAIT);
+    if (rc == ZLINK_RECV_OK) {
         /* Insert custom logic here (authorization, remapping, etc.) */
         if (subscribed)
             zlink_set_subscription(xsub, sub_topic);
@@ -130,7 +133,7 @@ while (running) {
 
 > **Key point:** `zlink_proxy()` internally calls `socket_base_t` internal
 > methods, not public APIs. Calling `zlink_send()` on XSUB or
-> `zlink_recv()` on XPUB returns `ENOTSUP`. Proxy operation is only
+> `zlink_recv()` on XPUB returns `ZLINK_RECV_NOT_SUPPORTED`. Proxy operation is only
 > possible via `zlink_proxy()` or the manual approach above
 > (using dedicated APIs like `subscribe()`, `publish()`, etc.).
 
@@ -141,10 +144,10 @@ Client (DEALER) --> ROUTER == proxy ==> DEALER --> Server (ROUTER)
 ```
 
 ```c
-void *frontend = zlink_socket(ctx, ZLINK_ROUTER);
+void *frontend = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(frontend, "tcp://*:5559");
 
-void *backend = zlink_socket(ctx, ZLINK_DEALER);
+void *backend = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_bind(backend, "tcp://*:5560");
 
 zlink_proxy(frontend, backend, NULL);  /* blocking */

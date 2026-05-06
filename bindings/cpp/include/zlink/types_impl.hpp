@@ -21,7 +21,7 @@ inline std::unordered_map<void *, std::unordered_map<int, int>>
 }
 
 template<typename T>
-inline T get_common_option_value (void *handle_, socket_option option_)
+inline T get_common_option_value (void *handle_, compat::options::socket_option option_)
 {
     ensure_config_handle (handle_);
     T value {};
@@ -35,7 +35,7 @@ inline T get_common_option_value (void *handle_, socket_option option_)
 
 template<typename T>
 inline void set_common_option_value (void *handle_,
-                                     socket_option option_,
+                                     compat::options::socket_option option_,
                                      const T &value_)
 {
     ensure_config_handle (handle_);
@@ -46,10 +46,10 @@ inline void set_common_option_value (void *handle_,
           sizeof (value_))));
 }
 
-inline std::string get_common_option_string (void *handle_, socket_option option_)
+inline std::string get_common_option_string (void *handle_, compat::options::socket_option option_)
 {
     ensure_config_handle (handle_);
-    size_t cap = option_ == socket_option::last_endpoint ? 1024u : 256u;
+    size_t cap = option_ == compat::options::socket_option::last_endpoint ? 1024u : 256u;
     const size_t max_cap = 64u * 1024u;
     while (cap <= max_cap) {
         std::vector<char> buffer (cap);
@@ -75,7 +75,7 @@ inline std::string get_common_option_string (void *handle_, socket_option option
 }
 
 template<typename T>
-inline T get_router_option_value (void *handle_, router_option option_)
+inline T get_router_option_value (void *handle_, compat::options::router_option option_)
 {
     ensure_config_handle (handle_);
     T value {};
@@ -90,7 +90,7 @@ inline T get_router_option_value (void *handle_, router_option option_)
 
 template<typename T>
 inline void set_router_option_value (void *handle_,
-                                     router_option option_,
+                                     compat::options::router_option option_,
                                      const T &value_)
 {
     ensure_config_handle (handle_);
@@ -102,7 +102,7 @@ inline void set_router_option_value (void *handle_,
 }
 
 template<typename T>
-inline T get_dealer_option_value (void *handle_, dealer_option option_)
+inline T get_dealer_option_value (void *handle_, compat::options::dealer_option option_)
 {
     ensure_config_handle (handle_);
     typename std::unordered_map<void *, std::unordered_map<int, int>>::const_iterator it =
@@ -114,7 +114,7 @@ inline T get_dealer_option_value (void *handle_, dealer_option option_)
             return static_cast<T> (value_it->second);
     }
     switch (option_) {
-    case dealer_option::weight:
+    case compat::options::dealer_option::weight:
         return static_cast<T> (100);
     default:
         return T ();
@@ -123,7 +123,7 @@ inline T get_dealer_option_value (void *handle_, dealer_option option_)
 
 template<typename T>
 inline void set_dealer_option_value (void *handle_,
-                                     dealer_option option_,
+                                     compat::options::dealer_option option_,
                                      const T &value_)
 {
     ensure_config_handle (handle_);
@@ -137,7 +137,7 @@ inline void set_dealer_option_value (void *handle_,
 }
 
 template<typename T>
-inline T get_pub_option_value (void *handle_, pub_option option_)
+inline T get_pub_option_value (void *handle_, compat::options::pub_option option_)
 {
     ensure_config_handle (handle_);
     T value {};
@@ -151,7 +151,7 @@ inline T get_pub_option_value (void *handle_, pub_option option_)
 
 template<typename T>
 inline void set_pub_option_value (void *handle_,
-                                  pub_option option_,
+                                  compat::options::pub_option option_,
                                   const T &value_)
 {
     ensure_config_handle (handle_);
@@ -163,7 +163,7 @@ inline void set_pub_option_value (void *handle_,
 }
 
 template<typename T>
-inline T get_sub_option_value (void *handle_, sub_option option_)
+inline T get_sub_option_value (void *handle_, compat::options::sub_option option_)
 {
     ensure_config_handle (handle_);
     T value {};
@@ -176,7 +176,7 @@ inline T get_sub_option_value (void *handle_, sub_option option_)
 }
 
 template<typename T>
-inline T get_stream_option_value (void *handle_, stream_option option_)
+inline T get_stream_option_value (void *handle_, compat::options::stream_option option_)
 {
     ensure_config_handle (handle_);
     T value {};
@@ -191,7 +191,7 @@ inline T get_stream_option_value (void *handle_, stream_option option_)
 
 template<typename T>
 inline void set_stream_option_value (void *handle_,
-                                     stream_option option_,
+                                     compat::options::stream_option option_,
                                      const T &value_)
 {
     ensure_config_handle (handle_);
@@ -217,258 +217,297 @@ inline void close_parts (std::vector<message_t> &parts_)
 
 } // namespace detail
 
-inline int common_socket_options_t::linger () const
+inline std::chrono::milliseconds common_socket_options_t::linger () const
 {
-    return detail::get_common_option_value<int> (_handle, socket_option::linger);
+    return std::chrono::milliseconds (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::linger));
 }
 
-inline void common_socket_options_t::linger (int value)
-{
-    detail::set_common_option_value<int> (_handle, socket_option::linger, value);
-}
-
-inline int common_socket_options_t::send_hwm () const
-{
-    return detail::get_common_option_value<int> (_handle, socket_option::sndhwm);
-}
-
-inline void common_socket_options_t::send_hwm (int value)
-{
-    detail::set_common_option_value<int> (_handle, socket_option::sndhwm, value);
-}
-
-inline int common_socket_options_t::recv_hwm () const
-{
-    return detail::get_common_option_value<int> (_handle, socket_option::rcvhwm);
-}
-
-inline void common_socket_options_t::recv_hwm (int value)
-{
-    detail::set_common_option_value<int> (_handle, socket_option::rcvhwm, value);
-}
-
-inline int common_socket_options_t::send_timeout () const
-{
-    return detail::get_common_option_value<int> (
-      _handle, socket_option::sndtimeo);
-}
-
-inline void common_socket_options_t::send_timeout (int value)
+inline void common_socket_options_t::linger (std::chrono::milliseconds value)
 {
     detail::set_common_option_value<int> (
-      _handle, socket_option::sndtimeo, value);
+      _handle, compat::options::socket_option::linger,
+      static_cast<int> (value.count ()));
 }
 
-inline int common_socket_options_t::recv_timeout () const
+inline message_count_t common_socket_options_t::send_hwm () const
 {
-    return detail::get_common_option_value<int> (
-      _handle, socket_option::rcvtimeo);
+    return message_count_t::value (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::sndhwm));
 }
 
-inline void common_socket_options_t::recv_timeout (int value)
+inline void common_socket_options_t::send_hwm (message_count_t value)
 {
     detail::set_common_option_value<int> (
-      _handle, socket_option::rcvtimeo, value);
+      _handle, compat::options::socket_option::sndhwm, value.value ());
+}
+
+inline message_count_t common_socket_options_t::recv_hwm () const
+{
+    return message_count_t::value (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::rcvhwm));
+}
+
+inline void common_socket_options_t::recv_hwm (message_count_t value)
+{
+    detail::set_common_option_value<int> (
+      _handle, compat::options::socket_option::rcvhwm, value.value ());
+}
+
+inline std::chrono::milliseconds common_socket_options_t::send_timeout () const
+{
+    return std::chrono::milliseconds (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::sndtimeo));
+}
+
+inline void common_socket_options_t::send_timeout (std::chrono::milliseconds value)
+{
+    detail::set_common_option_value<int> (
+      _handle, compat::options::socket_option::sndtimeo,
+      static_cast<int> (value.count ()));
+}
+
+inline std::chrono::milliseconds common_socket_options_t::recv_timeout () const
+{
+    return std::chrono::milliseconds (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::rcvtimeo));
+}
+
+inline void common_socket_options_t::recv_timeout (std::chrono::milliseconds value)
+{
+    detail::set_common_option_value<int> (
+      _handle, compat::options::socket_option::rcvtimeo,
+      static_cast<int> (value.count ()));
 }
 
 inline bool common_socket_options_t::immediate () const
 {
     return detail::get_common_option_value<int> (
-             _handle, socket_option::immediate)
+             _handle, compat::options::socket_option::immediate)
            != 0;
 }
 
 inline void common_socket_options_t::immediate (bool value)
 {
     detail::set_common_option_value<int> (
-      _handle, socket_option::immediate, value ? 1 : 0);
+      _handle, compat::options::socket_option::immediate, value ? 1 : 0);
 }
 
-inline int common_socket_options_t::connect_timeout () const
+inline std::chrono::milliseconds common_socket_options_t::connect_timeout () const
 {
-    return detail::get_common_option_value<int> (
-      _handle, socket_option::connect_timeout);
+    return std::chrono::milliseconds (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::connect_timeout));
 }
 
-inline void common_socket_options_t::connect_timeout (int value)
+inline void common_socket_options_t::connect_timeout (std::chrono::milliseconds value)
 {
     detail::set_common_option_value<int> (
-      _handle, socket_option::connect_timeout, value);
+      _handle, compat::options::socket_option::connect_timeout,
+      static_cast<int> (value.count ()));
 }
 
 inline bool common_socket_options_t::ipv6 () const
 {
-    return detail::get_common_option_value<int> (_handle, socket_option::ipv6)
+    return detail::get_common_option_value<int> (_handle, compat::options::socket_option::ipv6)
            != 0;
 }
 
 inline void common_socket_options_t::ipv6 (bool value)
 {
     detail::set_common_option_value<int> (
-      _handle, socket_option::ipv6, value ? 1 : 0);
+      _handle, compat::options::socket_option::ipv6, value ? 1 : 0);
 }
 
 inline bool common_socket_options_t::tcp_no_delay () const
 {
     return detail::get_common_option_value<int> (
-             _handle, socket_option::tcp_nodelay)
+             _handle, compat::options::socket_option::tcp_nodelay)
            != 0;
 }
 
 inline void common_socket_options_t::tcp_no_delay (bool value)
 {
     detail::set_common_option_value<int> (
-      _handle, socket_option::tcp_nodelay, value ? 1 : 0);
+      _handle, compat::options::socket_option::tcp_nodelay, value ? 1 : 0);
 }
 
 inline bool common_socket_options_t::tcp_keepalive () const
 {
     return detail::get_common_option_value<int> (
-             _handle, socket_option::tcp_keepalive)
+             _handle, compat::options::socket_option::tcp_keepalive)
            != 0;
 }
 
 inline void common_socket_options_t::tcp_keepalive (bool value)
 {
     detail::set_common_option_value<int> (
-      _handle, socket_option::tcp_keepalive, value ? 1 : 0);
+      _handle, compat::options::socket_option::tcp_keepalive, value ? 1 : 0);
 }
 
-inline int common_socket_options_t::heartbeat_interval () const
+inline std::chrono::milliseconds common_socket_options_t::heartbeat_interval () const
 {
-    return detail::get_common_option_value<int> (
-      _handle, socket_option::heartbeat_ivl);
+    return std::chrono::milliseconds (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::heartbeat_ivl));
 }
 
-inline void common_socket_options_t::heartbeat_interval (int value)
-{
-    detail::set_common_option_value<int> (
-      _handle, socket_option::heartbeat_ivl, value);
-}
-
-inline int common_socket_options_t::heartbeat_ttl () const
-{
-    return detail::get_common_option_value<int> (
-      _handle, socket_option::heartbeat_ttl);
-}
-
-inline void common_socket_options_t::heartbeat_ttl (int value)
+inline void common_socket_options_t::heartbeat_interval (
+  std::chrono::milliseconds value)
 {
     detail::set_common_option_value<int> (
-      _handle, socket_option::heartbeat_ttl, value);
+      _handle, compat::options::socket_option::heartbeat_ivl,
+      static_cast<int> (value.count ()));
 }
 
-inline int common_socket_options_t::heartbeat_timeout () const
+inline std::chrono::milliseconds common_socket_options_t::heartbeat_ttl () const
 {
-    return detail::get_common_option_value<int> (
-      _handle, socket_option::heartbeat_timeout);
+    return std::chrono::milliseconds (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::heartbeat_ttl));
 }
 
-inline void common_socket_options_t::heartbeat_timeout (int value)
-{
-    detail::set_common_option_value<int> (
-      _handle, socket_option::heartbeat_timeout, value);
-}
-
-inline int common_socket_options_t::rid_duplicate_policy () const
-{
-    return detail::get_common_option_value<int> (
-      _handle, socket_option::rid_duplicate_policy);
-}
-
-inline void common_socket_options_t::rid_duplicate_policy (int value)
+inline void common_socket_options_t::heartbeat_ttl (
+  std::chrono::milliseconds value)
 {
     detail::set_common_option_value<int> (
-      _handle, socket_option::rid_duplicate_policy, value);
+      _handle, compat::options::socket_option::heartbeat_ttl,
+      static_cast<int> (value.count ()));
 }
 
-inline int64_t common_socket_options_t::max_message_size () const
+inline std::chrono::milliseconds common_socket_options_t::heartbeat_timeout () const
 {
-    return detail::get_common_option_value<int64_t> (
-      _handle, socket_option::maxmsgsize);
+    return std::chrono::milliseconds (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::heartbeat_timeout));
 }
 
-inline void common_socket_options_t::max_message_size (int64_t value)
+inline void common_socket_options_t::heartbeat_timeout (
+  std::chrono::milliseconds value)
+{
+    detail::set_common_option_value<int> (
+      _handle, compat::options::socket_option::heartbeat_timeout,
+      static_cast<int> (value.count ()));
+}
+
+inline rid_duplicate_policy_t common_socket_options_t::rid_duplicate_policy () const
+{
+    return static_cast<rid_duplicate_policy_t> (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::rid_duplicate_policy));
+}
+
+inline void common_socket_options_t::rid_duplicate_policy (
+  rid_duplicate_policy_t value)
+{
+    detail::set_common_option_value<int> (
+      _handle, compat::options::socket_option::rid_duplicate_policy,
+      static_cast<int> (value));
+}
+
+inline byte_size_t common_socket_options_t::max_message_size () const
+{
+    return byte_size_t::bytes (
+      detail::get_common_option_value<int64_t> (
+        _handle, compat::options::socket_option::maxmsgsize));
+}
+
+inline void common_socket_options_t::max_message_size (byte_size_t value)
 {
     detail::set_common_option_value<int64_t> (
-      _handle, socket_option::maxmsgsize, value);
+      _handle, compat::options::socket_option::maxmsgsize, value.bytes ());
 }
 
-inline int common_socket_options_t::backlog () const
+inline socket_backlog_t common_socket_options_t::backlog () const
 {
-    return detail::get_common_option_value<int> (_handle, socket_option::backlog);
+    return socket_backlog_t::value (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::backlog));
 }
 
-inline void common_socket_options_t::backlog (int value)
-{
-    detail::set_common_option_value<int> (_handle, socket_option::backlog, value);
-}
-
-inline int common_socket_options_t::reconnect_interval () const
-{
-    return detail::get_common_option_value<int> (
-      _handle, socket_option::reconnect_ivl);
-}
-
-inline void common_socket_options_t::reconnect_interval (int value)
+inline void common_socket_options_t::backlog (socket_backlog_t value)
 {
     detail::set_common_option_value<int> (
-      _handle, socket_option::reconnect_ivl, value);
+      _handle, compat::options::socket_option::backlog, value.value ());
 }
 
-inline int common_socket_options_t::reconnect_interval_max () const
+inline std::chrono::milliseconds common_socket_options_t::reconnect_interval () const
 {
-    return detail::get_common_option_value<int> (
-      _handle, socket_option::reconnect_ivl_max);
+    return std::chrono::milliseconds (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::reconnect_ivl));
 }
 
-inline void common_socket_options_t::reconnect_interval_max (int value)
+inline void common_socket_options_t::reconnect_interval (
+  std::chrono::milliseconds value)
 {
     detail::set_common_option_value<int> (
-      _handle, socket_option::reconnect_ivl_max, value);
+      _handle, compat::options::socket_option::reconnect_ivl,
+      static_cast<int> (value.count ()));
+}
+
+inline std::chrono::milliseconds
+common_socket_options_t::reconnect_interval_max () const
+{
+    return std::chrono::milliseconds (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::reconnect_ivl_max));
+}
+
+inline void common_socket_options_t::reconnect_interval_max (
+  std::chrono::milliseconds value)
+{
+    detail::set_common_option_value<int> (
+      _handle, compat::options::socket_option::reconnect_ivl_max,
+      static_cast<int> (value.count ()));
 }
 
 inline std::string common_socket_options_t::last_endpoint () const
 {
-    return detail::get_common_option_string (_handle, socket_option::last_endpoint);
+    return detail::get_common_option_string (_handle, compat::options::socket_option::last_endpoint);
 }
 
 inline bool router_socket_options_t::mandatory () const
 {
-    return detail::get_router_option_value<int> (_handle, router_option::mandatory)
+    return detail::get_router_option_value<int> (_handle, compat::options::router_option::mandatory)
            != 0;
 }
 
 inline void router_socket_options_t::mandatory (bool value)
 {
     detail::set_router_option_value<int> (
-      _handle, router_option::mandatory, value ? 1 : 0);
+      _handle, compat::options::router_option::mandatory, value ? 1 : 0);
 }
 
 inline bool router_socket_options_t::handover () const
 {
     return detail::get_common_option_value<int> (
-             _handle, socket_option::rid_duplicate_policy)
+             _handle, compat::options::socket_option::rid_duplicate_policy)
            == ZLINK_RID_DUPLICATE_HANDOVER;
 }
 
 inline void router_socket_options_t::handover (bool value)
 {
     detail::set_common_option_value<int> (
-      _handle, socket_option::rid_duplicate_policy,
+      _handle, compat::options::socket_option::rid_duplicate_policy,
       value ? ZLINK_RID_DUPLICATE_HANDOVER : ZLINK_RID_DUPLICATE_REJECT);
 }
 
 inline bool router_socket_options_t::probe_router () const
 {
-    return detail::get_router_option_value<int> (_handle, router_option::probe)
+    return detail::get_router_option_value<int> (_handle, compat::options::router_option::probe)
            != 0;
 }
 
 inline void router_socket_options_t::probe_router (bool value)
 {
     detail::set_router_option_value<int> (
-      _handle, router_option::probe, value ? 1 : 0);
+      _handle, compat::options::router_option::probe, value ? 1 : 0);
 }
 
 inline std::optional<routing_id_t> router_socket_options_t::connect_routing_id () const
@@ -481,121 +520,124 @@ inline std::optional<routing_id_t> router_socket_options_t::connect_routing_id (
       static_cast<config_result_t> (
         zlink_get_router_option (
           _handle,
-          static_cast<zlink_router_option_t> (router_option::connect_routing_id),
+          static_cast<zlink_router_option_t> (compat::options::router_option::connect_routing_id),
           &native, &size)));
     if (native.size == 0)
         return std::nullopt;
-    return routing_id_t (native);
+    return zlink::detail::native_routing_id (native);
 }
 
 inline void
 router_socket_options_t::connect_routing_id (const routing_id_t &value)
 {
     detail::ensure_config_handle (_handle);
-    const zlink_routing_id_t native = value.native ();
+    const zlink_routing_id_t native =
+      *zlink::detail::routing_id_native (value);
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
         zlink_set_router_option (
           _handle,
-          static_cast<zlink_router_option_t> (router_option::connect_routing_id),
+          static_cast<zlink_router_option_t> (compat::options::router_option::connect_routing_id),
           native.data, native.size)));
 }
 
-inline uint32_t router_socket_options_t::peer_weight () const
+inline peer_weight_t router_socket_options_t::peer_weight () const
 {
-    return detail::get_router_option_value<uint32_t> (
-      _handle, router_option::weight);
+    return peer_weight_t::value (
+      detail::get_router_option_value<uint32_t> (
+        _handle, compat::options::router_option::weight));
 }
 
-inline void router_socket_options_t::peer_weight (uint32_t value)
+inline void router_socket_options_t::peer_weight (peer_weight_t value)
 {
     detail::set_router_option_value<uint32_t> (
-      _handle, router_option::weight, value);
+      _handle, compat::options::router_option::weight, value.value ());
 }
 
 inline bool dealer_socket_options_t::probe_router () const
 {
-    return detail::get_dealer_option_value<int> (_handle, dealer_option::probe)
+    return detail::get_dealer_option_value<int> (_handle, compat::options::dealer_option::probe)
            != 0;
 }
 
 inline void dealer_socket_options_t::probe_router (bool value)
 {
     detail::set_dealer_option_value<int> (
-      _handle, dealer_option::probe, value ? 1 : 0);
+      _handle, compat::options::dealer_option::probe, value ? 1 : 0);
 }
 
-inline uint32_t dealer_socket_options_t::peer_weight () const
+inline peer_weight_t dealer_socket_options_t::peer_weight () const
 {
-    return detail::get_dealer_option_value<uint32_t> (
-      _handle, dealer_option::weight);
+    return peer_weight_t::value (
+      detail::get_dealer_option_value<uint32_t> (
+        _handle, compat::options::dealer_option::weight));
 }
 
-inline void dealer_socket_options_t::peer_weight (uint32_t value)
+inline void dealer_socket_options_t::peer_weight (peer_weight_t value)
 {
     detail::set_dealer_option_value<uint32_t> (
-      _handle, dealer_option::weight, value);
+      _handle, compat::options::dealer_option::weight, value.value ());
 }
 
 inline bool stream_socket_options_t::notify () const
 {
-    return detail::get_stream_option_value<int> (_handle, stream_option::notify)
+    return detail::get_stream_option_value<int> (_handle, compat::options::stream_option::notify)
            != 0;
 }
 
 inline void stream_socket_options_t::notify (bool value)
 {
     detail::set_stream_option_value<int> (
-      _handle, stream_option::notify, value ? 1 : 0);
+      _handle, compat::options::stream_option::notify, value ? 1 : 0);
 }
 
 inline bool pub_socket_options_t::verbose () const
 {
-    return detail::get_pub_option_value<int> (_handle, pub_option::verbose) != 0;
+    return detail::get_pub_option_value<int> (_handle, compat::options::pub_option::verbose) != 0;
 }
 
 inline void pub_socket_options_t::verbose (bool value)
 {
     detail::set_pub_option_value<int> (
-      _handle, pub_option::verbose, value ? 1 : 0);
+      _handle, compat::options::pub_option::verbose, value ? 1 : 0);
 }
 
 inline bool pub_socket_options_t::verboser () const
 {
-    return detail::get_pub_option_value<int> (_handle, pub_option::verboser) != 0;
+    return detail::get_pub_option_value<int> (_handle, compat::options::pub_option::verboser) != 0;
 }
 
 inline void pub_socket_options_t::verboser (bool value)
 {
     detail::set_pub_option_value<int> (
-      _handle, pub_option::verboser, value ? 1 : 0);
+      _handle, compat::options::pub_option::verboser, value ? 1 : 0);
 }
 
 inline bool pub_socket_options_t::no_drop () const
 {
-    return detail::get_pub_option_value<int> (_handle, pub_option::nodrop) != 0;
+    return detail::get_pub_option_value<int> (_handle, compat::options::pub_option::nodrop) != 0;
 }
 
 inline void pub_socket_options_t::no_drop (bool value)
 {
     detail::set_pub_option_value<int> (
-      _handle, pub_option::nodrop, value ? 1 : 0);
+      _handle, compat::options::pub_option::nodrop, value ? 1 : 0);
 }
 
 inline bool pub_socket_options_t::manual () const
 {
-    return detail::get_pub_option_value<int> (_handle, pub_option::manual) != 0;
+    return detail::get_pub_option_value<int> (_handle, compat::options::pub_option::manual) != 0;
 }
 
 inline void pub_socket_options_t::manual (bool value)
 {
     detail::set_pub_option_value<int> (
-      _handle, pub_option::manual, value ? 1 : 0);
+      _handle, compat::options::pub_option::manual, value ? 1 : 0);
 }
 
 inline int sub_socket_options_t::topics_count () const
 {
-    return detail::get_sub_option_value<int> (_handle, sub_option::topics_count);
+    return detail::get_sub_option_value<int> (_handle, compat::options::sub_option::topics_count);
 }
 
 inline message_t &received_t::first_part ()

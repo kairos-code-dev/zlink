@@ -172,7 +172,7 @@ public sealed class Message : IDisposable, IAsyncDisposable
         return message;
     }
 
-    public static Message FromOwnedBytes(byte[] data)
+    internal static Message FromOwnedBytes(byte[] data)
     {
         if (data == null)
             throw new ArgumentNullException(nameof(data));

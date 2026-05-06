@@ -18,7 +18,7 @@ public sealed class StreamSocket : RoutedMessageSocketBase
 
     public void OnPacket(StreamPacketHandler handler)
     {
-        Kernel.AttachStreamRaw(handler);
+        Kernel.AttachStreamPacket(handler);
     }
 
     internal void OnPacket(StreamUInt32PacketHandler handler)

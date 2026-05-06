@@ -12,7 +12,9 @@ internal static partial class NativeMethods
         "zlink_ctx_term",
         "zlink_ctx_shutdown",
         "zlink_ctx_set",
+        "zlink_ctx_set_data",
         "zlink_ctx_get",
+        "zlink_ctx_auto_hwm_recalculate",
         "zlink_socket",
         "zlink_close",
         "zlink_send_part",
@@ -45,6 +47,8 @@ internal static partial class NativeMethods
         "zlink_router_request_spot_part",
         "zlink_router_reply_spot_part",
         "zlink_router_send_spot_part",
+        "zlink_spot_request_spot_part",
+        "zlink_spot_request_router_part",
         "zlink_spot_reply_spot_part",
         "zlink_spot_reply_router_part",
         "zlink_spot_handler",
@@ -77,6 +81,8 @@ internal static partial class NativeMethods
         "zlink_spot_actor_join_reply",
         "zlink_spot_node_actor_leave_spot",
         "zlink_spot_node_actor_recv_part",
+        "zlink_spot_node_entry_spot",
+        "zlink_spot_node_spot_lookup",
         "zlink_spot_node_spots_snapshot",
         "zlink_spot_node_actors_snapshot",
         "zlink_spot_actors_snapshot",
@@ -89,6 +95,11 @@ internal static partial class NativeMethods
         "zlink_timer_handler",
         "zlink_poller_add_timer",
         "zlink_poller_remove_timer",
+        "zlink_subscription_at",
+        "zlink_set_spot_node_option",
+        "zlink_get_spot_node_option",
+        "zlink_set_spot_option",
+        "zlink_get_spot_option",
         "zlink_atomic_counter_new",
         "zlink_atomic_counter_set",
         "zlink_atomic_counter_inc",
@@ -118,8 +129,15 @@ internal static partial class NativeMethods
         int optval);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_ctx_set_data(IntPtr context, int option,
+        byte[] optval, nuint optvallen);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_ctx_get(IntPtr context, int option,
         out int errorOut);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_ctx_auto_hwm_recalculate(IntPtr context);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_close(IntPtr socket);
@@ -248,6 +266,19 @@ internal static partial class NativeMethods
         ref ZlinkRoutingId destNodeRoutingId,
         ref ZlinkRoutingId destSpotRoutingId, ref ZlinkMsg part, int flags,
         ZlinkPartFlag partFlag);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_request_spot_part(IntPtr spot,
+        ref ZlinkRoutingId destNodeRoutingId,
+        ref ZlinkRoutingId destSpotRoutingId, ref ZlinkMsg part,
+        IntPtr handler, IntPtr userData, int flags,
+        ZlinkPartFlag partFlag, uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_request_router_part(IntPtr spot,
+        ref ZlinkRoutingId peerRoutingId, ref ZlinkMsg part,
+        IntPtr handler, IntPtr userData, int flags,
+        ZlinkPartFlag partFlag, uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_reply_spot_part(IntPtr spot,

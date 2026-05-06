@@ -14,8 +14,8 @@ inline bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor,
                                        int timeout_ms)
 {
     for (;;) {
-        const zlink::maybe_t<zlink::monitor_event_t> event =
-          monitor.recv (zlink::non_blocking_t {});
+        const std::optional<zlink::monitor_event_t> event =
+      monitor.recv (zlink::recv_flags_t::dontwait);
         if (!event)
             break;
         if (static_cast<uint64_t> (event->event) != event_type)
@@ -27,7 +27,7 @@ inline bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor,
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
     try {
-        poller.add (monitor, zlink::poll_event::pollin, NULL);
+        poller.add (monitor, zlink::poll_event::pollin, 0);
     }
     catch (const zlink::zlink_error_t &) {
         return false;
@@ -44,7 +44,8 @@ inline bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        const int rc = poller.wait_all (events, wait_ms);
+        events = poller.wait_all (wait_ms);
+        const int rc = static_cast<int> (events.size ());
         if (rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
@@ -54,8 +55,8 @@ inline bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor,
             continue;
 
         for (;;) {
-            const zlink::maybe_t<zlink::monitor_event_t> event =
-              monitor.recv (zlink::non_blocking_t {});
+            const std::optional<zlink::monitor_event_t> event =
+      monitor.recv (zlink::recv_flags_t::dontwait);
             if (!event)
                 break;
             if (static_cast<uint64_t> (event->event) != event_type)

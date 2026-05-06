@@ -45,11 +45,7 @@ void test_diagnostic_surface_uses_canonical_names ()
     zlink::message_t msg = zlink::message_t::from_string ("diagnostic");
     assert (msg.valid ());
     assert (msg.ref_count () >= 1);
-    assert (msg.get_property ("missing") == NULL);
-
-    std::string value;
-    msg.get_property ("missing", value);
-    assert (value.empty ());
+    assert (!msg.property ("missing").has_value ());
 }
 
 void test_routing_id_from_string_parses_hex ()

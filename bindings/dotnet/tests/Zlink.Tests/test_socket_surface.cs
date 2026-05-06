@@ -74,7 +74,7 @@ public sealed class test_socket_surface
             typeof(uint), typeof(byte[]), typeof(SendFlags)));
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Connect"));
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Disconnect"));
-        Assert.True(HasPublicInstanceMethod(typeof(StreamSocket), "DisconnectRid",
+        Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "DisconnectRid",
             typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(PairSocket), "DisconnectRid",
             typeof(RoutingId)));
@@ -196,7 +196,7 @@ public sealed class test_socket_surface
 
         Assert.False(HasPublicInstanceMethod(typeof(Context), "SetOption"));
         Assert.False(HasPublicInstanceMethod(typeof(Context), "GetOption"));
-        Assert.Null(typeof(ContextOptions).GetProperty("ThreadNamePrefix",
+        Assert.NotNull(typeof(ContextOptions).GetProperty("ThreadNamePrefix",
             BindingFlags.Instance | BindingFlags.Public));
 
         Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send",
@@ -222,6 +222,15 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "SetOption"));
         Assert.False(HasPublicInstanceMethod(typeof(SpotNode),
             "SetActorHighWaterMark"));
+        Assert.False(HasPublicInstanceMethod(typeof(SpotNode), "DestroyActor"));
+        Assert.False(HasPublicInstanceMethod(typeof(SpotNode),
+            "SetRouterHighWaterMark"));
+        Assert.False(HasPublicInstanceMethod(typeof(SpotNode),
+            "SetPubSubHighWaterMark"));
+        Assert.False(HasPublicInstanceMethod(typeof(SpotNode),
+            "SetRouterHighWaterMarkProfile"));
+        Assert.False(HasPublicInstanceMethod(typeof(SpotNode),
+            "SetPubSubHighWaterMarkProfile"));
         Assert.False(HasPublicInstanceMethod(typeof(Message),
             "GetPropertyString"));
         Assert.True(typeof(SocketBase).GetMethod(nameof(SocketBase.MonitorOpen))!
@@ -241,14 +250,14 @@ public sealed class test_socket_surface
     [Fact]
     public void actor_enums_match_core_contract_values()
     {
-        Assert.Equal(105, (int)RequestResult.NotConnected);
-        Assert.Equal(106, (int)RequestResult.NotAdmitted);
-        Assert.Equal(107, (int)RequestResult.Rejected);
-        Assert.Equal(108, (int)RequestResult.Conflict);
-        Assert.Equal(109, (int)RequestResult.InvalidArgument);
-        Assert.Equal(110, (int)RequestResult.InvalidState);
-        Assert.Equal(111, (int)RequestResult.ThreadViolation);
-        Assert.Equal(112, (int)RequestResult.InternalError);
+        Assert.Equal(105, (int)RequestResult.InternalError);
+        Assert.Equal(106, (int)RequestResult.Rejected);
+        Assert.Equal(107, (int)RequestResult.Conflict);
+        Assert.Equal(108, (int)RequestResult.Busy);
+        Assert.Equal(109, (int)RequestResult.NotConnected);
+        Assert.Equal(110, (int)RequestResult.InvalidArgument);
+        Assert.Equal(111, (int)RequestResult.InvalidState);
+        Assert.Equal(112, (int)RequestResult.NotSupported);
         Assert.Equal(5, (int)SpotDispatchEvent.ActorReadable);
         Assert.Equal(6, (int)SpotDispatchEvent.ActorJoinReadable);
         Assert.Equal(4, (int)SpotDispatchSubjectKind.Actor);
@@ -377,10 +386,14 @@ public sealed class test_socket_surface
                 .PropertyType);
         Assert.True(HasPublicInstanceMethod(typeof(SpotDispatchInfo),
             nameof(SpotDispatchInfo.DrainChannelReply)));
-        Assert.True(HasPublicInstanceMethod(typeof(SocketBase),
-            nameof(SocketBase.SetChannelName), typeof(string)));
-        Assert.True(HasPublicInstanceMethod(typeof(SocketBase),
-            nameof(SocketBase.GetChannelName)));
+        Assert.False(HasPublicInstanceMethod(typeof(SocketBase),
+            "SetChannelName", typeof(string)));
+        Assert.False(HasPublicInstanceMethod(typeof(SocketBase),
+            "GetChannelName"));
+        Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
+            nameof(DealerSocket.SetChannelName), typeof(string)));
+        Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
+            nameof(DealerSocket.GetChannelName)));
         Assert.False(HasPublicInstanceMethod(typeof(PubSocket), "TryPublish",
             typeof(string), typeof(Message)));
         Assert.False(HasPublicInstanceMethod(typeof(PubSocket), "TryPublish",
@@ -414,17 +427,17 @@ public sealed class test_socket_surface
         Assert.Null(registryTopologyQueryFilter.DefaultValue);
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
             nameof(Discovery.ResolveSpot), typeof(RoutingId)));
-        Assert.True(HasPublicInstanceMethod(typeof(Discovery),
-            nameof(Discovery.SetSpotOwnerSyncEnabled), typeof(bool)));
-        Assert.True(HasPublicInstanceMethod(typeof(Discovery),
-            nameof(Discovery.GetSpotOwnerSyncEnabled)));
+        Assert.False(HasPublicInstanceMethod(typeof(Discovery),
+            "SetSpotOwnerSyncEnabled", typeof(bool)));
+        Assert.False(HasPublicInstanceMethod(typeof(Discovery),
+            "GetSpotOwnerSyncEnabled"));
         Assert.Equal(typeof(bool),
             typeof(Discovery).GetProperty(nameof(Discovery.SpotOwnerSyncEnabled))!
                 .PropertyType);
-        Assert.True(HasPublicInstanceMethod(typeof(Discovery),
-            nameof(Discovery.SetActorRouteSyncEnabled), typeof(bool)));
-        Assert.True(HasPublicInstanceMethod(typeof(Discovery),
-            nameof(Discovery.GetActorRouteSyncEnabled)));
+        Assert.False(HasPublicInstanceMethod(typeof(Discovery),
+            "SetActorRouteSyncEnabled", typeof(bool)));
+        Assert.False(HasPublicInstanceMethod(typeof(Discovery),
+            "GetActorRouteSyncEnabled"));
         Assert.Equal(typeof(bool),
             typeof(Discovery).GetProperty(nameof(Discovery.ActorRouteSyncEnabled))!
                 .PropertyType);

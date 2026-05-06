@@ -93,11 +93,46 @@ Actor 주소를 다른 node에서 알고 있어야 하면 Actor owner Discovery�
 active route가 공개되지 않는다. **active route는 STREAM session bind 성공 시점에만
 publish된다.**
 
+로컬 node에서 id로 기존 Actor를 조회하려면:
+
+```c
+zlink_actor_ref_t ref;
+zlink_config_result_t rc = zlink_spot_node_actor_lookup(node, "player-42", &ref);
+if (rc == ZLINK_CONFIG_OK) {
+    /* Actor 존재 — ref 사용 가능 */
+} else if (rc == ZLINK_CONFIG_NOT_FOUND) {
+    /* 해당 id의 Actor 없음 */
+}
+```
+
 Remote Actor가 필요하면 caller node에서 `zlink_spot_node_create_remote_actor()`를
 사용한다. 이미 target node에 같은 Actor id가 있으면 새로 만들지 않고 existing
 결과를 받는다. target node가 admission handler에서 reject하면 request는 거부
 결과로 끝난다. remote create-or-get은 target Spot join handler를 거치지 않는다.
 새로 만들어진 remote Actor도 target node의 Entry Spot에 속한다.
+
+Remote Actor 생성 허용 여부를 제어하려면 `SpotNode`에 admission handler를 등록한다.
+handler는 이 node로 향하는 모든 `zlink_spot_node_create_remote_actor()` 요청에 대해
+동기적으로 실행된다:
+
+```c
+zlink_actor_admission_result_t my_admission(
+  void *node_,
+  const char *actor_id_,
+  const zlink_msg_t *message_,
+  void *userdata_)
+{
+    /* actor_id와 선택적 payload message를 검사 */
+    if (/* 거부 조건 */)
+        return ZLINK_ACTOR_ADMISSION_REJECT;
+    return ZLINK_ACTOR_ADMISSION_ACCEPT;
+}
+
+zlink_spot_node_actor_admission_handler(node, my_admission, userdata);
+```
+
+`NULL`을 handler로 전달하면 이전에 등록된 handler를 제거한다 (기본 동작은
+모든 remote create 요청 허용).
 
 ## 2. Spot join
 
@@ -169,6 +204,17 @@ zlink_spot_node_actor_destroy(node, &ref, 2000);
 bound STREAM session이 있는 상태에서 destroy하면 session Actor list 항목과 bound
 session ref가 먼저 정리된다. client connection 자체는 닫히지 않는다. connection까지
 함께 닫으려면 destroy 전에 `zlink_spot_node_actor_close_bound_session()`을 호출한다.
+
+recv가 트리거 없이 STREAM client에 메시지를 push하려면
+`zlink_spot_node_actor_send_bound_session_msg()`를 사용한다. Actor에 active bound
+session이 있어야 하며, 없으면 호출이 실패한다.
+
+```c
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 5);
+memcpy(zlink_msg_data(&msg), "push!", 5);
+zlink_spot_node_actor_send_bound_session_msg(node, &ref, &msg, 0);
+```
 
 ## 5. Actor C sample
 

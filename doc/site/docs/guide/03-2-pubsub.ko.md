@@ -1,3 +1,4 @@
+[English](03-2-pubsub.md) | [한국어](03-2-pubsub.ko.md)
 
 # PUB/SUB/XPUB/XSUB 발행-구독
 
@@ -53,7 +54,7 @@ flowchart LR
 ```
 
 - XSUB은 구독 상태 없이 PUB의 모든 메시지를 통과시킨다.
-- XPUB은 SUB의 구독 이벤트를 `zlink_subscription_event()`로 노출하여
+- XPUB은 SUB의 구독 이벤트를 `zlink_xpub_recv_part()`로 노출하여
   프록시가 구독 관리 로직(필터링, 로깅, 인가 등)을 삽입할 수 있다.
 - 일반 SUB/PUB으로는 이 중계 구조를 만들 수 없다.
 
@@ -72,7 +73,7 @@ flowchart LR
 ### 발행자 (PUB)
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
 /* Publish message -- dropped if there are no subscribers */
@@ -98,37 +99,38 @@ void on_topic(const zlink_routing_id_t *source_rid,
         zlink_msg_close(&parts[i]);
 }
 
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 
 /* Subscribe to topic -- set after connect */
 zlink_set_subscription(sub, "weather");
 
-/* Use zlink_subscribe() or zlink_subscribe_handler() to receive */
+/* Use zlink_subscribe() (typically inside a poller loop) to receive */
 ```
 
-> 참고: `core/tests/test_pubsub.cpp` — 빈 구독("") → 모든 메시지 수신
+> 참고: `core/tests/integration/test_pubsub.cpp` — 빈 구독("") → 모든 메시지 수신
 
 ### 송수신 요약
 
 | 소켓 | 방향 | 수신 API | 비고 |
 |------|------|----------|------|
-| PUB | 송신 전용 | N/A | 수신 불가 (`ENOTSUP`) |
-| SUB | 수신 전용 | `zlink_subscribe()` / `zlink_subscribe_handler()` | 토픽 + 데이터 분리 반환 |
-| XPUB | 양방향 | `zlink_subscription_event()` | 구독 이벤트 수신 |
-| XSUB | 수신 전용 | `zlink_subscribe()` / `zlink_subscribe_handler()` | 필터 없이 전체 수신 |
+| PUB | 송신 전용 | N/A | 수신 불가 (`ZLINK_RECV_NOT_SUPPORTED`) |
+| SUB | 수신 전용 | `zlink_subscribe()` | 토픽 + 데이터 분리 반환 |
+| XPUB | 양방향 | `zlink_xpub_recv_part()` | 구독 이벤트 수신 |
+| XSUB | 수신 전용 | `zlink_subscribe()` | 필터 없이 전체 수신 |
 
 > **참고:** PUB/SUB 계열 4소켓에서 `zlink_send()`/`zlink_recv()`는
-> 모두 `ENOTSUP`이다. 발행은 `zlink_publish()`, 수신은
-> `zlink_subscribe()` / `zlink_subscribe_handler()`를 사용한다.
+> 모두 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 이다. 발행은
+> `zlink_publish()`, 수신은 `zlink_subscribe()`를 사용한다.
 
-PUB/SUB 계열 소켓의 수신은 두 가지 모드를 지원한다:
+SUB / XSUB는 recv-only 타입이다. poller의 `ZLINK_POLLIN`과 함께 사용해
+서버 루프에서 readable을 관찰한 뒤 `zlink_subscribe()`로 토픽 메시지를
+가져온다. 별도 direct topic callback 표면은 제공하지 않는다.
 
-- **Pull 모드** (기본): `zlink_subscribe()`로 토픽과 데이터를 분리하여 직접 수신
-- **Callback 모드**: `zlink_subscribe_handler()`로 콜백을 등록하면 메시지 도착 시 자동 dispatch
-
-callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
-`EBUSY`로 실패한다.
+> **PUB/XPUB 기본값:** `ZLINK_PUB_OPT_NODROP` 의 기본값은 `1` 이다.
+> HWM 이 찼을 때 조용히 drop 하지 않고 `zlink_publish()` 가
+> `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. loss-tolerant 동작이 필요하면
+> `ZLINK_PUB_OPT_NODROP` 을 명시적으로 `0` 으로 설정한다.
 
 ??? example "Full Sample Code -- Recv"
 
@@ -143,21 +145,9 @@ callback attach 이후 `zlink_subscribe()`와 data-plane `ZLINK_POLLIN`은
     | Rust | [pubsub_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_recv_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_recv_sample/main.go) |
 
-??? example "Full Sample Code -- Callback"
-
-    | Language | Source |
-    |----------|--------|
-    | C | [pubsub_callback_sample.c](https://github.com/kairos-code-dev/zlink/blob/main/bindings/c/samples/pubsub_callback_sample.c) |
-    | C++ | [pubsub_callback_sample.cpp](https://github.com/kairos-code-dev/zlink/blob/main/bindings/cpp/samples/pubsub_callback_sample.cpp) |
-    | Java | [PubSubCallbackSample.java](https://github.com/kairos-code-dev/zlink/blob/main/bindings/java/samples/Zlink.Samples/src/main/java/dev/kairoscode/zlink/samples/PubSubCallbackSample.java) |
-    | Python | [pubsub_callback.py](https://github.com/kairos-code-dev/zlink/blob/main/bindings/python/examples/pubsub_callback.py) |
-    | Node | [pubsub_callback_sample.ts](https://github.com/kairos-code-dev/zlink/blob/main/bindings/node/examples/pubsub_callback_sample.ts) |
-    | C# | [Program.cs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/dotnet/samples/PubSubCallback/Program.cs) |
-    | Rust | [pubsub_callback_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/pubsub_callback_sample.rs) |
-    | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/pubsub_callback_sample/main.go) |
-
-> PUB의 송신 큐가 가득 차면(HWM) 블로킹 대신 메시지를 **드롭**한다.
-> 상세는 [성능 가이드](10-performance.ko.md)를 참고.
+> PUB의 송신 큐가 가득 차면(HWM) 기본값(`ZLINK_PUB_OPT_NODROP=1`)에서는
+> 조용히 drop하지 않고 `zlink_publish()`가 `ZLINK_SUBMIT_BACKPRESSURED`를
+> 반환한다. 상세는 [성능 가이드](10-performance.ko.md)를 참고.
 
 ## 3. 토픽 필터링
 
@@ -188,7 +178,7 @@ zlink_unset_subscription(sub, "sports");
 zlink_set_subscription(sub, "");
 ```
 
-> 참고: `core/tests/test_pubsub.cpp` — `zlink_set_subscription(subscriber, "")`
+> 참고: `core/tests/integration/test_pubsub.cpp` — `zlink_set_subscription(subscriber, "")`
 
 ## 4. 메시지 형식
 
@@ -218,12 +208,12 @@ zlink_publish(pub, "sensor:cpu", parts, 2, 0);
    parts[1]  = "73" */
 ```
 
-토픽은 wire에서 첫 프레임으로 전송되고, `zlink_subscribe()` /
-`zlink_subscribe_handler()`가 토픽과 데이터를 분리하여 반환한다.
+토픽은 와이어(wire, 프로토콜 전송 레벨)에서 첫 프레임으로 전송되고,
+`zlink_subscribe()`가 토픽과 데이터를 분리하여 반환한다.
 호출자가 토픽 프레임을 직접 조립할 필요 없다.
 
 > **참고:** `zlink_publish(pub, NULL, parts, ...)`처럼 topic을 NULL로 전달하면
-> parts[0]이 토픽 프레임으로 사용되는 레거시 호환 경로가 동작하지만,
+> parts[0]이 토픽 프레임으로 사용되는 호환 경로가 동작하지만,
 > 이 방식은 권장하지 않는다. 항상 `topic_id` 파라미터를 명시적으로 전달한다.
 
 ## 5. PUB/SUB 소켓 옵션
@@ -249,11 +239,11 @@ zlink_publish(pub, "sensor:cpu", parts, 2, 0);
 
 ```c
 /* PUB */
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
 /* SUB -- receive all messages */
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub, "tcp://127.0.0.1:5556");
 zlink_set_subscription(sub, "");
 
@@ -267,21 +257,21 @@ zlink_publish(pub, NULL, &msg, 1, 0);
 /* on_topic callback receives "test" asynchronously */
 ```
 
-> 참고: `core/tests/test_pubsub.cpp` — `test_tcp()`
+> 참고: `core/tests/integration/test_pubsub.cpp` — `test_tcp()`
 
 ### 패턴 2: 다중 SUB
 
 하나의 PUB에 여러 SUB가 연결. 각 SUB는 자신의 토픽만 수신.
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_PUB);
+void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:5556");
 
-void *sub_weather = zlink_socket(ctx, ZLINK_SUB);
+void *sub_weather = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub_weather, "tcp://127.0.0.1:5556");
 zlink_set_subscription(sub_weather, "weather");
 
-void *sub_sports = zlink_socket(ctx, ZLINK_SUB);
+void *sub_sports = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_connect(sub_sports, "tcp://127.0.0.1:5556");
 zlink_set_subscription(sub_sports, "sports");
 
@@ -293,7 +283,7 @@ zlink_set_subscription(sub_sports, "sports");
 SUB는 여러 PUB에 connect 가능. Fair-queue로 모든 PUB의 메시지를 수신.
 
 ```c
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_set_subscription(sub, "");
 zlink_connect(sub, "tcp://pub1:5556");
 zlink_connect(sub, "tcp://pub2:5557");
@@ -316,22 +306,23 @@ zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 #### XPUB_NODROP — drop 대신 backpressure
 
 `ZLINK_PUB_OPT_NODROP`을 활성화하면 lossy mode가 꺼진다. HWM 도달 시
-message를 drop하지 않고 `EAGAIN`을 반환하여 caller가 직접
+message를 drop하지 않고 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환하여 caller 가 직접
 backpressure를 제어할 수 있다.
 
 ```c
 /* Enable NODROP on XPUB */
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 int nodrop = 1;
 zlink_set_pub_option(xpub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
 
-/* On HWM, send returns EAGAIN instead of dropping */
+/* HWM 도달 시 드롭 대신 BACKPRESSURED 반환 */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 5);
 memcpy(zlink_msg_data(&msg), "hello", 5);
-int rc = zlink_publish(xpub, NULL, &msg, 1, ZLINK_DONTWAIT);
-if (rc == -1 && zlink_errno() == EAGAIN) {
-    /* HWM reached — retry or apply backpressure logic */
+zlink_submit_result_t rc = zlink_publish(
+    xpub, NULL, &msg, 1, ZLINK_DONTWAIT);
+if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
+    /* HWM 도달 — 재시도 또는 backpressure 처리 */
     zlink_msg_close(&msg);
 }
 ```
@@ -339,7 +330,7 @@ if (rc == -1 && zlink_errno() == EAGAIN) {
 | Mode | HWM 도달 시 동작 | 사용 시점 |
 |------|------------------|-----------|
 | 기본 (lossy) | Silent drop — error 없이 message 유실 | 최신 data만 중요한 경우 (sensor, tick) |
-| `XPUB_NODROP=1` | `EAGAIN` 반환 — caller가 제어 | Message 유실이 허용되지 않는 경우 |
+| `XPUB_NODROP=1` | `ZLINK_SUBMIT_BACKPRESSURED` 반환 — caller 가 제어 | Message 유실이 허용되지 않는 경우 |
 
 > `ZLINK_PUB_OPT_NODROP`은 XPUB socket 전용 option이다.
 > 일반 PUB에서는 사용할 수 없다.
@@ -367,12 +358,12 @@ zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "sunny", 5);
 zlink_publish(pub, "weather", &part, 1, 0);  /* OK */
 
-/* Using zlink_send() on PUB → ENOTSUP */
-zlink_send(pub, &part, 1, 0);  /* errno = ENOTSUP */
+/* PUB 에서 zlink_send() → ZLINK_SUBMIT_NOT_SUPPORTED 반환 */
+zlink_send(pub, &part, 1, 0);  /* returns ZLINK_SUBMIT_NOT_SUPPORTED */
 
-/* SUB: receive via zlink_subscribe(). Cannot send/publish */
-zlink_publish(sub, "weather", &part, 1, 0);  /* errno = ENOTSUP */
-zlink_send(sub, &part, 1, 0);               /* errno = ENOTSUP */
+/* SUB: zlink_subscribe() 로만 수신. send/publish 불가 */
+zlink_publish(sub, "weather", &part, 1, 0);  /* ZLINK_SUBMIT_NOT_SUPPORTED */
+zlink_send(sub, &part, 1, 0);                /* ZLINK_SUBMIT_NOT_SUPPORTED */
 ```
 
 ---
@@ -404,7 +395,7 @@ XSUB이 프록시에서 필요한 이유는 구독 상태 없이도 모든 메�
 | 항목 | PUB | XPUB |
 |------|-----|------|
 | **메시지 발행** | `zlink_publish()` | `zlink_publish()` (동일) |
-| **구독 이벤트** | 노출 안 함 | `zlink_subscription_event()`로 수신 |
+| **구독 이벤트** | 노출 안 함 | `zlink_xpub_recv_part()`로 수신 |
 
 XPUB는 어떤 client가 어떤 topic을 구독/해지했는지 알 수 있다.
 
@@ -414,12 +405,11 @@ XPUB는 어떤 client가 어떤 topic을 구독/해지했는지 알 수 있다.
 |----------|-----|-----|------|------|
 | `zlink_publish()` | 가능 | — | 가능 | — |
 | `zlink_subscribe()` | — | 가능 | — | 가능 |
-| `zlink_subscribe_handler()` | — | 가능 | — | 가능 |
 | `zlink_set_subscription()` | — | 가능 | — | 가능 |
-| `zlink_subscription_event()` | — | — | 가능 | — |
+| `zlink_xpub_recv_part()` | — | — | 가능 | — |
 | 로컬 필터 | N/A | **켜짐** | N/A | **꺼짐** |
 
-> `zlink_send()` / `zlink_recv()`는 PUB/SUB 계열 4소켓 모두 `ENOTSUP`이다.
+> `zlink_send()` / `zlink_recv()`는 PUB/SUB 계열 4소켓 모두 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 이다.
 > 발행은 `zlink_publish()`, 수신은 `zlink_subscribe()` 전용 API를 사용한다.
 
 > Proxy 패턴에서 XSUB/XPUB을 사용하는 방법은
@@ -442,22 +432,22 @@ zlink_set_subscription(xsub, "A");
 zlink_unset_subscription(xsub, "A");
 ```
 
-XPUB는 `zlink_subscription_event()`로 구독 프레임을 수신한다:
+XPUB는 `zlink_xpub_recv_part()`로 구독 프레임을 수신한다:
 
 ```c
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
-zlink_routing_id_t source_rid;
+const zlink_routing_id_t *source_rid = NULL;
 int subscribed = 0;
 char topic[256];
-size_t topic_len = sizeof(topic);
+size_t topic_len = 0;
 
-zlink_subscription_event(
-  xpub, &source_rid, &subscribed, topic, &topic_len, 0);
+zlink_recv_result_t rc = zlink_xpub_recv_part(
+  xpub, &source_rid, &subscribed, topic, sizeof(topic), &topic_len, 0);
 ```
 
-> 참고: `core/tests/test_xpub_manual.cpp` — `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
+> 참고: `core/tests/integration/test_xpub_manual.cpp` — `subscription1[] = {1, 'A'}`, `unsubscription1[] = {0, 'A'}`
 
 ## 10. XPUB 소켓 옵션
 
@@ -479,7 +469,7 @@ MANUAL 모드에서는 구독 프레임을 수신한 후, 애플리케이션이 
 int manual = 1;
 zlink_set_pub_option(xpub, ZLINK_PUB_OPT_MANUAL, &manual, sizeof(manual));
 
-/* zlink_subscription_event() returns subscribed=1, topic="A"
+/* zlink_xpub_recv_part() returns subscribed=1, topic="A"
    Then apply transformed subscription: */
 zlink_set_subscription(xpub, "XA");
 
@@ -495,7 +485,7 @@ memcpy(zlink_msg_data(&msg_xa), "XA", 2);
 zlink_publish(xpub, NULL, &msg_xa, 1, 0);  /* subscriber receives this */
 ```
 
-> 참고: `core/tests/test_xpub_manual.cpp` — `test_basic()`: A 구독 요청 → B로 변환
+> 참고: `core/tests/integration/test_xpub_manual.cpp` — `test_basic()`: A 구독 요청 → B로 변환
 
 ## 11. XPUB/XSUB 사용 패턴
 
@@ -505,11 +495,11 @@ XSUB(프론트엔드) + XPUB(백엔드)로 PUB/SUB 프록시를 구축한다.
 
 ```c
 /* Proxy frontend: PUBs connect here */
-void *xsub = zlink_socket(ctx, ZLINK_XSUB);
+void *xsub = zlink_socket(ctx, ZLINK_SOCKET_XSUB);
 zlink_bind(xsub, "tcp://*:5556");
 
 /* Proxy backend: SUBs connect here */
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
 /* Run proxy (forwards messages and subscriptions bidirectionally) */
@@ -525,13 +515,15 @@ int manual = 1;
 zlink_set_pub_option(xpub, ZLINK_PUB_OPT_MANUAL, &manual, sizeof(manual));
 
 for (;;) {
-    zlink_routing_id_t source_rid;
+    const zlink_routing_id_t *source_rid = NULL;
     int subscribed = 0;
     char topic[256];
-    size_t topic_len = sizeof(topic);
+    size_t topic_len = 0;
 
-    zlink_subscription_event(
-      xpub, &source_rid, &subscribed, topic, &topic_len, 0);
+    zlink_recv_result_t rc = zlink_xpub_recv_part(
+      xpub, &source_rid, &subscribed, topic, sizeof(topic), &topic_len, 0);
+    if (rc != ZLINK_RECV_OK)
+        break;
 
     if (subscribed) {
         /* Register subscription */
@@ -548,24 +540,26 @@ for (;;) {
 }
 ```
 
-> 참고: `core/tests/test_xpub_manual.cpp` — `test_xpub_proxy_unsubscribe_on_disconnect()`
+> 참고: `core/tests/integration/test_xpub_manual.cpp` — `test_xpub_proxy_unsubscribe_on_disconnect()`
 
 ### 패턴 3: 구독 모니터링
 
 XPUB로 어떤 클라이언트가 어떤 토픽을 구독하는지 관찰.
 
 ```c
-void *xpub = zlink_socket(ctx, ZLINK_XPUB);
+void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
 zlink_bind(xpub, "tcp://*:5557");
 
 for (;;) {
-    zlink_routing_id_t source_rid;
+    const zlink_routing_id_t *source_rid = NULL;
     int subscribed = 0;
     char topic[256];
-    size_t topic_len = sizeof(topic);
+    size_t topic_len = 0;
 
-    zlink_subscription_event(
-      xpub, &source_rid, &subscribed, topic, &topic_len, 0);
+    zlink_recv_result_t rc = zlink_xpub_recv_part(
+      xpub, &source_rid, &subscribed, topic, sizeof(topic), &topic_len, 0);
+    if (rc != ZLINK_RECV_OK)
+        break;
     printf("%s: %.*s\n", subscribed ? "New subscription" : "Unsubscription",
            (int) topic_len, topic);
 }
@@ -579,11 +573,11 @@ SUB가 연결을 끊으면 XPUB에 자동으로 unsubscribe 프레임이 전달�
 /* After SUB disconnects */
 zlink_close(sub);
 
-/* The next zlink_subscription_event() returns
+/* The next zlink_xpub_recv_part() returns
    subscribed=0 and the previously subscribed topic */
 ```
 
-> 참고: `core/tests/test_xpub_manual.cpp` — `test_xpub_proxy_unsubscribe_on_disconnect()`
+> 참고: `core/tests/integration/test_xpub_manual.cpp` — `test_xpub_proxy_unsubscribe_on_disconnect()`
 
 ## 12. 주의사항
 
@@ -592,7 +586,7 @@ zlink_close(sub);
 구독 메시지는 비동기로 전파된다. 구독 직후 발행된 메시지는 수신하지 못할 수 있다.
 
 ```c
-void *sub = zlink_socket(ctx, ZLINK_SUB);
+void *sub = zlink_socket(ctx, ZLINK_SOCKET_SUB);
 zlink_set_subscription(sub, "");
 zlink_connect(sub, "tcp://pub1:5556");
 zlink_connect(sub, "tcp://pub2:5557");
@@ -606,7 +600,7 @@ MANUAL 모드에서 구독 프레임을 수신한 후 `zlink_set_subscription()`
 
 여러 SUB가 같은 토픽을 구독하면, 모든 SUB가 해제될 때까지 XPUB의 구독이 유지된다.
 
-> 참고: `core/tests/test_xpub_manual.cpp` — `test_missing_subscriptions()`: 두 구독자를 순차 처리하여 누락 방지
+> 참고: `core/tests/integration/test_xpub_manual.cpp` — `test_missing_subscriptions()`: 두 구독자를 순차 처리하여 누락 방지
 
 ---
 [← PAIR](03-1-pair.ko.md) | [DEALER →](03-3-dealer.ko.md)

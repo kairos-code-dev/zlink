@@ -12,8 +12,12 @@ import java.util.function.BiConsumer;
 
 /**
  * Direct bridge for package-private binding internals used by service
- * subpackages.
+ * subpackages. This is not public contract and must not be used by
+ * applications.
+ *
+ * @hidden
  */
+@Deprecated(forRemoval = true)
 public final class InternalAccess {
     private InternalAccess() {
     }

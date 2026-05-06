@@ -324,6 +324,10 @@ if(ZLINK_CPP_BUILD_TESTS)
     tests/contract/test_cpp_contract_service.cpp
   )
   add_cpp_contract_test(
+    test_cpp_contract_actor_header
+    tests/contract/test_cpp_contract_actor_header.cpp
+  )
+  add_cpp_contract_test(
     test_cpp_contract_behavior
     tests/contract/test_cpp_contract_behavior.cpp
   )

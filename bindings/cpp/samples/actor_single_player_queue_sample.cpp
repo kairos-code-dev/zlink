@@ -2,19 +2,17 @@
 
 #include "actor_sample_common.hpp"
 
-static void join_only_dispatch (void *,
-                                const zlink_spot_dispatch_info_t *info_,
-                                void *userdata_)
+static void join_only_dispatch (
+  actor_sample_dispatch_state_t &state_,
+  const zlink::spot_dispatch_info_t &info_)
 {
-    actor_sample_dispatch_state_t *state =
-      static_cast<actor_sample_dispatch_state_t *> (userdata_);
-    if (info_->event != ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE)
+    if (info_.event != zlink::spot_dispatch_event_t::actor_join_readable)
         return;
 
-    auto request = state->spot->recv_actor_join (zlink::recv_flags_t::dontwait);
+    auto request = state_.spot->recv_actor_join (zlink::recv_flags_t::dontwait);
     assert (request.has_value ());
     zlink::message_t reply = zlink::message_t::from_string ("accepted");
-    state->spot->reply_actor_join (request->first, true, reply);
+    state_.spot->reply_actor_join (request->first, true, reply);
 }
 
 int main ()
@@ -30,8 +28,13 @@ int main ()
     stream.bind_actor (node, session, ref, std::chrono::milliseconds (1000));
 
     actor_sample_capture_t first_capture;
-    actor_sample_dispatch_state_t first_state {&first_spot, &node, &first_capture};
-    first_spot.on_dispatch_event (&join_only_dispatch, &first_state);
+    actor_sample_dispatch_state_t first_state {
+      &first_spot, &node, &actor, &first_capture};
+    first_spot.on_dispatch_event (
+      [&first_state] (zlink::service::spot_t &,
+                      const zlink::spot_dispatch_info_t &info) {
+          join_only_dispatch (first_state, info);
+      });
     zlink::message_t join_first = zlink::message_t::from_string ("join-first");
     assert (actor.join (
       first_spot, join_first,
@@ -54,8 +57,12 @@ int main ()
 
     actor_sample_capture_t second_capture;
     actor_sample_dispatch_state_t second_state {&second_spot, &node,
-                                                &second_capture};
-    second_spot.on_dispatch_event (&actor_sample_dispatch, &second_state);
+                                                &actor, &second_capture};
+    second_spot.on_dispatch_event (
+      [&second_state] (zlink::service::spot_t &,
+                       const zlink::spot_dispatch_info_t &info) {
+          actor_sample_dispatch (second_state, info);
+      });
     zlink::message_t join_second = zlink::message_t::from_string ("join-second");
     assert (node.join_actor (
       ref, second_spot.routing_id (), join_second,

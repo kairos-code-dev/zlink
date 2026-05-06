@@ -1,9 +1,10 @@
+[English](09-message-api.md) | [한국어](09-message-api.ko.md)
 
 # Message API Reference
 
-> **Normative status: Illustrative — Needs refresh.**
-> 이 가이드는 설명 목적의 문서이며, API 명칭/시그니처의 정확한 기준은
-> `core/include/zlink.h`와 `bindings/README.md`다.
+> **Normative status: Illustrative.**
+> This guide is for explanation purposes. The authoritative source for
+> API names and signatures is `core/include/zlink.h` and `bindings/README.md`.
 
 ## 1. Overview
 
@@ -68,7 +69,27 @@ zlink_send(socket, &msg, 1, 0);
 
 **When to use:** When you want to avoid copying large data. Delegates buffer deallocation timing to the library.
 
-> Reference: `core/tests/test_msg_ffn.cpp` — Verifies free function callback behavior
+> Reference: `core/tests/integration/test_msg_ffn.cpp` — Verifies free function callback behavior
+
+#### zlink_msg_adopt — Adopt Without Init+Move
+
+Transfers ownership from `src_` to an already-initialized `dest_` in a single
+call, equivalent to `zlink_msg_move` but without requiring a prior `zlink_msg_init`.
+After the call `src_` is an empty message and `dest_` holds the content.
+
+```c
+zlink_msg_t src, dest;
+zlink_msg_init_size(&src, 32);
+memcpy(zlink_msg_data(&src), "data", 4);
+
+/* dest need not be initialized first */
+zlink_msg_adopt(&dest, &src);
+/* src is now empty; dest holds the 32-byte buffer */
+zlink_msg_close(&dest);
+```
+
+**When to use:** Binding implementations that construct messages in a temporary
+and then hand them to a caller-owned slot without an extra `zlink_msg_init` step.
 
 ### 3.2 Data Access
 
@@ -77,9 +98,9 @@ void *data = zlink_msg_data(&msg);
 size_t size = zlink_msg_size(&msg);
 ```
 
-> **Removed:** `zlink_msg_more()` and `ZLINK_MORE` have been removed from the header.
-> With the multipart parts-array API, the `more` flag is no longer needed in
-> application code.
+> **Note:** The header does not expose `zlink_msg_more()` or
+> `ZLINK_MORE`. Application code uses the multipart parts-array API
+> instead of a per-message `more` flag.
 
 ### 3.3 Sending
 
@@ -91,32 +112,33 @@ memcpy(zlink_msg_data(&parts[0]), "header", 6);
 zlink_msg_init_size(&parts[1], 4);
 memcpy(zlink_msg_data(&parts[1]), "body", 4);
 
-int rc = zlink_send(socket, parts, 2, 0);
-if (rc == -1) {
+zlink_submit_result_t rc = zlink_send(socket, parts, 2, 0);
+if (rc != ZLINK_SUBMIT_OK) {
     /* Failure: caller still owns parts */
     for (size_t i = 0; i < 2; i++)
         zlink_msg_close(&parts[i]);
 }
 ```
 
-> **Legacy:** `zlink_msg_send()` is still present in the header but planned for
-> removal. Use `zlink_send()` with a parts array instead.
 
 ### 3.4 Receiving
 
-Messages are received via handler callbacks attached to the socket or service handle after creation (via `zlink_recv_handler` or `zlink_subscribe_handler`). The callback provides `zlink_msg_t` parts directly:
+Messages are pulled with `zlink_recv()` / `zlink_subscribe()` /
+`zlink_router_recv()` (typically inside a poller loop). `zlink_recv_handler()`
+is kept only for raw `STREAM`. The recv functions return `zlink_msg_t`
+parts directly:
 
 ```c
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
+zlink_routing_id_t source_rid;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+if (zlink_recv(socket, &source_rid, &parts, &part_count, 0) == ZLINK_RECV_OK) {
     printf("Received: %.*s\n",
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
 
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
+    free(parts);
 }
 ```
 
@@ -142,8 +164,8 @@ zlink_msg_close(&msg);
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "Hello", 5);
-int rc = zlink_send(socket, &part, 1, 0);
-if (rc != -1) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, 0);
+if (rc == ZLINK_SUBMIT_OK) {
     /* Success: part is now empty. Calling close is safe but unnecessary */
 }
 
@@ -152,7 +174,7 @@ zlink_msg_t part2;
 zlink_msg_init_size(&part2, 5);
 memcpy(zlink_msg_data(&part2), "Hello", 5);
 rc = zlink_send(socket, &part2, 1, ZLINK_DONTWAIT);
-if (rc == -1) {
+if (rc != ZLINK_SUBMIT_OK) {
     /* Failure: part2 is still valid. Must close */
     zlink_msg_close(&part2);
 }
@@ -186,7 +208,7 @@ void notify_free(void *data, void *hint) {
 }
 ```
 
-> Reference: `core/tests/test_msg_ffn.cpp` — `ffn()` callback writes "freed" to hint
+> Reference: `core/tests/integration/test_msg_ffn.cpp` — `ffn()` callback writes "freed" to hint
 
 ### When Free Functions Are Called
 
@@ -209,7 +231,7 @@ zlink_msg_close(&msg);
 zlink_msg_close(&copy);  /* my_free called when last reference is released */
 ```
 
-> Reference: `core/tests/test_msg_ffn.cpp` — close/send/copy scenarios
+> Reference: `core/tests/integration/test_msg_ffn.cpp` — close/send/copy scenarios
 
 ### Constant Data with zlink_msg_init_data
 
@@ -229,7 +251,7 @@ zlink_msg_init_data(&parts[1], (void *)"foobar", 6, NULL, NULL);
 zlink_send(socket, parts, 2, 0);
 ```
 
-> Reference: `core/tests/test_msg_flags.cpp` — `test_shared_const()`
+> Reference: `core/tests/integration/test_msg_flags.cpp` — `test_shared_const()`
 
 ## 6. Multipart Message Patterns in Practice
 
@@ -262,7 +284,7 @@ void on_request(const zlink_routing_id_t *source_rid,
 }
 ```
 
-> Reference: `core/tests/test_msg_flags.cpp` — `test_more()`: DEALER→ROUTER multipart
+> Reference: `core/tests/integration/test_msg_flags.cpp` — `test_more()`: DEALER→ROUTER multipart
 
 ### Pattern 2: Topic + Data (PUB/SUB)
 
@@ -328,7 +350,7 @@ zlink_msg_close(&original);
 zlink_msg_close(&copy);  /* Actual memory freed when last reference is released */
 ```
 
-> Reference: `core/tests/test_msg_flags.cpp` — `test_shared_refcounted()`: Verifying shared property after copy
+> Reference: `core/tests/integration/test_msg_flags.cpp` — `test_shared_refcounted()`: Verifying shared property after copy
 
 ### Storage Refcount — zlink_msg_refcnt
 
@@ -356,7 +378,7 @@ zlink_msg_init_data(&const_msg, (void *)"TEST", 5, NULL, NULL);
 refcnt = zlink_msg_refcnt(&const_msg);  /* 1: not internally refcounted */
 ```
 
-> Reference: `core/tests/test_msg_flags.cpp` — `test_shared_const()`: shared property of constant messages
+> Reference: `core/tests/integration/test_msg_flags.cpp` — `test_shared_const()`: shared property of constant messages
 
 ## 8. Error Handling
 
@@ -367,13 +389,13 @@ zlink_msg_t part;
 zlink_msg_init_size(&part, 100);
 memcpy(zlink_msg_data(&part), data, 100);
 
-int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
-if (rc == -1) {
-    if (errno == EAGAIN) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
+if (rc != ZLINK_SUBMIT_OK) {
+    if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
         /* HWM exceeded: retry later */
-    } else if (errno == ENOTSUP) {
+    } else if (rc == ZLINK_SUBMIT_NOT_SUPPORTED) {
         /* Send not supported on this socket (e.g., SUB socket) */
-    } else if (errno == ETERM) {
+    } else if (rc == ZLINK_SUBMIT_TERMINATED) {
         /* Context terminated */
     }
     /* On failure, part is still valid -> must close */
@@ -416,103 +438,31 @@ For ROUTER directed sends, use `zlink_send_rid()`:
 zlink_send_rid(router, &target_rid, parts, part_count, 0);
 ```
 
-> **Legacy:** `zlink_msg_send()` is still present in the header but planned for
-> removal. Migrate all call sites to `zlink_send()` with a parts array.
 
-## 10. Request-Reply And Metadata Change
+## 10. Request-Reply and Metadata
 
-The older message-level request-reply and per-message metadata APIs are no
-longer active.
+`zlink_msg_t` is a payload part container. It does not carry
+request-reply or per-message metadata fields.
 
-Removed:
+Request-reply uses dedicated typed API surfaces:
 
-- `zlink_msg_set_request`
-- `zlink_msg_set_reply`
-- `zlink_msg_get_request_info`
-- `zlink_msg_set_metadata`
-- `zlink_msg_get_metadata`
-- `zlink_msg_clear_metadata`
+- **DEALER/ROUTER**: `zlink_dealer_request()`, `zlink_router_request()`,
+  `zlink_router_reply()`, `zlink_router_recv()`
+  -- see [DEALER Guide](03-3-dealer.md), [ROUTER Guide](03-4-router.md)
+- **SPOT routed request-reply**: `zlink_spot_reply_spot()`,
+  `zlink_spot_reply_router()`,
+  `zlink_spot_handler()`, `zlink_spot_recv()`
+  -- see [SPOT Guide](07-3-spot.md)
+- **SPOT channel request-reply**: `zlink_spot_request_channel()`,
+  `zlink_spot_send_channel()` -- see [SPOT Guide](07-3-spot.md)
 
-Current request-reply is opened through typed socket APIs such as
-`zlink_dealer_request`, `zlink_router_request`, `zlink_router_reply`,
-`zlink_router_handler`, and `zlink_router_recv`.
+From the message API perspective, the key points are:
 
-Current SPOT direct delivery and SPOT request-reply are also handled through
-typed SPOT surfaces rather than `zlink_msg_t` markers.
-
-See:
-
-- `doc/spec/core/socket/README.md`
-- `doc/spec/core/service/spot.md`
-- `doc/internals/protocol-zmp.md`
-
-## 11. Per-Message Metadata
-
-Each message can carry application-defined key-value metadata that is
-serialized to the wire and restored on recv. This is independent of ZMP
-protocol metadata (`zlink_msg_gets`) which is per-connection.
-
-### Setting Metadata
-
-```c
-/* Application-defined metadata keys */
-enum my_meta {
-    META_TRACE_ID  = 0x0100,
-    META_PRIORITY  = 0x0101,
-    META_TIMESTAMP = 0x0102,
-};
-
-zlink_msg_t msg;
-zlink_msg_init_size(&msg, 11);
-memcpy(zlink_msg_data(&msg), "hello world", 11);
-
-/* Attach trace-id */
-uint8_t trace_id[16] = { /* ... */ };
-zlink_msg_set_metadata(&msg, META_TRACE_ID, trace_id, 16);
-
-/* Attach priority */
-uint8_t priority = 3;
-zlink_msg_set_metadata(&msg, META_PRIORITY, &priority, 1);
-
-zlink_send(socket, &msg, 1, 0);
-```
-
-### Reading Metadata
-
-```c
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    size_t trace_len;
-    const void *trace = zlink_msg_get_metadata(&parts[0],
-                                                META_TRACE_ID, &trace_len);
-    if (trace) {
-        /* use trace_id bytes (trace, trace_len) */
-    }
-
-    size_t prio_len;
-    const void *prio = zlink_msg_get_metadata(&parts[0],
-                                               META_PRIORITY, &prio_len);
-    if (prio && prio_len == 1) {
-        uint8_t priority = *(const uint8_t *)prio;
-        /* use priority */
-    }
-
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-```
-
-### Key Points
-
-- Keys `0x0000`--`0x00FF` are reserved for zlink. User keys start at `0x0100`.
-- Messages with no metadata have zero wire overhead.
-- `msg_copy` deep-copies metadata. `msg_move` transfers metadata (source becomes empty).
-- `msg_close` frees the metadata storage.
-- `msg_data()` / `msg_size()` return user payload only — metadata header is not included.
-- `get_metadata` returns NULL for absent keys (no error).
-- Metadata and request-reply fields are independent and can coexist on the same message.
+- Payload is built with `zlink_msg_t` (init, send, close).
+- Request-reply context lives in wire control parts, not message fields.
+- Message metadata serialization is not a public contract.
+- If application-level metadata is needed (trace-id, priority, etc.),
+  encode it as a multipart payload frame.
 
 ---
 [← Routing ID](08-routing-id.md) | [Performance →](10-performance.md)

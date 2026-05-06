@@ -152,11 +152,16 @@ tasks.register('runMsgInteropFfmVsJniMicrobench', JavaExec) {
 }
 
 javadoc {
+    source = sourceSets.main.allJava.matching {
+        exclude 'dev/kairoscode/zlink/internal/**'
+        exclude 'dev/kairoscode/zlink/InternalAccess.java'
+    }
     options.encoding = 'UTF-8'
     options.docTitle = 'zlink Java Binding API'
     options.windowTitle = 'zlink Java Binding'
     options.memberLevel = JavadocMemberLevel.PUBLIC
-    exclude 'dev/kairoscode/zlink/internal/**'
+    options.addStringOption('sourcepath',
+        sourceSets.main.java.srcDirs*.absolutePath.join(File.pathSeparator))
 }
 
 publishing {

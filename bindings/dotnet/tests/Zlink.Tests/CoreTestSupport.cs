@@ -248,8 +248,13 @@ internal static class CoreTestSupport
         {
             try
             {
-                SubscriptionEvent ev = socket.ReceiveSubscriptionEvent(
+                SubscriptionEvent? ev = socket.ReceiveSubscriptionEvent(
                     RecvFlags.DontWait);
+                if (ev == null)
+                {
+                    Thread.Sleep(10);
+                    continue;
+                }
                 subscribed = ev.Subscribed;
                 return Encoding.UTF8.GetBytes(ev.Topic);
             }
@@ -269,8 +274,8 @@ internal static class CoreTestSupport
         {
             try
             {
-                _ = socket.ReceiveSubscriptionEvent(RecvFlags.DontWait);
-                return false;
+                if (socket.ReceiveSubscriptionEvent(RecvFlags.DontWait) != null)
+                    return false;
             }
             catch (ZlinkRecvException)
             {

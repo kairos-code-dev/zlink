@@ -42,7 +42,58 @@ public enum SpotNodeSocketType
 
 public sealed class SpotNodeOptions
 {
+    private SpotNode? _owner;
+    private AutoHwmProfile _routerHwmProfile = AutoHwmProfile.Balanced;
+    private int _routerHighWaterMark;
+    private AutoHwmProfile _pubSubHwmProfile = AutoHwmProfile.Balanced;
+    private int _pubSubHighWaterMark;
+
     public SpotNodeMode Mode { get; init; } = SpotNodeMode.All;
+
+    public AutoHwmProfile RouterHwmProfile
+    {
+        get => _routerHwmProfile;
+        set
+        {
+            _routerHwmProfile = value;
+            _owner?.SetRouterHighWaterMarkProfile(value);
+        }
+    }
+
+    public int RouterHighWaterMark
+    {
+        get => _routerHighWaterMark;
+        set
+        {
+            _routerHighWaterMark = value;
+            _owner?.SetRouterHighWaterMark(value);
+        }
+    }
+
+    public AutoHwmProfile PubSubHwmProfile
+    {
+        get => _pubSubHwmProfile;
+        set
+        {
+            _pubSubHwmProfile = value;
+            _owner?.SetPubSubHighWaterMarkProfile(value);
+        }
+    }
+
+    public int PubSubHighWaterMark
+    {
+        get => _pubSubHighWaterMark;
+        set
+        {
+            _pubSubHighWaterMark = value;
+            _owner?.SetPubSubHighWaterMark(value);
+        }
+    }
+
+    internal void AttachOwner(SpotNode owner)
+    {
+        _owner = owner;
+    }
 }
 
 public sealed record SpotNodeSocketSnapshotFilter(
@@ -78,6 +129,24 @@ public sealed record SpotNodeSocketSnapshotEntry(
     }
 }
 
+public sealed class SpotOptions
+{
+    private readonly Spot _spot;
+
+    internal SpotOptions(Spot spot)
+    {
+        _spot = spot;
+    }
+
+    public TimeSpan? RequestTimeout
+    {
+        get => CommonSocketOptions.DecodeDuration(
+            _spot.GetOption(SpotOption.RequestTimeout));
+        set => _spot.SetOption(SpotOption.RequestTimeout,
+            CommonSocketOptions.EncodeDuration(value, nameof(value)));
+    }
+}
+
 public sealed class SpotNode : IDisposable, IAsyncDisposable
 {
     private IntPtr _handle;
@@ -87,6 +156,10 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     private readonly object _spotsGate = new();
     private ActorAdmissionHandler? _actorAdmissionHandler;
     private NativeMethods.ZlinkActorAdmissionHandlerDelegate? _actorAdmissionNative;
+    private Action? _sendReadyHandler;
+    private SynchronizationContext? _sendReadyHandlerContext;
+    private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
+    public SpotNodeOptions Options { get; }
     public SpotNodePublisherOptions PublisherOptions { get; }
     public SpotNodeSubscriberOptions SubscriberOptions { get; }
 
@@ -99,6 +172,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     {
         if (context == null)
             throw new ArgumentNullException(nameof(context));
+        Options = options ?? new SpotNodeOptions();
         if (options == null)
         {
             _handle = NativeMethods.zlink_spot_node_new(context.Handle,
@@ -108,7 +182,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         {
             ZlinkSpotNodeOptions nativeOptions = new()
             {
-                Mode = options.Mode
+                Mode = Options.Mode
             };
             _handle = NativeMethods.zlink_spot_node_new(context.Handle,
                 ref nativeOptions);
@@ -117,6 +191,9 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         PublisherOptions = new SpotNodePublisherOptions(this);
         SubscriberOptions = new SpotNodeSubscriberOptions(this);
+        Options.AttachOwner(this);
+        if (options != null)
+            ApplyOptions(Options);
     }
 
     internal IntPtr Handle => _handle;
@@ -257,6 +334,30 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         return spot;
     }
 
+    public Spot EntrySpot()
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_spot_node_entry_spot(_handle,
+            out IntPtr spotHandle);
+        ZlinkException.ThrowConfigIfError(rc);
+        Spot spot = new(this, spotHandle, ownsHandle: true);
+        RegisterSpot(spot);
+        return spot;
+    }
+
+    public Spot LookupSpot(RoutingId spotRid)
+    {
+        EnsureNotDisposed();
+        ZlinkRoutingId nativeRid = NativeHelpers.WriteRoutingId(
+            spotRid.ToByteArray());
+        int rc = NativeMethods.zlink_spot_node_spot_lookup(_handle,
+            ref nativeRid, out IntPtr spotHandle);
+        ZlinkException.ThrowConfigIfError(rc);
+        Spot spot = new(this, spotHandle, ownsHandle: true);
+        RegisterSpot(spot);
+        return spot;
+    }
+
     public Actor Actor(string actorId)
     {
         ActorInterop.ValidateActorId(actorId, nameof(actorId));
@@ -313,7 +414,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         }
     }
 
-    public void DestroyActor(ActorRef actor, TimeSpan timeout = default)
+    internal void DestroyActor(ActorRef actor, TimeSpan timeout = default)
     {
         EnsureNotDisposed();
         ZlinkActorRef nativeActor = ActorInterop.ToNative(actor);
@@ -321,6 +422,28 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             ref nativeActor, ActorInterop.NormalizeTimeout(timeout));
         if (rc != 0)
             throw ZlinkException.CreateRequestException(NativeMethods.zlink_errno());
+    }
+
+    public void DestroyRemoteActor(ActorRef actor, TimeSpan timeout = default)
+    {
+        DestroyActor(actor, timeout);
+    }
+
+    public void OnSendReady(Action handler)
+    {
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
+        EnsureNotDisposed();
+
+        SynchronizationContext? context = SynchronizationContext.Current;
+        var native = new NativeMethods.ZlinkSendReadyHandlerDelegate(
+            OnNativeSendReady);
+        int rc = NativeMethods.zlink_send_ready_handler(_handle, native,
+            IntPtr.Zero);
+        ZlinkException.ThrowHandlerIfError(rc);
+        _sendReadyHandler = handler;
+        _sendReadyHandlerContext = context;
+        _sendReadyHandlerNative = native;
     }
 
     public void OnActorAdmission(ActorAdmissionHandler handler)
@@ -397,29 +520,49 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         }
     }
 
-    public void JoinActor(ActorRef actor, RoutingId destSpotRid, Message message,
+    public bool JoinActor(ActorRef actor, RoutingId destSpotRid, Message message,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan? timeout = null, SendFlags flags = SendFlags.None)
     {
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
-        ActorInterop.AttachPartsCallback(
-            () => JoinActorAsync(actor, destSpotRid, message,
-                timeout ?? TimeSpan.Zero, flags),
-            callback);
+        try
+        {
+            ActorInterop.AttachPartsCallback(
+                () => JoinActorAsync(actor, destSpotRid, message,
+                    timeout ?? TimeSpan.Zero, flags),
+                callback);
+            return true;
+        }
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
+        {
+            return false;
+        }
     }
 
-    public void JoinActor(ActorRef actor, RoutingId destNodeRid,
+    public bool JoinActor(ActorRef actor, RoutingId destNodeRid,
         RoutingId destSpotRid, Message message,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan? timeout = null, SendFlags flags = SendFlags.None)
     {
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
-        ActorInterop.AttachPartsCallback(
-            () => JoinActorAsync(actor, destNodeRid, destSpotRid, message,
-                timeout ?? TimeSpan.Zero, flags),
-            callback);
+        try
+        {
+            ActorInterop.AttachPartsCallback(
+                () => JoinActorAsync(actor, destNodeRid, destSpotRid, message,
+                    timeout ?? TimeSpan.Zero, flags),
+                callback);
+            return true;
+        }
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
+        {
+            return false;
+        }
     }
 
     public void LeaveActor(ActorRef actor, RoutingId destSpotRid,
@@ -477,24 +620,34 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         }
     }
 
-    public void SetRouterHighWaterMark(int value)
+    internal void SetRouterHighWaterMark(int value)
     {
         SetAdmissionOption(SpotNodeOption.RouterHwm, value);
     }
 
-    public void SetPubSubHighWaterMark(int value)
+    internal void SetPubSubHighWaterMark(int value)
     {
         SetAdmissionOption(SpotNodeOption.PubSubHwm, value);
     }
 
-    public void SetRouterHighWaterMarkProfile(AutoHwmProfile profile)
+    internal void SetRouterHighWaterMarkProfile(AutoHwmProfile profile)
     {
         SetAdmissionOption(SpotNodeOption.RouterHwmProfile, (int)profile);
     }
 
-    public void SetPubSubHighWaterMarkProfile(AutoHwmProfile profile)
+    internal void SetPubSubHighWaterMarkProfile(AutoHwmProfile profile)
     {
         SetAdmissionOption(SpotNodeOption.PubSubHwmProfile, (int)profile);
+    }
+
+    private void ApplyOptions(SpotNodeOptions options)
+    {
+        SetRouterHighWaterMarkProfile(options.RouterHwmProfile);
+        SetPubSubHighWaterMarkProfile(options.PubSubHwmProfile);
+        if (options.RouterHighWaterMark > 0)
+            SetRouterHighWaterMark(options.RouterHighWaterMark);
+        if (options.PubSubHighWaterMark > 0)
+            SetPubSubHighWaterMark(options.PubSubHighWaterMark);
     }
 
     public void SetTlsServer(string certPath, string keyPath,
@@ -783,6 +936,9 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             _channelDealers.Clear();
         _actorAdmissionHandler = null;
         _actorAdmissionNative = null;
+        _sendReadyHandler = null;
+        _sendReadyHandlerContext = null;
+        _sendReadyHandlerNative = null;
 
         IntPtr originalHandle = _handle;
         IntPtr handle = _handle;
@@ -801,6 +957,25 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
 
         if (throwOnError && firstError != null)
             throw firstError;
+    }
+
+    private void OnNativeSendReady(IntPtr subject, IntPtr userData)
+    {
+        Action? handler = _sendReadyHandler;
+        SynchronizationContext? context = _sendReadyHandlerContext;
+        if (handler == null)
+            return;
+        CallbackDelivery.Post(context, () =>
+        {
+            try
+            {
+                handler();
+            }
+            catch (Exception ex)
+            {
+                Runtime.ReportUnhandledCallbackException(ex);
+            }
+        });
     }
 
     private SpotNodePeerEntry[] ReadPeerEntries(IntPtr filterPtr)
@@ -988,6 +1163,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     private NativeMethods.ZlinkSpotRequestHandlerDelegate? _routedReceiveHandlerNative;
     private NativeMethods.ZlinkSpotDispatchEventHandlerDelegate? _dispatchEventHandlerNative;
     internal IntPtr Handle => _handle;
+    public SpotOptions Options { get; }
 
     internal Spot(SpotNode node)
     {
@@ -1000,6 +1176,20 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         if (_handle == IntPtr.Zero)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         _ownsHandle = true;
+        Options = new SpotOptions(this);
+    }
+
+    internal Spot(SpotNode node, IntPtr handle, bool ownsHandle)
+    {
+        if (node == null)
+            throw new ArgumentNullException(nameof(node));
+        if (handle == IntPtr.Zero)
+            throw new ArgumentException("Spot handle must not be zero.",
+                nameof(handle));
+        _node = node;
+        _handle = handle;
+        _ownsHandle = ownsHandle;
+        Options = new SpotOptions(this);
     }
 
     public void SetRoutingId(RoutingId routingId)
@@ -1028,6 +1218,26 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             return RoutingId.FromBytes(
                 NativeHelpers.ReadRoutingId(ref routingId));
         }
+    }
+
+    internal unsafe void SetOption(SpotOption option, int value)
+    {
+        EnsureNotDisposed();
+        int local = value;
+        int rc = NativeMethods.zlink_set_spot_option(_handle, option,
+            (IntPtr)(&local), (nuint)sizeof(int));
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    internal unsafe int GetOption(SpotOption option)
+    {
+        EnsureNotDisposed();
+        int value = 0;
+        nuint size = (nuint)sizeof(int);
+        int rc = NativeMethods.zlink_get_spot_option(_handle, option,
+            (IntPtr)(&value), ref size);
+        ZlinkException.ThrowConfigIfError(rc);
+        return value;
     }
 
     public bool Publish(string serviceName, string topic, Message message,
@@ -1311,6 +1521,12 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         ZlinkException.ThrowConfigIfError(rc);
     }
 
+    public SubscriptionInfo SubscriptionAt(int index)
+    {
+        EnsureNotDisposed();
+        return SubscriptionIntrospection.At(_handle, index);
+    }
+
     public TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None)
     {
         EnsureNotDisposed();
@@ -1326,11 +1542,13 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         return subscribed != null;
     }
 
-    public SubscriptionEvent ReceiveSubscriptionEvent(
+    public SubscriptionEvent? ReceiveSubscriptionEvent(
         RecvFlags flags = RecvFlags.None)
     {
         EnsureNotDisposed();
-        return ReceiveSubscriptionEventCore((int)flags);
+        return (flags & RecvFlags.DontWait) != 0
+            ? TryReceiveCore(() => ReceiveSubscriptionEventCore((int)flags))
+            : ReceiveSubscriptionEventCore((int)flags);
     }
 
     internal int? TryReceiveRawSubscribedFrame(Span<byte> destination, int flags,
@@ -1371,6 +1589,56 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         ulong requestSeq, Message message, SendFlags flags = SendFlags.None)
         => ReplyToSpot(destNodeRid, destSpotRid, requestSeq, new[] { message },
             flags);
+
+    public Task<IReadOnlyList<Message>> RequestToSpotAsync(
+        RoutingId destNodeRid, RoutingId destSpotRid, Message message,
+        TimeSpan timeout = default, CancellationToken ct = default)
+        => RequestToSpotAsync(destNodeRid, destSpotRid, new[] { message },
+            timeout, ct);
+
+    public Task<IReadOnlyList<Message>> RequestToSpotAsync(
+        RoutingId destNodeRid, RoutingId destSpotRid, IReadOnlyList<Message> parts,
+        TimeSpan timeout = default, CancellationToken ct = default)
+        => RequestToSpotAsyncInternal(destNodeRid, destSpotRid, parts, timeout,
+            ct).ContinueWith(task => task.Result.Parts, TaskScheduler.Default);
+
+    public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+        Message message, Action<RequestResult, IReadOnlyList<Message>> callback,
+        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
+        => RequestToSpot(destNodeRid, destSpotRid, new[] { message }, callback,
+            flags, timeout);
+
+    public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+        IReadOnlyList<Message> parts,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
+    {
+        if (callback == null)
+            throw new ArgumentNullException(nameof(callback));
+        try
+        {
+            RequestReplySupport.AttachResultCallback(
+                () => RequestToSpotAsyncInternal(destNodeRid, destSpotRid, parts,
+                    timeout ?? TimeSpan.Zero, CancellationToken.None, (int)flags),
+                (result, reply) =>
+                {
+                    IReadOnlyList<Message> payload = Array.Empty<Message>();
+                    if (reply != null)
+                    {
+                        payload = RequestReplySupport.TakeOwnedParts(reply);
+                        reply.Dispose();
+                    }
+                    callback(result, payload);
+                });
+            return true;
+        }
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
+        {
+            return false;
+        }
+    }
 
     public bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         Message message, SendFlags flags = SendFlags.None)
@@ -1473,6 +1741,54 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         Message message, SendFlags flags = SendFlags.None)
         => ReplyToRouter(peerRid, requestSeq, new[] { message }, flags);
 
+    public Task<IReadOnlyList<Message>> RequestToRouterAsync(RoutingId peerRid,
+        Message message, TimeSpan timeout = default,
+        CancellationToken ct = default)
+        => RequestToRouterAsync(peerRid, new[] { message }, timeout, ct);
+
+    public Task<IReadOnlyList<Message>> RequestToRouterAsync(RoutingId peerRid,
+        IReadOnlyList<Message> parts, TimeSpan timeout = default,
+        CancellationToken ct = default)
+        => RequestToRouterAsyncInternal(peerRid, parts, timeout, ct)
+            .ContinueWith(task => task.Result.Parts, TaskScheduler.Default);
+
+    public bool RequestToRouter(RoutingId peerRid, Message message,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
+        => RequestToRouter(peerRid, new[] { message }, callback, flags,
+            timeout);
+
+    public bool RequestToRouter(RoutingId peerRid, IReadOnlyList<Message> parts,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
+    {
+        if (callback == null)
+            throw new ArgumentNullException(nameof(callback));
+        try
+        {
+            RequestReplySupport.AttachResultCallback(
+                () => RequestToRouterAsyncInternal(peerRid, parts,
+                    timeout ?? TimeSpan.Zero, CancellationToken.None, (int)flags),
+                (result, reply) =>
+                {
+                    IReadOnlyList<Message> payload = Array.Empty<Message>();
+                    if (reply != null)
+                    {
+                        payload = RequestReplySupport.TakeOwnedParts(reply);
+                        reply.Dispose();
+                    }
+                    callback(result, payload);
+                });
+            return true;
+        }
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
+        {
+            return false;
+        }
+    }
+
     public unsafe void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
@@ -1514,12 +1830,24 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    public unsafe Received RecvRouted(RecvFlags flags = RecvFlags.None)
+    public unsafe Received? RecvRouted(RecvFlags flags = RecvFlags.None)
     {
-        MultipartMessageCollection parts = ReceiveSpotRoutedParts((int)flags,
-            out byte[]? nodeRidBytes, out byte[]? spotRidBytes,
-            out ulong requestSeq) ?? throw ZlinkException.CreateRecvException(
-                (int)ErrorCode.EAgain);
+        MultipartMessageCollection? parts;
+        byte[]? nodeRidBytes;
+        byte[]? spotRidBytes;
+        ulong requestSeq;
+        try
+        {
+            parts = ReceiveSpotRoutedParts((int)flags, out nodeRidBytes,
+                out spotRidBytes, out requestSeq);
+        }
+        catch (ZlinkException ex) when ((flags & RecvFlags.DontWait) != 0
+            && ZlinkException.MapErrorCode(ex.InternalErrno) == ErrorCode.EAgain)
+        {
+            return null;
+        }
+        if (parts == null)
+            return null;
         RoutingId? nodeRid = nodeRidBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(nodeRidBytes);
@@ -1882,6 +2210,114 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             RequestReplySupport.DisposeParts(cloned);
             if (handle.IsAllocated)
                 handle.Free();
+            throw;
+        }
+    }
+
+    private unsafe Task<Received> RequestToSpotAsyncInternal(
+        RoutingId destNodeRid, RoutingId destSpotRid, IReadOnlyList<Message> parts,
+        TimeSpan timeout, CancellationToken ct, int flags = 0)
+    {
+        EnsureParts(parts, nameof(parts));
+        ZlinkRoutingId nodeRid = NativeHelpers.WriteRoutingId(
+            RoutingIdCodec.FromRoutingId(destNodeRid));
+        ZlinkRoutingId spotRid = NativeHelpers.WriteRoutingId(
+            RoutingIdCodec.FromRoutingId(destSpotRid));
+        return RequestRoutedAsyncInternal(parts, timeout, ct, flags,
+            (ref ZlinkMsg nativePart, IntPtr handler, IntPtr userData,
+                NativeMethods.ZlinkPartFlag partFlag, uint timeoutMs) =>
+                NativeMethods.zlink_spot_request_spot_part(_handle,
+                    ref nodeRid, ref spotRid, ref nativePart, handler, userData,
+                    flags, partFlag, timeoutMs));
+    }
+
+    private unsafe Task<Received> RequestToRouterAsyncInternal(RoutingId peerRid,
+        IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct,
+        int flags = 0)
+    {
+        EnsureParts(parts, nameof(parts));
+        ZlinkRoutingId nativePeerRid = NativeHelpers.WriteRoutingId(
+            RoutingIdCodec.FromRoutingId(peerRid));
+        return RequestRoutedAsyncInternal(parts, timeout, ct, flags,
+            (ref ZlinkMsg nativePart, IntPtr handler, IntPtr userData,
+                NativeMethods.ZlinkPartFlag partFlag, uint timeoutMs) =>
+                NativeMethods.zlink_spot_request_router_part(_handle,
+                    ref nativePeerRid, ref nativePart, handler, userData,
+                    flags, partFlag, timeoutMs));
+    }
+
+    private unsafe delegate int SpotRequestPartSubmitter(
+        ref ZlinkMsg nativePart, IntPtr handler, IntPtr userData,
+        NativeMethods.ZlinkPartFlag partFlag, uint timeoutMs);
+
+    private unsafe Task<Received> RequestRoutedAsyncInternal(
+        IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct,
+        int flags, SpotRequestPartSubmitter submit)
+    {
+        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        uint timeoutMs = NormalizeTimeout(timeout);
+        var completion = new TaskCompletionSource<Received>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        GCHandle handle = default;
+        RequestCallState? state = null;
+
+        try
+        {
+            state = new RequestCallState(completion);
+            handle = GCHandle.Alloc(state, GCHandleType.Normal);
+            if (ct.CanBeCanceled)
+            {
+                state.SetCancellationRegistration(ct.Register(static userdata =>
+                {
+                    RequestCallState callbackState =
+                        (RequestCallState)((GCHandle)userdata!).Target!;
+                    callbackState.TrySetCanceled(CancellationToken.None);
+                }, handle));
+            }
+
+            state.SetTimeoutTimer(new System.Threading.Timer(static userdata =>
+            {
+                RequestCallState callbackState =
+                    (RequestCallState)((GCHandle)userdata!).Target!;
+                callbackState.TrySetException(
+                    new ZlinkRequestException(RequestResult.TimedOut));
+            }, handle, (int)timeoutMs, Timeout.Infinite));
+
+            for (int i = 0; i < cloned.Length; i++)
+            {
+                ZlinkMsg nativePart = default;
+                cloned[i].MoveTo(ref nativePart);
+                bool submitted = false;
+                try
+                {
+                    int rc = submit(ref nativePart,
+                        i + 1 < cloned.Length ? IntPtr.Zero : RoutedReplyHandlerPtr,
+                        i + 1 < cloned.Length ? IntPtr.Zero : GCHandle.ToIntPtr(handle),
+                        i + 1 < cloned.Length
+                            ? NativeMethods.ZlinkPartFlag.More
+                            : NativeMethods.ZlinkPartFlag.Final,
+                        i + 1 < cloned.Length ? 0u : timeoutMs);
+                    submitted = true;
+                    if (rc != 0)
+                        throw ZlinkException.CreateSubmitException(
+                            NativeMethods.zlink_errno());
+                }
+                finally
+                {
+                    if (!submitted)
+                        NativeMethods.zlink_msg_close(ref nativePart);
+                }
+            }
+
+            return RequestProgressPump.AttachSpot(_handle, completion.Task);
+        }
+        catch
+        {
+            if (state != null)
+                state.Dispose();
+            if (handle.IsAllocated)
+                handle.Free();
+            RequestReplySupport.DisposeParts(cloned);
             throw;
         }
     }

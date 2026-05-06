@@ -11,7 +11,9 @@ void test_zmp_metadata_enabled ()
     zlink::pair_socket_t client (ctx);
 
     const int enabled = 1;
-    assert (client.set_option (zlink::socket_option::zmp_metadata, enabled) == 0);
+    assert (client.set_option (
+              zlink::compat::options::socket_option::zmp_metadata, enabled)
+            == 0);
 
     const std::string endpoint = endpoint_for (transport_case_t{"tcp", ""},
                                                "zmp-metadata-on");
@@ -23,9 +25,9 @@ void test_zmp_metadata_enabled ()
     zlink::message_t msg;
     assert (recv_msg_with_timeout (server, msg, 2000) == 1);
 
-    const char *sock_type = msg.get_property ("Socket-Type");
-    assert (sock_type != NULL);
-    assert (std::string (sock_type) == "PAIR");
+    std::optional<std::string> sock_type = msg.property ("Socket-Type");
+    assert (sock_type.has_value ());
+    assert (*sock_type == "PAIR");
 }
 
 void test_zmp_metadata_disabled ()
@@ -35,7 +37,9 @@ void test_zmp_metadata_disabled ()
     zlink::pair_socket_t client (ctx);
 
     const int disabled = 0;
-    assert (client.set_option (zlink::socket_option::zmp_metadata, disabled) == 0);
+    assert (client.set_option (
+              zlink::compat::options::socket_option::zmp_metadata, disabled)
+            == 0);
 
     const std::string endpoint = endpoint_for (transport_case_t{"tcp", ""},
                                                "zmp-metadata-off");
@@ -48,9 +52,8 @@ void test_zmp_metadata_disabled ()
     assert (recv_msg_with_timeout (server, msg, 2000) == 1);
 
     errno = 0;
-    const char *sock_type = msg.get_property ("Socket-Type");
-    assert (sock_type == NULL);
-    assert (zlink_errno () == EINVAL);
+    std::optional<std::string> sock_type = msg.property ("Socket-Type");
+    assert (!sock_type.has_value ());
 }
 
 } // namespace

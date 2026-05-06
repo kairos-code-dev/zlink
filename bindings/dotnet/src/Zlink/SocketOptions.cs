@@ -109,6 +109,8 @@ internal static class SocketOptions
         Int(SocketOption.Immediate);
     public static SocketOptionKey<int> RidDuplicatePolicy { get; } =
         Int(SocketOption.RidDuplicatePolicy);
+    public static SocketOptionKey<int> RouteValueMaxSize { get; } =
+        Int(SocketOption.RouteValueMaxSize);
     public static SocketOptionKey<int> AutoHwmMsgUnitBytes { get; } =
         Int(SocketOption.AutoHwmMsgUnitBytes);
     public static SocketOptionKey<int> DiscoverySpotOwnerSync { get; } =
@@ -125,6 +127,14 @@ internal static class SocketOptions
     public static SocketOptionKey<int> Tos { get; } = Int(SocketOption.Tos);
     public static SocketOptionKey<byte[]> ConnectRoutingId { get; } =
         Bytes(SocketOption.ConnectRoutingId);
+    public static SocketOptionKey<int> RouterRequestTimeout { get; } =
+        Int(SocketOption.RouterRequestTimeout);
+    public static SocketOptionKey<int> RouterWeight { get; } =
+        Int(SocketOption.RouterWeight);
+    public static SocketOptionKey<int> DealerRequestTimeout { get; } =
+        Int(SocketOption.DealerRequestTimeout);
+    public static SocketOptionKey<int> DealerWeight { get; } =
+        Int(SocketOption.DealerWeight);
     public static SocketOptionKey<int> HandshakeIvl { get; } =
         Int(SocketOption.HandshakeIvl);
     public static SocketOptionKey<int> XPubNoDrop { get; } =
@@ -176,8 +186,12 @@ internal static class SocketOptions
         Int(SocketOption.OnlyFirstSubscribe);
     public static SocketOptionKey<int> TopicsCount { get; } =
         Int(SocketOption.TopicsCount);
+    public static SocketOptionKey<string> XPubApproveSubscribe { get; } =
+        String(SocketOption.XPubApproveSubscribe);
+    public static SocketOptionKey<string> XPubRejectSubscribe { get; } =
+        String(SocketOption.XPubRejectSubscribe);
     public static SocketOptionKey<int> SubTopicsCount { get; } =
         Int(SocketOption.SubTopicsCount);
-    public static SocketOptionKey<string> ZmpMetadata { get; } =
-        String(SocketOption.ZmpMetadata);
+    public static SocketOptionKey<int> ZmpMetadata { get; } =
+        Int(SocketOption.ZmpMetadata);
 }

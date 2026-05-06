@@ -11,6 +11,31 @@ contract. Go `internal/` packages, cgo bridge helpers, and source-tree-only
 utilities are internal. Perf, samples, and tests must import the public
 `zlink` package only and must not rely on internal packages.
 
+## Design Basis
+
+The Go binding follows the repository POSD design policy. Exported types must
+hide native sequencing, ownership, and option encoding behind typed, deep
+interfaces so callers do not need core implementation details.
+
+The exported Go surface must model stable domain concepts, not cgo call
+steps. Exported types are justified when they own context/socket lifetime,
+message ownership, receive metadata, service membership, callbacks, or typed
+options. cgo handles, part-loop sequencing, request tokens, callback userdata,
+and raw option encoding stay inside unexported packages or unexported fields.
+
+Design review uses these POSD constraints:
+
+- send/recv, nonblocking, ownership, and error rules are centralized instead of
+  repeated across socket types
+- canonical result and facade methods do not ask callers to pass state already
+  captured by the receiver, such as a source socket, request sequence, or
+  service address
+- compatibility helpers, if retained, are not the canonical API and are not
+  used by new docs, samples, or tests
+- an exported wrapper that only forwards to cgo without adding validation,
+  ownership, lifetime, or result-shape semantics is too shallow and must be
+  removed or made unexported
+
 ---
 
 ## High-Performance Requirements
@@ -22,18 +47,19 @@ waits, or goroutine joins. cgo bridge code must construct public `Message` and
 result values directly from the core `*_part` substrate and must not create
 native aggregate arrays only to copy them into Go slices.
 
-## Current Core Alignment Overrides
+## Core Alignment Rules
 
-The sections below still contain some older method lists. When they conflict
-with the rules here, this section wins.
+The detailed sections below are the canonical Go binding contract. This
+section states cross-cutting constraints once so the per-type API lists can
+stay focused on signatures.
 
-- `PairSocket`, `DealerSocket`, and `RouterSocket` are recv-only on the data
-  plane. Remove `OnReceive(...)` from their public contract.
-- `SubSocket` and `XSubSocket` are recv-only. Remove `OnSubscribe(...)` from
-  their public contract.
+- `PairSocket`, `DealerSocket`, and `RouterSocket` keep their documented
+  send, recv, request, and reply methods, but they do not expose direct
+  data-plane receive callbacks such as `OnReceive(...)`.
+- `SubSocket` and `XSubSocket` are receive-only topic sockets and do not
+  expose direct topic callbacks such as `OnSubscribe(...)`.
 - `StreamSocket` keeps `Recv(...)` and exposes a packet callback surface
-  mapped to `zlink_stream_packet_handler()`. Recommended canonical name:
-  `OnPacket(...)`.
+  mapped to `zlink_stream_packet_handler()` as `OnPacket(...)`.
 - `SpotNode` must expose channel-aware attachment APIs:
   `AttachDiscovery(...)`,
   `AttachChannelDealer(...)`,
@@ -53,16 +79,17 @@ with the rules here, this section wins.
   until `EAGAIN`.
 - `Spot.OnRoutedReceive(...)` and `OnDispatchEvent(...)` are mutually exclusive
   on the routed axis.
-- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through typed option/property surfaces. The value range is `0..100`, default `100`; `0` drains new outbound selection. Submit attempts to a weight-`0` peer return `*SubmitError` whose `Code()` is
-  `SubmitResultNotAdmitted`.
+- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through
+  typed option/property surfaces. The value range is `0..100`, default
+  `100`; `0` drains new outbound selection. Submit attempts to a weight-`0`
+  peer return `*SubmitError` whose `Code()` is `SubmitResultNotAdmitted`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `OnSendReady(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `Mandatory =
   true`, `Handover = false`, `NoDrop = true`.
 - SPOT admission HWM defaults follow the core header. Router and pubsub
   admission profile/numeric options are exposed; relay and delivery HWM stay
-  `0`. Binding native headers and linux-x86_64 runtime libraries must be
-  synchronized from `core/include` and `core/build` before validation.
+  `0` and are not public Go options.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routingID, advertiseEndpoint)`. Users do not configure this.
@@ -87,6 +114,12 @@ type ActorJoinInfo struct {
     Flags uint32
 }
 type ActorPart struct { Info ActorRecvInfo; Message *Message; More bool }
+type ActorJoinRequest struct { Info ActorJoinInfo; Message *Message }
+type ActorAdmissionResult int
+const (
+    ActorAdmissionAccept ActorAdmissionResult = 1
+    ActorAdmissionReject ActorAdmissionResult = 2
+)
 func RemoteActorRef(targetNodeRID RoutingID, actorID string) (ActorRef, error)
 ```
 
@@ -193,8 +226,9 @@ type Version struct {
 
 ## Socket Types
 
-All sockets listed below share common connection and option methods
-inherited from internal base types. Only the public methods are shown.
+All sockets listed below expose common connection and option method groups.
+Only the public methods are shown; the implementation structure behind those
+methods is not part of this contract.
 
 Go nonblocking data-plane helpers follow this rule:
 
@@ -403,11 +437,11 @@ func (s *RouterSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID,
 func (s *RouterSocket) ReplyToSpot(destNodeRid, destSpotRid RoutingID,
     requestSeq uint64, flags SendFlags, parts ...*Message) (bool, error)
 
-// NOTE: RouterSocket 의 routed 수신 plane 은 단일 표면이다. 일반 ROUTER
-// 트래픽과 spot-origin routed 트래픽을 모두 Recv 로 받는다.
-// Received 에는 RoutingID (source_node_rid) 와 SpotRoutingID
-// (source_spot_rid; spot-origin 일 때만 값 있음), RequestSeq 가 함께 실려
-// 온다. 별도의 RecvSpot / OnSpotReceive 는 제공하지 않는다.
+// NOTE: RouterSocket has one routed receive surface. Recv receives both
+// regular ROUTER traffic and spot-origin routed traffic. Received carries
+// RoutingID (source_node_rid), SpotRoutingID (source_spot_rid; set only for
+// spot-origin traffic), and RequestSeq. RecvSpot and OnSpotReceive are not
+// public API.
 
 // Close closes the socket. Returns *CloseError on failure.
 func (s *RouterSocket) Close() error
@@ -491,6 +525,12 @@ func (s *StreamSocket) Recv(flags RecvFlags) (*Received, error)
 func (s *StreamSocket) OnPacket(handler func(source RoutingID, header *Message, body *Message)) error
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *StreamSocket) OnSendReady(handler func()) error
+func (s *StreamSocket) BindActor(node *SpotNode, sessionRID RoutingID,
+    actor ActorRef, timeout time.Duration) error
+func (s *StreamSocket) UnbindActor(node *SpotNode, sessionRID RoutingID,
+    timeout time.Duration) error
+func (s *StreamSocket) SendBoundActor(node *SpotNode, sessionRID RoutingID,
+    message *Message, flags SendFlags) (bool, error)
 // Option setters/getters return *ConfigError on failure.
 func (s *StreamSocket) SetNotify(value bool) error
 func (s *StreamSocket) Notify() (bool, error)
@@ -750,11 +790,19 @@ Result codes for request completion callbacks.
 type RequestResult int
 
 const (
-    RequestOK            RequestResult = 0
-    RequestTimedOut      RequestResult = 101
-    RequestNotFound      RequestResult = 102
-    RequestTerminated    RequestResult = 103
-    RequestProtocolError RequestResult = 104
+    RequestOK              RequestResult = 0
+    RequestTimedOut        RequestResult = 101
+    RequestNotFound        RequestResult = 102
+    RequestTerminated      RequestResult = 103
+    RequestProtocolError   RequestResult = 104
+    RequestInternalError   RequestResult = 105
+    RequestRejected        RequestResult = 106
+    RequestConflict        RequestResult = 107
+    RequestBusy            RequestResult = 108
+    RequestNotConnected    RequestResult = 109
+    RequestInvalidArgument RequestResult = 110
+    RequestInvalidState    RequestResult = 111
+    RequestNotSupported    RequestResult = 112
 )
 
 // RequestReplyCallback is invoked on completion of a callback-based request
@@ -778,6 +826,7 @@ const (
     RecvTerminated    RecvResult = 203
     RecvInvalidHandle RecvResult = 204
     RecvNotSupported  RecvResult = 205
+    RecvInternalError RecvResult = 206
 )
 ```
 
@@ -796,6 +845,7 @@ const (
     HandlerNotSupported    HandlerResult = 303
     HandlerDeadlock        HandlerResult = 304
     HandlerInvalidHandle   HandlerResult = 305
+    HandlerInternalError   HandlerResult = 306
 )
 ```
 
@@ -811,6 +861,7 @@ const (
     CloseBusy          CloseResult = 401
     CloseShutdown      CloseResult = 402
     CloseInvalidHandle CloseResult = 403
+    CloseInternalError CloseResult = 404
 )
 ```
 
@@ -827,6 +878,7 @@ const (
     BindAddrInUse       BindResult = 502
     BindNotSupported    BindResult = 503
     BindInvalidHandle   BindResult = 504
+    BindInternalError   BindResult = 505
 )
 ```
 
@@ -842,6 +894,10 @@ const (
     ConnectInvalidArgument ConnectResult = 601
     ConnectNotSupported    ConnectResult = 602
     ConnectInvalidHandle   ConnectResult = 603
+    ConnectInternalError   ConnectResult = 604
+    ConnectNotFound        ConnectResult = 605
+    ConnectConflict        ConnectResult = 606
+    ConnectBusy            ConnectResult = 607
 )
 ```
 
@@ -857,6 +913,9 @@ const (
     ConfigInvalidHandle   ConfigResult = 701
     ConfigInvalidArgument ConfigResult = 702
     ConfigNotSupported    ConfigResult = 703
+    ConfigInternalError   ConfigResult = 704
+    ConfigInvalidState    ConfigResult = 705
+    ConfigNotFound        ConfigResult = 706
 )
 ```
 
@@ -1110,6 +1169,13 @@ func (d *Discovery) SpotOwnerSyncEnabled() (bool, error)
 // zlink_discovery_resolve_spot. Registry-backed lookup requires the
 // publishing Discovery to enable ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC.
 func (d *Discovery) ResolveSpot(spotRid RoutingID) (RoutingID, error)
+// ResolveActor resolves the current actor route for an actor id. Maps to
+// zlink_discovery_resolve_actor.
+func (d *Discovery) ResolveActor(actorID string) (ActorRoute, error)
+// SetActorRouteSyncEnabled enables or disables publishing actor routes to Registry.
+func (d *Discovery) SetActorRouteSyncEnabled(enabled bool) error
+// ActorRouteSyncEnabled reports whether this Discovery publishes actor routes.
+func (d *Discovery) ActorRouteSyncEnabled() (bool, error)
 // Close closes the discovery handle. Returns *CloseError on failure.
 func (d *Discovery) Close() error
 ```
@@ -1122,6 +1188,7 @@ func (n *SpotNode) Bind(endpoint string) error
 // ConnectPeer / DisconnectPeer manage peer links. Return *ConnectError on failure.
 func (n *SpotNode) ConnectPeer(endpoint string) error
 func (n *SpotNode) DisconnectPeer(endpoint string) error
+func (n *SpotNode) DisconnectPeerRID(targetNodeRID RoutingID) error
 // AttachDiscovery and TLS setters return *ConfigError on failure.
 func (n *SpotNode) AttachDiscovery(discovery *Discovery) error
 func (n *SpotNode) AttachChannelDealer(discovery *Discovery, dealer *DealerSocket) error
@@ -1142,11 +1209,25 @@ func (n *SpotNode) Spot() (*Spot, error)
 func (n *SpotNode) EntrySpot() (*Spot, error)
 // SpotLookup returns an owned facade for a live node-local Spot routing id.
 func (n *SpotNode) SpotLookup(spotRID RoutingID) (*Spot, error)
+// Actor dispatch methods return typed request/config/submit errors.
+func (n *SpotNode) Actor(actorID string) (*Actor, error)
+func (n *SpotNode) ActorLookup(actorID string) (ActorRef, error)
+func (n *SpotNode) CreateRemoteActor(targetNodeRID RoutingID, actorID string,
+    message *Message, timeout time.Duration) (ActorCreateResult, error)
+func (n *SpotNode) DestroyRemoteActor(actor ActorRef, timeout time.Duration) error
+func (n *SpotNode) OnActorAdmission(handler func(actorID string, message *Message) ActorAdmissionResult) error
+func (n *SpotNode) JoinActor(actor ActorRef, destNodeRID RoutingID,
+    destSpotRID RoutingID, message *Message, callback RequestReplyCallback,
+    flags SendFlags, timeout time.Duration) (bool, error)
+func (n *SpotNode) LeaveActor(actor ActorRef, destSpotRID RoutingID,
+    timeout time.Duration) error
 func (n *SpotNode) StatusSnapshot() (*SpotNodeStatus, error)
 func (n *SpotNode) PeersSnapshot() ([]SpotNodePeerEntry, error)
 func (n *SpotNode) PeersQuery(filter *SpotNodePeerFilter) ([]SpotNodePeerEntry, error)
 func (n *SpotNode) SubjectsSnapshot(filters ...*SpotNodeSubjectFilter) ([]SpotNodeSubjectEntry, error)
 func (n *SpotNode) InternalSocketsSnapshot(filter *SpotNodeSocketSnapshotFilter) ([]SpotNodeSocketSnapshotEntry, error)
+func (n *SpotNode) SpotsSnapshot() ([]SpotNodeSpotEntry, error)
+func (n *SpotNode) ActorsSnapshot() ([]SpotNodeActorEntry, error)
 // Close closes the spot node after cascading close to all live Spot handles.
 // Returns *CloseError on failure.
 func (n *SpotNode) Close() error
@@ -1161,7 +1242,8 @@ There is no standalone `NewSpot` constructor in the public API.
 ### Spot
 
 ```go
-// Spot is a pub/sub facade owned by SpotNode and created only by SpotNode.Spot().
+// Spot is a pub/sub facade owned by SpotNode. Public Spot handles come from
+// SpotNode.Spot(), SpotNode.EntrySpot(), or SpotNode.SpotLookup(...).
 // Publish sends parts on the given service/topic. Returns (false, nil) only for temporary backpressure.
 func (s *Spot) Publish(serviceName, topic string, flags SendFlags, parts ...*Message) (bool, error)
 // SendChannel sends routed multipart data to the selected channel. Returns (false, nil) only for temporary backpressure.
@@ -1177,6 +1259,13 @@ func (s *Spot) Subscribe(flags RecvFlags) (*TopicMessage, error)
 // ReceiveSubscriptionEvent receives the next service-aware subscription event.
 // Returns *RecvError on failure.
 func (s *Spot) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error)
+// RecvActorJoin receives the next actor join request. Returns *RecvError on failure.
+func (s *Spot) RecvActorJoin(flags RecvFlags) (*ActorJoinRequest, error)
+// ReplyActorJoin replies to an actor join request. Returns *SubmitError on submit failure.
+func (s *Spot) ReplyActorJoin(info ActorJoinInfo, result ActorAdmissionResult,
+    flags SendFlags, message *Message) (bool, error)
+// ActorsSnapshot lists actors currently joined to this Spot. Returns *ConfigError on failure.
+func (s *Spot) ActorsSnapshot() ([]ActorRef, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *Spot) OnSendReady(handler func()) error
 // Option setters return *ConfigError on failure.
@@ -1230,6 +1319,21 @@ func (s *Spot) DrainChannelReplyFrom(subject unsafe.Pointer) error
 
 // Close closes the spot. Returns *CloseError on failure.
 func (s *Spot) Close() error
+```
+
+### Actor
+
+```go
+// Actor is owned by a SpotNode and represents one local actor identity.
+func (a *Actor) Ref() ActorRef
+func (a *Actor) Join(spot *Spot, message *Message,
+    callback RequestReplyCallback, flags SendFlags,
+    timeout time.Duration) (bool, error)
+func (a *Actor) Leave(spot *Spot, timeout time.Duration) error
+func (a *Actor) RecvPart(flags RecvFlags) (*ActorPart, error)
+func (a *Actor) SendBoundSession(message *Message, flags SendFlags) (bool, error)
+func (a *Actor) CloseBoundSession(timeout time.Duration) error
+func (a *Actor) Close() error
 ```
 
 ### RegistryQueryClient

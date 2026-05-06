@@ -13,6 +13,25 @@ public sealed class CommonSocketOptions
         _socket = socket;
     }
 
+    public ulong Affinity
+    {
+        get => _socket.GetOption(SocketOptions.Affinity);
+        set => _socket.SetOption(SocketOptions.Affinity, value);
+    }
+
+    public int Rate
+    {
+        get => _socket.GetOption(SocketOptions.Rate);
+        set => _socket.SetOption(SocketOptions.Rate, value);
+    }
+
+    public TimeSpan? RecoveryInterval
+    {
+        get => DecodeDuration(_socket.GetOption(SocketOptions.RecoveryIvl));
+        set => _socket.SetOption(SocketOptions.RecoveryIvl,
+            EncodeDuration(value, nameof(value)));
+    }
+
     public long MaxMessageSize
     {
         get => _socket.GetOption(SocketOptions.MaxMsgSize);
@@ -50,6 +69,32 @@ public sealed class CommonSocketOptions
             EncodeDuration(value, nameof(value)));
     }
 
+    public TimeSpan? ReconnectInterval
+    {
+        get => DecodeDuration(_socket.GetOption(SocketOptions.ReconnectIvl));
+        set => _socket.SetOption(SocketOptions.ReconnectIvl,
+            EncodeDuration(value, nameof(value)));
+    }
+
+    public TimeSpan? ReconnectIntervalMax
+    {
+        get => DecodeDuration(_socket.GetOption(SocketOptions.ReconnectIvlMax));
+        set => _socket.SetOption(SocketOptions.ReconnectIvlMax,
+            EncodeDuration(value, nameof(value)));
+    }
+
+    public int Backlog
+    {
+        get => _socket.GetOption(SocketOptions.Backlog);
+        set => _socket.SetOption(SocketOptions.Backlog, value);
+    }
+
+    public int MulticastHops
+    {
+        get => _socket.GetOption(SocketOptions.MulticastHops);
+        set => _socket.SetOption(SocketOptions.MulticastHops, value);
+    }
+
     public TimeSpan? ReceiveTimeout
     {
         get => DecodeDuration(_socket.GetOption(SocketOptions.RcvTimeo));
@@ -78,6 +123,57 @@ public sealed class CommonSocketOptions
             EncodeDuration(value, nameof(value)));
     }
 
+    public int TcpKeepAlive
+    {
+        get => _socket.GetOption(SocketOptions.TcpKeepalive);
+        set => _socket.SetOption(SocketOptions.TcpKeepalive, value);
+    }
+
+    public int TcpKeepAliveCount
+    {
+        get => _socket.GetOption(SocketOptions.TcpKeepaliveCnt);
+        set => _socket.SetOption(SocketOptions.TcpKeepaliveCnt, value);
+    }
+
+    public int TcpKeepAliveIdleSeconds
+    {
+        get => _socket.GetOption(SocketOptions.TcpKeepaliveIdle);
+        set => _socket.SetOption(SocketOptions.TcpKeepaliveIdle, value);
+    }
+
+    public int TcpKeepAliveIntervalSeconds
+    {
+        get => _socket.GetOption(SocketOptions.TcpKeepaliveIntvl);
+        set => _socket.SetOption(SocketOptions.TcpKeepaliveIntvl, value);
+    }
+
+    public int TcpMaxRetransmitTimeout
+    {
+        get => _socket.GetOption(SocketOptions.TcpMaxRt);
+        set => _socket.SetOption(SocketOptions.TcpMaxRt, value);
+    }
+
+    public TimeSpan? HeartbeatInterval
+    {
+        get => DecodeDuration(_socket.GetOption(SocketOptions.HeartbeatIvl));
+        set => _socket.SetOption(SocketOptions.HeartbeatIvl,
+            EncodeDuration(value, nameof(value)));
+    }
+
+    public TimeSpan? HeartbeatTtl
+    {
+        get => DecodeDuration(_socket.GetOption(SocketOptions.HeartbeatTtl));
+        set => _socket.SetOption(SocketOptions.HeartbeatTtl,
+            EncodeDuration(value, nameof(value)));
+    }
+
+    public TimeSpan? HeartbeatTimeout
+    {
+        get => DecodeDuration(_socket.GetOption(SocketOptions.HeartbeatTimeout));
+        set => _socket.SetOption(SocketOptions.HeartbeatTimeout,
+            EncodeDuration(value, nameof(value)));
+    }
+
     public bool IPv6
     {
         get => _socket.GetOption(SocketOptions.Ipv6) != 0;
@@ -90,19 +186,111 @@ public sealed class CommonSocketOptions
         set => _socket.SetOption(SocketOptions.TcpNoDelay, value ? 1 : 0);
     }
 
+    public int TypeOfService
+    {
+        get => _socket.GetOption(SocketOptions.Tos);
+        set => _socket.SetOption(SocketOptions.Tos, value);
+    }
+
+    public int MulticastMaxTransportDataUnit
+    {
+        get => _socket.GetOption(SocketOptions.MulticastMaxTpdu);
+        set => _socket.SetOption(SocketOptions.MulticastMaxTpdu, value);
+    }
+
+    public string BindToDevice
+    {
+        get => _socket.GetOption(SocketOptions.BindToDevice);
+        set => _socket.SetOption(SocketOptions.BindToDevice, value);
+    }
+
     public bool Immediate
     {
         get => _socket.GetOption(SocketOptions.Immediate) != 0;
         set => _socket.SetOption(SocketOptions.Immediate, value ? 1 : 0);
     }
 
-    public int RidDuplicatePolicy
+    public bool Conflate
     {
-        get => _socket.GetOption(SocketOptions.RidDuplicatePolicy);
-        set => _socket.SetOption(SocketOptions.RidDuplicatePolicy, value);
+        get => _socket.GetOption(SocketOptions.Conflate) != 0;
+        set => _socket.SetOption(SocketOptions.Conflate, value ? 1 : 0);
     }
 
-    public int AutoHwmMsgUnitBytes
+    public bool Blocky
+    {
+        get => _socket.GetOption(SocketOptions.Blocky) != 0;
+        set => _socket.SetOption(SocketOptions.Blocky, value ? 1 : 0);
+    }
+
+    public bool InvertMatching
+    {
+        get => _socket.GetOption(SocketOptions.InvertMatching) != 0;
+        set => _socket.SetOption(SocketOptions.InvertMatching, value ? 1 : 0);
+    }
+
+    public bool ZmpMetadata
+    {
+        get => _socket.GetOption(SocketOptions.ZmpMetadata) != 0;
+        set => _socket.SetOption(SocketOptions.ZmpMetadata, value ? 1 : 0);
+    }
+
+    public string TlsCertificatePath
+    {
+        get => _socket.GetOption(SocketOptions.TlsCert);
+        set => _socket.SetOption(SocketOptions.TlsCert, value);
+    }
+
+    public string TlsKeyPath
+    {
+        get => _socket.GetOption(SocketOptions.TlsKey);
+        set => _socket.SetOption(SocketOptions.TlsKey, value);
+    }
+
+    public string TlsCaCertificatePath
+    {
+        get => _socket.GetOption(SocketOptions.TlsCa);
+        set => _socket.SetOption(SocketOptions.TlsCa, value);
+    }
+
+    public bool TlsVerify
+    {
+        get => _socket.GetOption(SocketOptions.TlsVerify) != 0;
+        set => _socket.SetOption(SocketOptions.TlsVerify, value ? 1 : 0);
+    }
+
+    public bool TlsRequireClientCertificate
+    {
+        get => _socket.GetOption(SocketOptions.TlsRequireClientCert) != 0;
+        set => _socket.SetOption(SocketOptions.TlsRequireClientCert,
+            value ? 1 : 0);
+    }
+
+    public string TlsHostname
+    {
+        get => _socket.GetOption(SocketOptions.TlsHostname);
+        set => _socket.SetOption(SocketOptions.TlsHostname, value);
+    }
+
+    public bool TlsTrustSystem
+    {
+        get => _socket.GetOption(SocketOptions.TlsTrustSystem) != 0;
+        set => _socket.SetOption(SocketOptions.TlsTrustSystem, value ? 1 : 0);
+    }
+
+    public string TlsPassword
+    {
+        get => _socket.GetOption(SocketOptions.TlsPassword);
+        set => _socket.SetOption(SocketOptions.TlsPassword, value);
+    }
+
+    public RidDuplicatePolicy RoutingIdDuplicatePolicy
+    {
+        get => (RidDuplicatePolicy)_socket.GetOption(
+            SocketOptions.RidDuplicatePolicy);
+        set => _socket.SetOption(SocketOptions.RidDuplicatePolicy, (int)value);
+    }
+
+    public int AutoHwmMessageUnitBytes
     {
         get => _socket.GetOption(SocketOptions.AutoHwmMsgUnitBytes);
         set => _socket.SetOption(SocketOptions.AutoHwmMsgUnitBytes, value);
@@ -111,6 +299,10 @@ public sealed class CommonSocketOptions
     public string LastEndpoint => _socket.GetOption(SocketOptions.LastEndpoint);
 
     public int FileDescriptor => _socket.GetOption(SocketOptions.Fd);
+
+    public SocketType SocketType => _socket.Kernel.Type;
+
+    public PollEvents Events => (PollEvents)_socket.GetOption(SocketOptions.Events);
 
     internal static TimeSpan? DecodeDuration(int millis)
     {
@@ -153,6 +345,17 @@ public sealed class DealerSocketOptions
         get => _socket.GetOption(SocketOptions.ProbeRouter) != 0;
         set => _socket.SetOption(SocketOptions.ProbeRouter, value ? 1 : 0);
     }
+
+    public TimeSpan? RequestTimeout
+    {
+        set => _socket.SetOption(SocketOptions.DealerRequestTimeout,
+            CommonSocketOptions.EncodeDuration(value, nameof(value)));
+    }
+
+    public int Weight
+    {
+        set => _socket.SetOption(SocketOptions.DealerWeight, value);
+    }
 }
 
 public sealed class RouterSocketOptions
@@ -176,6 +379,15 @@ public sealed class RouterSocketOptions
         set => _socket.SetOption(SocketOptions.RouterMandatory, value ? 1 : 0);
     }
 
+    public bool Handover
+    {
+        get => _socket.Options.RoutingIdDuplicatePolicy
+            == RidDuplicatePolicy.Handover;
+        set => _socket.Options.RoutingIdDuplicatePolicy = value
+            ? RidDuplicatePolicy.Handover
+            : RidDuplicatePolicy.Reject;
+    }
+
     public bool Probe
     {
         get => _socket.GetOption(SocketOptions.ProbeRouter) != 0;
@@ -186,6 +398,20 @@ public sealed class RouterSocketOptions
     {
         get => RoutingId.FromBytes(_socket.GetOption(SocketOptions.ConnectRoutingId));
         set => _socket.SetOption(SocketOptions.ConnectRoutingId, value.ToBytes());
+    }
+
+    public TimeSpan? RequestTimeout
+    {
+        get => CommonSocketOptions.DecodeDuration(
+            _socket.GetOption(SocketOptions.RouterRequestTimeout));
+        set => _socket.SetOption(SocketOptions.RouterRequestTimeout,
+            CommonSocketOptions.EncodeDuration(value, nameof(value)));
+    }
+
+    public int Weight
+    {
+        get => _socket.GetOption(SocketOptions.RouterWeight);
+        set => _socket.SetOption(SocketOptions.RouterWeight, value);
     }
 }
 
@@ -258,6 +484,16 @@ public sealed class XPubSocketOptions
     }
 
     public int TopicsCount => _socket.GetOption(SocketOptions.TopicsCount);
+
+    public void ApproveSubscribe(string topicOrPattern)
+    {
+        _socket.SetOption(SocketOptions.XPubApproveSubscribe, topicOrPattern);
+    }
+
+    public void RejectSubscribe(string topicOrPattern)
+    {
+        _socket.SetOption(SocketOptions.XPubRejectSubscribe, topicOrPattern);
+    }
 }
 
 public sealed class PubSocketOptions
@@ -307,6 +543,16 @@ public sealed class PubSocketOptions
     }
 
     public int TopicsCount => _socket.GetOption(SocketOptions.TopicsCount);
+
+    public void ApproveSubscribe(string topicOrPattern)
+    {
+        _socket.SetOption(SocketOptions.XPubApproveSubscribe, topicOrPattern);
+    }
+
+    public void RejectSubscribe(string topicOrPattern)
+    {
+        _socket.SetOption(SocketOptions.XPubRejectSubscribe, topicOrPattern);
+    }
 }
 
 public sealed class SubSocketOptions
@@ -352,6 +598,12 @@ public sealed class SpotNodePublisherOptions
         set => _node.SetOption(SpotNodeSocketRole.Pub, SocketOptions.XPubNoDrop,
             value ? 1 : 0);
     }
+
+    public int AutoHwmMessageUnitBytes
+    {
+        set => _node.SetOption(SpotNodeSocketRole.Pub,
+            SocketOptions.AutoHwmMsgUnitBytes, value);
+    }
 }
 
 public sealed class SpotNodeSubscriberOptions
@@ -378,5 +630,11 @@ public sealed class SpotNodeSubscriberOptions
     {
         set => _node.SetOption(SpotNodeSocketRole.Sub, SocketOptions.Linger,
             CommonSocketOptions.EncodeDuration(value, nameof(value)));
+    }
+
+    public int AutoHwmMessageUnitBytes
+    {
+        set => _node.SetOption(SpotNodeSocketRole.Sub,
+            SocketOptions.AutoHwmMsgUnitBytes, value);
     }
 }

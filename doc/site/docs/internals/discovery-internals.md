@@ -163,13 +163,18 @@ Frame 4~N: Service entries (repeated):
 
 Registry peers also receive route binding snapshots as a separate
 `REGISTRY_SYNC` multipart message. Discovery subscribers ignore this message.
+The Registry applies these route snapshots through a staging view: chunks must
+arrive in order for the same `snapshot_seq`, and the existing materialized route
+view is not changed until the last chunk commits.
 
 ```text
 Frame 0: msg_id = 0x0006
 Frame 1: advertising_registry (uint32_t)
 Frame 2: snapshot_seq (uint64_t)
-Frame 3: route_count (uint32_t)
-Frame 4~N: Route entries (repeated):
+Frame 3: chunk_index (uint32_t)
+Frame 4: chunk_count (uint32_t)
+Frame 5: route_count (uint32_t)
+Frame 6~N: Route entries (repeated):
   - channel_name (string)
   - route_kind (uint32_t)
   - route_key (variable)
@@ -179,8 +184,42 @@ Frame 4~N: Route entries (repeated):
   - owner_routing_id_key (variable)
   - owner_source_registry (uint32_t)
   - owner_registration_id (uint64_t)
+  - updated_at_ms (uint64_t)
   - owner_routing_id (variable)
 ```
+
+Internally the Registry keeps route rows in two layers. The raw observation
+store is keyed by `(route identity, owner identity, advertising registry)`.
+The materialized route table exposes one winner per route identity for
+`resolve_route()`. Reverse indexes by owner, route identity, and advertising
+registry keep owner cleanup, winner recomputation, and peer timeout cleanup
+proportional to the affected records instead of the total route count.
+
+The materialized route table follows the same high-level design used by Redis
+`dict`: power-of-two hash buckets, bucket masks instead of division, separate
+chaining, and incremental migration from the old table to the new table during
+growth. It keeps resize work spread across normal route lookups and updates, so
+a large route set does not pay a single blocking resize cost. Each table entry
+stores the route key once instead of duplicating the same key inside the value.
+This mirrors the key/value responsibility split of Redis `dictEntry` and reduces
+duplicate string storage in large route sets. Each entry node stores fixed
+scalar fields, while route keys and values are appended to packed byte blocks.
+Repeated channel names are interned inside the table. Owner identities are also
+interned, and buckets plus node links use compact 32-bit entry ids. Entry nodes
+are allocated in 65,536-entry chunks, so a large insert run does not pay for a
+single vector capacity that is much larger than the live record count.
+
+Route key and owner identity hashes use the same SipHash-family approach used
+by Redis `dict`. Route snapshot chunks are read with a cursor like Redis
+`dictScan`, and a rehash pause guard is held while each chunk is copied. The
+Registry therefore copies only the current chunk instead of materializing the
+entire route table into a temporary vector before sending a snapshot.
+
+Provider rows use the same owner-bound rule for materialization. A provider RID
+is excluded from peer/member projection when different source generations, or
+the same generation with different endpoints, claim the same
+`channel + role + routing_id`. Route resolve also treats such an owner as not
+live.
 
 ## 7. Socket Discovery Attachment
 

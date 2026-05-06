@@ -152,22 +152,14 @@ public contract는 현재 구현과 맞추어 다음처럼 정리돼 있다.
 
 - [zlink.h#L799](../../core/include/zlink.h#L799)
 
-이 계약은 예전의
-"실패 시 caller ownership 유지"
-보다 더 단순하고, 실제 direct-send + rollback 구조와 일치한다.
+이 계약은 direct-send + rollback 구조와 일치하며, caller 가 moved-from
+handle 을 재사용하지 않는다는 단순한 규칙만 지키면 된다.
 
-### 6. 왜 clone을 제거했는가
+### 6. clone 없이 동작하는 이유
 
-예전 구조는 retry/rollback과 caller ownership 보존을 동시에 만족시키기 위해
-모든 frame을 clone했다.
+현재 구조는 retry/rollback 을 위해 frame 을 clone 하지 않는다.
 
-그 결과:
-
-- small message hot path에 불필요한 clone 비용이 붙었고
-- single-part와 multipart 경로 차이가 과장됐고
-- 실패 계약을 위해 정상 경로까지 비싸졌다.
-
-현재 구조는 POSD 관점에서 더 단순하다.
+POSD 관점에서의 구성은 다음과 같다.
 
 - 정상 경로:
   original frame direct send
@@ -176,7 +168,9 @@ public contract는 현재 구현과 맞추어 다음처럼 정리돼 있다.
 - public contract:
   input moved-from
 
-즉 예외 상황을 위해 정상 경로를 clone하지 않는다.
+예외 상황을 위해 정상 경로를 clone 하지 않으므로 small message hot path 에
+불필요한 clone 비용이 붙지 않고, single-part 와 multipart 경로도 같은
+공통 흐름을 공유한다.
 
 ---
 
@@ -1396,16 +1390,15 @@ ready probe filtering이 있어 service 계층에서 추가 보호가 동작한�
 
 이 계약은 구현과 설명이 맞는다.
 
-### 3. POSD 관점에서 더 깊은 모듈
+### 3. POSD 관점에서 깊은 모듈
 
-예전보다 사용자는 적은 것을 알아도 된다.
+caller 가 알아야 하는 범위는 작게 유지된다.
 
-- recv caller는 multipart assembly 내부를 모른다.
-- send caller는 clone/retry 구현을 모른다.
-- internal framing은 routing id/topic output으로 감춰진다.
+- recv caller 는 multipart assembly 내부를 알 필요가 없다.
+- send caller 는 clone/retry 구현을 알 필요가 없다.
+- internal framing 은 routing id/topic output 으로 감춰진다.
 
-즉 shallow wrapper가 아니라
-"복잡한 내부를 숨기는 더 깊은 module"에 가까워졌다.
+shallow wrapper 가 아니라 "복잡한 내부를 숨기는 깊은 module" 역할을 한다.
 
 ### 4. libzmq의 caller 책임 문제를 구조적으로 해소
 

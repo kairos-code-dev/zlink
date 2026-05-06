@@ -54,14 +54,13 @@ int main ()
     inbound->close ();
 
     timer.start (20 * 1000 * 1000ULL, 1);
-    uint64_t fire_count = 0;
-    timer.recv (&fire_count);
-    assert (fire_count == 1);
+    std::optional<uint64_t> fire_count = timer.recv ();
+    assert (fire_count && *fire_count == 1);
 
     char timer_tick[32];
     std::snprintf (
       timer_tick, sizeof (timer_tick), "tick-%llu",
-      static_cast<unsigned long long> (fire_count));
+      static_cast<unsigned long long> (*fire_count));
 
     std::printf (
       "[spot/recv] service: \"%s\" tick: 1 publish: \"%s/%s\" -> recv: \"%s/%s\"\n",

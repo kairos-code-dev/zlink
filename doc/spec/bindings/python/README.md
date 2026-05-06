@@ -11,6 +11,33 @@ contract. Modules such as `_core`, `_ffi`, `_native`, and other underscore
 prefixed helpers are internal implementation details. Perf, samples, and tests
 must import from `zlink` only and must not rely on private underscore modules.
 
+## Design Basis
+
+The Python binding follows the repository POSD design policy. Public classes
+and functions must hide native sequencing, ownership, and option encoding
+behind typed, deep interfaces so callers do not need core implementation
+details.
+
+The public `zlink` surface must model stable domain concepts, not FFI call
+steps. Public classes and functions are justified when they own context/socket
+lifetime, message ownership, receive metadata, service membership, callbacks,
+or typed options. Native handles, part-loop sequencing, request tokens,
+callback userdata, and raw option encoding stay inside underscore-prefixed
+modules and private attributes.
+
+Design review uses these POSD constraints:
+
+- shared send/recv, nonblocking, ownership, and exception mapping rules are
+  centralized instead of copied across socket classes
+- canonical result and facade methods do not ask callers to pass state already
+  captured by the object, such as a source socket, request sequence, or
+  service address
+- compatibility aliases, if retained, are not the canonical API and are not
+  used by new docs, samples, or tests
+- a public wrapper that only forwards to FFI without adding validation,
+  ownership, lifetime, or result-shape semantics is too shallow and must be
+  removed or made private
+
 ---
 
 ## High-Performance Requirements
@@ -23,18 +50,19 @@ construct public `Message` and result objects directly from the core `*_part`
 substrate and must not create native aggregate arrays only to copy them into
 Python lists.
 
-## Current Core Alignment Overrides
+## Core Alignment Rules
 
-The sections below still contain some older method lists. When they conflict
-with the rules here, this section wins.
+The detailed sections below are the canonical Python binding contract. This
+section states cross-cutting constraints once so the per-type API lists can
+stay focused on signatures.
 
-- `PairSocket`, `DealerSocket`, and `RouterSocket` are recv-only on the data
-  plane. Remove `on_receive(...)` from their public contract.
-- `SubSocket` and `XSubSocket` are recv-only. Remove `on_subscribe(...)` from
-  their public contract.
+- `PairSocket`, `DealerSocket`, and `RouterSocket` keep their documented
+  send, recv, request, and reply methods, but they do not expose direct
+  data-plane receive callbacks such as `on_receive(...)`.
+- `SubSocket` and `XSubSocket` are receive-only topic sockets and do not
+  expose direct topic callbacks such as `on_subscribe(...)`.
 - `StreamSocket` keeps `recv(...)` and exposes a packet callback surface
-  mapped to `zlink_stream_packet_handler()`. Recommended canonical name:
-  `on_packet(...)`.
+  mapped to `zlink_stream_packet_handler()` as `on_packet(...)`.
 - `SpotNode` must expose channel-aware attachment APIs:
   `attach_discovery(...)`,
   `attach_channel_dealer(...)`,
@@ -54,16 +82,17 @@ with the rules here, this section wins.
   samples must drain until the recv path reports `EAGAIN`.
 - `Spot.on_routed_receive(...)` and `on_dispatch_event(...)` are mutually
   exclusive on the routed axis.
-- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through typed option/property surfaces. The value range is `0..100`, default `100`; `0` drains new outbound selection. Submit attempts to a weight-`0` peer raise `SubmitError` whose `code` is
-  `SubmitResult.NOT_ADMITTED`.
+- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through
+  typed option/property surfaces. The value range is `0..100`, default
+  `100`; `0` drains new outbound selection. Submit attempts to a weight-`0`
+  peer raise `SubmitError` whose `code` is `SubmitResult.NOT_ADMITTED`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `on_send_ready(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `mandatory =
   True`, `handover = False`, `nodrop = True`.
 - SPOT admission HWM defaults follow the core header. Router and pubsub
   admission profile/numeric options are exposed; relay and delivery HWM stay
-  `0`. Binding packaged linux-x86_64 runtime libraries must be synchronized
-  from `core/build` before validation.
+  `0` and are not public Python options.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routing_id, advertise_endpoint)`. Users do not configure this.
@@ -383,12 +412,12 @@ class RouterSocket:
                       request_seq: int,
                       payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
 
-    # NOTE: RouterSocket 의 routed 수신 plane 은 단일 recv 표면이다. 일반
-    # ROUTER 트래픽과 spot-origin routed 트래픽을 모두 recv 로 받는다.
-    # `Received.routing_id` 는 source_node_rid, `Received.spot_rid` 는
-    # spot-origin 트래픽에서만 값이 있다. data-plane callback install
-    # surface (예: on_receive) 는 ROUTER 에 제공하지 않는다. request
-    # completion 은 request() 경로에서만 유지된다.
+    # NOTE: RouterSocket has one routed receive surface. recv receives both
+    # regular ROUTER traffic and spot-origin routed traffic.
+    # `Received.routing_id` is source_node_rid, and `Received.spot_rid` is set
+    # only for spot-origin traffic. ROUTER does not expose a data-plane
+    # callback install surface such as on_receive. Request completion remains
+    # available only through request().
 
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -687,7 +716,7 @@ request-reply exchange).
 ```python
 class Received:
     routing_id: RoutingId | None             # peer_rid (Router) / source_node_rid (Spot)
-    spot_rid: RoutingId | None               # SPOT routed recv 에서만 설정
+    spot_rid: RoutingId | None               # set only for SPOT routed recv
     request_seq: int | None                  # set when routed over request-reply; None otherwise
     parts: tuple[Message, ...]
 
@@ -695,8 +724,8 @@ class Received:
     def first_part(self) -> Message: ...              # Raises: RecvError
     def single_part_or_throw(self) -> Message: ...    # Raises: RecvError
 
-    # reply — request_seq 가 None 이 아니어야 함. None 또는 invalid reply
-    # context 는 SubmitError.
+    # reply requires request_seq; None or invalid reply context raises
+    # SubmitError.
     def reply(
         self,
         parts: Message | list[Message],
@@ -838,6 +867,14 @@ class RequestResult(IntEnum):
     NOT_FOUND = 102
     TERMINATED = 103
     PROTOCOL_ERROR = 104
+    INTERNAL_ERROR = 105
+    REJECTED = 106
+    CONFLICT = 107
+    BUSY = 108
+    NOT_CONNECTED = 109
+    INVALID_ARGUMENT = 110
+    INVALID_STATE = 111
+    NOT_SUPPORTED = 112
 ```
 
 ### RecvResult
@@ -852,6 +889,7 @@ class RecvResult(IntEnum):
     TERMINATED = 203
     INVALID_HANDLE = 204
     NOT_SUPPORTED = 205
+    INTERNAL_ERROR = 206
 ```
 
 ### HandlerResult
@@ -867,6 +905,7 @@ class HandlerResult(IntEnum):
     NOT_SUPPORTED = 303
     DEADLOCK = 304
     INVALID_HANDLE = 305
+    INTERNAL_ERROR = 306
 ```
 
 ### CloseResult
@@ -879,6 +918,7 @@ class CloseResult(IntEnum):
     BUSY = 401
     SHUTDOWN = 402
     INVALID_HANDLE = 403
+    INTERNAL_ERROR = 404
 ```
 
 ### BindResult
@@ -892,6 +932,7 @@ class BindResult(IntEnum):
     ADDR_IN_USE = 502
     NOT_SUPPORTED = 503
     INVALID_HANDLE = 504
+    INTERNAL_ERROR = 505
 ```
 
 ### ConnectResult
@@ -904,6 +945,10 @@ class ConnectResult(IntEnum):
     INVALID_ARGUMENT = 601
     NOT_SUPPORTED = 602
     INVALID_HANDLE = 603
+    INTERNAL_ERROR = 604
+    NOT_FOUND = 605
+    CONFLICT = 606
+    BUSY = 607
 ```
 
 ### ConfigResult
@@ -916,6 +961,9 @@ class ConfigResult(IntEnum):
     INVALID_HANDLE = 701
     INVALID_ARGUMENT = 702
     NOT_SUPPORTED = 703
+    INTERNAL_ERROR = 704
+    INVALID_STATE = 705
+    NOT_FOUND = 706
 ```
 
 ### ZlinkError
@@ -1115,8 +1163,8 @@ class MonitorSnapshot:
 ### MonitorEvent
 
 Value object emitted by `MonitorSocket.recv()` / `on_event(...)`. The
-canonical name is `MonitorEvent`. `SocketMonitorEvent` is exported as an
-alias for backward compatibility.
+canonical name is `MonitorEvent`. `SocketMonitorEvent` is a compatibility-only
+alias; new docs, samples, and tests must use `MonitorEvent`.
 
 ```python
 class MonitorEvent:
@@ -1126,7 +1174,7 @@ class MonitorEvent:
     local_addr: str                  # local endpoint
     remote_addr: str                 # remote endpoint
 
-SocketMonitorEvent = MonitorEvent    # backward-compat alias; prefer MonitorEvent
+SocketMonitorEvent = MonitorEvent    # compatibility-only alias
 ```
 
 `MonitorEventType` includes `PEER_WEIGHT_CHANGED` (bit 15).
@@ -1194,6 +1242,8 @@ class Discovery:
     def member_peers(self) -> list[MemberPeerEntry]: ...                         # Raises: ConfigError
     spot_owner_sync_enabled: bool                                                # set/get; publishes SPOT owner rows when True
     def resolve_spot(self, spot_rid: RoutingId) -> RoutingId: ...                # Raises: ConfigError — maps to zlink_discovery_resolve_spot; publisher must enable SPOT owner sync for Registry-backed lookup
+    actor_route_sync_enabled: bool                                               # set/get; publishes actor route rows when True
+    def resolve_actor(self, actor_id: str) -> ActorRoute: ...                    # Raises: ConfigError — maps to zlink_discovery_resolve_actor
     def set_tls_client(self, ca_cert: str | None, hostname: str | None,
                        trust_system: bool = False) -> None: ...                  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -1209,6 +1259,7 @@ class SpotNode:
     def last_endpoint(self) -> str: ...                                          # Raises: ConfigError
     def connect_peer(self, endpoint: str) -> None: ...                           # Raises: ConnectError
     def disconnect_peer(self, endpoint: str) -> None: ...                        # Raises: ConnectError
+    def disconnect_peer_rid(self, target_node_rid: RoutingId) -> None: ...       # Raises: ConnectError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
     def attach_channel_dealer(self, discovery: Discovery, dealer: DealerSocket) -> None: ...  # Raises: ConfigError
     def attach_channel_dealer_manual(self, channel_name: str, dealer: DealerSocket) -> None: ...  # Raises: ConfigError
@@ -1225,7 +1276,9 @@ class SpotNode:
                        require_client_cert: bool = False) -> None: ...           # Raises: ConfigError
     def set_tls_client(self, ca_cert: str | None, hostname: str | None,
                        trust_system: bool = False) -> None: ...                  # Raises: ConfigError
+    def entry_spot(self) -> Spot: ...                                            # Raises: ConfigError
     def create_spot(self) -> Spot: ...                                           # Raises: ConfigError
+    def spot_lookup(self, spot_rid: RoutingId) -> Spot | None: ...               # Raises: ConfigError
     def actor(self, actor_id: str) -> Actor: ...                                 # Raises: ConfigError
     def actor_lookup(self, actor_id: str) -> ActorRef: ...                       # Raises: ConfigError
     def create_remote_actor(self, target_node_rid: RoutingId, actor_id: str,
@@ -1250,13 +1303,16 @@ class SpotNode:
         self,
         filter_: SpotNodeSocketSnapshotFilter | None = None
     ) -> list[SpotNodeSocketSnapshotEntry]: ...                                  # Raises: ConfigError
+    def spots_snapshot(self) -> list[SpotNodeSpotEntry]: ...                     # Raises: ConfigError
+    def actors_snapshot(self) -> list[SpotNodeActorEntry]: ...                   # Raises: ConfigError
     # close() cascades: closes all live Spot handles before the node becomes invalid.
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
 
-`SpotNode` owns the lifecycle. `Spot` is created only through
-`SpotNode.create_spot()`. Direct `Spot(node)` construction is internal
-and is not part of the public API contract.
+`SpotNode` owns the lifecycle. `Spot` handles are created through
+`SpotNode.create_spot()`, Entry Spot facades through `SpotNode.entry_spot()`,
+and lookup facades through `SpotNode.spot_lookup(...)`. Direct `Spot(node)`
+construction is internal and is not part of the public API contract.
 
 ### Actor
 
@@ -1283,7 +1339,8 @@ native Actor pointer.
 
 ```python
 class Spot:
-    # __init__(node) is internal. Public code must use SpotNode.create_spot().
+    # __init__(node) is internal. Public code obtains Spot handles through
+    # SpotNode factories.
 
     # --- identity / routing ---
     # Spot's logical address / routed ownership key.
@@ -1658,6 +1715,10 @@ def strerror(code: int) -> str:
 
 def has(capability: str) -> bool:
     """Check if the library supports a given capability (e.g. 'ipc', 'tls')."""
+    ...
+
+def remote_actor_ref(target_node_rid: RoutingId, actor_id: str) -> ActorRef:
+    """Create an unchecked remote actor reference."""
     ...
 
 def proxy(frontend, backend, capture=None) -> None:

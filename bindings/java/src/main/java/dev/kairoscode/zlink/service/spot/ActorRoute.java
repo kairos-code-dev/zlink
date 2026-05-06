@@ -4,9 +4,13 @@ package dev.kairoscode.zlink.service.spot;
 
 import dev.kairoscode.zlink.RoutingId;
 import java.util.Objects;
+import java.util.Optional;
 
-public record ActorRoute(ActorRef actor, boolean joined, RoutingId joinedSpotRid) {
+public record ActorRoute(ActorRef actor,
+                         boolean joined,
+                         Optional<RoutingId> joinedSpotRid) {
     public ActorRoute {
         Objects.requireNonNull(actor, "actor");
+        joinedSpotRid = joinedSpotRid == null ? Optional.empty() : joinedSpotRid;
     }
 }

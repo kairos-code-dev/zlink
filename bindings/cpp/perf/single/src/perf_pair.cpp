@@ -89,8 +89,8 @@ bool run_pattern_pair (const std::string &transport,
         return false;
     }
 
-    (void) bind_socket.sock ().set_option (zlink::socket_options::tcp_nodelay, 1);
-    (void) conn_socket.sock ().set_option (zlink::socket_options::tcp_nodelay, 1);
+    (void) bind_socket.sock ().set_option (zlink::compat::options::socket_options::tcp_nodelay, 1);
+    (void) conn_socket.sock ().set_option (zlink::compat::options::socket_options::tcp_nodelay, 1);
 
     if (!perf::single::setup_connected_pair (bind_socket.sock (),
                                              conn_socket.sock (),
@@ -104,9 +104,9 @@ bool run_pattern_pair (const std::string &transport,
 
     const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();
     (void) bind_socket.sock ().set_option (
-      zlink::socket_options::rcvtimeo, recv_timeout);
+      zlink::compat::options::socket_options::rcvtimeo, recv_timeout);
     (void) conn_socket.sock ().set_option (
-      zlink::socket_options::sndtimeo, perf::single::resolve_single_send_timeout_ms ());
+      zlink::compat::options::socket_options::sndtimeo, perf::single::resolve_single_send_timeout_ms ());
 
     const int duration_s = perf::single::resolve_single_duration_seconds ();
     std::vector<char> payload (
@@ -146,8 +146,8 @@ bool run_pattern_pair (const std::string &transport,
     zlink::poller_t poller;
     poller.add (bind_socket.sock (), zlink::poll_event::pollin);
     while (!sender_done.load (std::memory_order_acquire)) {
-        zlink::poll_event_t event = {};
-        const int poll_rc = poller.wait (&event, 5);
+        std::optional<zlink::poll_event_t> event = poller.wait (5);
+        const int poll_rc = event ? 1 : 0;
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
@@ -155,7 +155,7 @@ bool run_pattern_pair (const std::string &transport,
             break;
         }
         if (poll_rc == 0
-            || (event.revents & static_cast<short> (zlink::poll_event::pollin))
+            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event::pollin))
                  == 0) {
             continue;
         }

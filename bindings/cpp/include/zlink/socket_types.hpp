@@ -17,6 +17,16 @@ namespace zlink
 // Compatibility aggregate for the concrete socket classes. Public class
 // entrypoint headers live under zlink/sockets/*.hpp and include this file.
 
+namespace service
+{
+class spot_node_t;
+} // namespace service
+namespace detail
+{
+inline void *native_handle (service::spot_node_t &node_) noexcept;
+inline const void *native_handle (const service::spot_node_t &node_) noexcept;
+} // namespace detail
+
 namespace detail
 {
 
@@ -32,7 +42,7 @@ take_parts (zlink_msg_t *parts_, size_t part_count_)
     std::vector<message_t> parts;
     parts.resize (part_count_);
     for (size_t i = 0; i < part_count_; ++i)
-        (void) zlink_msg_move (parts[i].handle (), &parts_[i]);
+        (void) zlink_msg_move (detail::native_handle(parts[i]), &parts_[i]);
     return parts;
 }
 
@@ -136,10 +146,10 @@ inline received_t make_received (
 {
     return received_t (
       (routing_id_ && routing_id_->size > 0)
-        ? std::optional<routing_id_t> (routing_id_t (*routing_id_))
+        ? std::optional<routing_id_t> (zlink::detail::native_routing_id (*routing_id_))
         : std::nullopt,
       (spot_rid_ && spot_rid_->size > 0)
-        ? std::optional<routing_id_t> (routing_id_t (*spot_rid_))
+        ? std::optional<routing_id_t> (zlink::detail::native_routing_id (*spot_rid_))
         : std::nullopt,
       has_request_seq_ ? std::optional<uint64_t> (request_seq_) : std::nullopt,
       take_parts (parts_, part_count_), std::move (reply_fn_));
@@ -168,9 +178,11 @@ inline received_t recv_router_received (void *router_handle_,
 
     std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn;
     if (source_node_rid && source_node_rid->size > 0 && request_seq != 0u) {
-        const routing_id_t reply_node_rid (*source_node_rid);
+        const routing_id_t reply_node_rid =
+          zlink::detail::native_routing_id (*source_node_rid);
         if (source_spot_rid && source_spot_rid->size > 0) {
-            const routing_id_t reply_spot_rid (*source_spot_rid);
+            const routing_id_t reply_spot_rid =
+              zlink::detail::native_routing_id (*source_spot_rid);
             reply_fn = [router_handle_, reply_node_rid, reply_spot_rid,
                         request_seq] (
                          std::vector<message_t> &reply_parts_,
@@ -187,8 +199,8 @@ inline received_t recv_router_received (void *router_handle_,
                          zlink_part_flag_t part_flag_,
                          bool) {
                         return zlink_router_reply_spot_part (
-                          router_handle_, routing_id_native (reply_node_rid),
-                          routing_id_native (reply_spot_rid), request_seq,
+                          router_handle_, zlink::detail::routing_id_native (reply_node_rid),
+                          zlink::detail::routing_id_native (reply_spot_rid), request_seq,
                           part_out_, part_flag_);
                     }));
                 if (result != submit_result_t::ok) {
@@ -213,7 +225,7 @@ inline received_t recv_router_received (void *router_handle_,
                          zlink_part_flag_t part_flag_,
                          bool) {
                         return zlink_router_reply_part (
-                          router_handle_, routing_id_native (reply_node_rid),
+                          router_handle_, zlink::detail::routing_id_native (reply_node_rid),
                           request_seq, part_out_, part_flag_);
                     }));
                 if (result != submit_result_t::ok) {
@@ -226,10 +238,10 @@ inline received_t recv_router_received (void *router_handle_,
     }
     return received_t (
       (source_node_rid && source_node_rid->size > 0)
-        ? std::optional<routing_id_t> (routing_id_t (*source_node_rid))
+        ? std::optional<routing_id_t> (zlink::detail::native_routing_id (*source_node_rid))
         : std::nullopt,
       (source_spot_rid && source_spot_rid->size > 0)
-        ? std::optional<routing_id_t> (routing_id_t (*source_spot_rid))
+        ? std::optional<routing_id_t> (zlink::detail::native_routing_id (*source_spot_rid))
         : std::nullopt,
       request_seq != 0u ? std::optional<uint64_t> (request_seq) : std::nullopt,
       std::move (parts), std::move (reply_fn));
@@ -288,12 +300,6 @@ class pair_socket_t : public message_socket_t
         if (rc != recv_result_t::ok)
             throw recv_error_t (rc, zlink_errno ());
         return std::optional<received_t> (std::move (received));
-    }
-
-    void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
-    {
-        if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
-            detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
     void on_send_ready (std::function<void()> handler_)
@@ -361,12 +367,6 @@ class dealer_socket_t : public message_socket_t
         if (rc != recv_result_t::ok)
             throw recv_error_t (rc, zlink_errno ());
         return std::optional<received_t> (std::move (received));
-    }
-
-    void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
-    {
-        if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
-            detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
     void on_send_ready (std::function<void()> handler_)
@@ -574,12 +574,6 @@ class router_socket_t : public routed_message_socket_t
         }
     }
 
-    void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
-    {
-        if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
-            detail::throw_handler_error_from_errno (zlink_errno ());
-    }
-
     void on_send_ready (std::function<void()> handler_)
     {
         base_socket_t::on_send_ready (std::move (handler_));
@@ -612,7 +606,7 @@ class router_socket_t : public routed_message_socket_t
           native, failed_index,
           [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
               return zlink_router_request_part (
-                handle (), routing_id_native (routing_id_), part_out_,
+                handle (), zlink::detail::routing_id_native (routing_id_), part_out_,
                 ZLINK_SEND_FLAGS_NONE, part_flag_,
                 is_final_
                   ? static_cast<uint32_t> (
@@ -664,7 +658,7 @@ class router_socket_t : public routed_message_socket_t
           native, failed_index,
           [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
               return zlink_router_request_part (
-                handle (), routing_id_native (routing_id_), part_out_,
+                handle (), zlink::detail::routing_id_native (routing_id_), part_out_,
                 static_cast<zlink_send_flags_t> (flags_), part_flag_,
                 is_final_
                   ? static_cast<uint32_t> (
@@ -711,7 +705,7 @@ class router_socket_t : public routed_message_socket_t
           native, failed_index,
           [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
               return zlink_router_reply_part (
-                handle (), routing_id_native (routing_id_), request_seq_,
+                handle (), zlink::detail::routing_id_native (routing_id_), request_seq_,
                 part_out_, part_flag_);
           });
         if (rc != 0) {
@@ -772,8 +766,8 @@ class router_socket_t : public routed_message_socket_t
             native, failed_index,
             [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
                 return zlink_router_send_spot_part (
-                  handle (), routing_id_native (dest_node_rid_),
-                  routing_id_native (dest_spot_rid_), part_out_,
+                  handle (), zlink::detail::routing_id_native (dest_node_rid_),
+                  zlink::detail::routing_id_native (dest_spot_rid_), part_out_,
                   static_cast<zlink_send_flags_t> (flags_), part_flag_);
             }));
         if (rc != submit_result_t::ok) {
@@ -808,8 +802,8 @@ class router_socket_t : public routed_message_socket_t
             native, failed_index,
             [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
                 return zlink_router_request_spot_part (
-                  handle (), routing_id_native (dest_node_rid_),
-                  routing_id_native (dest_spot_rid_), part_out_,
+                  handle (), zlink::detail::routing_id_native (dest_node_rid_),
+                  zlink::detail::routing_id_native (dest_spot_rid_), part_out_,
                   is_final_ ? &detail::request_callback_trampoline : NULL,
                   is_final_ ? state : NULL, ZLINK_SEND_FLAGS_NONE, part_flag_,
                   is_final_
@@ -850,8 +844,8 @@ class router_socket_t : public routed_message_socket_t
             native, failed_index,
             [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool is_final_) {
                 return zlink_router_request_spot_part (
-                  handle (), routing_id_native (dest_node_rid_),
-                  routing_id_native (dest_spot_rid_), part_out_,
+                  handle (), zlink::detail::routing_id_native (dest_node_rid_),
+                  zlink::detail::routing_id_native (dest_spot_rid_), part_out_,
                   is_final_ ? &detail::request_callback_trampoline : NULL,
                   is_final_ ? state : NULL,
                   static_cast<zlink_send_flags_t> (flags_), part_flag_,
@@ -890,8 +884,8 @@ class router_socket_t : public routed_message_socket_t
             native, failed_index,
             [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
                 return zlink_router_reply_spot_part (
-                  handle (), routing_id_native (dest_node_rid_),
-                  routing_id_native (dest_spot_rid_), request_seq_, part_out_,
+                  handle (), zlink::detail::routing_id_native (dest_node_rid_),
+                  zlink::detail::routing_id_native (dest_spot_rid_), request_seq_, part_out_,
                   part_flag_);
             }));
         if (rc != submit_result_t::ok) {
@@ -978,21 +972,12 @@ class stream_socket_t : public routed_message_socket_t
         return std::optional<received_t> (std::move (received));
     }
 
-    void on_receive (zlink_socket_msg_handler_fn handler_, void *userdata_ = NULL)
-    {
-        if (base_socket_t::on_receive (handler_, userdata_) != 0)
-            detail::throw_handler_error_from_errno (zlink_errno ());
-    }
-
     void on_receive (std::function<void(received_t)> handler_)
     {
         _receive_handler = std::move (handler_);
-        on_receive (&stream_socket_t::receive_trampoline, this);
-    }
-
-    void on_packet (zlink_stream_packet_handler_fn handler_, void *userdata_ = NULL)
-    {
-        if (base_socket_t::on_packet (handler_, userdata_) != 0)
+        if (base_socket_t::on_receive (
+              &stream_socket_t::receive_trampoline, this)
+            != 0)
             detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
@@ -1000,12 +985,9 @@ class stream_socket_t : public routed_message_socket_t
       std::function<void(const routing_id_t &, message_t, message_t)> handler_)
     {
         _packet_handler = std::move (handler_);
-        on_packet (&stream_socket_t::packet_trampoline, this);
-    }
-
-    void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
-    {
-        if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
+        if (base_socket_t::on_packet (
+              &stream_socket_t::packet_trampoline, this)
+            != 0)
             detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
@@ -1042,8 +1024,8 @@ class stream_socket_t : public routed_message_socket_t
         detail::throw_if_failed<request_error_t> (
           static_cast<request_result_t> (
             zlink_stream_bind_actor (
-              node_.handle (), handle (), routing_id_native (session_rid_),
-              actor_ref_native (actor_),
+              zlink::detail::native_handle (node_), handle (), zlink::detail::routing_id_native (session_rid_),
+              zlink::detail::actor_ref_native (actor_),
               static_cast<uint32_t> (timeout_.count ()))));
     }
 
@@ -1053,12 +1035,12 @@ class stream_socket_t : public routed_message_socket_t
                        const std::string &actor_id_,
                        std::chrono::milliseconds timeout_ = {})
     {
-        validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
+        detail::validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
                                    "actor_id");
         detail::throw_if_failed<request_error_t> (
           static_cast<request_result_t> (
             zlink_stream_unbind_actor (
-              node_.handle (), handle (), routing_id_native (session_rid_),
+              zlink::detail::native_handle (node_), handle (), zlink::detail::routing_id_native (session_rid_),
               actor_id_.c_str (), static_cast<uint32_t> (timeout_.count ()))));
     }
 
@@ -1069,18 +1051,18 @@ class stream_socket_t : public routed_message_socket_t
                                 message_t &part_,
                                 send_flags_t flags_ = send_flags_t::none)
     {
-        validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
+        detail::validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
                                    "actor_id");
         zlink_msg_t native;
-        part_.move_to (&native);
+        detail::move_to_native(part_, &native);
         const submit_result_t rc = static_cast<submit_result_t> (
           zlink_stream_send_bound_actor_part (
-            node_.handle (), handle (), routing_id_native (session_rid_),
+            zlink::detail::native_handle (node_), handle (), zlink::detail::routing_id_native (session_rid_),
             actor_id_.c_str (), &native,
             static_cast<zlink_send_flags_t> (flags_), ZLINK_PART_FINAL));
         if (rc != submit_result_t::ok) {
             part_.init ();
-            (void) zlink_msg_move (part_.handle (), &native);
+            (void) zlink_msg_move (detail::native_handle(part_), &native);
             if (flags_ == send_flags_t::dontwait
                 && rc == submit_result_t::backpressured)
                 return false;
@@ -1112,13 +1094,13 @@ class stream_socket_t : public routed_message_socket_t
         stream_socket_t *self = static_cast<stream_socket_t *> (userdata_);
         if (!self || !self->_packet_handler)
             return;
-        routing_id_t source;
+        routing_id_t source = zlink::detail::unchecked_empty_routing_id ();
         if (source_rid_ && source_rid_->size > 0)
-            source = routing_id_t (*source_rid_);
+            source = zlink::detail::native_routing_id (*source_rid_);
         message_t header;
         message_t body;
-        (void) zlink_msg_move (header.handle (), header_);
-        (void) zlink_msg_move (body.handle (), body_);
+        (void) zlink_msg_move (detail::native_handle(header), header_);
+        (void) zlink_msg_move (detail::native_handle(body), body_);
         self->_packet_handler (
           source, std::move (header), std::move (body));
     }
@@ -1170,12 +1152,6 @@ class pub_socket_t : public publisher_socket_t
             throw submit_error_t (rc, zlink_errno ());
         }
         return true;
-    }
-
-    void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
-    {
-        if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
-            detail::throw_handler_error_from_errno (zlink_errno ());
     }
 
     void on_send_ready (std::function<void()> handler_)
@@ -1240,12 +1216,6 @@ class xpub_socket_t : public publisher_socket_t
         return true;
     }
 
-    void on_send_ready (zlink_send_ready_handler_fn handler_, void *userdata_ = NULL)
-    {
-        if (base_socket_t::on_send_ready (handler_, userdata_) != 0)
-            detail::throw_handler_error_from_errno (zlink_errno ());
-    }
-
     void on_send_ready (std::function<void()> handler_)
     {
         base_socket_t::on_send_ready (std::move (handler_));
@@ -1275,7 +1245,7 @@ class xpub_socket_t : public publisher_socket_t
 
         if (rc == ZLINK_RECV_OK) {
             if (source_rid && source_rid->size > 0)
-                event.routing_id = routing_id_t (*source_rid);
+                event.routing_id = zlink::detail::native_routing_id (*source_rid);
             event.subscribed = subscribed != 0;
             event.topic.assign (topic_buffer.data (), topic_size);
         }

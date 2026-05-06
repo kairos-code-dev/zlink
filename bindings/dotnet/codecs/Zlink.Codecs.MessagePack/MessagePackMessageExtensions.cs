@@ -6,30 +6,20 @@ using Zlink;
 
 namespace Zlink.Codecs.MessagePack;
 
-public static class ZlinkMessagePackCodec
-{
-    private static MessagePackSerializerOptions _serializerOptions = MessagePackSerializerOptions.Standard;
-
-    public static MessagePackSerializerOptions SerializerOptions => _serializerOptions;
-
-    public static void Configure(MessagePackSerializerOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        _serializerOptions = options;
-    }
-}
-
 public static class MessagePackMessageExtensions
 {
-    public static T FromMsgPack<T>(this Message message)
+    public static T FromMsgPack<T>(this Message message,
+        MessagePackSerializerOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(message);
-        return MessagePackSerializer.Deserialize<T>(message.AsReadOnlyMemory(), ZlinkMessagePackCodec.SerializerOptions);
+        return MessagePackSerializer.Deserialize<T>(message.AsReadOnlyMemory(),
+            options);
     }
 
-    public static Message ToMsgPack<T>(this T value)
+    public static Message ToMsgPack<T>(this T value,
+        MessagePackSerializerOptions? options = null)
     {
-        byte[] payload = MessagePackSerializer.Serialize(value, ZlinkMessagePackCodec.SerializerOptions);
-        return Message.FromOwnedBytes(payload);
+        byte[] payload = MessagePackSerializer.Serialize(value, options);
+        return Message.FromBytes(payload);
     }
 }

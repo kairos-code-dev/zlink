@@ -7,6 +7,7 @@ import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.PollEventType;
 import dev.kairoscode.zlink.Poller;
 import dev.kairoscode.zlink.TestSupport;
+import dev.kairoscode.zlink.Timer;
 import java.util.List;
 import java.lang.reflect.Modifier;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,24 @@ public class SocketPollingContractTest {
             List<PollEvent> events = poller.poll(0);
             assertEquals(1, events.size());
             assertSame(server, events.get(0).socket());
+        }
+    }
+
+    @Test
+    public void pollerTracksTimersThroughCoreTimerRegistration() {
+        TestSupport.assumeNative();
+
+        try (Timer timer = new Timer();
+             Poller poller = new Poller()) {
+            Object tag = new Object();
+            poller.add(timer, tag);
+            timer.start(1_000_000L, 1L);
+
+            assertTrue(poller.pollAny(TestSupport.DEFAULT_TIMEOUT_MS));
+            assertEquals(1, poller.size());
+            assertSame(timer, poller.readyTimer(0));
+            assertSame(tag, poller.readyTag(0));
+            assertTrue(timer.recv() > 0L);
         }
     }
 

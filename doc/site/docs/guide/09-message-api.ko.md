@@ -1,3 +1,4 @@
+[English](09-message-api.md) | [한국어](09-message-api.ko.md)
 
 # Message API 상세
 
@@ -18,7 +19,7 @@
 | reference count (refcount) | 같은 데이터 버퍼를 공유하는 메시지 핸들의 수. 0이 되면 버퍼가 해제된다 |
 | ownership | 메시지 데이터의 소유권. send 성공 시 library로 이전되고, 실패 시 caller가 유지한다 |
 | routing_id | Router 소켓이 피어를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트) |
-| envelope | 사용자 payload 앞에 자동으로 붙는 제어 정보 |
+| control part(제어 파트) | request-reply, SPOT routed 같은 상위 프로토콜이 payload 앞에 붙이는 내부 part |
 | HWM (High Water Mark) | 소켓의 송신/수신 큐 최대 용량. 초과 시 backpressure가 발생한다 |
 
 ## 1. 개요
@@ -45,33 +46,40 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이�
 `zlink_msg_t`는 항상 64 byte 고정 struct이다. data 크기에 따라
 내부 저장 전략이 자동으로 결정된다:
 
-```
-+-------------------------------------------------------------+
-|                  zlink_msg_t (64 bytes)                     |
-+-------------------------------------------------------------+
-|                                                             |
-|  VSM (≤33B):  [ type | size | data ····················· ]  |
-|                               ↑ data가 struct 내부에 inline |
-|                                                             |
-|  LMSG (>33B): [ type | content_ptr                          |
-|                           ↓                                 |
-|                  +--------------------+                     |
-|                  | heap buffer        |                     |
-|                  | + refcount         |                     |
-|                  +--------------------+                     |
-|                                                             |
-|  CMSG:        [ type | data_ptr                             |
-|                           ↓                                 |
-|                  +--------------------+                     |
-|                  | external const buf                       |
-|                  +--------------------+                     |
-|                                                             |
-|  ZCLMSG:      [ type | data_ptr | ffn_ptr | hint | ··· ]    |
-|                           ↓          ↓                      |
-|                  +----------+   ffn(data, hint)로 해제      |
-|                  | user buf |                               |
-|                  +----------+                               |
-+-------------------------------------------------------------+
+```text
++------------------------------------------------------+
+|               zlink_msg_t  (64 bytes)                |
++------------------------------------------------------+
+|                                                      |
+|  VSM  (<=33B):                                       |
+|    [ type | size | data ......................... ]  |
+|                          ^ stored inline             |
+|                                                      |
+|  LMSG (>33B):                                        |
+|    [ type | content_ptr ]                            |
+|                   |                                  |
+|                   v                                  |
+|             +------------------+                     |
+|             | heap buffer      |                     |
+|             | + refcount       |                     |
+|             +------------------+                     |
+|                                                      |
+|  CMSG:                                               |
+|    [ type | data_ptr ]                               |
+|                   |                                  |
+|                   v                                  |
+|             +------------------+                     |
+|             | external const   |                     |
+|             +------------------+                     |
+|                                                      |
+|  ZCLMSG:                                             |
+|    [ type | data_ptr | ffn_ptr | hint | ... ]        |
+|                |           |                         |
+|                v           v                         |
+|          +----------+  ffn(data, hint)               |
+|          | user buf  |  called on release            |
+|          +----------+                                |
++------------------------------------------------------+
 ```
 
 핵심: `zlink_msg_t` struct 자체는 stack/배열에 놓이고, 큰 data만 heap을
@@ -87,6 +95,7 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기이�
 | `zlink_msg_init_data` | 외부 buffer 연결 (zero-copy) | ownership이 message로 이전 |
 | `zlink_msg_close` | message 해제 (refcount=0이면 free) | 소유 포기 |
 | `zlink_msg_move` | src -> dest 이동, src는 빈 상태 | dest로 이전 |
+| `zlink_msg_adopt` | src -> dest 이동 (dest 사전 초기화 불필요) | dest로 이전 |
 | `zlink_msg_copy` | src -> dest 복사, LMSG는 refcount 증가 | dest도 공동 소유 |
 | `zlink_msg_data` | data buffer pointer 반환 | 변화 없음 (읽기 전용) |
 | `zlink_msg_size` | data size(byte) 반환 | 변화 없음 |
@@ -199,7 +208,7 @@ int zlink_send(void *s_, zlink_msg_t *parts_, size_t part_count_, zlink_send_fla
 
 **사용 시점:** 대용량 data의 copy를 피하고 싶을 때. Buffer 해제 시점을 library에 위임.
 
-> 참고: `core/tests/test_msg_ffn.cpp` — free function callback 동작 검증
+> 참고: `core/tests/integration/test_msg_ffn.cpp` — free function callback 동작 검증
 
 ### 4.2 Data Access
 
@@ -208,9 +217,9 @@ void *data = zlink_msg_data(&msg);
 size_t size = zlink_msg_size(&msg);
 ```
 
-> **제거됨:** `zlink_msg_more()`와 `ZLINK_MORE`는 header에서 제거되었다.
-> Multipart parts-array API를 사용하면 `more` flag가 application
-> code에서 더 이상 필요하지 않다.
+> **참고:** header 에는 `zlink_msg_more()` 나 `ZLINK_MORE` 가 없다.
+> 애플리케이션 코드는 per-message `more` flag 대신 multipart parts-array
+> API 를 사용한다.
 
 ### 4.3 Move와 Copy
 
@@ -257,7 +266,7 @@ zlink_msg_close(&original);
 zlink_msg_close(&copy);  /* Actual memory freed when last reference is released */
 ```
 
-> 참고: `core/tests/test_msg_flags.cpp` — `test_shared_refcounted()`
+> 참고: `core/tests/integration/test_msg_flags.cpp` — `test_shared_refcounted()`
 
 ### 4.4 Metadata Property — zlink_msg_gets
 
@@ -278,16 +287,14 @@ memcpy(zlink_msg_data(&parts[0]), "header", 6);
 zlink_msg_init_size(&parts[1], 4);
 memcpy(zlink_msg_data(&parts[1]), "body", 4);
 
-int rc = zlink_send(socket, parts, 2, 0);
-if (rc == -1) {
-    /* Failure: caller still owns parts */
+zlink_submit_result_t rc = zlink_send(socket, parts, 2, 0);
+if (rc != ZLINK_SUBMIT_OK) {
+    /* 실패: caller 가 parts 소유권을 계속 보유 */
     for (size_t i = 0; i < 2; i++)
         zlink_msg_close(&parts[i]);
 }
 ```
 
-> **Legacy:** `zlink_msg_send()`는 아직 header에 존재하지만 제거 예정이다.
-> `zlink_send()`에 parts array를 전달하는 방식으로 대체한다.
 
 ### 4.6 Recv
 
@@ -299,16 +306,16 @@ zlink_msg_t part;
 zlink_msg_init_size(&part, 100);
 memcpy(zlink_msg_data(&part), data, 100);
 
-int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
-if (rc == -1) {
-    if (errno == EAGAIN) {
-        /* HWM exceeded: retry later */
-    } else if (errno == ENOTSUP) {
-        /* Send not supported on this socket (e.g., SUB socket) */
-    } else if (errno == ETERM) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
+if (rc != ZLINK_SUBMIT_OK) {
+    if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
+        /* HWM 초과: 나중에 retry */
+    } else if (rc == ZLINK_SUBMIT_NOT_SUPPORTED) {
+        /* 해당 socket 에서 send 불가 (예: SUB socket) */
+    } else if (rc == ZLINK_SUBMIT_TERMINATED) {
         /* Context terminated */
     }
-    /* On failure, part is still valid -> must close */
+    /* 실패 시 part 는 여전히 유효 → 반드시 close */
     zlink_msg_close(&part);
 }
 ```
@@ -331,22 +338,22 @@ zlink_msg_close(&msg);
 ### Ownership 규칙 실전
 
 ```c
-/* Pattern 1: Send succeeds → msg parts automatically cleaned up */
+/* Pattern 1: Send 성공 → msg parts 자동 정리 */
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "Hello", 5);
-int rc = zlink_send(socket, &part, 1, 0);
-if (rc != -1) {
-    /* Success: part is now empty. Calling close is safe but unnecessary */
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, 0);
+if (rc == ZLINK_SUBMIT_OK) {
+    /* 성공: part 는 이제 비어있음. close 는 안전하지만 불필요 */
 }
 
-/* Pattern 2: Send fails → manual cleanup required */
+/* Pattern 2: Send 실패 → 수동 정리 필요 */
 zlink_msg_t part2;
 zlink_msg_init_size(&part2, 5);
 memcpy(zlink_msg_data(&part2), "Hello", 5);
 rc = zlink_send(socket, &part2, 1, ZLINK_DONTWAIT);
-if (rc == -1) {
-    /* Failure: part2 is still valid. Must close */
+if (rc != ZLINK_SUBMIT_OK) {
+    /* 실패: part2 여전히 유효. 반드시 close */
     zlink_msg_close(&part2);
 }
 
@@ -379,7 +386,7 @@ void notify_free(void *data, void *hint) {
 }
 ```
 
-> 참고: `core/tests/test_msg_ffn.cpp` — `ffn()` callback이 hint에 "freed" 기록
+> 참고: `core/tests/integration/test_msg_ffn.cpp` — `ffn()` callback이 hint에 "freed" 기록
 
 ### Free Function 호출 시점
 
@@ -402,7 +409,7 @@ zlink_msg_close(&msg);
 zlink_msg_close(&copy);  /* my_free called when last reference is released */
 ```
 
-> 참고: `core/tests/test_msg_ffn.cpp` — close/send/copy 각 시나리오
+> 참고: `core/tests/integration/test_msg_ffn.cpp` — close/send/copy 각 시나리오
 
 ### Constant Data 전송 (CMSG)
 
@@ -430,7 +437,7 @@ memcpy(zlink_msg_data(&parts[1]), "body", 4);
 zlink_send(socket, parts, 2, 0);
 ```
 
-> 참고: `core/tests/test_msg_flags.cpp` — `test_shared_const()`
+> 참고: `core/tests/integration/test_msg_flags.cpp` — `test_shared_const()`
 
 ## 7. Multipart Message 실전 Pattern
 
@@ -463,7 +470,7 @@ void on_request(const zlink_routing_id_t *source_rid,
 }
 ```
 
-> 참고: `core/tests/test_msg_flags.cpp` — `test_more()`: DEALER→ROUTER multipart
+> 참고: `core/tests/integration/test_msg_flags.cpp` — `test_more()`: DEALER→ROUTER multipart
 
 ### Pattern 2: Topic + Data (PUB/SUB)
 
@@ -541,7 +548,7 @@ zlink_msg_init_data(&const_msg, (void *)"TEST", 5, NULL, NULL);
 refcnt = zlink_msg_refcnt(&const_msg);  /* 1: internal refcount 대상 아님 */
 ```
 
-> 참고: `core/tests/test_msg_flags.cpp` — `test_shared_const()`: constant message의 shared property
+> 참고: `core/tests/integration/test_msg_flags.cpp` — `test_shared_const()`: constant message의 shared property
 
 ## 9. Error 처리
 
@@ -552,16 +559,16 @@ zlink_msg_t part;
 zlink_msg_init_size(&part, 100);
 memcpy(zlink_msg_data(&part), data, 100);
 
-int rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
-if (rc == -1) {
-    if (errno == EAGAIN) {
+zlink_submit_result_t rc = zlink_send(socket, &part, 1, ZLINK_DONTWAIT);
+if (rc != ZLINK_SUBMIT_OK) {
+    if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
         /* HWM 초과: 나중에 retry */
-    } else if (errno == ENOTSUP) {
-        /* 해당 socket에서 send 불가 (예: SUB socket) */
-    } else if (errno == ETERM) {
+    } else if (rc == ZLINK_SUBMIT_NOT_SUPPORTED) {
+        /* 해당 socket 에서 send 불가 (예: SUB socket) */
+    } else if (rc == ZLINK_SUBMIT_TERMINATED) {
         /* Context terminated */
     }
-    /* 실패 시 part는 여전히 유효 → 반드시 close */
+    /* 실패 시 part 는 여전히 유효 → 반드시 close */
     zlink_msg_close(&part);
 }
 ```
@@ -601,105 +608,24 @@ ROUTER directed send에는 `zlink_send_rid()`를 사용한다:
 zlink_send_rid(router, &target_rid, parts, part_count, 0);
 ```
 
-> **Legacy:** `zlink_msg_send()`는 아직 header에 존재하지만 제거 예정이다.
-> 모든 call site를 `zlink_send()`에 parts array를 전달하는 방식으로 migration한다.
 
-## 11. Request-Reply Envelope
+## 11. request-reply 와 metadata
 
-## 11. request-reply 와 metadata 변경 사항
+`zlink_msg_t` 는 payload part 컨테이너다. 메시지 자체에 request-reply
+문맥이나 per-message metadata 필드는 담지 않는다.
 
-예전 message-level request-reply 와 per-message metadata API 는 더 이상
-활성 공개 API 가 아니다.
+request-reply 흐름은 전용 API 로 연다.
 
-제거된 항목:
+- `DEALER` / `ROUTER`: [03-3-dealer.ko.md](03-3-dealer.ko.md),
+  [03-4-router.ko.md](03-4-router.ko.md)
+- SPOT routed request-reply: [07-3-spot.ko.md](07-3-spot.ko.md)
+- 와이어(wire, 프로토콜 전송 레벨) envelope 구조: [../internals/protocol-zmp.ko.md](../internals/protocol-zmp.ko.md)
 
-- `zlink_msg_set_request`
-- `zlink_msg_set_reply`
-- `zlink_msg_get_request_info`
-- `zlink_msg_set_metadata`
-- `zlink_msg_get_metadata`
-- `zlink_msg_clear_metadata`
+즉 message API 관점에서 기억할 점은 단순하다.
 
-현재 request-reply 는 typed socket API 로 연다.
-예를 들어 `DEALER`, `ROUTER` 는 전용 request/reply 함수와 typed receive
-surface 를 사용한다.
-
-SPOT 직접 전달과 SPOT request-reply 도 같은 방식으로 typed SPOT surface 와
-ZMP control part 를 사용한다.
-
-현재 기준 문서는 아래를 따른다.
-
-- `doc/spec/core/socket/README.ko.md`
-- `doc/spec/core/service/spot.ko.md`
-- `doc/internals/protocol-zmp.ko.md`
-
-## 12. Per-Message Metadata
-
-각 메시지에 application 정의 key-value metadata를 첨부할 수 있다.
-metadata는 send 시 wire에 직렬화되고 recv 시 복원된다.
-ZMP 프로토콜 메타데이터(`zlink_msg_gets`)와는 독립적이다.
-
-### Metadata 설정
-
-```c
-/* Application 정의 metadata key */
-enum my_meta {
-    META_TRACE_ID  = 0x0100,
-    META_PRIORITY  = 0x0101,
-    META_TIMESTAMP = 0x0102,
-};
-
-zlink_msg_t msg;
-zlink_msg_init_size(&msg, 11);
-memcpy(zlink_msg_data(&msg), "hello world", 11);
-
-/* trace-id 첨부 */
-uint8_t trace_id[16] = { /* ... */ };
-zlink_msg_set_metadata(&msg, META_TRACE_ID, trace_id, 16);
-
-/* priority 첨부 */
-uint8_t priority = 3;
-zlink_msg_set_metadata(&msg, META_PRIORITY, &priority, 1);
-
-zlink_send(socket, &msg, 1, 0);
-```
-
-### Metadata 읽기
-
-```c
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    size_t trace_len;
-    const void *trace = zlink_msg_get_metadata(&parts[0],
-                                                META_TRACE_ID, &trace_len);
-    if (trace) {
-        /* trace_id 바이트 사용 (trace, trace_len) */
-    }
-
-    size_t prio_len;
-    const void *prio = zlink_msg_get_metadata(&parts[0],
-                                               META_PRIORITY, &prio_len);
-    if (prio && prio_len == 1) {
-        uint8_t priority = *(const uint8_t *)prio;
-        /* priority 사용 */
-    }
-
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-```
-
-### 핵심 사항
-
-- key `0x0000`~`0x00FF`는 zlink 예약. 사용자 key는 `0x0100`부터 시작.
-- metadata가 없는 메시지는 wire overhead가 0이다.
-- `msg_copy`는 metadata를 깊은 복사한다. `msg_move`는 metadata를 이동한다 (source는 비워진다).
-- `msg_close`는 metadata 저장소를 해제한다.
-- `msg_data()` / `msg_size()`는 사용자 payload만 반환한다. metadata header 미포함.
-- `get_metadata`는 없는 key에 대해 NULL을 반환한다 (오류 아님).
-- metadata와 request-reply 필드는 독립적이며 같은 메시지에 공존할 수 있다.
+- payload 는 `zlink_msg_t` 로 만든다.
+- request-reply 문맥은 message 내부 필드가 아니라 와이어 제어 파트(control part)에 있다.
+- message metadata 직렬화 경로는 공개 계약이 아니다.
 
 ---
 [← Routing ID](08-routing-id.ko.md) | [Performance →](10-performance.ko.md)

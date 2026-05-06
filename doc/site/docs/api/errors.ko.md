@@ -47,6 +47,7 @@ zlink가 `ZLINK_HAUSNUMERO`를 기준으로 해당 코드를 정의합니다. PO
 | `ETIMEDOUT` | ZLINK_HAUSNUMERO + 16 | 연결 시간 초과 |
 | `EHOSTUNREACH` | ZLINK_HAUSNUMERO + 17 | 호스트에 도달할 수 없음 |
 | `ENETRESET` | ZLINK_HAUSNUMERO + 18 | 네트워크 재설정 |
+| `ESTALE` | ZLINK_HAUSNUMERO + 19 | 오래된 참조 (예: 만료된 파일 핸들, 만료된 actor ref) |
 
 ### zlink 전용 에러 코드
 
@@ -66,7 +67,7 @@ zlink가 `ZLINK_HAUSNUMERO`를 기준으로 해당 코드를 정의합니다. PO
 ```c
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 3
-#define ZLINK_VERSION_PATCH 0
+#define ZLINK_VERSION_PATCH 9
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) \
     ((major) * 10000 + (minor) * 100 + (patch))

@@ -47,9 +47,9 @@ public class MonitorBehaviorContractTest {
     }
 
     @Test
-    public void monitorSocketExposesBlockingRecvOnly() {
+    public void monitorSocketExposesDocumentedRecvSurface() {
         assertTrue(hasPublicMethod(dev.kairoscode.zlink.MonitorSocket.class, "recv"));
-        assertTrue(!hasPublicMethod(dev.kairoscode.zlink.MonitorSocket.class, "recv",
+        assertTrue(hasPublicMethod(dev.kairoscode.zlink.MonitorSocket.class, "recv",
             dev.kairoscode.zlink.RecvFlags.class));
         assertTrue(Modifier.isPublic(MonitorSocket.class.getModifiers()));
         assertNotNull(MonitorSocket.IGNORE_HANDLER);

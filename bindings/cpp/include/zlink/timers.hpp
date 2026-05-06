@@ -7,6 +7,20 @@
 namespace zlink
 {
 
+class timer_t;
+namespace service
+{
+class spot_t;
+} // namespace service
+
+namespace detail
+{
+inline void *native_handle (timer_t &timer_) noexcept;
+inline const void *native_handle (const timer_t &timer_) noexcept;
+inline void *native_handle (service::spot_t &spot_) noexcept;
+inline const void *native_handle (const service::spot_t &spot_) noexcept;
+} // namespace detail
+
 class timer_t
 {
   public:
@@ -46,15 +60,13 @@ class timer_t
     template<typename SpotLike>
     static timer_t from_spot (SpotLike &spot_)
     {
-        void *timer = zlink_spot_timer_new (spot_.handle ());
+        void *timer = zlink_spot_timer_new (zlink::detail::native_handle (spot_));
         if (!timer)
             throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
         return timer_t (timer);
     }
 
     bool valid () const noexcept { return _timer != NULL; }
-    void *handle () noexcept { return _timer; }
-    const void *handle () const noexcept { return _timer; }
 
     void start (uint64_t interval_ns_, uint64_t repeat_count_)
     {
@@ -69,19 +81,24 @@ class timer_t
           static_cast<config_result_t> (zlink_timer_stop (_timer)));
     }
 
-    void recv (uint64_t *fire_count_out_, int flags = 0)
+    std::optional<uint64_t> recv ()
     {
-        if (flags != 0)
-            throw recv_error_t (recv_result_t::not_supported, ENOTSUP);
-        detail::throw_if_failed<recv_error_t> (
-          static_cast<recv_result_t> (zlink_timer_recv (_timer, fire_count_out_)));
+        uint64_t fire_count = 0;
+        const recv_result_t result =
+          static_cast<recv_result_t> (zlink_timer_recv (_timer, &fire_count));
+        if (result == recv_result_t::no_data)
+            return std::nullopt;
+        if (result != recv_result_t::ok)
+            throw recv_error_t (result, zlink_errno ());
+        return std::optional<uint64_t> (fire_count);
     }
 
-    void set_handler (zlink_timer_handler_fn handler_, void *userdata_ = NULL)
+    void set_handler (std::function<void(uint64_t)> handler_)
     {
+        _handler = std::move (handler_);
         detail::throw_if_failed<handler_error_t> (
           static_cast<handler_result_t> (
-            zlink_timer_handler (_timer, handler_, userdata_)));
+            zlink_timer_handler (_timer, &timer_t::handler_trampoline, this)));
     }
 
     void destroy ()
@@ -96,8 +113,34 @@ class timer_t
     }
 
   private:
+    friend void *detail::native_handle (timer_t &timer_) noexcept;
+    friend const void *
+    detail::native_handle (const timer_t &timer_) noexcept;
+
+    static void handler_trampoline (void *, uint64_t fire_count_, void *userdata_)
+    {
+        timer_t *self = static_cast<timer_t *> (userdata_);
+        if (!self || !self->_handler)
+            return;
+        self->_handler (fire_count_);
+    }
+
     void *_timer;
+    std::function<void(uint64_t)> _handler;
 };
+
+namespace detail
+{
+inline void *native_handle (timer_t &timer_) noexcept
+{
+    return timer_._timer;
+}
+
+inline const void *native_handle (const timer_t &timer_) noexcept
+{
+    return timer_._timer;
+}
+} // namespace detail
 
 } // namespace zlink
 

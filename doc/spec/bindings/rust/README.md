@@ -11,6 +11,32 @@ Private modules, `pub(crate)` helpers, FFI modules, and source-tree-only
 support code are internal. Perf, samples, and tests must use the public crate
 surface only and must not rely on internal modules.
 
+## Design Basis
+
+The Rust binding follows the repository POSD design policy. Public crate items
+must hide native sequencing, ownership, and option encoding behind typed, deep
+interfaces so callers do not need core implementation details.
+
+The public Rust API must model stable domain concepts, not FFI call steps.
+Public structs, enums, traits, and methods are justified when they own
+context/socket lifetime, message ownership, receive metadata, service
+membership, callbacks, or typed options. Raw FFI handles, part-loop sequencing,
+request tokens, callback userdata, and raw option encoding stay in private or
+`pub(crate)` modules.
+
+Design review uses these POSD constraints:
+
+- shared send/recv, nonblocking, ownership, and error mapping rules are
+  centralized instead of copied across socket types
+- canonical result and facade methods do not ask callers to pass state already
+  captured by the receiver, such as a source socket, request sequence, or
+  service address
+- compatibility modules, if retained, are not the canonical API and are not
+  used by new docs, samples, or tests
+- a public wrapper that only forwards to FFI without adding validation,
+  ownership, lifetime, or result-shape semantics is too shallow and must be
+  removed or made private
+
 ---
 
 ## High-Performance Requirements
@@ -23,30 +49,33 @@ code must construct public `Message` and result values directly from the core
 `*_part` substrate and must not create native aggregate arrays only to copy
 them into Rust `Vec` values.
 
-## Current Core Alignment Overrides
+## Core Alignment Rules
 
-The sections below still contain some older signatures. When they conflict
-with the rules here, this section wins.
+The detailed sections below are the canonical Rust binding contract. This
+section states cross-cutting constraints once so the per-type API lists can
+stay focused on signatures.
 
-- `PairSocket`, `DealerSocket`, and `RouterSocket` are recv-only on the data
-  plane. Remove `on_receive(...)` from their public contract.
-- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through typed option/property surfaces. The value range is `0..100`, default `100`; `0` drains new outbound selection. Submit to a weight-`0` peer returns
-  `Err(SubmitError { code: SubmitResult::NotAdmitted, .. })`.
+- `PairSocket`, `DealerSocket`, and `RouterSocket` keep their documented
+  send, recv, request, and reply methods, but they do not expose direct
+  data-plane receive callbacks such as `on_receive(...)`.
+- Peer weight is exposed only on `RouterSocket` and `DealerSocket` through
+  typed option/property surfaces. The value range is `0..100`, default
+  `100`; `0` drains new outbound selection. Submit to a weight-`0` peer
+  returns `Err(SubmitError { code: SubmitResult::NotAdmitted, .. })`.
 - `POLLOUT` is a send-recovery readiness signal, shared with
   `on_send_ready(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `mandatory =
   true`, `handover = false`, `nodrop = true`.
 - SPOT admission HWM defaults follow the core header. Router and pubsub
   admission profile/numeric options are exposed; relay and delivery HWM stay
-  `0`. Binding native headers and linux-x86_64 runtime libraries must be
-  synchronized from `core/include` and `core/build` before validation.
+  `0` and are not public Rust options.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routing_id, advertise_endpoint)`. Users do not configure this.
-- `SubSocket` and `XSubSocket` are recv-only. Remove `on_subscribe(...)` from
-  their public contract.
+- `SubSocket` and `XSubSocket` are receive-only topic sockets and do not
+  expose direct topic callbacks such as `on_subscribe(...)`.
 - `StreamSocket` keeps `recv` and exposes a packet callback surface mapped to
-  `zlink_stream_packet_handler()`. Recommended canonical name: `on_packet`.
+  `zlink_stream_packet_handler()` as `on_packet`.
 - `SpotNode` must expose channel-aware attachment APIs:
   `attach_discovery(...)`,
   `attach_channel_dealer(...)`,
@@ -274,9 +303,9 @@ bitflags! {
 
 ## Socket Types
 
-All sockets implement `Drop` (calls `close`). Common connection and
-option methods are provided through the internal `SocketCore` but appear
-as direct methods on each socket type.
+All sockets implement `Drop` (calls `close`) and expose common connection and
+option method groups as direct methods on each socket type. The internal owner
+that implements those methods is not part of this contract.
 
 Rust nonblocking data-plane helpers follow this rule:
 
@@ -288,7 +317,7 @@ Rust nonblocking data-plane helpers follow this rule:
   currently available and still return `Err(RecvError)` for real recv failures.
 
 Peer weight is not part of `CommonSocketOptions`. Rust exposes weight only on
-`RouterSocket`, `DealerSocket`, `SpotNode`, and `Spot`:
+`RouterSocket` and `DealerSocket`:
 
 ```rust
 impl<'a, S> CommonSocketOptions<'a, S> {
@@ -529,12 +558,12 @@ impl RouterSocket {
     pub fn reply_to_spot_with_flags(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
         request_seq: u64, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
 
-    // NOTE: RouterSocket 의 routed 수신 plane 은 단일 recv 표면이다. 일반
-    // ROUTER 트래픽과 spot-origin routed 트래픽을 모두 recv/recv_with_flags
-    // 로 받는다. `Received::routing_id()` 는 source_node_rid,
-    // `Received::spot_rid()` 는 spot-origin 트래픽에서만 값이 있다.
-    // data-plane callback install surface (e.g. on_receive) 는 ROUTER 에
-    // 제공하지 않는다. request completion 은 request() 경로에서만 유지된다.
+    // NOTE: RouterSocket has one routed receive surface. recv and
+    // recv_with_flags receive both regular ROUTER traffic and spot-origin
+    // routed traffic. `Received::routing_id()` is source_node_rid, and
+    // `Received::spot_rid()` is set only for spot-origin traffic. ROUTER does
+    // not expose a data-plane callback install surface such as on_receive.
+    // Request completion remains available only through request().
 
     /// # Errors: CloseError
     pub fn close(&mut self) -> Result<(), CloseError>;
@@ -803,7 +832,7 @@ is available for deterministic cleanup.
 ```rust
 pub struct Received {
     pub routing_id: Option<RoutingId>,   // peer_rid (Router) / source_node_rid (Spot)
-    pub spot_rid: Option<RoutingId>,     // SPOT routed recv 에만 값 있음
+    pub spot_rid: Option<RoutingId>,     // Set only for SPOT routed recv
     pub request_seq: Option<u64>,        // Set in request-reply mode, else None
     pub parts: Vec<Message>,
     // non-public: source socket ref (Arc<SocketInner>) for reply()
@@ -917,6 +946,14 @@ pub enum RequestResult {
     NotFound = 102,
     Terminated = 103,
     ProtocolError = 104,
+    InternalError = 105,
+    Rejected = 106,
+    Conflict = 107,
+    Busy = 108,
+    NotConnected = 109,
+    InvalidArgument = 110,
+    InvalidState = 111,
+    NotSupported = 112,
 }
 ```
 
@@ -934,6 +971,7 @@ pub enum RecvResult {
     Terminated = 203,
     InvalidHandle = 204,
     NotSupported = 205,
+    InternalError = 206,
 }
 ```
 
@@ -952,6 +990,7 @@ pub enum HandlerResult {
     NotSupported = 303,
     Deadlock = 304,
     InvalidHandle = 305,
+    InternalError = 306,
 }
 ```
 
@@ -967,6 +1006,7 @@ pub enum CloseResult {
     Busy = 401,
     Shutdown = 402,
     InvalidHandle = 403,
+    InternalError = 404,
 }
 ```
 
@@ -983,6 +1023,7 @@ pub enum BindResult {
     AddrInUse = 502,
     NotSupported = 503,
     InvalidHandle = 504,
+    InternalError = 505,
 }
 ```
 
@@ -998,6 +1039,10 @@ pub enum ConnectResult {
     InvalidArgument = 601,
     NotSupported = 602,
     InvalidHandle = 603,
+    InternalError = 604,
+    NotFound = 605,
+    Conflict = 606,
+    Busy = 607,
 }
 ```
 
@@ -1013,6 +1058,9 @@ pub enum ConfigResult {
     InvalidHandle = 701,
     InvalidArgument = 702,
     NotSupported = 703,
+    InternalError = 704,
+    InvalidState = 705,
+    NotFound = 706,
 }
 ```
 
@@ -1418,8 +1466,13 @@ impl Discovery {
     /// `zlink_discovery_resolve_spot`. Registry-backed lookup requires the
     /// publishing Discovery to enable `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`.
     pub fn resolve_spot(&self, spot_rid: &RoutingId) -> Result<RoutingId, ConfigError>;
+    /// Resolve the current route for an actor id in this discovery channel.
+    /// Maps to `zlink_discovery_resolve_actor`.
+    pub fn resolve_actor(&self, actor_id: &str) -> Result<ActorRoute, ConfigError>;
     pub fn set_spot_owner_sync_enabled(&self, enabled: bool) -> Result<(), ConfigError>;
     pub fn spot_owner_sync_enabled(&self) -> Result<bool, ConfigError>;
+    pub fn set_actor_route_sync_enabled(&self, enabled: bool) -> Result<(), ConfigError>;
+    pub fn actor_route_sync_enabled(&self) -> Result<bool, ConfigError>;
     /// # Errors: CloseError
     pub fn close(&mut self) -> Result<(), CloseError>;
 }
@@ -1441,6 +1494,9 @@ impl SpotNode {
     pub fn connect_peer(&self, peer_endpoint: &str) -> Result<(), ConnectError>;
     /// # Errors: ConnectError
     pub fn disconnect_peer(&self, peer_endpoint: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect_peer_rid(&self, target_node_rid: &RoutingId)
+        -> Result<(), ConnectError>;
     /// # Errors: ConfigError
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
@@ -1458,7 +1514,11 @@ impl SpotNode {
     pub fn set_tls_client(&self, ca_cert_path: &str, hostname: &str,
         trust_system: bool) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
+    pub fn entry_spot(&self) -> Result<Spot, ConfigError>;
+    /// # Errors: ConfigError
     pub fn create_spot(&self) -> Result<Spot, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn spot_lookup(&self, spot_rid: &RoutingId) -> Result<Option<Spot>, ConfigError>;
     /// # Errors: ConfigError
     pub fn create_actor(&self, actor_id: &str) -> Result<Actor, ConfigError>;
     /// # Errors: ConfigError
@@ -1515,8 +1575,10 @@ impl SpotNode {
 }
 ```
 
-`SpotNode` owns the lifecycle. `Spot` is created only through
-`SpotNode::create_spot()`. Direct `Spot::new(&node)` construction is
+`SpotNode` owns the lifecycle. `Spot` handles are created through
+`SpotNode::create_spot()`, Entry Spot facades through
+`SpotNode::entry_spot()`, and lookup facades through
+`SpotNode::spot_lookup(...)`. Direct `Spot::new(&node)` construction is
 internal and is not part of the public API contract.
 
 ### Actor
@@ -1558,7 +1620,8 @@ For remote joins where the destination node is already known, use
 
 ```rust
 impl Spot {
-    // Spot::new(&node) is internal. Public code must use SpotNode::create_spot().
+    // Spot::new(&node) is internal. Public code obtains Spot handles through
+    // SpotNode factories.
     /// # Errors: SubmitError
     pub fn publish(&self, service_name: &str, topic: &str,
         parts: impl IntoMultipart) -> Result<(), SubmitError>;

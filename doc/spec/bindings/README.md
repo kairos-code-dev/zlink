@@ -227,7 +227,7 @@ public shape를 기준으로 고정한다.
 "구현 기반이 바뀌는 것"이지 "사용자에게 보이는 형태가 자동으로 바뀌는 것"이
 아니다.
 
-## Core Alignment Overrides
+## Core Alignment Rules
 
 이 절은 언어별 문서의 세부 예제보다 우선 적용되는 core 계약 요약이다.
 `core/include/zlink.h` 와 언어별 문서 간 불일치가 있으면 이 절을 기준으로 한다.
@@ -238,9 +238,9 @@ public shape를 기준으로 고정한다.
   callback 을 public 으로 노출하면 안 된다.
 - 바인딩은 raw `SUB`, `XSUB`, SPOT subscribe receive 에 대해
   `onSubscribe` 류 direct topic callback 을 public 으로 노출하면 안 된다.
-- `ROUTER` inbound routed traffic 은 data-plane recv-only 이다. 바인딩은
-  `zlink_router_recv_part()` 대응 수신 표면과 request completion callback 만
-  노출한다.
+- `ROUTER` inbound routed traffic 은 단일 routed recv 표면으로 수신한다.
+  바인딩은 `zlink_router_recv_part()` 대응 수신 표면과 request completion
+  callback 만 노출하고, direct receive callback 은 제공하지 않는다.
 - core raw `STREAM` 은 `recv`, raw callback (`zlink_recv_handler()`),
   packet callback (`zlink_stream_packet_handler()`) 의 세 모드 중 하나를
   선택하는 예외 타입이다. 고수준 바인딩은 `recv` 와 packet callback
@@ -1248,7 +1248,7 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 | `SpotNode` | local Actor 생성/조회, remote Actor ref 생성, remote create-or-get, destroy, admission handler, join/leave, node-level Actor snapshot |
 | `Actor` | Actor ref 보유, Actor part recv, bound STREAM session message send, bound session close |
 | `Spot` | Actor join request recv/reply, 현재 Spot에 join된 Actor snapshot |
-| `StreamSocket` | STREAM session에 Actor bind/unbind, bound Actor 대상 send |
+| `StreamSocket` / session facade | STREAM session에 Actor bind/unbind, bound Actor 대상 send |
 | `Discovery` | active Actor route 조회 |
 
 바인딩은 아래 도메인 객체를 public contract로 제공해야 한다. 이름은 언어 관례에
@@ -1284,6 +1284,10 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
   Spot routing id, `join_epoch`, `flags`, message를 노출한다.
 - 한 STREAM session은 여러 Actor를 bind할 수 있다. bind/unbind는 session
   routing id와 actor id 또는 Actor ref를 기준으로 한다.
+- 언어가 session facade를 자연스럽게 제공할 수 있으면 STREAM Actor bind/unbind와
+  bound Actor 대상 send는 socket-wide 함수가 아니라 session facade의 동작으로
+  노출하는 편이 좋다. 이렇게 하면 session routing id를 반복해서 넘기지 않아도
+  된다.
 - STREAM에서 Actor로 보내는 public API는 bound session과 actor id를 선택자로
   사용한다.
 - Discovery Actor route는 Actor 생성 시점이 아니라 STREAM bind 성공 시점에
@@ -1366,9 +1370,9 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | bound session close | `Actor` | `zlink_spot_node_actor_close_bound_session` |
 | join request recv | `Spot` | `zlink_spot_actor_join_recv` |
 | join request reply | `Spot` | `zlink_spot_actor_join_reply` |
-| STREAM bind Actor | `StreamSocket` | `zlink_stream_bind_actor` |
-| STREAM unbind Actor | `StreamSocket` | `zlink_stream_unbind_actor` |
-| STREAM send bound Actor | `StreamSocket` | `zlink_stream_send_bound_actor_part` |
+| STREAM bind Actor | `StreamSocket` / session facade | `zlink_stream_bind_actor` |
+| STREAM unbind Actor | `StreamSocket` / session facade | `zlink_stream_unbind_actor` |
+| STREAM send bound Actor | `StreamSocket` / session facade | `zlink_stream_send_bound_actor_part` |
 | active Actor route resolve | `Discovery` | `zlink_discovery_resolve_actor` |
 | node Spot snapshot | `SpotNode` | `zlink_spot_node_spots_snapshot` |
 | node Actor snapshot | `SpotNode` | `zlink_spot_node_actors_snapshot` |
@@ -2064,7 +2068,9 @@ zlink_handler_result_t zlink_spot_handler(void *spot,
 - `zlink_stream_packet_handler()` 도 raw `STREAM` 에만 허용하며,
   `recv` / raw callback / packet callback 세 모드는 서로 배타적이다.
 - raw `PAIR`, `DEALER`, `ROUTER`, `SUB`, `XSUB` 는 direct receive callback
-  install surface 를 두지 않는다. data plane 은 recv-only 이다.
+  install surface 를 두지 않는다. `PAIR`, `DEALER`, `ROUTER` 는 공개
+  recv 메서드로만 수신하고, `SUB`, `XSUB` 는 topic subscribe 수신 표면으로만
+  수신한다.
 - callback 등록 후 같은 subject 에 대한 direct recv 와 해당 data-plane
   `ZLINK_POLLIN` 등록은 `EBUSY` 로 실패할 수 있다. 정확한 적용 범위는
   STREAM / SPOT 의 타입별 규칙을 따른다.
@@ -2194,9 +2200,9 @@ callback 안에서는 event 로 알려진 plane 을 drain 할 수 있어야 한�
 
 | 소켓 타입 | 수신 경로 |
 |-----------|----------|
-| `PAIR` / `DEALER` | `zlink_recv_part()` 기반 recv-only surface |
-| `SUB` / `XSUB` | `zlink_subscribe_part()` 만 (recv-only substrate) |
-| `ROUTER` | `zlink_router_recv_part()` 만 (recv-only substrate). request completion 은 `zlink_reply_handler_fn` 으로 유지 |
+| `PAIR` / `DEALER` | `zlink_recv_part()` 기반 recv 표면 |
+| `SUB` / `XSUB` | `zlink_subscribe_part()` 기반 topic recv 표면 |
+| `ROUTER` | `zlink_router_recv_part()` 기반 routed recv 표면. request completion 은 `zlink_reply_handler_fn` 으로 유지 |
 | `STREAM` | 아래 세 모드 중 하나 (상호 배타). raw recv / `zlink_recv_handler()` / `zlink_stream_packet_handler()` |
 | `SPOT` | `zlink_spot_recv_part()` + `zlink_spot_subscribe_part()` + `zlink_spot_dispatch_event_handler()`. 호환용 `zlink_spot_handler()` 도 제공되며 dispatch event handler 와 routed 축에서 상호 배타 |
 
@@ -2228,7 +2234,7 @@ zlink_recv_result_t zlink_spot_recv_part(void *spot, ...);
 - `zlink_spot_handler()` 와 `zlink_spot_recv_part()` 는 같은 수신 plane 을 공유한다.
   동시에 허용하지 않는다. 충돌 시 `EBUSY`.
 
-#### Router 수신 (routed 통합 recv-only 표면)
+#### Router 수신 (routed 통합 recv 표면)
 
 ```c
 zlink_recv_result_t zlink_router_recv_part(void *router,
@@ -2250,7 +2256,7 @@ zlink_recv_result_t zlink_router_recv_part(void *router,
 
 #### Pub/Sub 수신
 
-- raw `SUB`, `XSUB` 는 recv-only 이다.
+- raw `SUB`, `XSUB` 는 수신 전용 topic socket 이다.
 - 바인딩은 `zlink_subscribe_part()` typed receive substrate 위에 언어별
   multipart receive surface 를 노출한다.
 - direct topic callback install surface 는 raw pub/sub family 에 두지 않는다.
@@ -3266,8 +3272,14 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 
 | 바인딩 | API Spec |
 |--------|----------|
-| Node.js | [`NODE_API_SPEC.md`](NODE_API_SPEC.md) |
-| Python | [`PYTHON_API_SPEC.md`](PYTHON_API_SPEC.md) |
+| C | [`c/README.md`](c/README.md) |
+| C++ | [`cpp/README.md`](cpp/README.md) |
+| Java | [`java/README.md`](java/README.md) |
+| .NET | [`dotnet/README.md`](dotnet/README.md) |
+| Node.js | [`node/README.md`](node/README.md) |
+| Python | [`python/README.md`](python/README.md) |
+| Go | [`go/README.md`](go/README.md) |
+| Rust | [`rust/README.md`](rust/README.md) |
 
 ### Perf Review Checklist
 
@@ -3640,11 +3652,13 @@ Bindings must expose `ZLINK_OPT_RID_DUPLICATE_POLICY`,
 result values `NOT_FOUND`, `CONFLICT`, and `BUSY` using each language's
 normal enum/error mapping style.
 
-Bindings that expose raw common socket options must also expose
-`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` with value `0x3034`. Typed wrappers may
-name it as an automatic-HWM message-unit option, but the contract stays the
-same as C: `int` bytes, raw default `0`, and negative values fail with
-`EINVAL`.
+The C binding exposes `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` with value `0x3034`
+through the native option contract. Higher-level bindings must expose the same
+capability through their typed option facade rather than a raw option bag.
+Compatibility-only raw option paths, if retained by a binding, must be clearly
+separated from the canonical API, must not be used by new docs, samples, or
+tests, and must keep the C contract: `int` bytes, raw default `0`, and
+negative values fail with `EINVAL`.
 
 ## Related Docs
 - `bindings/cpp/`

@@ -36,7 +36,7 @@ class ctx_guard_t
 
     zlink::context_t &ctx () { return _ctx; }
     operator zlink::context_t &() { return _ctx; }
-    bool valid () const { return _ctx.handle () != NULL; }
+    bool valid () const { return _ctx.valid (); }
 
   private:
     zlink::context_t _ctx;
@@ -60,34 +60,34 @@ bool bench_debug_enabled ();
 // Applies shared benchmark context options (io_threads/max_sockets).
 void apply_ctx_options (zlink::context_t &ctx_);
 bool set_sockopt_int (perf_socket_t &socket_,
-                      zlink::socket_option_key_t<int> option_,
+                      zlink::compat::options::socket_option_key_t<int> option_,
                       int value_,
                       const char *name_);
 template<typename SocketLike>
 bool set_sockopt_int (SocketLike &socket_,
-                      zlink::socket_option_key_t<int> option_,
+                      zlink::compat::options::socket_option_key_t<int> option_,
                       int value_,
                       const char *name_)
 {
     try {
         zlink::common_socket_options_t options = socket_.options ();
         switch (option_.option) {
-        case zlink::socket_option::linger:
-            options.linger (value_);
+        case zlink::compat::options::socket_option::linger:
+            options.linger (std::chrono::milliseconds (value_));
             return true;
-        case zlink::socket_option::sndhwm:
-            options.send_hwm (value_);
+        case zlink::compat::options::socket_option::sndhwm:
+            options.send_hwm (zlink::message_count_t::value (value_));
             return true;
-        case zlink::socket_option::rcvhwm:
-            options.recv_hwm (value_);
+        case zlink::compat::options::socket_option::rcvhwm:
+            options.recv_hwm (zlink::message_count_t::value (value_));
             return true;
-        case zlink::socket_option::sndtimeo:
-            options.send_timeout (value_);
+        case zlink::compat::options::socket_option::sndtimeo:
+            options.send_timeout (std::chrono::milliseconds (value_));
             return true;
-        case zlink::socket_option::rcvtimeo:
-            options.recv_timeout (value_);
+        case zlink::compat::options::socket_option::rcvtimeo:
+            options.recv_timeout (std::chrono::milliseconds (value_));
             return true;
-        case zlink::socket_option::tcp_nodelay:
+        case zlink::compat::options::socket_option::tcp_nodelay:
             options.tcp_no_delay (value_ != 0);
             return true;
         default:
@@ -115,9 +115,9 @@ void apply_single_hwm (SocketLike &socket_)
     const int sndhwm = resolve_single_socket_hwm (true);
     const int rcvhwm = resolve_single_socket_hwm (false);
     (void) set_sockopt_int (
-      socket_, zlink::socket_options::sndhwm, sndhwm, "sndhwm");
+      socket_, zlink::compat::options::socket_options::sndhwm, sndhwm, "sndhwm");
     (void) set_sockopt_int (
-      socket_, zlink::socket_options::rcvhwm, rcvhwm, "rcvhwm");
+      socket_, zlink::compat::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
 }
 // Applies linger/send/recv timeout defaults for benchmark sockets.
 void apply_single_benchmark_socket_options (perf_socket_t &socket_,
@@ -133,11 +133,11 @@ void apply_single_benchmark_socket_options (SocketLike &socket_,
     const int sndtimeo_ms = resolve_single_send_timeout_ms ();
     const int rcvtimeo_ms = resolve_single_recv_timeout_ms ();
     (void) set_sockopt_int (
-      socket_, zlink::socket_options::linger, linger_ms, "linger");
+      socket_, zlink::compat::options::socket_options::linger, linger_ms, "linger");
     (void) set_sockopt_int (
-      socket_, zlink::socket_options::sndtimeo, sndtimeo_ms, "sndtimeo");
+      socket_, zlink::compat::options::socket_options::sndtimeo, sndtimeo_ms, "sndtimeo");
     (void) set_sockopt_int (
-      socket_, zlink::socket_options::rcvtimeo, rcvtimeo_ms, "rcvtimeo");
+      socket_, zlink::compat::options::socket_options::rcvtimeo, rcvtimeo_ms, "rcvtimeo");
 }
 
 // Creates wildcard endpoint string for a transport/id pair.

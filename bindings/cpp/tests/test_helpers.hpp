@@ -8,6 +8,7 @@
 #include <cerrno>
 #include <cstring>
 #include <cstdlib>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -189,8 +190,8 @@ inline int routed_raw_send(SocketLike &socket,
 inline int monitor_recv_nowait(zlink::monitor_handle_t &monitor,
                                zlink::monitor_event_t *event)
 {
-    const zlink::maybe_t<zlink::monitor_event_t> received =
-      monitor.recv (zlink::non_blocking_t {});
+    const std::optional<zlink::monitor_event_t> received =
+      monitor.recv (zlink::recv_flags_t::dontwait);
     if (!received) {
         errno = EAGAIN;
         return -1;

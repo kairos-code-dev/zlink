@@ -1,3 +1,4 @@
+[English](08-routing-id.md) | [한국어](08-routing-id.ko.md)
 
 # Routing ID Concepts and Usage
 
@@ -62,7 +63,7 @@ zlink_set_routing_id(dealer, "D1", 2);
 /* Avoid UUID format (16B binary) */
 ```
 
-> Reference: `core/tests/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
+> Reference: `core/tests/integration/test_router_multiple_dealers.cpp` — `zlink_set_routing_id(dealer1, "D1", 2)`
 
 ### Querying
 
@@ -96,7 +97,7 @@ zlink_connect(socket, "tcp://server2:5556");
 - `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (set via `zlink_set_router_option()`) applies to individual connections
 - A single socket can have different aliases for each connection
 - `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` is for ROUTER-side connection paths.
-- Setting it on `ZLINK_STREAM` returns `EOPNOTSUPP`.
+- Setting it on `ZLINK_SOCKET_STREAM` returns `EOPNOTSUPP`.
 
 ## 6. Using routing_id with ROUTER Sockets
 
@@ -111,25 +112,8 @@ When replying, pass the same routing_id to `zlink_send_rid()`.
 ### Basic Request-Reply
 
 ```c
-/* ROUTER server (with handler) */
-void on_request(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* source_rid = "D1" (2 bytes), parts[0] = "Hello" (5 bytes) */
-
-    /* Reply: use zlink_send_rid for directed send */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 5);
-    memcpy(zlink_msg_data(&reply), "World", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
-
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
-}
-
-void *router = zlink_socket(ctx, ZLINK_ROUTER);
-/* Receive with zlink_recv() */
+/* ROUTER server (recv loop) */
+void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(router, "tcp://127.0.0.1:*");
 
 char endpoint[256];
@@ -137,7 +121,7 @@ size_t len = sizeof(endpoint);
 zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 
 /* DEALER client (explicit routing_id) */
-void *dealer = zlink_socket(ctx, ZLINK_DEALER);
+void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(dealer, "D1", 2);
 zlink_connect(dealer, endpoint);
 
@@ -147,7 +131,9 @@ zlink_msg_init_size(&req, 5);
 memcpy(zlink_msg_data(&req), "Hello", 5);
 zlink_send(dealer, &req, 1, 0);
 
-/* on_request callback receives the message and replies */
+/* ROUTER: drain messages with zlink_router_recv() in a poller loop.
+   source_node_rid = "D1" (2 bytes), parts[0] = "Hello" (5 bytes).
+   Reply with zlink_send_rid(router, source_node_rid, reply, 1, 0). */
 ```
 
 ### Distinguishing Multiple Clients
@@ -177,7 +163,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 ```
 
-> Reference: `core/tests/test_router_multiple_dealers.cpp` — Multiple DEALER example
+> Reference: `core/tests/integration/test_router_multiple_dealers.cpp` — Multiple DEALER example
 
 ### Handling routing_id with zlink_msg_t
 
@@ -255,7 +241,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 ```
 
-> Reference: `core/tests/test_stream_socket.cpp` — `recv_stream_event()`, `send_stream_msg()`
+> Reference: `core/tests/integration/test_stream_socket.cpp` — `recv_stream_event()`, `send_stream_msg()`
 
 ### ROUTER vs STREAM routing_id Comparison
 

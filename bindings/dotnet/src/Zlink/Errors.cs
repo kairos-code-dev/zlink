@@ -206,15 +206,15 @@ public abstract class ZlinkException : Exception
             3 or 2 => RequestResult.NotFound,
             156384765 => RequestResult.Terminated,
             104 => RequestResult.ProtocolError,
+            12 or 105 => RequestResult.InternalError,
+            1 or 13 => RequestResult.Rejected,
+            17 => RequestResult.Conflict,
+            16 => RequestResult.Busy,
             107 or 113 or 111 or 10057 or 10065 =>
                 RequestResult.NotConnected,
-            13 => RequestResult.NotAdmitted,
-            1 => RequestResult.Rejected,
-            17 => RequestResult.Conflict,
             22 => RequestResult.InvalidArgument,
-            16 => RequestResult.InvalidState,
-            156384766 => RequestResult.ThreadViolation,
-            12 or 105 => RequestResult.InternalError,
+            108 => RequestResult.InvalidState,
+            95 or 93 or 97 or 156384766 => RequestResult.NotSupported,
             _ => RequestResult.InternalError
         };
     }
@@ -229,7 +229,7 @@ public abstract class ZlinkException : Exception
             156384765 => RecvResult.Terminated,
             9 or 88 => RecvResult.InvalidHandle,
             95 or 93 or 97 => RecvResult.NotSupported,
-            _ => RecvResult.NoData
+            _ => RecvResult.InternalError
         };
     }
 
@@ -243,7 +243,7 @@ public abstract class ZlinkException : Exception
             95 or 93 or 97 => HandlerResult.NotSupported,
             35 => HandlerResult.Deadlock,
             9 or 88 => HandlerResult.InvalidHandle,
-            _ => HandlerResult.InvalidArgument
+            _ => HandlerResult.InternalError
         };
     }
 
@@ -255,7 +255,7 @@ public abstract class ZlinkException : Exception
             16 => CloseResult.Busy,
             108 => CloseResult.Shutdown,
             9 or 88 => CloseResult.InvalidHandle,
-            _ => CloseResult.InvalidHandle
+            _ => CloseResult.InternalError
         };
     }
 
@@ -268,7 +268,7 @@ public abstract class ZlinkException : Exception
             98 => BindResult.AddrInUse,
             95 or 93 or 97 => BindResult.NotSupported,
             9 or 88 => BindResult.InvalidHandle,
-            _ => BindResult.InvalidArgument
+            _ => BindResult.InternalError
         };
     }
 
@@ -280,7 +280,10 @@ public abstract class ZlinkException : Exception
             22 => ConnectResult.InvalidArgument,
             95 or 93 or 97 => ConnectResult.NotSupported,
             9 or 88 => ConnectResult.InvalidHandle,
-            _ => ConnectResult.InvalidArgument
+            2 or 3 => ConnectResult.NotFound,
+            98 => ConnectResult.Conflict,
+            16 => ConnectResult.Busy,
+            _ => ConnectResult.InternalError
         };
     }
 
@@ -292,7 +295,9 @@ public abstract class ZlinkException : Exception
             9 or 88 => ConfigResult.InvalidHandle,
             22 => ConfigResult.InvalidArgument,
             95 or 93 or 97 => ConfigResult.NotSupported,
-            _ => ConfigResult.InvalidArgument
+            16 or 108 => ConfigResult.InvalidState,
+            2 or 3 => ConfigResult.NotFound,
+            _ => ConfigResult.InternalError
         };
     }
 

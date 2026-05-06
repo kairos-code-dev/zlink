@@ -6,8 +6,6 @@
 #include "../common/perf_metric_header.hpp"
 #include "../common/perf_spot_phase.hpp"
 
-#include <zlink_c.h>
-
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
@@ -70,28 +68,6 @@ bool wait_for_spot_control_progress ()
     return perf_idle_wait_ms (1) >= 0;
 }
 
-void close_raw_parts (zlink_msg_t *parts_, size_t part_count_)
-{
-    if (!parts_)
-        return;
-    for (size_t i = 0; i < part_count_; ++i)
-        (void) zlink_msg_close (&parts_[i]);
-}
-
-bool control_topic_matches (const char *actual_topic_,
-                            size_t actual_topic_len_,
-                            const char *expected_topic_)
-{
-    if (!actual_topic_ || !expected_topic_ || !*expected_topic_)
-        return false;
-
-    const size_t expected_len = std::strlen (expected_topic_);
-    if (actual_topic_len_ > 0 && actual_topic_[actual_topic_len_ - 1] == '\0')
-        --actual_topic_len_;
-    return actual_topic_len_ == expected_len
-           && std::memcmp (actual_topic_, expected_topic_, expected_len) == 0;
-}
-
 bool recv_raw_control_payload (zlink::service::spot_t &spot_,
                                const char *service_name_,
                                std::string *payload_out_,
@@ -102,19 +78,24 @@ bool recv_raw_control_payload (zlink::service::spot_t &spot_,
     if (payload_out_)
         payload_out_->clear ();
 
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    char topic[256];
-    size_t topic_len = sizeof (topic) - 1;
-    const zlink_recv_result_t rc = zlink_subscribe (
-      spot_.handle (),
-      NULL,
-      &parts,
-      &part_count,
-      topic,
-      &topic_len,
-      ZLINK_RECV_FLAGS_DONTWAIT);
-    if (rc != ZLINK_RECV_OK) {
+    try {
+        const std::optional<zlink::topic_message_t> received =
+          spot_.subscribe (zlink::recv_flags_t::dontwait);
+        if (!received.has_value ())
+            return true;
+
+        if (received_out_)
+            *received_out_ = true;
+        (void) service_name_;
+        if (payload_out_ && received->topic () == k_control_topic
+            && !received->parts ().empty ()) {
+            const zlink::message_t &part = received->parts ()[0];
+            payload_out_->assign (
+              static_cast<const char *> (part.data ()), part.size ());
+        }
+        return true;
+    }
+    catch (const zlink::recv_error_t &) {
         const int err = zlink_errno () != 0 ? zlink_errno () : errno;
         if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK
             || err == ETIMEDOUT) {
@@ -123,18 +104,6 @@ bool recv_raw_control_payload (zlink::service::spot_t &spot_,
         errno = err;
         return false;
     }
-
-    if (received_out_)
-        *received_out_ = true;
-    (void) service_name_;
-    if (payload_out_ && control_topic_matches (topic, topic_len, k_control_topic)
-        && part_count > 0) {
-        payload_out_->assign (
-          static_cast<const char *> (zlink_msg_data (&parts[0])),
-          zlink_msg_size (&parts[0]));
-    }
-    close_raw_parts (parts, part_count);
-    return true;
 }
 
 bool publish_raw_control_payload (zlink::service::spot_t &spot_,
@@ -147,20 +116,23 @@ bool publish_raw_control_payload (zlink::service::spot_t &spot_,
                           + std::chrono::milliseconds (
                             std::max (1, timeout_ms_));
     while (std::chrono::steady_clock::now () < deadline) {
-        zlink_msg_t part;
-        if (zlink_msg_init_size (&part, payload_.size ()) != 0)
+        zlink::message_t part (payload_.size ());
+        if (!part.valid ())
             return false;
         if (!payload_.empty ())
-            std::memcpy (zlink_msg_data (&part), payload_.data (), payload_.size ());
+            std::memcpy (part.data (), payload_.data (), payload_.size ());
 
-        const zlink_submit_result_t rc = zlink_publish (
-          spot_.handle (),
-          k_control_topic,
-          &part,
-          1,
-          ZLINK_SEND_FLAGS_NONE);
-        const int saved_errno = rc == ZLINK_SUBMIT_OK ? 0 : errno;
-        if (rc == ZLINK_SUBMIT_OK)
+        try {
+            if (spot_.publish (
+                  service_name_, k_control_topic, part, zlink::send_flags_t::none))
+                return true;
+        }
+        catch (const zlink::submit_error_t &) {
+        }
+        const int saved_errno = errno;
+        if (!part.valid ())
+            part.close ();
+        if (saved_errno == 0)
             return true;
         if (saved_errno != EAGAIN && saved_errno != EWOULDBLOCK
             && saved_errno != ETIMEDOUT) {
@@ -330,41 +302,47 @@ bool run_phase (zlink::service::spot_t &spot_,
     while (std::chrono::steady_clock::now () < deadline) {
         (void) service_name_;
         const auto publish_once =
-          [&](zlink_send_flags_t flags_, int *saved_errno_out_) -> int {
+          [&](zlink::send_flags_t flags_, int *saved_errno_out_) -> int {
               if (!saved_errno_out_) {
                   errno = EFAULT;
                   return -1;
               }
 
-              zlink_msg_t part;
-              if (zlink_msg_init_size (&part, payload_size) != 0) {
+              zlink::message_t part (payload_size);
+              if (!part.valid ()) {
                   *saved_errno_out_ = errno;
                   return -1;
               }
-              if (!perf_metric::stamp_payload (zlink_msg_data (&part),
-                                               zlink_msg_size (&part),
+              if (!perf_metric::stamp_payload (part.data (),
+                                               part.size (),
                                                k_run_id,
                                                phase_,
                                                msg_size_,
                                                seq_,
                                                perf_metric::now_ns ())) {
                   const int stamp_errno = errno != 0 ? errno : EFAULT;
-                  (void) zlink_msg_close (&part);
+                  part.close ();
                   *saved_errno_out_ = stamp_errno;
                   errno = stamp_errno;
                   return -1;
               }
 
-              const zlink_submit_result_t rc = zlink_publish (
-                spot_.handle (), k_topic, &part, 1, flags_);
-              *saved_errno_out_ = rc == ZLINK_SUBMIT_OK ? 0 : errno;
-              return rc == ZLINK_SUBMIT_OK ? 0 : -1;
+              try {
+                  const bool ok = spot_.publish (
+                    service_name_, k_topic, part, flags_);
+                  *saved_errno_out_ = ok ? 0 : EAGAIN;
+                  return ok ? 0 : -1;
+              }
+              catch (const zlink::submit_error_t &) {
+                  *saved_errno_out_ = errno;
+                  return -1;
+              }
           };
 
         int saved_errno = 0;
-        int rc = publish_once (ZLINK_SEND_FLAGS_DONTWAIT, &saved_errno);
+        int rc = publish_once (zlink::send_flags_t::dontwait, &saved_errno);
         if (rc != 0 && saved_errno == EAGAIN)
-            rc = publish_once (ZLINK_SEND_FLAGS_NONE, &saved_errno);
+            rc = publish_once (zlink::send_flags_t::none, &saved_errno);
 
         if (rc == 0) {
             ++seq_;
@@ -448,16 +426,19 @@ bool perf_spot_server (const std::string &lib_name,
     if (control_endpoint.empty ())
         return false;
 
-    spot.options ().send_timeout (settings.sndtimeo_ms);
+    spot.options ().send_timeout (
+      std::chrono::milliseconds (settings.sndtimeo_ms));
     spot.publisher_options ().no_drop (
       perf::multi::parse_positive_env ("PERF_MULTI_SPOT_XPUB_NODROP", 1) > 0);
     const int control_timeout_ms =
       std::max (1000, settings.connect_ready_timeout_ms);
-    control_pub.options ().linger (0);
-    control_pub.options ().send_timeout (control_timeout_ms);
+    control_pub.options ().linger (std::chrono::milliseconds (0));
+    control_pub.options ().send_timeout (
+      std::chrono::milliseconds (control_timeout_ms));
     control_pub.publisher_options ().no_drop (true);
-    control_sub.options ().linger (0);
-    control_sub.options ().recv_timeout (control_timeout_ms);
+    control_sub.options ().linger (std::chrono::milliseconds (0));
+    control_sub.options ().recv_timeout (
+      std::chrono::milliseconds (control_timeout_ms));
     control_sub.set_subscription (k_control_topic);
 
     const std::vector<size_t> msg_sizes (1, msg_size_);

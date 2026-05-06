@@ -12,10 +12,12 @@ public sealed class XPubSocket : PublisherSocketBase
         XPubOptions = new XPubSocketOptions(this);
     }
 
-    public SubscriptionEvent ReceiveSubscriptionEvent(
+    public SubscriptionEvent? ReceiveSubscriptionEvent(
         RecvFlags flags = RecvFlags.None)
     {
-        return Kernel.ReceiveSubscriptionEvent(flags);
+        return (flags & RecvFlags.DontWait) != 0
+            ? Kernel.ReceiveSubscriptionEventNoWait()
+            : Kernel.ReceiveSubscriptionEvent(flags);
     }
 
     internal bool ReceiveSubscriptionEventNoWait(out SubscriptionEvent? subscriptionEvent)

@@ -187,43 +187,38 @@ void record_spot_message (spot_dispatch_state_t *state_,
         state_->cv.notify_all ();
 }
 
-void on_spot_dispatch_event (void *spot_,
-                             const zlink_spot_dispatch_info_t *info_,
-                             void *userdata_)
+void on_spot_dispatch_event (spot_dispatch_state_t *state_,
+                             const zlink::spot_dispatch_info_t &info_)
 {
-    if (!spot_ || !userdata_ || !info_
-        || info_->event != ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE) {
+    if (!state_
+        || info_.event != zlink::spot_dispatch_event_t::subscribe_readable) {
         return;
     }
 
-    spot_dispatch_state_t *state =
-      static_cast<spot_dispatch_state_t *> (userdata_);
-    if (!state->subscriber)
+    if (!state_->subscriber)
         return;
 
     try {
         for (;;) {
             std::optional<zlink::topic_message_t> message =
-              try_subscribe_from_spot (*state->subscriber);
+              try_subscribe_from_spot (*state_->subscriber);
             if (!message.has_value ())
                 return;
 
-            record_spot_message (state, *message);
+            record_spot_message (state_, *message);
         }
     }
     catch (const std::exception &) {
         {
-            std::lock_guard<std::mutex> lock (state->mutex);
-            state->fatal = true;
+            std::lock_guard<std::mutex> lock (state_->mutex);
+            state_->fatal = true;
         }
-        state->cv.notify_all ();
+        state_->cv.notify_all ();
     }
 }
 
-void on_spot_send_ready (void *, void *userdata_)
+void on_spot_send_ready (spot_dispatch_state_t *state)
 {
-    spot_dispatch_state_t *state =
-      static_cast<spot_dispatch_state_t *> (userdata_);
     if (!state)
         return;
 
@@ -423,25 +418,14 @@ bool run_pattern_spot (const std::string &transport,
           perf::single::resolve_single_socket_hwm (true);
         const int router_hwm =
           perf::single::resolve_single_socket_hwm (false);
-        if (zlink_set_spot_node_option (
-              pub_node.handle (), ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, &pubsub_hwm,
-              sizeof (pubsub_hwm))
-            != ZLINK_CONFIG_OK
-            || zlink_set_spot_node_option (
-              sub_node.handle (), ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, &pubsub_hwm,
-              sizeof (pubsub_hwm))
-              != ZLINK_CONFIG_OK
-            || zlink_set_spot_node_option (
-              pub_node.handle (), ZLINK_SPOT_NODE_OPT_ROUTER_HWM, &router_hwm,
-              sizeof (router_hwm))
-              != ZLINK_CONFIG_OK
-            || zlink_set_spot_node_option (
-              sub_node.handle (), ZLINK_SPOT_NODE_OPT_ROUTER_HWM, &router_hwm,
-              sizeof (router_hwm))
-              != ZLINK_CONFIG_OK) {
-            perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
-            return false;
-        }
+        pub_node.pubsub_admission_hwm (
+          zlink::message_count_t::value (pubsub_hwm));
+        sub_node.pubsub_admission_hwm (
+          zlink::message_count_t::value (pubsub_hwm));
+        pub_node.router_admission_hwm (
+          zlink::message_count_t::value (router_hwm));
+        sub_node.router_admission_hwm (
+          zlink::message_count_t::value (router_hwm));
         pub_node.bind (publisher_endpoint);
         sub_node.bind (subscriber_endpoint);
         pub_node.attach_discovery (pub_discovery);
@@ -455,9 +439,11 @@ bool run_pattern_spot (const std::string &transport,
     }
 
     pub_spot.options ().send_timeout (
-      perf::single::resolve_single_send_timeout_ms ());
+      std::chrono::milliseconds (
+        perf::single::resolve_single_send_timeout_ms ()));
     sub_spot.options ().recv_timeout (
-      perf::single::resolve_single_recv_timeout_ms ());
+      std::chrono::milliseconds (
+        perf::single::resolve_single_recv_timeout_ms ()));
     sub_spot.set_subscription (k_topic);
 
     const size_t payload_size =
@@ -471,8 +457,13 @@ bool run_pattern_spot (const std::string &transport,
     dispatch_state.payload_size = payload_size;
 
     try {
-        sub_spot.on_dispatch_event (&on_spot_dispatch_event, &dispatch_state);
-        pub_spot.on_send_ready (&on_spot_send_ready, &dispatch_state);
+        sub_spot.on_dispatch_event (
+          [&dispatch_state] (zlink::service::spot_t &,
+                             const zlink::spot_dispatch_info_t &info) {
+              on_spot_dispatch_event (&dispatch_state, info);
+          });
+        pub_spot.on_send_ready (
+          [&dispatch_state] () { on_spot_send_ready (&dispatch_state); });
     }
     catch (const std::exception &) {
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);

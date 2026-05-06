@@ -33,7 +33,7 @@ internal sealed class SocketKernel : IDisposable
     private readonly SocketTypePolicy _policy;
     private NativeMethods.ZlinkStreamOnRawDelegate? _streamRawCallback;
     private NativeMethods.ZlinkStreamOnPacketDelegate? _streamPacketCallback;
-    private StreamPacketHandler? _streamPacketHandler;
+    private StreamRawPacketHandler? _streamPacketHandler;
     private StreamUInt32PacketHandler? _streamUInt32PacketHandler;
     private StreamFramedPacketHandler? _streamFramedPacketHandler;
     private StreamUInt32FramedPacketHandler? _streamUInt32FramedPacketHandler;
@@ -122,7 +122,7 @@ internal sealed class SocketKernel : IDisposable
         ZlinkException.ThrowConfigIfError(rc);
     }
 
-    public void AttachStreamRaw(StreamPacketHandler handler)
+    public void AttachStreamRaw(StreamRawPacketHandler handler)
     {
         EnsureSupports(nameof(AttachStreamRaw),
             SocketTypePolicy.SocketCapability.StreamAttach);
@@ -201,6 +201,14 @@ internal sealed class SocketKernel : IDisposable
                 NativeMethods.zlink_errno());
         }
         _streamAttached = true;
+    }
+
+    public void AttachStreamPacket(StreamPacketHandler handler)
+    {
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
+        AttachStreamPacket((routingId, header, body) =>
+            handler(ParsePublicRoutingId(routingId), header, body));
     }
 
     public void AttachStreamPacket(StreamUInt32FramedPacketHandler handler)
@@ -1926,6 +1934,14 @@ internal sealed class SocketKernel : IDisposable
         return code == ErrorCode.EAgain;
     }
 
+    private static RoutingId ParsePublicRoutingId(string value)
+    {
+        const string hexPrefix = "hex:";
+        return value.StartsWith(hexPrefix, StringComparison.Ordinal)
+            ? RoutingId.FromString(value.Substring(hexPrefix.Length))
+            : RoutingId.FromBytes(Encoding.UTF8.GetBytes(value));
+    }
+
     private static void OnBorrowedBufferFree(IntPtr data, IntPtr hint)
     {
         if (hint == IntPtr.Zero)
@@ -2020,7 +2036,7 @@ internal sealed class SocketKernel : IDisposable
         if (message == IntPtr.Zero)
             return 0;
 
-        StreamPacketHandler? packetHandler = _streamPacketHandler;
+        StreamRawPacketHandler? packetHandler = _streamPacketHandler;
         SynchronizationContext? context = _streamRawContext;
         if (packetHandler == null || routingId == IntPtr.Zero)
         {

@@ -227,3 +227,5 @@ public sealed record SubscriptionEvent(
     string? ServiceName,
     string Topic,
     bool Subscribed);
+
+public sealed record SubscriptionInfo(string Filter, bool IsPattern);

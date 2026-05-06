@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 
+using System;
+using System.Text;
+
 namespace Zlink;
 
 public sealed class ContextOptions
 {
     private readonly Context _context;
+    private string _threadNamePrefix = string.Empty;
 
     internal ContextOptions(Context context)
     {
@@ -57,6 +61,45 @@ public sealed class ContextOptions
         set => _context.SetOption(ContextOption.AutoHwmProfile, (int)value);
     }
 
+    public bool AutoHwmEnabled
+    {
+        get => _context.GetOption(ContextOption.AutoHwmEnabled) != 0;
+        set => _context.SetOption(ContextOption.AutoHwmEnabled, value ? 1 : 0);
+    }
+
+    public TimeSpan AutoHwmRecalcDebounce
+    {
+        get => TimeSpan.FromMilliseconds(
+            _context.GetOption(ContextOption.AutoHwmRecalcDebounce));
+        set => _context.SetOption(ContextOption.AutoHwmRecalcDebounce,
+            EncodeMilliseconds(value, nameof(value)));
+    }
+
+    public int SpotWorkerThreads
+    {
+        get => _context.GetOption(ContextOption.SpotWorkerThreads);
+        set => _context.SetOption(ContextOption.SpotWorkerThreads, value);
+    }
+
+    public string ThreadNamePrefix
+    {
+        get => _threadNamePrefix;
+        set
+        {
+            if (value == null)
+                throw new ArgumentNullException(nameof(value));
+            if (value.Length > 16)
+                throw new ArgumentOutOfRangeException(nameof(value));
+            byte[] bytes = Encoding.UTF8.GetBytes(value);
+            if (bytes.Length > 16)
+                throw new ArgumentOutOfRangeException(nameof(value));
+            int rc = Native.NativeMethods.zlink_ctx_set_data(_context.Handle,
+                (int)ContextOption.ThreadNamePrefix, bytes, (nuint)bytes.Length);
+            ZlinkException.ThrowConfigIfError(rc);
+            _threadNamePrefix = value;
+        }
+    }
+
     public void AddThreadAffinityCpu(int cpu)
     {
         _context.SetOption(ContextOption.ThreadAffinityCpuAdd, cpu);
@@ -65,5 +108,16 @@ public sealed class ContextOptions
     public void RemoveThreadAffinityCpu(int cpu)
     {
         _context.SetOption(ContextOption.ThreadAffinityCpuRemove, cpu);
+    }
+
+    private static int EncodeMilliseconds(TimeSpan value, string paramName)
+    {
+        double millis = value.TotalMilliseconds;
+        if (double.IsNaN(millis) || double.IsInfinity(millis)
+            || millis < 0 || millis > int.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(paramName);
+        }
+        return (int)Math.Ceiling(millis);
     }
 }

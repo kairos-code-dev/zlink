@@ -41,8 +41,7 @@ template<typename T> class has_on_event_t
     template<typename U>
     static auto test (int)
       -> decltype (std::declval<U &> ().on_event (
-                      static_cast<zlink::monitor_event_handler_fn> (NULL),
-                      static_cast<void *> (NULL)),
+                      std::function<void(const zlink::monitor_event_t &)> ()),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -93,18 +92,15 @@ struct monitor_callback_state_t
     zlink::monitor_event_t event;
 };
 
-void socket_monitor_callback (const zlink::monitor_event_t *event_,
-                              void *userdata_)
+void socket_monitor_callback (monitor_callback_state_t &state_,
+                              const zlink::monitor_event_t &event_)
 {
-    auto *state = static_cast<monitor_callback_state_t *> (userdata_);
-    assert (state != NULL);
-    assert (event_ != NULL);
     {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        state->event = *event_;
-        state->ready = true;
+        std::lock_guard<std::mutex> lock (state_.mutex);
+        state_.event = event_;
+        state_.ready = true;
     }
-    state->cv.notify_one ();
+    state_.cv.notify_one ();
 }
 
 bool wait_for_any_socket_monitor_event (zlink::monitor_handle_t &monitor_,
@@ -124,7 +120,7 @@ bool wait_for_any_socket_monitor_event (zlink::monitor_handle_t &monitor_,
             continue;
         }
 
-        if (monitor_.recv (zlink::non_blocking_t {}))
+        if (monitor_.recv (zlink::recv_flags_t::dontwait))
             return true;
     }
 
@@ -146,7 +142,7 @@ void test_socket_monitor_open_recv_snapshot ()
     assert (!endpoint.empty ());
     client.connect (endpoint);
 
-    (void) monitor.recv (zlink::non_blocking_t {});
+    (void) monitor.recv (zlink::recv_flags_t::dontwait);
     assert (wait_for_any_socket_monitor_event (monitor, 2000));
     const zlink::monitor_snapshot_t snapshot = monitor.snapshot ();
     (void) snapshot.auto_hwm_profile_value;
@@ -202,7 +198,10 @@ void test_socket_monitor_on_event_callback ()
     assert (monitor.valid ());
 
     monitor_callback_state_t callback_state;
-    monitor.on_event (&socket_monitor_callback, &callback_state);
+    monitor.on_event (
+      [&callback_state] (const zlink::monitor_event_t &event) {
+          socket_monitor_callback (callback_state, event);
+      });
 
     server.bind ("tcp://127.0.0.1:*");
     std::string endpoint;

@@ -568,5 +568,116 @@ zlink_registry_status_snapshot(registry, &status);
 printf("state=%d\n", status.state);
 ```
 
+## 12. Poller API
+
+The Poller API (`zlink_poller_*`) provides a unified event loop that multiplexes
+zlink sockets, raw file descriptors, and timers in a single `wait` call. It is
+the recommended approach for event-driven applications that manage multiple
+sources.
+
+### 12.1 Basic Usage
+
+```c
+void *poller = zlink_poller_new();
+
+/* add a socket (POLLIN) */
+zlink_poller_add(poller, router, my_router_ctx, ZMQ_POLLIN);
+
+/* add a raw fd */
+zlink_poller_add_fd(poller, event_fd, my_fd_ctx, ZMQ_POLLIN);
+
+/* add a timer */
+void *timer = zlink_timer_new(ctx, 1000);  /* 1 s interval */
+zlink_poller_add_timer(poller, timer, my_timer_ctx);
+
+for (;;) {
+    zlink_poller_event_t event;
+    int rc = zlink_poller_wait(poller, &event, -1, NULL);
+    if (rc < 0)
+        break;
+
+    switch (event.source_kind) {
+    case ZLINK_POLLER_SOURCE_SOCKET:
+        /* event.socket, event.events, event.user_data */
+        handle_socket(event.socket, event.user_data);
+        break;
+    case ZLINK_POLLER_SOURCE_FD:
+        /* event.fd, event.events, event.user_data */
+        handle_fd(event.fd, event.user_data);
+        break;
+    case ZLINK_POLLER_SOURCE_TIMER:
+        /* event.timer, event.user_data */
+        handle_timer(event.timer, event.user_data);
+        break;
+    }
+}
+
+zlink_poller_destroy(&poller);
+```
+
+`zlink_poller_wait()` returns 1 when one event is ready, 0 on timeout,
+and -1 on error (with `error_out` set). Pass `timeout` in milliseconds;
+`-1` means block indefinitely, `0` means non-blocking.
+
+### 12.2 Batch Wait
+
+To drain multiple ready events without re-entering the poll loop:
+
+```c
+zlink_poller_event_t events[16];
+int n = zlink_poller_wait_all(poller, events, 16, 0, NULL);
+for (int i = 0; i < n; i++) {
+    /* handle events[i] */
+}
+```
+
+### 12.3 Modify and Remove
+
+```c
+/* change watched events on an existing socket */
+zlink_poller_modify(poller, router, ZMQ_POLLIN | ZMQ_POLLOUT);
+
+/* remove a socket */
+zlink_poller_remove(poller, router);
+
+/* remove an fd */
+zlink_poller_remove_fd(poller, event_fd);
+
+/* remove a timer */
+zlink_poller_remove_timer(poller, timer);
+```
+
+### 12.4 `zlink_poller_event_t` Fields
+
+| Field | Description |
+|-------|-------------|
+| `source_kind` | `ZLINK_POLLER_SOURCE_SOCKET`, `_FD`, or `_TIMER` |
+| `socket` | Socket handle (valid when `source_kind == SOCKET`) |
+| `fd` | File descriptor (valid when `source_kind == FD`) |
+| `timer` | Timer handle (valid when `source_kind == TIMER`) |
+| `user_data` | Pointer registered with `add` / `add_fd` / `add_timer` |
+| `events` | Ready event flags (`ZMQ_POLLIN` / `ZMQ_POLLOUT`) |
+
+### 12.5 Low-level `zlink_poll`
+
+For simple one-shot polls without the Poller object, use `zlink_poll()`:
+
+```c
+zlink_pollitem_t items[2];
+items[0].socket = router;
+items[0].fd     = 0;
+items[0].events = ZMQ_POLLIN;
+items[1].socket = NULL;
+items[1].fd     = pipe_fd;
+items[1].events = ZMQ_POLLIN;
+
+int n = zlink_poll(items, 2, 1000, NULL);
+if (items[0].revents & ZMQ_POLLIN)
+    /* router has data */;
+```
+
+`zlink_poll()` is lower-level and does not support timers. Prefer the Poller
+API for production event loops.
+
 ---
 [← TLS Security](05-tls-security.md) | [Services Overview →](07-0-services.md)

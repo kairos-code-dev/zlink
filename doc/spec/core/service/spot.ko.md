@@ -137,11 +137,13 @@ SpotNode는 HWM을 `Spot`에서 `SpotNode`로 들어오는 admission control로�
 `ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
 `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`,
 `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` 네 가지다. 두 admission 채널의 기본 profile은
-balanced이며 HWM `16`으로 해석된다. compact는 `4`, low latency는 `8`,
-throughput은 `32`다.
-양수 HWM을 직접 설정하면 해당 채널 profile 값보다 우선한다. 숫자 HWM에 `0`을
-설정하면 override를 지우고 profile 값으로 돌아간다. 음수와 알 수 없는 profile은
-`EINVAL`로 실패한다.
+balanced auto-HWM profile이다. 숫자 override가 없으면 SpotNode data-path
+socket은 일반 socket과 같은 profile/message-unit 계산식을 사용한다. balanced
+profile에서는 단위 예산이 1024 KiB이므로 64 B, 256 B, 1024 B 메시지는 HWM
+`1024`를 쓰고, 64 KiB 메시지는 HWM `16`, 128 KiB 메시지는 HWM `8`, 256 KiB
+메시지는 HWM `4`를 쓴다. 양수 HWM을 직접 설정하면 해당 채널의 자동 값보다
+우선한다. 숫자 HWM에 `0`을 설정하면 override를 지우고 자동 값으로 돌아간다.
+음수와 알 수 없는 profile은 `EINVAL`로 실패한다.
 
 `Spot` handle은 common `ZLINK_OPT_SNDHWM` 또는 `ZLINK_OPT_RCVHWM` 설정을 받지
 않는다. `Spot`은 생성 시점의 SpotNode admission HWM을 캡처하며, 이후 SpotNode HWM

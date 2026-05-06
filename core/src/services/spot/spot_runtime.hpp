@@ -84,15 +84,27 @@ inline int spot_node_admission_hwm_for_profile (
 {
     switch (profile_) {
         case ZLINK_AUTO_HWM_PROFILE_COMPACT:
-            return 4;
+            return 64;
         case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
-            return 8;
+            return 128;
         case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
-            return 32;
+            return 512;
         case ZLINK_AUTO_HWM_PROFILE_BALANCED:
         default:
-            return 16;
+            return 256;
     }
+}
+
+inline bool spot_node_router_hwm_overridden (
+  const spot_node_hwm_config_t &config_)
+{
+    return config_.router_hwm_override > 0;
+}
+
+inline bool spot_node_pubsub_hwm_overridden (
+  const spot_node_hwm_config_t &config_)
+{
+    return config_.pubsub_hwm_override > 0;
 }
 
 inline bool spot_node_valid_hwm_profile (int profile_)

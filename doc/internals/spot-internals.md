@@ -224,12 +224,18 @@ map structure or locking rules.
 SpotNode exposes only admission HWM knobs. These knobs cap how much local input
 enters the node before the data plane owns it.
 
-| option | admission path | default profile value |
-|--------|----------------|-----------------------|
-| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE` | topic publish admission | balanced = 16 |
-| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` | topic publish admission numeric override | positive value, `0` resets |
-| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE` | routed admission | balanced = 16 |
-| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | routed admission numeric override | positive value, `0` resets |
+| option | admission path | default behavior |
+|--------|----------------|------------------|
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE` | topic publish admission | balanced auto-HWM profile |
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` | topic publish admission numeric override | positive value, `0` returns to auto-HWM |
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE` | routed admission | balanced auto-HWM profile |
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | routed admission numeric override | positive value, `0` returns to auto-HWM |
+
+With no numeric override, SpotNode data-path sockets use the shared auto-HWM
+planner. Balanced profile gives the same sequence as ordinary routed sockets:
+HWM `1024` for small messages up to 1024 B, HWM `16` for 64 KiB, HWM `8` for
+128 KiB, and HWM `4` for 256 KiB. The peer control sockets stay outside this
+admission group and keep their control-plane HWM.
 
 The shared relay and delivery sockets use HWM `0`. This prevents hidden
 per-peer or per-target queue caps inside SPOT from deciding message loss or

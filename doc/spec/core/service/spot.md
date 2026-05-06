@@ -137,10 +137,14 @@ The public options are `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`,
 `ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
 `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`, and
 `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM`. Both admission channels default to the
-balanced profile, which maps to HWM `16`; compact maps to `4`, low latency
-maps to `8`, and throughput maps to `32`. A positive numeric HWM overrides the profile for that
-channel. Setting the numeric HWM to `0` clears the override and returns to the
-profile value. Negative values and unknown profiles fail with `EINVAL`.
+balanced auto-HWM profile. Without a numeric override, SpotNode data-path
+sockets use the same profile/message-unit calculation as ordinary sockets:
+for the balanced profile the unit budget is 1024 KiB, so 64 B, 256 B, and
+1024 B messages use HWM `1024`, 64 KiB messages use HWM `16`, 128 KiB
+messages use HWM `8`, and 256 KiB messages use HWM `4`. A positive numeric
+HWM overrides the automatic value for that channel. Setting the numeric HWM
+to `0` clears the override and returns to the automatic value. Negative values
+and unknown profiles fail with `EINVAL`.
 
 `Spot` handles do not accept common `ZLINK_OPT_SNDHWM` or
 `ZLINK_OPT_RCVHWM` settings. A `Spot` captures the current SpotNode admission

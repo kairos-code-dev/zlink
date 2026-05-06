@@ -89,7 +89,10 @@ int spot_mesh_pub_hwm_t::resolve_runtime_default (
 {
     if (!runtime_)
         return 0;
-    return spot_node_pubsub_admission_hwm (runtime_->hwm_config_snapshot ());
+    const spot_node_hwm_config_t hwm = runtime_->hwm_config_snapshot ();
+    return spot_node_pubsub_hwm_overridden (hwm)
+             ? spot_node_pubsub_admission_hwm (hwm)
+             : 0;
 }
 
 int spot_mesh_pub_hwm_t::resolve_initial_bind_sndhwm (
@@ -133,6 +136,8 @@ void spot_mesh_pub_hwm_t::refresh_live_socket (
     *last_bound_endpoint_ = bound_endpoint;
 
     const int desired = resolve_runtime_default (runtime_);
+    if (desired <= 0)
+        return;
     if (desired == *current_hwm_)
         return;
 

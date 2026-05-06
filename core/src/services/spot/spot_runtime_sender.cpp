@@ -87,14 +87,20 @@ int spot_runtime_t::ensure_sender_socket (spot_runtime_sender_kind_t kind_,
                                       0, 0, true, true, true, true});
 
     const spot_node_hwm_config_t hwm_config = hwm_config_snapshot ();
-    const int admission_hwm =
-      kind_ == spot_runtime_sender_internal_router
-        ? spot_node_router_admission_hwm (hwm_config)
-        : spot_node_pubsub_admission_hwm (hwm_config);
     const int zero = 0;
     const int linger = 0;
-    socket->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &admission_hwm,
-                         sizeof (admission_hwm));
+    if (kind_ == spot_runtime_sender_internal_router
+        && spot_node_router_hwm_overridden (hwm_config)) {
+        const int admission_hwm = spot_node_router_admission_hwm (hwm_config);
+        socket->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &admission_hwm,
+                            sizeof (admission_hwm));
+    }
+    if (kind_ == spot_runtime_sender_pub_ingress
+        && spot_node_pubsub_hwm_overridden (hwm_config)) {
+        const int admission_hwm = spot_node_pubsub_admission_hwm (hwm_config);
+        socket->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &admission_hwm,
+                            sizeof (admission_hwm));
+    }
     socket->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero, sizeof (zero));
     socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
     if (socket->connect (target_endpoint.c_str ()) != 0) {

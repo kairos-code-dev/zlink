@@ -223,12 +223,18 @@ remote routed delivery는 peer별 external route id map을 사용한다. 이 map
 SpotNode는 admission HWM 설정만 공개한다. 이 설정은 데이터 평면이 소유하기
 전의 local 입력량을 제한한다.
 
-| 옵션 | admission 경로 | 기본 profile 값 |
-|------|----------------|-----------------|
-| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE` | topic publish admission | balanced = 16 |
-| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` | topic publish admission 숫자 override | 양수 값, `0`은 reset |
-| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE` | routed admission | balanced = 16 |
-| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | routed admission 숫자 override | 양수 값, `0`은 reset |
+| 옵션 | admission 경로 | 기본 동작 |
+|------|----------------|-----------|
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE` | topic publish admission | balanced auto-HWM profile |
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` | topic publish admission 숫자 override | 양수 값, `0`은 auto-HWM 복귀 |
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE` | routed admission | balanced auto-HWM profile |
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | routed admission 숫자 override | 양수 값, `0`은 auto-HWM 복귀 |
+
+숫자 override가 없으면 SpotNode data-path socket은 공통 auto-HWM planner를
+사용한다. balanced profile은 일반 routed socket과 같은 수열을 만든다. 1024 B
+이하의 작은 메시지는 HWM `1024`, 64 KiB 메시지는 HWM `16`, 128 KiB 메시지는
+HWM `8`, 256 KiB 메시지는 HWM `4`를 사용한다. peer control socket은 이
+admission 묶음에 포함되지 않으며 control-plane HWM을 유지한다.
 
 공유 relay와 delivery socket은 HWM `0`을 사용한다. 이렇게 해야 SPOT 내부의 숨은
 peer별 또는 target별 큐 제한이 메시지 손실이나 연결 종료를 결정하지 않는다.

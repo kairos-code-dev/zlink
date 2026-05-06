@@ -376,3 +376,239 @@ readiness is posted to the Entry Spot's dispatch queue.
 A user Spot's logical state is destroyed when the last facade is closed, provided
 no Actor is currently joined and no join request is pending. Entry Spot logical state
 is owned by the `SpotNode` and is not reference-counted.
+
+## 9. Spot socket removal model
+
+In the previous structure, a `Spot` facade or side handle could create per-Spot
+sockets and use inproc sockets as queues. In a design where `SpotNode` receives
+a message once and relays it to a logical `Spot`, expressing dispatch state via
+per-Spot socket HWM is wrong. HWM belongs on the `SpotNode`-owned transport
+socket admission boundary. Per-Spot queues are staging state only: they decide
+which dispatch context processes already-received input.
+
+The target structure is:
+
+```mermaid
+flowchart TB
+  Facade["Spot facade
+  rid / dispatch handler ref / options
+  no physical socket"]
+  Logical["Spot logical state
+  routed queue / subscribe queue
+  channel reply queues / actor event queues
+  dispatch pending queues"]
+  Runtime["SpotNode runtime
+  physical sockets / demux and fanout
+  transport backpressure / discovery sync"]
+
+  Facade --> Logical
+  Logical --> Runtime
+```
+
+The `Spot` facade does not directly own physical sockets such as `spot_pub_t`,
+`spot_sub_t`, or routed receive sockets. What a `Spot` needs is a reference to its
+logical state.
+
+## 10. STREAM session and Actor binding
+
+The session owner node and the Actor owner node may be the same or different. The
+internal paths differ, but the public API is identical.
+
+### 10.1 Local Actor binding (co-located)
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant Stream as STREAM socket
+  participant Node as Session+Actor node
+  participant List as Session actor list
+  participant ActorObj as Local Actor
+  participant Spot as Current Spot
+  participant Handler as Dispatch handler
+
+  Client->>Stream: client frame
+  Stream->>Node: stream callback(session_rid)
+  Node->>List: bind actor_ref
+  List->>ActorObj: attach bound session ref
+  Node->>Node: publish active route on bind success
+
+  Node->>List: relay to actor_id
+  List->>ActorObj: resolve local actor
+  ActorObj->>Spot: enqueue unread part
+  Spot->>Handler: ACTOR_READABLE
+  Handler->>Node: actor_recv_part(actor_ref)
+
+  Handler->>Node: actor_send_bound_session_msg(actor_ref)
+  Node->>List: validate actor ref
+  Node->>Stream: write to session_rid
+  Stream-->>Client: client frame
+```
+
+A local Actor completes bind, relay, and Actor-to-session send all within one node.
+No Actor socket or per-Actor inproc endpoint is created.
+
+### 10.2 Remote Actor binding (split deployment)
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant Stream as STREAM socket
+  participant SessNode as Session owner node
+  participant List as Session actor list
+  participant ActorNode as Actor owner node
+  participant ActorObj as Remote Actor
+  participant Spot as Current Spot
+  participant Handler as Dispatch handler
+
+  Client->>Stream: client frame
+  Stream->>SessNode: stream callback(session_rid)
+  SessNode->>ActorNode: bind control request
+  ActorNode->>ActorObj: attach bound session ref
+  ActorNode-->>SessNode: bind OK
+  SessNode->>List: store actor_ref
+  ActorNode->>ActorNode: publish active route on bind success
+
+  SessNode->>List: relay to actor_id
+  List-->>SessNode: actor_ref
+  SessNode->>ActorNode: relay frame
+  ActorNode->>ActorObj: resolve actor
+  ActorObj->>Spot: enqueue unread part
+  Spot->>Handler: ACTOR_READABLE
+  Handler->>ActorNode: actor_recv_part(actor_ref)
+
+  Handler->>ActorNode: actor_send_bound_session_msg(actor_ref)
+  ActorNode->>SessNode: actor-to-session frame
+  SessNode->>List: validate actor ref
+  SessNode->>Stream: write to session_rid
+  Stream-->>Client: client frame
+```
+
+A remote Actor has bind control requests, session-to-Actor relay frames, and
+Actor-to-session frames crossing node boundaries. The session owner does not store
+the Actor's joined Spot state. The Actor owner does not store STREAM session
+application state.
+
+When a bound session disconnect and a remote join handoff overlap, the session Actor
+list compare-and-swap result is authoritative. A disconnect before the CAS succeeds
+aborts to Entry Spot on the source Actor. A disconnect after the CAS succeeds
+triggers Entry Spot cleanup on the target Actor.
+
+## 11. Transport logical queue internal data structures
+
+This section describes the key internal structures behind the transport logical queue
+implementation. These are not public contract; implementation details may change.
+
+### 11.1 Spot logical queue (`spot_logical_state_t`)
+
+`spot_logical_state_t` is the logical state shared by `Spot` facades
+(`spot_handle_t`) via `shared_ptr`. The Entry Spot is owned by
+`spot_node_handle_state_t.entry_spot`; user Spots are kept in the `spots_by_rid`
+map.
+
+Pubsub-relevant fields:
+
+| field | type | role |
+|-------|------|------|
+| `subscribe_queue` | `deque<shared_ptr<spot_logical_pubsub_message_t>>` | pubsub messages demuxed from `SpotNode` |
+| `subscribe_signaler` | `signaler_t` | edge-triggered signaler that wakes dispatch |
+| `subscribe_signal_armed` | `bool` | arming flag that prevents duplicate signals |
+| `request_reply_state` | `shared_ptr<spot_request_reply_state_t>` | routed send/recv and channel reply state |
+
+`spot_logical_pubsub_message_t` holds all parts of one pubsub message:
+
+```cpp
+struct spot_logical_pubsub_message_t {
+    zlink_routing_id_t source_rid;
+    std::string service_name;
+    std::string topic_id;
+    std::vector<std::string> parts;
+};
+```
+
+### 11.2 Actor unread queue (`actor_handle_t`)
+
+`actor_handle_t` corresponds to one row in the `SpotNode` Actor table. It is owned
+by the `actors_by_id` map inside `spot_node_actor_state_t`.
+
+| field | type | role |
+|-------|------|------|
+| `queue` | `deque<queued_actor_part_t>` | unread parts relayed from a STREAM session |
+| `joined_spot_state` | `shared_ptr<spot_logical_state_t>` | current Spot state |
+| `generation` | `uint64_t` | Actor ref generation (stale ref validation) |
+| `bound_session_node` | `spot_node_t*` | session owner node |
+| `bound_stream` | `void*` | connected STREAM socket handle |
+| `pending_remote_join` | `bool` | remote join prepare in progress |
+
+`queued_actor_part_t` is a move-only ownership wrapper for one part:
+
+| field | type | role |
+|-------|------|------|
+| `part` | `zlink_msg_t` | message body |
+| `info` | `zlink_actor_recv_info_t` | source session info (node rid, session rid, actor ref) |
+| `part_flag` | `zlink_part_flag_t` | `ZLINK_PART_MORE` or `ZLINK_PART_FINAL` |
+| `owns` | `bool` | whether this wrapper owns the part (false after move) |
+
+### 11.3 Join request queue (`g_join_queues`)
+
+Join requests are stored in `g_join_queues`, protected by the global
+`g_actor_mutex` in `service_spot_actor_api.cpp`:
+
+```
+g_join_queues: map<spot_logical_state_t*, deque<queued_join_request_t*>>
+```
+
+The key is the target Spot's `spot_logical_state_t` pointer. Multiple join requests
+for the same Spot may be pending at once and are drained FIFO by
+`zlink_spot_actor_join_recv()`.
+
+Key fields of `queued_join_request_t`:
+
+| field | type | role |
+|-------|------|------|
+| `actor` | `actor_handle_t*` | source Actor that requested the join |
+| `spot_state` | `shared_ptr<spot_logical_state_t>` | target Spot logical state |
+| `join_epoch` | `uint64_t` | join sequence number (timeout/duplicate validation) |
+| `replied` | `bool` | whether a reply has been submitted |
+| `pending_target` | `actor_handle_t*` | target Actor created during remote join prepare |
+| `remote` | `bool` | whether this is a remote join handoff |
+| `message` | `zlink_msg_t` | join payload (ownership transferred from caller) |
+| `reply` | `zlink_msg_t` | reply payload (ownership transferred from target Spot) |
+
+`g_live_join_requests` tracks all currently pending join requests.
+`g_retired_join_requests` holds requests awaiting timeout/cleanup processing.
+
+### 11.4 Signaler and dispatch connection
+
+Pubsub dispatch uses an edge-triggered signaler:
+
+```
+message added to subscribe_queue
+→ if subscribe_signal_armed == false: subscribe_signaler.send()
+→ set subscribe_signal_armed = true
+→ poller detects subscribe_signaler fd → delivers SUBSCRIBE_READABLE
+→ after drain: reset subscribe_signal_armed = false (ready for next input)
+```
+
+Actor readable dispatch posts `ACTOR_READABLE` readiness directly to the dispatch
+handler of `actor_handle_t.joined_spot_state`. The subject is a
+`const zlink_actor_ref_t*` valid only for the callback lifetime.
+
+Actor join dispatch posts `ACTOR_JOIN_READABLE` to the target Spot's dispatch
+handler when a request is added to `g_join_queues`. The subject is the target Spot
+facade.
+
+### 11.5 Global state summary
+
+Key global state managed by `service_spot_actor_api.cpp`:
+
+| global | type | role |
+|--------|------|------|
+| `g_actor_mutex` | `timed_mutex` | protects Actor table and join queues |
+| `g_nodes_by_rid` | `map<string, spot_node_t*>` | node rid → SpotNode reverse lookup |
+| `g_join_queues` | `map<spot_logical_state_t*, deque<...>>` | pending join requests per Spot |
+| `g_known_spots` | `set<spot_handle_t*>` | tracks live Spot facades |
+| `g_session_bindings` | `map<string, session_binding_t>` | session rid → Actor binding |
+| `g_active_routes` | `map<string, zlink_actor_route_t>` | actor id → active route |
+| `g_live_join_requests` | `set<queued_join_request_t*>` | currently pending joins |
+| `g_retired_join_requests` | `set<queued_join_request_t*>` | joins awaiting cleanup |
+| `g_actor_protocol_drop_count` | `uint64_t` | cumulative protocol error drop counter |

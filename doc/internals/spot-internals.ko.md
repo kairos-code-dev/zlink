@@ -478,3 +478,120 @@ Actor owner는 STREAM session application state를 저장하지 않는다.
 bound session disconnect와 remote join handoff가 겹치면 session Actor list
 compare-and-swap 성공 여부가 기준이다. 성공 전 disconnect는 source Actor를 Entry Spot으로
 돌리는 abort이고, 성공 뒤 disconnect는 target Actor의 Entry Spot cleanup이다.
+
+## 11. Transport logical queue 내부 데이터 구조
+
+이 섹션은 transport logical queue 구현의 핵심 내부 구조를 정리한다. 공개 계약이
+아니며, 구현 세부 사항은 이후 변경될 수 있다.
+
+### 11.1 Spot logical queue (`spot_logical_state_t`)
+
+`spot_logical_state_t`는 `Spot` facade(`spot_handle_t`)가 `shared_ptr`로 공유하는
+logical state다. Entry Spot은 `spot_node_handle_state_t.entry_spot`이 소유하고,
+user Spot은 `spots_by_rid` map에 보관한다.
+
+pubsub 관련 필드:
+
+| 필드 | 타입 | 역할 |
+|------|------|------|
+| `subscribe_queue` | `deque<shared_ptr<spot_logical_pubsub_message_t>>` | SpotNode에서 demux된 pubsub 메시지 |
+| `subscribe_signaler` | `signaler_t` | dispatch를 깨우는 edge-triggered signaler |
+| `subscribe_signal_armed` | `bool` | 중복 신호 방지용 arming 플래그 |
+| `request_reply_state` | `shared_ptr<spot_request_reply_state_t>` | routed send/recv 및 channel reply 상태 |
+
+`spot_logical_pubsub_message_t`는 한 pubsub 메시지의 모든 part를 담는다.
+
+```
+struct spot_logical_pubsub_message_t {
+    zlink_routing_id_t source_rid;
+    std::string service_name;
+    std::string topic_id;
+    std::vector<std::string> parts;
+};
+```
+
+### 11.2 Actor unread queue (`actor_handle_t`)
+
+`actor_handle_t`는 `SpotNode` actor table의 각 row에 해당한다. `spot_node_actor_state_t`
+안의 `actors_by_id` map이 소유한다.
+
+| 필드 | 타입 | 역할 |
+|------|------|------|
+| `queue` | `deque<queued_actor_part_t>` | STREAM relay로 받은 아직 읽지 않은 part |
+| `joined_spot_state` | `shared_ptr<spot_logical_state_t>` | 현재 속한 Spot state |
+| `generation` | `uint64_t` | Actor ref generation (stale ref 검증) |
+| `bound_session_node` | `spot_node_t*` | session owner node |
+| `bound_stream` | `void*` | 연결된 STREAM socket handle |
+| `pending_remote_join` | `bool` | remote join prepare 진행 중 여부 |
+
+`queued_actor_part_t`는 단일 part의 소유권 wrapper다. move-only semantics다.
+
+| 필드 | 타입 | 역할 |
+|------|------|------|
+| `part` | `zlink_msg_t` | message body |
+| `info` | `zlink_actor_recv_info_t` | source session 정보 (node rid, session rid, actor ref) |
+| `part_flag` | `zlink_part_flag_t` | `ZLINK_PART_MORE` 또는 `ZLINK_PART_FINAL` |
+| `owns` | `bool` | part 소유 여부 (move 후 false) |
+
+### 11.3 Join request queue (`g_join_queues`)
+
+join request는 `service_spot_actor_api.cpp`의 global mutex(`g_actor_mutex`)로
+보호되는 `g_join_queues`에 저장된다.
+
+```
+g_join_queues: map<spot_logical_state_t*, deque<queued_join_request_t*>>
+```
+
+key는 target Spot의 `spot_logical_state_t` 포인터다. 같은 Spot에 여러 join request가
+pending 중일 수 있으며, FIFO 순서로 `zlink_spot_actor_join_recv()`로 drain한다.
+
+`queued_join_request_t` 주요 필드:
+
+| 필드 | 타입 | 역할 |
+|------|------|------|
+| `actor` | `actor_handle_t*` | join을 요청한 source Actor |
+| `spot_state` | `shared_ptr<spot_logical_state_t>` | target Spot logical state |
+| `join_epoch` | `uint64_t` | join sequence (timeout/중복 검증용) |
+| `replied` | `bool` | reply 완료 여부 |
+| `pending_target` | `actor_handle_t*` | remote join prepare에서 생성한 target Actor |
+| `remote` | `bool` | remote join handoff 여부 |
+| `message` | `zlink_msg_t` | join payload (source가 소유권 이전) |
+| `reply` | `zlink_msg_t` | reply payload (target이 소유권 이전) |
+
+`g_live_join_requests`는 현재 pending 중인 모든 join request set이고,
+`g_retired_join_requests`는 timeout/cleanup이 완료되기를 기다리는 set이다.
+
+### 11.4 Signaler와 dispatch 연결
+
+pubsub dispatch는 edge-triggered signaler로 동작한다.
+
+```
+subscribe_queue에 입력 추가
+→ subscribe_signal_armed == false이면 subscribe_signaler.send()
+→ subscribe_signal_armed = true 설정
+→ poller가 subscribe_signaler fd를 감지해 SUBSCRIBE_READABLE 전달
+→ drain 완료 후 subscribe_signal_armed = false 재설정 (다음 입력 대비)
+```
+
+Actor readable dispatch는 `actor_handle_t.joined_spot_state`의 dispatch handler에
+`ACTOR_READABLE` readiness를 직접 올린다. subject는 callback lifetime 동안만 유효한
+`const zlink_actor_ref_t*`다.
+
+Actor join dispatch는 `g_join_queues`에 request가 추가될 때 target Spot dispatch
+handler에 `ACTOR_JOIN_READABLE` readiness를 올린다. subject는 target Spot facade다.
+
+### 11.5 Global 상태 목록
+
+`service_spot_actor_api.cpp`이 관리하는 주요 global 상태:
+
+| 전역 변수 | 타입 | 역할 |
+|-----------|------|------|
+| `g_actor_mutex` | `timed_mutex` | actor table과 join queue 보호 |
+| `g_nodes_by_rid` | `map<string, spot_node_t*>` | node rid → SpotNode 역방향 조회 |
+| `g_join_queues` | `map<spot_logical_state_t*, deque<...>>` | Spot별 pending join request |
+| `g_known_spots` | `set<spot_handle_t*>` | live spot facade 추적 |
+| `g_session_bindings` | `map<string, session_binding_t>` | session rid → Actor binding |
+| `g_active_routes` | `map<string, zlink_actor_route_t>` | actor id → active route |
+| `g_live_join_requests` | `set<queued_join_request_t*>` | 현재 pending join |
+| `g_retired_join_requests` | `set<queued_join_request_t*>` | cleanup 대기 join |
+| `g_actor_protocol_drop_count` | `uint64_t` | protocol 오류 drop 누적 카운터 |

@@ -15,12 +15,8 @@ static inline int zlink_spot_node_actor_admission_handler_go(void *node, uintptr
     return zlink_spot_node_actor_admission_handler(node, (zlink_actor_admission_handler_fn)goZlinkActorAdmissionTrampoline, (void *)userdata);
 }
 
-static inline int zlink_actor_join_spot_go(void *actor, void *spot, zlink_msg_t *message, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
-    return zlink_actor_join_spot(actor, spot, message, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
-}
-
-static inline int zlink_spot_node_actor_join_spot_go(void *node, const zlink_actor_ref_t *actor, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *message, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
-    return zlink_spot_node_actor_join_spot(node, actor, dest_spot_rid, message, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
+static inline int zlink_spot_node_actor_join_spot_go(void *node, const zlink_actor_ref_t *actor, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *message, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_spot_node_actor_join_spot(node, actor, dest_node_rid, dest_spot_rid, message, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
 }
 */
 import "C"
@@ -77,8 +73,13 @@ type ActorRecvInfo struct {
 }
 
 type ActorJoinInfo struct {
-	Actor         ActorRef
+	SourceActor   ActorRef
+	TargetActor   ActorRef
 	SourceNodeRID RoutingID
+	SourceSpotRID RoutingID
+	TargetNodeRID RoutingID
+	TargetSpotRID RoutingID
+	JoinEpoch     uint64
 	Flags         uint32
 	raw           C.zlink_actor_join_info_t
 }
@@ -108,7 +109,8 @@ type SpotNodeActorEntry struct {
 }
 
 type Actor struct {
-	handle unsafe.Pointer
+	node   *SpotNode
+	ref    ActorRef
 	closed bool
 }
 
@@ -118,11 +120,11 @@ func (n *SpotNode) Actor(actorID string) (*Actor, error) {
 		return nil, err
 	}
 	return withActorIDCString(actorID, func(actorIDC *C.char) (*Actor, error) {
-		actor := C.zlink_spot_node_actor_new(handle, actorIDC)
-		if actor == nil {
-			return nil, configErrorFromErrno(currentErrno())
+		var raw C.zlink_actor_ref_t
+		if err := configErrorFromResult(C.zlink_spot_node_actor_new(handle, actorIDC, &raw)); err != nil {
+			return nil, err
 		}
-		return &Actor{handle: actor}, nil
+		return &Actor{node: n, ref: actorRefFromC(raw)}, nil
 	})
 }
 
@@ -182,7 +184,7 @@ func (n *SpotNode) CreateRemoteActor(targetNodeRID RoutingID, actorID string, me
 	})
 }
 
-func (n *SpotNode) DestroyRemoteActor(actor ActorRef, timeout time.Duration) error {
+func (n *SpotNode) DestroyActor(actor ActorRef, timeout time.Duration) error {
 	handle, err := n.handleOrError()
 	if err != nil {
 		return err
@@ -191,7 +193,7 @@ func (n *SpotNode) DestroyRemoteActor(actor ActorRef, timeout time.Duration) err
 	if err != nil {
 		return err
 	}
-	return requestErrorFromResult(C.zlink_spot_node_destroy_remote_actor(handle, &raw, C.uint32_t(requestTimeoutMillis(timeout))))
+	return requestErrorFromResult(C.zlink_spot_node_actor_destroy(handle, &raw, C.uint32_t(requestTimeoutMillis(timeout))))
 }
 
 func (n *SpotNode) OnActorAdmission(handler func(string, *Message) ActorAdmissionResult) error {
@@ -218,7 +220,7 @@ func (n *SpotNode) OnActorAdmission(handler func(string, *Message) ActorAdmissio
 	return nil
 }
 
-func (n *SpotNode) JoinActor(actor ActorRef, destSpotRID RoutingID, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, message *Message) error {
+func (n *SpotNode) JoinActor(actor ActorRef, destNodeRID RoutingID, destSpotRID RoutingID, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, message *Message) error {
 	handle, err := n.handleOrError()
 	if err != nil {
 		return err
@@ -231,8 +233,9 @@ func (n *SpotNode) JoinActor(actor ActorRef, destSpotRID RoutingID, callback Req
 		return err
 	}
 	rawSpot := destSpotRID.toC()
+	rawNode := destNodeRID.toC()
 	return submitActorJoin(message, nil, func(part *C.zlink_msg_t, cb cgo.Handle) error {
-		return submitErrorFromResult(C.zlink_spot_node_actor_join_spot_go(handle, &rawActor, &rawSpot, part, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(cb)))
+		return submitErrorFromResult(C.zlink_spot_node_actor_join_spot_go(handle, &rawActor, &rawNode, &rawSpot, part, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(cb)))
 	}, callback)
 }
 
@@ -250,26 +253,28 @@ func (n *SpotNode) LeaveActor(actor ActorRef, destSpotRID RoutingID, timeout tim
 }
 
 func (a *Actor) Ref() (ActorRef, error) {
-	if a == nil || a.closed || a.handle == nil {
+	if a == nil || a.closed || a.node == nil {
 		return ActorRef{}, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	var raw C.zlink_actor_ref_t
-	if err := configErrorFromResult(C.zlink_actor_get_ref(a.handle, &raw)); err != nil {
-		return ActorRef{}, err
-	}
-	return actorRefFromC(raw), nil
+	return a.ref, nil
 }
 
 func (a *Actor) CloseWithTimeout(timeout time.Duration) error {
 	if a == nil || a.closed {
 		return nil
 	}
-	handle := a.handle
-	if err := requestErrorFromResult(C.zlink_actor_destroy(&handle, C.uint32_t(requestTimeoutMillis(timeout)))); err != nil {
+	node, err := a.node.handleOrError()
+	if err != nil {
+		return err
+	}
+	raw, err := a.ref.toC()
+	if err != nil {
+		return err
+	}
+	if err := requestErrorFromResult(C.zlink_spot_node_actor_destroy(node, &raw, C.uint32_t(requestTimeoutMillis(timeout)))); err != nil {
 		return err
 	}
 	a.closed = true
-	a.handle = nil
 	return nil
 }
 
@@ -278,34 +283,77 @@ func (a *Actor) Close() error {
 }
 
 func (a *Actor) Join(spot *Spot, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, message *Message) error {
-	if a == nil || a.closed || a.handle == nil || spot == nil || spot.core == nil || spot.core.closed {
+	if a == nil || a.closed || a.node == nil || spot == nil || spot.core == nil || spot.core.closed {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	if callback == nil || message == nil || message.closed {
 		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
+	node, err := a.node.handleOrError()
+	if err != nil {
+		return err
+	}
+	rawActor, err := a.ref.toC()
+	if err != nil {
+		return err
+	}
+	destNode, err := a.node.RoutingID()
+	if err != nil {
+		return err
+	}
+	destSpot, err := spot.RoutingID()
+	if err != nil {
+		return err
+	}
+	rawNode := destNode.toC()
+	rawSpot := destSpot.toC()
 	return submitActorJoin(message, spot.raw(), func(part *C.zlink_msg_t, cb cgo.Handle) error {
-		return submitErrorFromResult(C.zlink_actor_join_spot_go(a.handle, spot.raw(), part, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(cb)))
+		return submitErrorFromResult(C.zlink_spot_node_actor_join_spot_go(node, &rawActor, &rawNode, &rawSpot, part, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(cb)))
 	}, callback)
 }
 
 func (a *Actor) Leave(spot *Spot) error {
-	if a == nil || a.closed || a.handle == nil || spot == nil || spot.core == nil || spot.core.closed {
+	if a == nil || a.closed || a.node == nil || spot == nil || spot.core == nil || spot.core.closed {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	return configErrorFromResult(C.zlink_actor_leave_spot(a.handle, spot.raw()))
+	node, err := a.node.handleOrError()
+	if err != nil {
+		return err
+	}
+	rawActor, err := a.ref.toC()
+	if err != nil {
+		return err
+	}
+	destSpot, err := spot.RoutingID()
+	if err != nil {
+		return err
+	}
+	rawSpot := destSpot.toC()
+	return requestErrorFromResult(C.zlink_spot_node_actor_leave_spot(node, &rawActor, &rawSpot, 0))
 }
 
 func (a *Actor) RecvPart(flags RecvFlags) (*ActorPart, error) {
-	if a == nil || a.closed || a.handle == nil {
+	if a == nil || a.closed || a.node == nil {
 		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	return recvActorPartFromHandle(a.handle, flags)
+	node, err := a.node.handleOrError()
+	if err != nil {
+		return nil, err
+	}
+	return recvActorPart(node, a.ref, flags)
 }
 
 func (a *Actor) SendBoundSession(flags SendFlags, message *Message) error {
-	if a == nil || a.closed || a.handle == nil || message == nil || message.closed {
+	if a == nil || a.closed || a.node == nil || message == nil || message.closed {
 		return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	node, err := a.node.handleOrError()
+	if err != nil {
+		return err
+	}
+	rawActor, err := a.ref.toC()
+	if err != nil {
+		return err
 	}
 	cloned, err := message.clone()
 	if err != nil {
@@ -316,37 +364,13 @@ func (a *Actor) SendBoundSession(flags SendFlags, message *Message) error {
 		_ = cloned.Close()
 		return err
 	}
-	err = submitErrorFromResult(C.zlink_actor_send_bound_session_msg(a.handle, prepared.ptr(), C.zlink_send_flags_t(flags)))
+	err = submitErrorFromResult(C.zlink_spot_node_actor_send_bound_session_msg(node, &rawActor, prepared.ptr(), C.zlink_send_flags_t(flags)))
 	if err != nil {
 		_ = prepared.restore()
 		return err
 	}
 	prepared.commit()
 	message.moved()
-	return nil
-}
-
-func (a *Actor) SendBoundSessionPacket(flags SendFlags, header *Message, body *Message) error {
-	if a == nil || a.closed || a.handle == nil || header == nil || body == nil || header.closed || body.closed {
-		return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	cloned, err := cloneParts([]*Message{header, body})
-	if err != nil {
-		return err
-	}
-	prepared, err := prepareMultipart(cloned)
-	if err != nil {
-		closeMessageSlice(cloned)
-		return err
-	}
-	err = submitErrorFromResult(C.zlink_actor_send_bound_session_packet(a.handle, &prepared.native[0], &prepared.native[1], C.zlink_send_flags_t(flags)))
-	if err != nil {
-		_ = prepared.restore()
-		return err
-	}
-	prepared.commit()
-	header.moved()
-	body.moved()
 	return nil
 }
 
@@ -562,9 +586,13 @@ func submitActorJoin(message *Message, progressSpot unsafe.Pointer, submit func(
 	return nil
 }
 
-func recvActorPartFromHandle(actor unsafe.Pointer, flags RecvFlags) (*ActorPart, error) {
-	if actor == nil {
+func recvActorPart(node unsafe.Pointer, actor ActorRef, flags RecvFlags) (*ActorPart, error) {
+	if node == nil {
 		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	rawActor, err := actor.toC()
+	if err != nil {
+		return nil, err
 	}
 	var info C.zlink_actor_recv_info_t
 	var part C.zlink_msg_t
@@ -572,7 +600,7 @@ func recvActorPartFromHandle(actor unsafe.Pointer, flags RecvFlags) (*ActorPart,
 		return nil, err
 	}
 	var more C.zlink_part_flag_t
-	if err := recvErrorFromResult(C.zlink_actor_recv_part(actor, &info, &part, &more, C.zlink_recv_flags_t(flags))); err != nil {
+	if err := recvErrorFromResult(C.zlink_spot_node_actor_recv_part(node, &rawActor, &info, &part, &more, C.zlink_recv_flags_t(flags))); err != nil {
 		_ = configErrorFromResult(C.zlink_msg_close(&part))
 		return nil, err
 	}
@@ -638,8 +666,13 @@ func actorRecvInfoFromC(raw C.zlink_actor_recv_info_t) ActorRecvInfo {
 
 func actorJoinInfoFromC(raw C.zlink_actor_join_info_t) *ActorJoinInfo {
 	return &ActorJoinInfo{
-		Actor:         actorRefFromC(raw.actor),
+		SourceActor:   actorRefFromC(raw.source_actor),
+		TargetActor:   actorRefFromC(raw.target_actor),
 		SourceNodeRID: routingIDFromC(raw.source_node_rid),
+		SourceSpotRID: routingIDFromC(raw.source_spot_rid),
+		TargetNodeRID: routingIDFromC(raw.target_node_rid),
+		TargetSpotRID: routingIDFromC(raw.target_spot_rid),
+		JoinEpoch:     uint64(raw.join_epoch),
 		Flags:         uint32(raw.flags),
 		raw:           raw,
 	}

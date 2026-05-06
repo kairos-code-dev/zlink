@@ -5,11 +5,15 @@
 
 #include <zlink.h>
 
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
+#include <memory>
 
+struct actor_handle_t;
 struct spot_handle_t;
+struct spot_logical_state_t;
 
 namespace zlink
 {
@@ -101,15 +105,32 @@ struct spot_node_access_t
                                          spot_handle_t *spot_);
     static void unregister_spot_facade (spot_node_t *node_,
                                         spot_handle_t *spot_);
+    static bool is_last_spot_facade_for_logical_state (spot_node_t *node_,
+                                                       spot_handle_t *spot_);
+    static std::shared_ptr<spot_logical_state_t> create_user_spot_state (
+      spot_node_t *node_);
+    static std::shared_ptr<spot_logical_state_t> entry_spot_state (
+      spot_node_t *node_);
+    static std::shared_ptr<spot_logical_state_t> lookup_spot_state (
+      spot_node_t *node_, const zlink_routing_id_t *spot_rid_);
+    static int update_spot_routing_id (spot_node_t *node_,
+                                       spot_handle_t *spot_,
+                                       const void *data_,
+                                       size_t size_);
     static spot_runtime_t *runtime (spot_node_t *node_);
     static zlink_spot_node_mode_t mode (spot_node_t *node_);
     static bool pubsub_enabled (spot_node_t *node_);
     static bool routed_enabled (spot_node_t *node_);
+    static bool is_shutting_down (spot_node_t *node_);
     static void track_owned_socket (spot_node_t *node_, socket_base_t *socket_);
     static void untrack_owned_socket (spot_node_t *node_,
                                      const socket_base_t *socket_);
     static spot_internal_receiver_t *ensure_internal_receiver (spot_node_t *node_);
     static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
+    static std::set<actor_handle_t *> &actor_handles (spot_node_t *node_);
+    static std::map<std::string, actor_handle_t *> &actors_by_id (
+      spot_node_t *node_);
+    static uint64_t &next_actor_generation (spot_node_t *node_);
     static void wake_control_task (spot_node_t *node_);
     static void schedule_subscription_replay (spot_node_t *node_);
     static void snapshot_active_peer_endpoints (

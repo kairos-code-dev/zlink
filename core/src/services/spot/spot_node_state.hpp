@@ -16,7 +16,9 @@
 #include <utility>
 #include <vector>
 
+struct actor_handle_t;
 struct spot_handle_t;
+struct spot_logical_state_t;
 
 namespace zlink
 {
@@ -107,6 +109,19 @@ struct spot_node_handle_state_t
     std::set<spot_pub_t *> pubs;
     std::set<spot_sub_t *> subs;
     std::set<spot_handle_t *> facades;
+    std::shared_ptr<spot_logical_state_t> entry_spot;
+    std::map<std::string, std::shared_ptr<spot_logical_state_t> > spots_by_rid;
+};
+
+struct spot_node_actor_state_t
+{
+    spot_node_actor_state_t () : next_generation (0)
+    {
+    }
+
+    std::set<actor_handle_t *> actor_handles;
+    std::map<std::string, actor_handle_t *> actors_by_id;
+    uint64_t next_generation;
 };
 
 struct spot_node_attachment_monitor_handle_t

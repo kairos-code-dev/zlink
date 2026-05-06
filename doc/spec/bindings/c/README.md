@@ -91,19 +91,19 @@ Required public C surface includes:
   `ZLINK_SUBMIT_NOT_CONNECTED`, `ZLINK_SUBMIT_NOT_FOUND`,
   `ZLINK_SUBMIT_INVALID_ARGUMENT`, `ZLINK_SUBMIT_INVALID_STATE`,
   `ZLINK_RECV_OK`, `ZLINK_RECV_BUSY`, `ZLINK_RECV_NOT_SUPPORTED`
-- `zlink_spot_node_actor_new`, `zlink_actor_destroy`,
-  `zlink_actor_get_ref`, `zlink_spot_node_actor_lookup`,
+- `zlink_spot_node_actor_new`, `zlink_spot_node_actor_destroy`,
+  `zlink_spot_node_actor_lookup`,
   `zlink_remote_actor_get_ref`
 - `zlink_spot_node_create_remote_actor`,
-  `zlink_spot_node_destroy_remote_actor`,
   `zlink_spot_node_actor_admission_handler`
-- `zlink_actor_join_spot`, `zlink_spot_node_actor_join_spot`,
+- `zlink_spot_node_actor_join_spot`,
   `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`,
-  `zlink_actor_leave_spot`, `zlink_spot_node_actor_leave_spot`
+  `zlink_spot_node_actor_leave_spot`
 - `zlink_stream_bind_actor`, `zlink_stream_unbind_actor`,
   `zlink_stream_send_bound_actor_part`
-- `zlink_actor_send_bound_session_msg`,
-  `zlink_actor_send_bound_session_packet`, `zlink_actor_recv_part`
+- `zlink_spot_node_actor_send_bound_session_msg`,
+  `zlink_spot_node_actor_close_bound_session`,
+  `zlink_spot_node_actor_recv_part`
 - `zlink_discovery_resolve_actor`,
   `zlink_spot_node_spots_snapshot`,
   `zlink_spot_node_actors_snapshot`, `zlink_spot_actors_snapshot`
@@ -115,25 +115,21 @@ The exact Actor dispatch function names are part of the C contract:
 
 ```c
 zlink_spot_node_actor_new();
-zlink_actor_destroy();
-zlink_actor_get_ref();
+zlink_spot_node_actor_destroy();
 zlink_spot_node_actor_lookup();
 zlink_remote_actor_get_ref();
 zlink_spot_node_create_remote_actor();
-zlink_spot_node_destroy_remote_actor();
 zlink_spot_node_actor_admission_handler();
-zlink_actor_join_spot();
 zlink_spot_node_actor_join_spot();
 zlink_spot_actor_join_recv();
 zlink_spot_actor_join_reply();
-zlink_actor_leave_spot();
 zlink_spot_node_actor_leave_spot();
 zlink_stream_bind_actor();
 zlink_stream_unbind_actor();
 zlink_stream_send_bound_actor_part();
-zlink_actor_send_bound_session_msg();
-zlink_actor_send_bound_session_packet();
-zlink_actor_recv_part();
+zlink_spot_node_actor_send_bound_session_msg();
+zlink_spot_node_actor_close_bound_session();
+zlink_spot_node_actor_recv_part();
 zlink_discovery_resolve_actor();
 zlink_spot_node_spots_snapshot();
 zlink_spot_node_actors_snapshot();

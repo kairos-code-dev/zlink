@@ -8,6 +8,9 @@ using var ctx = new Context();
 using var node = new SpotNode(ctx);
 using var spot = node.CreateSpot();
 using var actor = node.Actor("room-player-1");
+using var stream = new StreamSocket(ctx);
+RoutingId sessionRid = SampleSupport.RoutingIdUtf8("room-session");
+stream.BindActor(node, sessionRid, actor.Ref, TimeSpan.FromSeconds(2));
 using Message joinMessage = Message.FromString("join:lobby");
 
 Task<IReadOnlyList<Message>> joinTask = actor.JoinAsync(spot, joinMessage,

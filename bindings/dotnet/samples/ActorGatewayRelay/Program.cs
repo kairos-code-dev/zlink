@@ -31,20 +31,6 @@ spot.OnDispatchEvent((_, info) =>
     }
 });
 
-using Message joinMessage = Message.FromString("join:gateway");
-Task<IReadOnlyList<Message>> joinTask = actor.JoinAsync(spot, joinMessage,
-    TimeSpan.FromSeconds(2));
-ActorJoinRequest? request = null;
-SampleSupport.WaitOrThrow(() =>
-{
-    request = spot.RecvActorJoin(RecvFlags.DontWait);
-    return request != null;
-}, 2000, "actor join request");
-using Message joinReply = Message.FromString("accepted:gateway");
-spot.ReplyActorJoin(request!.Info, accepted: true, joinReply);
-foreach (Message reply in await joinTask.WaitAsync(TimeSpan.FromSeconds(5)))
-    reply.Dispose();
-
 using var stream = new StreamSocket(ctx);
 string endpoint = SampleSupport.NewEndpoint("tcp", "actor-gateway");
 int port = SampleSupport.ExtractPort(endpoint);
@@ -66,6 +52,21 @@ if (!sessionReady.Wait(5000) || sessionRid == null)
     throw new TimeoutException("stream session");
 
 stream.BindActor(node, sessionRid.Value, actor.Ref, TimeSpan.FromSeconds(2));
+
+using Message joinMessage = Message.FromString("join:gateway");
+Task<IReadOnlyList<Message>> joinTask = actor.JoinAsync(spot, joinMessage,
+    TimeSpan.FromSeconds(2));
+ActorJoinRequest? request = null;
+SampleSupport.WaitOrThrow(() =>
+{
+    request = spot.RecvActorJoin(RecvFlags.DontWait);
+    return request != null;
+}, 2000, "actor join request");
+using Message joinReply = Message.FromString("accepted:gateway");
+spot.ReplyActorJoin(request!.Info, accepted: true, joinReply);
+foreach (Message reply in await joinTask.WaitAsync(TimeSpan.FromSeconds(5)))
+    reply.Dispose();
+
 using Message relayed = Message.FromString("relay:hello-gateway");
 stream.SendBoundActor(node, sessionRid.Value, actor.Ref.ActorId, relayed);
 SampleSupport.WaitOrThrow(
@@ -74,6 +75,6 @@ SampleSupport.WaitOrThrow(
     "actor relay");
 
 Console.WriteLine("[actor/gateway] relayed stream session to actor");
+actor.Leave(spot);
 stream.UnbindActor(node, sessionRid.Value, actor.Ref.ActorId,
     TimeSpan.FromSeconds(2));
-actor.Leave(spot);

@@ -278,11 +278,11 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     {
         ActorInterop.ValidateActorId(actorId, nameof(actorId));
         EnsureNotDisposed();
-        IntPtr actor = NativeMethods.zlink_spot_node_actor_new(_handle,
-            actorId);
-        if (actor == IntPtr.Zero)
+        int rc = NativeMethods.zlink_spot_node_actor_new(_handle,
+            actorId, out ZlinkActorRef actor);
+        if (rc != 0)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
-        return new Actor(actor);
+        return new Actor(this, ActorInterop.FromNative(ref actor));
     }
 
     public ActorRef ActorLookup(string actorId)
@@ -330,11 +330,11 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         }
     }
 
-    public void DestroyRemoteActor(ActorRef actor, TimeSpan timeout = default)
+    public void DestroyActor(ActorRef actor, TimeSpan timeout = default)
     {
         EnsureNotDisposed();
         ZlinkActorRef nativeActor = ActorInterop.ToNative(actor);
-        int rc = NativeMethods.zlink_spot_node_destroy_remote_actor(_handle,
+        int rc = NativeMethods.zlink_spot_node_actor_destroy(_handle,
             ref nativeActor, ActorInterop.NormalizeTimeout(timeout));
         if (rc != 0)
             throw ZlinkException.CreateRequestException(NativeMethods.zlink_errno());
@@ -357,11 +357,20 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     public Task<IReadOnlyList<Message>> JoinActorAsync(ActorRef actor,
         RoutingId destSpotRid, Message message, TimeSpan timeout = default,
         SendFlags flags = SendFlags.None, CancellationToken ct = default)
+        => JoinActorAsync(actor, RoutingId, destSpotRid, message, timeout,
+            flags, ct);
+
+    public Task<IReadOnlyList<Message>> JoinActorAsync(ActorRef actor,
+        RoutingId destNodeRid, RoutingId destSpotRid, Message message,
+        TimeSpan timeout = default, SendFlags flags = SendFlags.None,
+        CancellationToken ct = default)
     {
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         EnsureNotDisposed();
         ZlinkActorRef nativeActor = ActorInterop.ToNative(actor);
+        ZlinkRoutingId nativeNodeRid = NativeHelpers.WriteRoutingId(
+            destNodeRid.ToByteArray());
         ZlinkRoutingId nativeSpotRid = NativeHelpers.WriteRoutingId(
             destSpotRid.ToByteArray());
         ZlinkMsg nativeMessage = default;
@@ -386,9 +395,9 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
                 timeoutMs));
 
             int rc = NativeMethods.zlink_spot_node_actor_join_spot(_handle,
-                ref nativeActor, ref nativeSpotRid, ref nativeMessage,
-                ActorInterop.ReplyHandlerPtr, GCHandle.ToIntPtr(handle),
-                (int)flags, timeoutMs);
+                ref nativeActor, ref nativeNodeRid, ref nativeSpotRid,
+                ref nativeMessage, ActorInterop.ReplyHandlerPtr,
+                GCHandle.ToIntPtr(handle), (int)flags, timeoutMs);
             nativeMessage = default;
             if (rc != 0)
                 throw ZlinkException.CreateSubmitException(
@@ -413,6 +422,19 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             throw new ArgumentNullException(nameof(callback));
         ActorInterop.AttachPartsCallback(
             () => JoinActorAsync(actor, destSpotRid, message,
+                timeout ?? TimeSpan.Zero, flags),
+            callback);
+    }
+
+    public void JoinActor(ActorRef actor, RoutingId destNodeRid,
+        RoutingId destSpotRid, Message message,
+        Action<RequestResult, IReadOnlyList<Message>> callback,
+        TimeSpan? timeout = null, SendFlags flags = SendFlags.None)
+    {
+        if (callback == null)
+            throw new ArgumentNullException(nameof(callback));
+        ActorInterop.AttachPartsCallback(
+            () => JoinActorAsync(actor, destNodeRid, destSpotRid, message,
                 timeout ?? TimeSpan.Zero, flags),
             callback);
     }
@@ -1984,7 +2006,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         ActorPart[]? actorParts = eventKind == SpotDispatchEvent.ActorReadable
             && subjectKind == SpotDispatchSubjectKind.Actor
             && info->Subject != IntPtr.Zero
-                ? ActorInterop.DrainActorParts(info->Subject)
+                ? ActorInterop.DrainActorParts(_node.Handle, info->Subject)
                 : null;
         SpotDispatchInfo dispatchInfo = new(eventKind, subjectKind,
             info->Subject, actorParts);

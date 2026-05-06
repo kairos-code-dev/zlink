@@ -286,7 +286,7 @@ void my_dispatch_handler(
         /* drain with zlink_spot_actor_join_recv() */
         break;
     case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE:
-        /* info_->subject is the Actor handle */
+        /* info_->subject is const zlink_actor_ref_t* */
         break;
     }
 }
@@ -326,7 +326,7 @@ for (;;) {
 ```
 
 Use the same drain-until-EAGAIN pattern for `zlink_spot_subscribe()` and
-`zlink_actor_recv_part()`.
+`zlink_spot_node_actor_recv_part()`.
 
 ## 7. Distributing session messages with Actors
 
@@ -335,6 +335,22 @@ processing unit and distinguish the drain target in the Spot dispatch callback.
 One session can be bound to multiple Actors; one Actor is bound to at most one
 session at a time.
 
+An Actor belongs to the `Entry Spot` immediately after creation. The `Entry Spot`
+is the default Spot that every `SpotNode` always maintains. Registering a dispatch
+handler on the `Entry Spot` lets the application receive initial Actor messages,
+perform authentication, or select a target Spot.
+
+Obtain an Entry Spot facade as follows:
+
+```c
+void *entry = NULL;
+zlink_spot_node_entry_spot(node, &entry);
+zlink_spot_dispatch_event_handler(entry, my_dispatch_handler, userdata);
+```
+
+Close the facade with `zlink_spot_destroy(&entry)` when done. The Entry Spot itself
+is owned by the `SpotNode` and is not destroyed when the facade is closed.
+
 The minimal flow is:
 
 1. Create an Actor on the `SpotNode`.
@@ -342,13 +358,12 @@ The minimal flow is:
 3. Bind session and Actor with `zlink_stream_bind_actor()`.
 4. Inside the STREAM packet handler or app logic, select an Actor id and call
    `zlink_stream_send_bound_actor_part()`.
-5. When `ACTOR_READABLE` arrives in the dispatch callback, drain the `subject`
-   Actor with `zlink_actor_recv_part()`.
+5. When `ACTOR_READABLE` arrives in the dispatch callback, copy the `subject`
+   Actor ref and drain it with `zlink_spot_node_actor_recv_part()`.
 
 ```c
-void *actor = zlink_spot_node_actor_new(node, "player-42");
 zlink_actor_ref_t ref;
-zlink_actor_get_ref(actor, &ref);
+zlink_spot_node_actor_new(node, "player-42", &ref);
 
 zlink_stream_bind_actor(node, stream, &session_rid, &ref, 2000);
 
@@ -370,13 +385,16 @@ target:
 
 ```c
 case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
-    void *actor = info_->subject;
+    const zlink_actor_ref_t *subject_ref =
+      (const zlink_actor_ref_t *) info_->subject;
+    zlink_actor_ref_t actor = *subject_ref;
     for (;;) {
         zlink_actor_recv_info_t recv_info;
         zlink_msg_t part;
         zlink_part_flag_t more = ZLINK_PART_FINAL;
-        zlink_recv_result_t rc = zlink_actor_recv_part(
-          actor,
+        zlink_recv_result_t rc = zlink_spot_node_actor_recv_part(
+          node,
+          &actor,
           &recv_info,
           &part,
           &more,
@@ -408,8 +426,9 @@ the request ends with a rejected result.
 When an Actor needs to join a Spot, send a join request and then call
 `zlink_spot_actor_join_recv()` on the Spot side to read the request message,
 followed by `zlink_spot_actor_join_reply()` to send an accept or reject reply.
-One Actor can be joined to at most one Spot; to move it, leave the current Spot
-first and then join the new one.
+An Actor can be joined to only one Spot at a time. To move an Actor, `leave` the
+current Spot and then `join` the new one. `leave` returns the Actor to the Entry Spot.
+The Actor must be in the Entry Spot before it can join a different user Spot.
 
 ## 8. Poller relationship
 

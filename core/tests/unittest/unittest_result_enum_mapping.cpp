@@ -45,8 +45,11 @@ void test_config_unknown_errno_maps_to_internal_error ()
       ZLINK_CONFIG_INTERNAL_ERROR,
       zlink::config_result_internal::from_errno (ENOMEM));
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_INTERNAL_ERROR,
+      ZLINK_CONFIG_INVALID_STATE,
       zlink::config_result_internal::from_errno (EBUSY));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_NOT_FOUND,
+      zlink::config_result_internal::from_errno (ENOENT));
 }
 
 void test_handler_unknown_errno_maps_to_internal_error ()

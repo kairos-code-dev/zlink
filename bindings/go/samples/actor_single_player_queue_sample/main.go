@@ -24,6 +24,14 @@ func main() {
 	actor, err := node.Actor("single-player")
 	samplecommon.Must(err)
 
+	stream, err := ctx.StreamSocket()
+	samplecommon.Must(err)
+	defer stream.Close()
+	session := zlink.NewRoutingID([]byte("single-player-session"))
+	ref, err := actor.Ref()
+	samplecommon.Must(err)
+	samplecommon.Must(stream.BindActor(node, session, ref, time.Second))
+
 	firstJoin := make(chan zlink.RequestResult, 1)
 	samplecommon.Must(actor.Join(firstSpot, func(result zlink.RequestResult, parts []*zlink.Message) {
 		for _, part := range parts {
@@ -36,13 +44,6 @@ func main() {
 		samplecommon.Must(fmt.Errorf("unexpected first join result %v", result))
 	}
 
-	stream, err := ctx.StreamSocket()
-	samplecommon.Must(err)
-	defer stream.Close()
-	session := zlink.NewRoutingID([]byte("single-player-session"))
-	ref, err := actor.Ref()
-	samplecommon.Must(err)
-	samplecommon.Must(stream.BindActor(node, session, ref, time.Second))
 	samplecommon.Must(stream.SendBoundActor(node, session, "single-player", zlink.SendFlagsDontWait, samplecommon.Message("before")))
 	samplecommon.Must(actor.Leave(firstSpot))
 	samplecommon.Must(stream.SendBoundActor(node, session, "single-player", zlink.SendFlagsDontWait, samplecommon.Message("between")))
@@ -62,7 +63,7 @@ func main() {
 		}
 	}))
 	secondJoin := make(chan zlink.RequestResult, 1)
-	samplecommon.Must(node.JoinActor(ref, mustRID(secondSpot.RoutingID()), func(result zlink.RequestResult, parts []*zlink.Message) {
+	samplecommon.Must(node.JoinActor(ref, mustRID(node.RoutingID()), mustRID(secondSpot.RoutingID()), func(result zlink.RequestResult, parts []*zlink.Message) {
 		for _, part := range parts {
 			part.Close()
 		}

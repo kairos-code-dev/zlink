@@ -812,11 +812,27 @@ struct actor_recv_info_t
 
 struct actor_join_info_t
 {
-    actor_join_info_t () : actor (), source_node_rid (), request (NULL), flags (0) {}
+    actor_join_info_t ()
+        : source_actor (),
+          target_actor (),
+          source_node_rid (),
+          source_spot_rid (),
+          target_node_rid (),
+          target_spot_rid (),
+          join_epoch (0),
+          request (NULL),
+          flags (0)
+    {
+    }
 
     explicit actor_join_info_t (const zlink_actor_join_info_t &native_)
-        : actor (native_.actor),
+        : source_actor (native_.source_actor),
+          target_actor (native_.target_actor),
           source_node_rid (native_.source_node_rid),
+          source_spot_rid (native_.source_spot_rid),
+          target_node_rid (native_.target_node_rid),
+          target_spot_rid (native_.target_spot_rid),
+          join_epoch (native_.join_epoch),
           request (native_.request),
           flags (native_.flags)
     {
@@ -826,15 +842,25 @@ struct actor_join_info_t
     {
         zlink_actor_join_info_t out;
         std::memset (&out, 0, sizeof (out));
-        out.actor = actor.native ();
+        out.source_actor = source_actor.native ();
+        out.target_actor = target_actor.native ();
         out.source_node_rid = source_node_rid.native ();
+        out.source_spot_rid = source_spot_rid.native ();
+        out.target_node_rid = target_node_rid.native ();
+        out.target_spot_rid = target_spot_rid.native ();
+        out.join_epoch = join_epoch;
         out.request = request;
         out.flags = flags;
         return out;
     }
 
-    actor_ref_t actor;
+    actor_ref_t source_actor;
+    actor_ref_t target_actor;
     routing_id_t source_node_rid;
+    routing_id_t source_spot_rid;
+    routing_id_t target_node_rid;
+    routing_id_t target_spot_rid;
+    uint64_t join_epoch;
     void *request;
     uint32_t flags;
 };

@@ -34,6 +34,14 @@ func main() {
 		}
 	}))
 
+	stream, err := ctx.StreamSocket()
+	samplecommon.Must(err)
+	defer stream.Close()
+	session := zlink.NewRoutingID([]byte("room-session"))
+	ref, err := actor.Ref()
+	samplecommon.Must(err)
+	samplecommon.Must(stream.BindActor(node, session, ref, time.Second))
+
 	joinCh := make(chan zlink.RequestResult, 1)
 	samplecommon.Must(actor.Join(spot, func(result zlink.RequestResult, parts []*zlink.Message) {
 		for _, part := range parts {
@@ -52,13 +60,6 @@ func main() {
 		samplecommon.Must(fmt.Errorf("unexpected join result %v", result))
 	}
 
-	stream, err := ctx.StreamSocket()
-	samplecommon.Must(err)
-	defer stream.Close()
-	session := zlink.NewRoutingID([]byte("room-session"))
-	ref, err := actor.Ref()
-	samplecommon.Must(err)
-	samplecommon.Must(stream.BindActor(node, session, ref, time.Second))
 	samplecommon.Must(stream.SendBoundActor(node, session, "room-player-1", zlink.SendFlagsDontWait, samplecommon.Message("move:north")))
 
 	select {

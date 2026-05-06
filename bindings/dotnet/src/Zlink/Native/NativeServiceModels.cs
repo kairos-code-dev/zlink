@@ -164,8 +164,13 @@ internal struct ZlinkActorRecvInfo
 [StructLayout(LayoutKind.Sequential)]
 internal struct ZlinkActorJoinInfo
 {
-    public ZlinkActorRef Actor;
+    public ZlinkActorRef SourceActor;
+    public ZlinkActorRef TargetActor;
     public ZlinkRoutingId SourceNodeRid;
+    public ZlinkRoutingId SourceSpotRid;
+    public ZlinkRoutingId TargetNodeRid;
+    public ZlinkRoutingId TargetSpotRid;
+    public ulong JoinEpoch;
     public IntPtr Request;
     public uint Flags;
 }

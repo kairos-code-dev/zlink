@@ -291,6 +291,46 @@ void spot_node_access_t::unregister_spot_facade (spot_node_t *node_,
         node_->unregister_spot_facade (spot_);
 }
 
+bool spot_node_access_t::is_last_spot_facade_for_logical_state (
+  spot_node_t *node_, spot_handle_t *spot_)
+{
+    return node_ ? node_->is_last_spot_facade_for_logical_state (spot_) : true;
+}
+
+std::shared_ptr<spot_logical_state_t>
+spot_node_access_t::create_user_spot_state (spot_node_t *node_)
+{
+    return node_ ? node_->create_user_spot_state ()
+                 : std::shared_ptr<spot_logical_state_t> ();
+}
+
+std::shared_ptr<spot_logical_state_t>
+spot_node_access_t::entry_spot_state (spot_node_t *node_)
+{
+    return node_ ? node_->entry_spot_state ()
+                 : std::shared_ptr<spot_logical_state_t> ();
+}
+
+std::shared_ptr<spot_logical_state_t>
+spot_node_access_t::lookup_spot_state (spot_node_t *node_,
+                                       const zlink_routing_id_t *spot_rid_)
+{
+    return node_ ? node_->lookup_spot_state (spot_rid_)
+                 : std::shared_ptr<spot_logical_state_t> ();
+}
+
+int spot_node_access_t::update_spot_routing_id (spot_node_t *node_,
+                                                spot_handle_t *spot_,
+                                                const void *data_,
+                                                size_t size_)
+{
+    if (!node_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node_->update_spot_routing_id (spot_, data_, size_);
+}
+
 spot_runtime_t *spot_node_access_t::runtime (spot_node_t *node_)
 {
     return node_ ? node_->runtime () : NULL;
@@ -309,6 +349,11 @@ bool spot_node_access_t::pubsub_enabled (spot_node_t *node_)
 bool spot_node_access_t::routed_enabled (spot_node_t *node_)
 {
     return node_ && node_->routed_enabled ();
+}
+
+bool spot_node_access_t::is_shutting_down (spot_node_t *node_)
+{
+    return !node_ || node_->is_shutting_down ();
 }
 
 void spot_node_access_t::track_owned_socket (spot_node_t *node_,
@@ -334,6 +379,23 @@ spot_node_access_t::ensure_internal_receiver (spot_node_t *node_)
 spot_internal_receiver_t *spot_node_access_t::internal_receiver (spot_node_t *node_)
 {
     return node_ ? node_->internal_receiver () : NULL;
+}
+
+std::set<actor_handle_t *> &spot_node_access_t::actor_handles (
+  spot_node_t *node_)
+{
+    return node_->_actor_state.actor_handles;
+}
+
+std::map<std::string, actor_handle_t *> &spot_node_access_t::actors_by_id (
+  spot_node_t *node_)
+{
+    return node_->_actor_state.actors_by_id;
+}
+
+uint64_t &spot_node_access_t::next_actor_generation (spot_node_t *node_)
+{
+    return node_->_actor_state.next_generation;
 }
 
 void spot_node_access_t::wake_control_task (spot_node_t *node_)

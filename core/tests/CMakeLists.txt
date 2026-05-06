@@ -693,6 +693,10 @@ set(SPOT_SERVICE_INTROSPECTION_CASES
     test_spot_recv_model_receive_regression
     test_spot_node_default_handle_owner_keeps_defaults_private
     test_spot_unified_spot_basic
+    test_queue_pub_local_fanout_shared_block
+    test_queue_sub_exact_pattern_dedupe
+    test_queue_pub_no_subscriber_success
+    test_queue_pub_dead_spot_fails
     test_spot_node_snapshot_status_peers_subjects
     test_discovery_local_value_route_limit_contract)
 
@@ -702,6 +706,10 @@ set(SPOT_SERVICE_INTROSPECTION_TEST_SPECS
     test_spot_service_introspection_recv_model_regression=test_spot_recv_model_receive_regression
     test_spot_service_introspection_default_handle_owner=test_spot_node_default_handle_owner_keeps_defaults_private
     test_spot_service_introspection_unified_spot=test_spot_unified_spot_basic
+    test_spot_service_introspection_queue_local_fanout=test_queue_pub_local_fanout_shared_block
+    test_spot_service_introspection_queue_dedupe=test_queue_sub_exact_pattern_dedupe
+    test_spot_service_introspection_queue_no_subscriber=test_queue_pub_no_subscriber_success
+    test_spot_service_introspection_queue_dead_spot=test_queue_pub_dead_spot_fails
     test_spot_service_introspection_snapshots=test_spot_node_snapshot_status_peers_subjects
     test_spot_service_introspection_route_limit=test_discovery_local_value_route_limit_contract)
 

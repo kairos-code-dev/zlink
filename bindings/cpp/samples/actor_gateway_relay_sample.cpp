@@ -25,15 +25,9 @@ int main ()
       std::chrono::milliseconds (1000));
     assert (created.status == zlink::actor_create_status_t::created);
 
-    zlink::service::actor_t local_actor =
-      play_node.create_actor ("dispatch-helper-unused");
-    local_actor.close ();
-    zlink::actor_ref_t concrete = play_node.actor_lookup ("play-session-actor");
+    zlink::actor_ref_t concrete = created.actor;
 
-    actor_sample_dispatch_state_t state {&play_spot, NULL, &capture};
-    zlink::service::actor_t joined_actor = play_node.create_actor ("local-probe");
-    joined_actor.close ();
-    state.actor = reinterpret_cast<zlink::service::actor_t *> (NULL);
+    actor_sample_dispatch_state_t state {&play_spot, &play_node, &capture};
     play_spot.on_dispatch_event ([] (void *,
                                      const zlink_spot_dispatch_info_t *info,
                                      void *userdata) {
@@ -51,8 +45,10 @@ int main ()
             zlink_actor_recv_info_t recv_info;
             zlink_msg_t part;
             zlink_part_flag_t more = ZLINK_PART_FINAL;
-            assert (zlink_actor_recv_part (
-                      info->subject, &recv_info, &part, &more,
+            assert (zlink_spot_node_actor_recv_part (
+                      state->node->handle (),
+                      static_cast<const zlink_actor_ref_t *> (info->subject),
+                      &recv_info, &part, &more,
                       ZLINK_RECV_FLAGS_DONTWAIT)
                     == ZLINK_RECV_OK);
             zlink::message_t msg;
@@ -64,10 +60,15 @@ int main ()
         }
     }, &state);
 
+    zlink::stream_socket_t stream (ctx);
+    zlink::routing_id_t session = sample_rid ("gateway-session");
+    stream.bind_actor (gateway_node, session, concrete,
+                       std::chrono::milliseconds (1000));
+
     zlink::routing_id_t play_spot_rid = play_spot.routing_id ();
     zlink::message_t join = zlink::message_t::from_string ("join-play");
     assert (gateway_node.join_actor (
-      concrete, play_spot_rid, join,
+      concrete, play_node_rid, play_spot_rid, join,
       [&] (zlink::request_result_t result,
            std::vector<zlink::message_t> parts) {
           actor_sample_join_reply (capture, result, std::move (parts));
@@ -76,10 +77,6 @@ int main ()
     assert (wait_until_flag (capture, &actor_sample_capture_t::joined));
     assert (capture.join_result == zlink::request_result_t::ok);
 
-    zlink::stream_socket_t stream (ctx);
-    zlink::routing_id_t session = sample_rid ("gateway-session");
-    stream.bind_actor (gateway_node, session, concrete,
-                       std::chrono::milliseconds (1000));
     zlink::message_t frame = zlink::message_t::from_string ("client-input");
     assert (stream.send_bound_actor_part (
       gateway_node, session, "play-session-actor", frame,
@@ -89,6 +86,6 @@ int main ()
 
     gateway_node.leave_actor (concrete, play_spot_rid,
                               std::chrono::milliseconds (1000));
-    gateway_node.destroy_remote_actor (concrete, std::chrono::milliseconds (1000));
+    gateway_node.destroy_actor (concrete, std::chrono::milliseconds (1000));
     return 0;
 }

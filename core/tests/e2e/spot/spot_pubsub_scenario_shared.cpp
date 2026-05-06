@@ -55,7 +55,8 @@ bool read_spot_snapshot (void *spot_, zlink_monitor_snapshot_t *out_)
     if (zlink_spot_node_status_snapshot (spot->node, &status) != 0)
         return false;
 
-    const bool is_pub = spot->sub == NULL;
+    const bool is_pub =
+      !spot->logical_state || spot->logical_state->sub == NULL;
     out_->source_kind =
       is_pub ? ZLINK_MONITOR_SOURCE_SPOT_PUB : ZLINK_MONITOR_SOURCE_SPOT_SUB;
     if (status.active_peer_count > 0
@@ -150,6 +151,9 @@ void *create_spot_pub_handle (void *node_)
             return NULL;
         }
         spot->node = node;
+        spot->logical_state = zlink::spot_node_access_t::entry_spot_state (node);
+        TEST_ASSERT_NOT_NULL (spot->logical_state);
+        spot->spot_routing_id = spot->logical_state->routing_id;
         register_spot_mode_state (spot);
         std::lock_guard<std::mutex> lock (g_spot_probe_mutex);
         g_spot_handles[node_] = spot;

@@ -27,6 +27,7 @@ int main (void)
 
     actor_sample_capture_t capture;
     actor_sample_capture_init (&capture);
+    capture.node = play_node;
     assert (zlink_spot_dispatch_event_handler (play_spot,
                                                actor_sample_dispatch,
                                                &capture)
@@ -47,17 +48,6 @@ int main (void)
             == ZLINK_REQUEST_OK);
     assert (create_result.status == ZLINK_ACTOR_CREATE_CREATED);
 
-    zlink_routing_id_t play_spot_rid =
-      actor_sample_find_spot_rid_not (play_node, NULL, 0);
-    zlink_msg_t join;
-    make_message (&join, "join-play");
-    assert (zlink_spot_node_actor_join_spot (
-              gateway_node, &create_result.actor, &play_spot_rid, &join,
-              actor_sample_join_reply, &capture, ZLINK_DONTWAIT, 1000)
-            == ZLINK_SUBMIT_OK);
-    assert (callback_signal_wait (&capture.join_signal, 2000));
-    assert (capture.join_result == ZLINK_REQUEST_OK);
-
     void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
     assert (stream != NULL);
     zlink_routing_id_t session;
@@ -65,6 +55,19 @@ int main (void)
     assert (zlink_stream_bind_actor (gateway_node, stream, &session,
                                      &create_result.actor, 1000)
             == ZLINK_REQUEST_OK);
+
+    zlink_routing_id_t play_spot_rid =
+      actor_sample_find_spot_rid_not (play_node, NULL, 0);
+    zlink_msg_t join;
+    make_message (&join, "join-play");
+    assert (zlink_spot_node_actor_join_spot (
+              gateway_node, &create_result.actor, &play_node_rid,
+              &play_spot_rid, &join, actor_sample_join_reply, &capture,
+              ZLINK_DONTWAIT, 1000)
+            == ZLINK_SUBMIT_OK);
+    assert (callback_signal_wait (&capture.join_signal, 2000));
+    assert (capture.join_result == ZLINK_REQUEST_OK);
+
     zlink_msg_t frame;
     make_message (&frame, "client-input");
     assert (zlink_stream_send_bound_actor_part (
@@ -77,7 +80,7 @@ int main (void)
     assert (zlink_spot_node_actor_leave_spot (
               gateway_node, &create_result.actor, &play_spot_rid, 1000)
             == ZLINK_REQUEST_OK);
-    assert (zlink_spot_node_destroy_remote_actor (
+    assert (zlink_spot_node_actor_destroy (
               gateway_node, &create_result.actor, 1000)
             == ZLINK_REQUEST_OK);
     assert (zlink_close (stream) == ZLINK_CLOSE_OK);

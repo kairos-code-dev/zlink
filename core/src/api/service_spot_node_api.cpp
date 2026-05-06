@@ -9,6 +9,7 @@
 #include "utils/err.hpp"
 #include "api/service_api_internal.hpp"
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_handle.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_subject_access.hpp"
@@ -72,6 +73,7 @@ namespace
 
 extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_);
 extern "C" void zlink_timer_cleanup_spot (void *spot_);
+extern "C" int zlink_spot_has_joined_or_pending_actor (void *spot_);
 
 template <typename Row>
 static int copy_snapshot_rows (const std::vector<Row> &rows_,
@@ -100,13 +102,15 @@ static int copy_snapshot_rows (const std::vector<Row> &rows_,
     *count_ = rows_.size ();
     return 0;
 }
-}
 
-void *zlink_spot_new (void *node_)
+static void *create_spot_facade (
+  zlink::spot_node_t *node_,
+  const std::shared_ptr<spot_logical_state_t> &logical_state_)
 {
-    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
-    if (!node)
+    if (!node_ || !logical_state_) {
+        errno = EFAULT;
         return NULL;
+    }
 
     spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
     if (!spot) {
@@ -114,41 +118,42 @@ void *zlink_spot_new (void *node_)
         return NULL;
     }
 
-    spot->node = node;
-    spot->mode = zlink::spot_node_access_t::mode (node);
-    zlink::generate_random_uuid_routing_id (&spot->spot_routing_id);
+    spot->node = node_;
+    spot->mode = zlink::spot_node_access_t::mode (node_);
+    spot->logical_state = logical_state_;
+    spot->spot_routing_id = logical_state_->routing_id;
     register_spot_mode_state (spot);
-    if (zlink::spot_node_access_t::try_register_spot_facade (node, spot) != 0) {
+    if (zlink::spot_node_access_t::try_register_spot_facade (node_, spot) != 0) {
         const int err = errno;
         erase_spot_mode_state (spot);
         delete spot;
         errno = err;
         return NULL;
     }
-    if (zlink::spot_node_access_t::pubsub_enabled (node)) {
+    if (zlink::spot_node_access_t::pubsub_enabled (node_)) {
         if (!ensure_spot_pub (spot) || !ensure_spot_sub (spot)) {
             const int err = errno;
-            zlink::spot_node_access_t::unregister_spot_facade (node, spot);
+            zlink::spot_node_access_t::unregister_spot_facade (node_, spot);
             erase_spot_mode_state (spot);
             delete spot;
             errno = err;
             return NULL;
         }
     }
-    if (zlink::spot_node_access_t::routed_enabled (node)) {
+    if (zlink::spot_node_access_t::routed_enabled (node_)) {
         if (!zlink::spot_reqrep_internal::find_or_create_spot_state (spot)) {
             const int err = errno;
             zlink_spot_request_reply_cleanup_spot (spot);
-            zlink::spot_node_access_t::unregister_spot_facade (node, spot);
+            zlink::spot_node_access_t::unregister_spot_facade (node_, spot);
             erase_spot_mode_state (spot);
             delete spot;
             errno = err;
             return NULL;
         }
-        if (ensure_external_router_ready (node) != 0) {
+        if (ensure_external_router_ready (node_) != 0) {
             const int err = errno;
             zlink_spot_request_reply_cleanup_spot (spot);
-            zlink::spot_node_access_t::unregister_spot_facade (node, spot);
+            zlink::spot_node_access_t::unregister_spot_facade (node_, spot);
             erase_spot_mode_state (spot);
             delete spot;
             errno = err;
@@ -156,6 +161,76 @@ void *zlink_spot_new (void *node_)
         }
     }
     return static_cast<void *> (spot);
+}
+}
+
+void *zlink_spot_new (void *node_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node)
+        return NULL;
+    std::shared_ptr<spot_logical_state_t> state =
+      zlink::spot_node_access_t::create_user_spot_state (node);
+    if (!state)
+        return NULL;
+    return create_spot_facade (node, state);
+}
+
+zlink_config_result_t zlink_spot_node_entry_spot (void *node_,
+                                                  void **spot_out_)
+{
+    if (spot_out_)
+        *spot_out_ = NULL;
+    if (!node_) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    if (!spot_out_) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+
+    std::shared_ptr<spot_logical_state_t> state =
+      zlink::spot_node_access_t::entry_spot_state (node);
+    if (!state)
+        return zlink::config_result_internal::from_errno (errno);
+    void *spot = create_spot_facade (node, state);
+    if (!spot)
+        return zlink::config_result_internal::from_errno (errno);
+    *spot_out_ = spot;
+    return ZLINK_CONFIG_OK;
+}
+
+zlink_config_result_t zlink_spot_node_spot_lookup (
+  void *node_, const zlink_routing_id_t *spot_rid_, void **spot_out_)
+{
+    if (!node_) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    if (!spot_rid_ || !spot_out_) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    std::shared_ptr<spot_logical_state_t> state =
+      zlink::spot_node_access_t::lookup_spot_state (node, spot_rid_);
+    if (!state)
+        return zlink::config_result_internal::from_errno (errno);
+    void *spot = create_spot_facade (node, state);
+    if (!spot)
+        return zlink::config_result_internal::from_errno (errno);
+    *spot_out_ = spot;
+    return ZLINK_CONFIG_OK;
 }
 
 zlink_close_result_t zlink_spot_destroy (void **spot_p_)
@@ -185,12 +260,21 @@ zlink_close_result_t zlink_spot_destroy (void **spot_p_)
       zlink::spot_reqrep_internal::try_find_spot_state (spot);
     if (zlink::spot_reqrep_internal::has_pending_spot_request_work (state))
         zlink::spot_reqrep_internal::claim_spot_completion_owner (state);
+    const bool last_facade =
+      zlink::spot_node_access_t::is_last_spot_facade_for_logical_state (node,
+                                                                        spot);
+    if (last_facade && zlink_spot_has_joined_or_pending_actor (spot)) {
+        errno = EBUSY;
+        return ZLINK_CLOSE_BUSY;
+    }
     zlink::spot_reqrep_internal::unregister_spot_identity (state);
 
     zlink::part_helper_internal::cleanup_handle (spot);
     zlink_spot_request_reply_cleanup_spot (spot);
     zlink_timer_cleanup_spot (spot);
     zlink::spot_node_access_t::unregister_spot_facade (node, spot);
+    if (!last_facade)
+        spot->logical_state.reset ();
     zlink::destroy_spot_handle_for_testing (spot);
     erase_spot_mode_state (spot);
     *spot_p_ = NULL;
@@ -218,6 +302,13 @@ void *zlink_spot_node_new (void *ctx_,
                                          mode));
     if (!node)
         return NULL;
+    if (!zlink::spot_node_access_t::entry_spot_state (node)) {
+        const int err = errno;
+        zlink::spot_node_access_t::destroy (node);
+        zlink::spot_node_access_t::delete_handle (node);
+        errno = err;
+        return NULL;
+    }
     return static_cast<void *> (node);
 }
 

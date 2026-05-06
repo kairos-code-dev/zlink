@@ -115,6 +115,12 @@ static void *node_spot_handle (void *node_)
         return NULL;
     }
     spot->node = node;
+    spot->logical_state = zlink::spot_node_access_t::entry_spot_state (node);
+    if (!spot->logical_state) {
+        delete spot;
+        return NULL;
+    }
+    spot->spot_routing_id = spot->logical_state->routing_id;
     register_spot_mode_state (spot);
     g_node_spot_handles[node_] = spot;
     return spot;
@@ -190,6 +196,35 @@ static int publish_text (void *subject_,
         errno = err;
     }
     return rc;
+}
+
+static void assert_recv_text (void *spot_,
+                              const char *expected_topic_,
+                              const char *expected_payload_)
+{
+    zlink_routing_id_t source_rid;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char service_name[64] = {0};
+    size_t service_name_len = sizeof (service_name);
+    char topic[128] = {0};
+    size_t topic_len = sizeof (topic);
+    memset (&source_rid, 0, sizeof (source_rid));
+
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_spot_subscribe (
+        spot_, &source_rid, &parts, &part_count, service_name,
+        &service_name_len, topic, &topic_len,
+        static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT)));
+    TEST_ASSERT_EQUAL_UINT (strlen (expected_topic_), topic_len);
+    TEST_ASSERT_EQUAL_MEMORY (expected_topic_, topic, topic_len);
+    TEST_ASSERT_EQUAL_UINT (1u, static_cast<unsigned int> (part_count));
+    TEST_ASSERT_EQUAL_UINT (strlen (expected_payload_),
+                            zlink_msg_size (&parts[0]));
+    TEST_ASSERT_EQUAL_MEMORY (expected_payload_, zlink_msg_data (&parts[0]),
+                              strlen (expected_payload_));
+    zlink_multipart_close (parts, part_count);
 }
 
 } // namespace
@@ -379,6 +414,131 @@ static void test_spot_unified_spot_basic ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+static void test_queue_pub_local_fanout_shared_block ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = create_node (ctx, "queue-fanout");
+    void *pub = zlink_spot_new (node);
+    void *sub_a = zlink_spot_new (node);
+    void *sub_b = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub_a);
+    TEST_ASSERT_NOT_NULL (sub_b);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (pub, "queue.topic"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_a, "queue.topic"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_b, "queue.topic"));
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (pub, "queue.topic", "payload"));
+
+    spot_handle_t *p = as_spot_handle (pub);
+    spot_handle_t *a = as_spot_handle (sub_a);
+    spot_handle_t *b = as_spot_handle (sub_b);
+    TEST_ASSERT_NOT_NULL (p);
+    TEST_ASSERT_NOT_NULL (a);
+    TEST_ASSERT_NOT_NULL (b);
+    TEST_ASSERT_EQUAL_UINT (1u, p->logical_state->subscribe_queue.size ());
+    TEST_ASSERT_EQUAL_UINT (1u, a->logical_state->subscribe_queue.size ());
+    TEST_ASSERT_EQUAL_UINT (1u, b->logical_state->subscribe_queue.size ());
+    TEST_ASSERT_EQUAL_PTR (p->logical_state->subscribe_queue.front ().get (),
+                           a->logical_state->subscribe_queue.front ().get ());
+    TEST_ASSERT_EQUAL_PTR (a->logical_state->subscribe_queue.front ().get (),
+                           b->logical_state->subscribe_queue.front ().get ());
+
+    zlink_routing_id_t source_rid;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char service_name[64] = {0};
+    size_t service_name_len = sizeof (service_name);
+    char topic[128] = {0};
+    size_t topic_len = sizeof (topic);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_spot_subscribe (
+        sub_a, &source_rid, &parts, &part_count, service_name,
+        &service_name_len, topic, &topic_len,
+        static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT)));
+    TEST_ASSERT_EQUAL_UINT (1u, static_cast<unsigned int> (part_count));
+    TEST_ASSERT_EQUAL_UINT (strlen ("payload"), zlink_msg_size (&parts[0]));
+    memset (zlink_msg_data (&parts[0]), 'x', zlink_msg_size (&parts[0]));
+    zlink_multipart_close (parts, part_count);
+
+    assert_recv_text (pub, "queue.topic", "payload");
+    assert_recv_text (sub_b, "queue.topic", "payload");
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
+    destroy_node_and_spot_handle (&node);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_queue_sub_exact_pattern_dedupe ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = create_node (ctx, "queue-dedupe");
+    void *pub = zlink_spot_new (node);
+    void *sub = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "queue.dedupe"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "queue.*"));
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (pub, "queue.dedupe", "once"));
+
+    spot_handle_t *sub_handle = as_spot_handle (sub);
+    TEST_ASSERT_NOT_NULL (sub_handle);
+    TEST_ASSERT_EQUAL_UINT (1u,
+                            sub_handle->logical_state->subscribe_queue.size ());
+    assert_recv_text (sub, "queue.dedupe", "once");
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
+    destroy_node_and_spot_handle (&node);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_queue_pub_no_subscriber_success ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = create_node (ctx, "queue-empty");
+    void *pub = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (pub);
+
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (pub, "queue.none", "payload"));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
+    destroy_node_and_spot_handle (&node);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_queue_pub_dead_spot_fails ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = create_node (ctx, "queue-shutdown");
+    void *pub = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (pub);
+
+    zlink::service_public_api_guard_t *guard =
+      zlink::spot_public_api_guard_for_testing (pub);
+    TEST_ASSERT_NOT_NULL (guard);
+    guard->mark_closing ();
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_TERMINATED,
+                           publish_text (pub, "queue.shutdown", "payload"));
+    guard->cancel_close ();
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub));
+    destroy_node_and_spot_handle (&node);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 static void test_spot_node_snapshot_status_peers_subjects ()
 {
     void *ctx = zlink_ctx_new ();
@@ -547,6 +707,10 @@ int main (int, char **)
     RUN_SPOT_INTROSPECTION_TEST (test_spot_recv_model_receive_regression);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_default_handle_owner_keeps_defaults_private);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_unified_spot_basic);
+    RUN_SPOT_INTROSPECTION_TEST (test_queue_pub_local_fanout_shared_block);
+    RUN_SPOT_INTROSPECTION_TEST (test_queue_sub_exact_pattern_dedupe);
+    RUN_SPOT_INTROSPECTION_TEST (test_queue_pub_no_subscriber_success);
+    RUN_SPOT_INTROSPECTION_TEST (test_queue_pub_dead_spot_fails);
     RUN_SPOT_INTROSPECTION_TEST (test_spot_node_snapshot_status_peers_subjects);
     RUN_SPOT_INTROSPECTION_TEST (test_discovery_local_value_route_limit_contract);
 #undef RUN_SPOT_INTROSPECTION_TEST

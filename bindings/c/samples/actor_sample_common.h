@@ -6,6 +6,7 @@
 
 typedef struct
 {
+    void *node;
     callback_signal_t join_signal;
     callback_signal_t actor_signal;
     zlink_request_result_t join_result;
@@ -18,6 +19,7 @@ static inline void actor_sample_capture_init (actor_sample_capture_t *capture)
 {
     callback_signal_init (&capture->join_signal);
     callback_signal_init (&capture->actor_signal);
+    capture->node = NULL;
     capture->join_result = ZLINK_REQUEST_INTERNAL_ERROR;
     capture->accept_join = 1;
     capture->payload_len = 0;
@@ -123,9 +125,9 @@ static void actor_sample_dispatch (void *spot,
         zlink_actor_recv_info_t recv_info;
         zlink_msg_t part;
         zlink_part_flag_t flag = ZLINK_PART_FINAL;
-        zlink_recv_result_t rc =
-          zlink_actor_recv_part (info->subject, &recv_info, &part, &flag,
-                                 ZLINK_DONTWAIT);
+        zlink_recv_result_t rc = zlink_spot_node_actor_recv_part (
+          capture->node, (const zlink_actor_ref_t *) info->subject, &recv_info,
+          &part, &flag, ZLINK_DONTWAIT);
         if (rc == ZLINK_RECV_NO_DATA)
             break;
         assert (rc == ZLINK_RECV_OK);

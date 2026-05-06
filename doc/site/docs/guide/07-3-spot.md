@@ -335,6 +335,22 @@ processing unit and distinguish the drain target in the Spot dispatch callback.
 One session can be bound to multiple Actors; one Actor is bound to at most one
 session at a time.
 
+An Actor belongs to the `Entry Spot` immediately after creation. The `Entry Spot`
+is the default Spot that every `SpotNode` always maintains. Registering a dispatch
+handler on the `Entry Spot` lets the application receive initial Actor messages,
+perform authentication, or select a target Spot.
+
+Obtain an Entry Spot facade as follows:
+
+```c
+void *entry = NULL;
+zlink_spot_node_entry_spot(node, &entry);
+zlink_spot_dispatch_event_handler(entry, my_dispatch_handler, userdata);
+```
+
+Close the facade with `zlink_spot_destroy(&entry)` when done. The Entry Spot itself
+is owned by the `SpotNode` and is not destroyed when the facade is closed.
+
 The minimal flow is:
 
 1. Create an Actor on the `SpotNode`.
@@ -408,8 +424,9 @@ the request ends with a rejected result.
 When an Actor needs to join a Spot, send a join request and then call
 `zlink_spot_actor_join_recv()` on the Spot side to read the request message,
 followed by `zlink_spot_actor_join_reply()` to send an accept or reject reply.
-One Actor can be joined to at most one Spot; to move it, leave the current Spot
-first and then join the new one.
+An Actor can be joined to only one Spot at a time. To move an Actor, `leave` the
+current Spot and then `join` the new one. `leave` returns the Actor to the Entry Spot.
+The Actor must be in the Entry Spot before it can join a different user Spot.
 
 ## 8. Poller relationship
 

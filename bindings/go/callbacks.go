@@ -474,6 +474,7 @@ func goZlinkSpotDispatchEventTrampoline(_ unsafe.Pointer, info *C.zlink_spot_dis
 		Event:       SpotDispatchEvent(info.event),
 		SubjectKind: SpotDispatchSubjectKind(info.subject_kind),
 		Subject:     info.subject,
+		Node:        state.spot.core.owner.handle,
 	}
 	// Spot dispatch callbacks must run in the native dispatch callback context.
 	// Core only permits spot recv/subscribe drains while the dispatch callback

@@ -47,8 +47,6 @@ spot.OnDispatchEvent((_, info) =>
     }
 });
 
-await JoinAndAccept(spot, actor);
-
 using var stream = new StreamSocket(ctx);
 string endpoint = SampleSupport.NewEndpoint("tcp", "actor-queue");
 int port = SampleSupport.ExtractPort(endpoint);
@@ -70,6 +68,8 @@ if (!sessionReady.Wait(5000) || sessionRid == null)
     throw new TimeoutException("stream session");
 stream.BindActor(node, sessionRid.Value, actor.Ref, TimeSpan.FromSeconds(2));
 
+await JoinAndAccept(spot, actor);
+
 using Message first = Message.FromString("queue:first");
 stream.SendBoundActor(node, sessionRid.Value, actor.Ref.ActorId, first);
 SampleSupport.WaitOrThrow(
@@ -87,6 +87,6 @@ SampleSupport.WaitOrThrow(
     "queued actor message");
 
 Console.WriteLine("[actor/queue] preserved actor message across rejoin");
+actor.Leave(spot);
 stream.UnbindActor(node, sessionRid.Value, actor.Ref.ActorId,
     TimeSpan.FromSeconds(2));
-actor.Leave(spot);

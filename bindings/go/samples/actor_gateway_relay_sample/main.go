@@ -51,11 +51,17 @@ func main() {
 		}
 	}))
 
-	actorRef, err := playNode.ActorLookup("play-session-actor")
+	actorRef := created.Actor
+	stream, err := ctx.StreamSocket()
 	samplecommon.Must(err)
+	defer stream.Close()
+	session := zlink.NewRoutingID([]byte("gateway-session"))
+	samplecommon.Must(stream.BindActor(gatewayNode, session, actorRef, time.Second))
+
 	joinCh := make(chan zlink.RequestResult, 1)
 	playSpotRID := mustRID(playSpot.RoutingID())
-	samplecommon.Must(gatewayNode.JoinActor(actorRef, playSpotRID, func(result zlink.RequestResult, parts []*zlink.Message) {
+	playNodeRID := mustRID(playNode.RoutingID())
+	samplecommon.Must(gatewayNode.JoinActor(actorRef, playNodeRID, playSpotRID, func(result zlink.RequestResult, parts []*zlink.Message) {
 		for _, part := range parts {
 			part.Close()
 		}
@@ -72,11 +78,6 @@ func main() {
 		samplecommon.Must(fmt.Errorf("unexpected join result %v", result))
 	}
 
-	stream, err := ctx.StreamSocket()
-	samplecommon.Must(err)
-	defer stream.Close()
-	session := zlink.NewRoutingID([]byte("gateway-session"))
-	samplecommon.Must(stream.BindActor(gatewayNode, session, actorRef, time.Second))
 	samplecommon.Must(stream.SendBoundActor(gatewayNode, session, "play-session-actor", zlink.SendFlagsDontWait, samplecommon.Message("client-input")))
 	select {
 	case payload := <-payloadCh:
@@ -87,7 +88,7 @@ func main() {
 		samplecommon.Must(fmt.Errorf("timed out waiting for actor payload"))
 	}
 	samplecommon.Must(gatewayNode.LeaveActor(actorRef, playSpotRID, time.Second))
-	samplecommon.Must(gatewayNode.DestroyRemoteActor(actorRef, time.Second))
+	samplecommon.Must(gatewayNode.DestroyActor(actorRef, time.Second))
 }
 
 func mustRID(rid zlink.RoutingID, err error) zlink.RoutingID {

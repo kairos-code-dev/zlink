@@ -1404,7 +1404,7 @@ public enum SpotDispatchSubjectKind
     Spot          = 1,   // Subject is the Spot itself (SubscribeReadable / RoutedReadable)
     Timer         = 2,   // Subject is a Timer handle (TimerReadable)
     ChannelDealer = 3,   // Subject is a DealerSocket handle (ChannelReplyReadable)
-    Actor         = 4    // Subject is an Actor handle (ActorReadable)
+    Actor         = 4    // Subject is an Actor ref (ActorReadable)
 }
 ```
 

@@ -41,6 +41,8 @@ struct spot_dispatch_recv_probe_t
         first_callback_entered (false),
         release_first_callback (false),
         block_first_callback (false),
+        subscribe_new_filter_after_first_payload (false),
+        subscription_changed_in_callback (false),
         failed (false),
         last_errno (0),
         routed_request_seq (0),
@@ -59,6 +61,8 @@ struct spot_dispatch_recv_probe_t
     bool first_callback_entered;
     bool release_first_callback;
     bool block_first_callback;
+    bool subscribe_new_filter_after_first_payload;
+    bool subscription_changed_in_callback;
     bool failed;
     int last_errno;
     std::vector<int> events;
@@ -188,6 +192,16 @@ void on_spot_dispatch_recv_event (void *spot_,
             probe->subscribe_payloads.push_back (
               part_count > 0 ? msg_to_string (&parts[0]) : std::string ());
             zlink_multipart_close (parts, part_count);
+            if (probe->subscribe_new_filter_after_first_payload
+                && !probe->subscription_changed_in_callback) {
+                probe->subscription_changed_in_callback = true;
+                if (zlink_set_subscription (spot_,
+                                            "dispatch.topic.changed")
+                    != ZLINK_CONFIG_OK) {
+                    probe->failed = true;
+                    probe->last_errno = zlink_errno ();
+                }
+            }
         }
     } else if (info_->event == ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE) {
         for (;;) {
@@ -552,6 +566,67 @@ void test_spot_dispatch_subscribe_drain_until_eagain ()
                                   probe.subscribe_payloads[1].c_str ());
         TEST_ASSERT_EQUAL_STRING ("payload-3",
                                   probe.subscribe_payloads[2].c_str ());
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_spot_dispatch_subscription_change_applies_to_later_fanout ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx, NULL);
+    void *sub_spot = zlink_spot_new (node);
+    void *pub_spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (sub_spot);
+    TEST_ASSERT_NOT_NULL (pub_spot);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (sub_spot, "dispatch.topic.initial"));
+
+    spot_dispatch_recv_probe_t probe;
+    probe.subscribe_new_filter_after_first_payload = true;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      sub_spot, &on_spot_dispatch_recv_event, &probe));
+
+    zlink_msg_t first;
+    init_string_part (&first, "initial-payload");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_publish (pub_spot, "dispatch.topic.initial", &first, 1, 0));
+
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        const bool changed = probe.cv.wait_for (
+          lock, std::chrono::milliseconds (1000), [&probe]() {
+              return probe.failed || probe.subscription_changed_in_callback;
+          });
+        TEST_ASSERT_TRUE (changed);
+        TEST_ASSERT_FALSE (probe.failed);
+        TEST_ASSERT_EQUAL_UINT (1, probe.subscribe_payloads.size ());
+        TEST_ASSERT_EQUAL_STRING ("initial-payload",
+                                  probe.subscribe_payloads[0].c_str ());
+    }
+
+    zlink_msg_t second;
+    init_string_part (&second, "changed-payload");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_publish (pub_spot, "dispatch.topic.changed", &second, 1, 0));
+
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        const bool received = probe.cv.wait_for (
+          lock, std::chrono::milliseconds (1000), [&probe]() {
+              return probe.failed || probe.subscribe_payloads.size () >= 2;
+          });
+        TEST_ASSERT_TRUE (received);
+        TEST_ASSERT_FALSE (probe.failed);
+        TEST_ASSERT_EQUAL_UINT (2, probe.subscribe_payloads.size ());
+        TEST_ASSERT_EQUAL_STRING ("changed-payload",
+                                  probe.subscribe_payloads[1].c_str ());
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub_spot));
@@ -953,6 +1028,116 @@ void test_spot_dispatch_channel_reply_multiple_dealers_exactly_once ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_spot_dispatch_channel_reply_shared_dealer_per_request_spot ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx, NULL);
+    void *spot_a = zlink_spot_new (node);
+    void *spot_b = zlink_spot_new (node);
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (spot_a);
+    TEST_ASSERT_NOT_NULL (spot_b);
+    TEST_ASSERT_NOT_NULL (dealer);
+    TEST_ASSERT_NOT_NULL (router);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (router, "inproc://spot-dispatch-shared-channel"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (dealer, "inproc://spot-dispatch-shared-channel"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_attach_channel_dealer_manual (node, "svc-shared",
+                                                    dealer));
+
+    spot_dispatch_recv_probe_t probe_a;
+    spot_dispatch_recv_probe_t probe_b;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      spot_a, &on_spot_dispatch_recv_event, &probe_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      spot_b, &on_spot_dispatch_recv_event, &probe_b));
+
+    zlink_msg_t request_a;
+    zlink_msg_t request_b;
+    init_string_part (&request_a, "request-shared-a");
+    init_string_part (&request_b, "request-shared-b");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_channel (
+      spot_a, "svc-shared", &request_a, 1, &on_channel_reply, &probe_a,
+      static_cast<zlink_send_flags_t> (0), 1000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_channel (
+      spot_b, "svc-shared", &request_b, 1, &on_channel_reply, &probe_b,
+      static_cast<zlink_send_flags_t> (0), 1000));
+
+    zlink_routing_id_t source_a;
+    zlink_routing_id_t source_b;
+    memset (&source_a, 0, sizeof (source_a));
+    memset (&source_b, 0, sizeof (source_b));
+    uint64_t request_seq_a = 0;
+    uint64_t request_seq_b = 0;
+    std::string payload_a;
+    std::string payload_b;
+    TEST_ASSERT_TRUE (recv_router_request_until (router, &source_a,
+                                                 &request_seq_a, &payload_a,
+                                                 500));
+    TEST_ASSERT_TRUE (recv_router_request_until (router, &source_b,
+                                                 &request_seq_b, &payload_b,
+                                                 500));
+    if (payload_a == "request-shared-b") {
+        std::swap (source_a, source_b);
+        std::swap (request_seq_a, request_seq_b);
+        std::swap (payload_a, payload_b);
+    }
+    TEST_ASSERT_EQUAL_STRING ("request-shared-a", payload_a.c_str ());
+    TEST_ASSERT_EQUAL_STRING ("request-shared-b", payload_b.c_str ());
+
+    zlink_msg_t reply_a;
+    zlink_msg_t reply_b;
+    init_string_part (&reply_a, "reply-shared-a");
+    init_string_part (&reply_b, "reply-shared-b");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_reply (router, &source_a, request_seq_a, &reply_a, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_reply (router, &source_b, request_seq_b, &reply_b, 1));
+
+    {
+        std::unique_lock<std::mutex> lock (probe_a.mutex);
+        const bool completed = probe_a.cv.wait_for (
+          lock, std::chrono::milliseconds (1000), [&probe_a]() {
+              return probe_a.failed
+                     || probe_a.channel_reply_payloads.size () >= 1;
+          });
+        TEST_ASSERT_TRUE (completed);
+        TEST_ASSERT_FALSE (probe_a.failed);
+        TEST_ASSERT_EQUAL_UINT (1, probe_a.channel_reply_payloads.size ());
+        TEST_ASSERT_EQUAL_STRING ("reply-shared-a",
+                                  probe_a.channel_reply_payloads[0].c_str ());
+        TEST_ASSERT_EQUAL_PTR (dealer, probe_a.channel_reply_subject);
+    }
+
+    {
+        std::unique_lock<std::mutex> lock (probe_b.mutex);
+        const bool completed = probe_b.cv.wait_for (
+          lock, std::chrono::milliseconds (1000), [&probe_b]() {
+              return probe_b.failed
+                     || probe_b.channel_reply_payloads.size () >= 1;
+          });
+        TEST_ASSERT_TRUE (completed);
+        TEST_ASSERT_FALSE (probe_b.failed);
+        TEST_ASSERT_EQUAL_UINT (1, probe_b.channel_reply_payloads.size ());
+        TEST_ASSERT_EQUAL_STRING ("reply-shared-b",
+                                  probe_b.channel_reply_payloads[0].c_str ());
+        TEST_ASSERT_EQUAL_PTR (dealer, probe_b.channel_reply_subject);
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (dealer));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_spot_dispatch_channel_reply_timeout_late_reply_no_double_completion ()
 {
     void *ctx = zlink_ctx_new ();
@@ -1177,10 +1362,12 @@ int main (void)
     RUN_TEST (test_spot_dispatch_subscribe_recv_inside_callback);
     RUN_TEST (test_spot_dispatch_subscribe_event_is_not_fanned_out_to_unrelated_spot);
     RUN_TEST (test_spot_dispatch_subscribe_drain_until_eagain);
+    RUN_TEST (test_spot_dispatch_subscription_change_applies_to_later_fanout);
     RUN_TEST (test_spot_dispatch_routed_recv_inside_callback);
     RUN_TEST (test_spot_dispatch_routed_drain_until_eagain);
     RUN_TEST (test_spot_dispatch_channel_reply_inside_callback);
     RUN_TEST (test_spot_dispatch_channel_reply_multiple_dealers_exactly_once);
+    RUN_TEST (test_spot_dispatch_channel_reply_shared_dealer_per_request_spot);
     RUN_TEST (test_spot_dispatch_channel_reply_timeout_late_reply_no_double_completion);
     RUN_TEST (test_spot_dispatch_channel_reply_close_late_reply_no_double_completion);
     RUN_TEST (test_spot_dispatch_channel_reply_malformed_reply_protocol_error_once);

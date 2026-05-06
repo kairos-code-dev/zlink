@@ -98,8 +98,12 @@ zlink::spot_pub_t *ensure_spot_pub (spot_handle_t *spot_)
         return NULL;
     }
 
-    if (spot_->pub)
-        return spot_->pub;
+    if (!spot_->logical_state) {
+        errno = EFAULT;
+        return NULL;
+    }
+    if (spot_->logical_state->pub)
+        return spot_->logical_state->pub;
 
     zlink::spot_pub_t *pub = spot_->node->create_spot_pub ();
     if (!pub)
@@ -113,8 +117,8 @@ zlink::spot_pub_t *ensure_spot_pub (spot_handle_t *spot_)
         return NULL;
     }
 
-    spot_->pub = pub;
-    return spot_->pub;
+    spot_->logical_state->pub = pub;
+    return spot_->logical_state->pub;
 }
 
 zlink::spot_sub_t *ensure_spot_sub (spot_handle_t *spot_)
@@ -124,8 +128,12 @@ zlink::spot_sub_t *ensure_spot_sub (spot_handle_t *spot_)
         return NULL;
     }
 
-    if (spot_->sub)
-        return spot_->sub;
+    if (!spot_->logical_state) {
+        errno = EFAULT;
+        return NULL;
+    }
+    if (spot_->logical_state->sub)
+        return spot_->logical_state->sub;
 
     zlink::spot_sub_t *sub = spot_->node->create_spot_sub ();
     if (!sub)
@@ -148,8 +156,8 @@ zlink::spot_sub_t *ensure_spot_sub (spot_handle_t *spot_)
         return NULL;
     }
 
-    spot_->sub = sub;
-    return spot_->sub;
+    spot_->logical_state->sub = sub;
+    return spot_->logical_state->sub;
 }
 
 bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_)

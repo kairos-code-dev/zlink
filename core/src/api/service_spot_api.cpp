@@ -10,6 +10,7 @@
 #include "api/submit_result_internal.hpp"
 #include "core/recv_tls_view.hpp"
 #include "services/spot/spot_handle.hpp"
+#include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_subject_access.hpp"
 
@@ -60,6 +61,92 @@ bool service_name_matches_or_unset (const std::string &bound_service_name_,
                                     const char *service_name_)
 {
     return !bound_service_name_.empty () && bound_service_name_ == service_name_;
+}
+
+int copy_text_to_output (const std::string &value_,
+                         char *out_,
+                         size_t *len_inout_)
+{
+    if (!len_inout_) {
+        errno = EFAULT;
+        return -1;
+    }
+    const size_t capacity = *len_inout_;
+    *len_inout_ = value_.size ();
+    if (!out_)
+        return 0;
+    if (capacity < value_.size ()) {
+        errno = EMSGSIZE;
+        return -1;
+    }
+    if (!value_.empty ())
+        memcpy (out_, value_.data (), value_.size ());
+    return 0;
+}
+
+zlink_recv_result_t try_dequeue_logical_subscribe (
+  spot_handle_t *spot_,
+  zlink_routing_id_t *source_rid_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
+  char *service_name_out_,
+  size_t *service_name_len_out_,
+  char *topic_id_out_,
+  size_t *topic_id_len_out_)
+{
+    if (!spot_ || !spot_->logical_state)
+        return ZLINK_RECV_NO_DATA;
+
+    std::shared_ptr<spot_logical_pubsub_message_t> message;
+    {
+        zlink::scoped_lock_t lock (spot_->logical_state->pubsub_sync);
+        if (spot_->logical_state->subscribe_queue.empty ())
+            return ZLINK_RECV_NO_DATA;
+        message = spot_->logical_state->subscribe_queue.front ();
+        spot_->logical_state->subscribe_queue.pop_front ();
+    }
+    if (!message)
+        return ZLINK_RECV_NO_DATA;
+
+    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
+        return zlink::recv_result_internal::from_errno (errno);
+    for (size_t i = 0; i < message->parts.size (); ++i) {
+        zlink_msg_t frame;
+        zlink_msg_init (&frame);
+        if (zlink_msg_init_size (&frame, message->parts[i].size ()) != 0) {
+            zlink_msg_close (&frame);
+            zlink::recv_tls_view::abort ();
+            return zlink::recv_result_internal::from_errno (errno);
+        }
+        if (!message->parts[i].empty ()) {
+            memcpy (zlink_msg_data (&frame), message->parts[i].data (),
+                    message->parts[i].size ());
+        }
+        if (zlink::recv_tls_view::push (&frame) != 0) {
+            zlink_msg_close (&frame);
+            zlink::recv_tls_view::abort ();
+            return zlink::recv_result_internal::from_errno (errno);
+        }
+    }
+    if (zlink::recv_tls_view::commit (parts_out_, part_count_out_) != 0) {
+        zlink::recv_tls_view::abort ();
+        return zlink::recv_result_internal::from_errno (errno);
+    }
+    if (source_rid_out_)
+        *source_rid_out_ = message->source_rid;
+    if (copy_text_to_output (message->service_name, service_name_out_,
+                             service_name_len_out_)
+        != 0) {
+        zlink::recv_tls_view::abort ();
+        return zlink::recv_result_internal::from_errno (errno);
+    }
+    if (copy_text_to_output (message->topic_id, topic_id_out_,
+                             topic_id_len_out_)
+        != 0) {
+        zlink::recv_tls_view::abort ();
+        return zlink::recv_result_internal::from_errno (errno);
+    }
+    return ZLINK_RECV_OK;
 }
 
 int prepare_staged_send_step (
@@ -247,6 +334,10 @@ zlink_submit_result_t spot_publish_impl (void *spot_,
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return ZLINK_SUBMIT_INVALID_HANDLE;
+    if (zlink::spot_node_access_t::is_shutting_down (spot->node)) {
+        errno = ESHUTDOWN;
+        return ZLINK_SUBMIT_TERMINATED;
+    }
     if (!service_name_ || service_name_[0] == '\0') {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
@@ -348,6 +439,13 @@ zlink_recv_result_t spot_subscribe_impl (void *spot_,
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
         return ZLINK_RECV_INVALID_HANDLE;
+
+    const zlink_recv_result_t logical_recv =
+      try_dequeue_logical_subscribe (
+        spot, source_rid_out_, parts_out_, part_count_out_, service_name_out_,
+        service_name_len_out_, topic_id_out_, topic_id_len_out_);
+    if (logical_recv != ZLINK_RECV_NO_DATA)
+        return logical_recv;
 
     const zlink_recv_result_t service_recv =
       zlink::recv_result_internal::from_rc (
@@ -598,30 +696,5 @@ zlink_recv_result_t zlink_spot_subscription_event_recv (
         }
         return ZLINK_RECV_OK;
     }
-    if (service_rc != ZLINK_RECV_NO_DATA)
-        return service_rc;
-
-    std::string bound_service_name;
-    if (resolve_spot_bound_service_name (spot, &bound_service_name) != 0)
-        return zlink::recv_result_internal::from_errno (errno);
-
-    source_rid.size = 0;
-    const int rc = zlink_socket_xpub_recv_internal (
-      spot_, &source_rid, subscribed_out_, topic_id_buf_, topic_id_len_out_,
-      static_cast<zlink_send_flags_t> (flags_));
-    if (rc != 0)
-        return zlink::recv_result_internal::from_errno (errno);
-
-    if (copy_service_name_to_output (
-          bound_service_name, service_name_buf_, service_name_len_out_)
-        != 0) {
-        return zlink::recv_result_internal::from_errno (errno);
-    }
-
-    if (source_rid_out_) {
-        static thread_local zlink_routing_id_t tl_rid;
-        tl_rid = source_rid;
-        *source_rid_out_ = &tl_rid;
-    }
-    return ZLINK_RECV_OK;
+    return service_rc;
 }

@@ -10,32 +10,36 @@ int main (void)
     assert (node != NULL);
     void *spot = zlink_spot_new (node);
     assert (spot != NULL);
-    void *actor = zlink_spot_node_actor_new (node, "room-player-1");
-    assert (actor != NULL);
+    zlink_actor_ref_t actor;
+    assert (zlink_spot_node_actor_new (node, "room-player-1", &actor)
+            == ZLINK_CONFIG_OK);
+    zlink_routing_id_t node_rid;
+    assert (zlink_get_routing_id (node, &node_rid) == ZLINK_CONFIG_OK);
+    zlink_routing_id_t spot_rid;
+    assert (zlink_get_routing_id (spot, &spot_rid) == ZLINK_CONFIG_OK);
 
     actor_sample_capture_t capture;
     actor_sample_capture_init (&capture);
+    capture.node = node;
     assert (zlink_spot_dispatch_event_handler (spot, actor_sample_dispatch,
                                                &capture)
             == ZLINK_HANDLER_OK);
-
-    zlink_msg_t join;
-    make_message (&join, "enter-room");
-    assert (zlink_actor_join_spot (actor, spot, &join,
-                                   actor_sample_join_reply, &capture,
-                                   ZLINK_DONTWAIT, 1000)
-            == ZLINK_SUBMIT_OK);
-    assert (callback_signal_wait (&capture.join_signal, 2000));
-    assert (capture.join_result == ZLINK_REQUEST_OK);
 
     void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
     assert (stream != NULL);
     zlink_routing_id_t session;
     actor_sample_set_rid (&session, "room-session");
-    zlink_actor_ref_t ref;
-    assert (zlink_actor_get_ref (actor, &ref) == ZLINK_CONFIG_OK);
-    assert (zlink_stream_bind_actor (node, stream, &session, &ref, 1000)
+    assert (zlink_stream_bind_actor (node, stream, &session, &actor, 1000)
             == ZLINK_REQUEST_OK);
+
+    zlink_msg_t join;
+    make_message (&join, "enter-room");
+    assert (zlink_spot_node_actor_join_spot (
+              node, &actor, &node_rid, &spot_rid, &join,
+              actor_sample_join_reply, &capture, ZLINK_DONTWAIT, 1000)
+            == ZLINK_SUBMIT_OK);
+    assert (callback_signal_wait (&capture.join_signal, 2000));
+    assert (capture.join_result == ZLINK_REQUEST_OK);
 
     zlink_msg_t event;
     make_message (&event, "move:north");
@@ -46,8 +50,10 @@ int main (void)
     assert (callback_signal_wait (&capture.actor_signal, 2000));
     assert (strcmp (capture.payload, "move:north") == 0);
 
-    assert (zlink_actor_leave_spot (actor, spot) == ZLINK_CONFIG_OK);
-    assert (zlink_actor_destroy (&actor, 0) == ZLINK_REQUEST_OK);
+    assert (zlink_spot_node_actor_leave_spot (node, &actor, &spot_rid, 0)
+            == ZLINK_REQUEST_OK);
+    assert (zlink_spot_node_actor_destroy (node, &actor, 0)
+            == ZLINK_REQUEST_OK);
     assert (zlink_close (stream) == ZLINK_CLOSE_OK);
     assert (zlink_spot_destroy (&spot) == ZLINK_CLOSE_OK);
     assert (zlink_spot_node_destroy (&node) == ZLINK_CLOSE_OK);

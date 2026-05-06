@@ -296,14 +296,15 @@ void my_dispatch_handler(
         /* zlink_spot_actor_join_recv() 로 drain */
         break;
     case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE:
-        /* subject가 Actor handle */
+        /* subject가 const zlink_actor_ref_t* */
         break;
     }
 }
 ```
 
 dispatch 우선순위는 `SUBSCRIBE_READABLE` → `ROUTED_READABLE` →
-`CHANNEL_REPLY_READABLE` → `TIMER_READABLE` 순이다. 같은 callback 안에서
+`CHANNEL_REPLY_READABLE` → `TIMER_READABLE` → `ACTOR_JOIN_READABLE` →
+`ACTOR_READABLE` 순이다. 같은 callback 안에서
 모든 event를 처리하므로, 한 spot의 routed handler, subscription handler, timer
 handler, channel reply callback은 같은 실행 문맥에서 순차 실행된다.
 
@@ -369,6 +370,21 @@ Actor는 session 메시지를 특정 처리 단위로 모으고, Spot dispatch c
 읽을 대상을 구분하고 싶을 때 쓴다. 한 session은 여러 Actor를 bind할 수 있고,
 한 Actor는 동시에 하나의 session에만 bind된다.
 
+Actor는 생성 직후 `Entry Spot`에 속한다. `Entry Spot`은 `SpotNode`가 항상 가지고
+있는 기본 Spot이다. `Entry Spot`에 dispatch handler를 등록하면 새 Actor의 초기
+메시지를 받아 인증하거나 대상 Spot을 선택할 수 있다.
+
+Entry Spot facade는 아래처럼 얻는다.
+
+```c
+void *entry = NULL;
+zlink_spot_node_entry_spot(node, &entry);
+zlink_spot_dispatch_event_handler(entry, my_dispatch_handler, userdata);
+```
+
+Entry Spot facade를 다 쓴 뒤에는 `zlink_spot_destroy(&entry)`로 닫는다.
+Entry Spot 자체는 `SpotNode`가 소유하므로 facade를 닫아도 Entry Spot은 사라지지 않는다.
+
 가장 작은 흐름은 아래와 같다.
 
 1. `SpotNode`에서 Actor를 만든다.
@@ -376,13 +392,12 @@ Actor는 session 메시지를 특정 처리 단위로 모으고, Spot dispatch c
 3. `zlink_stream_bind_actor()`로 session과 Actor를 연결한다.
 4. STREAM packet handler나 app 로직에서 `zlink_stream_send_bound_actor_part()`를
    호출해 Actor id를 선택한다.
-5. dispatch callback에서 `ACTOR_READABLE`을 받으면 `subject` Actor를
-   `zlink_actor_recv_part()`로 비운다.
+5. dispatch callback에서 `ACTOR_READABLE`을 받으면 `subject` Actor ref를 복사하고
+   `zlink_spot_node_actor_recv_part()`로 비운다.
 
 ```c
-void *actor = zlink_spot_node_actor_new(node, "player-42");
 zlink_actor_ref_t ref;
-zlink_actor_get_ref(actor, &ref);
+zlink_spot_node_actor_new(node, "player-42", &ref);
 
 zlink_stream_bind_actor(node, stream, &session_rid, &ref, 2000);
 
@@ -399,17 +414,20 @@ zlink_stream_send_bound_actor_part(
   ZLINK_PART_FINAL);
 ```
 
-Actor가 읽을 수 있게 되면 dispatch callback은 drain 대상 Actor handle을 알려준다.
+Actor가 읽을 수 있게 되면 dispatch callback은 drain 대상 Actor ref를 알려준다.
 
 ```c
 case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
-    void *actor = info_->subject;
+    const zlink_actor_ref_t *subject_ref =
+      (const zlink_actor_ref_t *) info_->subject;
+    zlink_actor_ref_t actor = *subject_ref;
     for (;;) {
         zlink_actor_recv_info_t recv_info;
         zlink_msg_t part;
         zlink_part_flag_t more = ZLINK_PART_FINAL;
-        zlink_recv_result_t rc = zlink_actor_recv_part(
-          actor,
+        zlink_recv_result_t rc = zlink_spot_node_actor_recv_part(
+          node,
+          &actor,
           &recv_info,
           &part,
           &more,
@@ -440,7 +458,9 @@ Remote Actor가 필요하면 caller node에서 `zlink_spot_node_create_remote_ac
 Actor가 Spot에 들어가야 하는 흐름에서는 join request를 보낸 뒤 Spot 쪽에서
 `zlink_spot_actor_join_recv()`로 요청 message를 읽고,
 `zlink_spot_actor_join_reply()`로 accept 또는 reject reply를 보낸다. 한 Actor는 한
-Spot에만 join할 수 있으므로 이동할 때는 기존 Spot에서 leave한 뒤 새 Spot에 join한다.
+Spot에만 join할 수 있으므로 이동할 때는 기존 Spot에서 `leave`한 뒤
+새 Spot에 join한다. `leave`는 Actor를 현재 Spot에서 Entry Spot으로 돌려보내는
+동작이다. Actor가 Entry Spot으로 돌아간 뒤에야 다른 user Spot으로 join할 수 있다.
 
 ## 8. 지금 공개된 poller와의 관계
 

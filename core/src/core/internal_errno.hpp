@@ -206,10 +206,10 @@ inline bool is_submit_control_flow (int err_)
       ;
 }
 
-/* Runtime failure is currently limited to context termination. */
+/* Runtime failure is a local lifecycle break rather than retryable routing loss. */
 inline bool is_submit_runtime_failure (int err_)
 {
-    return err_ == ETERM;
+    return err_ == ETERM || err_ == ESHUTDOWN;
 }
 
 /* Contract failure covers invalid handles, invalid arguments, and bad state. */

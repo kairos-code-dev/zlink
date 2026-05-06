@@ -843,15 +843,16 @@ int spot_node_t::snapshot_internal_sockets (
         spot_handle_t *spot = *it;
         if (!spot)
             continue;
+        spot_logical_state_t *logical = spot->logical_state.get ();
         if (append_socket_snapshot_row (
               out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT, owner_id,
               "spot", "pub",
-              spot->pub ? spot->pub->snapshot_socket () : NULL)
+              logical && logical->pub ? logical->pub->snapshot_socket () : NULL)
             != 0
             || append_socket_snapshot_row (
                  out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT, owner_id,
                  "spot", "sub",
-                 spot->sub ? spot->sub->snapshot_socket () : NULL)
+                 logical && logical->sub ? logical->sub->snapshot_socket () : NULL)
                  != 0)
             return -1;
     }

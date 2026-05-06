@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_handle.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
@@ -15,12 +16,27 @@
 #include "core/recv_internal.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
+#include "utils/routing_id.hpp"
 #include "utils/sleep.hpp"
 
 namespace zlink
 {
 namespace
 {
+extern "C" int zlink_spot_node_has_any_actor (void *node_);
+
+static bool valid_spot_rid_local (const zlink_routing_id_t &rid_)
+{
+    return rid_.size > 0 && rid_.size <= sizeof (rid_.data);
+}
+
+static std::string spot_rid_key_local (const zlink_routing_id_t &rid_)
+{
+    if (!valid_spot_rid_local (rid_))
+        return std::string ();
+    return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
+}
+
 static bool valid_service_name_local (const char *service_name_)
 {
     return service_name_ && service_name_[0] != '\0';
@@ -728,6 +744,251 @@ void spot_node_t::unregister_spot_facade (spot_handle_t *spot_)
 
     scoped_lock_t lock (_sync);
     _handle_state.facades.erase (spot_);
+    if (!spot_->logical_state || spot_->logical_state->entry)
+        return;
+    for (std::set<spot_handle_t *>::const_iterator it =
+           _handle_state.facades.begin ();
+         it != _handle_state.facades.end (); ++it) {
+        if ((*it)->logical_state == spot_->logical_state)
+            return;
+    }
+    _handle_state.spots_by_rid.erase (
+      spot_rid_key_local (spot_->logical_state->routing_id));
+}
+
+bool spot_node_t::is_last_spot_facade_for_logical_state (spot_handle_t *spot_)
+{
+    if (!spot_ || !spot_->logical_state)
+        return true;
+
+    scoped_lock_t lock (_sync);
+    for (std::set<spot_handle_t *>::const_iterator it =
+           _handle_state.facades.begin ();
+         it != _handle_state.facades.end (); ++it) {
+        if (*it != spot_ && (*it)->logical_state == spot_->logical_state)
+            return false;
+    }
+    return true;
+}
+
+std::shared_ptr<spot_logical_state_t> spot_node_t::create_user_spot_state ()
+{
+    std::shared_ptr<spot_logical_state_t> state (
+      new (std::nothrow) spot_logical_state_t ());
+    if (!state) {
+        errno = ENOMEM;
+        return std::shared_ptr<spot_logical_state_t> ();
+    }
+    state->node = this;
+    generate_random_uuid_routing_id (&state->routing_id);
+    state->entry = false;
+
+    scoped_lock_t lock (_sync);
+    const std::string key = spot_rid_key_local (state->routing_id);
+    if (key.empty ()) {
+        errno = EFAULT;
+        return std::shared_ptr<spot_logical_state_t> ();
+    }
+    _handle_state.spots_by_rid[key] = state;
+    return state;
+}
+
+std::shared_ptr<spot_logical_state_t> spot_node_t::entry_spot_state ()
+{
+    scoped_lock_t lock (_sync);
+    if (_handle_state.entry_spot)
+        return _handle_state.entry_spot;
+
+    std::shared_ptr<spot_logical_state_t> state (
+      new (std::nothrow) spot_logical_state_t ());
+    if (!state) {
+        errno = ENOMEM;
+        return std::shared_ptr<spot_logical_state_t> ();
+    }
+    state->node = this;
+    generate_random_uuid_routing_id (&state->routing_id);
+    state->entry = true;
+    const std::string key = spot_rid_key_local (state->routing_id);
+    if (key.empty ()) {
+        errno = EFAULT;
+        return std::shared_ptr<spot_logical_state_t> ();
+    }
+    _handle_state.entry_spot = state;
+    _handle_state.spots_by_rid[key] = state;
+    return state;
+}
+
+std::shared_ptr<spot_logical_state_t> spot_node_t::lookup_spot_state (
+  const zlink_routing_id_t *spot_rid_)
+{
+    if (!spot_rid_ || !valid_spot_rid_local (*spot_rid_)) {
+        errno = EINVAL;
+        return std::shared_ptr<spot_logical_state_t> ();
+    }
+    scoped_lock_t lock (_sync);
+    const std::map<std::string, std::shared_ptr<spot_logical_state_t> >::iterator
+      it = _handle_state.spots_by_rid.find (spot_rid_key_local (*spot_rid_));
+    if (it == _handle_state.spots_by_rid.end ()) {
+        errno = ENOENT;
+        return std::shared_ptr<spot_logical_state_t> ();
+    }
+    return it->second;
+}
+
+void spot_node_t::snapshot_spot_states (
+  std::vector<std::shared_ptr<spot_logical_state_t> > *out_) const
+{
+    if (!out_)
+        return;
+
+    scoped_lock_t lock (_sync);
+    out_->reserve (out_->size () + _handle_state.spots_by_rid.size ());
+    for (std::map<std::string, std::shared_ptr<spot_logical_state_t> >::
+           const_iterator it = _handle_state.spots_by_rid.begin ();
+         it != _handle_state.spots_by_rid.end (); ++it) {
+        out_->push_back (it->second);
+    }
+}
+
+namespace
+{
+bool spot_logical_topic_matches_local (
+  const std::shared_ptr<spot_logical_state_t> &state_,
+  const std::string &topic_)
+{
+    if (!state_ || topic_.empty ())
+        return false;
+
+    scoped_lock_t lock (state_->pubsub_sync);
+    if (state_->subscription_topics.count (topic_) != 0)
+        return true;
+    for (std::set<std::string>::const_iterator it =
+           state_->subscription_patterns.begin ();
+         it != state_->subscription_patterns.end (); ++it) {
+        if (topic_.size () >= it->size ()
+            && memcmp (topic_.data (), it->data (), it->size ()) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int spot_copy_publish_parts_to_block_local (
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  std::vector<std::string> *out_)
+{
+    if (!out_ || (part_count_ > 0 && !parts_)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    out_->clear ();
+    out_->reserve (part_count_);
+    for (size_t i = 0; i < part_count_; ++i) {
+        const size_t size = zlink_msg_size (&parts_[i]);
+        const char *data =
+          static_cast<const char *> (zlink_msg_data (&parts_[i]));
+        out_->push_back (std::string (data ? data : "", size));
+    }
+    return 0;
+}
+}
+
+int spot_node_t::fanout_local_publish (const char *service_name_,
+                                       const zlink_routing_id_t *source_rid_,
+                                       const char *topic_id_,
+                                       zlink_msg_t *parts_,
+                                       size_t part_count_)
+{
+    if (!topic_id_ || topic_id_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::vector<std::shared_ptr<spot_logical_state_t> > states;
+    snapshot_spot_states (&states);
+    if (states.empty ())
+        return 0;
+
+    std::vector<std::shared_ptr<spot_logical_state_t> > targets;
+    const std::string topic (topic_id_);
+    for (size_t i = 0; i < states.size (); ++i) {
+        if (spot_logical_topic_matches_local (states[i], topic))
+            targets.push_back (states[i]);
+    }
+    if (targets.empty ())
+        return 0;
+
+    std::shared_ptr<spot_logical_pubsub_message_t> block (
+      new (std::nothrow) spot_logical_pubsub_message_t ());
+    if (!block) {
+        errno = ENOMEM;
+        return -1;
+    }
+
+    memset (&block->source_rid, 0, sizeof (block->source_rid));
+    if (source_rid_)
+        block->source_rid = *source_rid_;
+    block->service_name = service_name_ ? service_name_ : "";
+    block->topic_id = topic;
+    if (spot_copy_publish_parts_to_block_local (parts_, part_count_,
+                                                &block->parts)
+        != 0)
+        return -1;
+
+    for (size_t i = 0; i < targets.size (); ++i) {
+        scoped_lock_t lock (targets[i]->pubsub_sync);
+        targets[i]->subscribe_queue.push_back (block);
+    }
+    return 0;
+}
+
+int spot_node_t::update_spot_routing_id (spot_handle_t *spot_,
+                                         const void *data_,
+                                         size_t size_)
+{
+    if (!spot_ || spot_->node != this || !spot_->logical_state) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (!data_ || size_ == 0 || size_ > sizeof (spot_->spot_routing_id.data)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink_routing_id_t next;
+    memset (&next, 0, sizeof (next));
+    next.size = static_cast<uint8_t> (size_);
+    memcpy (next.data, data_, size_);
+
+    if (spot_->logical_state->entry
+        && zlink_spot_node_has_any_actor (this) != 0) {
+        errno = EBUSY;
+        return -1;
+    }
+    scoped_lock_t lock (_sync);
+    const std::string old_key =
+      spot_rid_key_local (spot_->logical_state->routing_id);
+    const std::string new_key = spot_rid_key_local (next);
+    std::map<std::string, std::shared_ptr<spot_logical_state_t> >::const_iterator
+      existing = _handle_state.spots_by_rid.find (new_key);
+    if (existing != _handle_state.spots_by_rid.end ()
+        && existing->second != spot_->logical_state) {
+        errno = EADDRINUSE;
+        return -1;
+    }
+
+    if (!old_key.empty ())
+        _handle_state.spots_by_rid.erase (old_key);
+    spot_->logical_state->routing_id = next;
+    _handle_state.spots_by_rid[new_key] = spot_->logical_state;
+    for (std::set<spot_handle_t *>::iterator it = _handle_state.facades.begin ();
+         it != _handle_state.facades.end (); ++it) {
+        if ((*it)->logical_state == spot_->logical_state)
+            (*it)->spot_routing_id = next;
+    }
+    return 0;
 }
 
 void spot_node_t::on_service_update (const std::string &service_name_)

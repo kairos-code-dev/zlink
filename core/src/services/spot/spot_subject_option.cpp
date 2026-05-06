@@ -11,6 +11,8 @@
 
 #include "api/service_handle_internal.hpp"
 
+#include <algorithm>
+
 namespace
 {
 void store_pending_pub_option (spot_handle_t *spot_,
@@ -178,16 +180,20 @@ int spot_subject_set_common_option (void *handle_,
         if (!admission.acquired ())
             return -1;
         if (pub_option >= 0) {
-            if (spot->pub) {
-                if (spot->pub->set_option (pub_option, optval_, optvallen_) != 0)
+            zlink::spot_pub_t *pub =
+              spot->logical_state ? spot->logical_state->pub : NULL;
+            if (pub) {
+                if (pub->set_option (pub_option, optval_, optvallen_) != 0)
                     return -1;
             } else {
                 store_pending_pub_option (spot, pub_option, optval_, optvallen_);
             }
         }
         if (sub_option >= 0) {
-            if (spot->sub) {
-                if (spot->sub->set_option (sub_option, optval_, optvallen_) != 0)
+            zlink::spot_sub_t *sub =
+              spot->logical_state ? spot->logical_state->sub : NULL;
+            if (sub) {
+                if (sub->set_option (sub_option, optval_, optvallen_) != 0)
                     return -1;
             } else {
                 store_pending_sub_option (spot, sub_option, optval_, optvallen_);
@@ -318,13 +324,10 @@ int spot_subject_set_pub_option (void *handle_,
             return -1;
         store_pending_pub_option (spot, ZLINK_SPOT_PUB_OPT_NODROP, optval_,
                                   optvallen_);
-        if (!spot->pub) {
-            return 0;
-        }
-        zlink::spot_pub_t *pub = spot->pub;
+        zlink::spot_pub_t *pub =
+          spot->logical_state ? spot->logical_state->pub : NULL;
         if (!pub) {
-            errno = ENOTSUP;
-            return -1;
+            return 0;
         }
         return pub->set_option (ZLINK_SPOT_PUB_OPT_NODROP, optval_, optvallen_);
     }
@@ -419,6 +422,21 @@ int spot_subject_get_sub_option (void *handle_,
         std::vector<zlink::spot_sub_t::subject_descriptor_t> subjects;
         if (spot_append_subscription_subjects (handle_, &subjects) != 0)
             return -1;
+        std::sort (subjects.begin (), subjects.end (),
+                   [] (const zlink::spot_sub_t::subject_descriptor_t &lhs_,
+                       const zlink::spot_sub_t::subject_descriptor_t &rhs_) {
+                       if (lhs_.subject != rhs_.subject)
+                           return lhs_.subject < rhs_.subject;
+                       return lhs_.subject_kind < rhs_.subject_kind;
+                   });
+        subjects.erase (
+          std::unique (subjects.begin (), subjects.end (),
+                       [] (const zlink::spot_sub_t::subject_descriptor_t &lhs_,
+                           const zlink::spot_sub_t::subject_descriptor_t &rhs_) {
+                           return lhs_.subject == rhs_.subject
+                                  && lhs_.subject_kind == rhs_.subject_kind;
+                       }),
+          subjects.end ());
         *static_cast<int *> (optval_) = static_cast<int> (subjects.size ());
         *optvallen_ = sizeof (int);
         return 0;

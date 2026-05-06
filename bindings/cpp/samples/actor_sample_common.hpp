@@ -24,7 +24,7 @@ struct actor_sample_capture_t
 struct actor_sample_dispatch_state_t
 {
     zlink::service::spot_t *spot;
-    zlink::service::actor_t *actor;
+    zlink::service::spot_node_t *node;
     actor_sample_capture_t *capture;
 };
 
@@ -59,11 +59,20 @@ inline void actor_sample_dispatch (void *,
 
     if (info_->event == ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE) {
         for (;;) {
-            auto part = state->actor->recv_part (zlink::recv_flags_t::dontwait);
-            if (!part.has_value ())
+            zlink_actor_recv_info_t recv_info;
+            zlink_msg_t native_part;
+            zlink_part_flag_t more = ZLINK_PART_FINAL;
+            zlink_recv_result_t rc = zlink_spot_node_actor_recv_part (
+              state->node->handle (),
+              static_cast<const zlink_actor_ref_t *> (info_->subject),
+              &recv_info, &native_part, &more, ZLINK_RECV_FLAGS_DONTWAIT);
+            if (rc == ZLINK_RECV_NO_DATA)
                 break;
+            assert (rc == ZLINK_RECV_OK);
+            zlink::message_t part;
+            assert (zlink_msg_move (part.handle (), &native_part) == 0);
             std::lock_guard<std::mutex> lock (state->capture->mutex);
-            state->capture->payload += part->part.to_string ();
+            state->capture->payload += part.to_string ();
             state->capture->actor_read = true;
             state->capture->cv.notify_all ();
         }

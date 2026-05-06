@@ -6,7 +6,7 @@
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 5
 #define ZLINK_VERSION_MINOR 3
-#define ZLINK_VERSION_PATCH 7
+#define ZLINK_VERSION_PATCH 8
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -216,6 +216,7 @@ typedef struct zlink_routing_id_t
 } zlink_routing_id_t;
 
 #define ZLINK_ACTOR_ID_MAX 256
+#define ZLINK_ACTOR_JOIN_INFO_REMOTE 1u
 
 typedef void (zlink_free_fn) (void *data_, void *hint_);
 
@@ -236,8 +237,13 @@ typedef struct zlink_actor_recv_info_t
 
 typedef struct zlink_actor_join_info_t
 {
-    zlink_actor_ref_t actor;
+    zlink_actor_ref_t source_actor;
+    zlink_actor_ref_t target_actor;
     zlink_routing_id_t source_node_rid;
+    zlink_routing_id_t source_spot_rid;
+    zlink_routing_id_t target_node_rid;
+    zlink_routing_id_t target_spot_rid;
+    uint64_t join_epoch;
     void *request;
     uint32_t flags;
 } zlink_actor_join_info_t;
@@ -487,17 +493,6 @@ ZLINK_EXPORT zlink_submit_result_t zlink_stream_send_bound_actor_part (
   zlink_msg_t *part_,
   zlink_send_flags_t flags_,
   zlink_part_flag_t part_flag_);
-
-ZLINK_EXPORT zlink_submit_result_t zlink_actor_send_bound_session_msg (
-  void *actor_,
-  zlink_msg_t *message_,
-  zlink_send_flags_t flags_);
-
-ZLINK_EXPORT zlink_submit_result_t zlink_actor_send_bound_session_packet (
-  void *actor_,
-  zlink_msg_t *header_,
-  zlink_msg_t *body_,
-  zlink_send_flags_t flags_);
 
 /**
  * @brief Install or replace the send-ready callback for a send-capable subject.
@@ -1218,17 +1213,19 @@ ZLINK_EXPORT void *zlink_spot_node_new (
  */
 ZLINK_EXPORT zlink_close_result_t zlink_spot_node_destroy (void **node_p);
 
-ZLINK_EXPORT void *zlink_spot_node_actor_new (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_entry_spot (
   void *node_,
-  const char *actor_id_);
+  void **spot_out_);
 
-ZLINK_EXPORT zlink_request_result_t zlink_actor_destroy (
-  void **actor_p_,
-  uint32_t timeout_ms_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup (
+  void *node_,
+  const zlink_routing_id_t *spot_rid_,
+  void **spot_out_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_actor_get_ref (
-  void *actor_,
-  zlink_actor_ref_t *out_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_new (
+  void *node_,
+  const char *actor_id_,
+  zlink_actor_ref_t *actor_out_);
 
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_lookup (
   void *node_,
@@ -1248,7 +1245,7 @@ ZLINK_EXPORT zlink_request_result_t zlink_spot_node_create_remote_actor (
   zlink_actor_create_result_t *out_,
   uint32_t timeout_ms_);
 
-ZLINK_EXPORT zlink_request_result_t zlink_spot_node_destroy_remote_actor (
+ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_destroy (
   void *node_,
   const zlink_actor_ref_t *actor_,
   uint32_t timeout_ms_);
@@ -1258,18 +1255,10 @@ ZLINK_EXPORT zlink_handler_result_t zlink_spot_node_actor_admission_handler (
   zlink_actor_admission_handler_fn handler_,
   void *userdata_);
 
-ZLINK_EXPORT zlink_submit_result_t zlink_actor_join_spot (
-  void *actor_,
-  void *spot_,
-  zlink_msg_t *message_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_);
-
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_join_spot (
   void *node_,
   const zlink_actor_ref_t *actor_,
+  const zlink_routing_id_t *dest_node_rid_,
   const zlink_routing_id_t *dest_spot_rid_,
   zlink_msg_t *message_,
   zlink_reply_handler_fn handler_,
@@ -1289,22 +1278,30 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply (
   uint32_t accepted_,
   zlink_msg_t *message_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_actor_leave_spot (
-  void *actor_,
-  void *spot_);
-
 ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_leave_spot (
   void *node_,
   const zlink_actor_ref_t *actor_,
-  const zlink_routing_id_t *dest_spot_rid_,
+  const zlink_routing_id_t *current_spot_rid_,
   uint32_t timeout_ms_);
 
-ZLINK_EXPORT zlink_recv_result_t zlink_actor_recv_part (
-  void *actor_,
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_node_actor_recv_part (
+  void *node_,
+  const zlink_actor_ref_t *actor_,
   zlink_actor_recv_info_t *info_out_,
   zlink_msg_t *part_out_,
   zlink_part_flag_t *has_more_out_,
   zlink_recv_flags_t flags_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg (
+  void *node_,
+  const zlink_actor_ref_t *actor_,
+  zlink_msg_t *message_,
+  zlink_send_flags_t flags_);
+
+ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_close_bound_session (
+  void *node_,
+  const zlink_actor_ref_t *actor_,
+  uint32_t timeout_ms_);
 
 /** @brief Bind the SPOT node to an endpoint.
  *

@@ -5,13 +5,225 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <map>
 #include <mutex>
+#include <set>
 #include <string.h>
 #include <thread>
 #include <vector>
 
 namespace
 {
+extern "C" int zlink_actor_pending_target_enqueue_for_testing (
+  const zlink_actor_ref_t *target_ref_, const char *payload_);
+extern "C" int zlink_actor_queue_size_for_testing (
+  const zlink_actor_ref_t *actor_ref_, size_t *size_out_);
+
+struct test_actor_handle_t
+{
+    void *node;
+    zlink_actor_ref_t ref;
+};
+
+std::set<test_actor_handle_t *> g_test_actor_handles;
+std::map<std::string, void *> g_test_actor_nodes_by_ref;
+
+std::string test_rid_key (const zlink_routing_id_t &rid_)
+{
+    return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
+}
+
+std::string test_actor_ref_key (const zlink_actor_ref_t &ref_)
+{
+    return test_rid_key (ref_.node_rid) + ":" + ref_.actor_id;
+}
+
+test_actor_handle_t *test_actor_new (void *node_, const char *actor_id_)
+{
+    zlink_actor_ref_t ref;
+    if (zlink_spot_node_actor_new (node_, actor_id_, &ref) != ZLINK_CONFIG_OK)
+        return NULL;
+    test_actor_handle_t *handle = new test_actor_handle_t;
+    handle->node = node_;
+    handle->ref = ref;
+    g_test_actor_handles.insert (handle);
+    g_test_actor_nodes_by_ref[test_actor_ref_key (ref)] = node_;
+    return handle;
+}
+
+zlink_config_result_t test_actor_get_ref (void *actor_, zlink_actor_ref_t *out_)
+{
+    test_actor_handle_t *handle = static_cast<test_actor_handle_t *> (actor_);
+    if (!handle || g_test_actor_handles.count (handle) == 0 || !out_) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    *out_ = handle->ref;
+    return ZLINK_CONFIG_OK;
+}
+
+zlink_request_result_t test_actor_destroy (void **actor_p_,
+                                           uint32_t timeout_ms_)
+{
+    if (!actor_p_ || !*actor_p_) {
+        errno = EFAULT;
+        return ZLINK_REQUEST_INVALID_ARGUMENT;
+    }
+    test_actor_handle_t *handle =
+      static_cast<test_actor_handle_t *> (*actor_p_);
+    if (g_test_actor_handles.count (handle) == 0) {
+        errno = EBUSY;
+        return ZLINK_REQUEST_BUSY;
+    }
+    const zlink_request_result_t rc =
+      zlink_spot_node_actor_destroy (handle->node, &handle->ref, timeout_ms_);
+    if (rc == ZLINK_REQUEST_OK) {
+        g_test_actor_nodes_by_ref.erase (test_actor_ref_key (handle->ref));
+        g_test_actor_handles.erase (handle);
+        delete handle;
+        *actor_p_ = NULL;
+    }
+    return rc;
+}
+
+zlink_submit_result_t test_actor_join_spot (
+  void *actor_,
+  void *spot_,
+  zlink_msg_t *message_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_)
+{
+    test_actor_handle_t *handle = static_cast<test_actor_handle_t *> (actor_);
+    if (!handle || g_test_actor_handles.count (handle) == 0)
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    zlink_routing_id_t spot_rid;
+    if (zlink_get_routing_id (spot_, &spot_rid) != ZLINK_CONFIG_OK)
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    return zlink_spot_node_actor_join_spot (
+      handle->node, &handle->ref, &handle->ref.node_rid, &spot_rid, message_,
+      handler_, userdata_, flags_, timeout_ms_);
+}
+
+zlink_config_result_t test_actor_leave_spot (void *actor_, void *spot_)
+{
+    test_actor_handle_t *handle = static_cast<test_actor_handle_t *> (actor_);
+    if (!handle || g_test_actor_handles.count (handle) == 0)
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    zlink_routing_id_t spot_rid;
+    if (zlink_get_routing_id (spot_, &spot_rid) != ZLINK_CONFIG_OK)
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    const zlink_request_result_t rc =
+      zlink_spot_node_actor_leave_spot (handle->node, &handle->ref, &spot_rid,
+                                        0);
+    return rc == ZLINK_REQUEST_OK ? ZLINK_CONFIG_OK
+                                  : ZLINK_CONFIG_INVALID_STATE;
+}
+
+zlink_recv_result_t test_actor_recv_part (
+  void *subject_,
+  zlink_actor_recv_info_t *info_out_,
+  zlink_msg_t *part_out_,
+  zlink_part_flag_t *has_more_out_,
+  zlink_recv_flags_t flags_)
+{
+    test_actor_handle_t *handle = static_cast<test_actor_handle_t *> (subject_);
+    if (g_test_actor_handles.count (handle) != 0) {
+        return zlink_spot_node_actor_recv_part (
+          handle->node, &handle->ref, info_out_, part_out_, has_more_out_,
+          flags_);
+    }
+    const zlink_actor_ref_t *ref =
+      static_cast<const zlink_actor_ref_t *> (subject_);
+    std::map<std::string, void *>::const_iterator it =
+      g_test_actor_nodes_by_ref.find (test_actor_ref_key (*ref));
+    if (it == g_test_actor_nodes_by_ref.end ()) {
+        errno = EFAULT;
+        return ZLINK_RECV_INVALID_HANDLE;
+    }
+    return zlink_spot_node_actor_recv_part (it->second, ref, info_out_,
+                                            part_out_, has_more_out_, flags_);
+}
+
+zlink_submit_result_t test_actor_send_bound_session_msg (
+  void *actor_, zlink_msg_t *message_, zlink_send_flags_t flags_)
+{
+    test_actor_handle_t *handle = static_cast<test_actor_handle_t *> (actor_);
+    if (!handle || g_test_actor_handles.count (handle) == 0)
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    return zlink_spot_node_actor_send_bound_session_msg (
+      handle->node, &handle->ref, message_, flags_);
+}
+
+zlink_submit_result_t test_actor_send_bound_session_packet (
+  void *actor_,
+  zlink_msg_t *header_,
+  zlink_msg_t *body_,
+  zlink_send_flags_t flags_)
+{
+    if (!header_ || !body_)
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    const size_t header_size = zlink_msg_size (header_);
+    const size_t body_size = zlink_msg_size (body_);
+    if (header_size > UINT16_MAX || body_size > UINT32_MAX
+        || header_size > SIZE_MAX - body_size - 6u)
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+
+    zlink_msg_t frame;
+    if (zlink_msg_init_size (&frame, 6u + header_size + body_size)
+        != ZLINK_CONFIG_OK)
+        return ZLINK_SUBMIT_INTERNAL_ERROR;
+    unsigned char *data = static_cast<unsigned char *> (zlink_msg_data (&frame));
+    data[0] = static_cast<unsigned char> ((header_size >> 8) & 0xffu);
+    data[1] = static_cast<unsigned char> (header_size & 0xffu);
+    data[2] = static_cast<unsigned char> ((body_size >> 24) & 0xffu);
+    data[3] = static_cast<unsigned char> ((body_size >> 16) & 0xffu);
+    data[4] = static_cast<unsigned char> ((body_size >> 8) & 0xffu);
+    data[5] = static_cast<unsigned char> (body_size & 0xffu);
+    memcpy (data + 6, zlink_msg_data (header_), header_size);
+    memcpy (data + 6 + header_size, zlink_msg_data (body_), body_size);
+
+    const zlink_submit_result_t rc =
+      test_actor_send_bound_session_msg (actor_, &frame, flags_);
+    if (rc != ZLINK_SUBMIT_OK) {
+        zlink_msg_close (&frame);
+        return rc;
+    }
+    zlink_msg_close (header_);
+    zlink_msg_init (header_);
+    zlink_msg_close (body_);
+    zlink_msg_init (body_);
+    return ZLINK_SUBMIT_OK;
+}
+
+#define zlink_spot_node_actor_new(node_, actor_id_)                            \
+    test_actor_new (node_, actor_id_)
+#define zlink_actor_get_ref(actor_, out_) test_actor_get_ref (actor_, out_)
+#define zlink_actor_destroy(actor_p_, timeout_ms_)                             \
+    test_actor_destroy (actor_p_, timeout_ms_)
+#define zlink_actor_join_spot(actor_, spot_, message_, handler_, userdata_,    \
+                              flags_, timeout_ms_)                            \
+    test_actor_join_spot (actor_, spot_, message_, handler_, userdata_, flags_, \
+                          timeout_ms_)
+#define zlink_actor_leave_spot(actor_, spot_)                                  \
+    test_actor_leave_spot (actor_, spot_)
+#define zlink_actor_recv_part(subject_, info_out_, part_out_, has_more_out_,   \
+                              flags_)                                         \
+    test_actor_recv_part (subject_, info_out_, part_out_, has_more_out_, flags_)
+#define zlink_actor_send_bound_session_msg(actor_, message_, flags_)           \
+    test_actor_send_bound_session_msg (actor_, message_, flags_)
+#define zlink_actor_send_bound_session_packet(actor_, header_, body_, flags_)  \
+    test_actor_send_bound_session_packet (actor_, header_, body_, flags_)
+#define zlink_spot_node_destroy_remote_actor(node_, actor_, timeout_ms_)       \
+    zlink_spot_node_actor_destroy (node_, actor_, timeout_ms_)
+#define zlink_spot_node_actor_join_spot(node_, actor_, dest_spot_rid_,         \
+                                        message_, handler_, userdata_, flags_, \
+                                        timeout_ms_)                           \
+    zlink_spot_node_actor_join_spot (node_, actor_, &(actor_)->node_rid,       \
+                                     dest_spot_rid_, message_, handler_,       \
+                                     userdata_, flags_, timeout_ms_)
+
 void set_rid (zlink_routing_id_t *rid_, const char *text_)
 {
     memset (rid_, 0, sizeof (*rid_));
@@ -29,6 +241,126 @@ std::string msg_text (zlink_msg_t *msg_)
 {
     return std::string (static_cast<const char *> (zlink_msg_data (msg_)),
                         zlink_msg_size (msg_));
+}
+
+void assert_rid_text (const zlink_routing_id_t &rid_, const char *text_)
+{
+    TEST_ASSERT_EQUAL_UINT8 (strlen (text_), rid_.size);
+    TEST_ASSERT_EQUAL_MEMORY (text_, rid_.data, rid_.size);
+}
+
+void assert_same_rid (const zlink_routing_id_t &lhs_,
+                      const zlink_routing_id_t &rhs_)
+{
+    TEST_ASSERT_EQUAL_UINT8 (lhs_.size, rhs_.size);
+    TEST_ASSERT_EQUAL_MEMORY (lhs_.data, rhs_.data, lhs_.size);
+}
+
+void test_entry_spot_facade_lookup_and_rid ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *entry_a = NULL;
+    void *entry_b = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_entry_spot (node, &entry_a));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_entry_spot (node, &entry_b));
+    TEST_ASSERT_NOT_NULL (entry_a);
+    TEST_ASSERT_NOT_NULL (entry_b);
+    TEST_ASSERT_NOT_EQUAL (entry_a, entry_b);
+
+    zlink_routing_id_t entry_a_rid;
+    zlink_routing_id_t entry_b_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (entry_a, &entry_a_rid));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (entry_b, &entry_b_rid));
+    assert_same_rid (entry_a_rid, entry_b_rid);
+
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_set_routing_id (entry_a, "entry-main", 10));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (entry_b, &entry_b_rid));
+    assert_rid_text (entry_b_rid, "entry-main");
+
+    void *entry_lookup = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_spot_lookup (node, &entry_b_rid,
+                                                    &entry_lookup));
+    TEST_ASSERT_NOT_NULL (entry_lookup);
+    zlink_routing_id_t lookup_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (entry_lookup, &lookup_rid));
+    assert_rid_text (lookup_rid, "entry-main");
+
+    size_t count = 0;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_spots_snapshot (node, NULL, &count));
+    TEST_ASSERT_TRUE (count >= 1);
+
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&entry_a));
+    TEST_ASSERT_NULL (entry_a);
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&entry_lookup));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&entry_b));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+void test_spot_lookup_refcount_and_rid_index ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
+    zlink_routing_id_t old_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_get_routing_id (spot, &old_rid));
+
+    void *lookup = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_spot_lookup (node, &old_rid, &lookup));
+    TEST_ASSERT_NOT_NULL (lookup);
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&spot));
+    TEST_ASSERT_NULL (spot);
+
+    zlink_routing_id_t lookup_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (lookup, &lookup_rid));
+    assert_same_rid (old_rid, lookup_rid);
+
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_set_routing_id (lookup, "room-a", 6));
+    void *unchanged = reinterpret_cast<void *> (0x1);
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_FOUND,
+                       zlink_spot_node_spot_lookup (node, &old_rid,
+                                                    &unchanged));
+    TEST_ASSERT_EQUAL (reinterpret_cast<void *> (0x1), unchanged);
+
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (lookup, &lookup_rid));
+    assert_rid_text (lookup_rid, "room-a");
+    void *new_lookup = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_spot_lookup (node, &lookup_rid,
+                                                    &new_lookup));
+    TEST_ASSERT_NOT_NULL (new_lookup);
+
+    void *other = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (other);
+    TEST_ASSERT_NOT_EQUAL (ZLINK_CONFIG_OK,
+                           zlink_set_routing_id (other, "room-a", 6));
+
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&other));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&new_lookup));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&lookup));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
 bool reserve_loopback_tcp_endpoint (char *endpoint_, size_t endpoint_size_)
@@ -162,6 +494,7 @@ struct actor_probe_t
         accept_join = true;
         try_destroy_in_actor_callback = false;
         destroy_in_actor_callback_blocked = false;
+        memset (&last_join_info, 0, sizeof (last_join_info));
     }
 
     std::mutex mutex;
@@ -177,7 +510,9 @@ struct actor_probe_t
     int actor_event_count;
     int actor_recv_count;
     zlink_part_flag_t first_part_flag;
+    zlink_actor_join_info_t last_join_info;
     std::string payload;
+    std::string join_payload;
     bool accept_join;
     bool try_destroy_in_actor_callback;
     bool destroy_in_actor_callback_blocked;
@@ -218,6 +553,11 @@ void on_dispatch (void *,
             probe->cv.notify_all ();
             return;
         }
+        {
+            std::lock_guard<std::mutex> lock (probe->mutex);
+            probe->last_join_info = join_info;
+            probe->join_payload = msg_text (&message);
+        }
         zlink_msg_close (&message);
 
         zlink_msg_t reply;
@@ -238,8 +578,9 @@ void on_dispatch (void *,
         {
             std::lock_guard<std::mutex> lock (probe->mutex);
             probe->double_reply_checked =
-              late_rc == ZLINK_SUBMIT_INVALID_STATE;
-            if (late_rc != ZLINK_SUBMIT_INVALID_STATE) {
+              late_rc == ZLINK_SUBMIT_INVALID_STATE
+              || late_rc == ZLINK_SUBMIT_INVALID_ARGUMENT;
+            if (!probe->double_reply_checked) {
                 probe->failed = true;
                 probe->last_errno = zlink_errno ();
             }
@@ -329,6 +670,11 @@ void on_join_only_dispatch (void *,
         probe->last_errno = zlink_errno ();
         probe->cv.notify_all ();
         return;
+    }
+    {
+        std::lock_guard<std::mutex> lock (probe->mutex);
+        probe->last_join_info = join_info;
+        probe->join_payload = msg_text (&message);
     }
     zlink_msg_close (&message);
 
@@ -625,9 +971,20 @@ void test_actor_lifecycle_ref_and_lookup ()
     options.mode = ZLINK_SPOT_NODE_MODE_ALL;
     void *node = zlink_spot_node_new (ctx, &options);
     TEST_ASSERT_NOT_NULL (node);
+    void *other_node = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (other_node);
 
+    void *entry = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_entry_spot (node, &entry));
+    TEST_ASSERT_NOT_NULL (entry);
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_set_routing_id (entry, "entry-actor", 11));
     void *actor = zlink_spot_node_actor_new (node, "actor-a");
     TEST_ASSERT_NOT_NULL (actor);
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_STATE,
+                       zlink_set_routing_id (entry, "entry-changed", 13));
+    TEST_ASSERT_EQUAL (EBUSY, zlink_errno ());
 
     zlink_actor_ref_t ref;
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
@@ -650,9 +1007,95 @@ void test_actor_lifecycle_ref_and_lookup ()
                                                    &unchecked));
     TEST_ASSERT_EQUAL_UINT64 (0, unchecked.generation);
 
+    zlink_actor_recv_info_t non_owner_info;
+    zlink_msg_t non_owner_part;
+    zlink_part_flag_t non_owner_flag = ZLINK_PART_FINAL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_init (&non_owner_part));
+    TEST_ASSERT_EQUAL (ZLINK_RECV_INVALID_HANDLE,
+                       zlink_spot_node_actor_recv_part (
+                         other_node, &ref, &non_owner_info, &non_owner_part,
+                         &non_owner_flag, ZLINK_RECV_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&non_owner_part));
+
+    zlink_spot_node_actor_entry_t actor_row;
+    size_t actor_count = 1;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_actors_snapshot (node, &actor_row,
+                                                        &actor_count));
+    TEST_ASSERT_EQUAL_UINT (1, actor_count);
+    TEST_ASSERT_EQUAL_UINT32 (1, actor_row.joined);
+    assert_rid_text (actor_row.joined_spot_rid, "entry-actor");
+
+    zlink_actor_ref_t entry_rows[1];
+    size_t entry_count = 1;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_actors_snapshot (entry, entry_rows,
+                                                   &entry_count));
+    TEST_ASSERT_EQUAL_UINT (1, entry_count);
+    TEST_ASSERT_EQUAL_UINT64 (ref.generation, entry_rows[0].generation);
+
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor, 0));
     TEST_ASSERT_NULL (actor);
+    void *recreated = zlink_spot_node_actor_new (node, "actor-a");
+    TEST_ASSERT_NOT_NULL (recreated);
+    zlink_actor_ref_t recreated_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_get_ref (recreated, &recreated_ref));
+    TEST_ASSERT_NOT_EQUAL (ref.generation, recreated_ref.generation);
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&recreated, 0));
 
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&entry));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&other_node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+void test_entry_spot_dispatch_receives_bound_actor_message ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+    void *entry = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_entry_spot (node, &entry));
+    TEST_ASSERT_NOT_NULL (entry);
+
+    actor_probe_t probe;
+    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
+                       zlink_spot_dispatch_event_handler (entry, on_dispatch,
+                                                          &probe));
+    void *actor = zlink_spot_node_actor_new (node, "entry-dispatch");
+    TEST_ASSERT_NOT_NULL (actor);
+    zlink_actor_ref_t ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
+
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    zlink_routing_id_t session_rid;
+    set_rid (&session_rid, "entry-session");
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (node, stream, &session_rid,
+                                                &ref, 1000));
+    zlink_msg_t part;
+    init_text_msg (&part, "entry-payload");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_stream_send_bound_actor_part (
+                         node, stream, &session_rid, "entry-dispatch", &part,
+                         ZLINK_DONTWAIT, ZLINK_PART_FINAL));
+
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return probe.actor_event || probe.failed; }));
+        TEST_ASSERT_FALSE (probe.failed);
+        TEST_ASSERT_EQUAL_STRING ("entry-payload", probe.payload.c_str ());
+    }
+
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor, 1000));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&entry));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
@@ -676,6 +1119,15 @@ void test_actor_join_bind_relay_and_dispatch_recv ()
     TEST_ASSERT_NOT_NULL (foreign_spot);
     void *actor = zlink_spot_node_actor_new (node, "actor-b");
     TEST_ASSERT_NOT_NULL (actor);
+    zlink_actor_ref_t ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
+    zlink_routing_id_t session_rid;
+    set_rid (&session_rid, "session-1");
+    void *stream_marker = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream_marker);
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (node, stream_marker,
+                                                &session_rid, &ref, 1000));
 
     actor_probe_t probe;
     probe.try_destroy_in_actor_callback = true;
@@ -700,9 +1152,6 @@ void test_actor_join_bind_relay_and_dispatch_recv ()
         TEST_ASSERT_TRUE (probe.double_reply_checked);
     }
 
-    zlink_actor_ref_t ref;
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
-
     zlink_msg_t duplicate_join;
     actor_probe_t duplicate_probe;
     init_text_msg (&duplicate_join, "duplicate");
@@ -713,22 +1162,6 @@ void test_actor_join_bind_relay_and_dispatch_recv ()
     TEST_ASSERT_TRUE (duplicate_probe.join_done);
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, duplicate_probe.join_result);
 
-    zlink_msg_t other_join;
-    init_text_msg (&other_join, "other");
-    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_INVALID_STATE,
-                       zlink_actor_join_spot (actor, other_spot, &other_join,
-                                              on_join_reply, &probe,
-                                              ZLINK_DONTWAIT, 1000));
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&other_join));
-
-    zlink_msg_t foreign_join;
-    init_text_msg (&foreign_join, "foreign");
-    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_INVALID_ARGUMENT,
-                       zlink_actor_join_spot (actor, foreign_spot,
-                                              &foreign_join, on_join_reply,
-                                              &probe, ZLINK_DONTWAIT, 1000));
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&foreign_join));
-
     zlink_actor_ref_t joined_rows[1];
     size_t joined_count = 1;
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
@@ -738,17 +1171,9 @@ void test_actor_join_bind_relay_and_dispatch_recv ()
     TEST_ASSERT_EQUAL_UINT64 (ref.generation, joined_rows[0].generation);
 
     void *joined_actor_handle = actor;
-    TEST_ASSERT_EQUAL (ZLINK_REQUEST_BUSY,
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_INVALID_STATE,
                        zlink_actor_destroy (&joined_actor_handle, 0));
     TEST_ASSERT_EQUAL_PTR (actor, joined_actor_handle);
-
-    zlink_routing_id_t session_rid;
-    set_rid (&session_rid, "session-1");
-    void *stream_marker = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
-    TEST_ASSERT_NOT_NULL (stream_marker);
-    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
-                       zlink_stream_bind_actor (node, stream_marker,
-                                                &session_rid, &ref, 1000));
 
     zlink_msg_t part;
     init_text_msg (&part, "payload");
@@ -767,8 +1192,12 @@ void test_actor_join_bind_relay_and_dispatch_recv ()
     }
 
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_leave_spot (actor, spot));
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_leave_spot (actor, spot));
+    void *entry = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_entry_spot (node, &entry));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_leave_spot (actor, entry));
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor, 0));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&entry));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream_marker));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&foreign_spot));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&foreign_node));
@@ -791,6 +1220,15 @@ void test_actor_join_timeout_without_dispatch_handler ()
     TEST_ASSERT_NOT_NULL (spot);
     void *actor = zlink_spot_node_actor_new (node, "actor-timeout");
     TEST_ASSERT_NOT_NULL (actor);
+    zlink_actor_ref_t ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    zlink_routing_id_t session_rid;
+    set_rid (&session_rid, "timeout-session");
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (node, stream, &session_rid,
+                                                &ref, 1000));
 
     actor_probe_t probe;
     zlink_msg_t join_msg;
@@ -816,7 +1254,694 @@ void test_actor_join_timeout_without_dispatch_handler ()
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&message));
 
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor, 0));
+    void *no_timeout_actor =
+      zlink_spot_node_actor_new (node, "actor-no-timeout");
+    TEST_ASSERT_NOT_NULL (no_timeout_actor);
+    zlink_actor_ref_t no_timeout_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_get_ref (no_timeout_actor,
+                                            &no_timeout_ref));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (node, stream, &session_rid,
+                                                &no_timeout_ref, 1000));
+    actor_probe_t no_timeout_probe;
+    zlink_msg_t no_timeout_join;
+    init_text_msg (&no_timeout_join, "join-no-timeout");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_actor_join_spot (
+                         no_timeout_actor, spot, &no_timeout_join,
+                         on_join_reply, &no_timeout_probe, ZLINK_DONTWAIT,
+                         0));
+    {
+        std::unique_lock<std::mutex> lock (no_timeout_probe.mutex);
+        TEST_ASSERT_FALSE (no_timeout_probe.cv.wait_for (
+          lock, std::chrono::milliseconds (80),
+          [&] { return no_timeout_probe.join_done; }));
+    }
+    TEST_ASSERT_EQUAL (ZLINK_RECV_OK,
+                       zlink_spot_actor_join_recv (
+                         spot, &info, &message, ZLINK_RECV_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&message));
+    zlink_msg_t no_timeout_reply;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_init (&no_timeout_reply));
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_spot_actor_join_reply (spot, &info, 0u,
+                                                    &no_timeout_reply));
+    {
+        std::unique_lock<std::mutex> lock (no_timeout_probe.mutex);
+        TEST_ASSERT_TRUE (no_timeout_probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return no_timeout_probe.join_done; }));
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_REJECTED,
+                           no_timeout_probe.join_result);
+    }
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_actor_destroy (&no_timeout_actor, 0));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&spot));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+void test_actor_join_requires_session_and_leave_stale ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    zlink_spot_node_options_t options;
+    options.mode = ZLINK_SPOT_NODE_MODE_ALL;
+    void *node = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
+    void *actor = zlink_spot_node_actor_new (node, "join-session-required");
+    TEST_ASSERT_NOT_NULL (actor);
+
+    actor_probe_t probe;
+    zlink_msg_t no_session_join;
+    init_text_msg (&no_session_join, "no-session");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_INVALID_STATE,
+                       zlink_actor_join_spot (actor, spot, &no_session_join,
+                                              on_join_reply, &probe,
+                                              ZLINK_DONTWAIT, 1000));
+    TEST_ASSERT_EQUAL_STRING ("no-session",
+                              msg_text (&no_session_join).c_str ());
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&no_session_join));
+
+    zlink_actor_ref_t ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    zlink_routing_id_t session_rid;
+    set_rid (&session_rid, "join-session-required-session");
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (node, stream, &session_rid,
+                                                &ref, 1000));
+
+    zlink_msg_t pending_join;
+    init_text_msg (&pending_join, "pending");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_actor_join_spot (actor, spot, &pending_join,
+                                              on_join_reply, &probe,
+                                              ZLINK_DONTWAIT, 5000));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_BUSY,
+                       zlink_spot_node_actor_leave_spot (
+                         node, &ref, &ref.node_rid, 0));
+    void *destroy_candidate = actor;
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_BUSY,
+                       zlink_actor_destroy (&destroy_candidate, 0));
+    TEST_ASSERT_EQUAL_PTR (actor, destroy_candidate);
+
+    zlink_actor_join_info_t info;
+    zlink_msg_t message;
+    TEST_ASSERT_EQUAL (ZLINK_RECV_OK,
+                       zlink_spot_actor_join_recv (
+                         spot, &info, &message, ZLINK_RECV_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&message));
+    zlink_msg_t reply;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_init (&reply));
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_spot_actor_join_reply (spot, &info, 1u, &reply));
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lock, std::chrono::seconds (2), [&] { return probe.join_done; }));
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, probe.join_result);
+    }
+
+    void *other_spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (other_spot);
+    zlink_routing_id_t other_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (other_spot, &other_rid));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_INVALID_STATE,
+                       zlink_spot_node_actor_leave_spot (node, &ref,
+                                                         &other_rid, 0));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_spot_node_actor_leave_spot (node, &ref,
+                                                         &info.target_spot_rid,
+                                                         0));
+
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor, 0));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&other_spot));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&spot));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+void test_actor_remote_join_handoff_accept_reject_timeout ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    zlink_spot_node_options_t options;
+    options.mode = ZLINK_SPOT_NODE_MODE_ALL;
+    void *session_node = zlink_spot_node_new (ctx, &options);
+    void *source_node = zlink_spot_node_new (ctx, &options);
+    void *target_node = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (session_node);
+    TEST_ASSERT_NOT_NULL (source_node);
+    TEST_ASSERT_NOT_NULL (target_node);
+    zlink_routing_id_t target_node_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (target_node, &target_node_rid));
+
+    void *target_spot = zlink_spot_new (target_node);
+    TEST_ASSERT_NOT_NULL (target_spot);
+    zlink_routing_id_t target_spot_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (target_spot, &target_spot_rid));
+    actor_probe_t probe;
+    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
+                       zlink_spot_dispatch_event_handler (target_spot,
+                                                          on_dispatch,
+                                                          &probe));
+
+    void *source_actor =
+      zlink_spot_node_actor_new (source_node, "remote-move");
+    TEST_ASSERT_NOT_NULL (source_actor);
+    zlink_actor_ref_t source_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_get_ref (source_actor, &source_ref));
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    zlink_routing_id_t session_rid;
+    set_rid (&session_rid, "remote-join-session");
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (session_node, stream,
+                                                &session_rid, &source_ref,
+                                                1000));
+
+    zlink_msg_t join_msg;
+    init_text_msg (&join_msg, "handoff-state");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       (zlink_spot_node_actor_join_spot) (
+                         session_node, &source_ref, &target_node_rid,
+                         &target_spot_rid, &join_msg, on_join_reply, &probe,
+                         ZLINK_DONTWAIT, 1000));
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return probe.join_done || probe.failed; }));
+        TEST_ASSERT_FALSE (probe.failed);
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, probe.join_result);
+        TEST_ASSERT_TRUE ((probe.last_join_info.flags
+                           & ZLINK_ACTOR_JOIN_INFO_REMOTE)
+                          != 0);
+        TEST_ASSERT_EQUAL_STRING ("handoff-state",
+                                  probe.join_payload.c_str ());
+        TEST_ASSERT_EQUAL_UINT64 (source_ref.generation,
+                                  probe.last_join_info.source_actor.generation);
+        TEST_ASSERT_TRUE (rid_equals (probe.last_join_info.target_node_rid,
+                                      target_node_rid));
+        TEST_ASSERT_TRUE (rid_equals (
+          probe.last_join_info.target_actor.node_rid, target_node_rid));
+        TEST_ASSERT_TRUE (probe.last_join_info.target_actor.generation != 0);
+    }
+
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+                       zlink_spot_node_actor_lookup (source_node,
+                                                     "remote-move",
+                                                     &source_ref));
+    TEST_ASSERT_EQUAL (ENOENT, zlink_errno ());
+    zlink_actor_ref_t target_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_actor_lookup (target_node,
+                                                     "remote-move",
+                                                     &target_ref));
+    TEST_ASSERT_TRUE (rid_equals (target_ref.node_rid, target_node_rid));
+    g_test_actor_nodes_by_ref.erase (test_actor_ref_key (source_ref));
+    g_test_actor_nodes_by_ref[test_actor_ref_key (target_ref)] = target_node;
+
+    zlink_msg_t relayed;
+    init_text_msg (&relayed, "after-handoff");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_stream_send_bound_actor_part (
+                         session_node, stream, &session_rid, "remote-move",
+                         &relayed, ZLINK_DONTWAIT, ZLINK_PART_FINAL));
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return probe.actor_recv_count >= 1 || probe.failed; }));
+        TEST_ASSERT_FALSE (probe.failed);
+        TEST_ASSERT_EQUAL_STRING ("after-handoff", probe.payload.c_str ());
+    }
+
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_spot_node_actor_leave_spot (
+                         session_node, &target_ref, &target_spot_rid, 1000));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_spot_node_actor_destroy (session_node,
+                                                      &target_ref, 1000));
+
+    void *reject_actor =
+      zlink_spot_node_actor_new (source_node, "remote-reject");
+    TEST_ASSERT_NOT_NULL (reject_actor);
+    zlink_actor_ref_t reject_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_get_ref (reject_actor, &reject_ref));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (session_node, stream,
+                                                &session_rid, &reject_ref,
+                                                1000));
+    probe.accept_join = false;
+    probe.join_done = false;
+    probe.failed = false;
+    zlink_msg_t reject_join;
+    init_text_msg (&reject_join, "reject-state");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       (zlink_spot_node_actor_join_spot) (
+                         session_node, &reject_ref, &target_node_rid,
+                         &target_spot_rid, &reject_join, on_join_reply,
+                         &probe, ZLINK_DONTWAIT, 1000));
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lock, std::chrono::seconds (2), [&] { return probe.join_done; }));
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_REJECTED, probe.join_result);
+    }
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_actor_lookup (source_node,
+                                                     "remote-reject",
+                                                     &reject_ref));
+    zlink_actor_ref_t missing_target;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+                       zlink_spot_node_actor_lookup (target_node,
+                                                     "remote-reject",
+                                                     &missing_target));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_spot_node_actor_destroy (source_node,
+                                                      &reject_ref, 1000));
+
+    void *timeout_actor =
+      zlink_spot_node_actor_new (source_node, "remote-timeout");
+    TEST_ASSERT_NOT_NULL (timeout_actor);
+    zlink_actor_ref_t timeout_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_get_ref (timeout_actor, &timeout_ref));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (session_node, stream,
+                                                &session_rid, &timeout_ref,
+                                                1000));
+    void *silent_spot = zlink_spot_new (target_node);
+    TEST_ASSERT_NOT_NULL (silent_spot);
+    zlink_routing_id_t silent_spot_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (silent_spot, &silent_spot_rid));
+    actor_probe_t timeout_probe;
+    zlink_msg_t timeout_join;
+    init_text_msg (&timeout_join, "timeout-state");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       (zlink_spot_node_actor_join_spot) (
+                         session_node, &timeout_ref, &target_node_rid,
+                         &silent_spot_rid, &timeout_join, on_join_reply,
+                         &timeout_probe, ZLINK_DONTWAIT, 30));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+                       zlink_spot_node_actor_lookup (target_node,
+                                                     "remote-timeout",
+                                                     &missing_target));
+    {
+        size_t target_count = 0;
+        TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                           zlink_spot_node_actors_snapshot (target_node, NULL,
+                                                            &target_count));
+        TEST_ASSERT_EQUAL_UINT (0, target_count);
+    }
+    {
+        std::unique_lock<std::mutex> lock (timeout_probe.mutex);
+        TEST_ASSERT_TRUE (timeout_probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return timeout_probe.join_done; }));
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_TIMED_OUT,
+                           timeout_probe.join_result);
+    }
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_actor_lookup (source_node,
+                                                     "remote-timeout",
+                                                     &timeout_ref));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+                       zlink_spot_node_actor_lookup (target_node,
+                                                     "remote-timeout",
+                                                     &missing_target));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_spot_node_actor_destroy (source_node,
+                                                      &timeout_ref, 1000));
+
+    void *update_fail_spot = zlink_spot_new (target_node);
+    TEST_ASSERT_NOT_NULL (update_fail_spot);
+    zlink_routing_id_t update_fail_spot_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (update_fail_spot,
+                                             &update_fail_spot_rid));
+    void *update_fail_actor =
+      zlink_spot_node_actor_new (source_node, "remote-session-update-fail");
+    TEST_ASSERT_NOT_NULL (update_fail_actor);
+    zlink_actor_ref_t update_fail_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_get_ref (update_fail_actor,
+                                            &update_fail_ref));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (session_node, stream,
+                                                &session_rid,
+                                                &update_fail_ref, 1000));
+    actor_probe_t update_fail_probe;
+    zlink_msg_t update_fail_join;
+    init_text_msg (&update_fail_join, "session-update-fail");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       (zlink_spot_node_actor_join_spot) (
+                         session_node, &update_fail_ref, &target_node_rid,
+                         &update_fail_spot_rid, &update_fail_join,
+                         on_join_reply, &update_fail_probe, ZLINK_DONTWAIT,
+                         5000));
+    zlink_actor_join_info_t update_fail_info;
+    zlink_msg_t update_fail_request;
+    TEST_ASSERT_EQUAL (ZLINK_RECV_OK,
+                       zlink_spot_actor_join_recv (
+                         update_fail_spot, &update_fail_info,
+                         &update_fail_request, ZLINK_RECV_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL_STRING ("session-update-fail",
+                              msg_text (&update_fail_request).c_str ());
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_msg_close (&update_fail_request));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_unbind_actor (
+                         session_node, stream, &session_rid,
+                         "remote-session-update-fail", 1000));
+    zlink_msg_t update_fail_reply;
+    zlink_msg_init (&update_fail_reply);
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_spot_actor_join_reply (
+                         update_fail_spot, &update_fail_info, 1u,
+                         &update_fail_reply));
+    {
+        std::unique_lock<std::mutex> lock (update_fail_probe.mutex);
+        TEST_ASSERT_TRUE (update_fail_probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return update_fail_probe.join_done; }));
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_CONFLICT,
+                           update_fail_probe.join_result);
+    }
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_actor_lookup (
+                         source_node, "remote-session-update-fail",
+                         &update_fail_ref));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+                       zlink_spot_node_actor_lookup (
+                         target_node, "remote-session-update-fail",
+                         &missing_target));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_actor_destroy (&update_fail_actor, 1000));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK,
+                       zlink_spot_destroy (&update_fail_spot));
+
+    void *pending_buffer_spot = zlink_spot_new (target_node);
+    TEST_ASSERT_NOT_NULL (pending_buffer_spot);
+    zlink_routing_id_t pending_buffer_spot_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (pending_buffer_spot,
+                                             &pending_buffer_spot_rid));
+    void *pending_buffer_actor =
+      zlink_spot_node_actor_new (source_node, "remote-pending-buffer");
+    TEST_ASSERT_NOT_NULL (pending_buffer_actor);
+    zlink_actor_ref_t pending_buffer_source_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_get_ref (pending_buffer_actor,
+                                            &pending_buffer_source_ref));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (session_node, stream,
+                                                &session_rid,
+                                                &pending_buffer_source_ref,
+                                                1000));
+    actor_probe_t pending_buffer_probe;
+    zlink_msg_t pending_buffer_join;
+    init_text_msg (&pending_buffer_join, "pending-buffer");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       (zlink_spot_node_actor_join_spot) (
+                         session_node, &pending_buffer_source_ref,
+                         &target_node_rid, &pending_buffer_spot_rid,
+                         &pending_buffer_join, on_join_reply,
+                         &pending_buffer_probe, ZLINK_DONTWAIT, 5000));
+    zlink_actor_join_info_t pending_buffer_info;
+    zlink_msg_t pending_buffer_request;
+    TEST_ASSERT_EQUAL (ZLINK_RECV_OK,
+                       zlink_spot_actor_join_recv (
+                         pending_buffer_spot, &pending_buffer_info,
+                         &pending_buffer_request,
+                         ZLINK_RECV_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_msg_close (&pending_buffer_request));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_actor_pending_target_enqueue_for_testing (
+        &pending_buffer_info.target_actor, "buffered-after-visibility"));
+    zlink_msg_t pending_buffer_reply;
+    zlink_msg_init (&pending_buffer_reply);
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_spot_actor_join_reply (
+                         pending_buffer_spot, &pending_buffer_info, 1u,
+                         &pending_buffer_reply));
+    {
+        std::unique_lock<std::mutex> lock (pending_buffer_probe.mutex);
+        TEST_ASSERT_TRUE (pending_buffer_probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return pending_buffer_probe.join_done; }));
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                           pending_buffer_probe.join_result);
+    }
+    g_test_actor_nodes_by_ref.erase (
+      test_actor_ref_key (pending_buffer_source_ref));
+    g_test_actor_handles.erase (
+      static_cast<test_actor_handle_t *> (pending_buffer_actor));
+    delete static_cast<test_actor_handle_t *> (pending_buffer_actor);
+    pending_buffer_actor = NULL;
+    zlink_actor_ref_t pending_buffer_target_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_actor_lookup (
+                         target_node, "remote-pending-buffer",
+                         &pending_buffer_target_ref));
+    size_t pending_buffer_queue_size = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_actor_queue_size_for_testing (&pending_buffer_target_ref,
+                                          &pending_buffer_queue_size));
+    TEST_ASSERT_EQUAL_UINT (1, pending_buffer_queue_size);
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_spot_node_actor_leave_spot (
+                         session_node, &pending_buffer_target_ref,
+                         &pending_buffer_spot_rid, 1000));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_spot_node_actor_destroy (
+                         target_node, &pending_buffer_target_ref, 1000));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK,
+                       zlink_spot_destroy (&pending_buffer_spot));
+
+    void *disconnect_actor =
+      zlink_spot_node_actor_new (source_node, "remote-disconnect-before");
+    TEST_ASSERT_NOT_NULL (disconnect_actor);
+    zlink_actor_ref_t disconnect_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_get_ref (disconnect_actor,
+                                            &disconnect_ref));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (session_node, stream,
+                                                &session_rid, &disconnect_ref,
+                                                1000));
+    actor_probe_t disconnect_probe;
+    zlink_msg_t disconnect_join;
+    init_text_msg (&disconnect_join, "disconnect-before");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       (zlink_spot_node_actor_join_spot) (
+                         session_node, &disconnect_ref, &target_node_rid,
+                         &silent_spot_rid, &disconnect_join, on_join_reply,
+                         &disconnect_probe, ZLINK_DONTWAIT, 5000));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+                       zlink_spot_node_actor_lookup (
+                         target_node, "remote-disconnect-before",
+                         &missing_target));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream));
+    stream = NULL;
+    {
+        std::unique_lock<std::mutex> lock (disconnect_probe.mutex);
+        TEST_ASSERT_TRUE (disconnect_probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return disconnect_probe.join_done; }));
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_TERMINATED,
+                           disconnect_probe.join_result);
+    }
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_actor_lookup (
+                         source_node, "remote-disconnect-before",
+                         &disconnect_ref));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+                       zlink_spot_node_actor_lookup (
+                         target_node, "remote-disconnect-before",
+                         &missing_target));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_spot_node_actor_destroy (source_node,
+                                                      &disconnect_ref, 1000));
+
+    void *after_stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (after_stream);
+    zlink_routing_id_t after_session_rid;
+    set_rid (&after_session_rid, "remote-disconnect-after-session");
+    void *after_actor =
+      zlink_spot_node_actor_new (source_node, "remote-disconnect-after");
+    TEST_ASSERT_NOT_NULL (after_actor);
+    zlink_actor_ref_t after_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_get_ref (after_actor, &after_ref));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (session_node, after_stream,
+                                                &after_session_rid,
+                                                &after_ref, 1000));
+    probe.accept_join = true;
+    probe.join_done = false;
+    probe.failed = false;
+    zlink_msg_t after_join;
+    init_text_msg (&after_join, "disconnect-after");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       (zlink_spot_node_actor_join_spot) (
+                         session_node, &after_ref, &target_node_rid,
+                         &target_spot_rid, &after_join, on_join_reply,
+                         &probe, ZLINK_DONTWAIT, 1000));
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return probe.join_done || probe.failed; }));
+        TEST_ASSERT_FALSE (probe.failed);
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, probe.join_result);
+    }
+    zlink_actor_ref_t after_target_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_actor_lookup (
+                         target_node, "remote-disconnect-after",
+                         &after_target_ref));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_ARGUMENT,
+                       zlink_spot_node_actor_lookup (
+                         source_node, "remote-disconnect-after", &after_ref));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (after_stream));
+    void *target_entry = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_entry_spot (target_node,
+                                                   &target_entry));
+    zlink_actor_ref_t target_entry_rows[1];
+    size_t target_entry_count = 1;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_actors_snapshot (target_entry,
+                                                   target_entry_rows,
+                                                   &target_entry_count));
+    TEST_ASSERT_EQUAL_UINT (1, target_entry_count);
+    TEST_ASSERT_EQUAL_UINT64 (after_target_ref.generation,
+                              target_entry_rows[0].generation);
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_spot_node_actor_destroy (target_node,
+                                                      &after_target_ref,
+                                                      1000));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&target_entry));
+
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&silent_spot));
+    if (stream)
+        TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&target_spot));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&target_node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&source_node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&session_node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+void test_actor_close_bound_session_returns_entry_and_dispatches ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    zlink_spot_node_options_t options;
+    options.mode = ZLINK_SPOT_NODE_MODE_ALL;
+    void *node = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (node);
+    void *entry = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_entry_spot (node, &entry));
+    TEST_ASSERT_NOT_NULL (entry);
+    actor_probe_t entry_probe;
+    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
+                       zlink_spot_dispatch_event_handler (entry, on_dispatch,
+                                                          &entry_probe));
+
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
+    zlink_routing_id_t spot_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_get_routing_id (spot, &spot_rid));
+    actor_probe_t join_probe;
+    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
+                       zlink_spot_dispatch_event_handler (
+                         spot, on_join_only_dispatch, &join_probe));
+
+    void *actor = zlink_spot_node_actor_new (node, "close-bound");
+    TEST_ASSERT_NOT_NULL (actor);
+    zlink_actor_ref_t ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    zlink_routing_id_t session_rid;
+    set_rid (&session_rid, "close-bound-session");
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (node, stream, &session_rid,
+                                                &ref, 1000));
+
+    zlink_msg_t join_msg;
+    init_text_msg (&join_msg, "join");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_actor_join_spot (actor, spot, &join_msg,
+                                              on_join_reply, &join_probe,
+                                              ZLINK_DONTWAIT, 1000));
+    {
+        std::unique_lock<std::mutex> lock (join_probe.mutex);
+        TEST_ASSERT_TRUE (join_probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return join_probe.join_done; }));
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, join_probe.join_result);
+    }
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_INVALID_STATE,
+                       zlink_stream_unbind_actor (node, stream, &session_rid,
+                                                  "close-bound", 1000));
+
+    zlink_msg_t unread;
+    init_text_msg (&unread, "queued-before-close");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_stream_send_bound_actor_part (
+                         node, stream, &session_rid, "close-bound", &unread,
+                         ZLINK_DONTWAIT, ZLINK_PART_FINAL));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_spot_node_actor_close_bound_session (node, &ref,
+                                                                  1000));
+    {
+        std::unique_lock<std::mutex> lock (entry_probe.mutex);
+        TEST_ASSERT_TRUE (entry_probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return entry_probe.actor_recv_count >= 1
+                         || entry_probe.failed; }));
+        TEST_ASSERT_FALSE (entry_probe.failed);
+        TEST_ASSERT_EQUAL_STRING ("queued-before-close",
+                                  entry_probe.payload.c_str ());
+    }
+
+    zlink_actor_ref_t entry_rows[1];
+    size_t entry_count = 1;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_actors_snapshot (entry, entry_rows,
+                                                   &entry_count));
+    TEST_ASSERT_EQUAL_UINT (1, entry_count);
+    TEST_ASSERT_EQUAL_UINT64 (ref.generation, entry_rows[0].generation);
+
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_NOT_FOUND,
+                       zlink_spot_node_actor_close_bound_session (node, &ref,
+                                                                  0));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor, 0));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&spot));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&entry));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
@@ -834,13 +1959,24 @@ void test_actor_join_reject_ref_edges_and_rejoin_fifo ()
     TEST_ASSERT_NOT_NULL (caller_node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
-    zlink_routing_id_t spot_rid = find_spot_rid_not_in (node, {});
+    zlink_routing_id_t spot_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_get_routing_id (spot, &spot_rid));
     void *second_spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (second_spot);
-    zlink_routing_id_t second_spot_rid =
-      find_spot_rid_not_in (node, {spot_rid});
+    zlink_routing_id_t second_spot_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (second_spot, &second_spot_rid));
     void *actor = zlink_spot_node_actor_new (node, "join-edge");
     TEST_ASSERT_NOT_NULL (actor);
+    zlink_actor_ref_t ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    zlink_routing_id_t session_rid;
+    set_rid (&session_rid, "join-fifo-session");
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (node, stream, &session_rid,
+                                                &ref, 1000));
 
     actor_probe_t reject_probe;
     reject_probe.accept_join = false;
@@ -909,8 +2045,6 @@ void test_actor_join_reject_ref_edges_and_rejoin_fifo ()
                            missing_actor_probe.join_result);
     }
 
-    zlink_actor_ref_t ref;
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
     zlink_routing_id_t missing_spot_rid;
     set_rid (&missing_spot_rid, "missing-spot");
     actor_probe_t missing_spot_probe;
@@ -946,14 +2080,6 @@ void test_actor_join_reject_ref_edges_and_rejoin_fifo ()
           [&] { return stale_probe.join_done; }));
         TEST_ASSERT_EQUAL (ZLINK_REQUEST_CONFLICT, stale_probe.join_result);
     }
-
-    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
-    TEST_ASSERT_NOT_NULL (stream);
-    zlink_routing_id_t session_rid;
-    set_rid (&session_rid, "join-fifo-session");
-    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
-                       zlink_stream_bind_actor (node, stream, &session_rid,
-                                                &ref, 1000));
 
     actor_probe_t join_only_probe;
     TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
@@ -996,8 +2122,9 @@ void test_actor_join_reject_ref_edges_and_rejoin_fifo ()
     actor_probe_t drain_probe;
     void *drain_spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (drain_spot);
-    zlink_routing_id_t drain_spot_rid =
-      find_spot_rid_not_in (node, {spot_rid, second_spot_rid});
+    zlink_routing_id_t drain_spot_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (drain_spot, &drain_spot_rid));
     TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
                        zlink_spot_dispatch_event_handler (drain_spot,
                                                           on_dispatch,
@@ -1194,13 +2321,26 @@ void test_spot_snapshot_destroy_joined_and_pending_counts ()
 
     void *joined_spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (joined_spot);
-    zlink_routing_id_t joined_spot_rid = find_spot_rid_not_in (node, {});
+    zlink_routing_id_t joined_spot_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (joined_spot, &joined_spot_rid));
     actor_probe_t joined_probe;
     TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
                        zlink_spot_dispatch_event_handler (
                          joined_spot, on_join_only_dispatch, &joined_probe));
     void *actor = zlink_spot_node_actor_new (node, "snapshot-joined");
     TEST_ASSERT_NOT_NULL (actor);
+    zlink_actor_ref_t actor_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_get_ref (actor, &actor_ref));
+    void *joined_stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (joined_stream);
+    zlink_routing_id_t joined_session_rid;
+    set_rid (&joined_session_rid, "snapshot-joined-session");
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (node, joined_stream,
+                                                &joined_session_rid,
+                                                &actor_ref, 1000));
     zlink_msg_t join_msg;
     init_text_msg (&join_msg, "join");
     TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
@@ -1218,6 +2358,7 @@ void test_spot_snapshot_destroy_joined_and_pending_counts ()
     zlink_spot_node_spot_entry_t row;
     TEST_ASSERT_TRUE (find_spot_snapshot_row (node, joined_spot_rid, &row));
     TEST_ASSERT_EQUAL_UINT32 (1, row.joined_actor_count);
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_BUSY, zlink_spot_destroy (&joined_spot));
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
                        zlink_actor_leave_spot (actor, joined_spot));
     TEST_ASSERT_TRUE (find_spot_snapshot_row (node, joined_spot_rid, &row));
@@ -1225,10 +2366,24 @@ void test_spot_snapshot_destroy_joined_and_pending_counts ()
 
     void *pending_spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (pending_spot);
-    zlink_routing_id_t pending_spot_rid =
-      find_spot_rid_not_in (node, {joined_spot_rid});
+    zlink_routing_id_t pending_spot_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (pending_spot,
+                                             &pending_spot_rid));
     void *pending_actor = zlink_spot_node_actor_new (node, "snapshot-pending");
     TEST_ASSERT_NOT_NULL (pending_actor);
+    zlink_actor_ref_t pending_actor_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_get_ref (pending_actor,
+                                            &pending_actor_ref));
+    void *pending_stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (pending_stream);
+    zlink_routing_id_t pending_session_rid;
+    set_rid (&pending_session_rid, "snapshot-pending-session");
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (node, pending_stream,
+                                                &pending_session_rid,
+                                                &pending_actor_ref, 1000));
     actor_probe_t pending_probe;
     zlink_msg_t pending_join;
     init_text_msg (&pending_join, "pending");
@@ -1239,20 +2394,35 @@ void test_spot_snapshot_destroy_joined_and_pending_counts ()
                                               5000));
     TEST_ASSERT_TRUE (find_spot_snapshot_row (node, pending_spot_rid, &row));
     TEST_ASSERT_EQUAL_UINT32 (1, row.pending_actor_join_count);
-    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&pending_spot));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_BUSY, zlink_spot_destroy (&pending_spot));
+    zlink_actor_join_info_t pending_info;
+    zlink_msg_t pending_message;
+    TEST_ASSERT_EQUAL (ZLINK_RECV_OK,
+                       zlink_spot_actor_join_recv (
+                         pending_spot, &pending_info, &pending_message,
+                         ZLINK_RECV_FLAGS_DONTWAIT));
+    zlink_msg_close (&pending_message);
+    zlink_msg_t pending_reply;
+    zlink_msg_init (&pending_reply);
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_spot_actor_join_reply (pending_spot,
+                                                    &pending_info, 0u,
+                                                    &pending_reply));
     {
         std::unique_lock<std::mutex> lock (pending_probe.mutex);
         TEST_ASSERT_TRUE (pending_probe.cv.wait_for (
           lock, std::chrono::seconds (2),
           [&] { return pending_probe.join_done; }));
-        TEST_ASSERT_EQUAL (ZLINK_REQUEST_TERMINATED,
-                           pending_probe.join_result);
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_REJECTED, pending_probe.join_result);
     }
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&pending_spot));
     TEST_ASSERT_FALSE (find_spot_snapshot_row (node, pending_spot_rid, &row));
 
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor, 0));
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
                        zlink_actor_destroy (&pending_actor, 0));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (pending_stream));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (joined_stream));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&joined_spot));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
@@ -1297,6 +2467,16 @@ void test_stream_bind_replaces_actor_id_entry ()
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
                        zlink_stream_bind_actor (node_a, stream, &session_rid,
                                                 &ref_b, 1000));
+    zlink_actor_ref_t stale_remote_ref = ref_b;
+    ++stale_remote_ref.generation;
+    zlink_msg_t stale_remote_send;
+    init_text_msg (&stale_remote_send, "drop-stale-remote");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_spot_node_actor_send_bound_session_msg (
+                         node_a, &stale_remote_ref, &stale_remote_send,
+                         ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_UINT (0, zlink_msg_size (&stale_remote_send));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&stale_remote_send));
     zlink_routing_id_t missing_node_rid;
     set_rid (&missing_node_rid, "missing-bind-node");
     zlink_actor_ref_t missing_node_ref;
@@ -1600,6 +2780,9 @@ void test_actor_request_timeout_atomicity_under_control_lock ()
 
     void *destroy_candidate = actor;
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_TIMED_OUT,
+                       zlink_actor_destroy (&destroy_candidate, 0));
+    TEST_ASSERT_EQUAL_PTR (actor, destroy_candidate);
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_TIMED_OUT,
                        zlink_actor_destroy (&destroy_candidate, 10));
     TEST_ASSERT_EQUAL_PTR (actor, destroy_candidate);
 
@@ -1609,7 +2792,22 @@ void test_actor_request_timeout_atomicity_under_control_lock ()
     set_rid (&session_rid, "timeout-session");
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_TIMED_OUT,
                        zlink_stream_bind_actor (caller, stream, &session_rid,
+                                                &ref, 0));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_TIMED_OUT,
+                       zlink_stream_bind_actor (caller, stream, &session_rid,
                                                 &ref, 10));
+    zlink_msg_t create_nowait_msg;
+    init_text_msg (&create_nowait_msg, "nowait-create");
+    zlink_actor_create_result_t create_nowait_result;
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_TIMED_OUT,
+                       zlink_spot_node_create_remote_actor (
+                         caller, &target_rid, "timeout-nowait",
+                         &create_nowait_msg, &create_nowait_result, 0));
+    TEST_ASSERT_EQUAL_STRING ("nowait-create",
+                              msg_text (&create_nowait_msg).c_str ());
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&create_nowait_msg));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_TIMED_OUT,
+                       zlink_spot_node_destroy_remote_actor (caller, &ref, 0));
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_TIMED_OUT,
                        zlink_spot_node_destroy_remote_actor (caller, &ref, 10));
 
@@ -1777,6 +2975,15 @@ void test_actor_queue_dispatch_receive_and_backpressure ()
     TEST_ASSERT_NOT_NULL (spot);
     void *actor = zlink_spot_node_actor_new (node, "queue-dispatch");
     TEST_ASSERT_NOT_NULL (actor);
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    zlink_routing_id_t session_rid;
+    set_rid (&session_rid, "queue-session");
+    zlink_actor_ref_t ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (node, stream, &session_rid,
+                                                &ref, 1000));
 
     actor_probe_t probe;
     probe.try_destroy_in_actor_callback = true;
@@ -1811,16 +3018,6 @@ void test_actor_queue_dispatch_receive_and_backpressure ()
                        zlink_actor_recv_part (actor, &outside_info,
                                               &outside_part, &outside_flag,
                                               ZLINK_RECV_FLAGS_DONTWAIT));
-
-    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
-    TEST_ASSERT_NOT_NULL (stream);
-    zlink_routing_id_t session_rid;
-    set_rid (&session_rid, "queue-session");
-    zlink_actor_ref_t ref;
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
-    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
-                       zlink_stream_bind_actor (node, stream, &session_rid,
-                                                &ref, 1000));
 
     zlink_msg_t first;
     init_text_msg (&first, "first");
@@ -1959,18 +3156,6 @@ void test_actor_route_move_joined_publish_and_provider_cleanup ()
     TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
                        zlink_spot_dispatch_event_handler (spot_b, on_dispatch,
                                                           &probe));
-    zlink_msg_t join_msg;
-    init_text_msg (&join_msg, "join-before-bind");
-    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
-                       zlink_actor_join_spot (actor_b, spot_b, &join_msg,
-                                              on_join_reply, &probe,
-                                              ZLINK_DONTWAIT, 1000));
-    {
-        std::unique_lock<std::mutex> lock (probe.mutex);
-        TEST_ASSERT_TRUE (probe.cv.wait_for (
-          lock, std::chrono::seconds (2), [&] { return probe.join_done; }));
-        TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, probe.join_result);
-    }
 
     void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (stream);
@@ -1990,13 +3175,29 @@ void test_actor_route_move_joined_publish_and_provider_cleanup ()
     TEST_ASSERT_EQUAL (ENOENT, zlink_errno ());
 
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (node_a, stream, &session_b,
+                                                &ref_b, 1000));
+    zlink_msg_t join_msg;
+    init_text_msg (&join_msg, "join-after-bind");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_actor_join_spot (actor_b, spot_b, &join_msg,
+                                              on_join_reply, &probe,
+                                              ZLINK_DONTWAIT, 1000));
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lock, std::chrono::seconds (2), [&] { return probe.join_done; }));
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, probe.join_result);
+    }
+
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
                        zlink_stream_bind_actor (node_a, stream, &session_a,
                                                 &ref_a, 1000));
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
                        zlink_discovery_resolve_actor (
                          discovery_a, "route-move", &route));
     TEST_ASSERT_EQUAL_UINT64 (ref_a.generation, route.actor.generation);
-    TEST_ASSERT_EQUAL_UINT32 (0, route.joined);
+    TEST_ASSERT_EQUAL_UINT32 (1, route.joined);
 
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
                        zlink_stream_bind_actor (node_a, stream, &session_b,
@@ -2017,7 +3218,7 @@ void test_actor_route_move_joined_publish_and_provider_cleanup ()
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
                        zlink_discovery_resolve_actor (
                          discovery_a, "route-move", &route));
-    TEST_ASSERT_EQUAL_UINT32 (0, route.joined);
+    TEST_ASSERT_EQUAL_UINT32 (1, route.joined);
 
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&spot_b));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node_b));
@@ -2082,6 +3283,20 @@ void test_remote_create_existing_and_destroy_generation_rules ()
     TEST_ASSERT_TRUE (create_result.actor.generation != 0);
     zlink_actor_ref_t remote_a_ref = create_result.actor;
 
+    void *target_entry = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_entry_spot (target, &target_entry));
+    TEST_ASSERT_NOT_NULL (target_entry);
+    zlink_actor_ref_t target_entry_rows[1];
+    size_t target_entry_count = 1;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_actors_snapshot (target_entry,
+                                                   target_entry_rows,
+                                                   &target_entry_count));
+    TEST_ASSERT_EQUAL_UINT (1, target_entry_count);
+    TEST_ASSERT_EQUAL_UINT64 (remote_a_ref.generation,
+                              target_entry_rows[0].generation);
+
     void *caller_same_id =
       zlink_spot_node_actor_new (caller, "remote-routed");
     TEST_ASSERT_NOT_NULL (caller_same_id);
@@ -2113,6 +3328,66 @@ void test_remote_create_existing_and_destroy_generation_rules ()
                          &create_result, 1000));
     TEST_ASSERT_EQUAL (ZLINK_ACTOR_CREATE_EXISTING, create_result.status);
     TEST_ASSERT_EQUAL (1, admission.calls);
+
+    void *remote_a_stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (remote_a_stream);
+    zlink_routing_id_t remote_a_session_rid;
+    set_rid (&remote_a_session_rid, "remote-a-session");
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (caller, remote_a_stream,
+                                                &remote_a_session_rid,
+                                                &remote_a_ref, 1000));
+
+    void *remote_existing_spot = zlink_spot_new (target);
+    TEST_ASSERT_NOT_NULL (remote_existing_spot);
+    zlink_routing_id_t remote_existing_spot_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (remote_existing_spot,
+                                             &remote_existing_spot_rid));
+    actor_probe_t remote_existing_probe;
+    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
+                       zlink_spot_dispatch_event_handler (
+                         remote_existing_spot, on_join_only_dispatch,
+                         &remote_existing_probe));
+    zlink_msg_t remote_existing_join;
+    init_text_msg (&remote_existing_join, "remote-existing-join");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_spot_node_actor_join_spot (
+                         caller, &remote_a_ref, &remote_existing_spot_rid,
+                         &remote_existing_join, on_join_reply,
+                         &remote_existing_probe, ZLINK_DONTWAIT, 1000));
+    {
+        std::unique_lock<std::mutex> lock (remote_existing_probe.mutex);
+        TEST_ASSERT_TRUE (remote_existing_probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return remote_existing_probe.join_done; }));
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                           remote_existing_probe.join_result);
+    }
+    admission.calls = 0;
+    init_text_msg (&create_msg, "existing-keeps-spot");
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_spot_node_create_remote_actor (
+                         caller, &target_rid, "remote-a", &create_msg,
+                         &create_result, 1000));
+    TEST_ASSERT_EQUAL (ZLINK_ACTOR_CREATE_EXISTING, create_result.status);
+    TEST_ASSERT_EQUAL (0, admission.calls);
+    zlink_actor_ref_t remote_existing_rows[1];
+    size_t remote_existing_count = 1;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_actors_snapshot (remote_existing_spot,
+                                                   remote_existing_rows,
+                                                   &remote_existing_count));
+    TEST_ASSERT_EQUAL_UINT (1, remote_existing_count);
+    TEST_ASSERT_EQUAL_UINT64 (remote_a_ref.generation,
+                              remote_existing_rows[0].generation);
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_INVALID_STATE,
+                       zlink_spot_node_actor_destroy (caller, &remote_a_ref,
+                                                      1000));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_spot_node_actor_leave_spot (
+                         caller, &remote_a_ref, &remote_existing_spot_rid,
+                         1000));
 
     zlink_msg_t retry_msg;
     zlink_actor_create_result_t retry_result;
@@ -2159,7 +3434,7 @@ void test_remote_create_existing_and_destroy_generation_rules ()
                          caller, &target_rid, "remote-rejected", &create_msg,
                          &create_result, 1000));
     TEST_ASSERT_EQUAL_UINT (0, zlink_msg_size (&create_msg));
-    TEST_ASSERT_EQUAL (4, admission.calls);
+    TEST_ASSERT_EQUAL (3, admission.calls);
 
     admission.accept = true;
     admission.try_reentrant_create = true;
@@ -2170,7 +3445,7 @@ void test_remote_create_existing_and_destroy_generation_rules ()
                          &create_result, 1000));
     TEST_ASSERT_TRUE (admission.reentrant_create_blocked);
     TEST_ASSERT_EQUAL (ZLINK_ACTOR_CREATE_CREATED, create_result.status);
-    TEST_ASSERT_EQUAL (5, admission.calls);
+    TEST_ASSERT_EQUAL (4, admission.calls);
 
     zlink_actor_ref_t stale = create_result.actor;
     ++stale.generation;
@@ -2206,13 +3481,25 @@ void test_remote_create_existing_and_destroy_generation_rules ()
                        zlink_spot_node_destroy_remote_actor (caller,
                                                             &unchecked,
                                                             1000));
-    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_NOT_FOUND,
                        zlink_spot_node_destroy_remote_actor (caller,
                                                             &unchecked,
                                                             1000));
 
     void *remote_joined = zlink_spot_node_actor_new (target, "remote-joined");
     TEST_ASSERT_NOT_NULL (remote_joined);
+    zlink_actor_ref_t remote_joined_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_get_ref (remote_joined,
+                                            &remote_joined_ref));
+    void *remote_joined_stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (remote_joined_stream);
+    zlink_routing_id_t remote_joined_session_rid;
+    set_rid (&remote_joined_session_rid, "remote-joined-session");
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       zlink_stream_bind_actor (caller, remote_joined_stream,
+                                                &remote_joined_session_rid,
+                                                &remote_joined_ref, 1000));
     void *remote_spot = zlink_spot_new (target);
     TEST_ASSERT_NOT_NULL (remote_spot);
     actor_probe_t remote_join_probe;
@@ -2234,11 +3521,7 @@ void test_remote_create_existing_and_destroy_generation_rules ()
           [&] { return remote_join_probe.join_done; }));
         TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, remote_join_probe.join_result);
     }
-    zlink_actor_ref_t remote_joined_ref;
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
-                       zlink_actor_get_ref (remote_joined,
-                                            &remote_joined_ref));
-    TEST_ASSERT_EQUAL (ZLINK_REQUEST_BUSY,
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_INVALID_STATE,
                        zlink_spot_node_destroy_remote_actor (
                          caller, &remote_joined_ref, 1000));
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
@@ -2246,6 +3529,7 @@ void test_remote_create_existing_and_destroy_generation_rules ()
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
                        zlink_spot_node_destroy_remote_actor (
                          caller, &remote_joined_ref, 1000));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (remote_joined_stream));
 
     void *remote_bound = zlink_spot_node_actor_new (target, "remote-bound");
     TEST_ASSERT_NOT_NULL (remote_bound);
@@ -2303,6 +3587,10 @@ void test_remote_create_existing_and_destroy_generation_rules ()
                          1000));
 
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&remote_spot));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK,
+                       zlink_spot_destroy (&remote_existing_spot));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (remote_a_stream));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&target_entry));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&target));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&caller));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
@@ -2312,9 +3600,15 @@ int main ()
 {
     setup_test_environment ();
     UNITY_BEGIN ();
+    RUN_TEST (test_entry_spot_facade_lookup_and_rid);
+    RUN_TEST (test_spot_lookup_refcount_and_rid_index);
     RUN_TEST (test_actor_lifecycle_ref_and_lookup);
+    RUN_TEST (test_entry_spot_dispatch_receives_bound_actor_message);
     RUN_TEST (test_actor_join_bind_relay_and_dispatch_recv);
     RUN_TEST (test_actor_join_timeout_without_dispatch_handler);
+    RUN_TEST (test_actor_join_requires_session_and_leave_stale);
+    RUN_TEST (test_actor_remote_join_handoff_accept_reject_timeout);
+    RUN_TEST (test_actor_close_bound_session_returns_entry_and_dispatches);
     RUN_TEST (test_actor_join_reject_ref_edges_and_rejoin_fifo);
     RUN_TEST (test_actor_send_bound_session_raw_and_packet);
     RUN_TEST (test_actor_route_sync_publish_requires_option_and_bind);

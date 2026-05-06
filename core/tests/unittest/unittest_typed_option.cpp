@@ -26,6 +26,12 @@ void *make_test_spot_handle (void *node_)
     if (!spot)
         return NULL;
     spot->node = node;
+    spot->logical_state = zlink::spot_node_access_t::entry_spot_state (node);
+    if (!spot->logical_state) {
+        delete spot;
+        return NULL;
+    }
+    spot->spot_routing_id = spot->logical_state->routing_id;
     register_spot_mode_state (spot);
     return spot;
 }

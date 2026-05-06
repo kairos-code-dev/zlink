@@ -161,21 +161,21 @@ void destroy_spot_handle_for_testing (void *spot_)
     zlink_spot_request_reply_cleanup_spot (spot);
     zlink::part_helper_internal::cleanup_handle (spot);
 
-    if (spot->sub) {
-        int rc = spot->sub->destroy ();
+    if (spot->logical_state && spot->logical_state->sub) {
+        int rc = spot->logical_state->sub->destroy ();
         if (rc != 0)
-            rc = spot->sub->destroy_from_node ();
+            rc = spot->logical_state->sub->destroy_from_node ();
         zlink_assert (rc == 0);
-        delete spot->sub;
-        spot->sub = NULL;
+        delete spot->logical_state->sub;
+        spot->logical_state->sub = NULL;
     }
-    if (spot->pub) {
-        int rc = spot->pub->destroy ();
+    if (spot->logical_state && spot->logical_state->pub) {
+        int rc = spot->logical_state->pub->destroy ();
         if (rc != 0)
-            rc = spot->pub->destroy_from_node ();
+            rc = spot->logical_state->pub->destroy_from_node ();
         zlink_assert (rc == 0);
-        delete spot->pub;
-        spot->pub = NULL;
+        delete spot->logical_state->pub;
+        spot->logical_state->pub = NULL;
     }
 
     spot->tag = 0xdeadbeef;

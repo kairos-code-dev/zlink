@@ -24,9 +24,13 @@ int main ()
     zlink::service::spot_t first_spot = node.create_spot ();
     zlink::service::spot_t second_spot = node.create_spot ();
     zlink::service::actor_t actor = node.create_actor ("single-player");
+    zlink::stream_socket_t stream (ctx);
+    zlink::routing_id_t session = sample_rid ("single-player-session");
+    zlink::actor_ref_t ref = actor.ref ();
+    stream.bind_actor (node, session, ref, std::chrono::milliseconds (1000));
 
     actor_sample_capture_t first_capture;
-    actor_sample_dispatch_state_t first_state {&first_spot, &actor, &first_capture};
+    actor_sample_dispatch_state_t first_state {&first_spot, &node, &first_capture};
     first_spot.on_dispatch_event (&join_only_dispatch, &first_state);
     zlink::message_t join_first = zlink::message_t::from_string ("join-first");
     assert (actor.join (
@@ -39,11 +43,6 @@ int main ()
     assert (wait_until_flag (first_capture, &actor_sample_capture_t::joined));
     assert (first_capture.join_result == zlink::request_result_t::ok);
 
-    zlink::stream_socket_t stream (ctx);
-    zlink::routing_id_t session = sample_rid ("single-player-session");
-    zlink::actor_ref_t ref = actor.ref ();
-    stream.bind_actor (node, session, ref, std::chrono::milliseconds (1000));
-
     zlink::message_t before = zlink::message_t::from_string ("before-");
     assert (stream.send_bound_actor_part (
       node, session, "single-player", before, zlink::send_flags_t::dontwait));
@@ -54,7 +53,7 @@ int main ()
       node, session, "single-player", between, zlink::send_flags_t::dontwait));
 
     actor_sample_capture_t second_capture;
-    actor_sample_dispatch_state_t second_state {&second_spot, &actor,
+    actor_sample_dispatch_state_t second_state {&second_spot, &node,
                                                 &second_capture};
     second_spot.on_dispatch_event (&actor_sample_dispatch, &second_state);
     zlink::message_t join_second = zlink::message_t::from_string ("join-second");

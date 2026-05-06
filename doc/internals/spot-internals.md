@@ -13,6 +13,7 @@ flowchart TB
     subgraph UserLayer["User Layer"]
         app["Application"]
         spot["Spot facade"]
+        entry["Entry Spot facade"]
         node["SpotNode"]
     end
 
@@ -20,6 +21,7 @@ flowchart TB
         runtime["spot_runtime_t"]
         agg["aggregate subscription state"]
         route_ids["external route id map"]
+        entry_state["Entry Spot logical state"]
     end
 
     subgraph DataPlane["Data Plane Thread"]
@@ -30,8 +32,11 @@ flowchart TB
     end
 
     app --> spot
+    app --> entry
     spot --> node
+    entry --> node
     node --> runtime
+    node --> entry_state
     runtime --> agg
     runtime --> route_ids
     runtime --> loop
@@ -42,6 +47,12 @@ flowchart TB
 
 `SpotNode` owns lifecycle. `Spot` is a borrowed data-plane facade layered on top
 of that node. Destroying a `Spot` does not destroy its backing `SpotNode`.
+
+`Spot` facade does not own physical sockets. All transport sockets are owned by the
+`SpotNode`. `Spot` owns only its logical dispatch queue and dispatch event context.
+The `Entry Spot` is one per `SpotNode`, owned by the `SpotNode`. The application
+obtains an `Entry Spot` facade via `zlink_spot_node_entry_spot()` and closes it with
+`zlink_spot_destroy()`.
 
 ## 2. Internal Socket Topology
 
@@ -263,10 +274,14 @@ control plane and data plane are being calculated with different units.
 
 ## 7. Actor dispatch internal model
 
-An Actor is a routing target managed by `SpotNode`. The Actor handle itself
-does not own a socket, inproc endpoint, or transport endpoint. Parts relayed
-from a STREAM session to an Actor pass through the target SpotNode's Actor
-table into the Actor unread state.
+An Actor is a routing target managed by `SpotNode`. There is no public Actor
+handle; `zlink_actor_ref_t` identifies the Actor. Actors do not own a socket,
+inproc endpoint, or transport endpoint. Parts relayed from a STREAM session to
+an Actor pass through the target SpotNode's Actor table into the Actor unread
+state.
+
+A newly created Actor's current Spot is always the Entry Spot. Actor messages are
+dispatched from the Entry Spot context until the Actor joins a user Spot.
 
 ```mermaid
 flowchart LR
@@ -307,9 +322,9 @@ Each Actor table row holds:
 | State | Meaning |
 |-------|---------|
 | Actor ref | node rid, actor id, generation |
-| joined Spot rid | the Spot this Actor is currently joined to |
+| joined Spot rid | the Spot this Actor is currently joined to; starts at the Entry Spot when created |
 | bound session ref | the STREAM session this Actor is attached to |
-| unread state | parts not yet read by `zlink_actor_recv_part()` |
+| unread state | parts not yet read by `zlink_spot_node_actor_recv_part()` |
 | pending join | join requests the Spot has not yet replied to |
 | route synced | whether the active route points to the current Actor ref |
 
@@ -321,8 +336,9 @@ the Actor slot and unread state are left in the pre-call state.
 
 When the Actor unread state gains a readable part and the Actor is joined to a
 Spot, `ACTOR_READABLE` readiness is posted to the Spot dispatch stream. The
-event subject is the drain target Actor handle. When a pending join request
-arrives, `ACTOR_JOIN_READABLE` readiness is posted to the Spot dispatch stream.
+event subject is a callback-lifetime `const zlink_actor_ref_t *`. When a
+pending join request arrives, `ACTOR_JOIN_READABLE` readiness is posted to the
+Spot dispatch stream.
 
 Readiness does not correspond 1:1 to message counts. Dispatch callbacks must
 drain each drain API until it returns `NO_DATA`. The internal implementation
@@ -335,3 +351,28 @@ joins a Spot. It is published when the Actor owner SpotNode's Discovery has
 actor route sync enabled and a `zlink_stream_bind_actor()` call succeeds.
 Unbind and session disconnect cleanup do not remove the active route. When the
 Actor that the active route points to is destroyed, route cleanup is performed.
+
+## 8. Entry Spot and Spot queue ownership
+
+A `Spot` facade does not create physical sockets. Messages demultiplexed from
+transport sockets owned by the `SpotNode` are delivered into the target `Spot`'s
+logical queue. A `Spot` owns:
+
+- routed ingress dispatch queue
+- subscribe ingress dispatch queue
+- channel reply dispatch queue
+- timer event queue
+- Actor unread staging queue
+
+Backpressure is controlled by the admission HWM on `SpotNode` transport sockets.
+There is no per-Spot HWM or size cap on internal queues.
+
+The `Entry Spot` is one per `SpotNode`. It is created automatically when the
+`SpotNode` is created and lives until the `SpotNode` is destroyed. The application
+registers a dispatch handler by obtaining a facade via `zlink_spot_node_entry_spot()`.
+When a session relay message arrives for a newly created Actor, `ACTOR_READABLE`
+readiness is posted to the Entry Spot's dispatch queue.
+
+A user Spot's logical state is destroyed when the last facade is closed, provided
+no Actor is currently joined and no join request is pending. Entry Spot logical state
+is owned by the `SpotNode` and is not reference-counted.

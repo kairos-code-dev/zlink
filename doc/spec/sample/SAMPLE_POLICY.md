@@ -231,8 +231,8 @@
 - `actor_single_player_queue_sample` 은 한 Actor의 unread state가 도착 순서대로
   drain되는 흐름을 보여준다.
 - sample은 `zlink_stream_bind_actor()`,
-  `zlink_stream_send_bound_actor_part()`, `zlink_actor_recv_part()`를 기준으로
-  작성한다.
+  `zlink_stream_send_bound_actor_part()`,
+  `zlink_spot_node_actor_recv_part()`를 기준으로 작성한다.
 - Actor active route 조회가 필요하면 `zlink_discovery_resolve_actor()`를 사용한다.
   generic route lookup을 Actor 주소 조회 sample에 쓰지 않는다.
 

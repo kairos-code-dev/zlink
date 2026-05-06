@@ -24,6 +24,11 @@ inline zlink_config_result_t from_errno (int err_)
         case EOPNOTSUPP:
 #endif
             return ZLINK_CONFIG_NOT_SUPPORTED;
+        case EBUSY:
+        case ESHUTDOWN:
+            return ZLINK_CONFIG_INVALID_STATE;
+        case ENOENT:
+            return ZLINK_CONFIG_NOT_FOUND;
         default:
             return ZLINK_CONFIG_INTERNAL_ERROR;
     }

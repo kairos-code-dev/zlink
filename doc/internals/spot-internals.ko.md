@@ -14,6 +14,7 @@ flowchart TB
     subgraph UserLayer["User Layer"]
         app["Application"]
         spot["Spot facade"]
+        entry["Entry Spot facade"]
         node["SpotNode"]
     end
 
@@ -21,6 +22,7 @@ flowchart TB
         runtime["spot_runtime_t"]
         agg["aggregate subscription state"]
         route_ids["external route id map"]
+        entry_state["Entry Spot logical state"]
     end
 
     subgraph DataPlane["Data Plane Thread"]
@@ -31,8 +33,11 @@ flowchart TB
     end
 
     app --> spot
+    app --> entry
     spot --> node
+    entry --> node
     node --> runtime
+    node --> entry_state
     runtime --> agg
     runtime --> route_ids
     runtime --> loop
@@ -43,6 +48,12 @@ flowchart TB
 
 `SpotNode`는 lifecycle owner이고, `Spot`은 그 위에서 빌려 쓰는 데이터 평면
 facade다. `Spot`을 닫아도 backing `SpotNode`는 자동으로 닫히지 않는다.
+
+`Spot` facade는 물리 socket을 소유하지 않는다. 모든 transport socket은
+`SpotNode`가 소유하며, `Spot`은 logical dispatch queue와 dispatch event context만
+가진다. `Entry Spot`은 `SpotNode`당 하나이며 `SpotNode`가 소유한다. `Entry Spot`
+facade는 application이 `zlink_spot_node_entry_spot()`으로 얻어서 사용하고,
+`zlink_spot_destroy()`로 닫는다.
 
 ## 2. 내부 소켓 토폴로지
 
@@ -260,9 +271,12 @@ data plane 기준이 다르기 때문이다.
 
 ## 7. Actor dispatch 내부 모델
 
-Actor는 SpotNode가 관리하는 routing target이다. Actor handle 자체는 socket,
-inproc endpoint, transport endpoint를 소유하지 않는다. STREAM session에서 Actor로
-relay되는 part는 target SpotNode의 Actor table을 거쳐 Actor unread state에 들어간다.
+Actor는 SpotNode가 관리하는 routing target이다. public pointer handle은 없고,
+`zlink_actor_ref_t`가 Actor를 식별한다. Actor는 socket, inproc endpoint, transport
+endpoint를 소유하지 않는다. STREAM session에서 Actor로 relay되는 part는 target
+SpotNode의 Actor table을 거쳐 Actor unread state에 들어간다.
+
+새로 만들어진 Actor의 current Spot은 항상 Entry Spot이다. Actor가 user Spot으로 join하기 전까지는 Entry Spot dispatch context에서 Actor 메시지를 처리한다.
 
 ```mermaid
 flowchart LR
@@ -300,9 +314,9 @@ Actor table row는 아래 상태를 함께 가진다.
 | 상태 | 의미 |
 |------|------|
 | Actor ref | node rid, Actor id, generation |
-| joined Spot rid | Actor가 현재 join된 Spot |
+| joined Spot rid | Actor가 현재 속한 Spot. 생성 직후에는 Entry Spot |
 | bound session ref | Actor가 attach된 STREAM session |
-| unread state | 아직 `zlink_actor_recv_part()`로 읽지 않은 part |
+| unread state | 아직 `zlink_spot_node_actor_recv_part()`로 읽지 않은 part |
 | pending join | Spot이 아직 reply하지 않은 join request |
 | route synced | active route가 현재 Actor ref를 가리키는지 여부 |
 
@@ -313,8 +327,8 @@ Actor destroy는 joined 상태, bound session detach, 진행 중인 multipart re
 ### 7.2 Dispatch event
 
 Actor unread state에 읽을 part가 생기고 Actor가 Spot에 join되어 있으면 Spot dispatch
-stream에 `ACTOR_READABLE` readiness가 올라간다. event subject는 drain 대상 Actor
-handle이다. pending join request가 생기면 Spot dispatch stream에
+stream에 `ACTOR_READABLE` readiness가 올라간다. event subject는 callback lifetime의
+`const zlink_actor_ref_t *`다. pending join request가 생기면 Spot dispatch stream에
 `ACTOR_JOIN_READABLE` readiness가 올라간다.
 
 readiness는 메시지 개수와 1:1로 대응하지 않는다. dispatch callback은 각 drain API가
@@ -327,3 +341,27 @@ Actor active route는 Actor 생성 시점이나 Spot join 시점에 publish하�
 Actor owner SpotNode의 Discovery에서 Actor route sync가 켜져 있고 STREAM bind가
 성공한 시점에 publish한다. unbind와 session disconnect cleanup은 active route를
 제거하지 않는다. active route가 가리키는 Actor가 destroy되면 route cleanup을 수행한다.
+
+## 8. Entry Spot과 Spot queue 소유권
+
+`Spot` facade는 물리 socket을 직접 만들지 않는다. `SpotNode`가 소유한 transport
+socket에서 demux한 메시지가 대상 `Spot`의 logical queue로 들어온다. `Spot`이
+소유하는 것은 아래와 같다.
+
+- routed ingress dispatch queue
+- subscribe ingress dispatch queue
+- channel reply dispatch queue
+- timer event queue
+- Actor unread staging queue
+
+backpressure 기준은 `SpotNode` transport socket의 admission HWM이다. Spot 내부
+queue에는 별도 HWM이나 크기 한계를 두지 않는다.
+
+`Entry Spot`은 `SpotNode`당 하나다. `SpotNode` 생성 시 자동으로 만들어지고,
+`SpotNode` destroy 전까지 살아 있다. application은 `zlink_spot_node_entry_spot()`으로
+facade를 얻어 dispatch handler를 등록한다. Actor 생성 직후 session relay message가
+도착하면 Entry Spot의 dispatch queue에서 `ACTOR_READABLE` readiness가 올라간다.
+
+user Spot의 logical state는 마지막 facade가 닫힐 때 제거된다. 단 joined Actor나
+pending join request가 남아 있으면 마지막 facade close는 `ZLINK_CLOSE_BUSY`로 실패한다.
+Entry Spot logical state는 facade reference count와 무관하게 `SpotNode`가 소유한다.

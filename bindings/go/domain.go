@@ -144,13 +144,17 @@ type SpotDispatchInfo struct {
 	Event       SpotDispatchEvent
 	SubjectKind SpotDispatchSubjectKind
 	Subject     unsafe.Pointer
+	Node        unsafe.Pointer
 }
 
 func (i SpotDispatchInfo) RecvActorPart(flags RecvFlags) (*ActorPart, error) {
 	if i.Event != SpotDispatchEventActorReadable || i.SubjectKind != SpotDispatchSubjectActor {
 		return nil, &RecvError{Result: RecvNotSupported, internalErrno: int(C.ENOTSUP)}
 	}
-	return recvActorPartFromHandle(i.Subject, flags)
+	if i.Subject == nil {
+		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	return recvActorPart(i.Node, actorRefFromC(*(*C.zlink_actor_ref_t)(i.Subject)), flags)
 }
 
 type Received struct {

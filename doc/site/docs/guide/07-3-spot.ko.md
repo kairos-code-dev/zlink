@@ -303,7 +303,8 @@ void my_dispatch_handler(
 ```
 
 dispatch 우선순위는 `SUBSCRIBE_READABLE` → `ROUTED_READABLE` →
-`CHANNEL_REPLY_READABLE` → `TIMER_READABLE` 순이다. 같은 callback 안에서
+`CHANNEL_REPLY_READABLE` → `TIMER_READABLE` → `ACTOR_JOIN_READABLE` →
+`ACTOR_READABLE` 순이다. 같은 callback 안에서
 모든 event를 처리하므로, 한 spot의 routed handler, subscription handler, timer
 handler, channel reply callback은 같은 실행 문맥에서 순차 실행된다.
 
@@ -368,6 +369,21 @@ stream에서 처리된다**.
 Actor는 session 메시지를 특정 처리 단위로 모으고, Spot dispatch callback에서
 읽을 대상을 구분하고 싶을 때 쓴다. 한 session은 여러 Actor를 bind할 수 있고,
 한 Actor는 동시에 하나의 session에만 bind된다.
+
+Actor는 생성 직후 `Entry Spot`에 속한다. `Entry Spot`은 `SpotNode`가 항상 가지고
+있는 기본 Spot이다. `Entry Spot`에 dispatch handler를 등록하면 새 Actor의 초기
+메시지를 받아 인증하거나 대상 Spot을 선택할 수 있다.
+
+Entry Spot facade는 아래처럼 얻는다.
+
+```c
+void *entry = NULL;
+zlink_spot_node_entry_spot(node, &entry);
+zlink_spot_dispatch_event_handler(entry, my_dispatch_handler, userdata);
+```
+
+Entry Spot facade를 다 쓴 뒤에는 `zlink_spot_destroy(&entry)`로 닫는다.
+Entry Spot 자체는 `SpotNode`가 소유하므로 facade를 닫아도 Entry Spot은 사라지지 않는다.
 
 가장 작은 흐름은 아래와 같다.
 
@@ -440,7 +456,9 @@ Remote Actor가 필요하면 caller node에서 `zlink_spot_node_create_remote_ac
 Actor가 Spot에 들어가야 하는 흐름에서는 join request를 보낸 뒤 Spot 쪽에서
 `zlink_spot_actor_join_recv()`로 요청 message를 읽고,
 `zlink_spot_actor_join_reply()`로 accept 또는 reject reply를 보낸다. 한 Actor는 한
-Spot에만 join할 수 있으므로 이동할 때는 기존 Spot에서 leave한 뒤 새 Spot에 join한다.
+Spot에만 join할 수 있으므로 이동할 때는 기존 Spot에서 `leave`한 뒤
+새 Spot에 join한다. `leave`는 Actor를 현재 Spot에서 Entry Spot으로 돌려보내는
+동작이다. Actor가 Entry Spot으로 돌아간 뒤에야 다른 user Spot으로 join할 수 있다.
 
 ## 8. 지금 공개된 poller와의 관계
 

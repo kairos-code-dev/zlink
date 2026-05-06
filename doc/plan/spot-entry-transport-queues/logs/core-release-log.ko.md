@@ -1,0 +1,26 @@
+# Core Release Log
+
+- 날짜: 2026-05-06
+- 대상: Core release
+- 수행한 명령:
+  - `rg -n "LIBZLINK_VERSION|ZLINK_VERSION_PATCH|VERSION 5\\.3\\.8|5\\.3\\.8|project\\(zlink VERSION" VERSION core/CMakeLists.txt core/include/zlink.h bindings/cpp/include/zlink.h bindings/go/include/zlink.h core/packaging/conan/conandata.yml`
+  - `cmake --build core/build && ctest --test-dir core/build --output-on-failure`
+  - `ctest --test-dir core/build -R '^unittest_service_mode_policy$' --output-on-failure`
+  - `ctest --test-dir core/build -R '^test_ctx_options$' --output-on-failure`
+  - `ctest --test-dir core/build --output-on-failure`
+  - `git tag --list 'core/v5.3.8'`
+  - `gh auth status`
+  - `git diff --check`
+- 확인한 draft spec 절: Public C API 변경 요약, 회귀 테스트
+- 발견한 문제:
+  - version bump 뒤 CTest split-case coverage 검증에서 queue 테스트 4개가 빠져 configure가 실패했다.
+  - 첫 전체 CTest에서 `unittest_service_mode_policy`가 mutex `EINVAL`로 한 번 abort했지만 단일 재실행에서 통과했다.
+  - 두 번째 전체 CTest에서 `test_ctx_options`가 종료 지연으로 한 번 timeout했지만 단일 재실행에서 통과했다.
+- 수정한 파일: `core/tests/CMakeLists.txt`
+- 검증 결과:
+  - `git diff --check` 통과.
+  - 최종 `ctest --test-dir core/build --output-on-failure`: 106/106 통과, 100.41초.
+  - `core/v5.3.8` local tag 없음.
+  - `gh auth status` 통과. active account: `kairos-code-dev`.
+- 남은 위험: release commit, push, `core/v5.3.8` tag push, GitHub Actions 확인 필요
+- 다음 확인: release commit 생성 뒤 tag push와 workflow monitor

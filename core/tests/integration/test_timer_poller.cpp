@@ -127,7 +127,7 @@ void test_timer_callback_conflicts_and_destroy_busy ()
     TEST_ASSERT_EQUAL_INT (ZLINK_RECV_BUSY,
                            zlink_timer_recv (timer_callback, &fire_count));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INTERNAL_ERROR,
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_STATE,
                            zlink_poller_add_timer (poller, timer_callback, NULL));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 

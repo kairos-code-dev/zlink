@@ -71,6 +71,21 @@ class spot_node_t : public discovery_observer_t
     int attach_pub_ingress (socket_base_t *pub_);
     int try_register_spot_facade (spot_handle_t *spot_);
     void unregister_spot_facade (spot_handle_t *spot_);
+    bool is_last_spot_facade_for_logical_state (spot_handle_t *spot_);
+    std::shared_ptr<spot_logical_state_t> create_user_spot_state ();
+    std::shared_ptr<spot_logical_state_t> entry_spot_state ();
+    std::shared_ptr<spot_logical_state_t> lookup_spot_state (
+      const zlink_routing_id_t *spot_rid_);
+    void snapshot_spot_states (
+      std::vector<std::shared_ptr<spot_logical_state_t> > *out_) const;
+    int fanout_local_publish (const char *service_name_,
+                              const zlink_routing_id_t *source_rid_,
+                              const char *topic_id_,
+                              zlink_msg_t *parts_,
+                              size_t part_count_);
+    int update_spot_routing_id (spot_handle_t *spot_,
+                                const void *data_,
+                                size_t size_);
     int set_tls_server (const char *cert_, const char *key_);
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
@@ -167,6 +182,7 @@ class spot_node_t : public discovery_observer_t
     typedef spot_node_tls_state_t tls_state_t;
     typedef spot_node_endpoint_state_t endpoint_state_t;
     typedef spot_node_handle_state_t handle_state_t;
+    typedef spot_node_actor_state_t actor_state_t;
     typedef spot_node_attachment_monitor_handle_t attachment_monitor_handle_t;
     typedef spot_node_service_discovery_topology_t service_discovery_topology_t;
     typedef spot_node_service_discovery_socket_plan_t
@@ -325,6 +341,7 @@ class spot_node_t : public discovery_observer_t
     tls_state_t _tls_state;
     endpoint_state_t _endpoint_state;
     handle_state_t _handle_state;
+    actor_state_t _actor_state;
     service_attachment_state_t _service_attachment_state;
 
     friend struct spot_runtime_t;

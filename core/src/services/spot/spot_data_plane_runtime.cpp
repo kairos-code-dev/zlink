@@ -25,11 +25,8 @@ namespace zlink
 namespace
 {
 static const int spot_data_plane_hwm_default = 0;
-static const int spot_internal_ingress_rcvhwm_default = 0;
-static const int spot_internal_mesh_xsub_rcvhwm_default = 0;
 static const int spot_internal_peer_ctrl_sndhwm_default = 0;
 static const int spot_internal_peer_ctrl_rcvhwm_default = 0;
-static const int spot_internal_internal_router_rcvhwm_default = 0;
 static const int spot_internal_internal_router_sndhwm_default = 0;
 
 static bool read_socket_int_option (socket_base_t *socket_,
@@ -164,13 +161,14 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                                                 node_rid.size);
     }
     int ingress_rcvhwm = pubsub_admission_hwm;
-    int mesh_xsub_rcvhwm = spot_internal_mesh_xsub_rcvhwm_default;
-    int mesh_pub_sndhwm = spot_data_plane_hwm_default;
+    int mesh_xsub_rcvhwm = pubsub_admission_hwm;
+    int mesh_pub_sndhwm = pubsub_admission_hwm;
     int peer_ctrl_rcvhwm = spot_internal_peer_ctrl_rcvhwm_default;
     int peer_ctrl_sndhwm = spot_internal_peer_ctrl_sndhwm_default;
     int internal_router_rcvhwm = router_admission_hwm;
     int internal_router_sndhwm = spot_internal_internal_router_sndhwm_default;
-    int external_router_sndhwm = spot_internal_internal_router_sndhwm_default;
+    int external_router_rcvhwm = router_admission_hwm;
+    int external_router_sndhwm = router_admission_hwm;
     int fanout_sndhwm = spot_data_plane_hwm_default;
 
     apply_common_internal_opts (state_->ctrl, linger);
@@ -283,7 +281,8 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     }
     if (state_->external_router) {
         state_->external_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
-                                              &zero, sizeof (zero));
+                                              &external_router_rcvhwm,
+                                              sizeof (external_router_rcvhwm));
         state_->external_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
                                               &external_router_sndhwm,
                                               sizeof (external_router_sndhwm));

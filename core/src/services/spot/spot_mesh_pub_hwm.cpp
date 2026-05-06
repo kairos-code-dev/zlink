@@ -87,8 +87,9 @@ bool spot_mesh_pub_hwm_t::publish_ready_hint (spot_runtime_t *runtime_,
 int spot_mesh_pub_hwm_t::resolve_runtime_default (
   const spot_runtime_t *runtime_)
 {
-    LIBZLINK_UNUSED (runtime_);
-    return 0;
+    if (!runtime_)
+        return 0;
+    return spot_node_pubsub_admission_hwm (runtime_->hwm_config_snapshot ());
 }
 
 int spot_mesh_pub_hwm_t::resolve_initial_bind_sndhwm (

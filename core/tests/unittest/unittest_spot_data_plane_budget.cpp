@@ -514,7 +514,7 @@ void test_mesh_pub_hwm_runtime_owner_uses_bound_endpoint ()
     TEST_ASSERT_TRUE (
       zlink::spot_mesh_pub_hwm_t::publish_ready_hint (&runtime, 2));
     TEST_ASSERT_EQUAL_INT (
-      expected_mesh_pub_sndhwm (0, 0),
+      zlink::spot_node_pubsub_admission_hwm (runtime.hwm_config_snapshot ()),
       zlink::spot_mesh_pub_hwm_t::resolve_runtime_default (&runtime));
     TEST_ASSERT_EQUAL_INT (
       expected_mesh_pub_sndhwm (),
@@ -543,7 +543,7 @@ void test_mesh_pub_hwm_runtime_owner_tracks_ready_count_changes ()
     TEST_ASSERT_EQUAL_UINT64 (
       0, zlink::mesh_pub_hwm_version (&runtime.execution.mesh_peer_state));
     TEST_ASSERT_EQUAL_INT (
-      expected_mesh_pub_sndhwm (0, 0),
+      zlink::spot_node_pubsub_admission_hwm (runtime.hwm_config_snapshot ()),
       zlink::spot_mesh_pub_hwm_t::resolve_runtime_default (&runtime));
 }
 

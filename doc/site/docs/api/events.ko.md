@@ -16,12 +16,11 @@
 
 - `CONNECTION_READY`: raw socket 전용 저비용 ready edge
   - raw socket: send/recv ready edge
-- queue 이벤트: 로컬 backpressure 관찰
+- queue 이벤트: 로컬 backpressure(배압, 송신 큐가 가득 찼을 때 상위 계층에 전달되는 흐름 제어 신호) 관찰
 
 권장 perf gate:
-- raw socket perf: `ZLINK_EVENT_CONNECTION_READY`를 expected client 수만큼
-  센다
-- SPOT perf: 별도 readiness 스트림을 사용하지 않고 explicit `READY/START`
+- raw socket perf: `ZLINK_EVENT_CONNECTION_READY`를 예상 client 수만큼 수집한다
+- SPOT perf: 별도 readiness 스트림을 사용하지 않고 명시적인 `READY/START`
   barrier protocol을 사용한다
 - delivery-ready 또는 aggregate-ready monitor event를 perf gate로 사용하지 않음
 

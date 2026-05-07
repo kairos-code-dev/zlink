@@ -101,10 +101,10 @@
 
 ### 4.1 PUB/SUB 기반 mesh
 
-**결정**: SPOT 클러스터는 PUB/SUB mesh 로 구성한다.
+**결정**: SPOT 클러스터는 PUB/SUB mesh(각 노드가 서로 연결된 그물망 구조)로 구성한다.
 
 **근거**:
-- 토픽 기반 fanout 에 PUB/SUB 가 자연스럽다
+- 토픽 기반 fanout(한 발신자 → 다수 수신자 분배)에 PUB/SUB 가 자연스럽다
 - ROUTER 기반 대비 구독 필터링이 효율적이다
 - Discovery 기반 자동 mesh 구성이 가능하다
 

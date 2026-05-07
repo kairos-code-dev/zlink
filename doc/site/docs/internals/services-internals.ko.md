@@ -7,10 +7,10 @@
 zlink 서비스 계층은 Discovery와 SPOT 두 가지 고수준 서비스를 제공한다.
 이 문서는 내부 구현 상세를 다룬다.
 
-SPOT에서 transport security 소유권은 의도적으로 좁게 유지한다.
-`SpotNode`가 mesh/control 소켓의 TLS/WSS wiring을 책임지고, unified `Spot`은
-빌린 data-plane facade로만 남는다. facade는 node lifecycle을 소유하지
-않으며, 그 자체가 TLS 설정 surface는 아니다.
+SPOT에서 transport 보안 소유권은 의도적으로 좁게 유지한다.
+`SpotNode`가 mesh/control 소켓의 TLS/WSS 연결 설정을 책임지고, unified `Spot`은
+빌린 data-plane facade(데이터 평면 접근 인터페이스)로만 남는다. facade는 node
+수명주기를 소유하지 않으며, 그 자체가 TLS 설정 진입점이 아니다.
 
 ## 2. Registry 내부 구현
 
@@ -89,9 +89,8 @@ enum service_role_t {
 };
 ```
 
-SPOT은 고정 SPOT 역할을 가진다. 소켓 패밀리
-서비스는 소켓 타입에 맞는 명시적 역할이 필요하다. 피어 발견을 위한 역할
-매칭 규칙:
+SPOT은 고정 SPOT 역할을 가진다. 소켓 패밀리 서비스는 소켓 타입에 맞는
+명시적 역할이 필요하다. 피어 발견 시 적용되는 역할 매칭 규칙은 다음과 같다.
 - PUB ↔ SUB
 - ROUTER ↔ ROUTER, ROUTER ↔ DEALER, DEALER ↔ DEALER
 - SPOT ↔ SPOT
@@ -234,17 +233,18 @@ Frame 4~N: Service entries (repeated service_count times)
   로컬 spot_sub 분배만 (재발행 없음, 루프 방지)
 
 ### 5.4.1 SpotNode HWM 경계
-- unified `Spot` handle HWM 과 SpotNode admission HWM 은 다른 계층이다.
-- `Spot` handle 은 common `SNDHWM` 또는 `RCVHWM` 옵션을 받지 않는다.
-- `SpotNode` HWM 은 relay나 delivery queue 예산이 아니라 admission 예산이다.
+- unified `Spot` handle HWM 과 SpotNode admission HWM 은 서로 다른 계층이다.
+- `Spot` handle 은 공통 `SNDHWM` 또는 `RCVHWM` 옵션을 받지 않는다.
+- `SpotNode` HWM 은 relay나 delivery queue 예산이 아니라 admission(입력 허가) 예산이다.
+  HWM(High Water Mark)은 큐가 이 값을 초과하면 새 메시지 수락을 제한하는 상한이다.
   - pubsub admission은 local publish 입력을 제어한다.
   - router admission은 local routed 입력을 제어한다.
 - SpotNode admission 기본 profile은 balanced다. 두 admission 채널은 양수 숫자
   override가 없으면 `16`에서 시작한다.
-- admission 숫자 option에 `0`을 설정하면 override를 지우고 선택된 profile 값으로
+- admission 숫자 옵션에 `0`을 설정하면 override를 지우고 선택된 profile 값으로
   돌아간다.
-- relay와 delivery socket은 HWM `0`을 사용한다. 제거된 queue hard-limit 동작은 더
-  이상 delivery target을 끊지 않는다.
+- relay와 delivery 소켓은 HWM `0`을 사용한다. 기존 queue hard-limit 동작은 제거되어
+  더 이상 delivery target을 끊지 않는다.
 - `peer_ctrl` 는 control-plane 소켓이므로 SpotNode admission HWM 묶음에
   포함하지 않는다.
 
@@ -719,10 +719,10 @@ ROUTER recv queue frame 인코딩 (routed 표면 통합 — 이 큐는 일반 RO
 
 ## 10. 가중치 전파
 
-raw ROUTER와 DEALER 소켓은 typed option API로 자기 peer 가중치를 바꿀 수
+raw ROUTER와 DEALER 소켓은 typed option API로 자기 피어 가중치를 변경할 수
 있다. SpotNode와 Spot에는 별도 로컬 weight 설정 옵션이 없다. 내부 구현은 raw
-socket의 변경을 연결된 peer에게 **최선 노력의 runtime 신호**로 알리고, peer는
-자신의 가중치 cache를 갱신해서 outbound 후보 선택에 반영한다.
+소켓의 변경을 연결된 피어에게 **최선 노력(best-effort)의 런타임 신호**로 알리고,
+피어는 자신의 가중치 캐시를 갱신해서 outbound 후보 선택에 반영한다.
 
 기본 동작 약속:
 

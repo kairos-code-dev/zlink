@@ -7,10 +7,10 @@
 zlink는 OpenSSL을 통해 `tls://`와 `wss://` transport를 네이티브 지원한다.
 외부 프록시 없이 암호화된 통신을 직접 구성할 수 있다.
 
-SPOT 서비스에서 TLS/WSS 설정은 node owner 책임이다.
+SPOT 서비스에서 TLS/WSS 설정은 노드 소유자(node owner)의 책임이다.
 `zlink_set_tls_server()` / `zlink_set_tls_client()`는 bind/connect 전에
-`SpotNode` handle에 적용해야 한다. unified `spot`과 SPOT child pub/sub
-handle에는 TLS 설정을 적용할 수 없으며 `ZLINK_CONFIG_NOT_SUPPORTED` 를 반환한다.
+`SpotNode` 핸들에 적용해야 한다. 통합 `spot` 및 SPOT 하위 pub/sub
+핸들에는 TLS 설정을 적용할 수 없으며 `ZLINK_CONFIG_NOT_SUPPORTED` 를 반환한다.
 
 ## 2. TLS 서버 설정
 
@@ -166,7 +166,7 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
   -copy_extensions copy
 ```
 
-## 7. 일반적 TLS 에러 및 트러블슈팅
+## 7. 일반적 TLS 에러 및 문제 해결
 
 ### 인증서/키 불일치
 

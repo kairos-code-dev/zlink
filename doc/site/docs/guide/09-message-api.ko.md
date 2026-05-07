@@ -10,17 +10,17 @@
 
 | 용어 | 설명 |
 |------|------|
-| VSM (Very Small Message) | 33바이트 이하 메시지. `zlink_msg_t` 내부에 인라인 저장된다 |
-| LMSG (Large Message) | 33바이트 초과 메시지. heap 할당 버퍼를 reference counting으로 관리한다 |
-| CMSG (Constant Message) | 외부 상수 데이터를 복사 없이 참조하는 메시지 (`ffn=NULL`) |
-| ZCLMSG (Zero-copy Large) | 외부 버퍼를 참조하며 해제 콜백(`ffn`)으로 수명을 관리하는 메시지 |
+| VSM (Very Small Message, 초소형 메시지) | 33바이트 이하 메시지. `zlink_msg_t` 내부에 인라인 저장된다 |
+| LMSG (Large Message, 대형 메시지) | 33바이트 초과 메시지. 힙 할당 버퍼를 참조 카운팅으로 관리한다 |
+| CMSG (Constant Message, 상수 메시지) | 외부 상수 데이터를 복사 없이 참조하는 메시지 (`ffn=NULL`) |
+| ZCLMSG (Zero-copy Large, 제로카피 대형 메시지) | 외부 버퍼를 참조하며 해제 콜백(`ffn`)으로 수명을 관리하는 메시지 |
 | multipart | 여러 프레임(part)을 하나의 논리적 메시지로 묶어 원자적으로 전송하는 방식 |
-| zero-copy | 데이터를 복사하지 않고 포인터 참조만 전달하여 전송하는 기법 |
-| reference count (refcount) | 같은 데이터 버퍼를 공유하는 메시지 핸들의 수. 0이 되면 버퍼가 해제된다 |
-| ownership | 메시지 데이터의 소유권. send 성공 시 library로 이전되고, 실패 시 caller가 유지한다 |
+| zero-copy(제로카피) | 데이터를 복사하지 않고 포인터 참조만 전달하여 전송하는 기법 |
+| reference count (refcount, 참조 카운트) | 같은 데이터 버퍼를 공유하는 메시지 핸들의 수. 0이 되면 버퍼가 해제된다 |
+| ownership(소유권) | 메시지 데이터의 소유권. 전송 성공 시 라이브러리로 이전되고, 실패 시 호출자가 유지한다 |
 | routing_id | Router 소켓이 피어를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트) |
 | control part(제어 파트) | request-reply, SPOT routed 같은 상위 프로토콜이 payload 앞에 붙이는 내부 part |
-| HWM (High Water Mark) | 소켓의 송신/수신 큐 최대 용량. 초과 시 backpressure가 발생한다 |
+| HWM (High Water Mark, 큐 상한선) | 소켓의 송신/수신 큐 최대 용량. 초과 시 역압(backpressure)이 발생한다 |
 
 ## 1. 개요
 
@@ -122,8 +122,8 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 ```
 
-- **move**: ownership 이전. src를 더 이상 사용할 수 없다. refcount 변화 없음.
-- **copy**: ownership 공유. VSM이면 byte copy, LMSG이면 refcount를 증가시켜 같은 buffer를 가리킨다. 양쪽 모두 `zlink_msg_close()` 필요.
+- **move**: 소유권 이전. src를 더 이상 사용할 수 없다. 참조 카운트 변화 없음.
+- **copy**: 소유권 공유. VSM이면 바이트 복사, LMSG이면 참조 카운트를 증가시켜 같은 버퍼를 가리킨다. 양쪽 모두 `zlink_msg_close()` 필요.
 
 ### 3.4 Close와 Reference Counting
 
@@ -619,13 +619,13 @@ request-reply 흐름은 전용 API 로 연다.
 - `DEALER` / `ROUTER`: [03-3-dealer.ko.md](03-3-dealer.ko.md),
   [03-4-router.ko.md](03-4-router.ko.md)
 - SPOT routed request-reply: [07-3-spot.ko.md](07-3-spot.ko.md)
-- 와이어(wire, 프로토콜 전송 레벨) envelope 구조: [../internals/protocol-zmp.ko.md](../internals/protocol-zmp.ko.md)
+- 와이어(wire, 프로토콜 전송 계층) 봉투 구조: [../internals/protocol-zmp.ko.md](../internals/protocol-zmp.ko.md)
 
-즉 message API 관점에서 기억할 점은 단순하다.
+즉 메시지 API 관점에서 기억할 점은 단순하다.
 
-- payload 는 `zlink_msg_t` 로 만든다.
-- request-reply 문맥은 message 내부 필드가 아니라 와이어 제어 파트(control part)에 있다.
-- message metadata 직렬화 경로는 공개 계약이 아니다.
+- 페이로드는 `zlink_msg_t`로 만든다.
+- 요청-응답 문맥은 메시지 내부 필드가 아니라 와이어 제어 파트(control part, 프로토콜 제어 정보)에 있다.
+- 메시지 메타데이터 직렬화 경로는 공개 계약이 아니다.
 
 ---
 [← Routing ID](08-routing-id.ko.md) | [Performance →](10-performance.ko.md)

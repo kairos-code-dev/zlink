@@ -4,7 +4,7 @@
 
 ## 1. 개요
 
-모니터링은 소켓 연결 상태를 실시간으로 관찰하는 기능으로, 연결 문제 진단, 피어 장애 감지, 애플리케이션 수준 복구 트리거에 필수적이다.
+모니터링은 소켓 연결 상태를 실시간으로 관찰하는 기능이다. 연결 문제 진단, 피어 장애 감지, 애플리케이션 수준 복구 트리거에 필수적이다.
 
 zlink 모니터링 API는 소켓의 연결/해제/핸드셰이크 등 이벤트를 실시간으로 관찰할 수 있다.
 다른 소켓과 동일하게 직접 수신(recv) 모드와 callback 모드를 지원한다.
@@ -68,10 +68,10 @@ typedef struct {
     | Rust | [monitor_recv_sample.rs](https://github.com/kairos-code-dev/zlink/blob/main/bindings/rust/samples/monitor_recv_sample.rs) |
     | Go | [main.go](https://github.com/kairos-code-dev/zlink/blob/main/bindings/go/samples/monitor_recv_sample/main.go) |
 
-## 4. Socket Monitor 이벤트
+## 4. 소켓 모니터 이벤트
 
 `zlink_socket_monitor_open()`으로 관찰하는 이벤트다.
-raw 소켓의 transport/session 상태를 알려준다.
+기반 소켓(raw socket)의 전송/세션 상태를 알려준다.
 
 ### 이벤트 전체 표
 
@@ -92,9 +92,9 @@ raw 소켓의 transport/session 상태를 알려준다.
 | `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 오류로 실패 | 에러 코드 | 양쪽 |
 | `HANDSHAKE_FAILED_AUTH` | `0x4000` | 인증 실패 | — | 양쪽 |
 | `MONITOR_STOPPED` | `0x0400` | 모니터 종료 | — | 양쪽 |
-| `PEER_WEIGHT_CHANGED` | `0x8000` | 연결된 peer의 가중치 변화 | 새 `0..100` 가중치 | 양쪽 |
+| `PEER_WEIGHT_CHANGED` | `0x8000` | 연결된 피어의 가중치 변화 | 새 `0..100` 가중치 | 양쪽 |
 
-- `CONNECTION_READY`: 모든 소켓에서 `routing_id`에 peer id 포함
+- `CONNECTION_READY`: 모든 소켓에서 `routing_id`에 피어 식별자 포함
 
 ### 연결 흐름
 
@@ -114,10 +114,10 @@ flowchart LR
 ### CONNECTION_READY 상세
 
 핸드셰이크 완료 후 발생한다. 이 이벤트를 받으면 즉시 메시지를 보내고 받을 수 있다.
-`CONNECTION_READY` 이벤트의 `value` 필드는 reserved이며 aggregate ready count 계약이 아니다.
-준비 상태 판정은 이벤트 edge 와 주체별 event counting 으로 해야 한다.
+`CONNECTION_READY` 이벤트의 `value` 필드는 예약(reserved)이며, 집계 준비 카운트 계약이 아니다.
+준비 상태 판정은 이벤트 에지(edge)와 주체별 이벤트 카운팅으로 해야 한다.
 
-- ROUTER/STREAM에서는 `ev->routing_id`에 peer identity가 포함된다.
+- ROUTER/STREAM에서는 `ev->routing_id`에 피어 신원(peer identity)이 포함된다.
 - PAIR/DEALER에서는 `routing_id`가 비어 있다.
 
 ### DISCONNECTED reason 코드
@@ -137,11 +137,11 @@ flowchart LR
 |------|-----|------|
 | `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | 잘못된 형식의 ZMP HELLO 커맨드. |
 
-### Peer 가중치 변화 감지
+### 피어 가중치 변화 감지
 
-ROUTER 또는 DEALER에 연결된 peer가 자기 가중치를 바꾸면
-`ZLINK_EVENT_PEER_WEIGHT_CHANGED` 이벤트가 raw socket monitor로
-들어온다. 이벤트의 `routing_id`가 바뀐 peer를 식별하고,
+ROUTER 또는 DEALER에 연결된 피어가 자기 가중치를 바꾸면
+`ZLINK_EVENT_PEER_WEIGHT_CHANGED` 이벤트가 소켓 모니터로
+들어온다. 이벤트의 `routing_id`가 바뀐 피어를 식별하고,
 `value`에 새 `0..100` 가중치가 들어간다.
 
 ```c
@@ -300,41 +300,41 @@ void *mon = zlink_socket_monitor_open(server, &sec_opts);
 zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 ```
 
-## 8. Socket Monitor Snapshot
+## 8. 소켓 모니터 스냅샷
 
-monitor handle에서 현재 aggregate 상태를 바로 조회할 수 있다.
+모니터 핸들에서 현재 집계(aggregate) 상태를 바로 조회할 수 있다.
 
 | 필드 | 설명 |
 |------|------|
 | `snd_pending_msgs` | 송신 큐에 대기 중인 메시지 수 (SNDHWM에 의해 상한 제한) |
-| `rcv_pending_msgs` | 수신 큐에 대기 중인 메시지 수 (RCVHWM에 의해 상한 제한, approximate) |
-| `auto_hwm_profile` / `auto_hwm_policy_class` | 활성 auto-HWM profile과 planner policy class |
+| `rcv_pending_msgs` | 수신 큐에 대기 중인 메시지 수 (RCVHWM에 의해 상한 제한, 근사값) |
+| `auto_hwm_profile` / `auto_hwm_policy_class` | 활성 자동 HWM(고수위 표시, 큐 최대 메시지 수) 프로파일과 플래너 정책 등급 |
 | `auto_hwm_applied_sndhwm` / `auto_hwm_applied_rcvhwm` | 현재 적용된 자동 HWM 값 |
-| `auto_hwm_unit_budget_bytes` / `auto_hwm_size_cap` | planner가 사용한 profile 단위 예산과 메시지 수 cap |
-| `auto_hwm_effective_message_bytes` | profile envelope를 HWM 슬롯으로 바꿀 때 쓴 메시지 단위 |
-| `auto_hwm_socket_message_slots` | profile 단위 예산과 message unit으로 선택된 메시지 슬롯 수 |
-| `auto_hwm_last_recalc_reason` / `auto_hwm_send_blocked_ratio_ppm` | 최근 재계산 사유와 송신 blocked 비율 |
+| `auto_hwm_unit_budget_bytes` / `auto_hwm_size_cap` | 플래너가 사용한 프로파일 단위 예산과 메시지 수 상한 |
+| `auto_hwm_effective_message_bytes` | 프로파일 봉투(envelope)를 HWM 슬롯으로 바꿀 때 쓴 메시지 단위 |
+| `auto_hwm_socket_message_slots` | 프로파일 단위 예산과 메시지 단위로 선택된 메시지 슬롯 수 |
+| `auto_hwm_last_recalc_reason` / `auto_hwm_send_blocked_ratio_ppm` | 최근 재계산 사유와 송신 차단 비율 |
 | `auto_hwm_deferred_sndhwm` / `auto_hwm_deferred_rcvhwm` | 지연 중인 HWM 축소값. 없으면 `-1` |
 
 `snd_pending_msgs`와 `rcv_pending_msgs`는 HWM 설정과 직접 관련된다.
-이 값이 HWM에 근접하면 백프레셔가 발생하고 있다는 의미이다.
-자동 HWM을 쓰는 경우에는 같은 snapshot에서 "왜 이 HWM이 나왔는지"를
-profile, unit budget, message unit, 적용 HWM 필드로 함께 확인할 수 있다.
+이 값이 HWM에 근접하면 배압(backpressure)이 발생하고 있다는 의미이다.
+자동 HWM을 쓰는 경우에는 같은 스냅샷에서 "왜 이 HWM이 나왔는지"를
+프로파일, 단위 예산, 메시지 단위, 적용 HWM 필드로 함께 확인할 수 있다.
 
 **주의 — pending 값이 HWM 설정보다 클 수 있는 경우:**
 
 1. **inproc transport**: inproc은 중간에 세션/엔진이 없으므로 양쪽 HWM을 합산한다.
-   예를 들어 양쪽 모두 SNDHWM=1000, RCVHWM=1000이면 실제 pipe HWM은
+   예를 들어 양쪽 모두 SNDHWM=1000, RCVHWM=1000이면 실제 파이프 HWM은
    `1000 + 1000 = 2000`이 된다. pending 값이 설정값의 2배로 보일 수 있다.
 
-2. **HWM을 약간 초과하는 경우**: write 측이 보는 read 카운트(`_peers_msgs_read`)는
-   실시간 값이 아니라 read 측이 LWM 도달 시에만 비동기로 알려주는 스냅샷이다.
-   매 메시지마다 동기화하면 lock-free pipe의 성능 이점이 사라지므로,
-   배치 알림 방식을 사용한다. 그 결과 HWM은 정확한 hard limit이 아닌
-   **approximate limit**이며, 알림 사이에 소폭 초과할 수 있다.
+2. **HWM을 약간 초과하는 경우**: 쓰기 측이 보는 읽기 카운트(`_peers_msgs_read`)는
+   실시간 값이 아니라 읽기 측이 저수위(LWM) 도달 시에만 비동기로 알려주는 스냅샷이다.
+   매 메시지마다 동기화하면 잠금 없는(lock-free) 파이프의 성능 이점이 사라지므로,
+   일괄 알림 방식을 사용한다. 그 결과 HWM은 정확한 강제 한도가 아닌
+   **근사 한도**이며, 알림 사이에 소폭 초과할 수 있다.
 
-| transport | 실제 pipe HWM | 이유 |
-|-----------|--------------|------|
+| transport | 실제 파이프 HWM | 이유 |
+|-----------|----------------|------|
 | tcp/ipc/tls/ws/wss | `SNDHWM` (설정값 그대로) | 세션이 양쪽을 독립 관리 |
 | inproc | `SNDHWM + peer.RCVHWM` | 세션 없이 직접 연결, 양쪽 버퍼를 합산 |
 
@@ -348,7 +348,7 @@ printf("sndq=%llu, rcvq=%llu\n",
        (unsigned long long) snapshot.rcv_pending_msgs);
 ```
 
-event 콜백 안에서 snapshot을 조합해 쓸 수도 있다.
+이벤트 콜백 안에서 스냅샷을 조합해 쓸 수도 있다.
 
 ```c
 void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
@@ -363,8 +363,8 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 
 ## 8.1 서비스 계층 상태 확인
 
-현재 공개 C API에는 별도 서비스 이벤트 handle이 없다. 서비스 계층
-상태는 snapshot 또는 query 결과를 읽고 시간에 따라 비교해서 확인한다.
+현재 공개 C API에는 별도 서비스 이벤트 핸들이 없다. 서비스 계층
+상태는 스냅샷 또는 조회 결과를 읽고 시간에 따라 비교해서 확인한다.
 
 - Discovery membership: `zlink_discovery_member_peers()`
 - Registry overview: `zlink_registry_status_snapshot()`,
@@ -405,12 +405,11 @@ zlink_monitor_close(&mon_b);
 
 ### 모니터 스레드 안전성
 
-`zlink_socket_monitor_open()`과 monitor handle close는 raw/service handle의
-저빈도 control path(설정/관리 경로) 계약에 속한다.
+`zlink_socket_monitor_open()`과 모니터 핸들 종료는 기반 소켓/서비스 핸들의
+저빈도 제어 경로(설정/관리 경로) 계약에 속한다.
 즉 애플리케이션 스레드에서 호출할 수 있고,
-같은 handle과 섞여도 correctness(동시 사용 시 데이터 무결성)가 유지된다.
-다만 monitor callback은 I/O 경로
-에서 실행되므로 callback 내부의 느린 작업은 사용자 큐로 넘기는 편이 좋다.
+같은 핸들과 섞여도 정확성(동시 사용 시 데이터 무결성)이 유지된다.
+다만 모니터 콜백은 I/O 경로에서 실행되므로, 콜백 내부의 느린 작업은 사용자 큐로 넘기는 편이 좋다.
 
 ```c
 /* Open a monitor from an application thread */
@@ -435,9 +434,8 @@ zlink_monitor_snapshot(mon, &snapshot);
 
 ### 원격 모니터링
 
-모니터 API는 **inproc 전용**이다. tcp/wss 등 원격 transport는 지원하지 않는다.
-원격 모니터링이 필요하면 socket monitor callback에서 이벤트를 수신하고 PUB
-소켓으로 중계한다.
+모니터 API는 **프로세스 내(inproc) 전용**이다. tcp/wss 등 원격 transport는 지원하지 않는다.
+원격 모니터링이 필요하면 소켓 모니터 콜백에서 이벤트를 수신하고 PUB 소켓으로 중계한다.
 
 ```c
 zlink_set_subscription(sub, "topic");
@@ -475,15 +473,15 @@ zlink_monitor_close(&mon);
 데이터를 보내기 전에, 또는 PUB이 SUB에 구독이 전파된 것을 확인한 뒤에
 메시징을 시작하는 경우다.
 
-**ready 판정 규칙:**
+**준비 판정 규칙:**
 
-- 아래 명시된 monitor event를 기다린다.
-- `sleep`/고정 지연으로 ready를 추정하지 않는다.
-- `CONNECTED`, `ACCEPTED`, `LISTENING`은 progress/debug 이벤트일 뿐,
+- 아래 명시된 모니터 이벤트를 기다린다.
+- `sleep`/고정 지연으로 준비 상태를 추정하지 않는다.
+- `CONNECTED`, `ACCEPTED`, `LISTENING`은 진행 상황/디버그 이벤트일 뿐,
   메시징 시작 기준으로 쓰지 않는다.
-- perf(성능 측정 코드)는 문서에 명시된 deterministic gate만 사용한다.
+- 성능 측정 코드(perf)는 문서에 명시된 결정론적 게이트(deterministic gate)만 사용한다.
 
-### 11.1 Raw 소켓 — PAIR, DEALER, ROUTER
+### 11.1 기반 소켓 — PAIR, DEALER, ROUTER
 
 `CONNECTION_READY` 이벤트를 받으면 즉시 send/recv가 가능하다.
 
@@ -509,7 +507,7 @@ zlink_socket_monitor_handler(mon, on_ready, NULL);
 | DEALER | `CONNECTION_READY` | send/recv |
 | ROUTER | `CONNECTION_READY` | `ev->routing_id`로 routed send/recv |
 
-### 11.2 Raw 소켓 — STREAM
+### 11.2 기반 소켓 — STREAM
 
 STREAM은 ROUTER와 동일하게 동작한다 — routing_id는 TCP 연결이 수립되는
 시점에 할당되며, 첫 payload 도착과 무관하다. `CONNECTION_READY`
@@ -540,13 +538,13 @@ zlink_socket_monitor_handler(mon, on_ready, NULL);
 |---|---|---|
 | STREAM | `CONNECTION_READY` | `ev->routing_id`로 send/recv |
 
-STREAM도 다른 raw 소켓과 동일하게
-`CONNECTION_READY` 이벤트만으로 ready를 판정한다.
+STREAM도 다른 기반 소켓과 동일하게
+`CONNECTION_READY` 이벤트만으로 준비 여부를 판정한다.
 
-### 11.3 Raw 소켓 — PUB/SUB
+### 11.3 기반 소켓 — PUB/SUB
 
-raw PUB/SUB perf는 `CONNECTION_READY`를 expected client 수만큼 받은 뒤
-메시징을 시작한다. perf는 delivery-ready exactness를 gate로 사용하지 않는다.
+기반 PUB/SUB 성능 측정 코드는 `CONNECTION_READY`를 예상 클라이언트 수만큼 받은 뒤
+메시징을 시작한다. 전달 준비 정확도를 게이트로 사용하지는 않는다.
 
 ```c
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
@@ -560,13 +558,13 @@ printf("sndq=%llu, rcvq=%llu\n",
 
 | 패밀리 | 기다릴 이벤트 | 이후 가능한 동작 |
 |---|---|---|
-| PUB | `CONNECTION_READY` + expected client counting | `zlink_publish()` delivery |
-| SUB | `CONNECTION_READY` + expected client counting | `zlink_subscribe()` 수신 |
+| PUB | `CONNECTION_READY` + 예상 클라이언트 수 확인 | `zlink_publish()` 전달 |
+| SUB | `CONNECTION_READY` + 예상 클라이언트 수 확인 | `zlink_subscribe()` 수신 |
 
 ### 11.4 서비스 — SPOT
 
-SPOT 은 별도 공개 monitor handle 을 제공하지 않는다.
-SPOT perf 는 monitor event 대신 명시적 benchmark control barrier 를 사용한다.
+SPOT은 별도 공개 모니터 핸들을 제공하지 않는다.
+SPOT 성능 측정 코드는 모니터 이벤트 대신 명시적 벤치마크 제어 장벽(barrier)을 사용한다.
 
 ```c
 /* SPOT perf gate: explicit READY/START barrier */
@@ -577,16 +575,16 @@ broadcast_control_start();
 
 | 서비스 | 기다릴 조건 | 이후 가능한 동작 |
 |---|---|---|
-| SPOT sub | explicit `READY/START` barrier | `zlink_subscribe()` 수신 시작 |
-| SPOT pub | explicit `READY/START` barrier | `zlink_publish()` delivery 시작 |
+| SPOT sub | 명시적 `READY/START` 장벽 | `zlink_subscribe()` 수신 시작 |
+| SPOT pub | 명시적 `READY/START` 장벽 | `zlink_publish()` 전달 시작 |
 
-snapshot/status 조회는 운영 관찰/디버깅용이며, aggregate ready count는
-제공하지 않는다. perf 메시징 시작 판정에는 위 explicit barrier를 사용한다.
+스냅샷/상태 조회는 운영 관찰/디버깅용이며, 집계된 준비 카운트는
+제공하지 않는다. 성능 측정 코드의 메시징 시작 판정에는 위 명시적 장벽을 사용한다.
 
-### 11.5 Snapshot
+### 11.5 스냅샷
 
 `zlink_monitor_snapshot()`과 `zlink_*_status_snapshot()`은
-현재 상태를 조회하는 용도다. 운영 대시보드, health check, 디버깅에 활용한다.
+현재 상태를 조회하는 용도다. 운영 대시보드, 상태 확인(health check), 디버깅에 활용한다.
 
 ```c
 /* Check current registry health */
@@ -597,8 +595,8 @@ printf("state=%d\n", status.state);
 
 ## 12. Poller API
 
-Poller API(`zlink_poller_*`)는 zlink 소켓, 원시 파일 디스크립터(fd), 타이머를
-단일 `wait` 호출로 멀티플렉싱하는 이벤트 루프를 제공한다. 여러 소스를 관리하는
+Poller API(`zlink_poller_*`)는 zlink 소켓, 파일 디스크립터(fd), 타이머를
+단일 `wait` 호출로 다중화(멀티플렉싱)하는 이벤트 루프를 제공한다. 여러 소스를 관리하는
 이벤트 기반 애플리케이션에서 권장되는 방식이다.
 
 ### 12.1 기본 사용법
@@ -699,7 +697,7 @@ if (items[0].revents & ZMQ_POLLIN)
     /* router에 데이터 있음 */;
 ```
 
-`zlink_poll()`은 저수준이며 타이머를 지원하지 않는다. 프로덕션 이벤트
+`zlink_poll()`은 저수준 API이며 타이머를 지원하지 않는다. 운영 환경 이벤트
 루프에는 Poller API를 사용한다.
 
 ---

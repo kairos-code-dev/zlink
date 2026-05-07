@@ -24,7 +24,7 @@
 | `ZLINK_PUB_OPT_APPROVE_SUBSCRIBE` | manual 모드 구독 승인 (`binary`) |
 | `ZLINK_PUB_OPT_REJECT_SUBSCRIBE` | manual 모드 구독 거부 (`binary`) |
 
-`ZLINK_PUB_OPT_NODROP`의 기본값은 `1`입니다. HWM이 찼을 때 조용히 drop하는
+`ZLINK_PUB_OPT_NODROP`의 기본값은 `1`입니다. HWM(고수위 표시, High-Water Mark)이 찼을 때 조용히 drop하는
 대신 `zlink_publish()`가 `ZLINK_SUBMIT_BACKPRESSURED`를 반환합니다. 호출자가
 조용한 drop 동작을 원하면 명시적으로 `0`으로 설정해야 합니다.
 

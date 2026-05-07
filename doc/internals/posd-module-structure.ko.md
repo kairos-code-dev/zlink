@@ -8,9 +8,9 @@
 
 ## 1. 설계 원칙
 
-내부 구조는 POSD(Philosophy of Software Design) 원칙을 따른다.
+내부 구조는 POSD(Philosophy of Software Design — 소프트웨어 설계 철학) 원칙을 따른다.
 
-- **Deep Module**: 각 모듈은 넓은 기능을 좁은 인터페이스 뒤에 숨긴다
+- **Deep Module(깊은 모듈)**: 각 모듈은 넓은 기능을 좁은 인터페이스 뒤에 숨긴다
 - **정보 은닉**: 계층 간 지식 누수를 최소화한다
 - **변경 증폭 억제**: 하나의 변경이 넓게 번지지 않는 구조를 유지한다
 - **공개 표면 유지**: `core/include/zlink.h`의 C API/ABI 계약은 깨지지 않는다
@@ -96,16 +96,16 @@ flowchart TB
 
 API facade의 규칙:
 
-**남아도 되는 것:**
-- handle validation
-- per-handle admission/lifetime guard
-- per-handle API 진입/닫힘 조정
+**API facade에 남아도 되는 것:**
+- handle 유효성 검사
+- 핸들별 admission(진입 허가)/lifetime guard
+- 핸들별 API 진입·닫힘 조정
 
-**하위로 내려야 하는 것:**
-- monitor event wire decode
-- protocol parsing
-- concrete service/socket branching
-- service-wide registry/table
+**하위 계층으로 내려야 하는 것:**
+- monitor 이벤트 wire decode
+- 프로토콜 파싱
+- 구체적인 service/socket 분기
+- service 전체 registry/table
 
 `service_api_internal.hpp`가 API 계층과 service access layer 사이의 내부 계약을 정의한다.
 
@@ -226,10 +226,10 @@ Option은 세 카테고리로 분류되어 각 도메인 소유자가 validation
 `multipart_send_txn.cpp/hpp`는 `zlink_send`와 `spot publish`가 공통으로
 사용하는 logical multipart send 모듈이다.
 
-- nonblocking: one-shot 시도 + partial local state rollback
-- blocking: `sndtimeo` deadline까지 whole-message retry
-- 재시도 대상: `EAGAIN`, `EINTR`만. 그 외 오류는 즉시 실패
-- `libzmq`의 `pipe/router/xpub/dist` lower layer rollback/HWM semantics를 재사용
+- nonblocking: 1회 시도 후 실패 시 부분 로컬 상태 롤백
+- blocking: `sndtimeo` 데드라인까지 메시지 전체 단위로 재시도
+- 재시도 대상: `EAGAIN`, `EINTR`만. 그 외 오류는 즉시 실패 반환
+- `libzmq`의 `pipe/router/xpub/dist` 하위 계층 rollback/HWM(High Water Mark, 큐 상한) 의미를 재사용
 
 #### Request/Reply Runtime Core
 

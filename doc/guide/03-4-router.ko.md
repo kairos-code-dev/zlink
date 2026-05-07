@@ -104,10 +104,11 @@ memcpy(zlink_msg_data(&reply), "World", 5);
 zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 ```
 
-> 피어별 송신 큐가 가득 차면(HWM) `ROUTER_MANDATORY=1`(기본값)이면
-> `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환한다. 호출자가 명시적으로
-> `ROUTER_MANDATORY` 를 `0` 으로 끄면 메시지를 조용히 드롭한다.
-> 고급 backpressure 패턴은 [성능 가이드](10-performance.ko.md)를 참고.
+> 피어별 송신 큐가 가득 차면(HWM, 고수위 표시: 큐에 넣을 수 있는 최대 메시지 수)
+> `ROUTER_MANDATORY=1`(기본값)이면 `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환한다.
+> 호출자가 명시적으로 `ROUTER_MANDATORY` 를 `0` 으로 끄면 메시지를 조용히 드롭한다.
+> 고급 배압(backpressure, 수신 측이 처리를 못 따라갈 때 송신 측을 늦추는 흐름 제어) 패턴은
+> [성능 가이드](10-performance.ko.md)를 참고.
 
 ??? example "Full Sample Code"
 
@@ -124,7 +125,7 @@ zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 
 ## 3. 사용 예제
 
-ROUTER 는 `zlink_send_rid()` 로 특정 peer 에 전송하고,
+ROUTER 는 `zlink_send_rid()` 로 특정 피어에 전송하고,
 `zlink_router_recv()` 가 반환하는 `source_node_rid` 로 송신자를 식별한다.
 
 ### recv 루프에서 수신/응답
@@ -155,8 +156,8 @@ if (zlink_router_recv(router,
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | 미도달 시 `ZLINK_SUBMIT_NOT_CONNECTED` 반환. 기본값이 `1` 이므로 `zlink_send_rid()` 로 미연결 peer 를 지정하면 실패가 호출자에게 반환된다. 조용한 drop 이 필요하면 `0` 으로 설정한다. |
-| `ZLINK_OPT_RID_DUPLICATE_POLICY` | int | `ZLINK_RID_DUPLICATE_REJECT` | routing_id 충돌 시 기존 pipe를 유지할지 새 pipe가 인수할지 정한다. |
+| `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | 미도달 시 `ZLINK_SUBMIT_NOT_CONNECTED` 반환. 기본값이 `1` 이므로 `zlink_send_rid()` 로 미연결 피어를 지정하면 실패가 호출자에게 반환된다. 조용한 드롭이 필요하면 `0` 으로 설정한다. |
+| `ZLINK_OPT_RID_DUPLICATE_POLICY` | int | `ZLINK_RID_DUPLICATE_REJECT` | routing_id 충돌 시 기존 파이프(pipe, 두 소켓을 연결하는 내부 메시지 채널)를 유지할지 새 파이프가 인수할지 정한다. |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_router_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER 자신의 routing_id (전용 함수) |
 | `ZLINK_OPT_SNDHWM` | int | 자동 (routed 기본 floor 8) | routed 역할 기본값. 수동 설정 시 자동값보다 우선 |
@@ -165,8 +166,8 @@ if (zlink_router_recv(router,
 
 ### ROUTER_MANDATORY
 
-`ZLINK_ROUTER_OPT_MANDATORY` 의 기본값은 `1` 이다. 도달할 수 없는 peer 로
-`zlink_send_rid()` 를 보내면 조용히 drop 하지 않고
+`ZLINK_ROUTER_OPT_MANDATORY` 의 기본값은 `1` 이다. 도달할 수 없는 피어로
+`zlink_send_rid()` 를 보내면 조용히 드롭하지 않고
 `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환한다. 호출자가 `NOT_CONNECTED` 를
 처리하거나 재시도/에러 로그로 남길 기회가 생긴다.
 
@@ -187,9 +188,9 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
 ```
 
 > **관찰 가능한 동작:** `MANDATORY=1` 기본값에서는 writable / `ZLINK_POLLOUT`
-> 관찰값이 실제로 쓸 수 있는 peer 가 있을 때만 send-recovery 준비 상태로
-> 드러난다. 같은 routing_id를 가진 peer가 들어오면 기본값에서는 기존 pipe를
-> 유지하고 새 중복 pipe는 등록하지 않는다. peer 가
+> 관찰값이 실제로 쓸 수 있는 피어가 있을 때만 send-recovery 준비 상태로
+> 드러난다. 같은 routing_id를 가진 피어가 들어오면 기본값에서는 기존 파이프를
+> 유지하고 새 중복 파이프는 등록하지 않는다. 피어가
 > 들고 날 때 `send_rid` 가 `NOT_CONNECTED` 를 반환하는 일이 흔하다.
 
 > 참고: `core/tests/integration/test_router_mandatory.cpp` — `test_basic()`
@@ -200,7 +201,7 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
 
 - 서버 역할: `zlink_router_recv()` 로 request 를 받고
   `zlink_router_reply()` 로 응답
-- 능동 client 역할: `zlink_router_request()` 로 특정 peer 에 요청. reply 는
+- 능동 클라이언트 역할: `zlink_router_request()` 로 특정 피어에 요청. reply 는
   `zlink_reply_handler_fn` completion callback 으로 별도 전달
 
 가장 중요한 값은 `source_node_rid + request_seq` 조합이다. `request_seq`
@@ -342,7 +343,7 @@ zlink_send(d2, &m2, 1, 0);
 ### 패턴 2: DEALER → ROUTER 로드밸런싱 요청-응답
 
 DEALER ↔ ROUTER 조합의 핵심 장점:
-- **DEALER 측**: 라운드 로빈(round-robin, 순환 분배)으로 여러 ROUTER 중 하나를 자동 선택 → 부하 분산
+- **DEALER 측**: 라운드 로빈(순환 분배)으로 여러 ROUTER 중 하나를 자동 선택 → 부하 분산
 - **ROUTER 측**: routing_id로 요청을 보낸 DEALER를 정확히 식별 → 응답 라우팅
 
 ```
@@ -398,7 +399,7 @@ DEALER → ROUTER는 라운드 로빈이 고정되어 분배 비율을 제어할
 애플리케이션이 routing_id를 직접 선택한다.
 
 ```
-  DEALER → ROUTER (라운드 로빈 고정, 균등 분배):
+  DEALER → ROUTER (라운드 로빈 고정(순환 분배), 균등 분배):
 
   +----------+     1/3      +----------+
   |          |-------------->| ROUTER A |
@@ -460,7 +461,7 @@ zlink_send_rid(client, &rid, &msg, 1, 0);
 /* 서버 응답: source_rid = "C1"로 클라이언트 식별 가능 */
 ```
 
-> DEALER → ROUTER의 라운드 로빈이 충분하면 DEALER를 사용하고,
+> DEALER → ROUTER의 라운드 로빈(순환 분배)이 충분하면 DEALER를 사용하고,
 > 분배 로직을 제어해야 하면 ROUTER ↔ ROUTER로 전환한다.
 
 ### 패턴 4: 다중 DEALER 서버
@@ -693,14 +694,14 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 
 ### routing_id 충돌
 
-같은 routing_id를 가진 두 DEALER가 동시에 연결되면, 기본적으로 두 번째 연결이 거부된다. `ZLINK_OPT_RID_DUPLICATE_POLICY`를 `ZLINK_RID_DUPLICATE_HANDOVER`로 설정하면 새 연결이 기존 연결을 대체한다.
+같은 routing_id를 가진 두 DEALER가 동시에 연결되면, 기본적으로 두 번째 연결이 거부된다. `ZLINK_OPT_RID_DUPLICATE_POLICY`를 `ZLINK_RID_DUPLICATE_HANDOVER`로 설정하면 새 파이프가 기존 파이프를 대체한다.
 
 > routing_id의 상세 개념은 [08-routing-id.ko.md](08-routing-id.ko.md)를 참고.
 
 ### 점진적 유지보수를 위한 가중치
 
 롤링 재시작이나 설정 리로드 직전, 로컬 ROUTER의 가중치를 `0`으로
-바꿔 원격 peer들이 이 ROUTER를 새 outbound 대상으로 선택하지 않도록
+바꿔 원격 피어들이 이 ROUTER를 새 아웃바운드 대상으로 선택하지 않도록
 만들 수 있다.
 
 ```c
@@ -723,13 +724,13 @@ zlink_get_router_option(
   router, ZLINK_ROUTER_OPT_WEIGHT, &cur, &cur_size);
 ```
 
-가중치 `0`은 로컬 halt가 아니라 peer-side advisory다. 로컬 핸들은
-평상시와 같이 inbound를 처리한다. 즉 `zlink_router_recv()`,
+가중치 `0`은 로컬 동작을 멈추는 것이 아니라 원격 피어에 전달되는 권고 신호다. 로컬 핸들은
+평상시와 같이 수신(inbound)을 처리한다. 즉 `zlink_router_recv()`,
 `zlink_send_rid()`, `zlink_router_reply()` 모두 정상 동작하므로 진행
-중인 request 는 마저 완료할 수 있다. 달라지는 부분은 원격 peer 가 이
+중인 요청은 마저 완료할 수 있다. 달라지는 부분은 원격 피어가 이
 ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다.
 
-- 원격 DEALER는 이 ROUTER를 round-robin 후보에서 제외한다.
+- 원격 DEALER는 이 ROUTER를 라운드 로빈(순환 분배) 후보에서 제외한다.
 - 원격 ROUTER가 이 RID로 `zlink_send_rid()` 또는
   `zlink_router_request()`를 호출하면 `ZLINK_SUBMIT_NOT_ADMITTED`로
   즉시 실패한다.
@@ -739,7 +740,7 @@ ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다.
 송신 쪽 규칙은 반대 방향에서도 동일하다. 로컬 ROUTER가
 `zlink_send_rid()` 또는 `zlink_router_request()`로 원격 RID에 보낼
 때, 해당 RID의 광고된 가중치가 `0`이면 `ZLINK_SUBMIT_NOT_ADMITTED`로
-실패한다. 가중치 cache 전파는 best-effort이므로, 경합 상황에서는 같은 거절이 먼저
+실패한다. 가중치 전파는 최선 노력(best-effort) 방식이므로, 경합 상황에서는 같은 거절이 먼저
 `ZLINK_SUBMIT_NOT_CONNECTED`로 관찰될 수도 있다.
 
 일반적인 유지보수 순서:
@@ -749,14 +750,14 @@ ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다.
 3. 인스턴스 재시작 또는 재설정.
 4. `ZLINK_ROUTER_OPT_WEIGHT`를 다시 양수 값으로 설정. 보통 `100`.
 
-연결된 peer의 가중치 변화는 socket monitor의
+연결된 피어의 가중치 변화는 소켓 모니터의
 `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 전달된다. 이벤트 형태는
-[모니터링 가이드](06-monitoring.ko.md)의 "Peer 가중치 변화 감지"
+[모니터링 가이드](06-monitoring.ko.md)의 "피어 가중치 변화 감지"
 섹션을 참고.
 
 > 상세 규약은 ROUTER spec
-> [router.ko.md](../spec/core/socket/router.ko.md)의 "Peer 가중치"
-> 와 "ROUTER에서 시작하는 directed send와 peer 가중치" 섹션을 참고.
+> [router.ko.md](../spec/core/socket/router.ko.md)의 "피어 가중치"
+> 와 "ROUTER에서 시작하는 직접 송신과 피어 가중치" 섹션을 참고.
 
 ---
 [← DEALER](03-3-dealer.ko.md) | [STREAM →](03-5-stream.ko.md)

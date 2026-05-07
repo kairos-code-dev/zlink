@@ -10,10 +10,10 @@
 
 ## 1. 개요
 
-각 I/O 스레드는 전용 **비동기 이벤트 루프**를 실행하며 다음을 수행한다:
+각 I/O 스레드는 전용 **비동기 이벤트 루프**를 실행하며 다음을 수행한다.
 
 1. 등록된 소켓의 read/write 준비 상태를 폴링
-2. mailbox를 통해 수신된 명령(command) 처리
+2. mailbox(스레드 간 명령 전달 채널)를 통해 수신된 명령(command) 처리
 3. 타이머 실행
 
 I/O 스레드는 zlink 네트워킹의 핵심이다. 실제 네트워크 송수신, 프로토콜
@@ -78,8 +78,8 @@ poller에 등록되며, 내부적으로 Boost ASIO의 `async_wait`를 호출한�
 
 ## 5. 명령(Command) 처리
 
-각 I/O 스레드는 **mailbox**를 가진다 — lock-free 큐
-(`ypipe_t<command_t>`)와 wake-up용 signaler의 조합이다.
+각 I/O 스레드는 **mailbox**를 가진다 — 락-프리 큐
+(`ypipe_t<command_t>`)와 깨우기 신호용 signaler의 조합이다.
 
 ```cpp
 // io_thread.cpp — process_mailbox()

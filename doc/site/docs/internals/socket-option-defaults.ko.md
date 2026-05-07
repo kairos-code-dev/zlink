@@ -22,7 +22,7 @@
 |---|---:|---|
 | `ZLINK_OPT_AFFINITY` | `0` | I/O 스레드 어피니티 미설정 |
 | `zlink_get_routing_id()` | 자동 | 소켓별 16바이트 랜덤 ID (`zlink_set_routing_id()`로 설정) |
-| `ZLINK_OPT_SNDHWM` | auto-HWM balanced 값 | profile, policy class, message unit으로 계산. context auto-HWM을 끄면 기존 고정 기본값 `1000` 사용 |
+| `ZLINK_OPT_SNDHWM` | auto-HWM balanced 값 | HWM(High Water Mark, 큐 상한) — profile, policy class, message unit으로 자동 계산. context auto-HWM을 끄면 기존 고정 기본값 `1000` 사용 |
 | `ZLINK_OPT_RCVHWM` | auto-HWM balanced 값 | profile, policy class, message unit으로 계산. context auto-HWM을 끄면 기존 고정 기본값 `1000` 사용 |
 | `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | `0` | raw `0`은 소켓 타입 기본값 사용. STREAM은 `1024`, 그 외 소켓은 `4096` |
 | `ZLINK_OPT_RATE` | `100` | 멀티캐스트 rate (kb/s) |

@@ -130,10 +130,10 @@ memcpy(zlink_msg_data(&parts[1]), "body", 4);
 zlink_send(socket, parts, 2, 0);
 ```
 
-기본적으로 `zlink_send()`는 send queue가 가득 차면(HWM 도달) 블록한다.
-`ZLINK_DONTWAIT` flag 를 사용하면 blocking 대신 즉시
+기본적으로 `zlink_send()`는 송신 큐가 가득 차면(HWM(High-Water Mark, 큐 최대 허용 메시지 수) 도달) 블록한다.
+`ZLINK_DONTWAIT` 플래그를 사용하면 대기 없이 즉시
 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다.
-고급 backpressure pattern은
+고급 배압(backpressure, 수신 측이 처리를 따라오지 못할 때 송신 측에 전달되는 흐름 제어 신호) 패턴은
 [Performance 가이드](10-performance.ko.md)를 참고.
 
 #### Logical Multipart Send
@@ -240,8 +240,8 @@ zlink의 수신 모델은 두 가지 기본 방식으로 나뉜다.
 - **STREAM**: `zlink_recv()`, raw callback, packet callback 세 가지 수신 모드 중
   하나를 선택하면 이후 모드 변경이 불가하다.
 
-Callback은 I/O thread에서 호출되므로 callback 안에서 blocking 작업은 피해야 한다.
-느린 처리가 필요하면 user queue에 넣고 별도 thread에서 처리한다.
+콜백은 I/O 스레드에서 호출되므로, 콜백 안에서 오래 걸리는 차단 작업(파일 I/O, 데이터베이스 조회 등)은 피해야 한다.
+느린 처리가 필요하면 작업 큐에 넣고 별도 스레드에서 처리한다.
 
 각 socket type은 전용 등록 함수를 사용한다:
 
@@ -259,7 +259,7 @@ Callback은 I/O thread에서 호출되므로 callback 안에서 blocking 작업�
 | Timer | `zlink_timer_handler()` | `fn(timer, fire_count, userdata)` |
 | PUB | N/A | Send-only socket |
 
-Callback은 I/O thread에서 호출된다. 필요하다면 user queue에 넣고 별도 thread에서 처리한다.
+콜백은 I/O 스레드에서 호출된다. 오래 걸리는 처리가 필요하면 작업 큐에 넣고 별도 스레드에서 처리한다.
 
 ## 5. Error 처리
 
@@ -309,7 +309,7 @@ if (rc != ZLINK_SUBMIT_OK) {
 
 ## 6. Timer API
 
-Timer는 socket과 동일한 recv/callback/poller 모델을 지원하는 일급(first-class) 이벤트 소스다.
+Timer는 소켓과 동일한 recv/callback/poller 모델을 지원하는 일급 이벤트 소스다. 소켓처럼 poller에 등록하거나 콜백을 붙일 수 있다.
 
 ### 6.1 일반 Timer
 
@@ -338,7 +338,7 @@ zlink_timer_destroy(&timer);
 
 ### 6.2 SPOT Timer
 
-SPOT timer는 global scheduler 대신 SpotNode-local shared scheduler를 사용한다.
+SPOT timer는 프로세스 전역 스케줄러 대신 SpotNode 전용 공유 스케줄러를 사용한다. 같은 SpotNode 안의 timer들이 단일 스케줄러를 공유하므로 스케줄링 오버헤드가 줄어든다.
 
 ```c
 void *spot_timer = zlink_spot_timer_new(spot);
@@ -362,8 +362,8 @@ zlink_poller_remove_timer(poller, timer);
 | `repeat_count=0` | 무한 반복 |
 | `repeat_count=N` | 정확히 N회 fire 후 자동 정지 |
 | recv vs callback | 충돌 시 `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY` 반환 (socket 과 동일) |
-| 일반 timer | global shared scheduler 사용 |
-| SPOT timer | SpotNode-local shared scheduler 사용 |
+| 일반 timer | 프로세스 전역 공유 스케줄러 사용 |
+| SPOT timer | SpotNode 전용 공유 스케줄러 사용 |
 
 ## 7. DEALER/ROUTER 예제
 

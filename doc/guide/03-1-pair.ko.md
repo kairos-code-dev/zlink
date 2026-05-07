@@ -103,8 +103,8 @@ if (rc == ZLINK_RECV_OK) {
 }
 ```
 
-> HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
-> `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 고급 backpressure 패턴은
+> HWM(High-Water Mark, 큐 최대 허용 메시지 수) 도달 시 `zlink_send()`는 대기(기본) 또는 `ZLINK_DONTWAIT`로
+> `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 고급 배압(backpressure) 패턴은
 > [성능 가이드](10-performance.ko.md)를 참고.
 
 ??? example "Full Sample Code"
@@ -274,7 +274,7 @@ zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
 
 ### HWM 동작
 
-피어가 없거나 느릴 때, 송신 메시지는 HWM까지 큐잉된다. HWM 초과 시 `zlink_send()`가 블록(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환(`ZLINK_DONTWAIT`).
+피어가 없거나 느릴 때 송신 메시지는 HWM까지 큐에 쌓인다. HWM 초과 시 `zlink_send()`가 대기(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환(`ZLINK_DONTWAIT`).
 
 ### LINGER 설정
 

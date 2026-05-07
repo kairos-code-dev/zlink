@@ -60,7 +60,7 @@ zlink_config_result_t zlink_get_router_option (
 
 | 값 | 의미 |
 |---|---|
-| `100` | 기본 가중치. 양수 가중치가 모두 같으면 peer는 round-robin 동작을 유지합니다. |
+| `100` | 기본 가중치. 양수 가중치가 모두 같으면 peer는 round-robin(순환 선택) 동작을 유지합니다. |
 | `1..99` | 양수이지만 선호도가 더 낮습니다. 후보에는 남아 있고 비율만 낮아집니다. |
 | `0` | 새 outbound 선택 대상에서 제외됩니다. 이미 들어온 작업은 계속 처리합니다. |
 
@@ -94,7 +94,7 @@ reply 경로에는 이 판정을 적용하지 않습니다.
 
 ## 자동 HWM 기본값
 
-ROUTER는 context auto HWM 정책에서 `routed` policy class로 분류됩니다.
+ROUTER는 context auto HWM(고수위 표시, High-Water Mark) 정책에서 `routed` policy class로 분류됩니다.
 활성 auto-HWM profile이 단위 예산과 메시지 크기 cap을 고르며, 기본 profile은
 `balanced`입니다. 사용자가 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF`를 직접
 설정하면 자동값보다 그 값이 우선합니다.

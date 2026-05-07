@@ -5,7 +5,7 @@
 
 # 소켓 -- DEALER
 
-공정 큐잉 수신과 라운드 로빈 송신을 사용하는 비동기 요청 소켓.
+공정 큐잉(fair-queue, 여러 peer의 메시지를 순서대로 공평하게 수신) 수신과 라운드 로빈(round-robin, 연결된 peer를 순서대로 돌아가며 선택) 송신을 사용하는 비동기 요청 소켓.
 DEALER는 request-reply 패턴에서 요청 측입니다.
 
 ## Dealer 옵션 (`zlink_dealer_option_t`)
@@ -23,7 +23,7 @@ DEALER는 request-reply 패턴에서 요청 측입니다.
 DEALER는 연결된 peer 중 광고된 가중치가 `0`인 대상을 후보 집합에서
 자동으로 제외합니다. 양수 가중치를 가진 peer만 outbound 후보로 사용됩니다.
 
-- 알려진 peer의 양수 가중치가 모두 같으면 기존 round-robin 동작을 유지합니다.
+- 알려진 peer의 양수 가중치가 모두 같으면 기존 round-robin(순환 선택) 동작을 유지합니다.
 - peer들의 양수 가중치가 서로 다르면 DEALER는 가중치 비율에 맞는
   weighted schedule을 사용합니다. 예를 들어 가중치 `100` peer는
   가중치 `50` peer보다 두 배 자주 선택됩니다.
@@ -40,7 +40,7 @@ DEALER는 연결된 peer 중 광고된 가중치가 `0`인 대상을 후보 집�
 
 ## 자동 HWM 기본값
 
-DEALER는 context auto HWM 정책에서 `peer_queue` policy class로 분류됩니다.
+DEALER는 context auto HWM(고수위 표시, High-Water Mark) 정책에서 `peer_queue` policy class로 분류됩니다.
 활성 auto-HWM profile이 단위 예산과 메시지 크기 cap을 고르며, 기본 profile은
 `balanced`입니다. 사용자가 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF`를 직접
 설정하면 자동값보다 그 값이 우선합니다.

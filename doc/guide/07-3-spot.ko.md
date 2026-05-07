@@ -10,11 +10,11 @@
 SPOT은 `SpotNode`와 `Spot` 두 층으로 나뉜다.
 
 - `SpotNode`
-  노드 토폴로지와 discovery 기반 연결, 수동 peer 연결, channel 호출용
-  `DEALER`, 외부 publish ingress를 관리한다.
+  노드 토폴로지와 발견(discovery) 기반 연결, 수동 피어 연결, 채널 호출용
+  `DEALER`, 외부 발행 유입(publish ingress)을 관리한다.
 - `Spot`
-  애플리케이션이 실제로 쓰는 facade다. 토픽 publish/subscribe, routed recv,
-  channel send/request를 제공한다.
+  애플리케이션이 실제로 쓰는 파사드(facade, 단순화된 인터페이스)다. 토픽 발행/구독, 라우팅 수신,
+  채널 전송/요청을 제공한다.
 
 보통 순서는 이렇다.
 
@@ -70,7 +70,7 @@ void *node = zlink_spot_node_new(ctx, &opts);
 
 꺼진 기능은 내부 socket을 생성하지 않는다 — 사용하지 않는 기능에 대한 숨은 자원 비용이 없다.
 
-이 예제는 한 프로세스 안에서 SPOT node를 만들고, unified `Spot` facade로
+이 예제는 한 프로세스 안에서 SPOT 노드를 만들고, 통합 `Spot` 파사드로
 토픽 하나를 발행하는 가장 작은 흐름이다.
 
 ## 3. Node를 네트워크에 올리는 방법
@@ -112,14 +112,14 @@ zlink_spot_node_attach_discovery(node, discovery);
 여기서 `"alpha"`는 이 discovery view가 보는 SPOT channel 이름이다.
 같은 channel view를 공유하는 다른 SPOT peer끼리 자동 연결된다.
 
-`attach_discovery()`를 쓴 뒤에는 같은 node에 `connect_peer()`나
-`disconnect_peer()`를 같이 섞지 않는 편이 좋다. 현재 계약도 discovery attach
-후 수동 peer connect를 `EBUSY`로 막는다.
+`attach_discovery()`를 쓴 뒤에는 같은 노드에 `connect_peer()`나
+`disconnect_peer()`를 함께 섞지 않는 편이 좋다. 현재 계약도 discovery 연결
+후 수동 피어 연결을 `EBUSY`로 막는다.
 
 peer endpoint를 모르고 target node의 routing id만 알고 있으면
 `zlink_spot_node_disconnect_peer_rid()`로 해당 peer node 연결을 종료할 수 있다.
-이 함수는 `SpotNode`에 호출한다. `Spot` facade는 개별 peer 연결을 직접
-소유하지 않으므로 별도 rid disconnect 함수를 제공하지 않는다.
+이 함수는 `SpotNode`에 호출한다. `Spot` 파사드는 개별 피어 연결을 직접
+소유하지 않으므로 별도의 rid disconnect 함수를 제공하지 않는다.
 
 ### 3.3 raw peer weight로 새 outbound만 비우기
 
@@ -150,8 +150,8 @@ weight가 `0`이면 다른 peer가 이 node를 새 outbound 후보에서 제외�
 
 ## 4. 토픽 publish/subscribe
 
-SPOT topic plane은 `service_name + topic_id`를 함께 사용한다.
-현재 공개 함수 인자 이름은 `service_name`이지만, 실질적으로는 topic namespace를
+SPOT 토픽 평면은 `service_name + topic_id`를 함께 사용한다.
+현재 공개 함수 인자 이름은 `service_name`이지만, 실질적으로는 토픽 네임스페이스를
 구분하는 이름으로 보면 된다.
 
 ### 4.1 publish
@@ -204,12 +204,12 @@ node 단위 aggregate subscription으로 반영된다. 첫 구독이 생길 때 
 
 핵심 규칙은 두 가지다.
 
-- channel 호출은 항상 attach된 `DEALER`로만 나간다.
-- attach 함수는 socket 생성이나 connect를 대신하지 않는다.
+- 채널 호출은 항상 연결된 `DEALER`로만 나간다.
+- 연결 함수는 소켓 생성이나 연결(connect)을 대신하지 않는다.
 
-**자동 경로**는 Discovery가 `DEALER` 연결을 대신 관리한다. peer가 registry에 등록되면
-자동으로 연결이 맺어진다. **수동 경로**는 호출자가 `DEALER` socket을 만들고 직접
-`connect()`를 호출해야 한다. 두 방식의 channel 호출 동작은 동일하며, peer 발견과 연결
+**자동 경로**는 Discovery가 `DEALER` 연결을 대신 관리한다. 피어가 레지스트리에 등록되면
+자동으로 연결이 맺어진다. **수동 경로**는 호출자가 `DEALER` 소켓을 만들고 직접
+`connect()`를 호출해야 한다. 두 방식의 채널 호출 동작은 동일하며, 피어 발견과 연결
 관리 방식만 다르다.
 
 ### 5.1 자동 연결 경로
@@ -238,9 +238,9 @@ zlink_socket_attach_discovery(dealer, orders_discovery);
 zlink_spot_node_attach_channel_dealer(node, orders_discovery, dealer);
 ```
 
-여기서는 `SpotNode` 자신이 보는 SPOT channel은 `"alpha"`이고,
-등록하는 `DEALER`는 `"orders"` channel을 바라본다.
-같은 이름을 써도 계약 위반은 아니지만, 예시에서는 헷갈리지 않게 다른 이름을
+여기서는 `SpotNode` 자신이 속한 SPOT 채널은 `"alpha"`이고,
+등록하는 `DEALER`는 `"orders"` 채널을 바라본다.
+같은 이름을 써도 계약 위반은 아니지만, 예시에서는 혼동을 피하기 위해 다른 이름을
 사용하는 편이 낫다.
 
 ### 5.2 수동 연결 경로
@@ -275,20 +275,20 @@ zlink_spot_request_channel(
   2000);
 ```
 
-같은 `channel_name`에 `DEALER`를 두 개 등록할 수는 없다. 자동 attach와 수동
-attach도 같은 이름이면 충돌로 취급한다.
+같은 `channel_name`에 `DEALER`를 두 개 등록할 수는 없다. 자동 연결과 수동
+연결도 이름이 같으면 충돌로 취급한다.
 
 ## 6. Dispatch event handler로 통합 소비
 
-SPOT에는 두 가지 handler 등록 방식이 있으며, 같은 Spot에서 동시에 쓸 수 없다.
+SPOT에는 두 가지 핸들러 등록 방식이 있으며, 같은 Spot에서 동시에 쓸 수 없다.
 
-- **`zlink_spot_handler()`** — routed 전용 직접 callback이다. callback 안에서
-  routed message payload를 바로 받는다. subscribe, channel reply, timer, Actor 이벤트는
-  이 방식으로 받을 수 없다. Actor나 subscribe가 필요하면 이 방식을 쓸 수 없다.
+- **`zlink_spot_handler()`** — 라우팅 전용 직접 콜백이다. 콜백 안에서
+  라우팅 메시지 페이로드를 바로 받는다. 구독, 채널 응답, 타이머, Actor 이벤트는
+  이 방식으로 받을 수 없다. Actor나 구독이 필요하면 이 방식을 쓸 수 없다.
 
-- **`zlink_spot_dispatch_event_handler()`** — subscribe, routed, channel reply, timer,
-  Actor join, Actor readable을 모두 readiness 형태로 받는다. callback은 "읽을 것이 있다"는
-  신호이며, 실제 데이터는 각 drain API로 읽는다. subscribe, channel reply, timer,
+- **`zlink_spot_dispatch_event_handler()`** — 구독, 라우팅, 채널 응답, 타이머,
+  Actor 참가(join), Actor 읽기 준비를 모두 준비(readiness) 형태로 받는다. 콜백은 "읽을 것이 있다"는
+  신호이며, 실제 데이터는 각 소진(drain) API로 읽는다. 구독, 채널 응답, 타이머,
   Actor 이벤트는 이 방식으로만 받을 수 있다.
 
 Actor가 필요한 경우는 항상 `zlink_spot_dispatch_event_handler()`를 사용해야 한다.
@@ -327,23 +327,23 @@ void my_dispatch_handler(
 }
 ```
 
-dispatch 우선순위는 `SUBSCRIBE_READABLE` → `ROUTED_READABLE` →
+디스패치 우선순위는 `SUBSCRIBE_READABLE` → `ROUTED_READABLE` →
 `CHANNEL_REPLY_READABLE` → `TIMER_READABLE` → `ACTOR_JOIN_READABLE` →
-`ACTOR_READABLE` 순이다. 같은 callback 안에서
-모든 event를 처리하므로, 한 spot의 routed handler, subscription handler, timer
-handler, channel reply callback은 같은 실행 문맥에서 순차 실행된다.
+`ACTOR_READABLE` 순이다. 같은 콜백 안에서
+모든 이벤트를 처리하므로, 하나의 Spot에서 라우팅 핸들러, 구독 핸들러, 타이머
+핸들러, 채널 응답 콜백은 같은 실행 문맥에서 순차 실행된다.
 
-### 6.1 dispatch event는 readiness다
+### 6.1 dispatch 이벤트는 읽기 준비 신호다
 
 `SUBSCRIBE_READABLE`과 `ROUTED_READABLE`은 "메시지 1개가 도착했다"는 뜻이 아니라
 "지금 읽을 것이 있다"는 뜻이다.
 
 즉 아래처럼 이해해야 한다.
 
-- callback 1회가 메시지 1개를 뜻하지 않는다.
-- 같은 plane이 이미 readable인 동안 메시지가 더 들어와도 callback 개수는 메시지
+- 콜백 1회가 메시지 1개를 뜻하지 않는다.
+- 같은 평면(plane)이 이미 읽기 가능한 상태에서 메시지가 더 들어와도 콜백 횟수가 메시지
   개수와 1:1로 맞지 않을 수 있다.
-- callback 안에서는 해당 plane을 `EAGAIN`이 나올 때까지 반복해서 drain하는 편이
+- 콜백 안에서는 해당 평면을 `EAGAIN`이 나올 때까지 반복해서 소진(drain)하는 편이
   맞다.
 
 예를 들면 routed plane은 아래처럼 처리한다.
@@ -375,19 +375,19 @@ for (;;) {
 }
 ```
 
-subscribe plane도 같은 방식으로 drain한다.
+구독 평면도 같은 방식으로 소진(drain)한다.
 
-### 6.2 channel request reply가 dispatch stream에 포함되는 이유
+### 6.2 채널 요청 응답이 dispatch 스트림에 포함되는 이유
 
-`zlink_spot_request_channel()`로 시작한 request의 reply는 transport 경로상으로는
-attach된 `DEALER`를 통해 돌아오지만, **최종 callback 실행은 해당 `Spot`의 dispatch
-stream에서 처리된다**.
+`zlink_spot_request_channel()`로 시작한 요청의 응답은 전송 경로상으로는
+연결된 `DEALER`를 통해 돌아오지만, **최종 콜백 실행은 해당 `Spot`의 디스패치
+스트림에서 처리된다**.
 
-- network reply → attached `DEALER` completion → bridge → `Spot` dealer source queue
-- `CHANNEL_REPLY_READABLE` dispatch event → `zlink_spot_channel_reply_progress_from()`
-  → user reply callback
+- 네트워크 응답 → 연결된 `DEALER` 완료 → 브리지 → `Spot` dealer 소스 큐
+- `CHANNEL_REPLY_READABLE` 디스패치 이벤트 → `zlink_spot_channel_reply_progress_from()`
+  → 사용자 응답 콜백
 
-이 때문에 binding이 attached dealer별 별도 progress pump를 돌릴 필요가 없다.
+이 때문에 바인딩 계층이 연결된 dealer별 별도 진행 펌프(progress pump)를 돌릴 필요가 없다.
 
 ## 7. Actor로 session 메시지 분배하기
 
@@ -396,13 +396,13 @@ Actor 생성, Spot join/leave, 종료, STREAM session bind, C sample은
 
 ## 8. 지금 공개된 poller와의 관계, Spot 타이머
 
-현재 public poller는 `Spot` 전용 event kind와 subject를 함께 돌려주지 않는다.
-즉 지금 공개 계약에서는 `Spot`을 poller에 등록해서 dispatch callback과 같은 의미를
-그대로 받는 표면이 아직 없다.
+현재 공개 폴러는 `Spot` 전용 이벤트 종류와 주체(subject)를 함께 반환하지 않는다.
+즉 지금 공개 계약에서는 `Spot`을 폴러에 등록해서 디스패치 콜백과 같은 의미를
+그대로 받는 인터페이스가 아직 없다.
 
-따라서 SPOT의 subscribe, routed recv, channel reply, timer를 한 owner 기준으로
+따라서 SPOT의 구독, 라우팅 수신, 채널 응답, 타이머를 하나의 소유자 기준으로
 순차 처리하려면 현재는 `zlink_spot_dispatch_event_handler()`를 사용하는 쪽이 맞다.
-`Spot` progress 하나만으로 channel reply completion을 포함한 모든 work가 진전된다.
+`Spot` 진행(progress) 하나만으로 채널 응답 완료를 포함한 모든 작업이 진전된다.
 
 Spot의 I/O 스레드에서 실행되는 타이머를 만들려면 `zlink_timer_new()` 대신
 `zlink_spot_timer_new()`를 사용한다:
@@ -439,19 +439,19 @@ int rc = zlink_spot_recv(
   0);
 ```
 
-`zlink_spot_recv()`의 출력값으로 어떤 reply 함수를 써야 하는지 알 수 있다.
+`zlink_spot_recv()`의 출력값으로 어떤 응답 함수를 써야 하는지 알 수 있다.
 
 - `source_spot_rid`가 비어 있지 않으면 다른 Spot에서 온 요청이다 —
-  `zlink_spot_reply_spot()`으로 SPOT routed plane을 통해 응답한다.
-- `source_spot_rid`가 비어 있고 `source_node_rid`만 있으면 ROUTER socket에서 온
-  요청이다 — `zlink_spot_reply_router()`로 ROUTER plane을 통해 응답한다.
+  `zlink_spot_reply_spot()`으로 SPOT 라우팅 평면을 통해 응답한다.
+- `source_spot_rid`가 비어 있고 `source_node_rid`만 있으면 ROUTER 소켓에서 온
+  요청이다 — `zlink_spot_reply_router()`로 ROUTER 평면을 통해 응답한다.
 
 잘못된 reply 함수를 사용하면 `ZLINK_SUBMIT_INVALID_ARGUMENT`가 반환된다.
 
 ## 10. Spot에서 routed request 시작하기
 
-`Spot`은 routed request와 one-way direct send를 직접 시작할 수 있다.
-기본 경로는 `send_channel()` / `request_channel()`이지만, 특정 peer를 직접
+`Spot`은 라우팅 요청과 단방향 직접 전송을 직접 시작할 수 있다.
+기본 경로는 `send_channel()` / `request_channel()`이지만, 특정 피어를 직접
 지목할 때는 아래 API를 사용한다.
 
 ### 10.1 다른 Spot으로 request 보내기
@@ -487,19 +487,19 @@ zlink_spot_request_router(
 
 reply는 대상 ROUTER가 `zlink_router_reply_spot()`으로 보낸다.
 
-### 10.3 Spot에서 Spot으로 one-way direct send
+### 10.3 Spot에서 Spot으로 단방향 직접 전송
 
-`Spot`에서 `rid`를 직접 지정해 다른 `Spot`으로 one-way send를 하려면
-`zlink_spot_send_spot()` (C API) 또는 내부 substrate `zlink_spot_send_spot_part()`를
+`Spot`에서 `rid`를 직접 지정해 다른 `Spot`으로 단방향 전송을 하려면
+`zlink_spot_send_spot()` (C API) 또는 내부 기반 함수 `zlink_spot_send_spot_part()`를
 사용한다.
 
-ROUTER peer로 one-way send는 현재 공개 표면에 없다. 필요하면 `RouterSocket`
+ROUTER 피어로의 단방향 전송은 현재 공개 인터페이스에 없다. 필요하면 `RouterSocket`
 또는 raw ROUTER API를 쓴다.
 
 ## 11. Router에서 SPOT으로 직접 보내기
 
-특정 destination node rid와 spot rid를 직접 지정해 ROUTER에서 SPOT으로
-one-way send 또는 request를 보낼 때는 `RouterSocket` 또는 raw ROUTER API를 쓴다.
+특정 대상 노드 rid와 Spot rid를 직접 지정해 ROUTER에서 SPOT으로
+단방향 전송 또는 요청을 보낼 때는 `RouterSocket` 또는 raw ROUTER API를 쓴다.
 
 ```c
 zlink_router_request_spot(
@@ -524,8 +524,8 @@ void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_spot_node_attach_pub_ingress(node, pub);
 ```
 
-이 `PUB`는 `SpotNode` 전용 ingress source로 취급한다. node당 하나만 붙일 수 있고,
-attach 뒤에는 다른 일반 용도로 함께 쓰지 않는 편이 맞다.
+이 `PUB`는 `SpotNode` 전용 유입 소스(ingress source)로 취급한다. 노드당 하나만 붙일 수 있고,
+연결 후에는 다른 일반 용도로 함께 쓰지 않는 편이 맞다.
 
 ## 13. 상태 확인
 
@@ -545,17 +545,17 @@ zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
 delivery target을 끊던 모델의 잔재다. 현재 SPOT delivery 모델은 큐 증가를 이유로 target을
 끊지 않는다. 이 카운터는 진단에 사용하지 말아야 한다.
 
-**HWM 진단에 사용할 것**: admission은 `publish_ingress_queue`와
+**HWM 진단에 사용할 것**: 입장 허용(admission, 큐 수용 여부 판단)은 `publish_ingress_queue`와
 `routed_send_queue` 큐 한도로 적용된다. `ingress-sub`와 `internal-router`는
-제거되었으며 snapshot에 나타나지 않는다.
+제거되었으며 스냅샷에 나타나지 않는다.
 `zlink_spot_node_internal_sockets_snapshot()`으로 반환되는 `mesh-pub`,
 `mesh-xsub`, `external-router`의 `snapshot` 필드는 transport socket HWM을 보여준다.
 relay 및 delivery socket은 HWM `0`을 보고하는데, 이는 정상이다.
 큐 admission 한도는 HWM profile 옵션으로 제어하며, profile별 메시지 수 기준으로
 BALANCED 256 (기본), COMPACT 64, LOW_LATENCY 128, THROUGHPUT 512다.
 
-SpotNode HWM 옵션은 admission 경계에만 적용된다 — topic publish admission과 routed
-admission. Actor 전용 HWM 옵션은 없다. Actor 처리 backlog는 dispatch event, recv 결과,
+SpotNode HWM(High Water Mark, 큐 상한선) 옵션은 입장 허용 경계에만 적용된다 — 토픽 발행 입장 허용과 라우팅
+입장 허용이 해당된다. Actor 전용 HWM 옵션은 없다. Actor 처리 적체(backlog)는 디스패치 이벤트, 수신 결과,
 `zlink_spot_actors_snapshot()`의 `unread` 카운트로 진단한다.
 
 Actor 상태 확인에는 `zlink_spot_node_actors_snapshot()`과

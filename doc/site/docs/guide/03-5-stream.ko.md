@@ -42,16 +42,16 @@ zlink_bind(stream, "tcp://0.0.0.0:8080");
 
 ## 3. STREAM 고유 동작
 
-STREAM은 raw socket family에서 유일한 예외 타입이다. 한 handle에서 세
+STREAM은 기반 소켓 계열(raw socket family)에서 유일한 예외 타입이다. 한 핸들에서 세
 가지 수신 모델 중 정확히 하나를 선택한다.
 
-- **raw recv**: `zlink_recv()`로 transport 조각을 직접 가져온다. poller의
+- **직접 수신(raw recv)**: `zlink_recv()`로 transport 조각을 직접 가져온다. poller의
   `ZLINK_POLLIN`과 함께 사용한다.
-- **raw callback**: `zlink_recv_handler()`로 raw 조각을 콜백으로 받는다.
-  event-driven 서버에 적합하다.
-- **packet callback**: `zlink_stream_packet_handler()`로 고정 framing
-  규약(2B header size + 4B body size + header + body, big-endian)을 따르는
-  packet을 조립된 header/body 로 받는다.
+- **콜백 수신(raw callback)**: `zlink_recv_handler()`로 수신 조각을 콜백으로 받는다.
+  이벤트 기반(event-driven) 서버에 적합하다.
+- **패킷 콜백(packet callback)**: `zlink_stream_packet_handler()`로 고정 프레이밍(framing,
+  패킷 경계를 구분하는 방식) 규약(2B header size + 4B body size + header + body, big-endian)을
+  따르는 패킷을 조립된 header/body 형태로 받는다.
 
 세 모델은 상호 배타이며, 한 handle에서 두 번째 모드로 전환하려 하면
 `EBUSY`로 실패한다. 응용이 필요에 맞는 모드 하나만 선택한다.
@@ -87,7 +87,7 @@ STREAM만의 고유 동작은 다음과 같다.
 
 ## 4. 콜백 예시
 
-STREAM의 콜백 디스패치(수신 메시지를 콜백으로 전달) 과정에서는
+STREAM의 콜백 분배(수신 메시지를 콜백으로 전달) 과정에서는
 connect/disconnect 이벤트와 데이터를 구분해야 한다.
 
 ```c
@@ -128,9 +128,9 @@ zlink_recv_handler(stream, on_message, NULL);
 | 프레이밍 | transport에서 수신된 raw 바이트 |
 | 전송 | `zlink_send_rid()` |
 
-> 송신 큐가 가득 차면(HWM) `zlink_send_rid()`는 블록(기본) 또는
-> `ZLINK_DONTWAIT` 로 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 고급 backpressure 패턴은
-> [성능 가이드](10-performance.ko.md)를 참고.
+> 송신 큐가 가득 차면(HWM, 고수위 표시) `zlink_send_rid()`는 블록(기본) 또는
+> `ZLINK_DONTWAIT` 로 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다.
+> 배압(backpressure) 패턴은 [성능 가이드](10-performance.ko.md)를 참고.
 
 - 한 번에 하나의 receive callback만 등록 가능하며, 이미 등록된 상태에서 attach를
   호출하면 `errno=EBUSY`와 함께 `-1`을 반환한다.
@@ -155,10 +155,10 @@ zlink_recv_handler(stream, on_message, NULL);
 
 ## 4.1 packet callback 모드
 
-고정 framing 규약(2바이트 big-endian header size + 4바이트 big-endian
+고정 프레이밍 규약(2바이트 big-endian header size + 4바이트 big-endian
 body size + header payload + body payload)을 사용하는 상위 프로토콜에서는
-`zlink_stream_packet_handler()`로 packet 단위 콜백을 등록할 수 있다.
-core가 fragment 누적과 길이 해석을 직접 처리하므로, 응용은 header/body를
+`zlink_stream_packet_handler()`로 패킷 단위 콜백을 등록할 수 있다.
+core가 조각(fragment) 누적과 길이 해석을 직접 처리하므로, 응용은 header/body를
 그대로 받아 처리한다.
 
 ```c
@@ -188,16 +188,15 @@ packet callback 모드의 규칙은 다음과 같다.
   유효한 객체로 전달된다.
 - `header` 와 `body` 의 소유권은 콜백으로 이전된다. 콜백은 두 msg_t 를 각각
   정확히 한 번 close 하거나 소비해야 한다.
-- 같은 handle 에서 raw recv (`zlink_recv()`), raw callback
-  (`zlink_recv_handler()`), data-plane `ZLINK_POLLIN` 등록은 모두
-  `EBUSY` 로 실패한다. 두 번째 packet handler attach 도 마찬가지다.
-- framing 규약을 지키지 않는 malformed packet (길이 제한 초과, 조립 실패,
-  불완전 상태 연결 종료 등) 은 연결을 닫는 기본 동작으로 이어진다. 이
-  이벤트는 socket monitor 경로로 관찰한다.
+- 같은 핸들에서 직접 수신 모드(`zlink_recv()`), 콜백 수신 모드
+  (`zlink_recv_handler()`), 데이터 경로 `ZLINK_POLLIN` 등록은 모두
+  `EBUSY` 로 실패한다. 두 번째 패킷 핸들러 등록도 마찬가지다.
+- 프레이밍 규약을 지키지 않는 비정형 패킷(malformed packet)(길이 제한 초과, 조립 실패,
+  불완전 상태 연결 종료 등)은 연결을 닫는 기본 동작으로 이어진다. 이
+  이벤트는 소켓 모니터(socket monitor) 경로로 관찰한다.
 
-이 모드는 fragment 누적을 응용 쪽에서 다시 구현하지 않아도 되는 사용성
-이득을 주지만, transport fragment 경계와 packet 경계가 다르다는 점 자체를
-바꾸지는 않는다.
+이 모드는 조각 누적을 응용 쪽에서 다시 구현하지 않아도 되는 편의상 이점을
+주지만, transport 조각 경계와 패킷 경계가 다르다는 점 자체를 바꾸지는 않는다.
 
 ---
 

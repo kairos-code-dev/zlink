@@ -16,7 +16,7 @@ int zlink_proxy (void *frontend, void *backend, void *capture);
 
 - `frontend` → `backend` 방향으로 메시지를 전달하고, 동시에 반대 방향도 처리
 - `capture`가 NULL이 아니면 통과하는 모든 메시지를 capture 소켓에 복사
-- **blocking 함수** — 별도 스레드에서 실행
+- **블로킹 함수** — 별도 스레드에서 실행
 - **소켓 타입 제한 없음** — 내부적으로 `socket_base_t`의 internal recv/send를
   직접 호출하므로 공개 API 의 `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` 제한과 무관하게 동작
 
@@ -64,7 +64,7 @@ zlink_proxy(xsub, xpub, capture);      /* blocking */
 
 ### 3.2 수동 proxy 구성
 
-중간에 로깅, 필터링, 토픽 변환 등 커스텀 로직이 필요하면
+중간에 로깅, 필터링, 토픽 변환 등 맞춤 로직이 필요하면
 공개 API만으로 수동 proxy를 구성할 수 있다.
 
 #### 데이터 흐름
@@ -80,7 +80,7 @@ zlink_proxy(xsub, xpub, capture);      /* blocking */
 | 단계 | 소켓 | API | 설명 |
 |------|------|-----|------|
 | 1 | XPUB | `zlink_xpub_recv_part(xpub, ...)` | SUB의 구독/해제 이벤트 수신 |
-| 2 | 앱 | 커스텀 로직 | 구독 인가, 토픽 리맵핑 등 |
+| 2 | 앱 | 커스텀 로직 | 구독 인가, 토픽 재매핑 등 |
 | 3 | XSUB | `zlink_set_subscription(xsub, topic)` | upstream PUB에 구독 전파 |
 
 #### 전체 코드
@@ -188,10 +188,10 @@ flowchart LR
 | 용도 | 설명 |
 |------|------|
 | **연결 수 감소** | N×M → N+M |
-| **주소 decoupling** | PUB/SUB가 서로의 endpoint를 몰라도 됨 |
+| **주소 분리** | PUB/SUB가 서로의 endpoint를 몰라도 됨 |
 | **동적 확장** | PUB/SUB 독립 추가·제거 |
-| **구독 변환** | XPUB MANUAL mode로 topic remapping/filtering |
-| **Network bridging** | inproc ↔ tcp 같은 세그먼트 연결 |
+| **구독 변환** | XPUB MANUAL 모드로 토픽 재매핑/필터링 |
+| **네트워크 브리징** | inproc ↔ tcp 같은 세그먼트 연결 |
 | **모니터링** | capture 소켓으로 통과 메시지 기록 |
 
 ---

@@ -135,7 +135,7 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_effective_rcvbuf` | 현재 소켓에 적용된 수신 buffer 크기. 단위는 byte |
 | `auto_hwm_last_recalc_ms` | 최근 자동 HWM 재계산 시각(ms) |
 | `auto_hwm_last_recalc_reason` | 최근 재계산 사유 enum 값 |
-| `auto_hwm_send_blocked_ratio_ppm` | 최근 송신 시도 중 backpressure 로 막힌 비율(ppm) |
+| `auto_hwm_send_blocked_ratio_ppm` | 최근 송신 시도 중 backpressure(배압)로 막힌 비율(ppm) |
 | `auto_hwm_deferred_sndhwm` | 지연 중인 송신 HWM 축소값. 없으면 `-1` |
 | `auto_hwm_deferred_rcvhwm` | 지연 중인 수신 HWM 축소값. 없으면 `-1` |
 

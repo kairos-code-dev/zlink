@@ -42,7 +42,7 @@ flowchart TB
     app --> facade --> access --> runtime --> infra --> core
 ```
 
-- **Public API Facade**는 C API 진입점으로, handle validation 후 service-local access 접합 지점으로 위임한다. concrete service 세부를 직접 알지 않는다.
+- **Public API Facade**는 C API 진입점으로, 핸들 유효성 검사 후 service-local 접합 지점으로 위임한다. 개별 서비스 구현 세부를 직접 알지 않는다.
 - **Service Access Layer**는 각 서비스가 제공하는 service-local 접합 지점이다. `*_access.hpp`가 API 계층과 service runtime 사이의 계약을 정의한다.
 - **Service Runtime**은 각 서비스의 내부 구현이다. SPOT은 node/data_plane(forwarding/protocol)/pub/sub으로 모듈화되어 있다.
 - **Registry**는 서비스 엔트리를 관리하고, 주기적으로 SERVICE_LIST를 브로드캐스트한다.
@@ -56,7 +56,7 @@ flowchart TB
 | **Registry** | 서비스 등록소 | 서비스 엔트리를 등록·관리하는 중앙 저장소 |
 | **Discovery** | 서비스 발견 | Registry를 구독하여 서비스 목록을 로컬 캐시로 유지 |
 | **SPOT** | 위치 투명 pub/sub | 위치투명 토픽 기반 발행/구독 메시 |
-| **Actor** | SPOT 세션 라우팅 타겟 | STREAM session 메시지를 Spot dispatch context로 모으는 SPOT 내부 주소 지정 단위 |
+| **Actor** | SPOT 세션 라우팅 대상 | STREAM 세션 메시지를 Spot 디스패치 컨텍스트로 모으는 SPOT 내부 주소 지정 단위 |
 
 ## 3. 서비스 구성 요소
 
@@ -102,10 +102,10 @@ publish/subscribe를 함께 수행한다.
 - **Thread-safe** — 하나의 `spot` / `spot_node` handle에서 여러 스레드가
   operational API를 동시에 호출 가능
 
-- **Actor**: STREAM session 메시지를 Spot dispatch context로 모으는 SPOT 내부 라우팅 타겟.
-  `SpotNode`가 Actor 테이블을 소유하고, 새로 생성된 Actor는 `Entry Spot`에서 dispatch된다.
-  Actor는 `zlink_spot_join_spot()`으로 다른 `Spot`으로 이동하며, STREAM session 연결 해제 시
-  자동으로 `Entry Spot`으로 복귀한다. Actor는 socket, inproc endpoint를 소유하지 않으며
+- **Actor**: STREAM 세션 메시지를 Spot 디스패치 컨텍스트로 모으는 SPOT 내부 라우팅 대상.
+  `SpotNode`가 Actor 테이블을 소유하고, 새로 생성된 Actor는 `Entry Spot`에서 디스패치된다.
+  Actor는 `zlink_spot_join_spot()`으로 다른 `Spot`으로 이동하며, STREAM 세션 연결 해제 시
+  자동으로 `Entry Spot`으로 복귀한다. Actor는 소켓이나 inproc(프로세스 내부) 엔드포인트를 소유하지 않으며
   `zlink_actor_ref_t`로 식별한다.
 
 자세한 내용은 [SPOT 가이드](07-3-spot.ko.md)와 [SPOT Actor 가이드](07-4-actor.ko.md)를 참고.
@@ -151,12 +151,12 @@ flowchart LR
 | SPOT Node | `spot_node_access_t` | lifecycle, bind, peer connect, discovery attach |
 | SPOT Subject | `spot_subject_access_t` | publish, subscribe, option, handler, monitor |
 
-각 access 접합 지점은 `service_public_api_guard_t`와 통합되어 콜백(callback) 모드 추적과
-lifecycle gate(destroy 시 `EBUSY`/`ESHUTDOWN` 계약)를 제공한다.
+각 access 접합 지점은 `service_public_api_guard_t`와 통합되어 콜백 모드 추적과
+수명주기 게이트(destroy 시 `EBUSY`/`ESHUTDOWN` 계약)를 제공한다.
 
-이 구조 덕분에 API 계층은 concrete service 구현을 직접 알지 않고,
-service 추가 시 `api/service_*_api.cpp`, 해당 `*_access` 파일,
-해당 service 구현 파일만 수정하면 된다.
+이 구조 덕분에 API 계층은 개별 서비스 구현을 직접 알지 않아도 되며,
+새 서비스를 추가할 때는 `api/service_*_api.cpp`, 해당 `*_access` 파일,
+해당 서비스 구현 파일만 수정하면 된다.
 
 ## 4.1 점검을 위한 graceful maintenance (가중치)
 
@@ -217,7 +217,7 @@ flowchart TB
 
 - **Discovery가 기반 인프라**: SPOT, 소켓 패밀리 모두 Discovery를 통해 대상을 발견한다.
 - **SPOT**은 PUB/SUB 패턴으로 토픽 메시지를 전파하고, routed 통신을 제공한다.
-- **Actor**는 SPOT 안에서 동작하는 세션 기반 라우팅 타겟이다. STREAM session 메시지를 Spot dispatch context로 모으며, 별도 서비스가 아닌 `SpotNode`가 관리하는 내부 주소 지정 단위다.
+- **Actor**는 SPOT 안에서 동작하는 세션 기반 라우팅 대상이다. STREAM 세션 메시지를 Spot 디스패치 컨텍스트로 모으며, 별도 서비스가 아닌 `SpotNode`가 관리하는 내부 주소 지정 단위다.
 - **소켓 패밀리**는 raw ROUTER/DEALER/PUB/SUB 소켓이 Discovery를 통해 피어를 등록·발견하여 소켓 수준의 위치투명 통신을 제공한다.
 - 모든 서비스는 독립적으로 동작하며, 동일한 Registry 클러스터를 공유할 수 있다.
 

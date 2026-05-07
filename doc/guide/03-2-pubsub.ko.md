@@ -129,7 +129,7 @@ SUB / XSUB는 recv-only 타입이다. poller의 `ZLINK_POLLIN`과 함께 사용�
 
 > **PUB/XPUB 기본값:** `ZLINK_PUB_OPT_NODROP` 의 기본값은 `1` 이다.
 > HWM 이 찼을 때 조용히 drop 하지 않고 `zlink_publish()` 가
-> `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. loss-tolerant 동작이 필요하면
+> `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 메시지 손실을 허용하는 동작이 필요하면
 > `ZLINK_PUB_OPT_NODROP` 을 명시적으로 `0` 으로 설정한다.
 
 ??? example "Full Sample Code -- Recv"
@@ -293,9 +293,9 @@ zlink_connect(sub, "tcp://pub2:5557");
 
 ### Slow Subscriber (HWM 초과 시 drop)
 
-PUB/XPUB는 기본적으로 **lossy mode**로 동작한다. 느린 subscriber의
-send queue가 HWM에 도달하면 해당 subscriber에게 보내는 message를
-**silent drop**한다 (error 반환 없음).
+PUB/XPUB는 기본적으로 **손실 허용 모드(lossy mode)**로 동작한다. 느린 구독자의
+송신 큐가 HWM(High-Water Mark, 큐 최대 허용 메시지 수)에 도달하면 해당 구독자에게 보내는 메시지를
+오류 반환 없이 **조용히 버린다(silent drop)**.
 
 ```c
 /* Option 1: Increase buffer by adjusting HWM */
@@ -303,11 +303,11 @@ int hwm = 100000;
 zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 ```
 
-#### XPUB_NODROP — drop 대신 backpressure
+#### XPUB_NODROP — 버리지 않고 배압(backpressure) 반환
 
-`ZLINK_PUB_OPT_NODROP`을 활성화하면 lossy mode가 꺼진다. HWM 도달 시
-message를 drop하지 않고 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환하여 caller 가 직접
-backpressure를 제어할 수 있다.
+`ZLINK_PUB_OPT_NODROP`을 활성화하면 손실 허용 모드가 꺼진다. HWM 도달 시
+메시지를 버리지 않고 `ZLINK_SUBMIT_BACKPRESSURED`를 반환하여 호출자가 직접
+배압(backpressure)을 제어할 수 있다.
 
 ```c
 /* Enable NODROP on XPUB */
@@ -327,10 +327,10 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 }
 ```
 
-| Mode | HWM 도달 시 동작 | 사용 시점 |
+| 모드 | HWM 도달 시 동작 | 사용 시점 |
 |------|------------------|-----------|
-| 기본 (lossy) | Silent drop — error 없이 message 유실 | 최신 data만 중요한 경우 (sensor, tick) |
-| `XPUB_NODROP=1` | `ZLINK_SUBMIT_BACKPRESSURED` 반환 — caller 가 제어 | Message 유실이 허용되지 않는 경우 |
+| 기본 (손실 허용) | 조용히 버림 — 오류 반환 없이 메시지 유실 | 최신 데이터만 중요한 경우 (센서, 시세 데이터) |
+| `XPUB_NODROP=1` | `ZLINK_SUBMIT_BACKPRESSURED` 반환 — 호출자가 배압 제어 | 메시지 유실이 허용되지 않는 경우 |
 
 > `ZLINK_PUB_OPT_NODROP`은 XPUB socket 전용 option이다.
 > 일반 PUB에서는 사용할 수 없다.

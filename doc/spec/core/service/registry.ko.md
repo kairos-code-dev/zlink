@@ -117,7 +117,7 @@ Registry는 owner를 고를 때 현재 살아 있는 provider 집합에 없는 e
 
 - 정상 종료 경로에서는 unregister 를 즉시 시도해야 합니다.
 - 비정상 종료나 네트워크 분리로 unregister 가 오지 않을 수 있으므로 Registry는
-  lease, heartbeat, 또는 동등한 만료 규칙으로 오래된 주소 정보를 정리할 수
+  lease, heartbeat(연결 생존 확인 신호), 또는 동등한 만료 규칙으로 오래된 주소 정보를 정리할 수
   있어야 합니다.
 - handover 또는 withdraw 직후 오래된 캐시가 다시 살아나는 일을 막기 위해
   Registry는
@@ -200,7 +200,7 @@ Registry의 PUB 및 ROUTER 엔드포인트를 바인딩하고, 바인드 성공�
 내부 control task를 시작하며 서비스 등록 수신과 브로드캐스트를 시작합니다.
 PUB 엔드포인트는 Discovery 인스턴스에 서비스 목록을 브로드캐스트하는 데
 사용됩니다. ROUTER 엔드포인트는 SPOT 노드 및 socket family 서비스로부터
-등록, 등록 해제, 하트비트 메시지를 수신하는 데 사용됩니다.
+등록, 등록 해제, heartbeat(연결 생존 확인 신호) 메시지를 수신하는 데 사용됩니다.
 
 **반환값:** `zlink_bind_result_t` 값을 반환합니다. 상세 errno 는 진단용으로
 `zlink_errno()`에서 계속 조회할 수 있습니다.
@@ -269,9 +269,9 @@ zlink_config_result_t zlink_registry_set_heartbeat(void *registry,
                                                    uint32_t timeout_ms);
 ```
 
-Registry가 등록된 서비스로부터 하트비트 메시지를 기대하는 빈도와 서비스를
+Registry가 등록된 서비스로부터 heartbeat(연결 생존 확인 신호) 메시지를 기대하는 빈도와 서비스를
 만료로 간주하는 시점을 구성합니다. 서비스가 `timeout_ms` 밀리초 이내에
-하트비트를 보내지 않으면 Registry는 해당 서비스를 서비스 목록에서 제거합니다.
+heartbeat를 보내지 않으면 Registry는 해당 서비스를 서비스 목록에서 제거합니다.
 `zlink_registry_bind` 전후 모두 호출할 수 있으며, runtime tick이 다음 주기에
 새 값을 반영합니다.
 

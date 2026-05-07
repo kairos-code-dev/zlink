@@ -16,11 +16,11 @@ routed request/reply, Actor 기반 session dispatch를 하나의 통합 런타�
 
 | 목표 | 구현 선택 |
 |------|-----------|
-| **Spot별 물리 socket 없음** | 모든 transport socket은 `SpotNode`가 소유한다. `Spot` facade는 logical queue와 dispatch context만 가진다. |
-| **명시적 admission 경계** | public publish와 routed send는 `SpotNode` 소유 send-side queue(`publish_ingress_queue`, `routed_send_queue`)에 enqueue한다. socket HWM 계산과 admission 결정이 분리되어, 내부 socket 배선이 public API 오류 의미를 오염시키지 않는다. relay·delivery socket은 HWM `0`을 사용해 숨은 per-peer 큐 한도가 disconnect/drop 결정을 내리지 못하게 한다. |
-| **data-plane thread 전용 socket** | `mesh-pub`, `fanout`, `external-router`는 `SpotNode` 전용 data-plane thread만 접근한다. public thread가 이 socket을 직접 만질 수 없어 소유권이 분산되지 않는다. |
+| **Spot별 물리 소켓 없음** | 모든 transport 소켓은 `SpotNode`가 소유한다. `Spot` facade는 logical queue와 dispatch context만 가진다. |
+| **명시적 admission(입력 허가) 경계** | public publish와 routed send는 `SpotNode` 소유 send-side queue(`publish_ingress_queue`, `routed_send_queue`)에 enqueue한다. 소켓 HWM 계산과 admission 결정이 분리되어, 내부 소켓 배선이 public API 오류 의미를 오염시키지 않는다. relay·delivery 소켓은 HWM `0`을 사용해 숨은 per-peer 큐 상한이 disconnect/drop 결정을 내리지 못하게 한다. |
+| **data-plane thread 전용 소켓** | `mesh-pub`, `fanout`, `external-router`는 `SpotNode` 전용 data-plane thread만 접근한다. public thread가 이 소켓을 직접 만질 수 없어 소유권이 분산되지 않는다. |
 | **집계 구독** | 원격 mesh 구독은 Spot 단위가 아니라 node 단위로 reference-count한다. 여러 local Spot이 같은 topic을 구독해도 원격에는 중복 구독이 전달되지 않는다. |
-| **Actor-Spot 분리** | Actor는 socket이나 inproc endpoint를 소유하지 않는다. part는 SpotNode Actor table을 거쳐 Spot의 logical queue에 dispatch되므로, transport 연결을 끊지 않고도 Actor가 Spot 사이를 이동(join)할 수 있다. |
+| **Actor-Spot 분리** | Actor는 소켓이나 inproc(프로세스 내 통신) endpoint를 소유하지 않는다. part는 SpotNode Actor table을 거쳐 Spot의 logical queue에 dispatch되므로, transport 연결을 끊지 않고도 Actor가 Spot 사이를 이동(join)할 수 있다. |
 | **결정론적 종료** | `Spot` facade를 destroy해도 backing `SpotNode`가 자동으로 종료되지 않는다. Entry Spot 수명은 facade가 아니라 `SpotNode`에 귀속된다. |
 
 ### 0.2 핵심 개념
@@ -338,13 +338,14 @@ socket의 msg dispatch callback이 쓰고 data-plane thread가 읽는 구조다.
 | shutdown 진행 중 | `ESHUTDOWN` |
 | 메모리 할당 실패 | `ENOMEM` |
 
-backpressure는 hysteresis로 동작한다. hard limit 도달 시 `backpressure_active =
-true`로 바꾸고, data-plane이 queue를 절반 이하로 drain하면 `cv.broadcast()`로
-waiting sender를 깨운다.
+배압(backpressure)은 이력 현상(hysteresis)으로 동작한다. hard limit 도달 시
+`backpressure_active = true`로 바꾸고, data-plane이 queue를 절반 이하로 drain하면
+`cv.broadcast()`로 대기 중인 sender를 깨운다. 이력 현상은 한계에 근접한 상태에서
+on/off가 반복되는 채터링을 방지한다.
 
 `send-ready callback`(`zlink_send_ready_handler()`)과 `ZLINK_POLLOUT`은 send-side
-queue admission과 연결된다. queue가 resume limit 이하로 내려가면 armed
-send-ready callback이 호출된다. 이 의미는 "transport socket이 writable하다"가
+queue admission과 연결된다. queue가 resume limit 이하로 내려가면 armed(등록된)
+send-ready callback이 호출된다. 이 의미는 "transport 소켓이 쓰기 가능하다"가
 아니라 "SPOT send admission을 다시 시도할 가치가 있다"다.
 
 ### 5.3 Drain 순서
@@ -468,7 +469,7 @@ std::unordered_set<void*>      _active;   // 현재 worker가 실행 중인 Spot
 std::unordered_set<void*>      _dirty;    // callback 종료 후 재확인 필요한 Spot
 ```
 
-per-Spot 직렬화: 같은 Spot은 동시에 worker 하나만 처리한다. callback이 끝난 뒤
+Spot별 직렬화: 같은 Spot은 동시에 worker 하나만 처리한다. callback이 끝난 뒤
 `_dirty`에 unread event가 남아 있으면 다시 `_ready`에 넣는다.
 
 worker 수 계산:
@@ -560,9 +561,9 @@ stream에 `ACTOR_READABLE` readiness가 올라간다. event subject는 callback 
 `const zlink_actor_ref_t *`다. pending join request가 생기면 Spot dispatch stream에
 `ACTOR_JOIN_READABLE` readiness가 올라간다.
 
-readiness는 메시지 개수와 1:1로 대응하지 않는다. dispatch callback은 각 drain API가
-`NO_DATA`를 반환할 때까지 비우는 방식으로 동작해야 하며, 내부는 같은 Actor에 대해
-part 순서를 유지한다.
+readiness(수신 준비 상태)는 메시지 개수와 1:1로 대응하지 않는다. dispatch callback은
+각 drain API가 `NO_DATA`를 반환할 때까지 비우는 방식으로 동작해야 하며, 내부는 같은
+Actor에 대해 part 순서를 유지한다.
 
 ### 9.3 Active route publish
 

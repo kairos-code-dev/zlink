@@ -99,10 +99,10 @@ if (conn_rc != ZLINK_CONNECT_OK) {
 ### 특성
 
 - **TCP_NODELAY** 활성화 (Nagle 알고리즘 비활성화)
-- **Speculative write** — 동기 쓰기 먼저 시도 후 실패 시 비동기 전환
-- **Gather write** — 헤더와 바디를 한번에 전송 (시스템콜 감소)
+- **투기적 쓰기(speculative write)** — 동기 쓰기를 먼저 시도하고 실패하면 비동기로 전환
+- **모아 쓰기(gather write)** — 헤더와 바디를 한 번에 전송하여 시스템 콜 횟수를 줄임
 
-> Speculative write 등 내부 최적화 상세는 [architecture.md](../internals/architecture.ko.md)를 참고.
+> 투기적 쓰기 등 내부 최적화 상세는 [architecture.md](../internals/architecture.ko.md)를 참고.
 
 ## 3. IPC
 
@@ -177,7 +177,7 @@ if (rc != ZLINK_CONNECT_OK) {
 
 - **동일 context 내에서만** 사용 가능
 - **bind가 connect보다 먼저** 호출되어야 함
-- Lock-free pipe 직접 연결 (네트워크 없음)
+- 잠금 없는(lock-free) 파이프 직접 연결 (네트워크 없음)
 - 가장 낮은 지연시간, 가장 높은 처리량
 
 > 참고: `core/tests/integration/test_pair_inproc.cpp` — bind → connect → bounce 패턴

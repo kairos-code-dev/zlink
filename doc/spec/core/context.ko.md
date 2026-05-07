@@ -52,7 +52,7 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_THREAD_AFFINITY_CPU_REMOVE` | 8 | I/O 스레드 어피니티 집합에서 CPU 제거 |
 | `ZLINK_THREAD_NAME_PREFIX` | 9 | I/O 스레드 이름 접두사 |
 | `ZLINK_CTX_OPT_BLOCKY` | 10 | context 종료 시 블로킹 동작 제어 |
-| `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | 자동 HWM 정책 사용 여부 (`0` = 비활성, `1` = 활성) |
+| `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | 자동 HWM(고수위 표시, High-Water Mark) 정책 사용 여부 (`0` = 비활성, `1` = 활성) |
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | 연결 변화가 이어질 때 자동 HWM 재계산을 다시 실행하기 전에 기다리는 최소 디바운스 시간 (ms, `>= 0`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | 자동 HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). 알 수 없는 값은 `EINVAL`로 실패 |
 
@@ -74,7 +74,7 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_MAX_SOCKETS_DFLT` | 4095 | 기본 최대 소켓 수 |
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | 기본 스레드 우선순위 (OS 기본값) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | 기본 스케줄링 정책 (OS 기본값) |
-| `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | 자동 HWM 정책 기본 활성. 애플리케이션이 auto-HWM을 끄거나 수동 HWM을 설정하지 않으면 balanced profile을 사용함 |
+| `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | 자동 HWM 정책이 기본으로 활성화되어 있음. 애플리케이션이 auto-HWM을 끄거나 수동 HWM을 설정하지 않으면 balanced profile을 사용함 |
 | `ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT` | 3000 | 자동 HWM 재계산 기본 디바운스 시간 (ms) |
 | `ZLINK_CTX_AUTO_HWM_PROFILE_DFLT` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 자동 HWM 기본 profile |
 

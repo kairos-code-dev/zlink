@@ -68,12 +68,12 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 
 ## Entry Spot
 
-`SpotNode`가 생성되면 내부적으로 `Entry Spot` logical state도 함께 생성된다.
+`SpotNode`가 생성되면 내부적으로 `Entry Spot`(진입 수신점, 새 Actor가 처음 배정되는 논리적 수신 지점) logical state도 함께 생성된다.
 `Entry Spot`은 `SpotNode`가 소유하며, application이 제거할 수 없다. 새로
 만들어진 모든 Actor는 생성 직후 반드시 `Entry Spot`에 속한다.
 
 `Entry Spot`은 별도의 `Spot` dispatch context를 가진다. application은 이 context에
-dispatch handler를 등록해 새 Actor의 초기 메시지 처리, 인증, 대상 Spot 선택 같은
+dispatch handler(메시지 수신 시 호출되는 콜백)를 등록해 새 Actor의 초기 메시지 처리, 인증, 대상 Spot 선택 같은
 작업을 수행한다.
 
 ### Entry Spot handle
@@ -153,7 +153,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup(
 
 ## SpotNode 계약
 
-SpotNode는 HWM을 `Spot`에서 `SpotNode`로 들어오는 admission control로만 공개한다.
+SpotNode는 HWM을 `Spot`에서 `SpotNode`로 들어오는 admission control(수신 허가 제어, 새 메시지·연결의 수락 여부를 결정하는 관문)로만 공개한다.
 공개 옵션은 `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`,
 `ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
 `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`,
@@ -474,7 +474,7 @@ typedef void (*zlink_spot_dispatch_event_handler_fn)(
 
 - `event`는 어떤 종류의 work가 준비됐는지 나타낸다.
 - `subject_kind`는 `subject` 포인터를 어떤 타입으로 해석해야 하는지를 나타낸다.
-- `subject`는 실제 drain 대상 인스턴스다.
+- `subject`는 실제 drain(큐에 쌓인 메시지를 꺼내 소비하는 행위) 대상 인스턴스다.
 
 각 조합의 의미는 아래와 같다.
 

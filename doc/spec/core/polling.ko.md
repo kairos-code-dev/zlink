@@ -97,7 +97,7 @@ typedef struct zlink_poller_event_t
 | `events` | 발생한 이벤트의 비트마스크 |
 
 현재 public poller는 `Spot` 전용 결과 타입을 따로 두지 않는다. 즉 이 구조체만으로는
-owner `Spot`, dispatch event kind, drain 대상 subject를 함께 표현할 수 없다.
+owner `Spot`, dispatch event kind, drain(큐에 쌓인 메시지를 꺼내 소비하는 행위) 대상 subject를 함께 표현할 수 없다.
 SPOT의 subscribe / routed / channel reply / timer readiness를 한 owner 기준으로
 직렬 처리하려면 현재 공개 계약에서는 `zlink_spot_dispatch_event_handler()`를
 사용해야 한다.
@@ -116,7 +116,7 @@ SPOT의 subscribe / routed / channel reply / timer readiness를 한 owner 기준
 | 상수 | 값 | 설명 |
 |------|----|------|
 | `ZLINK_POLLIN` | 1 | 읽기 가능한 데이터가 있음 |
-| `ZLINK_POLLOUT` | 2 | send recovery readiness. 해당 핸들이 backpressure 상태에서 벗어나 송신을 다시 시도할 가치가 있음을 뜻합니다. 단순히 transport가 writable하다는 뜻이 아니며, 재시도가 반드시 성공한다는 보장도 아닙니다. `zlink_send_ready_handler()` 콜백과 동일한 readiness 축을 공유합니다. `ZLINK_SUBMIT_BACKPRESSURED` 이후 이 신호가 관찰되면 재시도할 수 있지만, 재시도가 다시 `BACKPRESSURED`로 실패할 수도 있습니다. |
+| `ZLINK_POLLOUT` | 2 | 송신 재시도 준비 신호. 해당 핸들이 backpressure(배압) 상태에서 벗어나 송신을 다시 시도할 가치가 있음을 뜻합니다. transport가 단순히 writable하다는 뜻이 아니며, 재시도 성공을 보장하지도 않습니다. `zlink_send_ready_handler()` 콜백과 동일한 readiness 축을 공유합니다. `ZLINK_SUBMIT_BACKPRESSURED` 이후 이 신호가 관찰되면 재시도할 수 있지만, 재시도가 다시 `BACKPRESSURED`로 실패할 수도 있습니다. |
 | `ZLINK_POLLERR` | 4 | 디스크립터에서 오류 발생 |
 | `ZLINK_POLLPRI` | 8 | 긴급/우선순위 데이터 사용 가능 |
 | `ZLINK_POLLITEMS_DFLT` | 16 | 기본 poll-item 배열 크기 |

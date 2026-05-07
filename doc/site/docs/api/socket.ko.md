@@ -366,9 +366,9 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_OPT_HEARTBEAT_IVL` | ZMTP 하트비트 간격 (ms, `int`; 0=비활성) |
-| `ZLINK_OPT_HEARTBEAT_TTL` | ZMTP 하트비트 TTL (ms, `int`) |
-| `ZLINK_OPT_HEARTBEAT_TIMEOUT` | ZMTP 하트비트 타임아웃 (ms, `int`) |
+| `ZLINK_OPT_HEARTBEAT_IVL` | ZMTP heartbeat(연결 생존 확인 신호) 간격 (ms, `int`; 0=비활성) |
+| `ZLINK_OPT_HEARTBEAT_TTL` | ZMTP heartbeat TTL (ms, `int`) |
+| `ZLINK_OPT_HEARTBEAT_TIMEOUT` | ZMTP heartbeat 타임아웃 (ms, `int`) |
 
 ##### Network
 
@@ -643,7 +643,7 @@ zlink_bind_result_t zlink_bind (void *s_, const char *addr_);
 `transport://address` 형식을 사용하며, 지원되는 트랜스포트는 다음과 같습니다:
 
 - `tcp://interface:port` 또는 `tcp://*:port`
-- `inproc://name` (프로세스 내)
+- `inproc://name` (프로세스 내 직접 연결, in-process transport)
 - `ipc://pathname` (프로세스 간, POSIX 전용)
 - `ws://interface:port` (WebSocket)
 - `tls://interface:port` (TLS 암호화 TCP)

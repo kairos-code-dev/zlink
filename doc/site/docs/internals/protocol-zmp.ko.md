@@ -11,12 +11,12 @@
 
 | 용어 | 설명 |
 |------|------|
-| ZMP | zlink Message Protocol. zlink 전용 wire protocol |
-| frame | wire 위에서 전송되는 하나의 데이터 단위 |
-| control part | application payload 앞에 오는 내부 part |
-| request-reply envelope | request type, `request_seq` 를 담는 control part 묶음 |
-| SPOT routed envelope | source/destination spot 주소를 담는 control part 묶음 |
-| routing_id | transport peer 를 식별하는 값 |
+| ZMP | zlink Message Protocol — zlink 전용 와이어 프로토콜 |
+| frame | 와이어 위에서 전송되는 하나의 데이터 단위 |
+| control part | application payload 앞에 오는 내부 제어 파트 |
+| request-reply envelope | request type, `request_seq`(요청 고유 번호)를 담는 control part 묶음 |
+| SPOT routed envelope | source/destination SPOT 주소를 담는 control part 묶음 |
+| routing_id | transport 피어를 식별하는 바이트 열 |
 
 ## 1. 기본 방향
 
@@ -61,7 +61,7 @@ request-reply 와 SPOT routed 는 전용 공개 API 가 control part 를 앞에
 | 3 | SUBSCRIBE | `0x08` | 구독 요청 |
 | 4 | CANCEL | `0x10` | 구독 취소 |
 
-request-reply 와 SPOT routed envelope 의 첫 part 는 `CONTROL` bit 가 켜진
+request-reply 와 SPOT routed envelope 의 첫 part 는 `CONTROL` 비트가 켜진
 control part 여야 한다.
 
 ## 3. request-reply envelope
@@ -283,7 +283,7 @@ sequenceDiagram
 
 ## 7. pending 과 완료 규칙
 
-pending ownership 은 상위 API 레이어에 있다. 현재 구현은 다음처럼 동작한다.
+pending(응답 대기 항목) 소유권은 상위 API 레이어에 있다. 현재 구현은 다음처럼 동작한다.
 
 - `DEALER` pending key: `request_seq`
 - `ROUTER` pending key: `source_node_rid + request_seq` (일반 ROUTER 또는 SPOT 에서 시작된 routed)

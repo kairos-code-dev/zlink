@@ -39,8 +39,8 @@ zlink 는 libzmq 의 소켓 패턴과 API 형태를 공유하는 고성능 메�
 | 원칙 | 설명 |
 |------|------|
 | Zero-Copy | 메시지 복사 최소화를 통한 메모리 대역폭 절약 |
-| Lock-Free | 스레드 간 통신에 Lock-free 자료구조(YPipe) 사용 |
-| True Async | Proactor 패턴 기반의 진정한 비동기 I/O |
+| Lock-Free | 스레드 간 통신에 락-프리(lock-free) 자료구조(YPipe — 단방향 비잠금 큐) 사용 |
+| True Async | Proactor 패턴(완료 기반 비동기 I/O 모델) 기반의 진정한 비동기 I/O |
 | Protocol Agnostic | 트랜스포트와 프로토콜의 명확한 분리 |
 
 ### 1.3 지원 소켓 및 트랜스포트
@@ -62,7 +62,7 @@ zlink 는 libzmq 의 소켓 패턴과 API 형태를 공유하는 고성능 메�
 |------------|-------------------------------------------|
 | `tcp://`   | 표준 TCP                                  |
 | `ipc://`   | Unix 도메인 소켓 (Unix/Linux/macOS)       |
-| `inproc://`| 프로세스 내 통신 (Lock-free 파이프)       |
+| `inproc://`| 프로세스 내 통신 (락-프리 파이프, 네트워크 스택 우회)       |
 | `ws://`    | WebSocket (Beast 라이브러리)              |
 | `wss://`   | WebSocket over TLS                        |
 | `tls://`   | 네이티브 TLS (OpenSSL)                    |
@@ -72,8 +72,11 @@ zlink 는 libzmq 의 소켓 패턴과 API 형태를 공유하는 고성능 메�
 ## 2. I/O 모델: Proactor 패턴
 
 zlink 의 I/O 코어는 Boost.Asio 기반의 **Proactor 패턴** 을 사용한다.
-엔진이 OS 에 비동기 I/O 연산을 요청하면 완료 콜백으로 결과를 받는다.
+Proactor 패턴은 엔진이 OS 에 비동기 I/O 연산을 요청하고 OS가 완료 후 콜백을 호출하는
+"완료 기반(completion-based)" 모델이다.
 비교를 위해 libzmq 의 전통적인 **Reactor 패턴** 을 함께 보여 준다.
+Reactor 패턴은 fd(파일 디스크립터) 준비 상태를 감시하다가 엔진이 직접 read/write를
+수행하는 "준비 기반(readiness-based)" 모델이다.
 
 ### 2.1 Reactor 패턴 (libzmq, 비교용)
 
@@ -705,8 +708,10 @@ STREAM 소켓 및 외부 클라이언트 연동용 단순 프로토콜입니다.
 
 ### 7.1 msg_t - 메시지 컨테이너
 
-모든 메시지 데이터를 담는 64바이트 고정 크기 구조체입니다.
-`malloc` 호출 없이 작은 메시지를 처리할 수 있도록 설계되었습니다.
+모든 메시지 데이터를 담는 64바이트 고정 크기 구조체다.
+`malloc` 호출 없이 작은 메시지를 처리할 수 있도록 설계되었다.
+33바이트 이하는 VSM(Very Small Message, 구조체 내부 인라인 저장) 방식으로,
+그 이상은 별도 할당 버퍼를 가리키는 포인터(LMSG)로 처리한다.
 
 ```
 +-----------------------------------------------------------------+
@@ -763,15 +768,16 @@ STREAM 소켓 및 외부 클라이언트 연동용 단순 프로토콜입니다.
 
 | 유형           | 값  | 설명                                           |
 |---------------|-----|------------------------------------------------|
-| `type_vsm`    | 101 | Very Small Message (<=33B, 복사 없음)          |
+| `type_vsm`    | 101 | VSM (Very Small Message, ≤33B — msg_t 내부 버퍼에 인라인 저장, malloc 없음) |
 | `type_lmsg`   | 102 | Large Message (malloc'd 버퍼)                  |
 | `type_cmsg`   | 104 | Constant Message (상수 데이터 참조)            |
 | `type_zclmsg` | 105 | Zero-copy Large Message (사용자 버퍼 직접 사용)|
 
-### 7.2 pipe_t - Lock-Free 메시지 큐
+### 7.2 pipe_t - 락-프리 메시지 큐
 
-스레드 간 메시지 전달을 위한 양방향 파이프입니다.
-Application 스레드와 I/O 스레드 사이에서 `msg_t`를 Lock-free로 교환합니다.
+스레드 간 메시지 전달을 위한 양방향 파이프다.
+Application 스레드와 I/O 스레드 사이에서 `msg_t`를 락-프리로 교환한다.
+내부적으로 방향별 YPipe 두 개를 묶어 양방향 통신을 구성한다.
 
 ```
 +---------------------------------------------------------------+
@@ -798,9 +804,9 @@ Application 스레드와 I/O 스레드 사이에서 `msg_t`를 Lock-free로 교�
 ```
 
 **YPipe 특성**:
-- Lock-free FIFO 큐 (CAS 연산 기반)
-- 캐시 라인 최적화
-- 메모리 배리어를 통한 가시성 보장
+- 락-프리 FIFO 큐 — CAS(Compare-And-Swap, 원자적 비교-교환 연산) 기반
+- 캐시 라인 최적화 (false sharing 방지)
+- 메모리 배리어를 통한 스레드 간 가시성 보장
 
 **파이프 상태 머신**:
 
@@ -1461,4 +1467,4 @@ i_engine
 | VSM (Inline)       | 33바이트 이하 메시지는 msg_t 내부 버퍼에 직접 저장 (malloc 없음)|
 | Lock-free YPipe    | CAS 연산 기반 스레드 간 메시지 교환, 뮤텍스 없음               |
 | Cache Line 최적화  | YPipe 노드를 캐시 라인 크기에 맞춰 배치                         |
-| Backpressure       | 10MB 한도 초과 시 읽기 중단으로 메모리 폭주 방지                |
+| Backpressure (배압) | 10MB 한도 초과 시 읽기 중단으로 메모리 폭주 방지                |

@@ -101,8 +101,8 @@ if (rc == ZLINK_RECV_OK) {
    TERMINATED, INVALID_HANDLE, NOT_SUPPORTED */
 ```
 
-> HWM 도달 시 `zlink_send()`는 블록(기본) 또는 `ZLINK_DONTWAIT`로
-> `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 고급 backpressure 패턴은
+> HWM(High-Water Mark, 큐 최대 허용 메시지 수) 도달 시 `zlink_send()`는 대기(기본) 또는 `ZLINK_DONTWAIT`로
+> `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 고급 배압(backpressure) 패턴은
 > [성능 가이드](10-performance.ko.md)를 참고.
 
 ??? example "Full Sample Code -- Recv"
@@ -160,10 +160,10 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ### 4.1 request-reply 시작
 
 `DEALER` 가 응답을 기다리는 흐름은 ordinary `send/recv` 와 별도로
-`zlink_dealer_request()` 를 사용한다. 이 함수는 ZMP request-reply envelope 를
-붙여 보내고, reply 는 callback 으로 완료된다.
+`zlink_dealer_request()` 를 사용한다. 이 함수는 ZMP(zlink 전용 메시지 프로토콜) request-reply envelope(요청-응답 식별을 위한 헤더 래퍼)를
+붙여 보내고, 응답은 callback으로 완료된다.
 
-> ZMP request-reply envelope wire 형식은
+> ZMP request-reply envelope의 와이어 프레임 형식은
 > [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
 
 ```c
@@ -276,7 +276,7 @@ zlink_send(dealer2, &m2, 1, 0);
 
 ### 피어 없으면 큐잉
 
-연결된 피어가 없으면 메시지는 송신 큐에 쌓인다. HWM 초과 시 블록(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환(`ZLINK_DONTWAIT`).
+연결된 피어가 없으면 메시지는 송신 큐에 쌓인다. HWM 초과 시 대기(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환(`ZLINK_DONTWAIT`).
 
 ```c
 /* Correct order */

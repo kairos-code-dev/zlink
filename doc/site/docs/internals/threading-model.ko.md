@@ -66,10 +66,10 @@ flowchart TB
 Application thread와 I/O thread를 분리하는 목적은 두 가지다.
 
 1. **지연 시간 격리**: application thread는 네트워크 I/O를 기다리며 블록되지 않는다.
-   `zlink_send()` 호출은 lock-free 파이프에 쓰고 즉시 반환하며, I/O thread가 비동기로
+   `zlink_send()` 호출은 락-프리(lock-free) 파이프에 쓰고 즉시 반환하며, I/O thread가 비동기로
    데이터를 처리한다.
-2. **socket별 잠금 없는 동시성**: socket마다 하나의 I/O thread 이벤트 루프에 고정되므로,
-   일반 데이터 경로 연산에서는 socket 내부에 잠금이 필요 없다. 동기화는 admission gate를
+2. **소켓별 잠금 없는 동시성**: 소켓마다 하나의 I/O thread 이벤트 루프에 고정되므로,
+   일반 데이터 경로 연산에서는 소켓 내부에 잠금이 필요 없다. 동기화는 admission gate(진입 허가 게이트)를
    통해 application thread 진입점에서만 수행된다.
 
 Reaper thread는 use-after-free와 double-free 버그를 예방한다. I/O thread가 이벤트 루프
@@ -82,29 +82,29 @@ Reaper thread는 use-after-free와 double-free 버그를 예방한다. I/O threa
 
 ### 3.1 Socket-to-thread 고정
 
-Socket이 생성될 때 하나의 I/O thread에 할당된다. 이 할당은 socket 수명 동안
-변경되지 않는다. 해당 socket의 모든 데이터 평면 연산(send, recv, timer, callback)은
+소켓이 생성될 때 하나의 I/O thread에 할당된다. 이 할당은 소켓 수명 동안
+변경되지 않는다. 해당 소켓의 모든 데이터 평면 연산(send, recv, timer, callback)은
 오직 그 I/O thread에서 실행된다.
 
 ### 3.2 부하 분산 (least-load)
 
-할당에는 **least-load** 정책을 사용한다. 현재 할당된 socket 수가 가장 적은
-I/O thread가 다음 socket을 받는다.
+할당에는 **least-load(최소 부하 선택)** 정책을 사용한다. 현재 할당된 소켓 수가 가장 적은
+I/O thread가 다음 소켓을 받는다.
 
 ```
 new_socket → argmin(socket_count[t] for t in io_threads)
 ```
 
-동률이면 인덱스가 낮은 thread가 선택된다. 카운트는 socket 생성 및 소멸 시 원자적으로
+동률이면 인덱스가 낮은 thread가 선택된다. 카운트는 소켓 생성 및 소멸 시 원자적으로
 갱신된다. 할당 이후 재분배는 없다.
 
 ### 3.3 Affinity mask
 
-Context의 affinity mask로 새 socket 할당 대상 I/O thread를 제한할 수 있다.
-마스크에서 제외된 thread는 이미 할당된 socket은 계속 처리하지만, 새 socket은 받지 않는다.
+Context의 affinity mask로 새 소켓 할당 대상 I/O thread를 제한할 수 있다.
+마스크에서 제외된 thread는 이미 할당된 소켓은 계속 처리하지만, 새 소켓은 받지 않는다.
 
 ```c
-/* 새 socket을 I/O thread 0과 2에만 할당 */
+/* 새 소켓을 I/O thread 0과 2에만 할당 */
 uint64_t mask = (1ULL << 0) | (1ULL << 2);
 zlink_ctx_set(ctx, ZLINK_IO_THREAD_AFFINITY, (int)mask);
 ```
@@ -113,11 +113,11 @@ zlink_ctx_set(ctx, ZLINK_IO_THREAD_AFFINITY, (int)mask);
 
 ## 4. 스레드 간 통신
 
-### 4.1 YPipe — lock-free 데이터 경로
+### 4.1 YPipe — 락-프리 데이터 경로
 
-메시지 데이터는 application thread에서 I/O thread로 **YPipe**를 통해 전달된다.
-YPipe는 단일 생산자 단일 소비자(SPSC) lock-free FIFO로, 방향(send/recv)마다
-socket당 하나씩 존재한다. CAS 기반의 two-pointer 방식과 "flush batch" 최적화를 사용한다:
+메시지 데이터는 application thread에서 I/O thread로 **YPipe**(단방향 비잠금 SPSC 큐)를 통해 전달된다.
+YPipe는 단일 생산자 단일 소비자(SPSC) 락-프리 FIFO로, 방향(send/recv)마다
+소켓당 하나씩 존재한다. CAS(Compare-And-Swap, 원자적 비교-교환 연산) 기반의 two-pointer 방식과 "flush batch" 최적화를 사용한다:
 
 ```
 application thread          I/O thread
@@ -126,13 +126,13 @@ push(msg)를 YPipe에 넣기  →  YPipe에서 msg를 꺼내기
 flush() 신호 보내기       →  io_context 깨우기
 ```
 
-YPipe가 SPSC이므로 flush 시 포인터 교환 연산 하나만 필요하다. mutex나
+YPipe가 SPSC이므로 flush(큐에 쌓인 항목을 소비자 측으로 한 번에 넘기는 동작) 시 포인터 교환 연산 하나만 필요하다. mutex나
 메시지별 atomic 연산이 없다.
 
 ### 4.2 Mailbox — 제어 명령
 
-bind, connect, set_option, socket close 같은 저빈도 제어 연산은 **Mailbox**를 통해
-직렬화된다. Mailbox는 `signaler_t`(eventfd 또는 pipe 기반 파일 디스크립터)로 지원되는
+bind, connect, set_option, 소켓 close 같은 저빈도 제어 연산은 **Mailbox**(스레드 간 명령 전달 큐)를 통해
+직렬화된다. Mailbox는 `signaler_t`(eventfd 또는 pipe 기반 파일 디스크립터로 I/O thread를 깨우는 신호 장치)로 지원되는
 thread-safe 명령 큐다:
 
 ```cpp
@@ -165,8 +165,8 @@ sequenceDiagram
 
 ## 5. Reaper Thread
 
-Socket이 닫힐 때 I/O thread가 자원을 즉시 해제하지 못하는 경우가 있다. session 객체를
-참조하는 진행 중인 async 연산이 있기 때문이다. I/O thread는 해당 socket의 모든 I/O가
+소켓이 닫힐 때 I/O thread가 자원을 즉시 해제하지 못하는 경우가 있다. session 객체를
+참조하는 진행 중인 async 연산이 있기 때문이다. I/O thread는 해당 소켓의 모든 I/O가
 완료되면 Reaper에 `term` 명령을 보낸다. Reaper는 이벤트 루프 잠금 없이 자원을 해제한다.
 
 Reaper는 자체 Mailbox와 단순 drain 루프로 동작한다:
@@ -192,7 +192,7 @@ while (command = mailbox.recv()) {
 - `publish_ingress_queue`, `routed_send_queue`, `external_router_ingress_queue` drain
 - 로컬 팬아웃 전달, 원격 메시 publish, 인바운드/아웃바운드 라우팅 전달
 
-public 스레드는 이 소켓에 직접 접근하지 않는다. 이 경계를 위반하면 소켓 소유권,
+public 스레드는 이 소켓들에 직접 접근하지 않는다. 이 경계를 위반하면 소켓 소유권,
 poller 관심 등록, shutdown 순서가 public call path에 혼재된다.
 
 ```
@@ -262,7 +262,7 @@ NUMA 지역성이 중요하다면 애플리케이션에서 다음을 수행한�
 3. 해당 socket에서 `zlink_send()`를 호출하는 application thread에
    OS 수준 CPU affinity(`pthread_setaffinity_np` 등)를 적용한다.
 
-Socket은 생성 시 I/O thread에 영구적으로 고정되므로, application thread와 그
+소켓은 생성 시 I/O thread에 영구적으로 고정되므로, application thread와 그
 I/O thread를 같은 NUMA 노드에 배치하면 cross-node YPipe 접근이 없어진다.
 
 ---
@@ -277,7 +277,7 @@ control path는 정확성을 위해 내부에서 직렬화된다.
 ### 7.1 여러 thread에서 `zlink_send()` 동시 호출
 
 각 `zlink_send()` 호출은 admission gate를 통과한 뒤 경량 spinlock으로 YPipe에 쓰고
-Mailbox에 신호를 보낸다. I/O thread는 YPipe를 독립적으로 drain한다:
+Mailbox에 신호를 보낸다. I/O thread는 YPipe를 독립적으로 drain(소비)한다:
 
 ```c
 /* Thread A */                      /* Thread B */
@@ -287,7 +287,7 @@ zlink_send(s, &a, 1, 0);            zlink_send(s, &b, 1, 0);
 
 ### 7.2 한 thread가 close하는 동안 다른 thread가 send
 
-`zlink_close()`는 fail-fast lifecycle gate를 사용한다. 다른 thread가 그 handle의
+`zlink_close()`는 fail-fast(빠른 실패) lifecycle gate를 사용한다. 다른 thread가 그 handle의
 hot-path API 안에 있으면 즉시 `ZLINK_CLOSE_BUSY`를 반환한다. close 호출자는 성공할 때까지
 재시도해야 한다. close가 수락되면 이후 해당 handle에 대한 API 호출은 `ZLINK_CLOSE_SHUTDOWN`을
 반환한다.
@@ -296,7 +296,7 @@ hot-path API 안에 있으면 즉시 `ZLINK_CLOSE_BUSY`를 반환한다. close �
 
 `*_handler()`로 등록한 callback은 I/O thread에서 실행된다. application thread에서는
 동시에 `zlink_send()`를 호출할 수 있다 — admission gate가 callback 경로와 send 경로를
-분리한다. callback 안에서 해당 socket에 `zlink_close()`를 호출하면 데드락이 발생하므로
+분리한다. callback 안에서 해당 소켓에 `zlink_close()`를 호출하면 데드락이 발생하므로
 하지 말아야 한다.
 
 ---
@@ -304,16 +304,16 @@ hot-path API 안에 있으면 즉시 `ZLINK_CLOSE_BUSY`를 반환한다. close �
 ## 9. Context 스레드 안전성
 
 Context 객체(`zlink_ctx_new()`)는 완전히 thread-safe하다. 여러 thread에서 동시에
-socket을 생성하고 종료할 수 있다:
+소켓을 생성하고 종료할 수 있다:
 
 ```c
-/* 안전: 같은 context에서 여러 thread가 socket 생성 */
+/* 안전: 같은 context에서 여러 thread가 소켓 생성 */
 void *s1 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);  /* thread A */
 void *s2 = zlink_socket(ctx, ZLINK_SOCKET_DEALER);  /* thread B */
 ```
 
-`zlink_ctx_term()`은 모든 socket이 닫힐 때까지 블록한다. socket 수명을 관리하는
-thread와 같은 thread에서 호출하거나, 호출 전에 모든 socket을 닫아야 한다.
+`zlink_ctx_term()`은 모든 소켓이 닫힐 때까지 블록한다. 소켓 수명을 관리하는
+thread와 같은 thread에서 호출하거나, 호출 전에 모든 소켓을 닫아야 한다.
 
 ---
 
@@ -321,14 +321,14 @@ thread와 같은 thread에서 호출하거나, 호출 전에 모든 socket을 �
 
 | 속성 | 값 |
 |------|----|
-| Socket 고정 | 생성 시 결정된 I/O thread, 이후 변경 없음 |
-| 할당 정책 | Least-load (socket 수 최소 thread) |
-| Application→I/O 데이터 경로 | Lock-free YPipe (SPSC) |
+| 소켓 고정 | 생성 시 결정된 I/O thread, 이후 변경 없음 |
+| 할당 정책 | Least-load (소켓 수 최소 thread) |
+| Application→I/O 데이터 경로 | 락-프리 YPipe (SPSC) |
 | Application→I/O 제어 경로 | Mailbox (thread-safe, signaler 기반) |
 | 지연 소멸 | Reaper thread (전역 1개) |
 | 동시 send | Admission gate로 안전 |
 | 동시 close + send | 안전. close는 hot-path 호출자가 빠져나올 때까지 `BUSY` 반환 |
-| Callback 실행 thread | 항상 socket에 할당된 I/O thread |
+| Callback 실행 thread | 항상 소켓에 할당된 I/O thread |
 | SpotNode data-plane thread | SpotNode당 1개; mesh-pub/fanout/external-router 독점 소유 |
 | SpotNode data-plane→App | publish_ingress_queue / routed_send_queue (signaler 기반 wakeup) |
 | Dispatch worker thread | SpotNode당 N개; Spot별 직렬화·코얼레싱; 기본 min(2,cpu)~max(1,cpu) |

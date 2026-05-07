@@ -13,7 +13,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 |------|--------|-------|
 | **Socket Types** | 17종 (draft 포함) | **8종** — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM |
 | **I/O Engine** | 자체 poll/epoll/kqueue | **Boost.Asio** (번들, 외부 의존성 없음) |
-| **암호화** | CURVE (libsodium) | **TLS** (OpenSSL) — `tls://`, `wss://` |
+| **암호화** | CURVE (libsodium) | **TLS**(Transport Layer Security, 전송 계층 암호화) (OpenSSL) — `tls://`, `wss://` |
 | **Transport** | 10종+ (PGM, TIPC, VMCI 등) | **6종** — `tcp`, `ipc`, `inproc`, `ws`, `wss`, `tls` |
 | **의존성** | libsodium, libbsd 등 | **OpenSSL만** |
 
@@ -68,15 +68,15 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 | Socket Semantic/Runtime | socket family 의미와 공통 runtime이 분리 |
 | Runtime Core | context, shutdown, option dispatch, multipart send |
 | Engine Layer | Boost.Asio 기반 poller, io_context 실행 기반 |
-| Transport/Protocol | wire format, TLS handshake, address scheme |
+| Transport/Protocol | wire format, TLS 핸드셰이크(연결 수립 시 암호화 협상 과정), address scheme |
 
 ## 3. 핵심 설계
 
 | 설계 원칙 | 설명 |
 |-----------|------|
-| **Zero-Copy** | VSM(33B 이하)은 inline 저장, 대용량은 참조 카운팅 |
-| **Lock-Free** | Thread 간 통신에 YPipe(CAS 기반 FIFO) 사용 |
-| **True Async** | Proactor 패턴 기반 비동기 I/O |
+| **Zero-Copy** | VSM(Very Small Message, 33B 이하 메시지를 별도 힙 할당 없이 객체 안에 직접 저장)은 inline 저장, 대용량은 참조 카운팅 |
+| **Lock-Free** | Thread 간 통신에 YPipe(락 없이 CAS(Compare-And-Swap) 연산으로 구현한 FIFO 큐) 사용 |
+| **True Async** | Proactor 패턴(I/O 완료 이벤트를 핸들러로 전달하는 비동기 설계) 기반 비동기 I/O |
 | **Protocol Agnostic** | Transport와 Protocol의 명확한 분리 |
 
 ## 4. 소켓 타입
@@ -95,7 +95,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 |-----------|----------|------|
 | tcp | `tcp://host:port` | 표준 TCP |
 | ipc | `ipc://path` | Unix 도메인 소켓 |
-| inproc | `inproc://name` | 프로세스 내 통신 |
+| inproc | `inproc://name` | 프로세스 내 통신 (같은 프로세스 안의 스레드 간 통신; 네트워크 없이 메모리를 직접 공유) |
 | ws | `ws://host:port` | WebSocket |
 | wss | `wss://host:port` | WebSocket + TLS |
 | tls | `tls://host:port` | 네이티브 TLS |
@@ -109,7 +109,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 |--------|------|
 | **Discovery** | Registry를 구독해 서비스 목록을 로컬 캐시로 유지 |
 | **Registry** | 서비스 엔트리 등록·관리, SERVICE_LIST 브로드캐스트 |
-| **SPOT** | 위치투명 topic pub/sub + routed 통신 메시. `SpotNode`가 transport를 소유하고 `Spot` facade가 데이터 평면을 제공 |
+| **SPOT** | 위치투명(location-transparent, 상대 주소를 몰라도 통신 가능) topic pub/sub + routed 통신 메시(mesh). `SpotNode`가 transport를 소유하고 `Spot` facade가 데이터 평면을 제공 |
 | **Actor** | SPOT 안에서 STREAM session 메시지를 라우팅 타겟으로 모으는 세션 기반 주소 지정 단위. `SpotNode`가 Actor 테이블을 관리하고 `Entry Spot`에서 메시지를 전달한다 |
 
 자세한 내용은 [서비스 계층 개요](07-0-services.ko.md), [SPOT 가이드](07-3-spot.ko.md),

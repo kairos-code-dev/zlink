@@ -171,12 +171,12 @@ ROUTER ↔ ROUTER 자동 연결처럼 양쪽 모두 outbound를 시작할 수 �
 
 #### 누가 dial 하는가 — pairwise initiator 규칙
 
-Discovery가 같은 서비스의 ROUTER peer 두 개를 pair 로 묶을 때, 라이브러리는
-pair 마다 한쪽만 initiator 로 선택한다. 비교 키는 광고된 `routing_id` 의
-total order 가 먼저이고, 동점이면 advertise endpoint 가 tie-breaker 가 된다.
-두 ROUTER 가 독립적으로 평가해도 같은 결과에 도달하므로, 사용자는 이
-결정을 설정할 필요가 없다. 같은 서비스에 속한 ROUTER 들은 Discovery 에
-대칭적으로 추가해도 되고, 선택된 한쪽에서만 `connect` 가 발생한다.
+Discovery가 같은 서비스의 ROUTER 피어 두 개를 쌍으로 묶을 때, 라이브러리는
+쌍마다 한쪽만 개시자(initiator)로 선택한다. 비교 키는 광고된 `routing_id`의
+전체 순서(total order)가 먼저이고, 동점이면 광고 엔드포인트가 동점 해결자(tie-breaker)가 된다.
+두 ROUTER가 독립적으로 평가해도 같은 결과에 도달하므로, 사용자는 이
+결정을 따로 설정할 필요가 없다. 같은 서비스에 속한 ROUTER들은 Discovery에
+대칭적으로 추가해도 되고, 선택된 한쪽에서만 `connect`가 발생한다.
 
 ```mermaid
 sequenceDiagram
@@ -192,11 +192,11 @@ sequenceDiagram
     B->>A: connect (tcp://hostA:9100)
 ```
 
-서로 다른 host 에서 같은 `routing_id` 가 올라오는 예외 (오설정, zombie
-instance, 롤링 재시작 겹침) 는 여전히 duplicate policy 로 다룬다. 기본값인
-`ZLINK_OPT_RID_DUPLICATE_POLICY = ZLINK_RID_DUPLICATE_REJECT` 는 기존 pipe 를
-유지한다. 나중에 들어온 연결이 기존 pipe 를 인수해야 하면
-`ZLINK_RID_DUPLICATE_HANDOVER` 를 명시 설정한다.
+서로 다른 호스트에서 같은 `routing_id`가 올라오는 예외 상황(잘못된 설정, 좀비
+인스턴스, 롤링 재시작 겹침)은 여전히 중복 정책으로 처리한다. 기본값인
+`ZLINK_OPT_RID_DUPLICATE_POLICY = ZLINK_RID_DUPLICATE_REJECT`는 기존 파이프를
+유지한다. 나중에 들어온 연결이 기존 파이프를 인수해야 하면
+`ZLINK_RID_DUPLICATE_HANDOVER`를 명시 설정한다.
 
 ## 3. Registry 설정
 
@@ -259,8 +259,8 @@ zlink_discovery_member_peers(discovery, NULL, &peer_count);
 zlink_discovery_destroy(&discovery);
 ```
 
-새로운 multi-service SpotNode 토폴로지에서는 attach되는 socket마다
-`ZLINK_AUTO_CONNECT_CLIENT_SERVER`를 channel DEALER 호출에 사용한다. SPOT 가이드의
+다중 서비스 SpotNode 토폴로지에서는 연결할 소켓마다
+`ZLINK_AUTO_CONNECT_CLIENT_SERVER`를 채널 DEALER 호출에 사용한다. SPOT 가이드의
 [§3.1 Discovery 기반 자동 Mesh](07-3-spot.ko.md#31-discovery-기반-자동-mesh)를
 참고한다.
 
@@ -290,8 +290,8 @@ zlink_socket_attach_discovery(pub, discovery);
 zlink_discovery_destroy(&discovery);
 ```
 
-**Lifecycle:** 소켓이 연결되면 `connect`, `disconnect`, `unbind`, `close`
-수동 호출이 실패한다. Discovery 인스턴스를 파괴하면 모든 연결된 소켓이
+**수명주기:** 소켓이 연결되면 `connect`, `disconnect`, `unbind`, `close`
+수동 호출이 실패한다. Discovery 인스턴스를 파괴하면 연결된 모든 소켓이
 종료된다.
 
 ## 4.2 SpotNode에 Channel Dealer 등록하기
@@ -321,15 +321,15 @@ zlink_socket_attach_discovery(orders_dealer, orders_disc);
 zlink_spot_node_attach_channel_dealer(node, orders_disc, orders_dealer);
 ```
 
-attach 시 지켜야 하는 규칙:
+연결 시 지켜야 하는 규칙:
 
-- **SPOT Discovery는 node당 하나.** `zlink_spot_node_attach_discovery()`는
-  `ZLINK_AUTO_CONNECT_SPOT_MESH`만 받는다. 두 번째 attach는 `EBUSY`로 실패한다.
-- **같은 channel에 DEALER 하나.** 자동 attach와 수동 attach가 같은 namespace를
-  공유한다. 같은 channel에 `DEALER`를 두 번 attach하면 `EBUSY`로 실패한다.
-- **attach된 DEALER는 전용 자원.** 소유권은 호출자가 유지하지만, attach 뒤에는
-  다른 용도로 같은 socket을 함께 쓰지 않는다.
-- **Discovery destroy는 그 peer set만 내린다.** 특정 Discovery만 파괴하면 그
+- **SPOT Discovery는 노드당 하나.** `zlink_spot_node_attach_discovery()`는
+  `ZLINK_AUTO_CONNECT_SPOT_MESH`만 받는다. 두 번째 연결은 `EBUSY`로 실패한다.
+- **같은 채널에 DEALER 하나.** 자동 연결과 수동 연결이 같은 네임스페이스를
+  공유한다. 같은 채널에 `DEALER`를 두 번 연결하면 `EBUSY`로 실패한다.
+- **연결된 DEALER는 전용 자원.** 소유권은 호출자가 유지하지만, 연결 후에는
+  다른 용도로 같은 소켓을 함께 쓰지 않는다.
+- **Discovery destroy는 그 피어 집합만 내린다.** 특정 Discovery만 파괴하면 그
   Discovery가 공급하던 자동 연결만 제거된다.
 
 ## 4.3 Peer Value
@@ -371,12 +371,11 @@ sequenceDiagram
     Reg--xDisc: entry expires (LOST)
 ```
 
-- Registry visibility는 Discovery가 소유하는 heartbeat/topology uplink로
-  유지된다.
-- SPOT과 소켓 패밀리 서비스는 로컬 registration/summary 변경을 제출하지만,
-  주기적 uplink cadence는 Discovery가 담당한다.
-- Registry summary는 eventually consistent한 coarse/global view이며,
-  strict final readiness gate로 사용하면 안 된다.
+- Registry에서 보이는 가시성(visibility)은 Discovery가 담당하는 하트비트/토폴로지 업링크로 유지된다.
+- SPOT과 소켓 패밀리 서비스는 로컬 등록/요약 변경을 제출하지만,
+  주기적 업링크 주기는 Discovery가 담당한다.
+- Registry 요약은 결과적으로 일관된(eventually consistent) 대략적인 전역 뷰이며,
+  엄격한 최종 준비 상태 판단 기준으로 사용하면 안 된다.
 
 ## 6. Registry 클러스터 HA
 

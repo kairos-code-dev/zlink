@@ -65,7 +65,7 @@ Discovery는 캐시에 없을 때 Registry 기준으로 다시 확인할 수 있
 
 - 모든 Discovery 인스턴스가 모든 `spot_rid` 주소 정보를 항상 메모리에 들고
   있다고 가정해서는 안 됩니다.
-- 주소 갱신과 생존 확인은 spot마다 heartbeat를 하나씩 보내는 방식이 아니라,
+- 주소 갱신과 생존 확인은 spot마다 heartbeat(연결 생존 확인 신호)를 하나씩 보내는 방식이 아니라,
   노드 세션 heartbeat, 여러 건을 묶은 갱신, lease 갱신 같은 집계 방식과 함께
   있어야 합니다.
 
@@ -312,7 +312,7 @@ zlink_connect_result_t zlink_discovery_connect_registry (void *discovery,
                                                          const char *registry_endpoint);
 ```
 
-이 Discovery 인스턴스를 Registry control plane에 bootstrap 연결합니다.
+이 Discovery 인스턴스를 Registry control plane에 bootstrap(초기 연결 설정) 연결합니다.
 Registry 응답에서 내부 broadcast/uplink 엔드포인트를 학습하고, Discovery가
 그 소켓들을 자동으로 구성한 뒤 주기적인 서비스 목록 브로드캐스트를 수신합니다.
 

@@ -61,12 +61,12 @@
   routing id, topic, 기타 protocol framing처럼 public payload cap 계산에는
   포함되지 않지만 내부 전송/조립에는 포함되는 frame.
 - ypipe:
-  `libzmq`/`zlink` 내부의 lock-free single-producer single-consumer queue.
+  `libzmq`/`zlink` 내부의 락-프리 SPSC(단일 생산자-단일 소비자) 큐.
   pipe 계층의 실제 데이터 전달을 담당한다.
 - incomplete flag:
   `ypipe_t::write(value, incomplete)`의 두 번째 인자. `incomplete == true`이면
-  해당 item은 flush 대상에서 제외된다. multipart의 중간 frame은 항상
-  `incomplete == true`로 기록된다.
+  해당 item은 flush(소비자에게 노출) 대상에서 제외된다. multipart의 중간 frame은
+  항상 `incomplete == true`로 기록된다.
 
 ---
 
@@ -346,9 +346,9 @@ multipart 원자성이 어떻게 성립하는지 정리한다.
 
 ---
 
-### 1. ypipe 계층: lock-free queue와 incomplete flag
+### 1. ypipe 계층: 락-프리 큐와 incomplete flag
 
-multipart 원자성의 최하층은 `ypipe_t` (lock-free SPSC queue)이다.
+multipart 원자성의 최하층은 `ypipe_t`(락-프리 SPSC 큐)이다.
 
 핵심 파일:
 
@@ -601,10 +601,10 @@ int zmq::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
 1. **round-robin 고정**: `_more == true`인 동안은 `_current`를 변경하지 않는다.
    같은 pipe에서 multipart의 나머지 frame을 계속 읽는다.
 
-2. **atomicity assert**: read가 실패하면 `zmq_assert(!_more)`를 실행한다.
+2. **원자성 단언(assert)**: read가 실패하면 `zmq_assert(!_more)`를 실행한다.
    `_more == true` 상태에서 read 실패는 "multipart 중간에 데이터가 없다"는
    의미이므로 **프로세스를 abort**한다. 이것이 libzmq의 multipart recv
-   원자성 보장 방식이다 — 위반 시 crash.
+   원자성 보장 방식이다 — 위반 시 즉각 종료.
 
 3. **pipe 비활성화**: 일반적인 read 실패(multipart가 아닌 경우)에서는
    해당 pipe를 active 목록에서 제거하고 다음 pipe를 시도한다.

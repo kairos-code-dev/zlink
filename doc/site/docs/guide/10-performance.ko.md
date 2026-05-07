@@ -89,8 +89,8 @@ LWM 공식: **`(HWM + 1) / 2`**
 - 블로킹 `zlink_send()` 호출이 재개된다.
 - send-ready 핸들러가 호출된다 (설치된 경우).
 
-이 히스테리시스(hysteresis -- 상한과 하한을 다르게 두어 상태 전환에
-간격을 만드는 기법)는 writable/non-writable 상태 간의 빠른 진동을 방지한다.
+이 히스테리시스(hysteresis, 상한과 하한을 다르게 두어 상태 전환에
+간격을 만드는 기법)는 쓰기 가능/불가 상태 간의 빠른 진동을 방지한다.
 
 ```mermaid
 sequenceDiagram
@@ -217,26 +217,26 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 }
 ```
 
-#### Send-Ready 핸들러 (이벤트 기반 Backpressure)
+#### 전송 준비 핸들러 (이벤트 기반 역압 처리)
 
-`zlink_send_ready_handler()`는 소켓이 non-writable에서
-writable로 전환될 때 호출되는 콜백을 설치한다. `ZLINK_DONTWAIT`와
+`zlink_send_ready_handler()`는 소켓이 쓰기 불가에서
+쓰기 가능으로 전환될 때 호출되는 콜백을 설치한다. `ZLINK_DONTWAIT`와
 조합하면 반응형 흐름 제어가 가능하다:
 
-1. `ZLINK_DONTWAIT`로 전송.
-2. `ZLINK_SUBMIT_BACKPRESSURED` 시 전송 중단.
-3. send-ready 콜백이 호출되면 전송 재개.
+1. `ZLINK_DONTWAIT`로 전송을 시도한다.
+2. `ZLINK_SUBMIT_BACKPRESSURED`가 반환되면 전송을 중단한다.
+3. 전송 준비 콜백이 호출되면 전송을 재개한다.
 
-이 API는 모든 send-capable handle(raw 소켓, SPOT)에서
-동일하게 동작한다. 기본적으로 송신 백프레셔는 poller `ZLINK_POLLOUT`으로
+이 API는 전송 가능한 모든 핸들(raw 소켓, SPOT)에서
+동일하게 동작한다. 기본적으로 송신 역압(backpressure)은 폴러(poller) `ZLINK_POLLOUT`으로
 감지하며, `zlink_send_ready_handler()`를 등록하면 해당 콜백으로 전환된다.
-콜백 등록 이후 data-plane `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다.
+콜백 등록 이후 데이터 평면 `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다.
 
 **동작 규칙:**
-- 여러 번 호출하여 콜백을 교체할 수 있다 (이전 핸들러를 atomic으로 덮어씀).
+- 여러 번 호출하여 콜백을 교체할 수 있다 (이전 핸들러를 원자적으로 덮어씀).
 - `NULL` 전달은 `EINVAL` — 한번 등록하면 해제는 불가하고 다른 함수로 교체만 가능하다.
 - 자기 콜백 내에서 교체 불가 (`EDEADLK`). 콜백 밖에서는 자유롭게 교체 가능.
-- 등록 이후 data-plane poller `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다.
+- 등록 이후 데이터 평면 폴러 `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다.
 
 ```c
 typedef struct {
@@ -317,18 +317,18 @@ void on_message(const zlink_routing_id_t *rid,
 > 스레드 안전 작업 큐 패턴은
 > [스레드 안전성 가이드](11-thread-safety.ko.md) 섹션 6을 참고.
 
-### 4.4 Callback vs Pull 모드
+### 4.4 콜백 vs 풀 수신 모드
 
 zlink 소켓은 두 가지 수신 모드를 지원한다. 선택에 따라 스레딩과
 흐름 제어 동작이 달라진다.
 
-| 항목 | Callback 모드 | Pull 모드 |
+| 항목 | 콜백 모드 | 풀(pull) 모드 |
 |------|---|---|
 | 트리거 | 메시지 도착 시 자동 | `zlink_recv()` 호출 |
 | 실행 스레드 | I/O 스레드 | 애플리케이션 스레드 |
-| 전환 | 한방향 (영구) | 기본; handler attach 후 불가 |
-| DONTWAIT | N/A (항상 비동기) | 메시지 없으면 `ZLINK_RECV_NO_DATA` |
-| Multipart | `parts[]` 배열로 한번에 | `parts_out` + `part_count_out`으로 전체 반환 |
+| 전환 | 단방향 (영구) | 기본; 핸들러 등록 후 불가 |
+| DONTWAIT | 해당 없음 (항상 비동기) | 메시지 없으면 `ZLINK_RECV_NO_DATA` |
+| 멀티파트 | `parts[]` 배열로 한번에 | `parts_out` + `part_count_out`으로 전체 반환 |
 
 ### 4.5 완전한 Backpressure 예제
 

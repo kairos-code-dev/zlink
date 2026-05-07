@@ -4,7 +4,7 @@
 
 이 문서는 `zlink_disconnect_rid()`와
 `zlink_spot_node_disconnect_peer_rid()`가 내부에서 어떤 소유권 경계를
-사용하는지 설명한다.
+사용하는지 설명한다. Routing ID(라우팅 식별자)는 각 연결을 구분하는 고유 바이트 열이다.
 
 ## Socket 경로
 
@@ -22,15 +22,15 @@
 
 공개 C API는 handle 검증만 수행하고, 실제 작업은
 `socket_base_t::term_peer_rid()`로 넘긴다. 이 함수는 Discovery attached
-socket인지 먼저 확인한다. attached socket은 Discovery가 lifecycle을
+소켓인지 먼저 확인한다. attached 소켓은 Discovery가 수명주기를
 소유하므로 수동 disconnect를 `EBUSY`로 거부한다.
 
-ROUTER와 STREAM은 routing map을 가진 socket이므로 map lookup으로 대상 pipe를
-찾는다. STREAM은 local connection id를 4바이트 routing id로 쓰기 때문에 입력
+ROUTER와 STREAM은 routing map을 가진 소켓이므로 map lookup으로 대상 pipe를
+찾는다. STREAM은 로컬 연결 id를 4바이트 routing id로 쓰기 때문에 입력
 rid 길이를 `sizeof(uint32_t)`로 제한한다.
 
-그 밖의 socket은 현재 attached pipe snapshot에서 source routing id가 같은
-pipe를 찾는다. 같은 rid가 둘 이상이면 파괴적인 종료 대상을 확정할 수 없으므로
+그 밖의 소켓은 현재 attached pipe 스냅샷에서 source routing id가 같은
+pipe를 찾는다. 같은 rid가 둘 이상이면 종료 대상을 확정할 수 없으므로
 `EADDRINUSE`를 반환하고 어떤 pipe도 종료하지 않는다.
 
 ## 중복 rid 정책

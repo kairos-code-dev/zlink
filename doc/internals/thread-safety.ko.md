@@ -13,9 +13,9 @@ zlink의 공개 핸들(소켓, SPOT, Discovery, Registry, 모니터)은
 내부적으로 라이브러리는 모든 공개 API를 세 가지 계층 중 하나로 분류하며,
 각 계층은 고유한 순서 의미론, 성능 제약, 에러 규칙을 가집니다.
 
-three-tier contract는 내부 설계 도구입니다 — 사용자에게는 "자유롭게
-보내고, 언제든 설정하고, 명확한 에러 코드로 닫기"로 보입니다. 이 문서는
-각 계층이 어떻게 구현되는지 설명합니다.
+three-tier contract(3계층 계약)는 내부 설계 도구다 — 사용자에게는 "자유롭게
+보내고, 언제든 설정하고, 명확한 에러 코드로 닫기"로 보인다. 이 문서는
+각 계층이 어떻게 구현되는지 설명한다.
 
 ## 2. Three-Tier Contract (형식 정의)
 
@@ -86,11 +86,11 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 - `zlink_discovery_destroy()` / `zlink_registry_destroy()`
 - Monitor 핸들 `close` / `destroy`
 
-**Admission gate 메커니즘:**
+**Admission gate(진입 허가 게이트) 메커니즘:**
 
-Lifecycle gate는 두 가지 상태를 추적하는 단일 원자 워드입니다: closing
-bit와 in-flight 카운트. 이를 통해 broad lock 없이 fail-fast 결정이
-가능합니다.
+Lifecycle gate는 두 가지 상태를 추적하는 단일 원자 워드다: closing
+bit와 in-flight(현재 실행 중인 API 호출) 카운트. 이를 통해 광범위 잠금(broad lock) 없이
+빠른 실패(fail-fast) 결정이 가능하다.
 
 ```mermaid
 stateDiagram-v2
@@ -111,17 +111,16 @@ stateDiagram-v2
 
 **핵심 규칙:**
 
-- **`EBUSY`는 fail-fast, no-latch.** 실패한 close는 핸들을 closing
-  상태로 영구 전이시키지 않습니다. `EBUSY` 후 핸들은 이전
-  operational 상태로 완전히 복귀합니다.
-- **Drain-then-close.** Close가 수락되면 모든 enqueue된 메시지가
-  teardown 전에 소진됩니다. Drain은 best-effort가 아닙니다 — close가
-  수락된 시점에 enqueue된 모든 메시지를 소진합니다.
+- **`EBUSY`는 fail-fast, no-latch(잠금 없는 빠른 실패).** 실패한 close는 핸들을 closing
+  상태로 영구 전이시키지 않는다. `EBUSY` 후 핸들은 이전 operational 상태로 완전히 복귀한다.
+- **Drain-then-close(소진 후 닫기).** Close가 수락되면 모든 enqueue된 메시지가
+  teardown 전에 소진된다. Drain은 best-effort가 아니다 — close가
+  수락된 시점에 enqueue된 모든 메시지를 반드시 소진한다.
 - **Callback에서의 self-close.** Send-ready 또는 monitor callback이
   자기 핸들의 `close`를 호출하면, 실제 teardown은 callback epilogue
-  까지 지연됩니다. Callback 내 use-after-free를 방지합니다.
+  (콜백 함수 반환)까지 지연된다. Callback 내 use-after-free를 방지한다.
 - **STREAM raw callback 제한.** STREAM raw callback 내에서 `close`를
-  호출하면 `EBUSY`로 실패합니다 — raw dispatch가 in-flight입니다.
+  호출하면 `EBUSY`로 실패한다 — raw dispatch가 in-flight 상태이기 때문이다.
 
 ## 3. Subject별 구현 참고
 
@@ -134,12 +133,12 @@ send queue에 발행합니다 — 단일 스레드 send에 사용되는 것과 �
 - **Admission gate:** 소켓당 단일 `atomic<uint32_t>` 워드가
   in-flight 카운트와 closing bit를 추적합니다
   (`socket_base.hpp` / `socket_base.cpp`).
-- **Send queue publication:** concurrent producer들이 기존
-  pipe/YPipe 인프라를 통해 enqueue합니다. I/O 스레드 consumer
-  측은 변경되지 않습니다.
+- **Send queue publication:** 동시 producer들이 기존
+  pipe/YPipe 인프라를 통해 enqueue한다. I/O 스레드 consumer
+  측은 변경되지 않는다.
 - **Control-path lock:** `bind`, `connect`, `set_option` 등은
   hot-path admission gate와 상태나 캐시 라인을 공유하지 않는
-  별도 직렬화 경로를 거칩니다.
+  별도 직렬화 경로를 거친다.
 
 ### 3.2 SPOT / SPOT Node
 
@@ -197,16 +196,15 @@ Guard는 단일 `atomic<uint32_t>`를 사용하며, 하나의 워드에 두 필�
 | Hot path | Send 경로는 guard의 broad lock 경로를 우회합니다. Control-path 직렬화와의 contention을 피하기 위해 별도의 최소 비용 admission(소켓 수준 admission gate)을 사용합니다. |
 
 **Cancel close:** `cancel_close()`가 closing bit를 지워 no-latch
-속성을 지원합니다 — 상위 수준에서 `begin_close_or_fail_busy()`가
-실패하면 핸들을 operational 상태로 복원할 수 있습니다.
+속성을 지원한다 — 상위 수준에서 `begin_close_or_fail_busy()`가
+실패하면 핸들을 operational 상태로 복원할 수 있다.
 
 ## 5. Callback Dispatch 구현
 
-대부분의 callback은 I/O 스레드에서 실행됩니다. 다만
+대부분의 callback은 I/O 스레드에서 실행된다. 다만
 `zlink_spot_dispatch_event_handler()`는 Spot 전용 worker runtime에서
-실행됩니다. Dispatch 메커니즘은 원자적
-load를 사용하여 핸들러 포인터를 읽으며, hot path에 broad lock 없이
-핸들러 교체의 가시성을 보장합니다.
+실행된다. Dispatch 메커니즘은 원자적 load를 사용하여 핸들러 포인터를 읽으며,
+hot path에 광범위 잠금 없이 핸들러 교체의 가시성을 보장한다.
 
 **핸들러 로딩:**
 
@@ -234,15 +232,15 @@ in-flight 연산으로 인식하여 핸들을 mid-callback에서 teardown하는 
 
 **STREAM raw callback 제약 근거:**
 
-STREAM raw callback은 더 엄격한 제한을 가집니다 — raw callback 내에서의
-`close`는 항상 `EBUSY`로 실패합니다. Send-ready/monitor callback에서
+STREAM raw callback은 더 엄격한 제한을 가진다 — raw callback 내에서의
+`close`는 항상 `EBUSY`로 실패한다. Send-ready/monitor callback에서
 `close`가 epilogue로 지연되는 것과 달리, STREAM raw dispatch는 deferred
-close를 지원하지 않습니다.
+close를 지원하지 않는다.
 
 **Send-ready handler `EDEADLK` 제약 근거:**
 
-자기 callback 내에서 send-ready handler를 교체하면 reentrant dispatch
-상황이 발생합니다. 이는 감지되어 `EDEADLK`로 거부됩니다.
+자기 callback 내에서 send-ready handler를 교체하면 재진입(reentrant) dispatch
+상황이 발생한다. 이는 감지되어 `EDEADLK`로 거부된다.
 
 ## 6. 설계 원칙
 

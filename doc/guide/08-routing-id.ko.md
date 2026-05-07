@@ -36,7 +36,9 @@ typedef struct {
 | **사용** | 핸드셰이크에서 전송 | 수신 메시지에 자동 추가 |
 | **설정** | `zlink_set_routing_id()` | 피어가 설정한 값 사용 |
 
-own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 피어에게 핸드셰이크 시 전송된다. peer routing_id는 피어가 보낸 own routing_id이며, ROUTER/STREAM 소켓에서 수신 메시지의 첫 프레임에 자동으로 추가된다.
+own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 핸드셰이크 시 피어에게 전송된다.
+
+peer routing_id는 피어가 보낸 own routing_id이며, ROUTER/STREAM 소켓에서 수신 메시지에 자동으로 첨부된다.
 
 ## 4. 사용자 지정 routing_id
 
@@ -79,7 +81,7 @@ for (size_t i = 0; i < rid.size; ++i)
 printf("\n");
 ```
 
-## 5. Connection Alias 설정
+## 5. 연결 별칭 설정
 
 `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`는 다음 `zlink_connect()` 호출에
 적용되는 연결별 별칭이다.

@@ -4,7 +4,9 @@
 
 ## 1. 개요
 
-STREAM 소켓은 ZMP를 사용하지 않는 외부 클라이언트(웹 브라우저, 게임 클라이언트 등)와의 RAW 통신을 지원한다. tcp, tls, ws, wss transport를 지원하며, 특히 WS/WSS 경로의 성능 최적화에 집중한다.
+STREAM 소켓은 ZMP(zlink Message Protocol) 핸드셰이크 없이 연결하는 외부 클라이언트
+(웹 브라우저, 게임 클라이언트 등)와의 RAW 통신을 지원한다. tcp, tls, ws, wss transport를
+지원하며, 특히 WS/WSS 경로의 성능 최적화에 집중한다.
 
 ## 2. 아키텍처
 
@@ -83,11 +85,11 @@ STREAM 소켓은 상호 배타적인 세 가지 수신 모드를 가진다. 소�
 | Raw callback | `zlink_recv_handler()` | `zlink_socket_msg_handler_fn` 이 raw bytes 를 받는다 |
 | Packet callback | `zlink_stream_packet_handler()` | `zlink_stream_packet_handler_fn` 이 header / body 로 이미 분리된 `zlink_msg_t` 를 받는다 |
 
-Packet handler 모드는 raw STREAM byte pipe 위에 `header + body` framing 을
-올리는 application protocol 을 위한 것이다 — 예컨대 orders-exec gateway 가
-작은 control header 뒤에 큰 payload 를 싣는 경우. 각 호출자가 동일한
-length-prefix decoder 와 buffering state machine 을 반복해서 구현하는
-대신, STREAM 이 내부에서 frame 을 파싱하고 이미 allocation 된
+Packet handler 모드는 raw STREAM 바이트 파이프 위에 `header + body` 프레이밍을
+올리는 애플리케이션 프로토콜을 위한 것이다 — 예를 들어 주문 처리 게이트웨이가
+작은 제어 헤더 뒤에 큰 payload 를 싣는 경우. 각 호출자가 동일한
+length-prefix(길이 접두사) 디코더와 버퍼링 상태 머신을 반복해서 구현하는
+대신, STREAM 이 내부에서 frame 을 파싱하고 이미 할당된
 `zlink_msg_t` 를 callback 에 전달한다.
 
 ### 6.1 Wire framing
@@ -150,7 +152,7 @@ zlink_stream_packet_handler_fn(stream,
                                userdata)
 ```
 
-- `source_rid` 는 callback 실행 동안만 유효한 borrowed view 다. Callback
+- `source_rid` 는 callback 실행 동안만 유효한 빌린 참조(borrowed view)다. Callback
   이후 보존하려면 복사해야 한다.
 - `header_msg` 와 `body_msg` 는 wire size 가 `0` 인 경우에도 항상
   non-`NULL` 로 전달된다. 두 메시지의 ownership 이 callback 으로 이전되며,

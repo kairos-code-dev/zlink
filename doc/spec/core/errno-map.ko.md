@@ -79,7 +79,7 @@ typedef enum zlink_submit_result_t
 | Result | 내부 errno | 의미 |
 |---|---|---|
 | `OK` | -- | submit 성공 |
-| `BACKPRESSURED` | `EAGAIN` | send 큐가 가득 찼거나 (HWM) 아직 쓰기 준비가 안 됨 |
+| `BACKPRESSURED` | `EAGAIN` | send 큐가 가득 찼거나(HWM, 고수위 표시) 아직 쓰기 준비가 안 됨 |
 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | 대상 peer 또는 경로가 연결되지 않음 |
 | `NOT_FOUND` | `ENOENT` | 대상 peer, spot, routed destination을 찾지 못함 |
 | `NOT_ADMITTED` | `ECONNREFUSED` 계열 | local peer가 알고 있는 remote의 가중치가 `0`이라 새 outbound가 거부됨. 연결이 끊긴 것이 아니라 가중치 기반 거절이며, peer가 다시 양수 가중치로 돌아오면 자동으로 풀린다. 상태 전파는 최선 노력이라 경합 상황에서는 같은 실패가 `NOT_CONNECTED` 또는 `NOT_FOUND`로 먼저 관찰될 수 있다. |

@@ -23,7 +23,7 @@
 | zero-copy | 데이터를 복사하지 않고 포인터/참조만 전달하여 전송하는 기법 |
 | reference count (refcount) | 같은 데이터 버퍼를 공유하는 메시지 핸들의 수. 0이 되면 버퍼를 해제한다 |
 | routing_id | Router 소켓이 피어를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트) |
-| ZMP | zlink Message Protocol. zlink 전용 와이어 프로토콜 |
+| ZMP | zlink Message Protocol. zlink 전용 와이어(유선) 프로토콜 |
 | control part | request-reply, SPOT routed 같은 상위 프로토콜이 payload 앞에 붙이는 내부 part |
 
 ## 타입

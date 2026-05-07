@@ -28,7 +28,7 @@
 
 | 카테고리 | 포함 API | 스레드 안전? | 참고 |
 |---|---|---|---|
-| **전송** | `send`, `publish`, `send_rid` | 예 -- 동시 호출 가능 | 핫 패스(hot path, 고빈도 데이터 경로) 최적화 |
+| **전송** | `send`, `publish`, `send_rid` | 예 -- 동시 호출 가능 | 핫 패스(hot path, 고빈도 데이터 경로) 위주로 최적화 |
 | **설정·운영** | `bind`, `connect`, `set_option` 등 | 예 -- 순차 처리 | 메시지마다 호출은 비권장 |
 | **정리** | `close`, `destroy` | 예 -- 명확한 에러 코드 | 사용 중이면 `ZLINK_CLOSE_BUSY` 반환 |
 
@@ -238,8 +238,8 @@ zlink_send(socket, &msg_a, 1, 0);    zlink_send(socket, &msg_b, 1, 0);  /* safe 
 ## 6. 콜백 규칙
 
 소켓 콜백(메시지, XPUB, 모니터, send-ready)은 I/O 스레드에서 실행됩니다.
-**SPOT dispatch 콜백**(`zlink_spot_handler`, `zlink_spot_dispatch_handler`)은
-SpotNode dispatch worker 스레드에서 실행됩니다 — I/O 스레드가 아닙니다.
+**SPOT 디스패치 콜백**(`zlink_spot_handler`, `zlink_spot_dispatch_handler`)은
+SpotNode 디스패치 작업자(dispatch worker) 스레드에서 실행됩니다 — I/O 스레드가 아닙니다.
 블로킹 금지, 느린 연산 오프로드 규칙은 두 경우 모두 동일하게 적용됩니다.
 알아야 할 것:
 
@@ -250,7 +250,7 @@ SpotNode dispatch worker 스레드에서 실행됩니다 — I/O 스레드가 �
 
 **콜백에서 하면 안 되는 것:**
 - **블로킹** (sleep, lock, 무거운 연산) — 해당 스레드의 모든 I/O가
-  멈춥니다. 작업을 큐에 넣고 워커 스레드에서 처리하세요.
+  멈춥니다. 작업을 큐에 넣고 작업자(worker) 스레드에서 처리하세요.
 - **send-ready 콜백 안에서 자기 핸들러 교체** — `ZLINK_HANDLER_DEADLOCK`
   을 반환합니다.
 
@@ -274,7 +274,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ## 7. 실용 패턴
 
-### 7.1 멀티 스레드 워커 풀 (Socket)
+### 7.1 다중 스레드 작업자 풀 (Socket)
 
 여러 스레드가 하나의 소켓을 통해 전송 — 잠금 불필요:
 

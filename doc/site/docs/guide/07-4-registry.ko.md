@@ -171,7 +171,7 @@ zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
 ```
 
-> **팁**: 모든 컴포넌트가 같은 프로세스에 있을 때 `inproc://` transport를
+> **팁**: 모든 컴포넌트가 같은 프로세스에 있을 때 `inproc://`(프로세스 내부) 전송 방식을
 > 사용하면 Registry와 Discovery 간 제로카피(zero-copy, 메모리 복사 없이 전달) 통신이 가능하다.
 
 ## 5. 클러스터 구성 및 데이터 동기화
@@ -537,10 +537,10 @@ free(peers);
 
 #### Actor Active Route 조회
 
-Actor 주소는 application key-value 저장소가 아니라 core Actor active route로
-조회한다. Actor owner Discovery에서 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`를 켜고,
-해당 Actor가 STREAM session에 bind된 뒤 `zlink_discovery_resolve_actor()`로 현재
-Actor ref를 읽는다. match id, user id 같은 domain key는 Redis나 DB 같은 외부
+Actor 주소는 애플리케이션 키-값 저장소가 아닌 핵심 Actor 활성 경로(active route)로
+조회한다. Actor 소유 Discovery에서 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`를 켜고,
+해당 Actor가 STREAM 세션에 바인드된 뒤 `zlink_discovery_resolve_actor()`로 현재
+Actor ref를 읽는다. 매치 ID, 사용자 ID 같은 도메인 키는 Redis나 DB 같은 외부
 저장소에서 관리한다.
 
 ## 7. 운영 패턴

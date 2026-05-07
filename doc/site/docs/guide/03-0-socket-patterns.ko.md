@@ -103,12 +103,9 @@ Is the communication peer an external client (browser, game)?
 ## 7. peer를 routing id로 끊기
 
 일반적인 연결/해제 수명 주기는 endpoint 문자열을 기준으로 동작한다. 그런데
-소켓이 메시지를 수신하면 `source_rid`로 송신 peer를 직접 식별할 수 있다.
-endpoint 문자열 없이 해당 peer 연결만 종료하고 싶을 때 `zlink_disconnect_rid()`를 사용한다.
-
-수신 경로에서 `source_rid`를 받은 뒤 같은 peer 연결만 종료해야 하면
-`zlink_disconnect_rid()`를 사용한다. endpoint 문자열을 저장하지 않아도
-수신자가 본 peer identity로 연결 종료를 요청할 수 있다.
+메시지를 수신하면 `source_rid`(송신 피어의 고유 식별자)로 상대방을 직접 특정할 수 있다.
+endpoint 문자열을 저장하지 않아도 수신한 `source_rid`만으로 해당 피어 연결을 끊으려면
+`zlink_disconnect_rid()`를 사용한다.
 
 ```c
 zlink_connect_result_t rc = zlink_disconnect_rid(socket, &source_rid);
@@ -187,7 +184,7 @@ callback은 data-plane receive가 아닌 별도 축의 비동기 작업 완료 �
 | **correctness** | 여러 스레드가 같은 handle을 동시에 사용해도 데이터 손상이나 크래시 없이 올바르게 동작하는 성질 |
 | **fail-fast lifecycle gate** | `close`/`destroy` 호출 시 다른 스레드가 사용 중이면 즉시 `EBUSY`를 반환하고, close가 수락된 뒤 새 API 진입은 `ESHUTDOWN`을 반환하는 종료 계약 |
 | **admission guard** | API 진입 시 handle이 유효한지, 이미 종료 중인지를 검사하는 내부 게이트 |
-| **approximate limit** | 정확한 hard limit이 아닌 근사치 제한. HWM은 lock-free 성능을 위해 소폭 초과를 허용한다 |
+| **approximate limit** | 정확한 hard limit이 아닌 근사치 제한. HWM(High-Water Mark, 큐 최대 허용 메시지 수)은 락-프리 성능을 위해 소폭 초과를 허용한다 |
 
 > 스레드 안전성 계약의 전체 설명은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
 

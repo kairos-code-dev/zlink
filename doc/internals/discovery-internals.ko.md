@@ -161,10 +161,11 @@ Frame 4~N: Service entries (repeated):
       provider_blob (variable)
 ```
 
-Registry peer는 별도 `REGISTRY_SYNC` multipart 메시지로 route binding snapshot을
+Registry 피어는 별도 `REGISTRY_SYNC` multipart 메시지로 route binding snapshot을
 받는다. Discovery subscriber는 이 메시지를 무시한다. Registry는 route snapshot을
-staging view에 먼저 적용한다. 같은 `snapshot_seq`의 chunk가 순서대로 도착해야 하며,
-마지막 chunk가 commit되기 전에는 기존 materialized route view를 바꾸지 않는다.
+staging view(확정 전 임시 적용 영역)에 먼저 적용한다. 같은 `snapshot_seq`의 chunk가
+순서대로 도착해야 하며, 마지막 chunk가 commit되기 전에는 기존 materialized route view
+(최종 확정된 경로 테이블)를 바꾸지 않는다.
 
 ```text
 Frame 0: msg_id = 0x0006
@@ -194,22 +195,25 @@ materialized route table은 `resolve_route()`가 사용할 winner를 route ident
 두기 때문에 owner cleanup, winner 재계산, peer timeout cleanup은 전체 route 수가 아니라
 영향을 받는 record 수에 비례한다.
 
-materialized route table은 Redis `dict`에서 검증된 큰 설계를 따른다. bucket 수는 2의
-거듭제곱으로 유지하고, 나눗셈 대신 mask로 bucket을 고르며, 충돌은 separate chaining으로
-처리한다. table이 커질 때는 기존 table에서 새 table로 bucket을 조금씩 옮긴다. resize
-비용을 route 조회와 갱신 경로에 나누어 부담하므로 큰 route set에서도 한 번에 긴 resize
-지연이 생기지 않는다. 각 table entry는 route key를 한 번만 보관하고, value 안에 같은
-key를 다시 들고 있지 않는다. Redis `dictEntry`처럼 key와 value의 책임을 분리해 큰
-route set에서 중복 문자열 비용을 줄인다. entry node는 fixed scalar만 담고, route key와
-value는 packed byte block에 붙여 저장한다. 같은 channel 이름은 table 안에서 intern해
-반복 저장하지 않는다. owner identity도 intern된 id로 공유하고, bucket과 node link는
-32비트 entry id를 사용한다. node 자체는 65,536개 단위 chunk로 할당하므로 대량 insert 때
-단일 vector capacity가 실제 record 수보다 크게 튀는 비용을 피한다.
+materialized route table은 Redis `dict`에서 검증된 설계를 따른다. bucket 수는 2의
+거듭제곱으로 유지하고, 나눗셈 대신 mask로 bucket을 고르며, 충돌은 separate chaining
+(별도 연결 리스트로 같은 bucket의 항목을 연결하는 방식)으로 처리한다. table이 커질
+때는 기존 table에서 새 table로 bucket을 조금씩 옮긴다. resize 비용을 route 조회와
+갱신 경로에 나누어 부담하므로, 큰 route set에서도 한 번에 긴 resize 지연이 생기지
+않는다. 각 table entry는 route key를 한 번만 보관하고, value 안에 같은 key를 다시
+들고 있지 않는다. Redis `dictEntry`처럼 key와 value의 책임을 분리해 큰 route set에서
+중복 문자열 비용을 줄인다. entry node는 fixed scalar만 담고, route key와 value는
+packed byte block에 붙여 저장한다. 같은 channel 이름은 table 안에서 intern(중복 없이
+단일 복사본으로 관리)해 반복 저장하지 않는다. owner identity도 intern된 id로 공유하고,
+bucket과 node link는 32비트 entry id를 사용한다. node 자체는 65,536개 단위 chunk로
+할당하므로, 대량 insert 시 단일 vector capacity가 실제 record 수보다 크게 증가하는
+비용을 피한다.
 
 route key와 owner identity hash는 Redis `dict`가 쓰는 SipHash 계열 방식으로 계산한다.
 snapshot chunk를 만들 때는 Redis `dictScan`처럼 cursor로 materialized table을 나누어
-읽고, 순회 중에는 rehash pause guard를 잡는다. 그래서 Registry는 route snapshot을 보낼 때
-전체 materialized route를 한 번에 별도 vector로 만들지 않고 chunk 크기만큼만 담는다.
+읽고, 순회 중에는 rehash pause guard(재해시 중 순회 보호 잠금)를 잡는다. 그래서
+Registry는 route snapshot을 보낼 때 전체 materialized route를 한 번에 별도 vector로
+만들지 않고 chunk 크기만큼만 담는다.
 
 provider row도 같은 owner-bound 규칙으로 materialize된다. 서로 다른 source generation이
 같은 `channel + role + routing_id`를 claim하거나, 같은 generation이 서로 다른 endpoint를
@@ -402,20 +406,20 @@ sequenceDiagram
 
 두 가지 독립 조건 중 하나라도 맞으면 캐시 엔트리를 신선한 것으로 본다.
 
-1. **Membership-seq 일치** — `validated_service_seq == _service_state.service_update_seq()`. 이 seq 는 Discovery 의 provider 뷰가 바뀔 때마다 (새 peer, peer 이탈, role 변경) 증가한다. seq 가 일치하면 이 엔트리가 현재 멤버십에서 생성된 값이므로 벽시계 나이와 관계없이 신뢰한다.
+1. **Membership-seq 일치** — `validated_service_seq == _service_state.service_update_seq()`. 이 시퀀스 번호는 Discovery 의 provider 뷰가 바뀔 때마다(새 peer 추가, peer 이탈, role 변경) 증가한다. 번호가 일치하면 해당 엔트리가 현재 멤버십에서 생성된 값이므로 벽시계 나이와 관계없이 신뢰한다.
 2. **벽시계 TTL** — `last_reported_ms > 0 && now − last_reported_ms ≤ 250 ms`. membership-seq 는 바뀌었지만 엔트리 자체가 아주 최근에 갱신된 경우의 fallback 으로 작동한다.
 
-둘 다 아니면 stale 로 간주하고 Registry 왕복을 강제한다. TTL 이 250 ms 로 짧은 이유는 stale 조회가 옛 소유 노드로 오라우팅될 수 있기 때문이다. 짧은 창으로 그 위험을 제한하면서 bursty lookup 은 캐시로 흡수한다.
+둘 다 아니면 stale(오래된 캐시 값)로 간주하고 Registry 왕복을 강제한다. TTL 이 250 ms 로 짧은 이유는 stale 조회가 옛 소유 노드로 잘못 라우팅될 수 있기 때문이다. 짧은 시간 창으로 그 위험을 제한하면서, 짧은 시간 안에 집중되는 bursty lookup 은 캐시로 흡수한다.
 
 ### 10.5 endpoint → owner rid 역변환
 
-topology summary 에는 `endpoint` (전송 URI) 만 저장되며 owner SpotNode 의 routing id 가 직접 저장되지 않는다. 캐시 hit 후 Discovery 는 `resolve_owner_node_from_endpoint_locked(endpoint, ...)` 를 호출한다.
+topology summary 에는 `endpoint`(전송 URI) 만 저장되며, owner SpotNode 의 routing id 는 직접 저장되지 않는다. 캐시 hit 후 Discovery 는 `resolve_owner_node_from_endpoint_locked(endpoint, ...)` 를 호출해 다음 순서로 역변환한다.
 
-1. `_service_state` 에서 현재 provider 목록을 snapshot 한다.
+1. `_service_state` 에서 현재 provider 목록의 스냅샷을 만든다.
 2. `service_role == SPOT` 이고 `endpoint` 가 일치하며 `routing_id.size > 0` 인 provider 를 고른다.
-3. 그 provider 의 `routing_id` 를 출력 파라미터에 복사한다.
+3. 해당 provider 의 `routing_id` 를 출력 파라미터에 복사한다.
 
-이 2 단계 설계 덕분에 spot 의 소유 노드가 endpoint 를 바꿔도, 메시의 provider 명단이 SERVICE_LIST 브로드캐스트 경로로 따라잡혀 있기만 하면 resolve_spot 은 일관된 답을 돌려줄 수 있다.
+이 2단계 설계 덕분에 spot 소유 노드가 endpoint 를 변경해도, 메시의 provider 명단이 SERVICE_LIST 브로드캐스트 경로로 갱신되어 있기만 하면 resolve_spot 은 일관된 답을 반환할 수 있다.
 
 ## 11. 메시지 프로토콜
 

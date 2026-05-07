@@ -19,20 +19,20 @@ API 시그니처만 다루는 [socket API 레퍼런스](../api/socket.ko.md)와 
 
 ---
 
-## peer routing id 중복 정책
+## 피어 라우팅 ID 중복 정책
 
-`ZLINK_OPT_RID_DUPLICATE_POLICY`는 같은 socket에 동일한 peer routing id가
+`ZLINK_OPT_RID_DUPLICATE_POLICY`는 같은 소켓에 동일한 피어 라우팅 ID가
 다시 들어왔을 때 기존 연결을 유지할지, 새 연결로 바꿀지를 정합니다.
 
 | 값 | 동작 |
 |----|------|
 | `ZLINK_RID_DUPLICATE_REJECT` | 기본값. 기존 연결을 유지하고 중복 연결은 등록하지 않습니다. |
-| `ZLINK_RID_DUPLICATE_HANDOVER` | 새 연결이 기존 연결을 인수합니다. rolling restart처럼 같은 identity가 잠깐 겹치는 상황에 씁니다. |
+| `ZLINK_RID_DUPLICATE_HANDOVER` | 새 연결이 기존 연결을 인수합니다. 롤링 재시작처럼 같은 ID가 잠깐 겹치는 상황에 씁니다. |
 
-이 옵션은 `zlink_set_option()`으로 설정하는 공통 socket 옵션입니다.
-중복 peer identity 인수 여부를 바꾸는 public 설정은 이 옵션 하나만 씁니다.
+이 옵션은 `zlink_set_option()`으로 설정하는 공통 소켓 옵션입니다.
+중복 피어 ID 인수 여부를 바꾸는 공개 설정은 이 옵션 하나만 씁니다.
 
-STREAM은 서버가 연결별 4바이트 routing id를 직접 부여하므로 이 중복 정책의
+STREAM은 서버가 연결별 4바이트 라우팅 ID를 직접 부여하므로 이 중복 정책의
 대상이 아닙니다.
 
 ```c
@@ -63,9 +63,9 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 `PUB/XPUB=fanout`, `SUB/XSUB=recv_ingress`다. SPOT 내부 topic publisher는
 `spot_data`, peer/control 소켓은 `control`, SPOT router는 `routed`로 계산한다.
 
-Context 옵션 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 네 profile 중 하나를 고른다.
-기본값은 `ZLINK_AUTO_HWM_PROFILE_BALANCED`이며 auto-HWM은 기본으로 켜져 있다.
-context에서 기존 고정 HWM 기본값 `1000`을 유지해야 할 때만
+컨텍스트 옵션 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 네 가지 프로필 중 하나를 선택한다.
+기본값은 `ZLINK_AUTO_HWM_PROFILE_BALANCED`이며 자동 HWM은 기본으로 켜져 있다.
+컨텍스트에서 기존 고정 HWM 기본값 `1000`을 유지해야 할 때만
 `ZLINK_CTX_OPT_AUTO_HWM_ENABLE`을 `0`으로 설정한다.
 
 | 소켓 그룹 | `compact` | `low_latency` | `balanced` | `throughput` |
@@ -74,8 +74,8 @@ context에서 기존 고정 HWM 기본값 `1000`을 유지해야 할 때만
 | STREAM | 8 | 16 | 64 | 256 |
 | control | 8 | 16 | 16 | 32 |
 
-Planner는 HWM을 connection 하나의 queue depth로 본다. context memory budget을
-connection 수로 나누지 않는다. 대신 profile의 byte envelope가 유지되도록 아래
+계획기(planner)는 HWM을 연결 하나의 큐 깊이(queue depth)로 본다. 컨텍스트 메모리 예산을
+연결 수로 나누지 않는다. 대신 프로필의 바이트 범위(byte envelope)가 유지되도록 아래
 공식을 적용한다.
 
 ```text
@@ -243,7 +243,7 @@ zlink_set_option(socket, ZLINK_OPT_RECONNECT_IVL_MAX, &ivl_max, sizeof(ivl_max))
 
 **적용 위치:** `tcp.cpp`의 `tune_tcp_keepalives()` -- OS socket option 전달.
 
-**`-1`의 의미:** "이 값을 변경하지 않는다" — OS 기본 keepalive 설정을 유지.
+**`-1`의 의미:** "이 값을 변경하지 않는다" — OS 기본 킵얼라이브 설정을 유지.
 
 **TCP에만 적용.** IPC, inproc, WebSocket에는 해당 없음.
 
@@ -300,8 +300,8 @@ Keepalive보다 빠른 dead peer 감지가 필요할 때 사용.
 2. 원격 피어는 TTL 시간 안에 메시지/PONG을 받지 못하면 연결 종료
 3. 로컬에서는 TIMEOUT 시간 안에 PONG을 받지 못하면 연결 끊김 감지
 
-**TCP Keepalive와의 차이:** TCP keepalive는 OS 수준 프로브이고,
-ZMP 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정하면 더 빠른 쪽이
+**TCP 킵얼라이브와의 차이:** TCP 킵얼라이브는 OS 수준 프로브이고,
+ZMP(zlink 메시징 프로토콜) 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정하면 더 빠른 쪽이
 먼저 감지한다.
 
 ```c
@@ -327,8 +327,8 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 **`0` (기본):** connect() 호출 즉시 pipe를 소켓에 연결한다. 연결 완료 전에도 `send()`가
 가능하고, 메시지는 큐에 쌓인다.
 
-**`1`:** 연결이 실제로 완료된 후에만 pipe가 소켓에 연결된다. 연결 전 `send()`는
-block 되거나 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 또한 hiccup(일시적 연결 끊김) 시 pipe가 즉시
+**`1`:** 연결이 실제로 완료된 후에만 파이프(pipe)가 소켓에 연결된다. 연결 전 `send()`는
+차단되거나 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 또한 일시적 연결 끊김(hiccup) 시 파이프가 즉시
 제거된다.
 
 ---
@@ -342,7 +342,7 @@ block 되거나 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 또한 hiccup(일
 | **기본값** | `0` (비활성) |
 | **유효 소켓** | `DEALER`, `PUB`, `SUB`에서만 동작 |
 
-활성화 시 HWM 설정은 무시된다. 멀티파트 메시지는 conflate 모드에서 수신할 수
+활성화 시 HWM 설정은 무시된다. 멀티파트 메시지는 합류(conflate) 모드에서 수신할 수
 없다. 센서 데이터처럼 "최신 값만 의미 있는" 시나리오에 적합.
 
 ---
@@ -415,7 +415,7 @@ I/O 스레드가 여러 개(`ZLINK_IO_THREADS > 1`)일 때 특정 소켓을 특�
 | **기본값** | `-1` (무제한) |
 | **>0** | 지정 크기(바이트) 초과 메시지 거부 |
 
-신뢰할 수 없는 피어로부터의 OOM 공격을 방지하는 데 유용.
+신뢰할 수 없는 피어로부터의 메모리 고갈(OOM) 공격을 방지하는 데 유용.
 
 ---
 

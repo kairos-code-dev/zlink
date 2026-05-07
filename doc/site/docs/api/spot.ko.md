@@ -59,19 +59,19 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 - `zlink_spot_destroy()`는 facade만 닫는다.
 - `zlink_spot_destroy()`는 routed target lookup을 먼저 제거한 뒤 owned subject를
   닫는다. destroy 시점에 남아 있던 unread routed 메시지는 close 과정에서 버려질
-  수 있으며, 호출자는 destroy 전에 unread를 끝까지 drain해야 할 의무를 지지
+  수 있으며, 호출자는 destroy 전에 unread를 끝까지 drain(큐에 쌓인 메시지를 꺼내 소비하는 행위)해야 할 의무를 지지
   않는다.
 - `zlink_spot_node_destroy()`는 node와 내부 runtime 자원을 정리한다.
 - discovery에 attach된 node는 보통 `zlink_discovery_destroy()` 흐름에서 함께 정리된다.
 
 ## Entry Spot
 
-`SpotNode`가 생성되면 내부적으로 `Entry Spot` logical state도 함께 생성된다.
+`SpotNode`가 생성되면 내부적으로 `Entry Spot`(진입 수신점, 새 Actor가 처음 배정되는 논리적 수신 지점) logical state도 함께 생성된다.
 `Entry Spot`은 `SpotNode`가 소유하며, application이 제거할 수 없다. 새로
 만들어진 모든 Actor는 생성 직후 반드시 `Entry Spot`에 속한다.
 
 `Entry Spot`은 별도의 `Spot` dispatch context를 가진다. application은 이 context에
-dispatch handler를 등록해 새 Actor의 초기 메시지 처리, 인증, 대상 Spot 선택 같은
+dispatch handler(메시지 수신 시 호출되는 콜백)를 등록해 새 Actor의 초기 메시지 처리, 인증, 대상 Spot 선택 같은
 작업을 수행한다.
 
 ### Entry Spot handle
@@ -132,7 +132,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup(
 
 ## SpotNode 계약
 
-SpotNode는 HWM을 `Spot`에서 `SpotNode`로 들어오는 admission control로만 공개한다.
+SpotNode는 HWM을 `Spot`에서 `SpotNode`로 들어오는 admission control(수신 허가 제어, 새 메시지·연결의 수락 여부를 결정하는 관문)로만 공개한다.
 공개 옵션은 `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`,
 `ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
 `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`,

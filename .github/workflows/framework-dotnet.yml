@@ -29,6 +29,7 @@ env:
   FRAMEWORK_RUNTIME_TESTS: framework/languages/dotnet/tests/Zlink.Framework.RuntimeTests/Zlink.Framework.RuntimeTests.csproj
   FRAMEWORK_MONITORING_RUNTIME_TESTS: framework/languages/dotnet/tests/Zlink.Framework.MonitoringRuntimeTests/Zlink.Framework.MonitoringRuntimeTests.csproj
   FRAMEWORK_MULTIPROCESS_TESTS: framework/languages/dotnet/tests/Zlink.Framework.MultiProcessTests/Zlink.Framework.MultiProcessTests.csproj
+  ZLinkFrameworkTargetFrameworks: net8.0;net10.0
 
 jobs:
   framework-dotnet:

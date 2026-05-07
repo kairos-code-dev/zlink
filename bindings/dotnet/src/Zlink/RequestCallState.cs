@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -57,6 +58,38 @@ internal sealed class RequestCallState
     internal void Dispose()
     {
         DisposeRegistrations();
+    }
+
+    internal static RequestCallState? FromUserData(object? userdata)
+    {
+        if (userdata is not GCHandle handle || !handle.IsAllocated)
+            return null;
+
+        try
+        {
+            return handle.Target as RequestCallState;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    internal static void CancelFromUserData(object? userdata)
+    {
+        FromUserData(userdata)?.TrySetCanceled(CancellationToken.None);
+    }
+
+    internal static void TimeoutFromUserData(object? userdata)
+    {
+        FromUserData(userdata)?.TrySetException(
+            new ZlinkRequestException(RequestResult.TimedOut));
+    }
+
+    internal static void RequestTimeoutFromUserData(object? userdata)
+    {
+        FromUserData(userdata)?.TrySetException(new ZlinkRequestException(
+            RequestResult.TimedOut, (int)ErrorCode.ETimedOut));
     }
 
     private void DisposeRegistrations()

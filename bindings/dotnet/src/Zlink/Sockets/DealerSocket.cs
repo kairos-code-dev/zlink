@@ -145,18 +145,13 @@ public sealed class DealerSocket : MessageSocketBase
             {
                 state.SetCancellationRegistration(ct.Register(static userdata =>
                 {
-                    RequestCallState callbackState =
-                        (RequestCallState)((GCHandle)userdata!).Target!;
-                    callbackState.TrySetCanceled(CancellationToken.None);
+                    RequestCallState.CancelFromUserData(userdata);
                 }, handle));
             }
 
             state.SetTimeoutTimer(new System.Threading.Timer(static userdata =>
             {
-                RequestCallState callbackState =
-                    (RequestCallState)((GCHandle)userdata!).Target!;
-                callbackState.TrySetException(new ZlinkRequestException(
-                    RequestResult.TimedOut, (int)ErrorCode.ETimedOut));
+                RequestCallState.RequestTimeoutFromUserData(userdata);
             }, handle, (int)timeoutMs, Timeout.Infinite));
 
             for (int i = 0; i < cloned.Length; i++)

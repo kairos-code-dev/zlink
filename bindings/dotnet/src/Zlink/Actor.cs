@@ -126,9 +126,7 @@ public sealed class Actor : IDisposable, IAsyncDisposable
                 ct.CanBeCanceled
                     ? ct.Register(static userdata =>
                     {
-                        RequestCallState callbackState =
-                            (RequestCallState)((GCHandle)userdata!).Target!;
-                        callbackState.TrySetCanceled(CancellationToken.None);
+                        RequestCallState.CancelFromUserData(userdata);
                     }, handle)
                     : default);
             state.SetTimeoutTimer(ActorInterop.CreateTimeoutTimer(handle,
@@ -471,10 +469,7 @@ internal static class ActorInterop
             return null;
         return new System.Threading.Timer(static userdata =>
         {
-            RequestCallState callbackState =
-                (RequestCallState)((GCHandle)userdata!).Target!;
-            callbackState.TrySetException(
-                new ZlinkRequestException(RequestResult.TimedOut));
+            RequestCallState.TimeoutFromUserData(userdata);
         }, handle, (int)timeoutMs, Timeout.Infinite);
     }
 

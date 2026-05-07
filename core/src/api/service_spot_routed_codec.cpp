@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "api/request_reply_protocol_internal.hpp"
+#include "api/service_spot_routed_protocol_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "services/spot/spot_node.hpp"
 
@@ -11,14 +12,6 @@ namespace
 using zlink::spot_reqrep_internal::find_router_state_by_rid;
 using zlink::spot_reqrep_internal::parsed_spot_envelope_t;
 using zlink::spot_reqrep_internal::resolve_spot_node_routing_id;
-
-enum : uint8_t
-{
-    zmp_spot_routed_protocol_id = 0x02,
-    zmp_packed_protocol_version = 0x02,
-    zmp_spot_class = 0x01,
-    zmp_router_class = 0x02
-};
 
 bool assign_routing_id_value_local (const char *data_,
                                     size_t size_,
@@ -49,10 +42,10 @@ bool parse_packed_spot_routed_envelope (zlink_msg_t *parts_,
       static_cast<const unsigned char *> (zlink_msg_data (&parts_[0]));
     const size_t size = zlink_msg_size (&parts_[0]);
     if (size < packed_header_prefix_size
-        || data[0] != zmp_spot_routed_protocol_id
-        || data[1] != zmp_packed_protocol_version
-        || (data[2] != zmp_spot_class && data[2] != zmp_router_class)
-        || (data[3] != zmp_spot_class && data[3] != zmp_router_class)) {
+        || data[0] != zlink::spot_routed_protocol::protocol_id
+        || data[1] != zlink::spot_routed_protocol::packed_frame_version
+        || !zlink::spot_routed_protocol::is_endpoint_class (data[2])
+        || !zlink::spot_routed_protocol::is_endpoint_class (data[3])) {
         return false;
     }
 
@@ -154,7 +147,8 @@ bool zlink::spot_reqrep_internal::should_process_spot_routed_locally (
     if (!node_)
         return false;
 
-    if (envelope_.destination_class == zmp_router_class) {
+    if (envelope_.destination_class
+        == zlink::spot_routed_protocol::router_endpoint_class) {
         return static_cast<bool> (
           find_router_state_by_rid (envelope_.destination_endpoint_rid));
     }

@@ -17,57 +17,72 @@
 
 namespace
 {
-std::mutex g_service_handle_registry_sync;
-std::set<void *> g_registered_discovery_handles;
-std::set<void *> g_registered_registry_handles;
+struct service_handle_registry_t
+{
+    std::mutex sync;
+    std::set<void *> discovery_handles;
+    std::set<void *> registry_handles;
+};
+
+service_handle_registry_t &service_handle_registry ()
+{
+    static service_handle_registry_t registry;
+    return registry;
+}
 }
 
 bool is_registered_discovery_handle (void *discovery_)
 {
-    std::lock_guard<std::mutex> lock (g_service_handle_registry_sync);
+    service_handle_registry_t &registry = service_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
     return discovery_
-           && g_registered_discovery_handles.find (discovery_)
-                != g_registered_discovery_handles.end ();
+           && registry.discovery_handles.find (discovery_)
+                != registry.discovery_handles.end ();
 }
 
 bool is_registered_registry_handle (void *registry_)
 {
-    std::lock_guard<std::mutex> lock (g_service_handle_registry_sync);
+    service_handle_registry_t &registry = service_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
     return registry_
-           && g_registered_registry_handles.find (registry_)
-                != g_registered_registry_handles.end ();
+           && registry.registry_handles.find (registry_)
+                != registry.registry_handles.end ();
 }
 
 void register_discovery_handle (void *discovery_)
 {
     if (!discovery_)
         return;
-    std::lock_guard<std::mutex> lock (g_service_handle_registry_sync);
-    g_registered_discovery_handles.insert (discovery_);
+    service_handle_registry_t &registry = service_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
+    registry.discovery_handles.insert (discovery_);
 }
 
 void erase_discovery_handle (void *discovery_)
 {
     if (!discovery_)
         return;
-    std::lock_guard<std::mutex> lock (g_service_handle_registry_sync);
-    g_registered_discovery_handles.erase (discovery_);
+    service_handle_registry_t &registry = service_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
+    registry.discovery_handles.erase (discovery_);
 }
 
 void register_registry_handle (void *registry_)
 {
     if (!registry_)
         return;
-    std::lock_guard<std::mutex> lock (g_service_handle_registry_sync);
-    g_registered_registry_handles.insert (registry_);
+    service_handle_registry_t &registry = service_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
+    registry.registry_handles.insert (registry_);
 }
 
 void erase_registry_handle (void *registry_)
 {
     if (!registry_)
         return;
-    std::lock_guard<std::mutex> lock (g_service_handle_registry_sync);
-    g_registered_registry_handles.erase (registry_);
+    service_handle_registry_t &registry = service_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
+    registry.registry_handles.erase (registry_);
 }
 
 namespace zlink

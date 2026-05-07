@@ -18,8 +18,6 @@
 
 namespace
 {
-using zlink::spot_reqrep_internal::g_spot_recv_source_rid;
-using zlink::spot_reqrep_internal::g_spot_recv_spot_rid;
 using zlink::spot_reqrep_internal::has_valid_routing_id;
 using zlink::spot_reqrep_internal::maybe_dispatch_spot_info;
 using zlink::spot_reqrep_internal::queued_spot_subscribe_message_t;
@@ -296,14 +294,15 @@ int zlink::spot_reqrep_internal::recv_internal_spot_queue (
         }
     }
 
-    g_spot_recv_source_rid = message.source_rid;
-    g_spot_recv_spot_rid = message.spot_rid;
+    zlink::spot_reqrep_internal::spot_recv_metadata_tls_t &metadata =
+      zlink::spot_reqrep_internal::spot_recv_metadata_tls ();
+    metadata.source_rid = message.source_rid;
+    metadata.spot_rid = message.spot_rid;
 
     *request_seq_out_ = message.request_seq;
     release_routed_queue_slot_local (state);
-    *source_rid_out_ = &g_spot_recv_source_rid;
-    *spot_rid_out_ = g_spot_recv_spot_rid.size > 0 ? &g_spot_recv_spot_rid
-                                                    : NULL;
+    *source_rid_out_ = &metadata.source_rid;
+    *spot_rid_out_ = metadata.spot_rid.size > 0 ? &metadata.spot_rid : NULL;
     return zlink::recv_tls_view::commit (parts_out_, part_count_out_);
 }
 

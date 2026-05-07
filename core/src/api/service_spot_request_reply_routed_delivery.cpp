@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "api/request_reply_protocol_internal.hpp"
+#include "api/service_spot_routed_protocol_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
@@ -22,6 +23,8 @@
 
 namespace
 {
+namespace routed_protocol = zlink::spot_routed_protocol;
+
 using zlink::spot_reqrep_internal::find_router_state_by_rid;
 using zlink::spot_reqrep_internal::find_spot_state_by_identity;
 using zlink::spot_reqrep_internal::parsed_spot_envelope_t;
@@ -30,12 +33,6 @@ using zlink::spot_reqrep_internal::process_route_combined_for_local_delivery;
 using zlink::spot_reqrep_internal::resolve_runtime_for_spot_destination;
 using zlink::spot_reqrep_internal::routed_spot_delivery_kind_t;
 using zlink::spot_reqrep_internal::router_spot_delivery_kind_t;
-
-enum : uint8_t
-{
-    zmp_spot_class = 0x01,
-    zmp_router_class = 0x02
-};
 
 bool spot_direct_route_debug_enabled ()
 {
@@ -204,7 +201,7 @@ bool has_local_spot_route_target (uint8_t destination_class_,
                                   const std::string &destination_node_rid_,
                                   const std::string &destination_endpoint_rid_)
 {
-    return destination_class_ == zmp_spot_class
+    return destination_class_ == routed_protocol::spot_endpoint_class
              ? static_cast<bool> (find_spot_state_by_identity (
                  destination_node_rid_, destination_endpoint_rid_))
              : static_cast<bool> (

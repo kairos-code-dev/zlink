@@ -165,6 +165,23 @@ ZLINK_EXPORT zlink_config_result_t zlink_ctx_set (void *context_,
                                 int optval_);
 
 /**
+ * @brief Set a context option from a byte buffer.
+ *
+ * This is used for context options whose public binding type is not an int,
+ * such as ZLINK_THREAD_NAME_PREFIX.
+ *
+ * @param context_    Context handle.
+ * @param option_     Option name.
+ * @param optval_     Option value bytes.
+ * @param optvallen_  Number of bytes in optval_.
+ * @return ZLINK_CONFIG_OK on success, otherwise a zlink_config_result_t error.
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_ctx_set_data (void *context_,
+                                zlink_ctx_option_t option_,
+                                const void *optval_,
+                                size_t optvallen_);
+
+/**
  * @brief Get a context option.
  * @param context_  Context handle.
  * @param option_   Option name.
@@ -1010,6 +1027,12 @@ typedef struct zlink_monitor_snapshot_t
 
     /* 현재 socket에 적용된 수신 HWM입니다. */
     int32_t auto_hwm_applied_rcvhwm;
+
+    /* 현재 socket에 적용된 송신 buffer 크기입니다. 단위는 byte입니다. */
+    int32_t auto_hwm_effective_sndbuf;
+
+    /* 현재 socket에 적용된 수신 buffer 크기입니다. 단위는 byte입니다. */
+    int32_t auto_hwm_effective_rcvbuf;
 
     /* 마지막 자동 HWM 재계산 시각입니다. 단위는 millisecond입니다. */
     uint64_t auto_hwm_last_recalc_ms;

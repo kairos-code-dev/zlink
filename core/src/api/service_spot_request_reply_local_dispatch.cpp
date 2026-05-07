@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "api/request_reply_protocol_internal.hpp"
+#include "api/service_spot_routed_protocol_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
 #include "core/multipart_send_txn.hpp"
@@ -12,6 +13,7 @@
 namespace
 {
 namespace reqrep = zlink::socket_reqrep_internal;
+namespace routed_protocol = zlink::spot_routed_protocol;
 
 using zlink::spot_reqrep_internal::find_router_state_by_rid;
 using zlink::spot_reqrep_internal::find_spot_state_by_identity;
@@ -20,15 +22,6 @@ using zlink::spot_reqrep_internal::pending_reply_t;
 using zlink::spot_reqrep_internal::pending_spot_key_t;
 using zlink::spot_reqrep_internal::router_spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
-
-enum : uint8_t
-{
-    zmp_spot_routed_protocol_id = 0x02,
-    zmp_protocol_version = 0x01,
-    zmp_packed_protocol_version = 0x02,
-    zmp_spot_class = 0x01,
-    zmp_router_class = 0x02
-};
 
 const size_t packed_spot_routed_control_part_count = 1;
 
@@ -52,8 +45,8 @@ int init_packed_spot_routed_header (zlink_msg_t *msg_,
         return -1;
 
     unsigned char *data = static_cast<unsigned char *> (zlink_msg_data (msg_));
-    data[0] = zmp_spot_routed_protocol_id;
-    data[1] = zmp_packed_protocol_version;
+    data[0] = routed_protocol::protocol_id;
+    data[1] = routed_protocol::packed_frame_version;
     data[2] = source_class_;
     data[3] = destination_class_;
     zlink::request_reply::encode_u32_be (
@@ -307,10 +300,10 @@ int deliver_reply_to_spot (
 
     pending_spot_key_t key;
     key.source_class = spot_envelope_.source_class;
-    key.source_rid = spot_envelope_.source_class == zmp_router_class
+    key.source_rid = spot_envelope_.source_class == routed_protocol::router_endpoint_class
                        ? spot_envelope_.source_endpoint_rid
                        : spot_envelope_.source_node_rid;
-    key.source_spot_rid = spot_envelope_.source_class == zmp_spot_class
+    key.source_spot_rid = spot_envelope_.source_class == routed_protocol::spot_endpoint_class
                             ? spot_envelope_.source_endpoint_rid
                             : std::string ();
     key.request_seq = rr_envelope_.request_seq;
@@ -395,10 +388,10 @@ int dispatch_spot_request_to_spot (
     memset (&empty_spot_rid, 0, sizeof (empty_spot_rid));
     const int rc = dispatch_spot_message_local (
       state.get (),
-      spot_envelope_.source_class == zmp_router_class
+      spot_envelope_.source_class == routed_protocol::router_endpoint_class
         ? &spot_envelope_.source_endpoint_rid_value
         : &spot_envelope_.source_node_rid_value,
-      spot_envelope_.source_class == zmp_spot_class
+      spot_envelope_.source_class == routed_protocol::spot_endpoint_class
         ? &spot_envelope_.source_endpoint_rid_value
         : &empty_spot_rid,
       rr_envelope_.request_seq,
@@ -448,19 +441,19 @@ int dispatch_local_direct_to_spot (uint8_t source_class_,
     zlink_routing_id_t spot_rid_fallback;
     memset (&spot_rid_fallback, 0, sizeof (spot_rid_fallback));
     const zlink_routing_id_t *source_rid =
-      source_class_ == zmp_router_class ? source_endpoint_rid_value_
+      source_class_ == routed_protocol::router_endpoint_class ? source_endpoint_rid_value_
                                         : source_node_rid_value_;
-    const zlink_routing_id_t *spot_rid = source_class_ == zmp_spot_class
+    const zlink_routing_id_t *spot_rid = source_class_ == routed_protocol::spot_endpoint_class
                                            ? source_endpoint_rid_value_
                                            : &spot_rid_fallback;
     if (!source_rid) {
         routing_id_from_string_local (
-          source_class_ == zmp_router_class ? source_endpoint_rid_
+          source_class_ == routed_protocol::router_endpoint_class ? source_endpoint_rid_
                                             : source_node_rid_,
           &source_rid_fallback);
         source_rid = &source_rid_fallback;
     }
-    if (source_class_ == zmp_spot_class && !source_endpoint_rid_value_) {
+    if (source_class_ == routed_protocol::spot_endpoint_class && !source_endpoint_rid_value_) {
         routing_id_from_string_local (source_endpoint_rid_, &spot_rid_fallback);
         spot_rid = &spot_rid_fallback;
     }
@@ -613,7 +606,7 @@ int zlink::spot_reqrep_internal::build_spot_request_reply_message (
     unsigned char source_class = source_class_;
     unsigned char destination_class = destination_class_;
     unsigned char rr_protocol_id = zlink::request_reply::protocol_id;
-    unsigned char rr_version = zmp_protocol_version;
+    unsigned char rr_version = routed_protocol::legacy_frame_version;
     unsigned char rr_type = message_type_;
     unsigned char seq_buf[8];
     zlink::request_reply::encode_u64_be (request_seq_, seq_buf);
@@ -731,7 +724,7 @@ int zlink::spot_reqrep_internal::dispatch_local_reply_impl (
     if (!parse_combined_local_message (combined_, &spot_envelope, &rr_envelope))
         return -1;
 
-    if (spot_envelope.destination_class == zmp_spot_class)
+    if (spot_envelope.destination_class == routed_protocol::spot_endpoint_class)
         return deliver_reply_to_spot (spot_envelope, rr_envelope);
 
     return deliver_reply_to_router (spot_envelope.destination_endpoint_rid,
@@ -747,7 +740,7 @@ int zlink::spot_reqrep_internal::dispatch_local_request_impl (
     if (!parse_combined_local_message (combined_, &spot_envelope, &rr_envelope))
         return -1;
 
-    if (spot_envelope.destination_class == zmp_spot_class)
+    if (spot_envelope.destination_class == routed_protocol::spot_endpoint_class)
         return dispatch_spot_request_to_spot (spot_envelope, rr_envelope);
 
     return dispatch_spot_request_to_router (router_rid_, spot_envelope,
@@ -795,20 +788,20 @@ int zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_deliver
                                               spot_envelope_.payload_part_count,
                                               &rr_envelope)) {
         if (rr_envelope.message_type == zlink::request_reply::request_type) {
-            if (spot_envelope_.destination_class == zmp_spot_class)
+            if (spot_envelope_.destination_class == routed_protocol::spot_endpoint_class)
                 return dispatch_spot_request_to_spot (spot_envelope_, rr_envelope);
             return dispatch_spot_request_to_router (
               spot_envelope_.destination_endpoint_rid, spot_envelope_,
               rr_envelope);
         }
 
-        if (spot_envelope_.destination_class == zmp_spot_class)
+        if (spot_envelope_.destination_class == routed_protocol::spot_endpoint_class)
             return deliver_reply_to_spot (spot_envelope_, rr_envelope);
         return deliver_reply_to_router (spot_envelope_.destination_endpoint_rid,
                                         rr_envelope);
     }
 
-    if (spot_envelope_.destination_class == zmp_spot_class) {
+    if (spot_envelope_.destination_class == routed_protocol::spot_endpoint_class) {
         return dispatch_local_direct_to_spot (
           spot_envelope_.source_class, spot_envelope_.source_node_rid,
           spot_envelope_.source_endpoint_rid,

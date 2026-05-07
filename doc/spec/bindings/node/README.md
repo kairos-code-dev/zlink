@@ -88,8 +88,11 @@ API lists can stay focused on signatures.
 - ROUTER / PUB socket option defaults follow the core header: `mandatory =
   true`, `handover = false`, `nodrop = true`.
 - SPOT admission HWM defaults follow the core header. Router and pubsub
-  admission profile/numeric options are exposed; relay and delivery HWM stay
-  `0` and are not public Node/TypeScript options.
+  admission profile/numeric options are exposed through `SpotNode`; relay and
+  delivery HWM stay `0` and are not public Node/TypeScript options.
+- SPOT dispatch worker min/max are `SpotNode` callback worker-pool options.
+  They are not context options and must not be described as transport I/O
+  threads.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routingId, advertiseEndpoint)`. Users do not configure this.
@@ -183,7 +186,6 @@ class ContextOptions {
     threadPriority: number;     // get / set — @throws {ConfigError}
     threadSchedulingPolicy: number; // get / set — @throws {ConfigError}
     threadNamePrefix: string;   // get / set — @throws {ConfigError}
-    spotWorkerThreads: number;  // get / set — @throws {ConfigError}
     blocky: boolean;            // get / set — @throws {ConfigError}
     autoHwmEnabled: boolean;    // get / set — @throws {ConfigError}
     autoHwmRecalcDebounceMs: number; // get / set — @throws {ConfigError}
@@ -1091,7 +1093,7 @@ declarations indicate which specific subclass they throw via TSDoc
 `@throws` comments.
 
 The `code` field is a globally unique `int` that spans all result enum
-ranges (0-703). The code alone identifies the error without needing to
+ranges (0-706). The code alone identifies the error without needing to
 know which enum it belongs to. `internalErrno` carries the OS-level
 errno when available (0 otherwise).
 
@@ -1371,6 +1373,17 @@ class Discovery {
 ### SpotNode
 
 ```typescript
+const SpotNodeMode = {
+    PubSub: 1,
+    Routed: 2,
+    All: 3,
+} as const;
+type SpotNodeModeValue = typeof SpotNodeMode[keyof typeof SpotNodeMode];
+
+interface SpotNodeOptions {
+    readonly mode?: SpotNodeModeValue; // omitted maps to All
+}
+
 class SpotNode {
     constructor(ctx: Context, options?: SpotNodeOptions);
     constructor(ctx: Context);
@@ -1390,6 +1403,14 @@ class SpotNode {
     attachChannelDealerManual(channelName: string, dealer: DealerSocket): void;
     /** @throws {ConfigError} */
     attachPubIngress(pub: PubSocket): void;
+    // SpotNode admission and dispatch-worker options. These map to the six
+    // public zlink_spot_node_option_t values; no raw option bag is public.
+    routerHwmProfile: AutoHwmProfileValue;    // get / set — @throws {ConfigError}
+    routerHwm: number;                        // get / set — @throws {ConfigError}
+    pubsubHwmProfile: AutoHwmProfileValue;    // get / set — @throws {ConfigError}
+    pubsubHwm: number;                        // get / set — @throws {ConfigError}
+    dispatchWorkersMin: number;               // get / set — @throws {ConfigError}
+    dispatchWorkersMax: number;               // get / set — @throws {ConfigError}
     /** @throws {ConfigError} */
     setTlsServer(cert: string, key: string, requireClient?: number): void;
     /** @throws {ConfigError} */
@@ -1453,6 +1474,11 @@ and lookup facades through `SpotNode.spotLookup(...)`. Direct
 `new Spot(node)` construction is internal and is not part of the public API
 contract.
 
+`dispatchWorkersMin` must be at least `1`; `dispatchWorkersMax` must be at
+least `dispatchWorkersMin`. If unset, core defaults are CPU count `1`:
+`min=max=1`; otherwise `min=2`, `max=cpuCount`. These values size only the
+SpotNode dispatch callback worker pool.
+
 ### Actor
 
 ```typescript
@@ -1468,9 +1494,9 @@ class Actor {
     recvPart(flags?: RecvFlags): ActorPart | null;
     /** @throws {SubmitError} */
     sendBoundSession(message: MessageLike, flags?: SendFlags): boolean;
-    /** @throws {ConfigError} */
+    /** @throws {RequestError} */
     closeBoundSession(timeoutMs?: number): void;
-    /** @throws {CloseError} */
+    /** @throws {RequestError} */
     close(timeoutMs?: number): void;
 }
 ```
@@ -1909,13 +1935,36 @@ type SpotSubHandler = SocketSubscribeHandler;
 type SpotSendReadyHandler = () => void;
 type SpotRoutedHandler = (sourceRid: RoutingId | null, spotRid: RoutingId | null,
                           requestSeq: bigint, parts: Message[]) => void;
+const SpotDispatchEvent = {
+  SubscribeReadable: 1,
+  RoutedReadable: 2,
+  TimerReadable: 3,
+  ChannelReplyReadable: 4,
+  ActorReadable: 5,
+  ActorJoinReadable: 6,
+} as const;
+type SpotDispatchEvent =
+    typeof SpotDispatchEvent[keyof typeof SpotDispatchEvent];
+
+const SpotDispatchSubjectKind = {
+  Spot: 1,
+  Timer: 2,
+  ChannelDealer: 3,
+  Actor: 4,
+} as const;
+type SpotDispatchSubjectKind =
+    typeof SpotDispatchSubjectKind[keyof typeof SpotDispatchSubjectKind];
+
 interface SpotDispatchInfo {
-  event: number;
-  subjectKind: number;
+  event: SpotDispatchEvent;
+  subjectKind: SpotDispatchSubjectKind;
+  // Native subject handle is only for timer and attached channel DEALER drain.
   subjectHandle: bigint;
+  // ActorReadable carries a callback-lifetime ActorRef copy instead of a raw
+  // native subject pointer.
+  actorRef: ActorRef | null;
   recvActorPart(flags?: RecvFlags): ActorPart | null;
 }
-type SpotDispatchSubjectKind = number;
 type ActorAdmissionHandler =
     (actorId: string, message: Message) => ActorAdmissionResult;
 type SpotDispatchEventHandler = (info: SpotDispatchInfo) => void;
@@ -1929,6 +1978,12 @@ type MonitorEventType = number;
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
 `subscribe(...)` / `recvRouted(...)` until the binding reports no data /
 `EAGAIN`.
+For `ChannelReplyReadable`, `subjectKind` is
+`SpotDispatchSubjectKind.ChannelDealer`; use the attached dealer's
+`getChannelName()` metadata to identify the channel and pass `subjectHandle`
+to `drainChannelReplyFrom(...)`.
+For `ActorReadable`, `actorRef` identifies the readable Actor and
+`subjectHandle` is not part of the public Actor contract.
 
 ---
 

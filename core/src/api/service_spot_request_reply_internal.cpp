@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
+#include "api/service_spot_routed_protocol_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/request_reply_protocol_internal.hpp"
 #include "core/multipart_send_txn.hpp"
@@ -38,11 +39,6 @@ int current_process_id ()
     return getpid ();
 }
 #endif
-
-enum : uint8_t
-{
-    zmp_router_class = 0x02
-};
 
 size_t hash_combine (size_t seed_, size_t value_)
 {
@@ -265,8 +261,12 @@ router_spot_request_reply_state_t::router_spot_request_reply_state_t (
 std::mutex g_spot_request_reply_index_mutex;
 spot_state_identity_index_t g_spot_state_identity_index;
 router_state_identity_index_t g_router_state_identity_index;
-thread_local zlink_routing_id_t g_spot_recv_source_rid;
-thread_local zlink_routing_id_t g_spot_recv_spot_rid;
+
+spot_recv_metadata_tls_t &spot_recv_metadata_tls ()
+{
+    static thread_local spot_recv_metadata_tls_t metadata;
+    return metadata;
+}
 
 int validate_request_parts (zlink_msg_t *parts_, size_t part_count_)
 {

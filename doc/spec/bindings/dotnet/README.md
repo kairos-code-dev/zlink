@@ -84,9 +84,16 @@ stay focused on signatures.
 - `SpotNode` exposes channel-aware attachment methods:
   `AttachDiscovery(...)`, `AttachChannelDealer(...)`,
   `AttachChannelDealerManual(...)`, and `AttachPubIngress(...)`.
-- `Spot` exposes channel-aware data-plane methods:
-  `SendChannel(...)`, `SendToSpot(...)`, `RequestChannel(...)`, and
-  `Publish(serviceName, topic, ...)`.
+- `AttachPubIngress(...)` attaches an external raw `PUB` as an ingress source
+  for the node's SPOT topic plane. It is not the implementation path for
+  `Spot.Publish(...)`.
+- `Spot` exposes data-plane methods through typed operations:
+  `Publish(serviceName, topic, ...)` enters the SPOT topic plane,
+  `SendChannel(...)` and `RequestChannel(...)` use attached channel
+  `DEALER` handles, and `SendToSpot(...)` uses routed SPOT delivery.
+- `Spot.Publish(...)` does not expose or select a raw `PUB` socket. Core
+  admits the publish into the `SpotNode` topic data-plane; the binding keeps
+  the native part-by-part substrate internal.
 - `Spot.Subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage.ServiceName` is populated for SPOT subscribe results and is
   `null` for raw `SUB` / `XSUB`.
@@ -217,8 +224,6 @@ public sealed class ContextOptions
     /// <exception cref="ZlinkConfigException"/>
     TimeSpan AutoHwmRecalcDebounce { get; set; }
     /// <exception cref="ZlinkConfigException"/>
-    int SpotWorkerThreads { get; set; }
-    /// <exception cref="ZlinkConfigException"/>
     string ThreadNamePrefix { get; set; }
 
     /// <exception cref="ZlinkConfigException"/>
@@ -339,7 +344,7 @@ Route-not-ready and other submit failures still raise `ZlinkSubmitException`.
 `Recv(...)`, `RecvRouted(...)`, `Subscribe(...)`, and
 `ReceiveSubscriptionEvent(...)` return `null` when `RecvFlags.DontWait` finds
 no data and still raise `ZlinkRecvException` for real recv failures.
-`Timer.Recv(...)` follows the same no-data rule.
+`SocketMonitor.Recv(...)` and `Timer.Recv(...)` follow the same no-data rule.
 
 The binding also exposes the following public infrastructure types:
 
@@ -511,6 +516,8 @@ public sealed class SpotNodeOptions
     int RouterHighWaterMark { get; set; }
     AutoHwmProfile PubSubHwmProfile { get; set; }
     int PubSubHighWaterMark { get; set; }
+    int DispatchWorkersMin { get; set; }
+    int DispatchWorkersMax { get; set; }
 }
 
 public enum SpotNodeMode
@@ -531,6 +538,12 @@ option facade returned by `SpotNode.Options`. `Mode` is creation-only because it
 selects the native node shape. The HWM properties are live after the options
 object is attached to a `SpotNode`: setting them updates the managed value and
 applies the matching native spot-node option.
+`DispatchWorkersMin` and `DispatchWorkersMax` configure the `SpotNode`-owned
+application callback worker pool. They do not configure context IO threads or
+the SPOT data-plane thread. `DispatchWorkersMin` must be at least `1`, and
+`DispatchWorkersMax` must be greater than or equal to `DispatchWorkersMin`.
+When not set explicitly, a single-CPU process uses `min=max=1`; otherwise the
+defaults are `min=2` and `max=Environment.ProcessorCount`.
 
 `DealerSocketOptions.RequestTimeout` and `DealerSocketOptions.Weight` are
 set-only because the core API exposes `zlink_set_dealer_option(...)` but does
@@ -1495,8 +1508,14 @@ public sealed class Actor : IDisposable, IAsyncDisposable
 }
 ```
 
-`Generation == 0` is an unchecked remote ref, not an invalid ref. One Actor can
-join only one Spot at a time. `Leave` does not drop unread Actor parts.
+Actor ids are non-empty UTF-8 strings up to 255 bytes and must not contain
+NUL. `Generation == 0` is an unchecked remote ref, not an invalid ref. One
+Actor can join only one Spot at a time. `Leave` does not drop unread Actor
+parts. There is no public per-Actor queue limit option.
+`CreateRemoteActor(...)` is create-or-get: the remote admission handler is
+called only when the target Actor does not already exist. Discovery Actor
+routes become active when a STREAM session bind succeeds, not when an Actor is
+created.
 
 ### SpotDispatchEvent
 
@@ -1654,9 +1673,7 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkHandlerException"/>
     void OnEvent(Action<MonitorEvent> handler);
     /// <exception cref="ZlinkRecvException"/>
-    MonitorEvent Recv();
-    /// <exception cref="ZlinkRecvException"/>
-    MonitorEvent? Recv(bool nonBlocking);
+    MonitorEvent? Recv(RecvFlags flags = RecvFlags.None);
     /// <exception cref="ZlinkConfigException"/>
     MonitorSnapshot Snapshot();
     /// <exception cref="ZlinkCloseException"/>
@@ -1983,12 +2000,14 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     RoutingId RoutingId { get; }
 
-    // --- channel-aware publish / request ---
+    // --- SPOT topic publish ---
     /// <exception cref="ZlinkSubmitException"/>
     bool Publish(string serviceName, string topic, Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
     bool Publish(string serviceName, string topic, IReadOnlyList<Message> parts,
                  SendFlags flags = SendFlags.None);
+
+    // --- channel-aware send / request ---
     /// <exception cref="ZlinkSubmitException"/>
     bool SendChannel(string channelName, Message message, SendFlags flags = SendFlags.None);
     /// <exception cref="ZlinkSubmitException"/>
@@ -2148,6 +2167,21 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 }
 ```
 
+`Spot.Publish(serviceName, topic, ...)` is the managed SPOT topic publish
+operation. The `serviceName` parameter is the core topic-plane namespace name;
+it is not a channel dealer name and does not cause .NET to select a raw `PUB`
+socket. The binding keeps native part-loop sequencing internal while core
+admits the publish into the owning `SpotNode` topic data-plane. Temporary
+admission backpressure is reported through the same `SendFlags.DontWait`
+contract as other send-like methods.
+
+`SpotNode.AttachPubIngress(PubSocket pub)` is separate from
+`Spot.Publish(...)`. It registers an external raw `PUB` socket as an ingress
+source for the same SPOT topic plane, so messages arriving from that attachment
+are drained by `Spot.Subscribe(...)` with the same `TopicMessage` result shape.
+Channel calls remain separate: `SendChannel(...)` and `RequestChannel(...)`
+address attached channel `DEALER` handles by `channelName`.
+
 ### RegistryQueryClient
 
 Remote registry query client. Connects to a registry and fetches topology snapshots.
@@ -2235,6 +2269,10 @@ public sealed record SpotNodeStatus(
     int LastError,
     ulong LastChangedMs);
 ```
+
+`DisconnectedSubTargetCount` and `DisconnectedRoutedTargetCount` expose the
+core diagnostic fields. Current core does not disconnect targets only because
+a delivery queue grows, so both values are reported as `0`.
 
 Advanced / Diagnostic entry types and filters:
 
@@ -2728,15 +2766,15 @@ updated in the same change.
 | Common socket options | `zlink_set_option`, `zlink_get_option`, `zlink_set_routing_id`, `zlink_get_routing_id`, `zlink_set_tls_server`, `zlink_set_tls_client` | typed option facades, routing-id methods/properties, TLS methods |
 | Dealer channel metadata | `zlink_socket_set_channel_name`, `zlink_socket_get_channel_name` | `DealerSocket.SetChannelName`, `DealerSocket.GetChannelName` |
 | Typed socket options | `zlink_set_router_option`, `zlink_get_router_option`, `zlink_set_dealer_option`, `zlink_set_pub_option`, `zlink_get_pub_option`, `zlink_set_sub_option`, `zlink_get_sub_option`, `zlink_set_stream_option`, `zlink_get_stream_option` | `RouterSocketOptions`, `DealerSocketOptions`, `PubSocketOptions`, `XPubSocketOptions`, `SubSocketOptions`, `StreamSocketOptions` |
-| Raw send and recv | `zlink_send_part`, `zlink_send_part_rid`, `zlink_recv_part` and C shim multipart helpers | `Send(...)`, routed `Send(...)`, `Recv(...)`, `Received` |
-| Raw request and reply | `zlink_dealer_request_part`, `zlink_router_request_part`, `zlink_router_reply_part`, `zlink_router_recv_part` and C shim multipart helpers | `DealerSocket.Request*`, `RouterSocket.Request*`, `RouterSocket.Reply`, `RouterSocket.Recv` |
+| Raw send and recv | `zlink_send_part`, `zlink_send_part_rid`, `zlink_recv_part` | `Send(...)`, routed `Send(...)`, `Recv(...)`, `Received` |
+| Raw request and reply | `zlink_dealer_request_part`, `zlink_router_request_part`, `zlink_router_reply_part`, `zlink_router_recv_part` | `DealerSocket.Request*`, `RouterSocket.Request*`, `RouterSocket.Reply`, `RouterSocket.Recv` |
 | Pub/sub | `zlink_publish_part`, `zlink_subscribe_part`, `zlink_xpub_recv_part`, `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at` | `Publish(...)`, `Subscribe(...)`, `ReceiveSubscriptionEvent(...)`, subscription methods, topic-count/subscription introspection |
 | STREAM and actor bridge | `zlink_stream_packet_handler`, `zlink_stream_bind_actor`, `zlink_stream_unbind_actor`, `zlink_stream_send_bound_actor_part`; `zlink_recv_handler` is internal-only | `StreamSocket.OnPacket`, `StreamSocket.Recv`, `BindActor`, `UnbindActor`, `SendBoundActor` |
 | Send-ready callbacks | `zlink_send_ready_handler` | `OnSendReady(...)` on send-capable handles |
 | Socket monitoring | `zlink_socket_monitor_open`, `zlink_socket_monitor_handler`, `zlink_socket_monitor_recv`, `zlink_monitor_snapshot`, `zlink_monitor_close`, `zlink_monitor_ignore_handler` | `SocketMonitor`, `MonitorEvent`, `MonitorSnapshot`, `SocketMonitor.IgnoreHandler` |
 | Registry and Discovery | `zlink_registry_*`, `zlink_discovery_*`, `zlink_registry_query_*` | `Registry`, `Discovery`, `RegistryQueryClient`, service entry/filter records |
-| SPOT node topology | `zlink_spot_node_new`, `zlink_spot_node_destroy`, `zlink_spot_node_bind`, peer connect/disconnect, discovery/channel attachments, entry spot, spot lookup, snapshots, `zlink_set_spot_node_option`, `zlink_get_spot_node_option` | `SpotNode`, `SpotNodeOptions`, attachment APIs, snapshot/query APIs, `CreateSpot`, `EntrySpot`, `LookupSpot`, `DisconnectPeerRid` |
-| SPOT messaging | `zlink_spot_new`, `zlink_spot_destroy`, `zlink_spot_send_channel_part`, `zlink_spot_publish_part`, `zlink_spot_subscribe_part`, `zlink_spot_subscription_event_recv`, `zlink_spot_request_*_part`, `zlink_spot_send_spot_part`, `zlink_spot_reply_*_part`, `zlink_spot_recv_part`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_spot_channel_reply_progress_from`, `zlink_set_spot_option`, `zlink_get_spot_option` | `Spot`, `SpotOptions`, channel publish/request, SPOT publish/subscribe, routed send/request/reply/recv, dispatch callbacks, channel reply drain |
+| SPOT node topology | `zlink_spot_node_new`, `zlink_spot_node_destroy`, `zlink_spot_node_bind`, peer connect/disconnect, discovery/channel attachments, publish-ingress attachment, entry spot, spot lookup, snapshots, `zlink_set_spot_node_option`, `zlink_get_spot_node_option` | `SpotNode`, `SpotNodeOptions`, attachment APIs including `AttachPubIngress`, snapshot/query APIs, `CreateSpot`, `EntrySpot`, `LookupSpot`, `DisconnectPeerRid` |
+| SPOT messaging | `zlink_spot_new`, `zlink_spot_destroy`, `zlink_spot_send_channel_part`, `zlink_spot_publish_part`, `zlink_spot_subscribe_part`, `zlink_spot_subscription_event_recv`, `zlink_spot_request_*_part`, `zlink_spot_send_spot_part`, `zlink_spot_reply_*_part`, `zlink_spot_recv_part`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_spot_channel_reply_progress_from`, `zlink_set_spot_option`, `zlink_get_spot_option` | `Spot`, `SpotOptions`, channel send/request, SPOT topic publish/subscribe, routed send/request/reply/recv, dispatch callbacks, channel reply drain |
 | SPOT actor lifecycle | `zlink_spot_node_actor_*`, `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_remote_actor_get_ref`, `zlink_spot_actors_snapshot` | `Actor`, `ActorRef`, `ActorCreateResult`, join/leave/create/destroy/admission APIs, actor receive/send/bound-session APIs, actor snapshots |
 | Polling and timers | `zlink_poll`, `zlink_poller_*`, `zlink_timer_*`, `zlink_spot_timer_new` | `ZlinkPoll`, `Poller`, `PollEvent`, `Timer` |
 | Utilities | `zlink_proxy`, `zlink_proxy_steerable`, `zlink_multipart_close`, `zlink_sleep`, `zlink_stopwatch_*`, `zlink_thread_*`, `zlink_atomic_counter_*` | `Zlink.Proxy`, `Zlink.ProxySteerable`, `Zlink.MultipartClose`, `Zlink.Sleep`, `ZlinkStopwatch`, `ZlinkThread`, `AtomicCounter` |

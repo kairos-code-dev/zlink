@@ -227,6 +227,25 @@ zlink_submit_result_t finalize_staged_spot_submit (
     zlink::part_helper_internal::complete_send_step (state_, part_flag_);
     return final_submit_ (parts);
 }
+
+template <typename FinalSubmit>
+zlink_submit_result_t submit_staged_sequence (
+  void *handle_,
+  const zlink::part_helper_internal::send_sequence_spec_t &spec_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_,
+  FinalSubmit final_submit_)
+{
+    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
+    bool first_part = false;
+    if (prepare_staged_send_step (handle_, spec_, &state, &first_part) != 0) {
+        zlink::part_helper_internal::consume_send_part (part_);
+        return zlink::submit_result_internal::from_errno (errno);
+    }
+
+    return finalize_staged_spot_submit (
+      state, part_, part_flag_, final_submit_);
+}
 }
 
 zlink_submit_result_t zlink_spot_send_channel_part (
@@ -253,15 +272,8 @@ zlink_submit_result_t zlink_spot_send_channel_part (
     spec.has_text1 = true;
     spec.text1 = channel_name_;
 
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
-    bool first_part = false;
-    if (prepare_staged_send_step (spot_, spec, &state, &first_part) != 0) {
-        zlink::part_helper_internal::consume_send_part (part_);
-        return zlink::submit_result_internal::from_errno (errno);
-    }
-
-    return finalize_staged_spot_submit (
-      state, part_, part_flag_,
+    return submit_staged_sequence (
+      spot_, spec, part_, part_flag_,
       [spot_, channel_name_, flags_] (std::vector<zlink_msg_t> &parts_) {
           return spot_send_channel_impl (spot_, channel_name_, parts_.data (),
                                          parts_.size (), flags_);
@@ -299,15 +311,8 @@ zlink_submit_result_t zlink_spot_request_spot_part (
     zlink::part_helper_internal::copy_routing_id (dest_node_rid_, &spec.rid1);
     zlink::part_helper_internal::copy_routing_id (dest_spot_rid_, &spec.rid2);
 
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
-    bool first_part = false;
-    if (prepare_staged_send_step (spot_, spec, &state, &first_part) != 0) {
-        zlink::part_helper_internal::consume_send_part (part_);
-        return zlink::submit_result_internal::from_errno (errno);
-    }
-
-    return finalize_staged_spot_submit (
-      state, part_, part_flag_,
+    return submit_staged_sequence (
+      spot_, spec, part_, part_flag_,
       [spot_, dest_node_rid_, dest_spot_rid_, handler_, userdata_, flags_,
        timeout_ms_] (std::vector<zlink_msg_t> &parts_) {
           return spot_request_spot_impl (
@@ -343,15 +348,8 @@ zlink_submit_result_t zlink_spot_request_router_part (
     spec.has_rid1 = true;
     zlink::part_helper_internal::copy_routing_id (peer_rid_, &spec.rid1);
 
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
-    bool first_part = false;
-    if (prepare_staged_send_step (spot_, spec, &state, &first_part) != 0) {
-        zlink::part_helper_internal::consume_send_part (part_);
-        return zlink::submit_result_internal::from_errno (errno);
-    }
-
-    return finalize_staged_spot_submit (
-      state, part_, part_flag_,
+    return submit_staged_sequence (
+      spot_, spec, part_, part_flag_,
       [spot_, peer_rid_, handler_, userdata_, flags_,
        timeout_ms_] (std::vector<zlink_msg_t> &parts_) {
           return spot_request_router_impl (spot_, peer_rid_, parts_.data (),
@@ -387,15 +385,8 @@ zlink_submit_result_t zlink_spot_request_channel_part (
     spec.has_text1 = true;
     spec.text1 = channel_name_;
 
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
-    bool first_part = false;
-    if (prepare_staged_send_step (spot_, spec, &state, &first_part) != 0) {
-        zlink::part_helper_internal::consume_send_part (part_);
-        return zlink::submit_result_internal::from_errno (errno);
-    }
-
-    return finalize_staged_spot_submit (
-      state, part_, part_flag_,
+    return submit_staged_sequence (
+      spot_, spec, part_, part_flag_,
       [spot_, channel_name_, handler_, userdata_, flags_,
        timeout_ms_] (std::vector<zlink_msg_t> &parts_) {
           return spot_request_channel_impl (spot_, channel_name_, parts_.data (),
@@ -428,15 +419,8 @@ zlink_submit_result_t zlink_spot_send_spot_part (
     zlink::part_helper_internal::copy_routing_id (dest_node_rid_, &spec.rid1);
     zlink::part_helper_internal::copy_routing_id (dest_spot_rid_, &spec.rid2);
 
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
-    bool first_part = false;
-    if (prepare_staged_send_step (spot_, spec, &state, &first_part) != 0) {
-        zlink::part_helper_internal::consume_send_part (part_);
-        return zlink::submit_result_internal::from_errno (errno);
-    }
-
-    return finalize_staged_spot_submit (
-      state, part_, part_flag_,
+    return submit_staged_sequence (
+      spot_, spec, part_, part_flag_,
       [spot_, dest_node_rid_, dest_spot_rid_, flags_] (
         std::vector<zlink_msg_t> &parts_) {
           return spot_send_spot_impl (spot_, dest_node_rid_, dest_spot_rid_,
@@ -468,15 +452,8 @@ zlink_submit_result_t zlink_spot_reply_spot_part (
     zlink::part_helper_internal::copy_routing_id (dest_node_rid_, &spec.rid1);
     zlink::part_helper_internal::copy_routing_id (dest_spot_rid_, &spec.rid2);
 
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
-    bool first_part = false;
-    if (prepare_staged_send_step (spot_, spec, &state, &first_part) != 0) {
-        zlink::part_helper_internal::consume_send_part (part_);
-        return zlink::submit_result_internal::from_errno (errno);
-    }
-
-    return finalize_staged_spot_submit (
-      state, part_, part_flag_,
+    return submit_staged_sequence (
+      spot_, spec, part_, part_flag_,
       [spot_, dest_node_rid_, dest_spot_rid_, request_seq_] (
         std::vector<zlink_msg_t> &parts_) {
           return spot_reply_spot_impl (
@@ -505,15 +482,8 @@ zlink_submit_result_t zlink_spot_reply_router_part (
     spec.has_rid1 = true;
     zlink::part_helper_internal::copy_routing_id (peer_rid_, &spec.rid1);
 
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
-    bool first_part = false;
-    if (prepare_staged_send_step (spot_, spec, &state, &first_part) != 0) {
-        zlink::part_helper_internal::consume_send_part (part_);
-        return zlink::submit_result_internal::from_errno (errno);
-    }
-
-    return finalize_staged_spot_submit (
-      state, part_, part_flag_,
+    return submit_staged_sequence (
+      spot_, spec, part_, part_flag_,
       [spot_, peer_rid_, request_seq_] (std::vector<zlink_msg_t> &parts_) {
           return spot_reply_router_impl (spot_, peer_rid_, request_seq_,
                                          parts_.data (), parts_.size ());
@@ -551,15 +521,8 @@ zlink_submit_result_t zlink_router_request_spot_part (
     zlink::part_helper_internal::copy_routing_id (dest_node_rid_, &spec.rid1);
     zlink::part_helper_internal::copy_routing_id (dest_spot_rid_, &spec.rid2);
 
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
-    bool first_part = false;
-    if (prepare_staged_send_step (router_, spec, &state, &first_part) != 0) {
-        zlink::part_helper_internal::consume_send_part (part_);
-        return zlink::submit_result_internal::from_errno (errno);
-    }
-
-    return finalize_staged_spot_submit (
-      state, part_, part_flag_,
+    return submit_staged_sequence (
+      router_, spec, part_, part_flag_,
       [router_, dest_node_rid_, dest_spot_rid_, handler_, userdata_, flags_,
        timeout_ms_] (std::vector<zlink_msg_t> &parts_) {
           return router_request_spot_impl (
@@ -592,15 +555,8 @@ zlink_submit_result_t zlink_router_reply_spot_part (
     zlink::part_helper_internal::copy_routing_id (dest_node_rid_, &spec.rid1);
     zlink::part_helper_internal::copy_routing_id (dest_spot_rid_, &spec.rid2);
 
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
-    bool first_part = false;
-    if (prepare_staged_send_step (router_, spec, &state, &first_part) != 0) {
-        zlink::part_helper_internal::consume_send_part (part_);
-        return zlink::submit_result_internal::from_errno (errno);
-    }
-
-    return finalize_staged_spot_submit (
-      state, part_, part_flag_,
+    return submit_staged_sequence (
+      router_, spec, part_, part_flag_,
       [router_, dest_node_rid_, dest_spot_rid_, request_seq_] (
         std::vector<zlink_msg_t> &parts_) {
           return router_reply_spot_impl (
@@ -633,15 +589,8 @@ zlink_submit_result_t zlink_router_send_spot_part (
     zlink::part_helper_internal::copy_routing_id (dest_node_rid_, &spec.rid1);
     zlink::part_helper_internal::copy_routing_id (dest_spot_rid_, &spec.rid2);
 
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
-    bool first_part = false;
-    if (prepare_staged_send_step (router_, spec, &state, &first_part) != 0) {
-        zlink::part_helper_internal::consume_send_part (part_);
-        return zlink::submit_result_internal::from_errno (errno);
-    }
-
-    return finalize_staged_spot_submit (
-      state, part_, part_flag_,
+    return submit_staged_sequence (
+      router_, spec, part_, part_flag_,
       [router_, dest_node_rid_, dest_spot_rid_, flags_] (
         std::vector<zlink_msg_t> &parts_) {
           return router_send_spot_impl (router_, dest_node_rid_, dest_spot_rid_,

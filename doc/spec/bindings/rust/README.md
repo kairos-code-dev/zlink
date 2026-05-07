@@ -67,8 +67,11 @@ stay focused on signatures.
 - ROUTER / PUB socket option defaults follow the core header: `mandatory =
   true`, `handover = false`, `nodrop = true`.
 - SPOT admission HWM defaults follow the core header. Router and pubsub
-  admission profile/numeric options are exposed; relay and delivery HWM stay
-  `0` and are not public Rust options.
+  admission profile/numeric options are exposed through `SpotNode`; relay and
+  delivery HWM stay `0` and are not public Rust options.
+- SPOT dispatch worker min/max are `SpotNode` callback worker-pool options.
+  They are not context options and must not be described as transport I/O
+  threads.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routing_id, advertise_endpoint)`. Users do not configure this.
@@ -906,7 +909,7 @@ pub struct SubscriptionEvent {
 
 Result codes for send/request/reply/publish operations. Surfaced by
 `SubmitError::code()`; the top-level `ZlinkError::code()` returns a
-globally unique `i32` that spans all result enum ranges (0-703).
+globally unique `i32` that spans all result enum ranges (0-706).
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1095,7 +1098,7 @@ pub enum ZlinkError {
 }
 
 impl ZlinkError {
-    /// Globally unique code spanning all result enum ranges (0-703).
+    /// Globally unique code spanning all result enum ranges (0-706).
     /// The code alone identifies the error without needing to know
     /// which enum it belongs to.
     pub fn code(&self) -> i32;
@@ -1479,6 +1482,16 @@ impl Discovery {
 ### SpotNode
 
 ```rust
+pub enum SpotNodeMode {
+    PubSub = 1,
+    Routed = 2,
+    All = 3,
+}
+
+pub struct SpotNodeOptions {
+    pub mode: Option<SpotNodeMode>, // None maps to All
+}
+
 impl SpotNode {
     pub fn new_with_options(ctx: &Context, options: SpotNodeOptions)
         -> Result<Self, ConfigError>;
@@ -1505,6 +1518,32 @@ impl SpotNode {
         -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn attach_pub_ingress(&self, pub: &PubSocket) -> Result<(), ConfigError>;
+    // SpotNode admission and dispatch-worker options. These map to the six
+    // public zlink_spot_node_option_t values; no raw option bag is public.
+    /// # Errors: ConfigError
+    pub fn router_hwm_profile(&self) -> Result<AutoHwmProfile, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_router_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn router_hwm(&self) -> Result<i32, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_router_hwm(&self, value: i32) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn pubsub_hwm_profile(&self) -> Result<AutoHwmProfile, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_pubsub_hwm_profile(&self, profile: AutoHwmProfile) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn pubsub_hwm(&self) -> Result<i32, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_pubsub_hwm(&self, value: i32) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn dispatch_workers_min(&self) -> Result<i32, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_dispatch_workers_min(&self, value: i32) -> Result<(), ConfigError>;
+    /// # Errors: ConfigError
+    pub fn dispatch_workers_max(&self) -> Result<i32, ConfigError>;
+    /// # Errors: ConfigError
+    pub fn set_dispatch_workers_max(&self, value: i32) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn set_tls_server(&self, cert_path: &str, key_path: &str,
         require_client_cert: bool) -> Result<(), ConfigError>;
@@ -1578,6 +1617,11 @@ impl SpotNode {
 `SpotNode::entry_spot()`, and lookup facades through
 `SpotNode::spot_lookup(...)`. Direct `Spot::new(&node)` construction is
 internal and is not part of the public API contract.
+
+`dispatch_workers_min` must be at least `1`; `dispatch_workers_max` must be at
+least `dispatch_workers_min`. If unset, core defaults are CPU count `1`:
+`min=max=1`; otherwise `min=2`, `max=cpu_count`. These values size only the
+SpotNode dispatch callback worker pool.
 
 ### Actor
 

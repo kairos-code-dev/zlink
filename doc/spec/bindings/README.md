@@ -2166,6 +2166,8 @@ typedef void (*zlink_spot_dispatch_event_handler_fn)(
 
 zlink_handler_result_t zlink_spot_dispatch_event_handler(void *spot,
     zlink_spot_dispatch_event_handler_fn handler, void *userdata);
+
+int zlink_spot_channel_reply_progress_from(void *spot, void *dealer);
 ```
 
 사용 패턴:
@@ -2736,6 +2738,14 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 | 102 | `NOT_FOUND` | `ENOENT` | 대상 없음, 에러 reply 로 완료 |
 | 103 | `TERMINATED` | `ETERM` | (예약) 명시적 종료 완료 경로 |
 | 104 | `PROTOCOL_ERROR` | `EPROTO` | reply envelope / error reply payload 손상 |
+| 105 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 request 실패 (상세는 `zlink_errno()`) |
+| 106 | `REJECTED` | `EACCES`, `ECONNREFUSED` | 대상이 request를 명시적으로 거절 |
+| 107 | `CONFLICT` | `ESTALE` | request 대상 또는 상태 충돌 |
+| 108 | `BUSY` | `EBUSY` | request 처리 경로가 일시적으로 바쁨 |
+| 109 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | 대상 peer/경로 미연결 |
+| 110 | `INVALID_ARGUMENT` | `EINVAL`, `EFAULT` | request 인자 또는 envelope 오류 |
+| 111 | `INVALID_STATE` | `EFSM` | request를 받을 수 없는 handle 상태 |
+| 112 | `NOT_SUPPORTED` | `ENOTSUP`, `EOPNOTSUPP` | request 미지원 대상 |
 
 ##### `zlink_recv_result_t` (recv, subscribe, subscription event, monitor recv, timer recv)
 
@@ -2747,6 +2757,7 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 | 203 | `TERMINATED` | `ETERM` 외 | context 종료 또는 분류되지 않은 recv 내부 실패 |
 | 204 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
 | 205 | `NOT_SUPPORTED` | `ENOTSUP` | recv 미지원 소켓 타입 |
+| 206 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 recv 실패 (상세는 `zlink_errno()`) |
 
 ##### `zlink_handler_result_t` (handler 등록)
 
@@ -2758,6 +2769,7 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 | 303 | `NOT_SUPPORTED` | `ENOTSUP` | 미지원 subject |
 | 304 | `DEADLOCK` | `EDEADLK` | reentrant 호출 (send-ready handler 전용) |
 | 305 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
+| 306 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 handler 등록 실패 (상세는 `zlink_errno()`) |
 
 ##### `zlink_close_result_t` (close, destroy)
 
@@ -2767,6 +2779,7 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 | 401 | `BUSY` | `EBUSY` | in-flight callback / API 호출 |
 | 402 | `SHUTDOWN` | `ESHUTDOWN` | 이미 close 됨 |
 | 403 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
+| 404 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 close 실패 (상세는 `zlink_errno()`) |
 
 ##### `zlink_bind_result_t` (bind)
 
@@ -2777,6 +2790,7 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 | 502 | `ADDR_IN_USE` | `EADDRINUSE` | 주소 이미 사용 중 |
 | 503 | `NOT_SUPPORTED` | `ENOTSUP` | 미지원 transport |
 | 504 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
+| 505 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 bind 실패 (상세는 `zlink_errno()`) |
 
 ##### `zlink_connect_result_t` (connect, disconnect, unbind)
 
@@ -2786,6 +2800,10 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 | 601 | `INVALID_ARGUMENT` | `EINVAL` | 잘못된 endpoint |
 | 602 | `NOT_SUPPORTED` | `ENOTSUP` | 미지원 transport |
 | 603 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
+| 604 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 connect/disconnect 실패 (상세는 `zlink_errno()`) |
+| 605 | `NOT_FOUND` | `ENOENT` | endpoint 또는 peer routing id 없음 |
+| 606 | `CONFLICT` | `EADDRINUSE` | peer routing id가 둘 이상의 pipe와 충돌 |
+| 607 | `BUSY` | `EBUSY` | lifecycle owner가 수동 변경을 거절 |
 
 ##### `zlink_config_result_t` (option set/get, message lifecycle, snapshot, poller mutation, proxy, timer config)
 
@@ -2795,14 +2813,17 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 | 701 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
 | 702 | `INVALID_ARGUMENT` | `EINVAL`, `EBUSY` | 잘못된 인자 또는 config 계층 conflict |
 | 703 | `NOT_SUPPORTED` | `ENOTSUP` | 미지원 옵션 |
+| 704 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 config 실패 (상세는 `zlink_errno()`) |
+| 705 | `INVALID_STATE` | `EBUSY`, `ESHUTDOWN` | lifecycle 상태가 config를 거절 |
+| 706 | `NOT_FOUND` | `ENOENT` | local lookup 대상 없음 |
 
 ##### Non-OK 값 총합
 
-- 총 **40 개** non-OK 코드 (submit 13 + request 4 + recv 5 + handler 5 +
-  close 3 + bind 4 + connect 3 + config 3 = 40). 값 범위:
-  1–13, 101–104, 201–205, 301–305, 401–403, 501–504, 601–603, 701–703.
+- 총 **59 개** non-OK 코드 (submit 13 + request 12 + recv 6 + handler 6 +
+  close 4 + bind 5 + connect 7 + config 6 = 59). 값 범위:
+  1–13, 101–112, 201–206, 301–306, 401–404, 501–505, 601–607, 701–706.
 - 값 범위는 enum 간 겹치지 않으므로 단일 `int` 로 유일하게 구분된다.
-- 바인딩은 40 개 값 모두에 대해 언어별 에러 표현을 제공해야 한다. 누락 시
+- 바인딩은 59 개 값 모두에 대해 언어별 에러 표현을 제공해야 한다. 누락 시
   caller 가 해당 원인을 구분할 방법이 없다.
 
 언어별 enum/상수 매핑 스타일은 아래 `언어별 ErrorCode 매핑` 절을 참조한다.
@@ -2853,7 +2874,7 @@ zlink 고유 오류 코드. POSIX errno 와 충돌하지 않도록 `ZLINK_HAUSNU
 
 #### 언어별 ErrorCode 매핑
 
-각 바인딩은 Public Result Enum 카탈로그의 40 개 non-OK 코드를 언어별
+각 바인딩은 Public Result Enum 카탈로그의 59 개 non-OK 코드를 언어별
 enum/상수로 매핑하여 타입 안전한 분기를 제공한다.
 
 | 언어 | 처리 | ErrorCode 타입 | 접근 방식 |
@@ -2867,7 +2888,7 @@ enum/상수로 매핑하여 타입 안전한 분기를 제공한다.
 | Go | return | 통합 `ErrorCode` typed int 상수 | `ZlinkError.Code()` |
 | Rust | return (`Result`) | 통합 `ErrorCode` enum variant | `ZlinkError.code()` |
 
-- 통합 enum 의 각 variant 는 Public Result Enum 카탈로그의 40 개 값과
+- 통합 enum 의 각 variant 는 Public Result Enum 카탈로그의 59 개 값과
   1:1 대응한다. 원본 C 의 enum 분리 (submit / recv / handler / close /
   bind / connect / config / request) 를 유지하거나, 언어 관용구에 따라
   단일 enum 으로 통합해도 된다. 둘 중 어떤 스타일이든 **값은 누락 없이 모두

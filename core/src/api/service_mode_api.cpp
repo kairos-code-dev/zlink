@@ -12,11 +12,20 @@
 
 namespace
 {
-std::mutex g_spot_handle_registry_sync;
-std::set<void *> g_registered_spot_node_handles;
-std::set<void *> g_registered_spot_handles;
-std::set<void *> g_registered_spot_pub_side_handles;
-std::set<void *> g_registered_spot_sub_side_handles;
+struct spot_handle_registry_t
+{
+    std::mutex sync;
+    std::set<void *> spot_node_handles;
+    std::set<void *> spot_handles;
+    std::set<void *> spot_pub_side_handles;
+    std::set<void *> spot_sub_side_handles;
+};
+
+spot_handle_registry_t &spot_handle_registry ()
+{
+    static spot_handle_registry_t registry;
+    return registry;
+}
 
 static int transition_service_to_callback_mode (
   zlink::service_mode_state_t *state_)
@@ -112,65 +121,72 @@ static zlink::service_mode_state_t *spot_node_mode_state (
 
 bool is_registered_spot_pub_side_handle (void *pub_)
 {
-    std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
+    spot_handle_registry_t &registry = spot_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
     return pub_
-           && g_registered_spot_pub_side_handles.find (pub_)
-                != g_registered_spot_pub_side_handles.end ();
+           && registry.spot_pub_side_handles.find (pub_)
+                != registry.spot_pub_side_handles.end ();
 }
 
 bool is_registered_spot_sub_side_handle (void *sub_)
 {
-    std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
+    spot_handle_registry_t &registry = spot_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
     return sub_
-           && g_registered_spot_sub_side_handles.find (sub_)
-                != g_registered_spot_sub_side_handles.end ();
+           && registry.spot_sub_side_handles.find (sub_)
+                != registry.spot_sub_side_handles.end ();
 }
 
 bool is_registered_spot_node_handle (void *node_)
 {
-    std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
-    return node_ && g_registered_spot_node_handles.find (node_)
-                      != g_registered_spot_node_handles.end ();
+    spot_handle_registry_t &registry = spot_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
+    return node_ && registry.spot_node_handles.find (node_)
+                      != registry.spot_node_handles.end ();
 }
 
 bool is_registered_spot_handle (void *spot_)
 {
-    std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
+    spot_handle_registry_t &registry = spot_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
     return spot_
-           && g_registered_spot_handles.find (spot_)
-                != g_registered_spot_handles.end ();
+           && registry.spot_handles.find (spot_) != registry.spot_handles.end ();
 }
 
 void register_spot_pub_side_handle (void *pub_)
 {
     if (!pub_)
         return;
-    std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
-    g_registered_spot_pub_side_handles.insert (pub_);
+    spot_handle_registry_t &registry = spot_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
+    registry.spot_pub_side_handles.insert (pub_);
 }
 
 void erase_spot_pub_side_handle (void *pub_)
 {
     if (!pub_)
         return;
-    std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
-    g_registered_spot_pub_side_handles.erase (pub_);
+    spot_handle_registry_t &registry = spot_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
+    registry.spot_pub_side_handles.erase (pub_);
 }
 
 void register_spot_sub_side_handle (void *sub_)
 {
     if (!sub_)
         return;
-    std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
-    g_registered_spot_sub_side_handles.insert (sub_);
+    spot_handle_registry_t &registry = spot_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
+    registry.spot_sub_side_handles.insert (sub_);
 }
 
 void erase_spot_sub_side_handle (void *sub_)
 {
     if (!sub_)
         return;
-    std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
-    g_registered_spot_sub_side_handles.erase (sub_);
+    spot_handle_registry_t &registry = spot_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
+    registry.spot_sub_side_handles.erase (sub_);
 }
 
 void register_spot_node_mode_state (zlink::spot_node_t *node_)
@@ -178,8 +194,9 @@ void register_spot_node_mode_state (zlink::spot_node_t *node_)
     if (!node_)
         return;
     {
-        std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
-        g_registered_spot_node_handles.insert (node_);
+        spot_handle_registry_t &registry = spot_handle_registry ();
+        std::lock_guard<std::mutex> lock (registry.sync);
+        registry.spot_node_handles.insert (node_);
     }
     register_actor_spot_node (node_);
 }
@@ -189,8 +206,9 @@ void register_spot_mode_state (spot_handle_t *spot_)
     if (!spot_)
         return;
     {
-        std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
-        g_registered_spot_handles.insert (spot_);
+        spot_handle_registry_t &registry = spot_handle_registry ();
+        std::lock_guard<std::mutex> lock (registry.sync);
+        registry.spot_handles.insert (spot_);
     }
     register_actor_spot_facade (spot_);
 }
@@ -200,8 +218,9 @@ void erase_spot_node_mode_state (zlink::spot_node_t *node_)
     if (!node_)
         return;
     erase_actor_spot_node (node_);
-    std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
-    g_registered_spot_node_handles.erase (node_);
+    spot_handle_registry_t &registry = spot_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
+    registry.spot_node_handles.erase (node_);
 }
 
 void erase_spot_mode_state (spot_handle_t *spot_)
@@ -209,8 +228,9 @@ void erase_spot_mode_state (spot_handle_t *spot_)
     if (!spot_)
         return;
     erase_actor_spot_facade (spot_);
-    std::lock_guard<std::mutex> lock (g_spot_handle_registry_sync);
-    g_registered_spot_handles.erase (spot_);
+    spot_handle_registry_t &registry = spot_handle_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
+    registry.spot_handles.erase (spot_);
 }
 
 int spot_node_transition_to_callback_mode (zlink::spot_node_t *node_)

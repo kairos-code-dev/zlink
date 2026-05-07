@@ -14,6 +14,7 @@
 #include "api/service_api_internal.hpp"
 #include "api/service_spot_dispatch_context_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
+#include "api/service_spot_routed_protocol_internal.hpp"
 #include "api/service_spot_request_reply_utils_internal.hpp"
 #include "api/socket_message_api_internal.hpp"
 #include "api/socket_api_internal.hpp"
@@ -39,8 +40,6 @@ bool spot_direct_route_debug_enabled ()
     return std::getenv ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE") != NULL;
 }
 
-using zlink::spot_reqrep_internal::g_spot_recv_source_rid;
-using zlink::spot_reqrep_internal::g_spot_recv_spot_rid;
 using zlink::spot_reqrep_internal::g_spot_request_reply_index_mutex;
 using zlink::spot_reqrep_internal::g_spot_state_identity_index;
 using zlink::spot_reqrep_internal::g_router_state_identity_index;
@@ -93,14 +92,6 @@ using zlink::spot_reqrep_internal::resolve_spot_node_routing_id;
 using zlink::spot_reqrep_internal::should_process_spot_routed_locally;
 using zlink::spot_reqrep_internal::try_find_spot_state;
 using zlink::spot_reqrep_internal::validate_request_parts;
-
-enum : uint8_t
-{
-    zmp_spot_routed_protocol_id = 0x02,
-    zmp_protocol_version = 0x01,
-    zmp_spot_class = 0x01,
-    zmp_router_class = 0x02
-};
 
 const size_t spot_routed_control_part_count = 8;
 

@@ -76,15 +76,20 @@ with these rules, the API listing must be corrected to match this section.
 - `service::spot_t` must expose channel-aware data-plane methods:
   `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
   `publish(const std::string& service_name, const std::string& topic, ...)`.
-- `service::spot_t::subscribe(...)` returns `service_topic_message_t`.
-  Raw `SUB` / `XSUB` return `topic_message_t`. Service-aware fields are not
-  optional on raw topic messages.
+- `service::spot_t::subscribe(...)`, raw `SUB`, and raw `XSUB` return
+  `topic_message_t`. The shared `topic_message_t` shape includes optional
+  `service_name`; SPOT subscribe sets it, and raw topic sockets return
+  `std::nullopt`.
 - `service::spot_t` must not expose `on_subscribe(...)`. SPOT topic readable
   notifications come from `on_dispatch_event(...)`, then callers drain with
   `subscribe(...)` / `recv_routed(...)` / timer recv.
 - `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
   one-event-per-message delivery counters. Binding docs and samples must use
   drain-until-`EAGAIN` loops.
+- `service::spot_t::publish(...)` maps to the core SPOT data-plane publish
+  ingress path. It does not expose the internal publish queue, external
+  pub-ingress attachment socket, or mesh/local fanout sockets as C++ public
+  concepts.
 - `service::spot_t::on_routed_receive(...)` and
   `service::spot_t::on_dispatch_event(...)` are mutually exclusive on the
   routed axis.
@@ -100,6 +105,13 @@ with these rules, the API listing must be corrected to match this section.
 - SPOT admission HWM defaults follow the core header. Router and pubsub
   admission profile/numeric options are exposed; relay and delivery HWM stay
   `0` and are not public C++ options.
+- SPOT node dispatch worker options map to
+  `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN` and
+  `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX`. They configure only the
+  `spot_node_t` callback worker pool, not data-plane threads or transport I/O
+  threads. The values are validated as `min >= 1` and `max >= min`. When
+  unset, core maps the defaults to `min=max=1` on one CPU, otherwise `min=2`
+  and `max=cpu_count`.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs via
   Discovery, the library picks one initiator per pair by total order on
   `(routing_id, advertise endpoint)`. Users do not configure this.
@@ -167,7 +179,8 @@ updated to match this document.
   `stream_socket_options_t`. Raw integer policy values are not canonical.
 - SPOT and SPOT-node native options: node mode is exposed through
   `spot_node_options_t`; SPOT request timeout and SPOT-node HWM admission
-  options must have typed option surfaces.
+  options plus dispatch worker min/max options must have typed option
+  surfaces.
 - Socket channel names: generic channel-name get/set must be represented by
   typed socket or service APIs, and channel data-plane APIs must use explicit
   channel names.
@@ -393,6 +406,11 @@ class socket_backlog_t {
     static socket_backlog_t value(int value);
     int value() const noexcept;
 };
+
+class spot_dispatch_worker_count_t {
+    static spot_dispatch_worker_count_t value(int value); // valid range: >= 1
+    int value() const noexcept;
+};
 ```
 
 ---
@@ -403,10 +421,11 @@ The socket signatures below use shared domain types declared in
 `zlink/types.hpp`, including `request_options_t`, `request_callback_t`,
 `spot_address_t`, and `stream_session_t`.
 
-### Common base methods
+### Common Socket Methods
 
-All socket types inherit from `base_socket_t` and expose these common operations.
-Individual socket classes re-expose them as public.
+All concrete socket types expose these common operations. Shared implementation
+base classes are not part of the canonical public contract; users should use
+the concrete socket classes and the capability-specific methods listed below.
 
 Nonblocking data-plane helpers follow this rule:
 
@@ -452,7 +471,7 @@ void disconnect_rid(const routing_id_t& peer_rid);
 Bidirectional exclusive pair socket. Sends and receives messages without routing.
 
 ```cpp
-class pair_socket_t : public message_socket_t {
+class pair_socket_t {
     explicit pair_socket_t(context_t& ctx);
 
     // --- send ---
@@ -475,7 +494,7 @@ class pair_socket_t : public message_socket_t {
 Publisher socket. Sends topic-prefixed messages to all matching subscribers.
 
 ```cpp
-class pub_socket_t : public publisher_socket_t {
+class pub_socket_t {
     explicit pub_socket_t(context_t& ctx);
 
     // --- publish ---
@@ -506,7 +525,7 @@ class pub_socket_t : public publisher_socket_t {
 Subscriber socket. Receives topic-filtered messages from publishers.
 
 ```cpp
-class sub_socket_t : public subscriber_socket_t {
+class sub_socket_t {
     explicit sub_socket_t(context_t& ctx);
 
     // --- subscription ---
@@ -535,7 +554,7 @@ class sub_socket_t : public subscriber_socket_t {
 Asynchronous client socket for fair-queued request distribution.
 
 ```cpp
-class dealer_socket_t : public message_socket_t {
+class dealer_socket_t {
     explicit dealer_socket_t(context_t& ctx);
 
     // --- send ---
@@ -590,7 +609,7 @@ class dealer_socket_t : public message_socket_t {
 Server socket that routes messages to specific peers by routing id.
 
 ```cpp
-class router_socket_t : public routed_message_socket_t {
+class router_socket_t {
     explicit router_socket_t(context_t& ctx);
 
     // --- routed send ---
@@ -692,7 +711,7 @@ class router_socket_t : public routed_message_socket_t {
 Extended publisher. Like pub_socket_t but also receives subscription events.
 
 ```cpp
-class xpub_socket_t : public publisher_socket_t {
+class xpub_socket_t {
     explicit xpub_socket_t(context_t& ctx);
 
     // --- publish ---
@@ -724,7 +743,7 @@ class xpub_socket_t : public publisher_socket_t {
 Extended subscriber. Like sub_socket_t with raw subscription forwarding.
 
 ```cpp
-class xsub_socket_t : public subscriber_socket_t {
+class xsub_socket_t {
     explicit xsub_socket_t(context_t& ctx);
 
     // --- subscription ---
@@ -751,7 +770,7 @@ Raw TCP stream socket. Bind-only; it does not expose `connect` or
 `disconnect`.
 
 ```cpp
-class stream_socket_t : public routed_message_socket_t {
+class stream_socket_t {
     explicit stream_socket_t(context_t& ctx);
 
     // --- routed send ---
@@ -1294,7 +1313,6 @@ Actor value types mirror the C structs used by SPOT Actor dispatch.
 
 ```cpp
 class routed_received_t;
-class service_topic_message_t;
 
 enum class actor_create_status_t : int {
     created = ZLINK_ACTOR_CREATE_CREATED,
@@ -1366,45 +1384,19 @@ enum class spot_dispatch_subject_kind_t : int {
     actor = ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR
 };
 
-struct spot_subscribe_ready_t {
-    std::vector<service_topic_message_t> drain();
+struct spot_dispatch_info_t {
+    spot_dispatch_event_t event;
+    spot_dispatch_subject_kind_t subject_kind;
+    std::optional<actor_ref_t> actor;
+    std::vector<actor_part_t> actor_parts;
 };
-
-struct spot_routed_ready_t {
-    std::vector<routed_received_t> drain();
-};
-
-struct spot_timer_ready_t {
-    std::vector<uint64_t> drain();
-};
-
-struct spot_channel_reply_ready_t {
-    void progress();
-};
-
-struct spot_actor_ready_t {
-    actor_ref_t actor;
-    std::vector<actor_part_t> drain();
-};
-
-struct spot_actor_join_ready_t {
-    std::vector<std::pair<actor_join_info_t, message_t>> drain();
-};
-
-using spot_dispatch_info_t = std::variant<
-    spot_subscribe_ready_t,
-    spot_routed_ready_t,
-    spot_timer_ready_t,
-    spot_channel_reply_ready_t,
-    spot_actor_ready_t,
-    spot_actor_join_ready_t>;
 ```
 
-`spot_dispatch_info_t` never exposes the native `void* subject` pointer or
-requires callers to switch on raw subject kind. Each variant owns the minimal
-drain/progress helper for that readiness source. If the binding moves the
-callback to another execution context, it pre-drains nonblocking where needed
-and stores the public values in the variant.
+`spot_dispatch_info_t` never exposes the native `void* subject` pointer. It is
+a readiness descriptor. For `subscribe_readable`, `routed_readable`, and timer
+events, the caller drains through the corresponding `spot_t` recv method until
+`std::nullopt` is returned in nonblocking mode. Actor readable events may carry
+the actor reference and pre-drained parts when the core callback supplies them.
 
 ### received_t / routed_received_t
 
@@ -1469,11 +1461,11 @@ public:
 injects that reference when it creates `routed_received_t` from `recv` or a
 handler, and `reply()` uses it to reply on the original socket.
 
-### topic_message_t / service_topic_message_t
+### topic_message_t
 
-Topic-aware recv result used by raw SUB / XSUB paths. `service_topic_message_t`
-is the service-aware Spot subscribe variant. Both own `message_t` parts;
-destructors release them.
+Topic-aware recv result used by raw SUB / XSUB paths and SPOT subscribe.
+SPOT subscribe sets `service_name`; raw topic sockets return `std::nullopt`
+for that field. The value owns `message_t` parts, and `close()` releases them.
 
 ```cpp
 class topic_message_t {
@@ -1481,9 +1473,15 @@ public:
     topic_message_t(std::optional<routing_id_t> routing_id,
                     std::string topic,
                     std::vector<message_t> parts);
+    topic_message_t(std::optional<routing_id_t> routing_id,
+                    std::optional<std::string> service_name,
+                    std::string topic,
+                    std::vector<message_t> parts);
 
     // nullopt if transport carries no source id
     const std::optional<routing_id_t>& routing_id() const noexcept;
+    // Set for SPOT subscribe results; nullopt for raw SUB/XSUB.
+    const std::optional<std::string>& service_name() const noexcept;
     const std::string& topic() const noexcept;                       // UTF-8
     const std::vector<message_t>& parts() const noexcept;
     std::vector<message_t>& parts() noexcept;
@@ -1497,35 +1495,13 @@ public:
     /// @throws close_error_t
     void close();
 };
-
-class service_topic_message_t {
-public:
-    service_topic_message_t(std::optional<routing_id_t> routing_id,
-                            std::string service_name,
-                            std::string topic,
-                            std::vector<message_t> parts);
-
-    const std::optional<routing_id_t>& routing_id() const noexcept;
-    const std::string& service_name() const noexcept;
-    const std::string& topic() const noexcept;
-    const std::vector<message_t>& parts() const noexcept;
-    std::vector<message_t>& parts() noexcept;
-
-    bool is_single_part() const noexcept;
-    /// @throws recv_error_t
-    message_t& first_part();
-    /// @throws recv_error_t
-    message_t single_part_or_throw();
-
-    /// @throws close_error_t
-    void close();
-};
 ```
 
-### subscription_event_t / service_subscription_event_t
+### subscription_event_t
 
 Reports a subscribe/unsubscribe event from xpub sockets and Spot
-subscription event recv. Plain value structs — no methods, no lifecycle.
+subscription event recv. SPOT subscription events set `service_name`; XPub
+events use `std::nullopt`. Plain value struct — no methods, no lifecycle.
 
 ```cpp
 struct subscription_filter_t {
@@ -1535,61 +1511,47 @@ struct subscription_filter_t {
 
 struct subscription_event_t {
     std::optional<routing_id_t> routing_id;  // nullopt if transport carries no subscriber id
+    std::optional<std::string> service_name;
     std::string topic;                        // UTF-8
     bool subscribed;                          // true = subscribe, false = unsubscribe
-};
-
-struct service_subscription_event_t {
-    std::optional<routing_id_t> routing_id;
-    std::string service_name;
-    std::string topic;
-    bool subscribed;
 };
 ```
 
 ### monitor_event_t
 
 Socket monitor event payload returned by `monitor_handle_t::recv()`.
-Event-specific payload is represented as typed variants instead of a shared
-integer detail field.
+The shape follows the core monitor event contract directly, while wrapping the
+peer id as `routing_id_t`.
 
 ```cpp
-enum class disconnect_reason : int {
-    unknown,
-    handshake_failed,
-    transport_error,
-    ctx_term
+enum class monitor_event : uint32_t {
+    connected,
+    connect_delayed,
+    connect_retried,
+    listening,
+    bind_failed,
+    accepted,
+    accept_failed,
+    closed,
+    close_failed,
+    disconnected,
+    monitor_stopped,
+    handshake_failed_no_detail,
+    connection_ready,
+    connection_ready_changed,
+    peer_weight_changed,
+    handshake_failed_protocol,
+    handshake_failed_auth,
+    all
 };
 
-struct monitor_endpoint_t {
+struct monitor_event_t {
+    monitor_event event;
+    uint32_t value;
     std::optional<routing_id_t> routing_id;
     std::string local_addr;
     std::string remote_addr;
 };
-
-struct monitor_connected_t {
-    monitor_endpoint_t endpoint;
-};
-
-struct monitor_disconnected_t {
-    monitor_endpoint_t endpoint;
-    disconnect_reason reason;
-};
-
-struct monitor_connection_ready_t {
-    monitor_endpoint_t endpoint;
-};
-
-struct monitor_peer_weight_changed_t {
-    monitor_endpoint_t endpoint;
-    peer_weight_t weight;
-};
-
-using monitor_event_t = std::variant<
-    monitor_connected_t,
-    monitor_disconnected_t,
-    monitor_connection_ready_t,
-    monitor_peer_weight_changed_t>;
 ```
 
 ### monitor_snapshot_t
@@ -1612,35 +1574,34 @@ enum class monitor_state : uint32_t {
 
 enum class monitor_snapshot_detail : uint32_t {
     snd_pending_msgs,
-    rcv_pending_msgs,
-    auto_hwm_budget,
-    auto_hwm_buffers
+    rcv_pending_msgs
 };
 
 struct monitor_snapshot_t {
     monitor_source_kind_t source_kind;        // monitor target kind
-    std::set<monitor_state> states;
-    std::set<monitor_snapshot_detail> details;
+    uint32_t state_flags;                     // zlink_monitor_state_mask_t
+    uint32_t detail_flags;                    // zlink_monitor_snapshot_detail_mask_t
     uint64_t snd_pending_msgs;                // send-queue pending message count
     uint64_t rcv_pending_msgs;                // recv-queue pending message count
     bool auto_hwm_enabled;                    // automatic HWM currently active
-    auto_hwm_profile auto_hwm_profile_value;  // selected auto-HWM profile
+    uint32_t auto_hwm_profile_value;          // zlink_auto_hwm_profile_t value
     uint32_t auto_hwm_role;                   // diagnostic role bucket
     uint32_t auto_hwm_policy_class;           // planner policy class
-    byte_size_t auto_hwm_unit_budget;
+    uint64_t auto_hwm_unit_budget_bytes;
     uint32_t auto_hwm_size_cap;
     uint64_t auto_hwm_socket_message_slots;
-    byte_size_t auto_hwm_effective_message_size;
+    uint64_t auto_hwm_effective_message_bytes;
     int32_t auto_hwm_applied_sndhwm;          // applied send HWM
     int32_t auto_hwm_applied_rcvhwm;          // applied recv HWM
-    byte_size_t auto_hwm_effective_sndbuf;    // applied send buffer size
-    byte_size_t auto_hwm_effective_rcvbuf;    // applied recv buffer size
-    std::chrono::milliseconds auto_hwm_last_recalc_age;
+    int32_t auto_hwm_effective_sndbuf;        // applied send buffer bytes
+    int32_t auto_hwm_effective_rcvbuf;        // applied recv buffer bytes
+    uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
     int32_t auto_hwm_deferred_sndhwm;
     int32_t auto_hwm_deferred_rcvhwm;
 
+    // Convenience check for raw socket monitor sources.
     bool is_ready() const noexcept;
 };
 ```
@@ -2427,6 +2388,10 @@ struct spot_node_options_t {
     message_count_t router_admission_hwm;
     auto_hwm_profile pubsub_admission_hwm_profile = auto_hwm_profile::balanced;
     message_count_t pubsub_admission_hwm;
+    // SpotNode dispatch callback worker pool only.
+    // Valid: min >= 1, max >= min. Default mapping follows core.
+    spot_dispatch_worker_count_t dispatch_workers_min;
+    spot_dispatch_worker_count_t dispatch_workers_max;
 };
 
 struct spot_node_socket_snapshot_filter_t {
@@ -2650,6 +2615,14 @@ class spot_node_t {
     message_count_t pubsub_admission_hwm() const;
     /// @throws config_error_t
     void pubsub_admission_hwm(message_count_t value);
+    /// @throws config_error_t
+    spot_dispatch_worker_count_t dispatch_workers_min() const;
+    /// @throws config_error_t
+    void dispatch_workers_min(spot_dispatch_worker_count_t value);
+    /// @throws config_error_t
+    spot_dispatch_worker_count_t dispatch_workers_max() const;
+    /// @throws config_error_t
+    void dispatch_workers_max(spot_dispatch_worker_count_t value);
 
     // --- snapshots ---
     /// @throws config_error_t
@@ -2784,9 +2757,9 @@ class spot_t {
 
     // --- subscribe ---
     /// @throws recv_error_t
-    std::optional<service_topic_message_t> subscribe(recv_flags_t flags = recv_flags_t::none);
+    std::optional<topic_message_t> subscribe(recv_flags_t flags = recv_flags_t::none);
     /// @throws recv_error_t
-    std::optional<service_subscription_event_t> receive_subscription_event(
+    std::optional<subscription_event_t> receive_subscription_event(
         recv_flags_t flags = recv_flags_t::none);
     /// @throws config_error_t
     void set_subscription(const std::string& filter);

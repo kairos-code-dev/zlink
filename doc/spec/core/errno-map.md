@@ -138,7 +138,14 @@ typedef enum zlink_request_result_t
     ZLINK_REQUEST_NOT_FOUND       = 102,
     ZLINK_REQUEST_TERMINATED      = 103,
     ZLINK_REQUEST_PROTOCOL_ERROR  = 104,
-    ZLINK_REQUEST_INTERNAL_ERROR  = 105
+    ZLINK_REQUEST_INTERNAL_ERROR  = 105,
+    ZLINK_REQUEST_REJECTED        = 106,
+    ZLINK_REQUEST_CONFLICT        = 107,
+    ZLINK_REQUEST_BUSY            = 108,
+    ZLINK_REQUEST_NOT_CONNECTED   = 109,
+    ZLINK_REQUEST_INVALID_ARGUMENT = 110,
+    ZLINK_REQUEST_INVALID_STATE   = 111,
+    ZLINK_REQUEST_NOT_SUPPORTED   = 112
 } zlink_request_result_t;
 ```
 
@@ -152,13 +159,27 @@ typedef enum zlink_request_result_t
 | `TERMINATED` | `ETERM` | Reserved until the request path emits explicit termination completion |
 | `PROTOCOL_ERROR` | `EPROTO` | Reply envelope or error reply payload was malformed |
 | `INTERNAL_ERROR` | other internal completion failures | Request completion failed without a finer public bucket |
+| `REJECTED` | `EACCES`, `ECONNREFUSED` | Target explicitly rejected admission or a join request |
+| `CONFLICT` | `ESTALE` | Checked reference generation mismatch, duplicate creation, or another conflict that requires the caller to query again |
+| `BUSY` | `EBUSY` | The Actor is in a join or bind state and cannot complete the destroy or bind change |
+| `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | Target node or Actor owner route is unreachable |
+| `INVALID_ARGUMENT` | `EINVAL`, `EFAULT` | NULL argument, invalid Actor id, invalid routing id, or another caller argument error |
+| `INVALID_STATE` | `EFSM` | Current handle state does not match this request |
+| `NOT_SUPPORTED` | `ENOTSUP`, `EOPNOTSUPP` | Current handle or mode does not support this request |
 
 ### Applicable functions
 
-`zlink_reply_handler_fn` receives `errno_` as the first parameter. Known
-completion `errno_` values in the current implementation are `0`,
-`ETIMEDOUT`, `ENOENT`, and `EPROTO`. `ETERM` is reserved and does not yet
-have an explicit completion emission path in the current request code.
+The first argument of `zlink_reply_handler_fn` is the request completion
+result. `zlink_spot_node_actor_join_spot()` completions also use this enum.
+Synchronous request-style APIs such as Actor create, destroy, bind, unbind,
+and checked-reference leave return the same enum directly.
+
+| Category | Functions |
+|---|---|
+| Routed/channel request completion | `zlink_dealer_request`, `zlink_router_request`, `zlink_spot_request_channel`, `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_router_request_spot` |
+| Actor join completion | `zlink_spot_node_actor_join_spot` |
+| Actor lifecycle request | `zlink_spot_node_create_remote_actor`, `zlink_spot_node_actor_destroy`, `zlink_spot_node_actor_leave_spot`, `zlink_spot_node_actor_close_bound_session` |
+| Stream Actor request | `zlink_stream_bind_actor`, `zlink_stream_unbind_actor` |
 
 ---
 

@@ -248,8 +248,14 @@ std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >
 extern std::mutex g_spot_request_reply_index_mutex;
 extern spot_state_identity_index_t g_spot_state_identity_index;
 extern router_state_identity_index_t g_router_state_identity_index;
-extern thread_local zlink_routing_id_t g_spot_recv_source_rid;
-extern thread_local zlink_routing_id_t g_spot_recv_spot_rid;
+
+struct spot_recv_metadata_tls_t
+{
+    zlink_routing_id_t source_rid;
+    zlink_routing_id_t spot_rid;
+};
+
+spot_recv_metadata_tls_t &spot_recv_metadata_tls ();
 
 int validate_request_parts (zlink_msg_t *parts_, size_t part_count_);
 int init_buffer_frame (zlink_msg_t *msg_, const void *data_, size_t size_);

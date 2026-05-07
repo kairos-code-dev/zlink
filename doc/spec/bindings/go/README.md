@@ -88,8 +88,11 @@ stay focused on signatures.
 - ROUTER / PUB socket option defaults follow the core header: `Mandatory =
   true`, `Handover = false`, `NoDrop = true`.
 - SPOT admission HWM defaults follow the core header. Router and pubsub
-  admission profile/numeric options are exposed; relay and delivery HWM stay
-  `0` and are not public Go options.
+  admission profile/numeric options are exposed through `SpotNode`; relay and
+  delivery HWM stay `0` and are not public Go options.
+- SPOT dispatch worker min/max are `SpotNode` callback worker-pool options.
+  They are not context options and must not be described as transport I/O
+  threads.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routingID, advertiseEndpoint)`. Users do not configure this.
@@ -178,8 +181,6 @@ func (o *ContextOptions) SetThreadSchedulingPolicy(value int) error
 func (o *ContextOptions) ThreadSchedulingPolicy() (int, error)
 func (o *ContextOptions) SetThreadNamePrefix(value string) error
 func (o *ContextOptions) ThreadNamePrefix() (string, error)
-func (o *ContextOptions) SetSpotWorkerThreads(value int) error
-func (o *ContextOptions) SpotWorkerThreads() (int, error)
 func (o *ContextOptions) SetMaxMessageSize(value int) error
 func (o *ContextOptions) MaxMessageSize() (int, error)
 func (o *ContextOptions) MessageStructSize() (int, error)
@@ -759,7 +760,7 @@ const (
 
 Submit result codes for send/request/reply/publish operations.
 All failures are conveyed through `error` with a `Code() int` method.
-The code is globally unique across all result enums (0-703).
+The code is globally unique across all result enums (0-706).
 
 ```go
 type SubmitResult int
@@ -928,7 +929,7 @@ and the common `ZlinkError` interface so callers may catch any zlink
 failure with a single type assertion or narrow to a specific category.
 
 `ZlinkError` is the common interface. The `Code() int` method returns
-a globally unique code that spans all result enum ranges (0-703); the
+a globally unique code that spans all result enum ranges (0-706); the
 code alone identifies the error without needing to know which enum it
 belongs to. `InternalErrno() int` returns the underlying OS errno (0 if
 not applicable).
@@ -1183,6 +1184,18 @@ func (d *Discovery) Close() error
 ### SpotNode
 
 ```go
+type SpotNodeMode int
+
+const (
+    SpotNodeModePubSub SpotNodeMode = 1
+    SpotNodeModeRouted SpotNodeMode = 2
+    SpotNodeModeAll    SpotNodeMode = 3
+)
+
+type SpotNodeOptions struct {
+    Mode SpotNodeMode // zero value maps to SpotNodeModeAll
+}
+
 // Bind binds the spot node endpoint. Returns *BindError on failure.
 func (n *SpotNode) Bind(endpoint string) error
 // ConnectPeer / DisconnectPeer manage peer links. Return *ConnectError on failure.
@@ -1194,6 +1207,20 @@ func (n *SpotNode) AttachDiscovery(discovery *Discovery) error
 func (n *SpotNode) AttachChannelDealer(discovery *Discovery, dealer *DealerSocket) error
 func (n *SpotNode) AttachChannelDealerManual(channelName string, dealer *DealerSocket) error
 func (n *SpotNode) AttachPubIngress(pub *PubSocket) error
+// SpotNode admission and dispatch-worker options map to the six public
+// zlink_spot_node_option_t values. No raw option bag is public.
+func (n *SpotNode) SetRouterHWMProfile(profile AutoHwmProfile) error
+func (n *SpotNode) RouterHWMProfile() (AutoHwmProfile, error)
+func (n *SpotNode) SetRouterHWM(value int) error
+func (n *SpotNode) RouterHWM() (int, error)
+func (n *SpotNode) SetPubSubHWMProfile(profile AutoHwmProfile) error
+func (n *SpotNode) PubSubHWMProfile() (AutoHwmProfile, error)
+func (n *SpotNode) SetPubSubHWM(value int) error
+func (n *SpotNode) PubSubHWM() (int, error)
+func (n *SpotNode) SetDispatchWorkersMin(value int) error
+func (n *SpotNode) DispatchWorkersMin() (int, error)
+func (n *SpotNode) SetDispatchWorkersMax(value int) error
+func (n *SpotNode) DispatchWorkersMax() (int, error)
 func (n *SpotNode) SetTLSServer(certPath, keyPath string, requireClientCert bool) error
 func (n *SpotNode) SetTLSClient(caCertPath, hostname string, trustSystem bool) error
 // SetRoutingID sets the spot node's logical address. Maps to
@@ -1238,6 +1265,11 @@ func (n *SpotNode) Close() error
 lookup facades through `SpotNode.SpotLookup()`. A returned `Spot` remains valid
 only while the parent node lives.
 There is no standalone `NewSpot` constructor in the public API.
+
+`DispatchWorkersMin` must be at least `1`; `DispatchWorkersMax` must be at
+least `DispatchWorkersMin`. If unset, core defaults are CPU count `1`:
+`min=max=1`; otherwise `min=2`, `max=cpuCount`. These values size only the
+SpotNode dispatch callback worker pool.
 
 ### Spot
 
@@ -1332,7 +1364,9 @@ func (a *Actor) Join(spot *Spot, message *Message,
 func (a *Actor) Leave(spot *Spot, timeout time.Duration) error
 func (a *Actor) RecvPart(flags RecvFlags) (*ActorPart, error)
 func (a *Actor) SendBoundSession(message *Message, flags SendFlags) (bool, error)
+// CloseBoundSession closes the bound session. Returns *RequestError on failure.
 func (a *Actor) CloseBoundSession(timeout time.Duration) error
+// Close destroys the Actor through its ActorRef. Returns *RequestError on failure.
 func (a *Actor) Close() error
 ```
 
@@ -1411,13 +1445,24 @@ func (s *SpotNodeStatus) HasNodeRoutingID() bool
 type SpotDispatchInfo struct {
     Event       SpotDispatchEvent
     SubjectKind SpotDispatchSubjectKind
+    // Subject is only for timer and attached channel DEALER drain.
     Subject     unsafe.Pointer
+    // Actor is set for ActorReadable and is a callback-lifetime ActorRef copy.
+    Actor       *ActorRef
 }
+
+func (i *SpotDispatchInfo) RecvActorPart(flags RecvFlags) (*ActorPart, error)
 ```
 
 For `SpotDispatchEventSubscribeReadable` and
 `SpotDispatchEventRoutedReadable`, callers must keep draining with
 `Subscribe(...)` / routed recv until the binding reports no data / `EAGAIN`.
+For `SpotDispatchEventChannelReplyReadable`, `SubjectKind` is
+`SpotDispatchSubjectChannelDealer`; use the attached dealer's `ChannelName()`
+metadata to identify the channel and pass `Subject` to
+`DrainChannelReplyFrom(...)`.
+For `SpotDispatchEventActorReadable`, `Actor` identifies the readable Actor and
+`Subject` is not part of the public Actor contract.
 
 Advanced / Diagnostic entry types and filters:
 
@@ -1509,6 +1554,8 @@ const (
     SpotDispatchEventRoutedReadable       SpotDispatchEvent = 2
     SpotDispatchEventTimerReadable        SpotDispatchEvent = 3
     SpotDispatchEventChannelReplyReadable SpotDispatchEvent = 4
+    SpotDispatchEventActorReadable        SpotDispatchEvent = 5
+    SpotDispatchEventActorJoinReadable    SpotDispatchEvent = 6
 )
 
 type SpotDispatchSubjectKind int
@@ -1517,6 +1564,7 @@ const (
     SpotDispatchSubjectSpot          SpotDispatchSubjectKind = 1
     SpotDispatchSubjectTimer         SpotDispatchSubjectKind = 2
     SpotDispatchSubjectChannelDealer SpotDispatchSubjectKind = 3
+    SpotDispatchSubjectActor         SpotDispatchSubjectKind = 4
 )
 ```
 

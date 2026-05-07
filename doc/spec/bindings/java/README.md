@@ -115,18 +115,18 @@ ways:
 | Pub/sub data plane | `zlink_publish_part`, `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscribe_part`, `zlink_xpub_recv_part` | `publish`, `setSubscription`, `unsetSubscription`, `subscribe`, `receiveSubscriptionEvent` | Public API |
 | Request/reply | `zlink_dealer_request_part`, `zlink_router_request_part`, `zlink_router_reply_part` | `DealerSocket.request`, `RouterSocket.request`, `RouterSocket.reply`, `Received.reply` | Public API |
 | Router to Spot routing | `zlink_router_send_spot_part`, `zlink_router_request_spot_part`, `zlink_router_reply_spot_part` | `RouterSocket.sendToSpot`, `requestToSpot`, `replyToSpot` | Public API |
-| Stream packet callbacks | `zlink_stream_packet_handler`, `zlink_recv_handler`, `zlink_send_ready_handler` | `StreamSocket.onPacket`, receive handlers where documented, `onSendReady` | Public API / internal callback bridge |
+| Stream packet callbacks | `zlink_recv_handler` for raw `STREAM`, `zlink_stream_packet_handler`, `zlink_send_ready_handler` | `StreamSocket.onPacket`, raw direct stream callbacks stay internal, `onSendReady` | Public API / internal callback bridge |
 | Stream actor binding | `zlink_stream_bind_actor`, `zlink_stream_unbind_actor`, `zlink_stream_send_bound_actor_part` | `StreamSocket.bindActor`, `unbindActor`, `sendBoundActor` | Public API |
-| Socket monitoring | socket monitor entrypoints | `MonitorSocket`, `MonitorEvent`, `MonitorSnapshot`, `IGNORE_HANDLER` | Public API |
+| Socket monitoring | `zlink_socket_monitor_open`, `zlink_socket_monitor_handler`, `zlink_socket_monitor_recv`, `zlink_monitor_snapshot`, `zlink_monitor_close`, `zlink_monitor_ignore_handler` | `MonitorSocket`, `MonitorEvent`, `MonitorSnapshot`, `IGNORE_HANDLER` | Public API |
 | Registry service | `zlink_registry_*` | `Registry`, `RegistryStatus`, service summary, member peer, topology entries | Public API |
 | Discovery service | `zlink_discovery_*` | `Discovery`, `resolveSpot`, `resolveActor`, `memberPeers`, value and registry connection methods | Public API |
 | Spot lifecycle | `zlink_spot_new`, `zlink_spot_destroy`, `zlink_spot_node_new`, `zlink_spot_node_destroy`, `zlink_spot_node_entry_spot`, `zlink_spot_node_spot_lookup` | `SpotNode`, `entrySpot`, `createSpot`, `spotLookup`, `close` | Required Java API |
-| Spot node peer wiring | `zlink_spot_node_bind`, peer connect/disconnect, attach APIs | `SpotNode.bind`, `connectPeer`, `disconnectPeer`, `disconnectPeerRid`, attachment methods | Public API |
-| Spot data plane | spot send, publish, subscribe, subscription-event, and routed recv entrypoints | `Spot.sendChannel`, `publish`, `subscribe`, `receiveSubscriptionEvent`, `recvRouted` | Public API |
-| Spot request/reply | spot request, send, reply, and channel-reply progress entrypoints | `Spot.requestChannel`, `requestToSpot`, `requestToRouter`, `sendToSpot`, `replyToSpot`, `replyToRouter`, `drainChannelReply` | Public API |
+| Spot node peer wiring | `zlink_spot_node_bind`, `zlink_spot_node_connect_peer`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid`, `zlink_spot_node_attach_discovery`, `zlink_spot_node_attach_channel_dealer`, `zlink_spot_node_attach_channel_dealer_manual`, `zlink_spot_node_attach_pub_ingress` | `SpotNode.bind`, `connectPeer`, `disconnectPeer`, `disconnectPeerRid`, attachment methods | Public API |
+| Spot data plane | `zlink_spot_send_channel_part`, `zlink_spot_publish_part`, `zlink_spot_subscribe_part`, `zlink_spot_subscription_event_recv`, `zlink_spot_recv_part` | `Spot.sendChannel`, `publish`, `subscribe`, `receiveSubscriptionEvent`, `recvRouted` | Public API |
+| Spot request/reply | `zlink_spot_request_channel_part`, `zlink_spot_request_spot_part`, `zlink_spot_request_router_part`, `zlink_spot_send_spot_part`, `zlink_spot_reply_spot_part`, `zlink_spot_reply_router_part`, `zlink_spot_channel_reply_progress_from` | `Spot.requestChannel`, `requestToSpot`, `requestToRouter`, `sendToSpot`, `replyToSpot`, `replyToRouter`, `drainChannelReply` | Public API |
 | Spot dispatch callbacks | `zlink_spot_handler`, `zlink_spot_dispatch_event_handler` | `Spot.onRoutedReceive`, `Spot.onDispatchEvent`, `SpotDispatchInfo` | Public API |
-| Actor dispatch | actor create, lookup, admission, join, leave, recv, and bound-session entrypoints | `Actor`, `ActorRef`, actor result/info records, `SpotNode` actor methods, `Spot.recvActorJoin`, `Spot.replyActorJoin` | Public API |
-| Spot snapshots | spot-node, registry, discovery, topology, and actor snapshot entrypoints | `statusSnapshot`, peer/subject/socket/spot/actor snapshot methods, registry/discovery topology records | Public API |
+| Actor dispatch | `zlink_remote_actor_get_ref`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup`, `zlink_spot_node_create_remote_actor`, `zlink_spot_node_actor_destroy`, `zlink_spot_node_actor_admission_handler`, `zlink_spot_node_actor_join_spot`, `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_spot_node_actor_leave_spot`, `zlink_spot_node_actor_recv_part`, `zlink_spot_node_actor_send_bound_session_msg`, `zlink_spot_node_actor_close_bound_session` | `Actor`, `ActorRef`, actor result/info records, `SpotNode` actor methods, `Spot.recvActorJoin`, `Spot.replyActorJoin` | Public API |
+| Spot snapshots | `zlink_spot_node_status_snapshot`, `zlink_spot_node_peers_snapshot`, `zlink_spot_node_peers_query`, `zlink_spot_node_subjects_snapshot`, `zlink_spot_node_internal_sockets_snapshot`, `zlink_spot_node_spots_snapshot`, `zlink_spot_node_actors_snapshot`, `zlink_spot_actors_snapshot`, registry/discovery topology snapshot/query entrypoints | `statusSnapshot`, peer/subject/socket/spot/actor snapshot methods, registry/discovery topology records | Public API |
 | Polling | `zlink_poll`, `zlink_poller_*` | `Poller`, `PollEvent`, `PollEventType` | Public API; legacy array `zlink_poll` is intentionally not exposed |
 | Poller timers | `zlink_poller_add_timer`, `zlink_poller_remove_timer` | `Poller.add(Timer, Object)`, `Poller.remove(Timer)`, `readyTimer` | Required Java API |
 | Proxy | `zlink_proxy`, `zlink_proxy_steerable` | `Zlink.proxy`, `Zlink.proxySteerable` | Public API |
@@ -136,10 +136,10 @@ ways:
 | Atomic counter | `zlink_atomic_counter_*` | `AtomicCounter` | Public API |
 | Multipart cleanup | `zlink_multipart_close` | `Message.closeAll`, `Zlink.multipartClose` | Public API |
 
-Detailed C-symbol traceability is intentionally kept out of this contract
-file to avoid duplicating the method signatures below. Use the coverage table
-above for review scope, then use the API sections below as the single source
-of Java public signatures.
+The C entrypoint column is traceability for coverage review only. It is not a
+Java public signature list and does not expose helper substrate sequencing to
+applications. Use the API sections below as the single source of Java public
+signatures.
 
 Java implementation alignment rule:
 
@@ -161,8 +161,11 @@ stay focused on signatures.
   data-plane receive callbacks such as `onReceive(...)`.
 - `SubSocket` and `XSubSocket` are receive-only topic sockets and do not
   expose direct topic callbacks such as `onSubscribe(...)`.
-- `StreamSocket` keeps `recv(...)` and exposes a packet callback surface
-  mapped to `zlink_stream_packet_handler()` as `onPacket(...)`.
+- `StreamSocket` keeps `recv(...)` and exposes `onPacket(...)` as the public
+  framed stream packet callback. The callback receives the source routing id,
+  one owned header `Message`, and one owned body `Message`. Raw direct stream
+  callbacks remain binding internals unless this specification is changed
+  first.
 - `SpotNode` must expose channel-aware attachment APIs:
   `attachDiscovery(Discovery discovery)`,
   `attachChannelDealer(Discovery discovery, DealerSocket dealer)`,
@@ -186,9 +189,10 @@ stay focused on signatures.
   `onSendReady(...)`. It is not a "transport writable" bit.
 - ROUTER / PUB socket option defaults follow the core header: `mandatory =
   true`, `handover = false`, `nodrop = true`.
-- SPOT admission HWM defaults follow the core header. Router and pubsub
-  admission profile/numeric options are exposed; relay and delivery HWM stay
-  `0` and are not public Java options.
+- SPOT admission HWM and dispatch worker defaults follow the core header.
+  Router and pubsub admission profile/numeric options are exposed; dispatch
+  worker min/max options are exposed as callback worker pool sizing. Relay and
+  delivery HWM stay `0` and are not public Java options.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routingId, advertiseEndpoint)`. Users do not configure this.
@@ -315,6 +319,21 @@ Route-not-ready and other submit failures still raise `SubmitException`.
 no data. Timer `recv(...)` reports no data through `RecvException` with
 `RecvResult.NO_DATA`. All receive paths still raise `RecvException` for real
 recv failures.
+
+### SendReadyHandler
+
+Callback interface for socket send-recovery readiness.
+
+```java
+@FunctionalInterface
+public interface SendReadyHandler {
+    void onReady();
+}
+```
+
+`onReady()` is a readiness notification shared with `POLLOUT`. It means a
+previous nonblocking send path may be retried; it is not a guarantee that every
+transport peer is writable.
 
 ### CommonSocketOptions
 
@@ -824,11 +843,11 @@ public final class StreamSocket extends Socket {
     // Two mutually-exclusive receive modes on the same StreamSocket:
     //   (1) recv(), (2) onPacket(handler). Second attach raises
     //   HandlerException(HandlerResult.BUSY).
-    // onPacket(handler) maps to zlink_stream_packet_handler().
-    //   Wire frame is big-endian u16
-    //   header_size + u32 body_size + header + body. The handler receives
-    //   the source routing id, a header Message, and a body Message; both
-    //   messages transfer ownership to the handler.
+    // onPacket(handler) is the public framed stream packet callback.
+    //   Wire frame is big-endian u16 header_size + u32 body_size
+    //   + header + body. The handler receives the source routing id,
+    //   one owned header Message, and one owned body Message.
+    //   Raw direct stream callbacks are implementation detail.
     void onPacket(StreamPacketHandler handler);                      // @throws HandlerException
 
     void bindActor(SpotNode node, RoutingId sessionRid, ActorRef actor,
@@ -848,6 +867,21 @@ public final class StreamSocket extends Socket {
     StreamSocketOptions options();
 }
 ```
+
+### StreamPacketHandler
+
+Callback interface for `StreamSocket.onPacket(...)`.
+
+```java
+@FunctionalInterface
+public interface StreamPacketHandler {
+    void onPacket(RoutingId routingId, Message header, Message body);
+}
+```
+
+The `header` and `body` messages are owned by the callback. The callback must
+consume or close both messages before returning. Runtime exceptions thrown by
+the callback are reported through the binding's callback failure path.
 
 ### StreamSocketOptions
 
@@ -923,6 +957,30 @@ public final class Message implements AutoCloseable {
 Netty `ByteBuf` are kept out of the core artifact so the base Java binding
 does not take a mandatory Netty dependency.
 
+### ByteSpan
+
+Lightweight byte-span view used by copy-oriented message factories and
+low-copy adapters.
+
+```java
+public interface ByteSpan {
+    MemorySegment segment();
+    int length();
+    ByteBuffer asByteBuffer();
+
+    static ByteSpan of(byte[] data);
+    static ByteSpan of(byte[] data, int offset, int length);
+    static ByteSpan of(ByteBuffer data);
+    static ByteSpan of(MemorySegment data);
+
+    record SegmentBackedSpan(MemorySegment segment, int length) implements ByteSpan {}
+}
+```
+
+`ByteSpan` does not transfer ownership of the backing memory. APIs that accept
+`ByteSpan` as public input copy the bytes into an owned `Message` unless the
+method explicitly documents a different lifetime rule.
+
 ### Codec Extensions
 
 Codec adapters are separate public extension artifacts layered on top of the
@@ -930,11 +988,28 @@ core binding. Their contract lives in [Java Codec Extension Specification](codec
 The core module does not expose codec entrypoints from
 `dev.kairoscode.zlink`.
 
+Java codec extensions are distributed separately from the core binding:
+
+- Maven `zlink-codec-protobuf` exposes
+  `dev.kairoscode.zlink.codec.protobuf`.
+- Maven `zlink-codec-json` exposes `dev.kairoscode.zlink.codec.json`.
+- Maven `zlink-codec-messagepack` exposes
+  `dev.kairoscode.zlink.codec.messagepack`.
+
+The JSON baseline is Jackson. The MessagePack baseline is
+`jackson-dataformat-msgpack`. Codec helpers may convert between `Message` and
+domain objects, but they do not replace the canonical transport contract:
+`Message`, `List<Message>`, `Received`, and `TopicMessage` remain the core
+receive/request/reply result types.
+
 ### Netty Buffer Extension
 
 Netty `ByteBuf` support is a separate public extension. Its contract lives in
 [Java Netty Extension Specification](netty.md). Netty-specific entrypoints are
 not part of the core `dev.kairoscode.zlink` package.
+
+The Netty extension is distributed as Maven `zlink-ext-netty` and exposes
+`dev.kairoscode.zlink.netty`.
 
 ### RoutingId
 
@@ -1598,6 +1673,20 @@ public final class MonitorSocket implements AutoCloseable {
 }
 ```
 
+### SocketMonitorHandler
+
+Callback interface for `MonitorSocket.onEvent(...)`.
+
+```java
+@FunctionalInterface
+public interface SocketMonitorHandler {
+    void onEvent(MonitorEvent event);
+}
+```
+
+`onEvent(...)` receives the same `MonitorEvent` shape as `MonitorSocket.recv()`.
+Installing a handler moves the monitor into callback-only mode.
+
 ### MonitorEvent
 
 Socket monitor event value object. Produced by `MonitorSocket.recv()`.
@@ -1756,6 +1845,10 @@ public final class SpotNode implements AutoCloseable {
     void pubsubHwmProfile(AutoHwmProfile profile);                   // @throws ConfigException
     int pubsubHwm();                                                 // @throws ConfigException
     void pubsubHwm(int value);                                       // @throws ConfigException
+    int dispatchWorkersMin();                                        // @throws ConfigException
+    void dispatchWorkersMin(int value);                              // @throws ConfigException
+    int dispatchWorkersMax();                                        // @throws ConfigException
+    void dispatchWorkersMax(int value);                              // @throws ConfigException
 
     // --- actor dispatch ---
     Actor actor(String actorId);                                     // @throws ConfigException
@@ -1803,6 +1896,28 @@ public final class SpotNode implements AutoCloseable {
 `SpotNode` owns `Spot` lifecycles. Public `Spot` instances are created through
 `entrySpot()`, `createSpot()`, or `spotLookup(...)`. Direct `Spot` constructors
 are not public contract.
+
+`attachPubIngress(pub)` attaches an external raw `PUB` source that feeds the
+node's SPOT topic plane. It is distinct from the internal publish ingress path
+used by `Spot.publish(...)`; applications must not rely on internal queue,
+socket, or thread names to reason about publish delivery.
+
+`dispatchWorkersMin()` / `dispatchWorkersMax()` configure only the
+`SpotNode` callback worker pool used by dispatch callbacks. They do not change
+the core I/O thread count or the data-plane thread count. Values follow the
+core validation rule: `min >= 1` and `max >= min`.
+
+### SpotNodeOptions
+
+Construction options for `SpotNode`.
+
+```java
+public record SpotNodeOptions(SpotNodeMode mode) {}
+```
+
+If `mode` is `null`, the binding uses `SpotNodeMode.ALL`. This keeps the
+default constructor and the explicit options constructor equivalent unless the
+caller chooses a narrower node mode.
 
 ### Spot
 
@@ -2000,6 +2115,38 @@ For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
 `subscribe(...)` / `recvRouted(...)` until the binding surfaces no data /
 `EAGAIN`.
 
+### SpotRoutedHandler
+
+Callback interface for `Spot.onRoutedReceive(...)`.
+
+```java
+@FunctionalInterface
+public interface SpotRoutedHandler {
+    void onMessage(RoutingId sourceRid,
+                   RoutingId spotRid,
+                   long requestSeq,
+                   Received received);
+}
+```
+
+`received` owns the routed message parts and any live reply context. The
+callback must consume or close it before returning.
+
+### SpotDispatchEventHandler
+
+Callback interface for `Spot.onDispatchEvent(...)`.
+
+```java
+@FunctionalInterface
+public interface SpotDispatchEventHandler {
+    void onEvent(SpotDispatchInfo info);
+}
+```
+
+The handler receives readiness metadata only. Message delivery still happens
+through the documented drain methods such as `subscribe(...)`,
+`recvRouted(...)`, and `drainChannelReply(...)`.
+
 ### SpotOptions
 
 ```java
@@ -2120,7 +2267,8 @@ Registry topology entry value object. Returned by
 `RegistryQueryClient.snapshot`.
 
 ```java
-public record RegistryTopologyEntry(RoutingId routingId,
+public record RegistryTopologyEntry(AutoConnectType autoConnectType,
+                                    RoutingId routingId,
                                     ServiceKind serviceKind,
                                     ServiceRole serviceRole,
                                     String channelName,
@@ -2138,7 +2286,7 @@ public record RegistryTopologyEntry(RoutingId routingId,
 Spot node status snapshot returned by `SpotNode.statusSnapshot`.
 
 ```java
-public record SpotNodeStatus(String channelName,
+public record SpotNodeStatus(String serviceName,
                              String localEndpoint,
                              RoutingId nodeRoutingId,
                              SpotNodeState state,
@@ -2202,7 +2350,7 @@ Registry service summary entry value object. Returned by
 `Registry.serviceSummarySnapshot`.
 
 ```java
-public record RegistryServiceSummaryEntry(ServiceKind serviceKind,
+public record RegistryServiceSummaryEntry(AutoConnectType autoConnectType,
                                           ServiceRole serviceRole,
                                           String channelName,
                                           int totalCount,
@@ -2235,7 +2383,7 @@ Spot node peer entry value object. Returned by
 `SpotNode.peersSnapshot` / `peersQuery`.
 
 ```java
-public record SpotNodePeerEntry(String channelName,
+public record SpotNodePeerEntry(String serviceName,
                                 String localEndpoint,
                                 String peerEndpoint,
                                 SpotPeerSource source,
@@ -2341,7 +2489,7 @@ public record SpotNodeSocketSnapshotFilter(
 Filter for `Registry.serviceSummarySnapshot`.
 
 ```java
-public record RegistryServiceSummaryFilter(ServiceKind serviceKind,
+public record RegistryServiceSummaryFilter(AutoConnectType autoConnectType,
                                            ServiceRole serviceRole,
                                            String channelName) {}
 ```
@@ -2351,7 +2499,8 @@ public record RegistryServiceSummaryFilter(ServiceKind serviceKind,
 Filter for `Registry.topologyQuery` and `RegistryQueryClient.snapshot`.
 
 ```java
-public record RegistryTopologyFilter(ServiceKind serviceKind,
+public record RegistryTopologyFilter(AutoConnectType autoConnectType,
+                                     ServiceKind serviceKind,
                                      ServiceRole serviceRole,
                                      String channelName,
                                      RoutingId routingId,
@@ -2418,6 +2567,28 @@ public final class Poller implements AutoCloseable {
     void close();                                                    // @throws CloseException
 }
 ```
+
+### PollEvent
+
+Immutable readiness result returned by `Poller.poll(...)`.
+
+```java
+public record PollEvent(Socket socket,
+                        int revents,
+                        int fd,
+                        Object tag,
+                        int events) {
+    public PollEvent(Socket socket, int revents);
+}
+```
+
+For socket registrations, `socket()` is present and `fd()` is `0`. For file
+descriptor registrations, `fd()` carries the registered descriptor and
+`socket()` is `null`. Timer readiness does not carry the `Timer` object in
+`PollEvent`; use `readyTimer(index)` when the timer handle is needed. `tag()`
+is the optional user object supplied at registration time. `revents()` is the
+ready event mask reported by the core; `events()` is the originally requested
+event mask when the binding has it.
 
 ---
 

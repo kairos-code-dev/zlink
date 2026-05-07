@@ -91,8 +91,11 @@ stay focused on signatures.
 - ROUTER / PUB socket option defaults follow the core header: `mandatory =
   True`, `handover = False`, `nodrop = True`.
 - SPOT admission HWM defaults follow the core header. Router and pubsub
-  admission profile/numeric options are exposed; relay and delivery HWM stay
-  `0` and are not public Python options.
+  admission profile/numeric options are exposed through `SpotNode`; relay and
+  delivery HWM stay `0` and are not public Python options.
+- SPOT dispatch worker min/max are `SpotNode` callback worker-pool options.
+  They are not context options and must not be described as transport I/O
+  threads.
 - Internal pairing rule: when auto-connect pairs two same-service ROUTERs
   via Discovery, the library picks one initiator per pair by a total order
   on `(routing_id, advertise_endpoint)`. Users do not configure this.
@@ -978,7 +981,7 @@ Every subclass wraps the matching C-API result enum
 at failure site.
 
 The `code` property is a globally unique `int` that spans all result
-enum ranges (0-703). The code alone identifies the error without
+enum ranges (0-706). The code alone identifies the error without
 needing to know which enum it belongs to; `result` provides the typed
 enum view for code that prefers enum matching.
 
@@ -1250,6 +1253,11 @@ class Discovery:
 ### SpotNode
 
 ```python
+class SpotNodeMode(IntEnum):
+    PUBSUB = 1
+    ROUTED = 2
+    ALL = 3
+
 class SpotNode:
     def __init__(self, ctx: Context, mode: SpotNodeMode | int | None = None): ...
     def __init__(self, ctx: Context) -> None: ...
@@ -1262,6 +1270,15 @@ class SpotNode:
     def attach_channel_dealer(self, discovery: Discovery, dealer: DealerSocket) -> None: ...  # Raises: ConfigError
     def attach_channel_dealer_manual(self, channel_name: str, dealer: DealerSocket) -> None: ...  # Raises: ConfigError
     def attach_pub_ingress(self, pub: PubSocket) -> None: ...                    # Raises: ConfigError
+
+    # SpotNode admission and dispatch-worker options. These map to the six
+    # public zlink_spot_node_option_t values; no raw option bag is public.
+    router_hwm_profile: AutoHwmProfile                                           # get/set; Raises: ConfigError
+    router_hwm: int                                                              # get/set; Raises: ConfigError
+    pubsub_hwm_profile: AutoHwmProfile                                           # get/set; Raises: ConfigError
+    pubsub_hwm: int                                                              # get/set; Raises: ConfigError
+    dispatch_workers_min: int                                                    # get/set; Raises: ConfigError
+    dispatch_workers_max: int                                                    # get/set; Raises: ConfigError
 
     # --- identity / routing ---
     # SpotNode's logical address. Maps to zlink_set_routing_id(node, ...) /
@@ -1311,6 +1328,11 @@ class SpotNode:
 `SpotNode.create_spot()`, Entry Spot facades through `SpotNode.entry_spot()`,
 and lookup facades through `SpotNode.spot_lookup(...)`. Direct `Spot(node)`
 construction is internal and is not part of the public API contract.
+
+`dispatch_workers_min` must be at least `1`; `dispatch_workers_max` must be at
+least `dispatch_workers_min`. If unset, core defaults are CPU count `1`:
+`min=max=1`; otherwise `min=2`, `max=cpu_count`. These values size only the
+SpotNode dispatch callback worker pool.
 
 ### Actor
 
@@ -1446,6 +1468,11 @@ class SpotDispatchInfo:
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
 `subscribe(...)` / `recv_routed(...)` until the binding raises no-data /
 `EAGAIN`.
+For `CHANNEL_REPLY_READABLE`, `subject_kind` is `CHANNEL_DEALER`; use the
+attached dealer's `get_channel_name()` metadata to identify the channel and
+pass `subject` to `drain_channel_reply_from(...)`.
+For `ACTOR_READABLE`, `actor` identifies the readable Actor and `subject` is
+not part of the public Actor contract.
 
 ### RegistryQueryClient
 

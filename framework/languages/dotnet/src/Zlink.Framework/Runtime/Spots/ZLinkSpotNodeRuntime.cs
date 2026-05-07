@@ -334,7 +334,14 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             return ValueTask.FromResult(false);
         }
 
-        Node.ConnectPeer(endpoint);
+        try
+        {
+            Node.ConnectPeer(endpoint);
+        }
+        catch (ZlinkConnectException error)
+            when (error.InternalErrno == (int)ErrorCode.EBusy)
+        {
+        }
         return ValueTask.FromResult(true);
     }
 
@@ -346,7 +353,14 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             return ValueTask.FromResult(false);
         }
 
-        Node.ConnectPeer(endpoint);
+        try
+        {
+            Node.ConnectPeer(endpoint);
+        }
+        catch (ZlinkConnectException error)
+            when (error.InternalErrno == (int)ErrorCode.EBusy)
+        {
+        }
         return ValueTask.FromResult(true);
     }
 

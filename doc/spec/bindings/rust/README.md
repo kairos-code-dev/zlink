@@ -84,9 +84,9 @@ stay focused on signatures.
   `attach_channel_dealer(...)`,
   `attach_channel_dealer_manual(...)`, and
   `attach_pub_ingress(...)`.
-- `Spot` must expose channel-aware data-plane methods:
+- `Spot` must expose channel-aware data-plane operation builders:
   `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
-  `publish(service_name, topic, ...)`.
+  `publish(service_name, topic)`.
 - `Spot::subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `service_name: Option<String>`, populated for
   SPOT subscribe results and `None` for raw `SUB` / `XSUB`.
@@ -1666,37 +1666,68 @@ For remote joins where the destination node is already known, use
 ### Spot
 
 ```rust
+pub struct Empty;
+pub struct Ready;
+pub struct CallbackReady;
+
+pub struct SendOp<State> { /* typestate operation builder */ }
+pub struct RequestOp<State> { /* typestate operation builder */ }
+pub struct ReplyOp<State> { /* typestate operation builder */ }
+
+impl SendOp<Empty> {
+    pub fn message(self, message: Message) -> SendOp<Ready>;
+}
+
+impl SendOp<Ready> {
+    pub fn message(self, message: Message) -> Self;
+    pub fn flags(self, flags: SendFlags) -> Self;
+    /// # Errors: SubmitError
+    pub fn submit(self) -> Result<bool, SubmitError>;
+}
+
+impl RequestOp<Empty> {
+    pub fn message(self, message: Message) -> RequestOp<Ready>;
+}
+
+impl RequestOp<Ready> {
+    pub fn message(self, message: Message) -> Self;
+    pub fn timeout(self, timeout: Duration) -> Self;
+    pub fn flags(self, flags: SendFlags) -> RequestOp<CallbackReady>;
+    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
+    pub async fn submit(self) -> Result<Vec<Message>, ZlinkError>;
+    /// # Errors: SubmitError
+    pub fn submit_callback<F>(self, callback: F) -> Result<(), SubmitError>
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
+}
+
+impl RequestOp<CallbackReady> {
+    pub fn message(self, message: Message) -> Self;
+    pub fn timeout(self, timeout: Duration) -> Self;
+    pub fn flags(self, flags: SendFlags) -> Self;
+    /// # Errors: SubmitError
+    pub fn submit_callback<F>(self, callback: F) -> Result<(), SubmitError>
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
+}
+
+impl ReplyOp<Empty> {
+    pub fn message(self, message: Message) -> ReplyOp<Ready>;
+}
+
+impl ReplyOp<Ready> {
+    pub fn message(self, message: Message) -> Self;
+    pub fn flags(self, flags: SendFlags) -> Self;
+    /// # Errors: SubmitError
+    pub fn submit(self) -> Result<(), SubmitError>;
+}
+
 impl Spot {
     // Spot::new(&node) is internal. Public code obtains Spot handles through
     // SpotNode factories.
-    /// # Errors: SubmitError
-    pub fn publish(&self, service_name: &str, topic: &str,
-        parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn publish_with_flags(&self, service_name: &str, topic: &str,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_channel(&self, channel_name: &str,
-        parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_channel_with_flags(&self, channel_name: &str,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_to_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-        parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_to_spot_with_flags(&self, dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId, parts: impl IntoMultipart,
-        flags: SendFlags) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
-    pub fn request_channel_callback<F>(&self, channel_name: &str,
-        parts: impl IntoMultipart, callback: F,
-        flags: SendFlags, timeout: Duration)
-        -> Result<(), SubmitError>
-        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
-    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
-    pub async fn request_channel(&self, channel_name: &str,
-        parts: impl IntoMultipart, timeout: Duration) -> Result<Vec<Message>, ZlinkError>;
+    pub fn publish(&self, service_name: &str, topic: &str) -> SendOp<Empty>;
+    pub fn send_channel(&self, channel_name: &str) -> SendOp<Empty>;
+    pub fn send_to_spot(&self, dest_node_rid: RoutingId,
+        dest_spot_rid: RoutingId) -> SendOp<Empty>;
+    pub fn request_channel(&self, channel_name: &str) -> RequestOp<Empty>;
     /// # Errors: ConfigError
     pub fn set_subscription(&self, filter: &str) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
@@ -1713,51 +1744,13 @@ impl Spot {
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
 
-    // --- routed request (spot → spot, async) — no flags ---
-    // Duration::ZERO uses the socket default timeout.
-    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
-    pub async fn request_to_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-        parts: impl IntoMultipart,
-        timeout: Duration) -> Result<Vec<Message>, ZlinkError>;
-
-    // --- routed request (spot → spot, callback) ---
-    // Duration::ZERO uses the socket default timeout.
-    /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
-    pub fn request_to_spot_callback<F>(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-        parts: impl IntoMultipart, callback: F, flags: SendFlags, timeout: Duration)
-        -> Result<(), SubmitError>
-        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
-
-    // --- routed request (spot → router, async) — no flags ---
-    // Duration::ZERO uses the socket default timeout.
-    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
-    pub async fn request_to_router(&self, peer_rid: RoutingId,
-        parts: impl IntoMultipart,
-        timeout: Duration) -> Result<Vec<Message>, ZlinkError>;
-
-    // --- routed request (spot → router, callback) ---
-    // Duration::ZERO uses the socket default timeout.
-    /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
-    pub fn request_to_router_callback<F>(&self, peer_rid: RoutingId,
-        parts: impl IntoMultipart, callback: F, flags: SendFlags, timeout: Duration)
-        -> Result<(), SubmitError>
-        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
-
-    // --- routed reply (spot → spot) ---
-    /// # Errors: SubmitError
-    pub fn reply_to_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-        request_seq: u64, parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn reply_to_spot_with_flags(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-        request_seq: u64, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
-
-    // --- routed reply (spot → router) ---
-    /// # Errors: SubmitError
-    pub fn reply_to_router(&self, peer_rid: RoutingId, request_seq: u64,
-        parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn reply_to_router_with_flags(&self, peer_rid: RoutingId, request_seq: u64,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    pub fn request_to_spot(&self, dest_node_rid: RoutingId,
+        dest_spot_rid: RoutingId) -> RequestOp<Empty>;
+    pub fn request_to_router(&self, peer_rid: RoutingId) -> RequestOp<Empty>;
+    pub fn reply_to_spot(&self, dest_node_rid: RoutingId,
+        dest_spot_rid: RoutingId, request_seq: u64) -> ReplyOp<Empty>;
+    pub fn reply_to_router(&self, peer_rid: RoutingId,
+        request_seq: u64) -> ReplyOp<Empty>;
 
     // --- routed receive ---
     /// # Errors: RecvError
@@ -1796,6 +1789,13 @@ impl Spot {
     pub fn close(&mut self) -> Result<(), CloseError>;
 }
 ```
+
+`SendOp`, `RequestOp`, and `ReplyOp` use Rust typestate. Submit methods exist
+only for `Ready` or `CallbackReady` states, so a payload-less submit is a type
+error. Repeated `message(...)` calls append multipart payload parts in order.
+Request `submit()` is the async reply-producing form and has no submit flags.
+Adding `flags(...)` moves the operation to `CallbackReady`, where only
+`submit_callback(...)` is available.
 
 ```rust
 pub enum SpotDispatchEvent {

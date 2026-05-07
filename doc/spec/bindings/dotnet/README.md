@@ -88,8 +88,8 @@ stay focused on signatures.
 - `AttachPubIngress(...)` attaches an external raw `PUB` as an ingress source
   for the node's SPOT topic plane. It is not the implementation path for
   `Spot.Publish(...)`.
-- `Spot` exposes data-plane methods through typed operations:
-  `Publish(serviceName, topic, ...)` enters the SPOT topic plane,
+- `Spot` exposes data-plane operation builders:
+  `Publish(serviceName, topic)` enters the SPOT topic plane,
   `SendChannel(...)` and `RequestChannel(...)` use attached channel
   `DEALER` handles, and `SendToSpot(...)` uses routed SPOT delivery.
 - `Spot.Publish(...)` does not expose or select a raw `PUB` socket. Core
@@ -1887,40 +1887,10 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     RoutingId RoutingId { get; }
 
-    // --- SPOT topic publish ---
-    /// <exception cref="ZlinkSubmitException"/>
-    bool Publish(string serviceName, string topic, Message message, SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    bool Publish(string serviceName, string topic, IReadOnlyList<Message> parts,
-                 SendFlags flags = SendFlags.None);
-
-    // --- channel-aware send / request ---
-    /// <exception cref="ZlinkSubmitException"/>
-    bool SendChannel(string channelName, Message message, SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    bool SendChannel(string channelName, IReadOnlyList<Message> parts,
-                     SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> RequestChannel(string channelName, Message message,
-                                                TimeSpan timeout = default,
-                                                CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> RequestChannel(string channelName,
-                                                IReadOnlyList<Message> parts,
-                                                TimeSpan timeout = default,
-                                                CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool RequestChannel(string channelName, Message message,
-                        RequestCallback callback,
-                        SendFlags flags = SendFlags.None,
-                        TimeSpan? timeout = null);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool RequestChannel(string channelName, IReadOnlyList<Message> parts,
-                        RequestCallback callback,
-                        SendFlags flags = SendFlags.None,
-                        TimeSpan? timeout = null);
+    // --- SPOT topic publish / channel-aware send / request builders ---
+    SendOperation Publish(string serviceName, string topic);
+    SendOperation SendChannel(string channelName);
+    RequestOperation RequestChannel(string channelName);
 
     // --- subscribe ---
     /// <exception cref="ZlinkConfigException"/>
@@ -1936,84 +1906,13 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkHandlerException"/>
     void OnSendReady(Action handler);
 
-    // --- routed request (spot -> spot) ---
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                                               Message message,
-                                               TimeSpan timeout = default,
-                                               CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                                               IReadOnlyList<Message> parts,
-                                               TimeSpan timeout = default,
-                                               CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       Message message,
-                       RequestCallback callback,
-                       SendFlags flags = SendFlags.None,
-                       TimeSpan? timeout = null);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       IReadOnlyList<Message> parts,
-                       RequestCallback callback,
-                       SendFlags flags = SendFlags.None,
-                       TimeSpan? timeout = null);
-
-    // --- routed send (spot -> spot) ---
-    /// <exception cref="ZlinkSubmitException"/>
-    bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                    Message message, SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                    IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
-
-    // --- routed request (spot -> router) ---
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> RequestToRouter(RoutingId peerRid,
-                                                 Message message,
-                                                 TimeSpan timeout = default,
-                                                 CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> RequestToRouter(RoutingId peerRid,
-                                                 IReadOnlyList<Message> parts,
-                                                 TimeSpan timeout = default,
-                                                 CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool RequestToRouter(RoutingId peerRid,
-                         Message message,
-                         RequestCallback callback,
-                         SendFlags flags = SendFlags.None,
-                         TimeSpan? timeout = null);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool RequestToRouter(RoutingId peerRid,
-                         IReadOnlyList<Message> parts,
-                         RequestCallback callback,
-                         SendFlags flags = SendFlags.None,
-                         TimeSpan? timeout = null);
-
-    // --- routed reply (spot -> spot) ---
-    /// <exception cref="ZlinkSubmitException"/>
-    void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     ulong requestSeq, Message message,
-                     SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     ulong requestSeq, IReadOnlyList<Message> parts,
-                     SendFlags flags = SendFlags.None);
-
-    // --- routed reply (spot -> router) ---
-    /// <exception cref="ZlinkSubmitException"/>
-    void ReplyToRouter(RoutingId peerRid, ulong requestSeq, Message message,
-                       SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
-                       IReadOnlyList<Message> parts,
-                       SendFlags flags = SendFlags.None);
+    // --- routed send / request / reply builders ---
+    SendOperation SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
+    RequestOperation RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
+    RequestOperation RequestToRouter(RoutingId peerRid);
+    ReplyOperation ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                               ulong requestSeq);
+    ReplyOperation ReplyToRouter(RoutingId peerRid, ulong requestSeq);
 
     // --- routed receive ---
     /// <exception cref="ZlinkRecvException"/>
@@ -2045,9 +1944,61 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkCloseException"/>
     ValueTask DisposeAsync();
 }
+
+public interface SendOperation
+{
+    SendSubmitOperation Message(Message message);
+}
+
+public interface SendSubmitOperation
+{
+    SendSubmitOperation Message(Message message);
+    SendSubmitOperation Flags(SendFlags flags);
+    /// <exception cref="ZlinkSubmitException"/>
+    bool Submit();
+}
+
+public interface RequestOperation
+{
+    RequestSubmitOperation Message(Message message);
+}
+
+public interface RequestSubmitOperation
+{
+    RequestSubmitOperation Message(Message message);
+    RequestSubmitOperation Timeout(TimeSpan timeout);
+    RequestCallbackSubmitOperation Flags(SendFlags flags);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    /// <exception cref="ZlinkRequestException">Reply phase failed.</exception>
+    Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool Submit(RequestCallback callback);
+}
+
+public interface RequestCallbackSubmitOperation
+{
+    RequestCallbackSubmitOperation Message(Message message);
+    RequestCallbackSubmitOperation Timeout(TimeSpan timeout);
+    RequestCallbackSubmitOperation Flags(SendFlags flags);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool Submit(RequestCallback callback);
+}
+
+public interface ReplyOperation
+{
+    ReplySubmitOperation Message(Message message);
+}
+
+public interface ReplySubmitOperation
+{
+    ReplySubmitOperation Message(Message message);
+    ReplySubmitOperation Flags(SendFlags flags);
+    /// <exception cref="ZlinkSubmitException"/>
+    void Submit();
+}
 ```
 
-`Spot.Publish(serviceName, topic, ...)` is the managed SPOT topic publish
+`Spot.Publish(serviceName, topic)` starts the managed SPOT topic publish
 operation. The `serviceName` parameter is the core topic-plane namespace name;
 it is not a channel dealer name and does not cause .NET to select a raw `PUB`
 socket. The binding keeps native part-loop sequencing internal while core
@@ -2056,11 +2007,20 @@ admission backpressure is reported through the same `SendFlags.DontWait`
 contract as other send-like methods.
 
 `SpotNode.AttachPubIngress(PubSocket pub)` is separate from
-`Spot.Publish(...)`. It registers an external raw `PUB` socket as an ingress
+`Spot.Publish(...).Message(...).Submit()`. It registers an external raw `PUB`
+socket as an ingress
 source for the same SPOT topic plane, so messages arriving from that attachment
 are drained by `Spot.Subscribe(...)` with the same `TopicMessage` result shape.
 Channel calls remain separate: `SendChannel(...)` and `RequestChannel(...)`
 address attached channel `DEALER` handles by `channelName`.
+
+`SendOperation`, `RequestOperation`, and `ReplyOperation` are the canonical
+.NET SPOT operation builders. Callers add one or more payload parts with
+`Message(...)`, optionally add `Flags(...)` or `Timeout(...)`, then execute the
+operation with `Submit()` / `SubmitAsync(...)` / `Submit(callback)`.
+Implementations must reject submit without at least one message. The canonical
+surface does not add separate `Message` and `IReadOnlyList<Message>` overloads
+on `Spot` for these paths.
 
 ### RegistryQueryClient
 

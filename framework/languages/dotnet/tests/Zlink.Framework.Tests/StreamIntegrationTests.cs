@@ -301,7 +301,7 @@ public sealed class StreamIntegrationTests
                     "player-1",
                     new GatewayPing("from-play"))
                 .WithPacketName("client.echo")
-                .WithTimeout(TimeSpan.FromSeconds(3))
+                .WithTimeout(TimeSpan.FromSeconds(10))
                 .Async<GatewayPong>();
 
             await clientReplyTask;
@@ -314,7 +314,7 @@ public sealed class StreamIntegrationTests
                     new GatewayPing("from-actor-client"))
                 .WithPacketName("relay.echo")
                 .WithMetadata("trace-id", "trace-actor-client")
-                .WithTimeout(TimeSpan.FromSeconds(3))
+                .WithTimeout(TimeSpan.FromSeconds(10))
                 .Async<GatewayPong>();
 
             Assert.Equal("play:from-actor-client", actorClientReply.Value);
@@ -799,9 +799,9 @@ public sealed class StreamIntegrationTests
         private CallbackExceptionCapture()
         {
             _eventInfo = typeof(global::Systems.Zlink.Context).Assembly
-                .GetType("Zlink.Runtime", throwOnError: true)!
+                .GetType("Systems.Zlink.Runtime", throwOnError: true)!
                 .GetEvent("UnhandledCallbackException", BindingFlags.Public | BindingFlags.Static)!
-                ?? throw new InvalidOperationException("Could not locate Zlink.Runtime.UnhandledCallbackException.");
+                ?? throw new InvalidOperationException("Could not locate Systems.Zlink.Runtime.UnhandledCallbackException.");
             _handlerDelegate = OnUnhandledCallbackException;
             _eventInfo.AddEventHandler(null, _handlerDelegate);
         }

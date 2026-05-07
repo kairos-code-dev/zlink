@@ -68,9 +68,9 @@ stay focused on signatures.
   `attach_channel_dealer(...)`,
   `attach_channel_dealer_manual(...)`, and
   `attach_pub_ingress(...)`.
-- `Spot` must expose channel-aware data-plane methods:
+- `Spot` must expose channel-aware data-plane operation builders:
   `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
-  `publish(service_name, topic, ...)`.
+  `publish(service_name, topic)`.
 - `Spot.subscribe(...)` returns a service-aware `TopicMessage`. `TopicMessage`
   therefore needs `service_name: str | None`, populated for SPOT subscribe
   results and `None` for raw `SUB` / `XSUB`.
@@ -1353,6 +1353,26 @@ native Actor pointer.
 ### Spot
 
 ```python
+class SendOp:
+    def message(self, payload: Message | bytes) -> SendOp: ...
+    def messages(self, *payloads: Message | bytes) -> SendOp: ...
+    def flags(self, flags: int) -> SendOp: ...
+    def submit(self) -> bool: ...                                                # Raises: SubmitError
+
+class RequestOp:
+    def message(self, payload: Message | bytes) -> RequestOp: ...
+    def messages(self, *payloads: Message | bytes) -> RequestOp: ...
+    def timeout(self, timeout: int) -> RequestOp: ...
+    def flags(self, flags: int) -> RequestOp: ...
+    async def submit_async(self) -> list[Message]: ...                           # Raises: SubmitError, RequestError
+    def submit(self, callback: Callable[[RequestResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
+
+class ReplyOp:
+    def message(self, payload: Message | bytes) -> ReplyOp: ...
+    def messages(self, *payloads: Message | bytes) -> ReplyOp: ...
+    def flags(self, flags: int) -> ReplyOp: ...
+    def submit(self) -> None: ...                                                # Raises: SubmitError
+
 class Spot:
     # __init__(node) is internal. Public code obtains Spot handles through
     # SpotNode factories.
@@ -1364,66 +1384,25 @@ class Spot:
     @property
     def routing_id(self) -> RoutingId: ...                                       # Raises: ConfigError
 
-    def publish(self, service_name: str, topic: str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
-    def send_channel(self, channel_name: str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
-    def send_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-                     payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
-    async def request_channel(self, channel_name: str, payload: Message | bytes | list,
-                              *, timeout: int = 0) -> list[Message]: ...
-    def request_channel_callback(self, channel_name: str,
-                                 payload: Message | bytes | list,
-                                 callback: Callable[[RequestResult, list[Message]], None],
-                                 *, flags: int = 0, timeout: int = 0) -> bool: ...
+    def publish(self, service_name: str, topic: str) -> SendOp: ...
+    def send_channel(self, channel_name: str) -> SendOp: ...
+    def send_to_spot(self, dest_node_rid: RoutingId,
+                     dest_spot_rid: RoutingId) -> SendOp: ...
+    def request_channel(self, channel_name: str) -> RequestOp: ...
     def set_subscription(self, topic_or_pattern: str) -> None: ...               # Raises: ConfigError
     def unset_subscription(self, topic_or_pattern: str) -> None: ...             # Raises: ConfigError
     def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
     def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent | None: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable[[Spot], None]) -> None: ...        # Raises: HandlerError
 
-    # --- routed request (spot → spot, async) — no flags ---
-    # timeout = 0 uses the socket default timeout.
-    # Raises: SubmitError on submit failure; RequestError on request completion failure.
-    async def request_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-                              payload: Message | bytes | list,
-                              *, timeout: int = 0) -> list[Message]: ...
+    def request_to_spot(self, dest_node_rid: RoutingId,
+                        dest_spot_rid: RoutingId) -> RequestOp: ...
+    def request_to_router(self, peer_rid: RoutingId) -> RequestOp: ...
 
-    # --- routed request (spot → spot, callback submit) ---
-    # timeout = 0 uses the socket default timeout.
-    # Returns False only for temporary backpressure when flags includes DONTWAIT.
-    # Raises: SubmitError on submit failure other than temporary backpressure.
-    # Callback receives RequestResult; non-OK indicates request-completion failure.
-    # Callback receives an empty list on failure.
-    def request_to_spot_callback(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-                                 payload: Message | bytes | list,
-                                 callback: Callable[[RequestResult, list[Message]], None],
-                                 *, flags: int = 0, timeout: int = 0) -> bool: ...  # Raises: SubmitError
-
-    # --- routed request (spot → router, async) — no flags ---
-    # timeout = 0 uses the socket default timeout.
-    # Raises: SubmitError on submit failure; RequestError on request completion failure.
-    async def request_to_router(self, peer_rid: RoutingId,
-                                payload: Message | bytes | list,
-                                *, timeout: int = 0) -> list[Message]: ...
-
-    # --- routed request (spot → router, callback submit) ---
-    # timeout = 0 uses the socket default timeout.
-    # Returns False only for temporary backpressure when flags includes DONTWAIT.
-    # Raises: SubmitError on submit failure other than temporary backpressure.
-    # Callback receives RequestResult; non-OK indicates request-completion failure.
-    # Callback receives an empty list on failure.
-    def request_to_router_callback(self, peer_rid: RoutingId,
-                                   payload: Message | bytes | list,
-                                   callback: Callable[[RequestResult, list[Message]], None],
-                                   *, flags: int = 0, timeout: int = 0) -> bool: ...  # Raises: SubmitError
-
-    # --- routed reply (spot → spot) ---
+    # --- routed reply operation builders ---
     def reply_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-                      request_seq: int,
-                      payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
-
-    # --- routed reply (spot → router) ---
-    def reply_to_router(self, peer_rid: RoutingId, request_seq: int,
-                        payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+                      request_seq: int) -> ReplyOp: ...
+    def reply_to_router(self, peer_rid: RoutingId, request_seq: int) -> ReplyOp: ...
 
     # --- routed receive ---
     def recv_routed(self, *, flags: int = 0) -> Received | None: ...             # Raises: RecvError
@@ -1437,6 +1416,13 @@ class Spot:
 
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
+
+`SendOp`, `RequestOp`, and `ReplyOp` are Python fluent operation builders.
+`message(...)` appends one payload part and `messages(*payloads)` appends
+multiple parts without forcing callers to build a list. `submit` without any
+payload raises a validation error before calling native code. Async request
+submission uses `submit_async()` and must not use submit flags; callback
+submission uses `submit(callback)` and may use `flags(...)`.
 
 ```python
 class SpotDispatchEvent(IntEnum):

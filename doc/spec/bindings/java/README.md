@@ -171,9 +171,9 @@ stay focused on signatures.
   `attachChannelDealer(Discovery discovery, DealerSocket dealer)`,
   `attachChannelDealerManual(String channelName, DealerSocket dealer)`, and
   `attachPubIngress(PubSocket pub)`.
-- `Spot` must expose channel-aware data-plane methods:
+- `Spot` must expose channel-aware data-plane operation builders:
   `sendChannel(...)`, `sendToSpot(...)`, `requestChannel(...)`, and
-  `publish(String serviceName, String topic, ...)`.
+  `publish(String serviceName, String topic)`.
 - `Spot.subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `serviceName()` populated for SPOT subscribe
   results and empty for raw `SUB` / `XSUB`.
@@ -1913,52 +1913,11 @@ public final class Spot implements AutoCloseable {
     Duration requestTimeout();                                      // @throws ConfigException
     void requestTimeout(Duration value);                            // @throws ConfigException
 
-    // --- channel-aware publish / request ---
-    boolean publish(String serviceName, String topicId, Message part);                   // @throws SubmitException
-    boolean publish(String serviceName, String topicId, Message part, SendFlags flags);  // @throws SubmitException
-    boolean publish(String serviceName, String topicId, List<Message> parts);            // @throws SubmitException
-    boolean publish(String serviceName, String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
-    boolean sendChannel(String channelName, Message part);                               // @throws SubmitException
-    boolean sendChannel(String channelName, Message part, SendFlags flags);              // @throws SubmitException
-    boolean sendChannel(String channelName, List<Message> parts);                        // @throws SubmitException
-    boolean sendChannel(String channelName, List<Message> parts, SendFlags flags);       // @throws SubmitException
-    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);      // @throws SubmitException
-    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       Message part, SendFlags flags);                                   // @throws SubmitException
-    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       List<Message> parts);                                             // @throws SubmitException
-    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       List<Message> parts, SendFlags flags);                            // @throws SubmitException
-    CompletableFuture<List<Message>> requestChannel(String channelName, Message part);   // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestChannel(String channelName, Message part,
-                                                    Duration timeout);                   // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestChannel(String channelName, List<Message> parts); // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestChannel(String channelName, List<Message> parts,
-                                                    Duration timeout);                   // @throws SubmitException; future completes with RequestException on failure
-    boolean requestChannel(String channelName, Message part,
-                           RequestCallback callback);           // @throws SubmitException; callback receives RequestResult
-    boolean requestChannel(String channelName, Message part,
-                           RequestCallback callback,
-                           Duration timeout);                                            // @throws SubmitException; callback receives RequestResult
-    boolean requestChannel(String channelName, Message part,
-                           RequestCallback callback,
-                           SendFlags flags);                                             // @throws SubmitException; false only on temporary backpressure
-    boolean requestChannel(String channelName, Message part,
-                           RequestCallback callback,
-                           SendFlags flags,
-                           Duration timeout);                                            // @throws SubmitException; false only on temporary backpressure
-    boolean requestChannel(String channelName, List<Message> parts,
-                           RequestCallback callback);           // @throws SubmitException; callback receives RequestResult
-    boolean requestChannel(String channelName, List<Message> parts,
-                           RequestCallback callback,
-                           Duration timeout);                                            // @throws SubmitException; callback receives RequestResult
-    boolean requestChannel(String channelName, List<Message> parts,
-                           RequestCallback callback,
-                           SendFlags flags);                                             // @throws SubmitException; false only on temporary backpressure
-    boolean requestChannel(String channelName, List<Message> parts,
-                           RequestCallback callback,
-                           SendFlags flags,
-                           Duration timeout);                                            // @throws SubmitException; false only on temporary backpressure
+    // --- channel-aware publish / send / request operation builders ---
+    SendOp publish(String serviceName, String topicId);
+    SendOp sendChannel(String channelName);
+    SendOp sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
+    RequestOp requestChannel(String channelName);
 
     // --- subscribe ---
     void setSubscription(String topicId);                            // @throws ConfigException
@@ -1970,110 +1929,12 @@ public final class Spot implements AutoCloseable {
     SubscriptionEvent receiveSubscriptionEvent();                    // @throws RecvException
     @Nullable SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags); // @throws RecvException
 
-    // --- routed request (spot -> spot, async, no flags) ---
-    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                              RoutingId destSpotRid,
-                                              Message part);                             // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                              RoutingId destSpotRid,
-                                              Message part, Duration timeout);           // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                              RoutingId destSpotRid,
-                                              List<Message> parts);                      // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                              RoutingId destSpotRid,
-                                              List<Message> parts, Duration timeout);    // @throws SubmitException; future completes with RequestException on failure
-
-    // --- routed request (spot -> spot, callback submit) ---
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          Message part,
-                          RequestCallback callback);            // @throws SubmitException; callback receives RequestResult
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          Message part,
-                          RequestCallback callback,
-                          Duration timeout);                                             // @throws SubmitException; callback receives RequestResult
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          Message part,
-                          RequestCallback callback,
-                          SendFlags flags);                                              // @throws SubmitException; false only on temporary backpressure
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          Message part,
-                          RequestCallback callback,
-                          SendFlags flags, Duration timeout);                            // @throws SubmitException; false only on temporary backpressure
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          List<Message> parts,
-                          RequestCallback callback);            // @throws SubmitException; callback receives RequestResult
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          List<Message> parts,
-                          RequestCallback callback,
-                          Duration timeout);                                             // @throws SubmitException; callback receives RequestResult
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          List<Message> parts,
-                          RequestCallback callback,
-                          SendFlags flags);                                              // @throws SubmitException; false only on temporary backpressure
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          List<Message> parts,
-                          RequestCallback callback,
-                          SendFlags flags, Duration timeout);                            // @throws SubmitException; false only on temporary backpressure
-
-    // --- routed request (spot -> router, async, no flags) ---
-    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
-                                              Message part);                             // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
-                                              Message part, Duration timeout);           // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
-                                              List<Message> parts);                      // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
-                                              List<Message> parts, Duration timeout);    // @throws SubmitException; future completes with RequestException on failure
-
-    // --- routed request (spot -> router, callback submit) ---
-    boolean requestToRouter(RoutingId peerRid,
-                            Message part,
-                            RequestCallback callback);          // @throws SubmitException; callback receives RequestResult
-    boolean requestToRouter(RoutingId peerRid,
-                            Message part,
-                            RequestCallback callback,
-                            Duration timeout);                                           // @throws SubmitException; callback receives RequestResult
-    boolean requestToRouter(RoutingId peerRid,
-                            Message part,
-                            RequestCallback callback,
-                            SendFlags flags);                                            // @throws SubmitException; false only on temporary backpressure
-    boolean requestToRouter(RoutingId peerRid,
-                            Message part,
-                            RequestCallback callback,
-                            SendFlags flags, Duration timeout);                          // @throws SubmitException; false only on temporary backpressure
-    boolean requestToRouter(RoutingId peerRid,
-                            List<Message> parts,
-                            RequestCallback callback);          // @throws SubmitException; callback receives RequestResult
-    boolean requestToRouter(RoutingId peerRid,
-                            List<Message> parts,
-                            RequestCallback callback,
-                            Duration timeout);                                           // @throws SubmitException; callback receives RequestResult
-    boolean requestToRouter(RoutingId peerRid,
-                            List<Message> parts,
-                            RequestCallback callback,
-                            SendFlags flags);                                            // @throws SubmitException; false only on temporary backpressure
-    boolean requestToRouter(RoutingId peerRid,
-                            List<Message> parts,
-                            RequestCallback callback,
-                            SendFlags flags, Duration timeout);                          // @throws SubmitException; false only on temporary backpressure
-
-    // --- routed reply (spot -> spot) ---
-    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, Message message);                                  // @throws SubmitException
-    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, Message message, SendFlags flags);                 // @throws SubmitException
-    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, List<Message> parts);                              // @throws SubmitException
-    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, List<Message> parts, SendFlags flags);             // @throws SubmitException
-
-    // --- routed reply (spot -> router) ---
-    void replyToRouter(RoutingId peerRid, long requestSeq, Message message);                  // @throws SubmitException
-    void replyToRouter(RoutingId peerRid, long requestSeq, Message message, SendFlags flags); // @throws SubmitException
-    void replyToRouter(RoutingId peerRid, long requestSeq, List<Message> parts);              // @throws SubmitException
-    void replyToRouter(RoutingId peerRid, long requestSeq, List<Message> parts,
-                       SendFlags flags);                                                      // @throws SubmitException
+    // --- routed request / reply operation builders ---
+    RequestOp requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
+    RequestOp requestToRouter(RoutingId peerRid);
+    ReplyOp replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                        long requestSeq);
+    ReplyOp replyToRouter(RoutingId peerRid, long requestSeq);
 
     // --- routed receive ---
     Received recvRouted();                                           // @throws RecvException
@@ -2090,7 +1951,54 @@ public final class Spot implements AutoCloseable {
 
     void close();                                                    // @throws CloseException
 }
+
+public interface SendOp {
+    SendSubmitOp message(Message part);
+}
+
+public interface SendSubmitOp {
+    SendSubmitOp message(Message part);
+    SendSubmitOp flags(SendFlags flags);
+    boolean submit();                                                // @throws SubmitException
+}
+
+public interface RequestOp {
+    RequestSubmitOp message(Message part);
+}
+
+public interface RequestSubmitOp {
+    RequestSubmitOp message(Message part);
+    RequestSubmitOp timeout(Duration timeout);
+    RequestCallbackSubmitOp flags(SendFlags flags);
+    CompletableFuture<List<Message>> submitAsync();                  // @throws SubmitException; future completes with RequestException on failure
+    boolean submit(RequestCallback callback);                        // @throws SubmitException; callback receives RequestResult
+}
+
+public interface RequestCallbackSubmitOp {
+    RequestCallbackSubmitOp message(Message part);
+    RequestCallbackSubmitOp timeout(Duration timeout);
+    RequestCallbackSubmitOp flags(SendFlags flags);
+    boolean submit(RequestCallback callback);                        // @throws SubmitException; false only on temporary backpressure
+}
+
+public interface ReplyOp {
+    ReplySubmitOp message(Message part);
+}
+
+public interface ReplySubmitOp {
+    ReplySubmitOp message(Message part);
+    ReplySubmitOp flags(SendFlags flags);
+    void submit();                                                   // @throws SubmitException
+}
 ```
+
+`SendOp`, `RequestOp`, and `ReplyOp` are staged builders. A caller must add at
+least one `message(...)` before any submit method is visible. Repeated
+`message(...)` calls append multipart payload parts in order, so `Spot` does
+not expose separate single-message and `List<Message>` overloads for
+send/request/reply paths. `RequestSubmitOp.submitAsync()` is the async request
+form and does not accept submit flags. Calling `.flags(...)` moves the request
+operation to the callback-submit stage.
 
 `onDispatchEvent` delivers `SpotDispatchInfo`. `CHANNEL_REPLY_READABLE`
 dispatches are readiness notifications for internal request-progress work.

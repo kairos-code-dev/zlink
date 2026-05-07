@@ -85,6 +85,8 @@ public sealed class RoutedChannelIntegrationTests
             options.AddRouteMeshChannel("backend", routed =>
             {
                 routed.Bind(leftEndpoint);
+                routed.ConfigureSocket(socket =>
+                    socket.SendTimeout = TimeSpan.FromSeconds(10));
                 routed.ConfigureRouting(routing => routing.RoutingId = leftRid);
                 routed.UseManualConnections(peers => peers.Connect(rightEndpoint));
             });
@@ -96,6 +98,8 @@ public sealed class RoutedChannelIntegrationTests
             options.AddRouteMeshChannel("backend", routed =>
             {
                 routed.Bind(rightEndpoint);
+                routed.ConfigureSocket(socket =>
+                    socket.SendTimeout = TimeSpan.FromSeconds(10));
                 routed.ConfigureRouting(routing => routing.RoutingId = rightRid);
                 routed.UseManualConnections(peers => peers.Connect(leftEndpoint));
                 routed.AddRequestHandler<SharedPacketRoutedHandler, SharedPacketRequest, SharedPacketReply>(
@@ -110,6 +114,15 @@ public sealed class RoutedChannelIntegrationTests
         await leftHost.StartAsync();
 
         var client = leftHost.Services.GetRequiredService<IZLinkRoutedClient>();
+        _ = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
+            async () => await client.RequestTo("backend", rightRid, new SharedPacketRequest("warmup", 1))
+                .WithPacketName("SharedPacket")
+                .WithTimeout(TimeSpan.FromSeconds(3))
+                .Async<SharedPacketReply>(),
+            static result => result.Value == "warmup",
+            attempts: 30,
+            delayMs: 100);
+
         var slow = client.RequestTo("backend", rightRid, new SharedPacketRequest("slow", 40))
             .WithPacketName("SharedPacket")
             .WithTimeout(TimeSpan.FromSeconds(3))

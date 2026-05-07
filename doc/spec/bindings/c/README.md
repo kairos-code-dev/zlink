@@ -68,7 +68,10 @@ The C binding keeps the canonical C shape.
   signatures
 
 The C binding does not introduce a second high-level naming layer above the
-public C API.
+public C API. The higher-level SPOT operation builder policy in
+`doc/spec/bindings/README.md` does not apply to C; C keeps explicit
+`zlink_spot_*_part(...)` calls because the public C contract is the ABI
+surface used by the other bindings.
 
 ## Nonblocking Policy
 

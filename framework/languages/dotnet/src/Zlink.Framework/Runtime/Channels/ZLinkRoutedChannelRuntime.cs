@@ -217,6 +217,17 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
             {
                 return;
             }
+            catch (ZlinkException ex)
+                when (cancellationToken.IsCancellationRequested
+                      || ex.InternalErrno == (int)ErrorCode.EBadf)
+            {
+                return;
+            }
+            catch (ZlinkException ex)
+                when (ex.InternalErrno == (int)ErrorCode.EFault)
+            {
+                await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+            }
             finally
             {
                 received?.Dispose();

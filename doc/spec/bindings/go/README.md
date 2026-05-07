@@ -65,9 +65,9 @@ stay focused on signatures.
   `AttachChannelDealer(...)`,
   `AttachChannelDealerManual(...)`, and
   `AttachPubIngress(...)`.
-- `Spot` must expose channel-aware data-plane methods:
+- `Spot` must expose channel-aware data-plane operation builders:
   `SendChannel(...)`, `SendToSpot(...)`, `RequestChannel(...)`, and
-  `Publish(serviceName, topic, ...)`.
+  `Publish(serviceName, topic)`.
 - `Spot.Subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `ServiceName *string` or equivalent optional
   field, populated for SPOT subscribe results and empty for raw `SUB` / `XSUB`.
@@ -1285,15 +1285,50 @@ SpotNode dispatch callback worker pool.
 ### Spot
 
 ```go
+type SendOp interface {
+    Message(message *Message) SendSubmitOp
+}
+
+type SendSubmitOp interface {
+    Message(message *Message) SendSubmitOp
+    Flags(flags SendFlags) SendSubmitOp
+    Submit(ctx context.Context) (bool, error)
+}
+
+type RequestOp interface {
+    Message(message *Message) RequestSubmitOp
+}
+
+type RequestSubmitOp interface {
+    Message(message *Message) RequestSubmitOp
+    Timeout(timeout time.Duration) RequestSubmitOp
+    Flags(flags SendFlags) RequestCallbackSubmitOp
+    Submit(ctx context.Context) ([]*Message, error)
+    SubmitCallback(ctx context.Context, callback RequestReplyCallback) (bool, error)
+}
+
+type RequestCallbackSubmitOp interface {
+    Message(message *Message) RequestCallbackSubmitOp
+    Timeout(timeout time.Duration) RequestCallbackSubmitOp
+    Flags(flags SendFlags) RequestCallbackSubmitOp
+    SubmitCallback(ctx context.Context, callback RequestReplyCallback) (bool, error)
+}
+
+type ReplyOp interface {
+    Message(message *Message) ReplySubmitOp
+}
+
+type ReplySubmitOp interface {
+    Message(message *Message) ReplySubmitOp
+    Flags(flags SendFlags) ReplySubmitOp
+    Submit(ctx context.Context) error
+}
+
 // Spot is a pub/sub facade owned by SpotNode. Public Spot handles come from
 // SpotNode.Spot(), SpotNode.EntrySpot(), or SpotNode.SpotLookup(...).
-// Publish sends parts on the given service/topic. Returns (false, nil) only for temporary backpressure.
-func (s *Spot) Publish(serviceName, topic string, flags SendFlags, parts ...*Message) (bool, error)
-// SendChannel sends routed multipart data to the selected channel. Returns (false, nil) only for temporary backpressure.
-func (s *Spot) SendChannel(channelName string, flags SendFlags, parts ...*Message) (bool, error)
-// RequestChannel submits a channel-aware request. Returns (false, nil) only for temporary backpressure.
-func (s *Spot) RequestChannel(channelName string, callback RequestReplyCallback,
-    flags SendFlags, timeout time.Duration, parts ...*Message) (bool, error)
+func (s *Spot) Publish(serviceName, topic string) SendOp
+func (s *Spot) SendChannel(channelName string) SendOp
+func (s *Spot) RequestChannel(channelName string) RequestOp
 // Subscription filter mutation returns *ConfigError on failure.
 func (s *Spot) SetSubscription(filter string) error
 func (s *Spot) UnsetSubscription(filter string) error
@@ -1322,33 +1357,19 @@ func (s *Spot) SetRoutingID(rid RoutingID) error
 func (s *Spot) RoutingID() (RoutingID, error)
 
 // --- routed send (spot → spot) ---
-// SendToSpot submits parts routed to a remote Spot.
-func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID,
-    flags SendFlags, parts ...*Message) (bool, error)
+func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID) SendOp
 
 // --- routed request (spot → spot) ---
-// RequestToSpot submits a routed request to a remote Spot;
-// callback receives RequestResult (maps to *RequestError on completion failure).
-func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID,
-    callback RequestReplyCallback, flags SendFlags,
-    timeout time.Duration, parts ...*Message) (bool, error)
+func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp
 
 // --- routed request (spot → router) ---
-// RequestToRouter submits a routed request to a remote Router peer;
-// callback receives RequestResult (maps to *RequestError on completion failure).
-func (s *Spot) RequestToRouter(peerRid RoutingID,
-    callback RequestReplyCallback, flags SendFlags,
-    timeout time.Duration, parts ...*Message) (bool, error)
+func (s *Spot) RequestToRouter(peerRid RoutingID) RequestOp
 
 // --- routed reply (spot → spot) ---
-// ReplyToSpot submits a routed reply.
-func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64,
-    flags SendFlags, parts ...*Message) (bool, error)
+func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64) ReplyOp
 
 // --- routed reply (spot → router) ---
-// ReplyToRouter submits a routed reply.
-func (s *Spot) ReplyToRouter(peerRid RoutingID, requestSeq uint64,
-    flags SendFlags, parts ...*Message) (bool, error)
+func (s *Spot) ReplyToRouter(peerRid RoutingID, requestSeq uint64) ReplyOp
 
 // --- routed receive ---
 // RecvRouted receives a routed message. Returns *RecvError on failure.
@@ -1363,6 +1384,15 @@ func (s *Spot) DrainChannelReplyFrom(dealer *DealerSocket) error
 // Close closes the spot. Returns *CloseError on failure.
 func (s *Spot) Close() error
 ```
+
+`SendOp`, `RequestOp`, and `ReplyOp` are Go fluent operation builders.
+`Message(...)` appends one multipart payload part. Submit without any payload
+returns a validation error before calling native code. `Submit(ctx)` receives
+the context at execution time, so the operation start methods do not take
+`context.Context`. Request `Submit(ctx)` is the reply-producing form and does
+not use submit flags. Callback submission uses `SubmitCallback(ctx, callback)`
+and may use `Flags(...)`; it returns `(false, nil)` only for temporary
+backpressure.
 
 ### Actor
 

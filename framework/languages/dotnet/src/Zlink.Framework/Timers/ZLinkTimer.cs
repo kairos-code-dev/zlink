@@ -54,7 +54,18 @@ internal sealed class ZLinkTimer : IZLinkTimer
 
         while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
         {
-            await onTickAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await onTickAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                // A transient tick failure must not permanently stop the timer.
+            }
         }
     }
 }

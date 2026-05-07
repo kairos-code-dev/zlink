@@ -244,6 +244,67 @@ public shape를 기준으로 고정한다.
 "구현 기반이 바뀌는 것"이지 "사용자에게 보이는 형태가 자동으로 바뀌는 것"이
 아니다.
 
+### SPOT Operation Builder Policy
+
+SPOT의 send/request/reply 계열은 조합 축이 많다. 대상 경로, payload 개수,
+`flags`, `timeout`, async/callback 완료 방식을 모두 `Spot` 메서드 오버로드로
+펼치면 `Spot`이 얕고 넓은 인터페이스가 된다. 고수준 바인딩은 이 조합
+복잡성을 operation 객체 안으로 숨겨야 한다.
+
+이 정책은 C ABI 바인딩에는 적용하지 않는다. C 바인딩은 `zlink.h`에 맞춘
+함수형 계약을 유지한다. C++ / Java / .NET / Node / Python / Go / Rust 같은
+고수준 바인딩의 canonical SPOT public API에는 아래 형태를 적용한다.
+
+- `Spot`은 작업 시작점만 노출한다.
+  - `publish(...)`
+  - `sendChannel(...)` / `send_channel(...)`
+  - `sendToSpot(...)` / `send_to_spot(...)`
+  - `requestChannel(...)` / `request_channel(...)`
+  - `requestToSpot(...)` / `request_to_spot(...)`
+  - `requestToRouter(...)` / `request_to_router(...)`
+  - `replyToSpot(...)` / `reply_to_spot(...)`
+  - `replyToRouter(...)` / `reply_to_router(...)`
+- 시작점은 즉시 전송하지 않고 `SendOp`, `RequestOp`, `ReplyOp` 또는 언어별
+  동등 operation builder를 반환한다.
+- payload는 operation builder의 `message(...)`를 반복 호출해서 누적한다.
+  단일 payload와 multipart payload를 별도 `Spot` 오버로드로 나누지 않는다.
+- 메시지가 하나도 없는 `submit`은 금지한다. 타입 시스템으로 막을 수 있는
+  언어는 compile-time에서 막고, 그렇지 않은 언어는 `submit` 시점에
+  validation error로 막는다.
+- `flags`, `timeout`, callback, async 선택은 `Spot` 메서드 파라미터가 아니라
+  operation builder의 선택 단계로 둔다.
+- async request는 submit flags를 받지 않는다. callback request는
+  non-blocking submit을 표현하기 위해 `flags`를 받을 수 있다.
+- builder는 한 번 submit된 뒤 다시 submit될 수 없다. 언어가 move-only 또는
+  ownership 타입을 제공하면 타입으로 막고, 그렇지 않으면 런타임 상태 검사로
+  막는다.
+
+공통 흐름은 아래와 같다. 이름은 언어 관례에 맞게 변환한다.
+
+```java
+spot.publish(serviceName, topic)
+    .message(message1)
+    .message(message2)
+    .flags(SendFlags.DONTWAIT)
+    .submit();
+```
+
+언어별 적용 기준은 다음과 같다.
+
+| Binding | Canonical operation-builder shape |
+|---|---|
+| C++ | move-only fluent builder. `submit()`은 rvalue 또는 one-shot state로 중복 submit을 막는다. |
+| Java | staged builder. `message(...)` 전에는 `submit()` / `submitAsync()`가 보이지 않아야 한다. |
+| .NET | fluent builder. 가능하면 interface stage로 최소 payload rule을 표현하되, public surface가 과도하게 장황해지면 submit-time validation을 허용한다. |
+| Node | fluent builder. TypeScript declaration은 payload stage를 표현하고, 런타임도 같은 validation을 수행한다. |
+| Python | fluent builder. `message(...)` 반복과 Python 관용의 `messages(*parts)` convenience를 함께 허용한다. |
+| Go | fluent builder. `context.Context`는 operation 시작점이 아니라 `Submit(ctx)` / `SubmitCallback(ctx, callback)` 실행 시점에 전달한다. |
+| Rust | typestate builder. `Empty` 상태에서 `message(...)` 후 `Ready` 상태로 바뀌며, `Ready` 상태에서만 submit 메서드가 존재한다. |
+
+이 규칙은 POSD 기준에서 Required다. 새 SPOT send/request/reply public API를
+추가하거나 정리할 때는 operation builder 형태를 기준으로 하고, 기존 오버로드를
+canonical API로 더 늘리지 않는다.
+
 ## Core Alignment Rules
 
 이 절은 언어별 문서의 세부 예제보다 우선 적용되는 core 계약 요약이다.
@@ -271,8 +332,8 @@ public shape를 기준으로 고정한다.
   `attach_channel_dealer_manual(...)`,
   `attach_pub_ingress(...)`,
   `send_channel`, `send_to_spot`, `request_channel`,
-  channel-aware send/request 표면과 service-aware publish / subscribe 표면을
-  제공해야 한다.
+  channel-aware send/request operation builder 시작점과 service-aware
+  publish / subscribe 표면을 제공해야 한다.
 - service-aware SPOT subscribe 결과는 topic / parts 와 함께 반드시
   `service_name` 을 노출해야 한다.
 - `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/channel-reply/timer/actor
@@ -705,7 +766,9 @@ C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 
 
 ### Flags Policy
 
-모든 데이터 경로 함수는 `flags` 파라미터를 갖는다.
+모든 데이터 경로 함수는 `flags` 선택 항목을 갖는다. 일반 socket 함수는
+언어별 시그니처의 `flags` 파라미터로 표현하고, SPOT operation builder 대상
+함수는 builder의 `flags(...)` 단계로 표현한다.
 
 | 함수 계열 | flags 용도 |
 |---|---|
@@ -725,12 +788,15 @@ C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 
     Go=`error`, Rust=`Err(E)`).
 - 언어별 flags 표현:
   - C / C++: `int flags = 0`
-  - Java: `SendFlags flags` overload (기본 blocking 오버로드 유지)
-  - .NET: `SendFlags flags = SendFlags.None`
-  - Go: `flags SendFlags`
-  - Rust: base 함수 (blocking) + `_with_flags` 변형
-  - Node: `flags?: SendFlags`
-  - Python: `*, flags: int = 0`
+  - Java: 일반 socket은 `SendFlags flags` overload, SPOT builder는
+    `.flags(SendFlags flags)`
+  - .NET: 일반 socket은 `SendFlags flags = SendFlags.None`, SPOT builder는
+    `.Flags(SendFlags flags)`
+  - Go: 일반 socket은 `flags SendFlags`, SPOT builder는 `Flags(flags)`
+  - Rust: 일반 socket은 base 함수 (blocking) + `_with_flags` 변형, SPOT
+    builder는 `flags(flags)`
+  - Node: 일반 socket은 `flags?: SendFlags`, SPOT builder는 `.flags(flags)`
+  - Python: 일반 socket은 `*, flags: int = 0`, SPOT builder는 `.flags(flags)`
 
 ### Naming Policy
 
@@ -766,15 +832,21 @@ request_callback(parts, callback, flags, timeout)
 SPOT routed 네이밍은 두 축을 함께 가져간다.
 
 - **channel-aware 경로**
-  - `send_channel(channel_name, parts, flags)`
-  - `request_channel(channel_name, parts, callback, flags, timeout)`
-  - `publish(service_name, topic, parts, flags)`
-  - `reply_to_spot(dest_node_rid, dest_spot_rid, request_seq, parts, flags)`
-  - `reply_to_router(peer_rid, request_seq, parts, flags)`
+  - `send_channel(channel_name) -> SendOp`
+  - `request_channel(channel_name) -> RequestOp`
+  - `publish(service_name, topic) -> SendOp`
+  - `reply_to_spot(dest_node_rid, dest_spot_rid, request_seq) -> ReplyOp`
+  - `reply_to_router(peer_rid, request_seq) -> ReplyOp`
 - **direct routed request 경로**
-  - `send_to_spot(dest_node_rid, dest_spot_rid, parts, flags)`
-  - `request_to_spot(dest_node_rid, dest_spot_rid, parts, callback, flags, timeout)`
-  - `request_to_router(peer_rid, parts, callback, flags, timeout)`
+  - `send_to_spot(dest_node_rid, dest_spot_rid) -> SendOp`
+  - `request_to_spot(dest_node_rid, dest_spot_rid) -> RequestOp`
+  - `request_to_router(peer_rid) -> RequestOp`
+
+`SendOp`, `RequestOp`, `ReplyOp`의 payload와 option은
+`SPOT Operation Builder Policy` 절이 정한 `message(...)`, `flags(...)`,
+`timeout(...)`, `submit...` 단계로 표현한다. 따라서 새 canonical SPOT
+surface에서는 같은 시작점에 `Message` / `List<Message>` / `flags` / `timeout`
+조합 오버로드를 추가하지 않는다.
 
 새 SPOT 바인딩 표면에서는 예전 `send_service` / `request_service` 대신
 `send_channel` / `request_channel` / `publish(service_name, ...)` 를 기본 경로로
@@ -787,6 +859,9 @@ SPOT routed 네이밍은 두 축을 함께 가져간다.
 
 request 는 coroutine 변형과 callback 변형 두 가지를 제공한다.
 **함수 이름은 둘 다 `request`** 이고 callback 파라미터 유무로 구분한다.
+SPOT operation builder 대상에서는 작업 시작점 이름이 `requestChannel` /
+`requestToSpot` / `requestToRouter` 이며, 완료 방식은 builder의
+`submitAsync` / `submit(callback)` 또는 언어별 동등 submit 메서드로 구분한다.
 
 #### Coroutine / Async request
 

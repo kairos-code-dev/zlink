@@ -68,9 +68,9 @@ API lists can stay focused on signatures.
   `attachChannelDealer(discovery, dealer)`,
   `attachChannelDealerManual(channelName, dealer)`, and
   `attachPubIngress(pub)`.
-- `Spot` must expose channel-aware data-plane methods:
+- `Spot` must expose channel-aware data-plane operation builders:
   `sendChannel(...)`, `sendToSpot(...)`, `requestChannel(...)`, and
-  `publish(serviceName, topic, ...)`.
+  `publish(serviceName, topic)`.
 - `Spot.subscribe(...)` returns a service-aware `TopicMessage`.
   `TopicMessage` therefore needs `serviceName: string | null`, populated for
   SPOT subscribe results and `null` for raw `SUB` / `XSUB`.
@@ -1602,34 +1602,9 @@ class Spot {
     // The SpotNode constructor path is internal. Public code obtains Spot
     // handles through SpotNode factories.
     requestTimeout: number;      // get / set (ms)
-    /** @throws {SubmitError} */
-    publish(serviceName: string, topic: string, payload: MessageLike, flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
-    publish(serviceName: string, topic: string, payloadParts: readonly MessageLike[], flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
-    sendChannel(channelName: string, payload: MessageLike, flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
-    sendChannel(channelName: string, payloadParts: readonly MessageLike[], flags?: SendFlags): boolean;
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestChannel(channelName: string, message: MessageLike, timeout?: number): Promise<Message[]>;
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestChannel(channelName: string, parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Callback receives `RequestResult` directly.
-     */
-    requestChannel(channelName: string, message: MessageLike,
-                   callback: RequestCallback,
-                   flags?: SendFlags,
-                   timeout?: number): boolean;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Callback receives `RequestResult` directly.
-     */
-    requestChannel(channelName: string, parts: readonly MessageLike[],
-                   callback: RequestCallback,
-                   flags?: SendFlags,
-                   timeout?: number): boolean;
+    publish(serviceName: string, topic: string): SendOp;
+    sendChannel(channelName: string): SendOp;
+    requestChannel(channelName: string): RequestOp;
     /** @throws {ConfigError} */
     setSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
@@ -1643,77 +1618,13 @@ class Spot {
     /** @throws {HandlerError} */
     onSendReady(handler: SpotSendReadyHandler): void;
 
-    // --- routed send (spot -> spot) ---
-    /** @throws {SubmitError} */
-    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-               message: MessageLike, flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
-    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-               parts: readonly MessageLike[], flags?: SendFlags): boolean;
-
-    // --- routed request (spot → spot, async) — no flags ---
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  message: MessageLike, timeout?: number): Promise<Message[]>;
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-
-    // --- routed request (spot → spot, callback submit) ---
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Returns false only on temporary backpressure. Callback receives `RequestResult`.
-     */
-    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  message: MessageLike,
-                  callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Returns false only on temporary backpressure. Callback receives `RequestResult`.
-     */
-    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  parts: readonly MessageLike[],
-                  callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-
-    // --- routed request (spot → router, async) — no flags ---
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToRouter(peerRid: RoutingId,
-                    message: MessageLike, timeout?: number): Promise<Message[]>;
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToRouter(peerRid: RoutingId,
-                    parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-
-    // --- routed request (spot → router, callback submit) ---
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Returns false only on temporary backpressure. Callback receives `RequestResult`.
-     */
-    requestToRouter(peerRid: RoutingId,
-                    message: MessageLike,
-                    callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Returns false only on temporary backpressure. Callback receives `RequestResult`.
-     */
-    requestToRouter(peerRid: RoutingId,
-                    parts: readonly MessageLike[],
-                    callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-
-    // --- routed reply (spot → spot) ---
-    /** @throws {SubmitError} */
+    // --- routed send / request / reply builders ---
+    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): SendOp;
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): RequestOp;
+    requestToRouter(peerRid: RoutingId): RequestOp;
     replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
-    /** @throws {SubmitError} */
-    replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
-
-    // --- routed reply (spot → router) ---
-    /** @throws {SubmitError} */
-    replyToRouter(peerRid: RoutingId, requestSeq: bigint,
-                  message: MessageLike, flags?: SendFlags): void;
-    /** @throws {SubmitError} */
-    replyToRouter(peerRid: RoutingId, requestSeq: bigint,
-                  parts: readonly MessageLike[], flags?: SendFlags): void;
+                requestSeq: bigint): ReplyOp;
+    replyToRouter(peerRid: RoutingId, requestSeq: bigint): ReplyOp;
 
     // --- routed receive ---
     /** @throws {RecvError} */
@@ -1740,7 +1651,59 @@ class Spot {
     /** @throws {CloseError} */
     close(): void;
 }
+
+interface SendOp {
+    message(message: MessageLike): SendSubmitOp;
+}
+
+interface SendSubmitOp {
+    message(message: MessageLike): SendSubmitOp;
+    flags(flags: SendFlags): SendSubmitOp;
+    /** @throws {SubmitError} */
+    submit(): boolean;
+}
+
+interface RequestOp {
+    message(message: MessageLike): RequestSubmitOp;
+}
+
+interface RequestSubmitOp {
+    message(message: MessageLike): RequestSubmitOp;
+    timeout(timeoutMs: number): RequestSubmitOp;
+    flags(flags: SendFlags): RequestCallbackSubmitOp;
+    /** Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    submitAsync(): Promise<Message[]>;
+    /** @throws {SubmitError} on submit failure other than temporary backpressure. */
+    submit(callback: RequestCallback): boolean;
+}
+
+interface RequestCallbackSubmitOp {
+    message(message: MessageLike): RequestCallbackSubmitOp;
+    timeout(timeoutMs: number): RequestCallbackSubmitOp;
+    flags(flags: SendFlags): RequestCallbackSubmitOp;
+    /** @throws {SubmitError} on submit failure other than temporary backpressure. */
+    submit(callback: RequestCallback): boolean;
+}
+
+interface ReplyOp {
+    message(message: MessageLike): ReplySubmitOp;
+}
+
+interface ReplySubmitOp {
+    message(message: MessageLike): ReplySubmitOp;
+    flags(flags: SendFlags): ReplySubmitOp;
+    /** @throws {SubmitError} */
+    submit(): void;
+}
 ```
+
+`SendOp`, `RequestOp`, and `ReplyOp` are fluent operation builders. TypeScript
+declarations must hide submit methods until at least one `message(...)` has
+been added. JavaScript runtime code must perform the same validation and throw
+a validation error for submit without payload. Repeated `message(...)` calls
+append multipart payload parts in order. Async request submission uses
+`submitAsync()` and has no submit flags; callback submission may use
+`flags(...)` before `submit(callback)`.
 
 `onDispatchEvent(...)` is the canonical SPOT readable-notification surface.
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining

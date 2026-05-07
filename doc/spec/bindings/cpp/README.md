@@ -78,9 +78,9 @@ with these rules, the API listing must be corrected to match this section.
   `attach_channel_dealer(...)`,
   `attach_channel_dealer_manual(...)`,
   `attach_pub_ingress(...)`, and `attach_discovery(...)`.
-- `service::spot_t` must expose channel-aware data-plane methods:
+- `service::spot_t` must expose channel-aware data-plane operation builders:
   `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
-  `publish(const std::string& service_name, const std::string& topic, ...)`.
+  `publish(const std::string& service_name, const std::string& topic)`.
 - `service::spot_t::subscribe(...)`, raw `SUB`, and raw `XSUB` return
   `topic_message_t`. The shared `topic_message_t` shape includes optional
   `service_name`; SPOT subscribe sets it, and raw topic sockets return
@@ -2736,6 +2736,14 @@ management. Public callers obtain it only through `spot_node_t` factories.
 ```cpp
 namespace service {
 
+class send_op_t;
+class send_ready_op_t;
+class request_op_t;
+class request_ready_op_t;
+class request_callback_ready_op_t;
+class reply_op_t;
+class reply_ready_op_t;
+
 class spot_t {
     // explicit spot_t(spot_node_t&) is internal. User code creates a Spot
     // through spot_node_t factories.
@@ -2752,41 +2760,11 @@ class spot_t {
     /// @throws config_error_t
     std::chrono::milliseconds request_timeout() const;
 
-    // --- channel-aware publish / request ---
-    /// @throws submit_error_t
-    bool publish(const std::string& service_name, const std::string& topic,
-                 message_t& part, int flags = 0);
-    /// @throws submit_error_t
-    bool publish(const std::string& service_name, const std::string& topic,
-                 std::vector<message_t>& parts, int flags = 0);
-    /// @throws submit_error_t
-    bool send_channel(const std::string& channel_name,
-                      message_t& part,
-                      int flags = 0);
-    /// @throws submit_error_t
-    bool send_channel(const std::string& channel_name,
-                      std::vector<message_t>& parts,
-                      int flags = 0);
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request_channel(const std::string& channel_name,
-                                                           message_t& part,
-                                                           std::chrono::milliseconds timeout = {});
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request_channel(const std::string& channel_name,
-                                                           std::vector<message_t>& parts,
-                                                           std::chrono::milliseconds timeout = {});
-    /// @throws submit_error_t
-    bool request_channel(const std::string& channel_name,
-                         message_t& part,
-                         request_callback_t callback,
-                         int flags = 0,
-                         std::chrono::milliseconds timeout = {});
-    /// @throws submit_error_t
-    bool request_channel(const std::string& channel_name,
-                         std::vector<message_t>& parts,
-                         request_callback_t callback,
-                         int flags = 0,
-                         std::chrono::milliseconds timeout = {});
+    // --- channel-aware publish / send / request operation builders ---
+    send_op_t publish(const std::string& service_name,
+                      const std::string& topic);
+    send_op_t send_channel(const std::string& channel_name);
+    request_op_t request_channel(const std::string& channel_name);
 
     // --- subscribe ---
     /// @throws recv_error_t
@@ -2814,103 +2792,18 @@ class spot_t {
     /// @throws config_error_t
     routing_id_t routing_id() const;
 
-    // --- routed send (spot -> spot) ---
-    /// @throws submit_error_t
-    bool send_to_spot(const routing_id_t& dest_node_rid,
-                      const routing_id_t& dest_spot_rid,
-                      message_t& part,
-                      int flags = 0);
-    /// @throws submit_error_t
-    bool send_to_spot(const routing_id_t& dest_node_rid,
-                      const routing_id_t& dest_spot_rid,
-                      std::vector<message_t>& parts,
-                      int flags = 0);
-
-    // --- routed request (spot -> spot, coroutine, blocking submit — no flags) ---
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request_to_spot(
+    // --- routed send / request / reply operation builders ---
+    send_op_t send_to_spot(const routing_id_t& dest_node_rid,
+                           const routing_id_t& dest_spot_rid);
+    request_op_t request_to_spot(
         const routing_id_t& dest_node_rid,
-        const routing_id_t& dest_spot_rid,
-        message_t& part,
-        std::chrono::milliseconds timeout = {});
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request_to_spot(
-        const routing_id_t& dest_node_rid,
-        const routing_id_t& dest_spot_rid,
-        std::vector<message_t>& parts,
-        std::chrono::milliseconds timeout = {});
-
-    // --- routed request (spot -> spot, callback) ---
-    /// @throws submit_error_t
-    bool request_to_spot(
-        const routing_id_t& dest_node_rid,
-        const routing_id_t& dest_spot_rid,
-        message_t& part,
-        request_callback_t callback,
-        int flags = 0,
-        std::chrono::milliseconds timeout = {});
-    /// @throws submit_error_t
-    bool request_to_spot(
-        const routing_id_t& dest_node_rid,
-        const routing_id_t& dest_spot_rid,
-        std::vector<message_t>& parts,
-        request_callback_t callback,
-        int flags = 0,
-        std::chrono::milliseconds timeout = {});
-
-    // --- routed request (spot -> router, coroutine, blocking submit — no flags) ---
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request_to_router(
-        const routing_id_t& peer_rid,
-        message_t& part,
-        std::chrono::milliseconds timeout = {});
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request_to_router(
-        const routing_id_t& peer_rid,
-        std::vector<message_t>& parts,
-        std::chrono::milliseconds timeout = {});
-
-    // --- routed request (spot -> router, callback) ---
-    /// @throws submit_error_t
-    bool request_to_router(
-        const routing_id_t& peer_rid,
-        message_t& part,
-        request_callback_t callback,
-        int flags = 0,
-        std::chrono::milliseconds timeout = {});
-    /// @throws submit_error_t
-    bool request_to_router(
-        const routing_id_t& peer_rid,
-        std::vector<message_t>& parts,
-        request_callback_t callback,
-        int flags = 0,
-        std::chrono::milliseconds timeout = {});
-
-    // --- routed reply (spot → spot) ---
-    /// @throws submit_error_t
-    void reply_to_spot(const routing_id_t& dest_node_rid,
-                       const routing_id_t& dest_spot_rid,
-                       uint64_t request_seq,
-                       message_t& part,
-                       int flags = 0);
-    /// @throws submit_error_t
-    void reply_to_spot(const routing_id_t& dest_node_rid,
-                       const routing_id_t& dest_spot_rid,
-                       uint64_t request_seq,
-                       std::vector<message_t>& parts,
-                       int flags = 0);
-
-    // --- routed reply (spot → router) ---
-    /// @throws submit_error_t
-    void reply_to_router(const routing_id_t& peer_rid,
-                         uint64_t request_seq,
-                         message_t& part,
-                         int flags = 0);
-    /// @throws submit_error_t
-    void reply_to_router(const routing_id_t& peer_rid,
-                         uint64_t request_seq,
-                         std::vector<message_t>& parts,
-                         int flags = 0);
+        const routing_id_t& dest_spot_rid);
+    request_op_t request_to_router(const routing_id_t& peer_rid);
+    reply_op_t reply_to_spot(const routing_id_t& dest_node_rid,
+                             const routing_id_t& dest_spot_rid,
+                             uint64_t request_seq);
+    reply_op_t reply_to_router(const routing_id_t& peer_rid,
+                               uint64_t request_seq);
 
     // --- routed receive ---
     /// @throws recv_error_t
@@ -2936,8 +2829,80 @@ class spot_t {
     void close();
 };
 
+class send_op_t {
+public:
+    send_op_t(send_op_t&&) noexcept;
+    send_op_t& operator=(send_op_t&&) noexcept;
+    send_ready_op_t message(message_t& part) &&;
+};
+
+class send_ready_op_t {
+public:
+    send_ready_op_t(send_ready_op_t&&) noexcept;
+    send_ready_op_t& operator=(send_ready_op_t&&) noexcept;
+    send_ready_op_t&& message(message_t& part) &&;
+    send_ready_op_t&& flags(int flags) &&;
+    /// @throws submit_error_t
+    bool submit() &&;
+};
+
+class request_op_t {
+public:
+    request_op_t(request_op_t&&) noexcept;
+    request_op_t& operator=(request_op_t&&) noexcept;
+    request_ready_op_t message(message_t& part) &&;
+};
+
+class request_ready_op_t {
+public:
+    request_ready_op_t(request_ready_op_t&&) noexcept;
+    request_ready_op_t& operator=(request_ready_op_t&&) noexcept;
+    request_ready_op_t&& message(message_t& part) &&;
+    request_ready_op_t&& timeout(std::chrono::milliseconds timeout) &&;
+    request_callback_ready_op_t flags(int flags) &&;
+    /// @throws request_error_t (co_await), submit_error_t (submit)
+    async_result_t<std::vector<message_t>> submit_async() &&;
+    /// @throws submit_error_t
+    bool submit(request_callback_t callback) &&;
+};
+
+class request_callback_ready_op_t {
+public:
+    request_callback_ready_op_t(request_callback_ready_op_t&&) noexcept;
+    request_callback_ready_op_t& operator=(request_callback_ready_op_t&&) noexcept;
+    request_callback_ready_op_t&& message(message_t& part) &&;
+    request_callback_ready_op_t&& timeout(std::chrono::milliseconds timeout) &&;
+    request_callback_ready_op_t&& flags(int flags) &&;
+    /// @throws submit_error_t
+    bool submit(request_callback_t callback) &&;
+};
+
+class reply_op_t {
+public:
+    reply_op_t(reply_op_t&&) noexcept;
+    reply_op_t& operator=(reply_op_t&&) noexcept;
+    reply_ready_op_t message(message_t& part) &&;
+};
+
+class reply_ready_op_t {
+public:
+    reply_ready_op_t(reply_ready_op_t&&) noexcept;
+    reply_ready_op_t& operator=(reply_ready_op_t&&) noexcept;
+    reply_ready_op_t&& message(message_t& part) &&;
+    reply_ready_op_t&& flags(int flags) &&;
+    /// @throws submit_error_t
+    void submit() &&;
+};
+
 } // namespace service
 ```
+
+`send_op_t`, `request_op_t`, and `reply_op_t` are move-only operation builders.
+The first `message(...)` call moves the operation into a ready state; repeated
+`message(...)` calls append multipart payload parts in order. Submit methods
+consume the ready operation and must not be callable twice. Async request
+submission uses `submit_async()` and has no submit flags; callback submission
+may add `flags(...)` before `submit(callback)`.
 
 `on_dispatch_event(...)` is the canonical SPOT readable-notification surface.
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining with

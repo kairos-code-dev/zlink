@@ -315,7 +315,8 @@ int send_combined_parts_on_socket (zlink::socket_base_t *socket_,
                                    zlink_send_flags_t flags_);
 int enqueue_runtime_routed_send (zlink::spot_runtime_t *runtime_,
                                  std::vector<zlink_msg_t> *parts_,
-                                 zlink_send_flags_t flags_);
+                                 zlink_send_flags_t flags_,
+                                 int sndtimeo_ms_);
 int drain_runtime_routed_send_queue (zlink::spot_runtime_t *runtime_);
 int enqueue_runtime_external_router_ingress (
   zlink::spot_runtime_t *runtime_,
@@ -358,12 +359,14 @@ int dispatch_spot_routed_delivery (spot_node_t *origin_node_,
                                    bool local_target_,
                                    const std::string &destination_endpoint_rid_,
                                    zlink_send_flags_t flags_,
+                                   int sndtimeo_ms_,
                                    std::vector<zlink_msg_t> *combined_);
 int dispatch_router_spot_delivery (
   const std::string &destination_node_rid_,
   const std::string &destination_spot_rid_,
   router_spot_delivery_kind_t kind_,
   zlink_send_flags_t flags_,
+  int sndtimeo_ms_,
   std::vector<zlink_msg_t> *combined_);
 int dispatch_local_reply (std::vector<zlink_msg_t> *combined_);
 int dispatch_local_request (const std::string &router_rid_,

@@ -188,6 +188,8 @@ I/O thread를 같은 NUMA 노드에 배치하면 cross-node YPipe 접근이 없�
 
 이 스레딩 모델에서 다음 패턴은 안전하고 동작이 명확하게 정의된다
 (전체 계약은 [Thread-Safety 내부 구조](thread-safety.ko.md) 참고).
+`send`/`publish`/`send_rid` 같은 hot path는 여러 스레드에서 동시 사용 가능하며,
+control path는 정확성을 위해 내부에서 직렬화된다.
 
 ### 7.1 여러 thread에서 `zlink_send()` 동시 호출
 

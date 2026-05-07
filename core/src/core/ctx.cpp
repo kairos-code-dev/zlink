@@ -123,21 +123,6 @@ zlink::service_control_runtime_t *zlink::ctx_t::service_control_runtime ()
     return ctx_bootstrap_t::ensure_service_runtime (*this);
 }
 
-zlink::service_control_runtime_t *zlink::ctx_t::service_data_runtime ()
-{
-    if (!ctx_bootstrap_t::ensure_service_runtime (*this))
-        return NULL;
-    return _runtime_resources.service_data_runtime ();
-}
-
-zlink::service_control_runtime_t *zlink::ctx_t::service_data_runtime_for_key (
-  uint32_t key_)
-{
-    if (!ctx_bootstrap_t::ensure_service_runtime (*this))
-        return NULL;
-    return _runtime_resources.service_data_runtime_for_key (key_);
-}
-
 void zlink::ctx_t::auto_hwm_recalc_task_main (void *arg_)
 {
     static_cast<ctx_t *> (arg_)->auto_hwm_recalc_task ();

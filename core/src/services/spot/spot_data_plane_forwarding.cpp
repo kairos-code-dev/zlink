@@ -14,10 +14,13 @@
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
+#include "services/spot/spot_subject_access.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/err.hpp"
 
 #include <errno.h>
+#include <chrono>
+#include <functional>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,7 +35,25 @@ bool spot_direct_route_debug_enabled_local ()
     return std::getenv ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE") != NULL;
 }
 
-static const size_t pending_queue_bytes_floor = 64 * 1024;
+static const size_t default_queue_message_unit_bytes = 64 * 1024;
+
+struct queue_admission_plan_t
+{
+    queue_admission_plan_t () :
+        unlimited (false),
+        message_limit (1),
+        byte_limit (default_queue_message_unit_bytes),
+        resume_message_limit (1),
+        resume_byte_limit (default_queue_message_unit_bytes / 2)
+    {
+    }
+
+    bool unlimited;
+    size_t message_limit;
+    size_t byte_limit;
+    size_t resume_message_limit;
+    size_t resume_byte_limit;
+};
 
 int send_remote_mesh_message_local (socket_base_t *socket_,
                                     const std::string &topic_,
@@ -185,30 +206,88 @@ void refresh_remote_target_pollout_interest_local (
     target_->pollout_armed = need_pollout;
 }
 
-size_t publish_ingress_hard_limit (spot_runtime_t *runtime_)
+size_t publish_message_unit_bytes (spot_runtime_t *runtime_,
+                                   size_t entry_bytes_)
 {
-    if (!runtime_)
-        return 0;
-    const int slots =
-      spot_node_pubsub_admission_hwm (runtime_->hwm_config_snapshot ());
-    if (slots == 0)
-        return 0;
-    const size_t unit = pending_queue_bytes_floor;
-    return static_cast<size_t> (slots) * unit;
+    if (runtime_ && runtime_->owner) {
+        const spot_node_pub_defaults_t defaults = runtime_->owner->load_pub_defaults ();
+        if (defaults.auto_hwm_msg_unit_bytes.enabled
+            && defaults.auto_hwm_msg_unit_bytes.value > 0)
+            return static_cast<size_t> (
+              defaults.auto_hwm_msg_unit_bytes.value);
+    }
+    return entry_bytes_ > 0 ? entry_bytes_ : 1;
+}
+
+queue_admission_plan_t make_queue_admission_plan (int slots_,
+                                                  size_t message_unit_)
+{
+    queue_admission_plan_t plan;
+    if (slots_ == 0) {
+        plan.unlimited = true;
+        plan.message_limit = 0;
+        plan.byte_limit = 0;
+        plan.resume_message_limit = 0;
+        plan.resume_byte_limit = 0;
+        return plan;
+    }
+    const size_t slots = static_cast<size_t> (slots_ > 0 ? slots_ : 1);
+    const size_t unit = message_unit_ > 0 ? message_unit_ : 1;
+    plan.unlimited = false;
+    plan.message_limit = slots;
+    plan.byte_limit = slots > SIZE_MAX / unit ? SIZE_MAX : slots * unit;
+    plan.resume_message_limit = slots / 2;
+    plan.resume_byte_limit = plan.byte_limit / 2;
+    return plan;
 }
 
 bool publish_ingress_has_room (
   const spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue_,
-  size_t hard_limit_,
+  const queue_admission_plan_t &plan_,
   size_t message_bytes_)
 {
-    if (hard_limit_ == 0)
+    if (plan_.unlimited)
         return true;
+    if (queue_.messages.size () >= plan_.message_limit)
+        return false;
     if (queue_.messages.empty ())
         return true;
-    if (message_bytes_ > hard_limit_)
+    if (message_bytes_ > plan_.byte_limit)
         return false;
-    return queue_.queued_bytes <= hard_limit_ - message_bytes_;
+    return queue_.queued_bytes <= plan_.byte_limit - message_bytes_;
+}
+
+bool publish_ingress_can_resume (
+  const spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue_,
+  const queue_admission_plan_t &plan_)
+{
+    if (plan_.unlimited)
+        return true;
+    return queue_.messages.size () <= plan_.resume_message_limit
+           && queue_.queued_bytes <= plan_.resume_byte_limit;
+}
+
+bool wait_for_queue_room (std::condition_variable &cv_,
+                          std::unique_lock<std::mutex> &lock_,
+                          int sndtimeo_ms_,
+                          const std::function<bool ()> &ready_)
+{
+    if (sndtimeo_ms_ == 0)
+        return ready_ ();
+    if (sndtimeo_ms_ < 0) {
+        while (!ready_ ())
+            cv_.wait (lock_);
+        return true;
+    }
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (sndtimeo_ms_);
+    while (!ready_ ()) {
+        if (cv_.wait_until (lock_, deadline) == std::cv_status::timeout
+            && !ready_ ())
+            return false;
+    }
+    return true;
 }
 
 int copy_raw_parts_to_owned (zlink_msg_t *parts_,
@@ -371,15 +450,15 @@ void spot_data_plane_forwarder_t::update_pending_queue_limits (
       spot_data_plane_pending_t::resolve_fanout_hwm (runtime_);
     const size_t pending_limit =
       static_cast<size_t> (std::max (fanout_hwm / 2,
-                                     static_cast<int> (pending_queue_bytes_floor)));
+                                     static_cast<int> (default_queue_message_unit_bytes)));
     state_->local_fanout.pending_hard_limit = pending_limit;
     state_->remote_mesh.pending_hard_limit = pending_limit;
     state_->local_fanout.pending_pause_threshold = pending_limit;
     state_->local_fanout.pending_resume_threshold =
-      std::max (pending_limit / 2, pending_queue_bytes_floor / 2);
+      std::max (pending_limit / 2, default_queue_message_unit_bytes / 2);
     state_->remote_mesh.pending_pause_threshold = pending_limit;
     state_->remote_mesh.pending_resume_threshold =
-      std::max (pending_limit / 2, pending_queue_bytes_floor / 2);
+      std::max (pending_limit / 2, default_queue_message_unit_bytes / 2);
 }
 
 void spot_data_plane_forwarder_t::refresh_poller_interest (
@@ -532,7 +611,8 @@ int spot_data_plane_forwarder_t::enqueue_publish_ingress (
   const char *topic_,
   zlink_msg_t *parts_,
   size_t part_count_,
-  zlink_send_flags_t flags_)
+  zlink_send_flags_t flags_,
+  int sndtimeo_ms_)
 {
     if (!runtime_ || !topic_ || !*topic_) {
         errno = EINVAL;
@@ -549,17 +629,25 @@ int spot_data_plane_forwarder_t::enqueue_publish_ingress (
 
     spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue =
       runtime_->execution.data_plane_state.publish_ingress;
-    const size_t hard_limit = publish_ingress_hard_limit (runtime_);
+    const int slots =
+      spot_node_pubsub_admission_hwm (runtime_->hwm_config_snapshot ());
+    const queue_admission_plan_t plan = make_queue_admission_plan (
+      slots, publish_message_unit_bytes (runtime_, entry.encoded_bytes));
     std::unique_lock<std::mutex> lock (queue.mutex);
-    while (!queue.closed
-           && !publish_ingress_has_room (queue, hard_limit,
-                                         entry.encoded_bytes)) {
-        if ((flags_ & ZLINK_DONTWAIT) != 0) {
-            spot_clear_msg_parts (&entry.parts);
-            errno = EAGAIN;
-            return -1;
-        }
-        queue.cv.wait (lock);
+    if (!publish_ingress_has_room (queue, plan, entry.encoded_bytes))
+        queue.backpressure_active = true;
+    const bool dontwait = (flags_ & ZLINK_DONTWAIT) != 0;
+    const bool ready =
+      wait_for_queue_room (queue.cv, lock, dontwait ? 0 : sndtimeo_ms_,
+                           [&queue, &plan, &entry] () {
+                               return queue.closed
+                                      || publish_ingress_has_room (
+                                        queue, plan, entry.encoded_bytes);
+                           });
+    if (!ready) {
+        spot_clear_msg_parts (&entry.parts);
+        errno = EAGAIN;
+        return -1;
     }
     if (queue.closed) {
         spot_clear_msg_parts (&entry.parts);
@@ -569,6 +657,8 @@ int spot_data_plane_forwarder_t::enqueue_publish_ingress (
 
     queue.queued_bytes += entry.encoded_bytes;
     queue.messages.push_back (std::move (entry));
+    if (!publish_ingress_has_room (queue, plan, 1))
+        queue.backpressure_active = true;
     if (!queue.signal_armed && queue.signaler.valid ()) {
         queue.signal_armed = true;
         queue.signaler.send ();
@@ -587,14 +677,27 @@ int spot_data_plane_forwarder_t::drain_publish_ingress_queue (
         return 0;
 
     std::deque<spot_data_plane_runtime_state_t::staged_publish_entry_t> local;
+    bool notify_recovery = false;
     {
         spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue =
           state_->publish_ingress;
         std::lock_guard<std::mutex> lock (queue.mutex);
         local.swap (queue.messages);
         queue.queued_bytes = 0;
+        if (queue.backpressure_active
+            && publish_ingress_can_resume (
+              queue,
+              make_queue_admission_plan (
+                spot_node_pubsub_admission_hwm (
+                  runtime_->hwm_config_snapshot ()),
+                1))) {
+            queue.backpressure_active = false;
+            notify_recovery = true;
+        }
         queue.cv.notify_all ();
     }
+    if (notify_recovery)
+        notify_spot_send_ready_recovery (runtime_->owner);
 
     while (!local.empty ()) {
         spot_data_plane_runtime_state_t::staged_publish_entry_t &entry =

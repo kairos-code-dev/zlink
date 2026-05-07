@@ -217,8 +217,8 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     if (state_->fanout) {
         state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &fanout_sndhwm,
                                      sizeof (fanout_sndhwm));
-        state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
-                                     sizeof (neg_one));
+        state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &zero,
+                                     sizeof (zero));
         state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero,
                                      sizeof (zero));
         state_->fanout->setsockopt (ZLINK_INTERNAL_OPT_XPUB_NODROP, &one,
@@ -230,8 +230,8 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                                            &mesh_pub_sndhwm,
                                            sizeof (mesh_pub_sndhwm));
         }
-        state_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
-                                       sizeof (neg_one));
+        state_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &zero,
+                                       sizeof (zero));
     }
     if (state_->mesh_xsub) {
         if (pubsub_hwm_override) {
@@ -269,7 +269,7 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
         state_->external_router->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO,
                                               &neg_one, sizeof (neg_one));
         state_->external_router->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO,
-                                              &neg_one, sizeof (neg_one));
+                                              &zero, sizeof (zero));
     }
     state_->mesh_pub_hwm.current_sndhwm =
       state_->mesh_pub

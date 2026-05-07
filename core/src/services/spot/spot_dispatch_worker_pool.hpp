@@ -17,6 +17,8 @@ namespace zlink
 class spot_dispatch_worker_pool_t
 {
   public:
+    typedef void (*task_fn_t) (void *);
+
     spot_dispatch_worker_pool_t ();
     ~spot_dispatch_worker_pool_t ();
 
@@ -24,6 +26,7 @@ class spot_dispatch_worker_pool_t
     int update_limits (int min_workers_, int max_workers_);
     void stop ();
     int post (void *spot_);
+    int post_task (task_fn_t fn_, void *arg_);
 
     int min_workers () const;
     int max_workers () const;
@@ -33,9 +36,18 @@ class spot_dispatch_worker_pool_t
     bool spawn_worker_locked ();
     void run_worker ();
 
+    struct task_t
+    {
+        task_t (task_fn_t fn_, void *arg_) : fn (fn_), arg (arg_) {}
+
+        task_fn_t fn;
+        void *arg;
+    };
+
     mutable std::mutex _mutex;
     std::condition_variable _cv;
     std::deque<void *> _ready;
+    std::deque<task_t> _tasks;
     std::unordered_set<void *> _queued;
     std::unordered_set<void *> _active;
     std::unordered_set<void *> _dirty;

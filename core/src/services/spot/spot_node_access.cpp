@@ -273,12 +273,6 @@ int spot_node_access_t::attach_channel_dealer_manual (spot_node_t *node_,
              : -1;
 }
 
-int spot_node_access_t::attach_pub_ingress (spot_node_t *node_, void *pub_)
-{
-    socket_base_t *pub = try_as_socket (pub_);
-    return node_ && pub ? node_->attach_pub_ingress (pub) : -1;
-}
-
 int spot_node_access_t::try_register_spot_facade (spot_node_t *node_,
                                                   spot_handle_t *spot_)
 {

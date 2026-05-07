@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <mutex>
 #include <utility>
@@ -16,6 +17,7 @@
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
+#include "services/spot/spot_subject_access.hpp"
 #include "utils/clock.hpp"
 
 namespace
@@ -48,6 +50,46 @@ bool is_transient_routed_send_error (int err_)
 uint64_t routed_send_retry_deadline_ms ()
 {
     return zlink::clock_t ().now_ms () + 10;
+}
+
+size_t routed_parts_encoded_bytes (const std::vector<zlink_msg_t> &parts_)
+{
+    size_t bytes = 0;
+    for (std::vector<zlink_msg_t>::const_iterator it = parts_.begin ();
+         it != parts_.end (); ++it)
+        bytes += sizeof (uint32_t)
+                 + zlink_msg_size (const_cast<zlink_msg_t *> (&(*it)));
+    return bytes > 0 ? bytes : 1;
+}
+
+bool routed_queue_has_room (
+  const zlink::spot_data_plane_runtime_state_t::routed_send_queue_t &queue_,
+  int hwm_,
+  size_t byte_limit_,
+  size_t message_bytes_)
+{
+    if (hwm_ == 0)
+        return true;
+    const size_t message_limit = static_cast<size_t> (hwm_ > 0 ? hwm_ : 1);
+    if (queue_.messages.size () >= message_limit)
+        return false;
+    if (queue_.messages.empty ())
+        return true;
+    if (message_bytes_ > byte_limit_)
+        return false;
+    return queue_.queued_bytes <= byte_limit_ - message_bytes_;
+}
+
+bool routed_queue_can_resume (
+  const zlink::spot_data_plane_runtime_state_t::routed_send_queue_t &queue_,
+  int hwm_,
+  size_t byte_limit_)
+{
+    if (hwm_ == 0)
+        return true;
+    const size_t message_limit = static_cast<size_t> (hwm_ > 0 ? hwm_ : 1);
+    return queue_.messages.size () <= message_limit / 2
+           && queue_.queued_bytes <= byte_limit_ / 2;
 }
 
 bool routing_id_from_string (const std::string &value_,
@@ -276,6 +318,7 @@ int zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
   bool local_target_,
   const std::string &destination_endpoint_rid_,
   zlink_send_flags_t flags_,
+  int sndtimeo_ms_,
   std::vector<zlink_msg_t> *combined_)
 {
     if (!combined_) {
@@ -287,8 +330,10 @@ int zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
     if (origin_node_) {
         zlink::spot_runtime_t *runtime =
           zlink::spot_node_access_t::runtime (origin_node_);
-        rc = runtime ? enqueue_runtime_routed_send (runtime, combined_, flags_)
-                     : -1;
+        rc = runtime
+               ? enqueue_runtime_routed_send (runtime, combined_, flags_,
+                                              sndtimeo_ms_)
+               : -1;
     } else if (local_target_) {
         rc = dispatch_local_spot_routed_delivery (
           kind_, destination_endpoint_rid_, combined_);
@@ -301,6 +346,7 @@ int zlink::spot_reqrep_internal::dispatch_router_spot_delivery (
   const std::string &destination_spot_rid_,
   router_spot_delivery_kind_t kind_,
   zlink_send_flags_t flags_,
+  int sndtimeo_ms_,
   std::vector<zlink_msg_t> *combined_)
 {
     if (!combined_) {
@@ -308,19 +354,15 @@ int zlink::spot_reqrep_internal::dispatch_router_spot_delivery (
         return -1;
     }
 
-    const bool local_target = has_local_spot_route_target (
-      zmp_spot_class, destination_node_rid_, destination_spot_rid_);
     zlink::spot_runtime_t *runtime =
-      local_target ? NULL
-                   : resolve_runtime_for_spot_destination (
-                       destination_node_rid_, destination_spot_rid_);
+      resolve_runtime_for_spot_destination (destination_node_rid_,
+                                            destination_spot_rid_);
     int rc =
-      local_target
-        ? dispatch_local_router_spot_delivery (kind_, combined_)
-        : (runtime
-             ? enqueue_runtime_routed_send (runtime, combined_, flags_)
-             : -1);
-    if (rc != 0 && !local_target
+      runtime
+        ? enqueue_runtime_routed_send (runtime, combined_, flags_,
+                                       sndtimeo_ms_)
+        : -1;
+    if (rc != 0
         && errno != ENOTCONN && errno != EHOSTUNREACH && errno != EAGAIN) {
         rc = dispatch_local_router_spot_delivery (kind_, combined_);
     }
@@ -330,7 +372,8 @@ int zlink::spot_reqrep_internal::dispatch_router_spot_delivery (
 int zlink::spot_reqrep_internal::enqueue_runtime_routed_send (
   zlink::spot_runtime_t *runtime_,
   std::vector<zlink_msg_t> *parts_,
-  zlink_send_flags_t flags_)
+  zlink_send_flags_t flags_,
+  int sndtimeo_ms_)
 {
     if (!runtime_ || !parts_ || parts_->empty ()) {
         errno = EFAULT;
@@ -341,14 +384,41 @@ int zlink::spot_reqrep_internal::enqueue_runtime_routed_send (
       runtime_->execution.data_plane_state.routed_send;
     const int hwm = spot_node_router_admission_hwm (
       runtime_->hwm_config_snapshot ());
+    const size_t entry_bytes = routed_parts_encoded_bytes (*parts_);
+    const size_t message_limit = static_cast<size_t> (hwm > 0 ? hwm : 1);
+    const size_t byte_limit =
+      hwm == 0 ? 0
+               : (message_limit > SIZE_MAX / entry_bytes
+                    ? SIZE_MAX
+                    : message_limit * entry_bytes);
     std::unique_lock<std::mutex> lock (queue.mutex);
-    while (!queue.closed && hwm > 0
-           && queue.messages.size () >= static_cast<size_t> (hwm)) {
-        if ((flags_ & ZLINK_DONTWAIT) != 0) {
+    if (!routed_queue_has_room (queue, hwm, byte_limit, entry_bytes))
+        queue.backpressure_active = true;
+    const bool dontwait = (flags_ & ZLINK_DONTWAIT) != 0;
+    if (dontwait || sndtimeo_ms_ == 0) {
+        if (!queue.closed
+            && !routed_queue_has_room (queue, hwm, byte_limit, entry_bytes)) {
             errno = EAGAIN;
             return -1;
         }
-        queue.cv.wait (lock);
+    } else if (sndtimeo_ms_ < 0) {
+        while (!queue.closed
+               && !routed_queue_has_room (queue, hwm, byte_limit, entry_bytes))
+            queue.cv.wait (lock);
+    } else {
+        const std::chrono::steady_clock::time_point deadline =
+          std::chrono::steady_clock::now ()
+          + std::chrono::milliseconds (sndtimeo_ms_);
+        while (!queue.closed
+               && !routed_queue_has_room (queue, hwm, byte_limit,
+                                          entry_bytes)) {
+            if (queue.cv.wait_until (lock, deadline) == std::cv_status::timeout
+                && !routed_queue_has_room (queue, hwm, byte_limit,
+                                           entry_bytes)) {
+                errno = EAGAIN;
+                return -1;
+            }
+        }
     }
     if (queue.closed) {
         errno = ESHUTDOWN;
@@ -358,7 +428,10 @@ int zlink::spot_reqrep_internal::enqueue_runtime_routed_send (
     zlink::spot_data_plane_runtime_state_t::routed_send_entry_t entry;
     entry.flags = flags_;
     entry.parts.swap (*parts_);
+    queue.queued_bytes += entry_bytes;
     queue.messages.push_back (std::move (entry));
+    if (!routed_queue_has_room (queue, hwm, byte_limit, 1))
+        queue.backpressure_active = true;
     queue.retry_after_ms = 0;
     if (!queue.signal_armed && queue.signaler.valid ()) {
         queue.signal_armed = true;
@@ -375,6 +448,7 @@ int zlink::spot_reqrep_internal::drain_runtime_routed_send_queue (
 
     std::deque<zlink::spot_data_plane_runtime_state_t::routed_send_entry_t>
       local;
+    bool notify_recovery = false;
     {
         zlink::spot_data_plane_runtime_state_t::routed_send_queue_t &queue =
           runtime_->execution.data_plane_state.routed_send;
@@ -384,8 +458,18 @@ int zlink::spot_reqrep_internal::drain_runtime_routed_send_queue (
             return 0;
         queue.retry_after_ms = 0;
         local.swap (queue.messages);
+        queue.queued_bytes = 0;
+        const int hwm = spot_node_router_admission_hwm (
+          runtime_->hwm_config_snapshot ());
+        if (queue.backpressure_active
+            && routed_queue_can_resume (queue, hwm, 1)) {
+            queue.backpressure_active = false;
+            notify_recovery = true;
+        }
         queue.cv.notify_all ();
     }
+    if (notify_recovery)
+        notify_spot_send_ready_recovery (runtime_->owner);
 
     while (!local.empty ()) {
         zlink::spot_data_plane_runtime_state_t::routed_send_entry_t &entry =
@@ -408,7 +492,10 @@ int zlink::spot_reqrep_internal::drain_runtime_routed_send_queue (
                   &queue = runtime_->execution.data_plane_state.routed_send;
                 std::lock_guard<std::mutex> lock (queue.mutex);
                 if (!queue.closed) {
+                    queue.queued_bytes = 0;
                     while (!retry.empty ()) {
+                        queue.queued_bytes += routed_parts_encoded_bytes (
+                          retry.back ().parts);
                         queue.messages.push_front (std::move (retry.back ()));
                         retry.pop_back ();
                     }

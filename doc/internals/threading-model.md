@@ -199,7 +199,8 @@ accesses.
 
 The threading model makes the following concurrent patterns safe and
 well-defined (see [Thread-Safety Internals](thread-safety.md) for the full
-contract):
+contract). Hot paths such as `send`/`publish`/`send_rid` are admitted through
+the lightweight data-plane gate; control paths serialize for correctness.
 
 ### 7.1 Multiple threads calling `zlink_send()` concurrently
 

@@ -221,7 +221,7 @@ int zlink::spot_data_plane_message_io::recv_remaining_frame_strings (
         msg_t frame;
         if (frame.init () != 0)
             return -1;
-        if (socket_->recv (&frame, 0) != 0) {
+        if (socket_->recv (&frame, ZLINK_DONTWAIT) != 0) {
             frame.close ();
             return -1;
         }
@@ -253,7 +253,7 @@ int zlink::spot_data_plane_message_io::recv_remaining_frames_to_vector (
         if (frame.init () != 0)
             return -1;
 
-        if (socket_->recv (&frame, 0) != 0) {
+        if (socket_->recv (&frame, ZLINK_DONTWAIT) != 0) {
             const int err = errno;
             frame.close ();
             zlink::request_reply::close_built_parts (out_);
@@ -303,7 +303,7 @@ int zlink::spot_data_plane_message_io::recv_remaining_frames_to_parts (
             return -1;
         }
 
-        if (socket_->recv (&frame, 0) != 0) {
+        if (socket_->recv (&frame, ZLINK_DONTWAIT) != 0) {
             const int err = errno;
             frame.close ();
             spot_clear_msg_parts (parts_out_);

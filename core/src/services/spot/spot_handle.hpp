@@ -10,6 +10,7 @@
 #include "services/common/service_mode_state.hpp"
 #include "services/spot/spot_defaults.hpp"
 
+#include <atomic>
 #include <string.h>
 #include <deque>
 #include <memory>
@@ -43,7 +44,11 @@ struct spot_logical_state_t
         stable_id (0),
         entry (false),
         rid_locked (false),
-        subscribe_signal_armed (false)
+        subscribe_signal_armed (false),
+        send_ready_signal_armed (false),
+        send_ready_handler (NULL),
+        send_ready_subject (NULL),
+        send_ready_userdata (NULL)
     {
         memset (&routing_id, 0, sizeof (routing_id));
     }
@@ -62,6 +67,11 @@ struct spot_logical_state_t
       subscribe_queue;
     zlink::signaler_t subscribe_signaler;
     bool subscribe_signal_armed;
+    zlink::signaler_t send_ready_signaler;
+    bool send_ready_signal_armed;
+    std::atomic<zlink_send_ready_handler_fn> send_ready_handler;
+    std::atomic<void *> send_ready_subject;
+    std::atomic<void *> send_ready_userdata;
     std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
       request_reply_state;
 };

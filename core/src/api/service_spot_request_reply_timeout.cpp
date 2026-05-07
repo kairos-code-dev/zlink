@@ -33,9 +33,26 @@ std::mutex g_spot_timeout_reaper_mutex;
 std::condition_variable g_spot_timeout_reaper_cv;
 std::thread g_spot_timeout_reaper_thread;
 bool g_spot_timeout_reaper_started = false;
+bool g_spot_timeout_reaper_stopping = false;
 uint64_t g_spot_timeout_reaper_next_deadline_ns = 0;
 
 void run_spot_timeout_reaper ();
+
+struct spot_timeout_reaper_shutdown_t
+{
+    ~spot_timeout_reaper_shutdown_t ()
+    {
+        {
+            std::lock_guard<std::mutex> lock (g_spot_timeout_reaper_mutex);
+            g_spot_timeout_reaper_stopping = true;
+            g_spot_timeout_reaper_cv.notify_all ();
+        }
+        if (g_spot_timeout_reaper_thread.joinable ())
+            g_spot_timeout_reaper_thread.join ();
+    }
+};
+
+spot_timeout_reaper_shutdown_t g_spot_timeout_reaper_shutdown;
 
 std::chrono::nanoseconds ns_until_deadline (uint64_t deadline_ns_)
 {
@@ -52,7 +69,6 @@ void update_spot_timeout_reaper_deadline (uint64_t deadline_ns_)
         return;
     if (!g_spot_timeout_reaper_started) {
         g_spot_timeout_reaper_thread = std::thread (run_spot_timeout_reaper);
-        g_spot_timeout_reaper_thread.detach ();
         g_spot_timeout_reaper_started = true;
     }
     if (g_spot_timeout_reaper_next_deadline_ns == 0
@@ -65,7 +81,7 @@ void update_spot_timeout_reaper_deadline (uint64_t deadline_ns_)
 void run_spot_timeout_reaper ()
 {
     std::unique_lock<std::mutex> lock (g_spot_timeout_reaper_mutex);
-    while (true) {
+    while (!g_spot_timeout_reaper_stopping) {
         if (g_spot_timeout_reaper_next_deadline_ns == 0) {
             g_spot_timeout_reaper_cv.wait_for (lock,
                                                spot_timeout_reaper_idle_wait);
@@ -73,6 +89,8 @@ void run_spot_timeout_reaper ()
             g_spot_timeout_reaper_cv.wait_for (
               lock, ns_until_deadline (g_spot_timeout_reaper_next_deadline_ns));
         }
+        if (g_spot_timeout_reaper_stopping)
+            break;
         lock.unlock ();
 
         const uint64_t now_ns = monotonic_now_ns ();
@@ -129,7 +147,6 @@ void ensure_spot_timeout_reaper_started ()
     if (g_spot_timeout_reaper_started)
         return;
     g_spot_timeout_reaper_thread = std::thread (run_spot_timeout_reaper);
-    g_spot_timeout_reaper_thread.detach ();
     g_spot_timeout_reaper_started = true;
 }
 

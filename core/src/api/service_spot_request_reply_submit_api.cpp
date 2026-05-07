@@ -18,6 +18,7 @@
 #include "api/socket_message_api_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
 #include "api/submit_result_internal.hpp"
+#include "core/internal_defs.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "services/spot/spot_handle.hpp"
 #include "services/spot/spot_node.hpp"
@@ -55,6 +56,20 @@ using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::has_valid_routing_id;
 using zlink::spot_reqrep_internal::routing_id_key;
 using zlink::spot_reqrep_internal::validate_request_parts;
+
+int resolve_router_send_timeout_ms (void *router_)
+{
+    socket_handle_t handle = as_socket_handle (router_);
+    if (!handle.socket)
+        return -1;
+    int timeout = -1;
+    size_t timeout_size = sizeof (timeout);
+    if (handle.socket->getsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &timeout,
+                                   &timeout_size)
+        != 0)
+        return -1;
+    return timeout;
+}
 
 struct channel_reply_bridge_ctx_t
 {
@@ -171,7 +186,7 @@ int start_spot_request_common (void *spot_,
     const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
       spot ? spot->node : NULL, routed_spot_delivery_request, local_target,
       destination_class_ == 0x02 ? destination_endpoint_rid_ : std::string (),
-      flags_, &combined);
+      flags_, resolve_spot_send_timeout_ms (spot), &combined);
     if (rc != 0) {
         const int saved_errno = errno;
         zlink::request_reply::close_built_parts (&combined);
@@ -308,7 +323,8 @@ int start_router_request_to_spot (void *router_,
 
     const int rc = zlink::spot_reqrep_internal::dispatch_router_spot_delivery (
       destination_node_rid, destination_spot_rid,
-      router_spot_delivery_request, flags_, &combined);
+      router_spot_delivery_request, flags_,
+      resolve_router_send_timeout_ms (router_), &combined);
     if (rc != 0) {
         const int saved_errno = errno;
         zlink::request_reply::close_built_parts (&combined);
@@ -569,7 +585,7 @@ zlink_submit_result_t spot_reply_spot_impl (void *spot_,
       0x01, destination_node_rid, destination_spot_rid);
     const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
       spot ? spot->node : NULL, routed_spot_delivery_reply, local_target,
-      std::string (), ZLINK_DONTWAIT, &combined);
+      std::string (), ZLINK_DONTWAIT, 0, &combined);
     const int saved_errno = errno;
     zlink::request_reply::close_built_parts (&combined);
     errno = saved_errno;
@@ -616,7 +632,8 @@ zlink_submit_result_t spot_send_spot_impl (void *spot_,
       0x01, destination_node_rid, destination_spot_rid);
     const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
       spot ? spot->node : NULL, routed_spot_delivery_direct, local_target,
-      destination_spot_rid, flags_, &combined);
+      destination_spot_rid, flags_, resolve_spot_send_timeout_ms (spot),
+      &combined);
     const int saved_errno = errno;
     zlink::request_reply::close_built_parts (&combined);
     errno = saved_errno;
@@ -657,7 +674,7 @@ zlink_submit_result_t spot_reply_router_impl (
       0x02, std::string (), peer_rid);
     const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
       spot ? spot->node : NULL, routed_spot_delivery_reply, local_target,
-      peer_rid, ZLINK_DONTWAIT, &combined);
+      peer_rid, ZLINK_DONTWAIT, 0, &combined);
     const int saved_errno = errno;
     zlink::request_reply::close_built_parts (&combined);
     errno = saved_errno;
@@ -739,7 +756,7 @@ zlink_submit_result_t router_reply_spot_impl (
     }
     const int rc = zlink::spot_reqrep_internal::dispatch_router_spot_delivery (
       destination_node_rid, destination_spot_rid, router_spot_delivery_reply,
-      ZLINK_DONTWAIT, &combined);
+      ZLINK_DONTWAIT, 0, &combined);
     const int saved_errno = errno;
     zlink::request_reply::close_built_parts (&combined);
     errno = saved_errno;
@@ -792,7 +809,7 @@ zlink_submit_result_t router_send_spot_impl (
     }
     const int rc = zlink::spot_reqrep_internal::dispatch_router_spot_delivery (
       destination_node_rid, destination_spot_rid, router_spot_delivery_direct,
-      flags_, &combined);
+      flags_, resolve_router_send_timeout_ms (router_), &combined);
     const int saved_errno = errno;
     zlink::request_reply::close_built_parts (&combined);
     errno = saved_errno;

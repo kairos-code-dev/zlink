@@ -161,7 +161,7 @@ inline int spot_publish_msg_parts (socket_base_t *socket_,
       topic_.c_str (),
       send_frames.empty () ? NULL : &send_frames[0],
       send_frames.size (),
-      0,
+      ZLINK_DONTWAIT,
       true);
     const int saved_errno = rc == 0 ? 0 : errno;
     for (size_t i = 0; i < send_frames.size (); ++i)

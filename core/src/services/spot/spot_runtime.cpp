@@ -334,6 +334,16 @@ int spot_runtime_t::post_dispatch_event (void *spot_)
     return dispatch_workers->post (spot_);
 }
 
+int spot_runtime_t::post_dispatch_task (
+  spot_dispatch_worker_pool_t::task_fn_t fn_, void *arg_)
+{
+    if (!dispatch_workers) {
+        errno = ETERM;
+        return -1;
+    }
+    return dispatch_workers->post_task (fn_, arg_);
+}
+
 int spot_runtime_t::ensure_healthy () const
 {
     if (stop.get () != 0 || faulted) {

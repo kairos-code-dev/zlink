@@ -5,10 +5,12 @@
 
 #include "../src/api/service_api_internal.hpp"
 #include "../src/services/spot/spot_handle.hpp"
+#include "../src/services/spot/spot_node.hpp"
 #include "../src/services/spot/spot_subject_access.hpp"
 
 #include <unity.h>
 
+#include <atomic>
 #include <cerrno>
 #include <cstring>
 #include <vector>
@@ -37,6 +39,31 @@ void noop_reply_handler (zlink_request_result_t,
                          size_t,
                          void *)
 {
+}
+
+struct send_ready_probe_t
+{
+    send_ready_probe_t () : calls (0), reinstall_result (ZLINK_HANDLER_OK),
+                            reinstall_errno (0)
+    {
+    }
+
+    std::atomic<int> calls;
+    zlink_handler_result_t reinstall_result;
+    int reinstall_errno;
+};
+
+void reentrant_send_ready_handler (void *subject_, void *userdata_)
+{
+    send_ready_probe_t *probe = static_cast<send_ready_probe_t *> (userdata_);
+    if (!probe)
+        return;
+
+    probe->reinstall_result =
+      zlink_send_ready_handler (subject_, &reentrant_send_ready_handler,
+                                userdata_);
+    probe->reinstall_errno = zlink_errno ();
+    probe->calls.fetch_add (1, std::memory_order_release);
 }
 
 std::vector<zlink_spot_node_socket_snapshot_entry_t>
@@ -696,6 +723,37 @@ void test_spot_subject_access_applies_pending_pub_defaults_on_lazy_create ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
+
+void test_spot_send_ready_callback_runs_on_worker_and_rejects_reentrant_install ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
+
+    spot_handle_t *handle = as_spot_handle (spot);
+    TEST_ASSERT_NOT_NULL (handle);
+    TEST_ASSERT_NOT_NULL (handle->node);
+
+    send_ready_probe_t probe;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_HANDLER_OK,
+      zlink_send_ready_handler (spot, &reentrant_send_ready_handler, &probe));
+
+    handle->node->notify_send_ready_recovery ();
+    TEST_ASSERT_TRUE (zlink_test_wait_until (1000, [&probe] () {
+        return probe.calls.load (std::memory_order_acquire) == 1;
+    }));
+    TEST_ASSERT_EQUAL_INT (ZLINK_HANDLER_DEADLOCK, probe.reinstall_result);
+    TEST_ASSERT_EQUAL_INT (EDEADLK, probe.reinstall_errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
 } // namespace
 
 int main ()
@@ -715,5 +773,7 @@ int main ()
     RUN_TEST (test_spot_subject_access_routes_subscription_and_routing_state);
     RUN_TEST (test_spot_subject_access_routes_composite_and_node_options);
     RUN_TEST (test_spot_subject_access_applies_pending_pub_defaults_on_lazy_create);
+    RUN_TEST (
+      test_spot_send_ready_callback_runs_on_worker_and_rejects_reentrant_install);
     return UNITY_END ();
 }

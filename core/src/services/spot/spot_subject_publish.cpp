@@ -43,15 +43,6 @@ int spot_subject_publish (void *subject_,
                                                          service_name.c_str ());
         zlink::spot_runtime_t *runtime =
           zlink::spot_node_access_t::runtime (spot->node);
-        zlink_spot_node_status_t status;
-        memset (&status, 0, sizeof (status));
-        const bool node_has_transport_surface =
-          zlink::spot_node_access_t::status_snapshot (spot->node, &status) == 0
-          && (status.local_endpoint[0] != '\0'
-              || status.configured_peer_count != 0
-              || status.active_peer_count != 0
-              || status.connected_peer_count != 0);
-        const bool use_transport = service_pub || node_has_transport_surface;
         if (service_pub
             && zlink_socket_publish_internal (service_pub, topic_id_, parts_,
                                               part_count_, flags_)
@@ -60,28 +51,15 @@ int spot_subject_publish (void *subject_,
             errno = publish_errno;
             return -1;
         }
-        if (!service_pub && use_transport) {
+        if (!service_pub) {
             const int publish_rc =
               zlink::spot_data_plane_forwarder_t::enqueue_publish_ingress (
                 runtime, topic_id_, parts_, part_count_,
-                static_cast<zlink_send_flags_t> (flags_));
+                static_cast<zlink_send_flags_t> (flags_),
+                resolve_spot_send_timeout_ms (spot));
             const int publish_errno = errno;
             if (publish_rc != 0) {
                 errno = publish_errno;
-                return -1;
-            }
-        }
-        if (!use_transport) {
-            zlink_routing_id_t source_rid;
-            memset (&source_rid, 0, sizeof (source_rid));
-            (void) spot->node->node_routing_id (&source_rid);
-            const int fanout_rc = spot->node->fanout_local_publish (
-              service_name.c_str (), &source_rid, topic_id_, parts_,
-              part_count_);
-            const int fanout_errno = errno;
-            zlink_multipart_close (parts_, part_count_);
-            if (fanout_rc != 0) {
-                errno = fanout_errno;
                 return -1;
             }
         }

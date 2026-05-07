@@ -211,15 +211,25 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
         }
 
         processed_bytes += topic_msg.size ();
-
+        const bool has_payload = (topic_msg.flags () & msg_t::more) != 0;
         std::string topic (
           static_cast<const char *> (topic_msg.data ()), topic_msg.size ());
         topic_msg.close ();
+
+        if (!has_payload) {
+            ++processed;
+            if (processed >= mesh_xsub_forward_batch_limit
+                || processed_bytes >= mesh_xsub_forward_batch_bytes_limit)
+                return 0;
+            continue;
+        }
 
         spot_owned_msg_parts_t frames;
         if (spot_io::recv_remaining_frames_to_parts (
               mesh_xsub_, &frames, &processed_bytes)
             != 0) {
+            if (errno == EAGAIN || errno == EINTR)
+                return 0;
             return -1;
         }
 

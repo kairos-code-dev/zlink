@@ -376,6 +376,7 @@ struct spot_data_plane_runtime_state_t
     {
         publish_ingress_queue_t () :
             queued_bytes (0),
+            backpressure_active (false),
             signal_armed (false),
             closed (false)
         {
@@ -385,6 +386,7 @@ struct spot_data_plane_runtime_state_t
         std::condition_variable cv;
         std::deque<staged_publish_entry_t> messages;
         size_t queued_bytes;
+        bool backpressure_active;
         signaler_t signaler;
         bool signal_armed;
         bool closed;
@@ -404,7 +406,9 @@ struct spot_data_plane_runtime_state_t
     struct routed_send_queue_t
     {
         routed_send_queue_t () :
+            queued_bytes (0),
             retry_after_ms (0),
+            backpressure_active (false),
             signal_armed (false),
             closed (false)
         {
@@ -413,7 +417,9 @@ struct spot_data_plane_runtime_state_t
         std::mutex mutex;
         std::condition_variable cv;
         std::deque<routed_send_entry_t> messages;
+        size_t queued_bytes;
         uint64_t retry_after_ms;
+        bool backpressure_active;
         signaler_t signaler;
         bool signal_armed;
         bool closed;
@@ -594,7 +600,8 @@ struct spot_data_plane_forwarder_t
                                         const char *topic_,
                                         zlink_msg_t *parts_,
                                         size_t part_count_,
-                                        zlink_send_flags_t flags_);
+                                        zlink_send_flags_t flags_,
+                                        int sndtimeo_ms_);
     static int drain_publish_ingress_queue (
       spot_runtime_t *runtime_,
       spot_data_plane_runtime_state_t *state_);

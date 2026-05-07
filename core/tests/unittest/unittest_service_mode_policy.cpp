@@ -272,17 +272,16 @@ void test_spot_callback_policy ()
     TEST_ASSERT_NOT_NULL (poller);
 
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_HANDLER_NOT_SUPPORTED,
+      ZLINK_HANDLER_OK,
       zlink_send_ready_handler (spot, &noop_send_ready_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_poller_add (poller, spot, spot, ZLINK_POLLIN));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, spot));
 
-    TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK, zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, spot));
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
@@ -304,9 +303,9 @@ void test_spot_callback_policy ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_poller_add (poller, spot, spot, ZLINK_POLLIN));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, spot));
-    TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK, zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, spot, spot, ZLINK_POLLOUT));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, spot));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
@@ -416,9 +415,8 @@ void test_spot_node_topic_surface_and_callback_modes ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_unset_subscription (node, "bench"));
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_HANDLER_NOT_SUPPORTED,
+      ZLINK_HANDLER_OK,
       zlink_send_ready_handler (node, &noop_send_ready_handler, NULL));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_NOT_SUPPORTED, zlink_send (node, &part, 1, 0));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_NOT_EQUAL (
@@ -431,12 +429,12 @@ void test_spot_node_topic_surface_and_callback_modes ()
       zlink_subscribe (node, NULL, &parts, &part_count, topic, &topic_len,
                        ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK, zlink_poller_add (poller, node, node, ZLINK_POLLIN));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK, zlink_poller_add (poller, node, node, ZLINK_POLLOUT));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, node, node, ZLINK_POLLIN));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, node));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, node, node, ZLINK_POLLOUT));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, node));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));

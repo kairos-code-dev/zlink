@@ -8,6 +8,7 @@
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
+#include "services/spot/spot_subject_access.hpp"
 
 #include "core/multipart_send_txn.hpp"
 #include "sockets/socket_base.hpp"
@@ -139,7 +140,8 @@ int spot_pub_t::publish (const char *topic_,
                                             flags_, true)
         : zlink::spot_data_plane_forwarder_t::enqueue_publish_ingress (
             _runtime, topic_, parts_, part_count_,
-            static_cast<zlink_send_flags_t> (flags_));
+            static_cast<zlink_send_flags_t> (flags_),
+            resolve_spot_send_timeout_ms (_node));
     const int saved_errno = rc == 0 ? 0 : errno;
 
     if (saved_errno != 0) {
@@ -158,7 +160,8 @@ int spot_pub_t::set_option (int option_,
 {
     socket_base_t *socket = this->socket ();
     if (!socket) {
-        return 0;
+        return _node ? _node->set_pub_option (option_, optval_, optvallen_)
+                     : (errno = EFAULT, -1);
     }
     if (!optval_ || optvallen_ == 0) {
         errno = EINVAL;

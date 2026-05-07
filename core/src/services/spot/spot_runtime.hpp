@@ -4,6 +4,7 @@
 #define __ZLINK_SPOT_RUNTIME_HPP_INCLUDED__
 
 #include "services/spot/spot_runtime_execution.hpp"
+#include "services/spot/spot_dispatch_worker_pool.hpp"
 #include "zlink.h"
 #include "core/thread.hpp"
 #include "utils/atomic_counter.hpp"
@@ -20,7 +21,6 @@ namespace zlink
 class socket_base_t;
 class spot_node_t;
 class ctx_t;
-class spot_dispatch_worker_pool_t;
 
 enum spot_attachment_kind_t
 {
@@ -174,6 +174,8 @@ struct spot_runtime_t
     int start_dispatch_workers ();
     void stop_dispatch_workers ();
     int post_dispatch_event (void *spot_);
+    int post_dispatch_task (spot_dispatch_worker_pool_t::task_fn_t fn_,
+                            void *arg_);
     void set_external_route_id (const std::string &peer_endpoint_,
                                 const std::string &route_id_);
     void erase_external_route_id (const std::string &peer_endpoint_);

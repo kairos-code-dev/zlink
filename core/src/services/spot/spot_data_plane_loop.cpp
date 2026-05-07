@@ -366,9 +366,10 @@ int resolve_data_plane_poll_timeout_ms (
         return 0;
 
     const uint64_t remaining_ms = next_due_ms - now_ms;
-    return remaining_ms > static_cast<uint64_t> (INT_MAX)
-             ? INT_MAX
-             : static_cast<int> (remaining_ms);
+    const int timeout = remaining_ms > static_cast<uint64_t> (INT_MAX)
+                          ? INT_MAX
+                          : static_cast<int> (remaining_ms);
+    return std::min (timeout, data_plane_idle_tick_ms);
 }
 
 }
@@ -392,6 +393,8 @@ int spot_data_plane_loop_t::run_until_shutdown (
     unsigned int consecutive_ready_loops = 0;
 
     while (running) {
+        if (runtime_ && runtime_->stop.get () != 0)
+            break;
         service_runtime_sockets (runtime_, state_, protocol_state_ptr);
 
         if (drain_peer_ctrl_messages (node_, state_, protocol_state_ptr) != 0) {
@@ -458,6 +461,10 @@ int spot_data_plane_loop_t::run_once (
     *running_out_ = true;
     if (!state_->poller)
         return EFAULT;
+    if (runtime_->stop.get () != 0) {
+        *running_out_ = false;
+        return 0;
+    }
     service_runtime_sockets (runtime_, state_, protocol_state_);
 
     if (drain_peer_ctrl_messages (node_, state_, protocol_state_) != 0)

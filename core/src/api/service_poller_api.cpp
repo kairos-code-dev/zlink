@@ -66,10 +66,9 @@ int increment_spot_subject_poller_ref (void *spot_or_node_, short events_)
     if (resolved.kind == zlink::service_handle_spot)
         return increment_spot_poller_ref (
           static_cast<spot_handle_t *> (spot_or_node_), events_);
-    if (resolved.kind == zlink::service_handle_spot_node) {
-        errno = ENOTSUP;
-        return -1;
-    }
+    if (resolved.kind == zlink::service_handle_spot_node)
+        return increment_spot_node_poller_ref (
+          static_cast<zlink::spot_node_t *> (spot_or_node_), events_);
     errno = EFAULT;
     return -1;
 }
@@ -79,6 +78,9 @@ poller_subject_kind_t poller_spot_pub_kind_for_subject (void *spot_or_node_)
     if (zlink::resolve_service_handle (spot_or_node_).kind
         == zlink::service_handle_spot)
         return poller_subject_spot_pub;
+    if (zlink::resolve_service_handle (spot_or_node_).kind
+        == zlink::service_handle_spot_node)
+        return poller_subject_spot_node_pub;
     return poller_subject_none;
 }
 
@@ -87,6 +89,9 @@ poller_subject_kind_t poller_spot_sub_kind_for_subject (void *spot_or_node_)
     if (zlink::resolve_service_handle (spot_or_node_).kind
         == zlink::service_handle_spot)
         return poller_subject_spot_sub;
+    if (zlink::resolve_service_handle (spot_or_node_).kind
+        == zlink::service_handle_spot_node)
+        return poller_subject_spot_node_sub;
     return poller_subject_none;
 }
 
@@ -141,11 +146,8 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
                                             poller_subject_none)
                  : -1;
     }
-    if (resolved.kind == zlink::service_handle_spot_node) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    if (resolved.kind == zlink::service_handle_spot) {
+    if (resolved.kind == zlink::service_handle_spot
+        || resolved.kind == zlink::service_handle_spot_node) {
         bool is_pub = false;
         if (validate_spot_generic_poller_events (events_, &is_pub) != 0)
             return -1;
@@ -157,19 +159,29 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
                  : poller_spot_sub_kind_for_subject (socket_);
         int add_rc = -1;
         if (is_pub) {
-            zlink::socket_base_t *poll_socket =
-              resolve_spot_pub_subject_poller_socket (socket_);
-            if (poll_socket) {
-                add_rc = poller_add_registration (
-                  poller_, poll_socket, user_data_, events_, socket_,
-                  subject_kind);
-            }
-        } else {
             zlink_fd_t poll_fd = zlink::retired_fd;
-            if (resolve_spot_sub_subject_poller_fd (socket_, &poll_fd) == 0) {
+            if (resolve_spot_pub_subject_poller_fd (socket_, &poll_fd) == 0) {
                 add_rc = poller_add_fd_registration (
                   poller_, poll_fd, user_data_, events_, socket_,
                   subject_kind);
+            }
+        } else {
+            if (resolved.kind == zlink::service_handle_spot) {
+                zlink_fd_t poll_fd = zlink::retired_fd;
+                if (resolve_spot_sub_subject_poller_fd (socket_, &poll_fd)
+                    == 0) {
+                    add_rc = poller_add_fd_registration (
+                      poller_, poll_fd, user_data_, events_, socket_,
+                      subject_kind);
+                }
+            } else {
+                zlink::socket_base_t *poll_socket =
+                  resolve_spot_sub_subject_poller_socket (socket_);
+                if (poll_socket) {
+                    add_rc = poller_add_registration (
+                      poller_, poll_socket, user_data_, events_, socket_,
+                      subject_kind);
+                }
             }
         }
         if (add_rc != 0) {
@@ -181,7 +193,7 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
             return -1;
         }
 
-        if (!is_pub) {
+        if (!is_pub && resolved.kind == zlink::service_handle_spot) {
             std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
               state = zlink::spot_reqrep_internal::try_find_spot_state (socket_);
             if (state) {
@@ -257,11 +269,8 @@ int zlink_service_poller_modify_internal (poller_handle_t *poller_,
             poller_->registrations[index].socket),
           events_);
     }
-    if (resolved.kind == zlink::service_handle_spot_node) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    if (resolved.kind == zlink::service_handle_spot) {
+    if (resolved.kind == zlink::service_handle_spot
+        || resolved.kind == zlink::service_handle_spot_node) {
         bool is_pub = false;
         if (validate_spot_generic_poller_events (events_, &is_pub) != 0)
             return -1;
@@ -285,12 +294,22 @@ int zlink_service_poller_modify_internal (poller_handle_t *poller_,
                 events_)
             : poller_->poller.modify_fd (registration.fd, events_);
         if (modify_rc != 0) {
-            decrement_spot_poller_ref (
-              static_cast<spot_handle_t *> (socket_), events_);
+            poller_registration_t failed_registration;
+            failed_registration.subject = socket_;
+            failed_registration.subject_kind =
+              is_pub ? poller_spot_pub_kind_for_subject (socket_)
+                     : poller_spot_sub_kind_for_subject (socket_);
+            failed_registration.events = events_;
+            release_poller_registration (failed_registration);
             return -1;
         }
-        decrement_spot_poller_ref (
-          static_cast<spot_handle_t *> (socket_), old_events);
+        poller_registration_t old_registration;
+        old_registration.subject = socket_;
+        old_registration.subject_kind =
+          is_pub ? poller_spot_pub_kind_for_subject (socket_)
+                 : poller_spot_sub_kind_for_subject (socket_);
+        old_registration.events = old_events;
+        release_poller_registration (old_registration);
         poller_->registrations[index].events = events_;
         return 0;
     }
@@ -312,13 +331,9 @@ int zlink_service_poller_remove_internal (poller_handle_t *poller_,
 
     if (resolved.kind == zlink::service_handle_spot_pub_side
         || resolved.kind == zlink::service_handle_spot_sub_side
-        || resolved.kind == zlink::service_handle_spot)
+        || resolved.kind == zlink::service_handle_spot
+        || resolved.kind == zlink::service_handle_spot_node)
         return poller_remove_all_registrations_for_subject (poller_, socket_);
-
-    if (resolved.kind == zlink::service_handle_spot_node) {
-        errno = ENOTSUP;
-        return -1;
-    }
 
     errno = EFAULT;
     return -1;

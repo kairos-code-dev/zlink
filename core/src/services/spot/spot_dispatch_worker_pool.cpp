@@ -91,6 +91,7 @@ void spot_dispatch_worker_pool_t::stop ()
         std::lock_guard<std::mutex> lock (_mutex);
         _stopping = true;
         _ready.clear ();
+        _tasks.clear ();
         _queued.clear ();
         _active.clear ();
         _dirty.clear ();
@@ -138,6 +139,28 @@ int spot_dispatch_worker_pool_t::post (void *spot_)
     return 0;
 }
 
+int spot_dispatch_worker_pool_t::post_task (task_fn_t fn_, void *arg_)
+{
+    if (!fn_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (_mutex);
+        if (_stopping) {
+            errno = ETERM;
+            return -1;
+        }
+        _tasks.push_back (task_t (fn_, arg_));
+        if (_idle_workers == 0 && _live_workers < _max_workers) {
+            (void) spawn_worker_locked ();
+        }
+    }
+    _cv.notify_one ();
+    return 0;
+}
+
 int spot_dispatch_worker_pool_t::min_workers () const
 {
     std::lock_guard<std::mutex> lock (_mutex);
@@ -173,15 +196,16 @@ void spot_dispatch_worker_pool_t::run_worker ()
 {
     while (true) {
         void *spot = NULL;
+        task_t task (NULL, NULL);
         {
             std::unique_lock<std::mutex> lock (_mutex);
-            while (!_stopping && _ready.empty ()) {
+            while (!_stopping && _ready.empty () && _tasks.empty ()) {
                 ++_idle_workers;
                 const std::cv_status status =
                   _cv.wait_for (lock, dispatch_worker_idle_timeout);
                 --_idle_workers;
                 if (status == std::cv_status::timeout && _ready.empty ()
-                    && _live_workers > _min_workers) {
+                    && _tasks.empty () && _live_workers > _min_workers) {
                     --_live_workers;
                     return;
                 }
@@ -190,10 +214,20 @@ void spot_dispatch_worker_pool_t::run_worker ()
                 --_live_workers;
                 return;
             }
-            spot = _ready.front ();
-            _ready.pop_front ();
-            _queued.erase (spot);
-            _active.insert (spot);
+            if (!_tasks.empty ()) {
+                task = _tasks.front ();
+                _tasks.pop_front ();
+            } else {
+                spot = _ready.front ();
+                _ready.pop_front ();
+                _queued.erase (spot);
+                _active.insert (spot);
+            }
+        }
+
+        if (task.fn) {
+            task.fn (task.arg);
+            continue;
         }
 
         spot_reqrep_internal::run_spot_dispatch_worker_once (spot);

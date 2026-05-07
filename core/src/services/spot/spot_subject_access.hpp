@@ -22,10 +22,15 @@ zlink::socket_base_t *spot_pub_poller_socket (void *spot_pub_);
 zlink::socket_base_t *spot_sub_poller_socket (void *spot_sub_);
 zlink::socket_base_t *
 resolve_spot_pub_subject_poller_socket (void *spot_or_node_);
+int resolve_spot_pub_subject_poller_fd (void *spot_or_node_,
+                                        zlink_fd_t *fd_out_);
 zlink::socket_base_t *
 resolve_spot_sub_subject_poller_socket (void *spot_or_node_);
 int resolve_spot_sub_subject_poller_fd (void *spot_or_node_,
                                         zlink_fd_t *fd_out_);
+void drain_spot_send_ready_signal (void *spot_or_node_);
+void notify_spot_send_ready_recovery (zlink::spot_node_t *node_);
+int resolve_spot_send_timeout_ms (void *spot_or_node_);
 
 static inline void *resolve_spot_sub_side_handle (void *handle_)
 {
@@ -101,6 +106,9 @@ int spot_pub_install_send_ready_handler (void *spot_pub_,
                                          void *userdata_);
 
 bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_);
+zlink::spot_node_t *enter_spot_node_send_ready_callback (
+  zlink::spot_node_t *node_);
+void leave_spot_node_send_ready_callback (zlink::spot_node_t *previous_);
 void clear_spot_node_handler_registration (zlink::spot_node_t *node_);
 void spot_subject_composite_sub_handler_adapter (
   const zlink_routing_id_t *source_rid_,

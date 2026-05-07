@@ -59,7 +59,8 @@ spot_node_t::spot_node_t (ctx_t *ctx_, zlink_spot_node_mode_t mode_) :
     _spot_node_mode (mode_),
     _runtime (NULL),
     _send_ready_handler (NULL),
-    _send_ready_handler_userdata (NULL)
+    _send_ready_handler_userdata (NULL),
+    _send_ready_signal_armed (false)
 {
     generate_random_uuid_routing_id (&_node_routing_id);
 

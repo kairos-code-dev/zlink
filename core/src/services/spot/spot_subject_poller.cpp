@@ -124,3 +124,88 @@ int resolve_spot_sub_subject_poller_fd (void *spot_or_node_,
     *fd_out_ = spot->logical_state->subscribe_signaler.get_fd ();
     return 0;
 }
+
+int resolve_spot_pub_subject_poller_fd (void *spot_or_node_,
+                                        zlink_fd_t *fd_out_)
+{
+    if (!fd_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+    *fd_out_ = zlink::retired_fd;
+
+    if (is_registered_spot_handle (spot_or_node_)) {
+        spot_handle_t *spot = static_cast<spot_handle_t *> (spot_or_node_);
+        zlink::service_public_api_scope_t admission (spot->public_api);
+        if (!admission.acquired ())
+            return -1;
+        if (!spot->logical_state || !spot->node
+            || !spot->logical_state->send_ready_signaler.valid ()) {
+            errno = EFAULT;
+            return -1;
+        }
+        *fd_out_ = spot->logical_state->send_ready_signaler.get_fd ();
+        return 0;
+    }
+
+    if (is_registered_spot_node_handle (spot_or_node_)) {
+        zlink::spot_node_t *node =
+          static_cast<zlink::spot_node_t *> (spot_or_node_);
+        zlink::service_public_api_scope_t admission (node->public_api_guard ());
+        if (!admission.acquired ())
+            return -1;
+        return node->send_ready_fd (fd_out_);
+    }
+
+    errno = EFAULT;
+    return -1;
+}
+
+void drain_spot_send_ready_signal (void *spot_or_node_)
+{
+    if (is_registered_spot_handle (spot_or_node_)) {
+        spot_handle_t *spot = static_cast<spot_handle_t *> (spot_or_node_);
+        zlink::service_public_api_scope_t admission (spot->public_api);
+        if (!admission.acquired () || !spot->logical_state)
+            return;
+        while (spot->logical_state->send_ready_signaler.recv_failable () == 0) {
+        }
+        zlink::scoped_lock_t lock (spot->logical_state->pubsub_sync);
+        spot->logical_state->send_ready_signal_armed = false;
+        return;
+    }
+    if (is_registered_spot_node_handle (spot_or_node_)) {
+        zlink::spot_node_t *node =
+          static_cast<zlink::spot_node_t *> (spot_or_node_);
+        node->drain_send_ready_signal ();
+    }
+}
+
+void notify_spot_send_ready_recovery (zlink::spot_node_t *node_)
+{
+    if (node_)
+        node_->notify_send_ready_recovery ();
+}
+
+int resolve_spot_send_timeout_ms (void *spot_or_node_)
+{
+    if (is_registered_spot_handle (spot_or_node_)) {
+        spot_handle_t *spot = static_cast<spot_handle_t *> (spot_or_node_);
+        if (spot->pending_pub_defaults.sndtimeo.enabled)
+            return spot->pending_pub_defaults.sndtimeo.value;
+        if (spot->node) {
+            zlink::spot_node_pub_defaults_t defaults = spot->node->load_pub_defaults ();
+            if (defaults.sndtimeo.enabled)
+                return defaults.sndtimeo.value;
+        }
+        return -1;
+    }
+    if (is_registered_spot_node_handle (spot_or_node_)) {
+        zlink::spot_node_t *node =
+          static_cast<zlink::spot_node_t *> (spot_or_node_);
+        zlink::spot_node_pub_defaults_t defaults = node->load_pub_defaults ();
+        if (defaults.sndtimeo.enabled)
+            return defaults.sndtimeo.value;
+    }
+    return -1;
+}

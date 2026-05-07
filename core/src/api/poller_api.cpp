@@ -11,6 +11,7 @@
 #include "api/service_spot_request_reply_internal.hpp"
 #include "api/socket_request_reply_internal.hpp"
 #include "api/timer_api_internal.hpp"
+#include "services/spot/spot_subject_access.hpp"
 #include "utils/clock.hpp"
 
 namespace
@@ -68,6 +69,18 @@ bool is_hidden_completion_registration (const poller_registration_t *registratio
            || registration_->subject_kind
                 == poller_subject_router_spot_request_completion
            || registration_->subject_kind == poller_subject_spot_request_completion;
+}
+
+bool is_spot_recv_fd_registration (poller_subject_kind_t kind_)
+{
+    return kind_ == poller_subject_spot_sub
+           || kind_ == poller_subject_spot_routed;
+}
+
+bool is_spot_send_ready_fd_registration (poller_subject_kind_t kind_)
+{
+    return kind_ == poller_subject_spot_pub
+           || kind_ == poller_subject_spot_node_pub;
 }
 
 int drain_hidden_completion_registration (
@@ -164,8 +177,7 @@ int fill_public_poller_event (poller_handle_t *poller_,
         if (registration.socket && registration.socket == native_.socket) {
             event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
             event_out_->socket =
-              (registration.subject_kind == poller_subject_spot_sub
-               || registration.subject_kind == poller_subject_spot_routed)
+              is_spot_recv_fd_registration (registration.subject_kind)
                 ? registration.subject
                 : native_.socket;
             event_out_->fd = native_.fd;
@@ -184,14 +196,22 @@ int fill_public_poller_event (poller_handle_t *poller_,
                 event_out_->events = native_.events;
                 return 0;
             }
-            if (registration.subject_kind == poller_subject_spot_sub
-                || registration.subject_kind == poller_subject_spot_routed) {
+            if (is_spot_recv_fd_registration (registration.subject_kind)
+                || is_spot_send_ready_fd_registration (
+                  registration.subject_kind)) {
+                if (is_spot_send_ready_fd_registration (
+                      registration.subject_kind))
+                    drain_spot_send_ready_signal (registration.subject);
                 event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
                 event_out_->socket = registration.subject;
                 event_out_->fd = native_.fd;
                 event_out_->timer = NULL;
                 event_out_->user_data = native_.user_data;
-                event_out_->events = native_.events;
+                event_out_->events =
+                  is_spot_send_ready_fd_registration (
+                    registration.subject_kind)
+                    ? ZLINK_POLLOUT
+                    : native_.events;
                 return 0;
             }
 
@@ -242,8 +262,7 @@ int fill_public_poller_event_from_registration (
     if (registration_->socket) {
         event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
         event_out_->socket =
-          (registration_->subject_kind == poller_subject_spot_sub
-           || registration_->subject_kind == poller_subject_spot_routed)
+          is_spot_recv_fd_registration (registration_->subject_kind)
             ? registration_->subject
             : native_.socket;
         event_out_->fd = native_.fd;
@@ -263,14 +282,19 @@ int fill_public_poller_event_from_registration (
         return 0;
     }
 
-    if (registration_->subject_kind == poller_subject_spot_sub
-        || registration_->subject_kind == poller_subject_spot_routed) {
+    if (is_spot_recv_fd_registration (registration_->subject_kind)
+        || is_spot_send_ready_fd_registration (registration_->subject_kind)) {
+        if (is_spot_send_ready_fd_registration (registration_->subject_kind))
+            drain_spot_send_ready_signal (registration_->subject);
         event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
         event_out_->socket = registration_->subject;
         event_out_->fd = native_.fd;
         event_out_->timer = NULL;
         event_out_->user_data = registration_->user_data;
-        event_out_->events = native_.events;
+        event_out_->events =
+          is_spot_send_ready_fd_registration (registration_->subject_kind)
+            ? ZLINK_POLLOUT
+            : native_.events;
         return 0;
     }
 

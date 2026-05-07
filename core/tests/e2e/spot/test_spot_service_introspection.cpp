@@ -77,6 +77,29 @@ static bool wait_for_spot_node_subject_ready (void *node_, int timeout_ms_)
     return false;
 }
 
+static bool wait_for_subscribe_queue_size (spot_handle_t *spot_,
+                                           size_t expected_,
+                                           int timeout_ms_)
+{
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (spot_ && spot_->logical_state
+            && spot_->logical_state->subscribe_queue.size () == expected_)
+            return true;
+
+        const int wait_ms = bounded_poll_step_ms (deadline);
+        if (wait_ms <= 0)
+            break;
+        zlink_pollitem_t item = {NULL, 0, 0, 0};
+        (void) zlink_poll (&item, 0, wait_ms, NULL);
+    }
+
+    return spot_ && spot_->logical_state
+           && spot_->logical_state->subscribe_queue.size () == expected_;
+}
+
 static bool wait_for_subscription_ready (void *sub_node_,
                                          const char *endpoint_,
                                          const char *topic_)
@@ -436,6 +459,9 @@ static void test_queue_pub_local_fanout_shared_block ()
     TEST_ASSERT_NOT_NULL (p);
     TEST_ASSERT_NOT_NULL (a);
     TEST_ASSERT_NOT_NULL (b);
+    TEST_ASSERT_TRUE (wait_for_subscribe_queue_size (p, 1u, 1000));
+    TEST_ASSERT_TRUE (wait_for_subscribe_queue_size (a, 1u, 1000));
+    TEST_ASSERT_TRUE (wait_for_subscribe_queue_size (b, 1u, 1000));
     TEST_ASSERT_EQUAL_UINT (1u, p->logical_state->subscribe_queue.size ());
     TEST_ASSERT_EQUAL_UINT (1u, a->logical_state->subscribe_queue.size ());
     TEST_ASSERT_EQUAL_UINT (1u, b->logical_state->subscribe_queue.size ());
@@ -489,6 +515,7 @@ static void test_queue_sub_exact_pattern_dedupe ()
 
     spot_handle_t *sub_handle = as_spot_handle (sub);
     TEST_ASSERT_NOT_NULL (sub_handle);
+    TEST_ASSERT_TRUE (wait_for_subscribe_queue_size (sub_handle, 1u, 1000));
     TEST_ASSERT_EQUAL_UINT (1u,
                             sub_handle->logical_state->subscribe_queue.size ());
     assert_recv_text (sub, "queue.dedupe", "once");

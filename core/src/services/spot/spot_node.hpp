@@ -5,6 +5,7 @@
 
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
+#include "core/signaler.hpp"
 #include "core/socket_poller.hpp"
 #include "core/thread.hpp"
 #include "services/common/service_public_api.hpp"
@@ -68,7 +69,6 @@ class spot_node_t : public discovery_observer_t
     int attach_channel_dealer (discovery_t *discovery_, socket_base_t *dealer_);
     int attach_channel_dealer_manual (const char *channel_name_,
                                       socket_base_t *dealer_);
-    int attach_pub_ingress (socket_base_t *pub_);
     int try_register_spot_facade (spot_handle_t *spot_);
     void unregister_spot_facade (spot_handle_t *spot_);
     bool is_last_spot_facade_for_logical_state (spot_handle_t *spot_);
@@ -93,6 +93,12 @@ class spot_node_t : public discovery_observer_t
                         int trust_system_);
     int set_send_ready_handler (zlink_send_ready_handler_fn handler_,
                                 void *userdata_);
+    int send_ready_fd (zlink_fd_t *fd_out_) const;
+    void drain_send_ready_signal ();
+    void notify_send_ready_recovery ();
+    void dispatch_send_ready_handler ();
+    static void dispatch_logical_send_ready_handler (
+      const std::shared_ptr<spot_logical_state_t> &state_);
     int set_pub_option (int option_,
                         const void *optval_,
                         size_t optvallen_);
@@ -230,7 +236,6 @@ class spot_node_t : public discovery_observer_t
     int apply_sub_defaults (spot_sub_t *sub_, const sub_defaults_t &defaults_);
     int resolve_advertise_endpoint (const char *advertise_endpoint_,
                                     std::string *out_) const;
-    void refresh_local_pub_ingress_hwm ();
     void refresh_local_fanout_hwm ();
     void refresh_discovery_peers ();
     void refresh_connected_peer_endpoints ();
@@ -339,6 +344,8 @@ class spot_node_t : public discovery_observer_t
     spot_peer_state_t _peer_state;
     std::atomic<zlink_send_ready_handler_fn> _send_ready_handler;
     std::atomic<void *> _send_ready_handler_userdata;
+    signaler_t _send_ready_signaler;
+    bool _send_ready_signal_armed;
     mutable service_public_api_guard_t _public_api;
     service_mode_state_t _mode_state;
     service_runtime_base_t _lifecycle;

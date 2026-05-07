@@ -85,9 +85,7 @@ struct spot_node_tls_state_t
 struct spot_node_endpoint_state_t
 {
     spot_node_endpoint_state_t () :
-        local_pub_ingress_rcvhwm_cfg (0),
         local_fanout_sndhwm_cfg (0),
-        local_pub_ingress_rcvhwm_default (0),
         local_fanout_sndhwm_default (0),
         local_filtered_sub_count (0),
         active_peer_count (0)
@@ -95,9 +93,7 @@ struct spot_node_endpoint_state_t
     }
 
     std::string bound_endpoint;
-    int local_pub_ingress_rcvhwm_cfg;
     int local_fanout_sndhwm_cfg;
-    int local_pub_ingress_rcvhwm_default;
     int local_fanout_sndhwm_default;
     std::atomic<uint32_t> local_filtered_sub_count;
     std::atomic<uint32_t> active_peer_count;
@@ -303,13 +299,11 @@ struct spot_node_service_attachment_state_t
     std::shared_ptr<service_sub_cache_t> sub_cache;
     std::shared_ptr<readable_sub_cache_t> readable_sub_cache;
     std::shared_ptr<socket_poller_t> readable_sub_poller;
-    socket_base_t *pub_ingress;
 
     spot_node_service_attachment_state_t () :
         sub_cache (new service_sub_cache_t ()),
         readable_sub_cache (new readable_sub_cache_t ()),
-        readable_sub_poller (new socket_poller_t ()),
-        pub_ingress (NULL)
+        readable_sub_poller (new socket_poller_t ())
     {
     }
 };

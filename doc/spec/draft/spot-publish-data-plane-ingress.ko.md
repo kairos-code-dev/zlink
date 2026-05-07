@@ -29,9 +29,9 @@ mesh publish, routed delivery를 한곳에서 처리하도록 만드는 것이�
 | `Actor join queue` | 특정 `Spot state`에 쌓이는 Actor join request queue. `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE`의 source다 |
 | `external-router` | peer `SpotNode`와 routed request/reply를 주고받는 transport ROUTER socket |
 | `internal-router` | AS-IS에서 같은 `SpotNode` 안 routed handoff를 위해 쓰는 내부 ROUTER socket. TO-BE에서는 제거한다 |
-| AS-IS data-plane task | 현재 구현에서 `SpotNode`의 data-plane 처리를 수행하는 periodic task. context의 service-data runtime thread에서 실행된다 |
+| AS-IS data-plane task | 변경 전 구현에서 `SpotNode`의 data-plane 처리를 수행하던 periodic task. context의 service-data runtime thread에서 실행된다 |
 | TO-BE data-plane thread | 이 초안에서 선택하는 실행 모델. `SpotNode` 하나가 자신의 data-plane 전용 OS thread 하나를 가진다 |
-| service-data runtime thread | 현재 구현에서 context가 만드는 service runtime thread. transport I/O를 처리하는 `io_thread_t`와는 다른 실행 주체다 |
+| service-data runtime thread | 변경 전 구현에서 context가 만들던 service runtime thread. transport I/O를 처리하는 `io_thread_t`와는 다른 실행 주체다 |
 
 일반적인 사용에서는 `Spot instance` 하나가 `Spot state` 하나를 가진다. 따라서 사용자
 관점에서는 "Spot마다 subscribe queue가 있다"고 이해하면 된다. 다만 내부 문서에서는 핸들
@@ -70,14 +70,14 @@ event를 병렬로 처리한다. 같은 `Spot state`의 callback은 동시에 �
 Actor queue는 이 그림의 publish/routed send queue와 다른 축이다. Actor message queue는
 Actor handle이 소유하는 recv queue이고, Actor join queue는 target `Spot state`가 소유하는
 join request recv queue다. 둘 다 `SpotNode`의 send admission queue가 아니다.
-현재 구현의 data-plane은 `SpotNode`마다 새 OS thread를 만드는 구조가 아니다. `SpotNode`는
+변경 전 구현의 data-plane은 `SpotNode`마다 새 OS thread를 만드는 구조가 아니었다. `SpotNode`는
 context의 service-data runtime에 data-plane task를 등록하고, 해당 task가 주기 실행 또는
 wakeup으로 실행된다. 이 초안의 TO-BE는 이 부분도 함께 바꿔서 `SpotNode`당 data-plane
 thread 하나를 둔다.
 
-## AS-IS: 현재 publish 구조
+## AS-IS: 변경 전 publish 구조
 
-현재 SPOT topic publish 경로는 `Spot instance`가 `pub-ingress-tx` 내부 `PUB` socket에
+변경 전 SPOT topic publish 경로는 `Spot instance`가 `pub-ingress-tx` 내부 `PUB` socket에
 메시지를 쓰고, data-plane task가 `ingress-sub` 내부 `SUB` socket에서 이를 읽은 뒤
 local fanout과 `mesh-pub` publish를 수행한다.
 
@@ -99,7 +99,7 @@ flowchart LR
   DP --> Mesh
 ```
 
-현재 구조에서 `pub-ingress-tx`와 `ingress-sub`는 public publish와 data-plane 사이의
+변경 전 구조에서 `pub-ingress-tx`와 `ingress-sub`는 public publish와 data-plane 사이의
 inproc bridge 역할을 한다. 이 bridge는 transport socket이 아니지만 socket HWM과
 message unit 정책을 따른다.
 
@@ -153,9 +153,9 @@ publish한다고 생각하지만 실제로는 먼저 같은 프로세스의 내�
 있다. HWM profile이나 message unit을 조절하면 외부 네트워크 큐뿐 아니라 내부 전달 큐의
 동작까지 함께 바뀐다.
 
-## AS-IS: 현재 routed 구조
+## AS-IS: 변경 전 routed 구조
 
-현재 routed request/reply 경로도 publish와 비슷한 내부 socket hop을 가진다. 같은
+변경 전 routed request/reply 경로도 publish와 비슷한 내부 socket hop을 가진다. 같은
 `SpotNode` 안에서 routed message를 data-plane으로 넘길 때는 sender cache가
 `internal-router-tx` 내부 `DEALER` socket을 만들고, data-plane task는 `internal-router`
 `ROUTER` socket에서 이를 읽는다.
@@ -334,8 +334,9 @@ drain하지 않는 상태가 되어 busy loop가 생길 수 있기 때문이다.
 5. public routed send는 routed send queue에 메시지를 enqueue한다.
 6. local fanout, mesh publish, routed recv delivery 순서는 data-plane이 하나의 경로에서 결정한다.
 7. 내부 queue admission 실패는 기존 socket send와 같은 backpressure로 정의한다.
-8. public function 시그니처는 추가하지 않는다.
-9. dispatch worker 수는 `SpotNode` option으로 설정한다.
+8. data-plane thread의 socket I/O는 blocking recv/send로 shutdown을 막지 않는다.
+9. public function 시그니처는 추가하지 않는다.
+10. dispatch worker 수는 `SpotNode` option으로 설정한다.
 
 ## 비목표
 
@@ -517,6 +518,11 @@ application callback 재진입, send-ready callback, socket shutdown 순서가 d
 | `mesh-xsub` | 유지 | remote subscription ingress |
 | `peer_ctrl_pub` / `peer_ctrl_sub` | 유지 | peer control |
 
+`zlink_spot_node_attach_pub_ingress()` 공개 함수는 기존 헤더에 남아 있을 수 있다. 이 함수는
+새 data-plane ingress socket을 만들지 않으며 `ENOTSUP`로 거부된다. 이 초안에서 제거한다는
+대상은 public API 심볼이 아니라 `pub-ingress-tx`/`ingress-sub` 내부 socket hop과 그 runtime
+상태다. 공개 API 심볼 제거는 별도 API 정리에서 다룬다.
+
 ### AS-IS와 TO-BE 비교
 
 | 항목 | AS-IS | TO-BE |
@@ -611,7 +617,7 @@ queue 경계가 있다.
    유지한다.
 5. Actor queue limit, drop 정책, multipart ordering은 이 초안의 범위가 아니다.
 
-현재 코드 기준으로 같이 변경해야 할 부분은 dispatch wakeup 경계다. data-plane thread가
+변경 전 코드 기준으로 같이 변경해야 할 부분은 dispatch wakeup 경계다. data-plane thread가
 `external-router` I/O를 독점하면 routed message 처리 후 `ACTOR_*_READABLE` event를 발생시키는
 경로도 `SpotNode dispatch worker pool`에 post되어야 한다. 다만 Actor queue 자체나 Actor recv
 API 계약은 변경 대상이 아니다.
@@ -919,9 +925,10 @@ routed send queue는 `SpotNode` router admission 결과를 message slot 한도�
 `ZLINK_POLLOUT` 대신 사용할 수 있어야 한다. 두 신호는 같은 send recovery readiness 축을
 공유한다.
 
-현재 구현은 이 기준을 만족하지 않는다. raw socket과 일부 `spot_pub_t` side handle은
+기존 구현은 이 기준을 만족하지 않았다. raw socket과 일부 `spot_pub_t` side handle은
 underlying socket의 send-ready에 연결되어 있지만, unified `Spot`과 `SpotNode`의
-send-ready 등록은 `ENOTSUP` 경로가 남아 있다. 이 초안의 구현에서는 이 차이를 제거해야 한다.
+send-ready 등록은 `ENOTSUP` 경로가 남아 있었다. 이 초안의 구현에서는 이 차이를 제거하고,
+queue recovery 신호를 `SpotNode dispatch worker pool` 작업으로 넘긴다.
 
 TO-BE의 send-ready는 transport writable 신호가 아니다. 의미는 아래처럼 고정한다.
 
@@ -943,8 +950,9 @@ TO-BE의 send-ready는 transport writable 신호가 아니다. 의미는 아래�
 2. data-plane thread가 queue를 drain해서 resume limit 이하로 내리면 waiting sender를 깨우고,
    armed send-ready callback도 dispatch한다.
 3. callback은 public thread가 data-plane 소유 socket을 직접 만지게 하지 않는다.
-4. callback 안에서 재진입 등록은 기존 send-ready 규칙처럼 `EDEADLK`로 막는다.
-5. `Spot instance`와 `SpotNode` 모두 같은 readiness 의미를 가져야 한다.
+4. callback은 data-plane thread에서 직접 실행하지 않고 dispatch worker pool에서 실행한다.
+5. callback 안에서 재진입 등록은 기존 send-ready 규칙처럼 `EDEADLK`로 막는다.
+6. `Spot instance`와 `SpotNode` 모두 같은 readiness 의미를 가져야 한다.
 
 이 요구사항이 빠지면 `ZLINK_POLLOUT` 기반 사용자는 동작하지만 send-ready callback 기반
 사용자는 send-side queue backpressure에서 깨어나지 못할 수 있다. 따라서 이 초안의 완료 기준에
@@ -1253,6 +1261,8 @@ shutdown timeout은 새 public option을 추가하지 않고 기존 `SpotNode` d
 14. inbound `external-router` traffic은 `SpotNode routed send queue`를 거치지 않는다.
 15. data-plane thread는 application dispatch callback을 직접 호출하지 않는다.
 16. 같은 `Spot state`의 dispatch callback은 동시에 실행하지 않는다.
+17. send-ready callback은 queue recovery에서 발생하더라도 data-plane thread가 직접 호출하지
+    않고 dispatch worker pool 작업으로 실행한다.
 
 ## 오류 처리 기준
 
@@ -1552,25 +1562,27 @@ public API test는 결과와 errno만 확인한다.
 16. `zlink_send_ready_handler()`와 `ZLINK_POLLOUT`이 send-side queue backpressure 해제와
    같은 readiness 의미를 갖는다.
 17. unified `Spot`과 `SpotNode` send-ready 등록이 `ENOTSUP` 없이 동작한다.
-18. Actor message queue, Actor join queue, Actor dispatch event 의미가 바뀌지 않는다.
-19. queue full, timeout, shutdown 오류 의미가 테스트로 고정된다.
-20. shutdown path가 queued message와 dispatch worker를 leak 없이 정리한다.
-21. core unit/e2e와 single/multi SPOT perf가 통과한다.
+18. send-ready callback 안에서 같은 subject의 send-ready handler를 다시 등록하면
+    `EDEADLK`로 실패한다.
+19. Actor message queue, Actor join queue, Actor dispatch event 의미가 바뀌지 않는다.
+20. queue full, timeout, shutdown 오류 의미가 테스트로 고정된다.
+21. shutdown path가 queued message와 dispatch worker를 leak 없이 정리한다.
+22. core unit/e2e와 single/multi SPOT perf가 통과한다.
 
 ## 실행 모델
 
-### 현재 구조
+### 변경 전 구조
 
-현재 구현 기준으로 data-plane은 `SpotNode`마다 항상 생기는 독립 OS thread가 아니다.
+변경 전 구현 기준으로 data-plane은 `SpotNode`마다 항상 생기는 독립 OS thread가 아니었다.
 `SpotNode` runtime은 `ctx->service_data_runtime_for_key(node_id)`로 context의
 service-data runtime 하나를 고르고, 그 runtime에 data-plane task를 periodic task로 등록한다.
 
-`ZLINK_IO_THREADS`는 transport I/O thread 수에 영향을 준다. 동시에 현재 구현에서는
+`ZLINK_IO_THREADS`는 transport I/O thread 수에 영향을 준다. 동시에 변경 전 구현에서는
 service-data runtime thread 수를 계산할 때도 같은 값을 사용한다. 다만 service-data runtime
 thread가 `io_thread_t`에 포함되는 것은 아니다. 예를 들어 `ZLINK_IO_THREADS=4`이면 transport
 I/O thread 4개와 service-data runtime thread 최대 4개가 별도로 만들어진다.
 
-현재 코드에서 service-data runtime의 주요 사용자는 SPOT data-plane이다. `SpotNode` runtime은
+변경 전 코드에서 service-data runtime의 주요 사용자는 SPOT data-plane이었다. `SpotNode` runtime은
 이 runtime에 data-plane periodic task를 등록하고, task가 실행될 때 socket command pump,
 local fanout flush, mesh publish flush, routed flush, staged message flush, ingress drain,
 peer control 처리 등을 수행한다. discovery, monitor, auto-HWM, SPOT dispatch callback 같은

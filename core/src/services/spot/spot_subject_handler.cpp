@@ -18,6 +18,9 @@
 
 namespace
 {
+thread_local zlink::spot_node_t *g_current_spot_node_send_ready_callback =
+  NULL;
+
 struct spot_node_handler_entry_t
 {
     zlink_subscribe_handler_fn handler;
@@ -140,6 +143,9 @@ bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_)
     if (!node_)
         return false;
 
+    if (g_current_spot_node_send_ready_callback == node_)
+        return true;
+
     zlink::socket_base_t *dispatch_socket =
       zlink::socket_base_t::current_send_ready_dispatch_socket ();
     if (!dispatch_socket)
@@ -147,6 +153,19 @@ bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_)
 
     LIBZLINK_UNUSED (dispatch_socket);
     return false;
+}
+
+zlink::spot_node_t *enter_spot_node_send_ready_callback (
+  zlink::spot_node_t *node_)
+{
+    zlink::spot_node_t *previous = g_current_spot_node_send_ready_callback;
+    g_current_spot_node_send_ready_callback = node_;
+    return previous;
+}
+
+void leave_spot_node_send_ready_callback (zlink::spot_node_t *previous_)
+{
+    g_current_spot_node_send_ready_callback = previous_;
 }
 
 void clear_spot_node_handler_registration (zlink::spot_node_t *node_)
@@ -285,13 +304,25 @@ int spot_install_send_ready_handler (spot_handle_t *spot_,
     zlink::service_public_api_scope_t admission (spot_->public_api);
     if (!admission.acquired ())
         return -1;
+    if (in_spot_node_send_ready_callback (spot_->node)) {
+        errno = EDEADLK;
+        return -1;
+    }
     bool already_active = false;
     if (spot_activate_send_ready_mode (spot_, &already_active) != 0)
         return -1;
-    if (!already_active)
+    if (!spot_->logical_state || !spot_->node) {
         spot_revert_send_ready_mode (spot_);
-    errno = ENOTSUP;
-    return -1;
+        errno = EFAULT;
+        return -1;
+    }
+    spot_->logical_state->send_ready_userdata.store (
+      userdata_, std::memory_order_release);
+    spot_->logical_state->send_ready_subject.store (
+      spot_, std::memory_order_release);
+    spot_->logical_state->send_ready_handler.store (
+      handler_, std::memory_order_release);
+    return 0;
 }
 
 int spot_node_install_send_ready_handler (zlink::spot_node_t *node_,
@@ -310,6 +341,10 @@ int spot_node_install_send_ready_handler (zlink::spot_node_t *node_,
     zlink::service_public_api_scope_t admission (node_->public_api_guard ());
     if (!admission.acquired ())
         return -1;
+    if (in_spot_node_send_ready_callback (node_)) {
+        errno = EDEADLK;
+        return -1;
+    }
     bool already_active = false;
     if (spot_node_activate_send_ready_mode (node_, &already_active) != 0)
         return -1;

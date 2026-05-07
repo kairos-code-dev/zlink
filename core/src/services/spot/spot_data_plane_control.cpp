@@ -128,9 +128,16 @@ int spot_data_plane_protocol_t::recv_and_process_ctrl_messages (
 
         const std::string topic (
           static_cast<const char *> (topic_msg.data ()), topic_msg.size ());
+        const bool more = (topic_msg.flags () & msg_t::more) != 0;
         std::vector<std::string> frames;
-        if (spot_io::recv_remaining_frame_strings (ctrl_sub_, &frames) != 0) {
+        if (more
+            && spot_io::recv_remaining_frame_strings (ctrl_sub_, &frames)
+                 != 0) {
+            const int err = errno;
             topic_msg.close ();
+            if (err == EAGAIN || err == EINTR)
+                return 0;
+            errno = err;
             return -1;
         }
         topic_msg.close ();

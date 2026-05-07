@@ -16,7 +16,7 @@ zlink의 서비스 계층은 8종 소켓(PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER
 ```mermaid
 flowchart TB
     subgraph app["Application"]
-        A1["SPOT (pub/sub) · Socket Family"]
+        A1["SPOT (pub/sub · Actor) · Socket Family"]
     end
 
     subgraph facade["Public API Facade"]
@@ -28,7 +28,7 @@ flowchart TB
     end
 
     subgraph runtime["Service Runtime"]
-        RT1["Discovery: bootstrap · state · update · uplink · registry_client<br/>SPOT: node · data_plane (forwarding · protocol) · pub · sub"]
+        RT1["Discovery: bootstrap · state · update · uplink · registry_client<br/>SPOT: node · data_plane (forwarding · protocol) · pub · sub · actor"]
     end
 
     subgraph infra["Discovery (service discovery) · Registry (service reg.)"]
@@ -56,6 +56,7 @@ flowchart TB
 | **Registry** | 서비스 등록소 | 서비스 엔트리를 등록·관리하는 중앙 저장소 |
 | **Discovery** | 서비스 발견 | Registry를 구독하여 서비스 목록을 로컬 캐시로 유지 |
 | **SPOT** | 위치 투명 pub/sub | 위치투명 토픽 기반 발행/구독 메시 |
+| **Actor** | SPOT 세션 라우팅 타겟 | STREAM session 메시지를 Spot dispatch context로 모으는 SPOT 내부 주소 지정 단위 |
 
 ## 3. 서비스 구성 요소
 
@@ -78,13 +79,13 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템. 서비스가 
 ### 3.2 SPOT — channel 기반 routed + PUB/SUB 허브
 
 `SpotNode`는 SPOT 토폴로지의 핵심 런타임이다. 하나의 SPOT channel Discovery
-view를 attach해서 같은 channel의 다른 `SpotNode`와 mesh를 구성하고, 다른
-channel을 호출해야 할 때는 `DEALER`를 별도로 attach한다. 그 위에 공개
+view를 연결해 같은 channel의 다른 `SpotNode`와 mesh를 구성하고, 다른
+channel을 호출해야 할 때는 `DEALER`를 별도로 등록한다. 그 위에 공개
 `Spot` facade 하나가 올라가 channel send/request, peer routed 통신,
 publish/subscribe를 함께 수행한다.
 
 - SPOT mesh: `zlink_spot_node_attach_discovery()` — SPOT channel view를
-  가진 Discovery 하나를 attach하면 같은 channel의 다른 `SpotNode`와 자동 연결
+  가진 Discovery 하나를 연결하면 같은 channel의 다른 `SpotNode`와 자동 연결
 - channel 호출용 DEALER:
   `zlink_spot_node_attach_channel_dealer()` (자동 연결) /
   `zlink_spot_node_attach_channel_dealer_manual()` (수동 연결) —
@@ -100,6 +101,12 @@ publish/subscribe를 함께 수행한다.
 - 모니터링은 snapshot/query API로 관찰
 - **Thread-safe** — 하나의 `spot` / `spot_node` handle에서 여러 스레드가
   operational API를 동시에 호출 가능
+
+- **Actor**: STREAM session 메시지를 Spot dispatch context로 모으는 SPOT 내부 라우팅 타겟.
+  `SpotNode`가 Actor 테이블을 소유하고, 새로 생성된 Actor는 `Entry Spot`에서 dispatch된다.
+  Actor는 `zlink_spot_join_spot()`으로 다른 `Spot`으로 이동하며, STREAM session 연결 해제 시
+  자동으로 `Entry Spot`으로 복귀한다. Actor는 socket, inproc endpoint를 소유하지 않으며
+  `zlink_actor_ref_t`로 식별한다.
 
 자세한 내용은 [SPOT 가이드](07-3-spot.ko.md)와 [SPOT Actor 가이드](07-4-actor.ko.md)를 참고.
 
@@ -204,11 +211,13 @@ flowchart TB
     R -- "SERVICE_LIST broadcast" --> D1["Discovery<br/>(SPOT)"]
     R -- "SERVICE_LIST broadcast" --> D2["Discovery<br/>(Socket)"]
     D1 --> S1["SPOT<br/>(PUB + SUB)"]
+    S1 -- "Actor table / Entry Spot" --> A1["Actor<br/>(routing target)"]
     D2 --> S2["Socket Family<br/>(R/D/P/S)"]
 ```
 
 - **Discovery가 기반 인프라**: SPOT, 소켓 패밀리 모두 Discovery를 통해 대상을 발견한다.
-- **SPOT**은 PUB/SUB 패턴으로 토픽 메시지를 전파한다.
+- **SPOT**은 PUB/SUB 패턴으로 토픽 메시지를 전파하고, routed 통신을 제공한다.
+- **Actor**는 SPOT 안에서 동작하는 세션 기반 라우팅 타겟이다. STREAM session 메시지를 Spot dispatch context로 모으며, 별도 서비스가 아닌 `SpotNode`가 관리하는 내부 주소 지정 단위다.
 - **소켓 패밀리**는 raw ROUTER/DEALER/PUB/SUB 소켓이 Discovery를 통해 피어를 등록·발견하여 소켓 수준의 위치투명 통신을 제공한다.
 - 모든 서비스는 독립적으로 동작하며, 동일한 Registry 클러스터를 공유할 수 있다.
 

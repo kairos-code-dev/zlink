@@ -261,7 +261,7 @@ reference count가 기본 반환값으로 반환됩니다.
 내부 reference count는 atomic 연산으로 관리됩니다. `zlink_msg_copy()`는
 count를 atomic으로 증가시키고, `zlink_msg_close()`는 atomic으로 감소시킵니다.
 따라서 같은 underlying storage를 공유하는 서로 다른 `zlink_msg_t` handle을
-서로 다른 스레드에서 copy/close하는 것은 안전합니다.
+서로 다른 스레드에서 복사하거나 닫는 것은 안전합니다.
 
 `zlink_msg_refcnt()`는 atomic counter의 relaxed read를 수행합니다.
 반환값은 시점 스냅샷이며, 호출자가 값을 확인하는 시점에 다른 스레드가

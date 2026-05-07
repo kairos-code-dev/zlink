@@ -7,7 +7,7 @@
 모니터링은 소켓 연결 상태를 실시간으로 관찰하는 기능으로, 연결 문제 진단, 피어 장애 감지, 애플리케이션 수준 복구 트리거에 필수적이다.
 
 zlink 모니터링 API는 소켓의 연결/해제/핸드셰이크 등 이벤트를 실시간으로 관찰할 수 있다.
-다른 소켓과 동일하게 recv 모드(pull)와 callback 모드를 지원한다.
+다른 소켓과 동일하게 직접 수신(recv) 모드와 callback 모드를 지원한다.
 
 ## 2. 모니터 활성화
 
@@ -115,7 +115,7 @@ flowchart LR
 
 핸드셰이크 완료 후 발생한다. 이 이벤트를 받으면 즉시 메시지를 보내고 받을 수 있다.
 `CONNECTION_READY` 이벤트의 `value` 필드는 reserved이며 aggregate ready count 계약이 아니다.
-readiness 판정은 이벤트 edge 와 주체별 event counting 으로 해야 한다.
+준비 상태 판정은 이벤트 edge 와 주체별 event counting 으로 해야 한다.
 
 - ROUTER/STREAM에서는 `ev->routing_id`에 peer identity가 포함된다.
 - PAIR/DEALER에서는 `routing_id`가 비어 있다.
@@ -481,7 +481,7 @@ zlink_monitor_close(&mon);
 - `sleep`/고정 지연으로 ready를 추정하지 않는다.
 - `CONNECTED`, `ACCEPTED`, `LISTENING`은 progress/debug 이벤트일 뿐,
   메시징 시작 기준으로 쓰지 않는다.
-- perf는 문서에 명시된 deterministic gate만 사용한다.
+- perf(성능 측정 코드)는 문서에 명시된 deterministic gate만 사용한다.
 
 ### 11.1 Raw 소켓 — PAIR, DEALER, ROUTER
 
@@ -644,7 +644,7 @@ zlink_poller_destroy(&poller);
 
 ### 12.2 일괄 대기
 
-폴 루프에 재진입하지 않고 준비된 이벤트를 한 번에 drain하려면:
+폴 루프에 재진입하지 않고 준비된 이벤트를 한 번에 모두 꺼내려면:
 
 ```c
 zlink_poller_event_t events[16];

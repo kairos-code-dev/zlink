@@ -10,7 +10,7 @@ zlink는 OpenSSL을 통해 `tls://`와 `wss://` transport를 네이티브 지원
 SPOT 서비스에서 TLS/WSS 설정은 node owner 책임이다.
 `zlink_set_tls_server()` / `zlink_set_tls_client()`는 bind/connect 전에
 `SpotNode` handle에 적용해야 한다. unified `spot`과 SPOT child pub/sub
-handle은 TLS 설정 surface가 아니며 `ZLINK_CONFIG_NOT_SUPPORTED` 를 반환한다.
+handle에는 TLS 설정을 적용할 수 없으며 `ZLINK_CONFIG_NOT_SUPPORTED` 를 반환한다.
 
 ## 2. TLS 서버 설정
 

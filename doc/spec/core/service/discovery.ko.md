@@ -111,7 +111,7 @@ view를 제공합니다.
 
 - node에는 active SPOT Discovery view를 하나만 둘 수 있습니다.
 - 두 번째 SPOT Discovery attach는 `EBUSY`로 실패합니다.
-- attach된 Discovery를 destroy하면 그 view가 공급하던 automatic peer set도
+- attach된 Discovery를 제거하면 그 view가 공급하던 automatic peer set도
   함께 빠집니다.
 
 ### SpotNode channel dealer attach
@@ -127,7 +127,7 @@ Discovery가 해당 channel의 peer set을 관리합니다.
 - 같은 Discovery handle을 둘 이상의 owner에 attach할 수 없습니다.
 - attach된 `DEALER`는 `SpotNode` 전용 자원으로 취급합니다. 소유권은 호출자가
   유지하지만, 다른 곳에서 같은 socket을 일반 용도로 함께 써서는 안 됩니다.
-- Discovery 없이 수동으로 channel dealer를 attach하려면
+- Discovery 없이 수동으로 channel dealer를 직접 등록하려면
   `zlink_spot_node_attach_channel_dealer_manual()`을 사용합니다.
 
 ### SPOT Node

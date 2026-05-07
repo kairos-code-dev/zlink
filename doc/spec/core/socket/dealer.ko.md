@@ -156,7 +156,7 @@ zlink_recv_result_t zlink_recv (void *s_,
 소켓 `s_`에서 완전한 멀티파트 메시지를 수신합니다. 성공 시 `*parts_out_`는
 라이브러리가 할당한 `*part_count_out_`개 메시지 파트 배열을 가리키며,
 `*source_rid_out_`는 송신자의 routing id로 설정됩니다 (해당하는 경우). 파트
-배열과 각 파트의 소유권이 호출자에게 이전되며, 호출자는 모든 파트를 close하거나
+배열과 각 파트의 소유권이 호출자에게 이전되며, 호출자는 모든 파트를 닫거나
 `zlink_multipart_close()`를 호출하고 배열을 해제해야 합니다. DEALER는
 `zlink_dealer_request()`의 completion callback을 제외하면 data-plane
 수신이 recv-only입니다. poller의 `ZLINK_POLLIN`과 함께 사용해 서버 루프에서

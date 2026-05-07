@@ -111,7 +111,7 @@ view를 제공합니다.
 
 - node에는 active SPOT Discovery view를 하나만 둘 수 있습니다.
 - 두 번째 SPOT Discovery attach는 `EBUSY`로 실패합니다.
-- attach된 Discovery를 destroy하면 그 view가 공급하던 automatic peer set도
+- attach된 Discovery를 파괴하면 그 view가 공급하던 automatic peer set도
   함께 빠집니다.
 
 ### SpotNode channel dealer attach
@@ -127,7 +127,7 @@ Discovery가 해당 channel의 peer set을 관리합니다.
 - 같은 Discovery handle을 둘 이상의 owner에 attach할 수 없습니다.
 - attach된 `DEALER`는 `SpotNode` 전용 자원으로 취급합니다. 소유권은 호출자가
   유지하지만, 다른 곳에서 같은 socket을 일반 용도로 함께 써서는 안 됩니다.
-- Discovery 없이 수동으로 channel dealer를 attach하려면
+- Discovery 없이 수동으로 channel dealer를 직접 등록하려면
   `zlink_spot_node_attach_channel_dealer_manual()`을 사용합니다.
 
 ### SPOT Node
@@ -154,14 +154,14 @@ raw socket family 자동 연결은 역할별 방향 규칙을 따릅니다. 이 
 ### Pairwise initiator 규칙
 
 `ROUTE_MESH`, `DEALER_MESH`, `SPOT_MESH`에서는 한 번의 connect만으로도 양방향
-메시지 경로가 만들어집니다. 양쪽이 동시에 dial하면 중복 연결 경쟁과 handover
-churn이 생기므로, 라이브러리는 쌍마다 한쪽만 dial하도록 내부에서 결정합니다.
+메시지 경로가 만들어집니다. 양쪽이 동시에 연결을 시도하면 중복 연결 경쟁과 handover
+churn이 생기므로, 라이브러리는 쌍마다 한쪽만 연결하도록 내부에서 결정합니다.
 
 - 비교 key는 `routing_id`(우선)와 advertise endpoint 문자열(타이브레이크)
   입니다. 두 peer가 같은 입력으로 같은 total order를 계산하므로 쌍마다
   initiator가 정확히 하나만 정해집니다.
 - 사용자 입장에서는 "누가 누구에게 connect할지"를 따로 설정할 필요가 없으며,
-  결과적으로 한쪽만 dial하는 것으로 보입니다.
+  결과적으로 한쪽만 연결하는 것으로 보입니다.
 - 이 규칙은 Discovery-managed 자동 연결에만 적용됩니다. raw API로 직접
   `zlink_connect()`를 호출하는 수동 연결은 라이브러리가 중재하지 않으며,
   연결 방향 책임은 호출자에게 남습니다.
@@ -205,7 +205,7 @@ DEALER-to-ROUTER channel은 Discovery 생성 시 `ZLINK_AUTO_CONNECT_CLIENT_SERV
   사용하고, 브로드캐스트/uplink 경로는 내부에서 자동 구성합니다.
 - 논리 `spot_rid`에서 현재 목적지 `node_rid`를 얻으려면
   `zlink_discovery_resolve_spot()`를 사용합니다.
-  이 조회에 필요한 SPOT owner row는 publish하는 Discovery에서
+  이 조회에 필요한 SPOT owner row는 게시 중인 Discovery에서
   `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`를 켰을 때만 Registry에 저장됩니다.
 - `ZLINK_DISCOVERY_SERVICE_UP`,
   `ZLINK_DISCOVERY_PROVIDERS_CHANGED` 같은 상태 전이는
@@ -349,9 +349,9 @@ row가 현재 channel view와 같은 갱신 순번에서 검증된 값인지 확
 
 SPOT owner row publish는 기본값으로 꺼져 있습니다. SpotNode를 Discovery에
 붙이는 것만으로는 Registry에 `spot_rid -> owner node` row가 저장되지 않습니다.
-SPOT owner 조회를 Registry 기준으로 사용하려면 owner를 publish하는 Discovery
+SPOT owner 조회를 Registry 기준으로 사용하려면 owner를 게시하는 Discovery
 handle에서 `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`를 `int` 값 `1`로 설정해야
-합니다. 이 옵션을 켜지 않은 Discovery가 publish한 SpotNode는
+합니다. 이 옵션을 켜지 않은 Discovery가 게시한 SpotNode는
 `zlink_discovery_resolve_spot()`의 Registry refresh 결과에 나타나지 않으며,
 조회는 `ENOENT`로 실패할 수 있습니다.
 

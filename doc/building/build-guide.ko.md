@@ -58,7 +58,7 @@ cmake -S core -B core/build -DBUILD_TESTS=OFF && cmake --build core/build
 ./core/build.sh
 ```
 
-Clean CMake build with tests 실행.
+테스트를 포함한 CMake 클린 빌드를 실행한다.
 
 ## 6. OpenSSL 설치
 

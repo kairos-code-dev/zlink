@@ -527,7 +527,7 @@ flowchart LR
 ```
 
 session actor list는 session routing id마다 별도로 존재한다. 각 entry는 Actor id와
-concrete Actor ref를 저장한다. unchecked ref로 bind하더라도 attach가 성공하면
+concrete Actor ref를 저장한다. unchecked ref로 bind를 시도하더라도 attach가 성공하면
 session entry에는 실제 generation이 들어간다. session owner는 joined Spot 상태를
 저장하지 않는다. joined 상태는 Actor owner table과 snapshot에서만 관리한다.
 

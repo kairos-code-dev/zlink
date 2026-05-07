@@ -284,7 +284,7 @@ routing id를 가리킵니다.
 `zlink_router_reply_spot()`으로 응답합니다.
 
 반환되는 payload view의 소유권 규칙은 일반 recv와 같습니다. 배열 view는
-라이브러리가 소유하고, 호출자는 각 part를 close해야 합니다.
+라이브러리가 소유하고, 호출자는 각 part를 닫아야 합니다.
 
 **반환값:** 성공 시 `ZLINK_RECV_OK`. 실패 시에는
 `zlink_recv_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
@@ -310,7 +310,7 @@ zlink_recv_result_t zlink_recv (void *s_,
 소켓 `s_`에서 완전한 멀티파트 메시지를 수신합니다. 성공 시 `*parts_out_`는
 라이브러리가 할당한 `*part_count_out_`개 메시지 파트 배열을 가리키며,
 `*source_rid_out_`는 송신자의 routing id로 설정됩니다 (해당하는 경우). 파트
-배열과 각 파트의 소유권이 호출자에게 이전되며, 호출자는 모든 파트를 close하거나
+배열과 각 파트의 소유권이 호출자에게 이전되며, 호출자는 모든 파트를 닫거나
 `zlink_multipart_close()`를 호출하고 배열을 해제해야 합니다. 소켓이 recv
 모드여야 합니다 (핸들러 미부착). ROUTER 소켓은 이 표면에서 제외됩니다.
 `s_`가 ROUTER 소켓이면 이 호출은 `ZLINK_RECV_NOT_SUPPORTED`로 실패하고,

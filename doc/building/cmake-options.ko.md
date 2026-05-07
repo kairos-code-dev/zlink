@@ -34,7 +34,7 @@ cmake -S core -B core/build -DBUILD_BENCHMARKS=ON
 cmake -S core -B core/build -DBUILD_SHARED=OFF
 ```
 
-## 3. 어드밴스드 옵션
+## 3. 고급 옵션
 
 디버깅 및 정적 분석용 옵션:
 

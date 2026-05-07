@@ -320,14 +320,14 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 
 | 항목 | 설명 |
 |------|------|
-| **하는 일** | 즉시 attach vs 연결 완료 후 attach |
+| **하는 일** | pipe를 즉시 연결할지, 연결 완료 후 연결할지 결정 |
 | **적용 위치** | `socket_base_endpoint.cpp` |
-| **기본값** | `0` (즉시 attach) |
+| **기본값** | `0` (즉시 연결) |
 
-**`0` (기본):** connect() 호출 즉시 pipe를 attach. 연결 완료 전에도 `send()`가
+**`0` (기본):** connect() 호출 즉시 pipe를 소켓에 연결한다. 연결 완료 전에도 `send()`가
 가능하고, 메시지는 큐에 쌓인다.
 
-**`1`:** 연결이 실제로 완료된 후에만 pipe가 attach된다. 연결 전 `send()`는
+**`1`:** 연결이 실제로 완료된 후에만 pipe가 소켓에 연결된다. 연결 전 `send()`는
 block 되거나 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 또한 hiccup(일시적 연결 끊김) 시 pipe가 즉시
 제거된다.
 
@@ -551,7 +551,7 @@ size_t len = 0;
 zlink_socket_get_channel_name(socket, buf, sizeof(buf), &len);
 ```
 
-소켓이 Discovery에 attach된 이후에는 channel 이름 변경이 지원되지 않는다.
+소켓을 Discovery에 등록한 이후에는 channel 이름 변경이 지원되지 않는다.
 
 ---
 [← 스레드 안전성](11-thread-safety.ko.md)

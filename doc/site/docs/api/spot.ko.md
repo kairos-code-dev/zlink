@@ -125,7 +125,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup(
   `*spot_out_`은 변경하지 않는다.
 - 성공하면 `*spot_out_`에 새 owned Spot facade handle을 반환한다. application이
   `zlink_spot_destroy()`로 닫아야 한다.
-- Entry Spot rid로 lookup하면 Entry Spot facade를 반환한다. Entry Spot logical state는
+- Entry Spot rid로 조회하면 Entry Spot facade를 반환한다. Entry Spot logical state는
   `SpotNode`가 소유하므로 마지막 facade가 닫혀도 제거되지 않는다.
 - remote Spot 조회는 Discovery Spot owner resolve가 담당한다. 이 함수는 local `SpotNode`
   안의 Spot만 조회한다.
@@ -482,7 +482,7 @@ readiness 이벤트다.
 - callback 1회가 메시지 1개를 뜻하지 않는다.
 - 이미 readable인 동안 같은 plane으로 메시지가 더 들어오더라도, dispatch callback
   개수와 메시지 개수는 1:1로 대응하지 않을 수 있다.
-- 호출자는 해당 plane에서 `EAGAIN`이 나올 때까지 drain하는 방식으로 처리해야 한다.
+- 호출자는 해당 plane에서 `EAGAIN`이 나올 때까지 모두 읽어 내는 방식으로 처리해야 한다.
 - `SUBSCRIBE_READABLE`은 node-wide broad fan-out이 아니라, 해당 `Spot`이 실제로
   subscribe recv를 할 수 있을 때만 올라와야 한다.
 - `ACTOR_READABLE`은 특정 Actor의 unread part가 준비됐다는 뜻이다. callback의
@@ -674,9 +674,9 @@ zlink_handler_result_t zlink_spot_node_actor_admission_handler(
 - target node에 해당 Actor id가 없을 때만 admission handler를 호출한다.
 - target Actor가 이미 있으면 handler 호출 없이 `ZLINK_ACTOR_CREATE_EXISTING`을
   반환한다. 이미 있는 Actor의 current Spot은 바꾸지 않는다.
-- handler가 accept하면 Actor를 target node의 Entry Spot에 만들고
+- handler가 승인하면 Actor를 target node의 Entry Spot에 만들고
   `ZLINK_ACTOR_CREATE_CREATED`를 반환한다.
-- handler가 reject하면 `ZLINK_REQUEST_REJECTED`로 끝난다.
+- handler가 거부하면 `ZLINK_REQUEST_REJECTED`로 끝난다.
 - remote create-or-get은 target Spot join handler를 거치지 않는다. target Spot 입장
   승인은 create-or-get 호출이 아니라 이후 `join` 요청이 결정한다.
 - `timeout_ms == 0`은 nonblocking request다. 즉시 완료할 수 없으면 timeout 또는
@@ -759,7 +759,7 @@ Actor의 current Spot이 target으로 바뀐다.
 - `message == NULL`이면 payload 없는 completion이다.
 - submit 성공 시 reply message 소유권은 라이브러리로 이전된다. validation 실패 또는
   duplicate reply 실패 시 소유권은 caller에게 남는다.
-- 같은 `info.request`에 두 번 reply하면 두 번째는 `ZLINK_SUBMIT_INVALID_STATE`로 실패하고
+- 같은 `info.request`에 두 번 응답하면 두 번째는 `ZLINK_SUBMIT_INVALID_STATE`로 실패하고
   `errno`는 `EALREADY` 또는 `EINVAL`이다.
 - join timeout, target Spot destroy, SpotNode shutdown 뒤 늦게 도착한 reply는
   `ZLINK_SUBMIT_INVALID_STATE`로 실패한다.
@@ -769,7 +769,7 @@ Actor의 current Spot이 target으로 바뀐다.
 join 원자성:
 
 - accept 전까지 source Spot이 current Spot이다.
-- target Spot이 reject하거나 timeout되면 Actor는 source Spot에 그대로 남는다.
+- target Spot이 거부하거나 timeout되면 Actor는 source Spot에 그대로 남는다.
 - remote join에서 source Actor는 session Actor list compare-and-swap이 성공하고
   target Actor activate와 active route 갱신이 끝난 뒤 source Spot에서 제거된다.
 - join 전후에 도착한 Actor queue message의 순서는 Actor queue 도착 순서로 보존한다.
@@ -1090,5 +1090,5 @@ zlink_config_result_t zlink_spot_actors_snapshot(
   runtime 전용으로 취급한다.
 - channel request의 transport owner는 attach된 `DEALER`지만, callback delivery
   owner는 request를 시작한 `Spot`의 dispatch stream이다.
-- `CHANNEL_REPLY_READABLE` callback에서 `subject`를 일반 dealer처럼 raw recv하지
-  않는다. `zlink_spot_channel_reply_progress_from()`를 통해서만 drain한다.
+- `CHANNEL_REPLY_READABLE` callback에서 `subject`를 일반 dealer처럼 직접 수신하지
+  않는다. `zlink_spot_channel_reply_progress_from()`를 통해서만 읽어낸다.

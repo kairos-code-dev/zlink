@@ -77,7 +77,7 @@ typedef void (*zlink_socket_msg_handler_fn) (
 
 raw `STREAM`의 raw 수신 콜백에 사용되는 타입입니다. 소유 I/O 스레드에서
 호출되며, 모든 메시지 파트의 소유권이 콜백으로 이전됩니다. 각 파트는
-정확히 한 번 close하거나 소비해야 합니다. `zlink_recv_handler()`와 함께
+정확히 한 번 닫거나 소비해야 합니다. `zlink_recv_handler()`와 함께
 사용합니다.
 
 ### zlink_stream_packet_handler_fn
@@ -752,7 +752,7 @@ zlink_config_result_t zlink_socket_attach_discovery (void *socket_, void *discov
 
 raw ROUTER, DEALER, PUB, SUB 소켓을 discovery 서비스 뷰에 부착합니다.
 부착된 동안 수동 `connect`, `disconnect`, `unbind`, `close` 작업은
-실패합니다. discovery 인스턴스를 destroy하면 부착된 소켓 생명주기가
+실패합니다. discovery 인스턴스를 제거하면 부착된 소켓 생명주기가
 종료됩니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.

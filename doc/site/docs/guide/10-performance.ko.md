@@ -64,6 +64,8 @@ zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 |------|--------|------|
 | `ZLINK_OPT_SNDHWM` | 자동 | 기본 balanced auto-HWM profile에서 정한다. 수동 설정이 우선 |
 | `ZLINK_OPT_RCVHWM` | 자동 | 기본 balanced auto-HWM profile에서 정한다. 수동 설정이 우선 |
+| `ZLINK_OPT_SNDBUF` | 자동 | 활성 auto-HWM profile과 실효 메시지 단위로 정한다. compact는 128 KiB 하한을 쓰고, 다른 profile은 256 KiB 하한을 쓴다 |
+| `ZLINK_OPT_RCVBUF` | 자동 | 활성 auto-HWM profile과 실효 메시지 단위로 정한다. compact는 128 KiB 하한을 쓰고, 다른 profile은 256 KiB 하한을 쓴다 |
 
 ### Backpressure 동작
 
@@ -162,8 +164,8 @@ Example 2: STREAM at scale — HWM=10, message=1KB, connections=10000
 ```
 
 One-way `PUB/SUB`와 SPOT fanout에서는 큰 메시지가 큐에 오래 머물면 측정 latency가
-대부분 큐 체류 시간이 된다. 그래서 `balanced` profile은 큰 메시지 fanout 큐를
-작은 메시지 큐보다 더 강하게 cap한다.
+대부분 큐 체류 시간이 된다. 그래서 `balanced` profile은 큰 메시지 fanout 큐에
+작은 메시지 큐보다 더 강하게 상한을 적용한다.
 
 ## 4. Send/Recv 흐름 제어
 

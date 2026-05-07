@@ -92,8 +92,8 @@
 
 **근거**:
 - 관심사 분리: "어디에 있는지" 와 "어떻게 보낼지" 는 독립이다
-- Discovery 는 여러 downstream consumer 에 attach 할 수 있다
-- 하나의 Discovery 인스턴스가 여러 socket subscriber 에 조회 결과를 publish 할 수 있다
+- Discovery 는 여러 downstream consumer 에 연결할 수 있다
+- 하나의 Discovery 인스턴스가 여러 socket subscriber 에 조회 결과를 발행할 수 있다
 
 ---
 

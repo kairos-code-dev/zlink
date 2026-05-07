@@ -148,7 +148,7 @@ zlink_recv_result_t zlink_recv (void *s_,
 소켓 `s_`에서 완전한 멀티파트 메시지를 수신합니다. 성공 시 `*parts_out_`는
 라이브러리가 할당한 `*part_count_out_`개 메시지 파트 배열을 가리키며,
 `*source_rid_out_`는 송신자의 routing id로 설정됩니다 (해당하는 경우). 파트
-배열과 각 파트의 소유권이 호출자에게 이전되며, 호출자는 모든 파트를 close하거나
+배열과 각 파트의 소유권이 호출자에게 이전되며, 호출자는 모든 파트를 닫거나
 `zlink_multipart_close()`를 호출하고 배열을 해제해야 합니다. STREAM의 세 수신
 모드 중 raw recv 모드일 때만 사용할 수 있습니다. raw callback 모드
 (`zlink_recv_handler()` 부착) 또는 packet callback 모드
@@ -203,19 +203,19 @@ zlink_submit_result_t zlink_stream_send_bound_actor_part(
 - `stream`은 session routing id가 속한 raw STREAM socket이다.
 - `session_rid`는 STREAM client session routing id다.
 - 같은 session에 서로 다른 Actor id를 여러 개 bind할 수 있다.
-- 같은 session의 같은 Actor id를 다시 bind하면 그 Actor id 항목만 새 Actor ref로
+- 같은 session의 같은 Actor id를 다시 바인딩하면 그 Actor id 항목만 새 Actor ref로
   교체한다.
-- 같은 session에 같은 Actor ref를 다시 bind하면 중복 항목을 만들지 않고 성공한다.
-- 이미 다른 session에 bind된 Actor를 bind하면 `ZLINK_REQUEST_BUSY` 계열 실패다.
-- `zlink_actor_ref_t.generation == 0`인 unchecked ref로 bind하면 target node의 현재
-  같은 Actor id Actor를 attach하고, session Actor list에는 concrete generation을 가진
+- 같은 session에 같은 Actor ref를 다시 바인딩하면 중복 항목을 만들지 않고 성공한다.
+- 이미 다른 session에 바인딩된 Actor를 바인딩하면 `ZLINK_REQUEST_BUSY` 계열 실패다.
+- `zlink_actor_ref_t.generation == 0`인 unchecked ref로 바인딩하면 target node의 현재
+  같은 Actor id Actor를 연결하고, session Actor list에는 concrete generation을 가진
   ref가 저장된다.
 - checked ref의 generation이 target Actor와 다르면 conflict 또는 invalid-state 계열
   실패다.
-- bind 성공 시 Actor owner node에서 actor route sync가 켜져 있으면 active route가
+- 바인딩 성공 시 Actor owner node에서 actor route sync가 켜져 있으면 active route가
   publish된다. Actor 생성만으로는 active route가 publish되지 않는다.
-- unbind는 없는 Actor id에 대해서도 성공으로 끝나는 idempotent 작업이다.
-- 여러 Actor가 bind된 session에서 한 Actor id를 unbind해도 다른 Actor 항목은
+- 바인딩 해제는 없는 Actor id에 대해서도 성공으로 끝나는 idempotent 작업이다.
+- 여러 Actor가 바인딩된 session에서 한 Actor id의 바인딩을 해제해도 다른 Actor 항목은
   유지된다.
 - remote Actor owner node와 연결이 없으면 explicit unbind는
   `ZLINK_REQUEST_NOT_CONNECTED`로 실패하고 기존 Actor id 항목을 유지한다.
@@ -305,7 +305,7 @@ packet도 허용됩니다. 이 경우에도 `header_`, `body_`는 길이가 0인
   borrowed view입니다. 콜백 실행 중에만 유효하며, 이후에도 유지하려면
   호출자가 값을 복사해야 합니다.
 - `header_`와 `body_`의 소유권은 콜백으로 이전됩니다. 콜백은 두 `msg_t`를
-  각각 정확히 한 번 close하거나 소비해야 합니다.
+  각각 정확히 한 번 닫거나 소비해야 합니다.
 
 같은 handle에 이미 raw callback 모드(`zlink_recv_handler()`)가 붙어 있으면
 이 함수는 `EBUSY`로 실패합니다. 반대로 packet callback이 이미 붙어 있는

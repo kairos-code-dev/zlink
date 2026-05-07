@@ -32,7 +32,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 |  validate + delegate, per-handle admission guard     |
 +------------------------------------------------------+
 |  Service Layer                                       |
-|  Discovery · SPOT · Registry                         |
+|  Discovery · SPOT · Actor · Registry                 |
 |  service access seam (*_access) · lifecycle · runtime|
 +------------------------------------------------------+
 |  Socket Semantic / Runtime                           |
@@ -64,7 +64,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 | 계층 | 역할 |
 |------|------|
 | Public API Facade | C API 진입점. validate + delegate만 수행 |
-| Service Layer | 서비스 의미와 lifecycle. access seam으로 API와 연결 |
+| Service Layer | Discovery/SPOT(+Actor)/Registry 의미와 lifecycle. access seam으로 API와 연결 |
 | Socket Semantic/Runtime | socket family 의미와 공통 runtime이 분리 |
 | Runtime Core | context, shutdown, option dispatch, multipart send |
 | Engine Layer | Boost.Asio 기반 poller, io_context 실행 기반 |
@@ -100,7 +100,22 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 | wss | `wss://host:port` | WebSocket + TLS |
 | tls | `tls://host:port` | 네이티브 TLS |
 
-## 6. 빠른 시작
+## 6. 서비스 계층
+
+서비스 계층은 소켓 위에 올라가는 고수준 분산 기능이다. 소켓 연결 관리, 피어 주소 추적,
+서비스 수명주기를 자동화한다.
+
+| 서비스 | 역할 |
+|--------|------|
+| **Discovery** | Registry를 구독해 서비스 목록을 로컬 캐시로 유지 |
+| **Registry** | 서비스 엔트리 등록·관리, SERVICE_LIST 브로드캐스트 |
+| **SPOT** | 위치투명 topic pub/sub + routed 통신 메시. `SpotNode`가 transport를 소유하고 `Spot` facade가 데이터 평면을 제공 |
+| **Actor** | SPOT 안에서 STREAM session 메시지를 라우팅 타겟으로 모으는 세션 기반 주소 지정 단위. `SpotNode`가 Actor 테이블을 관리하고 `Entry Spot`에서 메시지를 전달한다 |
+
+자세한 내용은 [서비스 계층 개요](07-0-services.ko.md), [SPOT 가이드](07-3-spot.ko.md),
+[SPOT Actor 가이드](07-4-actor.ko.md)를 본다.
+
+## 7. 빠른 시작
 
 ### 요구 사항
 
@@ -156,12 +171,15 @@ int main(void) {
 }
 ```
 
-## 7. 다음 단계
+## 8. 다음 단계
 
 - [Core API 상세](02-core-api.ko.md)
 - [소켓 패턴별 사용법](03-0-socket-patterns.ko.md)
 - [Transport 가이드](04-transports.ko.md)
 - [TLS 보안 설정](05-tls-security.ko.md)
+- [서비스 계층 개요](07-0-services.ko.md)
+- [SPOT 가이드](07-3-spot.ko.md)
+- [SPOT Actor 가이드](07-4-actor.ko.md)
 
 ---
 [Core API →](02-core-api.ko.md)

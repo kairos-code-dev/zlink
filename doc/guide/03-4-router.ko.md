@@ -55,12 +55,12 @@ zlink_bind(router, "tcp://*:5558");
 
 ### 메시지 수신
 
-ROUTER 의 direct 수신 표면은 하나다. 모든 inbound routed 트래픽은
+ROUTER 의 수신 진입점은 하나다. 모든 inbound routed 트래픽은
 `zlink_router_recv()` 로 가져온다. 이 함수는 일반 ROUTER 트래픽(DEALER
-또는 다른 ROUTER) 과 SPOT 에서 시작된 routed 트래픽을 같은 출력 모양으로
+또는 다른 ROUTER) 과 SPOT 에서 시작된 routed 트래픽을 같은 형태로
 전달한다. 일반 ROUTER 트래픽에서는 `source_spot_rid` 가 빈 routing id,
 `request_seq == 0` 이다. 서버 루프는 poller 의 `ZLINK_POLLIN` 을
-관찰한 뒤 `zlink_router_recv()` 로 데이터를 드레인한다.
+관찰한 뒤 `zlink_router_recv()` 로 메시지를 꺼낸다.
 
 ```c
 const zlink_routing_id_t *source_node_rid;
@@ -155,7 +155,7 @@ if (zlink_router_recv(router,
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | 미도달 시 `ZLINK_SUBMIT_NOT_CONNECTED` 반환. 기본값이 `1` 이므로 `zlink_send_rid()` 로 미연결 peer 를 지정하면 실패가 surface 된다. 조용한 drop 이 필요하면 `0` 으로 설정한다. |
+| `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | 미도달 시 `ZLINK_SUBMIT_NOT_CONNECTED` 반환. 기본값이 `1` 이므로 `zlink_send_rid()` 로 미연결 peer 를 지정하면 실패가 호출자에게 반환된다. 조용한 drop 이 필요하면 `0` 으로 설정한다. |
 | `ZLINK_OPT_RID_DUPLICATE_POLICY` | int | `ZLINK_RID_DUPLICATE_REJECT` | routing_id 충돌 시 기존 pipe를 유지할지 새 pipe가 인수할지 정한다. |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_router_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER 자신의 routing_id (전용 함수) |
@@ -168,7 +168,7 @@ if (zlink_router_recv(router,
 `ZLINK_ROUTER_OPT_MANDATORY` 의 기본값은 `1` 이다. 도달할 수 없는 peer 로
 `zlink_send_rid()` 를 보내면 조용히 drop 하지 않고
 `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환한다. 호출자가 `NOT_CONNECTED` 를
-처리하거나 재시도/에러로그로 surface 할 기회가 생긴다.
+처리하거나 재시도/에러 로그로 남길 기회가 생긴다.
 
 ```c
 /* 기본 상태 (MANDATORY=1) */
@@ -187,8 +187,8 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
 ```
 
 > **관찰 가능한 동작:** `MANDATORY=1` 기본값에서는 writable / `ZLINK_POLLOUT`
-> 관찰값이 실제로 쓸 수 있는 peer 가 있을 때만 send-recovery readiness 로
-> surface 된다. duplicate peer identity가 들어오면 기본값에서는 기존 pipe를
+> 관찰값이 실제로 쓸 수 있는 peer 가 있을 때만 send-recovery 준비 상태로
+> 드러난다. 같은 routing_id를 가진 peer가 들어오면 기본값에서는 기존 pipe를
 > 유지하고 새 중복 pipe는 등록하지 않는다. peer 가
 > 들고 날 때 `send_rid` 가 `NOT_CONNECTED` 를 반환하는 일이 흔하다.
 
@@ -375,7 +375,7 @@ DEALER ↔ ROUTER 조합의 핵심 장점:
 void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 
-/* 기본 동작(MANDATORY=1): 도달 불가 peer 전송이 실패로 surface 된다 */
+/* 기본 동작(MANDATORY=1): 도달 불가 peer 전송 시 실패가 반환된다 */
 zlink_routing_id_t bad_rid = { .data = "UNKNOWN", .size = 7 };
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
@@ -749,8 +749,8 @@ ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다.
 3. 인스턴스 재시작 또는 재설정.
 4. `ZLINK_ROUTER_OPT_WEIGHT`를 다시 양수 값으로 설정. 보통 `100`.
 
-연결된 peer의 가중치 전이는 socket monitor의
-`ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 surface 된다. 이벤트 형태는
+연결된 peer의 가중치 변화는 socket monitor의
+`ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 전달된다. 이벤트 형태는
 [모니터링 가이드](06-monitoring.ko.md)의 "Peer 가중치 변화 감지"
 섹션을 참고.
 

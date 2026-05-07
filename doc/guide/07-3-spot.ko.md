@@ -200,7 +200,7 @@ node 단위 aggregate subscription으로 반영된다. 첫 구독이 생길 때 
 ## 5. 다른 channel 호출
 
 `Spot`에서 다른 channel의 서비스 처리자 집합으로 요청을 보내려면
-`SpotNode`에 `DEALER`를 attach해야 한다.
+`SpotNode`에 `DEALER`를 등록해야 한다.
 
 핵심 규칙은 두 가지다.
 
@@ -239,13 +239,13 @@ zlink_spot_node_attach_channel_dealer(node, orders_discovery, dealer);
 ```
 
 여기서는 `SpotNode` 자신이 보는 SPOT channel은 `"alpha"`이고,
-attach하는 `DEALER`는 `"orders"` channel을 바라본다.
+등록하는 `DEALER`는 `"orders"` channel을 바라본다.
 같은 이름을 써도 계약 위반은 아니지만, 예시에서는 헷갈리지 않게 다른 이름을
 사용하는 편이 낫다.
 
 ### 5.2 수동 연결 경로
 
-고정 endpoint를 아는 경우에는 호출자가 `connect()`를 먼저 끝낸 뒤 attach한다.
+고정 endpoint를 아는 경우에는 호출자가 `connect()`를 먼저 끝낸 뒤 DEALER를 등록한다.
 
 ```c
 void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);

@@ -27,7 +27,7 @@ zlink_connect(sub, "tcp://10.0.1.8:9100");   /* price-feed-2 */
 /* price-feed-3 added? price-feed-1 moved? → update config, redeploy */
 ```
 
-**Discovery 사용** -- 소켓을 attach 하기만 하면 된다:
+**Discovery 사용** -- 소켓을 Discovery에 연결하기만 하면 된다:
 
 ```c
 zlink_socket_attach_discovery(sub, discovery);
@@ -103,12 +103,12 @@ flowchart TB
 **구체적 시나리오** -- 위 아키텍처 다이어그램의 `price-feed` 예시:
 
 1. **Node B**가 PUB 소켓을 생성하고, `tcp://*:9100`에 bind한 후,
-   서비스명 `"price-feed"`로 Discovery에 attach한다.
+   서비스명 `"price-feed"`로 Discovery에 등록한다.
 2. Discovery가 확정된 엔드포인트(예: `tcp://10.0.1.8:9100`)를
    Registry 2에 등록한다.
 3. Registry 2가 다음 서비스 목록 브로드캐스트에 이 엔드포인트를 포함한다.
    플러딩(flooding, 전체 브로드캐스트 전파)을 통해 Registry 1, 3도 이 정보를 학습한다.
-4. **Node C**는 자신의 `"price-feed"` Discovery에 SUB 소켓을 attach한
+4. **Node C**는 자신의 `"price-feed"` Discovery에 SUB 소켓을 연결한
    상태다. 브로드캐스트가 도착하면 Discovery가 PUB 프로바이더를 확인하고
    SUB 소켓을 `tcp://10.0.1.8:9100`에 **자동 연결**한다.
 5. Node B가 장애 발생 시, heartbeat가 중단 → Registry가 해당 entry 만료 →
@@ -142,7 +142,7 @@ sequenceDiagram
     Disc-->>Svc: peer discovered → auto-connect
 ```
 
-1. 서비스가 Discovery에 **attach** (또는 SPOT 노드를 등록).
+1. 서비스를 Discovery에 **등록** (또는 SPOT 노드를 등록).
 2. Discovery가 Registry의 ROUTER 엔드포인트에 **부트스트랩 요청**을 전송.
 3. Registry가 구독할 PUB 엔드포인트와 heartbeat 주기를 응답.
 4. Discovery가 PUB 엔드포인트를 **구독**하고 주기적 서비스 목록 수신 시작.
@@ -160,7 +160,7 @@ sequenceDiagram
 | ROUTER | DEALER 피어 | 서버가 모든 클라이언트를 발견 |
 | DEALER | ROUTER 피어 | 클라이언트가 모든 서버를 발견 |
 
-역할은 attach 시 소켓 타입에서 자동으로 파생된다 — 별도 설정 불필요.
+역할은 Discovery 연결 시 소켓 타입에서 자동으로 파생된다 — 별도 설정 불필요.
 
 ROUTER ↔ ROUTER 자동 연결처럼 양쪽 모두 outbound를 시작할 수 있는 경우,
 **자동 연결 방향은 라이브러리가 쌍마다 한쪽만 결정한다.** 즉 두 ROUTER가
@@ -237,7 +237,7 @@ zlink_ctx_term(ctx);
 
 Discovery는 애플리케이션에서 사용하는 클라이언트 측 컴포넌트다. 논리적
 서비스당 하나의 Discovery를 생성하고, Registry에 연결한 후, SPOT 노드나
-raw 소켓을 attach한다. Discovery가 등록, 피어 조회, heartbeat를 대신
+raw 소켓을 Discovery에 등록한다. Discovery가 등록, 피어 조회, heartbeat를 대신
 처리한다.
 
 ```c
@@ -276,7 +276,7 @@ void *discovery = zlink_discovery_new(ctx,
     ZLINK_AUTO_CONNECT_FANOUT, "price-feed");
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5551");
 
-/* Create a PUB socket and attach it to Discovery */
+/* Create a PUB socket and register it to Discovery */
 void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
 zlink_bind(pub, "tcp://*:9100");
 zlink_socket_attach_discovery(pub, discovery);
@@ -294,11 +294,11 @@ zlink_discovery_destroy(&discovery);
 수동 호출이 실패한다. Discovery 인스턴스를 파괴하면 모든 연결된 소켓이
 종료된다.
 
-## 4.2 SpotNode에 Channel Dealer 붙이기
+## 4.2 SpotNode에 Channel Dealer 등록하기
 
 `SpotNode`는 자기 mesh 연결에 SPOT Discovery 하나를 사용한다
 ([SPOT 가이드](07-3-spot.ko.md) 참고). 다른 channel을 호출해야 할 때는
-channel별로 `DEALER`를 attach한다.
+channel별로 `DEALER`를 등록한다.
 
 ```c
 void *node = zlink_spot_node_new(ctx, NULL);

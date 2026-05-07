@@ -237,7 +237,7 @@ zlink_connect(client, "ipc:///tmp/myapp.ipc");
 
 ### 단일 피어만 허용
 
-PAIR 소켓은 하나의 연결만 유지한다. 두 번째 피어가 connect하면 첫 번째 연결이 끊어진다.
+PAIR 소켓은 하나의 연결만 유지한다. 두 번째 피어가 연결하면 첫 번째 연결이 끊어진다.
 
 ```
  Allowed:  PAIR A ↔ PAIR B      (1:1)

@@ -237,8 +237,11 @@ zlink_send(socket, &msg_a, 1, 0);    zlink_send(socket, &msg_b, 1, 0);  /* safe 
 
 ## 6. 콜백 규칙
 
-모든 콜백(메시지, SPOT, XPUB, 모니터, send-ready)은 I/O 스레드에서
-실행됩니다. 알아야 할 것:
+소켓 콜백(메시지, XPUB, 모니터, send-ready)은 I/O 스레드에서 실행됩니다.
+**SPOT dispatch 콜백**(`zlink_spot_handler`, `zlink_spot_dispatch_handler`)은
+SpotNode dispatch worker 스레드에서 실행됩니다 — I/O 스레드가 아닙니다.
+블로킹 금지, 느린 연산 오프로드 규칙은 두 경우 모두 동일하게 적용됩니다.
+알아야 할 것:
 
 **콜백에서 할 수 있는 것:**
 - 같은 핸들로 `send` / `publish` 호출 — 이것이 권장되는

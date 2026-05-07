@@ -159,7 +159,7 @@ core가 aggregate 함수와 `*_part` substrate를 모두 제공하던 시기에�
   package `exports`, `internal/` directory 같은 언어 고유 경계를 사용해
   실제로 접근을 제한해야 한다.
 - perf, sample, test도 원칙적으로 public binding entrypoint만 사용해야 한다.
-  같은 저장소 안에 있다고 해서 internal helper를 직접 import하거나 참조하면
+  같은 저장소 안에 있다고 해서 internal helper를 직접 가져오거나 참조하면
   안 된다.
 - public contract 검증은 배포된 binding consumer가 보게 되는 entrypoint를
   기준으로 한다. 소스 트리 내부에 internal symbol이 존재한다는 이유로 public으로
@@ -2916,7 +2916,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 ### Ownership Tests
 - send 성공 시 ownership 이동 계약 (native에 넘어감, 바인딩이 이후 접근 금지)
 - send 실패 시 restore 또는 caller ownership 유지 계약
-- 생성 후 send하지 않은 메시지의 명시적 close/해제 (close 없으면 native 메모리 누수)
+- 생성 후 전송하지 않은 메시지의 명시적 close/해제 (close 없으면 native 메모리 누수)
 - recv 결과 ownership 계약 (바인딩이 받아서 해제 책임)
 - callback 후 frame validity 계약
 - multipart receive shape와 callback delivery shape 일치 여부

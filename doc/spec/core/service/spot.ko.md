@@ -18,8 +18,8 @@ SPOT 공개 표면은 두 핸들로 나뉜다.
   `SpotNode` 위에 올라가는 데이터 평면 facade이다. 토픽 publish/subscribe,
   routed recv/reply, channel send/request를 제공한다.
 
-`Spot`은 `SpotNode`를 빌려서 만든다. `Spot`을 destroy해도 backing `SpotNode`는
-자동으로 destroy되지 않는다.
+`Spot`은 `SpotNode`를 빌려서 만든다. `Spot`을 파괴해도 backing `SpotNode`는
+자동으로 파괴되지 않는다.
 
 ## 생성과 종료
 
@@ -61,7 +61,7 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 - `zlink_spot_destroy()`는 facade만 닫는다.
 - `zlink_spot_destroy()`는 routed target lookup을 먼저 제거한 뒤 owned subject를
   닫는다. destroy 시점에 남아 있던 unread routed 메시지는 close 과정에서 버려질
-  수 있으며, 호출자는 destroy 전에 unread를 끝까지 drain해야 할 의무를 지지
+  수 있으며, 호출자는 파괴 전에 unread를 끝까지 모두 읽어 처리해야 할 의무를 지지
   않는다.
 - `zlink_spot_node_destroy()`는 node와 내부 runtime 자원을 정리한다.
 - discovery에 attach된 node는 보통 `zlink_discovery_destroy()` 흐름에서 함께 정리된다.
@@ -239,7 +239,7 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
                                                        void *discovery);
 ```
 
-- `zlink_spot_node_bind()`는 node endpoint를 bind한다.
+- `zlink_spot_node_bind()`는 node endpoint를 바인딩한다.
 - `zlink_spot_node_connect_peer()`와 `zlink_spot_node_disconnect_peer()`는
   endpoint를 알고 있는 수동 mesh 연결에 쓴다.
 - `zlink_spot_node_disconnect_peer_rid()`는 target node routing id를 기준으로
@@ -506,14 +506,14 @@ readiness 이벤트다.
 - callback 1회가 메시지 1개를 뜻하지 않는다.
 - 이미 readable인 동안 같은 plane으로 메시지가 더 들어오더라도, dispatch callback
   개수와 메시지 개수는 1:1로 대응하지 않을 수 있다.
-- 호출자는 해당 plane에서 `EAGAIN`이 나올 때까지 drain하는 방식으로 처리해야 한다.
+- 호출자는 해당 plane에서 `EAGAIN`이 나올 때까지 모두 읽어 처리하는 방식으로 처리해야 한다.
 - `SUBSCRIBE_READABLE`은 node-wide broad fan-out이 아니라, 해당 `Spot`이 실제로
   subscribe recv를 할 수 있을 때만 올라와야 한다.
 - `ACTOR_READABLE`은 특정 Actor의 unread part가 준비됐다는 뜻이다. callback의
   `subject`는 callback lifetime 동안만 유효한 `const zlink_actor_ref_t *`이며,
-  호출자는 값을 복사한 뒤 `zlink_spot_node_actor_recv_part()`에 넘겨 drain한다.
+  호출자는 값을 복사한 뒤 `zlink_spot_node_actor_recv_part()`에 넘겨 모두 읽어 처리한다.
 - `ACTOR_JOIN_READABLE`은 Spot에 처리할 Actor join request가 있다는 뜻이다.
-  `zlink_spot_actor_join_recv()`가 `ZLINK_RECV_NO_DATA`를 반환할 때까지 drain한다.
+  `zlink_spot_actor_join_recv()`가 `ZLINK_RECV_NO_DATA`를 반환할 때까지 모두 읽어 처리한다.
 
 #### Channel reply progress
 
@@ -524,8 +524,8 @@ ZLINK_EXPORT int zlink_spot_channel_reply_progress_from (
 ```
 
 - `CHANNEL_REPLY_READABLE` callback이 전달한 `subject`(dealer handle)에 대해
-  `spot_`에 귀속된 channel reply completion을 drain한다.
-- drain 중 해당 dealer source queue에 적재된 request completion callback을 실행한다.
+  `spot_`에 귀속된 channel reply completion을 모두 읽어 처리한다.
+- 처리 중 해당 dealer source queue에 적재된 request completion callback을 실행한다.
 - `dealer_`가 해당 `Spot`에 attach된 channel dealer가 아니면 `EINVAL` 또는 `ENOENT`로
   실패한다.
 - `subject`는 raw socket처럼 직접 recv하라는 뜻이 아니라, 이 함수를 호출하라는 신호다.
@@ -766,7 +766,7 @@ Actor의 current Spot이 target으로 바뀐다.
 
 `zlink_spot_actor_join_recv()` 계약:
 
-- `ACTOR_JOIN_READABLE` dispatch event가 뜨면 해당 Spot에서 이 API로 drain한다.
+- `ACTOR_JOIN_READABLE` dispatch event가 뜨면 해당 Spot에서 이 API로 모두 읽어 처리한다.
 - 성공 시 join message 소유권은 호출자에게 이전된다.
 - `zlink_actor_join_info_t.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE`가 0이 아니면
   remote handoff join이다. payload에서 Actor state를 복원할 수 없으면 reject해야 한다.
@@ -839,7 +839,7 @@ zlink_request_result_t zlink_spot_node_actor_destroy(
 
 - Actor destroy는 Actor가 Entry Spot에 있을 때만 허용한다.
 - Actor가 user Spot에 있으면 `ZLINK_REQUEST_INVALID_STATE`로 실패하고 `errno`는
-  `EBUSY`다. application은 먼저 `leave`로 Entry Spot에 돌려보낸 뒤 destroy한다.
+  `EBUSY`다. application은 먼저 `leave`로 Entry Spot에 돌려보낸 뒤 Actor를 제거한다.
 - join request가 pending이면 `ZLINK_REQUEST_BUSY` 또는 `ZLINK_REQUEST_INVALID_STATE`로
   실패하고 `errno`는 `EBUSY`다. destroy는 pending join을 취소하지 않는다.
 - bound STREAM session이 있으면 destroy는 먼저 session Actor list 항목과 Actor의
@@ -1119,4 +1119,4 @@ zlink_config_result_t zlink_spot_actors_snapshot(
 - channel request의 transport owner는 attach된 `DEALER`지만, callback delivery
   owner는 request를 시작한 `Spot`의 dispatch stream이다.
 - `CHANNEL_REPLY_READABLE` callback에서 `subject`를 일반 dealer처럼 raw recv하지
-  않는다. `zlink_spot_channel_reply_progress_from()`를 통해서만 drain한다.
+  않는다. `zlink_spot_channel_reply_progress_from()`를 통해서만 읽어 처리한다.

@@ -130,7 +130,7 @@ memcpy(zlink_msg_data(&parts[1]), "body", 4);
 zlink_send(socket, parts, 2, 0);
 ```
 
-기본적으로 `zlink_send()`는 send queue가 가득 차면(HWM 도달) blocking한다.
+기본적으로 `zlink_send()`는 send queue가 가득 차면(HWM 도달) 블록한다.
 `ZLINK_DONTWAIT` flag 를 사용하면 blocking 대신 즉시
 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다.
 고급 backpressure pattern은

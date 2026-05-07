@@ -42,7 +42,7 @@
 | `ZLINK_OPT_RCVTIMEO` | `-1` | 수신 타임아웃 무한 |
 | `ZLINK_OPT_SNDTIMEO` | `-1` | 송신 타임아웃 무한 |
 | `ZLINK_OPT_IPV6` | 컨텍스트 상속 | 컨텍스트의 IPv6 기본값을 상속 (기본 `0`) |
-| `ZLINK_OPT_IMMEDIATE` | `0` | connecting pipe 즉시 attach |
+| `ZLINK_OPT_IMMEDIATE` | `0` | 연결 중인 pipe를 즉시 등록 |
 | `ZLINK_OPT_CONFLATE` | `0` | 비활성 |
 | `ZLINK_OPT_INVERT_MATCHING` | `0` | 비활성 |
 | `ZLINK_STREAM_OPT_NOTIFY` | `0` | 비활성 |

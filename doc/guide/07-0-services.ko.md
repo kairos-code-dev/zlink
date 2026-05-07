@@ -79,13 +79,13 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템. 서비스가 
 ### 3.2 SPOT — channel 기반 routed + PUB/SUB 허브
 
 `SpotNode`는 SPOT 토폴로지의 핵심 런타임이다. 하나의 SPOT channel Discovery
-view를 attach해서 같은 channel의 다른 `SpotNode`와 mesh를 구성하고, 다른
-channel을 호출해야 할 때는 `DEALER`를 별도로 attach한다. 그 위에 공개
+view를 연결해 같은 channel의 다른 `SpotNode`와 mesh를 구성하고, 다른
+channel을 호출해야 할 때는 `DEALER`를 별도로 등록한다. 그 위에 공개
 `Spot` facade 하나가 올라가 channel send/request, peer routed 통신,
 publish/subscribe를 함께 수행한다.
 
 - SPOT mesh: `zlink_spot_node_attach_discovery()` — SPOT channel view를
-  가진 Discovery 하나를 attach하면 같은 channel의 다른 `SpotNode`와 자동 연결
+  가진 Discovery 하나를 연결하면 같은 channel의 다른 `SpotNode`와 자동 연결
 - channel 호출용 DEALER:
   `zlink_spot_node_attach_channel_dealer()` (자동 연결) /
   `zlink_spot_node_attach_channel_dealer_manual()` (수동 연결) —

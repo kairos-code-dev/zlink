@@ -107,7 +107,7 @@ if (rc == ZLINK_CONFIG_OK) {
 
 Remote Actor가 필요하면 caller node에서 `zlink_spot_node_create_remote_actor()`를
 사용한다. 이미 target node에 같은 Actor id가 있으면 새로 만들지 않고 existing
-결과를 받는다. target node가 admission handler에서 reject하면 request는 거부
+결과를 받는다. target node가 admission handler에서 요청을 거부하면 request는 거부
 결과로 끝난다. remote create-or-get은 target Spot join handler를 거치지 않는다.
 새로 만들어진 remote Actor도 target node의 Entry Spot에 속한다.
 

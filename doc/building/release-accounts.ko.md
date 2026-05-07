@@ -23,12 +23,12 @@
 
 ## 4. Java (Maven Repository)
 
-현재 workflow는 기본값으로 GitHub Packages Maven registry에 publish 하도록 구성되어 있다.
+현재 workflow는 기본값으로 GitHub Packages Maven registry에 배포하도록 구성되어 있다.
 
 - 필요 계정: GitHub 계정 + repository `packages: write` 권한
 - 필요 시크릿: 없음 (기본 `GITHUB_TOKEN` 사용)
 
-외부 Maven 저장소(Nexus/Artifactory/Sonatype 등)로 publish 하려면 아래 시크릿을 추가로 설정한다.
+외부 Maven 저장소(Nexus/Artifactory/Sonatype 등)에 배포하려면 아래 시크릿을 추가로 설정한다.
 
 - `MAVEN_REPOSITORY_URL`
 - `MAVEN_REPOSITORY_USERNAME`

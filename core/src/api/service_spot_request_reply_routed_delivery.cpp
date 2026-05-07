@@ -105,6 +105,12 @@ bool routing_id_from_string (const std::string &value_,
     return true;
 }
 
+std::string routing_id_debug_string (const zlink_routing_id_t &route_id_)
+{
+    return std::string (reinterpret_cast<const char *> (route_id_.data),
+                        route_id_.size);
+}
+
 bool combined_starts_with_peer_pub_route (
   const std::vector<zlink_msg_t> &combined_)
 {
@@ -121,17 +127,15 @@ bool combined_starts_with_peer_pub_route (
 }
 
 int send_external_router_once (zlink::spot_runtime_t *runtime_,
-                               const std::string &route_id_,
+                               const zlink_routing_id_t *route_id_,
                                std::vector<zlink_msg_t> *combined_,
                                zlink_send_flags_t flags_)
 {
-    if (!runtime_ || !runtime_->external_router || !combined_) {
+    if (!runtime_ || !runtime_->external_router || !route_id_ || !combined_) {
         errno = EFAULT;
         return -1;
     }
-
-    zlink_routing_id_t route_id;
-    if (!routing_id_from_string (route_id_, &route_id)) {
+    if (route_id_->size == 0 || route_id_->size > sizeof (route_id_->data)) {
         errno = EINVAL;
         return -1;
     }
@@ -144,10 +148,11 @@ int send_external_router_once (zlink::spot_runtime_t *runtime_,
                                                 ZLINK_POLLOUT, 100)
             <= 0) {
             if (spot_direct_route_debug_enabled ()) {
+                const std::string route_id = routing_id_debug_string (*route_id_);
                 std::fprintf (
                   stderr,
                   "[spot-direct] external-router wait pollout failed errno=%d route=%s\n",
-                  errno, route_id_.c_str ());
+                  errno, route_id.c_str ());
             }
             errno = errno != 0 ? errno : EAGAIN;
             return -1;
@@ -155,19 +160,35 @@ int send_external_router_once (zlink::spot_runtime_t *runtime_,
     }
 
     const int rc = zlink::logical_multipart_send_routed (
-      runtime_->external_router, &route_id, &(*combined_)[0],
+      runtime_->external_router, route_id_, &(*combined_)[0],
       combined_->size (), flags_ | ZLINK_DONTWAIT);
     if (spot_direct_route_debug_enabled ()) {
+        const std::string route_id = routing_id_debug_string (*route_id_);
         std::fprintf (stderr,
                       "[spot-direct] external-router send rc=%d errno=%d route=%s parts=%zu\n",
-                      rc, errno, route_id_.c_str (), combined_->size ());
+                      rc, errno, route_id.c_str (), combined_->size ());
     }
     return rc;
 }
 
-int dispatch_external_router_delivery (zlink::spot_node_t *origin_node_,
-                                       zlink_send_flags_t flags_,
-                                       std::vector<zlink_msg_t> *combined_)
+int send_external_router_once (zlink::spot_runtime_t *runtime_,
+                               const std::string &route_id_,
+                               std::vector<zlink_msg_t> *combined_,
+                               zlink_send_flags_t flags_)
+{
+    zlink_routing_id_t route_id;
+    if (!routing_id_from_string (route_id_, &route_id)) {
+        errno = EINVAL;
+        return -1;
+    }
+    return send_external_router_once (runtime_, &route_id, combined_, flags_);
+}
+
+int dispatch_external_router_delivery_with_envelope (
+  zlink::spot_node_t *origin_node_,
+  zlink_send_flags_t flags_,
+  std::vector<zlink_msg_t> *combined_,
+  const parsed_spot_envelope_t &envelope_)
 {
     if (!origin_node_ || !combined_ || combined_->empty ()) {
         errno = EFAULT;
@@ -181,27 +202,20 @@ int dispatch_external_router_delivery (zlink::spot_node_t *origin_node_,
         return -1;
     }
 
-    parsed_spot_envelope_t envelope;
-    if (!zlink::spot_reqrep_internal::parse_spot_routed_envelope (
-          &(*combined_)[0], combined_->size (), &envelope)) {
-        errno = EPROTO;
-        return -1;
-    }
-
-    if (!envelope.destination_node_rid.empty ()) {
+    if (envelope_.destination_node_rid_value.size > 0) {
         return send_external_router_once (runtime,
-                                          envelope.destination_node_rid,
+                                          &envelope_.destination_node_rid_value,
                                           combined_,
                                           flags_);
     }
 
     const std::vector<std::string> candidate_route_ids =
-      runtime->external_route_ids_for_destination (envelope.destination_node_rid);
+      runtime->external_route_ids_for_destination (envelope_.destination_node_rid);
     if (candidate_route_ids.empty ()) {
         if (spot_direct_route_debug_enabled ()) {
             std::fprintf (stderr,
                           "[spot-direct] no external route for destination=%s\n",
-                          envelope.destination_node_rid.c_str ());
+                          envelope_.destination_node_rid.c_str ());
         }
         errno = EHOSTUNREACH;
         return -1;
@@ -209,6 +223,26 @@ int dispatch_external_router_delivery (zlink::spot_node_t *origin_node_,
 
     return send_external_router_once (runtime, candidate_route_ids.front (),
                                       combined_, flags_);
+}
+
+int dispatch_external_router_delivery (zlink::spot_node_t *origin_node_,
+                                       zlink_send_flags_t flags_,
+                                       std::vector<zlink_msg_t> *combined_)
+{
+    if (!combined_ || combined_->empty ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    parsed_spot_envelope_t envelope;
+    if (!zlink::spot_reqrep_internal::parse_spot_routed_envelope (
+          &(*combined_)[0], combined_->size (), &envelope)) {
+        errno = EPROTO;
+        return -1;
+    }
+
+    return dispatch_external_router_delivery_with_envelope (
+      origin_node_, flags_, combined_, envelope);
 }
 
 bool has_local_spot_route_target (uint8_t destination_class_,
@@ -270,8 +304,8 @@ int process_routed_send_entry_on_data_plane (
                                                                  envelope);
     }
 
-    return dispatch_external_router_delivery (runtime_->owner, flags_,
-                                              combined_);
+    return dispatch_external_router_delivery_with_envelope (
+      runtime_->owner, flags_, combined_, envelope);
 }
 
 void spot_external_router_dispatch (const zlink_routing_id_t *,

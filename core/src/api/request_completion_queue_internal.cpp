@@ -164,23 +164,25 @@ int zlink::request_completion::enqueue (queue_state_t *state_,
     if (move_completion_parts (&completion.parts, parts_, part_count_) != 0)
         return -1;
 
-    bool should_signal = false;
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
-        should_signal = state_->pending.empty () && !state_->signal_pending;
+        const bool should_signal =
+          state_->pending.empty () && !state_->signal_pending;
         state_->pending.push_back (std::move (completion));
-        if (should_signal)
+        if (should_signal) {
             state_->signal_pending = true;
+            static const unsigned char signal_byte = 0x7a;
+            const int signal_rc = zlink::internal_pair_queue::send_buffer_frame (
+              state_->signal.tx, &signal_byte, sizeof (signal_byte), 0);
+            if (signal_rc != 0) {
+                state_->signal_pending = false;
+                return -1;
+            }
+        }
     }
 
-    if (!should_signal) {
-        errno = 0;
-        return 0;
-    }
-
-    static const unsigned char signal_byte = 0x7a;
-    return zlink::internal_pair_queue::send_buffer_frame (
-      state_->signal.tx, &signal_byte, sizeof (signal_byte), 0);
+    errno = 0;
+    return 0;
 }
 
 int zlink::request_completion::drain (queue_state_t *state_,
@@ -195,22 +197,20 @@ int zlink::request_completion::drain (queue_state_t *state_,
     int drained = 0;
     while (true) {
         std::deque<queued_completion_t> batch;
-        bool signal_may_be_pending = false;
         bool queue_empty = false;
         {
             std::lock_guard<std::mutex> lock (state_->mutex);
-            signal_may_be_pending = state_->signal_pending;
             if (state_->pending.empty ()) {
-                state_->signal_pending = false;
+                if (state_->signal_pending) {
+                    drain_signal_socket_nonblocking (state_->signal.rx);
+                    state_->signal_pending = false;
+                }
                 queue_empty = true;
             } else {
                 batch.swap (state_->pending);
-                state_->signal_pending = false;
             }
         }
 
-        if (signal_may_be_pending)
-            drain_signal_socket_nonblocking (state_->signal.rx);
         if (queue_empty)
             break;
 

@@ -270,7 +270,9 @@ void zlink::spot_reqrep_internal::close_spot_routed_recv_state (
     if (!state_)
         return;
 
-    std::lock_guard<std::mutex> lock (state_->mutex);
+    std::lock_guard<std::mutex> state_lock (state_->mutex);
+    std::lock_guard<std::mutex> queue_lock (
+      state_->recv.routed_recv_queue.mutex);
     state_->recv.routed_recv_queue.pending.clear ();
     state_->recv.routed_recv_queue.pending_count = 0;
     state_->recv.routed_recv_queue.signal_armed = false;

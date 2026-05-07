@@ -49,6 +49,13 @@ Single SPOT sets the SpotNode data-path message unit to
 as the other single benchmarks while keeping large one-way SPOT probes from
 starting with an overly shallow queue.
 
+Single SPOT also defaults `PERF_IO_THREADS` to `4` when the user does not pass
+`--io-threads` or set `PERF_IO_THREADS`. A SPOT transport run creates two
+SpotNodes, their data-plane sockets, and transport sockets in one process; with
+the generic single-binary default of one I/O thread, the benchmark measures I/O
+thread contention instead of SPOT throughput. Explicit `--io-threads` always
+wins when a run needs a different value.
+
 For non-SPOT patterns, the auto-HWM detail table is printed after the result
 rows. It uses the cached runtime snapshots and includes the applied HWM and
 socket buffers.

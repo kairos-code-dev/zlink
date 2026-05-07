@@ -44,14 +44,13 @@ flowchart TB
 
 ## 2. 소켓 종류
 
-| 소켓 | 타입 | Endpoint | 용도 |
+| 소켓 | 타입 | 엔드포인트 | 용도 |
 |------|------|----------|------|
 | `_router_socket` | ROUTER | `bind()`으로 설정 | REGISTER, HEARTBEAT, BOOTSTRAP, TOPOLOGY 요청 처리 |
 | `_pub_socket` | XPUB | `bind()`으로 설정 | 모든 Discovery SUB에 SERVICE_LIST 브로드캐스트 |
-| `_peer_sub_socket` | SUB | peer PUB에 connect | peer Registry에서 SERVICE_LIST 수신 (클러스터 동기화) |
+| `_peer_sub_socket` | SUB | 피어 PUB에 connect | 피어 Registry에서 SERVICE_LIST 수신 (클러스터 동기화) |
 
-XPUB을 사용하여 구독 이벤트를 감지하고 새 구독자에게
-즉시 SERVICE_LIST를 전송한다.
+XPUB을 사용해 구독 이벤트를 감지하고 새 구독자에게 즉시 SERVICE_LIST를 전송한다.
 
 ## 3. 데이터 구조
 
@@ -155,8 +154,8 @@ sequenceDiagram
 
 ### Flooding 규칙
 
-Flooding은 각 Registry가 받은 SERVICE_LIST를 나머지 Registry로 즉시 전파하는
-동작이다. 루프를 방지하고 수렴을 보장하기 위해 아래 규칙을 적용한다.
+Flooding은 각 Registry가 받은 SERVICE_LIST를 나머지 Registry로 즉시 전파하는 동작이다.
+루프를 방지하고 수렴을 보장하기 위해 아래 규칙을 적용한다.
 
 | 규칙 | 설명 |
 |------|------|
@@ -255,8 +254,8 @@ sequenceDiagram
 
 Registry 측 주의사항:
 
-- 이 쿼리는 **요청마다 peer Registry 로 fan-out(분산 조회)하지 않는다**. Registry 는 §6 의 flooding / heartbeat 주기로 동기화된 로컬 `service_map` 에서 답한다. spot 소유 기록은 SERVICE_LIST 브로드캐스트와 `TOPOLOGY_REPORT` uplink 경로를 통해 로컬 `service_map` 에 반영된다.
-- owner SpotNode 가 이동했지만 새 등록이 아직 이 Registry 까지 전파되지 않았다면, 쿼리는 **stale(오래된) 이거나 비어 있는** 결과를 반환할 수 있다. Discovery 클라이언트는 이를 `ENOENT` 로 호출자에게 "지금은 확정 불가" 신호로 돌려주며, 애플리케이션은 짧은 backoff 후 재시도하는 것이 일반적이다.
+- 이 쿼리는 **요청마다 피어 Registry 로 팬아웃(fan-out, 분산 조회)하지 않는다**. Registry 는 §6 의 flooding / heartbeat 주기로 동기화된 로컬 `service_map` 에서 답한다. spot 소유 기록은 SERVICE_LIST 브로드캐스트와 `TOPOLOGY_REPORT` uplink 경로를 통해 로컬 `service_map` 에 반영된다.
+- owner SpotNode 가 이동했지만 새 등록이 아직 이 Registry 까지 전파되지 않았다면, 쿼리는 **오래된(stale) 결과이거나 빈 결과**를 반환할 수 있다. Discovery 클라이언트는 이를 `ENOENT` 로 호출자에게 "지금은 확정 불가" 신호로 돌려주며, 애플리케이션은 짧은 backoff 후 재시도하는 것이 일반적이다.
 - Registry 는 매칭되는 모든 엔트리를 반환하지, 가장 신선한 한 건만 고르지 않는다. Discovery 클라이언트가 `refresh_spot_owner_cache_locked` 단계에서 각 엔트리에 현재의 `validated_service_seq` 도장을 찍어 저장하므로, 이후 캐시 hit 단계에서 membership 변화를 기준으로 검증할 수 있다.
 - 이 응답을 **들어오는 request 에 대한 reply 용 owner 주소로 재사용하면 안 된다**. 이 resolver 는 destination lookup 전용이고, reply 경로는 원래 request 와 함께 전달된 구체적인 source 주소를 그대로 써야 한다. 클라이언트 측 계약은 [Discovery Internals §10](discovery-internals.ko.md#10-spot-소유-노드-조회-zlink_discovery_resolve_spot) 참고.
 
@@ -289,8 +288,7 @@ sequenceDiagram
     Note over Disc: 이제 어디에:<br/>- 구독할지 (pub_endpoint)<br/>- heartbeat 보낼지 (uplink_endpoint)<br/>알게 됨
 ```
 
-Bootstrap 응답은 Discovery 클라이언트에게 지속적 통신에 필요한
-모든 정보를 제공한다:
+Bootstrap 응답은 Discovery 클라이언트에게 지속적 통신에 필요한 모든 정보를 제공한다.
 - `registry_id`: 중복 감지용 고유 식별자
 - `heartbeat_interval_ms`: heartbeat 전송 주기
 - `pub_endpoint`: SERVICE_LIST 구독 대상

@@ -7,9 +7,9 @@
 zlink 서비스 계층은 Discovery와 SPOT 두 가지 고수준 서비스를 제공한다.
 이 문서는 내부 구현 상세를 다룬다.
 
-SPOT에서 transport 보안 소유권은 의도적으로 좁게 유지한다.
-`SpotNode`가 mesh/control 소켓의 TLS/WSS 연결 설정을 책임지고, unified `Spot`은
-빌린 data-plane facade(데이터 평면 접근 인터페이스)로만 남는다. facade는 node
+SPOT 에서 transport 보안 소유권은 의도적으로 좁게 유지한다.
+`SpotNode` 가 mesh/control 소켓의 TLS/WSS 연결 설정을 책임지고, unified `Spot` 은
+빌린 데이터 평면 facade(data-plane facade)로만 남는다. facade 는 node
 수명주기를 소유하지 않으며, 그 자체가 TLS 설정 진입점이 아니다.
 
 ## 2. Registry 내부 구현
@@ -89,8 +89,8 @@ enum service_role_t {
 };
 ```
 
-SPOT은 고정 SPOT 역할을 가진다. 소켓 패밀리 서비스는 소켓 타입에 맞는
-명시적 역할이 필요하다. 피어 발견 시 적용되는 역할 매칭 규칙은 다음과 같다.
+SPOT 은 고정 SPOT 역할을 가진다. 소켓 패밀리 서비스는 소켓 타입에 맞는
+명시적 역할이 필요하다. 피어 발견 시 적용되는 역할 매칭 규칙은 다음과 같다:
 - PUB ↔ SUB
 - ROUTER ↔ ROUTER, ROUTER ↔ DEALER, DEALER ↔ DEALER
 - SPOT ↔ SPOT
@@ -116,21 +116,21 @@ namespace discovery_owned_service {
 }
 ```
 
-Discovery는 내부적으로 `(auto_connect_type, service_role, service_name,
+Discovery 는 내부적으로 `(auto_connect_type, service_role, service_name,
 endpoint)` 키의 `_registered_services` 맵을 유지하고,
-`refresh_registered_service_heartbeats()`로 등록된 모든 서비스의
-heartbeat를 주기적으로 갱신한다.
+`refresh_registered_service_heartbeats()` 로 등록된 모든 서비스의
+heartbeat 를 주기적으로 갱신한다.
 
 ### 3.4 소켓 Discovery 연결
 
-`socket_discovery_attachment_t`는 raw 소켓 lifecycle을 Discovery와
+`socket_discovery_attachment_t` 는 raw 소켓의 수명주기를 Discovery 와
 통합한다. 소켓이 연결되면:
 
 1. 소켓 타입 지원 여부 검증 (ROUTER/DEALER/PUB/SUB)
 2. 소켓 타입에서 서비스 역할 파생
-3. `discovery_owned_service`를 통해 소켓의 bind 엔드포인트 등록
+3. `discovery_owned_service` 를 통해 소켓의 bind 엔드포인트 등록
 4. 서비스 목록 업데이트를 관찰하고 피어 연결 갱신
-5. 토폴로지 상태 변경을 Discovery에 보고
+5. 토폴로지 상태 변경을 Discovery 에 보고
 6. 수동 connect/disconnect/unbind/close 차단
 
 ### 3.5 구독 동작
@@ -214,12 +214,10 @@ Frame 4~N: Service entries (repeated service_count times)
   - 내부 큐, 패턴 매칭, 조건변수 기반 blocking recv
 
 ### 5.2 동시성 모델
-- 발행: 호출자 스레드에서 직접 수행,
-  `_publish_sync` mutex로 직렬화 (thread-safe)
-- 수신: worker 스레드가 SUB 소켓에서 수신,
-  spot_sub_t 내부 큐로 분배
+- 발행: 호출자 스레드에서 직접 수행, `_publish_sync` 뮤텍스(mutex)로 직렬화 (스레드 안전)
+- 수신: worker 스레드가 SUB 소켓에서 수신, spot_sub_t 내부 큐로 분배
 - 잠금 순서: `_sync` → `_publish_sync` (데드락 방지)
-- 비동기 큐 없이 직접 발행 (publish path에 메시지 버퍼링 없음)
+- 비동기 큐 없이 직접 발행 (publish 경로에 메시지 버퍼링 없음)
 
 ### 5.3 구독 집계
 - refcount 기반 SUB 필터 관리
@@ -719,9 +717,9 @@ ROUTER recv queue frame 인코딩 (routed 표면 통합 — 이 큐는 일반 RO
 
 ## 10. 가중치 전파
 
-raw ROUTER와 DEALER 소켓은 typed option API로 자기 피어 가중치를 변경할 수
-있다. SpotNode와 Spot에는 별도 로컬 weight 설정 옵션이 없다. 내부 구현은 raw
-소켓의 변경을 연결된 피어에게 **최선 노력(best-effort)의 런타임 신호**로 알리고,
+raw ROUTER 와 DEALER 소켓은 typed option API 로 자기 피어 가중치를 변경할 수
+있다. SpotNode 와 Spot 에는 별도 로컬 weight 설정 옵션이 없다. 내부 구현은 raw
+소켓의 변경을 연결된 피어에게 **최선 노력(best-effort) 런타임 신호**로 알리고,
 피어는 자신의 가중치 캐시를 갱신해서 outbound 후보 선택에 반영한다.
 
 기본 동작 약속:

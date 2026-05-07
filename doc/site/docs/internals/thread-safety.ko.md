@@ -13,7 +13,7 @@ zlink의 공개 핸들(소켓, SPOT, Discovery, Registry, 모니터)은
 내부적으로 라이브러리는 모든 공개 API를 세 가지 계층 중 하나로 분류하며,
 각 계층은 고유한 순서 의미론, 성능 제약, 에러 규칙을 가집니다.
 
-three-tier contract(3계층 계약)는 내부 설계 도구다 — 사용자에게는 "자유롭게
+3계층 계약(three-tier contract)은 내부 설계 도구다 — 사용자에게는 "자유롭게
 보내고, 언제든 설정하고, 명확한 에러 코드로 닫기"로 보인다. 이 문서는
 각 계층이 어떻게 구현되는지 설명한다.
 
@@ -86,10 +86,10 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 - `zlink_discovery_destroy()` / `zlink_registry_destroy()`
 - Monitor 핸들 `close` / `destroy`
 
-**Admission gate(진입 허가 게이트) 메커니즘:**
+**입장 허용 게이트(Admission gate) 메커니즘:**
 
-Lifecycle gate는 두 가지 상태를 추적하는 단일 원자 워드다: closing
-bit와 in-flight(현재 실행 중인 API 호출) 카운트. 이를 통해 광범위 잠금(broad lock) 없이
+Lifecycle 게이트는 두 가지 상태를 추적하는 단일 원자 워드다: closing
+bit 와 in-flight(현재 실행 중인 API 호출) 카운트. 이를 통해 광범위 잠금(broad lock) 없이
 빠른 실패(fail-fast) 결정이 가능하다.
 
 ```mermaid
@@ -111,16 +111,16 @@ stateDiagram-v2
 
 **핵심 규칙:**
 
-- **`EBUSY`는 fail-fast, no-latch(잠금 없는 빠른 실패).** 실패한 close는 핸들을 closing
+- **`EBUSY` 는 fail-fast, no-latch(잠금 없는 빠른 실패).** 실패한 close 는 핸들을 closing
   상태로 영구 전이시키지 않는다. `EBUSY` 후 핸들은 이전 operational 상태로 완전히 복귀한다.
-- **Drain-then-close(소진 후 닫기).** Close가 수락되면 모든 enqueue된 메시지가
-  teardown 전에 소진된다. Drain은 best-effort가 아니다 — close가
-  수락된 시점에 enqueue된 모든 메시지를 반드시 소진한다.
-- **Callback에서의 self-close.** Send-ready 또는 monitor callback이
-  자기 핸들의 `close`를 호출하면, 실제 teardown은 callback epilogue
-  (콜백 함수 반환)까지 지연된다. Callback 내 use-after-free를 방지한다.
-- **STREAM raw callback 제한.** STREAM raw callback 내에서 `close`를
-  호출하면 `EBUSY`로 실패한다 — raw dispatch가 in-flight 상태이기 때문이다.
+- **Drain-then-close(소진 후 닫기).** Close 가 수락되면 모든 enqueue 된 메시지가
+  teardown 전에 소진된다. Drain 은 best-effort 가 아니다 — close 가
+  수락된 시점에 enqueue 된 모든 메시지를 반드시 소진한다.
+- **콜백에서의 self-close.** Send-ready 또는 monitor 콜백이
+  자기 핸들의 `close` 를 호출하면, 실제 teardown 은 콜백 복귀(epilogue)까지
+  지연된다. 콜백 내 use-after-free 를 방지한다.
+- **STREAM raw 콜백 제한.** STREAM raw 콜백 내에서 `close` 를
+  호출하면 `EBUSY` 로 실패한다 — raw 디스패치가 in-flight 상태이기 때문이다.
 
 ## 3. Subject별 구현 참고
 
@@ -130,14 +130,14 @@ Raw socket은 최우선 hot-path subject입니다. `send()` 구현은 내부
 send queue에 발행합니다 — 단일 스레드 send에 사용되는 것과 같은
 경로에 concurrent 진입을 위한 admission gate를 추가한 것입니다.
 
-- **Admission gate:** 소켓당 단일 `atomic<uint32_t>` 워드가
-  in-flight 카운트와 closing bit를 추적합니다
+- **입장 허용 게이트:** 소켓당 단일 `atomic<uint32_t>` 워드가
+  in-flight 카운트와 closing bit 를 추적합니다
   (`socket_base.hpp` / `socket_base.cpp`).
-- **Send queue publication:** 동시 producer들이 기존
-  pipe/YPipe 인프라를 통해 enqueue한다. I/O 스레드 consumer
+- **Send queue publication:** 동시 producer 들이 기존
+  pipe/YPipe 인프라를 통해 enqueue 한다. I/O 스레드 consumer
   측은 변경되지 않는다.
 - **Control-path lock:** `bind`, `connect`, `set_option` 등은
-  hot-path admission gate와 상태나 캐시 라인을 공유하지 않는
+  hot-path 입장 허용 게이트와 상태나 캐시 라인을 공유하지 않는
   별도 직렬화 경로를 거친다.
 
 ### 3.2 SPOT / SPOT Node
@@ -174,37 +174,37 @@ Monitor는 control-plane 중심 subject입니다.
 
 ## 4. Service Public API Guard
 
-`service_public_api.hpp`는 SPOT, SPOT Node, Discovery,
-Registry가 lifecycle과 control-path 계층을 구현하는 데 사용하는
+`service_public_api.hpp` 는 SPOT, SPOT Node, Discovery,
+Registry 가 lifecycle 과 control-path 계층을 구현하는 데 사용하는
 `service_public_api_guard_t` 클래스를 제공합니다.
 
 **구현:**
 
-Guard는 단일 `atomic<uint32_t>`를 사용하며, 하나의 워드에 두 필드를
+가드는 단일 `atomic<uint32_t>` 를 사용하며, 하나의 워드에 두 필드를
 패킹합니다:
 
-- **Bit 31 (closing bit):** close/destroy가 수락되면 설정됩니다.
-- **Bits 0-30 (in-flight count):** 현재 admitted된 공개 API 호출
+- **Bit 31 (closing bit):** close/destroy 가 수락되면 설정됩니다.
+- **Bits 0-30 (in-flight count):** 현재 입장 허용된 공개 API 호출
   수를 추적합니다.
 
-**각 계층이 guard에 매핑되는 방식:**
+**각 계층이 가드에 매핑되는 방식:**
 
-| 계층 | Guard 역할 |
+| 계층 | 가드 역할 |
 |---|---|
-| Lifecycle strict | `begin_close_or_fail_busy()`가 in-flight count와 closing bit를 원자적으로 확인합니다. in-flight > 0이면 `EBUSY`, closing bit가 이미 설정되어 있으면 `EALREADY`를 반환합니다. 성공하면 closing bit를 설정합니다. |
-| Control path serialized | `enter_public_api()`가 closing bit를 확인한 후 in-flight count를 증가시킵니다. Closing bit가 설정되어 있으면 `ESHUTDOWN`을 반환합니다. 모든 control-path 호출이 이 gate를 거쳐 직렬화를 제공합니다. |
-| Hot path | Send 경로는 guard의 broad lock 경로를 우회합니다. Control-path 직렬화와의 contention을 피하기 위해 별도의 최소 비용 admission(소켓 수준 admission gate)을 사용합니다. |
+| Lifecycle strict | `begin_close_or_fail_busy()` 가 in-flight count 와 closing bit 를 원자적으로 확인합니다. in-flight > 0 이면 `EBUSY`, closing bit 가 이미 설정되어 있으면 `EALREADY` 를 반환합니다. 성공하면 closing bit 를 설정합니다. |
+| Control path serialized | `enter_public_api()` 가 closing bit 를 확인한 후 in-flight count 를 증가시킵니다. Closing bit 가 설정되어 있으면 `ESHUTDOWN` 을 반환합니다. 모든 control-path 호출이 이 게이트를 거쳐 직렬화를 제공합니다. |
+| Hot path | Send 경로는 가드의 broad lock 경로를 우회합니다. Control-path 직렬화와의 경합을 피하기 위해 별도의 최소 비용 입장 허용(소켓 수준 입장 허용 게이트)을 사용합니다. |
 
-**Cancel close:** `cancel_close()`가 closing bit를 지워 no-latch
-속성을 지원한다 — 상위 수준에서 `begin_close_or_fail_busy()`가
+**Cancel close:** `cancel_close()` 가 closing bit 를 지워 no-latch
+속성을 지원한다 — 상위 수준에서 `begin_close_or_fail_busy()` 가
 실패하면 핸들을 operational 상태로 복원할 수 있다.
 
 ## 5. Callback Dispatch 구현
 
-대부분의 callback은 I/O 스레드에서 실행된다. 다만
-`zlink_spot_dispatch_event_handler()`는 Spot 전용 worker runtime에서
-실행된다. Dispatch 메커니즘은 원자적 load를 사용하여 핸들러 포인터를 읽으며,
-hot path에 광범위 잠금 없이 핸들러 교체의 가시성을 보장한다.
+대부분의 콜백은 I/O 스레드에서 실행된다. 다만
+`zlink_spot_dispatch_event_handler()` 는 Spot 전용 worker runtime 에서
+실행된다. 디스패치 메커니즘은 원자적 load 를 사용하여 핸들러 포인터를 읽으며,
+hot path 에 광범위 잠금 없이 핸들러 교체의 가시성을 보장한다.
 
 **핸들러 로딩:**
 
@@ -213,12 +213,12 @@ handler = _socket_msg_handler.load(std::memory_order_acquire);
 ```
 
 모든 핸들러 함수 포인터와 관련 subject/userdata 포인터는
-`memory_order_acquire` load를 사용합니다. Setter 함수는 대응하는
-`memory_order_release` store를 사용합니다. 이를 통해 callback
-dispatch가 핸들러 포인터를 읽을 때, setter 스레드가 핸들러를
-설치하기 전에 쓴 모든 데이터도 함께 볼 수 있습니다.
+`memory_order_acquire` load 를 사용합니다. Setter 함수는 대응하는
+`memory_order_release` store 를 사용합니다. 이를 통해 콜백 디스패치가
+핸들러 포인터를 읽을 때, setter 스레드가 핸들러를 설치하기 전에 쓴
+모든 데이터도 함께 볼 수 있습니다.
 
-**Callback 진입/퇴장:**
+**콜백 진입/퇴장:**
 
 ```cpp
 enter_callback_api();   // marks callback as in-flight
@@ -226,51 +226,46 @@ handler(subject, userdata);
 leave_callback_api();   // clears in-flight flag
 ```
 
-`enter_callback_api` / `leave_callback_api` 쌍은 `close`가 callback을
-in-flight 연산으로 인식하여 핸들을 mid-callback에서 teardown하는 대신
-`EBUSY`를 반환하도록 보장합니다.
+`enter_callback_api` / `leave_callback_api` 쌍은 `close` 가 콜백을
+in-flight 연산으로 인식하여 핸들을 콜백 실행 중에 teardown 하는 대신
+`EBUSY` 를 반환하도록 보장합니다.
 
-**STREAM raw callback 제약 근거:**
+**STREAM raw 콜백 제약 근거:**
 
-STREAM raw callback은 더 엄격한 제한을 가진다 — raw callback 내에서의
-`close`는 항상 `EBUSY`로 실패한다. Send-ready/monitor callback에서
-`close`가 epilogue로 지연되는 것과 달리, STREAM raw dispatch는 deferred
-close를 지원하지 않는다.
+STREAM raw 콜백은 더 엄격한 제한을 가진다 — raw 콜백 내에서의
+`close` 는 항상 `EBUSY` 로 실패한다. Send-ready/monitor 콜백에서
+`close` 가 epilogue 로 지연되는 것과 달리, STREAM raw 디스패치는 지연 close 를
+지원하지 않는다.
 
-**Send-ready handler `EDEADLK` 제약 근거:**
+**Send-ready 핸들러 `EDEADLK` 제약 근거:**
 
-자기 callback 내에서 send-ready handler를 교체하면 재진입(reentrant) dispatch
-상황이 발생한다. 이는 감지되어 `EDEADLK`로 거부된다.
+자기 콜백 내에서 send-ready 핸들러를 교체하면 재진입(reentrant) 디스패치
+상황이 발생한다. 이는 감지되어 `EDEADLK` 로 거부된다.
 
 ## 6. 설계 원칙
 
 ### Hot path / control-plane 분리
 
 - Hot-path 상태와 control-plane 상태는 별도 데이터 구조를 사용합니다.
-- Hot-path 캐시 라인과 control-plane 캐시 라인을 분리하여 false
-  sharing을 방지합니다.
-- Hot-path admission과 lifecycle admission은 최소한의 필요 상태만
+- Hot-path 캐시 라인과 control-plane 캐시 라인을 분리하여 false sharing 을 방지합니다.
+- Hot-path 입장 허용과 lifecycle 입장 허용은 최소한의 필요 상태만
   공유합니다 (closing bit 확인).
 
 ### Hot path: 최소 비용
 
-- Send당 최소 원자 연산 (admission의 acquire/release, 구조적으로
-  필요한 경우에만 CAS).
+- Send 당 최소 원자 연산 (입장 허용의 acquire/release, 구조적으로 필요한 경우에만 CAS).
 - 짧은 critical section — sleep, retry, 할당 없음.
 - 기존 send queue publication 경로 재사용.
 
 ### Control path: 직렬화 허용, hot path 저해 금지
 
-- Control-path 연산은 내부 직렬화 레인과 짧은 critical section을
-  사용할 수 있습니다.
-- Control-plane lock은 hot-path admission과 캐시 라인이나 lock
-  인스턴스를 공유하면 안 됩니다.
-- Control-path 호출은 concurrent hot-path send를 절대 블로킹하면
-  안 됩니다.
+- Control-path 연산은 내부 직렬화 레인과 짧은 critical section 을 사용할 수 있습니다.
+- Control-plane lock 은 hot-path 입장 허용 게이트와 캐시 라인이나 lock 인스턴스를 공유하면 안 됩니다.
+- Control-path 호출은 동시에 진행 중인 hot-path send 를 절대 블로킹하면 안 됩니다.
 
-### Lifecycle: 단일 워드 admission gate
+### Lifecycle: 단일 워드 입장 허용 게이트
 
-- Admission gate는 단일 원자 워드 — 다단계 잠금 프로토콜 없음.
-- No-latch의 fail-fast: 거부된 close는 잔여 상태를 남기지 않습니다.
-- Drain-then-close: teardown은 enqueue된 메시지가 소비될 때까지
+- 입장 허용 게이트는 단일 원자 워드 — 다단계 잠금 프로토콜 없음.
+- No-latch 빠른 실패: 거부된 close 는 잔여 상태를 남기지 않습니다.
+- Drain-then-close: teardown 은 enqueue 된 메시지가 소비될 때까지
   기다린 후 자원 정리를 진행합니다.

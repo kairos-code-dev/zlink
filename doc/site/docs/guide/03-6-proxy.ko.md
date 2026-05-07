@@ -1,12 +1,12 @@
 [English](03-6-proxy.md) | [한국어](03-6-proxy.ko.md)
 
-# Proxy 패턴
+# 프록시 패턴
 
 ## 1. 개요
 
-Proxy는 두 소켓 사이에서 메시지를 중계하는 패턴이다.
+프록시는 두 소켓 사이에서 메시지를 중계하는 패턴이다.
 `zlink_proxy()`는 어떤 소켓 조합이든 동작하는 범용 유틸리티 함수이고,
-공개 API를 조합하면 사용자가 직접 커스텀 proxy를 구성할 수도 있다.
+공개 API를 조합하면 사용자가 직접 커스텀 프록시를 구성할 수도 있다.
 
 ## 2. zlink_proxy() — 내장 프록시
 
@@ -31,7 +31,7 @@ int zlink_proxy (void *frontend, void *backend, void *capture);
 
 ## 3. PUB/SUB 프록시 — XSUB/XPUB
 
-가장 일반적인 proxy 패턴이다.
+가장 일반적인 프록시 패턴이다.
 
 ```mermaid
 flowchart LR
@@ -43,7 +43,7 @@ flowchart LR
     XSUB -.->|subscribe| PUB
 ```
 
-### 3.1 내장 proxy 사용
+### 3.1 내장 프록시 사용
 
 ```c
 void *xsub = zlink_socket(ctx, ZLINK_SOCKET_XSUB);
@@ -62,10 +62,10 @@ zlink_proxy(xsub, xpub, capture);      /* blocking */
 - **데이터 전달**: XSUB에서 메시지를 꺼내 XPUB으로 전달
 - **구독 전파**: XPUB에서 구독 이벤트를 꺼내 XSUB으로 전파
 
-### 3.2 수동 proxy 구성
+### 3.2 수동 프록시 구성
 
 중간에 로깅, 필터링, 토픽 변환 등 맞춤 로직이 필요하면
-공개 API만으로 수동 proxy를 구성할 수 있다.
+공개 API만으로 수동 프록시를 구성할 수 있다.
 
 #### 데이터 흐름
 
@@ -134,7 +134,7 @@ while (running) {
 > **핵심:** `zlink_proxy()` 내부는 공개 API가 아닌 `socket_base_t`의
 > internal method를 직접 호출하여 데이터를 전달한다.
 > 공개 API에서 XSUB에 `zlink_send()`나 XPUB에 `zlink_recv()`를
-> 호출하면 `ZLINK_RECV_NOT_SUPPORTED` 를 반환한다. proxy 동작은 `zlink_proxy()` 함수 또는
+> 호출하면 `ZLINK_RECV_NOT_SUPPORTED` 를 반환한다. 프록시 동작은 `zlink_proxy()` 함수 또는
 > 위의 수동 구성(전용 API 조합)으로만 가능하다.
 
 ## 4. 요청/응답 프록시 — ROUTER/DEALER
@@ -153,12 +153,12 @@ zlink_bind(backend, "tcp://*:5560");
 zlink_proxy(frontend, backend, NULL);  /* blocking */
 ```
 
-ROUTER/DEALER proxy는 구독 전파가 없으므로 `zlink_proxy()`만으로 충분하다.
+ROUTER/DEALER 프록시는 구독 전파가 없으므로 `zlink_proxy()`만으로 충분하다.
 수동으로 구성하려면 `zlink_recv()` → `zlink_send_rid()` 조합을 사용한다.
 
-## 5. Proxy가 필요한 이유
+## 5. 프록시가 필요한 이유
 
-**직접 연결 (proxy 없음) -- N x M 연결:**
+**직접 연결 (프록시 없음) -- N x M 연결:**
 
 ```mermaid
 flowchart LR
@@ -170,7 +170,7 @@ flowchart LR
 
 > PUB/SUB가 서로의 주소를 알아야 한다. 연결 수 = N x M.
 
-**proxy 사용 -- N + M 연결:**
+**프록시 사용 -- N + M 연결:**
 
 ```mermaid
 flowchart LR
@@ -183,12 +183,12 @@ flowchart LR
     XPUB --> S2[SUB 2]
 ```
 
-> proxy 주소만 알면 된다. 연결 수 = N + M.
+> 프록시 주소만 알면 된다. 연결 수 = N + M.
 
 | 용도 | 설명 |
 |------|------|
 | **연결 수 감소** | N×M → N+M |
-| **주소 분리** | PUB/SUB가 서로의 endpoint를 몰라도 됨 |
+| **주소 분리** | PUB/SUB가 서로의 엔드포인트를 몰라도 됨 |
 | **동적 확장** | PUB/SUB 독립 추가·제거 |
 | **구독 변환** | XPUB MANUAL 모드로 토픽 재매핑/필터링 |
 | **네트워크 브리징** | inproc ↔ tcp 같은 세그먼트 연결 |

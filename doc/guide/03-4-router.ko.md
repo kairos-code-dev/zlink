@@ -58,7 +58,7 @@ zlink_bind(router, "tcp://*:5558");
 ROUTER 의 수신 진입점은 하나다. 모든 inbound routed 트래픽은
 `zlink_router_recv()` 로 가져온다. 이 함수는 일반 ROUTER 트래픽(DEALER
 또는 다른 ROUTER) 과 SPOT 에서 시작된 routed 트래픽을 같은 형태로
-전달한다. 일반 ROUTER 트래픽에서는 `source_spot_rid` 가 빈 routing id,
+전달한다. 일반 ROUTER 트래픽에서는 `source_spot_rid` 가 빈 라우팅 ID,
 `request_seq == 0` 이다. 서버 루프는 poller 의 `ZLINK_POLLIN` 을
 관찰한 뒤 `zlink_router_recv()` 로 메시지를 꺼낸다.
 
@@ -87,8 +87,8 @@ if (rc == ZLINK_RECV_OK) {
 
 > ROUTER 핸들에 `zlink_recv()` 를 호출하면 `ZLINK_RECV_NOT_SUPPORTED` 로
 > 실패한다. ROUTER 는 `zlink_router_recv()` 로 수신한다. request-reply의
-> reply는 여기서 받지 않고 `zlink_router_request()` 의 reply completion
-> callback 으로 별도 전달된다.
+> reply는 여기서 받지 않고 `zlink_router_request()` 의 응답 완료 콜백으로
+> 별도 전달된다.
 
 ### 메시지 송신
 
@@ -202,7 +202,7 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
 - 서버 역할: `zlink_router_recv()` 로 request 를 받고
   `zlink_router_reply()` 로 응답
 - 능동 클라이언트 역할: `zlink_router_request()` 로 특정 피어에 요청. reply 는
-  `zlink_reply_handler_fn` completion callback 으로 별도 전달
+  `zlink_reply_handler_fn` 완료 콜백으로 별도 전달
 
 가장 중요한 값은 `source_node_rid + request_seq` 조합이다. `request_seq`
 만 맞고 source 가 다르면 같은 요청의 reply 로 보면 안 된다. 일반 ROUTER
@@ -211,7 +211,7 @@ request-reply 에서는 `source_spot_rid` 가 `NULL` 이고, SPOT 에서 시작�
 
 > ZMP request-reply envelope wire 형식은
 > [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
-> ROUTER dispatch 내부 구조는
+> ROUTER 디스패치 내부 구조는
 > [서비스 내부 설계](../internals/services-internals.ko.md)를 참고.
 
 ```c
@@ -239,7 +239,7 @@ if (zlink_router_recv(router,
 }
 ```
 
-`ROUTER` 가 먼저 request 를 시작할 때는 reply callback 을 받는다.
+`ROUTER` 가 먼저 request 를 시작할 때는 응답 콜백을 받는다.
 
 ```c
 static void on_router_reply(zlink_request_result_t result,
@@ -262,8 +262,8 @@ if (rc != ZLINK_SUBMIT_OK) { /* submit 실패 처리 */ }
 ```
 
 **주의:** ROUTER 의 inbound routed delivery 는 `zlink_router_recv()` 로만
-받는다. `zlink_router_request()` 의 reply 는 별도 completion callback
-으로 전달되며, data-plane receive 와 섞이지 않는다. `zlink_router_recv()`
+받는다. `zlink_router_request()` 의 reply 는 별도 완료 콜백으로 전달되며,
+data-plane receive 와 섞이지 않는다. `zlink_router_recv()`
 는 SPOT 에서 시작된 routed 트래픽도 같은 표면으로 전달한다.
 `source_spot_rid` 가 채워져 있으면 `zlink_router_reply_spot()` 으로
 응답한다. [SPOT 가이드](07-3-spot.ko.md) 참고.
@@ -272,8 +272,8 @@ if (rc != ZLINK_SUBMIT_OK) { /* submit 실패 처리 */ }
 
 ### 패턴 1: ROUTER ↔ ROUTER 메시/클러스터
 
-ROUTER의 핵심 패턴. N개 노드가 각각 상대의 routing_id를 지정하여 특정 노드에 전송한다.
-1:1이면 DEALER로 충분하므로, ROUTER ↔ ROUTER는 N개 노드 간 통신에서 의미가 있다.
+ROUTER의 핵심 패턴이다. N개 노드가 각각 상대의 routing_id를 지정하여 특정 노드에 전송한다.
+1:1이면 DEALER로 충분하므로, ROUTER ↔ ROUTER는 N개 이상 노드 간 통신에서 의미가 있다.
 
 ```c
 /* DEALER connects and sends initial message */
@@ -399,7 +399,7 @@ DEALER → ROUTER는 라운드 로빈이 고정되어 분배 비율을 제어할
 애플리케이션이 routing_id를 직접 선택한다.
 
 ```
-  DEALER → ROUTER (라운드 로빈 고정(순환 분배), 균등 분배):
+  DEALER → ROUTER (라운드 로빈 고정, 균등 분배):
 
   +----------+     1/3      +----------+
   |          |-------------->| ROUTER A |
@@ -461,12 +461,12 @@ zlink_send_rid(client, &rid, &msg, 1, 0);
 /* 서버 응답: source_rid = "C1"로 클라이언트 식별 가능 */
 ```
 
-> DEALER → ROUTER의 라운드 로빈(순환 분배)이 충분하면 DEALER를 사용하고,
+> DEALER → ROUTER의 라운드 로빈이 충분하면 DEALER를 사용하고,
 > 분배 로직을 제어해야 하면 ROUTER ↔ ROUTER로 전환한다.
 
 ### 패턴 4: 다중 DEALER 서버
 
-여러 DEALER가 하나의 ROUTER에 연결. ROUTER가 각 DEALER를 routing_id로 구분.
+여러 DEALER가 하나의 ROUTER에 연결하고, ROUTER는 각 DEALER를 routing_id로 구분한다.
 
 ```
   +----------+
@@ -514,7 +514,7 @@ zlink_send(d2, &m2, 1, 0);
 
 ### 패턴 5: 프록시 패턴 (ROUTER-DEALER)
 
-ROUTER(프론트엔드) + DEALER(백엔드)로 멀티스레드 서버 구축.
+ROUTER(프론트엔드)와 DEALER(백엔드)를 조합해 멀티스레드 서버를 구축한다.
 
 ```
   +----------+                                       +----------+
@@ -644,7 +644,7 @@ zlink_send(dealer, &hello, 1, 0);
 
 ### 패턴 8: 다중 Transport
 
-같은 ROUTER에 다양한 transport로 연결 가능. routing_id로 통합 관리.
+같은 ROUTER에 다양한 transport로 연결할 수 있으며, routing_id로 통합 관리한다.
 
 ```
   +----------+                       +----------+
@@ -730,7 +730,7 @@ zlink_get_router_option(
 중인 요청은 마저 완료할 수 있다. 달라지는 부분은 원격 피어가 이
 ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다.
 
-- 원격 DEALER는 이 ROUTER를 라운드 로빈(순환 분배) 후보에서 제외한다.
+- 원격 DEALER는 이 ROUTER를 라운드 로빈 후보에서 제외한다.
 - 원격 ROUTER가 이 RID로 `zlink_send_rid()` 또는
   `zlink_router_request()`를 호출하면 `ZLINK_SUBMIT_NOT_ADMITTED`로
   즉시 실패한다.

@@ -72,17 +72,17 @@ zlink 는 libzmq 의 소켓 패턴과 API 형태를 공유하는 고성능 메�
 ## 2. I/O 모델: Proactor 패턴
 
 zlink 의 I/O 코어는 Boost.Asio 기반의 **Proactor 패턴** 을 사용한다.
-Proactor 패턴은 엔진이 OS 에 비동기 I/O 연산을 요청하고 OS가 완료 후 콜백을 호출하는
+Proactor 패턴은 엔진이 OS 에 비동기 I/O 연산을 요청하고 OS 가 완료 후 콜백(완료 통지 함수)을 호출하는
 "완료 기반(completion-based)" 모델이다.
 비교를 위해 libzmq 의 전통적인 **Reactor 패턴** 을 함께 보여 준다.
-Reactor 패턴은 fd(파일 디스크립터) 준비 상태를 감시하다가 엔진이 직접 read/write를
+Reactor 패턴은 fd(파일 디스크립터) 준비 상태를 감시하다가 엔진이 직접 read/write 를
 수행하는 "준비 기반(readiness-based)" 모델이다.
 
 ### 2.1 Reactor 패턴 (libzmq, 비교용)
 
 libzmq는 전형적인 **Reactor 패턴**을 사용합니다.
-중앙의 폴러(`poller_t`)가 fd의 readiness(읽기/쓰기 가능 상태)를 감시하고,
-준비된 fd에 대해 엔진의 핸들러를 호출하는 구조입니다.
+중앙의 폴러(`poller_t`)가 fd 의 준비 상태(읽기/쓰기 가능 여부)를 감시하고,
+준비된 fd 에 대해 엔진의 핸들러를 호출하는 구조입니다.
 
 ```
 +------------------------------------------------------------------+
@@ -112,13 +112,13 @@ libzmq는 전형적인 **Reactor 패턴**을 사용합니다.
 **핵심 특성:**
 - 플랫폼별 폴러 구현 필요 (epoll, kqueue, devpoll, pollset, select, IOCP)
 - 엔진이 `in_event()`/`out_event()` 콜백에서 동기 `read()`/`write()` 수행
-- 각 I/O 스레드가 하나의 `poller_t` 인스턴스를 소유하고 이벤트 루프 실행
+- 각 I/O 스레드가 `poller_t` 인스턴스를 하나씩 소유하고 이벤트 루프를 실행
 - 새로운 트랜스포트 추가 시 fd 기반 인터페이스에 맞춰야 하는 제약
 
 ### 2.2 Proactor 패턴 (zlink)
 
 zlink는 Boost.Asio의 **Proactor 패턴**을 사용합니다.
-엔진이 OS에 비동기 I/O 연산을 요청하고, OS가 완료 후 콜백을 호출하는 구조입니다.
+엔진이 OS 에 비동기 I/O 연산을 요청하고, OS 가 완료 후 콜백을 호출하는 구조입니다.
 
 ```
 +------------------------------------------------------------------+
@@ -155,8 +155,8 @@ zlink는 Boost.Asio의 **Proactor 패턴**을 사용합니다.
 
 **핵심 특성:**
 - Boost.Asio가 플랫폼별 차이를 추상화 (epoll/kqueue/IOCP를 통합)
-- 엔진이 `async_read_some()`/`async_write_some()`으로 연산 요청, 완료 콜백에서 결과 처리
-- 각 I/O 스레드가 독립된 `io_context`를 소유 — 스레드 간 경합 없음
+- 엔진이 `async_read_some()`/`async_write_some()`으로 연산을 요청하고, 완료 콜백에서 결과를 처리
+- 각 I/O 스레드가 독립된 `io_context` 를 소유 — 스레드 간 경합 없음
 - 트랜스포트 추상화(`i_asio_transport`)를 통해 TCP/TLS/WS/WSS를 동일한 인터페이스로 처리
 
 ### 2.3 Reactor vs. Proactor 비교
@@ -359,10 +359,10 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다.
 **주요 소유 관계 설명**:
 
 - `ctx_t`는 모든 `socket_base_t`, `io_thread_t`, `reaper_t`를 소유합니다.
-- `socket_base_t`는 `session_base_t`를 소유하며, 세션은 소켓과 엔진 사이의 브리지 역할을 합니다.
-- `session_base_t`는 `pipe_t`(Lock-free 메시지 큐)와 `asio_engine_t`(I/O 엔진)를 소유합니다.
+- `socket_base_t`는 `session_base_t`를 소유하며, 세션(session)은 소켓과 엔진 사이의 브리지 역할을 합니다.
+- `session_base_t`는 `pipe_t`(락-프리 메시지 큐)와 `asio_engine_t`(I/O 엔진)를 소유합니다.
 - `asio_engine_t`는 `i_asio_transport` 인터페이스를 통해 물리적 전송 계층과 통신합니다.
-- `io_thread_t`는 독립적인 `io_context`를 보유하여 비동기 I/O를 처리합니다.
+- `io_thread_t`는 독립적인 `io_context` 를 보유하여 비동기 I/O 를 처리합니다.
 - `reaper_t`는 종료된 소켓/세션의 자원을 안전하게 정리합니다.
 
 ---
@@ -569,7 +569,7 @@ Engine Layer는 Boost.Asio 기반의 비동기 I/O 처리를 담당합니다.
 | VERSION     | 1      | 1    | 프로토콜 버전 `0x01`    |
 | FLAGS       | 2      | 1    | 프레임 플래그            |
 | RESERVED    | 3      | 1    | 예약 (0x00)              |
-| PAYLOAD SIZE| 4-7    | 4    | 페이로드 크기 (Big Endian)|
+| PAYLOAD SIZE| 4-7    | 4    | payload 크기 (Big Endian)|
 
 **FLAGS 비트 정의**:
 
@@ -776,7 +776,7 @@ STREAM 소켓 및 외부 클라이언트 연동용 단순 프로토콜입니다.
 ### 7.2 pipe_t - 락-프리 메시지 큐
 
 스레드 간 메시지 전달을 위한 양방향 파이프다.
-Application 스레드와 I/O 스레드 사이에서 `msg_t`를 락-프리로 교환한다.
+Application 스레드와 I/O 스레드 사이에서 `msg_t` 를 락-프리로 교환한다.
 내부적으로 방향별 YPipe 두 개를 묶어 양방향 통신을 구성한다.
 
 ```
@@ -840,16 +840,16 @@ Application 스레드와 I/O 스레드 사이에서 `msg_t`를 락-프리로 교
 1. **I/O 스레드 풀 관리**
    - `zlink_ctx_set(ctx, ZLINK_IO_THREADS, n)`으로 스레드 수 설정 (기본: 1)
    - 각 I/O 스레드는 독립적인 `io_context` 보유
-   - 새 연결 시 부하가 가장 적은 I/O 스레드 선택 (affinity 마스크 지원)
+   - 새 연결 시 부하가 가장 적은 I/O 스레드 선택 (어피니티 마스크 지원)
 
 2. **소켓 관리**
    - 소켓 생성/삭제 추적
    - 최대 소켓 수 제한 (기본: 1023)
    - 빈 슬롯 재사용
 
-3. **inproc 엔드포인트 관리**
+3. **inproc 엔드포인트(endpoint) 관리**
    - `inproc://name` 형식의 주소를 엔드포인트에 매핑
-   - 바인드 전 연결 요청을 pending_connections에 보관
+   - 바인드 전 연결 요청을 pending_connections 에 보관
 
 ```
 ctx_t internal structure:
@@ -869,7 +869,7 @@ ctx_t internal structure:
 
 ### 7.4 session_base_t - 세션
 
-소켓과 엔진 사이의 브리지 역할을 합니다.
+소켓과 엔진 사이의 브리지 역할을 하는 컴포넌트입니다.
 
 ```
 +-------------------------------------------------------------+
@@ -952,8 +952,8 @@ Application Thread              I/O Thread
 ```
 
 - 각 스레드는 자신만의 `mailbox_t`를 보유합니다.
-- `mailbox_t`는 내부적으로 `ypipe_t<command_t>`와 `signaler_t`로 구성됩니다.
-- 명령 타입: `stop`, `plug`, `attach`, `bind`, `activate_read`, `activate_write` 등
+- `mailbox_t`는 내부적으로 `ypipe_t<command_t>` 와 `signaler_t` 로 구성됩니다.
+- 명령 유형: `stop`, `plug`, `attach`, `bind`, `activate_read`, `activate_write` 등
 
 ---
 

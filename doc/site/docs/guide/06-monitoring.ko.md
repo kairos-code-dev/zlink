@@ -4,10 +4,9 @@
 
 ## 1. 개요
 
-모니터링은 소켓 연결 상태를 실시간으로 관찰하는 기능이다. 연결 문제 진단, 피어 장애 감지, 애플리케이션 수준 복구 트리거에 필수적이다.
-
-zlink 모니터링 API는 소켓의 연결/해제/핸드셰이크 등 이벤트를 실시간으로 관찰할 수 있다.
-다른 소켓과 동일하게 직접 수신(recv) 모드와 callback 모드를 지원한다.
+모니터링은 소켓의 연결/해제/핸드셰이크 등 이벤트를 실시간으로 관찰하는 기능이다.
+연결 문제 진단, 피어 장애 감지, 애플리케이션 수준 복구 트리거에 활용한다.
+직접 수신(recv) 모드와 콜백 모드를 지원한다.
 
 ## 2. 모니터 활성화
 
@@ -375,7 +374,7 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 
 ## 9. 다중 소켓 모니터링
 
-여러 소켓의 이벤트를 각각의 콜백 핸들러로 처리.
+여러 소켓의 이벤트를 각각 별도 콜백 핸들러로 처리한다.
 
 ```c
 void on_event_a(const zlink_monitor_event_t *ev, void *userdata)
@@ -430,7 +429,7 @@ zlink_monitor_snapshot(mon, &snapshot);
 ### 콜백 처리 속도
 
 콜백 핸들러에서 블로킹 작업을 수행하면 I/O 진행에 영향을 줄 수 있다.
-느린 처리가 필요하면 콜백 안에서 사용자 queue로 넘기고 별도 thread에서 처리한다.
+느린 처리가 필요하면 콜백 안에서 사용자 큐로 넘기고 별도 스레드에서 처리한다.
 
 ### 원격 모니터링
 
@@ -510,7 +509,7 @@ zlink_socket_monitor_handler(mon, on_ready, NULL);
 ### 11.2 기반 소켓 — STREAM
 
 STREAM은 ROUTER와 동일하게 동작한다 — routing_id는 TCP 연결이 수립되는
-시점에 할당되며, 첫 payload 도착과 무관하다. `CONNECTION_READY`
+시점에 할당되며, 첫 payload(메시지의 실제 데이터 내용) 도착과 무관하다. `CONNECTION_READY`
 이벤트가 routing_id와 함께 payload보다 먼저 발생한다. 순서:
 
 1. 클라이언트가 raw TCP로 연결한다

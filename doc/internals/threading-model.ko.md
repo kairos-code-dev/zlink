@@ -68,9 +68,9 @@ Application thread와 I/O thread를 분리하는 목적은 두 가지다.
 1. **지연 시간 격리**: application thread는 네트워크 I/O를 기다리며 블록되지 않는다.
    `zlink_send()` 호출은 락-프리(lock-free) 파이프에 쓰고 즉시 반환하며, I/O thread가 비동기로
    데이터를 처리한다.
-2. **소켓별 잠금 없는 동시성**: 소켓마다 하나의 I/O thread 이벤트 루프에 고정되므로,
-   일반 데이터 경로 연산에서는 소켓 내부에 잠금이 필요 없다. 동기화는 admission gate(진입 허가 게이트)를
-   통해 application thread 진입점에서만 수행된다.
+2. **소켓별 잠금 없는 동시성**: 소켓마다 하나의 I/O 스레드 이벤트 루프에 고정되므로,
+   일반 데이터 경로 연산에서는 소켓 내부에 잠금이 필요 없다. 동기화는 입장 허용 게이트(admission gate)를
+   통해 애플리케이션 스레드 진입점에서만 수행된다.
 
 Reaper thread는 use-after-free와 double-free 버그를 예방한다. I/O thread가 이벤트 루프
 실행 중에 안전하게 해제할 수 없는 자원을 Reaper에 넘기면, Reaper가 이벤트 루프 밖에서
@@ -83,8 +83,8 @@ Reaper thread는 use-after-free와 double-free 버그를 예방한다. I/O threa
 ### 3.1 Socket-to-thread 고정
 
 소켓이 생성될 때 하나의 I/O thread에 할당된다. 이 할당은 소켓 수명 동안
-변경되지 않는다. 해당 소켓의 모든 데이터 평면 연산(send, recv, timer, callback)은
-오직 그 I/O thread에서 실행된다.
+변경되지 않는다. 해당 소켓의 모든 데이터 평면 연산(send, recv, timer, 콜백)은
+오직 그 I/O 스레드에서 실행된다.
 
 ### 3.2 부하 분산 (least-load)
 
@@ -98,13 +98,13 @@ new_socket → argmin(socket_count[t] for t in io_threads)
 동률이면 인덱스가 낮은 thread가 선택된다. 카운트는 소켓 생성 및 소멸 시 원자적으로
 갱신된다. 할당 이후 재분배는 없다.
 
-### 3.3 Affinity mask
+### 3.3 어피니티 마스크
 
-Context의 affinity mask로 새 소켓 할당 대상 I/O thread를 제한할 수 있다.
-마스크에서 제외된 thread는 이미 할당된 소켓은 계속 처리하지만, 새 소켓은 받지 않는다.
+Context의 어피니티 마스크로 새 소켓 할당 대상 I/O 스레드를 제한할 수 있다.
+마스크에서 제외된 스레드는 이미 할당된 소켓은 계속 처리하지만, 새 소켓은 받지 않는다.
 
 ```c
-/* 새 소켓을 I/O thread 0과 2에만 할당 */
+/* 새 소켓을 I/O 스레드 0과 2에만 할당 */
 uint64_t mask = (1ULL << 0) | (1ULL << 2);
 zlink_ctx_set(ctx, ZLINK_IO_THREAD_AFFINITY, (int)mask);
 ```
@@ -143,7 +143,7 @@ class mailbox_t {
 ```
 
 명령 타입에는 `stop`, `plug`, `attach`, `bind`, `activate_read`, `activate_write`,
-`hiccup`, `term` 등이 있다. I/O thread는 이벤트 루프 각 반복의 시작에서 Mailbox를 drain한다.
+`hiccup`, `term` 등이 있다. I/O 스레드는 이벤트 루프 각 반복의 시작에서 Mailbox를 drain한다.
 
 ### 4.3 데이터 흐름 요약
 
@@ -258,12 +258,12 @@ zlink는 내부적으로 I/O thread를 특정 CPU 코어에 고정하지 않는�
 NUMA 지역성이 중요하다면 애플리케이션에서 다음을 수행한다:
 
 1. `ZLINK_IO_THREADS`를 NUMA 토폴로지에 맞게 설정한다.
-2. affinity mask를 사용해 socket 그룹별로 특정 I/O thread에 할당한다.
-3. 해당 socket에서 `zlink_send()`를 호출하는 application thread에
-   OS 수준 CPU affinity(`pthread_setaffinity_np` 등)를 적용한다.
+2. 어피니티 마스크를 사용해 소켓 그룹별로 특정 I/O 스레드에 할당한다.
+3. 해당 소켓에서 `zlink_send()`를 호출하는 애플리케이션 스레드에
+   OS 수준 CPU 어피니티(`pthread_setaffinity_np` 등)를 적용한다.
 
-소켓은 생성 시 I/O thread에 영구적으로 고정되므로, application thread와 그
-I/O thread를 같은 NUMA 노드에 배치하면 cross-node YPipe 접근이 없어진다.
+소켓은 생성 시 I/O 스레드에 영구적으로 고정되므로, 애플리케이션 스레드와 그
+I/O 스레드를 같은 NUMA 노드에 배치하면 cross-node YPipe 접근이 없어진다.
 
 ---
 
@@ -274,10 +274,10 @@ I/O thread를 같은 NUMA 노드에 배치하면 cross-node YPipe 접근이 없�
 `send`/`publish`/`send_rid` 같은 hot path는 여러 스레드에서 동시 사용 가능하며,
 control path는 정확성을 위해 내부에서 직렬화된다.
 
-### 7.1 여러 thread에서 `zlink_send()` 동시 호출
+### 7.1 여러 스레드에서 `zlink_send()` 동시 호출
 
-각 `zlink_send()` 호출은 admission gate를 통과한 뒤 경량 spinlock으로 YPipe에 쓰고
-Mailbox에 신호를 보낸다. I/O thread는 YPipe를 독립적으로 drain(소비)한다:
+각 `zlink_send()` 호출은 입장 허용 게이트를 통과한 뒤 경량 spinlock으로 YPipe에 쓰고
+Mailbox에 신호를 보낸다. I/O 스레드는 YPipe를 독립적으로 drain(소비)한다:
 
 ```c
 /* Thread A */                      /* Thread B */
@@ -285,18 +285,18 @@ zlink_send(s, &a, 1, 0);            zlink_send(s, &b, 1, 0);
 /* 모두 안전 — hot-path admission guard가 파이프 쓰기를 직렬화 */
 ```
 
-### 7.2 한 thread가 close하는 동안 다른 thread가 send
+### 7.2 한 스레드가 close하는 동안 다른 스레드가 send
 
-`zlink_close()`는 fail-fast(빠른 실패) lifecycle gate를 사용한다. 다른 thread가 그 handle의
+`zlink_close()`는 fail-fast(빠른 실패) lifecycle 게이트를 사용한다. 다른 스레드가 그 핸들의
 hot-path API 안에 있으면 즉시 `ZLINK_CLOSE_BUSY`를 반환한다. close 호출자는 성공할 때까지
-재시도해야 한다. close가 수락되면 이후 해당 handle에 대한 API 호출은 `ZLINK_CLOSE_SHUTDOWN`을
+재시도해야 한다. close가 수락되면 이후 해당 핸들에 대한 API 호출은 `ZLINK_CLOSE_SHUTDOWN`을
 반환한다.
 
-### 7.3 callback 전달과 동시 send
+### 7.3 콜백 전달과 동시 send
 
-`*_handler()`로 등록한 callback은 I/O thread에서 실행된다. application thread에서는
-동시에 `zlink_send()`를 호출할 수 있다 — admission gate가 callback 경로와 send 경로를
-분리한다. callback 안에서 해당 소켓에 `zlink_close()`를 호출하면 데드락이 발생하므로
+`*_handler()`로 등록한 콜백은 I/O 스레드에서 실행된다. 애플리케이션 스레드에서는
+동시에 `zlink_send()`를 호출할 수 있다 — 입장 허용 게이트가 콜백 경로와 send 경로를
+분리한다. 콜백 안에서 해당 소켓에 `zlink_close()`를 호출하면 데드락이 발생하므로
 하지 말아야 한다.
 
 ---
@@ -321,19 +321,19 @@ thread와 같은 thread에서 호출하거나, 호출 전에 모든 소켓을 �
 
 | 속성 | 값 |
 |------|----|
-| 소켓 고정 | 생성 시 결정된 I/O thread, 이후 변경 없음 |
-| 할당 정책 | Least-load (소켓 수 최소 thread) |
+| 소켓 고정 | 생성 시 결정된 I/O 스레드, 이후 변경 없음 |
+| 할당 정책 | Least-load (소켓 수 최소 스레드) |
 | Application→I/O 데이터 경로 | 락-프리 YPipe (SPSC) |
-| Application→I/O 제어 경로 | Mailbox (thread-safe, signaler 기반) |
-| 지연 소멸 | Reaper thread (전역 1개) |
-| 동시 send | Admission gate로 안전 |
+| Application→I/O 제어 경로 | Mailbox (스레드 안전, signaler 기반) |
+| 지연 소멸 | Reaper 스레드 (전역 1개) |
+| 동시 send | 입장 허용 게이트로 안전 |
 | 동시 close + send | 안전. close는 hot-path 호출자가 빠져나올 때까지 `BUSY` 반환 |
-| Callback 실행 thread | 항상 소켓에 할당된 I/O thread |
+| 콜백 실행 스레드 | 항상 소켓에 할당된 I/O 스레드 |
 | SpotNode data-plane thread | SpotNode당 1개; mesh-pub/fanout/external-router 독점 소유 |
 | SpotNode data-plane→App | publish_ingress_queue / routed_send_queue (signaler 기반 wakeup) |
 | Dispatch worker thread | SpotNode당 N개; Spot별 직렬화·코얼레싱; 기본 min(2,cpu)~max(1,cpu) |
 | Dispatch worker idle timeout | 1000 ms (내부 상수) |
-| Spot dispatch callback 실행 thread | Dispatch worker thread (data-plane thread 아님) |
+| Spot dispatch 콜백 실행 스레드 | Dispatch worker 스레드 (data-plane 스레드 아님) |
 
 ---
 [← 아키텍처](architecture.ko.md) | [Thread-Safety →](thread-safety.ko.md)

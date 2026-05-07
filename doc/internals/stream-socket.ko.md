@@ -87,10 +87,10 @@ STREAM 소켓은 상호 배타적인 세 가지 수신 모드를 가진다. 소�
 
 Packet handler 모드는 raw STREAM 바이트 파이프 위에 `header + body` 프레이밍을
 올리는 애플리케이션 프로토콜을 위한 것이다 — 예를 들어 주문 처리 게이트웨이가
-작은 제어 헤더 뒤에 큰 payload 를 싣는 경우. 각 호출자가 동일한
+작은 제어 헤더 뒤에 큰 payload를 싣는 경우. 각 호출자가 동일한
 length-prefix(길이 접두사) 디코더와 버퍼링 상태 머신을 반복해서 구현하는
 대신, STREAM 이 내부에서 frame 을 파싱하고 이미 할당된
-`zlink_msg_t` 를 callback 에 전달한다.
+`zlink_msg_t` 를 콜백에 전달한다.
 
 ### 6.1 Wire framing
 
@@ -105,8 +105,8 @@ length-prefix(길이 접두사) 디코더와 버퍼링 상태 머신을 반복�
 
 - `header_size` 는 2-byte big-endian unsigned integer.
 - `body_size` 는 4-byte big-endian unsigned integer.
-- 두 size 는 모두 `0` 일 수 있다. `header_size=0 && body_size=0` 인 packet 도
-  callback 을 그대로 유발하며, header 와 body 는 비어 있으면서도 non-`NULL`
+- 두 size 는 모두 `0` 일 수 있다. `header_size=0 && body_size=0` 인 패킷도
+  콜백을 그대로 유발하며, header 와 body 는 비어 있으면서도 non-`NULL`
   인 `zlink_msg_t` 두 개로 전달된다.
 - 최대 크기는 내부 한계로 제한된다. 한계를 넘는 size 광고는 malformed
   framing 으로 취급된다 (6.4 참고).
@@ -137,7 +137,7 @@ per-connection decoder 를 거친다.
 먼저 length field 가 파싱된다. `header_size` 와 `body_size` 가 모두 확정된
 시점에 구현이 header / body 용 `zlink_msg_t` 를 미리 allocation 하고, 이후
 socket read 는 바이트를 그 message 들의 backing buffer 에 직접 흘려넣는다.
-Delivery 시점에 두 번째 copy 가 없다 — callback 이 실행될 때 payload 는
+Delivery 시점에 두 번째 copy 가 없다 — 콜백이 실행될 때 payload는
 이미 전달받을 message 내부에 존재한다.
 
 ### 6.3 Callback 규약
@@ -152,37 +152,36 @@ zlink_stream_packet_handler_fn(stream,
                                userdata)
 ```
 
-- `source_rid` 는 callback 실행 동안만 유효한 빌린 참조(borrowed view)다. Callback
+- `source_rid` 는 콜백 실행 동안만 유효한 빌린 참조(borrowed view)다. 콜백
   이후 보존하려면 복사해야 한다.
 - `header_msg` 와 `body_msg` 는 wire size 가 `0` 인 경우에도 항상
-  non-`NULL` 로 전달된다. 두 메시지의 ownership 이 callback 으로 이전되며,
-  callback 이 `zlink_msg_close()` 로 닫을 책임을 진다.
-- 같은 `source_rid` 에서 오는 packet 들은 직렬화된다. 같은 peer 의 뒤
-  packet 이 앞 packet 을 앞지를 수 없다. 서로 다른 `source_rid` 의 packet
-  은 서로 다른 worker thread 에서 병렬 dispatch 될 수 있다.
-- Callback 내부에서의 self-close 는 raw `zlink_recv_handler` 케이스와 같은
-  규칙을 따른다. Callback 내부에서 수신 모드를 바꾸거나 소켓을 닫으려
+  non-`NULL` 로 전달된다. 두 메시지의 ownership 이 콜백으로 이전되며,
+  콜백이 `zlink_msg_close()` 로 닫을 책임을 진다.
+- 같은 `source_rid` 에서 오는 패킷들은 직렬화된다. 같은 피어의 뒤
+  패킷이 앞 패킷을 앞지를 수 없다. 서로 다른 `source_rid` 의 패킷
+  은 서로 다른 worker 스레드에서 병렬 디스패치될 수 있다.
+- 콜백 내부에서의 self-close 는 raw `zlink_recv_handler` 케이스와 같은
+  규칙을 따른다. 콜백 내부에서 수신 모드를 바꾸거나 소켓을 닫으려
   하면 `EBUSY` 로 실패한다.
 
 ### 6.4 Malformed framing
 
-다음 상황은 malformed 로 보고 해당 connection 을 닫는다.
+다음 상황은 malformed 로 보고 해당 연결을 닫는다.
 
 - 선언된 `header_size` 또는 `body_size` 가 내부 한계를 초과하는 경우.
-- Length field 는 도착했지만 전체 packet 이 도착하기 전에 peer 가 close /
+- Length field 는 도착했지만 전체 패킷이 도착하기 전에 피어가 close /
   reset 되는 경우 — 즉 mid-length 또는 mid-payload close.
 
 이 경우 STREAM monitor 에 해당 `source_rid` 에 대한 disconnect 이벤트로
-surface 된다. Partial packet 은 절대 callback 으로 전달되지 않으며,
-connection 과 함께 decoder state 도 폐기된다.
+노출된다. 불완전한 패킷은 절대 콜백으로 전달되지 않으며,
+연결과 함께 decoder state 도 폐기된다.
 
 ### 6.5 왜 STREAM 안에서 decode 하는가
 
-각 application 에서 하는 대신 STREAM 안에서 decode 하도록 둔 이유는 두
-가지다.
+각 애플리케이션에서 하는 대신 STREAM 안에서 decode 하도록 둔 이유는 두 가지다.
 
-- **copy 한 번 감소.** Application 이 "조립된" contiguous buffer 를 한 번
-  만져보고 다시 쪼갤 필요가 없다. header / body message 가 socket read 의
+- **복사 한 번 감소.** 애플리케이션이 "조립된" contiguous buffer 를 한 번
+  만져보고 다시 쪼갤 필요가 없다. header / body message 가 소켓 read 의
   목적 버퍼다.
 - **순서 보장.** Per-`source_rid` 직렬화가 decoder 쪽에서 강제되므로,
   호출자가 raw byte delivery 위에 별도 reorder 로직을 올릴 필요가 없다.
@@ -228,5 +227,5 @@ STREAM 외 공통 소켓 기본값은
 ## 8. Peer rid disconnect
 
 STREAM의 public routing id는 서버가 연결별로 부여한 4바이트 connection id다.
-`zlink_disconnect_rid()`는 이 id를 `uint32_t`로 해석해 STREAM route map에서
+`zlink_disconnect_rid()`는 이 id를 `uint32_t`로 해석해 STREAM 라우팅 맵에서
 pipe를 찾고 종료 요청을 넣는다. 4바이트가 아닌 rid는 잘못된 인자로 실패한다.

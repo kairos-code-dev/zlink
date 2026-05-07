@@ -121,7 +121,7 @@ zlink_recv_result_t zlink_subscribe (void *subject_,
 recv 모드에서 다음 토픽 기반 메시지를 수신합니다. 성공 시
 `*source_rid_out_`는 송신자의 routing id (transport가 identity를 전달하지
 않으면 zeroed), `*topic_id_out_` / `*topic_id_len_out_`는 토픽 바이트
-(binary-safe), `*parts_out_` / `*part_count_out_`는 페이로드 프레임을
+(binary-safe), `*parts_out_` / `*part_count_out_`는 payload 프레임을
 받습니다. 파트 배열의 소유권은 호출자에게 이전됩니다.
 
 raw SUB/XSUB는 recv-only 타입입니다. poller의 `ZLINK_POLLIN`과 함께 사용해

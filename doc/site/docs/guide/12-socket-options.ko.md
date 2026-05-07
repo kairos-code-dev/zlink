@@ -22,18 +22,18 @@ API 시그니처만 다루는 [socket API 레퍼런스](../api/socket.ko.md)와 
 ## 피어 라우팅 ID 중복 정책
 
 `ZLINK_OPT_RID_DUPLICATE_POLICY`는 같은 소켓에 동일한 피어 라우팅 ID가
-다시 들어왔을 때 기존 연결을 유지할지, 새 연결로 바꿀지를 정합니다.
+다시 들어왔을 때 기존 연결을 유지할지, 새 연결로 바꿀지를 결정한다.
 
 | 값 | 동작 |
 |----|------|
-| `ZLINK_RID_DUPLICATE_REJECT` | 기본값. 기존 연결을 유지하고 중복 연결은 등록하지 않습니다. |
-| `ZLINK_RID_DUPLICATE_HANDOVER` | 새 연결이 기존 연결을 인수합니다. 롤링 재시작처럼 같은 ID가 잠깐 겹치는 상황에 씁니다. |
+| `ZLINK_RID_DUPLICATE_REJECT` | 기본값. 기존 연결을 유지하고 중복 연결은 등록하지 않는다. |
+| `ZLINK_RID_DUPLICATE_HANDOVER` | 새 연결이 기존 연결을 인수한다. 롤링 재시작처럼 같은 ID가 잠깐 겹치는 상황에 사용한다. |
 
-이 옵션은 `zlink_set_option()`으로 설정하는 공통 소켓 옵션입니다.
-중복 피어 ID 인수 여부를 바꾸는 공개 설정은 이 옵션 하나만 씁니다.
+이 옵션은 `zlink_set_option()`으로 설정하는 공통 소켓 옵션이다.
+중복 피어 ID 인수 여부를 바꾸는 공개 설정은 이 옵션 하나뿐이다.
 
 STREAM은 서버가 연결별 4바이트 라우팅 ID를 직접 부여하므로 이 중복 정책의
-대상이 아닙니다.
+대상이 아니다.
 
 ```c
 int policy = ZLINK_RID_DUPLICATE_HANDOVER;
@@ -58,10 +58,10 @@ zlink_set_option(router, ZLINK_OPT_RID_DUPLICATE_POLICY,
 HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 재개된다.
 이 간격이 writable/non-writable 진동을 방지하는 히스테리시스다.
 
-**소켓 타입별 차이:** 의미는 같지만 자동 정책 class가 다르다.
+**소켓 타입별 차이:** 의미는 같지만 자동 정책 클래스가 다르다.
 `PAIR=control`, `DEALER=peer_queue`, `ROUTER=routed`, `STREAM=stream`,
-`PUB/XPUB=fanout`, `SUB/XSUB=recv_ingress`다. SPOT 내부 topic publisher는
-`spot_data`, peer/control 소켓은 `control`, SPOT router는 `routed`로 계산한다.
+`PUB/XPUB=fanout`, `SUB/XSUB=recv_ingress`다. SPOT 내부 토픽 퍼블리셔는
+`spot_data`, peer/control 소켓은 `control`, SPOT 라우터는 `routed`로 계산한다.
 
 컨텍스트 옵션 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 네 가지 프로필 중 하나를 선택한다.
 기본값은 `ZLINK_AUTO_HWM_PROFILE_BALANCED`이며 자동 HWM은 기본으로 켜져 있다.
@@ -75,7 +75,7 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고, 50 이하로 drain되어야 
 | control | 8 | 16 | 16 | 32 |
 
 계획기(planner)는 HWM을 연결 하나의 큐 깊이(queue depth)로 본다. 컨텍스트 메모리 예산을
-연결 수로 나누지 않는다. 대신 프로필의 바이트 범위(byte envelope)가 유지되도록 아래
+연결 수로 나누지 않는다. 대신 프로필의 바이트 범위(byte envelope)가 유지되도록 다음
 공식을 적용한다.
 
 ```text
@@ -149,12 +149,12 @@ auto HWM이 비활성화(`ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 0`)된 경우 no-op이
 | **0** | 즉시 종료 — 미전송 메시지 폐기 |
 | **>0** | 지정 시간(ms)까지 대기 후 강제 종료 |
 
-**실제 동작:** linger > 0이면 타이머를 설정하고, 타이머 만료 시 pipe를
-강제 종료한다. `pipe->terminate(linger != 0)`으로 delay 여부를 전달.
+**실제 동작:** linger > 0이면 타이머를 설정하고, 타이머 만료 시 파이프를
+강제 종료한다. `pipe->terminate(linger != 0)`으로 delay 여부를 전달한다.
 
 **소켓 타입별 차이:**
-- `XSUB`, `SUB`: 생성 시 linger를 강제로 `0`으로 override (구독 소켓은
-  종료 시 대기할 필요 없음)
+- `XSUB`, `SUB`: 생성 시 linger를 강제로 `0`으로 override한다 (구독 소켓은
+  종료 시 대기할 필요 없음).
 
 ```c
 /* Wait up to 1 second for pending messages on close */
@@ -324,10 +324,10 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 | **적용 위치** | `socket_base_endpoint.cpp` |
 | **기본값** | `0` (즉시 연결) |
 
-**`0` (기본):** connect() 호출 즉시 pipe를 소켓에 연결한다. 연결 완료 전에도 `send()`가
+**`0` (기본):** connect() 호출 즉시 파이프를 소켓에 연결한다. 연결 완료 전에도 `send()`가
 가능하고, 메시지는 큐에 쌓인다.
 
-**`1`:** 연결이 실제로 완료된 후에만 파이프(pipe)가 소켓에 연결된다. 연결 전 `send()`는
+**`1`:** 연결이 실제로 완료된 후에만 파이프가 소켓에 연결된다. 연결 전 `send()`는
 차단되거나 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 또한 일시적 연결 끊김(hiccup) 시 파이프가 즉시
 제거된다.
 
@@ -343,7 +343,7 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 | **유효 소켓** | `DEALER`, `PUB`, `SUB`에서만 동작 |
 
 활성화 시 HWM 설정은 무시된다. 멀티파트 메시지는 합류(conflate) 모드에서 수신할 수
-없다. 센서 데이터처럼 "최신 값만 의미 있는" 시나리오에 적합.
+없다. 센서 데이터처럼 "최신 값만 의미 있는" 시나리오에 적합하다.
 
 ---
 
@@ -357,8 +357,8 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 | **0** | OS 기본값 사용 |
 | **>0** | 지정 크기(바이트)로 설정 |
 
-HWM과 독립적이다. HWM은 zlink pipe 수준의 메시지 수 제한이고,
-SNDBUF/RCVBUF는 OS 커널 소켓 버퍼의 바이트 크기이다.
+HWM과 독립적이다. HWM은 zlink 파이프 수준의 메시지 수 제한이고,
+SNDBUF/RCVBUF는 OS 커널 소켓 버퍼의 바이트 크기다.
 
 **소켓 타입별 차이:**
 - `STREAM`: 애플리케이션이 `SNDBUF` / `RCVBUF`를 주지 않으면 호환 기본값
@@ -374,7 +374,7 @@ SNDBUF/RCVBUF는 OS 커널 소켓 버퍼의 바이트 크기이다.
 | **적용 위치** | TCP 소켓 설정 시 `setsockopt(IP_TOS)` |
 | **기본값** | `0` (best-effort) |
 
-QoS 정책이 있는 네트워크에서 트래픽 우선순위를 지정할 때 사용.
+QoS 정책이 있는 네트워크에서 트래픽 우선순위를 지정할 때 사용한다.
 
 ---
 
@@ -400,7 +400,7 @@ QoS 정책이 있는 네트워크에서 트래픽 우선순위를 지정할 때 
 | **기본값** | `0` (모든 I/O 스레드 사용 가능) |
 | **타입** | `uint64_t` 비트마스크 |
 
-비트 N이 1이면 I/O 스레드 N을 사용 가능. `0`은 모든 스레드 허용.
+비트 N이 1이면 I/O 스레드 N을 사용 가능하다. `0`은 모든 스레드를 허용한다.
 I/O 스레드가 여러 개(`ZLINK_IO_THREADS > 1`)일 때 특정 소켓을 특정 스레드에
 고정하여 CPU 친화성을 높일 수 있다.
 
@@ -415,7 +415,7 @@ I/O 스레드가 여러 개(`ZLINK_IO_THREADS > 1`)일 때 특정 소켓을 특�
 | **기본값** | `-1` (무제한) |
 | **>0** | 지정 크기(바이트) 초과 메시지 거부 |
 
-신뢰할 수 없는 피어로부터의 메모리 고갈(OOM) 공격을 방지하는 데 유용.
+신뢰할 수 없는 피어로부터의 메모리 고갈(OOM) 공격을 방지하는 데 유용하다.
 
 ---
 
@@ -462,8 +462,8 @@ PGM transport에서만 적용. 현재 PGM은 임시 비활성화 상태.
 | **적용 위치** | `tcp.cpp` -- `setsockopt(SO_BINDTODEVICE)` |
 | **기본값** | 빈 문자열 (바인딩 없음) |
 
-Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에서 특정 NIC에
-트래픽을 제한할 때 사용.
+Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작한다. 멀티호밍 서버에서 특정 NIC에
+트래픽을 제한할 때 사용한다.
 
 ---
 
@@ -538,8 +538,8 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작. 멀티호밍 서버에
 
 ## 소켓 Channel 이름
 
-Discovery 및 Registry 사용을 위해 임의의 소켓에 논리적 channel 이름을 지정한다.
-channel 이름은 Discovery와 Registry가 소켓의 서비스 역할을 식별하는 데 사용한다.
+Discovery 및 Registry 사용을 위해 임의의 소켓에 논리적 채널 이름을 지정한다.
+채널 이름은 Discovery와 Registry가 소켓의 서비스 역할을 식별하는 데 사용한다.
 
 ```c
 /* channel 이름 설정 */
@@ -551,7 +551,7 @@ size_t len = 0;
 zlink_socket_get_channel_name(socket, buf, sizeof(buf), &len);
 ```
 
-소켓을 Discovery에 등록한 이후에는 channel 이름 변경이 지원되지 않는다.
+소켓을 Discovery에 등록한 이후에는 채널 이름 변경이 지원되지 않는다.
 
 ---
 [← 스레드 안전성](11-thread-safety.ko.md)

@@ -12,8 +12,8 @@
 
 각 I/O 스레드는 전용 **비동기 이벤트 루프**를 실행하며 다음을 수행한다.
 
-1. 등록된 소켓의 read/write 준비 상태를 폴링
-2. mailbox(스레드 간 명령 전달 채널)를 통해 수신된 명령(command) 처리
+1. 등록된 소켓의 읽기/쓰기 준비 상태를 폴링
+2. mailbox(스레드 간 명령 전달 채널)를 통해 수신된 명령 처리
 3. 타이머 실행
 
 I/O 스레드는 zlink 네트워킹의 핵심이다. 실제 네트워크 송수신, 프로토콜
@@ -79,7 +79,7 @@ poller에 등록되며, 내부적으로 Boost ASIO의 `async_wait`를 호출한�
 ## 5. 명령(Command) 처리
 
 각 I/O 스레드는 **mailbox**를 가진다 — 락-프리 큐
-(`ypipe_t<command_t>`)와 깨우기 신호용 signaler의 조합이다.
+(`ypipe_t<command_t>`) 와 깨우기 신호용 signaler 의 조합이다.
 
 ```cpp
 // io_thread.cpp — process_mailbox()
@@ -88,7 +88,7 @@ while (_mailbox.recv(&cmd, 0) == 0)
     cmd.destination->process_command(cmd);
 ```
 
-명령은 application 스레드에서 `ctx_t::send_command()`를 통해 도착하며,
+명령은 application 스레드에서 `ctx_t::send_command()` 를 통해 도착하며,
 다음과 같은 종류가 있다:
 
 | Command | 용도 |
@@ -107,11 +107,11 @@ mailbox handle 자체도 poller에 등록되어 있어, 명령이 도착하면 �
 
 소켓이 새 연결을 생성할 때 다음 기준으로 I/O 스레드를 선택한다:
 
-1. **Affinity 마스크** — 설정된 경우 후보 집합을 제한
-2. **최소 부하 선택** — 후보 중 등록된 handle 수가 가장 적은 스레드 선택
+1. **어피니티 마스크** — 설정된 경우 후보 집합을 제한
+2. **최소 부하 선택** — 후보 중 등록된 핸들 수가 가장 적은 스레드 선택
 
 이를 통해 네트워크 연결이 I/O 스레드에 분산된다. 할당 단위는
-소켓이 아닌 **연결(connection)** — 하나의 소켓이 여러 연결을 가지면
+소켓이 아닌 **연결(connection)** 이다 — 하나의 소켓이 여러 연결을 가지면
 여러 I/O 스레드에 걸칠 수 있다.
 
 ## 7. 튜닝 가이드라인

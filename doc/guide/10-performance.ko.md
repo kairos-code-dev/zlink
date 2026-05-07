@@ -39,14 +39,14 @@ zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);
 ### I/O 스레드 증가 시점
 
 - 소켓 수 × 평균 메시지 레이트가 단일 스레드 처리량을 초과할 때
-- 다수의 네트워크 연결(>100)을 동시 처리할 때
+- 다수의 네트워크 연결(>100)을 동시에 처리할 때
 - WS/WSS 등 프레이밍 오버헤드가 큰 transport를 다량 사용할 때
 
 ### 주의사항
 
-- I/O 스레드는 컨텍스트 생성 후, 소켓 생성 **전에** 설정
-- inproc transport는 I/O 스레드를 사용하지 않음 (직접 파이프 연결)
-- I/O 스레드를 과도하게 늘리면 컨텍스트 스위칭 오버헤드 발생
+- I/O 스레드는 컨텍스트 생성 후, 소켓 생성 **전에** 설정한다.
+- inproc transport는 I/O 스레드를 사용하지 않는다 (직접 파이프 연결).
+- I/O 스레드를 과도하게 늘리면 컨텍스트 스위칭 오버헤드가 발생한다.
 
 ## 3. HWM (High Water Mark) 설정 가이드
 
@@ -163,9 +163,9 @@ Example 2: STREAM at scale — HWM=10, message=1KB, connections=10000
            = 10 × 1KB × 10000 = ~100MB
 ```
 
-One-way `PUB/SUB`와 SPOT fanout에서는 큰 메시지가 큐에 오래 머물면 측정 latency가
-대부분 큐 체류 시간이 된다. 그래서 `balanced` profile은 큰 메시지 fanout 큐에
-작은 메시지 큐보다 더 강하게 상한을 적용한다.
+단방향 `PUB/SUB`와 SPOT fanout에서는 큰 메시지가 큐에 오래 머물면 측정 레이턴시가
+대부분 큐 체류 시간이 된다. 그래서 `balanced` 프로필은 큰 메시지 fanout 큐에
+작은 메시지 큐보다 더 엄격한 상한을 적용한다.
 
 ## 4. Send/Recv 흐름 제어
 
@@ -227,8 +227,8 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 2. `ZLINK_SUBMIT_BACKPRESSURED`가 반환되면 전송을 중단한다.
 3. 전송 준비 콜백이 호출되면 전송을 재개한다.
 
-이 API는 전송 가능한 모든 핸들(raw 소켓, SPOT)에서
-동일하게 동작한다. 기본적으로 송신 역압(backpressure)은 폴러(poller) `ZLINK_POLLOUT`으로
+이 API는 전송 가능한 모든 핸들(raw 소켓, SPOT)에서 동일하게 동작한다.
+기본적으로 송신 역압(backpressure)은 폴러(poller) `ZLINK_POLLOUT`으로
 감지하며, `zlink_send_ready_handler()`를 등록하면 해당 콜백으로 전환된다.
 콜백 등록 이후 데이터 평면 `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다.
 
@@ -298,8 +298,8 @@ int hwm = 500;
 zlink_set_option(socket, ZLINK_OPT_RCVHWM, &hwm, sizeof(hwm));
 ```
 
-Callback 모드에서 느린 콜백은 I/O 스레드를 블로킹하여 수신 큐가
-누적되게 한다. 무거운 작업은 별도 스레드로 오프로드해야 한다:
+콜백 모드에서 느린 콜백은 I/O 스레드를 블로킹하여 수신 큐를
+누적시킨다. 무거운 작업은 별도 스레드로 오프로드해야 한다:
 
 ```c
 void on_message(const zlink_routing_id_t *rid,
@@ -502,9 +502,9 @@ void on_pong(const zlink_routing_id_t *source_rid,
 
 ### 메시지 최적화
 
-- [ ] 소형 메시지(≤33B)는 VSM 활용 (inline 저장)
-- [ ] 대용량 메시지는 zero-copy (`zlink_msg_init_data`) 활용
-- [ ] 상수/static 페이로드는 `zlink_msg_init_data(..., NULL, NULL)`를 신중히 사용
+- [ ] 소형 메시지(≤33B)는 VSM 활용 (인라인 저장)
+- [ ] 대용량 메시지는 제로카피 (`zlink_msg_init_data`) 활용
+- [ ] 상수/static payload는 `zlink_msg_init_data(..., NULL, NULL)` 신중히 사용
 - [ ] 불필요한 `zlink_msg_copy()` 회피
 
 ### Transport 최적화

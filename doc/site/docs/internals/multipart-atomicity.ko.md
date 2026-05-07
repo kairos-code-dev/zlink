@@ -230,20 +230,20 @@ public raw recv는 socket 내부에서 받은 frame을 바로 caller에 하나�
 
 만 본다.
 
-### 4. follow-up recv semantics
+### 4. follow-up recv 의미론
 
-follow-up frame은 일반 `recv timeout` semantics가 아니라
-**multipart assembly semantics**로 읽는다.
+follow-up frame 은 일반 `recv timeout` 의미론이 아니라
+**multipart assembly 의미론**으로 읽는다.
 
 관련 코드:
 
 - [recv_internal.cpp#L88](../../core/src/core/recv_internal.cpp#L88)
 
-`recv_followup_msg_internal()`의 의미:
+`recv_followup_msg_internal()` 의 의미:
 
-- 첫 part 이후 follow-up은 `ZLINK_DONTWAIT`로 조회
-- `EAGAIN` / `EINTR`는 일반 timeout이 아니라 protocol failure로 승격
-- caller에는 `EPROTO`로 surface
+- 첫 part 이후 follow-up 은 `ZLINK_DONTWAIT` 로 조회
+- `EAGAIN` / `EINTR` 는 일반 timeout 이 아니라 프로토콜 실패로 승격
+- 호출자에게는 `EPROTO` 로 반환
 
 즉 raw socket public recv는 libzmq의 fq 모델과 같은 방향이다.
 
@@ -319,9 +319,9 @@ multipart를 aggregate shape로 설명하게 해 준다.
 
 ---
 
-## Callback 경로와 원자성
+## 콜백 경로와 원자성
 
-direct callback / handler 경로도 결과적으로는 aggregate multipart를 callback에
+직접 콜백/핸들러 경로도 결과적으로는 완성된 multipart 를 콜백에
 전달하는 방향으로 정리돼 있다.
 
 - [socket_message_handler_api.cpp](../../core/src/api/socket_message_handler_api.cpp)
@@ -329,10 +329,10 @@ direct callback / handler 경로도 결과적으로는 aggregate multipart를 ca
 
 핵심 원칙:
 
-- callback은 반쪽짜리 multipart를 part 단위로 흘려받지 않는다.
-- internal dispatch가 multipart payload shape를 맞춰 callback에 전달한다.
+- 콜백은 반쪽짜리 multipart 를 part 단위로 흘려받지 않는다.
+- 내부 디스패치가 multipart payload shape 를 맞춰 콜백에 전달한다.
 
-즉 public direct recv와 callback recv는 같은 payload shape contract를 공유한다.
+즉 public direct recv 와 콜백 recv 는 같은 payload shape 계약을 공유한다.
 
 ---
 

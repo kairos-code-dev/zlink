@@ -4,9 +4,9 @@
 
 ## 1. 개요
 
-Routing ID는 zlink에서 소켓과 연결을 식별하는 바이너리 데이터이다.
-ROUTER 소켓에서 메시지 라우팅에 사용되며,
-STREAM 소켓에서 외부 클라이언트 식별에, 모니터링에서 피어 식별에 활용된다.
+라우팅 ID(Routing ID)는 zlink에서 소켓과 연결을 식별하는 바이너리 데이터다.
+ROUTER 소켓의 메시지 라우팅, STREAM 소켓의 외부 클라이언트 식별,
+모니터링의 피어 식별에 활용된다.
 
 ## 2. zlink_routing_id_t
 
@@ -21,24 +21,24 @@ typedef struct {
 
 | 종류 | 포맷 | 크기 | 설명 |
 |------|------|------|------|
-| 소켓 own routing_id | UUID (binary) | 16B | 모든 소켓에서 자동 생성 |
-| STREAM peer routing_id | uint32 | 4B | 연결별 자동 할당 |
+| 소켓 자체 라우팅 ID | UUID (binary) | 16B | 모든 소켓에서 자동 생성 |
+| STREAM 피어 라우팅 ID | uint32 | 4B | 연결별 자동 할당 |
 
-- 사용자가 `zlink_set_routing_id()`를 호출하지 않으면 자동 생성
-- 프로세스 내 전역 카운터 기반으로 유일성 보장
+- 사용자가 `zlink_set_routing_id()`를 호출하지 않으면 자동 생성된다.
+- 프로세스 내 전역 카운터 기반으로 유일성이 보장된다.
 
-### own vs peer — 사용자가 알아야 할 차이
+### own vs peer — 차이점
 
-| 항목 | own routing_id | peer routing_id |
+| 항목 | 자체 라우팅 ID (own) | 피어 라우팅 ID (peer) |
 |------|---|---|
 | **생성 시점** | 소켓 생성 시 | 피어 연결 시 |
 | **크기** | 16B (UUID) | 가변 (ROUTER), 4B (STREAM) |
-| **사용** | 핸드셰이크에서 전송 | 수신 메시지에 자동 추가 |
+| **사용** | 핸드셰이크에서 전송 | 수신 메시지에 자동 첨부 |
 | **설정** | `zlink_set_routing_id()` | 피어가 설정한 값 사용 |
 
-own routing_id는 소켓이 생성될 때 자동으로 UUID가 할당되며, 핸드셰이크 시 피어에게 전송된다.
+자체 라우팅 ID는 소켓 생성 시 자동으로 UUID가 할당되며, 핸드셰이크 시 피어에게 전송된다.
 
-peer routing_id는 피어가 보낸 own routing_id이며, ROUTER/STREAM 소켓에서 수신 메시지에 자동으로 첨부된다.
+피어 라우팅 ID는 피어가 보낸 자체 라우팅 ID이며, ROUTER/STREAM 소켓에서 수신 메시지에 자동으로 첨부된다.
 
 ## 4. 사용자 지정 routing_id
 
@@ -51,10 +51,10 @@ zlink_set_routing_id(socket, id, strlen(id));
 ```
 
 주의사항:
-- 반드시 `zlink_bind()` 또는 `zlink_connect()` **이전에** 설정
-- 연결 후 변경 불가
-- 빈 문자열("")은 허용되지 않음
-- 같은 ROUTER에 동일 routing_id를 가진 두 피어가 연결되면 충돌 발생
+- 반드시 `zlink_bind()` 또는 `zlink_connect()` **이전에** 설정한다.
+- 연결 후에는 변경할 수 없다.
+- 빈 문자열("")은 허용되지 않는다.
+- 같은 ROUTER에 동일 라우팅 ID를 가진 두 피어가 연결되면 충돌이 발생한다.
 
 ### 사용자 지정 시 고려사항
 
@@ -100,20 +100,20 @@ zlink_set_router_option(socket, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, alias2, str
 zlink_connect(socket, "tcp://server2:5556");
 ```
 
-- `zlink_set_routing_id()`는 소켓 전체에 적용
-- `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (`zlink_set_router_option()`으로 설정)는 개별 연결에 적용
-- 하나의 소켓에서 여러 연결에 각각 다른 alias 가능
-- `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`는 ROUTER 연결 경로용이다.
+- `zlink_set_routing_id()`는 소켓 전체에 적용된다.
+- `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (`zlink_set_router_option()`으로 설정)는 개별 연결에 적용된다.
+- 하나의 소켓에서 여러 연결에 각각 다른 별칭을 지정할 수 있다.
+- `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`는 ROUTER 연결 경로 전용이다.
 - `ZLINK_SOCKET_STREAM`에 설정하면 `EOPNOTSUPP`를 반환한다.
 
 ## 6. ROUTER 소켓에서 routing_id 사용법
 
-ROUTER 소켓에서 `zlink_recv()`와 recv callback은 송신자의 routing_id를
+ROUTER 소켓에서 `zlink_recv()`와 recv 콜백은 송신자의 라우팅 ID를
 **별도 파라미터**(`source_rid`)로 반환한다. 메시지 프레임에는 데이터만 포함된다.
-응답 시 `zlink_send_rid()`에 동일 routing_id를 전달하여 올바른 피어에게 전송한다.
+응답 시 `zlink_send_rid()`에 동일 라우팅 ID를 전달하여 올바른 피어에게 전송한다.
 
 > **libzmq와의 차이:** libzmq ROUTER는 `zmq_recv()`의 첫 프레임으로
-> routing_id를 반환했지만, zlink에서는 모든 소켓 타입에서 routing_id가
+> 라우팅 ID를 반환했지만, zlink에서는 모든 소켓 타입에서 라우팅 ID가
 > 별도 파라미터로 분리되어 있다.
 
 ### 기본 요청-응답
@@ -196,7 +196,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ## 7. STREAM 소켓에서 routing_id 사용법
 
-STREAM 소켓은 4B uint32 peer routing_id로 외부 클라이언트를 식별한다.
+STREAM 소켓은 4B uint32 피어 라우팅 ID로 외부 클라이언트를 식별한다.
 
 ### 기본 사용
 
@@ -263,7 +263,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 ### hex 출력
 
-routing_id는 바이너리 데이터이므로 문자열로 출력하면 깨질 수 있다. hex 형식을 사용한다.
+라우팅 ID는 바이너리 데이터이므로 문자열로 출력하면 깨질 수 있다. hex 형식을 사용한다.
 
 ```c
 void print_routing_id(const void *data, size_t size) {
@@ -285,9 +285,9 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 ```
 
-### 문자열 routing_id
+### 문자열 라우팅 ID
 
-사용자가 설정한 routing_id가 ASCII 문자열이면 직접 출력 가능.
+사용자가 설정한 라우팅 ID가 ASCII 문자열이면 직접 출력 가능하다.
 
 ```c
 zlink_set_routing_id(dealer, "D1", 2);
@@ -306,7 +306,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 }
 ```
 
-### 자동 생성 routing_id 확인
+### 자동 생성 라우팅 ID 확인
 
 ```c
 /* Query the auto-assigned routing_id after socket creation */
@@ -317,11 +317,11 @@ printf("Auto-generated routing_id: %u bytes\n", rid.size);  /* 16 bytes (UUID) *
 
 ## 9. 바이너리 처리 원칙
 
-- routing_id는 **바이너리 데이터**로 취급
-- 문자열 변환은 애플리케이션 책임
-- 자동 생성 routing_id는 내부 포맷이며 숫자 변환 API 미제공
-- 비교 시 `memcmp()` 사용 (문자열 비교 함수 사용 불가)
-- 로그 출력 시 hex 포맷 권장
+- 라우팅 ID는 **바이너리 데이터**로 취급한다.
+- 문자열 변환은 애플리케이션 책임이다.
+- 자동 생성 라우팅 ID는 내부 포맷이며 숫자 변환 API를 제공하지 않는다.
+- 비교 시 `memcmp()`를 사용한다 (문자열 비교 함수 사용 불가).
+- 로그 출력 시 hex 포맷을 권장한다.
 
 ```c
 /* routing_id comparison */

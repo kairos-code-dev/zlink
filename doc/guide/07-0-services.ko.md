@@ -42,12 +42,12 @@ flowchart TB
     app --> facade --> access --> runtime --> infra --> core
 ```
 
-- **Public API Facade**는 C API 진입점으로, 핸들 유효성 검사 후 service-local 접합 지점으로 위임한다. 개별 서비스 구현 세부를 직접 알지 않는다.
+- **Public API Facade**는 C API 진입점으로, 핸들 유효성 검사 후 service-local 접합 지점으로 위임한다. 개별 서비스 구현 세부를 직접 알지 않아도 된다.
 - **Service Access Layer**는 각 서비스가 제공하는 service-local 접합 지점이다. `*_access.hpp`가 API 계층과 service runtime 사이의 계약을 정의한다.
 - **Service Runtime**은 각 서비스의 내부 구현이다. SPOT은 node/data_plane(forwarding/protocol)/pub/sub으로 모듈화되어 있다.
-- **Registry**는 서비스 엔트리를 관리하고, 주기적으로 SERVICE_LIST를 브로드캐스트한다.
+- **Registry**는 서비스 엔트리를 관리하고 주기적으로 SERVICE_LIST를 브로드캐스트한다.
 - **Discovery**는 Registry를 구독하여 서비스 목록을 로컬 캐시로 유지한다.
-- **SPOT**은 Discovery를 통해 대상을 자동 발견하고 연결한다.
+- **SPOT**은 Discovery를 통해 대상을 자동으로 발견하고 연결한다.
 
 ## 서비스 명칭
 
@@ -56,7 +56,7 @@ flowchart TB
 | **Registry** | 서비스 등록소 | 서비스 엔트리를 등록·관리하는 중앙 저장소 |
 | **Discovery** | 서비스 발견 | Registry를 구독하여 서비스 목록을 로컬 캐시로 유지 |
 | **SPOT** | 위치 투명 pub/sub | 위치투명 토픽 기반 발행/구독 메시 |
-| **Actor** | SPOT 세션 라우팅 대상 | STREAM 세션 메시지를 Spot 디스패치 컨텍스트로 모으는 SPOT 내부 주소 지정 단위 |
+| **Actor** | SPOT 세션 라우팅 대상 | STREAM 세션 메시지를 Spot 디스패치(dispatch) 컨텍스트로 모으는 SPOT 내부 주소 지정 단위 |
 
 ## 3. 서비스 구성 요소
 
@@ -81,7 +81,7 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템. 서비스가 
 `SpotNode`는 SPOT 토폴로지의 핵심 런타임이다. 하나의 SPOT channel Discovery
 view를 연결해 같은 channel의 다른 `SpotNode`와 mesh를 구성하고, 다른
 channel을 호출해야 할 때는 `DEALER`를 별도로 등록한다. 그 위에 공개
-`Spot` facade 하나가 올라가 channel send/request, peer routed 통신,
+`Spot` 파사드 하나가 올라가 channel send/request, 피어 라우팅 통신,
 publish/subscribe를 함께 수행한다.
 
 - SPOT mesh: `zlink_spot_node_attach_discovery()` — SPOT channel view를
@@ -99,13 +99,13 @@ publish/subscribe를 함께 수행한다.
 - readable 알림은 한 콜백 surface로 통합:
   `zlink_spot_dispatch_event_handler()`
 - 모니터링은 snapshot/query API로 관찰
-- **Thread-safe** — 하나의 `spot` / `spot_node` handle에서 여러 스레드가
+- **Thread-safe** — 하나의 `spot` / `spot_node` 핸들에서 여러 스레드가
   operational API를 동시에 호출 가능
 
 - **Actor**: STREAM 세션 메시지를 Spot 디스패치 컨텍스트로 모으는 SPOT 내부 라우팅 대상.
   `SpotNode`가 Actor 테이블을 소유하고, 새로 생성된 Actor는 `Entry Spot`에서 디스패치된다.
   Actor는 `zlink_spot_join_spot()`으로 다른 `Spot`으로 이동하며, STREAM 세션 연결 해제 시
-  자동으로 `Entry Spot`으로 복귀한다. Actor는 소켓이나 inproc(프로세스 내부) 엔드포인트를 소유하지 않으며
+  자동으로 `Entry Spot`으로 복귀한다. Actor는 소켓이나 inproc(프로세스 내부) 엔드포인트를 소유하지 않고
   `zlink_actor_ref_t`로 식별한다.
 
 자세한 내용은 [SPOT 가이드](07-3-spot.ko.md)와 [SPOT Actor 가이드](07-4-actor.ko.md)를 참고.
@@ -154,7 +154,7 @@ flowchart LR
 각 access 접합 지점은 `service_public_api_guard_t`와 통합되어 콜백 모드 추적과
 수명주기 게이트(destroy 시 `EBUSY`/`ESHUTDOWN` 계약)를 제공한다.
 
-이 구조 덕분에 API 계층은 개별 서비스 구현을 직접 알지 않아도 되며,
+이 구조 덕분에 API 계층은 개별 서비스 구현을 직접 알 필요 없으며,
 새 서비스를 추가할 때는 `api/service_*_api.cpp`, 해당 `*_access` 파일,
 해당 서비스 구현 파일만 수정하면 된다.
 
@@ -162,18 +162,17 @@ flowchart LR
 
 운영 환경에서 SPOT Node나 raw ROUTER를 잠시 내려야 할 때, 연결을 즉시
 끊는 대신 가중치를 `0`으로 바꿔 "이미 들어온 작업은 마무리하고, 새 요청은
-받지 않는" 단계를 거치는 것을 권장한다. peer가 가중치 `0`인 노드를
-새 outbound 후보에서 자동으로 제외해 준다.
+받지 않는" 단계를 거치도록 권장한다. 가중치 `0`인 노드는 피어가 새 outbound 후보에서 자동으로 제외한다.
 
 권장 절차:
 
-1. handle 전용 가중치 옵션을 `0`으로 설정한다.
-2. 연결된 peer가 자신의 가중치 cache를 갱신할 시간을 둔다. 이 갱신은
-   socket monitor의 `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 볼 수 있다.
-   서비스 계층 관점이 필요하면 같은 peer를 관리하는 `Discovery`
-   handle에서 `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`를
+1. 핸들 전용 가중치 옵션을 `0`으로 설정한다.
+2. 연결된 피어가 자신의 가중치 캐시를 갱신할 시간을 둔다. 이 갱신은
+   소켓 모니터의 `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 확인할 수 있다.
+   서비스 계층 관점이 필요하면 같은 피어를 관리하는 `Discovery`
+   핸들에서 `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`를
    관찰한다.
-3. 진행 중인 reply가 빠질 때까지 기다린다. 운영 시 이 시간은 보통 SLA
+3. 진행 중인 reply가 완료될 때까지 기다린다. 운영 시 이 시간은 보통 SLA
    기반으로 설정한다.
 4. 노드를 재시작/교체한 뒤 양수 가중치로 다시 서비스에 합류시킨다.
 
@@ -196,9 +195,9 @@ zlink_set_spot_node_option(
     &serve_weight, sizeof(serve_weight));
 ```
 
-가중치 `0` 상태에서도 로컬 노드는 평소처럼 recv/send/reply/handler를
-처리한다. 가중치는 "남이 나를 새 작업 대상으로 고르지 않게" 하는
-신호이지, 로컬 동작을 강제로 멈추는 신호가 아니다. peer 쪽의 새
+가중치 `0` 상태에서도 로컬 노드는 평소처럼 recv/send/reply/핸들러를
+처리한다. 가중치는 "피어가 나를 새 작업 대상으로 선택하지 않게" 하는
+신호이지, 로컬 동작을 강제로 멈추는 신호가 아니다. 피어 쪽의 새
 submit이 가중치 `0`을 만나면 `ZLINK_SUBMIT_NOT_ADMITTED`로 거절되며,
 연결 자체는 유지되므로 다시 양수 가중치가 되면 자동으로 후보로
 돌아간다.

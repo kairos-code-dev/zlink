@@ -11,7 +11,7 @@
 > 공개 메시지 API는 메시지 레벨의 request-reply 상태를 노출하지 않습니다.
 
 메시지 API는 zlink 메시지의 생성, 송신, 수신, 관리를 위한 함수를 제공합니다.
-메시지는 소켓 간 데이터 교환의 기본 단위이며, 임의의 바이너리 페이로드를
+메시지는 소켓 간 데이터 교환의 기본 단위이며, 임의의 바이너리 payload를
 전달하고, 제로카피 시맨틱을 지원하며, 멀티파트 시퀀스를 구성할 수 있습니다.
 
 ### 용어
@@ -195,7 +195,7 @@ zlink_config_result_t zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
 
 `src_`의 내용을 `dest_`로 복사합니다. 두 메시지는 참조 카운팅을 통해 기본
 데이터 버퍼를 공유합니다. `dest_`의 이전 내용은 해제됩니다. 복사는 경량이며
-데이터 페이로드를 복제하지 않습니다.
+데이터 payload를 복제하지 않습니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -213,7 +213,7 @@ zlink_config_result_t zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
 void *zlink_msg_data (zlink_msg_t *msg_);
 ```
 
-메시지의 원시 데이터 페이로드에 대한 포인터를 반환합니다. 포인터는 메시지가
+메시지의 원시 데이터 payload에 대한 포인터를 반환합니다. 포인터는 메시지가
 닫히거나, 이동되거나, 송신될 때까지 유효합니다. 메시지가 초기화되지 않은 경우
 `NULL`을 반환합니다.
 
@@ -233,7 +233,7 @@ void *zlink_msg_data (zlink_msg_t *msg_);
 size_t zlink_msg_size (const zlink_msg_t *msg_);
 ```
 
-메시지 페이로드의 크기를 바이트 단위로 반환합니다. 빈 메시지의 경우 0을
+메시지 payload의 크기를 바이트 단위로 반환합니다. 빈 메시지의 경우 0을
 반환합니다.
 
 **반환값:** 바이트 단위 크기.

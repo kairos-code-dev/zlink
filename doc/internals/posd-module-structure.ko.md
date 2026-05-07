@@ -94,11 +94,11 @@ flowchart TB
 | `poller_api.cpp` | poller operations |
 | `zlink_option.cpp`, `zlink_option_*_api.cpp` | option set/get dispatch |
 
-API facade의 규칙:
+API facade 의 규칙:
 
-**API facade에 남아도 되는 것:**
-- handle 유효성 검사
-- 핸들별 admission(진입 허가)/lifetime guard
+**API facade 에 남아도 되는 것:**
+- 핸들 유효성 검사
+- 핸들별 입장 허용(admission)/수명 가드
 - 핸들별 API 진입·닫힘 조정
 
 **하위 계층으로 내려야 하는 것:**
@@ -111,7 +111,7 @@ API facade의 규칙:
 
 ### 3.2 Service Access Layer
 
-각 서비스가 제공하는 service-local seam. API 계층이 concrete service 구현을 직접 알지 않게 한다.
+각 서비스가 제공하는 service-local seam 이다. API 계층이 구체적인 서비스 구현을 직접 알지 않게 한다.
 
 | Access Seam | 위치 | 역할 |
 |-------------|------|------|
@@ -121,8 +121,8 @@ API facade의 규칙:
 | `spot_node_access_t` | `services/spot/` | SpotNode lifecycle, bind, discovery attach |
 | `spot_subject_access_t` | `services/spot/` | publish, subscribe, option, handler, monitor, type casting |
 
-`service_public_api_guard_t`는 모든 서비스에 공통되는 admission/close guard이다.
-callback 모드 추적, destroy 시 `EBUSY`/`ESHUTDOWN` lifecycle gate를 제공한다.
+`service_public_api_guard_t` 는 모든 서비스에 공통되는 입장 허용/close 가드다.
+콜백 모드 추적, destroy 시 `EBUSY`/`ESHUTDOWN` lifecycle 게이트를 제공한다.
 
 ### 3.3 Service Runtime
 
@@ -272,9 +272,9 @@ flowchart TB
 ```
 
 금지 방향:
-- API가 service concrete type detail을 직접 많이 아는 것
-- service가 socket close/wait mechanics를 재구현하는 것
-- transport/protocol detail이 API 계층까지 새는 것
+- API 가 서비스 구체 타입 세부를 직접 많이 아는 것
+- service 가 socket close/wait 메커니즘을 재구현하는 것
+- transport/protocol 세부 사항이 API 계층까지 새는 것
 
 ## 5. 소스 트리 요약
 

@@ -80,7 +80,7 @@ memcpy(zlink_msg_data(&msg3), "request-3", 9);
 zlink_send(dealer, &msg3, 1, 0);
 
 /* Responses are drained with zlink_recv() in a poller loop,
-   or (for zlink_dealer_request()) delivered through its reply callback */
+   or (for zlink_dealer_request()) delivered via its reply callback */
 ```
 
 ### 수신 모드
@@ -159,9 +159,9 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 
 ### 4.1 request-reply 시작
 
-`DEALER` 가 응답을 기다리는 흐름은 ordinary `send/recv` 와 별도로
-`zlink_dealer_request()` 를 사용한다. 이 함수는 ZMP(zlink 전용 메시지 프로토콜) request-reply envelope(요청-응답 식별을 위한 헤더 래퍼)를
-붙여 보내고, 응답은 callback으로 완료된다.
+DEALER가 응답을 기다리는 흐름은 일반 `send/recv`와 별도로
+`zlink_dealer_request()`를 사용한다. 이 함수는 ZMP(zlink 전용 메시지 프로토콜) request-reply 엔벨로프(요청-응답 식별을 위한 헤더 래퍼)를
+붙여 보내고, 응답은 콜백으로 전달된다.
 
 > ZMP request-reply envelope의 와이어 프레임 형식은
 > [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
@@ -200,15 +200,15 @@ zlink_submit_result_t rc = zlink_dealer_request(
 if (rc != ZLINK_SUBMIT_OK) { /* submit 실패 처리 */ }
 ```
 
-이때 `timeout_ms = 0` 은 socket 기본값을 뜻하고, socket 기본값도 `0` 이면
-구현 기본값 `5000ms` 를 쓴다.
+`timeout_ms = 0`은 소켓 기본값을 사용한다는 의미이며, 소켓 기본값도 `0`이면
+구현 기본값 `5000ms`가 적용된다.
 
 ## 5. 사용 패턴
 
 ### 패턴 1: 1:1 양방향 비동기
 
 PAIR와 유사하지만 HWM과 자동 재연결을 지원한다. 응답이 필요한 경우 반드시 1:1로 구성해야 한다.
-(routing_id가 없으므로 1:N에서는 어떤 피어가 응답했는지 구분할 수 없다.)
+routing_id가 없으므로 1:N 구성에서는 어떤 피어가 응답했는지 구분할 수 없다.
 
 ```c
 void *a = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
@@ -299,10 +299,10 @@ zlink_connect(dealer, endpoint);  /* identified as D1 */
 - 연결 자체는 유지되므로, 가중치가 `0`이던 ROUTER가 다시 양수 값으로 돌아오면
   재연결 없이 후보 집합에 복귀한다.
 
-알고 있는 ROUTER가 모두 `0`이면 `zlink_send()`와
+연결된 ROUTER가 모두 가중치 `0`이면 `zlink_send()`와
 `zlink_dealer_request()`는 `ZLINK_SUBMIT_NOT_ADMITTED`를 반환한다.
-이 경우 연결이 끊긴 것이 아니라 잠시 보낼 대상이 없는 상태이므로,
-호출자는 최소 한 대의 ROUTER가 양수 가중치로 돌아올 때까지 기다렸다가
+연결이 끊긴 것이 아니라 보낼 대상이 일시적으로 없는 상태이므로,
+호출자는 최소 한 대의 ROUTER가 양수 가중치로 복귀할 때까지 기다렸다가
 재시도해야 한다.
 
 > 상세 규약은 DEALER spec

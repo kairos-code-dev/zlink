@@ -9,11 +9,11 @@
 ## 1. 개요
 
 마이크로서비스 환경에서 서비스들은 통신을 위해 상대방의 네트워크
-엔드포인트를 알아야 한다. Discovery 없이는 모든 서비스가 피어의 주소를
+엔드포인트를 알아야 한다. Discovery 없이는 각 서비스가 피어 주소를
 직접 설정해야 하며, 인스턴스가 확장·이동·재시작될 때마다 수동으로
 주소를 갱신해야 한다.
 
-zlink Service Discovery는 **수동 주소 관리를 제거**한다.
+zlink Service Discovery는 **수동 주소 관리를 없앤다**.
 서비스는 자신의 엔드포인트를 중앙 **Registry**에 등록하고,
 각 **Discovery** 클라이언트가 매칭되는 피어를 자동으로 찾아 연결한다.
 애플리케이션 코드는 원격 주소를 직접 다룰 필요가 없다.
@@ -40,7 +40,7 @@ zlink_socket_attach_discovery(sub, discovery);
 | 용어 | 설명 |
 |------|------|
 | **Registry** | 등록된 서비스를 추적하고 서비스 목록을 브로드캐스트하는 중앙 서버 (PUB + ROUTER 소켓) |
-| **Discovery** | Registry에 부트스트랩(bootstrap, 초기 연결)하여 서비스 목록을 수신(SUB)하고, 연결된 서비스의 커넥션을 관리하는 클라이언트 에이전트 |
+| **Discovery** | Registry에 부트스트랩(bootstrap, 초기 연결)하여 서비스 목록을 구독(SUB)하고, 연결된 서비스의 커넥션을 관리하는 클라이언트 에이전트 |
 | **소켓 패밀리** | Discovery를 통해 피어를 등록·발견하는 raw ROUTER/DEALER/PUB/SUB 소켓 |
 | **서비스 역할** | 자동 피어 매칭에 사용되는 소켓 수준 역할 (ROUTER/DEALER/PUB/SUB) |
 | **Heartbeat** | 주기적 생존 신호 (기본: 5초 주기, 15초 타임아웃) |
@@ -100,18 +100,18 @@ flowchart TB
 - **DEALER → ROUTER** — 부트스트랩 요청, 서비스 등록, heartbeat 전송
 - **SUB → PUB** — 서비스 목록 브로드캐스트 수신
 
-**구체적 시나리오** -- 위 아키텍처 다이어그램의 `price-feed` 예시:
+**구체적 시나리오** — 위 아키텍처 다이어그램의 `price-feed` 예시:
 
-1. **Node B**가 PUB 소켓을 생성하고, `tcp://*:9100`에 bind한 후,
+1. **Node B**가 PUB 소켓을 생성하고 `tcp://*:9100`에 바인딩한 뒤,
    서비스명 `"price-feed"`로 Discovery에 등록한다.
 2. Discovery가 확정된 엔드포인트(예: `tcp://10.0.1.8:9100`)를
    Registry 2에 등록한다.
 3. Registry 2가 다음 서비스 목록 브로드캐스트에 이 엔드포인트를 포함한다.
-   플러딩(flooding, 전체 브로드캐스트 전파)을 통해 Registry 1, 3도 이 정보를 학습한다.
-4. **Node C**는 자신의 `"price-feed"` Discovery에 SUB 소켓을 연결한
+   플러딩(flooding, 전체 브로드캐스트 전파)을 통해 Registry 1, 3도 이 정보를 수신한다.
+4. **Node C**는 자신의 `"price-feed"` Discovery에 SUB 소켓을 연결해 둔
    상태다. 브로드캐스트가 도착하면 Discovery가 PUB 프로바이더를 확인하고
    SUB 소켓을 `tcp://10.0.1.8:9100`에 **자동 연결**한다.
-5. Node B가 장애 발생 시, heartbeat가 중단 → Registry가 해당 entry 만료 →
+5. Node B에 장애가 발생하면, 하트비트 중단 → Registry가 해당 엔트리 만료 →
    Node C가 업데이트된 목록을 수신 → 자동으로 연결 해제.
 
 Node C의 코드에는 `tcp://10.0.1.8:9100` 주소가 어디에도 없다.
@@ -142,12 +142,12 @@ sequenceDiagram
     Disc-->>Svc: peer discovered → auto-connect
 ```
 
-1. 서비스를 Discovery에 **등록** (또는 SPOT 노드를 등록).
-2. Discovery가 Registry의 ROUTER 엔드포인트에 **부트스트랩 요청**을 전송.
-3. Registry가 구독할 PUB 엔드포인트와 heartbeat 주기를 응답.
-4. Discovery가 PUB 엔드포인트를 **구독**하고 주기적 서비스 목록 수신 시작.
-5. Discovery가 자신의 서비스를 **등록**하고 heartbeat 전송 시작.
-6. 서비스 목록에 매칭 피어가 나타나면, Discovery가 소켓을 **자동 연결** (소켓 패밀리) 하거나 모니터 이벤트를 전달 (SPOT).
+1. 서비스를 Discovery에 **등록**한다 (또는 SPOT 노드를 등록).
+2. Discovery가 Registry의 ROUTER 엔드포인트에 **부트스트랩 요청**을 전송한다.
+3. Registry가 구독할 PUB 엔드포인트와 하트비트 주기를 응답한다.
+4. Discovery가 PUB 엔드포인트를 **구독**하고 주기적 서비스 목록 수신을 시작한다.
+5. Discovery가 자신의 서비스를 **등록**하고 하트비트 전송을 시작한다.
+6. 서비스 목록에 매칭 피어가 나타나면, Discovery가 소켓을 **자동 연결**하거나 (소켓 패밀리) 모니터 이벤트를 전달한다 (SPOT).
 
 ### 자동 역할 매칭
 
@@ -160,22 +160,22 @@ sequenceDiagram
 | ROUTER | DEALER 피어 | 서버가 모든 클라이언트를 발견 |
 | DEALER | ROUTER 피어 | 클라이언트가 모든 서버를 발견 |
 
-역할은 Discovery 연결 시 소켓 타입에서 자동으로 파생된다 — 별도 설정 불필요.
+역할은 Discovery 연결 시 소켓 타입에서 자동으로 결정된다 — 별도 설정이 필요 없다.
 
 ROUTER ↔ ROUTER 자동 연결처럼 양쪽 모두 outbound를 시작할 수 있는 경우,
 **자동 연결 방향은 라이브러리가 쌍마다 한쪽만 결정한다.** 즉 두 ROUTER가
-서로를 발견해도 `connect`는 한 번만 만들어진다. 사용자는 어느 쪽이 dial할지
-따로 설정할 필요가 없으며, 결과적으로 중복 연결 경쟁과 handover churn이
-줄어든다. 이 규칙은 Discovery-managed 자동 연결에만 적용되며, raw API로
+서로를 발견해도 `connect`는 한 번만 만들어진다. 어느 쪽이 dial할지
+따로 설정할 필요 없으며, 중복 연결 경쟁과 handover churn도 발생하지 않는다.
+이 규칙은 Discovery가 관리하는 자동 연결에만 적용되며, raw API로
 직접 호출한 `zlink_connect()`는 라이브러리가 중재하지 않는다.
 
-#### 누가 dial 하는가 — pairwise initiator 규칙
+#### 누가 dial하는가 — 쌍별 개시자 규칙
 
 Discovery가 같은 서비스의 ROUTER 피어 두 개를 쌍으로 묶을 때, 라이브러리는
 쌍마다 한쪽만 개시자(initiator)로 선택한다. 비교 키는 광고된 `routing_id`의
 전체 순서(total order)가 먼저이고, 동점이면 광고 엔드포인트가 동점 해결자(tie-breaker)가 된다.
-두 ROUTER가 독립적으로 평가해도 같은 결과에 도달하므로, 사용자는 이
-결정을 따로 설정할 필요가 없다. 같은 서비스에 속한 ROUTER들은 Discovery에
+두 ROUTER가 독립적으로 평가해도 동일한 결과에 도달하므로, 이
+결정을 별도로 설정할 필요가 없다. 같은 서비스에 속한 ROUTER들은 Discovery에
 대칭적으로 추가해도 되고, 선택된 한쪽에서만 `connect`가 발생한다.
 
 ```mermaid
@@ -193,10 +193,10 @@ sequenceDiagram
 ```
 
 서로 다른 호스트에서 같은 `routing_id`가 올라오는 예외 상황(잘못된 설정, 좀비
-인스턴스, 롤링 재시작 겹침)은 여전히 중복 정책으로 처리한다. 기본값인
+인스턴스, 롤링 재시작 겹침)은 중복 정책으로 처리한다. 기본값인
 `ZLINK_OPT_RID_DUPLICATE_POLICY = ZLINK_RID_DUPLICATE_REJECT`는 기존 파이프를
 유지한다. 나중에 들어온 연결이 기존 파이프를 인수해야 하면
-`ZLINK_RID_DUPLICATE_HANDOVER`를 명시 설정한다.
+`ZLINK_RID_DUPLICATE_HANDOVER`를 명시적으로 설정한다.
 
 ## 3. Registry 설정
 
@@ -235,10 +235,10 @@ zlink_ctx_term(ctx);
 
 ## 4. Discovery 사용
 
-Discovery는 애플리케이션에서 사용하는 클라이언트 측 컴포넌트다. 논리적
-서비스당 하나의 Discovery를 생성하고, Registry에 연결한 후, SPOT 노드나
-raw 소켓을 Discovery에 등록한다. Discovery가 등록, 피어 조회, heartbeat를 대신
-처리한다.
+Discovery는 애플리케이션이 사용하는 클라이언트 측 컴포넌트다. 논리적
+서비스당 하나의 Discovery를 생성하고 Registry에 연결한 뒤, SPOT 노드나
+raw 소켓을 Discovery에 등록한다. 등록, 피어 조회, 하트비트는 Discovery가
+대신 처리한다.
 
 ```c
 /* choose ROUTE_MESH, CLIENT_SERVER, DEALER_MESH, FANOUT, or SPOT_MESH */
@@ -290,9 +290,9 @@ zlink_socket_attach_discovery(pub, discovery);
 zlink_discovery_destroy(&discovery);
 ```
 
-**수명주기:** 소켓이 연결되면 `connect`, `disconnect`, `unbind`, `close`
+**수명주기:** 소켓이 연결된 이후에는 `connect`, `disconnect`, `unbind`, `close`
 수동 호출이 실패한다. Discovery 인스턴스를 파괴하면 연결된 모든 소켓이
-종료된다.
+함께 종료된다.
 
 ## 4.2 SpotNode에 Channel Dealer 등록하기
 
@@ -321,20 +321,20 @@ zlink_socket_attach_discovery(orders_dealer, orders_disc);
 zlink_spot_node_attach_channel_dealer(node, orders_disc, orders_dealer);
 ```
 
-연결 시 지켜야 하는 규칙:
+연결 시 지켜야 할 규칙:
 
 - **SPOT Discovery는 노드당 하나.** `zlink_spot_node_attach_discovery()`는
   `ZLINK_AUTO_CONNECT_SPOT_MESH`만 받는다. 두 번째 연결은 `EBUSY`로 실패한다.
 - **같은 채널에 DEALER 하나.** 자동 연결과 수동 연결이 같은 네임스페이스를
-  공유한다. 같은 채널에 `DEALER`를 두 번 연결하면 `EBUSY`로 실패한다.
+  공유하므로, 같은 채널에 `DEALER`를 두 번 연결하면 `EBUSY`로 실패한다.
 - **연결된 DEALER는 전용 자원.** 소유권은 호출자가 유지하지만, 연결 후에는
-  다른 용도로 같은 소켓을 함께 쓰지 않는다.
-- **Discovery destroy는 그 피어 집합만 내린다.** 특정 Discovery만 파괴하면 그
+  다른 용도로 같은 소켓을 사용하지 않는다.
+- **Discovery 파괴는 해당 피어 집합만 해제한다.** 특정 Discovery를 파괴하면 그
   Discovery가 공급하던 자동 연결만 제거된다.
 
 ## 4.3 Peer Value
 
-각 Discovery 인스턴스는 서비스 등록 시 피어들에게 함께 broadcast되는
+각 Discovery 인스턴스는 서비스 등록 시 피어들에게 함께 브로드캐스트되는
 `int64_t` 값을 하나 가진다. 원격 관찰자는 `zlink_member_peer_entry_t`의
 `value` 필드로 이 값을 읽는다. 가중 부하 분산(weighted load-balancing)이나
 우선순위 라우팅에 활용한다.
@@ -348,9 +348,9 @@ int64_t v = 0;
 zlink_discovery_get_value(discovery, &v);
 ```
 
-값은 다음 heartbeat 주기에 전송된다. 원격 피어는
+변경된 값은 다음 하트비트 주기에 전송된다. 원격 피어 정보는
 `zlink_discovery_member_peers()` 또는 `zlink_registry_member_peers()`로
-확인할 수 있다.
+조회할 수 있다.
 
 ## 5. Liveness 및 Summary 업데이트
 
@@ -371,11 +371,11 @@ sequenceDiagram
     Reg--xDisc: entry expires (LOST)
 ```
 
-- Registry에서 보이는 가시성(visibility)은 Discovery가 담당하는 하트비트/토폴로지 업링크로 유지된다.
+- Registry에서의 가시성은 Discovery가 담당하는 하트비트/토폴로지 업링크로 유지된다.
 - SPOT과 소켓 패밀리 서비스는 로컬 등록/요약 변경을 제출하지만,
-  주기적 업링크 주기는 Discovery가 담당한다.
+  주기적 업링크는 Discovery가 담당한다.
 - Registry 요약은 결과적으로 일관된(eventually consistent) 대략적인 전역 뷰이며,
-  엄격한 최종 준비 상태 판단 기준으로 사용하면 안 된다.
+  엄격한 최종 준비 상태 판단 기준으로 사용해서는 안 된다.
 
 ## 6. Registry 클러스터 HA
 
@@ -386,10 +386,9 @@ sequenceDiagram
   `registry_id` + `list_seq`로 중복/역전 업데이트 무시.
 
 **서비스 가시성:** Registry 클러스터에서 서비스 목록은 플러딩으로 전파된다.
-Discovery가 하나의 Registry에만 연결해도 피어 Registry에 등록된 서비스가
-브로드캐스트에 포함되어 전체 클러스터의 서비스를 볼 수 있다. 여러 Registry에
-`connect_registry()`하는 것은 서비스 가시성이 아닌 **HA(장애 대응)**를 위한
-것이다.
+Discovery가 하나의 Registry에만 연결해도 다른 Registry에 등록된 서비스가
+브로드캐스트에 포함되므로 전체 클러스터의 서비스를 볼 수 있다. 여러 Registry에
+`connect_registry()`하는 것은 서비스 가시성이 아닌 **HA(장애 대응)**를 위해서다.
 
 ### Discovery Failover
 

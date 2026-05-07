@@ -283,7 +283,7 @@ sequenceDiagram
 
 ## 7. pending 과 완료 규칙
 
-pending(응답 대기 항목) 소유권은 상위 API 레이어에 있다. 현재 구현은 다음처럼 동작한다.
+pending(응답 대기 항목) 소유권은 상위 API 계층에 있다. 현재 구현은 다음처럼 동작한다.
 
 - `DEALER` pending key: `request_seq`
 - `ROUTER` pending key: `source_node_rid + request_seq` (일반 ROUTER 또는 SPOT 에서 시작된 routed)
@@ -294,7 +294,7 @@ pending(응답 대기 항목) 소유권은 상위 API 레이어에 있다. 현�
 완료 규칙:
 
 - 첫 reply 1건으로 high-level request 를 완료한다.
-- timeout 이 먼저 오면 pending entry 를 지우고 `ETIMEDOUT` 로 callback 한다.
+- timeout 이 먼저 오면 pending entry 를 지우고 `ETIMEDOUT` 로 콜백한다.
 - 완료 후 같은 key 로 추가 reply 가 와도 다시 callback 하지 않는다.
 - `error reply` 는 payload 대신 `errno != 0` completion 으로 바꿔 전달한다.
 

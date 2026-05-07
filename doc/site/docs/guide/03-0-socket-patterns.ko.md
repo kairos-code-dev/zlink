@@ -100,11 +100,11 @@ Is the communication peer an external client (browser, game)?
 | [03-4-router.ko.md](03-4-router.ko.md) | ROUTER | ID 기반 라우팅 |
 | [03-5-stream.ko.md](03-5-stream.ko.md) | STREAM | 외부 클라이언트 RAW 통신 |
 
-## 7. peer를 routing id로 끊기
+## 7. 피어를 routing id로 끊기
 
-일반적인 연결/해제 수명 주기는 endpoint 문자열을 기준으로 동작한다. 그런데
+일반적인 연결/해제 수명 주기는 엔드포인트 문자열을 기준으로 동작한다. 그런데
 메시지를 수신하면 `source_rid`(송신 피어의 고유 식별자)로 상대방을 직접 특정할 수 있다.
-endpoint 문자열을 저장하지 않아도 수신한 `source_rid`만으로 해당 피어 연결을 끊으려면
+엔드포인트 문자열을 저장하지 않아도 수신한 `source_rid`만으로 해당 피어 연결을 끊으려면
 `zlink_disconnect_rid()`를 사용한다.
 
 ```c
@@ -131,9 +131,9 @@ zlink_recv_result_t zlink_recv (
     zlink_recv_flags_t flags);
 ```
 
-- **`source_rid`**: 이 표면을 쓰는 모든 소켓에서 송신자 피어의
-  routing_id 가 채워진다. 메시지 프레임이 아니라 zlink 가 연결된 피어의
-  identity 를 자동으로 resolve 하는 별도 파라미터다.
+- **`source_rid`**: 이 수신 표면을 사용하는 모든 소켓에서 송신 피어의
+  routing_id가 채워진다. 메시지 프레임이 아니라 zlink가 피어의 identity를
+  자동으로 resolve해 전달하는 별도 파라미터다.
 - **`parts` / `part_count`**: 모든 소켓에서 멀티파트가 기본이다.
   `part_count=1` 이면 단일 프레임, `part_count=2+` 이면 멀티파트.
 
@@ -143,35 +143,35 @@ zlink_recv_result_t zlink_recv (
 **소켓별 전용 수신 표면:**
 
 - **PAIR / DEALER**: `zlink_recv()`로 수신한다. DEALER는 추가로
-  `zlink_dealer_request()`의 completion callback으로 reply를 받는다.
+  `zlink_dealer_request()`의 완료 콜백으로 reply를 받는다.
 - **ROUTER**: ROUTER 핸들에 `zlink_recv()` 를 호출하면
   `ZLINK_RECV_NOT_SUPPORTED` 로 실패한다. ROUTER 는 통합된 단일 typed
   표면 — `zlink_router_recv()` — 를 사용하며, `source_node_rid`,
   `source_spot_rid`, `request_seq` 를 함께 반환한다. 이 하나의 표면이 일반
   ROUTER 트래픽과 SPOT 에서 시작된 routed 트래픽을 모두 전달한다.
-  request의 reply는 별도 completion callback으로 받는다. 자세한 내용은
+  request의 reply는 별도 완료 콜백으로 받는다. 자세한 내용은
   [03-4-router.ko.md](03-4-router.ko.md).
-- **SUB / XSUB**: `zlink_subscribe()`로 수신한다. recv-only이며, direct
-  topic callback 표면은 제공하지 않는다.
+- **SUB / XSUB**: `zlink_subscribe()`로 수신한다. recv-only이며, 직접
+  토픽 콜백 표면은 제공하지 않는다.
 - **STREAM**: 예외 타입이다. `zlink_recv()` (raw recv),
-  `zlink_recv_handler()` (raw callback), `zlink_stream_packet_handler()`
-  (packet callback) 세 모델 중 하나를 고른다. 한 handle에서 두 번째 모델로
+  `zlink_recv_handler()` (raw 콜백), `zlink_stream_packet_handler()`
+  (packet 콜백) 세 모델 중 하나를 고른다. 한 핸들에서 두 번째 모델로
   전환하려 하면 `EBUSY`로 실패한다.
-- **SPOT**: 두 가지 상호 배타적 handler 등록 방식이 있다.
-  - `zlink_spot_handler()` — routed 전용 직접 callback이다. routed payload를 callback
-    안에서 바로 받는다. subscribe, timer, channel reply, Actor 이벤트는 이 방식으로
+- **SPOT**: 두 가지 상호 배타적 핸들러 등록 방식이 있다.
+  - `zlink_spot_handler()` — routed 전용 직접 콜백이다. routed payload(메시지의 실제 데이터 내용)를 콜백
+    안에서 바로 받는다. subscribe, 타이머, channel reply, Actor 이벤트는 이 방식으로
     받을 수 없다.
-  - `zlink_spot_dispatch_event_handler()` — subscribe, routed, channel reply, timer,
-    Actor 이벤트를 readiness 형태로 통합 수신한다. callback은 "읽을 것이 있다"는 신호이며,
+  - `zlink_spot_dispatch_event_handler()` — subscribe, routed, channel reply, 타이머,
+    Actor 이벤트를 readiness 형태로 통합 수신한다. 콜백은 "읽을 것이 있다"는 신호이며,
     데이터는 각 drain API(`zlink_spot_recv()`, `zlink_spot_subscribe()` 등)로 읽는다.
-- **monitor / timer**: recv와 callback 두 방식을 모두 지원한다.
+- **monitor / 타이머**: recv와 콜백 두 방식을 모두 지원한다.
 
-즉 data-plane 수신은 `recv + poller`가 기본이며, callback은 `STREAM`,
-monitor/timer처럼 실제 사용 패턴이 분명한 예외 타입에만 남긴다. SPOT은
-`zlink_spot_handler()` (routed 전용 직접 callback)와
+data-plane 수신은 `recv + poller`가 기본이며, 콜백은 `STREAM`,
+monitor/timer처럼 사용 패턴이 분명한 예외 타입에만 사용한다. SPOT은
+`zlink_spot_handler()` (routed 전용 직접 콜백)와
 `zlink_spot_dispatch_event_handler()` (전체 이벤트 readiness 통합) 두 방식 중
 하나를 선택해야 하며, 같은 Spot에서 동시에 쓸 수 없다. request completion
-callback은 data-plane receive가 아닌 별도 축의 비동기 작업 완료 통지임에 유의한다.
+콜백은 data-plane 수신이 아닌 비동기 작업 완료 통지임에 유의한다.
 
 ## 8. 용어 정리
 
@@ -242,11 +242,11 @@ zlink_ctx_term(ctx);
 > 그 외 옵션(`SNDHWM`, `RCVHWM`, `LINGER`, `SNDTIMEO` 등)은
 > bind/connect 이후에도 변경 가능하다.
 
-> **Callback이 기본이 아닌 이유:** raw `PAIR`, `DEALER`, `SUB`, `XSUB`,
-> `ROUTER`는 recv-only다. 여러 소켓, monitor, timer를 같은 poller에서
+> **콜백이 기본이 아닌 이유:** raw `PAIR`, `DEALER`, `SUB`, `XSUB`,
+> `ROUTER`는 recv-only다. 여러 소켓, monitor, 타이머를 같은 poller에서
 > 다루기 쉽고, 호출자가 실행 스레드와 순서를 직접 통제할 수 있기 때문이다.
-> callback 경로는 `STREAM`, monitor/timer, SPOT dispatch event, request
-> completion처럼 실제 사용 패턴이 분명한 경우에만 남는다.
+> 콜백은 `STREAM`, monitor/타이머, SPOT dispatch event, request
+> completion처럼 사용 패턴이 분명한 경우에만 사용한다.
 
 ---
 [← Core API](02-core-api.ko.md) | [PAIR →](03-1-pair.ko.md)

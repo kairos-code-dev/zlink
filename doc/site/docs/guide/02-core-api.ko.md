@@ -36,8 +36,8 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 
 ## 2. Socket API
 
-공개 socket handle API는 기본적으로 스레드 안전(thread-safe)하다. 여러 thread에서
-같은 socket handle을 공유하여 send/recv/bind/connect 등을 호출할 수 있다.
+공개 소켓 핸들 API는 기본적으로 스레드 안전(thread-safe)하다. 여러 스레드에서
+같은 소켓 핸들을 공유하여 send/recv/bind/connect 등을 호출할 수 있다.
 
 > 세부 threading 규칙은 [Thread Safety 가이드](11-thread-safety.ko.md)를 참고.
 
@@ -147,20 +147,19 @@ zlink_send(socket, parts, 2, 0);
 - **재시도 대상**: `ZLINK_SUBMIT_BACKPRESSURED`, `EINTR` 만 재시도, 그 외 결과는 즉시 실패
 - **whole-message 보장**: 멀티파트 메시지는 전체가 성공하거나 전체가 실패한다
 
-이 보장 덕분에 멀티파트 메시지는 전체가 큐에 들어가거나 전체가 실패한다.
-부분만 큐에 들어가는 일은 발생하지 않는다.
+멀티파트 메시지는 전체가 큐에 들어가거나 전체가 실패한다. 일부만 큐에 들어가는 경우는 없다.
 
 > Wire 수준 프레임 구조는
 > [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
 
 ### 3.2 Recv
 
-zlink socket은 두 가지 recv mode를 지원한다:
+zlink 소켓은 두 가지 recv mode를 지원한다:
 
 #### Pull Mode (synchronous)
 
-Handler를 부착하지 않으면 `zlink_recv()`로 직접 message를 받을 수 있다.
-Socket은 기본적으로 pull mode로 시작한다.
+핸들러를 부착하지 않으면 `zlink_recv()`로 직접 메시지를 받을 수 있다.
+소켓은 기본적으로 pull mode로 시작한다.
 
 ```c
 void *socket = zlink_socket(ctx, ZLINK_SOCKET_PAIR);
@@ -191,9 +190,9 @@ if (rc == ZLINK_RECV_NO_DATA) {
 
 #### Callback Mode
 
-Socket 생성 후 핸들러 콜백을 부착하면 메시지 도착 시 I/O 스레드에서
-비동기로 호출된다. 한번 부착하면 socket 수명 동안 해제할 수 없다.
-Handler 가 부착된 상태에서 `zlink_recv()` 호출 시 `ZLINK_RECV_BUSY` 를
+소켓 생성 후 핸들러 콜백을 부착하면 메시지 도착 시 I/O 스레드에서
+비동기로 호출된다. 한 번 부착하면 소켓 수명 동안 해제할 수 없다.
+핸들러가 부착된 상태에서 `zlink_recv()` 호출 시 `ZLINK_RECV_BUSY` 를
 반환한다.
 
 ```c
@@ -227,39 +226,37 @@ zlink_recv_handler(socket, on_message, NULL);
 zlink의 수신 모델은 두 가지 기본 방식으로 나뉜다.
 
 - **Pull mode (기본)**: `zlink_recv()` 등 수신 함수를 직접 호출해 데이터를 읽는다.
-  주로 poller 루프 안에서 사용하며, 어느 thread에서 언제 읽을지를 호출자가 제어한다.
-- **Callback mode**: `*_handler()` 함수로 핸들러를 등록하면 I/O thread에서 메시지를
-  callback으로 직접 전달받는다. 한번 등록하면 socket 수명 동안 해제할 수 없다.
-  callback이 등록된 socket에 `zlink_recv()`를 호출하면 `ZLINK_RECV_BUSY`가 반환된다.
+  주로 poller 루프 안에서 사용하며, 어느 스레드에서 언제 읽을지를 호출자가 제어한다.
+- **Callback mode**: `*_handler()` 함수로 핸들러를 등록하면 I/O 스레드에서 메시지를
+  콜백으로 직접 전달받는다. 한 번 등록하면 소켓 수명 동안 해제할 수 없다.
+  콜백이 등록된 소켓에 `zlink_recv()`를 호출하면 `ZLINK_RECV_BUSY`가 반환된다.
 
-대부분의 socket type은 두 방식 중 하나만 지원한다. SPOT과 STREAM은 예외다.
+대부분의 소켓 타입은 두 방식 중 하나만 지원한다. SPOT과 STREAM은 예외다.
 
-- **SPOT**: 같은 handle에 `zlink_spot_handler()`(routed 전용 직접 callback)와
-  `zlink_spot_dispatch_event_handler()`(모든 event 통합 readiness) 중 하나만 등록할 수
-  있다. 먼저 attach한 쪽이 이기고, 두 번째 attach는 `EBUSY`로 실패한다.
-- **STREAM**: `zlink_recv()`, raw callback, packet callback 세 가지 수신 모드 중
+- **SPOT**: 같은 핸들에 `zlink_spot_handler()`(routed 전용 직접 콜백)와
+  `zlink_spot_dispatch_event_handler()`(모든 이벤트 통합 readiness) 중 하나만 등록할 수
+  있다. 먼저 attach한 쪽이 우선하고, 두 번째 attach는 `EBUSY`로 실패한다.
+- **STREAM**: `zlink_recv()`, raw 콜백, packet 콜백 세 가지 수신 모드 중
   하나를 선택하면 이후 모드 변경이 불가하다.
 
-콜백은 I/O 스레드에서 호출되므로, 콜백 안에서 오래 걸리는 차단 작업(파일 I/O, 데이터베이스 조회 등)은 피해야 한다.
+콜백은 I/O 스레드에서 호출된다. 콜백 안에서 파일 I/O나 데이터베이스 조회처럼 오래 걸리는 차단 작업은 피해야 한다.
 느린 처리가 필요하면 작업 큐에 넣고 별도 스레드에서 처리한다.
 
-각 socket type은 전용 등록 함수를 사용한다:
+소켓 타입별 전용 등록 함수는 다음과 같다:
 
 | Socket Type | 등록 호출 | Callback Signature |
 |---|---|---|
 | STREAM (raw) | `zlink_recv_handler()` | `fn(rid, parts, count, userdata)` |
 | STREAM (packet) | `zlink_stream_packet_handler()` | `fn(stream, source_rid, header, body, userdata)` |
-| ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` 의 reply 는 별도 completion callback 으로 전달 |
+| ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` 의 reply 는 별도 완료 콜백으로 전달 |
 | SPOT (routed direct callback) | `zlink_spot_handler()` — 선택적, 여전히 지원 | `fn(source_rid, spot_rid, request_seq, parts, count, userdata)` |
-| SPOT (dispatch readable 이벤트) | `zlink_spot_dispatch_event_handler()` — topic/routed/channel reply/timer를 모두 한 콜백으로 통합 | `fn(spot, const zlink_spot_dispatch_info_t *info, userdata)` |
+| SPOT (dispatch readable 이벤트) | `zlink_spot_dispatch_event_handler()` — topic/routed/channel reply/timer를 모두 한 콜백으로 수신 | `fn(spot, const zlink_spot_dispatch_info_t *info, userdata)` |
 | SPOT (service-aware subscribe recv) | `zlink_spot_subscribe(spot, ..., service_name_out, topic_id_out, ...)` | N/A — recv 기반; `SUBSCRIBE_READABLE` 이벤트 후 drain |
 | SPOT (service-aware routed recv) | `zlink_spot_recv(spot, ...)` | N/A — recv 기반; `ROUTED_READABLE` 이벤트 후 drain |
 | PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` 또는 `zlink_subscribe()` | N/A |
 | DEALER / ROUTER request | `zlink_dealer_request()` / `zlink_router_request()` 에 전달 | `fn(zlink_request_result_t result, parts, count, userdata)` |
 | Timer | `zlink_timer_handler()` | `fn(timer, fire_count, userdata)` |
 | PUB | N/A | Send-only socket |
-
-콜백은 I/O 스레드에서 호출된다. 오래 걸리는 처리가 필요하면 작업 큐에 넣고 별도 스레드에서 처리한다.
 
 ## 5. Error 처리
 
@@ -309,7 +306,7 @@ if (rc != ZLINK_SUBMIT_OK) {
 
 ## 6. Timer API
 
-Timer는 소켓과 동일한 recv/callback/poller 모델을 지원하는 일급 이벤트 소스다. 소켓처럼 poller에 등록하거나 콜백을 붙일 수 있다.
+타이머는 소켓과 동일한 recv/콜백/poller 모델을 지원하는 일급 이벤트 소스다. 소켓처럼 poller에 등록하거나 콜백을 붙일 수 있다.
 
 ### 6.1 일반 Timer
 
@@ -338,7 +335,7 @@ zlink_timer_destroy(&timer);
 
 ### 6.2 SPOT Timer
 
-SPOT timer는 프로세스 전역 스케줄러 대신 SpotNode 전용 공유 스케줄러를 사용한다. 같은 SpotNode 안의 timer들이 단일 스케줄러를 공유하므로 스케줄링 오버헤드가 줄어든다.
+SPOT 타이머는 프로세스 전역 스케줄러 대신 SpotNode 전용 공유 스케줄러를 사용한다. 같은 SpotNode 안의 타이머들이 단일 스케줄러를 공유하므로 스케줄링 오버헤드가 줄어든다.
 
 ```c
 void *spot_timer = zlink_spot_timer_new(spot);
@@ -347,7 +344,7 @@ zlink_timer_start(spot_timer, 50000000ULL, 10);  /* 50ms, 10회 반복 */
 
 ### 6.3 Poller 통합
 
-Timer를 socket, file descriptor와 함께 poller에 등록할 수 있다.
+타이머를 소켓, file descriptor와 함께 poller에 등록할 수 있다.
 
 ```c
 zlink_poller_add_timer(poller, timer, user_data);

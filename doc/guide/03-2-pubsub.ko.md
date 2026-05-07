@@ -20,7 +20,7 @@ zlink는 기본 PUB/SUB과 고급 XPUB/XSUB 두 가지 레벨을 제공한다.
 
 ### SUB vs XSUB — 핵심 차이
 
-SUB과 XSUB은 모두 `zlink_set_subscription()`으로 구독 정보를
+SUB와 XSUB은 모두 `zlink_set_subscription()`으로 구독 정보를
 upstream PUB에 전송한다. 공개 API 사용법은 동일하다.
 차이는 **로컬 필터 엔진의 on/off**다.
 
@@ -125,7 +125,7 @@ zlink_set_subscription(sub, "weather");
 
 SUB / XSUB는 recv-only 타입이다. poller의 `ZLINK_POLLIN`과 함께 사용해
 서버 루프에서 readable을 관찰한 뒤 `zlink_subscribe()`로 토픽 메시지를
-가져온다. 별도 direct topic callback 표면은 제공하지 않는다.
+가져온다. 직접 토픽 콜백 표면은 제공하지 않는다.
 
 > **PUB/XPUB 기본값:** `ZLINK_PUB_OPT_NODROP` 의 기본값은 `1` 이다.
 > HWM 이 찼을 때 조용히 drop 하지 않고 `zlink_publish()` 가
@@ -208,9 +208,9 @@ zlink_publish(pub, "sensor:cpu", parts, 2, 0);
    parts[1]  = "73" */
 ```
 
-토픽은 와이어(wire, 프로토콜 전송 레벨)에서 첫 프레임으로 전송되고,
+토픽은 와이어(프로토콜 전송 레벨)에서 첫 프레임으로 전송되고,
 `zlink_subscribe()`가 토픽과 데이터를 분리하여 반환한다.
-호출자가 토픽 프레임을 직접 조립할 필요 없다.
+호출자가 토픽 프레임을 직접 조립할 필요는 없다.
 
 > **참고:** `zlink_publish(pub, NULL, parts, ...)`처럼 topic을 NULL로 전달하면
 > parts[0]이 토픽 프레임으로 사용되는 호환 경로가 동작하지만,
@@ -294,7 +294,7 @@ zlink_connect(sub, "tcp://pub2:5557");
 ### Slow Subscriber (HWM 초과 시 drop)
 
 PUB/XPUB는 기본적으로 **손실 허용 모드(lossy mode)**로 동작한다. 느린 구독자의
-송신 큐가 HWM(High-Water Mark, 큐 최대 허용 메시지 수)에 도달하면 해당 구독자에게 보내는 메시지를
+송신 큐가 HWM(High-Water Mark, 큐 최대 허용 메시지 수)에 도달하면, 해당 구독자에게 보내는 메시지를
 오류 반환 없이 **조용히 버린다(silent drop)**.
 
 ```c
@@ -337,7 +337,7 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 
 ### Late Joiner (구독 전 메시지 유실)
 
-SUB가 connect한 뒤 구독 메시지가 PUB에 도달하기 전에 발행된 메시지는 유실된다.
+SUB가 connect한 뒤 구독 정보가 PUB에 전파되기 전에 발행된 메시지는 수신할 수 없다.
 
 ```c
 /* Time needed for subscription to propagate to PUB */
@@ -372,9 +372,9 @@ zlink_send(sub, &part, 1, 0);                /* ZLINK_SUBMIT_NOT_SUPPORTED */
 
 ## 8. XPUB/XSUB 개요
 
-XPUB/XSUB는 subscription frame을 application에서 직접 다룰 수 있는
-고급 publish-subscribe socket이다. Proxy/broker 구축, subscription
-monitoring, Last-Value Caching에 사용된다.
+XPUB/XSUB는 구독 프레임을 애플리케이션에서 직접 다룰 수 있는
+고급 publish-subscribe 소켓이다. 프록시/브로커 구축, 구독 모니터링,
+Last-Value Caching에 사용된다.
 
 ### SUB vs XSUB — 핵심 차이
 
@@ -397,7 +397,7 @@ XSUB이 프록시에서 필요한 이유는 구독 상태 없이도 모든 메�
 | **메시지 발행** | `zlink_publish()` | `zlink_publish()` (동일) |
 | **구독 이벤트** | 노출 안 함 | `zlink_xpub_recv_part()`로 수신 |
 
-XPUB는 어떤 client가 어떤 topic을 구독/해지했는지 알 수 있다.
+XPUB는 어떤 클라이언트가 어떤 토픽을 구독하거나 해지했는지 파악할 수 있다.
 
 ### PUB/SUB 소켓 공개 API 요약
 

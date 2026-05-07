@@ -93,7 +93,7 @@ typedef void (*zlink_stream_packet_handler_fn) (
 
 raw `STREAM`의 packet 단위 수신 콜백 타입입니다. `source_rid_`는 packet을
 보낸 client 연결의 routing id를 가리키는 borrowed view이고, `header_`와
-`body_`는 고정 framing 규약에 따라 조립된 packet의 header/body 페이로드
+`body_`는 고정 framing 규약에 따라 조립된 packet의 header/body payload
 입니다. 길이가 0인 경우에도 NULL이 아닌 유효한 `zlink_msg_t`로 전달되며,
 두 `msg_t`의 소유권은 콜백으로 이전됩니다. `zlink_stream_packet_handler()`
 와 함께 사용합니다.

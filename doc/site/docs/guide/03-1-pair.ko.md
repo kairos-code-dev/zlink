@@ -36,7 +36,7 @@ zlink_connect(client, "tcp://127.0.0.1:5555");
 
 ### 메시지 교환
 
-PAIR는 recv-only 타입이다. 수신은 `zlink_recv()`와 poller를 조합해서
+PAIR의 수신 API는 recv/poller 전용이다. 수신은 `zlink_recv()`와 poller를 조합해서
 처리한다. 양쪽 모두 send와 recv를 자유롭게 호출할 수 있다.
 
 ```c
@@ -85,7 +85,7 @@ zlink_send(server, parts, 2, 0);
 
 ### 수신 모드
 
-PAIR의 public API는 recv/poller-only다.
+PAIR의 공개 수신 API는 recv/poller 전용이다.
 `zlink_recv()`로 동기 수신한다.
 
 ```c

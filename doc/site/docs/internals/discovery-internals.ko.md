@@ -161,10 +161,10 @@ Frame 4~N: Service entries (repeated):
       provider_blob (variable)
 ```
 
-Registry 피어는 별도 `REGISTRY_SYNC` multipart 메시지로 route binding snapshot을
-받는다. Discovery subscriber는 이 메시지를 무시한다. Registry는 route snapshot을
-staging view(확정 전 임시 적용 영역)에 먼저 적용한다. 같은 `snapshot_seq`의 chunk가
-순서대로 도착해야 하며, 마지막 chunk가 commit되기 전에는 기존 materialized route view
+Registry 피어는 별도 `REGISTRY_SYNC` 멀티파트 메시지로 route binding snapshot을
+받는다. Discovery 구독자는 이 메시지를 무시한다. Registry는 route snapshot을
+staging view(확정 전 임시 적용 영역)에 먼저 적용한다. 같은 `snapshot_seq`의 청크(chunk)가
+순서대로 도착해야 하며, 마지막 청크가 commit되기 전에는 기존 materialized route view
 (최종 확정된 경로 테이블)를 바꾸지 않는다.
 
 ```text
@@ -222,8 +222,8 @@ live owner로 보지 않는다.
 
 ## 7. Socket Discovery Attachment
 
-`socket_discovery_attachment_t`는 raw 소켓을 Discovery와 통합하여
-자동 peer 관리를 수행한다.
+`socket_discovery_attachment_t`는 raw 소켓을 Discovery 와 통합하여
+자동 피어 관리를 수행한다.
 
 ```mermaid
 sequenceDiagram
@@ -259,17 +259,17 @@ sequenceDiagram
 
 ### Attachment 제약
 
-- 소켓당 바인드된 endpoint 1개만 허용
+- 소켓당 바인드된 엔드포인트 1개만 허용
 - 수동 `connect`/`disconnect`/`unbind` 차단 (Discovery 독점)
-- Peer 연결은 Discovery가 전적으로 관리
-- `discovery_destroy()` 시 모든 attachment에 shutdown 전파
+- 피어 연결은 Discovery 가 전적으로 관리
+- `discovery_destroy()` 시 모든 attachment 에 shutdown 전파
 
 ## 8. SpotNode Attachment
 
-SpotNode는 동일한 observer 패턴을 사용하지만:
+SpotNode는 동일한 observer 패턴을 사용하지만 다음 특성이 있다:
 - `auto_connect_type = auto_connect_type_spot_node (2)`
 - `service_role = service_role_spot (2)` (고정)
-- Peer 연결 대상은 mesh 내 다른 SpotNode
+- 피어 연결 대상은 mesh 내 다른 SpotNode
 
 ```mermaid
 sequenceDiagram
@@ -304,8 +304,8 @@ flowchart TD
 `zlink_discovery_resolve_spot(discovery, spot_rid, &owner_node_rid_out)`
 는 **논리적 SPOT routing id** 를 **현재 소유 SpotNode 의 routing id** 로
 매핑한다. 호출자가 `(owner_node_rid, spot_rid)` 쌍을 만들어
-ROUTER 쪽 direct 함수(`zlink_router_send_spot()` /
-`zlink_router_request_spot()`)의 destination 으로 사용할 수 있게 해주는
+ROUTER 쪽 직접 전달 함수(`zlink_router_send_spot()` /
+`zlink_router_request_spot()`)의 대상으로 사용할 수 있게 해주는
 헬퍼다. 이 조회는
 해당 Discovery 의 현재 서비스 뷰 범위에서만 유효하다.
 
@@ -315,9 +315,9 @@ SpotNode를 Discovery에 붙였더라도 이 옵션이 꺼져 있으면 Discover
 `spot_rid -> owner node` summary를 Registry로 올리지 않는다. 옵션을 `1`로
 켠 publish-side Discovery만 owner row를 uplink한다.
 
-이 API 는 **send/request destination lookup 전용**이다. reply 경로는
+이 API 는 **송신/요청 대상 조회 전용**이다. 응답(reply) 경로는
 여전히 들어온 request 와 함께 전달된 구체적인 source 주소를 그대로 써야
-한다. spot 은 노드 간 이동이 가능하고, 캐시된 owner 가 실제 request 를
+한다. spot 은 노드 간 이동이 가능하고, 캐시된 소유 노드가 실제 request 를
 보낸 그 노드라는 보장이 없기 때문이다.
 
 ### 10.1 계약 요약
@@ -466,16 +466,16 @@ sequenceDiagram
     end
 ```
 
-핵심 포인트:
+핵심 사항:
 
-- 비교는 새 provider 후보 처리 단계에서 일어난다. 따라서 같은 pair에 대해
+- 비교는 새 provider 후보 처리 단계에서 일어난다. 따라서 같은 pair 에 대해
   매번 같은 결론을 낸다. SERVICE_LIST 브로드캐스트로 provider 집합이 다시
   들어와도 initiator 방향이 흔들리지 않는다.
-- Discovery는 자신이 만든 outbound와 상대편이 만든 inbound를 별도의 entry
-  로 보지 않는다. 한 번의 connect로 이미 양방향 메시지 경로가 성립한다.
+- Discovery 는 자신이 만든 outbound 연결과 상대편이 만든 inbound 연결을 별도
+  항목으로 보지 않는다. 한 번의 connect 로 양방향 메시지 경로가 성립한다.
 - 이 규칙은 ROUTER↔ROUTER 자동 연결에만 적용한다. PUB/SUB 같은 단방향
-  pair는 기존 역할 매칭 그대로 한쪽이 dial하고 다른 쪽이 받는다.
-- 같은 `routing_id`를 가진 서로 다른 peer가 동시에 보이는 충돌은 이
+  pair 는 기존 역할 매칭 그대로 한쪽이 dial 하고 다른 쪽이 받는다.
+- 같은 `routing_id` 를 가진 서로 다른 피어가 동시에 보이는 충돌은 이
   규칙이 해결하지 않는다. 충돌은 ROUTER handover 정책으로 처리한다.
-- 사용자 raw API를 통해 직접 호출한 `zlink_connect()`는 이 경로를 거치지
+- 사용자 raw API 로 직접 호출한 `zlink_connect()` 는 이 경로를 거치지
   않으므로 라이브러리가 중재하지 않는다.

@@ -53,14 +53,14 @@ STREAM은 기반 소켓 계열(raw socket family)에서 유일한 예외 타입�
   패킷 경계를 구분하는 방식) 규약(2B header size + 4B body size + header + body, big-endian)을
   따르는 패킷을 조립된 header/body 형태로 받는다.
 
-세 모델은 상호 배타이며, 한 handle에서 두 번째 모드로 전환하려 하면
+세 모델은 상호 배타이며, 한 핸들에서 두 번째 모드로 전환하려 하면
 `EBUSY`로 실패한다. 응용이 필요에 맞는 모드 하나만 선택한다.
 
 STREAM만의 고유 동작은 다음과 같다.
 
 - `source_rid`는 서버가 연결별로 자동 할당하며,
   고정 4바이트(`uint32`, big-endian)이다.
-- 특정 client를 끊어야 하면 callback이나 recv에서 받은 `source_rid`를
+- 특정 클라이언트를 끊어야 하면 콜백이나 recv에서 받은 `source_rid`를
   `zlink_disconnect_rid()`에 넘긴다. STREAM의 대상 rid는 반드시 4바이트다.
 - 연결/해제 이벤트가 메시지로 전달된다:
 
@@ -87,7 +87,7 @@ STREAM만의 고유 동작은 다음과 같다.
 
 ## 4. 콜백 예시
 
-STREAM의 콜백 분배(수신 메시지를 콜백으로 전달) 과정에서는
+STREAM 콜백 디스패치(수신 메시지를 콜백으로 전달) 과정에서는
 connect/disconnect 이벤트와 데이터를 구분해야 한다.
 
 ```c
@@ -132,9 +132,9 @@ zlink_recv_handler(stream, on_message, NULL);
 > `ZLINK_DONTWAIT` 로 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다.
 > 배압(backpressure) 패턴은 [성능 가이드](10-performance.ko.md)를 참고.
 
-- 한 번에 하나의 receive callback만 등록 가능하며, 이미 등록된 상태에서 attach를
+- 수신 콜백은 한 번에 하나만 등록할 수 있으며, 이미 등록된 상태에서 attach를
   호출하면 `errno=EBUSY`와 함께 `-1`을 반환한다.
-- receive callback이 활성인 동안 direct recv 계열과 data-plane `POLLIN`은
+- 수신 콜백이 활성인 동안 direct recv 계열과 data-plane `POLLIN`은
   `EBUSY`다.
 - 콜백 내부에서 close를 호출하는 것은 지원되지 않는다 (`EBUSY` 실패).
 
@@ -153,7 +153,7 @@ zlink_recv_handler(stream, on_message, NULL);
 
 ---
 
-## 4.1 packet callback 모드
+## 4.1 패킷 콜백 모드
 
 고정 프레이밍 규약(2바이트 big-endian header size + 4바이트 big-endian
 body size + header payload + body payload)을 사용하는 상위 프로토콜에서는
@@ -182,7 +182,7 @@ void on_packet(void *stream,
 zlink_stream_packet_handler(stream, on_packet, NULL);
 ```
 
-packet callback 모드의 규칙은 다음과 같다.
+패킷 콜백 모드의 규칙은 다음과 같다.
 
 - `header_size` 와 `body_size` 각각 0 도 허용된다. 길이가 0 이어도 msg_t 는
   유효한 객체로 전달된다.

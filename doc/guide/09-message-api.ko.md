@@ -18,8 +18,8 @@
 | zero-copy(제로카피) | 데이터를 복사하지 않고 포인터 참조만 전달하여 전송하는 기법 |
 | reference count (refcount, 참조 카운트) | 같은 데이터 버퍼를 공유하는 메시지 핸들의 수. 0이 되면 버퍼가 해제된다 |
 | ownership(소유권) | 메시지 데이터의 소유권. 전송 성공 시 라이브러리로 이전되고, 실패 시 호출자가 유지한다 |
-| routing_id | Router 소켓이 피어를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트) |
-| control part(제어 파트) | request-reply, SPOT routed 같은 상위 프로토콜이 payload 앞에 붙이는 내부 part |
+| 라우팅 ID (routing_id) | Router 소켓이 피어를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트) |
+| control part(제어 파트) | request-reply, SPOT routed 같은 상위 프로토콜이 payload 앞에 붙이는 내부 파트 |
 | HWM (High Water Mark, 큐 상한선) | 소켓의 송신/수신 큐 최대 용량. 초과 시 역압(backpressure)이 발생한다 |
 
 ## 1. 개요
@@ -298,8 +298,8 @@ if (rc != ZLINK_SUBMIT_OK) {
 
 ### 4.6 Recv
 
-Message는 socket에 등록한 핸들러 콜백으로 수신된다.
-Callback이 `zlink_msg_t` part를 직접 제공한다:
+메시지는 소켓에 등록한 핸들러 콜백으로 수신된다.
+콜백이 `zlink_msg_t` 파트를 직접 제공한다:
 
 ```c
 zlink_msg_t part;
@@ -621,9 +621,9 @@ request-reply 흐름은 전용 API 로 연다.
 - SPOT routed request-reply: [07-3-spot.ko.md](07-3-spot.ko.md)
 - 와이어(wire, 프로토콜 전송 계층) 봉투 구조: [../internals/protocol-zmp.ko.md](../internals/protocol-zmp.ko.md)
 
-즉 메시지 API 관점에서 기억할 점은 단순하다.
+메시지 API 관점에서 기억할 점:
 
-- 페이로드는 `zlink_msg_t`로 만든다.
+- payload는 `zlink_msg_t`로 만든다.
 - 요청-응답 문맥은 메시지 내부 필드가 아니라 와이어 제어 파트(control part, 프로토콜 제어 정보)에 있다.
 - 메시지 메타데이터 직렬화 경로는 공개 계약이 아니다.
 

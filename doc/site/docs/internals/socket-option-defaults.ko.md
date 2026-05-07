@@ -4,7 +4,7 @@
 
 이 문서는 소켓 타입별로 각 소켓 옵션의 기본값을 정리한다. 일부 소켓 타입은 고유한 동작 특성에 맞게 전역 기본값을 재정의한다.
 
-이 문서는 예제/가이드가 아니라 실제 구현 코드 기준의 기본값을 정리한다.
+예제/가이드가 아니라 실제 구현 코드 기준의 기본값을 정리한 참조 문서다.
 
 - `core/src/core/options.cpp` (`options_t` 생성자)
 - `core/src/core/options_core_socket.cpp` (core socket 옵션 dispatch)

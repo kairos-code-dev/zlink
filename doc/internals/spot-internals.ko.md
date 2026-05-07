@@ -17,15 +17,15 @@ routed request/reply, Actor 기반 session dispatch를 하나의 통합 런타�
 | 목표 | 구현 선택 |
 |------|-----------|
 | **Spot별 물리 소켓 없음** | 모든 transport 소켓은 `SpotNode`가 소유한다. `Spot` facade는 logical queue와 dispatch context만 가진다. |
-| **명시적 admission(입력 허가) 경계** | public publish와 routed send는 `SpotNode` 소유 send-side queue(`publish_ingress_queue`, `routed_send_queue`)에 enqueue한다. 소켓 HWM 계산과 admission 결정이 분리되어, 내부 소켓 배선이 public API 오류 의미를 오염시키지 않는다. relay·delivery 소켓은 HWM `0`을 사용해 숨은 per-peer 큐 상한이 disconnect/drop 결정을 내리지 못하게 한다. |
+| **명시적 입장 허용(admission) 경계** | public publish와 routed send는 `SpotNode` 소유 send-side queue(`publish_ingress_queue`, `routed_send_queue`)에 enqueue한다. 소켓 HWM 계산과 admission 결정이 분리되어, 내부 소켓 배선이 public API 오류 의미를 오염시키지 않는다. relay·delivery 소켓은 HWM `0`을 사용해 숨은 per-peer 큐 상한이 disconnect/drop 결정을 내리지 못하게 한다. |
 | **data-plane thread 전용 소켓** | `mesh-pub`, `fanout`, `external-router`는 `SpotNode` 전용 data-plane thread만 접근한다. public thread가 이 소켓을 직접 만질 수 없어 소유권이 분산되지 않는다. |
 | **집계 구독** | 원격 mesh 구독은 Spot 단위가 아니라 node 단위로 reference-count한다. 여러 local Spot이 같은 topic을 구독해도 원격에는 중복 구독이 전달되지 않는다. |
-| **Actor-Spot 분리** | Actor는 소켓이나 inproc(프로세스 내 통신) endpoint를 소유하지 않는다. part는 SpotNode Actor table을 거쳐 Spot의 logical queue에 dispatch되므로, transport 연결을 끊지 않고도 Actor가 Spot 사이를 이동(join)할 수 있다. |
+| **Actor-Spot 분리** | Actor는 소켓이나 inproc(프로세스 내 통신) 엔드포인트를 소유하지 않는다. part는 SpotNode Actor table을 거쳐 Spot의 logical queue에 디스패치되므로, transport 연결을 끊지 않고도 Actor가 Spot 사이를 이동(join)할 수 있다. |
 | **결정론적 종료** | `Spot` facade를 destroy해도 backing `SpotNode`가 자동으로 종료되지 않는다. Entry Spot 수명은 facade가 아니라 `SpotNode`에 귀속된다. |
 
 ### 0.2 핵심 개념
 
-- **SpotNode**: lifecycle owner. transport socket, peer 배선, Actor table을 소유한다.
+- **SpotNode**: lifecycle owner. transport 소켓, 피어 배선, Actor table을 소유한다.
 - **Spot**: `SpotNode` 위에서 빌려 쓰는 데이터 평면 facade. 같은 logical Spot을 가리키는
   facade가 여러 개 존재할 수 있으며, 모두 같은 underlying queue를 공유한다.
 - **Entry Spot**: `SpotNode`당 하나, 자동 생성된다. 새로 만들어진 Actor는 여기서 시작한다.
@@ -33,11 +33,11 @@ routed request/reply, Actor 기반 session dispatch를 하나의 통합 런타�
   결정을 수행한다.
 - **Actor**: `SpotNode` Actor table이 관리하는 routing target. `zlink_actor_ref_t`(node rid +
   actor id + generation)로 식별된다. socket ownership 없음.
-- **data-plane thread**: `SpotNode`당 하나의 전용 OS thread. `mesh-pub`, `fanout`,
-  `external-router` socket을 단독으로 소유하고, send-side queue를 drain하며, local
+- **data-plane thread**: `SpotNode`당 하나의 전용 OS 스레드. `mesh-pub`, `fanout`,
+  `external-router` 소켓을 단독으로 소유하고, send-side 큐를 drain하며, local
   fanout과 remote routing을 수행한다.
-- **dispatch worker pool**: `SpotNode`당 하나의 worker pool. data-plane thread가 post한
-  readable event를 꺼내 application dispatch callback을 실행한다. per-Spot callback 직렬화를
+- **dispatch worker pool**: `SpotNode`당 하나의 worker pool. data-plane 스레드가 post한
+  readable event를 꺼내 애플리케이션 dispatch 콜백을 실행한다. Spot별 콜백 직렬화를
   보장한다.
 
 ### 0.3 문서 구성
@@ -279,10 +279,10 @@ sequenceDiagram
 
 ### 4.2 Inbound routed traffic (external_router_ingress_queue)
 
-peer에서 들어오는 inbound routed frame은 `external-router` socket의 msg dispatch
-callback을 통해 `external_router_ingress_queue`에 enqueue된다. data-plane thread가
+피어에서 들어오는 inbound routed frame은 `external-router` 소켓의 msg dispatch
+콜백을 통해 `external_router_ingress_queue`에 enqueue된다. data-plane 스레드가
 `drain_runtime_external_router_ingress_queue()`로 이를 처리하고 target `Spot` routed
-recv queue에 delivery한다. inbound 경로는 `routed_send_queue`를 거치지 않는다.
+recv 큐에 delivery한다. inbound 경로는 `routed_send_queue`를 거치지 않는다.
 
 ```mermaid
 sequenceDiagram
@@ -321,9 +321,9 @@ public publish와 routed send의 첫 동작은 socket send가 아니라 queue en
 | `routed_send_queue` | `spot_data_plane_runtime_state_t` | outbound | public routed send → data-plane forwarding |
 | `external_router_ingress_queue` | `spot_data_plane_runtime_state_t` | inbound | peer `external-router` recv → routed delivery |
 
-`publish_ingress_queue`와 `routed_send_queue`는 public thread가 쓰고 data-plane
-thread가 읽는 MPSC 구조다. `external_router_ingress_queue`는 `external-router`
-socket의 msg dispatch callback이 쓰고 data-plane thread가 읽는 구조다.
+`publish_ingress_queue`와 `routed_send_queue`는 public 스레드가 쓰고 data-plane
+스레드가 읽는 MPSC 구조다. `external_router_ingress_queue`는 `external-router`
+소켓의 msg dispatch 콜백이 쓰고 data-plane 스레드가 읽는 구조다.
 
 ### 5.2 Backpressure와 hysteresis
 
@@ -344,9 +344,9 @@ socket의 msg dispatch callback이 쓰고 data-plane thread가 읽는 구조다.
 on/off가 반복되는 채터링을 방지한다.
 
 `send-ready callback`(`zlink_send_ready_handler()`)과 `ZLINK_POLLOUT`은 send-side
-queue admission과 연결된다. queue가 resume limit 이하로 내려가면 armed(등록된)
-send-ready callback이 호출된다. 이 의미는 "transport 소켓이 쓰기 가능하다"가
-아니라 "SPOT send admission을 다시 시도할 가치가 있다"다.
+큐 입장 허용과 연결된다. 큐가 resume limit 이하로 내려가면 armed(등록된)
+send-ready 콜백이 호출된다. 이 의미는 "transport 소켓이 쓰기 가능하다"가
+아니라 "SPOT send 입장 허용을 다시 시도할 가치가 있다"다.
 
 ### 5.3 Drain 순서
 
@@ -427,36 +427,36 @@ data plane 기준이 다르기 때문이다.
 
 ### 8.1 Data-plane thread
 
-`SpotNode`마다 하나의 전용 OS thread(`spot_runtime_t::data_plane_thread`)가
-`spot_data_plane_loop_t::run_until_shutdown()`을 실행한다. 이 thread는 아래를 독점한다.
+`SpotNode`마다 하나의 전용 OS 스레드(`spot_runtime_t::data_plane_thread`)가
+`spot_data_plane_loop_t::run_until_shutdown()`을 실행한다. 이 스레드는 아래를 독점한다.
 
 - `mesh-pub`, `fanout`, `external-router`, `mesh-xsub`, `peer_ctrl_pub`,
-  `peer_ctrl_sub` socket
+  `peer_ctrl_sub` 소켓
 - `publish_ingress_queue`, `routed_send_queue`, `external_router_ingress_queue` drain
 - local fanout delivery, remote mesh publish, inbound/outbound routed forwarding
 
-public thread는 이 socket들에 직접 접근하지 않는다. 이 경계를 지키지 않으면 socket
+public 스레드는 이 소켓들에 직접 접근하지 않는다. 이 경계를 지키지 않으면 소켓
 소유권, poller 관심사, shutdown 순서가 public 호출 경로와 섞인다.
 
 ```
 공개 불변식:
-  public thread는 mesh-pub, fanout, external-router를 직접 send/recv하지 않는다.
-  data-plane thread는 application dispatch callback을 직접 호출하지 않는다.
+  public 스레드는 mesh-pub, fanout, external-router를 직접 send/recv하지 않는다.
+  data-plane 스레드는 애플리케이션 dispatch 콜백을 직접 호출하지 않는다.
 ```
 
-data-plane thread loop는 poller와 signaler(FD)를 함께 사용한다. 세 queue의
-signaler FD가 poller에 등록되어 있어, 어느 queue든 empty→non-empty 전환이 생기면
+data-plane 스레드 loop는 poller와 signaler(FD)를 함께 사용한다. 세 큐의
+signaler FD가 poller에 등록되어 있어, 어느 큐든 empty→non-empty 전환이 생기면
 즉시 wakeup된다. idle tick은 100 ms(`data_plane_idle_tick_ms`)다.
 
 service-data runtime periodic task 의존이 완전히 제거되어 있다. SPOT data-plane
-실행 스케줄은 `SpotNode` 전용 thread에서만 결정된다.
+실행 스케줄은 `SpotNode` 전용 스레드에서만 결정된다.
 
 ### 8.2 Dispatch worker pool
 
-`spot_runtime_t::dispatch_workers`(`spot_dispatch_worker_pool_t`)는 application
-dispatch callback을 실행하는 worker pool이다.
+`spot_runtime_t::dispatch_workers`(`spot_dispatch_worker_pool_t`)는 애플리케이션
+dispatch 콜백을 실행하는 worker pool이다.
 
-data-plane thread는 application callback을 직접 호출하지 않는다. 대신 target
+data-plane 스레드는 애플리케이션 콜백을 직접 호출하지 않는다. 대신 target
 `Spot state`가 ready 상태가 되면 `post_dispatch_event(void* spot_)`으로 pool에
 알린다. pool은 coalescing 방식으로 `_queued` set에 Spot 포인터를 관리해 같은 Spot
 이 중복으로 쌓이지 않게 한다.
@@ -469,7 +469,7 @@ std::unordered_set<void*>      _active;   // 현재 worker가 실행 중인 Spot
 std::unordered_set<void*>      _dirty;    // callback 종료 후 재확인 필요한 Spot
 ```
 
-Spot별 직렬화: 같은 Spot은 동시에 worker 하나만 처리한다. callback이 끝난 뒤
+Spot별 직렬화: 같은 Spot은 동시에 worker 하나만 처리한다. 콜백이 끝난 뒤
 `_dirty`에 unread event가 남아 있으면 다시 `_ready`에 넣는다.
 
 worker 수 계산:
@@ -486,18 +486,18 @@ idle_timeout = 1000 ms (내부 상수)
 | `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN` | `min(2, cpu_count)` | 항상 유지할 worker 수 |
 | `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX` | `max(1, cpu_count)` | burst 때 늘릴 수 있는 최대 worker 수 |
 
-data-plane thread가 직접 callback을 실행하지 않는 이유:
+data-plane 스레드가 직접 콜백을 실행하지 않는 이유:
 
-1. application callback이 다시 SPOT send/recv를 호출할 때 재진입 위험
-2. callback이 오래 걸리면 `mesh-pub`, `external-router` flush가 멈춤
-3. `ZLINK_POLLOUT`과 send-ready callback도 dispatch 축이어서 data-plane loop와 섞이면
+1. 애플리케이션 콜백이 다시 SPOT send/recv를 호출할 때 재진입 위험
+2. 콜백이 오래 걸리면 `mesh-pub`, `external-router` flush가 멈춤
+3. `ZLINK_POLLOUT`과 send-ready 콜백도 dispatch 축이어서 data-plane loop와 섞이면
    readiness와 forwarding 순서가 깨짐
 
 ## 9. Actor dispatch 내부 모델
 
-Actor는 SpotNode가 관리하는 routing target이다. public pointer handle은 없고,
-`zlink_actor_ref_t`가 Actor를 식별한다. Actor는 socket, inproc endpoint, transport
-endpoint를 소유하지 않는다. STREAM session에서 Actor로 relay되는 part는 target
+Actor는 SpotNode가 관리하는 routing target이다. public pointer 핸들은 없고,
+`zlink_actor_ref_t`가 Actor를 식별한다. Actor는 소켓, inproc 엔드포인트, transport
+엔드포인트를 소유하지 않는다. STREAM session에서 Actor로 relay되는 part는 target
 SpotNode의 Actor table을 거쳐 Actor의 **unread state** — 즉
 `zlink_spot_node_actor_recv_part()`로 아직 꺼내지 않은 part 큐 — 에 들어간다.
 
@@ -557,11 +557,11 @@ Actor destroy는 joined 상태, bound session detach, 진행 중인 multipart re
 ### 9.2 Dispatch event
 
 Actor unread state에 읽을 part가 생기고 Actor가 Spot에 join되어 있으면 Spot dispatch
-stream에 `ACTOR_READABLE` readiness가 올라간다. event subject는 callback lifetime의
+stream에 `ACTOR_READABLE` readiness가 올라간다. event subject는 콜백 수명 동안만 유효한
 `const zlink_actor_ref_t *`다. pending join request가 생기면 Spot dispatch stream에
 `ACTOR_JOIN_READABLE` readiness가 올라간다.
 
-readiness(수신 준비 상태)는 메시지 개수와 1:1로 대응하지 않는다. dispatch callback은
+readiness(수신 준비 상태)는 메시지 개수와 1:1로 대응하지 않는다. dispatch 콜백은
 각 drain API가 `NO_DATA`를 반환할 때까지 비우는 방식으로 동작해야 하며, 내부는 같은
 Actor에 대해 part 순서를 유지한다.
 
@@ -757,7 +757,7 @@ struct spot_logical_pubsub_message_t {
 | 필드 | 타입 | 역할 |
 |------|------|------|
 | `queue` | `deque<queued_actor_part_t>` | STREAM relay로 받은 아직 읽지 않은 part |
-| `joined_spot_state` | `shared_ptr<spot_logical_state_t>` | 현재 속한 Spot state |
+| `joined_spot_state` | `shared_ptr<spot_logical_state_t>` | 현재 속한 Spot 상태 |
 | `generation` | `uint64_t` | Actor ref generation (stale ref 검증) |
 | `bound_session_node` | `spot_node_t*` | session owner node |
 | `bound_stream` | `void*` | 연결된 STREAM socket handle |
@@ -813,7 +813,7 @@ subscribe_queue에 입력 추가
 ```
 
 Actor readable dispatch는 `actor_handle_t.joined_spot_state`의 dispatch handler에
-`ACTOR_READABLE` readiness를 직접 올린다. subject는 callback lifetime 동안만 유효한
+`ACTOR_READABLE` readiness를 직접 올린다. subject는 콜백 수명 동안만 유효한
 `const zlink_actor_ref_t*`다.
 
 Actor join dispatch는 `g_join_queues`에 request가 추가될 때 target Spot dispatch
@@ -826,7 +826,7 @@ handler에 `ACTOR_JOIN_READABLE` readiness를 올린다. subject는 target Spot 
 
 | 전역 변수 | 타입 | 역할 |
 |-----------|------|------|
-| `g_actor_mutex` | `timed_mutex` | 나머지 모든 항목을 보호하는 단일 global lock. 테이블 변경이 일어나는 동안만 보유하고, I/O 대기 중에는 해제한다 |
+| `g_actor_mutex` | `timed_mutex` | 나머지 모든 항목을 보호하는 단일 전역 잠금. 테이블 변경이 일어나는 동안만 보유하고, I/O 대기 중에는 해제한다 |
 | `g_nodes_by_rid` | `map<string, spot_node_t*>` | node rid → SpotNode 역방향 조회. `SpotNode` 생성 시 추가, destroy 시 제거 |
 | `g_join_queues` | `map<spot_logical_state_t*, deque<...>>` | Spot별 pending join request. join 요청 enqueue 시 추가, reply 또는 cleanup 시 제거 |
 | `g_known_spots` | `set<spot_handle_t*>` | live Spot facade 추적. use-after-free 핸들 검증에 사용 |
@@ -841,9 +841,9 @@ handler에 `ACTOR_JOIN_READABLE` readiness를 올린다. subject는 target Spot 
 `g_nodes_by_rid`에 첫 항목이 추가되는데, 모든 쓰기와 경합 가능한 읽기에서 mutex를
 잡기 때문에 race window가 없다.
 
-**Lock 범위**: I/O thread 경계를 넘는 blocking 호출(예: Mailbox reply 대기) 중에는
+**Lock 범위**: I/O 스레드 경계를 넘는 blocking 호출(예: Mailbox reply 대기) 중에는
 `g_actor_mutex`를 보유해서는 안 된다. 두 SpotNode 인스턴스에 걸친 Actor table 변경과
-join queue 변경은 전체 compound 연산에 대해 mutex를 한 번만 잡아 직렬화된다.
+join 큐 변경은 전체 compound 연산에 대해 mutex를 한 번만 잡아 직렬화된다.
 
 ## 14. Actor join 내부 lifecycle
 

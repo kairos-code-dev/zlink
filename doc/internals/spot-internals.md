@@ -6,6 +6,46 @@ This document helps core maintainers understand SPOT wiring and data flow.
 The public API contract is
 [`doc/spec/core/service/spot.md`](../spec/core/service/spot.md).
 
+## 0. What SPOT Is and Why It Is Structured This Way
+
+SPOT is the zlink **service layer** — an abstraction on top of raw sockets that
+provides topic publish/subscribe, routed request/reply, and Actor-based session
+dispatch in a single unified runtime.
+
+### 0.1 Design goals
+
+| Goal | Implementation choice |
+|------|-----------------------|
+| **No per-Spot physical sockets** | All transport sockets are owned by `SpotNode`. A `Spot` facade owns only a logical queue and dispatch context. |
+| **Single admission boundary** | HWM knobs live only on `SpotNode`-owned ingress sockets (`ingress-sub`, `internal-router`). Relay and delivery sockets use HWM `0` to prevent hidden per-peer queue caps from making disconnect/drop decisions. |
+| **Aggregate subscription** | Remote mesh subscriptions are reference-counted at the node level, not per-Spot. This prevents duplicate remote subscriptions when multiple local Spots subscribe to the same topic. |
+| **Actor-to-Spot decoupling** | Actors do not own sockets or inproc endpoints. Parts are relayed through the SpotNode Actor table and dispatched into a Spot's logical queue, allowing Actors to move between Spots (join) without tearing down transport connections. |
+| **Deterministic teardown** | Destroying a `Spot` facade does not destroy the backing `SpotNode`. Entry Spot lifetime is tied to the `SpotNode`, not to any facade. |
+
+### 0.2 Key concepts
+
+- **SpotNode**: owns lifecycle, transport sockets, peer wiring, and the Actor table.
+- **Spot**: a borrowed data-plane facade layered on top of a `SpotNode`. Multiple
+  facades can exist for the same logical Spot; all share the same underlying queue.
+- **Entry Spot**: one per `SpotNode`, created automatically. Newly created Actors
+  start here. The application registers a dispatch handler on the Entry Spot to
+  handle initial session setup, authentication, and Actor routing decisions.
+- **Actor**: a routing target managed by the `SpotNode` Actor table. Identified by
+  `zlink_actor_ref_t` (node rid + actor id + generation). No socket ownership.
+
+### 0.3 Document map
+
+| Section | Topic |
+|---------|-------|
+| §1 | Runtime component overview |
+| §2 | Internal socket topology by mode |
+| §3–4 | Topic and routed data planes |
+| §5–6 | Admission HWM and control plane |
+| §7–8 | Actor dispatch model and Entry Spot queue ownership |
+| §9 | Socket removal model rationale |
+| §10 | STREAM session and Actor binding sequences |
+| §11–12 | Internal data structures and Actor join lifecycle |
+
 ## 1. Overview
 
 ```mermaid
@@ -283,8 +323,15 @@ control plane and data plane are being calculated with different units.
 An Actor is a routing target managed by `SpotNode`. There is no public Actor
 handle; `zlink_actor_ref_t` identifies the Actor. Actors do not own a socket,
 inproc endpoint, or transport endpoint. Parts relayed from a STREAM session to
-an Actor pass through the target SpotNode's Actor table into the Actor unread
-state.
+an Actor pass through the target SpotNode's Actor table into the Actor
+**unread state** — the queue of parts that have been received but not yet
+consumed by the application via `zlink_spot_node_actor_recv_part()`.
+
+Each Actor has a **joined Spot** (also called `current Spot`): the Spot whose
+dispatch context will receive `ACTOR_READABLE` events for this Actor. A newly
+created Actor's joined Spot is always the Entry Spot. The Actor moves to a
+different Spot through the join protocol (§12); until that completes the Entry
+Spot remains current.
 
 A newly created Actor's current Spot is always the Entry Spot. Actor messages are
 dispatched from the Entry Spot context until the Actor joins a user Spot.
@@ -499,6 +546,15 @@ list compare-and-swap result is authoritative. A disconnect before the CAS succe
 aborts to Entry Spot on the source Actor. A disconnect after the CAS succeeds
 triggers Entry Spot cleanup on the target Actor.
 
+### 10.3 Remote bind error paths
+
+| Condition | Outcome |
+|-----------|---------|
+| Actor owner node unreachable | `bind control request` never delivered; session owner returns bind failure after timeout; `g_session_bindings` entry is not written |
+| Bind control request times out mid-operation | Session owner treats it as a bind failure; any partial Actor table state on the target node is rolled back when the target node receives the timeout notification |
+| `actor_ref` stale (generation mismatch) | Target node rejects the bind control request; session owner receives `INVALID_HANDLE`; no Actor table entry is created |
+| Session disconnect before bind completes | `g_session_bindings` CAS on the session owner fails because the session rid entry was already cleared; bind is aborted and any target node Actor state is cleaned up
+
 ## 11. Transport logical queue internal data structures
 
 This section describes the key internal structures behind the transport logical queue
@@ -605,16 +661,171 @@ facade.
 
 ### 11.5 Global state summary
 
-Key global state managed by `service_spot_actor_api.cpp`:
+Key global state managed by `service_spot_actor_api.cpp`. **All entries below
+are protected by `g_actor_mutex`** unless noted otherwise.
 
 | global | type | role |
 |--------|------|------|
-| `g_actor_mutex` | `timed_mutex` | protects Actor table and join queues |
-| `g_nodes_by_rid` | `map<string, spot_node_t*>` | node rid → SpotNode reverse lookup |
-| `g_join_queues` | `map<spot_logical_state_t*, deque<...>>` | pending join requests per Spot |
-| `g_known_spots` | `set<spot_handle_t*>` | tracks live Spot facades |
-| `g_session_bindings` | `map<string, session_binding_t>` | session rid → Actor binding |
-| `g_active_routes` | `map<string, zlink_actor_route_t>` | actor id → active route |
-| `g_live_join_requests` | `set<queued_join_request_t*>` | currently pending joins |
-| `g_retired_join_requests` | `set<queued_join_request_t*>` | joins awaiting cleanup |
-| `g_actor_protocol_drop_count` | `uint64_t` | cumulative protocol error drop counter |
+| `g_actor_mutex` | `timed_mutex` | single global lock protecting all other entries; held only for the duration of table mutations, not I/O |
+| `g_nodes_by_rid` | `map<string, spot_node_t*>` | node rid → SpotNode reverse lookup; populated on `SpotNode` creation, removed on destroy |
+| `g_join_queues` | `map<spot_logical_state_t*, deque<...>>` | pending join requests per Spot; entries added when a join request is enqueued, removed when the request is replied or cleaned up |
+| `g_known_spots` | `set<spot_handle_t*>` | tracks live Spot facades; used to validate handles against use-after-free |
+| `g_session_bindings` | `map<string, session_binding_t>` | session rid → Actor binding; compare-and-swap on remote join commit uses this map as the transaction point |
+| `g_active_routes` | `map<string, zlink_actor_route_t>` | actor id → active route published to Discovery |
+| `g_live_join_requests` | `set<queued_join_request_t*>` | currently pending joins; used for timeout sweep |
+| `g_retired_join_requests` | `set<queued_join_request_t*>` | joins awaiting cleanup after completion frame delivery |
+| `g_actor_protocol_drop_count` | `uint64_t` | cumulative count of relay frames dropped due to protocol errors (stale ref, unknown actor id, etc.); useful for diagnosing relay loss |
+
+**Initialization**: these globals are default-initialized at program startup
+(static storage duration). There is no separate init call. The first
+`zlink_ctx_new()` call indirectly populates `g_nodes_by_rid` when the first
+`SpotNode` is created; there is no race window because the mutex is taken on
+every write and every read that can race with a write.
+
+**Lock scope**: callers must not hold `g_actor_mutex` while crossing an I/O
+thread boundary (e.g., while waiting for a Mailbox reply). The lock is always
+released before any blocking call. Actor table mutations and join queue mutations
+that span two SpotNode instances are serialized by taking the mutex once for the
+entire compound operation.
+
+## 12. Actor join internal lifecycle
+
+This section describes how Actor join requests are processed inside SpotNode.
+For STREAM session binding flow see section 10. For the public join contract see
+[`doc/spec/core/service/spot.md`](../spec/core/service/spot.md).
+
+### 12.1 Local join internal sequence
+
+Local join only changes `current Spot` within the same `SpotNode`. The source Spot
+remains the Actor's `current Spot` until accept. The accept step and `current Spot`
+swap execute in the same `SpotNode` critical section or event-loop turn. Joining a
+non-Entry user Spot requires the source Actor to have a bound STREAM session ref.
+
+```mermaid
+sequenceDiagram
+  participant Caller
+  participant ActorObj as Actor
+  participant Node as SpotNode
+  participant Source as Source Spot
+  participant Target as Target Spot
+
+  Caller->>Node: join_spot(actor_ref, node_rid, target_spot, state)
+  Node->>ActorObj: validate bound session ref unless target Entry
+  Node->>ActorObj: open join_epoch
+  Note over ActorObj,Source: current spot remains Source
+  Node->>Target: enqueue ACTOR_JOIN_READABLE
+  Target-->>Caller: dispatch callback
+  Caller->>Target: zlink_spot_actor_join_recv()
+  Target-->>Caller: join_info + state
+  Caller->>Target: zlink_spot_actor_join_reply(accept)
+  Target->>Node: accept join_epoch
+  Node->>ActorObj: switch current spot to Target
+  Node->>Source: stop readable events for Actor
+  Node->>Target: enqueue ACTOR_READABLE if unread
+  ActorObj-->>Caller: completion OK
+```
+
+If the target rejects or the request times out, the `current Spot` swap does not
+execute. The Actor stays in the source Spot. The join state payload is discarded
+after reply or timeout cleanup.
+
+Local join atomicity rules:
+
+- The source Spot is `current Spot` until accept.
+- The accept step and `current Spot` swap execute in the same critical section or
+  event-loop turn.
+- No new `ACTOR_READABLE` events are posted to the source Spot after accept.
+- Reject, timeout, target Spot destroy, and `SpotNode` shutdown preserve the source Spot.
+
+### 12.2 Remote join internal sequence
+
+Remote join hands off the source node Actor to the target Spot on the target node.
+The current implementation performs this within the same process across registered
+`SpotNode` instances. Network control frames, cross-process session Actor list
+compare-and-swap, and retryable `JoinOp` cleanup are deferred work.
+
+`JoinOp` is created on the source node and preserves:
+
+| field | meaning |
+|-------|---------|
+| `join_epoch` | sequence number for timeout, duplicate, and stale-replay checks |
+| `source_actor_ref` | source node and Actor ref |
+| `target_actor_ref` | target node and pending Actor ref |
+| `target_node_rid` / `target_spot_rid` | destination node and Spot |
+| `bound_session_ref` | session owner and session rid |
+| `completion_handler` | request owner's `zlink_reply_handler_fn` |
+| `reply_path` | path to deliver join completion to request owner |
+
+```mermaid
+sequenceDiagram
+  participant Caller as Join Caller
+  participant CallerNode as Request Owner
+  participant SourceNode as Source Node
+  participant SourceActor as Source Actor
+  participant SourceSpot as Source Spot
+  participant SessionNode as Session Owner
+  participant TargetNode as Target Node
+  participant TargetApp as Target App
+  participant TargetSpot as Target Spot
+  participant TargetActor as Target Actor
+
+  Caller->>CallerNode: join_spot(actor_ref, target_node, target_spot)
+  CallerNode->>SourceNode: begin join handoff
+  SourceNode->>SourceNode: create JoinOp with reply path
+  SourceNode->>SourceActor: validate bound session ref
+  SourceNode->>SourceActor: open join_epoch
+  Note over SourceActor,SourceSpot: source remains active until commit
+  SourceNode->>TargetNode: prepare remote join with state
+  TargetNode->>TargetActor: create pending actor state with session ref
+  Note over TargetActor: pending actor is not dispatched
+  TargetNode->>TargetSpot: enqueue ACTOR_JOIN_READABLE
+  TargetSpot-->>TargetApp: dispatch callback
+  TargetApp->>TargetSpot: zlink_spot_actor_join_recv()
+  TargetSpot-->>TargetApp: join_info(remote) + state
+  TargetApp->>TargetSpot: zlink_spot_actor_join_reply(accept)
+  TargetSpot->>TargetNode: accept join_epoch
+  TargetNode->>SourceNode: ready to commit
+  SourceNode->>SessionNode: compare-and-swap actor ref
+  SessionNode-->>SourceNode: mapping updated
+  SourceNode->>TargetNode: commit visible
+  TargetNode->>TargetActor: activate actor and route
+  TargetNode-->>SourceNode: commit visible OK
+  SourceNode->>SourceActor: retire actor
+  TargetNode->>TargetSpot: enqueue ACTOR_READABLE if unread
+  SourceNode-->>CallerNode: completion OK
+  SourceNode->>SourceNode: cleanup JoinOp and tombstone
+  CallerNode-->>Caller: reply handler
+```
+
+Remote join atomicity rules:
+
+- The source Actor remains active in the source node and source Spot until commit.
+- The target node creates pending Actor state during prepare, but this Actor is not
+  dispatched and does not publish an active route.
+- Even after the target Spot accepts, the source Actor is not yet removed from the
+  source Spot.
+- The source Actor is retired after the session Actor list compare-and-swap succeeds
+  and the target Actor activate plus active route update are confirmed.
+- After commit, the session owner node's session Actor list and active route point to
+  the target node Actor ref.
+- `JoinOp` cleanup executes after the request owner completion frame delivery is confirmed.
+- Source Actor retire and target activate are fenced by the join epoch. Stale relays,
+  stale join replies, and late control messages apply only if the epoch matches.
+
+### 12.3 Abort paths
+
+If the target Spot rejects, times out, prepare fails, or the target shuts down, the
+handoff aborts.
+
+- The source Actor stays active in the source Spot.
+- The target pending Actor state and payload reference are discarded.
+- The active route does not move.
+
+When a bound session disconnect races with a remote join handoff, the session Actor
+list compare-and-swap success is the deciding boundary.
+
+- **Disconnect before CAS success**: aborts to source; source Actor moves to Entry
+  Spot and bound session ref is cleared; target pending Actor state is discarded.
+- **Disconnect after CAS success**: the target Actor is canonical; after commit visible
+  completes, target node disconnect cleanup moves the target Actor to Entry Spot and
+  clears bound session ref; the source Actor does not become active again.

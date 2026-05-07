@@ -7,6 +7,8 @@
 zlink는 8종의 소켓 타입을 제공한다.
 각 소켓은 고유한 메시징 패턴을 구현하며, 유효한 소켓 조합 내에서만 통신이 가능하다.
 
+> 이 문서 전체에서 사용되는 **hot path**, **control path**, **admission guard** 등의 용어는 [8절 (용어 정리)](#8-용어-정리)에 정의되어 있다.
+
 ## 2. 소켓 요약
 
 | 소켓 | 패턴 | 방향 | 라우팅 전략 | 주요 용도 |
@@ -46,6 +48,8 @@ zlink는 8종의 소켓 타입을 제공한다.
 | **Fair-queue** (`fq_t`) | 모든 피어에서 공정하게 수신 | DEALER/SUB 수신 |
 | **Fan-out** (`dist_t`) | 모든 구독자에게 복제 전송 | PUB/XPUB |
 | **ID 라우팅** | routing_id 프레임으로 특정 피어 지정 | ROUTER/STREAM |
+
+> `lb_t`, `fq_t`, `dist_t`는 소스 트리와 internals 문서에 등장하는 **내부 구현 타입 이름**이다. 괄호 안의 표현(Round-robin, Fair-queue, Fan-out)이 일상적으로 사용하는 기능 설명이며, 소스를 직접 수정하지 않는다면 내부 타입 이름을 알 필요는 없다.
 
 > 라우팅 전략의 내부 구현 상세는 [architecture.md](../internals/architecture.ko.md)를 참고.
 
@@ -97,6 +101,10 @@ Is the communication peer an external client (browser, game)?
 | [03-5-stream.ko.md](03-5-stream.ko.md) | STREAM | 외부 클라이언트 RAW 통신 |
 
 ## 7. peer를 routing id로 끊기
+
+일반적인 연결/해제 수명 주기는 endpoint 문자열을 기준으로 동작한다. 그런데
+소켓이 메시지를 수신하면 `source_rid`로 송신 peer를 직접 식별할 수 있다.
+endpoint 문자열 없이 해당 peer 연결만 종료하고 싶을 때 `zlink_disconnect_rid()`를 사용한다.
 
 수신 경로에서 `source_rid`를 받은 뒤 같은 peer 연결만 종료해야 하면
 `zlink_disconnect_rid()`를 사용한다. endpoint 문자열을 저장하지 않아도

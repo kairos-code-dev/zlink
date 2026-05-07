@@ -1,4 +1,4 @@
-[English](spot.md) | [한국어](spot.ko.md)
+[English](spot.md) | 한국어
 
 [스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [서비스 공통](README.ko.md)
 
@@ -44,8 +44,10 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 ```
 
 - `zlink_spot_node_new()`는 새 SPOT node runtime을 만든다.
-- `options == NULL`이면 `ZLINK_SPOT_NODE_MODE_ALL`로 동작한다.
-- `options->mode == 0`도 `ZLINK_SPOT_NODE_MODE_ALL`로 동작한다.
+- `options == NULL`은 안전하다: struct에 접근하지 않으며 `ZLINK_SPOT_NODE_MODE_ALL`을
+  묵시적으로 선택한다.
+- `options`가 NULL이 아닌 상태에서 `options->mode == 0`이면 0 값을 미설정으로 간주해
+  역시 `ZLINK_SPOT_NODE_MODE_ALL`로 동작한다.
 - 잘못된 mode 값은 `NULL`과 `errno == EINVAL`로 실패한다.
 - `PUBSUB` mode는 topic publish/subscribe만 켠다. routed API는
   `ENOTSUP`으로 실패한다.
@@ -101,8 +103,15 @@ application이 고정 rid를 원하면 `zlink_spot_node_entry_spot()`으로 faca
 `zlink_set_routing_id(entry_spot, data, size)`를 호출한다.
 
 Entry Spot rid 설정은 **configuration phase**에서만 허용한다.
-configuration phase는 첫 Actor 생성, Discovery attach, SpotNode bind/connect,
-Spot owner route publish, Actor active route publish 중 하나가 발생하기 전 단계다.
+configuration phase는 아래 중 **어느 하나라도** 처음 발생하는 시점에 끝난다:
+첫 Actor 생성, Discovery attach, SpotNode bind/connect, Spot owner route publish,
+Actor active route publish.
+
+> **Spot owner route**: Discovery에 게시되는 레코드로, Spot의 routing id를 소유
+> SpotNode에 매핑한다. 원격 노드가 rid 기반으로 해당 Spot에 메시지를 라우팅할 수 있게 해 준다.
+>
+> **Actor active route**: Discovery에 게시되는 레코드로, Actor id를 현재 해당 Actor를
+> 보유한 Spot에 매핑한다. 원격 Actor relay에 사용된다.
 
 - Actor가 하나라도 생성된 뒤 Entry Spot rid를 바꾸려고 하면
   `ZLINK_CONFIG_INVALID_STATE`로 실패하고 `errno`는 `EBUSY`다.
@@ -125,6 +134,18 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup(
   `*spot_out_`은 변경하지 않는다.
 - 성공하면 `*spot_out_`에 새 owned Spot facade handle을 반환한다. application이
   `zlink_spot_destroy()`로 닫아야 한다.
+- `zlink_spot_node_spot_lookup()`은 현재 routing id index를 기준으로 조회한다.
+  `zlink_set_routing_id()`가 성공하면 같은 logical Spot을 가리키는 모든 facade의
+  routing id가 함께 바뀌고, lookup index도 old rid에서 new rid로 원자적으로 이동한다.
+  routing id 변경 뒤 old rid lookup은 not found가 되고, new rid lookup은 같은 logical
+  Spot에 대한 새 facade를 반환한다.
+- 같은 logical Spot을 가리키는 여러 facade에서 동시에 routing id 변경을 요청하면
+  `SpotNode` event loop에서 직렬화된 순서로 처리한다. 중복 rid나 lifecycle lock에 걸리면
+  실패하고, 성공하면 모든 facade와 lookup index가 마지막으로 성공한 rid를 함께 본다.
+- 일반 Spot logical state는 마지막 facade가 닫힐 때 제거된다. 단 joined Actor나 pending
+  join request가 남아 있으면 마지막 facade close는 `ZLINK_CLOSE_BUSY`로 실패하고 `errno`는
+  `EBUSY`다. application은 Spot을 제거하기 전에 해당 Spot의 Actor를 다른 Spot으로 join하거나
+  Entry Spot으로 leave해야 한다.
 - Entry Spot rid로 lookup하면 Entry Spot facade를 반환한다. Entry Spot logical state는
   `SpotNode`가 소유하므로 마지막 facade가 닫혀도 제거되지 않는다.
 - remote Spot 조회는 Discovery Spot owner resolve가 담당한다. 이 함수는 local `SpotNode`
@@ -748,6 +769,9 @@ Actor의 current Spot이 target으로 바뀐다.
 - 성공 시 join message 소유권은 호출자에게 이전된다.
 - `zlink_actor_join_info_t.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE`가 0이 아니면
   remote handoff join이다. payload에서 Actor state를 복원할 수 없으면 reject해야 한다.
+- `flags`의 현재 공개 bit는 `ZLINK_ACTOR_JOIN_INFO_REMOTE`뿐이다. 알 수 없는 bit는
+  무시하지 말고 invalid protocol로 처리한다. 버전 협상 없이 새 public bit를 추가하지
+  않는다. 새 bit가 필요하면 새 recv/reply 계약 또는 versioned info 구조체를 정의한다.
 - remote join prepare는 `zlink_spot_node_actor_admission_handler()`를 호출하지 않는다.
   target Spot join handler가 Actor 생성과 입장 승인을 함께 결정한다.
 - `zlink_actor_join_info_t.request`는 opaque one-shot handle이다. application은 이
@@ -854,6 +878,7 @@ zlink_recv_result_t zlink_spot_node_actor_recv_part(
 - `info_out->actor`는 drain 대상 Actor ref이고, `source_node_rid`와
   `source_session_rid`는 message를 보낸 STREAM session을 식별한다.
 - `info_out->flags`는 현재 `0`이다. 알 수 없는 bit는 invalid protocol로 처리한다.
+  버전 협상 없이 새 public bit를 추가하지 않는다.
 
 ### STREAM session 연결
 

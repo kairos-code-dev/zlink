@@ -1,4 +1,4 @@
-[English](spot.md) | [한국어](spot.ko.md)
+English | [한국어](spot.ko.md)
 
 [Spec Index](../../README.md) · [Core Index](../README.md) · [Service Common](README.md)
 
@@ -43,8 +43,10 @@ zlink_close_result_t zlink_spot_destroy(void **spot_p);
 ```
 
 - `zlink_spot_node_new()` creates a SPOT node runtime.
-- `options == NULL` and `options->mode == 0` both select
-  `ZLINK_SPOT_NODE_MODE_ALL`.
+- `options == NULL` is safe: the struct is not accessed, and
+  `ZLINK_SPOT_NODE_MODE_ALL` is selected implicitly.
+- When `options` is non-NULL and `options->mode == 0`, the zero value is
+  treated as unset and also selects `ZLINK_SPOT_NODE_MODE_ALL`.
 - Invalid mode values fail with `NULL` and `errno == EINVAL`.
 - `PUBSUB` mode enables topic publish/subscribe and rejects routed APIs with
   `ENOTSUP`.
@@ -100,8 +102,16 @@ To set a fixed rid, obtain a facade with `zlink_spot_node_entry_spot()` and call
 `zlink_set_routing_id(entry_spot, data, size)`.
 
 Entry Spot rid changes are only allowed during the **configuration phase**.
-The configuration phase ends when the first Actor is created, a Discovery is attached,
-the SpotNode is bound or connected, or a Spot owner/Actor active route is published.
+The configuration phase ends when **any one** of the following first occurs:
+the first Actor is created, a Discovery is attached, the SpotNode is bound or
+connected, or a Spot owner route or Actor active route is published.
+
+> **Spot owner route**: a Discovery-published record that maps a Spot's routing
+> id to the SpotNode that owns it, enabling peer nodes to route messages to
+> that Spot by rid.
+>
+> **Actor active route**: a Discovery-published record that maps an Actor id to
+> the Spot currently holding that Actor, used for remote Actor relay.
 
 - Changing the Entry Spot rid after any Actor has been created fails with
   `ZLINK_CONFIG_INVALID_STATE` and `errno == EBUSY`.
@@ -125,6 +135,17 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup(
   `errno == ENOENT`; `*spot_out_` is not modified.
 - On success, stores a new owned Spot facade handle in `*spot_out_`. The application must
   close it with `zlink_spot_destroy()`.
+- Lookup is keyed on the current routing id index. When `zlink_set_routing_id()` succeeds,
+  all facades pointing to the same logical Spot update together, and the lookup index moves
+  atomically from old rid to new rid. After a routing id change, an old-rid lookup returns
+  not-found and a new-rid lookup returns a new facade for the same logical Spot.
+- Concurrent routing id changes on multiple facades for the same logical Spot are
+  serialized in the `SpotNode` event loop. A duplicate rid or lifecycle lock causes failure;
+  on success all facades and the lookup index reflect the last successful rid.
+- A user Spot's logical state is removed when the last facade closes. If joined Actors or
+  pending join requests remain, the last facade close fails with `ZLINK_CLOSE_BUSY` and
+  `errno == EBUSY`. The application must move all Actors to another Spot or leave them to
+  Entry Spot before removing the Spot.
 - Looking up the Entry Spot rid returns an Entry Spot facade. The Entry Spot logical state
   is owned by the `SpotNode`, so closing the last facade does not remove it.
 - Remote Spot lookup is handled by Discovery Spot owner resolve. This function only looks
@@ -890,6 +911,10 @@ Actor's current Spot changes to the target.
 - If `zlink_actor_join_info_t.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE` is nonzero,
   this is a remote handoff join. If Actor state cannot be restored from the
   payload, the Spot must reject.
+- The only currently defined public bit in `flags` is `ZLINK_ACTOR_JOIN_INFO_REMOTE`.
+  Unknown bits must be treated as an invalid protocol condition, not silently
+  ignored. New public bits must not be added without a new recv/reply contract or
+  a versioned info struct.
 - A remote join prepare does not call `zlink_spot_node_actor_admission_handler()`.
   The target Spot join handler decides both Actor creation and Spot admission.
 - `zlink_actor_join_info_t.request` is an opaque one-shot handle. The
@@ -1008,7 +1033,8 @@ zlink_recv_result_t zlink_spot_node_actor_recv_part(
 - `info_out->actor` is the draining Actor ref; `source_node_rid` and
   `source_session_rid` identify the STREAM session that sent the message.
 - `info_out->flags` is currently `0`. Unknown bits must be treated as an invalid
-  protocol condition.
+  protocol condition. New public bits must not be added without a versioning
+  agreement.
 
 ### STREAM session binding
 

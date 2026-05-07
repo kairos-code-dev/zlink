@@ -92,8 +92,8 @@ Key options:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `ZLINK_OPT_SNDHWM` | int | automatic | Chosen from the default balanced auto-HWM profile, socket role, and message unit. Manual settings override it |
-| `ZLINK_OPT_RCVHWM` | int | automatic | Chosen from the default balanced auto-HWM profile, socket role, and message unit. Manual settings override it |
+| `ZLINK_OPT_SNDHWM` | int | automatic | Derived from the active auto-HWM profile (`balanced` by default), socket role, and message unit. Set `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` on the context to change the profile globally; see [Socket Options Guide](12-socket-options.md) for profile values and per-socket overrides |
+| `ZLINK_OPT_RCVHWM` | int | automatic | Same as `SNDHWM`: profile-driven unless overridden manually |
 | `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms, -1: unlimited) |
 | `ZLINK_OPT_RCVTIMEO` | int | -1 | Receive timeout (ms, -1: unlimited) |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on socket close (ms) |
@@ -225,6 +225,26 @@ zlink_recv_handler(socket, on_message, NULL);
 
 ## 4. Handler Types
 
+There are two fundamental receive models in zlink:
+
+- **Pull mode (default)**: read data by calling the relevant recv function
+  (`zlink_recv()`, `zlink_spot_recv()`, etc.) explicitly, typically from inside
+  a poller loop. The caller controls which thread runs the read and when.
+- **Callback mode**: register a handler with a `*_handler()` call. The I/O
+  thread delivers messages directly to the callback. Once a handler is attached
+  it cannot be removed for the socket's lifetime. Calling `zlink_recv()` on a
+  socket that already has a callback handler attached returns `ZLINK_RECV_BUSY`.
+
+Most socket types support only one of these models. SPOT and STREAM are
+exceptions:
+
+- **SPOT** offers two mutually exclusive handler registration modes —
+  `zlink_spot_handler()` (routed-only direct callback) and
+  `zlink_spot_dispatch_event_handler()` (unified readiness for all event types).
+  The first attach wins; the second returns `EBUSY`.
+- **STREAM** accepts one of three receive modes (`zlink_recv()`, raw callback, or
+  packet callback) and locks once one is activated.
+
 Each socket type uses a dedicated registration function:
 
 | Socket Type | Registration Call | Callback Signature |
@@ -241,13 +261,8 @@ Each socket type uses a dedicated registration function:
 | Timer | `zlink_timer_handler(timer, fn, userdata)` | `void fn(void *timer, uint64_t fire_count, void *userdata)` |
 | PUB | N/A | Send-only socket |
 
-On a single `spot` handle, `zlink_spot_handler()` and
-`zlink_spot_dispatch_event_handler()` cannot both be installed; the first
-attach wins and the second returns `EBUSY`.
-
-Callbacks are invoked on the I/O thread. Avoid blocking work inside callbacks.
-If slow processing is needed, enqueue to a user queue and handle it on a
-separate thread.
+Callbacks are invoked on the I/O thread. Avoid blocking work inside callbacks;
+enqueue to a user-owned queue and process on a separate thread if needed.
 
 ## 5. Error Handling
 

@@ -93,8 +93,8 @@ zlink_get_option(socket, ZLINK_OPT_SNDHWM, &value, &len);
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_OPT_SNDHWM` | int | 자동 | 기본 balanced auto-HWM profile, 소켓 역할, message unit으로 정함. 수동 설정 시 그 값이 우선 |
-| `ZLINK_OPT_RCVHWM` | int | 자동 | 기본 balanced auto-HWM profile, 소켓 역할, message unit으로 정함. 수동 설정 시 그 값이 우선 |
+| `ZLINK_OPT_SNDHWM` | int | 자동 | 활성 auto-HWM 프로파일(`balanced` 기본), 소켓 역할, message unit에서 산출. 컨텍스트에 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`로 프로파일을 전역 변경하거나 소켓별로 수동 지정할 수 있다. 프로파일 값 및 소켓별 설정은 [소켓 옵션 가이드](12-socket-options.ko.md)를 참고 |
+| `ZLINK_OPT_RCVHWM` | int | 자동 | `SNDHWM`과 동일: 수동 설정이 없으면 프로파일 기반으로 결정 |
 | `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms, -1: 무제한) |
 | `ZLINK_OPT_RCVTIMEO` | int | -1 | Recv timeout (ms, -1: 무제한) |
 | `ZLINK_OPT_LINGER` | int | -1 | Socket close 시 linger (ms) |
@@ -224,6 +224,25 @@ zlink_recv_handler(socket, on_message, NULL);
 
 ## 4. Handler Type
 
+zlink의 수신 모델은 두 가지 기본 방식으로 나뉜다.
+
+- **Pull mode (기본)**: `zlink_recv()` 등 수신 함수를 직접 호출해 데이터를 읽는다.
+  주로 poller 루프 안에서 사용하며, 어느 thread에서 언제 읽을지를 호출자가 제어한다.
+- **Callback mode**: `*_handler()` 함수로 핸들러를 등록하면 I/O thread에서 메시지를
+  callback으로 직접 전달받는다. 한번 등록하면 socket 수명 동안 해제할 수 없다.
+  callback이 등록된 socket에 `zlink_recv()`를 호출하면 `ZLINK_RECV_BUSY`가 반환된다.
+
+대부분의 socket type은 두 방식 중 하나만 지원한다. SPOT과 STREAM은 예외다.
+
+- **SPOT**: 같은 handle에 `zlink_spot_handler()`(routed 전용 직접 callback)와
+  `zlink_spot_dispatch_event_handler()`(모든 event 통합 readiness) 중 하나만 등록할 수
+  있다. 먼저 attach한 쪽이 이기고, 두 번째 attach는 `EBUSY`로 실패한다.
+- **STREAM**: `zlink_recv()`, raw callback, packet callback 세 가지 수신 모드 중
+  하나를 선택하면 이후 모드 변경이 불가하다.
+
+Callback은 I/O thread에서 호출되므로 callback 안에서 blocking 작업은 피해야 한다.
+느린 처리가 필요하면 user queue에 넣고 별도 thread에서 처리한다.
+
 각 socket type은 전용 등록 함수를 사용한다:
 
 | Socket Type | 등록 호출 | Callback Signature |
@@ -240,12 +259,7 @@ zlink_recv_handler(socket, on_message, NULL);
 | Timer | `zlink_timer_handler()` | `fn(timer, fire_count, userdata)` |
 | PUB | N/A | Send-only socket |
 
-하나의 `spot` handle에는 `zlink_spot_handler()`와
-`zlink_spot_dispatch_event_handler()`를 동시에 설치할 수 없다. 먼저 attach한
-쪽이 이기고, 두 번째 attach는 `EBUSY`로 실패한다.
-
-Callback은 I/O thread에서 호출된다. Callback 내부에서 blocking 작업을 피해야 한다.
-느린 처리가 필요하면 user queue에 넣고 별도 thread에서 처리한다.
+Callback은 I/O thread에서 호출된다. 필요하다면 user queue에 넣고 별도 thread에서 처리한다.
 
 ## 5. Error 처리
 

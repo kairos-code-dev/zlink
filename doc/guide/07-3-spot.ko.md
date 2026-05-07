@@ -49,8 +49,9 @@ zlink_spot_node_destroy(&node);
 zlink_ctx_term(&ctx);
 ```
 
-`NULL`을 넘기면 topic 기능과 routed 기능을 모두 켠다. 한쪽 기능만 필요한
-프로세스라면 생성 시점에 `zlink_spot_node_options_t`를 넘긴다.
+`NULL`을 넘기면 topic 기능과 routed 기능을 모두 켠다 — `ZLINK_SPOT_NODE_MODE_ALL`과
+동일하다. 한쪽 기능만 필요한 프로세스라면 생성 시점에 `zlink_spot_node_options_t`를
+넘긴다.
 
 ```c
 zlink_spot_node_options_t opts = {
@@ -59,8 +60,15 @@ zlink_spot_node_options_t opts = {
 void *node = zlink_spot_node_new(ctx, &opts);
 ```
 
-routed 전용 node는 `ZLINK_SPOT_NODE_MODE_ROUTED`를 쓴다. 꺼진 기능의 API는
-`ENOTSUP`으로 실패한다.
+세 가지 mode 값의 차이는 아래와 같다.
+
+| mode 상수 | 효과 |
+|---|---|
+| `ZLINK_SPOT_NODE_MODE_ALL` (또는 `NULL`) | topic publish/subscribe와 routed request/reply 모두 사용 가능 |
+| `ZLINK_SPOT_NODE_MODE_PUBSUB` | topic publish/subscribe만 사용. routed API는 `ENOTSUP`으로 실패 |
+| `ZLINK_SPOT_NODE_MODE_ROUTED` | routed request/reply만 사용. topic API는 `ENOTSUP`으로 실패 |
+
+꺼진 기능은 내부 socket을 생성하지 않는다 — 사용하지 않는 기능에 대한 숨은 자원 비용이 없다.
 
 이 예제는 한 프로세스 안에서 SPOT node를 만들고, unified `Spot` facade로
 토픽 하나를 발행하는 가장 작은 흐름이다.
@@ -198,6 +206,11 @@ node 단위 aggregate subscription으로 반영된다. 첫 구독이 생길 때 
 
 - channel 호출은 항상 attach된 `DEALER`로만 나간다.
 - attach 함수는 socket 생성이나 connect를 대신하지 않는다.
+
+**자동 경로**는 Discovery가 `DEALER` 연결을 대신 관리한다. peer가 registry에 등록되면
+자동으로 연결이 맺어진다. **수동 경로**는 호출자가 `DEALER` socket을 만들고 직접
+`connect()`를 호출해야 한다. 두 방식의 channel 호출 동작은 동일하며, peer 발견과 연결
+관리 방식만 다르다.
 
 ### 5.1 자동 연결 경로
 
@@ -426,10 +439,14 @@ int rc = zlink_spot_recv(
   0);
 ```
 
-수신한 요청에 답할 때는 들어온 주소를 그대로 사용한다.
+`zlink_spot_recv()`의 출력값으로 어떤 reply 함수를 써야 하는지 알 수 있다.
 
-- 상대가 SPOT이면 `zlink_spot_reply_spot()`
-- 상대가 ROUTER면 `zlink_spot_reply_router()`
+- `source_spot_rid`가 비어 있지 않으면 다른 Spot에서 온 요청이다 —
+  `zlink_spot_reply_spot()`으로 SPOT routed plane을 통해 응답한다.
+- `source_spot_rid`가 비어 있고 `source_node_rid`만 있으면 ROUTER socket에서 온
+  요청이다 — `zlink_spot_reply_router()`로 ROUTER plane을 통해 응답한다.
+
+잘못된 reply 함수를 사용하면 `ZLINK_SUBMIT_INVALID_ARGUMENT`가 반환된다.
 
 ## 10. Spot에서 routed request 시작하기
 
@@ -523,15 +540,19 @@ zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
 ```
 
 좀 더 자세한 상태 변화가 필요하면 연속된 snapshot/query 결과를 비교한다.
-`status.disconnected_sub_target_count`와
-`status.disconnected_routed_target_count`는 ABI 호환을 위해 남은 필드다. 현재
-SPOT delivery 경로는 내부 delivery queue가 커졌다는 이유로 target을 끊지 않기
-때문에 이 값은 `0`을 보고한다.
+`status.disconnected_sub_target_count`와 `status.disconnected_routed_target_count`는
+**ABI 호환 필드**로 항상 `0`을 보고한다. 이 필드들은 이전 API 버전에서 내부 큐가 커지면
+delivery target을 끊던 모델의 잔재다. 현재 SPOT delivery 모델은 큐 증가를 이유로 target을
+끊지 않는다. 이 카운터는 진단에 사용하지 말아야 한다.
 
-HWM 진단은 node snapshot과 monitor snapshot 필드를 함께 본다. SpotNode HWM
-옵션은 topic publish admission과 routed admission에만 적용된다. Actor 전용 HWM
-옵션은 없으므로 Actor 처리 지연은 dispatch event, recv 결과, snapshot count를
-함께 보며 판단한다.
+**HWM 진단에 사용할 것**: `zlink_spot_node_internal_sockets_snapshot()`을 호출한 뒤
+각 항목의 `snapshot` 필드를 확인한다. admission socket(`ingress-sub`와
+`internal-router`)에 활성 HWM 값이 담긴다. relay 및 delivery socket은 HWM `0`을
+보고하는데, 이는 정상이다.
+
+SpotNode HWM 옵션은 admission 경계에만 적용된다 — topic publish admission과 routed
+admission. Actor 전용 HWM 옵션은 없다. Actor 처리 backlog는 dispatch event, recv 결과,
+`zlink_spot_actors_snapshot()`의 `unread` 카운트로 진단한다.
 
 Actor 상태 확인에는 `zlink_spot_node_actors_snapshot()`과
 `zlink_spot_actors_snapshot()`을 사용한다. snapshot의 unread count와 joined 상태는

@@ -7,6 +7,45 @@
 [`doc/spec/core/service/spot.ko.md`](../spec/core/service/spot.ko.md)를 기준으로
 본다.
 
+## 0. SPOT이 무엇이며 왜 이렇게 설계되었는가
+
+SPOT은 zlink의 **서비스 레이어**다. raw socket 위에서 topic publish/subscribe,
+routed request/reply, Actor 기반 session dispatch를 하나의 통합 런타임으로 제공한다.
+
+### 0.1 설계 목표
+
+| 목표 | 구현 선택 |
+|------|-----------|
+| **Spot별 물리 socket 없음** | 모든 transport socket은 `SpotNode`가 소유한다. `Spot` facade는 logical queue와 dispatch context만 가진다. |
+| **단일 admission 경계** | HWM 조절 지점은 `SpotNode` 소유 ingress socket(`ingress-sub`, `internal-router`)에만 존재한다. relay·delivery socket은 HWM `0`을 사용해 숨은 per-peer 큐 한도가 disconnect/drop 결정을 내리지 못하게 한다. |
+| **집계 구독** | 원격 mesh 구독은 Spot 단위가 아니라 node 단위로 reference-count한다. 여러 local Spot이 같은 topic을 구독해도 원격에는 중복 구독이 전달되지 않는다. |
+| **Actor-Spot 분리** | Actor는 socket이나 inproc endpoint를 소유하지 않는다. part는 SpotNode Actor table을 거쳐 Spot의 logical queue에 dispatch되므로, transport 연결을 끊지 않고도 Actor가 Spot 사이를 이동(join)할 수 있다. |
+| **결정론적 종료** | `Spot` facade를 destroy해도 backing `SpotNode`가 자동으로 종료되지 않는다. Entry Spot 수명은 facade가 아니라 `SpotNode`에 귀속된다. |
+
+### 0.2 핵심 개념
+
+- **SpotNode**: lifecycle owner. transport socket, peer 배선, Actor table을 소유한다.
+- **Spot**: `SpotNode` 위에서 빌려 쓰는 데이터 평면 facade. 같은 logical Spot을 가리키는
+  facade가 여러 개 존재할 수 있으며, 모두 같은 underlying queue를 공유한다.
+- **Entry Spot**: `SpotNode`당 하나, 자동 생성된다. 새로 만들어진 Actor는 여기서 시작한다.
+  애플리케이션은 Entry Spot에 dispatch handler를 등록해 초기 session 처리, 인증, Actor 라우팅
+  결정을 수행한다.
+- **Actor**: `SpotNode` Actor table이 관리하는 routing target. `zlink_actor_ref_t`(node rid +
+  actor id + generation)로 식별된다. socket ownership 없음.
+
+### 0.3 문서 구성
+
+| 절 | 주제 |
+|----|------|
+| §1 | 런타임 컴포넌트 개요 |
+| §2 | mode별 내부 socket 토폴로지 |
+| §3–4 | topic·routed 데이터 평면 |
+| §5–6 | admission HWM과 control plane |
+| §7–8 | Actor dispatch 모델과 Entry Spot 큐 소유권 |
+| §9 | socket 제거 모델 배경 |
+| §10 | STREAM session과 Actor binding 시퀀스 |
+| §11–12 | 내부 자료구조와 Actor join lifecycle |
+
 ## 1. 전체 구조
 
 ```mermaid
@@ -280,7 +319,13 @@ data plane 기준이 다르기 때문이다.
 Actor는 SpotNode가 관리하는 routing target이다. public pointer handle은 없고,
 `zlink_actor_ref_t`가 Actor를 식별한다. Actor는 socket, inproc endpoint, transport
 endpoint를 소유하지 않는다. STREAM session에서 Actor로 relay되는 part는 target
-SpotNode의 Actor table을 거쳐 Actor unread state에 들어간다.
+SpotNode의 Actor table을 거쳐 Actor의 **unread state** — 즉
+`zlink_spot_node_actor_recv_part()`로 아직 꺼내지 않은 part 큐 — 에 들어간다.
+
+각 Actor는 **joined Spot**(= current Spot)을 가진다. 이 Spot의 dispatch context가
+해당 Actor에 대한 `ACTOR_READABLE` 이벤트를 받는다. 새로 생성된 Actor의
+joined Spot은 항상 Entry Spot이다. join 프로토콜(§12)이 완료될 때까지 Entry Spot이
+current Spot으로 남는다.
 
 새로 만들어진 Actor의 current Spot은 항상 Entry Spot이다. Actor가 user Spot으로 join하기 전까지는 Entry Spot dispatch context에서 Actor 메시지를 처리한다.
 
@@ -485,6 +530,15 @@ bound session disconnect와 remote join handoff가 겹치면 session Actor list
 compare-and-swap 성공 여부가 기준이다. 성공 전 disconnect는 source Actor를 Entry Spot으로
 돌리는 abort이고, 성공 뒤 disconnect는 target Actor의 Entry Spot cleanup이다.
 
+### 10.3 원격 bind 에러 경로
+
+| 조건 | 결과 |
+|------|------|
+| Actor owner node 도달 불가 | `bind control request` 미전달. session owner는 timeout 후 bind failure를 반환한다. `g_session_bindings`에 항목이 기록되지 않는다 |
+| bind control request 중간 timeout | session owner는 bind failure로 처리한다. timeout 통지를 받은 target node는 부분적으로 생성된 Actor table 상태를 롤백한다 |
+| `actor_ref` stale (generation 불일치) | target node가 bind control request를 거부한다. session owner는 `INVALID_HANDLE`을 받는다. Actor table 항목이 생성되지 않는다 |
+| bind 완료 전 session disconnect | session owner의 session rid 항목이 이미 제거되었으므로 `g_session_bindings` CAS가 실패한다. bind가 중단되고 target node의 Actor state가 정리된다 |
+
 ## 11. Transport logical queue 내부 데이터 구조
 
 이 섹션은 transport logical queue 구현의 핵심 내부 구조를 정리한다. 공개 계약이
@@ -588,16 +642,165 @@ handler에 `ACTOR_JOIN_READABLE` readiness를 올린다. subject는 target Spot 
 
 ### 11.5 Global 상태 목록
 
-`service_spot_actor_api.cpp`이 관리하는 주요 global 상태:
+`service_spot_actor_api.cpp`이 관리하는 주요 global 상태.
+**아래 항목은 별도로 명시하지 않는 한 모두 `g_actor_mutex`로 보호된다.**
 
 | 전역 변수 | 타입 | 역할 |
 |-----------|------|------|
-| `g_actor_mutex` | `timed_mutex` | actor table과 join queue 보호 |
-| `g_nodes_by_rid` | `map<string, spot_node_t*>` | node rid → SpotNode 역방향 조회 |
-| `g_join_queues` | `map<spot_logical_state_t*, deque<...>>` | Spot별 pending join request |
-| `g_known_spots` | `set<spot_handle_t*>` | live spot facade 추적 |
-| `g_session_bindings` | `map<string, session_binding_t>` | session rid → Actor binding |
-| `g_active_routes` | `map<string, zlink_actor_route_t>` | actor id → active route |
-| `g_live_join_requests` | `set<queued_join_request_t*>` | 현재 pending join |
-| `g_retired_join_requests` | `set<queued_join_request_t*>` | cleanup 대기 join |
-| `g_actor_protocol_drop_count` | `uint64_t` | protocol 오류 drop 누적 카운터 |
+| `g_actor_mutex` | `timed_mutex` | 나머지 모든 항목을 보호하는 단일 global lock. 테이블 변경이 일어나는 동안만 보유하고, I/O 대기 중에는 해제한다 |
+| `g_nodes_by_rid` | `map<string, spot_node_t*>` | node rid → SpotNode 역방향 조회. `SpotNode` 생성 시 추가, destroy 시 제거 |
+| `g_join_queues` | `map<spot_logical_state_t*, deque<...>>` | Spot별 pending join request. join 요청 enqueue 시 추가, reply 또는 cleanup 시 제거 |
+| `g_known_spots` | `set<spot_handle_t*>` | live Spot facade 추적. use-after-free 핸들 검증에 사용 |
+| `g_session_bindings` | `map<string, session_binding_t>` | session rid → Actor binding. remote join commit의 compare-and-swap 트랜잭션 지점 |
+| `g_active_routes` | `map<string, zlink_actor_route_t>` | actor id → Discovery에 게시된 active route |
+| `g_live_join_requests` | `set<queued_join_request_t*>` | 현재 pending join. timeout 스윕에 사용 |
+| `g_retired_join_requests` | `set<queued_join_request_t*>` | completion frame 전달 확인 뒤 cleanup 대기 join |
+| `g_actor_protocol_drop_count` | `uint64_t` | protocol 오류(stale ref, unknown actor id 등)로 drop된 relay frame 누적 카운터. relay 손실 진단에 활용 |
+
+**초기화**: 이 전역들은 정적 저장 기간(static storage duration)을 가지므로 프로그램
+시작 시 기본 초기화된다. 별도의 init 호출은 없다. 첫 `SpotNode` 생성 시
+`g_nodes_by_rid`에 첫 항목이 추가되는데, 모든 쓰기와 경합 가능한 읽기에서 mutex를
+잡기 때문에 race window가 없다.
+
+**Lock 범위**: I/O thread 경계를 넘는 blocking 호출(예: Mailbox reply 대기) 중에는
+`g_actor_mutex`를 보유해서는 안 된다. 두 SpotNode 인스턴스에 걸친 Actor table 변경과
+join queue 변경은 전체 compound 연산에 대해 mutex를 한 번만 잡아 직렬화된다.
+
+## 12. Actor join 내부 lifecycle
+
+이 섹션은 Actor join 요청이 SpotNode 내부에서 어떻게 처리되는지 상세히 설명한다.
+STREAM session 연결 흐름은 섹션 10을 본다. 공개 join 계약은
+[`doc/spec/core/service/spot.ko.md`](../spec/core/service/spot.ko.md)의 Actor 계약 절을 본다.
+
+### 12.1 Local join 내부 순서
+
+local join은 같은 `SpotNode` 안에서 Actor의 current Spot만 바꾼다. accept가 이루어지기 전까지
+source Spot이 Actor의 current Spot으로 남는다. accept 처리와 current Spot 교체는 같은
+`SpotNode` critical section 또는 event-loop turn 안에서 수행한다. Entry Spot이 아닌
+target Spot으로 join하려면 source Actor에 bound STREAM session ref가 있어야 한다.
+
+```mermaid
+sequenceDiagram
+  participant Caller
+  participant ActorObj as Actor
+  participant Node as SpotNode
+  participant Source as Source Spot
+  participant Target as Target Spot
+
+  Caller->>Node: join_spot(actor_ref, node_rid, target_spot, state)
+  Node->>ActorObj: validate bound session ref unless target Entry
+  Node->>ActorObj: open join_epoch
+  Note over ActorObj,Source: current spot remains Source
+  Node->>Target: enqueue ACTOR_JOIN_READABLE
+  Target-->>Caller: dispatch callback
+  Caller->>Target: zlink_spot_actor_join_recv()
+  Target-->>Caller: join_info + state
+  Caller->>Target: zlink_spot_actor_join_reply(accept)
+  Target->>Node: accept join_epoch
+  Node->>ActorObj: switch current spot to Target
+  Node->>Source: stop readable events for Actor
+  Node->>Target: enqueue ACTOR_READABLE if unread
+  ActorObj-->>Caller: completion OK
+```
+
+reject 또는 timeout이면 current Spot 교체 단계는 실행되지 않는다. Actor는 source Spot에
+남고, target Spot에 전달된 join state payload는 reply 또는 timeout 처리 뒤 폐기된다.
+
+local join 원자성 규칙:
+
+- accept 전까지 source Spot이 current Spot이다.
+- accept 처리와 current Spot 교체는 같은 critical section 또는 event-loop turn 안에서 수행한다.
+- accept 뒤에는 source Spot으로 새 `ACTOR_READABLE` event를 올리지 않는다.
+- reject, timeout, target Spot destroy, `SpotNode` shutdown은 source Spot을 유지한다.
+
+### 12.2 Remote join 내부 순서
+
+remote join은 source node의 Actor를 target node의 target Spot으로 넘기는 handoff다.
+현재 구현은 같은 process 안에 등록된 source/target `SpotNode` 사이에서 이 의미를 수행한다.
+process 경계를 지나는 network control frame, session Actor list compare-and-swap, retry 가능한
+`JoinOp` 정리는 후속 범위다.
+
+`JoinOp`은 source node에서 생성하며 아래 상태를 보존한다.
+
+| 필드 | 의미 |
+|------|------|
+| `join_epoch` | join sequence number (timeout, 중복, stale replay 검증) |
+| `source_actor_ref` | source node와 Actor ref |
+| `target_actor_ref` | target node와 pending Actor ref |
+| `target_node_rid` / `target_spot_rid` | 목표 node와 Spot |
+| `bound_session_ref` | session owner와 session rid |
+| `completion_handler` | request owner의 `zlink_reply_handler_fn` |
+| `reply_path` | join reply를 request owner로 전달하는 경로 |
+
+```mermaid
+sequenceDiagram
+  participant Caller as Join Caller
+  participant CallerNode as Request Owner
+  participant SourceNode as Source Node
+  participant SourceActor as Source Actor
+  participant SourceSpot as Source Spot
+  participant SessionNode as Session Owner
+  participant TargetNode as Target Node
+  participant TargetApp as Target App
+  participant TargetSpot as Target Spot
+  participant TargetActor as Target Actor
+
+  Caller->>CallerNode: join_spot(actor_ref, target_node, target_spot)
+  CallerNode->>SourceNode: begin join handoff
+  SourceNode->>SourceNode: create JoinOp with reply path
+  SourceNode->>SourceActor: validate bound session ref
+  SourceNode->>SourceActor: open join_epoch
+  Note over SourceActor,SourceSpot: source remains active until commit
+  SourceNode->>TargetNode: prepare remote join with state
+  TargetNode->>TargetActor: create pending actor state with session ref
+  Note over TargetActor: pending actor is not dispatched
+  TargetNode->>TargetSpot: enqueue ACTOR_JOIN_READABLE
+  TargetSpot-->>TargetApp: dispatch callback
+  TargetApp->>TargetSpot: zlink_spot_actor_join_recv()
+  TargetSpot-->>TargetApp: join_info(remote) + state
+  TargetApp->>TargetSpot: zlink_spot_actor_join_reply(accept)
+  TargetSpot->>TargetNode: accept join_epoch
+  TargetNode->>SourceNode: ready to commit
+  SourceNode->>SessionNode: compare-and-swap actor ref
+  SessionNode-->>SourceNode: mapping updated
+  SourceNode->>TargetNode: commit visible
+  TargetNode->>TargetActor: activate actor and route
+  TargetNode-->>SourceNode: commit visible OK
+  SourceNode->>SourceActor: retire actor
+  TargetNode->>TargetSpot: enqueue ACTOR_READABLE if unread
+  SourceNode-->>CallerNode: completion OK
+  SourceNode->>SourceNode: cleanup JoinOp and tombstone
+  CallerNode-->>Caller: reply handler
+```
+
+remote join 원자성 규칙:
+
+- source Actor는 commit 전까지 source node와 source Spot에서 active 상태다.
+- target node는 prepare 단계에서 pending Actor state를 만들 수 있지만, 이 Actor는
+  dispatch되지 않고 active route도 publish하지 않는다.
+- target Spot이 accept해도 source Actor는 아직 source Spot에서 제거되지 않는다.
+- source Actor는 session Actor list compare-and-swap이 성공하고, target Actor activate와
+  active route 갱신이 끝난 뒤 source Spot에서 제거되고 retired 상태가 된다.
+- commit 성공 뒤 session owner node의 session Actor list와 active route는 target node
+  Actor ref를 가리킨다.
+- `JoinOp` cleanup은 request owner completion frame 전달이 확정된 뒤 수행한다.
+- source Actor retire와 target activate는 join epoch로 fence한다. stale relay, stale join
+  reply, 늦게 도착한 control message는 epoch가 맞을 때만 적용한다.
+
+### 12.3 Abort 경로
+
+target Spot이 reject하거나 timeout, prepare 실패, target shutdown이 발생하면 handoff를
+중단한다.
+
+- source Actor는 source Spot에서 active 상태를 유지한다.
+- target pending Actor state와 payload reference는 폐기한다.
+- active route는 이동하지 않는다.
+
+bound session disconnect와 remote join handoff가 겹치면 session Actor list
+compare-and-swap 성공 여부가 기준이다.
+
+- **성공 전 disconnect**: source Actor를 source Spot에서 Entry Spot으로 돌리는 abort다.
+  target pending Actor state와 payload reference는 폐기한다.
+- **성공 뒤 disconnect**: target Actor가 canonical Actor다. commit visible 절차를 끝낸 뒤
+  target node의 disconnect cleanup이 target Actor를 Entry Spot으로 이동하고 bound session
+  ref를 제거한다. source Actor는 다시 active 상태로 돌아가지 않는다.

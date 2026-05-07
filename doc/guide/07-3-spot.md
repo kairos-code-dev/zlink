@@ -49,8 +49,9 @@ zlink_spot_node_destroy(&node);
 zlink_ctx_term(&ctx);
 ```
 
-Passing `NULL` keeps both topic and routed features enabled. If a process only
-needs one plane, pass `zlink_spot_node_options_t` at creation time:
+Passing `NULL` keeps both topic and routed features enabled — equivalent to
+`ZLINK_SPOT_NODE_MODE_ALL`. If a process only needs one plane, pass
+`zlink_spot_node_options_t` at creation time:
 
 ```c
 zlink_spot_node_options_t opts = {
@@ -59,8 +60,16 @@ zlink_spot_node_options_t opts = {
 void *node = zlink_spot_node_new(ctx, &opts);
 ```
 
-Use `ZLINK_SPOT_NODE_MODE_ROUTED` for routed-only nodes. Disabled features fail
-with `ENOTSUP`; they do not create hidden internal sockets.
+The three mode values are:
+
+| Mode constant | Effect |
+|---|---|
+| `ZLINK_SPOT_NODE_MODE_ALL` (or `NULL`) | Both topic publish/subscribe and routed request/reply are enabled |
+| `ZLINK_SPOT_NODE_MODE_PUBSUB` | Only topic publish/subscribe; routed APIs fail with `ENOTSUP` |
+| `ZLINK_SPOT_NODE_MODE_ROUTED` | Only routed request/reply; topic APIs fail with `ENOTSUP` |
+
+Disabled planes do not create their internal sockets — there is no hidden
+resource cost for features you do not use.
 
 ## 3. Bringing a node online
 
@@ -187,6 +196,13 @@ Two rules matter:
 
 - Channel calls always use attached `DEALER` sockets.
 - Attach functions never create sockets and never call `connect()` for you.
+
+The **automatic path** lets a Discovery instance manage DEALER connections on
+your behalf — peers are located and connected automatically as they register.
+The **manual path** requires you to create the DEALER socket and call
+`connect()` yourself to each known endpoint. Both result in identical channel
+call behavior; the difference is only in peer discovery and connection
+management.
 
 ### 5.1 Automatic path
 
@@ -390,10 +406,15 @@ zlink_spot_recv(
   0);
 ```
 
-Reply with:
+The `zlink_spot_recv()` output tells you which reply function to use:
 
-- `zlink_spot_reply_spot()` when the origin is another SPOT
-- `zlink_spot_reply_router()` when the origin is a ROUTER
+- If `source_spot_rid` is non-empty, the request came from another Spot — reply
+  with `zlink_spot_reply_spot()`, which routes back over the SPOT routed plane.
+- If `source_spot_rid` is empty but `source_node_rid` is set, the request came
+  from a ROUTER socket — reply with `zlink_spot_reply_router()`, which routes
+  back through the ROUTER plane.
+
+Using the wrong reply function returns `ZLINK_SUBMIT_INVALID_ARGUMENT`.
 
 ## 10. Initiating routed requests from Spot
 
@@ -485,14 +506,22 @@ zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
 ```
 
 `status.disconnected_sub_target_count` and
-`status.disconnected_routed_target_count` are ABI compatibility fields. The
-current SPOT delivery path does not disconnect a target because an internal
-delivery queue grew, so these fields report `0`.
+`status.disconnected_routed_target_count` are **ABI compatibility fields** that
+always report `0`. They exist because an older API version disconnected
+delivery targets when an internal queue grew too large; the current SPOT
+delivery model no longer does this. Do not rely on these counters for
+diagnostics.
 
-For HWM diagnostics, use the internal socket snapshot and monitor snapshot
-fields. SpotNode HWM options apply to admission only: topic publish admission
-and routed admission. There is no per-Actor HWM option. Actor processing delays
-are diagnosed through dispatch events, recv results, and snapshot counts.
+**What to use instead for HWM diagnostics**: call
+`zlink_spot_node_internal_sockets_snapshot()` and inspect the `snapshot` field
+of each returned socket entry. The admission sockets (`ingress-sub` and
+`internal-router`) carry the active HWM values. Relay and delivery sockets
+always show HWM `0`, which is expected.
+
+SpotNode HWM options apply to the admission boundary only — topic publish
+admission and routed admission. There is no per-Actor HWM knob. Actor
+processing backlog is diagnosed through dispatch events, recv results, and the
+`unread` count in `zlink_spot_actors_snapshot()`.
 
 For Actor state, use `zlink_spot_node_actors_snapshot()` and
 `zlink_spot_actors_snapshot()`. The unread count and joined state in a snapshot

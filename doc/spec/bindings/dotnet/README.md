@@ -6,7 +6,8 @@ This document defines the complete public API surface of the .NET binding.
 Every class, its purpose, and all public method signatures are listed.
 Internal helpers and implementation details are omitted.
 
-All types live in the `Zlink` namespace.
+All types live in the `Systems.Zlink` namespace. The canonical NuGet package
+id is `Systems.Zlink`.
 
 This README is the normative specification and implementation baseline for
 the .NET binding public surface. Binding implementation work must use this
@@ -16,11 +17,11 @@ must be corrected unless this specification is first amended against the core
 public contract.
 
 Only the public types and members listed in this document are part of the
-contract. `internal` types, `Zlink.Sockets.Internal`, native interop helpers,
-and other assembly-private helpers are not public API. Perf and sample projects
-must compile against the public assembly surface only. `InternalsVisibleTo` may
-be used for tests during development, but it does not change the public
-contract.
+contract. `internal` types, `Systems.Zlink.Sockets.Internal`, native interop
+helpers, and other assembly-private helpers are not public API. Perf and
+sample projects must compile against the public assembly surface only.
+`InternalsVisibleTo` may be used for tests during development, but it does not
+change the public contract.
 
 ## Design Basis
 
@@ -876,8 +877,8 @@ public sealed class Message : IDisposable, IAsyncDisposable
 
 Codec adapters are separate public extension libraries layered on top of the
 core binding. Their contract lives in
-[.NET Codec Extension Specification](codec.md). The core `Zlink` assembly does
-not expose codec entrypoints or require codec dependencies.
+[.NET Codec Extension Specification](codec.md). The core `Systems.Zlink`
+assembly does not expose codec entrypoints or require codec dependencies.
 
 ### RoutingId
 

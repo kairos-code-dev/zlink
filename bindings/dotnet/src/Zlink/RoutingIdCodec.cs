@@ -3,9 +3,9 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using Zlink.Native;
+using Systems.Zlink.Native;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 internal static class RoutingIdCodec
 {

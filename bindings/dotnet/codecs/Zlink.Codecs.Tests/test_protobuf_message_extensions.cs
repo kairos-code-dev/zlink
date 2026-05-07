@@ -1,7 +1,7 @@
 using Google.Protobuf.WellKnownTypes;
-using Zlink.Codecs.Protobuf;
+using Systems.Zlink.Codecs.Protobuf;
 
-namespace Zlink.Codecs.Tests;
+namespace Systems.Zlink.Codecs.Tests;
 
 public sealed class test_protobuf_message_extensions
 {

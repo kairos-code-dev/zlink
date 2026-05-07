@@ -1,4 +1,4 @@
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("Zlink.Framework")]
-[assembly: InternalsVisibleTo("Zlink.Tests")]
+[assembly: InternalsVisibleTo("Systems.Zlink.Framework")]
+[assembly: InternalsVisibleTo("Systems.Zlink.Tests")]

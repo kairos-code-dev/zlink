@@ -3,24 +3,24 @@
 # .NET Codec Extension Specification
 
 This document defines the public contract for .NET codec extension libraries.
-The core `Zlink` assembly does not expose these entrypoints, so applications
-opt in to codec dependencies explicitly.
+The core `Systems.Zlink` assembly does not expose these entrypoints, so
+applications opt in to codec dependencies explicitly.
 
 ## Packages And Namespaces
 
 | Package | Namespace | Baseline |
 |---------|-----------|----------|
-| `Zlink.Codecs.Protobuf` | `Zlink.Codecs.Protobuf` | Google.Protobuf |
-| `Zlink.Codecs.Json` | `Zlink.Codecs.Json` | System.Text.Json |
-| `Zlink.Codecs.MessagePack` | `Zlink.Codecs.MessagePack` | MessagePack for C# |
+| `Systems.Zlink.Codecs.Protobuf` | `Systems.Zlink.Codecs.Protobuf` | Google.Protobuf |
+| `Systems.Zlink.Codecs.Json` | `Systems.Zlink.Codecs.Json` | System.Text.Json |
+| `Systems.Zlink.Codecs.MessagePack` | `Systems.Zlink.Codecs.MessagePack` | MessagePack for C# |
 
 These extensions are separate public modules layered on top of the core
-binding. They must not be merged into the `Zlink` core assembly.
+binding. They must not be merged into the `Systems.Zlink` core assembly.
 
 ## Protobuf
 
 ```csharp
-namespace Zlink.Codecs.Protobuf;
+namespace Systems.Zlink.Codecs.Protobuf;
 
 public static class ProtobufMessageExtensions
 {
@@ -35,7 +35,7 @@ public static class ProtobufMessageExtensions
 ## JSON
 
 ```csharp
-namespace Zlink.Codecs.Json;
+namespace Systems.Zlink.Codecs.Json;
 
 public static class JsonMessageExtensions
 {
@@ -52,7 +52,7 @@ public static class JsonMessageExtensions
 ## MessagePack
 
 ```csharp
-namespace Zlink.Codecs.MessagePack;
+namespace Systems.Zlink.Codecs.MessagePack;
 
 public static class MessagePackMessageExtensions
 {

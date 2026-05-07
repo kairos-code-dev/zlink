@@ -1,6 +1,6 @@
-global using Zlink;
-global using SocketMonitorEvent = Zlink.MonitorEvent;
-global using Subscribed = Zlink.TopicMessage;
-global using MonitorSourceKind = Zlink.SourceKind;
-global using ServiceEventSubjectKind = Zlink.SubjectKind;
-global using SpotSocketRole = Zlink.SpotRole;
+global using Systems.Zlink;
+global using SocketMonitorEvent = Systems.Zlink.MonitorEvent;
+global using Subscribed = Systems.Zlink.TopicMessage;
+global using MonitorSourceKind = Systems.Zlink.SourceKind;
+global using ServiceEventSubjectKind = Systems.Zlink.SubjectKind;
+global using SpotSocketRole = Systems.Zlink.SpotRole;

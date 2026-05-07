@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 [Flags]
 internal enum PerfSendFlags

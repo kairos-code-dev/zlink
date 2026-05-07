@@ -2,9 +2,9 @@
 
 using System;
 using System.Threading.Tasks;
-using Zlink.Native;
+using Systems.Zlink.Native;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 public sealed class AtomicCounter : IDisposable, IAsyncDisposable
 {

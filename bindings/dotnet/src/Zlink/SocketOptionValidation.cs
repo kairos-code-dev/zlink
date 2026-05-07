@@ -2,7 +2,7 @@
 
 using System;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 internal static class SocketOptionValidation
 {

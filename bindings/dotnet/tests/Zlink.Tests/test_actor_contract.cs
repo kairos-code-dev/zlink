@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
-namespace Zlink.Tests;
+namespace Systems.Zlink.Tests;
 
 public sealed class test_actor_contract
 {

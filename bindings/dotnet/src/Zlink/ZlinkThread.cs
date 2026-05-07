@@ -4,7 +4,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 public sealed class ZlinkThread : IDisposable, IAsyncDisposable
 {
@@ -30,7 +30,7 @@ public sealed class ZlinkThread : IDisposable, IAsyncDisposable
         })
         {
             IsBackground = true,
-            Name = "Zlink.Thread"
+            Name = "Systems.Zlink.Thread"
         };
         _thread.Start();
     }

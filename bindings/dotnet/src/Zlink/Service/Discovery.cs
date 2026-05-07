@@ -3,10 +3,10 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using Zlink;
-using Zlink.Native;
+using Systems.Zlink;
+using Systems.Zlink.Native;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 public sealed class Discovery : IDisposable, IAsyncDisposable
 {

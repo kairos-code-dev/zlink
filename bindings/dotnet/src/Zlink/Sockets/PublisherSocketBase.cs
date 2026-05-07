@@ -2,9 +2,9 @@
 
 using System.Collections.Generic;
 using System.ComponentModel;
-using Zlink.Sockets.Internal;
+using Systems.Zlink.Sockets.Internal;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 [EditorBrowsable(EditorBrowsableState.Never)]
 public abstract class PublisherSocketBase : ConnectableSocketBase

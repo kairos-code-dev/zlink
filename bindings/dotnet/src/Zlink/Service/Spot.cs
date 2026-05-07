@@ -7,11 +7,11 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Zlink;
-using Zlink.Native;
-using Zlink.Sockets.Internal;
+using Systems.Zlink;
+using Systems.Zlink.Native;
+using Systems.Zlink.Sockets.Internal;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 public enum SpotNodeMode
 {

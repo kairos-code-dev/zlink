@@ -3,7 +3,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using SampleCommon;
-using Zlink;
+using Systems.Zlink;
 
 if (!SampleSupport.IsNativeAvailable())
     return;

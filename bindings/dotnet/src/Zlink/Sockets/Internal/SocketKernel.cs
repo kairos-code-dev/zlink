@@ -6,9 +6,9 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
-using Zlink.Native;
+using Systems.Zlink.Native;
 
-namespace Zlink.Sockets.Internal;
+namespace Systems.Zlink.Sockets.Internal;
 
 internal sealed class SocketKernel : IDisposable
 {

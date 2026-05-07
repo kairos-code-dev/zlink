@@ -1,4 +1,4 @@
 global using static PerfShared;
 global using static PerfTls;
-global using MonitorSocket = Zlink.SocketMonitor;
-global using MonitorEvent = Zlink.MonitorEvent;
+global using MonitorSocket = Systems.Zlink.SocketMonitor;
+global using MonitorEvent = Systems.Zlink.MonitorEvent;

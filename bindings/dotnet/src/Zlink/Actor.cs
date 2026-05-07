@@ -6,9 +6,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Zlink.Native;
+using Systems.Zlink.Native;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 public delegate ActorAdmissionResult ActorAdmissionHandler(string actorId,
     Message message);

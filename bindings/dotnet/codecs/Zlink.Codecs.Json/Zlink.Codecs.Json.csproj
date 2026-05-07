@@ -6,8 +6,9 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <Version>5.3.4</Version>
-    <AssemblyName>Zlink.Codecs.Json</AssemblyName>
-    <PackageId>Zlink.Codecs.Json</PackageId>
+    <AssemblyName>Systems.Zlink.Codecs.Json</AssemblyName>
+    <PackageId>Systems.Zlink.Codecs.Json</PackageId>
+    <RootNamespace>Systems.Zlink.Codecs.Json</RootNamespace>
     <Authors>ulalax</Authors>
     <Description>JSON codec extensions for zlink .NET bindings</Description>
     <PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>

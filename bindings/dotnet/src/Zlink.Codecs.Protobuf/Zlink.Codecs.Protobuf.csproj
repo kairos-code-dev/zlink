@@ -4,9 +4,10 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <PackageId>Zlink.Codecs.Protobuf</PackageId>
+    <PackageId>Systems.Zlink.Codecs.Protobuf</PackageId>
+    <RootNamespace>Systems.Zlink.Codecs.Protobuf</RootNamespace>
     <Version>5.3.4</Version>
-    <Description>Protobuf codec extension for Zlink</Description>
+    <Description>Protobuf codec extension for Systems.Zlink</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Zlink/Zlink.csproj" />

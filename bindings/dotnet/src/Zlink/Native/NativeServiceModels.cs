@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Zlink.Native;
+namespace Systems.Zlink.Native;
 
 internal static class NativeConstants
 {
@@ -99,25 +99,25 @@ internal unsafe struct ZlinkSpotNodeSubjectFilter
 [StructLayout(LayoutKind.Sequential)]
 internal struct ZlinkSpotNodeOptions
 {
-    public global::Zlink.SpotNodeMode Mode;
+    public global::Systems.Zlink.SpotNodeMode Mode;
 }
 
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct ZlinkSpotNodeSocketSnapshotFilter
 {
-    public global::Zlink.SpotNodeSocketOwner Owner;
-    public global::Zlink.SpotNodeSocketType SocketType;
+    public global::Systems.Zlink.SpotNodeSocketOwner Owner;
+    public global::Systems.Zlink.SpotNodeSocketType SocketType;
     public fixed byte SocketName[64];
 }
 
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct ZlinkSpotNodeSocketSnapshotEntry
 {
-    public global::Zlink.SpotNodeSocketOwner Owner;
+    public global::Systems.Zlink.SpotNodeSocketOwner Owner;
     public ulong OwnerId;
     public fixed byte OwnerName[64];
     public fixed byte SocketName[64];
-    public global::Zlink.SpotNodeSocketType SocketType;
+    public global::Systems.Zlink.SpotNodeSocketType SocketType;
     public uint AutoHwmVisible;
     public ZlinkMonitorSnapshot Snapshot;
 }
@@ -156,7 +156,7 @@ internal struct ZlinkActorJoinInfo
 [StructLayout(LayoutKind.Sequential)]
 internal struct ZlinkActorCreateResult
 {
-    public global::Zlink.ActorCreateStatus Status;
+    public global::Systems.Zlink.ActorCreateStatus Status;
     public ZlinkActorRef Actor;
 }
 

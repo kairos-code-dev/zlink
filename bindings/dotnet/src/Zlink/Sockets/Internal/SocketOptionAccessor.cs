@@ -3,9 +3,9 @@
 using System;
 using System.Buffers;
 using System.Text;
-using Zlink.Native;
+using Systems.Zlink.Native;
 
-namespace Zlink.Sockets.Internal;
+namespace Systems.Zlink.Sockets.Internal;
 
 internal sealed class SocketOptionAccessor
 {

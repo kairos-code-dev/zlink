@@ -23,10 +23,10 @@ bindings/dotnet/_site/index.html
 
 ## Scope
 
-- Public types in the `Zlink` namespace
+- Public types in the `Systems.Zlink` namespace
 - Socket types, message types, domain objects
-- Service wrappers in `Zlink.Service`
-- Internal/native types (`Zlink.Native`) are excluded
+- Service wrappers in `Systems.Zlink.Service`
+- Internal/native types (`Systems.Zlink.Native`) are excluded
 
 ## Contract Notes
 

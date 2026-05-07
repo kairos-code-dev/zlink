@@ -1,6 +1,6 @@
 using SampleCommon;
 using System.Linq;
-using Zlink;
+using Systems.Zlink;
 
 if (!SampleSupport.IsNativeAvailable())
     return;

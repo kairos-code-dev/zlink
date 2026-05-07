@@ -5,7 +5,7 @@ using System.Linq;
 using System.Reflection;
 using Xunit;
 
-namespace Zlink.Tests;
+namespace Systems.Zlink.Tests;
 
 public sealed class test_socket_surface
 {
@@ -466,11 +466,12 @@ public sealed class test_socket_surface
     public void generic_socket_management_surface_uses_public_interface()
     {
         Assert.Equal(typeof(IZlinkSocket),
-            typeof(global::Zlink.Zlink).GetMethod(nameof(global::Zlink.Zlink.Proxy))!
+            typeof(global::Systems.Zlink.Zlink).GetMethod(
+                nameof(global::Systems.Zlink.Zlink.Proxy))!
                 .GetParameters()[0].ParameterType);
         Assert.Equal(typeof(IZlinkSocket),
-            typeof(global::Zlink.Zlink).GetMethod(
-                nameof(global::Zlink.Zlink.ProxySteerable))!
+            typeof(global::Systems.Zlink.Zlink).GetMethod(
+                nameof(global::Systems.Zlink.Zlink.ProxySteerable))!
                 .GetParameters()[0].ParameterType);
         Assert.Equal(typeof(IZlinkSocket),
             typeof(Poller).GetMethod(nameof(Poller.Add),

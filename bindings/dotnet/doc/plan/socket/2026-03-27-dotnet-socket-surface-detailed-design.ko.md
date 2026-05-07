@@ -136,8 +136,10 @@ compat:
 
 배치 원칙:
 
-- 새 public 타입은 모두 기존과 동일하게 `namespace Zlink;` 에 둔다. `namespace Zlink.Sockets;` 같은 새 public namespace는 만들지 않는다.
-- internal 타입은 파일 경로만 `Sockets/Internal` 로 나누고 namespace는 `Zlink` 로 유지해도 된다.
+- 새 public 타입은 canonical root인 `namespace Systems.Zlink;` 에 둔다.
+  `namespace Systems.Zlink.Sockets;` 같은 새 public namespace는 만들지 않는다.
+- internal 타입은 파일 경로만 `Sockets/Internal` 로 나누고 namespace는
+  `Systems.Zlink.Sockets.Internal` 로 둔다.
 - `Socket.cs` 는 새 구조 도입 후 generic compat shim으로 축소한다.
 - 새 샘플과 새 contract test는 `new Socket(ctx, SocketType.X)` 를 사용하지 않는다.
 - `NativeMethods.*` 와 `Message.cs` 는 이번 refactor의 dependency이지만 분리 대상은 아니다.
@@ -796,7 +798,7 @@ phase별 실제 수정 파일 고정:
 
 ## 18. 구현 착수 체크리스트
 
-- `namespace Zlink` 유지
+- `namespace Systems.Zlink` 유지
 - `SocketKernel` 은 `internal sealed`
 - `SocketBase` 는 composition, inheritance 아님
 - `Socket` compat는 composition 유지

@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using Xunit;
 
-namespace Zlink.Tests;
+namespace Systems.Zlink.Tests;
 
 public sealed class test_pubsub
 {

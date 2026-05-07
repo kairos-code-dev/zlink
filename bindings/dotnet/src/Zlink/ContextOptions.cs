@@ -3,7 +3,7 @@
 using System;
 using System.Text;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 public sealed class ContextOptions
 {

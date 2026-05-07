@@ -4,9 +4,9 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Zlink.Native;
+using Systems.Zlink.Native;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 {

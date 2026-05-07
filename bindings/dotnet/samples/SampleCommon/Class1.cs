@@ -4,7 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
-using Zlink;
+using Systems.Zlink;
 
 namespace SampleCommon;
 
@@ -14,7 +14,7 @@ public static class SampleSupport
     {
         try
         {
-            _ = global::Zlink.Zlink.Version();
+            _ = global::Systems.Zlink.Zlink.Version();
             return true;
         }
         catch (DllNotFoundException)

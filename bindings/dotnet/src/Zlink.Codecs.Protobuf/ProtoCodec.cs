@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using Google.Protobuf;
-using Zlink;
+using Systems.Zlink;
 
-namespace Zlink.Codecs.Protobuf;
+namespace Systems.Zlink.Codecs.Protobuf;
 
 public static class ProtobufMessageExtensions
 {

@@ -1,7 +1,7 @@
 using MessagePack;
-using Zlink.Codecs.MessagePack;
+using Systems.Zlink.Codecs.MessagePack;
 
-namespace Zlink.Codecs.Tests;
+namespace Systems.Zlink.Codecs.Tests;
 
 public sealed class test_messagepack_message_extensions
 {

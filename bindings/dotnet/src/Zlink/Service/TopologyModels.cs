@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using Zlink.Native;
+using Systems.Zlink.Native;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 public enum AutoConnectType
 {

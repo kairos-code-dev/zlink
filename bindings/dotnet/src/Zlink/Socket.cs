@@ -2,9 +2,9 @@
 
 using System;
 using System.Collections.Generic;
-using Zlink.Sockets.Internal;
+using Systems.Zlink.Sockets.Internal;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 /// <summary>
 /// STREAM callback for framed packet dispatch.

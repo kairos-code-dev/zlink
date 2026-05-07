@@ -2,7 +2,7 @@
 
 using System;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 public interface IZlinkSocket
 {

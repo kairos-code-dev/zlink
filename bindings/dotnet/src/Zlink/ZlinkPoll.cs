@@ -3,9 +3,9 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using Zlink.Native;
+using Systems.Zlink.Native;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 public static class ZlinkPoll
 {

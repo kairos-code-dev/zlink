@@ -3,10 +3,10 @@
 using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
-using Zlink.Sockets.Internal;
-using Zlink.Native;
+using Systems.Zlink.Sockets.Internal;
+using Systems.Zlink.Native;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 [EditorBrowsable(EditorBrowsableState.Never)]
 public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket

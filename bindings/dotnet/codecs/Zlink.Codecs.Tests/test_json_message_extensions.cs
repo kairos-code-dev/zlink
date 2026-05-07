@@ -1,6 +1,6 @@
-using Zlink.Codecs.Json;
+using Systems.Zlink.Codecs.Json;
 
-namespace Zlink.Codecs.Tests;
+namespace Systems.Zlink.Codecs.Tests;
 
 public sealed class test_json_message_extensions
 {

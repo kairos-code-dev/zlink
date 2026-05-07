@@ -6,7 +6,9 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <Version>5.3.9</Version>
-    <AssemblyName>Zlink</AssemblyName>
+    <AssemblyName>Systems.Zlink</AssemblyName>
+    <PackageId>Systems.Zlink</PackageId>
+    <RootNamespace>Systems.Zlink</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Authors>ulalax</Authors>
     <Description>zlink .NET bindings — high-performance async messaging library</Description>

@@ -4,7 +4,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 internal sealed class RequestCallState
 {

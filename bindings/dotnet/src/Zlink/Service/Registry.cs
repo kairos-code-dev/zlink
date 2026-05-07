@@ -4,10 +4,10 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
-using Zlink;
-using Zlink.Native;
+using Systems.Zlink;
+using Systems.Zlink.Native;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 public sealed class Registry : IDisposable, IAsyncDisposable
 {

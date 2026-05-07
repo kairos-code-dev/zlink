@@ -2,7 +2,7 @@
 
 using System;
 
-namespace Zlink.Sockets.Internal;
+namespace Systems.Zlink.Sockets.Internal;
 
 internal sealed class SocketTypePolicy
 {

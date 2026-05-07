@@ -205,6 +205,22 @@ core가 aggregate 함수와 `*_part` substrate를 모두 제공하던 시기에�
 "public이 아닌 API를 public처럼 사용하지 못하게 경계를 강제하는 것"까지
 포함한다.
 
+### Package / Namespace Identity Policy
+
+공식 라이브러리 도메인은 `zlink.systems`다. 언어별 package, namespace,
+module, artifact 이름은 이 도메인에서 출발해야 하며, 기존 조직명이나 저장소
+소유자 이름을 public 식별자에 넣지 않는다.
+
+| Binding | Canonical public identity |
+|---|---|
+| .NET | NuGet package id와 root namespace는 `Systems.Zlink` |
+
+- .NET extension package와 namespace는 `Systems.Zlink.*` 아래에 둔다.
+  예: `Systems.Zlink.Codecs.Protobuf`.
+- 새 문서, 샘플, 테스트는 canonical identity만 사용한다.
+- 기존 `Zlink` root namespace 또는 package id가 구현 호환성 때문에 남아 있더라도
+  canonical public identity가 아니며, 새 public API를 그 아래에 추가하지 않는다.
+
 ### Send/Recv Public Shape Is Fixed
 
 bindings의 `send/recv` 공개 형태는 substrate helper가 어떻게 생기느냐에 따라
@@ -1218,7 +1234,8 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
   spec 에서 "Advanced" 또는 "Diagnostic" 하위 섹션으로 분리 기술한다.
   - `RegistryServiceSummaryEntry`, `RegistryStatus`
   - `SpotNodePeerEntry`, `SpotNodeSubjectEntry`
-  - `SpotNodeSocketSnapshotEntry`
+  - `SpotNodeSocketSnapshotEntry`, `SpotNodeSpotEntry`,
+    `SpotNodeActorEntry`
   - 각종 filter 타입 (`RegistryTopologyFilter`,
     `RegistryServiceSummaryFilter`, `SpotNodePeerFilter`,
     `SpotNodeSubjectFilter`, `SpotNodeSocketSnapshotFilter`)
@@ -1427,6 +1444,8 @@ Actor dispatch event는 SPOT dispatch event handler와 같은 readiness 모델�
 | `peersQuery` | Y |
 | `subjectsSnapshot` | Y |
 | `internalSocketsSnapshot` | Diagnostic |
+| `spotsSnapshot` | Y |
+| `actorsSnapshot` | Y |
 | `close` | Y |
 
 - SpotNode는 data plane API(`send`/`recv`/`publish`/`subscribe`)를 직접
@@ -1561,7 +1580,9 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - 공개 서비스 계층 관찰은 별도 monitor handle 대신 snapshot/query surface로 한다.
 - Discovery 관찰은 `memberPeers`를 기준으로 한다.
 - SPOT(SpotNode, Spot) 관찰은 `statusSnapshot`, `peersSnapshot`,
-  `peersQuery`, `subjectsSnapshot` API를 사용한다.
+  `peersQuery`, `subjectsSnapshot`, `spotsSnapshot`, `actorsSnapshot` API를
+  사용한다. 내부 socket 진단이 필요한 바인딩은 `internalSocketsSnapshot`을
+  별도 diagnostic 표면으로 둔다.
 - Registry 관찰은 `statusSnapshot`, `serviceSummarySnapshot`,
   `topologySnapshot`, `topologyQuery`를 사용한다.
 - 상태 전이가 필요하면 연속된 snapshot/query 결과를 비교한다.
@@ -1580,9 +1601,13 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - Advanced / Diagnostic domain object:
   - `SpotNodePeerEntry`: peer 정보
   - `SpotNodeSubjectEntry`: subject 정보
+  - `SpotNodeSocketSnapshotEntry`: 내부 socket 진단 정보
+  - `SpotNodeSpotEntry`: node 소유 Spot 정보
+  - `SpotNodeActorEntry`: node 소유 Actor route 정보
 - 필터 객체:
   - `SpotNodePeerFilter`: peer 조회 필터
   - `SpotNodeSubjectFilter`: subject 조회 필터
+  - `SpotNodeSocketSnapshotFilter`: 내부 socket 진단 필터
   - `RegistryServiceSummaryFilter`: 서비스 요약 조회 필터
   - `RegistryTopologyFilter`: 토폴로지 조회 필터
 - enum/value object:
@@ -1602,7 +1627,8 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 
 ### Service Layer Naming Policy
 - 서비스 계층도 Naming Policy를 따른다.
-- 허용되는 변형: 케이싱 변형, overload 불가 언어의 최소 접미사.
+- 허용되는 변형은 Naming Policy의 세 가지 변형과 같다. 즉 케이싱 변형,
+  overload 불가 언어의 최소 접미사, 언어별 property/getter 관례만 허용한다.
 - 단어 교체, 생략, 대체는 금지한다.
 - 규칙 상세는 Naming Policy 본문과 동일하다.
 
@@ -1672,8 +1698,8 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - Registry capability matrix 정렬 확인 (구현된 경우)
 - RegistryQueryClient capability matrix 정렬 확인 (구현된 경우)
 - service TLS helper 존재 확인
-- typed domain object 존재 확인 (SpotNodeStatus,
-  MemberPeerEntry 등)
+- typed domain object 존재 확인 (SpotNodeStatus, MemberPeerEntry,
+  SpotNodeSocketSnapshotEntry, SpotNodeSpotEntry, SpotNodeActorEntry 등)
 - typed enum 존재 확인 (AutoConnectType, ServiceRole, SpotNodeState 등)
 
 #### Service Layer Contract Tests
@@ -2401,7 +2427,7 @@ zlink_recv_result_t zlink_router_recv_part(void *router,
   multipart receive surface 를 노출한다.
 - direct topic callback install surface 는 raw pub/sub family 에 두지 않는다.
 
-#### SPOT Node Status Query
+#### SPOT Snapshot Query
 
 ```c
 zlink_config_result_t zlink_spot_node_status_snapshot(void *node,
@@ -2414,6 +2440,15 @@ zlink_config_result_t zlink_spot_node_peers_query(void *node,
 zlink_config_result_t zlink_spot_node_subjects_snapshot(void *node,
     const zlink_spot_node_subject_filter_t *filter,
     zlink_spot_node_subject_entry_t *entries, size_t *count);
+zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(void *node,
+    const zlink_spot_node_socket_snapshot_filter_t *filter,
+    zlink_spot_node_socket_snapshot_entry_t *entries, size_t *count);
+zlink_config_result_t zlink_spot_node_spots_snapshot(void *node,
+    zlink_spot_node_spot_entry_t *entries, size_t *count);
+zlink_config_result_t zlink_spot_node_actors_snapshot(void *node,
+    zlink_spot_node_actor_entry_t *entries, size_t *count);
+zlink_config_result_t zlink_spot_actors_snapshot(void *spot,
+    zlink_actor_ref_t *entries, size_t *count);
 ```
 
 바인딩 규칙:
@@ -2622,7 +2657,7 @@ Repository placement and distribution units for codec extension modules:
 |---|---|---|---|
 | C | `bindings/c/include/zlink/`, `bindings/c/src/` | none required | n/a |
 | C++ | `bindings/cpp/include/zlink/` | `zlink-codec-protobuf`, `zlink-codec-json`, `zlink-codec-messagepack` | `bindings/cpp/codecs/zlink-codec-protobuf/`, `bindings/cpp/codecs/zlink-codec-json/`, `bindings/cpp/codecs/zlink-codec-messagepack/` |
-| .NET | `bindings/dotnet/src/Zlink/` | NuGet `Zlink.Codecs.Protobuf`, NuGet `Zlink.Codecs.Json`, NuGet `Zlink.Codecs.MessagePack` | `bindings/dotnet/codecs/Zlink.Codecs.Protobuf/`, `bindings/dotnet/codecs/Zlink.Codecs.Json/`, `bindings/dotnet/codecs/Zlink.Codecs.MessagePack/` |
+| .NET | `bindings/dotnet/src/Systems.Zlink/` | NuGet `Systems.Zlink.Codecs.Protobuf`, NuGet `Systems.Zlink.Codecs.Json`, NuGet `Systems.Zlink.Codecs.MessagePack` | `bindings/dotnet/codecs/Systems.Zlink.Codecs.Protobuf/`, `bindings/dotnet/codecs/Systems.Zlink.Codecs.Json/`, `bindings/dotnet/codecs/Systems.Zlink.Codecs.MessagePack/` |
 | Java | `bindings/java/src/main/java/dev/kairoscode/zlink/` | Maven `zlink-codec-protobuf`, Maven `zlink-codec-json`, Maven `zlink-codec-messagepack` | `bindings/java/codec/zlink-codec-protobuf/`, `bindings/java/codec/zlink-codec-json/`, `bindings/java/codec/zlink-codec-messagepack/` |
 | Node | `bindings/node/src/` | npm `@ulalax/zlink-codec-protobuf`, npm `@ulalax/zlink-codec-json`, npm `@ulalax/zlink-codec-messagepack` | `bindings/node/packages/zlink-codec-protobuf/`, `bindings/node/packages/zlink-codec-json/`, `bindings/node/packages/zlink-codec-messagepack/` |
 | Python | `bindings/python/src/zlink/` | PyPI `zlink-codec-protobuf`, PyPI `zlink-codec-json`, PyPI `zlink-codec-messagepack` | `bindings/python/codecs/zlink_codec_protobuf/`, `bindings/python/codecs/zlink_codec_json/`, `bindings/python/codecs/zlink_codec_messagepack/` |
@@ -3779,7 +3814,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 | Python | Python 3.9 | CPython 3.9+ | setuptools 68+ |
 - 각 바인딩의 정확한 버전은 해당 프로젝트 설정 파일이 기준이다.
   - C++: `CMakeLists.txt`
-  - .NET: `Zlink.csproj`
+  - .NET: `Systems.Zlink.csproj`
   - Java: `build.gradle`, `gradle-wrapper.properties`
   - Go: `go.mod`
   - Node: `package.json`, `tsconfig.json`

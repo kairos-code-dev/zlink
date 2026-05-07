@@ -1,12 +1,12 @@
 using System.Net.Sockets;
 using SampleCommon;
-using Zlink;
+using Systems.Zlink;
 
 if (!SampleSupport.IsNativeAvailable())
     return;
 
 using var ctx = new Context();
-using var stream = new Zlink.StreamSocket(ctx);
+using var stream = new Systems.Zlink.StreamSocket(ctx);
 string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
 int port = SampleSupport.ExtractPort(endpoint);
 using var monitor = stream.MonitorOpen(SocketEvent.Accepted);

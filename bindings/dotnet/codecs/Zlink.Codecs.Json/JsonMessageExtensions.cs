@@ -2,9 +2,9 @@
 
 using System;
 using System.Text.Json;
-using Zlink;
+using Systems.Zlink;
 
-namespace Zlink.Codecs.Json;
+namespace Systems.Zlink.Codecs.Json;
 
 public static class JsonMessageExtensions
 {

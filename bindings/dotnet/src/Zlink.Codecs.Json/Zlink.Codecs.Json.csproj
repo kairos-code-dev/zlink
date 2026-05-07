@@ -3,9 +3,10 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <PackageId>Zlink.Codecs.Json</PackageId>
+    <PackageId>Systems.Zlink.Codecs.Json</PackageId>
+    <RootNamespace>Systems.Zlink.Codecs.Json</RootNamespace>
     <Version>5.3.4</Version>
-    <Description>JSON codec extension for Zlink</Description>
+    <Description>JSON codec extension for Systems.Zlink</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Zlink/Zlink.csproj" />

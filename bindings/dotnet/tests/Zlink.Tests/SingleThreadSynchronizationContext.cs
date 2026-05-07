@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Zlink.Tests;
+namespace Systems.Zlink.Tests;
 
 internal sealed class SingleThreadSynchronizationContext : SynchronizationContext,
     IDisposable
@@ -18,7 +18,7 @@ internal sealed class SingleThreadSynchronizationContext : SynchronizationContex
         _thread = new Thread(Run)
         {
             IsBackground = true,
-            Name = name ?? "Zlink.TestSynchronizationContext"
+            Name = name ?? "Systems.Zlink.TestSynchronizationContext"
         };
         _thread.Start();
         _started.Wait();

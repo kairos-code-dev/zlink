@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using Zlink.Native;
+using Systems.Zlink.Native;
 
-namespace Zlink.Sockets.Internal;
+namespace Systems.Zlink.Sockets.Internal;
 
 internal sealed class SocketHandle : IDisposable
 {

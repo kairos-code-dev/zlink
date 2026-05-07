@@ -2,7 +2,7 @@
 
 using System;
 using System.Collections.Generic;
-namespace Zlink;
+namespace Systems.Zlink;
 
 internal static class RequestReplySupport
 {
@@ -70,14 +70,14 @@ internal static class RequestReplySupport
     }
 
     internal static unsafe void MovePartsToNative(IReadOnlyList<Message> parts,
-        out global::Zlink.Native.ZlinkMsg[] nativeParts)
+        out global::Systems.Zlink.Native.ZlinkMsg[] nativeParts)
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
         if (parts.Count == 0)
             throw new ArgumentException("parts must not be empty", nameof(parts));
 
-        nativeParts = new global::Zlink.Native.ZlinkMsg[parts.Count];
+        nativeParts = new global::Systems.Zlink.Native.ZlinkMsg[parts.Count];
         int built = 0;
         try
         {
@@ -98,7 +98,7 @@ internal static class RequestReplySupport
     }
 
     internal static void RestoreManagedParts(IReadOnlyList<Message> parts,
-        global::Zlink.Native.ZlinkMsg[] nativeParts, int built)
+        global::Systems.Zlink.Native.ZlinkMsg[] nativeParts, int built)
     {
         for (int i = built - 1; i >= 0; i--)
         {

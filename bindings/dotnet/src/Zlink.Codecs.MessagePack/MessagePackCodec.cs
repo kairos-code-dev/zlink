@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using MessagePack;
-using Zlink;
+using Systems.Zlink;
 
-namespace Zlink.Codecs.MessagePack;
+namespace Systems.Zlink.Codecs.MessagePack;
 
 public static class MessagePackMessageExtensions
 {

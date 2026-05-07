@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 public sealed class TopicMessage : IDisposable
 {

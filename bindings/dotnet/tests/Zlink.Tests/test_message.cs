@@ -2,7 +2,7 @@ using System;
 using System.Text;
 using Xunit;
 
-namespace Zlink.Tests;
+namespace Systems.Zlink.Tests;
 
 public sealed class test_message
 {

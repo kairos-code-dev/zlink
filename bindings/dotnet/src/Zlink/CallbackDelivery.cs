@@ -5,7 +5,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 internal static class CallbackDelivery
 {
@@ -114,7 +114,7 @@ internal static class CallbackDelivery
             _thread = new Thread(Run)
             {
                 IsBackground = true,
-                Name = "Zlink.CallbackDispatcher"
+                Name = "Systems.Zlink.CallbackDispatcher"
             };
             _thread.Start();
             _started.Wait();

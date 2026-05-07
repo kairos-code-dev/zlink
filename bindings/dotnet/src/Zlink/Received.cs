@@ -5,7 +5,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 internal delegate void ReceivedReplyHandler(IReadOnlyList<Message> parts,
     SendFlags flags);
@@ -131,7 +131,7 @@ public sealed class Received : IDisposable, IReadOnlyList<Message>
         {
             if (_routingIdBytes == null)
                 return _routingId;
-            _routingId ??= global::Zlink.RoutingId.FromOwnedOptionalBytes(
+            _routingId ??= global::Systems.Zlink.RoutingId.FromOwnedOptionalBytes(
                 _routingIdBytes);
             return _routingId;
         }
@@ -143,7 +143,7 @@ public sealed class Received : IDisposable, IReadOnlyList<Message>
         {
             if (_spotRidBytes == null)
                 return _spotRid;
-            _spotRid ??= global::Zlink.RoutingId.FromOwnedOptionalBytes(
+            _spotRid ??= global::Systems.Zlink.RoutingId.FromOwnedOptionalBytes(
                 _spotRidBytes);
             return _spotRid;
         }

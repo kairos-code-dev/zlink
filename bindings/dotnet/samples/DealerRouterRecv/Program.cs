@@ -1,5 +1,5 @@
 using SampleCommon;
-using Zlink;
+using Systems.Zlink;
 
 if (!SampleSupport.IsNativeAvailable())
     return;

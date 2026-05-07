@@ -4,7 +4,7 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-namespace Zlink.Native;
+namespace Systems.Zlink.Native;
 
 internal static class NativeLibraryLoader
 {

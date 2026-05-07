@@ -8,7 +8,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 
-namespace Zlink.Tests;
+namespace Systems.Zlink.Tests;
 
 internal static class CoreTestSupport
 {
@@ -20,7 +20,7 @@ internal static class CoreTestSupport
     {
         try
         {
-            _ = global::Zlink.Zlink.Version();
+            _ = global::Systems.Zlink.Zlink.Version();
             return true;
         }
         catch (DllNotFoundException)

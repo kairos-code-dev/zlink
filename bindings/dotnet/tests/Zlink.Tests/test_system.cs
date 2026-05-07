@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using Xunit;
 
-namespace Zlink.Tests;
+namespace Systems.Zlink.Tests;
 
 public sealed class test_system
 {
@@ -13,7 +13,7 @@ public sealed class test_system
             return;
 
         var expected = CoreTestSupport.ReadCoreHeaderVersion();
-        var actual = global::Zlink.Zlink.Version();
+        var actual = global::Systems.Zlink.Zlink.Version();
 
         Assert.Equal(expected.major, actual.Major);
         Assert.Equal(expected.minor, actual.Minor);

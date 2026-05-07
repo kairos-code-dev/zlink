@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 
-namespace Zlink;
+namespace Systems.Zlink;
 
 public sealed class SubSocket : SubscriberSocketBase
 {

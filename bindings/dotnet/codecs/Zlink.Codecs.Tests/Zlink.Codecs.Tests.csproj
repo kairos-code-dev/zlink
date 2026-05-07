@@ -2,6 +2,8 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <IsPackable>false</IsPackable>
+    <AssemblyName>Systems.Zlink.Codecs.Tests</AssemblyName>
+    <RootNamespace>Systems.Zlink.Codecs.Tests</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Xunit;
 
-namespace Zlink.Tests;
+namespace Systems.Zlink.Tests;
 
 public sealed class test_socket_options
 {

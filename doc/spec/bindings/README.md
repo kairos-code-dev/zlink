@@ -207,9 +207,10 @@ core가 aggregate 함수와 `*_part` substrate를 모두 제공하던 시기에�
 
 ### Package / Namespace Identity Policy
 
-공식 라이브러리 도메인은 `zlink.systems`다. 언어별 package, namespace,
-module, artifact 이름은 이 도메인에서 출발해야 하며, 기존 조직명이나 저장소
-소유자 이름을 public 식별자에 넣지 않는다.
+공식 라이브러리 도메인은 `zlink.systems`다. 새로 확정하거나 변경하는
+언어별 package, namespace, module, artifact 이름은 이 도메인에서 출발해야
+하며, 기존 조직명이나 저장소 소유자 이름을 canonical public 식별자에 넣지
+않는다.
 
 | Binding | Canonical public identity |
 |---|---|
@@ -2657,7 +2658,7 @@ Repository placement and distribution units for codec extension modules:
 |---|---|---|---|
 | C | `bindings/c/include/zlink/`, `bindings/c/src/` | none required | n/a |
 | C++ | `bindings/cpp/include/zlink/` | `zlink-codec-protobuf`, `zlink-codec-json`, `zlink-codec-messagepack` | `bindings/cpp/codecs/zlink-codec-protobuf/`, `bindings/cpp/codecs/zlink-codec-json/`, `bindings/cpp/codecs/zlink-codec-messagepack/` |
-| .NET | `bindings/dotnet/src/Systems.Zlink/` | NuGet `Systems.Zlink.Codecs.Protobuf`, NuGet `Systems.Zlink.Codecs.Json`, NuGet `Systems.Zlink.Codecs.MessagePack` | `bindings/dotnet/codecs/Systems.Zlink.Codecs.Protobuf/`, `bindings/dotnet/codecs/Systems.Zlink.Codecs.Json/`, `bindings/dotnet/codecs/Systems.Zlink.Codecs.MessagePack/` |
+| .NET | `bindings/dotnet/src/Zlink/` | NuGet `Systems.Zlink.Codecs.Protobuf`, NuGet `Systems.Zlink.Codecs.Json`, NuGet `Systems.Zlink.Codecs.MessagePack` | `bindings/dotnet/codecs/Zlink.Codecs.Protobuf/`, `bindings/dotnet/codecs/Zlink.Codecs.Json/`, `bindings/dotnet/codecs/Zlink.Codecs.MessagePack/` |
 | Java | `bindings/java/src/main/java/dev/kairoscode/zlink/` | Maven `zlink-codec-protobuf`, Maven `zlink-codec-json`, Maven `zlink-codec-messagepack` | `bindings/java/codec/zlink-codec-protobuf/`, `bindings/java/codec/zlink-codec-json/`, `bindings/java/codec/zlink-codec-messagepack/` |
 | Node | `bindings/node/src/` | npm `@ulalax/zlink-codec-protobuf`, npm `@ulalax/zlink-codec-json`, npm `@ulalax/zlink-codec-messagepack` | `bindings/node/packages/zlink-codec-protobuf/`, `bindings/node/packages/zlink-codec-json/`, `bindings/node/packages/zlink-codec-messagepack/` |
 | Python | `bindings/python/src/zlink/` | PyPI `zlink-codec-protobuf`, PyPI `zlink-codec-json`, PyPI `zlink-codec-messagepack` | `bindings/python/codecs/zlink_codec_protobuf/`, `bindings/python/codecs/zlink_codec_json/`, `bindings/python/codecs/zlink_codec_messagepack/` |
@@ -3814,7 +3815,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 | Python | Python 3.9 | CPython 3.9+ | setuptools 68+ |
 - 각 바인딩의 정확한 버전은 해당 프로젝트 설정 파일이 기준이다.
   - C++: `CMakeLists.txt`
-  - .NET: `Systems.Zlink.csproj`
+  - .NET: `Zlink.csproj` (`PackageId` / `RootNamespace`: `Systems.Zlink`)
   - Java: `build.gradle`, `gradle-wrapper.properties`
   - Go: `go.mod`
   - Node: `package.json`, `tsconfig.json`

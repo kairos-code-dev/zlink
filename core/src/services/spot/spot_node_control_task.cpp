@@ -6,13 +6,12 @@
 
 #include "services/control/service_control_runtime.hpp"
 #include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_debug.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_node_control_policy.hpp"
 #include "services/spot/spot_runtime.hpp"
 
-#include <cstdarg>
 #include <cstdio>
-#include <cstdlib>
 
 namespace zlink
 {
@@ -20,15 +19,10 @@ namespace
 {
 static void spot_control_diagf (const char *fmt_, ...)
 {
-    if (!std::getenv ("ZLINK_DEBUG_SPOT_CONTROL"))
-        return;
-
     va_list args;
     va_start (args, fmt_);
-    std::fprintf (stderr, "[spot-control] ");
-    std::vfprintf (stderr, fmt_, args);
-    std::fprintf (stderr, "\n");
-    std::fflush (stderr);
+    debug_vfprintf ("ZLINK_DEBUG_SPOT_CONTROL", "[spot-control] ", fmt_,
+                    args);
     va_end (args);
 }
 }
@@ -43,7 +37,7 @@ int spot_node_t::replay_subscriptions_if_active_peers ()
         return 0;
     if (!has_active_peers ())
         return 0;
-    if (std::getenv ("ZLINK_DEBUG_SPOT_REPLAY"))
+    if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_REPLAY"))
         std::fprintf (stderr, "[spot-replay] immediate replay request\n");
     if (send_data_plane_command (
           spot_control_protocol::cmd_replay_handle_state_subscriptions)
@@ -72,7 +66,7 @@ void spot_node_t::schedule_subscription_replay ()
         _peer_state.subscription_replay_holdoff_ticks = 0;
         attempts = _peer_state.subscription_replay_attempts;
     }
-    if (std::getenv ("ZLINK_DEBUG_SPOT_REPLAY"))
+    if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_REPLAY"))
         std::fprintf (stderr, "[spot-replay] scheduled attempts=%u\n",
                       attempts);
     wake_control_task ();

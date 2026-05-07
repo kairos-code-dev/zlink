@@ -1427,10 +1427,9 @@ enum class monitor_event : uint32_t {
     monitor_stopped,
     handshake_failed_no_detail,
     connection_ready,
-    connection_ready_changed,
-    peer_weight_changed,
     handshake_failed_protocol,
     handshake_failed_auth,
+    peer_weight_changed,
     all
 };
 

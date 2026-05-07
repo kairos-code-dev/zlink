@@ -47,7 +47,7 @@ also the **service scope** used by managed auto-connect and logical lookup.
 
 ## Addressing Modes
 
-SPOT messaging offers three ways to specify a destination.
+SPOT messaging offers two ways to specify a destination.
 
 - channel call mode:
   the caller specifies only a `channel_name` and the attached `DEALER` sends

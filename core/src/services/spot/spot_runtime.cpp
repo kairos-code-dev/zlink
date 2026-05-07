@@ -3,10 +3,12 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_data_plane.hpp"
+#include "services/spot/spot_debug.hpp"
 #include "services/spot/spot_dispatch_worker_pool.hpp"
 #include "services/spot/spot_auto_hwm_internal.hpp"
 #include "services/spot/spot_runtime_internal.hpp"
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
 
 #include "core/recv_internal.hpp"
@@ -55,7 +57,7 @@ void close_socket_ptr (socket_base_t **socket_p_)
 
 bool spot_shutdown_debug_enabled ()
 {
-    return std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN") != NULL;
+    return spot_debug::shutdown_enabled ();
 }
 
 template <typename runtime_t, typename slot_ref_t>
@@ -146,7 +148,7 @@ uint64_t spot_runtime_t::attachment_state_version () const
 
 ctx_t *spot_runtime_t::ctx () const
 {
-    return owner ? owner->_ctx : NULL;
+    return spot_node_access_t::ctx (owner);
 }
 
 void spot_runtime_t::set_hwm_config (const spot_node_hwm_config_t &config_)
@@ -226,12 +228,14 @@ std::vector<std::string> spot_runtime_t::external_route_ids_for_destination (
 
 int spot_runtime_t::start ()
 {
-    if (!owner || !owner->_ctx) {
+    ctx_t *owner_ctx = spot_node_access_t::ctx (owner);
+    if (!owner_ctx) {
         errno = EFAULT;
         return -1;
     }
 
-    data_ctrl_front = owner->_ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
+    data_ctrl_front =
+      spot_node_access_t::create_socket (owner, ZLINK_CORE_SOCKET_PAIR);
     if (!data_ctrl_front
         || data_ctrl_front->bind (data_ctrl_endpoint.c_str ()) != 0) {
         close_socket_ptr (&data_ctrl_front);
@@ -245,13 +249,13 @@ int spot_runtime_t::start ()
     snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count,
                               &connected_peer_count, &active_peer_count);
     apply_spot_internal_auto_hwm (
-      owner->_ctx, data_ctrl_front,
+      owner_ctx, data_ctrl_front,
       spot_internal_auto_hwm_policy_t{auto_hwm_role_control,
                                       ZLINK_CORE_SOCKET_PAIR,
                                       connected_peer_count,
                                       active_peer_count,
                                       0, 0, true, true, true, true});
-    owner->track_owned_socket (data_ctrl_front);
+    spot_node_access_t::track_owned_socket (owner, data_ctrl_front);
 
     const int linger = 0;
     const int timeout = 2000;
@@ -271,7 +275,8 @@ int spot_runtime_t::start ()
     if (spot_data_plane_t::initialize_runtime (owner, this,
                                                &execution.data_plane_state)
         != 0
-        || !spot_node_t::recv_ctrl_reply (data_ctrl_front, &worker_errno)) {
+        || !spot_node_access_t::recv_ctrl_reply (data_ctrl_front,
+                                                 &worker_errno)) {
         errno = worker_errno != 0 ? worker_errno : ETIMEDOUT;
         stop.set (1);
         stop_sockets ();
@@ -279,8 +284,7 @@ int spot_runtime_t::start ()
         spot_data_plane_t::teardown_runtime (
           owner, this, &execution.data_plane_state,
           &execution.data_plane_protocol_state);
-        if (owner)
-            owner->untrack_owned_socket (data_ctrl_front);
+        spot_node_access_t::untrack_owned_socket (owner, data_ctrl_front);
         close_socket_ptr (&data_ctrl_front);
         return -1;
     }
@@ -376,7 +380,7 @@ int spot_runtime_t::send_command (const char *verb_, const char *arg_) const
         return -1;
 
     int reply_errno = 0;
-    if (!spot_node_t::recv_ctrl_reply (data_ctrl_front, &reply_errno)) {
+    if (!spot_node_access_t::recv_ctrl_reply (data_ctrl_front, &reply_errno)) {
         errno = reply_errno != 0 ? reply_errno : ETIMEDOUT;
         return -1;
     }

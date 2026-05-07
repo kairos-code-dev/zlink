@@ -23,11 +23,18 @@ class socket_base_t;
 class discovery_t;
 class spot_node_t;
 class service_control_runtime_t;
-struct discovery_access_t;
 
 enum discovery_socket_role_t
 {
     discovery_socket_sub = 1
+};
+
+struct discovery_registered_service_snapshot_t
+{
+    uint16_t service_role;
+    std::string channel_name;
+    std::string endpoint;
+    std::string uplink_endpoint;
 };
 
 class discovery_t
@@ -101,34 +108,50 @@ class discovery_t
     {
         notify_observers (services_);
     }
-
-  private:
-    friend class spot_node_t;
-    friend struct discovery_access_t;
-    friend class discovery_bootstrap_runtime_t;
-    friend class discovery_bootstrap_socket_config_t;
-    friend class discovery_uplink_runtime_t;
-
-    static void control_task (void *arg_);
-    void tick ();
+    mutex_t &sync ();
+    mutex_t &uplink_sync ();
+    service_public_api_guard_t &public_api_guard ();
     void set_discovery_summary_enabled (bool enabled_);
     int add_observer (discovery_observer_t *observer_);
     int remove_observer (discovery_observer_t *observer_);
     void upsert_service_summary (const zlink_registry_topology_entry_t &entry_);
+    void emit_ready_changed (uint32_t ready_count_);
+    int ensure_topology_reporters ();
+    void flush_topology_reports ();
+    socket_base_t *create_tracked_socket (int socket_type_);
+    int close_tracked_socket (socket_base_t *&socket_, int timeout_ms_);
+    int close_tracked_socket_and_wait (socket_base_t *&socket_, int timeout_ms_);
+    discovery_bootstrap_runtime_t *bootstrap_runtime ();
+    discovery_uplink_runtime_t *uplink_runtime ();
+    service_control_runtime_t *control_runtime () const;
+    int ensure_control_task_active ();
+    bool bootstrap_socket_config_locked (bool routing_id_locked_) const;
+    void apply_socket_option_to_sub_socket (int option_,
+                                            const void *optval_,
+                                            size_t optvallen_);
+    bool should_publish_summary_entry (
+      const zlink_registry_topology_entry_t &entry_) const;
+    void collect_dirty_summary_entries (
+      std::vector<zlink_registry_topology_entry_t> *out_);
+    void mark_summary_entries_sent (
+      const std::vector<zlink_registry_topology_entry_t> &entries_,
+      const std::vector<bool> &sent_);
+    void collect_registered_services_for_heartbeat (
+      uint64_t now_ms_,
+      uint32_t heartbeat_interval_ms_,
+      std::vector<discovery_registered_service_snapshot_t> *out_) const;
+    void mark_registered_service_heartbeat (
+      const discovery_registered_service_snapshot_t &service_, uint64_t now_ms_);
+
+  private:
+    static void control_task (void *arg_);
+    void tick ();
     int ensure_sub_socket ();
     void close_sub_socket ();
     int bootstrap_registry (const char *registry_endpoint_);
     void handle_service_list (const std::vector<zlink_msg_t> &frames_);
     void notify_observers (const std::set<std::string> &services_);
-    void emit_ready_changed (uint32_t ready_count_);
-    int ensure_topology_reporters ();
-    void flush_topology_reports ();
     void refresh_registered_service_heartbeats (uint64_t now_ms_);
-    socket_base_t *create_tracked_socket (int socket_type_);
-    int close_tracked_socket (socket_base_t *&socket_, int timeout_ms_);
-    int close_tracked_socket_and_wait (socket_base_t *&socket_, int timeout_ms_);
-    service_control_runtime_t *control_runtime () const;
-    int ensure_control_task_active ();
 
     struct topology_key_t
     {

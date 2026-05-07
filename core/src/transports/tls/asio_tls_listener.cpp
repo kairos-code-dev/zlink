@@ -13,13 +13,12 @@
 #include "core/session_base.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/config.hpp"
+#include "utils/env.hpp"
 #include "utils/err.hpp"
 #include "utils/ip.hpp"
 #include "transports/tcp/tcp.hpp"
 
-#include <algorithm>
 #include <cerrno>
-#include <cstdlib>
 
 #ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
@@ -46,17 +45,7 @@ namespace
 {
 size_t parse_stream_accept_concurrency ()
 {
-    const char *env = std::getenv ("ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY");
-    if (!env || !*env)
-        return 4;
-
-    errno = 0;
-    char *end = NULL;
-    const unsigned long long value = std::strtoull (env, &end, 10);
-    if (errno != 0 || end == env || value == 0)
-        return 4;
-
-    return static_cast<size_t> (std::min<unsigned long long> (value, 128ULL));
+    return zlink::env::asio_stream_accept_concurrency ();
 }
 
 size_t stream_accept_target (const zlink::options_t &options_)

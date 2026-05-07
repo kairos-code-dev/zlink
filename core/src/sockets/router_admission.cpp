@@ -6,6 +6,7 @@
 
 #include "core/pipe.hpp"
 #include "protocol/wire.hpp"
+#include "utils/debug_log.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -43,7 +44,7 @@ void format_blob_routing_id_debug (const zlink::blob_t &routing_id_,
 
 bool router_debug_enabled ()
 {
-    return std::getenv ("ZLINK_ROUTER_DEBUG") != NULL;
+    return zlink::debug_env_enabled ("ZLINK_ROUTER_DEBUG");
 }
 }
 

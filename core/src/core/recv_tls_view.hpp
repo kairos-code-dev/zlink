@@ -3,10 +3,10 @@
 #ifndef __ZLINK_CORE_RECV_TLS_VIEW_HPP_INCLUDED__
 #define __ZLINK_CORE_RECV_TLS_VIEW_HPP_INCLUDED__
 
-#include <stdlib.h>
 #include <vector>
 
 #include "core/msg.hpp"
+#include "utils/env.hpp"
 #include "zlink.h"
 
 namespace zlink
@@ -26,15 +26,8 @@ struct storage_t
 inline size_t payload_cap ()
 {
     static const size_t cap = [] () -> size_t {
-        const char *env = getenv ("ZLINK_RECV_TLS_PAYLOAD_CAP");
-        if (!env || !*env)
-            return 2;
-
-        char *end = NULL;
-        const long parsed = strtol (env, &end, 10);
-        if (!end || end == env || parsed <= 0)
-            return 2;
-        return static_cast<size_t> (parsed);
+        return static_cast<size_t> (
+          env::positive_int ("ZLINK_RECV_TLS_PAYLOAD_CAP", 2));
     }();
     return cap;
 }

@@ -5,8 +5,8 @@
 #include "services/spot/spot_sub.hpp"
 
 #include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_debug.hpp"
 #include "services/spot/spot_node.hpp"
-#include "services/spot/spot_node_child_access.hpp"
 #include "sockets/socket_base.hpp"
 
 #include <stdio.h>
@@ -83,30 +83,24 @@ int spot_sub_t::subscribe (const char *topic_)
         }
         has_filters = !_topics.empty () || !_patterns.empty ();
     }
-    spot_node_child_access_t::mark_subject_changed (
-      _node, topic, ZLINK_SERVICE_EVENT_SUBJECT_TOPIC);
+    _node->mark_subject_changed (topic, ZLINK_SERVICE_EVENT_SUBJECT_TOPIC);
 
-    spot_node_child_access_t::note_local_sub_filters_changed (
-      _node, had_filters, has_filters);
+    _node->note_local_sub_filters_changed (had_filters, has_filters);
     emit_filter_applied_event (topic.c_str (),
                                ZLINK_SERVICE_EVENT_SUBJECT_TOPIC);
     if (inserted) {
         const bool aggregate_added =
           _node->update_aggregate_subscription (topic, false, true);
         if (aggregate_added
-            && spot_node_child_access_t::send_subscription_update (
-                 _node, topic, true)
-                 != 0)
+            && _node->send_subscription_update (topic, true) != 0)
             return -1;
-        if (spot_node_child_access_t::has_active_peers (_node))
-            spot_node_child_access_t::notify_subscription_forwarded (_node,
-                                                                     topic);
-        spot_node_child_access_t::schedule_subscription_replay (_node);
+        if (_node->has_active_peers ())
+            _node->notify_subscription_forwarded (topic);
+        _node->schedule_subscription_replay ();
         if (aggregate_added && _node->replay_subscriptions_if_active_peers () != 0)
             return -1;
     }
-    spot_node_child_access_t::submit_sub_summary (
-      _node, this, ZLINK_TOPOLOGY_STATE_READY, 0);
+    _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
     return 0;
 }
 
@@ -143,11 +137,10 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
         }
         has_filters = !_topics.empty () || !_patterns.empty ();
     }
-    spot_node_child_access_t::mark_subject_changed (
-      _node, prefix + "*", ZLINK_SERVICE_EVENT_SUBJECT_PATTERN);
+    _node->mark_subject_changed (prefix + "*",
+                                 ZLINK_SERVICE_EVENT_SUBJECT_PATTERN);
 
-    spot_node_child_access_t::note_local_sub_filters_changed (
-      _node, had_filters, has_filters);
+    _node->note_local_sub_filters_changed (had_filters, has_filters);
     const std::string subject = prefix + "*";
     emit_filter_applied_event (subject.c_str (),
                                ZLINK_SERVICE_EVENT_SUBJECT_PATTERN);
@@ -155,19 +148,15 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
         const bool aggregate_added =
           _node->update_aggregate_subscription (prefix, true, true);
         if (aggregate_added
-            && spot_node_child_access_t::send_subscription_update (
-                 _node, prefix, true)
-                 != 0)
+            && _node->send_subscription_update (prefix, true) != 0)
             return -1;
-        if (spot_node_child_access_t::has_active_peers (_node))
-            spot_node_child_access_t::notify_subscription_forwarded (_node,
-                                                                     prefix);
-        spot_node_child_access_t::schedule_subscription_replay (_node);
+        if (_node->has_active_peers ())
+            _node->notify_subscription_forwarded (prefix);
+        _node->schedule_subscription_replay ();
         if (aggregate_added && _node->replay_subscriptions_if_active_peers () != 0)
             return -1;
     }
-    spot_node_child_access_t::submit_sub_summary (
-      _node, this, ZLINK_TOPOLOGY_STATE_READY, 0);
+    _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
     return 0;
 }
 
@@ -222,21 +211,17 @@ int spot_sub_t::apply_aggregate_subscription (const std::string &raw_filter_,
     if (!changed)
         return 0;
 
-    spot_node_child_access_t::mark_subject_changed (
-      _node, subject, subject_kind);
+    _node->mark_subject_changed (subject, subject_kind);
 
-    spot_node_child_access_t::note_local_sub_filters_changed (
-      _node, had_filters, has_filters);
+    _node->note_local_sub_filters_changed (had_filters, has_filters);
     if (subscribe_) {
         emit_filter_applied_event (subject.c_str (), subject_kind);
-        spot_node_child_access_t::submit_sub_summary (
-          _node, this, ZLINK_TOPOLOGY_STATE_READY, 0);
+        _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
     } else {
-        spot_node_child_access_t::submit_sub_summary (
-          _node,
-          this, has_filters ? ZLINK_TOPOLOGY_STATE_READY
-                            : ZLINK_TOPOLOGY_STATE_CONNECTING,
-          0);
+        _node->submit_sub_summary (this,
+                                   has_filters ? ZLINK_TOPOLOGY_STATE_READY
+                                               : ZLINK_TOPOLOGY_STATE_CONNECTING,
+                                   0);
     }
     return 0;
 }
@@ -290,33 +275,29 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
         }
         has_filters_after = !_topics.empty () || !_patterns.empty ();
     }
-    spot_node_child_access_t::mark_subject_changed (
-      _node, subject.subject, subject.subject_kind);
+    _node->mark_subject_changed (subject.subject, subject.subject_kind);
 
-    spot_node_child_access_t::note_local_sub_filters_changed (
-      _node, had_filters, has_filters_after);
+    _node->note_local_sub_filters_changed (had_filters, has_filters_after);
     if (erased) {
         aggregate_removed =
           _node->update_aggregate_subscription (filter, is_pattern, false);
         if (aggregate_removed
-            && spot_node_child_access_t::send_subscription_update (
-                 _node, filter, false)
-                 != 0)
+            && _node->send_subscription_update (filter, false) != 0)
             first_error = errno != 0 ? errno : EIO;
     }
     release_ready_ack_endpoints (filter, &ready_ack_endpoints);
     const std::string ack_source_id = ready_ack_source_id ();
     if (aggregate_removed) {
         for (size_t i = 0; i < ready_ack_endpoints.size (); ++i) {
-            (void) spot_node_child_access_t::send_ready_ack_update (
-              _node, ready_ack_endpoints[i], filter, ack_source_id, false);
+            (void) _node->send_ready_ack_update (
+              ready_ack_endpoints[i], filter, ack_source_id, false);
         }
     }
-    spot_node_child_access_t::submit_sub_summary (
-      _node, this,
-      has_filters_after ? ZLINK_TOPOLOGY_STATE_READY
-                        : ZLINK_TOPOLOGY_STATE_CONNECTING,
-      0);
+    _node->submit_sub_summary (this,
+                               has_filters_after
+                                 ? ZLINK_TOPOLOGY_STATE_READY
+                                 : ZLINK_TOPOLOGY_STATE_CONNECTING,
+                               0);
     mark_subject_lost (subject, NULL);
     if (first_error != 0) {
         errno = first_error;
@@ -480,8 +461,8 @@ void spot_sub_t::mark_subject_subscription_ready (
         return;
     }
 
-    if (spot_node_child_access_t::send_ready_ack_update (
-          _node, endpoint_, raw_filter, ready_ack_source_id (), true)
+    if (_node->send_ready_ack_update (endpoint_,
+                                      raw_filter, ready_ack_source_id (), true)
         != 0)
         return;
 
@@ -524,8 +505,8 @@ void spot_sub_t::send_ready_ack_lost_for_endpoint (const char *endpoint_)
 
     const std::string ack_source_id = ready_ack_source_id ();
     for (size_t i = 0; i < raw_filters.size (); ++i)
-        (void) spot_node_child_access_t::send_ready_ack_update (
-          _node, endpoint, raw_filters[i], ack_source_id, false);
+        (void) _node->send_ready_ack_update (endpoint, raw_filters[i],
+                                             ack_source_id, false);
 }
 
 void spot_sub_t::emit_ready_event ()
@@ -563,8 +544,9 @@ void spot_sub_t::mark_subject_ready (const subject_descriptor_t &subject_,
     if (!emit)
         return;
 
-    spot_node_child_access_t::mark_subject_changed (
-      _node, subject_.subject, subject_.subject_kind);
+    if (_node)
+        _node->mark_subject_changed (subject_.subject,
+                                     subject_.subject_kind);
 
     LIBZLINK_UNUSED (endpoint_value);
 }
@@ -585,7 +567,7 @@ void spot_sub_t::backfill_subject_ready_endpoint (
           make_subject_key (subject_.subject, subject_.subject_kind);
         std::map<std::string, std::string>::iterator it =
           _ready_subject_endpoints.find (key);
-        if (getenv ("ZLINK_DEBUG_SPOT_BACKFILL")) {
+        if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_BACKFILL")) {
             fprintf (stderr,
                      "[spot-backfill] subject=%s kind=%u endpoint=%s found=%d "
                      "stored=%s\n",
@@ -627,8 +609,9 @@ void spot_sub_t::mark_subject_lost (const subject_descriptor_t &subject_,
     if (!erased)
         return;
 
-    spot_node_child_access_t::mark_subject_changed (
-      _node, subject_.subject, subject_.subject_kind);
+    if (_node)
+        _node->mark_subject_changed (subject_.subject,
+                                     subject_.subject_kind);
 
     LIBZLINK_UNUSED (endpoint_);
 }
@@ -646,9 +629,9 @@ void spot_sub_t::mark_all_subjects_lost (const char *endpoint_)
     if (_node) {
         const std::string ack_source_id = ready_ack_source_id ();
         for (size_t i = 0; i < ready_ack_updates.size (); ++i) {
-            (void) spot_node_child_access_t::send_ready_ack_update (
-              _node, ready_ack_updates[i].second, ready_ack_updates[i].first,
-              ack_source_id, false);
+            (void) _node->send_ready_ack_update (ready_ack_updates[i].second,
+                                                 ready_ack_updates[i].first,
+                                                 ack_source_id, false);
         }
     }
     for (size_t i = 0; i < subjects.size (); ++i)
@@ -662,15 +645,15 @@ void spot_sub_t::handle_ready_probe (const std::string &raw_filter_,
         return;
     if (_destroying.load (std::memory_order_acquire))
         return;
-    if (_node && spot_node_child_access_t::is_shutting_down (_node))
+    if (_node && _node->is_shutting_down ())
         return;
 
-    if (getenv ("ZLINK_DEBUG_SPOT_READY_PROBE")) {
+    if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_READY_PROBE")) {
         fprintf (stderr, "[spot-ready-probe] recv raw=%s endpoint=%s\n",
                  raw_filter_.c_str (),
                  peer_endpoint_.empty () ? "-" : peer_endpoint_.c_str ());
         fflush (stderr);
-        FILE *fp = fopen ("/tmp/zlink_spot_ready_ack.log", "a");
+        FILE *fp = fopen (spot_debug::ready_ack_log_path, "a");
         if (fp) {
             fprintf (fp, "probe raw=%s endpoint=%s\n", raw_filter_.c_str (),
                      peer_endpoint_.empty () ? "-" : peer_endpoint_.c_str ());
@@ -707,8 +690,8 @@ void spot_sub_t::handle_ready_probe (const std::string &raw_filter_,
     if (already_acked)
         return;
 
-    if (spot_node_child_access_t::send_ready_ack_update (
-          _node, endpoint, raw_filter_, ready_ack_source_id (), true)
+    if (_node->send_ready_ack_update (endpoint,
+                                      raw_filter_, ready_ack_source_id (), true)
         != 0)
         return;
 

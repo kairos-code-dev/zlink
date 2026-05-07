@@ -3,65 +3,45 @@
 #ifndef __ZLINK_ASIO_STREAM_FASTPATH_POLICY_HPP_INCLUDED__
 #define __ZLINK_ASIO_STREAM_FASTPATH_POLICY_HPP_INCLUDED__
 
-#include <cerrno>
-#include <cstdlib>
+#include "utils/env.hpp"
 
 namespace zlink
 {
 namespace asio_stream_fastpath_policy
 {
-inline bool env_flag_enabled (const char *name_)
-{
-    const char *env = std::getenv (name_);
-    return env && *env && *env != '0';
-}
-
-inline size_t parse_size_env (const char *name_, size_t fallback_)
-{
-    const char *env = std::getenv (name_);
-    if (!env || !*env)
-        return fallback_;
-    errno = 0;
-    char *end = NULL;
-    const unsigned long long value = std::strtoull (env, &end, 10);
-    if (errno != 0 || end == env || value == 0)
-        return fallback_;
-    return static_cast<size_t> (value);
-}
-
 inline bool gather_write_enabled ()
 {
-    return env_flag_enabled ("ZLINK_ASIO_GATHER_WRITE");
+    return env::flag_enabled ("ZLINK_ASIO_GATHER_WRITE");
 }
 
 inline bool single_write_enabled ()
 {
-    return env_flag_enabled ("ZLINK_ASIO_SINGLE_WRITE");
+    return env::flag_enabled ("ZLINK_ASIO_SINGLE_WRITE");
 }
 
 inline size_t gather_threshold ()
 {
-    return parse_size_env ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
+    return env::positive_size ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
 }
 
 inline bool stream_gather_enabled ()
 {
-    return !env_flag_enabled ("ZLINK_ASIO_STREAM_DISABLE_GATHER");
+    return !env::flag_enabled ("ZLINK_ASIO_STREAM_DISABLE_GATHER");
 }
 
 inline size_t stream_gather_threshold ()
 {
-    return parse_size_env ("ZLINK_ASIO_STREAM_GATHER_THRESHOLD", 1024);
+    return env::positive_size ("ZLINK_ASIO_STREAM_GATHER_THRESHOLD", 1024);
 }
 
 inline size_t stream_tiny_gather_threshold ()
 {
-    return parse_size_env ("ZLINK_ASIO_STREAM_TINY_GATHER_THRESHOLD", 0);
+    return env::positive_size ("ZLINK_ASIO_STREAM_TINY_GATHER_THRESHOLD", 0);
 }
 
 inline bool trace_enabled ()
 {
-    return env_flag_enabled ("ZLINK_ASIO_TRACE");
+    return env::flag_enabled ("ZLINK_ASIO_TRACE");
 }
 
 inline bool enable_handler_alloc ()
@@ -86,7 +66,7 @@ inline bool enable_rx_slab ()
 
 inline bool enable_non_tcp_spec_read ()
 {
-    return env_flag_enabled ("ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ");
+    return env::flag_enabled ("ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ");
 }
 
 inline size_t spec_write_budget_bytes ()
@@ -111,7 +91,7 @@ inline size_t default_target_size ()
 
 inline size_t initial_target_cap ()
 {
-    return parse_size_env ("ZLINK_ASIO_STREAM_INITIAL_TARGET_CAP", 4096);
+    return env::positive_size ("ZLINK_ASIO_STREAM_INITIAL_TARGET_CAP", 4096);
 }
 
 inline size_t clamp_stream_target_limit (size_t target_,

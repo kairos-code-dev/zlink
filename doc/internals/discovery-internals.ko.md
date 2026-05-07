@@ -108,11 +108,11 @@ sequenceDiagram
 
     Service->>Disc: register_endpoint(type, endpoint, weight)
     Disc->>Disc: _registered_services에 저장
-    Disc->>DEALER: REGISTER (0x0001)<br/>[auto_connect_type, service_name,<br/>service_role, endpoint, routing_id]
+    Disc->>DEALER: REGISTER (0x0001)<br/>[auto_connect_type, channel_name,<br/>service_role, endpoint, routing_id]
     REG->>DEALER: REGISTER_ACK (0x0002)<br/>[status, resolved_endpoint]
 
     loop heartbeat_interval 마다
-        Disc->>DEALER: HEARTBEAT (0x0004)<br/>[auto_connect_type, service_role,<br/>service_name, endpoint]
+        Disc->>DEALER: HEARTBEAT (0x0004)<br/>[auto_connect_type, service_role,<br/>channel_name, endpoint]
     end
 ```
 

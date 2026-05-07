@@ -17,6 +17,7 @@
 #include "services/spot/spot_subject_access.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/err.hpp"
+#include "utils/debug_log.hpp"
 
 #include <errno.h>
 #include <chrono>
@@ -34,7 +35,7 @@ namespace spot_io = zlink::spot_data_plane_message_io;
 
 bool spot_direct_route_debug_enabled_local ()
 {
-    return std::getenv ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE") != NULL;
+    return debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
 }
 
 static const size_t default_queue_message_unit_bytes = 64 * 1024;

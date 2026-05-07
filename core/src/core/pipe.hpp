@@ -59,6 +59,8 @@ class pipe_t ZLINK_FINAL : public object_t,
                          public array_item_t<2>,
                          public array_item_t<3>
 {
+    template <typename T> friend void release_heap_owned (T *);
+
     //  This allows pipepair to create pipe objects.
     friend int pipepair (zlink::object_t *parents_[2],
                          zlink::pipe_t *pipes_[2],

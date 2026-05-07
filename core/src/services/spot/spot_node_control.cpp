@@ -6,6 +6,7 @@
 
 #include "services/control/service_control_runtime.hpp"
 #include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_debug.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_mesh_pub_hwm.hpp"
 #include "services/spot/spot_node_control_policy.hpp"
@@ -18,7 +19,6 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <cstdarg>
 #include <vector>
 
 namespace zlink
@@ -27,38 +27,20 @@ namespace
 {
 static void spot_control_diagf (const char *fmt_, ...)
 {
-    if (!std::getenv ("ZLINK_DEBUG_SPOT_CONTROL"))
-        return;
-
     va_list args;
     va_start (args, fmt_);
-    std::fprintf (stderr, "[spot-control] ");
-    std::vfprintf (stderr, fmt_, args);
-    std::fprintf (stderr, "\n");
-    std::fflush (stderr);
+    debug_vfprintf ("ZLINK_DEBUG_SPOT_CONTROL", "[spot-control] ", fmt_,
+                    args);
     va_end (args);
 }
 
 static void spot_ready_ack_debugf (const char *fmt_, ...)
 {
-    if (!std::getenv ("ZLINK_DEBUG_SPOT_READY_ACK"))
-        return;
-
     va_list args;
     va_start (args, fmt_);
-    std::fprintf (stderr, "[spot-ready-ack] ");
-    std::vfprintf (stderr, fmt_, args);
-    std::fprintf (stderr, "\n");
-    std::fflush (stderr);
-    FILE *fp = std::fopen ("/tmp/zlink_spot_ready_ack.log", "a");
-    if (fp) {
-        va_list file_args;
-        va_start (file_args, fmt_);
-        std::vfprintf (fp, fmt_, file_args);
-        std::fprintf (fp, "\n");
-        va_end (file_args);
-        std::fclose (fp);
-    }
+    debug_vfprintf_with_file ("ZLINK_DEBUG_SPOT_READY_ACK",
+                              "[spot-ready-ack] ",
+                              spot_debug::ready_ack_log_path, fmt_, args);
     va_end (args);
 }
 
@@ -126,7 +108,7 @@ void spot_node_t::emit_pending_subscription_replays ()
     if (!should_replay)
         return;
 
-    if (std::getenv ("ZLINK_DEBUG_SPOT_REPLAY"))
+    if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_REPLAY"))
         std::fprintf (stderr, "[spot-replay] emit pending replay\n");
     if (send_data_plane_command (
           spot_control_protocol::cmd_replay_handle_state_subscriptions)

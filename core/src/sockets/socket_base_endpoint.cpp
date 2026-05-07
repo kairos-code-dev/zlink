@@ -37,10 +37,8 @@
 #include "transports/pgm/pgm_socket.hpp"
 #endif
 
-// TODO consider renaming protocol_ to scheme_ in conformance with RFC 3986
-// terminology, but this requires extensive changes to be consistent
 int zlink::socket_base_t::parse_uri (const char *uri_,
-                                     std::string &protocol_,
+                                     std::string &scheme_,
                                      std::string &path_)
 {
     zlink_assert (uri_ != NULL);
@@ -51,10 +49,10 @@ int zlink::socket_base_t::parse_uri (const char *uri_,
         errno = EINVAL;
         return -1;
     }
-    protocol_ = uri.substr (0, pos);
+    scheme_ = uri.substr (0, pos);
     path_ = uri.substr (pos + 3);
 
-    if (protocol_.empty () || path_.empty ()) {
+    if (scheme_.empty () || path_.empty ()) {
         errno = EINVAL;
         return -1;
     }

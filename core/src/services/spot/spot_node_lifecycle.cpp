@@ -13,6 +13,7 @@
 #include "services/common/monitor_decode.hpp"
 #include "services/common/socket_monitor_bridge.hpp"
 #include "services/control/service_control_runtime.hpp"
+#include "services/discovery/discovery_access.hpp"
 #include "services/discovery/discovery_owned_service.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "core/recv_internal.hpp"
@@ -515,12 +516,13 @@ int spot_node_t::attach_discovery (discovery_t *discovery_)
         _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
         should_register = !_endpoint_state.bound_endpoint.empty ();
     }
-    if (discovery_->add_observer (this) != 0)
+    if (discovery_access_t::add_observer (discovery_, this) != 0)
         return -1;
     if (should_register && ensure_registered () != 0) {
         scoped_lock_t lock (_sync);
         if (_discovery_state.discovery == discovery_) {
-            _discovery_state.discovery->remove_observer (this);
+            (void) discovery_access_t::remove_observer (
+              _discovery_state.discovery, this);
             _discovery_state.discovery = NULL;
             _discovery_state.discovery_service.clear ();
         }
@@ -588,7 +590,7 @@ int spot_node_t::attach_channel_dealer (discovery_t *discovery_,
         }
     }
 
-    if (discovery_->add_observer (this) != 0)
+    if (discovery_access_t::add_observer (discovery_, this) != 0)
         return -1;
 
     zlink_socket_monitor_open_options_t monitor_options;
@@ -596,7 +598,7 @@ int spot_node_t::attach_channel_dealer (discovery_t *discovery_,
     monitor_options.events = ZLINK_EVENT_ALL;
     void *monitor = zlink_socket_monitor_open (dealer_, &monitor_options);
     if (!monitor) {
-        discovery_->remove_observer (this);
+        (void) discovery_access_t::remove_observer (discovery_, this);
         return -1;
     }
 
@@ -606,14 +608,14 @@ int spot_node_t::attach_channel_dealer (discovery_t *discovery_,
             && !_service_attachment_state.attachments[channel_name].manual.routers.empty ())
         || _service_attachment_state.socket_index.count (dealer_) != 0) {
         zlink_monitor_close (&monitor);
-        discovery_->remove_observer (this);
+        (void) discovery_access_t::remove_observer (discovery_, this);
         errno = EBUSY;
         return -1;
     }
     if (dealer_->ensure_channel_name_metadata (channel_name.c_str ()) != 0) {
         const int saved_errno = errno;
         zlink_monitor_close (&monitor);
-        discovery_->remove_observer (this);
+        (void) discovery_access_t::remove_observer (discovery_, this);
         errno = saved_errno;
         return -1;
     }

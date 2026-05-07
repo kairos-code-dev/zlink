@@ -5,6 +5,7 @@
 #include "core/session_base.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/err.hpp"
+#include "utils/debug_log.hpp"
 
 int zlink::session_base_t::pull_msg (msg_t *msg_)
 {
@@ -21,7 +22,7 @@ int zlink::session_base_t::pull_msg (msg_t *msg_)
 int zlink::session_base_t::push_msg (msg_t *msg_)
 {
     const bool trace_direct_route =
-      std::getenv ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE") != NULL && _socket != NULL;
+      debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE") && _socket != NULL;
 
     if ((msg_->flags () & msg_t::command) && !msg_->is_subscribe ()
         && !msg_->is_cancel ()) {

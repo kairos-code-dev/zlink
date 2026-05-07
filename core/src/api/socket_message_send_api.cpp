@@ -14,13 +14,14 @@
 #include "core/msg.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "utils/err.hpp"
+#include "utils/debug_log.hpp"
 #include "utils/likely.hpp"
 
 namespace
 {
 bool routed_part_debug_enabled ()
 {
-    return std::getenv ("ZLINK_ROUTED_PART_DEBUG") != NULL;
+    return zlink::debug_env_enabled ("ZLINK_ROUTED_PART_DEBUG");
 }
 
 int validate_send_parts (zlink_msg_t *parts_, size_t part_count_)

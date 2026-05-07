@@ -484,6 +484,38 @@ If the handshake is not completed within this time, the connection is closed.
 
 ---
 
+## 24. Discovery Sync Options
+
+### DISCOVERY_SPOT_OWNER_SYNC
+
+| | |
+|---|---|
+| **What it does** | Enables Discovery to publish SPOT owner rows to Registry |
+| **Type** | `int` (0 = disabled [default], 1 = enabled) |
+| **API** | `zlink_set_option()` / `zlink_get_option()` with `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC` |
+
+When enabled, the Discovery instance reports which SpotNode owns each SPOT
+routing id to the Registry. Other nodes can then resolve owner node ids via
+`zlink_registry_query_snapshot()` without a live Discovery connection.
+
+Values other than 0 or 1 fail with `EINVAL`.
+
+### DISCOVERY_ACTOR_ROUTE_SYNC
+
+| | |
+|---|---|
+| **What it does** | Enables Discovery to publish actor route rows to Registry |
+| **Type** | `int` (0 = disabled [default], 1 = enabled) |
+| **API** | `zlink_set_option()` / `zlink_get_option()` with `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` |
+
+When enabled, the Discovery instance reports actor routing entries to the
+Registry. This allows external nodes to resolve actor routes via
+`zlink_registry_query_snapshot()`.
+
+Values other than 0 or 1 fail with `EINVAL`.
+
+---
+
 ## Per-Socket-Type Default Overrides
 
 Some socket types override common defaults at creation time:

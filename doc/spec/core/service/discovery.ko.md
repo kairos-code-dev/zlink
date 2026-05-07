@@ -41,6 +41,8 @@ zlink_config_result_t zlink_discovery_resolve_spot (
 `SpotNode`의 `node_rid`를 구합니다. 성공하면 호출자는 반환된
 `owner_node_rid_out`과 원래의 `spot_rid`를 묶어 ROUTER 쪽 direct 함수
 (`zlink_router_send_spot()` 또는 `zlink_router_request_spot()`)에 전달할 수
+있습니다.
+
 ### 캐시 모델
 
 Discovery가 들고 있는 주소 캐시는 전체 주소표를 전부 복제한 것이 아닙니다.

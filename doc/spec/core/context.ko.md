@@ -182,7 +182,33 @@ planner가 쓰는 연결당 단위 예산, size cap, 자동 `SNDBUF` / `RCVBUF`
 
 **스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다.
 
-**참고:** `zlink_ctx_get`
+**참고:** `zlink_ctx_set_data`, `zlink_ctx_get`
+
+---
+
+### zlink_ctx_set_data
+
+byte 버퍼로 context 옵션을 설정합니다.
+
+```c
+zlink_config_result_t zlink_ctx_set_data(void *context_,
+                                         zlink_ctx_option_t option_,
+                                         const void *optval_,
+                                         size_t optvallen_);
+```
+
+공개 바인딩 타입이 `int`가 아닌 context 옵션에 사용합니다. 주된 사용 사례는
+`ZLINK_THREAD_NAME_PREFIX`이며, null 종료 문자열을 `optval_`로 전달하고
+`strlen(prefix) + 1`을 `optvallen_`으로 전달합니다.
+
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
+
+**에러:**
+- `EINVAL` -- 알 수 없는 옵션 또는 유효하지 않은 값.
+
+**스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다.
+
+**참고:** `zlink_ctx_set`, `zlink_ctx_get`
 
 ---
 

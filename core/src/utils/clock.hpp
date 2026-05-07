@@ -7,8 +7,7 @@
 #include "utils/stdint.hpp"
 
 #if defined ZLINK_HAVE_OSX
-// TODO this is not required in this file, but condition_variable.hpp includes
-// clock.hpp to get these definitions
+// condition_variable.hpp includes clock.hpp to get these platform definitions.
 #ifndef CLOCK_REALTIME
 #define CLOCK_REALTIME 0
 #endif

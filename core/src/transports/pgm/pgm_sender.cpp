@@ -10,6 +10,7 @@
 #include "transports/pgm/pgm_sender.hpp"
 #include "core/session_base.hpp"
 #include "utils/err.hpp"
+#include "utils/heap_owner.hpp"
 #include "protocol/wire.hpp"
 #include "utils/stdint.hpp"
 #include "utils/macros.hpp"
@@ -106,7 +107,7 @@ void zlink::pgm_sender_t::terminate ()
 
 void zlink::pgm_sender_t::destroy_after_unplug ()
 {
-    delete this;
+    zlink::release_heap_owned (this);
 }
 
 void zlink::pgm_sender_t::restart_output ()

@@ -565,7 +565,7 @@ class socket_base_t : public own_t,
 
     //  Parse URI string.
     static int
-    parse_uri (const char *uri_, std::string &protocol_, std::string &path_);
+    parse_uri (const char *uri_, std::string &scheme_, std::string &path_);
 
     //  Check whether transport protocol, as specified in connect or
     //  bind, is available and compatible with the socket type.

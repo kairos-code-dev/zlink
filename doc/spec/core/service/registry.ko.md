@@ -389,23 +389,23 @@ zlink_config_result_t zlink_registry_service_summary_snapshot(
   size_t *count);
 ```
 
-서비스 수준 집계 정보를 반환합니다. 각 항목은 주어진 (service_kind,
-service_name) 쌍에 대해 상태별 인스턴스 수를 요약합니다.
+서비스 수준 집계 정보를 반환합니다. 각 항목은 주어진 (auto_connect_type,
+channel_name) 쌍에 대해 상태별 인스턴스 수를 요약합니다.
 
 **버퍼 규약:** `entries = NULL`을 전달하면 필요한 개수만 반환합니다. 다음
 호출에서 호출자가 할당한 버퍼를 제공합니다. 버퍼가 부족하면 `-1`을 반환하고
 `errno = ENOBUFS`, `*count`에 필요한 용량을 설정합니다.
 
-결과는 (`service_kind`, `service_name`) 오름차순으로 정렬됩니다.
+결과는 (`auto_connect_type`, `channel_name`) 오름차순으로 정렬됩니다.
 
 #### zlink_registry_service_summary_entry_t
 
 ```c
 typedef struct zlink_registry_service_summary_entry_t
 {
-    zlink_service_kind_t service_kind;
+    zlink_auto_connect_type_t auto_connect_type;
     zlink_service_role_t service_role;
-    char service_name[256];
+    char channel_name[256];
     uint32_t total_count;
     uint32_t connecting_count;
     uint32_t ready_count;
@@ -417,9 +417,9 @@ typedef struct zlink_registry_service_summary_entry_t
 
 | 필드 | 설명 |
 |------|------|
-| `service_kind` | `ZLINK_SERVICE_KIND_*` 상수 중 하나. |
+| `auto_connect_type` | `ZLINK_AUTO_CONNECT_*` 상수 중 하나. |
 | `service_role` | `ZLINK_SERVICE_ROLE_*` 상수 중 하나. |
-| `service_name` | null 종료 서비스 이름. |
+| `channel_name` | null 종료 채널 이름. |
 | `total_count` | 이 서비스의 총 등록된 인스턴스 수. |
 | `connecting_count` | 현재 연결 중인 인스턴스 수. |
 | `ready_count` | 현재 ready 상태인 인스턴스 수. |
@@ -432,9 +432,9 @@ typedef struct zlink_registry_service_summary_entry_t
 ```c
 typedef struct zlink_registry_service_summary_filter_t
 {
-    zlink_service_kind_t service_kind;
+    zlink_auto_connect_type_t auto_connect_type;
     zlink_service_role_t service_role;
-    char service_name[256];
+    char channel_name[256];
 } zlink_registry_service_summary_filter_t;
 ```
 
@@ -454,16 +454,22 @@ Registry가 관리하는 전역 서비스 토폴로지를 조회하는 API입니
 ### Topology 상수
 
 ```c
-#define ZLINK_TOPOLOGY_SOURCE_MANUAL    1
-#define ZLINK_TOPOLOGY_SOURCE_DISCOVERY 2
-#define ZLINK_TOPOLOGY_SOURCE_REGISTRY  3
+typedef enum zlink_topology_source_t
+{
+    ZLINK_TOPOLOGY_SOURCE_MANUAL    = 1,
+    ZLINK_TOPOLOGY_SOURCE_DISCOVERY = 2,
+    ZLINK_TOPOLOGY_SOURCE_REGISTRY  = 3
+} zlink_topology_source_t;
 
-#define ZLINK_TOPOLOGY_STATE_DISCOVERED 1
-#define ZLINK_TOPOLOGY_STATE_CONNECTING 2
-#define ZLINK_TOPOLOGY_STATE_READY      3
-#define ZLINK_TOPOLOGY_STATE_LOST       4
-#define ZLINK_TOPOLOGY_STATE_ERROR      5
-#define ZLINK_TOPOLOGY_STATE_STOPPED    6
+typedef enum zlink_topology_state_t
+{
+    ZLINK_TOPOLOGY_STATE_DISCOVERED = 1,
+    ZLINK_TOPOLOGY_STATE_CONNECTING = 2,
+    ZLINK_TOPOLOGY_STATE_READY      = 3,
+    ZLINK_TOPOLOGY_STATE_LOST       = 4,
+    ZLINK_TOPOLOGY_STATE_ERROR      = 5,
+    ZLINK_TOPOLOGY_STATE_STOPPED    = 6
+} zlink_topology_state_t;
 ```
 
 | 상수 | 값 | 설명 |
@@ -485,10 +491,11 @@ Registry가 관리하는 전역 서비스 토폴로지를 조회하는 API입니
 ```c
 typedef struct zlink_registry_topology_entry_t
 {
+    zlink_auto_connect_type_t auto_connect_type;
     zlink_routing_id_t routing_id;
     zlink_service_kind_t service_kind;
     zlink_service_role_t service_role;
-    char service_name[256];
+    char channel_name[256];
     char endpoint[256];
     zlink_topology_source_t source;
     zlink_topology_state_t state;
@@ -501,10 +508,11 @@ typedef struct zlink_registry_topology_entry_t
 
 | 필드 | 설명 |
 |------|------|
+| `auto_connect_type` | `ZLINK_AUTO_CONNECT_*` 상수 중 하나. |
 | `routing_id` | 서비스 인스턴스의 라우팅 아이덴티티. |
 | `service_kind` | `ZLINK_SERVICE_KIND_*` 상수 중 하나. |
 | `service_role` | `ZLINK_SERVICE_ROLE_*` 상수 중 하나. |
-| `service_name` | null 종료 서비스 이름. |
+| `channel_name` | null 종료 채널 이름. |
 | `endpoint` | null 종료 광고 엔드포인트. |
 | `source` | 항목 추가 방식 (`ZLINK_TOPOLOGY_SOURCE_*`). |
 | `state` | 현재 상태 (`ZLINK_TOPOLOGY_STATE_*`). |
@@ -518,9 +526,10 @@ typedef struct zlink_registry_topology_entry_t
 ```c
 typedef struct zlink_registry_topology_filter_t
 {
+    zlink_auto_connect_type_t auto_connect_type;
     zlink_service_kind_t service_kind;
     zlink_service_role_t service_role;
-    char service_name[256];
+    char channel_name[256];
     zlink_routing_id_t routing_id;
     zlink_topology_state_t state;
     zlink_topology_source_t source;

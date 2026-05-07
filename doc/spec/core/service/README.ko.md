@@ -47,7 +47,7 @@ Registry, Discovery는 각각 다른 공개 API를 가지지만, 세 문서는 �
 
 ## 주소 지정 방식
 
-SPOT 메시징에서 목적지를 정하는 방식은 크게 세 가지입니다.
+SPOT 메시징에서 목적지를 정하는 방식은 크게 두 가지입니다.
 
 - channel 호출 방식:
   호출자가 `channel_name`만 지정하면, attach된 `DEALER`가 해당 channel의

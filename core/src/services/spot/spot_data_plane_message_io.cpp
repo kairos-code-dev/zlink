@@ -6,13 +6,13 @@
 
 #include "api/request_reply_protocol_internal.hpp"
 #include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_debug.hpp"
 #include "services/spot/spot_message_parts_internal.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "sockets/socket_base.hpp"
 
-#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -20,24 +20,11 @@ namespace
 {
 void spot_ctrl_debugf (const char *fmt_, ...)
 {
-    if (!getenv ("ZLINK_SPOT_CTRL_DEBUG"))
-        return;
-
     va_list args;
     va_start (args, fmt_);
-    fprintf (stderr, "[spot-ctrl] ");
-    vfprintf (stderr, fmt_, args);
-    fprintf (stderr, "\n");
-    fflush (stderr);
-    FILE *fp = fopen ("/tmp/zlink_spot_ctrl.log", "a");
-    if (fp) {
-        va_list file_args;
-        va_start (file_args, fmt_);
-        vfprintf (fp, fmt_, file_args);
-        fprintf (fp, "\n");
-        va_end (file_args);
-        fclose (fp);
-    }
+    zlink::debug_vfprintf_with_file ("ZLINK_SPOT_CTRL_DEBUG", "[spot-ctrl] ",
+                                     zlink::spot_debug::ctrl_log_path, fmt_,
+                                     args);
     va_end (args);
 }
 }

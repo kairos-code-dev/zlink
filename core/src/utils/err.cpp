@@ -73,9 +73,8 @@ const char *zlink::wsa_error ()
 
 const char *zlink::wsa_error_no (int no_, const char *wsae_wouldblock_string_)
 {
-    //  TODO:  It seems that list of Windows socket errors is longer than this.
-    //         Investigate whether there's a way to convert it into the string
-    //         automatically (wsaError->HRESULT->string?).
+    //  This table covers the Winsock errors that zlink surfaces directly.
+    //  Unknown values fall through to a numeric fallback below.
     switch (no_) {
         case WSABASEERR:
             return "No Error";

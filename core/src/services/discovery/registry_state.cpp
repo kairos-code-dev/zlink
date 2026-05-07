@@ -562,7 +562,7 @@ void registry_t::handle_register (void *router_,
                                   const zlink_routing_id_t &sender_id_)
 {
     if (frame_count_ < 5) {
-        send_register_ack (router_, sender_id_, 0xFF, std::string (), 0, 0,
+        send_register_ack (router_, sender_id_, discovery_protocol::status_invalid, std::string (), 0, 0,
                            "invalid register");
         return;
     }
@@ -571,7 +571,7 @@ void registry_t::handle_register (void *router_,
     if (!discovery_protocol::read_u16 (frames_[1], &auto_connect_type)
         || !discovery_protocol::is_valid_auto_connect_type (
           auto_connect_type)) {
-        send_register_ack (router_, sender_id_, 0xFF, std::string (), 0, 0,
+        send_register_ack (router_, sender_id_, discovery_protocol::status_invalid, std::string (), 0, 0,
                            "invalid type");
         return;
     }
@@ -579,7 +579,7 @@ void registry_t::handle_register (void *router_,
     if (!discovery_protocol::read_u16 (frames_[2], &service_role)
         || !discovery_protocol::auto_connect_type_allows_role (
           auto_connect_type, service_role)) {
-        send_register_ack (router_, sender_id_, 0xFF, std::string (), 0, 0,
+        send_register_ack (router_, sender_id_, discovery_protocol::status_invalid, std::string (), 0, 0,
                            "invalid role");
         return;
     }
@@ -589,7 +589,7 @@ void registry_t::handle_register (void *router_,
       discovery_protocol::read_string (frames_[4]);
 
     if (channel_name.empty () || endpoint.empty ()) {
-        send_register_ack (router_, sender_id_, 0x02, endpoint, 0, 0,
+        send_register_ack (router_, sender_id_, discovery_protocol::status_rejected, endpoint, 0, 0,
                            "invalid endpoint");
         return;
     }
@@ -617,7 +617,7 @@ void registry_t::handle_register (void *router_,
 
     const uint64_t now = zlink::clock_t ().now_ms ();
 
-    uint8_t status = 0x00;
+    uint8_t status = discovery_protocol::status_ok;
     uint32_t source_registry = 0;
     uint64_t registration_id = 0;
     std::string error;
@@ -627,7 +627,7 @@ void registry_t::handle_register (void *router_,
         if (ensure_channel_contract_locked (channel_name, auto_connect_type,
                                             now, registry_id)
             != 0) {
-            status = errno == EEXIST ? 0x03 : 0xFF;
+            status = errno == EEXIST ? discovery_protocol::status_conflict : discovery_protocol::status_invalid;
             error = "channel type conflict";
         } else {
             service_key_t service_key;
@@ -690,20 +690,20 @@ void registry_t::handle_unregister (void *router_,
                                     const zlink_routing_id_t &sender_id_)
 {
     if (frame_count_ < 5) {
-        send_unregister_ack (router_, sender_id_, 0xFF, "invalid unregister");
+        send_unregister_ack (router_, sender_id_, discovery_protocol::status_invalid, "invalid unregister");
         return;
     }
 
     uint16_t auto_connect_type = 0;
     if (!discovery_protocol::read_u16 (frames_[1], &auto_connect_type)) {
-        send_unregister_ack (router_, sender_id_, 0xFF, "invalid type");
+        send_unregister_ack (router_, sender_id_, discovery_protocol::status_invalid, "invalid type");
         return;
     }
     uint16_t service_role = 0;
     if (!discovery_protocol::read_u16 (frames_[2], &service_role)
         || !discovery_protocol::auto_connect_type_allows_role (
           auto_connect_type, service_role)) {
-        send_unregister_ack (router_, sender_id_, 0xFF, "invalid role");
+        send_unregister_ack (router_, sender_id_, discovery_protocol::status_invalid, "invalid role");
         return;
     }
     const std::string channel_name =
@@ -716,7 +716,7 @@ void registry_t::handle_unregister (void *router_,
 
     service_map_t::iterator sit = _projection_state.services.find (service_key);
     if (sit == _projection_state.services.end ()) {
-        send_unregister_ack (router_, sender_id_, 0x01, "service not found");
+        send_unregister_ack (router_, sender_id_, discovery_protocol::status_not_found, "service not found");
         return;
     }
 
@@ -725,11 +725,11 @@ void registry_t::handle_unregister (void *router_,
     provider_key.endpoint = endpoint;
     provider_map_t::iterator pit = sit->second.providers.find (provider_key);
     if (pit == sit->second.providers.end ()) {
-        send_unregister_ack (router_, sender_id_, 0x01, "endpoint not found");
+        send_unregister_ack (router_, sender_id_, discovery_protocol::status_not_found, "endpoint not found");
         return;
     }
     if (pit->second.source_registry != _coordination_state.registry_id) {
-        send_unregister_ack (router_, sender_id_, 0x01, "foreign provider");
+        send_unregister_ack (router_, sender_id_, discovery_protocol::status_not_found, "foreign provider");
         return;
     }
 
@@ -748,7 +748,7 @@ void registry_t::handle_unregister (void *router_,
         _projection_state.services.erase (sit);
 
     _coordination_state.list_seq++;
-    send_unregister_ack (router_, sender_id_, 0x00, std::string ());
+    send_unregister_ack (router_, sender_id_, discovery_protocol::status_ok, std::string ());
 }
 
 void registry_t::handle_heartbeat (const zlink_msg_t *frames_,
@@ -794,7 +794,7 @@ void registry_t::handle_update_attributes (void *router_,
                                            const zlink_routing_id_t &sender_id_)
 {
     if (frame_count_ < 7) {
-        send_register_ack (router_, sender_id_, 0xFF, std::string (), 0, 0,
+        send_register_ack (router_, sender_id_, discovery_protocol::status_invalid, std::string (), 0, 0,
                            "invalid update");
         return;
     }
@@ -803,7 +803,7 @@ void registry_t::handle_update_attributes (void *router_,
     if (!discovery_protocol::read_u16 (frames_[1], &auto_connect_type)
         || !discovery_protocol::is_valid_auto_connect_type (
           auto_connect_type)) {
-        send_register_ack (router_, sender_id_, 0xFF, std::string (), 0, 0,
+        send_register_ack (router_, sender_id_, discovery_protocol::status_invalid, std::string (), 0, 0,
                            "invalid type");
         return;
     }
@@ -811,7 +811,7 @@ void registry_t::handle_update_attributes (void *router_,
     if (!discovery_protocol::read_u16 (frames_[2], &service_role)
         || !discovery_protocol::auto_connect_type_allows_role (
           auto_connect_type, service_role)) {
-        send_register_ack (router_, sender_id_, 0xFF, std::string (), 0, 0,
+        send_register_ack (router_, sender_id_, discovery_protocol::status_invalid, std::string (), 0, 0,
                            "invalid role");
         return;
     }
@@ -841,7 +841,7 @@ void registry_t::handle_update_attributes (void *router_,
     service_key.channel_name = channel_name;
     service_map_t::iterator sit = _projection_state.services.find (service_key);
     if (sit == _projection_state.services.end ()) {
-        send_register_ack (router_, sender_id_, 0x01, endpoint, 0, 0,
+        send_register_ack (router_, sender_id_, discovery_protocol::status_not_found, endpoint, 0, 0,
                            "service not found");
         return;
     }
@@ -851,13 +851,13 @@ void registry_t::handle_update_attributes (void *router_,
     provider_key.endpoint = endpoint;
     provider_map_t::iterator pit = sit->second.providers.find (provider_key);
     if (pit == sit->second.providers.end ()) {
-        send_register_ack (router_, sender_id_, 0x01, endpoint, 0, 0,
+        send_register_ack (router_, sender_id_, discovery_protocol::status_not_found, endpoint, 0, 0,
                            "provider not found");
         return;
     }
     const uint32_t local_registry_id = _coordination_state.registry_id == 0 ? 1 : _coordination_state.registry_id;
     if (pit->second.source_registry != local_registry_id) {
-        send_register_ack (router_, sender_id_, 0x01, endpoint, 0, 0,
+        send_register_ack (router_, sender_id_, discovery_protocol::status_not_found, endpoint, 0, 0,
                            "provider not local");
         return;
     }
@@ -867,7 +867,7 @@ void registry_t::handle_update_attributes (void *router_,
     pit->second.metadata = metadata;
     pit->second.provider_update_seq = _coordination_state.next_provider_update_seq++;
     _coordination_state.list_seq++;
-    send_register_ack (router_, sender_id_, 0x00, endpoint,
+    send_register_ack (router_, sender_id_, discovery_protocol::status_ok, endpoint,
                        pit->second.source_registry,
                        pit->second.registration_id, std::string ());
 }

@@ -7,10 +7,12 @@
 #include "api/request_reply_protocol_internal.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
+#include "services/spot/spot_debug.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
+#include "utils/debug_log.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -48,7 +50,7 @@ size_t hash_combine (size_t seed_, size_t value_)
 
 bool spot_route_stats_enabled ()
 {
-    return std::getenv ("ZLINK_DEBUG_SPOT_ROUTE_STATS") != NULL;
+    return debug_env_enabled ("ZLINK_DEBUG_SPOT_ROUTE_STATS");
 }
 
 struct spot_route_stats_t
@@ -72,8 +74,8 @@ struct spot_route_stats_t
                       count, total_ns, avg_ns);
         std::fflush (stderr);
         char path[128];
-        std::snprintf (path, sizeof (path), "/tmp/zlink_spot_route_publish_%d.log",
-                       current_process_id ());
+        spot_debug::route_publish_log_path (current_process_id (), path,
+                                            sizeof (path));
         FILE *fp = std::fopen (path, "a");
         if (fp) {
             std::fprintf (fp, "count=%llu ns=%llu avg_ns=%llu\n", count,

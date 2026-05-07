@@ -5,8 +5,10 @@
 #include "services/spot/spot_node.hpp"
 
 #include "services/control/service_control_runtime.hpp"
+#include "services/discovery/discovery_access.hpp"
 #include "services/discovery/discovery_owned_service.hpp"
 #include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_debug.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_runtime_internal.hpp"
@@ -18,15 +20,13 @@ namespace
 {
 static void spot_shutdown_logf_local (bool always_, const char *fmt_, ...)
 {
-    if (!always_ && !std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN"))
+    if (!always_ && !spot_debug::shutdown_enabled ())
         return;
 
     va_list args;
     va_start (args, fmt_);
-    std::fprintf (stderr, "[spot-shutdown] ");
-    std::vfprintf (stderr, fmt_, args);
-    std::fprintf (stderr, "\n");
-    std::fflush (stderr);
+    debug_vfprintf (always_ ? NULL : "ZLINK_DEBUG_SPOT_SHUTDOWN",
+                    "[spot-shutdown] ", fmt_, args);
     va_end (args);
 }
 }
@@ -181,21 +181,24 @@ int spot_node_t::destroy ()
     close_attachment_monitors (&monitors);
 
     if (discovery)
-        preserve_first_error (discovery->remove_observer (this),
-                                    &first_error);
+        preserve_first_error (
+          discovery_access_t::remove_observer (discovery, this),
+          &first_error);
     for (std::map<std::string, discovery_t *>::iterator it =
            service_discoveries.begin ();
          it != service_discoveries.end (); ++it) {
         if (it->second)
-            preserve_first_error (it->second->remove_observer (this),
-                                        &first_error);
+            preserve_first_error (
+              discovery_access_t::remove_observer (it->second, this),
+              &first_error);
     }
     for (std::map<std::string, discovery_t *>::iterator it =
            channel_dealer_discoveries.begin ();
          it != channel_dealer_discoveries.end (); ++it) {
         if (it->second)
-            preserve_first_error (it->second->remove_observer (this),
-                                        &first_error);
+            preserve_first_error (
+              discovery_access_t::remove_observer (it->second, this),
+              &first_error);
     }
     spot_shutdown_logf_local (false, "step=observer_removed node=%p",
                               static_cast<void *> (this));

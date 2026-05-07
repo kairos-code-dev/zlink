@@ -123,6 +123,8 @@ struct spot_node_access_t
     static bool pubsub_enabled (spot_node_t *node_);
     static bool routed_enabled (spot_node_t *node_);
     static bool is_shutting_down (spot_node_t *node_);
+    static socket_base_t *create_socket (spot_node_t *node_,
+                                         int socket_type_);
     static void track_owned_socket (spot_node_t *node_, socket_base_t *socket_);
     static void untrack_owned_socket (spot_node_t *node_,
                                      const socket_base_t *socket_);
@@ -140,11 +142,25 @@ struct spot_node_access_t
                                             std::string *ca_out_,
                                             std::string *host_out_,
                                             int *trust_system_out_);
+    static void snapshot_tls_server_config (spot_node_t *node_,
+                                            std::string *cert_out_,
+                                            std::string *key_out_);
+    static void mark_bound_endpoint_and_server_tls_locked (
+      spot_node_t *node_, const std::string &bound_endpoint_);
+    static void mark_mesh_client_tls_locked (spot_node_t *node_);
+    static int apply_tls_server (spot_node_t *node_,
+                                 socket_base_t *socket_,
+                                 const std::string &cert_,
+                                 const std::string &key_);
     static int apply_tls_client (spot_node_t *node_,
                                  socket_base_t *socket_,
                                  const std::string &ca_cert_,
                                  const std::string &hostname_,
                                  int trust_system_);
+    static bool recv_ctrl_reply (socket_base_t *socket_, int *out_errno_);
+    static int close_owned_socket (spot_node_t *node_,
+                                   socket_base_t *&socket_,
+                                   int timeout_ms_);
     static int close_owned_socket_and_wait (spot_node_t *node_,
                                             socket_base_t *&socket_,
                                             int timeout_ms_);

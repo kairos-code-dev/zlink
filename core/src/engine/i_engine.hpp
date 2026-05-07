@@ -37,9 +37,8 @@ struct i_engine
 
     //  This method is called by the session to signalise that more
     //  messages can be written to the pipe.
-    //  Returns false if the engine was deleted due to an error.
-    //  TODO it is probably better to change the design such that the engine
-    //  does not delete itself
+    //  Returns false if the engine reached its terminal heap-owner release path
+    //  due to an error.
     virtual bool restart_input () = 0;
 
     //  This method is called by the session to signalise that there

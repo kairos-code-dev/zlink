@@ -10,6 +10,7 @@
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_debug.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -17,12 +18,12 @@
 #include "services/common/monitor_decode.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
+#include "utils/env.hpp"
 #include "utils/err.hpp"
 
 #include <errno.h>
 #include <map>
 #include <set>
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,24 +36,11 @@ namespace spot_io = zlink::spot_data_plane_message_io;
 
 static void spot_ready_ack_ctrl_debugf (const char *fmt_, ...)
 {
-    if (!getenv ("ZLINK_DEBUG_SPOT_READY_ACK"))
-        return;
-
     va_list args;
     va_start (args, fmt_);
-    fprintf (stderr, "[spot-ready-ack-ctrl] ");
-    vfprintf (stderr, fmt_, args);
-    fprintf (stderr, "\n");
-    fflush (stderr);
-    FILE *fp = fopen ("/tmp/zlink_spot_ready_ack.log", "a");
-    if (fp) {
-        va_list file_args;
-        va_start (file_args, fmt_);
-        vfprintf (fp, fmt_, file_args);
-        fprintf (fp, "\n");
-        va_end (file_args);
-        fclose (fp);
-    }
+    debug_vfprintf_with_file ("ZLINK_DEBUG_SPOT_READY_ACK",
+                              "[spot-ready-ack-ctrl] ",
+                              spot_debug::ready_ack_log_path, fmt_, args);
     va_end (args);
 }
 
@@ -148,16 +136,7 @@ uint64_t spot_data_plane_protocol_t::resolve_bootstrap_broadcast_interval_ms (
                                         runtime_)
                                     : 1000);
 
-    uint64_t value = 0;
-    const char *env = getenv ("ZLINK_SPOT_BOOTSTRAP_INTERVAL_MS");
-    if (env && *env) {
-        char *end = NULL;
-        const unsigned long parsed = strtoul (env, &end, 10);
-        if (end != env && parsed > 0)
-            value = static_cast<uint64_t> (parsed);
-    }
-
-    env_cached = value;
+    env_cached = env::positive_u64 ("ZLINK_SPOT_BOOTSTRAP_INTERVAL_MS", 0);
     env_checked = true;
     return env_cached != 0 ? env_cached
                            : (bootstrap_ready_

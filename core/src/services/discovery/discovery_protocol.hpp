@@ -35,6 +35,34 @@ static const uint16_t msg_unbind_route = 0x000F;
 static const uint16_t msg_resolve_route = 0x0010;
 static const uint16_t msg_resolve_route_reply = 0x0011;
 
+enum reply_status_t
+{
+    status_ok = 0x00,
+    status_not_found = 0x01,
+    status_rejected = 0x02,
+    status_conflict = 0x03,
+    status_unsupported = 0x04,
+    status_invalid = 0xFF
+};
+
+inline int register_status_errno (uint8_t status_)
+{
+    if (status_ == status_conflict)
+        return EEXIST;
+    if (status_ == status_unsupported)
+        return ENOTSUP;
+    return EINVAL;
+}
+
+inline int route_status_errno (uint8_t status_)
+{
+    if (status_ == status_not_found)
+        return ENOENT;
+    if (status_ == status_rejected)
+        return ESTALE;
+    return EINVAL;
+}
+
 enum service_role_t
 {
     service_role_invalid = 0,

@@ -8,6 +8,7 @@
 #include "sockets/socket_dispatch_loop_internal.hpp"
 #include "core/pipe.hpp"
 #include "utils/err.hpp"
+#include "utils/debug_log.hpp"
 
 #include <cstdlib>
 #include <cstdio>
@@ -16,7 +17,7 @@ namespace
 {
 bool router_debug_enabled ()
 {
-    return std::getenv ("ZLINK_ROUTER_DEBUG") != NULL;
+    return zlink::debug_env_enabled ("ZLINK_ROUTER_DEBUG");
 }
 
 void format_routing_id_debug (const zlink_routing_id_t *rid_,

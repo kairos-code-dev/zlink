@@ -390,23 +390,23 @@ zlink_config_result_t zlink_registry_service_summary_snapshot(
 ```
 
 Returns service-level aggregate information. Each entry summarizes instance
-counts by state for a given (service_kind, service_name) pair.
+counts by state for a given (auto_connect_type, channel_name) pair.
 
 **Buffer convention:** Pass `entries = NULL` to query the required count.
 Provide a caller-allocated buffer on the next call. If the buffer is too
 small, the call returns `-1` with `errno = ENOBUFS` and `*count` set to the
 needed capacity.
 
-Results are ordered by (`service_kind`, `service_name`) ascending.
+Results are ordered by (`auto_connect_type`, `channel_name`) ascending.
 
 #### zlink_registry_service_summary_entry_t
 
 ```c
 typedef struct zlink_registry_service_summary_entry_t
 {
-    zlink_service_kind_t service_kind;
+    zlink_auto_connect_type_t auto_connect_type;
     zlink_service_role_t service_role;
-    char service_name[256];
+    char channel_name[256];
     uint32_t total_count;
     uint32_t connecting_count;
     uint32_t ready_count;
@@ -418,9 +418,9 @@ typedef struct zlink_registry_service_summary_entry_t
 
 | Field | Description |
 |-------|-------------|
-| `service_kind` | One of the `ZLINK_SERVICE_KIND_*` constants. |
+| `auto_connect_type` | One of the `ZLINK_AUTO_CONNECT_*` constants. |
 | `service_role` | One of the `ZLINK_SERVICE_ROLE_*` constants. |
-| `service_name` | Null-terminated service name. |
+| `channel_name` | Null-terminated channel name. |
 | `total_count` | Total registered instances for this service. |
 | `connecting_count` | Instances currently connecting. |
 | `ready_count` | Instances currently ready. |
@@ -433,9 +433,9 @@ typedef struct zlink_registry_service_summary_entry_t
 ```c
 typedef struct zlink_registry_service_summary_filter_t
 {
-    zlink_service_kind_t service_kind;
+    zlink_auto_connect_type_t auto_connect_type;
     zlink_service_role_t service_role;
-    char service_name[256];
+    char channel_name[256];
 } zlink_registry_service_summary_filter_t;
 ```
 
@@ -455,16 +455,22 @@ by the Registry.
 ### Topology Constants
 
 ```c
-#define ZLINK_TOPOLOGY_SOURCE_MANUAL    1
-#define ZLINK_TOPOLOGY_SOURCE_DISCOVERY 2
-#define ZLINK_TOPOLOGY_SOURCE_REGISTRY  3
+typedef enum zlink_topology_source_t
+{
+    ZLINK_TOPOLOGY_SOURCE_MANUAL    = 1,
+    ZLINK_TOPOLOGY_SOURCE_DISCOVERY = 2,
+    ZLINK_TOPOLOGY_SOURCE_REGISTRY  = 3
+} zlink_topology_source_t;
 
-#define ZLINK_TOPOLOGY_STATE_DISCOVERED 1
-#define ZLINK_TOPOLOGY_STATE_CONNECTING 2
-#define ZLINK_TOPOLOGY_STATE_READY      3
-#define ZLINK_TOPOLOGY_STATE_LOST       4
-#define ZLINK_TOPOLOGY_STATE_ERROR      5
-#define ZLINK_TOPOLOGY_STATE_STOPPED    6
+typedef enum zlink_topology_state_t
+{
+    ZLINK_TOPOLOGY_STATE_DISCOVERED = 1,
+    ZLINK_TOPOLOGY_STATE_CONNECTING = 2,
+    ZLINK_TOPOLOGY_STATE_READY      = 3,
+    ZLINK_TOPOLOGY_STATE_LOST       = 4,
+    ZLINK_TOPOLOGY_STATE_ERROR      = 5,
+    ZLINK_TOPOLOGY_STATE_STOPPED    = 6
+} zlink_topology_state_t;
 ```
 
 | Constant | Value | Description |
@@ -486,10 +492,11 @@ by the Registry.
 ```c
 typedef struct zlink_registry_topology_entry_t
 {
+    zlink_auto_connect_type_t auto_connect_type;
     zlink_routing_id_t routing_id;
     zlink_service_kind_t service_kind;
     zlink_service_role_t service_role;
-    char service_name[256];
+    char channel_name[256];
     char endpoint[256];
     zlink_topology_source_t source;
     zlink_topology_state_t state;
@@ -502,10 +509,11 @@ typedef struct zlink_registry_topology_entry_t
 
 | Field | Description |
 |-------|-------------|
+| `auto_connect_type` | One of the `ZLINK_AUTO_CONNECT_*` constants. |
 | `routing_id` | Routing identity of the service instance. |
 | `service_kind` | One of the `ZLINK_SERVICE_KIND_*` constants. |
 | `service_role` | One of the `ZLINK_SERVICE_ROLE_*` constants. |
-| `service_name` | Null-terminated service name. |
+| `channel_name` | Null-terminated channel name. |
 | `endpoint` | Null-terminated advertised endpoint. |
 | `source` | How the entry was added (`ZLINK_TOPOLOGY_SOURCE_*`). |
 | `state` | Current state (`ZLINK_TOPOLOGY_STATE_*`). |
@@ -519,9 +527,10 @@ typedef struct zlink_registry_topology_entry_t
 ```c
 typedef struct zlink_registry_topology_filter_t
 {
+    zlink_auto_connect_type_t auto_connect_type;
     zlink_service_kind_t service_kind;
     zlink_service_role_t service_role;
-    char service_name[256];
+    char channel_name[256];
     zlink_routing_id_t routing_id;
     zlink_topology_state_t state;
     zlink_topology_source_t source;

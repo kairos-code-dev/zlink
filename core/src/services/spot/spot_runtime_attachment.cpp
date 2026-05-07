@@ -4,8 +4,10 @@
 
 #include "services/spot/spot_runtime_internal.hpp"
 #include "services/spot/spot_auto_hwm_internal.hpp"
+#include "services/spot/spot_debug.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_access.hpp"
 
 #include <vector>
 
@@ -15,15 +17,10 @@ namespace
 {
 void spot_runtime_diag_logf_local (const char *fmt_, ...)
 {
-    if (!std::getenv ("ZLINK_DEBUG_SPOT_RUNTIME_ATTACH"))
-        return;
-
     va_list args;
     va_start (args, fmt_);
-    std::fprintf (stderr, "[spot-runtime] ");
-    std::vfprintf (stderr, fmt_, args);
-    std::fprintf (stderr, "\n");
-    std::fflush (stderr);
+    debug_vfprintf ("ZLINK_DEBUG_SPOT_RUNTIME_ATTACH", "[spot-runtime] ",
+                    fmt_, args);
     va_end (args);
 }
 
@@ -42,7 +39,8 @@ int spot_runtime_t::create_attachment (int kind_,
                                        const char *endpoint_,
                                        uint64_t *out_id_)
 {
-    if (!owner || !owner->_ctx || !endpoint_ || !out_id_) {
+    ctx_t *owner_ctx = spot_node_access_t::ctx (owner);
+    if (!owner_ctx || !endpoint_ || !out_id_) {
         errno = EFAULT;
         return -1;
     }
@@ -76,7 +74,8 @@ int spot_runtime_t::create_attachment (int kind_,
       std::max<size_t> (std::max<size_t> (next_local_pub_count,
                                           next_local_sub_count),
                         1u);
-    socket_base_t *socket = owner->_ctx->create_socket (socket_type);
+    socket_base_t *socket =
+      spot_node_access_t::create_socket (owner, socket_type);
     if (!socket)
         return -1;
     socket_base_t *relay_socket = NULL;
@@ -86,7 +85,7 @@ int spot_runtime_t::create_attachment (int kind_,
       spot_node_pubsub_admission_hwm (hwm_config);
     const int zero = 0;
     apply_spot_internal_auto_hwm (
-      owner->_ctx, socket,
+      owner_ctx, socket,
       kind_ == spot_attachment_pub
         ? spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data,
                                           ZLINK_CORE_SOCKET_PUB,
@@ -121,18 +120,19 @@ int spot_runtime_t::create_attachment (int kind_,
         socket->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero, sizeof (zero));
     }
 
-    owner->track_owned_socket (socket);
+    spot_node_access_t::track_owned_socket (owner, socket);
 
     std::string relay_endpoint;
     if (kind_ == spot_attachment_sub) {
-        relay_socket = owner->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
+        relay_socket =
+          spot_node_access_t::create_socket (owner, ZLINK_CORE_SOCKET_PUB);
         if (!relay_socket) {
             (void) close_runtime_socket (socket, 1000);
             return -1;
         }
         relay_socket->set_auto_hwm_policy_enabled (false);
         apply_spot_internal_auto_hwm (
-          owner->_ctx, relay_socket,
+          owner_ctx, relay_socket,
           spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data,
                                           ZLINK_CORE_SOCKET_PUB,
                                           std::max<size_t> (
@@ -150,7 +150,7 @@ int spot_runtime_t::create_attachment (int kind_,
         const int neg_one = -1;
         relay_socket->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                   sizeof (neg_one));
-        owner->track_owned_socket (relay_socket);
+        spot_node_access_t::track_owned_socket (owner, relay_socket);
         relay_endpoint =
           make_sub_attachment_relay_endpoint (this, attachment_id);
         if (relay_socket->bind (relay_endpoint.c_str ()) != 0) {
@@ -195,8 +195,9 @@ int spot_runtime_t::close_runtime_socket (socket_base_t *&socket_,
 {
     if (!socket_)
         return 0;
-    if (owner && owner->_ctx)
-        return owner->_lifecycle.close_socket_and_wait (socket_, timeout_ms_);
+    if (spot_node_access_t::ctx (owner))
+        return spot_node_access_t::close_owned_socket_and_wait (
+          owner, socket_, timeout_ms_);
 
     socket_->stop ();
     socket_->close ();
@@ -209,15 +210,16 @@ int spot_runtime_t::close_runtime_socket_async (socket_base_t *&socket_,
 {
     if (!socket_)
         return 0;
-    if (owner && owner->is_shutting_down ()) {
+    if (owner && spot_node_access_t::is_shutting_down (owner)) {
         socket_->stop ();
         socket_->close ();
-        owner->untrack_owned_socket (socket_);
+        spot_node_access_t::untrack_owned_socket (owner, socket_);
         socket_ = NULL;
         return 0;
     }
-    if (owner && owner->_ctx)
-        return owner->_lifecycle.close_socket (socket_, timeout_ms_);
+    if (spot_node_access_t::ctx (owner))
+        return spot_node_access_t::close_owned_socket (owner, socket_,
+                                                       timeout_ms_);
 
     socket_->stop ();
     socket_->close ();

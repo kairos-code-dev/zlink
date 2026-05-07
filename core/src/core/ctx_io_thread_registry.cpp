@@ -2,12 +2,12 @@
 
 #include "utils/precompiled.hpp"
 
-#include <cstdlib>
 #include <string.h>
 
 #include "core/ctx_io_thread_registry.hpp"
 
 #include "core/io_thread.hpp"
+#include "utils/env.hpp"
 
 namespace
 {
@@ -19,13 +19,10 @@ enum stream_sched_mode_t
 
 stream_sched_mode_t parse_stream_session_sched_mode ()
 {
-    const char *env = std::getenv ("ZLINK_ASIO_STREAM_SESSION_SCHED");
-    if (!env || !*env)
+    if (zlink::env::equals ("ZLINK_ASIO_STREAM_SESSION_SCHED", "rr", "RR"))
         return stream_sched_rr;
-
-    if (!strcmp (env, "rr") || !strcmp (env, "RR"))
-        return stream_sched_rr;
-    if (!strcmp (env, "minload") || !strcmp (env, "MINLOAD"))
+    if (zlink::env::equals ("ZLINK_ASIO_STREAM_SESSION_SCHED",
+                            "minload", "MINLOAD"))
         return stream_sched_minload;
 
     return stream_sched_rr;

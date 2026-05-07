@@ -201,7 +201,32 @@ zlink_config_result_t zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
 
 **스레드 안전성:** 스레드 안전하지 않습니다.
 
-**참고:** `zlink_msg_move`
+**참고:** `zlink_msg_move`, `zlink_msg_adopt`
+
+---
+
+### zlink_msg_adopt
+
+별도의 init+move 단계 없이 source 메시지의 소유권을 인수합니다.
+
+```c
+zlink_config_result_t zlink_msg_adopt (zlink_msg_t *dest_, zlink_msg_t *src_);
+```
+
+이미 `dest_`에 대한 저장소를 보유하고 있고, 새로 수신한 네이티브 메시지의
+소유권을 효율적으로 가져와야 하는 바인딩을 위한 함수입니다. `zlink_msg_move`와
+달리 `dest_`는 현재 초기화된 메시지를 소유하지 않아야 합니다 — 이미 초기화된
+`dest_`에 `zlink_msg_adopt`를 호출하면 정의되지 않은 동작이 발생합니다.
+
+성공 시 `dest_`는 `src_`의 원래 내용을 소유하고, `src_`는 빈 초기화 상태의
+메시지가 됩니다. 함수가 반환된 후 `src_`를 별도로 close해서는 안 됩니다 —
+`zlink_msg_adopt`가 내부적으로 `src_`를 빈 초기화 상태로 재설정합니다.
+
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
+
+**스레드 안전성:** 스레드 안전하지 않습니다.
+
+**참고:** `zlink_msg_move`, `zlink_msg_copy`
 
 ---
 

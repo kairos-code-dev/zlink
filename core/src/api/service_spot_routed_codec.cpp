@@ -153,7 +153,13 @@ bool zlink::spot_reqrep_internal::should_process_spot_routed_locally (
           find_router_state_by_rid (envelope_.destination_endpoint_rid));
     }
 
-    std::string local_node_rid;
-    return resolve_spot_node_routing_id (node_, &local_node_rid)
-           && local_node_rid == envelope_.destination_node_rid;
+    zlink_routing_id_t local_node_rid;
+    memset (&local_node_rid, 0, sizeof (local_node_rid));
+    return node_->node_routing_id (&local_node_rid) == 0
+           && local_node_rid.size == envelope_.destination_node_rid_value.size
+           && local_node_rid.size > 0
+           && memcmp (local_node_rid.data,
+                      envelope_.destination_node_rid_value.data,
+                      local_node_rid.size)
+                == 0;
 }

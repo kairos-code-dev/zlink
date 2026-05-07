@@ -187,7 +187,34 @@ The profile selects the per-connection unit budget, size cap, and automatic
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_ctx_get`
+**See also:** `zlink_ctx_set_data`, `zlink_ctx_get`
+
+---
+
+### zlink_ctx_set_data
+
+Set a context option from a byte buffer.
+
+```c
+zlink_config_result_t zlink_ctx_set_data(void *context_,
+                                         zlink_ctx_option_t option_,
+                                         const void *optval_,
+                                         size_t optvallen_);
+```
+
+Used for context options whose public binding type is not an `int`. The
+primary use case is `ZLINK_THREAD_NAME_PREFIX`, which takes a
+null-terminated string. Pass the string pointer as `optval_` and
+`strlen(prefix) + 1` as `optvallen_`.
+
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
+
+**Errors:**
+- `EINVAL` -- unknown option or invalid value.
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_ctx_set`, `zlink_ctx_get`
 
 ---
 

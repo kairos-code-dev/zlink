@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_debug.hpp"
 
 #include "sockets/socket_base.hpp"
 
@@ -12,15 +13,13 @@ namespace
 {
 static void spot_shutdown_logf_local (bool always_, const char *fmt_, ...)
 {
-    if (!always_ && !std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN"))
+    if (!always_ && !spot_debug::shutdown_enabled ())
         return;
 
     va_list args;
     va_start (args, fmt_);
-    std::fprintf (stderr, "[spot-shutdown] ");
-    std::vfprintf (stderr, fmt_, args);
-    std::fprintf (stderr, "\n");
-    std::fflush (stderr);
+    debug_vfprintf (always_ ? NULL : "ZLINK_DEBUG_SPOT_SHUTDOWN",
+                    "[spot-shutdown] ", fmt_, args);
     va_end (args);
 }
 }

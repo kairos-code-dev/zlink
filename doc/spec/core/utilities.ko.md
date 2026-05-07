@@ -146,18 +146,6 @@ void zlink_atomic_counter_destroy(void **counter_p_);
 `zlink_timer_new`로 컨텍스트 타이머를, `zlink_spot_timer_new`로 Spot 소유
 타이머를 생성한다. 생성 후에는 동일한 `zlink_timer_*` API로 제어한다.
 
-### 콜백 타입
-
-```c
-typedef void (*zlink_timer_handler_fn) (void *timer_,
-                                        uint64_t fire_count_,
-                                        void *userdata_);
-```
-
-타이머 만료 시 호출되는 콜백. `fire_count_`는 시작 이후 누적 발동 횟수.
-
----
-
 ### zlink_timer_new
 
 독립 실행형 타이머를 생성한다.
@@ -267,6 +255,8 @@ zlink_handler_result_t zlink_timer_handler (void *timer_,
 ```
 
 콜백 핸들러를 등록하면 `zlink_timer_recv`는 `ZLINK_RECV_BUSY`로 실패한다.
+`handler_`에 `NULL`을 전달하면 이전에 등록된 콜백이 분리(detach)된다 —
+분리 후에는 `zlink_timer_recv`를 다시 사용할 수 있다.
 
 **반환값:** 성공 시 `ZLINK_HANDLER_OK`. 실패 시에는 `zlink_handler_result_t`
 값을 반환한다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지된다.

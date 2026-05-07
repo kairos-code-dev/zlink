@@ -12,8 +12,7 @@
 #include "utils/stdint.hpp"
 #include "utils/likely.hpp"
 #include "utils/err.hpp"
-
-#include <climits>
+#include "utils/env.hpp"
 
 //  Check whether the sizes of public representation of the message (zlink_msg_t)
 //  and private representation of the message (zlink::msg_t) match.
@@ -26,21 +25,8 @@ namespace
 {
 const uintptr_t slice_lmsg_flag = static_cast<uintptr_t> (1);
 
-int parse_positive_int_env (const char *name_, int default_value_)
-{
-    const char *env = std::getenv (name_);
-    if (!env || !*env)
-        return default_value_;
-
-    char *end = NULL;
-    const long value = std::strtol (env, &end, 10);
-    if (!end || end == env || value <= 0 || value > INT_MAX)
-        return default_value_;
-    return static_cast<int> (value);
-}
-
 const size_t slice_content_pool_max = static_cast<size_t> (
-  parse_positive_int_env ("ZLINK_MSG_SLICE_CONTENT_POOL_MAX", 32768));
+  zlink::env::positive_int ("ZLINK_MSG_SLICE_CONTENT_POOL_MAX", 32768));
 
 typedef std::vector<zlink::msg_t::content_t *> slice_content_pool_t;
 

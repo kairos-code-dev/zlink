@@ -7,10 +7,10 @@
 
 #include "engine/asio/asio_debug.hpp"
 #include "core/address.hpp"
+#include "utils/env.hpp"
 
 #include <cerrno>
 #include <cstring>
-#include <cstdlib>
 
 //  Debug logging for WebSocket transport
 #define ASIO_DBG_WS(fmt, ...) ASIO_DBG_THIS ("WS", fmt, ##__VA_ARGS__)
@@ -28,24 +28,11 @@ boost::asio::ip::tcp protocol_for_fd (fd_t fd_)
     return boost::asio::ip::tcp::v4 ();
 }
 
-size_t parse_size_env (const char *name_, size_t fallback_)
-{
-    const char *env = std::getenv (name_);
-    if (!env || !*env)
-        return fallback_;
-    errno = 0;
-    char *end = NULL;
-    const unsigned long long value = std::strtoull (env, &end, 10);
-    if (errno != 0 || end == env || value == 0)
-        return fallback_;
-    return static_cast<size_t> (value);
-}
-
 size_t ws_write_buffer_bytes ()
 {
     static size_t value = 0;
     if (value == 0)
-        value = parse_size_env ("ZLINK_WS_WRITE_BUFFER_BYTES", 64 * 1024);
+        value = env::positive_size ("ZLINK_WS_WRITE_BUFFER_BYTES", 64 * 1024);
     return value;
 }
 
@@ -53,7 +40,8 @@ size_t ws_read_message_max ()
 {
     static size_t value = 0;
     if (value == 0)
-        value = parse_size_env ("ZLINK_WS_READ_MESSAGE_MAX", 64 * 1024 * 1024);
+        value =
+          env::positive_size ("ZLINK_WS_READ_MESSAGE_MAX", 64 * 1024 * 1024);
     return value;
 }
 }

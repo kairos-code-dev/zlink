@@ -20,7 +20,6 @@ namespace zlink
 class socket_base_t;
 class spot_node_t;
 struct spot_runtime_t;
-struct spot_sub_node_access_t;
 
 typedef void (*spot_sub_direct_handler_fn) (
   const zlink_routing_id_t *source_rid_,
@@ -109,13 +108,14 @@ class spot_sub_t
     spot_node_t *node () const { return _node; }
 
     void emit_ready_event ();
+    int apply_aggregate_subscription (const std::string &raw_filter_,
+                                      bool pattern_,
+                                      bool subscribe_);
     int destroy ();
     int destroy_from_node ();
     int abort_create ();
 
   private:
-    friend struct spot_sub_node_access_t;
-
     enum handler_state_t
     {
         handler_none = 0,
@@ -132,6 +132,11 @@ class spot_sub_t
                                   zlink_msg_t *parts_,
                                   size_t part_count_,
                                   void *userdata_);
+    void dispatch_direct_message (const zlink_routing_id_t *source_rid_,
+                                  const char *topic_,
+                                  size_t topic_len_,
+                                  zlink_msg_t *parts_,
+                                  size_t part_count_);
     int destroy_internal (bool allow_embedded_default_, bool notify_node_);
     void handle_ready_probe (const std::string &raw_filter_,
                              const std::string &peer_endpoint_);
@@ -142,10 +147,6 @@ class spot_sub_t
       std::vector<std::pair<std::string, std::string> > *out_);
     void lock_routing_id ();
     socket_base_t *socket () const;
-    int apply_aggregate_subscription (const std::string &raw_filter_,
-                                      bool pattern_,
-                                      bool subscribe_);
-
     spot_node_t *_node;
     socket_base_t *_socket;
     spot_runtime_t *_runtime;

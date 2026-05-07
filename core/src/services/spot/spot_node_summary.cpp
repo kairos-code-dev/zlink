@@ -8,11 +8,11 @@
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
-#include "services/spot/spot_sub_node_access.hpp"
 
 #include "api/service_spot_request_reply_internal.hpp"
 #include "core/c_api_copy_internal.hpp"
 #include "core/internal_defs.hpp"
+#include "services/discovery/discovery_access.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
 
@@ -230,6 +230,19 @@ std::string spot_node_t::summary_service_name () const
     return std::string ();
 }
 
+void spot_node_t::mark_subject_changed (const std::string &subject_,
+                                        uint32_t subject_kind_)
+{
+    char prefix[16];
+    snprintf (prefix, sizeof (prefix), "%u:", subject_kind_);
+    const uint64_t now_ms = zlink::clock_t ().now_ms ();
+
+    scoped_lock_t lock (_sync);
+    _summary_state.subject_last_changed_ms[std::string (prefix) + subject_] =
+      now_ms;
+    _summary_state.summary_last_changed_ms = now_ms;
+}
+
 void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
                                       uint16_t state_,
                                       int error_code_)
@@ -271,7 +284,7 @@ void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
     entry.ready_count = state_ == ZLINK_TOPOLOGY_STATE_READY ? 1 : 0;
     entry.error_code = static_cast<uint32_t> (error_code_ > 0 ? error_code_ : 0);
     entry.last_reported_ms = clock_t ().now_ms ();
-    discovery->upsert_service_summary (entry);
+    discovery_access_t::upsert_service_summary (discovery, entry);
 }
 
 void spot_node_t::submit_sub_summary (spot_sub_t *sub_,
@@ -311,7 +324,7 @@ void spot_node_t::submit_sub_summary (spot_sub_t *sub_,
     entry.ready_count = state_ == ZLINK_TOPOLOGY_STATE_READY ? 1 : 0;
     entry.error_code = static_cast<uint32_t> (error_code_ > 0 ? error_code_ : 0);
     entry.last_reported_ms = clock_t ().now_ms ();
-    discovery->upsert_service_summary (entry);
+    discovery_access_t::upsert_service_summary (discovery, entry);
 }
 
 void spot_node_t::submit_spot_owner_summary_for_rid (
@@ -353,7 +366,7 @@ void spot_node_t::submit_spot_owner_summary_for_rid (
     entry.ready_count = state_ == ZLINK_TOPOLOGY_STATE_READY ? 1 : 0;
     entry.error_code = static_cast<uint32_t> (error_code_ > 0 ? error_code_ : 0);
     entry.last_reported_ms = clock_t ().now_ms ();
-    discovery->upsert_service_summary (entry);
+    discovery_access_t::upsert_service_summary (discovery, entry);
 }
 
 void spot_node_t::submit_spot_owner_summary (
@@ -522,8 +535,7 @@ int spot_node_t::update_logical_spot_subscription (
         return -1;
     }
 
-    if (spot_sub_node_access_t::apply_aggregate_subscription (
-          sub, raw_filter_, pattern_, subscribe_)
+    if (sub->apply_aggregate_subscription (raw_filter_, pattern_, subscribe_)
         != 0) {
         const int err = errno;
         const bool rollback_changed =

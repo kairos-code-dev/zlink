@@ -14,6 +14,7 @@
 #include "zlink.h"
 #include "utils/config.hpp"
 #include "utils/err.hpp"
+#include "utils/heap_owner.hpp"
 #include "utils/ip.hpp"
 #include "transports/tcp/tcp.hpp"
 #include "utils/likely.hpp"
@@ -1997,11 +1998,11 @@ void zlink::asio_engine_t::destroy_after_callbacks ()
 {
     if (_transport_adapter.io_context) {
         boost::asio::post (*_transport_adapter.io_context,
-                           [this] () { delete this; });
+                           [this] () { zlink::release_heap_owned (this); });
         return;
     }
 
-    delete this;
+    zlink::release_heap_owned (this);
 }
 
 void zlink::asio_engine_t::set_handshake_timer ()

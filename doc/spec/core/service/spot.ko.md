@@ -154,16 +154,36 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup(
 ## SpotNode 계약
 
 SpotNode는 HWM을 `Spot`에서 `SpotNode`로 들어오는 admission control(수신 허가 제어, 새 메시지·연결의 수락 여부를 결정하는 관문)로만 공개한다.
-공개 옵션은 `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`,
-`ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
-`ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`,
-`ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` 네 가지다. 두 admission 채널의 기본 profile은
-balanced auto-HWM profile이다. 숫자 override가 없으면 admission 경계
-(`publish_ingress_queue`, `routed_send_queue`)는 profile별 고정 메시지 수 한도를
-사용한다: COMPACT 64, LOW_LATENCY 128, BALANCED 256, THROUGHPUT 512. 양수 HWM을
-직접 설정하면 해당 채널의 자동 값보다 우선한다. 숫자 HWM에 `0`을 설정하면
-override를 지우고 자동 값으로 돌아간다.
-음수와 알 수 없는 profile은 `EINVAL`로 실패한다.
+`zlink_set_spot_node_option()` / `zlink_get_spot_node_option()`의 공개 옵션은
+다음과 같다:
+
+```c
+typedef enum zlink_spot_node_option_t
+{
+    ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE      = 0x360E,
+    ZLINK_SPOT_NODE_OPT_ROUTER_HWM              = 0x360F,
+    ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE      = 0x3610,
+    ZLINK_SPOT_NODE_OPT_PUBSUB_HWM              = 0x3611,
+    ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN    = 0x3612,
+    ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX    = 0x3613
+} zlink_spot_node_option_t;
+```
+
+| 옵션 | 타입 | 설명 |
+|------|------|------|
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE` | `int` | routed admission 채널 HWM profile |
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | `int` | routed 채널 숫자 HWM override; `0`은 override 해제 |
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE` | `int` | pub/sub admission 채널 HWM profile |
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` | `int` | pub/sub 채널 숫자 HWM override; `0`은 override 해제 |
+| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN` | `int` | dispatch 워커 스레드 최소 수 |
+| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX` | `int` | dispatch 워커 스레드 최대 수 |
+
+두 admission 채널의 기본 profile은 balanced auto-HWM profile이다. 숫자 override가
+없으면 admission 경계(`publish_ingress_queue`, `routed_send_queue`)는 profile별
+고정 메시지 수 한도를 사용한다: COMPACT 64, LOW_LATENCY 128, BALANCED 256,
+THROUGHPUT 512. 양수 HWM을 직접 설정하면 해당 채널의 자동 값보다 우선한다.
+숫자 HWM에 `0`을 설정하면 override를 지우고 자동 값으로 돌아간다. 음수와 알 수
+없는 profile은 `EINVAL`로 실패한다.
 
 `Spot` handle은 common `ZLINK_OPT_SNDHWM` 또는 `ZLINK_OPT_RCVHWM` 설정을 받지
 않는다. `Spot`은 생성 시점의 SpotNode admission HWM을 캡처하며, 이후 SpotNode HWM
@@ -629,12 +649,22 @@ typedef enum zlink_actor_admission_result_t {
   ZLINK_ACTOR_ADMISSION_REJECT = 2
 } zlink_actor_admission_result_t;
 
+typedef struct zlink_actor_route_t {
+  zlink_actor_ref_t actor;
+  uint32_t joined;
+  zlink_routing_id_t joined_spot_rid;
+} zlink_actor_route_t;
+
 typedef zlink_actor_admission_result_t (*zlink_actor_admission_handler_fn)(
   void *node,
   const char *actor_id,
   const zlink_msg_t *message,
   void *userdata);
 ```
+
+`zlink_actor_route_t`는 `zlink_discovery_resolve_actor()`의 출력 타입입니다.
+`joined` 필드가 0이 아니면 actor가 현재 Spot에 join된 상태이며,
+`joined_spot_rid`가 해당 Spot의 routing id를 담습니다.
 
 Actor id는 NUL 종료 UTF-8 바이트열이며, 유효 최대 길이는 `ZLINK_ACTOR_ID_MAX - 1`
 (255바이트)다. 빈 id, NULL id, 255바이트를 넘는 id는 `EINVAL` 계열 실패다.

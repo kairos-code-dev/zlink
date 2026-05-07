@@ -8,6 +8,8 @@
 #include "utils/macros.hpp"
 #include "core/pipe.hpp"
 #include "utils/err.hpp"
+#include "utils/debug_log.hpp"
+#include "utils/heap_owner.hpp"
 
 namespace
 {
@@ -17,7 +19,7 @@ void pipe_debug_log (const zlink::pipe_t *pipe_,
                      bool delay_,
                      const char *identifier_)
 {
-    if (!getenv ("ZLINK_DEBUG_PIPE_TERM"))
+    if (!zlink::debug_env_enabled ("ZLINK_DEBUG_PIPE_TERM"))
         return;
 
     fprintf (stderr,
@@ -712,7 +714,7 @@ void zlink::pipe_t::process_pipe_term_ack ()
 
     //  Pipe objects are always heap-allocated and reference-counted by protocol
     //  state transitions, so termination ack is the canonical final release.
-    delete this;
+    zlink::release_heap_owned (this);
 }
 
 void zlink::pipe_t::process_pipe_hwm (int inhwm_, int outhwm_)

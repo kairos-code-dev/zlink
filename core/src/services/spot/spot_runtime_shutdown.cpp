@@ -7,7 +7,9 @@
 #include "services/control/service_control_runtime.hpp"
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane.hpp"
+#include "services/spot/spot_debug.hpp"
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_access.hpp"
 
 namespace zlink
 {
@@ -25,15 +27,10 @@ void stop_runtime_dispatch_local (socket_base_t *socket_)
 
 void spot_runtime_shutdown_logf_local (const char *fmt_, ...)
 {
-    if (!std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN"))
-        return;
-
     va_list args;
     va_start (args, fmt_);
-    std::fprintf (stderr, "[spot-runtime] ");
-    std::vfprintf (stderr, fmt_, args);
-    std::fprintf (stderr, "\n");
-    std::fflush (stderr);
+    debug_vfprintf ("ZLINK_DEBUG_SPOT_SHUTDOWN", "[spot-runtime] ", fmt_,
+                    args);
     va_end (args);
 }
 }
@@ -45,7 +42,7 @@ void spot_runtime_t::stop_sockets ()
     const size_t slot_count = fill_runtime_socket_slot_refs (this, refs);
 
     {
-        scoped_lock_t lock (owner->_sync);
+        scoped_lock_t lock (spot_node_access_t::sync (owner));
         for (size_t i = 0; i < slot_count; ++i)
             sockets[i] = refs[i].slot ? *refs[i].slot : NULL;
     }
@@ -66,7 +63,7 @@ int spot_runtime_t::close_control_sockets ()
       false, false, false, false, false, false, false, false, false};
     const size_t slot_count = fill_runtime_socket_slot_refs (this, refs);
     {
-        scoped_lock_t lock (owner->_sync);
+        scoped_lock_t lock (spot_node_access_t::sync (owner));
         for (size_t i = 0; i < slot_count; ++i) {
             sockets[i] = refs[i].slot ? *refs[i].slot : NULL;
             endpoints[i] = refs[i].endpoint;
@@ -91,7 +88,7 @@ int spot_runtime_t::close_control_sockets ()
         std::fflush (stderr);
     }
 
-    if (owner && owner->_ctx) {
+    if (spot_node_access_t::ctx (owner)) {
         for (size_t i = 0; i < slot_count; ++i) {
             if (sockets[i] && endpoints[i] && !endpoints[i]->empty ())
                 (void) sockets[i]->term_endpoint (endpoints[i]->c_str ());
@@ -134,7 +131,7 @@ int spot_runtime_t::detach_runtime_endpoints ()
     socket_base_t *pub_ingress = NULL;
 
     {
-        scoped_lock_t lock (owner->_sync);
+        scoped_lock_t lock (spot_node_access_t::sync (owner));
         ctrl_front = data_ctrl_front;
         ctrl_back = data_ctrl_back;
         external_router_local = external_router;
@@ -233,7 +230,7 @@ size_t spot_runtime_t::live_socket_slot_count () const
     const_runtime_socket_slot_ref_t refs[9];
     const size_t slot_count =
       fill_runtime_socket_slot_refs (this, refs);
-    scoped_lock_t lock (owner->_sync);
+    scoped_lock_t lock (spot_node_access_t::sync (owner));
     for (size_t i = 0; i < slot_count; ++i)
         count += refs[i].slot && *refs[i].slot != NULL ? 1 : 0;
     return count;
@@ -273,7 +270,7 @@ int spot_runtime_t::abortive_stop ()
     socket_base_t *external_router_local = NULL;
     socket_base_t *fanout = NULL;
     {
-        scoped_lock_t lock (owner->_sync);
+        scoped_lock_t lock (spot_node_access_t::sync (owner));
         ctrl_front = data_ctrl_front;
         ctrl_back = data_ctrl_back;
         mesh_pub_local = mesh_pub;
@@ -314,7 +311,7 @@ int spot_runtime_t::abortive_stop ()
         attachments.clear ();
     }
 
-    if (owner && owner->_ctx) {
+    if (spot_node_access_t::ctx (owner)) {
         if (ctrl_front)
             ctrl_front->set_all_pipes_nodelay ();
         if (ctrl_back)

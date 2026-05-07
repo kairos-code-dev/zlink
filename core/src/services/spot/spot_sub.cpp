@@ -7,7 +7,6 @@
 
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_node.hpp"
-#include "services/spot/spot_node_child_access.hpp"
 #include "utils/err.hpp"
 #include "utils/routing_id.hpp"
 
@@ -28,7 +27,7 @@ spot_sub_t::spot_sub_t (spot_node_t *node_,
                         bool node_owned_default_) :
     _node (node_),
     _socket (socket_),
-    _runtime (spot_node_child_access_t::runtime (node_)),
+    _runtime (node_ ? node_->runtime () : NULL),
     _attachment_id (attachment_id_),
     _tag (spot_sub_tag_value),
     _node_owned_default (node_owned_default_),

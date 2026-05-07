@@ -30,9 +30,27 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
-| `ZLINK_IO_THREADS` | 1 | I/O thread 수 |
-| `ZLINK_MAX_SOCKETS` | 4095 | 최대 socket 수 |
-| `ZLINK_MAX_MSGSZ` | -1 | 최대 message 크기 (-1: 무제한) |
+| `ZLINK_IO_THREADS` | `1` | I/O thread 수 |
+| `ZLINK_MAX_SOCKETS` | `4095` | 최대 socket 수 |
+| `ZLINK_SOCKET_LIMIT` | — | 읽기 전용: 실제 socket 한도 |
+| `ZLINK_THREAD_PRIORITY` | `-1` | I/O thread OS 우선순위 |
+| `ZLINK_THREAD_SCHED_POLICY` | `-1` | I/O thread OS 스케줄링 정책 |
+| `ZLINK_MAX_MSGSZ` | `-1` | 최대 message 크기 (-1: 무제한) |
+| `ZLINK_MSG_T_SIZE` | — | 읽기 전용: `sizeof(zlink_msg_t)` |
+| `ZLINK_THREAD_AFFINITY_CPU_ADD` | — | I/O thread CPU 선호도 집합에 CPU 추가 |
+| `ZLINK_THREAD_AFFINITY_CPU_REMOVE` | — | I/O thread CPU 선호도 집합에서 CPU 제거 |
+| `ZLINK_THREAD_NAME_PREFIX` | — | I/O thread 이름 prefix (`zlink_ctx_set_data`로 설정) |
+| `ZLINK_CTX_OPT_BLOCKY` | — | 레거시: context 종료 시 block |
+| `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | `1` | 자동 HWM 크기 조정 활성화 |
+| `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | `3000` | 자동 HWM 재계산 debounce 간격 (ms) |
+| `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 자동 HWM 크기 조정 profile |
+
+`ZLINK_THREAD_NAME_PREFIX`는 문자열을 인자로 받으므로 `zlink_ctx_set()` 대신
+`zlink_ctx_set_data()`를 사용합니다.
+
+`zlink_ctx_auto_hwm_recalculate()`는 context의 모든 socket에 대해 자동 HWM을
+즉시 재계산합니다 — profile이나 socket별 메시지 단위 크기를 변경한 뒤 정상
+debounce 간격을 기다리지 않고 즉시 반영할 때 유용합니다.
 
 ## 2. Socket API
 
@@ -74,6 +92,10 @@ zlink_connect(socket, "tcp://127.0.0.1:5555");
 /* Unbind */
 zlink_unbind(socket, "tcp://*:5555");
 zlink_disconnect(socket, "tcp://127.0.0.1:5555");
+
+/* routing id로 특정 peer 연결 해제 (ROUTER socket) */
+zlink_routing_id_t peer_rid = /* ... */;
+zlink_disconnect_rid(socket, &peer_rid);
 ```
 
 ### 2.4 Socket Option

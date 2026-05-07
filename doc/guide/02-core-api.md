@@ -29,9 +29,27 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `ZLINK_IO_THREADS` | 1 | Number of I/O threads |
-| `ZLINK_MAX_SOCKETS` | 4095 | Maximum number of sockets |
-| `ZLINK_MAX_MSGSZ` | -1 | Maximum message size (-1: unlimited) |
+| `ZLINK_IO_THREADS` | `1` | Number of I/O threads |
+| `ZLINK_MAX_SOCKETS` | `4095` | Maximum number of sockets |
+| `ZLINK_SOCKET_LIMIT` | — | Read-only: actual socket limit |
+| `ZLINK_THREAD_PRIORITY` | `-1` | OS thread priority for I/O threads |
+| `ZLINK_THREAD_SCHED_POLICY` | `-1` | OS scheduling policy for I/O threads |
+| `ZLINK_MAX_MSGSZ` | `-1` | Maximum message size (-1: unlimited) |
+| `ZLINK_MSG_T_SIZE` | — | Read-only: `sizeof(zlink_msg_t)` |
+| `ZLINK_THREAD_AFFINITY_CPU_ADD` | — | Add CPU index to I/O thread affinity set |
+| `ZLINK_THREAD_AFFINITY_CPU_REMOVE` | — | Remove CPU index from I/O thread affinity set |
+| `ZLINK_THREAD_NAME_PREFIX` | — | Name prefix for I/O threads (set via `zlink_ctx_set_data`) |
+| `ZLINK_CTX_OPT_BLOCKY` | — | Legacy: block on context termination |
+| `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | `1` | Enable automatic HWM sizing |
+| `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | `3000` | Debounce interval for auto HWM recalculation (ms) |
+| `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | Auto HWM sizing profile |
+
+Use `zlink_ctx_set_data()` (instead of `zlink_ctx_set()`) for
+`ZLINK_THREAD_NAME_PREFIX`, which takes a string rather than an `int`.
+
+`zlink_ctx_auto_hwm_recalculate()` triggers an immediate auto HWM refresh for
+all sockets in the context — useful after changing the profile or per-socket
+message-unit size without waiting for the normal debounce interval.
 
 ## 2. Socket API
 
@@ -73,6 +91,10 @@ zlink_connect(socket, "tcp://127.0.0.1:5555");
 /* Unbind */
 zlink_unbind(socket, "tcp://*:5555");
 zlink_disconnect(socket, "tcp://127.0.0.1:5555");
+
+/* Disconnect a peer by its routing id (ROUTER sockets) */
+zlink_routing_id_t peer_rid = /* ... */;
+zlink_disconnect_rid(socket, &peer_rid);
 ```
 
 ### 2.4 Socket Options

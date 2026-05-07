@@ -9,7 +9,9 @@
 #include "core/session_base.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/config.hpp"
+#include "utils/env.hpp"
 #include "utils/err.hpp"
+#include "utils/heap_owner.hpp"
 #include "utils/ip.hpp"
 #include "transports/tcp/tcp.hpp"
 #include "utils/likely.hpp"
@@ -27,7 +29,6 @@
 
 #include <algorithm>
 #include <cerrno>
-#include <cstdlib>
 #include <sstream>
 #include <cstring>
 #include <limits.h>
@@ -37,30 +38,11 @@ namespace
 const size_t zmp_hello_min_body = 3;
 const size_t zmp_hello_max_body = 3 + 255;
 
-bool env_flag_enabled (const char *name_)
-{
-    const char *env = std::getenv (name_);
-    return env && *env && *env != '0';
-}
-
-size_t parse_size_env (const char *name_, size_t fallback_)
-{
-    const char *env = std::getenv (name_);
-    if (!env || !*env)
-        return fallback_;
-    errno = 0;
-    char *end = NULL;
-    const unsigned long long value = std::strtoull (env, &end, 10);
-    if (errno != 0 || end == env || value == 0)
-        return fallback_;
-    return static_cast<size_t> (value);
-}
-
 const bool ws_gather_write_on =
-  env_flag_enabled ("ZLINK_ASIO_GATHER_WRITE");
+  zlink::env::flag_enabled ("ZLINK_ASIO_GATHER_WRITE");
 
 const size_t ws_gather_threshold =
-  parse_size_env ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
+  zlink::env::positive_size ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
 
 const size_t stream_target_default_size = 4096;
 const size_t stream_target_initial_cap = 64 * 1024;
@@ -1778,7 +1760,7 @@ void zlink::asio_ws_engine_t::schedule_terminate_completion ()
 void zlink::asio_ws_engine_t::destroy_after_callbacks ()
 {
     _callback_guard.reset ();
-    delete this;
+    zlink::release_heap_owned (this);
 }
 
 bool zlink::asio_ws_engine_t::restart_input ()

@@ -99,7 +99,8 @@ bool zlink::trie_t::add (unsigned char *prefix_, size_t size_)
 
 bool zlink::trie_t::rm (unsigned char *prefix_, size_t size_)
 {
-    //  TODO: Shouldn't an error be reported if the key does not exist?
+    //  Removing a missing key is a no-op; callers use the boolean result to
+    //  distinguish "last subscription removed" from "nothing changed".
     if (!size_) {
         if (!_refcnt)
             return false;

@@ -148,7 +148,6 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
                 if (!subscribe) {
                     const mtrie_t::rm_result rm_result =
                       _subscriptions.rm (data, size, pipe_);
-                    //  TODO reconsider what to do if rm_result == mtrie_t::not_found
                     notify =
                       rm_result != mtrie_t::values_remain || _verbose_unsubs;
                 } else {

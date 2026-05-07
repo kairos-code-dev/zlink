@@ -7,6 +7,7 @@
 #include "core/send_internal.hpp"
 #include "services/discovery/registry.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "utils/debug_log.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -18,13 +19,13 @@ namespace
 {
 void registry_debug (const char *msg_)
 {
-    if (std::getenv ("ZLINK_REGISTRY_DEBUG"))
+    if (debug_env_enabled ("ZLINK_REGISTRY_DEBUG"))
         std::fprintf (stderr, "[registry] %s\n", msg_ ? msg_ : "");
 }
 
 void registry_debug_rid (const char *label_, const zlink_routing_id_t &rid_)
 {
-    if (!std::getenv ("ZLINK_REGISTRY_DEBUG"))
+    if (!debug_env_enabled ("ZLINK_REGISTRY_DEBUG"))
         return;
     std::fprintf (stderr, "[registry] %s rid(size=%u):", label_,
                   static_cast<unsigned int> (rid_.size));
@@ -77,7 +78,7 @@ void registry_t::handle_router (void *router_)
         return;
     }
 
-    if (std::getenv ("ZLINK_REGISTRY_DEBUG")) {
+    if (debug_env_enabled ("ZLINK_REGISTRY_DEBUG")) {
         std::fprintf (stderr, "[registry] msg_id=0x%04x frames=%zu\n", msg_id,
                       frames.size ());
     }
@@ -186,7 +187,7 @@ void registry_t::send_register_ack (void *router_,
     registry_debug ("send_register_ack");
     registry_debug_rid ("ack target", sender_id_);
     auto log_rc = [] (const char *label_, int rc_) {
-        if (!std::getenv ("ZLINK_REGISTRY_DEBUG"))
+        if (!debug_env_enabled ("ZLINK_REGISTRY_DEBUG"))
             return;
         if (rc_ == -1) {
             std::fprintf (stderr, "[registry] %s failed errno=%d (%s)\n",
@@ -232,7 +233,7 @@ void registry_t::send_unregister_ack (void *router_,
     registry_debug ("send_unregister_ack");
     registry_debug_rid ("ack target", sender_id_);
     auto log_rc = [] (const char *label_, int rc_) {
-        if (!std::getenv ("ZLINK_REGISTRY_DEBUG"))
+        if (!debug_env_enabled ("ZLINK_REGISTRY_DEBUG"))
             return;
         if (rc_ == -1) {
             std::fprintf (stderr, "[registry] %s failed errno=%d (%s)\n",
@@ -273,7 +274,7 @@ void registry_t::send_bootstrap_reply (void *router_,
         memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
     const int rc_id =
       zlink::send_msg_internal (router_, &id_frame, ZLINK_SNDMORE);
-    if (std::getenv ("ZLINK_REGISTRY_DEBUG")) {
+    if (debug_env_enabled ("ZLINK_REGISTRY_DEBUG")) {
         std::fprintf (
           stderr, "[registry] bootstrap reply id rc=%d rid_size=%u errno=%d\n",
           rc_id, static_cast<unsigned int> (sender_id_.size), errno);
@@ -310,7 +311,7 @@ void registry_t::send_bootstrap_reply (void *router_,
                                                       : "");
     const int rc_rep =
       discovery_protocol::send_frame (router_, &rep, sizeof (rep), 0);
-    if (std::getenv ("ZLINK_REGISTRY_DEBUG")) {
+    if (debug_env_enabled ("ZLINK_REGISTRY_DEBUG")) {
         std::fprintf (
           stderr,
           "[registry] bootstrap reply body rc=%d errno=%d pub=%s uplink=%s\n",

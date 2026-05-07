@@ -27,9 +27,9 @@ typedef int zlink_fd_t;
 
 ### Poller Event Masks
 
-공개 헤더는 `zlink_poller_event_mask_t` 같은 별도 typedef를 내보내지
-않는다. poller API는 `events`, `revents`, 각 이벤트 마스크 인자에 raw
-`short` 비트마스크를 사용한다.
+공개 헤더는 `typedef short zlink_poller_event_mask_t;`를 편의 별칭으로
+내보냅니다. poller API의 `events`, `revents`, 각 이벤트 마스크 인자에
+사용되는 `short` 비트마스크의 별칭입니다.
 
 ### zlink_poller_source_kind_t
 
@@ -105,12 +105,16 @@ SPOT의 subscribe / routed / channel reply / timer readiness를 한 owner 기준
 ## 상수
 
 ```c
-#define ZLINK_POLLIN          1
-#define ZLINK_POLLOUT         2
-#define ZLINK_POLLERR         4
-#define ZLINK_POLLPRI         8
-#define ZLINK_POLLITEMS_DFLT 16
-#define ZLINK_HAVE_POLLER     1
+typedef enum zlink_poller_event_flag_e
+{
+    ZLINK_POLLIN         = 1,
+    ZLINK_POLLOUT        = 2,
+    ZLINK_POLLERR        = 4,
+    ZLINK_POLLPRI        = 8,
+    ZLINK_POLLITEMS_DFLT = 16
+} zlink_poller_event_flag_e;
+
+#define ZLINK_HAVE_POLLER 1
 ```
 
 | 상수 | 값 | 설명 |

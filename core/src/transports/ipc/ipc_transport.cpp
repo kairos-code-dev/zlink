@@ -5,11 +5,11 @@
 
 #include "transports/ipc/ipc_transport.hpp"
 
+#include "utils/env.hpp"
 #include "utils/err.hpp"
 #include <atomic>
 #include <algorithm>
 #include <array>
-#include <cstdlib>
 #ifndef ZLINK_HAVE_WINDOWS
 #include <sys/socket.h>
 #include <sys/uio.h>
@@ -36,28 +36,22 @@ std::atomic<uint64_t> ipc_write_some_eagain (0);
 std::atomic<uint64_t> ipc_write_some_errors (0);
 std::atomic<bool> ipc_stats_registered (false);
 
-bool env_flag_enabled (const char *name_)
-{
-    const char *env = std::getenv (name_);
-    return env && *env && *env != '0';
-}
-
-const bool ipc_stats_on = env_flag_enabled ("ZLINK_ASIO_IPC_STATS");
+const bool ipc_stats_on = env::flag_enabled ("ZLINK_ASIO_IPC_STATS");
 
 const bool ipc_force_async_on =
-  env_flag_enabled ("ZLINK_ASIO_IPC_FORCE_ASYNC");
+  env::flag_enabled ("ZLINK_ASIO_IPC_FORCE_ASYNC");
 
 const bool ipc_allow_sync_write_on =
-  env_flag_enabled ("ZLINK_ASIO_IPC_SYNC_WRITE");
+  env::flag_enabled ("ZLINK_ASIO_IPC_SYNC_WRITE");
 
 const bool ipc_use_async_write_some_on =
-  env_flag_enabled ("ZLINK_ASIO_IPC_ASYNC_WRITE_SOME");
+  env::flag_enabled ("ZLINK_ASIO_IPC_ASYNC_WRITE_SOME");
 
 const bool ipc_writev_single_shot_on =
-  env_flag_enabled ("ZLINK_ASIO_WRITEV_SINGLE_SHOT");
+  env::flag_enabled ("ZLINK_ASIO_WRITEV_SINGLE_SHOT");
 
 const bool ipc_use_asio_writev_on =
-  env_flag_enabled ("ZLINK_ASIO_WRITEV_USE_ASIO");
+  env::flag_enabled ("ZLINK_ASIO_WRITEV_USE_ASIO");
 
 void ipc_stats_dump ()
 {

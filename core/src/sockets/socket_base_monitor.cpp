@@ -7,6 +7,7 @@
 #include "core/send_internal.hpp"
 #include "services/control/service_control_runtime.hpp"
 #include "sockets/socket_base.hpp"
+#include "utils/debug_log.hpp"
 #include "utils/sleep.hpp"
 #include "zlink.h"
 
@@ -410,7 +411,7 @@ void zlink::socket_base_t::pump_monitor_events ()
     monitor_runtime_t &monitor = monitor_runtime ();
     void *monitor_socket = monitor.socket;
     monitor_event_record_t record;
-    if (getenv ("ZLINK_MONITOR_TASK_DIAG"))
+    if (debug_env_enabled ("ZLINK_MONITOR_TASK_DIAG"))
         fprintf (stderr, "raw-monitor-task source-socket=%p\n", this);
     while (monitor.dequeue_worker_event_nowait (&record)) {
         bool delivered = true;

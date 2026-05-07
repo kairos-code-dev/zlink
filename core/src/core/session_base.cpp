@@ -5,12 +5,10 @@
 #include "core/session_base.hpp"
 #include "engine/i_engine.hpp"
 #include "utils/err.hpp"
+#include "utils/env.hpp"
 #include "core/pipe.hpp"
 #include "utils/likely.hpp"
 #include "core/address.hpp"
-
-#include <climits>
-#include <cstdlib>
 
 // ASIO-only build: Transport connecters are always included
 #include "transports/tcp/asio_tcp_connecter.hpp"
@@ -32,25 +30,12 @@
 
 namespace
 {
-int parse_positive_int_env (const char *name_, int default_value_)
-{
-    const char *env = std::getenv (name_);
-    if (!env || !*env)
-        return default_value_;
-
-    char *end = NULL;
-    const long value = std::strtol (env, &end, 10);
-    if (!end || end == env || value <= 0 || value > INT_MAX)
-        return default_value_;
-    return static_cast<int> (value);
-}
-
 // STREAM request/response style traffic can oscillate on stale message-credit
 // updates because generic pipes only publish read progress every HWM/2 reads.
 // Keep STREAM credit updates more frequent so the writer sees peer progress
 // sooner, especially on same-connection echo/proxy flows.
 const int stream_pipe_lwm_hint =
-  parse_positive_int_env ("ZLINK_STREAM_PIPE_LWM_HINT", 4);
+  zlink::env::positive_int ("ZLINK_STREAM_PIPE_LWM_HINT", 4);
 }
 
 zlink::session_base_t *zlink::session_base_t::create (class io_thread_t *io_thread_,
@@ -372,7 +357,6 @@ void zlink::session_base_t::process_term (int linger_)
         //  are processed in case the linger time is non-zero.
         _pipe->terminate (linger_ != 0);
 
-        //  TODO: Should this go into pipe_t::terminate ?
         //  In case there's no engine and there's only delimiter in the
         //  pipe it wouldn't be ever read. Thus we check for it explicitly.
         if (!_engine)

@@ -214,8 +214,6 @@ class discovery_bootstrap_runtime_t
     }
 
   private:
-    friend class discovery_bootstrap_socket_config_t;
-
     struct bootstrap_state_t
     {
         socket_base_t *dealer;

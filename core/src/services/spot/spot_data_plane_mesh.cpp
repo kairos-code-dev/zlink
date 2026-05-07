@@ -9,6 +9,7 @@
 #include "api/request_reply_protocol_internal.hpp"
 #include "api/service_spot_request_reply_internal.hpp"
 #include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_debug.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
@@ -28,15 +29,10 @@ static const size_t mesh_xsub_forward_batch_bytes_limit = 16 * 1024 * 1024;
 
 void spot_ctrl_debugf (const char *fmt_, ...)
 {
-    if (!getenv ("ZLINK_SPOT_CTRL_DEBUG"))
-        return;
-
     va_list args;
     va_start (args, fmt_);
-    fprintf (stderr, "[spot-ctrl] ");
-    vfprintf (stderr, fmt_, args);
-    fprintf (stderr, "\n");
-    fflush (stderr);
+    debug_vfprintf_with_file ("ZLINK_SPOT_CTRL_DEBUG", "[spot-ctrl] ",
+                              spot_debug::ctrl_log_path, fmt_, args);
     va_end (args);
 }
 
@@ -116,7 +112,7 @@ void spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
     if (!runtime_ || raw_.remote_addr[0] == '\0')
         return;
 
-    if (std::getenv ("ZLINK_DEBUG_SPOT_CONTROL")) {
+    if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_CONTROL")) {
         std::fprintf (stderr,
                       "[spot-control] mesh-monitor node=%p event=%llu remote=%s\n",
                       runtime_->owner,
@@ -132,7 +128,7 @@ void spot_data_plane_protocol_t::sync_mesh_xsub_connected_endpoint (
         runtime_->execution.data_plane_protocol_state.peer_ready_filters.clear ();
         runtime_->execution.data_plane_protocol_state.outbound_ready_filters.clear ();
     }
-    if (std::getenv ("ZLINK_DEBUG_SPOT_CONTROL")) {
+    if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_CONTROL")) {
         std::fprintf (
           stderr,
           "[spot-control] mesh-monitor node=%p changed=%d version=%llu\n",

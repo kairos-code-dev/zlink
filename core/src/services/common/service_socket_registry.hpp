@@ -6,6 +6,7 @@
 #include "core/ctx.hpp"
 #include "sockets/socket_base.hpp"
 #include "sockets/socket_close_ops.hpp"
+#include "utils/debug_log.hpp"
 #include "utils/mutex.hpp"
 
 #include <map>
@@ -103,7 +104,7 @@ class service_socket_registry_t
 
     void debug_dump (const char *prefix_) const
     {
-        if (!getenv ("ZLINK_DEBUG_SERVICE_RUNTIME_DRAIN"))
+        if (!debug_env_enabled ("ZLINK_DEBUG_SERVICE_RUNTIME_DRAIN"))
             return;
 
         scoped_lock_t lock (_sync);

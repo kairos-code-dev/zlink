@@ -188,7 +188,34 @@ released. The copy is lightweight and does not duplicate the data payload.
 
 **Thread safety:** Not thread-safe.
 
-**See also:** `zlink_msg_move`
+**See also:** `zlink_msg_move`, `zlink_msg_adopt`
+
+---
+
+### zlink_msg_adopt
+
+Adopt ownership from a source message without an extra init+move step.
+
+```c
+zlink_config_result_t zlink_msg_adopt (zlink_msg_t *dest_, zlink_msg_t *src_);
+```
+
+Intended for bindings that already hold storage for `dest_` and need to
+take ownership of a freshly received native message efficiently. Unlike
+`zlink_msg_move`, `dest_` must **not** currently own an initialized
+message — calling `zlink_msg_adopt` on an already-initialized `dest_`
+produces undefined behaviour.
+
+On success, `dest_` owns the original content of `src_` and `src_`
+becomes an empty initialized message. The caller must not close `src_`
+separately after the call returns because `zlink_msg_adopt` resets it
+to an empty initialized state internally.
+
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
+
+**Thread safety:** Not thread-safe.
+
+**See also:** `zlink_msg_move`, `zlink_msg_copy`
 
 ---
 

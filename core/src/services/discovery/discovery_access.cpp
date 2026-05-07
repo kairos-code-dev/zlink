@@ -12,6 +12,131 @@
 
 namespace zlink
 {
+mutex_t &discovery_t::sync ()
+{
+    return _sync;
+}
+
+mutex_t &discovery_t::uplink_sync ()
+{
+    return _uplink_sync;
+}
+
+service_public_api_guard_t &discovery_t::public_api_guard ()
+{
+    return _public_api;
+}
+
+discovery_bootstrap_runtime_t *discovery_t::bootstrap_runtime ()
+{
+    return _bootstrap_runtime;
+}
+
+discovery_uplink_runtime_t *discovery_t::uplink_runtime ()
+{
+    return _uplink_runtime;
+}
+
+bool discovery_t::bootstrap_socket_config_locked (
+  bool routing_id_locked_) const
+{
+    return routing_id_locked_ || _sub_socket || !_connected_endpoints.empty ()
+           || _bootstrap_runtime->has_bootstrap_activity_locked ();
+}
+
+void discovery_t::apply_socket_option_to_sub_socket (int option_,
+                                                     const void *optval_,
+                                                     size_t optvallen_)
+{
+    if (_sub_socket)
+        static_cast<socket_base_t *> (_sub_socket)
+          ->setsockopt (option_, optval_, optvallen_);
+}
+
+bool discovery_t::should_publish_summary_entry (
+  const zlink_registry_topology_entry_t &entry_) const
+{
+    return should_publish_summary_entry_locked (entry_);
+}
+
+void discovery_t::collect_dirty_summary_entries (
+  std::vector<zlink_registry_topology_entry_t> *out_)
+{
+    if (!out_)
+        return;
+
+    out_->clear ();
+    for (std::map<topology_key_t, topology_summary_t>::iterator it =
+           _summary_store.begin ();
+         it != _summary_store.end (); ++it) {
+        if (it->second.dirty
+            && should_publish_summary_entry_locked (it->second.entry)) {
+            out_->push_back (it->second.entry);
+        }
+    }
+}
+
+void discovery_t::mark_summary_entries_sent (
+  const std::vector<zlink_registry_topology_entry_t> &entries_,
+  const std::vector<bool> &sent_)
+{
+    for (size_t i = 0; i < entries_.size () && i < sent_.size (); ++i) {
+        if (!sent_[i])
+            continue;
+        const zlink_registry_topology_entry_t &entry = entries_[i];
+        const topology_key_t key =
+          make_summary_key (entry.service_kind, entry.service_role,
+                            entry.routing_id, entry.channel_name);
+        std::map<topology_key_t, topology_summary_t>::iterator it =
+          _summary_store.find (key);
+        if (it != _summary_store.end ())
+            it->second.dirty = false;
+    }
+}
+
+void discovery_t::collect_registered_services_for_heartbeat (
+  uint64_t now_ms_,
+  uint32_t heartbeat_interval_ms_,
+  std::vector<discovery_registered_service_snapshot_t> *out_) const
+{
+    if (!out_)
+        return;
+
+    out_->clear ();
+    for (std::map<registered_service_key_t,
+                  registered_service_t>::const_iterator it =
+           _registered_services.begin ();
+         it != _registered_services.end (); ++it) {
+        if (it->second.uplink_endpoint.empty ())
+            continue;
+        if (it->second.last_heartbeat_ms != 0
+            && now_ms_ - it->second.last_heartbeat_ms
+                 < heartbeat_interval_ms_) {
+            continue;
+        }
+        discovery_registered_service_snapshot_t service;
+        service.service_role = it->second.service_role;
+        service.channel_name = it->second.channel_name;
+        service.endpoint = it->second.endpoint;
+        service.uplink_endpoint = it->second.uplink_endpoint;
+        out_->push_back (service);
+    }
+}
+
+void discovery_t::mark_registered_service_heartbeat (
+  const discovery_registered_service_snapshot_t &service_, uint64_t now_ms_)
+{
+    registered_service_key_t key;
+    key.service_role = service_.service_role;
+    key.channel_name = service_.channel_name;
+    key.endpoint = service_.endpoint;
+
+    std::map<registered_service_key_t, registered_service_t>::iterator it =
+      _registered_services.find (key);
+    if (it != _registered_services.end ())
+        it->second.last_heartbeat_ms = now_ms_;
+}
+
 void *discovery_access_t::create (ctx_t *ctx_,
                                   zlink_auto_connect_type_t auto_connect_type_,
                                   const char *channel_name_)
@@ -195,5 +320,140 @@ void discovery_access_t::flush_topology_reports (discovery_t *discovery_)
 {
     if (discovery_)
         discovery_->flush_topology_reports ();
+}
+
+mutex_t &discovery_access_t::sync (discovery_t *discovery_)
+{
+    return discovery_->sync ();
+}
+
+mutex_t &discovery_access_t::uplink_sync (discovery_t *discovery_)
+{
+    return discovery_->uplink_sync ();
+}
+
+service_public_api_guard_t &discovery_access_t::public_api_guard (
+  discovery_t *discovery_)
+{
+    return discovery_->public_api_guard ();
+}
+
+bool discovery_access_t::bootstrap_socket_config_locked (
+  discovery_t *discovery_, bool routing_id_locked_)
+{
+    if (!discovery_)
+        return true;
+    return discovery_->bootstrap_socket_config_locked (routing_id_locked_);
+}
+
+void discovery_access_t::apply_socket_option_to_sub_socket (
+  discovery_t *discovery_, int option_, const void *optval_, size_t optvallen_)
+{
+    if (discovery_)
+        discovery_->apply_socket_option_to_sub_socket (option_, optval_,
+                                                       optvallen_);
+}
+
+discovery_bootstrap_runtime_t *discovery_access_t::bootstrap_runtime (
+  discovery_t *discovery_)
+{
+    return discovery_ ? discovery_->bootstrap_runtime () : NULL;
+}
+
+discovery_uplink_runtime_t *discovery_access_t::uplink_runtime (
+  discovery_t *discovery_)
+{
+    return discovery_ ? discovery_->uplink_runtime () : NULL;
+}
+
+int discovery_access_t::ensure_control_task_active (discovery_t *discovery_)
+{
+    return discovery_ ? discovery_->ensure_control_task_active () : -1;
+}
+
+void discovery_access_t::emit_ready_changed (discovery_t *discovery_,
+                                             uint32_t ready_count_)
+{
+    if (discovery_)
+        discovery_->emit_ready_changed (ready_count_);
+}
+
+int discovery_access_t::ensure_topology_reporters (discovery_t *discovery_)
+{
+    return discovery_ ? discovery_->ensure_topology_reporters () : -1;
+}
+
+socket_base_t *discovery_access_t::create_tracked_socket (
+  discovery_t *discovery_, int socket_type_)
+{
+    return discovery_ ? discovery_->create_tracked_socket (socket_type_) : NULL;
+}
+
+int discovery_access_t::close_tracked_socket (discovery_t *discovery_,
+                                              socket_base_t *&socket_,
+                                              int timeout_ms_)
+{
+    return discovery_ ? discovery_->close_tracked_socket (socket_, timeout_ms_)
+                      : -1;
+}
+
+int discovery_access_t::close_tracked_socket_and_wait (
+  discovery_t *discovery_, socket_base_t *&socket_, int timeout_ms_)
+{
+    return discovery_
+             ? discovery_->close_tracked_socket_and_wait (socket_, timeout_ms_)
+             : -1;
+}
+
+bool discovery_access_t::should_publish_summary_entry (
+  discovery_t *discovery_, const zlink_registry_topology_entry_t &entry_)
+{
+    return discovery_ && discovery_->should_publish_summary_entry (entry_);
+}
+
+void discovery_access_t::collect_dirty_summary_entries (
+  discovery_t *discovery_, std::vector<zlink_registry_topology_entry_t> *out_)
+{
+    if (!out_)
+        return;
+    out_->clear ();
+    if (!discovery_)
+        return;
+    discovery_->collect_dirty_summary_entries (out_);
+}
+
+void discovery_access_t::mark_summary_entries_sent (
+  discovery_t *discovery_,
+  const std::vector<zlink_registry_topology_entry_t> &entries_,
+  const std::vector<bool> &sent_)
+{
+    if (!discovery_)
+        return;
+    discovery_->mark_summary_entries_sent (entries_, sent_);
+}
+
+void discovery_access_t::collect_registered_services_for_heartbeat (
+  discovery_t *discovery_,
+  uint64_t now_ms_,
+  uint32_t heartbeat_interval_ms_,
+  std::vector<discovery_registered_service_snapshot_t> *out_)
+{
+    if (!out_)
+        return;
+    out_->clear ();
+    if (!discovery_)
+        return;
+    discovery_->collect_registered_services_for_heartbeat (
+      now_ms_, heartbeat_interval_ms_, out_);
+}
+
+void discovery_access_t::mark_registered_service_heartbeat (
+  discovery_t *discovery_,
+  const discovery_registered_service_snapshot_t &service_,
+  uint64_t now_ms_)
+{
+    if (!discovery_)
+        return;
+    discovery_->mark_registered_service_heartbeat (service_, now_ms_);
 }
 }

@@ -27,9 +27,9 @@ typedef int zlink_fd_t;
 
 ### Poller Event Masks
 
-The public header does not export a dedicated `zlink_poller_event_mask_t`
-typedef. Poller APIs use raw `short` bitmasks for `events`, `revents`, and
-event-mask parameters.
+The public header exports `typedef short zlink_poller_event_mask_t;` as a
+convenience alias for the `short` bitmask used in poller APIs for `events`,
+`revents`, and event-mask parameters.
 
 ### zlink_poller_source_kind_t
 
@@ -105,12 +105,16 @@ channel-reply / timer readiness, the current public contract still uses
 ## Constants
 
 ```c
-#define ZLINK_POLLIN          1
-#define ZLINK_POLLOUT         2
-#define ZLINK_POLLERR         4
-#define ZLINK_POLLPRI         8
-#define ZLINK_POLLITEMS_DFLT 16
-#define ZLINK_HAVE_POLLER     1
+typedef enum zlink_poller_event_flag_e
+{
+    ZLINK_POLLIN         = 1,
+    ZLINK_POLLOUT        = 2,
+    ZLINK_POLLERR        = 4,
+    ZLINK_POLLPRI        = 8,
+    ZLINK_POLLITEMS_DFLT = 16
+} zlink_poller_event_flag_e;
+
+#define ZLINK_HAVE_POLLER 1
 ```
 
 | Constant | Value | Description |

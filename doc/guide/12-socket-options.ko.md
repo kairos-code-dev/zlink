@@ -491,6 +491,38 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작한다. 멀티호밍 서
 
 ---
 
+## 24. Discovery 동기화 옵션
+
+### DISCOVERY_SPOT_OWNER_SYNC
+
+| 항목 | 설명 |
+|------|------|
+| **하는 일** | Discovery가 SPOT owner 행을 Registry에 게시 |
+| **타입** | `int` (0 = 비활성화 [기본값], 1 = 활성화) |
+| **API** | `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`로 `zlink_set_option()` / `zlink_get_option()` |
+
+활성화하면 Discovery 인스턴스가 각 SPOT routing id를 소유하는 SpotNode를
+Registry에 보고합니다. 다른 노드에서 실시간 Discovery 연결 없이
+`zlink_registry_query_snapshot()`으로 owner node id를 조회할 수 있습니다.
+
+0 또는 1 이외의 값은 `EINVAL`로 실패합니다.
+
+### DISCOVERY_ACTOR_ROUTE_SYNC
+
+| 항목 | 설명 |
+|------|------|
+| **하는 일** | Discovery가 actor 라우팅 행을 Registry에 게시 |
+| **타입** | `int` (0 = 비활성화 [기본값], 1 = 활성화) |
+| **API** | `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`로 `zlink_set_option()` / `zlink_get_option()` |
+
+활성화하면 Discovery 인스턴스가 actor 라우팅 항목을 Registry에 보고합니다.
+이를 통해 외부 노드가 `zlink_registry_query_snapshot()`으로 actor 라우팅을
+조회할 수 있습니다.
+
+0 또는 1 이외의 값은 `EINVAL`로 실패합니다.
+
+---
+
 ## 소켓 타입별 기본값 override
 
 일부 소켓 타입은 생성 시 공통 기본값을 자체적으로 override한다.

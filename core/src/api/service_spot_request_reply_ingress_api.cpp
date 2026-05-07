@@ -16,12 +16,13 @@
 #include "services/spot/spot_runtime.hpp"
 #include "sockets/socket_base.hpp"
 #include "core/recv_internal.hpp"
+#include "utils/debug_log.hpp"
 
 namespace
 {
 bool spot_direct_route_debug_enabled ()
 {
-    return std::getenv ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE") != NULL;
+    return zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
 }
 
 int process_route_combined_message (void *node_,

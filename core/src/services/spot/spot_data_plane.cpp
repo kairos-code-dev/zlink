@@ -7,6 +7,7 @@
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_data_plane_loop.hpp"
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
 
 namespace zlink
@@ -19,9 +20,10 @@ void spot_data_plane_t::thread_entry (void *arg_)
 void spot_data_plane_t::task_entry (void *arg_)
 {
     spot_node_t *node = static_cast<spot_node_t *> (arg_);
-    if (!node || !node->_runtime)
+    spot_runtime_t *runtime = spot_node_access_t::runtime (node);
+    if (!node || !runtime)
         return;
-    (void) run_tick (node, node->_runtime);
+    (void) run_tick (node, runtime);
 }
 
 int spot_data_plane_t::run_tick (spot_node_t *node_, spot_runtime_t *runtime_)
@@ -42,7 +44,7 @@ int spot_data_plane_t::run_tick (spot_node_t *node_, spot_runtime_t *runtime_)
         runtime_->stop.set (1);
 
     if (fatal_errno != 0 && runtime_->stop.get () == 0) {
-        scoped_lock_t lock (node_->_sync);
+        scoped_lock_t lock (spot_node_access_t::sync (node_));
         runtime_->mark_fault (fatal_errno);
     }
 
@@ -53,7 +55,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
 {
     if (!node_)
         return;
-    spot_runtime_t *runtime = node_->_runtime;
+    spot_runtime_t *runtime = spot_node_access_t::runtime (node_);
     if (!runtime)
         return;
 
@@ -62,7 +64,7 @@ void spot_data_plane_t::run (spot_node_t *node_)
       &runtime->execution.data_plane_protocol_state);
 
     if (fatal_errno != 0 && runtime->stop.get () == 0) {
-        scoped_lock_t lock (node_->_sync);
+        scoped_lock_t lock (spot_node_access_t::sync (node_));
         runtime->mark_fault (fatal_errno);
     }
 }

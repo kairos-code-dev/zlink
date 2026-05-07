@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 #include "core/own.hpp"
 #include "utils/err.hpp"
+#include "utils/heap_owner.hpp"
 #include "core/io_thread.hpp"
 
 zlink::own_t::own_t (class ctx_t *parent_, uint32_t tid_) :
@@ -183,5 +184,5 @@ void zlink::own_t::process_destroy ()
 {
     //  own_t instances are heap-owned by the command/termination graph.
     //  Destruction happens only after all termination acks are observed.
-    delete this;
+    zlink::release_heap_owned (this);
 }

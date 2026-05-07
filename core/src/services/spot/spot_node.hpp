@@ -33,10 +33,7 @@ namespace zlink
 class socket_base_t;
 class spot_pub_t;
 class spot_sub_t;
-class spot_data_plane_t;
 class spot_internal_receiver_t;
-struct spot_node_child_access_t;
-struct spot_data_plane_protocol_t;
 struct spot_runtime_t;
 struct spot_node_access_t;
 
@@ -180,12 +177,61 @@ class spot_node_t : public discovery_observer_t
                                          char *topic_id_out_,
                                          size_t *topic_id_len_out_,
                                          zlink_recv_flags_t flags_);
+    ctx_t *ctx () const;
+    mutex_t &sync ();
+    spot_runtime_t *runtime () const { return _runtime; }
+    bool is_shutting_down () const;
+    socket_base_t *create_socket (int socket_type_) const;
+    void track_owned_socket (socket_base_t *socket_);
+    int destroy_attachment (uint64_t attachment_id_);
+    int destroy_attachment_async (uint64_t attachment_id_);
+    spot_internal_receiver_t *ensure_internal_receiver ();
+    spot_internal_receiver_t *internal_receiver () const;
+    std::set<actor_handle_t *> &actor_handles ();
+    std::map<std::string, actor_handle_t *> &actors_by_id ();
+    uint64_t &next_actor_generation ();
+    void wake_control_task ();
+    void submit_pub_summary (spot_pub_t *pub_,
+                             uint16_t state_,
+                             int error_code_);
+    void submit_sub_summary (spot_sub_t *sub_,
+                             uint16_t state_,
+                             int error_code_);
+    int send_subscription_update (const std::string &raw_filter_,
+                                  bool subscribe_);
+    int send_ready_ack_update (const std::string &target_endpoint_,
+                               const std::string &raw_filter_,
+                               const std::string &ack_source_id_,
+                               bool subscribe_);
+    void schedule_subscription_replay ();
+    void note_local_sub_filters_changed (bool had_filters_,
+                                         bool has_filters_);
+    bool has_active_peers () const;
+    void notify_subscription_forwarded (const std::string &raw_filter_);
+    void mark_subject_changed (const std::string &subject_,
+                               uint32_t subject_kind_);
+    std::string summary_service_name () const;
+    void snapshot_active_peer_endpoints (std::set<std::string> *out_) const;
+    void snapshot_tls_client_config (std::string *ca_out_,
+                                     std::string *host_out_,
+                                     int *trust_system_out_) const;
+    void snapshot_tls_server_config (std::string *cert_out_,
+                                     std::string *key_out_) const;
+    void mark_bound_endpoint_and_server_tls_locked (
+      const std::string &bound_endpoint_);
+    void mark_mesh_client_tls_locked ();
+    int close_owned_socket (socket_base_t *&socket_, int timeout_ms_);
+    int close_owned_socket_and_wait (socket_base_t *&socket_, int timeout_ms_);
+    static bool recv_ctrl_reply (socket_base_t *socket_, int *out_errno_);
+    static int apply_tls_server (socket_base_t *socket_,
+                                 const std::string &cert_,
+                                 const std::string &key_);
+    static int apply_tls_client (socket_base_t *socket_,
+                                 const std::string &ca_cert_,
+                                 const std::string &hostname_,
+                                 int trust_system_);
 
   private:
-    friend class spot_data_plane_t;
-    friend struct spot_node_child_access_t;
-    friend struct spot_node_access_t;
-
     typedef spot_node_summary_state_t summary_state_t;
     typedef spot_node_aggregate_subscription_state_t
       aggregate_subscription_state_t;
@@ -203,16 +249,7 @@ class spot_node_t : public discovery_observer_t
 
     static void control_task (void *arg_);
 
-    ctx_t *ctx () const { return _ctx; }
-    spot_runtime_t *runtime () const { return _runtime; }
-    spot_internal_receiver_t *ensure_internal_receiver ();
-    spot_internal_receiver_t *internal_receiver () const;
     const std::string &sub_fanout_endpoint () const;
-    bool has_active_peers () const;
-    void note_local_sub_filters_changed (bool had_filters_,
-                                         bool has_filters_);
-    void wake_control_task ();
-    void schedule_subscription_replay ();
     void control_tick ();
     int ensure_control_task_running ();
     bool can_suspend_control_task () const;
@@ -224,11 +261,7 @@ class spot_node_t : public discovery_observer_t
     int send_data_plane_command (const char *verb_,
                                  const char *arg_ = NULL) const;
     int wait_facade_peer (socket_base_t *socket_) const;
-    void track_owned_socket (socket_base_t *socket_);
     int wait_owned_socket_removals (int timeout_ms_);
-    bool is_shutting_down () const;
-    int destroy_attachment (uint64_t attachment_id_);
-    int destroy_attachment_async (uint64_t attachment_id_);
     spot_pub_t *create_spot_pub_with_defaults (const pub_defaults_t &defaults_,
                                                bool node_owned_default_);
     spot_sub_t *create_spot_sub_with_defaults (const sub_defaults_t &defaults_,
@@ -241,9 +274,6 @@ class spot_node_t : public discovery_observer_t
     void refresh_discovery_peers ();
     void refresh_connected_peer_endpoints ();
     void emit_pending_subscription_replays ();
-    std::string summary_service_name () const;
-    void submit_pub_summary (spot_pub_t *pub_, uint16_t state_, int error_code_);
-    void submit_sub_summary (spot_sub_t *sub_, uint16_t state_, int error_code_);
     void submit_spot_owner_summary (
       const std::shared_ptr<spot_logical_state_t> &state_,
       uint16_t state, int error_code_);
@@ -262,17 +292,10 @@ class spot_node_t : public discovery_observer_t
     void emit_pending_subscription_ready_events ();
     void emit_pending_pub_delivery_ready_events ();
     std::string first_connected_peer_endpoint () const;
-    void notify_subscription_forwarded (const std::string &raw_filter_);
     uint32_t max_pub_delivery_ready_count_locked () const;
     void publish_mesh_pub_hwm_hint_locked ();
     void notify_pub_first_delivery_ready_settled (const std::string &subject_,
                                                   uint32_t ready_count_);
-    int send_subscription_update (const std::string &raw_filter_,
-                                  bool subscribe_);
-    int send_ready_ack_update (const std::string &target_endpoint_,
-                               const std::string &raw_filter_,
-                               const std::string &ack_source_id_,
-                               bool subscribe_);
     int ensure_registered ();
     int unregister_registered ();
     int apply_service_subscription_filters ();
@@ -325,15 +348,6 @@ class spot_node_t : public discovery_observer_t
       discovery_t *discovery_, std::vector<socket_base_t *> *sockets_to_close_out_);
 
     static bool validate_public_endpoint (const std::string &endpoint_);
-    static bool recv_ctrl_reply (socket_base_t *socket_, int *out_errno_);
-    static int apply_tls_server (socket_base_t *socket_,
-                                 const std::string &cert_,
-                                 const std::string &key_);
-    static int apply_tls_client (socket_base_t *socket_,
-                                 const std::string &ca_cert_,
-                                 const std::string &hostname_,
-                                 int trust_system_);
-
     ctx_t *_ctx;
     uint32_t _tag;
 
@@ -360,8 +374,6 @@ class spot_node_t : public discovery_observer_t
     actor_state_t _actor_state;
     service_attachment_state_t _service_attachment_state;
 
-    friend struct spot_runtime_t;
-    friend struct spot_data_plane_protocol_t;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_node_t)
 };
 }

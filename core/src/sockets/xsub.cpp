@@ -2,30 +2,20 @@
 
 #include "utils/precompiled.hpp"
 #include <string.h>
-#include <climits>
-#include <cstdlib>
 #include <vector>
 
 #include "utils/macros.hpp"
 #include "sockets/xsub.hpp"
 #include "sockets/xsub_dispatch_internal.hpp"
 #include "utils/err.hpp"
+#include "utils/env.hpp"
 
 namespace
 {
 unsigned int resolve_non_matching_skip_budget ()
 {
-    const char *env = std::getenv ("ZLINK_XSUB_NON_MATCHING_SKIP_BUDGET");
-    if (!env || !*env)
-        return 64u;
-
-    char *end = NULL;
-    const unsigned long parsed = std::strtoul (env, &end, 10);
-    if (!end || end == env || *end != '\0' || parsed == 0)
-        return 64u;
-    if (parsed > UINT_MAX)
-        return UINT_MAX;
-    return static_cast<unsigned int> (parsed);
+    return zlink::env::positive_uint ("ZLINK_XSUB_NON_MATCHING_SKIP_BUDGET",
+                                      64u);
 }
 
 const unsigned int xsub_non_matching_skip_budget =

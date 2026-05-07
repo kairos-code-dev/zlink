@@ -22,7 +22,8 @@ zlink::mailbox_t::mailbox_t ()
 
 zlink::mailbox_t::~mailbox_t ()
 {
-    //  TODO: Retrieve and deallocate commands inside the _cpipe.
+    //  Commands remaining in the cpipe are owned by the surrounding shutdown
+    //  graph; mailbox teardown only waits for concurrent senders to leave.
 
     // Work around problem that other threads might still be in our
     // send() method, by waiting on the mutex before disappearing.

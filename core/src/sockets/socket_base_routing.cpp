@@ -28,14 +28,14 @@ int zlink::routing_socket_base_t::xsetsockopt (int option_,
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID:
-            // TODO why isn't it possible to set an empty connect_routing_id
-            //   (which is the default value)
-            if (optval_ && optvallen_) {
+            if (!optval_ || optvallen_ == 0) {
+                _connect_routing_id.clear ();
+                return 0;
+            } else {
                 _connect_routing_id.assign (static_cast<const char *> (optval_),
                                             optvallen_);
                 return 0;
             }
-            break;
     }
     errno = EINVAL;
     return -1;

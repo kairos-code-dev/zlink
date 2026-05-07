@@ -274,11 +274,18 @@ typedef enum zlink_request_result_t
     ZLINK_REQUEST_OK = 0,
 
     /* Completion failure visible to the requester. */
-    ZLINK_REQUEST_TIMED_OUT = 101,
-    ZLINK_REQUEST_NOT_FOUND = 102,
-    ZLINK_REQUEST_TERMINATED = 103,
-    ZLINK_REQUEST_PROTOCOL_ERROR = 104,
-    ZLINK_REQUEST_INTERNAL_ERROR = 105
+    ZLINK_REQUEST_TIMED_OUT       = 101,
+    ZLINK_REQUEST_NOT_FOUND       = 102,
+    ZLINK_REQUEST_TERMINATED      = 103,
+    ZLINK_REQUEST_PROTOCOL_ERROR  = 104,
+    ZLINK_REQUEST_INTERNAL_ERROR  = 105,
+    ZLINK_REQUEST_REJECTED        = 106,
+    ZLINK_REQUEST_CONFLICT        = 107,
+    ZLINK_REQUEST_BUSY            = 108,
+    ZLINK_REQUEST_NOT_CONNECTED   = 109,
+    ZLINK_REQUEST_INVALID_ARGUMENT = 110,
+    ZLINK_REQUEST_INVALID_STATE   = 111,
+    ZLINK_REQUEST_NOT_SUPPORTED   = 112
 } zlink_request_result_t;
 ```
 
@@ -291,9 +298,16 @@ Used as the canonical normalized completion outcome for
 | `ZLINK_REQUEST_OK` | 0 | Reply payload was received successfully |
 | `ZLINK_REQUEST_TIMED_OUT` | 101 | Reply did not arrive within the configured timeout |
 | `ZLINK_REQUEST_NOT_FOUND` | 102 | The target could not be found and an error reply completed the request |
-| `ZLINK_REQUEST_TERMINATED` | 103 | Reserved until the request path emits explicit termination completion |
+| `ZLINK_REQUEST_TERMINATED` | 103 | Context terminated before the reply arrived |
 | `ZLINK_REQUEST_PROTOCOL_ERROR` | 104 | Reply envelope or error reply payload was malformed |
 | `ZLINK_REQUEST_INTERNAL_ERROR` | 105 | Request completion failed without a finer public bucket |
+| `ZLINK_REQUEST_REJECTED` | 106 | The target explicitly rejected the request (e.g. actor join denied) |
+| `ZLINK_REQUEST_CONFLICT` | 107 | The request conflicts with existing state (e.g. actor already exists) |
+| `ZLINK_REQUEST_BUSY` | 108 | The target is busy and cannot accept the request at this time |
+| `ZLINK_REQUEST_NOT_CONNECTED` | 109 | No active connection to the target |
+| `ZLINK_REQUEST_INVALID_ARGUMENT` | 110 | The request carried an invalid argument |
+| `ZLINK_REQUEST_INVALID_STATE` | 111 | The target is in a state that rejects this request |
+| `ZLINK_REQUEST_NOT_SUPPORTED` | 112 | The operation is not supported by the target |
 
 ### Security Mechanisms
 
@@ -406,6 +420,7 @@ based on the following classification:
 | `ZLINK_OPT_INVERT_MATCHING` | Invert topic matching (`int`; 0 or 1) |
 | `ZLINK_OPT_ZMP_METADATA` | Attach ZMP metadata properties to outgoing connections (`binary`) |
 | `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC` | Whether Discovery publishes SPOT owner rows to Registry (`int`; 0 = default, 1 = enabled, other values fail with `EINVAL`) |
+| `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` | Whether Discovery publishes actor route rows to Registry (`int`; 0 = default, 1 = enabled, other values fail with `EINVAL`) |
 
 ##### Read-only (get only)
 

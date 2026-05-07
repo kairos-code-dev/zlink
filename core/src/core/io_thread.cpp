@@ -55,8 +55,8 @@ void zlink::io_thread_t::in_event ()
 
 void zlink::io_thread_t::process_mailbox ()
 {
-    //  TODO: Do we want to limit number of commands I/O thread can
-    //  process in a single go?
+    //  Drain all currently queued commands so teardown and ownership handoff
+    //  progress cannot be stranded behind an arbitrary per-tick limit.
 
     do {
         command_t cmd;

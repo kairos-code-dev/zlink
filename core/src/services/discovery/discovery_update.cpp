@@ -5,11 +5,10 @@
 #include "core/c_api_copy_internal.hpp"
 #include "core/recv_internal.hpp"
 #include "services/discovery/discovery.hpp"
+#include "services/discovery/discovery_debug.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/discovery/discovery_runtime_internal.hpp"
 
-#include <cstdarg>
-#include <cstdio>
 #include <cstring>
 #include <unordered_map>
 
@@ -17,18 +16,6 @@ namespace zlink
 {
 namespace
 {
-static void discovery_debugf_local (const char *fmt_, ...)
-{
-    if (!std::getenv ("ZLINK_DISCOVERY_DEBUG"))
-        return;
-    va_list args;
-    va_start (args, fmt_);
-    std::fprintf (stderr, "[discovery] ");
-    std::vfprintf (stderr, fmt_, args);
-    std::fprintf (stderr, "\n");
-    va_end (args);
-}
-
 static bool wait_socket_event_local (void *socket_,
                                      short events_,
                                      long timeout_ms_)
@@ -297,7 +284,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
     if (!changed.empty ())
         notify_observers (changed);
     for (size_t i = 0; i < events.size (); ++i) {
-        discovery_debugf_local ("service event type=%u name=%s value=%u",
+        discovery_debugf ("service event type=%u name=%s value=%u",
                                 static_cast<unsigned int> (events[i].event_type),
                                 events[i].service_name,
                                 static_cast<unsigned int> (events[i].value));

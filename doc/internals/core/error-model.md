@@ -57,10 +57,10 @@ the typed-result policy is meant to prevent.
 ## Submit Normalization
 
 Send, request submit, and reply submit share one public result type:
-`zlink_submit_result_t` (13 values: OK, BACKPRESSURED, NOT_CONNECTED,
-NOT_FOUND, TERMINATED, INVALID_HANDLE, INVALID_ARGUMENT, NOT_SUPPORTED,
-INVALID_STATE, THREAD_VIOLATION, OUT_OF_MEMORY, SEQ_EXHAUSTED,
-INTERNAL_ERROR).
+`zlink_submit_result_t` (14 values: OK, BACKPRESSURED, NOT_CONNECTED,
+NOT_FOUND, NOT_ADMITTED, TERMINATED, INVALID_HANDLE, INVALID_ARGUMENT,
+NOT_SUPPORTED, INVALID_STATE, THREAD_VIOLATION, OUT_OF_MEMORY,
+SEQ_EXHAUSTED, INTERNAL_ERROR).
 
 The normalization helper lives in
 [core/src/api/submit_result_internal.hpp](/home/hep7/project/kairos/zlink/core/src/api/submit_result_internal.hpp).
@@ -69,8 +69,9 @@ It maps the internal submit errno catalog to public submit results.
 ## Request Completion Normalization
 
 Request completion uses a separate public result type:
-`zlink_request_result_t` (5 values: OK, TIMED_OUT, NOT_FOUND, TERMINATED,
-PROTOCOL_ERROR).
+`zlink_request_result_t` (13 values: OK, TIMED_OUT, NOT_FOUND, TERMINATED,
+PROTOCOL_ERROR, INTERNAL_ERROR, REJECTED, CONFLICT, BUSY, NOT_CONNECTED,
+INVALID_ARGUMENT, INVALID_STATE, NOT_SUPPORTED).
 
 The normalization helper lives in
 [core/src/api/request_result_internal.hpp](/home/hep7/project/kairos/zlink/core/src/api/request_result_internal.hpp).

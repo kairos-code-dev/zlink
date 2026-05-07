@@ -353,7 +353,15 @@ snapshot/query API로 관찰합니다.
 - SpotNode: `zlink_spot_node_status_snapshot()`,
   `zlink_spot_node_peers_snapshot()`,
   `zlink_spot_node_peers_query()`,
-  `zlink_spot_node_subjects_snapshot()`
+  `zlink_spot_node_subjects_snapshot()`,
+  `zlink_spot_node_internal_sockets_snapshot()`,
+  `zlink_spot_node_spots_snapshot()`,
+  `zlink_spot_node_actors_snapshot()`,
+  `zlink_spot_actors_snapshot()`
+- Registry query client: `zlink_registry_query_client_new()`,
+  `zlink_registry_query_client_connect()`,
+  `zlink_registry_query_snapshot()`,
+  `zlink_registry_query_destroy()`
 
 상태 전이를 감지하려면 애플리케이션에서 연속된 snapshot 또는 query 결과를
 비교합니다. 이렇게 해야 `core/include/zlink.h` 기준의 현재 공개 계약과

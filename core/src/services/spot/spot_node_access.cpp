@@ -14,6 +14,119 @@
 
 namespace zlink
 {
+ctx_t *spot_node_t::ctx () const
+{
+    return _ctx;
+}
+
+mutex_t &spot_node_t::sync ()
+{
+    return _sync;
+}
+
+socket_base_t *spot_node_t::create_socket (int socket_type_) const
+{
+    if (!_ctx) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return _ctx->create_socket (socket_type_);
+}
+
+std::set<actor_handle_t *> &spot_node_t::actor_handles ()
+{
+    return _actor_state.actor_handles;
+}
+
+std::map<std::string, actor_handle_t *> &spot_node_t::actors_by_id ()
+{
+    return _actor_state.actors_by_id;
+}
+
+uint64_t &spot_node_t::next_actor_generation ()
+{
+    return _actor_state.next_generation;
+}
+
+void spot_node_t::snapshot_active_peer_endpoints (
+  std::set<std::string> *out_) const
+{
+    if (!out_)
+        return;
+
+    out_->clear ();
+    scoped_lock_t lock (_sync);
+    *out_ = _peer_state.active_endpoints;
+}
+
+void spot_node_t::snapshot_tls_client_config (std::string *ca_out_,
+                                              std::string *host_out_,
+                                              int *trust_system_out_) const
+{
+    if (ca_out_)
+        ca_out_->clear ();
+    if (host_out_)
+        host_out_->clear ();
+    if (trust_system_out_)
+        *trust_system_out_ = 0;
+
+    scoped_lock_t lock (_sync);
+    if (ca_out_)
+        *ca_out_ = _tls_state.tls_ca;
+    if (host_out_)
+        *host_out_ = _tls_state.tls_hostname;
+    if (trust_system_out_)
+        *trust_system_out_ = _tls_state.tls_trust_system;
+}
+
+void spot_node_t::snapshot_tls_server_config (std::string *cert_out_,
+                                              std::string *key_out_) const
+{
+    if (cert_out_)
+        cert_out_->clear ();
+    if (key_out_)
+        key_out_->clear ();
+
+    scoped_lock_t lock (_sync);
+    if (cert_out_)
+        *cert_out_ = _tls_state.tls_cert;
+    if (key_out_)
+        *key_out_ = _tls_state.tls_key;
+}
+
+void spot_node_t::mark_bound_endpoint_and_server_tls_locked (
+  const std::string &bound_endpoint_)
+{
+    scoped_lock_t lock (_sync);
+    _endpoint_state.bound_endpoint = bound_endpoint_;
+    _tls_state.server_tls_locked = true;
+}
+
+void spot_node_t::mark_mesh_client_tls_locked ()
+{
+    scoped_lock_t lock (_sync);
+    _tls_state.mesh_client_tls_locked = true;
+}
+
+int spot_node_t::close_owned_socket (socket_base_t *&socket_, int timeout_ms_)
+{
+    if (!socket_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return _lifecycle.close_socket (socket_, timeout_ms_);
+}
+
+int spot_node_t::close_owned_socket_and_wait (socket_base_t *&socket_,
+                                              int timeout_ms_)
+{
+    if (!socket_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return _lifecycle.close_socket_and_wait (socket_, timeout_ms_);
+}
+
 void *spot_node_access_t::create (ctx_t *ctx_, zlink_spot_node_mode_t mode_)
 {
     spot_node_t *node = new (std::nothrow) spot_node_t (ctx_, mode_);
@@ -32,12 +145,12 @@ void *spot_node_access_t::create (ctx_t *ctx_, zlink_spot_node_mode_t mode_)
 
 ctx_t *spot_node_access_t::ctx (spot_node_t *node_)
 {
-    return node_ ? node_->_ctx : NULL;
+    return node_ ? node_->ctx () : NULL;
 }
 
 mutex_t &spot_node_access_t::sync (spot_node_t *node_)
 {
-    return node_->_sync;
+    return node_->sync ();
 }
 
 spot_node_t *spot_node_access_t::from_handle (void *node_)
@@ -361,6 +474,16 @@ bool spot_node_access_t::is_shutting_down (spot_node_t *node_)
     return !node_ || node_->is_shutting_down ();
 }
 
+socket_base_t *spot_node_access_t::create_socket (spot_node_t *node_,
+                                                  int socket_type_)
+{
+    if (!node_) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return node_->create_socket (socket_type_);
+}
+
 void spot_node_access_t::track_owned_socket (spot_node_t *node_,
                                              socket_base_t *socket_)
 {
@@ -389,18 +512,18 @@ spot_internal_receiver_t *spot_node_access_t::internal_receiver (spot_node_t *no
 std::set<actor_handle_t *> &spot_node_access_t::actor_handles (
   spot_node_t *node_)
 {
-    return node_->_actor_state.actor_handles;
+    return node_->actor_handles ();
 }
 
 std::map<std::string, actor_handle_t *> &spot_node_access_t::actors_by_id (
   spot_node_t *node_)
 {
-    return node_->_actor_state.actors_by_id;
+    return node_->actors_by_id ();
 }
 
 uint64_t &spot_node_access_t::next_actor_generation (spot_node_t *node_)
 {
-    return node_->_actor_state.next_generation;
+    return node_->next_actor_generation ();
 }
 
 void spot_node_access_t::wake_control_task (spot_node_t *node_)
@@ -425,8 +548,7 @@ void spot_node_access_t::snapshot_active_peer_endpoints (
     if (!node_)
         return;
 
-    scoped_lock_t lock (node_->_sync);
-    *out_ = node_->_peer_state.active_endpoints;
+    node_->snapshot_active_peer_endpoints (out_);
 }
 
 void spot_node_access_t::snapshot_tls_client_config (spot_node_t *node_,
@@ -443,13 +565,45 @@ void spot_node_access_t::snapshot_tls_client_config (spot_node_t *node_,
     if (!node_)
         return;
 
-    scoped_lock_t lock (node_->_sync);
-    if (ca_out_)
-        *ca_out_ = node_->_tls_state.tls_ca;
-    if (host_out_)
-        *host_out_ = node_->_tls_state.tls_hostname;
-    if (trust_system_out_)
-        *trust_system_out_ = node_->_tls_state.tls_trust_system;
+    node_->snapshot_tls_client_config (ca_out_, host_out_, trust_system_out_);
+}
+
+void spot_node_access_t::snapshot_tls_server_config (spot_node_t *node_,
+                                                     std::string *cert_out_,
+                                                     std::string *key_out_)
+{
+    if (cert_out_)
+        cert_out_->clear ();
+    if (key_out_)
+        key_out_->clear ();
+    if (!node_)
+        return;
+
+    node_->snapshot_tls_server_config (cert_out_, key_out_);
+}
+
+void spot_node_access_t::mark_bound_endpoint_and_server_tls_locked (
+  spot_node_t *node_, const std::string &bound_endpoint_)
+{
+    if (!node_)
+        return;
+    node_->mark_bound_endpoint_and_server_tls_locked (bound_endpoint_);
+}
+
+void spot_node_access_t::mark_mesh_client_tls_locked (spot_node_t *node_)
+{
+    if (!node_)
+        return;
+    node_->mark_mesh_client_tls_locked ();
+}
+
+int spot_node_access_t::apply_tls_server (spot_node_t *node_,
+                                          socket_base_t *socket_,
+                                          const std::string &cert_,
+                                          const std::string &key_)
+{
+    (void) node_;
+    return spot_node_t::apply_tls_server (socket_, cert_, key_);
 }
 
 int spot_node_access_t::apply_tls_client (spot_node_t *node_,
@@ -463,6 +617,23 @@ int spot_node_access_t::apply_tls_client (spot_node_t *node_,
                                           trust_system_);
 }
 
+bool spot_node_access_t::recv_ctrl_reply (socket_base_t *socket_,
+                                          int *out_errno_)
+{
+    return spot_node_t::recv_ctrl_reply (socket_, out_errno_);
+}
+
+int spot_node_access_t::close_owned_socket (spot_node_t *node_,
+                                            socket_base_t *&socket_,
+                                            int timeout_ms_)
+{
+    if (!node_ || !socket_) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node_->close_owned_socket (socket_, timeout_ms_);
+}
+
 int spot_node_access_t::close_owned_socket_and_wait (spot_node_t *node_,
                                                      socket_base_t *&socket_,
                                                      int timeout_ms_)
@@ -471,7 +642,7 @@ int spot_node_access_t::close_owned_socket_and_wait (spot_node_t *node_,
         errno = EFAULT;
         return -1;
     }
-    return node_->_lifecycle.close_socket_and_wait (socket_, timeout_ms_);
+    return node_->close_owned_socket_and_wait (socket_, timeout_ms_);
 }
 
 int spot_node_access_t::send_internal_subscription_update (

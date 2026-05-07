@@ -10,6 +10,7 @@
 #include "utils/random.hpp"
 #include "utils/likely.hpp"
 #include "utils/err.hpp"
+#include "utils/debug_log.hpp"
 #include <cstdlib>
 #include <cstdio>
 
@@ -111,7 +112,7 @@ void copy_router_pipe_source_rid (zlink::pipe_t *pipe_,
 
 static bool router_debug_enabled ()
 {
-    return std::getenv ("ZLINK_ROUTER_DEBUG") != NULL;
+    return zlink::debug_env_enabled ("ZLINK_ROUTER_DEBUG");
 }
 
 zlink::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :

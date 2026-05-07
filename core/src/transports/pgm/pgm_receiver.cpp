@@ -13,6 +13,7 @@
 #include "utils/stdint.hpp"
 #include "protocol/wire.hpp"
 #include "utils/err.hpp"
+#include "utils/heap_owner.hpp"
 
 zlink::pgm_receiver_t::pgm_receiver_t (class io_thread_t *parent_,
                                      const options_t &options_) :
@@ -87,7 +88,7 @@ void zlink::pgm_receiver_t::terminate ()
 
 void zlink::pgm_receiver_t::destroy_after_unplug ()
 {
-    delete this;
+    zlink::release_heap_owned (this);
 }
 
 void zlink::pgm_receiver_t::restart_output ()

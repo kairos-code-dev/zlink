@@ -257,24 +257,34 @@ void spot_sub_t::dispatch_from_io (const zlink_routing_id_t *source_rid_,
         }
     }
 
+    self->dispatch_direct_message (source_rid_, topic_, topic_len_, parts_,
+                                   part_count_);
+}
+
+void spot_sub_t::dispatch_direct_message (
+  const zlink_routing_id_t *source_rid_,
+  const char *topic_,
+  size_t topic_len_,
+  zlink_msg_t *parts_,
+  size_t part_count_)
+{
     direct_handler_binding_t *binding =
-      self->_active_direct_handler.load (std::memory_order_acquire);
-    if (self->_handler_state.load (std::memory_order_acquire) != handler_active
+      _active_direct_handler.load (std::memory_order_acquire);
+    if (_handler_state.load (std::memory_order_acquire) != handler_active
         || !binding || !binding->handler) {
         zlink_multipart_close (parts_, part_count_);
         return;
     }
 
-    self->_callback_inflight.add (1);
+    _callback_inflight.add (1);
     binding->handler (source_rid_, topic_, topic_len_, parts_, part_count_,
                       binding->userdata);
 
-    const bool callbacks_remaining = self->_callback_inflight.sub (1);
+    const bool callbacks_remaining = _callback_inflight.sub (1);
     if (!callbacks_remaining
-        && self->_handler_state.load (std::memory_order_acquire)
-             != handler_active) {
-        scoped_lock_t lock (self->_sync);
-        self->_callback_cv.broadcast ();
+        && _handler_state.load (std::memory_order_acquire) != handler_active) {
+        scoped_lock_t lock (_sync);
+        _callback_cv.broadcast ();
     }
 }
 }

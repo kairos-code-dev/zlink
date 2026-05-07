@@ -7,15 +7,14 @@
 #include "services/spot/spot_mesh_pub_hwm.hpp"
 
 #include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_debug.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
 
 #include "sockets/socket_base.hpp"
 
-#include <cstdarg>
 #include <cstdio>
-#include <cstdlib>
 
 namespace zlink
 {
@@ -25,38 +24,20 @@ namespace spot_io = zlink::spot_data_plane_message_io;
 
 static void spot_ctrl_debugf (const char *fmt_, ...)
 {
-    if (!getenv ("ZLINK_SPOT_CTRL_DEBUG"))
-        return;
-
     va_list args;
     va_start (args, fmt_);
-    fprintf (stderr, "[spot-ctrl] ");
-    vfprintf (stderr, fmt_, args);
-    fprintf (stderr, "\n");
-    fflush (stderr);
+    debug_vfprintf_with_file ("ZLINK_SPOT_CTRL_DEBUG", "[spot-ctrl] ",
+                              spot_debug::ctrl_log_path, fmt_, args);
     va_end (args);
 }
 
 static void spot_ready_ack_ctrl_debugf (const char *fmt_, ...)
 {
-    if (!getenv ("ZLINK_DEBUG_SPOT_READY_ACK"))
-        return;
-
     va_list args;
     va_start (args, fmt_);
-    fprintf (stderr, "[spot-ready-ack-ctrl] ");
-    vfprintf (stderr, fmt_, args);
-    fprintf (stderr, "\n");
-    fflush (stderr);
-    FILE *fp = fopen ("/tmp/zlink_spot_ready_ack.log", "a");
-    if (fp) {
-        va_list file_args;
-        va_start (file_args, fmt_);
-        vfprintf (fp, fmt_, file_args);
-        fprintf (fp, "\n");
-        va_end (file_args);
-        fclose (fp);
-    }
+    debug_vfprintf_with_file ("ZLINK_DEBUG_SPOT_READY_ACK",
+                              "[spot-ready-ack-ctrl] ",
+                              spot_debug::ready_ack_log_path, fmt_, args);
     va_end (args);
 }
 
@@ -288,11 +269,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
           verb, spot_control_protocol::cmd_bind_pub)) {
         std::string cert;
         std::string key;
-        {
-            scoped_lock_t lock (node_->_sync);
-            cert = node_->_tls_state.tls_cert;
-            key = node_->_tls_state.tls_key;
-        }
+        spot_node_access_t::snapshot_tls_server_config (node_, &cert, &key);
 
         const int mesh_pub_sndhwm =
           spot_mesh_pub_hwm_t::resolve_initial_bind_sndhwm (runtime_, arg);
@@ -302,9 +279,13 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
                                         &mesh_pub_sndhwm,
                                         sizeof (mesh_pub_sndhwm))
                    != 0
-                 || spot_node_t::apply_tls_server (mesh_pub_, cert, key) != 0
+                 || spot_node_access_t::apply_tls_server (node_, mesh_pub_,
+                                                          cert, key)
+                      != 0
                  || mesh_pub_->bind (arg.c_str ()) != 0))
-            || spot_node_t::apply_tls_server (peer_ctrl_sub_, cert, key) != 0) {
+            || spot_node_access_t::apply_tls_server (node_, peer_ctrl_sub_,
+                                                     cert, key)
+                 != 0) {
             if (send_errno_reply (ctrl_, errno != 0 ? errno : EIO) != 0)
                 return -1;
             return 0;
@@ -348,8 +329,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         }
 
         if (runtime_->external_router
-            && (spot_node_t::apply_tls_server (runtime_->external_router,
-                                               cert, key)
+            && (spot_node_access_t::apply_tls_server (
+                  node_, runtime_->external_router, cert, key)
                   != 0
                 || runtime_->external_router->bind (
                      route_bind_endpoint.c_str ())
@@ -364,7 +345,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         runtime_->peer_ctrl_endpoint = ctrl_bind_endpoint;
         runtime_->external_router_bind_endpoint = route_bind_endpoint;
         runtime_->bound_endpoint = resolved_endpoint;
-        if (std::getenv ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {
+        if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {
             std::fprintf (
               stderr,
               "[spot-direct] bind external router socket=%d endpoint=%s\n",
@@ -373,11 +354,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
                 : -1,
               route_bind_endpoint.c_str ());
         }
-        {
-            scoped_lock_t lock (node_->_sync);
-            node_->_endpoint_state.bound_endpoint = resolved_endpoint;
-            node_->_tls_state.server_tls_locked = true;
-        }
+        spot_node_access_t::mark_bound_endpoint_and_server_tls_locked (
+          node_, resolved_endpoint);
         return send_ok_reply (ctrl_);
     }
 
@@ -386,17 +364,15 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         std::string ca;
         std::string host;
         int trust = 0;
-        {
-            scoped_lock_t lock (node_->_sync);
-            ca = node_->_tls_state.tls_ca;
-            host = node_->_tls_state.tls_hostname;
-            trust = node_->_tls_state.tls_trust_system;
-        }
+        spot_node_access_t::snapshot_tls_client_config (node_, &ca, &host,
+                                                        &trust);
         if ((mesh_xsub_
-             && (spot_node_t::apply_tls_client (mesh_xsub_, ca, host, trust)
+             && (spot_node_access_t::apply_tls_client (
+                   node_, mesh_xsub_, ca, host, trust)
                    != 0
                  || mesh_xsub_->connect (arg.c_str ()) != 0))
-            || spot_node_t::apply_tls_client (peer_ctrl_pub_, ca, host, trust)
+            || spot_node_access_t::apply_tls_client (
+                 node_, peer_ctrl_pub_, ca, host, trust)
                  != 0
             ) {
             if (mesh_xsub_)
@@ -407,8 +383,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
         }
 
         if (runtime_->external_router
-            && spot_node_t::apply_tls_client (runtime_->external_router, ca,
-                                              host, trust)
+            && spot_node_access_t::apply_tls_client (
+                 node_, runtime_->external_router, ca, host, trust)
                  != 0) {
             const int saved_errno = errno != 0 ? errno : EIO;
             if (mesh_xsub_)
@@ -459,10 +435,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
                 state_->peer_ctrl_endpoints[arg] = peer_ctrl_endpoint;
             }
         }
-        {
-            scoped_lock_t lock (node_->_sync);
-            node_->_tls_state.mesh_client_tls_locked = true;
-        }
+        spot_node_access_t::mark_mesh_client_tls_locked (node_);
         return send_ok_reply (ctrl_);
     }
 

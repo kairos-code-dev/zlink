@@ -649,8 +649,8 @@ error_closelistener:
     return -1;
 
 try_tcpip:
-    // try to fallback to TCP/IP
-    // TODO: maybe remember this decision permanently?
+    //  Try TCP/IP every time. The fallback depends on runtime platform state,
+    //  so caching the decision would hide later environment changes.
 #endif
 
     return make_fdpair_tcpip (r_, w_);
@@ -874,7 +874,7 @@ int zlink::create_ipc_wildcard_address (std::string &path_, std::string &file_)
         errno_assert (rc == 0);
     }
 
-    // TODO or use CreateDirectoryA and specify permissions?
+    //  Use the wide-character CRT path to match the generated wide temp name.
     const int rc = _wmkdir (buffer);
     if (rc != 0) {
         return -1;

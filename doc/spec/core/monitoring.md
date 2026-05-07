@@ -353,7 +353,15 @@ query APIs rather than a separate public event stream.
 - SpotNode: `zlink_spot_node_status_snapshot()`,
   `zlink_spot_node_peers_snapshot()`,
   `zlink_spot_node_peers_query()`,
-  `zlink_spot_node_subjects_snapshot()`
+  `zlink_spot_node_subjects_snapshot()`,
+  `zlink_spot_node_internal_sockets_snapshot()`,
+  `zlink_spot_node_spots_snapshot()`,
+  `zlink_spot_node_actors_snapshot()`,
+  `zlink_spot_actors_snapshot()`
+- Registry query client: `zlink_registry_query_client_new()`,
+  `zlink_registry_query_client_connect()`,
+  `zlink_registry_query_snapshot()`,
+  `zlink_registry_query_destroy()`
 
 Callers that need transition detection compare successive snapshots or query
 results in application code. This keeps the public contract aligned with

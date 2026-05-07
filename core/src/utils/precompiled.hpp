@@ -67,7 +67,7 @@ int zlink_stream_detach (void *s_);
 #define ESHUTDOWN ENOTCONN
 #endif
 
-// TODO: expand pch implementation to non-windows builds.
+// Precompiled headers are currently enabled only on MSVC builds.
 #ifdef _MSC_VER
 
 // standard C headers

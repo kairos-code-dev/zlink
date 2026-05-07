@@ -26,7 +26,8 @@ template <typename T, size_t S> class fast_vector_t
     {
         if (nitems_ > S) {
             _buf = new (std::nothrow) T[nitems_];
-            //  TODO since this function is called by a client, we could return errno == ENOMEM here
+            //  Keep allocation failure handling consistent with the rest of
+            //  the low-level polling path, which aborts on internal OOM.
             alloc_assert (_buf);
         } else {
             _buf = _static_buf;
@@ -59,7 +60,8 @@ template <typename T, size_t S> class resizable_fast_vector_t
             _dynamic_buf->resize (nitems_);
         } else if (nitems_ > S) {
             _dynamic_buf = new (std::nothrow) std::vector<T> (nitems_);
-            //  TODO since this function is called by a client, we could return errno == ENOMEM here
+            //  Keep allocation failure handling consistent with the rest of
+            //  the low-level polling path, which aborts on internal OOM.
             alloc_assert (_dynamic_buf);
             memcpy (&(*_dynamic_buf)[0], _static_buf, sizeof _static_buf);
         }

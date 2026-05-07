@@ -669,20 +669,20 @@ void zlink::registry_t::handle_bind_route (
   const zlink_routing_id_t &sender_id_)
 {
     if (frame_count_ != 8) {
-        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+        send_route_reply (router_, sender_id_, discovery_protocol::status_invalid, NULL, NULL,
                           "invalid bind route");
         return;
     }
 
     uint32_t raw_kind = 0;
     if (!discovery_protocol::read_u32 (frames_[1], &raw_kind)) {
-        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+        send_route_reply (router_, sender_id_, discovery_protocol::status_invalid, NULL, NULL,
                           "invalid kind");
         return;
     }
     const size_t value_size = zlink_msg_size (&frames_[3]);
     if (value_size > ZLINK_ROUTE_VALUE_MAX) {
-        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+        send_route_reply (router_, sender_id_, discovery_protocol::status_invalid, NULL, NULL,
                           "value too large");
         return;
     }
@@ -692,7 +692,7 @@ void zlink::registry_t::handle_bind_route (
     uint64_t registration_id = 0;
     if (!discovery_protocol::read_u16 (frames_[5], &owner_role)
         || !discovery_protocol::read_u64 (frames_[7], &registration_id)) {
-        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+        send_route_reply (router_, sender_id_, discovery_protocol::status_invalid, NULL, NULL,
                           "invalid owner");
         return;
     }
@@ -700,7 +700,7 @@ void zlink::registry_t::handle_bind_route (
       discovery_protocol::read_string (frames_[6]);
 
     const uint64_t now_ms = zlink::clock_t ().now_ms ();
-    uint8_t status = 0x00;
+    uint8_t status = discovery_protocol::status_ok;
     std::string error;
     {
         scoped_lock_t lock (_sync);
@@ -711,16 +711,16 @@ void zlink::registry_t::handle_bind_route (
             owner.registration_id = 0;
         }
         if (owner.registration_id == 0) {
-            status = 0x01;
+            status = discovery_protocol::status_not_found;
             error = "owner not found";
         } else if (owner.registration_id != registration_id) {
-            status = 0x02;
+            status = discovery_protocol::status_rejected;
             error = "stale owner generation";
         } else {
             route_key_t route_key;
             if (!read_route_key (raw_kind, frames_[2], channel_name,
                                  &route_key)) {
-                status = 0xFF;
+                status = discovery_protocol::status_invalid;
                 error = "invalid route key";
             } else {
                 route_entry_t entry;
@@ -759,7 +759,7 @@ void zlink::registry_t::handle_bind_route (
                 int route_error = 0;
                 if (!route_store_can_fit_locked (entry, replaced_memory,
                                                  &route_error)) {
-                    status = 0xFF;
+                    status = discovery_protocol::status_invalid;
                     error = route_error == ENOSPC ? "route store full"
                                                   : "route too large";
                 } else {
@@ -785,7 +785,7 @@ void zlink::registry_t::handle_unbind_route (
   const zlink_routing_id_t &sender_id_)
 {
     if (frame_count_ != 7) {
-        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+        send_route_reply (router_, sender_id_, discovery_protocol::status_invalid, NULL, NULL,
                           "invalid unbind route");
         return;
     }
@@ -798,14 +798,14 @@ void zlink::registry_t::handle_unbind_route (
     if (!discovery_protocol::read_u32 (frames_[1], &raw_kind)
         || !discovery_protocol::read_u16 (frames_[4], &owner_role)
         || !discovery_protocol::read_u64 (frames_[6], &registration_id)) {
-        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+        send_route_reply (router_, sender_id_, discovery_protocol::status_invalid, NULL, NULL,
                           "invalid unbind route");
         return;
     }
     const std::string owner_endpoint =
       discovery_protocol::read_string (frames_[5]);
 
-    uint8_t status = 0x00;
+    uint8_t status = discovery_protocol::status_ok;
     std::string error;
     {
         scoped_lock_t lock (_sync);
@@ -815,24 +815,24 @@ void zlink::registry_t::handle_unbind_route (
                                          owner_endpoint, &owner, &owner_rid))
             owner.registration_id = 0;
         if (owner.registration_id == 0) {
-            status = 0x01;
+            status = discovery_protocol::status_not_found;
             error = "owner not found";
         } else if (owner.registration_id != registration_id) {
-            status = 0x02;
+            status = discovery_protocol::status_rejected;
             error = "stale owner generation";
         } else {
             route_key_t route_key;
             if (!read_route_key (raw_kind, frames_[2], channel_name,
                                  &route_key)) {
-                status = 0xFF;
+                status = discovery_protocol::status_invalid;
                 error = "invalid route key";
             } else {
                 route_map_t::iterator it = _projection_state.routes.find (route_key);
                 if (it == _projection_state.routes.end ()) {
-                    status = 0x01;
+                    status = discovery_protocol::status_not_found;
                     error = "route not found";
                 } else if (!(it->owner == owner)) {
-                    status = 0x02;
+                    status = discovery_protocol::status_rejected;
                     error = "route owner mismatch";
                 } else {
                     route_key_set_t dirty_routes;
@@ -860,21 +860,21 @@ void zlink::registry_t::handle_resolve_route (
   const zlink_routing_id_t &sender_id_)
 {
     if (frame_count_ < 4) {
-        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+        send_route_reply (router_, sender_id_, discovery_protocol::status_invalid, NULL, NULL,
                           "invalid resolve route");
         return;
     }
 
     uint32_t raw_kind = 0;
     if (!discovery_protocol::read_u32 (frames_[1], &raw_kind)) {
-        send_route_reply (router_, sender_id_, 0xFF, NULL, NULL,
+        send_route_reply (router_, sender_id_, discovery_protocol::status_invalid, NULL, NULL,
                           "invalid kind");
         return;
     }
     const std::string channel_name =
       discovery_protocol::read_string (frames_[3]);
 
-    uint8_t status = 0x01;
+    uint8_t status = discovery_protocol::status_not_found;
     zlink_routing_id_t owner_rid;
     memset (&owner_rid, 0, sizeof (owner_rid));
     std::vector<unsigned char> value;
@@ -883,14 +883,14 @@ void zlink::registry_t::handle_resolve_route (
         scoped_lock_t lock (_sync);
         route_key_t route_key;
         if (!read_route_key (raw_kind, frames_[2], channel_name, &route_key)) {
-            status = 0xFF;
+            status = discovery_protocol::status_invalid;
             error = "invalid route key";
         } else {
             materialize_route_winner_locked (route_key);
             route_map_t::const_iterator it = _projection_state.routes.find (route_key);
             if (it != _projection_state.routes.end () && owner_is_live_locked (it->owner)
                 && owner_routing_id_from_key (it->owner, &owner_rid)) {
-                status = 0x00;
+                status = discovery_protocol::status_ok;
                 value = it->value;
                 error.clear ();
             }

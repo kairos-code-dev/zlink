@@ -7,10 +7,10 @@
 
 #include "engine/asio/asio_debug.hpp"
 #include "core/address.hpp"
+#include "utils/env.hpp"
 #include <atomic>
 #include <algorithm>
 #include <array>
-#include <cstdlib>
 #ifndef ZLINK_HAVE_WINDOWS
 #include <sys/socket.h>
 #include <sys/uio.h>
@@ -37,13 +37,7 @@ std::atomic<uint64_t> tcp_write_some_eagain (0);
 std::atomic<uint64_t> tcp_write_some_errors (0);
 std::atomic<bool> tcp_stats_registered (false);
 
-bool env_flag_enabled (const char *name_)
-{
-    const char *env = std::getenv (name_);
-    return env && *env && *env != '0';
-}
-
-const bool tcp_stats_on = env_flag_enabled ("ZLINK_ASIO_TCP_STATS");
+const bool tcp_stats_on = env::flag_enabled ("ZLINK_ASIO_TCP_STATS");
 
 void tcp_stats_dump ()
 {
@@ -87,16 +81,16 @@ boost::asio::ip::tcp protocol_for_fd (fd_t fd_)
 }
 
 const bool tcp_allow_sync_write_on =
-  env_flag_enabled ("ZLINK_ASIO_TCP_SYNC_WRITE");
+  env::flag_enabled ("ZLINK_ASIO_TCP_SYNC_WRITE");
 
 const bool tcp_use_async_write_some_on =
-  env_flag_enabled ("ZLINK_ASIO_TCP_ASYNC_WRITE_SOME");
+  env::flag_enabled ("ZLINK_ASIO_TCP_ASYNC_WRITE_SOME");
 
 const bool tcp_use_asio_writev_on =
-  env_flag_enabled ("ZLINK_ASIO_WRITEV_USE_ASIO");
+  env::flag_enabled ("ZLINK_ASIO_WRITEV_USE_ASIO");
 
 const bool tcp_writev_single_shot_on =
-  env_flag_enabled ("ZLINK_ASIO_WRITEV_SINGLE_SHOT");
+  env::flag_enabled ("ZLINK_ASIO_WRITEV_SINGLE_SHOT");
 }
 
 tcp_transport_t::tcp_transport_t ()

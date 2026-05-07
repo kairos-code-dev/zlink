@@ -319,13 +319,13 @@ void spot_data_plane_t::close_socket_ptr (spot_node_t *node_,
 {
     if (!socket_)
         return;
-    if (!node_ || !node_->_ctx) {
+    if (!spot_node_access_t::ctx (node_)) {
         socket_->stop ();
         socket_->close ();
         socket_ = NULL;
         return;
     }
-    (void) node_->_lifecycle.close_socket (socket_, 2000);
+    (void) spot_node_access_t::close_owned_socket (node_, socket_, 2000);
 }
 
 void spot_data_plane_t::clear_runtime_socket_refs (
@@ -353,25 +353,28 @@ int spot_data_plane_t::initialize_runtime (
         return -1;
     }
 
-    const bool pubsub_enabled = node_->pubsub_enabled ();
-    const bool routed_enabled = node_->routed_enabled ();
+    const bool pubsub_enabled = spot_node_access_t::pubsub_enabled (node_);
+    const bool routed_enabled = spot_node_access_t::routed_enabled (node_);
 
-    state_out_->ctrl = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PAIR);
+    state_out_->ctrl =
+      spot_node_access_t::create_socket (node_, ZLINK_CORE_SOCKET_PAIR);
     if (pubsub_enabled) {
-        state_out_->mesh_pub = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
+        state_out_->mesh_pub =
+          spot_node_access_t::create_socket (node_, ZLINK_CORE_SOCKET_PUB);
         state_out_->mesh_xsub =
-          node_->_ctx->create_socket (ZLINK_CORE_SOCKET_XSUB);
+          spot_node_access_t::create_socket (node_, ZLINK_CORE_SOCKET_XSUB);
         state_out_->pub_ingress_sub =
-          node_->_ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
-        state_out_->fanout = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
+          spot_node_access_t::create_socket (node_, ZLINK_CORE_SOCKET_SUB);
+        state_out_->fanout =
+          spot_node_access_t::create_socket (node_, ZLINK_CORE_SOCKET_PUB);
     }
     state_out_->peer_ctrl_pub =
-      node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
+      spot_node_access_t::create_socket (node_, ZLINK_CORE_SOCKET_PUB);
     state_out_->peer_ctrl_sub =
-      node_->_ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
+      spot_node_access_t::create_socket (node_, ZLINK_CORE_SOCKET_SUB);
     if (routed_enabled) {
         state_out_->external_router =
-          node_->_ctx->create_socket (ZLINK_CORE_SOCKET_ROUTER);
+          spot_node_access_t::create_socket (node_, ZLINK_CORE_SOCKET_ROUTER);
     }
 
     if (!state_out_->ctrl
@@ -388,7 +391,7 @@ int spot_data_plane_t::initialize_runtime (
         }
         close_runtime_sockets (node_, state_out_);
         {
-            scoped_lock_t lock (node_->_sync);
+            scoped_lock_t lock (spot_node_access_t::sync (node_));
             clear_runtime_socket_refs (runtime_);
             runtime_->mark_fault (err);
         }
@@ -413,7 +416,7 @@ int spot_data_plane_t::initialize_runtime (
         state_out_->fanout->set_auto_hwm_policy_enabled (false);
 
     {
-        scoped_lock_t lock (node_->_sync);
+        scoped_lock_t lock (spot_node_access_t::sync (node_));
         runtime_->data_ctrl_back = state_out_->ctrl;
         runtime_->mesh_pub = state_out_->mesh_pub;
         runtime_->mesh_xsub = state_out_->mesh_xsub;
@@ -422,14 +425,16 @@ int spot_data_plane_t::initialize_runtime (
         runtime_->peer_ctrl_sub = state_out_->peer_ctrl_sub;
         runtime_->external_router = state_out_->external_router;
         runtime_->local_fanout_xpub = state_out_->fanout;
-        node_->track_owned_socket (state_out_->ctrl);
-        node_->track_owned_socket (state_out_->mesh_pub);
-        node_->track_owned_socket (state_out_->mesh_xsub);
-        node_->track_owned_socket (state_out_->pub_ingress_sub);
-        node_->track_owned_socket (state_out_->peer_ctrl_pub);
-        node_->track_owned_socket (state_out_->peer_ctrl_sub);
-        node_->track_owned_socket (state_out_->external_router);
-        node_->track_owned_socket (state_out_->fanout);
+        spot_node_access_t::track_owned_socket (node_, state_out_->ctrl);
+        spot_node_access_t::track_owned_socket (node_, state_out_->mesh_pub);
+        spot_node_access_t::track_owned_socket (node_, state_out_->mesh_xsub);
+        spot_node_access_t::track_owned_socket (node_,
+                                                state_out_->pub_ingress_sub);
+        spot_node_access_t::track_owned_socket (node_, state_out_->peer_ctrl_pub);
+        spot_node_access_t::track_owned_socket (node_, state_out_->peer_ctrl_sub);
+        spot_node_access_t::track_owned_socket (node_,
+                                                state_out_->external_router);
+        spot_node_access_t::track_owned_socket (node_, state_out_->fanout);
     }
 
     configure_runtime_sockets (runtime_, state_out_);
@@ -443,7 +448,7 @@ int spot_data_plane_t::initialize_runtime (
                                                              err);
         close_runtime_sockets (node_, state_out_);
         {
-            scoped_lock_t lock (node_->_sync);
+            scoped_lock_t lock (spot_node_access_t::sync (node_));
             clear_runtime_socket_refs (runtime_);
             runtime_->mark_fault (err);
         }
@@ -464,7 +469,7 @@ int spot_data_plane_t::initialize_runtime (
                                                              err);
         close_runtime_sockets (node_, state_out_);
         {
-            scoped_lock_t lock (node_->_sync);
+            scoped_lock_t lock (spot_node_access_t::sync (node_));
             clear_runtime_socket_refs (runtime_);
             runtime_->mark_fault (err);
         }
@@ -517,7 +522,7 @@ int spot_data_plane_t::initialize_runtime (
                                                    ZLINK_CORE_SOCKET_PAIR);
         close_runtime_sockets (node_, state_out_);
         {
-            scoped_lock_t lock (node_->_sync);
+            scoped_lock_t lock (spot_node_access_t::sync (node_));
             clear_runtime_socket_refs (runtime_);
             runtime_->mark_fault (err);
         }
@@ -544,7 +549,7 @@ int spot_data_plane_t::initialize_runtime (
                                                    ZLINK_CORE_SOCKET_PAIR);
         close_runtime_sockets (node_, state_out_);
         {
-            scoped_lock_t lock (node_->_sync);
+            scoped_lock_t lock (spot_node_access_t::sync (node_));
             clear_runtime_socket_refs (runtime_);
             runtime_->mark_fault (err);
         }
@@ -561,7 +566,7 @@ int spot_data_plane_t::initialize_runtime (
                                                    ZLINK_CORE_SOCKET_PAIR);
         close_runtime_sockets (node_, state_out_);
         {
-            scoped_lock_t lock (node_->_sync);
+            scoped_lock_t lock (spot_node_access_t::sync (node_));
             clear_runtime_socket_refs (runtime_);
             runtime_->mark_fault (err);
         }
@@ -662,7 +667,7 @@ void spot_data_plane_t::teardown_runtime (
     spot_data_plane_t::close_socket_ptr (node_, state_->mesh_xsub_monitor);
 
     {
-        scoped_lock_t lock (node_->_sync);
+        scoped_lock_t lock (spot_node_access_t::sync (node_));
         runtime_->peer_ctrl_endpoint.clear ();
         runtime_->bound_endpoint.clear ();
     }

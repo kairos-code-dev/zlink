@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include <chrono>
+#include <atomic>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -35,6 +36,7 @@ std::thread g_spot_timeout_reaper_thread;
 bool g_spot_timeout_reaper_started = false;
 bool g_spot_timeout_reaper_stopping = false;
 uint64_t g_spot_timeout_reaper_next_deadline_ns = 0;
+std::atomic<uint64_t> g_spot_timeout_reaper_next_deadline_hint_ns (0);
 
 void run_spot_timeout_reaper ();
 
@@ -64,9 +66,18 @@ std::chrono::nanoseconds ns_until_deadline (uint64_t deadline_ns_)
 
 void update_spot_timeout_reaper_deadline (uint64_t deadline_ns_)
 {
-    std::lock_guard<std::mutex> lock (g_spot_timeout_reaper_mutex);
     if (deadline_ns_ == 0)
         return;
+
+    const uint64_t hinted_deadline =
+      g_spot_timeout_reaper_next_deadline_hint_ns.load (
+        std::memory_order_acquire);
+    if (hinted_deadline != 0 && hinted_deadline <= deadline_ns_
+        && hinted_deadline > monotonic_now_ns ()) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock (g_spot_timeout_reaper_mutex);
     if (!g_spot_timeout_reaper_started) {
         g_spot_timeout_reaper_thread = std::thread (run_spot_timeout_reaper);
         g_spot_timeout_reaper_started = true;
@@ -74,7 +85,12 @@ void update_spot_timeout_reaper_deadline (uint64_t deadline_ns_)
     if (g_spot_timeout_reaper_next_deadline_ns == 0
         || deadline_ns_ < g_spot_timeout_reaper_next_deadline_ns) {
         g_spot_timeout_reaper_next_deadline_ns = deadline_ns_;
+        g_spot_timeout_reaper_next_deadline_hint_ns.store (
+          deadline_ns_, std::memory_order_release);
         g_spot_timeout_reaper_cv.notify_all ();
+    } else if (g_spot_timeout_reaper_next_deadline_ns != 0) {
+        g_spot_timeout_reaper_next_deadline_hint_ns.store (
+          g_spot_timeout_reaper_next_deadline_ns, std::memory_order_release);
     }
 }
 
@@ -138,6 +154,8 @@ void run_spot_timeout_reaper ()
 
         lock.lock ();
         g_spot_timeout_reaper_next_deadline_ns = next_deadline_ns;
+        g_spot_timeout_reaper_next_deadline_hint_ns.store (
+          next_deadline_ns, std::memory_order_release);
     }
 }
 
@@ -212,9 +230,11 @@ int zlink::spot_reqrep_internal::register_spot_pending_request (
         ensure_spot_timeout_reaper_started ();
     }
 
-    std::lock_guard<std::mutex> lock (state_->mutex);
-    state_->requests.pending_sequences.insert (key_.request_seq);
-    state_->requests.pending_replies[key_] = pending;
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        state_->requests.pending_sequences.insert (key_.request_seq);
+        state_->requests.pending_replies[key_] = pending;
+    }
     if (pending.deadline_ns != 0)
         update_spot_timeout_reaper_deadline (pending.deadline_ns);
     return 0;

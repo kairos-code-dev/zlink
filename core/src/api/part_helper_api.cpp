@@ -14,6 +14,7 @@
 #include "core/msg.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/err.hpp"
+#include "utils/debug_log.hpp"
 
 namespace
 {
@@ -29,7 +30,7 @@ bool &aggregate_send_mode_tls ()
 
 bool routed_part_debug_enabled ()
 {
-    return std::getenv ("ZLINK_ROUTED_PART_DEBUG") != NULL;
+    return zlink::debug_env_enabled ("ZLINK_ROUTED_PART_DEBUG");
 }
 
 bool send_family_requires_routed_scope (

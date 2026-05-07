@@ -29,6 +29,7 @@
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_runtime.hpp"
+#include "utils/debug_log.hpp"
 #include "utils/random.hpp"
 
 namespace
@@ -37,7 +38,7 @@ namespace reqrep = zlink::socket_reqrep_internal;
 
 bool spot_direct_route_debug_enabled ()
 {
-    return std::getenv ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE") != NULL;
+    return zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
 }
 
 using zlink::spot_reqrep_internal::g_spot_request_reply_index_mutex;

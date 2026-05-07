@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 #include "utils/macros.hpp"
+#include "utils/debug_log.hpp"
 #ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #endif
@@ -24,6 +25,7 @@
 #include "core/pipe.hpp"
 #include "services/control/service_control_runtime.hpp"
 #include "utils/err.hpp"
+#include "utils/heap_owner.hpp"
 #include "utils/random.hpp"
 
 #define ZLINK_CTX_TAG_VALUE_GOOD 0xabadcafe
@@ -266,7 +268,7 @@ zlink_auto_hwm_profile_t zlink::ctx_t::auto_hwm_profile () const
 
 void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
 {
-    if (!std::getenv ("ZLINK_CTX_DEBUG_SOCKETS"))
+    if (!debug_env_enabled ("ZLINK_CTX_DEBUG_SOCKETS"))
         return;
 
     std::vector<socket_base_t *> sockets;
@@ -301,14 +303,14 @@ int zlink::ctx_t::terminate ()
     }
     _slot_sync.unlock ();
 
-    if (std::getenv ("ZLINK_CTX_DEBUG_SOCKETS")) {
+    if (debug_env_enabled ("ZLINK_CTX_DEBUG_SOCKETS")) {
         std::fprintf (stderr, "[ctx] before-delete\n");
         std::fflush (stderr);
     }
 
     //  Context is API-created on heap; shutdown path owns final deletion once
     //  reaper confirms all sockets are gone.
-    delete this;
+    zlink::release_heap_owned (this);
 
     return 0;
 }

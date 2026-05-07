@@ -154,11 +154,32 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup(
 ## SpotNode contract
 
 SpotNode exposes HWM only as admission control from `Spot` into `SpotNode`.
-The public options are `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`,
-`ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
-`ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`, and
-`ZLINK_SPOT_NODE_OPT_PUBSUB_HWM`. Both admission channels default to the
-balanced auto-HWM profile. Without a numeric override, the admission boundary (`publish_ingress_queue`,
+The public options for `zlink_set_spot_node_option()` /
+`zlink_get_spot_node_option()` are:
+
+```c
+typedef enum zlink_spot_node_option_t
+{
+    ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE      = 0x360E,
+    ZLINK_SPOT_NODE_OPT_ROUTER_HWM              = 0x360F,
+    ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE      = 0x3610,
+    ZLINK_SPOT_NODE_OPT_PUBSUB_HWM              = 0x3611,
+    ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN    = 0x3612,
+    ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX    = 0x3613
+} zlink_spot_node_option_t;
+```
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE` | `int` | HWM profile for the routed admission channel (`zlink_auto_hwm_profile_t` value) |
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | `int` | Numeric HWM override for the routed channel; `0` clears the override |
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE` | `int` | HWM profile for the pub/sub admission channel |
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` | `int` | Numeric HWM override for the pub/sub channel; `0` clears the override |
+| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN` | `int` | Minimum number of dispatch worker threads |
+| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX` | `int` | Maximum number of dispatch worker threads |
+
+Both admission channels default to the balanced auto-HWM profile. Without a
+numeric override, the admission boundary (`publish_ingress_queue`,
 `routed_send_queue`) uses a fixed per-profile message-count limit: COMPACT 64,
 LOW_LATENCY 128, BALANCED 256, THROUGHPUT 512. A positive numeric HWM
 overrides the automatic value for that channel. Setting the numeric HWM to
@@ -754,12 +775,22 @@ typedef enum zlink_actor_admission_result_t {
   ZLINK_ACTOR_ADMISSION_REJECT = 2
 } zlink_actor_admission_result_t;
 
+typedef struct zlink_actor_route_t {
+  zlink_actor_ref_t actor;
+  uint32_t joined;
+  zlink_routing_id_t joined_spot_rid;
+} zlink_actor_route_t;
+
 typedef zlink_actor_admission_result_t (*zlink_actor_admission_handler_fn)(
   void *node,
   const char *actor_id,
   const zlink_msg_t *message,
   void *userdata);
 ```
+
+`zlink_actor_route_t` is returned by `zlink_discovery_resolve_actor()`. The
+`joined` field is non-zero when the actor is currently joined to a Spot; in
+that case `joined_spot_rid` holds the Spot's routing id.
 
 An actor id is a NUL-terminated UTF-8 byte sequence. The valid maximum length
 is `ZLINK_ACTOR_ID_MAX - 1` (255 bytes). Empty ids, NULL ids, and ids longer

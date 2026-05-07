@@ -234,11 +234,8 @@ int zlink::ip_resolver_t::resolve (ip_addr_t *ip_addr_, const char *name_)
             addr = addr.substr (0, pos);
     }
 
-    //  Trim any square brackets surrounding the address. Used for
-    //  IPv6 addresses to remove the confusion with the port
-    //  delimiter.
-    //  TODO Should we validate that the brackets are present if
-    //  'addr' contains ':' ?
+    //  Trim optional square brackets surrounding the address. Bracketless IPv6
+    //  is accepted here because endpoint parsing has already separated the port.
     const size_t brackets_length = 2;
     if (addr.size () >= brackets_length && addr[0] == '['
         && addr[addr.size () - 1] == ']') {

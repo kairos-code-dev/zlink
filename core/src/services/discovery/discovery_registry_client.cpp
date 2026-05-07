@@ -5,30 +5,17 @@
 #include "core/c_api_copy_internal.hpp"
 #include "core/recv_internal.hpp"
 #include "services/discovery/discovery.hpp"
+#include "services/discovery/discovery_debug.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "services/discovery/discovery_runtime_internal.hpp"
 #include "services/discovery/routing_id_utils.hpp"
 
-#include <cstdarg>
-#include <cstdio>
 #include <cstring>
 
 namespace zlink
 {
 namespace
 {
-static void discovery_debugf_local (const char *fmt_, ...)
-{
-    if (!std::getenv ("ZLINK_DISCOVERY_DEBUG"))
-        return;
-    va_list args;
-    va_start (args, fmt_);
-    std::fprintf (stderr, "[discovery] ");
-    std::vfprintf (stderr, fmt_, args);
-    std::fprintf (stderr, "\n");
-    va_end (args);
-}
-
 static bool wait_socket_event_local (void *socket_,
                                      short events_,
                                      long timeout_ms_)
@@ -76,7 +63,7 @@ static int recv_status_ack_local (socket_base_t *socket_,
         if (frames.size () >= 2
             && discovery_protocol::read_u16 (frames[0], &msg_id)
             && msg_id == expected_msg_id_) {
-            uint8_t status = 0xFF;
+            uint8_t status = discovery_protocol::status_invalid;
             if (zlink_msg_size (&frames[1]) == sizeof (uint8_t))
                 memcpy (&status, zlink_msg_data (&frames[1]),
                         sizeof (uint8_t));
@@ -194,15 +181,6 @@ static uint16_t resolve_registered_service_role_local (uint16_t service_role_)
     return service_role_;
 }
 
-static int register_status_errno_local (int status_)
-{
-    if (status_ == 0x03)
-        return EEXIST;
-    if (status_ == 0x04)
-        return ENOTSUP;
-    return EINVAL;
-}
-
 static bool topology_state_is_resolvable_local (zlink_topology_state_t state_)
 {
     return state_ == ZLINK_TOPOLOGY_STATE_READY;
@@ -286,12 +264,11 @@ static int recv_route_reply_local (socket_base_t *socket_,
         return -1;
     }
 
-    uint8_t status = 0xFF;
+    uint8_t status = discovery_protocol::status_invalid;
     memcpy (&status, zlink_msg_data (&frames[1]), sizeof (status));
-    if (status != 0) {
+    if (status != discovery_protocol::status_ok) {
         close_msg_frames (&frames);
-        errno = status == 0x01 ? ENOENT
-                               : (status == 0x02 ? ESTALE : EINVAL);
+        errno = discovery_protocol::route_status_errno (status);
         return -1;
     }
 
@@ -748,7 +725,7 @@ int discovery_t::register_service (const char *endpoint_,
     if (prepare_transient_dealer_local (_ctx, _bootstrap_runtime, uplink,
                                         routing_id_, &dealer)
         != 0) {
-        discovery_debugf_local ("register_service pollout timeout uplink=%s",
+        discovery_debugf ("register_service pollout timeout uplink=%s",
                                 uplink.c_str ());
         return -1;
     }
@@ -787,22 +764,23 @@ int discovery_t::register_service (const char *endpoint_,
                                &status, &resolved, &source_registry,
                                &registration_id, &error)
         != 0) {
-        discovery_debugf_local ("register_service ack recv failed errno=%d",
+        discovery_debugf ("register_service ack recv failed errno=%d",
                                 errno);
         (void) close_transient_dealer_local (_ctx, dealer);
         return -1;
     }
     (void) close_transient_dealer_local (_ctx, dealer);
-    if (status != 0) {
+    if (status != discovery_protocol::status_ok) {
         if (status == -1) {
-            discovery_debugf_local ("register_service ack timeout uplink=%s",
+            discovery_debugf ("register_service ack timeout uplink=%s",
                                     uplink.c_str ());
             errno = EAGAIN;
             return -1;
         }
-        discovery_debugf_local ("register_service rejected status=%d error=%s",
+        discovery_debugf ("register_service rejected status=%d error=%s",
                                 status, error.c_str ());
-        errno = register_status_errno_local (status);
+        errno = discovery_protocol::register_status_errno (
+          static_cast<uint8_t> (status));
         return -1;
     }
 
@@ -874,7 +852,7 @@ int discovery_t::update_service_attributes (const char *endpoint_,
     if (prepare_transient_dealer_local (_ctx, _bootstrap_runtime, uplink, NULL,
                                         &dealer)
         != 0) {
-        discovery_debugf_local (
+        discovery_debugf (
           "update_service_attributes pollout timeout uplink=%s",
           uplink.c_str ());
         return -1;
@@ -914,24 +892,25 @@ int discovery_t::update_service_attributes (const char *endpoint_,
                                &status, &resolved, &source_registry,
                                &registration_id, &error)
         != 0) {
-        discovery_debugf_local (
+        discovery_debugf (
           "update_service_attributes ack recv failed errno=%d", errno);
         (void) close_transient_dealer_local (_ctx, dealer);
         return -1;
     }
     (void) close_transient_dealer_local (_ctx, dealer);
-    if (status != 0) {
+    if (status != discovery_protocol::status_ok) {
         if (status == -1) {
-            discovery_debugf_local (
+            discovery_debugf (
               "update_service_attributes ack timeout uplink=%s",
               uplink.c_str ());
             errno = EAGAIN;
             return -1;
         }
-        discovery_debugf_local (
+        discovery_debugf (
           "update_service_attributes rejected status=%d error=%s", status,
           error.c_str ());
-        errno = register_status_errno_local (status);
+        errno = discovery_protocol::register_status_errno (
+          static_cast<uint8_t> (status));
         return -1;
     }
 
@@ -993,7 +972,7 @@ int discovery_t::unregister_service (const char *endpoint_,
     if (prepare_transient_dealer_local (_ctx, _bootstrap_runtime, uplink, NULL,
                                         &dealer)
         != 0) {
-        discovery_debugf_local ("unregister_service pollout timeout uplink=%s",
+        discovery_debugf ("unregister_service pollout timeout uplink=%s",
                                 uplink.c_str ());
         return -1;
     }
@@ -1019,23 +998,24 @@ int discovery_t::unregister_service (const char *endpoint_,
     if (recv_status_ack_local (dealer, discovery_protocol::msg_unregister_ack,
                                &status, NULL, NULL, NULL, &error)
         != 0) {
-        discovery_debugf_local (
+        discovery_debugf (
           "unregister_service ack recv failed errno=%d", errno);
         (void) close_transient_dealer_local (_ctx, dealer);
         return -1;
     }
     (void) close_transient_dealer_local (_ctx, dealer);
-    if (status != 0) {
+    if (status != discovery_protocol::status_ok) {
         if (status == -1) {
-            discovery_debugf_local (
+            discovery_debugf (
               "unregister_service ack timeout uplink=%s", uplink.c_str ());
             errno = EAGAIN;
             return -1;
         }
-        discovery_debugf_local (
+        discovery_debugf (
           "unregister_service rejected status=%d error=%s", status,
           error.c_str ());
-        errno = EINVAL;
+        errno = discovery_protocol::route_status_errno (
+          static_cast<uint8_t> (status));
         return -1;
     }
 

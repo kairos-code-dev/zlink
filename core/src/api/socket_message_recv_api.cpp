@@ -15,6 +15,12 @@
 
 namespace
 {
+zlink_routing_id_t &xpub_recv_source_rid_tls ()
+{
+    static thread_local zlink_routing_id_t rid;
+    return rid;
+}
+
 inline void reset_routing_id_output (zlink_routing_id_t *source_rid_out_)
 {
     if (source_rid_out_)
@@ -344,9 +350,9 @@ zlink_recv_result_t zlink_xpub_recv_part (void *xpub_,
         return ZLINK_RECV_INTERNAL_ERROR;
     }
     if (source_rid_out_) {
-        static thread_local zlink_routing_id_t tl_rid;
-        tl_rid = tmp_rid;
-        *source_rid_out_ = &tl_rid;
+        zlink_routing_id_t &source_rid = xpub_recv_source_rid_tls ();
+        source_rid = tmp_rid;
+        *source_rid_out_ = &source_rid;
     }
     return ZLINK_RECV_OK;
 }

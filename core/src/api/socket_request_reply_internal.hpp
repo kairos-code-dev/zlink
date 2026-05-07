@@ -64,8 +64,13 @@ struct socket_request_reply_state_t :
     zlink::request_completion::queue_state_t completion;
 };
 
-extern thread_local zlink_routing_id_t g_router_recv_source_rid;
-extern thread_local zlink_routing_id_t g_router_recv_source_spot_rid;
+struct router_recv_metadata_tls_t
+{
+    zlink_routing_id_t source_rid;
+    zlink_routing_id_t source_spot_rid;
+};
+
+router_recv_metadata_tls_t &router_recv_metadata_tls ();
 
 bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_);
 std::string routing_id_key (const zlink_routing_id_t *peer_rid_);

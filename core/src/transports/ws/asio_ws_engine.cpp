@@ -1755,15 +1755,13 @@ void zlink::asio_ws_engine_t::terminate ()
         return;
     }
 
-    _callback_guard.reset ();
-    delete this;
+    destroy_after_callbacks ();
 }
 
 void zlink::asio_ws_engine_t::schedule_terminate_completion ()
 {
     if (!_io_context) {
-        _callback_guard.reset ();
-        delete this;
+        destroy_after_callbacks ();
         return;
     }
 
@@ -1773,9 +1771,14 @@ void zlink::asio_ws_engine_t::schedule_terminate_completion ()
             return;
         }
 
-        _callback_guard.reset ();
-        delete this;
+        destroy_after_callbacks ();
     });
+}
+
+void zlink::asio_ws_engine_t::destroy_after_callbacks ()
+{
+    _callback_guard.reset ();
+    delete this;
 }
 
 bool zlink::asio_ws_engine_t::restart_input ()

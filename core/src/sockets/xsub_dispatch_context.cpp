@@ -6,23 +6,27 @@
 
 namespace
 {
-thread_local zlink::xsub_t *g_current_xsub_dispatch_socket = NULL;
+zlink::xsub_t *&xsub_dispatch_socket_tls ()
+{
+    static thread_local zlink::xsub_t *socket = NULL;
+    return socket;
+}
 }
 
 zlink::xsub_dispatch_context_t::xsub_dispatch_context_t (xsub_t *socket_) :
-    _previous_socket (g_current_xsub_dispatch_socket)
+    _previous_socket (xsub_dispatch_socket_tls ())
 {
-    g_current_xsub_dispatch_socket = socket_;
+    xsub_dispatch_socket_tls () = socket_;
 }
 
 zlink::xsub_dispatch_context_t::~xsub_dispatch_context_t ()
 {
-    g_current_xsub_dispatch_socket = _previous_socket;
+    xsub_dispatch_socket_tls () = _previous_socket;
 }
 
 bool zlink::xsub_dispatch_context_t::owns_socket (const xsub_t *socket_)
 {
-    return g_current_xsub_dispatch_socket == socket_;
+    return xsub_dispatch_socket_tls () == socket_;
 }
 
 bool zlink::xsub_dispatch_owns_socket (const xsub_t *socket_)

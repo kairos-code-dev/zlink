@@ -43,6 +43,7 @@ class pgm_receiver_t ZLINK_FINAL : public io_object_t, public i_engine
   private:
     //  Unplug the engine from the session.
     void unplug ();
+    void destroy_after_unplug ();
 
     //  Decode received data (inpos, insize) and forward decoded
     //  messages to the session.

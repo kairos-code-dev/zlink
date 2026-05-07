@@ -6,31 +6,34 @@
 
 namespace
 {
-thread_local monitor_handler_state_t *g_current_monitor_handler_state = NULL;
+monitor_handler_state_t *&monitor_handler_state_tls ()
+{
+    static thread_local monitor_handler_state_t *state = NULL;
+    return state;
+}
 }
 
 zlink::monitor_dispatch_context_t::monitor_dispatch_context_t (
   monitor_handler_state_t *state_) :
-    _previous_state (g_current_monitor_handler_state)
+    _previous_state (monitor_handler_state_tls ())
 {
-    g_current_monitor_handler_state = state_;
+    monitor_handler_state_tls () = state_;
 }
 
 zlink::monitor_dispatch_context_t::~monitor_dispatch_context_t ()
 {
-    g_current_monitor_handler_state = _previous_state;
+    monitor_handler_state_tls () = _previous_state;
 }
 
 monitor_handler_state_t *zlink::monitor_dispatch_context_t::current_state ()
 {
-    return g_current_monitor_handler_state;
+    return monitor_handler_state_tls ();
 }
 
 void *zlink::monitor_dispatch_context_t::current_handle ()
 {
-    return g_current_monitor_handler_state
-             ? static_cast<void *> (g_current_monitor_handler_state->socket)
-             : NULL;
+    monitor_handler_state_t *state = monitor_handler_state_tls ();
+    return state ? static_cast<void *> (state->socket) : NULL;
 }
 
 monitor_handler_state_t *zlink::current_monitor_handler_state ()

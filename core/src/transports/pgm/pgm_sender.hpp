@@ -43,6 +43,7 @@ class pgm_sender_t ZLINK_FINAL : public io_object_t, public i_engine
   private:
     //  Unplug the engine from the session.
     void unplug ();
+    void destroy_after_unplug ();
 
     //  TX and RX timeout timer ID's.
     enum

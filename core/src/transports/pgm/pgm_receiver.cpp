@@ -82,6 +82,11 @@ void zlink::pgm_receiver_t::unplug ()
 void zlink::pgm_receiver_t::terminate ()
 {
     unplug ();
+    destroy_after_unplug ();
+}
+
+void zlink::pgm_receiver_t::destroy_after_unplug ()
+{
     delete this;
 }
 

@@ -120,8 +120,6 @@ type ActorRef = {
     nodeRid: RoutingId;
     actorId: string;
     generation: bigint;
-    unchecked: boolean;
-    isUnchecked(): boolean;
 };
 type ActorCreateResult = { status: ActorCreateStatus; actor: ActorRef };
 type ActorRoute = { actor: ActorRef; joined: boolean; joinedSpotRid: RoutingId | null };
@@ -141,6 +139,10 @@ type ActorJoinRequest = { info: ActorJoinInfo; message: Message };
 function remoteActorRef(targetNodeRid: RoutingId, actorId: string): ActorRef;
 ```
 
+`ActorJoinRequest` carries the public join information and message. The native
+reply context needed by `replyActorJoin(...)` is retained inside the binding and
+is not exposed as a public field.
+
 `SpotNode` exposes `actor`, `actorLookup`, `remoteActorRef`,
 `createRemoteActor`, `destroyActor`, `onActorAdmission`, `joinActor`,
 `leaveActor`, `spotsSnapshot`, and `actorsSnapshot`. `Spot` exposes
@@ -149,11 +151,14 @@ exposes `bindActor`, `unbindActor`, and `sendBoundActor`. `Actor` exposes
 `actorRef`, `ref`, `join`, `leave`, `recvPart`, `sendBoundSession`,
 `closeBoundSession`, and `close`. `Discovery` exposes `resolveActor`.
 
+Actor ids are non-empty UTF-8 strings up to 255 bytes and must not contain NUL.
 `generation === 0n` is an unchecked remote ref. Actor readable dispatch returns
 preloaded parts through the dispatch info using the callback lifetime ActorRef
 subject. Actor creation places the Actor in the Entry Spot. Joining a user Spot
 requires a bound STREAM session. One Actor binds to only one STREAM session, and
-one STREAM session can bind multiple Actors.
+one STREAM session can bind multiple Actors. `leave` does not drain unread Actor
+messages. Remote Actor create-or-get calls the admission handler only when the
+target Actor does not already exist.
 
 ## Core
 
@@ -251,8 +256,15 @@ function multipartClose(parts: Message[]): void;
 
 ## Socket Types
 
-All sockets expose `bind()`, `unbind()`, and `close()` from `BaseSocket`.
-Connectable sockets also expose `connect()` and `disconnect()`.
+All socket classes expose `bind()`, `unbind()`, `disconnectRid()`,
+`monitorOpen()`, and `close()`. Connectable sockets also expose `connect()` and
+`disconnect()`.
+
+```typescript
+type BaseSocket =
+    PairSocket | PubSocket | SubSocket | DealerSocket | RouterSocket |
+    XPubSocket | XSubSocket | StreamSocket;
+```
 
 Node / TypeScript nonblocking data-plane helpers follow this rule:
 
@@ -272,6 +284,11 @@ Peer weight is not a common socket option. Bindings expose weight only on
 // No common peer-weight accessor. RouterSocket and DealerSocket expose weight on their typed option facade.
 ```
 
+After `attachDiscovery(...)` succeeds on a socket, `connect(...)`,
+`disconnect(...)`, `disconnectRid(...)`, `unbind(...)`, and `close()` on that
+socket fail with `ConfigError` / `ConnectError` / `CloseError` according to the
+called function family. The attached `Discovery` owns the participant lifecycle.
+
 ### PairSocket
 
 ```typescript
@@ -286,14 +303,18 @@ class PairSocket {
     connect(endpoint: string): void;
     /** @throws {ConnectError} */
     disconnect(endpoint: string): void;
+    /** @throws {ConnectError} */
+    disconnectRid(routingId: RoutingId): void;
     /** @throws {SubmitError} */
     send(message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
     send(parts: readonly MessageLike[], flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
+    /** @throws {RecvError} */
     recv(flags?: RecvFlags): Received | null;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
+    /** @throws {ConfigError} */
+    monitorOpen(events?: readonly MonitorEventType[]): MonitorSocket;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -313,6 +334,8 @@ class PubSocket {
     connect(endpoint: string): void;
     /** @throws {ConnectError} */
     disconnect(endpoint: string): void;
+    /** @throws {ConnectError} */
+    disconnectRid(routingId: RoutingId): void;
     /** @throws {SubmitError} */
     publish(topic: string, message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
@@ -321,6 +344,8 @@ class PubSocket {
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
     attachDiscovery(discovery: Discovery): void;
+    /** @throws {ConfigError} */
+    monitorOpen(events?: readonly MonitorEventType[]): MonitorSocket;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -340,6 +365,8 @@ class SubSocket {
     connect(endpoint: string): void;
     /** @throws {ConnectError} */
     disconnect(endpoint: string): void;
+    /** @throws {ConnectError} */
+    disconnectRid(routingId: RoutingId): void;
     /** @throws {ConfigError} */
     setSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
@@ -348,6 +375,8 @@ class SubSocket {
     subscribe(flags?: RecvFlags): TopicMessage | null;
     /** @throws {ConfigError} */
     attachDiscovery(discovery: Discovery): void;
+    /** @throws {ConfigError} */
+    monitorOpen(events?: readonly MonitorEventType[]): MonitorSocket;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -367,6 +396,8 @@ class DealerSocket {
     connect(endpoint: string): void;
     /** @throws {ConnectError} */
     disconnect(endpoint: string): void;
+    /** @throws {ConnectError} */
+    disconnectRid(routingId: RoutingId): void;
     /** @throws {ConfigError} */
     setRoutingId(routingId: RoutingId): void;
     /** @throws {ConfigError} */
@@ -379,12 +410,14 @@ class DealerSocket {
     send(message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
     send(parts: readonly MessageLike[], flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
+    /** @throws {RecvError} */
     recv(flags?: RecvFlags): Received | null;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
     attachDiscovery(discovery: Discovery): void;
+    /** @throws {ConfigError} */
+    monitorOpen(events?: readonly MonitorEventType[]): MonitorSocket;
 
     // --- dealer request (async) — no flags, timeout = 0 uses socket default ---
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
@@ -429,15 +462,19 @@ class RouterSocket {
     connect(endpoint: string): void;
     /** @throws {ConnectError} */
     disconnect(endpoint: string): void;
+    /** @throws {ConnectError} */
+    disconnectRid(routingId: RoutingId): void;
     /** @throws {ConfigError} */
     setRoutingId(routingId: RoutingId): void;
     /** @throws {ConfigError} */
     getRoutingId(): RoutingId;
+    /** @throws {ConnectError} */
+    disconnectRid(routingId: RoutingId): void;
     /** @throws {SubmitError} */
     send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
     send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
+    /** @throws {RecvError} */
     recv(flags?: RecvFlags): Received | null;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
@@ -521,6 +558,8 @@ class RouterSocket {
     // callback install surface such as onReceive. Request completion remains
     // available only through request().
 
+    /** @throws {ConfigError} */
+    monitorOpen(events?: readonly MonitorEventType[]): MonitorSocket;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -540,6 +579,8 @@ class XPubSocket {
     connect(endpoint: string): void;
     /** @throws {ConnectError} */
     disconnect(endpoint: string): void;
+    /** @throws {ConnectError} */
+    disconnectRid(routingId: RoutingId): void;
     /** @throws {SubmitError} */
     publish(topic: string, message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
@@ -548,6 +589,8 @@ class XPubSocket {
     receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent | null;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
+    /** @throws {ConfigError} */
+    monitorOpen(events?: readonly MonitorEventType[]): MonitorSocket;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -567,12 +610,16 @@ class XSubSocket {
     connect(endpoint: string): void;
     /** @throws {ConnectError} */
     disconnect(endpoint: string): void;
+    /** @throws {ConnectError} */
+    disconnectRid(routingId: RoutingId): void;
     /** @throws {ConfigError} */
     setSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {RecvError} */
     subscribe(flags?: RecvFlags): TopicMessage | null;
+    /** @throws {ConfigError} */
+    monitorOpen(events?: readonly MonitorEventType[]): MonitorSocket;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -596,16 +643,15 @@ class StreamSocket {
     send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
     send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
     /**
-     * Three mutually-exclusive receive modes on the same StreamSocket:
+     * Two public receive modes on the same StreamSocket:
      *   (1) recv(), (2) onPacket(handler). Second attach throws
      *   HandlerError(HandlerResult.Busy).
      * @throws {RecvError}
      */
     recv(flags?: RecvFlags): Received | null;
     /**
-     * Mode (3): framed packet callback mapped to
+     * Mode (2): framed packet callback mapped to
      * `zlink_stream_packet_handler()`. Wire frame is big-endian u16
      * header_size + u32 body_size + header + body. Handler receives the
      * source routing id, a header Message, and a body Message; both
@@ -629,6 +675,8 @@ class StreamSocket {
     sendBoundActor(node: SpotNode, sessionRid: RoutingId,
                    actorId: string, parts: readonly MessageLike[],
                    flags?: SendFlags): boolean;
+    /** @throws {ConfigError} */
+    monitorOpen(events?: readonly MonitorEventType[]): MonitorSocket;
     /** @throws {CloseError} */
     close(): void;
 }
@@ -658,10 +706,14 @@ class CommonSocketOptions {
     backlog: number;             // get / set
     reconnectInterval: number;   // get / set (ms)
     reconnectIntervalMax: number;// get / set (ms)
+    ridDuplicatePolicy: RidDuplicatePolicyValue; // get / set
+    autoHwmMsgUnitBytes: number;  // get / set
 }
 
 class DealerSocketOptions extends CommonSocketOptions {
     probe: boolean;              // set only
+    requestTimeout: number;      // get / set (ms)
+    weight: number;              // get / set, 0..100
 }
 
 class RouterSocketOptions extends CommonSocketOptions {
@@ -669,6 +721,8 @@ class RouterSocketOptions extends CommonSocketOptions {
     handover: boolean;           // get / set
     probe: boolean;              // get / set
     connectRoutingId: RoutingId; // set only
+    requestTimeout: number;      // get / set (ms)
+    weight: number;              // get / set, 0..100
 }
 
 class PubSocketOptions extends CommonSocketOptions {
@@ -684,6 +738,10 @@ class SubSocketOptions extends CommonSocketOptions {
 
 class StreamSocketOptions extends CommonSocketOptions {
     notify: boolean;             // get / set
+}
+
+class SpotOptions {
+    requestTimeout: number;      // get / set (ms)
 }
 ```
 
@@ -920,6 +978,18 @@ const RecvFlags = {
 } as const;
 
 type RecvFlags = typeof RecvFlags[keyof typeof RecvFlags];
+```
+
+### RidDuplicatePolicy
+
+```typescript
+const RidDuplicatePolicy = {
+    Reject: 0,
+    Handover: 1,
+} as const;
+
+type RidDuplicatePolicyValue =
+    typeof RidDuplicatePolicy[keyof typeof RidDuplicatePolicy];
 ```
 
 ### SubmitResult
@@ -1253,7 +1323,37 @@ class MonitorEvent {
 }
 ```
 
-`MonitorEventType` includes `peerAdmissionChanged` (bit 15).
+```typescript
+const MonitorEventType = {
+    Connected: 1 << 0,
+    ConnectDelayed: 1 << 1,
+    ConnectRetried: 1 << 2,
+    Listening: 1 << 3,
+    BindFailed: 1 << 4,
+    Accepted: 1 << 5,
+    AcceptFailed: 1 << 6,
+    Closed: 1 << 7,
+    CloseFailed: 1 << 8,
+    Disconnected: 1 << 9,
+    MonitorStopped: 1 << 10,
+    HandshakeFailedNoDetail: 1 << 11,
+    ConnectionReady: 1 << 12,
+    HandshakeFailedProtocol: 1 << 13,
+    HandshakeFailedAuth: 1 << 14,
+    PeerWeightChanged: 1 << 15,
+} as const;
+
+type MonitorEventType =
+    typeof MonitorEventType[keyof typeof MonitorEventType];
+
+const MonitorSourceKind = {
+    Socket: 1,
+    SpotPub: 3,
+    SpotSub: 4,
+} as const;
+type MonitorSourceKindValue =
+    typeof MonitorSourceKind[keyof typeof MonitorSourceKind];
+```
 
 ### MonitorSnapshot
 
@@ -1261,7 +1361,7 @@ Runtime snapshot returned by `MonitorSocket.snapshot()`.
 
 ```typescript
 interface MonitorSnapshot {
-    readonly sourceKind: number;             // monitor source kind enum
+    readonly sourceKind: MonitorSourceKindValue;
     readonly stateFlags: number;             // uint32 bitmask
     readonly detailFlags: number;            // uint32 bitmask
     readonly sndPendingMsgs: bigint;         // uint64 send-queue depth
@@ -1276,12 +1376,17 @@ interface MonitorSnapshot {
     readonly autoHwmEffectiveMessageBytes: bigint;
     readonly autoHwmAppliedSndHwm: number;
     readonly autoHwmAppliedRcvHwm: number;
+    readonly autoHwmEffectiveSndBuf: number;
+    readonly autoHwmEffectiveRcvBuf: number;
     readonly autoHwmLastRecalcMs: bigint;
     readonly autoHwmLastRecalcReason: number;
     readonly autoHwmSendBlockedRatioPpm: number;
     readonly autoHwmDeferredSndHwm: number;
     readonly autoHwmDeferredRcvHwm: number;
-    /** Convenience helper — returns true when `stateFlags` has the ready bit set. */
+    /**
+     * Convenience helper for raw socket monitor sources only.
+     * SPOT_PUB and SPOT_SUB sources do not extend this into SPOT readiness.
+     */
     isReady(): boolean;
 }
 ```
@@ -1327,18 +1432,19 @@ class Registry {
 ### Discovery
 
 ```typescript
-export enum AutoConnectType {
-    INVALID = 0,
-    ROUTE_MESH = 1,
-    CLIENT_SERVER = 2,
-    DEALER_MESH = 3,
-    FANOUT = 4,
-    SPOT_MESH = 5,
-}
+const AutoConnectType = {
+    Invalid: 0,
+    RouteMesh: 1,
+    ClientServer: 2,
+    DealerMesh: 3,
+    Fanout: 4,
+    SpotMesh: 5,
+} as const;
+type AutoConnectType = typeof AutoConnectType[keyof typeof AutoConnectType];
 
 class Discovery {
-    constructor(ctx: Context, autoConnectType: number, channelName: string);
-    readonly autoConnectType: number;
+    constructor(ctx: Context, autoConnectType: AutoConnectType, channelName: string);
+    readonly autoConnectType: AutoConnectType;
     readonly channelName: string;
     /** @throws {ConnectError} */
     connectRegistry(endpoint: string): void;
@@ -1513,6 +1619,7 @@ successfully bound with `StreamSocket.bindActor(...)`.
 class Spot {
     // The SpotNode constructor path is internal. Public code obtains Spot
     // handles through SpotNode factories.
+    readonly options: SpotOptions;
     /** @throws {SubmitError} */
     publish(serviceName: string, topic: string, payload: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
@@ -1551,18 +1658,14 @@ class Spot {
     receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent | null;
     /** @throws {HandlerError} */
     onSendReady(handler: SpotSendReadyHandler): void;
-    /** @throws {ConfigError} */
-    setLinger(milliseconds: number): void;
-    /** @throws {ConfigError} */
-    setSendHighWaterMark(value: number): void;
-    /** @throws {ConfigError} */
-    setReceiveHighWaterMark(value: number): void;
-    /** @throws {ConfigError} */
-    setSendTimeout(milliseconds: number): void;
-    /** @throws {ConfigError} */
-    setReceiveTimeout(milliseconds: number): void;
-    /** @throws {ConfigError} */
-    setNoDrop(enabled: boolean): void;
+
+    // --- routed send (spot -> spot) ---
+    /** @throws {SubmitError} */
+    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
+               message: MessageLike, flags?: SendFlags): boolean;
+    /** @throws {SubmitError} */
+    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
+               parts: readonly MessageLike[], flags?: SendFlags): boolean;
 
     // --- routed request (spot → spot, async) — no flags ---
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
@@ -1638,12 +1741,12 @@ class Spot {
     /** @throws {RecvError} */
     recvActorJoin(flags?: RecvFlags): ActorJoinRequest | null;
     /** @throws {SubmitError} */
-    replyActorJoin(info: ActorJoinInfo, accepted: boolean,
+    replyActorJoin(request: ActorJoinRequest, accepted: boolean,
                    message: MessageLike): boolean;
     /** @throws {ConfigError} */
     actorsSnapshot(): ActorRef[];
     /** @throws {ConfigError} */
-    drainChannelReplyFrom(subjectHandle: bigint): void;
+    drainChannelReplyFrom(dealer: DealerSocket): void;
 
     // --- identity / routing ---
     /**
@@ -1684,13 +1787,111 @@ Value objects returned by `Registry`, `Discovery`, `SpotNode`, and
 and every routing-id field is a `RoutingId` wrapper (never a raw
 `Buffer`).
 
+Service-layer enum surfaces use typed constants instead of raw `number`
+fields in public entry and filter objects:
+
+```typescript
+const ServiceRole = {
+    Invalid: 0,
+    Spot: 2,
+    Router: 3,
+    Dealer: 4,
+    Pub: 5,
+    Sub: 6,
+} as const;
+type ServiceRoleValue = typeof ServiceRole[keyof typeof ServiceRole];
+
+const ServiceKind = {
+    Discovery: 1,
+    SpotSub: 3,
+    SpotPub: 4,
+    Socket: 5,
+} as const;
+type ServiceKindValue = typeof ServiceKind[keyof typeof ServiceKind];
+
+const SpotRole = {
+    Pub: 1,
+    Sub: 2,
+} as const;
+type SpotRoleValue = typeof SpotRole[keyof typeof SpotRole];
+
+const SpotNodeState = {
+    Idle: 1,
+    Connecting: 2,
+    PartialReady: 3,
+    Ready: 4,
+    Error: 5,
+} as const;
+type SpotNodeStateValue = typeof SpotNodeState[keyof typeof SpotNodeState];
+
+const SocketType = {
+    Any: 0,
+    Pair: 0x1001,
+    Pub: 0x1002,
+    Sub: 0x1003,
+    Dealer: 0x1004,
+    Router: 0x1005,
+    XPub: 0x1006,
+    XSub: 0x1007,
+    Stream: 0x1008,
+} as const;
+type SocketTypeValue = typeof SocketType[keyof typeof SocketType];
+
+const SpotPeerSource = {
+    Manual: 1,
+    Discovery: 2,
+    Mixed: 3,
+} as const;
+type SpotPeerSourceValue = typeof SpotPeerSource[keyof typeof SpotPeerSource];
+
+const SpotPeerState = {
+    Configured: 1,
+    Connecting: 2,
+    Connected: 3,
+} as const;
+type SpotPeerStateValue = typeof SpotPeerState[keyof typeof SpotPeerState];
+
+const RegistryState = {
+    Idle: 1,
+    Active: 2,
+    Degraded: 3,
+    Error: 4,
+} as const;
+type RegistryStateValue = typeof RegistryState[keyof typeof RegistryState];
+
+const TopologySource = {
+    Manual: 1,
+    Discovery: 2,
+    Registry: 3,
+} as const;
+type TopologySourceValue = typeof TopologySource[keyof typeof TopologySource];
+
+const TopologyState = {
+    Discovered: 1,
+    Connecting: 2,
+    Ready: 3,
+    Lost: 4,
+    Error: 5,
+    Stopped: 6,
+} as const;
+type TopologyStateValue = typeof TopologyState[keyof typeof TopologyState];
+
+const SpotNodeSocketOwner = {
+    Any: 0,
+    Node: 1,
+    Spot: 2,
+} as const;
+type SpotNodeSocketOwnerValue =
+    typeof SpotNodeSocketOwner[keyof typeof SpotNodeSocketOwner];
+```
+
 Primary entry types used in the default service flow:
 
 ```typescript
 /** Discovery / Registry member peer entry. */
 interface MemberPeerEntry {
-    readonly autoConnectType: number;            // zlink_auto_connect_type_t
-    readonly serviceRole: number;            // uint16 service role
+    readonly autoConnectType: AutoConnectType;
+    readonly serviceRole: ServiceRoleValue;
     readonly channelName: string;
     readonly endpoint: string;
     readonly routingId: RoutingId;
@@ -1700,13 +1901,14 @@ interface MemberPeerEntry {
 
 /** Registry topology entry (full topology view). */
 interface RegistryTopologyEntry {
+    readonly autoConnectType: AutoConnectType;
     readonly routingId: RoutingId;
-    readonly serviceKind: number;            // zlink_service_kind_t
-    readonly serviceRole: number;            // zlink_service_role_t
+    readonly serviceKind: ServiceKindValue;
+    readonly serviceRole: ServiceRoleValue;
     readonly channelName: string;
     readonly endpoint: string;
-    readonly source: number;                 // zlink_topology_source_t
-    readonly state: number;                  // zlink_topology_state_t
+    readonly source: TopologySourceValue;
+    readonly state: TopologyStateValue;
     readonly desiredCount: number;           // uint32
     readonly readyCount: number;             // uint32
     readonly errorCode: number;              // uint32 errno
@@ -1718,7 +1920,7 @@ interface SpotNodeStatus {
     readonly channelName: string;
     readonly localEndpoint: string;
     readonly nodeRoutingId: RoutingId;
-    readonly state: number;                  // zlink_spot_node_state_t
+    readonly state: SpotNodeStateValue;
     readonly configuredPeerCount: number;    // uint32
     readonly activePeerCount: number;        // uint32
     readonly connectedPeerCount: number;     // uint32
@@ -1736,8 +1938,8 @@ Advanced / Diagnostic entry types and filters:
 ```typescript
 /** Registry service summary roll-up entry. */
 interface RegistryServiceSummaryEntry {
-    readonly serviceKind: number;            // zlink_service_kind_t
-    readonly serviceRole: number;            // zlink_service_role_t
+    readonly autoConnectType: AutoConnectType;
+    readonly serviceRole: ServiceRoleValue;
     readonly channelName: string;
     readonly totalCount: number;             // uint32
     readonly connectingCount: number;        // uint32
@@ -1751,7 +1953,7 @@ interface RegistryServiceSummaryEntry {
 interface RegistryStatus {
     readonly registryId: number;             // uint32
     readonly bindEndpoint: string;
-    readonly state: number;                  // zlink_registry_state_t
+    readonly state: RegistryStateValue;
     readonly topologyEntryCount: number;     // uint32
     readonly peerRegistryCount: number;      // uint32
     readonly connectedPeerRegistryCount: number; // uint32
@@ -1765,8 +1967,8 @@ interface SpotNodePeerEntry {
     readonly channelName: string;
     readonly localEndpoint: string;
     readonly peerEndpoint: string;
-    readonly source: number;                 // zlink_spot_peer_source_t
-    readonly state: number;                  // zlink_spot_peer_state_t
+    readonly source: SpotPeerSourceValue;
+    readonly state: SpotPeerStateValue;
     readonly weight: number;                 // uint32, 0..100
     readonly connectedSinceMs: bigint;       // uint64 epoch ms
     readonly lastChangedMs: bigint;          // uint64 epoch ms
@@ -1774,7 +1976,7 @@ interface SpotNodePeerEntry {
 
 /** SpotNode subject entry. */
 interface SpotNodeSubjectEntry {
-    readonly role: number;                   // zlink_spot_role_t
+    readonly role: SpotRoleValue;
     readonly subject: string;
     readonly subjectKind: number;            // uint32
     readonly readyPeerCount: number;         // uint32
@@ -1804,33 +2006,52 @@ interface SpotNodeActorEntry {
 
 /** Filter for Registry service summary snapshot. */
 interface RegistryServiceSummaryFilter {
-    readonly serviceKind?: number;
-    readonly serviceRole?: number;
-    readonly serviceName?: string;
+    readonly autoConnectType?: AutoConnectType;
+    readonly serviceRole?: ServiceRoleValue;
+    readonly channelName?: string;
 }
 
 /** Filter for Registry topology snapshot / query. */
 interface RegistryTopologyFilter {
-    readonly serviceKind?: number;
-    readonly serviceRole?: number;
-    readonly serviceName?: string;
+    readonly autoConnectType?: AutoConnectType;
+    readonly serviceKind?: ServiceKindValue;
+    readonly serviceRole?: ServiceRoleValue;
+    readonly channelName?: string;
     readonly routingId?: RoutingId;
-    readonly state?: number;
-    readonly source?: number;
+    readonly state?: TopologyStateValue;
+    readonly source?: TopologySourceValue;
 }
 
 /** Filter for SpotNode peers query. */
 interface SpotNodePeerFilter {
     readonly peerEndpoint?: string;
-    readonly source?: number;
-    readonly state?: number;
+    readonly source?: SpotPeerSourceValue;
+    readonly state?: SpotPeerStateValue;
 }
 
 /** Filter for SpotNode subjects query. */
 interface SpotNodeSubjectFilter {
-    readonly role?: number;
+    readonly role?: SpotRoleValue;
     readonly subject?: string;
     readonly subjectKind?: number;
+}
+
+/** Filter for SpotNode internal socket snapshots. */
+interface SpotNodeSocketSnapshotFilter {
+    readonly owner?: SpotNodeSocketOwnerValue;
+    readonly socketType?: SocketTypeValue;
+    readonly socketName?: string;
+}
+
+/** SpotNode internal socket diagnostic snapshot entry. */
+interface SpotNodeSocketSnapshotEntry {
+    readonly owner: SpotNodeSocketOwnerValue;
+    readonly ownerId: bigint;
+    readonly ownerName: string;
+    readonly socketName: string;
+    readonly socketType: SocketTypeValue;
+    readonly autoHwmVisible: boolean;
+    readonly snapshot: MonitorSnapshot;
 }
 ```
 
@@ -1839,22 +2060,43 @@ interface SpotNodeSubjectFilter {
 ## Poller
 
 ```typescript
+const PollerSourceKind = {
+    Socket: 1,
+    Fd: 2,
+    Timer: 3,
+} as const;
+type PollerSourceKindValue =
+    typeof PollerSourceKind[keyof typeof PollerSourceKind];
+
+const PollerEventFlag = {
+    PollIn: 1,
+    PollOut: 2,
+    PollErr: 4,
+    PollPri: 8,
+} as const;
+type PollerEventFlagValue =
+    typeof PollerEventFlag[keyof typeof PollerEventFlag];
+
 class Poller {
     constructor();
 
     // --- socket registration ---
     /** @throws {ConfigError} */
-    addSocket(socket: BaseSocket, events: number, userData?: any): void;
+    addSocket(socket: BaseSocket,
+              events: readonly PollerEventFlagValue[],
+              userData?: any): void;
     /** @throws {ConfigError} */
-    modifySocket(socket: BaseSocket, events: number): void;
+    modifySocket(socket: BaseSocket,
+                 events: readonly PollerEventFlagValue[]): void;
     /** @throws {ConfigError} */
     removeSocket(socket: BaseSocket): void;
 
     // --- file descriptor registration ---
     /** @throws {ConfigError} */
-    addFd(fd: number, events: number, userData?: any): void;
+    addFd(fd: number, events: readonly PollerEventFlagValue[],
+          userData?: any): void;
     /** @throws {ConfigError} */
-    modifyFd(fd: number, events: number): void;
+    modifyFd(fd: number, events: readonly PollerEventFlagValue[]): void;
     /** @throws {ConfigError} */
     removeFd(fd: number): void;
 
@@ -1870,7 +2112,7 @@ class Poller {
     /** @throws {RecvError} */
     wait(timeoutMs: number): PollerEvent | null;
     /** @throws {RecvError} */
-    waitAll(events: number, timeoutMs: number): PollerEvent[];
+    waitAll(maxEvents: number, timeoutMs: number): PollerEvent[];
     /** @throws {RecvError} */
     poll(timeoutMs: number): number[];
 
@@ -1881,18 +2123,20 @@ class Poller {
 }
 
 interface PollerEvent {
-    sourceKind: number;
+    sourceKind: PollerSourceKindValue;
     socket: BaseSocket | null;
     fd: number;
     timer: Timer | null;
     userData: any;
-    events: number;
+    events: readonly PollerEventFlagValue[];
 }
 ```
 
 The current public poller contract is still generic. It does not yet expose a
 Spot-aware result carrying owner `Spot`, dispatch event kind, and drain
 subject together.
+`PollerEventFlag.PollOut` is a send-recovery readiness signal shared with
+`onSendReady(...)`, not a transport-writable bit.
 
 ---
 
@@ -1925,16 +2169,13 @@ class Timer {
 ## Callback Types
 
 ```typescript
-type SocketRecvHandler = (message: Received) => void;
-type SocketSubscribeHandler = (message: TopicMessage) => void;
 type SocketSendReadyHandler = () => void;
+type SocketMonitorHandler = (event: MonitorEvent) => void;
 type StreamPacketHandler = (sourceRid: RoutingId,
                             header: Message,
                             body: Message) => void;
-type SpotSubHandler = SocketSubscribeHandler;
 type SpotSendReadyHandler = () => void;
-type SpotRoutedHandler = (sourceRid: RoutingId | null, spotRid: RoutingId | null,
-                          requestSeq: bigint, parts: Message[]) => void;
+type SpotRoutedHandler = (message: Received) => void;
 const SpotDispatchEvent = {
   SubscribeReadable: 1,
   RoutedReadable: 2,
@@ -1958,8 +2199,8 @@ type SpotDispatchSubjectKind =
 interface SpotDispatchInfo {
   event: SpotDispatchEvent;
   subjectKind: SpotDispatchSubjectKind;
-  // Native subject handle is only for timer and attached channel DEALER drain.
-  subjectHandle: bigint;
+  timer: Timer | null;
+  channelDealer: DealerSocket | null;
   // ActorReadable carries a callback-lifetime ActorRef copy instead of a raw
   // native subject pointer.
   actorRef: ActorRef | null;
@@ -1970,8 +2211,6 @@ type ActorAdmissionHandler =
 type SpotDispatchEventHandler = (info: SpotDispatchInfo) => void;
 type RequestResultCallback = (result: RequestResult, parts: Message[]) => void;
 type TimerHandler = (timer: Timer, fireCount: bigint) => void;
-/** Monitor event type enum (CONNECTION_READY, CONNECTED, DISCONNECTED, ...). */
-type MonitorEventType = number;
 ```
 
 `onDispatchEvent(...)` is the canonical SPOT readable-notification surface.
@@ -1979,11 +2218,11 @@ For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
 `subscribe(...)` / `recvRouted(...)` until the binding reports no data /
 `EAGAIN`.
 For `ChannelReplyReadable`, `subjectKind` is
-`SpotDispatchSubjectKind.ChannelDealer`; use the attached dealer's
-`getChannelName()` metadata to identify the channel and pass `subjectHandle`
-to `drainChannelReplyFrom(...)`.
+`SpotDispatchSubjectKind.ChannelDealer`; use `channelDealer.getChannelName()`
+to identify the channel and pass `channelDealer` to
+`drainChannelReplyFrom(...)`.
 For `ActorReadable`, `actorRef` identifies the readable Actor and
-`subjectHandle` is not part of the public Actor contract.
+the native Actor subject pointer is not part of the public Actor contract.
 
 ---
 
@@ -2010,14 +2249,30 @@ class Stopwatch {
 
 ### Thread
 
-Not wrapped: Node.js is single-threaded. Use native `worker_threads`
-for parallelism and `setTimeout`/`setInterval` for scheduling.
+Thin wrapper for the core native thread utility. This is an explicit blocking
+utility and is not used by messaging hot paths.
+
+```typescript
+class Thread {
+    constructor(handler: () => void);
+    join(): void;
+}
+```
 
 ### AtomicCounter
 
-Not wrapped: Node.js is single-threaded; concurrent atomic operations
-are not applicable. Use a plain variable or `SharedArrayBuffer` with
-`Atomics` in worker-thread scenarios.
+Native atomic counter utility.
+
+```typescript
+class AtomicCounter {
+    constructor(initialValue?: number);
+    set(value: number): void;
+    inc(): number;
+    dec(): number;
+    value(): number;
+    close(): void;
+}
+```
 
 ## Peer Disconnect by Routing ID
 

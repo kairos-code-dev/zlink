@@ -13,7 +13,11 @@
 
 namespace
 {
-thread_local zlink_routing_id_t g_recv_part_source_rid;
+zlink_routing_id_t &recv_part_source_rid_tls ()
+{
+    static thread_local zlink_routing_id_t rid;
+    return rid;
+}
 
 void assign_routing_id_compact (zlink_routing_id_t *dest_,
                                 const zlink_routing_id_t &src_)
@@ -117,7 +121,9 @@ zlink_recv_result_t zlink_recv_part (void *s_,
         }
 
         if (part_count == 1) {
-            assign_routing_id_compact (&g_recv_part_source_rid, source_rid);
+            zlink_routing_id_t &recv_part_source_rid =
+              recv_part_source_rid_tls ();
+            assign_routing_id_compact (&recv_part_source_rid, source_rid);
             if (zlink_msg_move (part_out_, &parts[0]) != 0) {
                 zlink_multipart_close (parts, part_count);
                 errno = EFAULT;
@@ -127,8 +133,8 @@ zlink_recv_result_t zlink_recv_part (void *s_,
             if (source_rid_out_) {
                 if (expose_source_rid) {
                     *source_rid_out_ =
-                      g_recv_part_source_rid.size == 0 ? NULL
-                                                       : &g_recv_part_source_rid;
+                      recv_part_source_rid.size == 0 ? NULL
+                                                     : &recv_part_source_rid;
                 } else {
                     *source_rid_out_ = NULL;
                 }

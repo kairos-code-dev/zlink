@@ -12,7 +12,11 @@
 
 namespace
 {
-thread_local void *g_current_request_completion_owner = NULL;
+void *&request_completion_owner_tls ()
+{
+    static thread_local void *owner = NULL;
+    return owner;
+}
 
 int move_completion_parts (std::vector<zlink_msg_t> *dest_,
                            zlink_msg_t *parts_,
@@ -63,14 +67,14 @@ class request_completion_callback_scope_t
 {
   public:
     explicit request_completion_callback_scope_t (void *owner_handle_) :
-        previous_owner (g_current_request_completion_owner)
+        previous_owner (request_completion_owner_tls ())
     {
-        g_current_request_completion_owner = owner_handle_;
+        request_completion_owner_tls () = owner_handle_;
     }
 
     ~request_completion_callback_scope_t ()
     {
-        g_current_request_completion_owner = previous_owner;
+        request_completion_owner_tls () = previous_owner;
     }
 
   private:
@@ -276,7 +280,7 @@ bool zlink::request_completion::in_request_completion_callback (
   void *owner_handle_)
 {
     return owner_handle_ != NULL
-           && g_current_request_completion_owner == owner_handle_;
+           && request_completion_owner_tls () == owner_handle_;
 }
 
 int zlink::request_completion::wait_input_or_signal (

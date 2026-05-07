@@ -216,7 +216,9 @@ updated to match this document.
   `zlink_spot_dispatch_info_t` pointers.
 - SPOT channel-reply progress: channel request futures must progress replies
   internally, and the dispatch-event contract must identify channel reply
-  readiness.
+  readiness. The internal progress path maps to
+  `zlink_spot_channel_reply_progress_from(...)`; C++ does not expose that
+  low-level helper as a public method.
 - Actor lifecycle and dispatch: `service::spot_node_t` Actor methods,
   `service::spot_t` Actor join methods, and `service::actor_t`.
 - Registry and service snapshots: service entry structs and snapshot/query
@@ -333,9 +335,9 @@ class context_options_t {
     /// @throws config_error_t
     void auto_hwm_recalc_debounce(std::chrono::milliseconds value);
     /// @throws config_error_t
-    auto_hwm_profile auto_hwm_profile_value() const;
+    auto_hwm_profile auto_hwm_profile() const;
     /// @throws config_error_t
-    void auto_hwm_profile_value(auto_hwm_profile profile);
+    void auto_hwm_profile(auto_hwm_profile profile);
     /// @throws config_error_t
     socket_count_t socket_limit() const;
     /// @throws config_error_t
@@ -363,8 +365,8 @@ enum class thread_scheduling_policy_t : int {
 };
 
 enum class rid_duplicate_policy_t : int {
-    reject,
-    replace
+    reject = ZLINK_RID_DUPLICATE_REJECT,
+    handover = ZLINK_RID_DUPLICATE_HANDOVER
 };
 
 class io_thread_count_t {
@@ -418,8 +420,13 @@ class spot_dispatch_worker_count_t {
 ## Socket Types
 
 The socket signatures below use shared domain types declared in
-`zlink/types.hpp`, including `request_options_t`, `request_callback_t`,
-`spot_address_t`, and `stream_session_t`.
+`zlink/types.hpp`, including `request_callback_t`, `spot_address_t`, and
+`stream_session_t`.
+
+When a socket is attached to `service::discovery_t` through
+`attach_discovery(...)`, Discovery owns that participant lifecycle. After a
+successful attach, direct `connect(...)`, `disconnect(...)`, `unbind(...)`, and
+`close()` on that socket are blocked with the corresponding typed zlink error.
 
 ### Common Socket Methods
 
@@ -430,16 +437,18 @@ the concrete socket classes and the capability-specific methods listed below.
 Nonblocking data-plane helpers follow this rule:
 
 - `send(...)` and `publish(...)` return `false` only for temporary
-  backpressure when `send_flags_t::dontwait` is used.
+  backpressure when `ZLINK_DONTWAIT` is used.
 - Blocking submit returns `true` on success. Route-not-ready and other submit
   failures still throw `submit_error_t`.
 - `recv(...)` and `subscribe(...)` return `std::nullopt` when
-  `recv_flags_t::dontwait` finds no message and still throw `recv_error_t`
+  `ZLINK_DONTWAIT` finds no message and still throw `recv_error_t`
   for real recv failures.
 
 ```cpp
 // Available on all socket types
 bool valid() const noexcept;
+/// @throws close_error_t
+void close();
 /// @throws bind_error_t
 void bind(const std::string& endpoint);
 /// @throws connect_error_t
@@ -476,13 +485,13 @@ class pair_socket_t {
 
     // --- send ---
     /// @throws submit_error_t
-    bool send(message_t& part, send_flags_t flags = send_flags_t::none);
+    bool send(message_t& part, int flags = 0);
     /// @throws submit_error_t
-    bool send(std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    bool send(std::vector<message_t>& parts, int flags = 0);
 
     // --- receive ---
     /// @throws recv_error_t
-    std::optional<received_t> recv(recv_flags_t flags = recv_flags_t::none);
+    std::optional<received_t> recv(int flags = 0);
     /// @throws handler_error_t
     template<class Handler>
     void on_send_ready(Handler&& handler);
@@ -501,11 +510,11 @@ class pub_socket_t {
     /// @throws submit_error_t
     bool publish(const std::string& topic,
                  message_t& part,
-                 send_flags_t flags = send_flags_t::none);
+                 int flags = 0);
     /// @throws submit_error_t
     bool publish(const std::string& topic,
                  std::vector<message_t>& parts,
-                 send_flags_t flags = send_flags_t::none);
+                 int flags = 0);
     /// @throws handler_error_t
     template<class Handler>
     void on_send_ready(Handler&& handler);
@@ -538,7 +547,7 @@ class sub_socket_t {
 
     // --- receive ---
     /// @throws recv_error_t
-    std::optional<topic_message_t> subscribe(recv_flags_t flags = recv_flags_t::none);
+    std::optional<topic_message_t> subscribe(int flags = 0);
     // --- sub-specific options ---
     /// @throws config_error_t
     sub_socket_options_t sub_options();
@@ -559,13 +568,13 @@ class dealer_socket_t {
 
     // --- send ---
     /// @throws submit_error_t
-    bool send(message_t& part, send_flags_t flags = send_flags_t::none);
+    bool send(message_t& part, int flags = 0);
     /// @throws submit_error_t
-    bool send(std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    bool send(std::vector<message_t>& parts, int flags = 0);
 
     // --- receive ---
     /// @throws recv_error_t
-    std::optional<received_t> recv(recv_flags_t flags = recv_flags_t::none);
+    std::optional<received_t> recv(int flags = 0);
     /// @throws handler_error_t
     template<class Handler>
     void on_send_ready(Handler&& handler);
@@ -573,20 +582,22 @@ class dealer_socket_t {
     // --- request (coroutine, blocking submit — no flags) ---
     /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request(message_t& part,
-                                                   request_options_t options = {});
+                                                   std::chrono::milliseconds timeout = {});
     /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request(std::vector<message_t>& parts,
-                                                   request_options_t options = {});
+                                                   std::chrono::milliseconds timeout = {});
 
-    // --- request (callback submit; callback receives request_completion_t) ---
+    // --- request (callback submit; callback receives result + parts) ---
     /// @throws submit_error_t
     bool request(message_t& part,
                  request_callback_t callback,
-                 request_options_t options = {});
+                 int flags = 0,
+                 std::chrono::milliseconds timeout = {});
     /// @throws submit_error_t
     bool request(std::vector<message_t>& parts,
                  request_callback_t callback,
-                 request_options_t options = {});
+                 int flags = 0,
+                 std::chrono::milliseconds timeout = {});
 
     // --- identity / routing ---
     /// @throws config_error_t
@@ -616,18 +627,18 @@ class router_socket_t {
     /// @throws submit_error_t
     bool send(const routing_id_t& target_rid,
               message_t& part,
-              send_flags_t flags = send_flags_t::none);
+              int flags = 0);
     /// @throws submit_error_t
     bool send(const routing_id_t& target_rid,
               std::vector<message_t>& parts,
-              send_flags_t flags = send_flags_t::none);
+              int flags = 0);
 
     // --- receive (unified routed surface) ---
     // One recv surface covers regular ROUTER traffic and spot-origin routed
-    // traffic. Empty routed_received_t::spot_rid() means regular ROUTER traffic.
+    // traffic. Empty received_t::spot_rid() means regular ROUTER traffic.
     // A populated spot_rid() means reply_to_spot must be used.
     /// @throws recv_error_t
-    std::optional<routed_received_t> recv(recv_flags_t flags = recv_flags_t::none);
+    std::optional<received_t> recv(int flags = 0);
     /// @throws handler_error_t
     template<class Handler>
     void on_send_ready(Handler&& handler);
@@ -642,59 +653,77 @@ class router_socket_t {
     /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request(const routing_id_t& peer_rid,
                                                    message_t& part,
-                                                   request_options_t options = {});
+                                                   std::chrono::milliseconds timeout = {});
     /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request(const routing_id_t& peer_rid,
                                                    std::vector<message_t>& parts,
-                                                   request_options_t options = {});
+                                                   std::chrono::milliseconds timeout = {});
 
-    // --- request (callback submit; callback receives request_completion_t) ---
+    // --- request (callback submit; callback receives result + parts) ---
     /// @throws submit_error_t
     bool request(const routing_id_t& peer_rid,
                  message_t& part,
                  request_callback_t callback,
-                 request_options_t options = {});
+                 int flags = 0,
+                 std::chrono::milliseconds timeout = {});
     /// @throws submit_error_t
     bool request(const routing_id_t& peer_rid,
                  std::vector<message_t>& parts,
                  request_callback_t callback,
-                 request_options_t options = {});
+                 int flags = 0,
+                 std::chrono::milliseconds timeout = {});
 
     // --- reply ---
     /// @throws submit_error_t
     void reply(const routing_id_t& rid, request_sequence_t request,
-               message_t& part, send_flags_t flags = send_flags_t::none);
+               message_t& part, int flags = 0);
     /// @throws submit_error_t
     void reply(const routing_id_t& rid, request_sequence_t request,
-               std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+               std::vector<message_t>& parts, int flags = 0);
 
     // --- router → spot routed send ---
     /// @throws submit_error_t
     bool send_to_spot(const spot_address_t& dest,
-                      message_t& part, send_flags_t flags = send_flags_t::none);
+                      message_t& part, int flags = 0);
     /// @throws submit_error_t
     bool send_to_spot(const spot_address_t& dest,
-                      std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+                      std::vector<message_t>& parts, int flags = 0);
 
     // --- router → spot routed request (coroutine, blocking submit — no flags) ---
     /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request_to_spot(const spot_address_t& dest,
-                                                           message_t message,
-                                                           request_options_t options = {});
+                                                           message_t& part,
+                                                           std::chrono::milliseconds timeout = {});
+    /// @throws request_error_t (co_await), submit_error_t (submit)
+    async_result_t<std::vector<message_t>> request_to_spot(const spot_address_t& dest,
+                                                           std::vector<message_t>& parts,
+                                                           std::chrono::milliseconds timeout = {});
 
-    // --- router → spot routed request (callback receives request_completion_t) ---
+    // --- router → spot routed request (callback receives result + parts) ---
     /// @throws submit_error_t
     bool request_to_spot(const spot_address_t& dest,
-                         message_t message,
+                         message_t& part,
                          request_callback_t callback,
-                         request_options_t options = {});
+                         int flags = 0,
+                         std::chrono::milliseconds timeout = {});
+    /// @throws submit_error_t
+    bool request_to_spot(const spot_address_t& dest,
+                         std::vector<message_t>& parts,
+                         request_callback_t callback,
+                         int flags = 0,
+                         std::chrono::milliseconds timeout = {});
 
     // --- router → spot routed reply ---
     /// @throws submit_error_t
     void reply_to_spot(const spot_address_t& dest,
                        request_sequence_t request,
-                       message_t message,
-                       send_flags_t flags = send_flags_t::none);
+                       message_t& part,
+                       int flags = 0);
+    /// @throws submit_error_t
+    void reply_to_spot(const spot_address_t& dest,
+                       request_sequence_t request,
+                       std::vector<message_t>& parts,
+                       int flags = 0);
 
     // --- router-specific options ---
     /// @throws config_error_t
@@ -718,11 +747,11 @@ class xpub_socket_t {
     /// @throws submit_error_t
     bool publish(const std::string& topic,
                  message_t& part,
-                 send_flags_t flags = send_flags_t::none);
+                 int flags = 0);
     /// @throws submit_error_t
     bool publish(const std::string& topic,
                  std::vector<message_t>& parts,
-                 send_flags_t flags = send_flags_t::none);
+                 int flags = 0);
     /// @throws handler_error_t
     template<class Handler>
     void on_send_ready(Handler&& handler);
@@ -730,7 +759,7 @@ class xpub_socket_t {
     // --- subscription events ---
     /// @throws recv_error_t
     std::optional<subscription_event_t> receive_subscription_event(
-        recv_flags_t flags = recv_flags_t::none);
+        int flags = 0);
 
     // --- pub-specific options ---
     /// @throws config_error_t
@@ -756,7 +785,7 @@ class xsub_socket_t {
 
     // --- receive ---
     /// @throws recv_error_t
-    std::optional<topic_message_t> subscribe(recv_flags_t flags = recv_flags_t::none);
+    std::optional<topic_message_t> subscribe(int flags = 0);
 
     // --- sub-specific options ---
     /// @throws config_error_t
@@ -777,16 +806,16 @@ class stream_socket_t {
     /// @throws submit_error_t
     bool send(const routing_id_t& target_rid,
               message_t& part,
-              send_flags_t flags = send_flags_t::none);
+              int flags = 0);
     /// @throws submit_error_t
     bool send(const routing_id_t& target_rid,
               std::vector<message_t>& parts,
-              send_flags_t flags = send_flags_t::none);
+              int flags = 0);
 
     // --- receive (three mutually-exclusive modes) ---
     /// (1) raw recv. Returns a multipart received_t.
     /// @throws recv_error_t
-    std::optional<received_t> recv(recv_flags_t flags = recv_flags_t::none);
+    std::optional<received_t> recv(int flags = 0);
     /// (2) raw direct callback (zlink_recv_handler). Mutually exclusive
     /// with recv() and on_packet(). Second attach on the same stream returns
     /// BUSY (EBUSY).
@@ -834,17 +863,20 @@ class stream_session_t {
     const routing_id_t& routing_id() const noexcept;
 
     /// @throws submit_error_t
-    bool send(message_t& part, send_flags_t flags = send_flags_t::none);
+    bool send(message_t& part, int flags = 0);
     /// @throws submit_error_t
-    bool send(std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    bool send(std::vector<message_t>& parts, int flags = 0);
 
     /// @throws request_error_t
     void bind_actor(const actor_ref_t& actor, std::chrono::milliseconds timeout = {});
     /// @throws request_error_t
     void unbind_actor(const std::string& actor_id, std::chrono::milliseconds timeout = {});
     /// @throws submit_error_t
-    bool send_bound_actor_part(const std::string& actor_id, message_t& part,
-                               send_flags_t flags = send_flags_t::none);
+    bool send_bound_actor(const std::string& actor_id, message_t& part, int flags = 0);
+    /// @throws submit_error_t
+    bool send_bound_actor(const std::string& actor_id,
+                          std::vector<message_t>& parts,
+                          int flags = 0);
 };
 ```
 
@@ -916,6 +948,12 @@ class common_socket_options_t {
     /// @throws config_error_t
     void max_message_size(byte_size_t value);
     /// @throws config_error_t
+    byte_size_t auto_hwm_msg_unit_bytes() const;
+    // Maps to ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES. 0 keeps the core default;
+    // negative byte counts are rejected before the native call.
+    /// @throws config_error_t
+    void auto_hwm_msg_unit_bytes(byte_size_t value);
+    /// @throws config_error_t
     socket_backlog_t backlog() const;
     /// @throws config_error_t
     void backlog(socket_backlog_t value);
@@ -961,6 +999,10 @@ class dealer_socket_options_t {
     /// @throws config_error_t
     void probe_router(bool value);
     /// @throws config_error_t
+    std::chrono::milliseconds request_timeout() const;
+    /// @throws config_error_t
+    void request_timeout(std::chrono::milliseconds value);
+    /// @throws config_error_t
     peer_weight_t peer_weight() const;
     /// @throws config_error_t
     void peer_weight(peer_weight_t value);
@@ -984,9 +1026,20 @@ class router_socket_options_t {
     /// @throws config_error_t
     void connect_routing_id(const routing_id_t& value);
     /// @throws config_error_t
+    std::chrono::milliseconds request_timeout() const;
+    /// @throws config_error_t
+    void request_timeout(std::chrono::milliseconds value);
+    /// @throws config_error_t
     peer_weight_t peer_weight() const;
     /// @throws config_error_t
     void peer_weight(peer_weight_t value);
+};
+
+class spot_options_t {
+    /// @throws config_error_t
+    std::chrono::milliseconds request_timeout() const;
+    /// @throws config_error_t
+    void request_timeout(std::chrono::milliseconds value);
 };
 
 class stream_socket_options_t {
@@ -1262,34 +1315,23 @@ class local_spot_address_t {
 };
 ```
 
-### request_options_t / request_completion_t
+### request_callback_t
 
-Shared request-reply support types. They keep timeout and completion semantics
-in one place instead of repeating callback signatures on every socket and
-service facade.
+Shared request-reply support types. Coroutine request methods take only a
+timeout and always submit in blocking mode. Callback request methods take
+`flags` and `timeout` parameters directly, and the callback receives the
+request result plus the multipart reply payload.
 
 ```cpp
-struct request_options_t {
-    std::chrono::milliseconds timeout{};
-    send_flags_t flags = send_flags_t::none;
-};
-
 class request_sequence_t {
     static request_sequence_t value(uint64_t value);
     uint64_t value() const noexcept;
 };
 
-class request_completion_t {
-    request_result_t result() const noexcept;
-    const std::vector<message_t>& parts() const noexcept;
-    std::vector<message_t>& parts() noexcept;
-    bool ok() const noexcept;
-};
-
 class request_callback_t {
     template<class Fn>
     request_callback_t(Fn&& fn);
-    void operator()(request_completion_t completion);
+    void operator()(request_result_t result, std::vector<message_t> parts);
 };
 ```
 
@@ -1312,8 +1354,6 @@ class fd_handle_t {
 Actor value types mirror the C structs used by SPOT Actor dispatch.
 
 ```cpp
-class routed_received_t;
-
 enum class actor_create_status_t : int {
     created = ZLINK_ACTOR_CREATE_CREATED,
     existing = ZLINK_ACTOR_CREATE_EXISTING
@@ -1328,7 +1368,7 @@ class actor_ref_t {
     actor_ref_t() noexcept;
 
     routing_id_t node_rid() const;
-    std::string actor_id_string() const;
+    std::string actor_id() const;
     uint64_t generation() const noexcept;
     bool unchecked() const noexcept;
 };
@@ -1392,46 +1432,33 @@ struct spot_dispatch_info_t {
 };
 ```
 
+Actor ids are non-empty UTF-8 strings. They are limited to 255 bytes and must
+not contain NUL characters. `actor_ref_t::generation() == 0` is an unchecked
+remote reference and is valid.
+
 `spot_dispatch_info_t` never exposes the native `void* subject` pointer. It is
 a readiness descriptor. For `subscribe_readable`, `routed_readable`, and timer
 events, the caller drains through the corresponding `spot_t` recv method until
 `std::nullopt` is returned in nonblocking mode. Actor readable events may carry
 the actor reference and pre-drained parts when the core callback supplies them.
 
-### received_t / routed_received_t
+### received_t
 
-`received_t` aggregates one non-replyable recv result used by PAIR / DEALER /
-STREAM paths. `routed_received_t` is the replyable routed variant used by
-ROUTER and Spot routed receive paths. Splitting the types prevents callers
-from calling `reply(...)` on a message that has no reply context. Both types
-own `message_t` parts; destructors release them. They match the canonical
-`Received` shape (see
-[Bindings Policy - Domain Object Policy](../README.md)).
+`received_t` is the single canonical recv result for PAIR, DEALER, ROUTER,
+STREAM, and SPOT routed receive paths. It owns `message_t` parts; its destructor
+releases them. `routing_id`, `spot_rid`, and `request_seq` are optional because
+not every transport path carries the same metadata. `reply(...)` is valid only
+when `request_seq()` has a value; otherwise it throws `submit_error_t`.
 
 ```cpp
 class received_t {
 public:
-    // nullopt if transport carries no source id
+    // peer_rid for Router, source_node_rid for Spot, nullopt if absent.
     const std::optional<routing_id_t>& routing_id() const noexcept;
-    const std::vector<message_t>& parts() const noexcept;
-    std::vector<message_t>& parts() noexcept;
-
-    bool is_single_part() const noexcept;
-    /// @throws recv_error_t
-    message_t& first_part();
-    /// @throws recv_error_t
-    message_t single_part_or_throw();
-
-    /// @throws close_error_t
-    void close();
-};
-
-class routed_received_t {
-public:
-    // peer_rid for Router, source_node_rid for Spot
-    const routing_id_t& routing_id() const noexcept;
     // Set only for SPOT-origin routed recv.
     const std::optional<routing_id_t>& spot_rid() const noexcept;
+    // Set only for request-reply messages.
+    const std::optional<request_sequence_t>& request_seq() const noexcept;
     const std::vector<message_t>& parts() const noexcept;
     std::vector<message_t>& parts() noexcept;
 
@@ -1441,25 +1468,25 @@ public:
     /// @throws recv_error_t
     message_t single_part_or_throw();
 
-    // Routing metadata and request sequence are encapsulated. Callers do not
-    // pass routing_id, spot_rid, or request_sequence_t again.
+    // Reply context is encapsulated. Callers do not pass routing_id, spot_rid,
+    // or request_sequence_t again.
     /// @throws submit_error_t
     void reply(message_t& part);
     /// @throws submit_error_t
-    void reply(message_t& part, send_flags_t flags);
+    void reply(message_t& part, int flags);
     /// @throws submit_error_t
     void reply(std::vector<message_t>& parts);
     /// @throws submit_error_t
-    void reply(std::vector<message_t>& parts, send_flags_t flags);
+    void reply(std::vector<message_t>& parts, int flags);
 
     /// @throws close_error_t
     void close();
 };
 ```
 
-`routed_received_t` stores the source socket reference internally. The binding
-injects that reference when it creates `routed_received_t` from `recv` or a
-handler, and `reply()` uses it to reply on the original socket.
+`received_t` stores the source socket reference internally when a reply context
+exists. The binding injects that reference when it creates `received_t` from
+`recv` or a handler, and `reply()` uses it to reply on the original socket.
 
 ### topic_message_t
 
@@ -1584,7 +1611,7 @@ struct monitor_snapshot_t {
     uint64_t snd_pending_msgs;                // send-queue pending message count
     uint64_t rcv_pending_msgs;                // recv-queue pending message count
     bool auto_hwm_enabled;                    // automatic HWM currently active
-    uint32_t auto_hwm_profile_value;          // zlink_auto_hwm_profile_t value
+    uint32_t auto_hwm_profile;                // zlink_auto_hwm_profile_t value
     uint32_t auto_hwm_role;                   // diagnostic role bucket
     uint32_t auto_hwm_policy_class;           // planner policy class
     uint64_t auto_hwm_unit_budget_bytes;
@@ -2116,22 +2143,12 @@ public:
 };
 ```
 
-#### send_flags_t
+#### Data-Plane Flags
 
 ```cpp
-enum class send_flags_t : int {
-    none      = 0,
-    dontwait  = 1
-};
-```
-
-#### recv_flags_t
-
-```cpp
-enum class recv_flags_t : int {
-    none      = 0,
-    dontwait  = 1
-};
+// Public data-plane methods use int flags.
+// flags = 0 means blocking. ZLINK_DONTWAIT enables nonblocking submit/receive.
+// Pass ZLINK_DONTWAIT to request nonblocking submit or receive.
 ```
 
 ### async_result_t\<T\>
@@ -2190,7 +2207,7 @@ class monitor_handle_t {
     template<class Handler>
     void on_event(Handler&& handler);
     /// @throws recv_error_t
-    std::optional<monitor_event_t> recv(recv_flags_t flags = recv_flags_t::none);
+    std::optional<monitor_event_t> recv(int flags = 0);
     /// @throws config_error_t
     monitor_snapshot_t snapshot() const;
     void close() noexcept;
@@ -2358,22 +2375,6 @@ struct spot_node_subject_entry_t {
     uint32_t ready_peer_count;
     uint32_t active_peer_count;
     std::chrono::milliseconds last_changed;
-};
-
-enum class spot_service_attachment_role_t {
-    router = 1,
-    pub = 2,
-    sub = 3,
-};
-
-struct spot_service_attachment_stats_t {
-    std::string service_name;
-    uint32_t router_count;
-    uint32_t pub_count;
-    uint32_t sub_count;
-    uint32_t auto_router_count;
-    uint32_t auto_pub_count;
-    uint32_t auto_sub_count;
 };
 
 struct spot_node_subject_filter_t {
@@ -2666,13 +2667,15 @@ class spot_node_t {
     bool join_actor(const actor_ref_t& actor, const spot_address_t& dest,
                     message_t& message,
                     request_callback_t callback,
-                    request_options_t options = {});
+                    int flags = 0,
+                    std::chrono::milliseconds timeout = {});
     /// @throws submit_error_t
     bool join_local_actor(const actor_ref_t& actor,
                           const local_spot_address_t& dest,
                           message_t& message,
                           request_callback_t callback,
-                          request_options_t options = {});
+                          int flags = 0,
+                          std::chrono::milliseconds timeout = {});
     /// @throws request_error_t
     void leave_actor(const actor_ref_t& actor,
                      const local_spot_address_t& current_spot,
@@ -2724,43 +2727,45 @@ class spot_t {
     // --- channel-aware publish / request ---
     /// @throws submit_error_t
     bool publish(const std::string& service_name, const std::string& topic,
-                 message_t& part, send_flags_t flags = send_flags_t::none);
+                 message_t& part, int flags = 0);
     /// @throws submit_error_t
     bool publish(const std::string& service_name, const std::string& topic,
-                 std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+                 std::vector<message_t>& parts, int flags = 0);
     /// @throws submit_error_t
     bool send_channel(const std::string& channel_name,
                       message_t& part,
-                      send_flags_t flags = send_flags_t::none);
+                      int flags = 0);
     /// @throws submit_error_t
     bool send_channel(const std::string& channel_name,
                       std::vector<message_t>& parts,
-                      send_flags_t flags = send_flags_t::none);
-    /// @throws submit_error_t
+                      int flags = 0);
+    /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request_channel(const std::string& channel_name,
                                                            message_t& part,
-                                                           request_options_t options = {});
-    /// @throws submit_error_t
+                                                           std::chrono::milliseconds timeout = {});
+    /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request_channel(const std::string& channel_name,
                                                            std::vector<message_t>& parts,
-                                                           request_options_t options = {});
+                                                           std::chrono::milliseconds timeout = {});
     /// @throws submit_error_t
     bool request_channel(const std::string& channel_name,
                          message_t& part,
                          request_callback_t callback,
-                         request_options_t options = {});
+                         int flags = 0,
+                         std::chrono::milliseconds timeout = {});
     /// @throws submit_error_t
     bool request_channel(const std::string& channel_name,
                          std::vector<message_t>& parts,
                          request_callback_t callback,
-                         request_options_t options = {});
+                         int flags = 0,
+                         std::chrono::milliseconds timeout = {});
 
     // --- subscribe ---
     /// @throws recv_error_t
-    std::optional<topic_message_t> subscribe(recv_flags_t flags = recv_flags_t::none);
+    std::optional<topic_message_t> subscribe(int flags = 0);
     /// @throws recv_error_t
     std::optional<subscription_event_t> receive_subscription_event(
-        recv_flags_t flags = recv_flags_t::none);
+        int flags = 0);
     /// @throws config_error_t
     void set_subscription(const std::string& filter);
     /// @throws config_error_t
@@ -2784,60 +2789,96 @@ class spot_t {
     // --- routed send (spot -> spot) ---
     /// @throws submit_error_t
     bool send_to_spot(const spot_address_t& dest,
-                      message_t message,
-                      send_flags_t flags = send_flags_t::none);
+                      message_t& part,
+                      int flags = 0);
     /// @throws submit_error_t
     bool send_to_spot(const spot_address_t& dest,
                       std::vector<message_t>& parts,
-                      send_flags_t flags = send_flags_t::none);
+                      int flags = 0);
 
     // --- routed request (spot -> spot, coroutine, blocking submit — no flags) ---
     /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request_to_spot(
         const spot_address_t& dest,
-        message_t message,
-        request_options_t options = {});
+        message_t& part,
+        std::chrono::milliseconds timeout = {});
+    /// @throws request_error_t (co_await), submit_error_t (submit)
+    async_result_t<std::vector<message_t>> request_to_spot(
+        const spot_address_t& dest,
+        std::vector<message_t>& parts,
+        std::chrono::milliseconds timeout = {});
 
     // --- routed request (spot -> spot, callback) ---
     /// @throws submit_error_t
     bool request_to_spot(
         const spot_address_t& dest,
-        message_t message,
+        message_t& part,
         request_callback_t callback,
-        request_options_t options = {});
+        int flags = 0,
+        std::chrono::milliseconds timeout = {});
+    /// @throws submit_error_t
+    bool request_to_spot(
+        const spot_address_t& dest,
+        std::vector<message_t>& parts,
+        request_callback_t callback,
+        int flags = 0,
+        std::chrono::milliseconds timeout = {});
 
     // --- routed request (spot -> router, coroutine, blocking submit — no flags) ---
     /// @throws request_error_t (co_await), submit_error_t (submit)
     async_result_t<std::vector<message_t>> request_to_router(
         const routing_id_t& peer_rid,
-        message_t message,
-        request_options_t options = {});
+        message_t& part,
+        std::chrono::milliseconds timeout = {});
+    /// @throws request_error_t (co_await), submit_error_t (submit)
+    async_result_t<std::vector<message_t>> request_to_router(
+        const routing_id_t& peer_rid,
+        std::vector<message_t>& parts,
+        std::chrono::milliseconds timeout = {});
 
     // --- routed request (spot -> router, callback) ---
     /// @throws submit_error_t
     bool request_to_router(
         const routing_id_t& peer_rid,
-        message_t message,
+        message_t& part,
         request_callback_t callback,
-        request_options_t options = {});
+        int flags = 0,
+        std::chrono::milliseconds timeout = {});
+    /// @throws submit_error_t
+    bool request_to_router(
+        const routing_id_t& peer_rid,
+        std::vector<message_t>& parts,
+        request_callback_t callback,
+        int flags = 0,
+        std::chrono::milliseconds timeout = {});
 
     // --- routed reply (spot → spot) ---
     /// @throws submit_error_t
     void reply_to_spot(const spot_address_t& dest,
                        request_sequence_t request,
-                       message_t message,
-                       send_flags_t flags = send_flags_t::none);
+                       message_t& part,
+                       int flags = 0);
+    /// @throws submit_error_t
+    void reply_to_spot(const spot_address_t& dest,
+                       request_sequence_t request,
+                       std::vector<message_t>& parts,
+                       int flags = 0);
 
     // --- routed reply (spot → router) ---
     /// @throws submit_error_t
     void reply_to_router(const routing_id_t& peer_rid,
                          request_sequence_t request,
-                         message_t message,
-                         send_flags_t flags = send_flags_t::none);
+                         message_t& part,
+                         int flags = 0);
+    /// @throws submit_error_t
+    void reply_to_router(const routing_id_t& peer_rid,
+                         request_sequence_t request,
+                         std::vector<message_t>& parts,
+                         int flags = 0);
 
     // --- routed receive ---
     /// @throws recv_error_t
-    std::optional<routed_received_t> recv_routed(recv_flags_t flags = recv_flags_t::none);
+    std::optional<received_t> recv_routed(int flags = 0);
     /// @throws handler_error_t
     template<class Handler>
     void on_routed_receive(Handler&& handler);
@@ -2848,10 +2889,11 @@ class spot_t {
     // --- Actor dispatch ---
     /// @throws recv_error_t
     std::optional<std::pair<actor_join_info_t, message_t>>
-    recv_actor_join(recv_flags_t flags = recv_flags_t::none);
+    recv_actor_join(int flags = 0);
     /// @throws submit_error_t
     void reply_actor_join(const actor_join_info_t& info, bool accepted,
-                          message_t& message);
+                          message_t& message,
+                          int flags = 0);
     /// @throws config_error_t
     std::vector<actor_ref_t> actors_snapshot() const;
 
@@ -2862,6 +2904,8 @@ class spot_t {
     pub_socket_options_t publisher_options();
     /// @throws config_error_t
     sub_socket_options_t subscriber_options();
+    /// @throws config_error_t
+    spot_options_t spot_options();
 
     /// @throws close_error_t
     void close();
@@ -2896,14 +2940,16 @@ class actor_t {
     /// @throws submit_error_t
     bool join(spot_t& spot, message_t& message,
               request_callback_t callback,
-              request_options_t options = {});
+              int flags = 0,
+              std::chrono::milliseconds timeout = {});
     /// @throws request_error_t
     void leave(spot_t& spot, std::chrono::milliseconds timeout = {});
     /// @throws recv_error_t
-    std::optional<actor_part_t> recv_part(recv_flags_t flags = recv_flags_t::none);
+    std::optional<actor_part_t> recv_part(int flags = 0);
     /// @throws submit_error_t
-    bool send_bound_session_msg(message_t& message,
-                                send_flags_t flags = send_flags_t::none);
+    bool send_bound_session(message_t& part, int flags = 0);
+    /// @throws submit_error_t
+    bool send_bound_session(std::vector<message_t>& parts, int flags = 0);
     /// @throws request_error_t
     void close_bound_session(std::chrono::milliseconds timeout = {});
 };

@@ -425,12 +425,7 @@ void zlink::asio_engine_t::terminate ()
     //  Avoid re-entrant poll() during teardown: SSL/WebSocket callbacks can still
     //  be completing while close() is in progress. Let io_context serialize final
     //  callbacks and delete on its queue.
-    if (_transport_adapter.io_context) {
-        boost::asio::post (*_transport_adapter.io_context, [this] () { delete this; });
-        return;
-    }
-
-    delete this;
+    destroy_after_callbacks ();
 }
 
 bool zlink::asio_engine_t::build_gather_header (const msg_t &msg_,
@@ -1995,14 +1990,17 @@ void zlink::asio_engine_t::error (error_reason_t reason_)
     _connection_facade.session->engine_error (!_connection_facade.handshaking, reason_);
     unplug ();
 
+    destroy_after_callbacks ();
+}
+
+void zlink::asio_engine_t::destroy_after_callbacks ()
+{
     if (_transport_adapter.io_context) {
-        //  If we are on (or racing with) the io_context thread, posting deletion
-        //  avoids destroying the engine in the middle of an in-flight handler.
-        boost::asio::post (*_transport_adapter.io_context, [this] () { delete this; });
+        boost::asio::post (*_transport_adapter.io_context,
+                           [this] () { delete this; });
         return;
     }
 
-    //  Fallback path when io_context is unavailable.
     delete this;
 }
 

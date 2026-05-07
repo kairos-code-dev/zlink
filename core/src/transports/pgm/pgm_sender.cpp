@@ -101,6 +101,11 @@ void zlink::pgm_sender_t::unplug ()
 void zlink::pgm_sender_t::terminate ()
 {
     unplug ();
+    destroy_after_unplug ();
+}
+
+void zlink::pgm_sender_t::destroy_after_unplug ()
+{
     delete this;
 }
 

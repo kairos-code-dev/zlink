@@ -235,6 +235,8 @@ class asio_engine_t : public i_engine
     //  Unplug the engine from the session.
     void unplug ();
 
+    void destroy_after_callbacks ();
+
     bool is_tcp_transport () const;
     bool use_stream_speculative_write () const;
     bool use_non_tcp_speculative_read () const;

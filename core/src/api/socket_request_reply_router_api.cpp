@@ -20,8 +20,17 @@ extern "C" int zlink_router_enable_spot_receive (void *router_);
 
 namespace
 {
-thread_local zlink_routing_id_t g_router_recv_part_source_node_rid;
-thread_local zlink_routing_id_t g_router_recv_part_source_spot_rid;
+struct router_recv_part_metadata_tls_t
+{
+    zlink_routing_id_t source_node_rid;
+    zlink_routing_id_t source_spot_rid;
+};
+
+router_recv_part_metadata_tls_t &router_recv_part_metadata_tls ()
+{
+    static thread_local router_recv_part_metadata_tls_t metadata;
+    return metadata;
+}
 
 int validate_socket_type (void *socket_, int expected_type_)
 {
@@ -45,18 +54,19 @@ void export_router_recv_part_metadata_view (
   const zlink_routing_id_t **source_spot_rid_out_,
   uint64_t *request_seq_out_)
 {
+    router_recv_part_metadata_tls_t &metadata = router_recv_part_metadata_tls ();
     zlink::part_helper_internal::copy_routing_id (
-      source_node_rid_, &g_router_recv_part_source_node_rid);
+      source_node_rid_, &metadata.source_node_rid);
     zlink::part_helper_internal::copy_routing_id (
-      source_spot_rid_, &g_router_recv_part_source_spot_rid);
+      source_spot_rid_, &metadata.source_spot_rid);
 
     if (source_node_rid_out_) {
         *source_node_rid_out_ =
-          source_node_rid_ ? &g_router_recv_part_source_node_rid : NULL;
+          source_node_rid_ ? &metadata.source_node_rid : NULL;
     }
     if (source_spot_rid_out_) {
         *source_spot_rid_out_ =
-          source_spot_rid_ ? &g_router_recv_part_source_spot_rid : NULL;
+          source_spot_rid_ ? &metadata.source_spot_rid : NULL;
     }
     if (request_seq_out_)
         *request_seq_out_ = request_seq_;

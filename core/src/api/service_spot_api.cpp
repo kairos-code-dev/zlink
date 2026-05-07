@@ -19,6 +19,12 @@
 
 namespace
 {
+zlink_routing_id_t &spot_service_event_source_rid_tls ()
+{
+    static thread_local zlink_routing_id_t rid;
+    return rid;
+}
+
 int resolve_spot_bound_service_name (spot_handle_t *spot_,
                                      std::string *service_name_out_)
 {
@@ -642,9 +648,10 @@ zlink_recv_result_t zlink_spot_subscription_event_recv (
           service_name_len_out_, topic_id_buf_, topic_id_len_out_, flags_));
     if (service_rc == ZLINK_RECV_OK) {
         if (source_rid_out_) {
-            static thread_local zlink_routing_id_t tl_rid;
-            tl_rid = source_rid;
-            *source_rid_out_ = &tl_rid;
+            zlink_routing_id_t &stored_source_rid =
+              spot_service_event_source_rid_tls ();
+            stored_source_rid = source_rid;
+            *source_rid_out_ = &stored_source_rid;
         }
         return ZLINK_RECV_OK;
     }

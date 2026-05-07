@@ -17,7 +17,11 @@ const uint32_t public_api_closing_bit = 0x80000000u;
 const uint32_t public_api_sync_bit = 0x40000000u;
 const uint32_t public_api_inflight_mask =
   ~(public_api_closing_bit | public_api_sync_bit);
-thread_local zlink::socket_base_t *g_current_send_ready_dispatch_socket = NULL;
+zlink::socket_base_t *&send_ready_dispatch_socket_tls ()
+{
+    static thread_local zlink::socket_base_t *socket = NULL;
+    return socket;
+}
 
 std::string make_monitor_ready_key (
   const zlink::endpoint_uri_pair_t &endpoint_uri_pair_,
@@ -546,25 +550,25 @@ void zlink::socket_public_send_scope_t::relock_sync ()
 
 zlink::socket_send_ready_dispatch_scope_t::socket_send_ready_dispatch_scope_t (
   socket_base_t *socket_) :
-    _previous (g_current_send_ready_dispatch_socket)
+    _previous (send_ready_dispatch_socket_tls ())
 {
-    g_current_send_ready_dispatch_socket = socket_;
+    send_ready_dispatch_socket_tls () = socket_;
 }
 
 zlink::socket_send_ready_dispatch_scope_t::~socket_send_ready_dispatch_scope_t ()
 {
-    g_current_send_ready_dispatch_socket = _previous;
+    send_ready_dispatch_socket_tls () = _previous;
 }
 
 zlink::socket_base_t *zlink::socket_send_ready_dispatch_scope_t::current_socket ()
 {
-    return g_current_send_ready_dispatch_socket;
+    return send_ready_dispatch_socket_tls ();
 }
 
 bool zlink::socket_send_ready_dispatch_scope_t::dispatching_socket (
   const socket_base_t *socket_)
 {
-    return g_current_send_ready_dispatch_socket == socket_;
+    return send_ready_dispatch_socket_tls () == socket_;
 }
 
 int zlink::socket_lifecycle_coordinator_t::start_async_mailbox_processing (

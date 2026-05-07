@@ -20,7 +20,12 @@ namespace
 std::mutex g_part_helper_mutex;
 std::unordered_map<void *, std::shared_ptr<zlink::part_helper_internal::handle_state_t> >
   g_part_helper_state;
-thread_local bool g_part_helper_aggregate_send_mode = false;
+
+bool &aggregate_send_mode_tls ()
+{
+    static thread_local bool active = false;
+    return active;
+}
 
 bool routed_part_debug_enabled ()
 {
@@ -445,12 +450,12 @@ void zlink::part_helper_internal::reset_recv_sequence (recv_sequence_state_t *st
 
 bool zlink::part_helper_internal::aggregate_send_mode_active ()
 {
-    return g_part_helper_aggregate_send_mode;
+    return aggregate_send_mode_tls ();
 }
 
 void zlink::part_helper_internal::set_aggregate_send_mode (bool active_)
 {
-    g_part_helper_aggregate_send_mode = active_;
+    aggregate_send_mode_tls () = active_;
 }
 
 int zlink::part_helper_internal::prepare_send_step (

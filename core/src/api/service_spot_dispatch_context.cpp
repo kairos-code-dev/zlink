@@ -6,23 +6,27 @@
 
 namespace
 {
-thread_local void *g_current_spot_dispatch_event_handle = NULL;
+void *&spot_dispatch_event_handle_tls ()
+{
+    static thread_local void *handle = NULL;
+    return handle;
+}
 }
 
 zlink::spot_dispatch_event_callback_context_t::
   spot_dispatch_event_callback_context_t (void *spot_) :
-    _previous_handle (g_current_spot_dispatch_event_handle)
+    _previous_handle (spot_dispatch_event_handle_tls ())
 {
-    g_current_spot_dispatch_event_handle = spot_;
+    spot_dispatch_event_handle_tls () = spot_;
 }
 
 zlink::spot_dispatch_event_callback_context_t::
   ~spot_dispatch_event_callback_context_t ()
 {
-    g_current_spot_dispatch_event_handle = _previous_handle;
+    spot_dispatch_event_handle_tls () = _previous_handle;
 }
 
 void *zlink::spot_dispatch_event_callback_context_t::current_handle ()
 {
-    return g_current_spot_dispatch_event_handle;
+    return spot_dispatch_event_handle_tls ();
 }

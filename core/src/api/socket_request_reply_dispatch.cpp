@@ -12,8 +12,11 @@ namespace zlink
 {
 namespace socket_reqrep_internal
 {
-thread_local zlink_routing_id_t g_router_recv_source_rid;
-thread_local zlink_routing_id_t g_router_recv_source_spot_rid;
+router_recv_metadata_tls_t &router_recv_metadata_tls ()
+{
+    static thread_local router_recv_metadata_tls_t metadata;
+    return metadata;
+}
 
 namespace
 {

@@ -171,6 +171,7 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
     void cancel_handshake_timer ();
     void on_timer (int id_, const boost::system::error_code &ec);
     void schedule_terminate_completion ();
+    void destroy_after_callbacks ();
 
     //  WebSocket transport layer
     std::unique_ptr<i_asio_transport> _transport;

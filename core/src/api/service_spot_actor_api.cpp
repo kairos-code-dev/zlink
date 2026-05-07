@@ -222,7 +222,29 @@ actor_runtime_t &actor_runtime ()
     return runtime;
 }
 
-thread_local bool g_in_actor_admission_handler = false;
+bool &actor_admission_handler_active ()
+{
+    static thread_local bool active = false;
+    return active;
+}
+
+class actor_admission_handler_scope_t
+{
+  public:
+    actor_admission_handler_scope_t () :
+        _previous (actor_admission_handler_active ())
+    {
+        actor_admission_handler_active () = true;
+    }
+
+    ~actor_admission_handler_scope_t ()
+    {
+        actor_admission_handler_active () = _previous;
+    }
+
+  private:
+    bool _previous;
+};
 
 uint64_t now_ms ();
 uint64_t next_generation_for_node_locked (zlink::spot_node_t *node_);
@@ -967,7 +989,7 @@ extern "C" zlink_config_result_t zlink_spot_node_actor_new (
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
-    if (g_in_actor_admission_handler) {
+    if (actor_admission_handler_active ()) {
         errno = EFSM;
         return ZLINK_CONFIG_INVALID_STATE;
     }
@@ -1377,10 +1399,9 @@ extern "C" zlink_request_result_t zlink_spot_node_create_remote_actor (
     zlink_actor_admission_result_t admission_result =
       ZLINK_ACTOR_ADMISSION_REJECT;
     if (admission.handler) {
-        g_in_actor_admission_handler = true;
+        actor_admission_handler_scope_t handler_scope;
         admission_result =
           admission.handler (target, actor_id_, message_, admission.userdata);
-        g_in_actor_admission_handler = false;
     }
     if (!admission.handler
         || admission_result != ZLINK_ACTOR_ADMISSION_ACCEPT) {

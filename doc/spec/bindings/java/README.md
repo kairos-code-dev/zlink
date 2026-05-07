@@ -126,7 +126,7 @@ ways:
 | Spot request/reply | `zlink_spot_request_channel_part`, `zlink_spot_request_spot_part`, `zlink_spot_request_router_part`, `zlink_spot_send_spot_part`, `zlink_spot_reply_spot_part`, `zlink_spot_reply_router_part`, `zlink_spot_channel_reply_progress_from` | `Spot.requestChannel`, `requestToSpot`, `requestToRouter`, `sendToSpot`, `replyToSpot`, `replyToRouter`, `drainChannelReply` | Public API |
 | Spot dispatch callbacks | `zlink_spot_handler`, `zlink_spot_dispatch_event_handler` | `Spot.onRoutedReceive`, `Spot.onDispatchEvent`, `SpotDispatchInfo` | Public API |
 | Actor dispatch | `zlink_remote_actor_get_ref`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup`, `zlink_spot_node_create_remote_actor`, `zlink_spot_node_actor_destroy`, `zlink_spot_node_actor_admission_handler`, `zlink_spot_node_actor_join_spot`, `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_spot_node_actor_leave_spot`, `zlink_spot_node_actor_recv_part`, `zlink_spot_node_actor_send_bound_session_msg`, `zlink_spot_node_actor_close_bound_session` | `Actor`, `ActorRef`, actor result/info records, `SpotNode` actor methods, `Spot.recvActorJoin`, `Spot.replyActorJoin` | Public API |
-| Spot snapshots | `zlink_spot_node_status_snapshot`, `zlink_spot_node_peers_snapshot`, `zlink_spot_node_peers_query`, `zlink_spot_node_subjects_snapshot`, `zlink_spot_node_internal_sockets_snapshot`, `zlink_spot_node_spots_snapshot`, `zlink_spot_node_actors_snapshot`, `zlink_spot_actors_snapshot`, registry/discovery topology snapshot/query entrypoints | `statusSnapshot`, peer/subject/socket/spot/actor snapshot methods, registry/discovery topology records | Public API |
+| Spot snapshots | `zlink_spot_node_status_snapshot`, `zlink_spot_node_peers_snapshot`, `zlink_spot_node_peers_query`, `zlink_spot_node_subjects_snapshot`, `zlink_spot_node_internal_sockets_snapshot`, `zlink_spot_node_spots_snapshot`, `zlink_spot_node_actors_snapshot`, `zlink_spot_actors_snapshot`, registry/discovery topology snapshot/query entrypoints | `statusSnapshot`, peer/subject/internal-socket/spot/actor snapshot methods, registry/discovery topology records | Public API |
 | Polling | `zlink_poll`, `zlink_poller_*` | `Poller`, `PollEvent`, `PollEventType` | Public API; legacy array `zlink_poll` is intentionally not exposed |
 | Poller timers | `zlink_poller_add_timer`, `zlink_poller_remove_timer` | `Poller.add(Timer, Object)`, `Poller.remove(Timer)`, `readyTimer` | Required Java API |
 | Proxy | `zlink_proxy`, `zlink_proxy_steerable` | `Zlink.proxy`, `Zlink.proxySteerable` | Public API |
@@ -134,7 +134,7 @@ ways:
 | Stopwatch | `zlink_stopwatch_*` | `Stopwatch` | Public API |
 | Sleep and threads | `zlink_sleep`, `zlink_thread_start`, `zlink_thread_join` | `Zlink.sleep`, `ZlinkThread` | Public API |
 | Atomic counter | `zlink_atomic_counter_*` | `AtomicCounter` | Public API |
-| Multipart cleanup | `zlink_multipart_close` | `Message.closeAll`, `Zlink.multipartClose` | Public API |
+| Multipart cleanup | `zlink_multipart_close` | `Message.closeAll` | Public API |
 
 The C entrypoint column is traceability for coverage review only. It is not a
 Java public signature list and does not expose helper substrate sequencing to
@@ -277,15 +277,6 @@ Deprecated C compatibility no-ops such as the old auto-HWM total memory budget
 option are not part of the canonical Java public API. Compatibility support, if
 needed, must live outside this public contract.
 
-```java
-public enum AutoHwmProfile {
-    COMPACT,
-    LOW_LATENCY,
-    BALANCED,
-    THROUGHPUT
-}
-```
-
 ---
 
 ## Socket Types
@@ -307,6 +298,7 @@ void setTlsServer(String certPem, String keyPem,
                   boolean requireClientCert);                    // @throws ConfigException
 void setTlsClient(String caCertPem, String hostname,
                   boolean trustSystem);                          // @throws ConfigException
+CommonSocketOptions options();
 // No common peer-weight accessor. Bindings expose weight only on
 // RouterSocket and DealerSocket.
 ```
@@ -319,6 +311,12 @@ Route-not-ready and other submit failures still raise `SubmitException`.
 no data. Timer `recv(...)` reports no data through `RecvException` with
 `RecvResult.NO_DATA`. All receive paths still raise `RecvException` for real
 recv failures.
+
+After `attachDiscovery(...)` succeeds on a `DealerSocket`, `RouterSocket`,
+`PubSocket`, or `SubSocket`, the attached socket lifecycle is owned by the
+`Discovery` instance. Direct `connect(...)`, `disconnect(...)`, `unbind(...)`,
+and `close()` calls on that socket fail through the documented native error
+mapping; `Discovery.close()` closes attached participants.
 
 ### SendReadyHandler
 
@@ -341,7 +339,7 @@ Typed facade for common `zlink_option_t` values that are safe to expose on
 socket option objects. Socket-specific option classes extend this facade.
 
 ```java
-class CommonSocketOptions {
+public class CommonSocketOptions {
     // --- affinity and pacing ---
     long affinity();                                                 // @throws ConfigException
     void affinity(long value);                                       // @throws ConfigException
@@ -397,12 +395,12 @@ class CommonSocketOptions {
     void tcpKeepalive(int value);                                   // @throws ConfigException
     int tcpKeepaliveCount();                                        // @throws ConfigException
     void tcpKeepaliveCount(int value);                              // @throws ConfigException
-    int tcpKeepaliveIdle();                                         // @throws ConfigException
-    void tcpKeepaliveIdle(int value);                               // @throws ConfigException
-    int tcpKeepaliveInterval();                                     // @throws ConfigException
-    void tcpKeepaliveInterval(int value);                           // @throws ConfigException
-    int tcpMaxRt();                                                 // @throws ConfigException
-    void tcpMaxRt(int value);                                       // @throws ConfigException
+    Duration tcpKeepaliveIdle();                                    // @throws ConfigException
+    void tcpKeepaliveIdle(Duration value);                          // @throws ConfigException
+    Duration tcpKeepaliveInterval();                                // @throws ConfigException
+    void tcpKeepaliveInterval(Duration value);                      // @throws ConfigException
+    Duration tcpMaxRt();                                            // @throws ConfigException
+    void tcpMaxRt(Duration value);                                  // @throws ConfigException
 
     // --- heartbeat and reconnect policy ---
     Duration heartbeatInterval();                                   // @throws ConfigException
@@ -415,8 +413,6 @@ class CommonSocketOptions {
     void conflate(boolean enabled);                                 // @throws ConfigException
     boolean blocky();                                               // @throws ConfigException
     void blocky(boolean enabled);                                   // @throws ConfigException
-    boolean invertMatching();                                       // @throws ConfigException
-    void invertMatching(boolean enabled);                           // @throws ConfigException
     long maxMsgSize();                                              // @throws ConfigException
     void maxMsgSize(long value);                                    // @throws ConfigException
     int backlog();                                                  // @throws ConfigException
@@ -428,7 +424,7 @@ class CommonSocketOptions {
 
     // --- read-only diagnostics and metadata ---
     int fd();                                                       // @throws ConfigException
-    int events();                                                   // @throws ConfigException
+    EnumSet<PollEventType> events();                                // @throws ConfigException
     SocketType socketType();                                        // @throws ConfigException
     String lastEndpoint();                                          // @throws ConfigException
     void zmpMetadata(String value);                                 // @throws ConfigException
@@ -451,6 +447,7 @@ public final class PairSocket extends Socket {
     void connect(String endpoint);                                   // @throws ConnectException
     void unbind(String endpoint);                                    // @throws ConnectException
     void disconnect(String endpoint);                                // @throws ConnectException
+    void disconnectRid(RoutingId routingId);                         // @throws ConnectException
 
     boolean send(Message part);                                      // @throws SubmitException
     boolean send(Message part, SendFlags flags);                     // @throws SubmitException
@@ -475,6 +472,7 @@ public final class PubSocket extends Socket {
     void connect(String endpoint);                                   // @throws ConnectException
     void unbind(String endpoint);                                    // @throws ConnectException
     void disconnect(String endpoint);                                // @throws ConnectException
+    void disconnectRid(RoutingId routingId);                         // @throws ConnectException
     void attachDiscovery(Discovery discovery);                       // @throws ConfigException
 
     boolean publish(String topicId, Message part);                   // @throws SubmitException
@@ -521,6 +519,7 @@ public final class SubSocket extends Socket {
     void connect(String endpoint);                                   // @throws ConnectException
     void unbind(String endpoint);                                    // @throws ConnectException
     void disconnect(String endpoint);                                // @throws ConnectException
+    void disconnectRid(RoutingId routingId);                         // @throws ConnectException
     void attachDiscovery(Discovery discovery);                       // @throws ConfigException
 
     void setSubscription(String filter);                             // @throws ConfigException
@@ -553,6 +552,7 @@ public final class DealerSocket extends Socket {
     void connect(String endpoint);                                   // @throws ConnectException
     void unbind(String endpoint);                                    // @throws ConnectException
     void disconnect(String endpoint);                                // @throws ConnectException
+    void disconnectRid(RoutingId routingId);                         // @throws ConnectException
     void attachDiscovery(Discovery discovery);                       // @throws ConfigException
     void setChannelName(String channelName);                         // @throws ConfigException
     String getChannelName();                                         // @throws ConfigException
@@ -633,6 +633,7 @@ public final class RouterSocket extends Socket {
     void connect(String endpoint);                                   // @throws ConnectException
     void unbind(String endpoint);                                    // @throws ConnectException
     void disconnect(String endpoint);                                // @throws ConnectException
+    void disconnectRid(RoutingId routingId);                         // @throws ConnectException
     void attachDiscovery(Discovery discovery);                       // @throws ConfigException
 
     void setRoutingId(RoutingId rid);                                // @throws ConfigException
@@ -761,6 +762,8 @@ public final class RouterSocket extends Socket {
 public final class RouterSocketOptions extends CommonSocketOptions {
     boolean mandatory();                                             // @throws ConfigException
     void mandatory(boolean enabled);                                // @throws ConfigException
+    boolean handover();                                              // @throws ConfigException
+    void handover(boolean enabled);                                  // @throws ConfigException
     boolean probe();                                                 // @throws ConfigException
     void probe(boolean enabled);                                    // @throws ConfigException
     RoutingId connectRoutingId();                                   // @throws ConfigException
@@ -784,6 +787,7 @@ public final class XPubSocket extends Socket {
     void connect(String endpoint);                                   // @throws ConnectException
     void unbind(String endpoint);                                    // @throws ConnectException
     void disconnect(String endpoint);                                // @throws ConnectException
+    void disconnectRid(RoutingId routingId);                         // @throws ConnectException
 
     boolean publish(String topicId, Message part);                   // @throws SubmitException
     boolean publish(String topicId, Message part, SendFlags flags);  // @throws SubmitException
@@ -810,6 +814,7 @@ public final class XSubSocket extends Socket {
     void connect(String endpoint);                                   // @throws ConnectException
     void unbind(String endpoint);                                    // @throws ConnectException
     void disconnect(String endpoint);                                // @throws ConnectException
+    void disconnectRid(RoutingId routingId);                         // @throws ConnectException
 
     void setSubscription(String filter);                             // @throws ConfigException
     void unsetSubscription(String filter);                           // @throws ConfigException
@@ -830,6 +835,10 @@ public final class StreamSocket extends Socket {
 
     void bind(String endpoint);                                      // @throws BindException
     void unbind(String endpoint);                                    // @throws ConnectException
+    void disconnectRid(RoutingId routingId);                         // @throws ConnectException
+
+    void setRoutingId(RoutingId rid);                                // @throws ConfigException
+    RoutingId routingId();                                           // @throws ConfigException
 
     boolean send(RoutingId rid, Message part);                       // @throws SubmitException
     boolean send(RoutingId rid, Message part, SendFlags flags);      // @throws SubmitException
@@ -851,17 +860,22 @@ public final class StreamSocket extends Socket {
     void onPacket(StreamPacketHandler handler);                      // @throws HandlerException
 
     void bindActor(SpotNode node, RoutingId sessionRid, ActorRef actor,
-                   Duration timeout);                                // @throws ConfigException
+                   Duration timeout);                                // @throws RequestException
     void bindActor(SpotNode node, RoutingId sessionRid,
-                   ActorRef actor);                                  // @throws ConfigException
+                   ActorRef actor);                                  // @throws RequestException
     void unbindActor(SpotNode node, RoutingId sessionRid, String actorId,
-                     Duration timeout);                              // @throws ConfigException
+                     Duration timeout);                              // @throws RequestException
     void unbindActor(SpotNode node, RoutingId sessionRid,
-                     String actorId);                                // @throws ConfigException
+                     String actorId);                                // @throws RequestException
     boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
                            String actorId, Message part);            // @throws SubmitException
     boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
                            String actorId, Message part,
+                           SendFlags flags);                         // @throws SubmitException
+    boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
+                           String actorId, List<Message> parts);      // @throws SubmitException
+    boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
+                           String actorId, List<Message> parts,
                            SendFlags flags);                         // @throws SubmitException
 
     StreamSocketOptions options();
@@ -1028,11 +1042,8 @@ public final class RoutingId {
 
     // --- accessors ---
     byte[] toBytes();                       // defensive copy of raw bytes
-    ByteBuffer asReadOnlyBuffer();
     int size();                             // 1-255
-    boolean empty();
 
-    // --- convenience (not canonical) ---
     String toHex();
 
     boolean equals(Object other);
@@ -1127,13 +1138,6 @@ public enum MonitorSourceKind {
     SPOT_SUB(4)
 }
 
-public enum DisconnectReason {
-    UNKNOWN(0),
-    HANDSHAKE_FAILED(3),
-    TRANSPORT_ERROR(4),
-    CTX_TERM(5)
-}
-
 public enum AutoHwmRecalcReason {
     NONE(0),
     INITIAL(1),
@@ -1141,10 +1145,6 @@ public enum AutoHwmRecalcReason {
     POLICY_TOGGLE(3),
     REFRESH(4),
     DEFERRED_SHRINK(5)
-}
-
-public enum ProtocolError {
-    ZMP_MALFORMED_COMMAND_HELLO(0x10000013)
 }
 
 public enum PollEventType {
@@ -1256,9 +1256,7 @@ public enum ActorAdmissionResult {
 ```
 
 `ActorAdmissionResult` maps to the C `zlink_actor_admission_result_t` enum.
-`ProtocolError` is used when `MonitorEventType.HANDSHAKE_FAILED_PROTOCOL`
-appears. `DisconnectReason` is used when `MonitorEventType.DISCONNECTED`
-appears. `AutoHwmRecalcReason` maps the
+`AutoHwmRecalcReason` maps the
 `MonitorSnapshot.autoHwmLastRecalcReason` field.
 
 ### ZlinkException
@@ -1696,10 +1694,7 @@ public record MonitorEvent(MonitorEventType event,
                            long value,
                            Optional<RoutingId> routingId,
                            String localAddr,
-                           String remoteAddr) {
-    Optional<ProtocolError> protocolError();
-    Optional<DisconnectReason> disconnectReason();
-}
+                           String remoteAddr) {}
 ```
 
 `MonitorEventType` includes `PEER_WEIGHT_CHANGED` (bit 15). When this
@@ -1726,6 +1721,8 @@ public record MonitorSnapshot(MonitorSourceKind sourceKind,
                               long autoHwmEffectiveMessageBytes,
                               int autoHwmAppliedSndHwm,
                               int autoHwmAppliedRcvHwm,
+                              int autoHwmAppliedSndBuffer,
+                              int autoHwmAppliedRcvBuffer,
                               long autoHwmLastRecalcMs,
                               AutoHwmRecalcReason autoHwmLastRecalcReason,
                               int autoHwmSendBlockedRatioPpm,
@@ -1752,8 +1749,8 @@ public final class Registry implements AutoCloseable {
     void bind(String pubEndpoint, String routerEndpoint);            // @throws BindException
     void setId(int id);                                              // @throws ConfigException
     void addPeer(String peerPubEndpoint);                            // @throws ConfigException
-    void setHeartbeat(int intervalMs, int timeoutMs);                // @throws ConfigException
-    void setBroadcastInterval(int intervalMs);                       // @throws ConfigException
+    void setHeartbeat(Duration interval, Duration timeout);          // @throws ConfigException
+    void setBroadcastInterval(Duration interval);                    // @throws ConfigException
     void setTlsServer(String certPem, String keyPem, boolean requireClientCert); // @throws ConfigException
     void setTlsClient(String caCertPem, String hostname, boolean trustSystem);   // @throws ConfigException
 
@@ -1775,15 +1772,6 @@ Fixed-channel discovery view. Tracks one auto-connect type and channel name.
 Implements `AutoCloseable`.
 
 ```java
-public enum AutoConnectType {
-    INVALID,
-    ROUTE_MESH,
-    CLIENT_SERVER,
-    DEALER_MESH,
-    FANOUT,
-    SPOT_MESH
-}
-
 public final class Discovery implements AutoCloseable {
     Discovery(Context ctx, AutoConnectType autoConnectType, String channelName);
 
@@ -1868,12 +1856,20 @@ public final class SpotNode implements AutoCloseable {
     void onActorAdmission(ActorAdmissionHandler handler);            // @throws HandlerException
     boolean joinActor(ActorRef actor, RoutingId destNodeRid,
                       RoutingId destSpotRid, Message message,
-                      BiConsumer<RequestResult, List<Message>> callback);
+                      BiConsumer<RequestResult, List<Message>> callback); // @throws SubmitException
+    boolean joinActor(ActorRef actor, RoutingId destNodeRid,
+                      RoutingId destSpotRid, Message message,
+                      BiConsumer<RequestResult, List<Message>> callback,
+                      Duration timeout);                             // @throws SubmitException
+    boolean joinActor(ActorRef actor, RoutingId destNodeRid,
+                      RoutingId destSpotRid, Message message,
+                      BiConsumer<RequestResult, List<Message>> callback,
+                      SendFlags flags);                              // @throws SubmitException
     boolean joinActor(ActorRef actor, RoutingId destNodeRid,
                       RoutingId destSpotRid, Message message,
                       BiConsumer<RequestResult, List<Message>> callback,
                       SendFlags flags,
-                      Duration timeout);
+                      Duration timeout);                             // @throws SubmitException
     void leaveActor(ActorRef actor, RoutingId destSpotRid);          // @throws RequestException
     void leaveActor(ActorRef actor, RoutingId destSpotRid,
                     Duration timeout);                               // @throws RequestException
@@ -1883,8 +1879,8 @@ public final class SpotNode implements AutoCloseable {
     List<SpotNodePeerEntry> peersQuery(SpotNodePeerFilter filter);   // @throws ConfigException
     List<SpotNodeSubjectEntry> subjectsSnapshot();                   // @throws ConfigException
     List<SpotNodeSubjectEntry> subjectsSnapshot(SpotNodeSubjectFilter filter); // @throws ConfigException
-    List<SpotNodeSocketSnapshotEntry> socketSnapshots();             // @throws ConfigException
-    List<SpotNodeSocketSnapshotEntry> socketSnapshots(
+    List<SpotNodeSocketSnapshotEntry> internalSocketsSnapshot();      // @throws ConfigException
+    List<SpotNodeSocketSnapshotEntry> internalSocketsSnapshot(
         SpotNodeSocketSnapshotFilter filter);                        // @throws ConfigException
     List<SpotNodeSpotEntry> spotsSnapshot();                         // @throws ConfigException
     List<SpotNodeActorEntry> actorsSnapshot();                       // @throws ConfigException
@@ -1949,7 +1945,11 @@ public final class Spot implements AutoCloseable {
     boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        List<Message> parts, SendFlags flags);                            // @throws SubmitException
     CompletableFuture<List<Message>> requestChannel(String channelName, Message part);   // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> requestChannel(String channelName, Message part,
+                                                    Duration timeout);                   // @throws SubmitException; future completes with RequestException on failure
     CompletableFuture<List<Message>> requestChannel(String channelName, List<Message> parts); // @throws SubmitException; future completes with RequestException on failure
+    CompletableFuture<List<Message>> requestChannel(String channelName, List<Message> parts,
+                                                    Duration timeout);                   // @throws SubmitException; future completes with RequestException on failure
     boolean requestChannel(String channelName, Message part,
                            BiConsumer<RequestResult, List<Message>> callback);           // @throws SubmitException; callback receives RequestResult
     boolean requestChannel(String channelName, Message part,
@@ -2098,7 +2098,7 @@ public final class Spot implements AutoCloseable {
 
     // --- actor dispatch ---
     ActorJoinRequest recvActorJoin();                                // @throws RecvException
-    ActorJoinRequest recvActorJoin(RecvFlags flags);                 // @throws RecvException
+    @Nullable ActorJoinRequest recvActorJoin(RecvFlags flags);       // @throws RecvException
     void replyActorJoin(ActorJoinRequest request, boolean accepted,
                         Message message);                            // @throws SubmitException
     List<ActorRef> actorsSnapshot();                                 // @throws ConfigException
@@ -2122,10 +2122,7 @@ Callback interface for `Spot.onRoutedReceive(...)`.
 ```java
 @FunctionalInterface
 public interface SpotRoutedHandler {
-    void onMessage(RoutingId sourceRid,
-                   RoutingId spotRid,
-                   long requestSeq,
-                   Received received);
+    void onMessage(Received received);
 }
 ```
 
@@ -2168,7 +2165,15 @@ public final class Actor implements AutoCloseable {
     boolean join(Spot spot, Message message,
                  BiConsumer<RequestResult, List<Message>> callback,
                  Duration timeout);                                 // @throws SubmitException
-    void leave(Spot spot);                                           // @throws ConfigException
+    boolean join(Spot spot, Message message,
+                 BiConsumer<RequestResult, List<Message>> callback,
+                 SendFlags flags);                                  // @throws SubmitException
+    boolean join(Spot spot, Message message,
+                 BiConsumer<RequestResult, List<Message>> callback,
+                 SendFlags flags,
+                 Duration timeout);                                 // @throws SubmitException
+    void leave(Spot spot);                                           // @throws RequestException
+    void leave(Spot spot, Duration timeout);                         // @throws RequestException
     ActorPart recvPart();                                            // @throws RecvException
     @Nullable ActorPart recvPart(RecvFlags flags);                   // @throws RecvException
     boolean sendBoundSession(Message message);                       // @throws SubmitException
@@ -2188,8 +2193,6 @@ public record ActorRef(RoutingId nodeRid, String actorId, long generation) {
 }
 
 public record ActorCreateResult(ActorCreateStatus status, ActorRef actor) {}
-public enum ActorCreateStatus { CREATED, EXISTING }
-public enum ActorAdmissionResult { ACCEPT, REJECT }
 
 public record ActorRoute(ActorRef actor,
                          boolean joined,
@@ -2410,10 +2413,8 @@ public record SpotNodeSubjectEntry(SpotRole role,
 ### SpotNodeSocketSnapshotEntry
 
 Diagnostic socket snapshot entry returned by
-`SpotNode.socketSnapshots(...)`. The snapshot exposes monitor-level
-diagnostics, not mutable implementation handles. The Java public contract uses
-the diagnostic purpose as the API name instead of exposing the lower-level
-core symbol name.
+`SpotNode.internalSocketsSnapshot(...)`. The snapshot exposes monitor-level
+diagnostics, not mutable implementation handles.
 
 ```java
 public record SpotNodeSocketSnapshotEntry(
@@ -2421,7 +2422,7 @@ public record SpotNodeSocketSnapshotEntry(
     long ownerId,
     String ownerName,
     String socketName,
-    SpotNodeSocketType socketType,
+    SocketType socketType,
     boolean autoHwmVisible,
     MonitorSnapshot snapshot) {}
 ```
@@ -2475,12 +2476,12 @@ public record SpotNodeSubjectFilter(SpotRole role,
 ### SpotNodeSocketSnapshotFilter
 
 Filter for diagnostic socket snapshots returned by
-`SpotNode.socketSnapshots(...)`.
+`SpotNode.internalSocketsSnapshot(...)`.
 
 ```java
 public record SpotNodeSocketSnapshotFilter(
     SpotNodeSocketOwner owner,
-    SpotNodeSocketType socketType,
+    SocketType socketType,
     String socketName) {}
 ```
 
@@ -2526,20 +2527,14 @@ public final class Poller implements AutoCloseable {
     Poller();
 
     // --- socket registration ---
-    void add(Socket socket, int events);                             // @throws ConfigException
-    void add(Socket socket, int events, Object tag);                 // @throws ConfigException
     void add(Socket socket, PollEventType... events);                // @throws ConfigException
     void add(Socket socket, Object tag, PollEventType... events);    // @throws ConfigException
-    void modify(Socket socket, int events);                          // @throws ConfigException
     void modify(Socket socket, PollEventType... events);             // @throws ConfigException
     boolean remove(Socket socket);                                   // @throws ConfigException
 
     // --- file descriptor registration ---
-    void addFd(int fd, int events);                                  // @throws ConfigException
-    void addFd(int fd, int events, Object tag);                      // @throws ConfigException
     void addFd(int fd, PollEventType... events);                     // @throws ConfigException
     void addFd(int fd, Object tag, PollEventType... events);         // @throws ConfigException
-    void modifyFd(int fd, int events);                               // @throws ConfigException
     void modifyFd(int fd, PollEventType... events);                  // @throws ConfigException
     boolean removeFd(int fd);                                        // @throws ConfigException
 
@@ -2550,9 +2545,9 @@ public final class Poller implements AutoCloseable {
 
     // --- poll ---
     int size();                                                      // @throws ConfigException
-    int pollCount(int timeoutMs);                                    // @throws ConfigException
-    boolean pollAny(int timeoutMs);                                  // @throws ConfigException
-    List<PollEvent> poll(int timeoutMs);                             // @throws ConfigException
+    int pollCount(Duration timeout);                                 // @throws ConfigException
+    boolean pollAny(Duration timeout);                               // @throws ConfigException
+    List<PollEvent> poll(Duration timeout);                          // @throws ConfigException
 
     // --- ready accessors ---
     int readyCount();
@@ -2560,8 +2555,8 @@ public final class Poller implements AutoCloseable {
     Timer readyTimer(int index);
     Object readyTag(int index);
     int readyFd(int index);
-    int readyEvents(int index);
-    short readyRevents(int index);
+    EnumSet<PollEventType> readyEvents(int index);
+    EnumSet<PollEventType> readyRevents(int index);
 
     void clear();                                                    // @throws ConfigException
     void close();                                                    // @throws CloseException
@@ -2574,11 +2569,11 @@ Immutable readiness result returned by `Poller.poll(...)`.
 
 ```java
 public record PollEvent(Socket socket,
-                        int revents,
+                        EnumSet<PollEventType> revents,
                         int fd,
                         Object tag,
-                        int events) {
-    public PollEvent(Socket socket, int revents);
+                        EnumSet<PollEventType> events) {
+    public PollEvent(Socket socket, EnumSet<PollEventType> revents);
 }
 ```
 
@@ -2587,8 +2582,8 @@ descriptor registrations, `fd()` carries the registered descriptor and
 `socket()` is `null`. Timer readiness does not carry the `Timer` object in
 `PollEvent`; use `readyTimer(index)` when the timer handle is needed. `tag()`
 is the optional user object supplied at registration time. `revents()` is the
-ready event mask reported by the core; `events()` is the originally requested
-event mask when the binding has it.
+ready event set reported by the core; `events()` is the originally requested
+event set when the binding has it.
 
 ---
 
@@ -2605,7 +2600,7 @@ public final class Timer implements AutoCloseable {
 
     static Timer fromSpot(Spot spot);                                // @throws ConfigException
 
-    void start(long intervalNs, long repeatCount);                   // @throws ConfigException
+    void start(Duration interval, long repeatCount);                 // @throws ConfigException
     void stop();                                                     // @throws ConfigException
     long recv();                                                     // @throws RecvException
     long recv(RecvFlags flags);                                      // @throws RecvException
@@ -2615,7 +2610,9 @@ public final class Timer implements AutoCloseable {
 }
 ```
 
-`recv()` returns the timer fire count reported by core. `RecvFlags.NONE` is
+`start(...)` accepts a Java `Duration`; the binding converts it to the
+nanosecond interval used by core without truncation. `recv()` returns the
+timer fire count reported by core. `RecvFlags.NONE` is
 the supported receive flag. Unsupported flags raise `RecvException` with
 `RecvResult.NOT_SUPPORTED`; no-data raises `RecvException` with
 `RecvResult.NO_DATA`.
@@ -2661,11 +2658,9 @@ public final class Zlink {
     public static void proxySteerable(Socket frontend, Socket backend,
                                       Socket capture, Socket control);          // @throws ConfigException
 
-    /// Sleep for the given number of seconds.
-    public static void sleep(int seconds);
+    /// Sleep for the given duration.
+    public static void sleep(Duration duration);
 
-    /// Close all parts in a multipart message array.
-    public static void multipartClose(Message[] parts);
 }
 ```
 
@@ -2677,11 +2672,11 @@ High-resolution stopwatch. Implements `AutoCloseable`.
 public final class Stopwatch implements AutoCloseable {
     Stopwatch();
 
-    /// Return elapsed microseconds without stopping.
-    long intermediate();
+    /// Return elapsed time without stopping.
+    Duration intermediate();
 
-    /// Stop the stopwatch and return total elapsed microseconds.
-    long stop();
+    /// Stop the stopwatch and return total elapsed time.
+    Duration stop();
 
     void close();                                                    // @throws CloseException
 }

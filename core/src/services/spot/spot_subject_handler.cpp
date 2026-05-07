@@ -18,8 +18,11 @@
 
 namespace
 {
-thread_local zlink::spot_node_t *g_current_spot_node_send_ready_callback =
-  NULL;
+zlink::spot_node_t *&spot_node_send_ready_callback_tls ()
+{
+    static thread_local zlink::spot_node_t *node = NULL;
+    return node;
+}
 
 struct spot_node_handler_entry_t
 {
@@ -143,7 +146,7 @@ bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_)
     if (!node_)
         return false;
 
-    if (g_current_spot_node_send_ready_callback == node_)
+    if (spot_node_send_ready_callback_tls () == node_)
         return true;
 
     zlink::socket_base_t *dispatch_socket =
@@ -158,14 +161,14 @@ bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_)
 zlink::spot_node_t *enter_spot_node_send_ready_callback (
   zlink::spot_node_t *node_)
 {
-    zlink::spot_node_t *previous = g_current_spot_node_send_ready_callback;
-    g_current_spot_node_send_ready_callback = node_;
+    zlink::spot_node_t *previous = spot_node_send_ready_callback_tls ();
+    spot_node_send_ready_callback_tls () = node_;
     return previous;
 }
 
 void leave_spot_node_send_ready_callback (zlink::spot_node_t *previous_)
 {
-    g_current_spot_node_send_ready_callback = previous_;
+    spot_node_send_ready_callback_tls () = previous_;
 }
 
 void clear_spot_node_handler_registration (zlink::spot_node_t *node_)

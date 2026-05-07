@@ -342,12 +342,12 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
         return -1;
     }
 
-    zlink::copy_routing_id_from_msg (source_node_frame,
-                                     &g_router_recv_source_rid);
+    router_recv_metadata_tls_t &metadata = router_recv_metadata_tls ();
+    zlink::copy_routing_id_from_msg (source_node_frame, &metadata.source_rid);
     zlink::copy_routing_id_from_msg (source_spot_frame,
-                                     &g_router_recv_source_spot_rid);
-    *source_node_rid_out_ = &g_router_recv_source_rid;
-    *source_spot_rid_out_ = &g_router_recv_source_spot_rid;
+                                     &metadata.source_spot_rid);
+    *source_node_rid_out_ = &metadata.source_rid;
+    *source_spot_rid_out_ = &metadata.source_spot_rid;
     *request_seq_out_ = zlink::request_reply::decode_u64_be (
       static_cast<const unsigned char *> (zlink_msg_data (&seq_frame)));
     zlink_msg_close (&source_node_frame);
@@ -411,10 +411,11 @@ int recv_router_message_direct (socket_handle_t handle_,
             return -1;
         }
 
-        assign_routing_id_compact (&g_router_recv_source_rid, source_rid);
-        g_router_recv_source_spot_rid.size = 0;
-        *source_node_rid_out_ = &g_router_recv_source_rid;
-        *source_spot_rid_out_ = &g_router_recv_source_spot_rid;
+        router_recv_metadata_tls_t &metadata = router_recv_metadata_tls ();
+        assign_routing_id_compact (&metadata.source_rid, source_rid);
+        metadata.source_spot_rid.size = 0;
+        *source_node_rid_out_ = &metadata.source_rid;
+        *source_spot_rid_out_ = &metadata.source_spot_rid;
         *request_seq_out_ = 0;
         return zlink::recv_tls_view::commit_reserved_single (parts_out_,
                                                              part_count_out_);
@@ -481,11 +482,11 @@ int recv_router_message_direct (socket_handle_t handle_,
         }
     }
 
-    g_router_recv_source_rid = source_rid;
-    memset (&g_router_recv_source_spot_rid, 0,
-            sizeof (g_router_recv_source_spot_rid));
-    *source_node_rid_out_ = &g_router_recv_source_rid;
-    *source_spot_rid_out_ = &g_router_recv_source_spot_rid;
+    router_recv_metadata_tls_t &metadata = router_recv_metadata_tls ();
+    metadata.source_rid = source_rid;
+    memset (&metadata.source_spot_rid, 0, sizeof (metadata.source_spot_rid));
+    *source_node_rid_out_ = &metadata.source_rid;
+    *source_spot_rid_out_ = &metadata.source_spot_rid;
     return zlink::recv_tls_view::commit (parts_out_, part_count_out_);
 }
 

@@ -686,6 +686,84 @@ int spot_node_t::attach_channel_dealer_manual (const char *channel_name_,
     return 0;
 }
 
+int spot_node_t::attach_pub_ingress (socket_base_t *pub_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    if (!valid_attached_socket_type_local (pub_, ZLINK_CORE_SOCKET_PUB)) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (!pubsub_enabled ()) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    if (ensure_healthy () != 0)
+        return -1;
+
+    std::string endpoint;
+    socket_base_t *ingress_sub = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        if (!_runtime || _runtime->pub_ingress_endpoint.empty ()
+            || !_runtime->pub_ingress_sub) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (_service_attachment_state.pub_ingress
+            || _service_attachment_state.socket_index.count (pub_) != 0) {
+            errno = EBUSY;
+            return -1;
+        }
+        endpoint = _runtime->pub_ingress_endpoint;
+        ingress_sub = _runtime->pub_ingress_sub;
+    }
+
+    zlink_socket_monitor_open_options_t monitor_options;
+    memset (&monitor_options, 0, sizeof (monitor_options));
+    monitor_options.events = ZLINK_EVENT_ALL;
+    void *monitor = zlink_socket_monitor_open (pub_, &monitor_options);
+    if (!monitor)
+        return -1;
+
+    if (pub_->connect (endpoint.c_str ()) != 0) {
+        const int saved_errno = errno;
+        zlink_monitor_close (&monitor);
+        errno = saved_errno;
+        return -1;
+    }
+
+    const uint64_t deadline_ms = zlink::clock_t ().now_ms () + 250;
+    while (zlink::clock_t ().now_ms () < deadline_ms) {
+        if (pub_->socket_has_attached_pipes ()
+            && ingress_sub->socket_has_attached_pipes ())
+            break;
+        zlink::sleep_ms (1);
+    }
+
+    scoped_lock_t lock (_sync);
+    if (_service_attachment_state.pub_ingress
+        || _service_attachment_state.socket_index.count (pub_) != 0) {
+        (void) pub_->term_endpoint (endpoint.c_str ());
+        zlink_monitor_close (&monitor);
+        errno = EBUSY;
+        return -1;
+    }
+
+    _service_attachment_state.pub_ingress = pub_;
+    _service_attachment_state.socket_index[pub_] =
+      "__spot_service_attachment_state.pub_ingress__";
+    register_attachment_monitor_locked (
+      pub_, monitor, "__spot_service_attachment_state.pub_ingress__");
+    _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
+    _handle_state.entry_spot_rid_locked = true;
+    if (_handle_state.entry_spot)
+        _handle_state.entry_spot->rid_locked = true;
+    return 0;
+}
+
 int spot_node_t::try_register_spot_facade (spot_handle_t *spot_)
 {
     if (!spot_) {

@@ -513,6 +513,6 @@ zlink_config_result_t zlink_spot_node_attach_pub_ingress (void *node_,
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
-    errno = ENOTSUP;
-    return ZLINK_CONFIG_NOT_SUPPORTED;
+    return zlink::config_result_internal::from_rc (
+      zlink::spot_node_access_t::attach_pub_ingress (node, pub_));
 }

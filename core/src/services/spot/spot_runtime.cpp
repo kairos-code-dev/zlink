@@ -74,6 +74,9 @@ size_t fill_runtime_socket_slot_refs_impl (runtime_t *runtime_, slot_ref_t *out_
     out_[count++] = slot_ref_t{&runtime_->mesh_pub, NULL, false};
     out_[count++] = slot_ref_t{&runtime_->mesh_xsub, NULL, false};
     out_[count++] =
+      slot_ref_t{&runtime_->pub_ingress_sub, &runtime_->pub_ingress_endpoint,
+                 false};
+    out_[count++] =
       slot_ref_t{&runtime_->peer_ctrl_pub, &runtime_->peer_ctrl_endpoint,
                  false};
     out_[count++] = slot_ref_t{&runtime_->peer_ctrl_sub, NULL, false};
@@ -102,6 +105,7 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     data_ctrl_back (NULL),
     mesh_pub (NULL),
     mesh_xsub (NULL),
+    pub_ingress_sub (NULL),
     peer_ctrl_pub (NULL),
     peer_ctrl_sub (NULL),
     external_router (NULL),
@@ -122,6 +126,8 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     char buf[128];
     snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.sub-out", node_id);
     sub_fanout_endpoint = buf;
+    snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.pub-in", node_id);
+    pub_ingress_endpoint = buf;
     snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.ctrl", node_id);
     data_ctrl_endpoint = buf;
 }

@@ -39,6 +39,7 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     spot_data_plane_forwarder_t::pump_socket_commands (state_->ctrl);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->mesh_pub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->mesh_xsub);
+    spot_data_plane_forwarder_t::pump_socket_commands (state_->pub_ingress_sub);
     spot_data_plane_forwarder_t::pump_socket_commands (
       state_->mesh_xsub_monitor);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_pub);
@@ -58,6 +59,8 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     if (!state_->runtime_sockets_nodelay_applied) {
         if (state_->mesh_pub)
             state_->mesh_pub->set_all_pipes_nodelay ();
+        if (state_->pub_ingress_sub)
+            state_->pub_ingress_sub->set_all_pipes_nodelay ();
         if (state_->peer_ctrl_pub)
             state_->peer_ctrl_pub->set_all_pipes_nodelay ();
         if (state_->peer_ctrl_sub)
@@ -75,6 +78,8 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     spot_data_plane_forwarder_t::update_pending_queue_limits (runtime_, state_);
     (void) spot_reqrep_internal::drain_runtime_external_router_ingress_queue (
       runtime_);
+    (void) spot_data_plane_forwarder_t::drain_pub_ingress_socket (runtime_,
+                                                                  state_);
     (void) spot_data_plane_forwarder_t::drain_publish_ingress_queue (runtime_,
                                                                      state_);
     (void) spot_reqrep_internal::drain_runtime_routed_send_queue (runtime_);
@@ -199,6 +204,23 @@ bool handle_mesh_event (socket_base_t *socket_,
     return true;
 }
 
+bool handle_pub_ingress_event (socket_base_t *socket_,
+                               spot_runtime_t *runtime_,
+                               spot_data_plane_runtime_state_t *state_,
+                               bool *running_out_,
+                               int *fatal_errno_out_)
+{
+    if (!state_->pub_ingress_sub || socket_ != state_->pub_ingress_sub)
+        return false;
+
+    if (spot_data_plane_forwarder_t::drain_pub_ingress_socket (runtime_, state_)
+        != 0) {
+        *fatal_errno_out_ = errno;
+        *running_out_ = false;
+    }
+    return true;
+}
+
 bool handle_pollout_event (socket_base_t *socket_,
                            spot_node_t *node_,
                            spot_runtime_t *runtime_,
@@ -295,7 +317,9 @@ int dispatch_ready_events (const socket_poller_t::event_t *events_,
             socket_base_t *socket =
               static_cast<socket_base_t *> (events_[i].socket);
             if ((pass == 0 && !is_ctrl_event (socket, *state_))
-                || (pass == 1 && socket != state_->mesh_xsub)
+                || (pass == 1
+                    && socket != state_->mesh_xsub
+                    && socket != state_->pub_ingress_sub)
                 || pass == 2) {
                 continue;
             }
@@ -304,7 +328,9 @@ int dispatch_ready_events (const socket_poller_t::event_t *events_,
                                    protocol_state_, running_out_, &fatal_errno)
                 || handle_mesh_event (socket, node_, runtime_, state_,
                                       protocol_state_, running_out_,
-                                      &fatal_errno)) {
+                                      &fatal_errno)
+                || handle_pub_ingress_event (socket, runtime_, state_,
+                                             running_out_, &fatal_errno)) {
                 if (!*running_out_)
                     break;
             }

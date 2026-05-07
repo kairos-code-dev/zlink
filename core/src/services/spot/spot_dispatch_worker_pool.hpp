@@ -30,6 +30,8 @@ class spot_dispatch_worker_pool_t
 
     int min_workers () const;
     int max_workers () const;
+    int spawn_failures () const;
+    int last_spawn_errno () const;
 
   private:
     static void worker_entry (void *arg_);
@@ -57,6 +59,8 @@ class spot_dispatch_worker_pool_t
     int _max_workers;
     int _live_workers;
     int _idle_workers;
+    int _spawn_failures;
+    int _last_spawn_errno;
 };
 
 int spot_dispatch_default_workers_min ();

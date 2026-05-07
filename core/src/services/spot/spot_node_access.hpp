@@ -101,6 +101,7 @@ struct spot_node_access_t
     static int attach_channel_dealer_manual (spot_node_t *node_,
                                              const char *channel_name_,
                                              void *dealer_);
+    static int attach_pub_ingress (spot_node_t *node_, void *pub_);
     static int try_register_spot_facade (spot_node_t *node_,
                                          spot_handle_t *spot_);
     static void unregister_spot_facade (spot_node_t *node_,

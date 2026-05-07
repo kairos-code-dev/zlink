@@ -15,6 +15,8 @@
 | Application thread | `zlink_send()`, `zlink_recv()`, `bind()`, `connect()` 등 호출 | 사용자 정의 |
 | I/O thread | Boost.Asio `io_context` 실행. 비동기 네트워크 I/O, 프레임 인코딩/디코딩, socket 이벤트 dispatch | 설정 가능 (기본: 1) |
 | Reaper thread | 종료된 socket과 session의 지연 소멸 | 1 (전역) |
+| SpotNode data-plane thread | `mesh-pub`, `fanout`, `external-router` 소켓 독점 소유; 인그레스 큐 drain; 로컬 팬아웃·피어 메시 전달 | SpotNode당 1개 |
+| Dispatch worker thread | Spot dispatch 콜백 실행; Spot별 직렬화·코얼레싱 | SpotNode당 N개 (기본: `min(2, cpu_count)` ~ `max(1, cpu_count)`) |
 
 I/O thread 수는 context 생성 시 설정한다:
 
@@ -44,8 +46,17 @@ flowchart TB
     subgraph REAPER["Reaper Thread (1)"]
         R1["지연 socket/session 소멸"]
     end
+    subgraph SPOT_DATA["SpotNode Data-plane Thread (SpotNode당 1개)"]
+        DP["mesh-pub / fanout / external-router 소켓\n인그레스 큐 drain · 로컬 팬아웃 · 피어 메시 전달"]
+    end
+    subgraph SPOT_WORKERS["Dispatch Worker Threads (SpotNode당 N개)"]
+        W1["Spot dispatch 콜백 실행"]
+    end
     APP -- "YPipe (lock-free)" --> IO
     IO -- "command_t (close/stop)" --> REAPER
+    APP -- "publish_ingress_queue\nrouted_send_queue\n(signaler 기반 wakeup)" --> SPOT_DATA
+    SPOT_DATA -- "post_dispatch_event()\n(ready queue)" --> SPOT_WORKERS
+    SPOT_WORKERS -. "zlink_spot_* API 호출 가능" .-> APP
 ```
 
 ---
@@ -169,7 +180,79 @@ while (command = mailbox.recv()) {
 
 ---
 
-## 6. NUMA 및 CPU 핀닝
+## 6. SpotNode data-plane thread와 Dispatch Worker Pool
+
+### 6.1 Data-plane thread
+
+`spot_node_t`마다 하나의 OS 스레드(`spot_runtime_t::data_plane_thread`)가
+`spot_data_plane_loop_t::run_until_shutdown()`을 실행한다. 이 스레드는 다음 자원을
+독점적으로 소유한다:
+
+- `mesh-pub`, `fanout`, `external-router`, `mesh-xsub`, `peer_ctrl_pub`, `peer_ctrl_sub` 소켓
+- `publish_ingress_queue`, `routed_send_queue`, `external_router_ingress_queue` drain
+- 로컬 팬아웃 전달, 원격 메시 publish, 인바운드/아웃바운드 라우팅 전달
+
+public 스레드는 이 소켓에 직접 접근하지 않는다. 이 경계를 위반하면 소켓 소유권,
+poller 관심 등록, shutdown 순서가 public call path에 혼재된다.
+
+```
+불변 조건:
+  public 스레드는 mesh-pub, fanout, external-router에 직접 send/recv 금지.
+  data-plane 스레드는 application dispatch 콜백을 직접 호출하지 않는다.
+```
+
+data-plane 스레드 루프는 세 큐의 signaler FD를 포함한 poller와 함께 동작한다.
+큐가 비어 있다가 메시지가 들어오면 즉시 스레드가 깨어난다. 유휴 tick은 100 ms다.
+
+큐 drain 우선순위:
+
+| 순서 | 큐 | 설명 |
+|------|----|------|
+| 1 | `external_router_ingress_queue` | 피어로부터 들어온 라우팅 프레임 처리 |
+| 2 | `publish_ingress_queue` | application에서 제출한 topic publish 처리 |
+| 3 | `routed_send_queue` | application에서 제출한 routed send 처리 |
+| 4 | flush `mesh-pub` pending | 원격 피어로 publish 전달 |
+| 5 | flush `fanout` pending | 로컬 구독자로 팬아웃 전달 |
+| 6 | flush staged messages | 잔여 staged 프레임 전송 |
+
+배치 한도는 반복당 2048 메시지 또는 16 MiB다.
+
+### 6.2 Dispatch Worker Pool
+
+`spot_runtime_t::dispatch_workers`(`spot_dispatch_worker_pool_t`)가 application
+dispatch 콜백을 실행한다. data-plane 스레드는 콜백을 직접 호출하지 않는다. 대신
+대상 Spot 상태가 준비되면 풀의 `post_dispatch_event(void* spot_)`를 호출한다.
+풀은 `_queued` 집합으로 코얼레싱한다: 동일한 Spot 포인터는 두 번 이상 enqueue되지
+않는다.
+
+Spot별 직렬화: 한 번에 하나의 worker만 주어진 Spot을 처리한다. 콜백이 반환된 후
+해당 Spot에 미읽은 이벤트가 `_dirty`에 있으면 `_ready`에 다시 enqueue된다.
+
+Worker 수 기본값:
+
+```text
+cpu_count = max(1, hardware_concurrency)
+default_min = min(2, cpu_count)
+default_max = max(1, cpu_count)
+idle_timeout = 1000 ms (내부 상수)
+```
+
+| 옵션 | 기본값 | 의미 |
+|------|--------|------|
+| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN` | `min(2, cpu_count)` | 항상 유지되는 worker 수 |
+| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX` | `max(1, cpu_count)` | 버스트 상한 |
+
+data-plane 스레드가 콜백을 직접 호출하지 않는 이유:
+
+1. application 콜백이 SPOT send/recv API를 호출할 수 있어 data-plane 잠금이나
+   소켓 소유권에 재진입할 수 있다.
+2. 느린 콜백이 `mesh-pub`, `external-router` flush를 지연시킨다.
+3. `ZLINK_POLLOUT`과 send-ready 콜백은 dispatch 축에 있어, 전달 루프와 혼재하면
+   readiness/전달 순서가 깨진다.
+
+---
+
+## 7. NUMA 및 CPU 핀닝
 
 zlink는 내부적으로 I/O thread를 특정 CPU 코어에 고정하지 않는다.
 NUMA 지역성이 중요하다면 애플리케이션에서 다음을 수행한다:
@@ -184,7 +267,7 @@ I/O thread를 같은 NUMA 노드에 배치하면 cross-node YPipe 접근이 없�
 
 ---
 
-## 7. 동시 접근 패턴
+## 8. 동시 접근 패턴
 
 이 스레딩 모델에서 다음 패턴은 안전하고 동작이 명확하게 정의된다
 (전체 계약은 [Thread-Safety 내부 구조](thread-safety.ko.md) 참고).
@@ -218,7 +301,7 @@ hot-path API 안에 있으면 즉시 `ZLINK_CLOSE_BUSY`를 반환한다. close �
 
 ---
 
-## 8. Context 스레드 안전성
+## 9. Context 스레드 안전성
 
 Context 객체(`zlink_ctx_new()`)는 완전히 thread-safe하다. 여러 thread에서 동시에
 socket을 생성하고 종료할 수 있다:
@@ -234,7 +317,7 @@ thread와 같은 thread에서 호출하거나, 호출 전에 모든 socket을 �
 
 ---
 
-## 9. 요약
+## 10. 요약
 
 | 속성 | 값 |
 |------|----|
@@ -246,6 +329,11 @@ thread와 같은 thread에서 호출하거나, 호출 전에 모든 socket을 �
 | 동시 send | Admission gate로 안전 |
 | 동시 close + send | 안전. close는 hot-path 호출자가 빠져나올 때까지 `BUSY` 반환 |
 | Callback 실행 thread | 항상 socket에 할당된 I/O thread |
+| SpotNode data-plane thread | SpotNode당 1개; mesh-pub/fanout/external-router 독점 소유 |
+| SpotNode data-plane→App | publish_ingress_queue / routed_send_queue (signaler 기반 wakeup) |
+| Dispatch worker thread | SpotNode당 N개; Spot별 직렬화·코얼레싱; 기본 min(2,cpu)~max(1,cpu) |
+| Dispatch worker idle timeout | 1000 ms (내부 상수) |
+| Spot dispatch callback 실행 thread | Dispatch worker thread (data-plane thread 아님) |
 
 ---
 [← 아키텍처](architecture.ko.md) | [Thread-Safety →](thread-safety.ko.md)

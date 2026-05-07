@@ -69,6 +69,7 @@ class spot_node_t : public discovery_observer_t
     int attach_channel_dealer (discovery_t *discovery_, socket_base_t *dealer_);
     int attach_channel_dealer_manual (const char *channel_name_,
                                       socket_base_t *dealer_);
+    int attach_pub_ingress (socket_base_t *pub_);
     int try_register_spot_facade (spot_handle_t *spot_);
     void unregister_spot_facade (spot_handle_t *spot_);
     bool is_last_spot_facade_for_logical_state (spot_handle_t *spot_);

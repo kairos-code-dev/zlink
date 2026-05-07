@@ -30,12 +30,16 @@ namespace zlink
 {
 namespace
 {
+namespace spot_io = zlink::spot_data_plane_message_io;
+
 bool spot_direct_route_debug_enabled_local ()
 {
     return std::getenv ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE") != NULL;
 }
 
 static const size_t default_queue_message_unit_bytes = 64 * 1024;
+static const size_t publish_ingress_drain_batch_limit = 2048;
+static const size_t publish_ingress_drain_batch_bytes_limit = 16 * 1024 * 1024;
 
 struct queue_admission_plan_t
 {
@@ -682,8 +686,25 @@ int spot_data_plane_forwarder_t::drain_publish_ingress_queue (
         spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue =
           state_->publish_ingress;
         std::lock_guard<std::mutex> lock (queue.mutex);
-        local.swap (queue.messages);
-        queue.queued_bytes = 0;
+        size_t moved_bytes = 0;
+        size_t moved_count = 0;
+        while (!queue.messages.empty ()) {
+            const size_t entry_bytes =
+              queue.messages.front ().encoded_bytes > 0
+                ? queue.messages.front ().encoded_bytes
+                : 1;
+            if (moved_count > 0
+                && (moved_count >= publish_ingress_drain_batch_limit
+                    || moved_bytes + entry_bytes
+                         > publish_ingress_drain_batch_bytes_limit))
+                break;
+            moved_bytes += entry_bytes;
+            local.push_back (std::move (queue.messages.front ()));
+            queue.messages.pop_front ();
+            ++moved_count;
+        }
+        queue.queued_bytes =
+          queue.queued_bytes > moved_bytes ? queue.queued_bytes - moved_bytes : 0;
         if (queue.backpressure_active
             && publish_ingress_can_resume (
               queue,
@@ -693,6 +714,11 @@ int spot_data_plane_forwarder_t::drain_publish_ingress_queue (
                 1))) {
             queue.backpressure_active = false;
             notify_recovery = true;
+        }
+        if (!queue.messages.empty () && !queue.signal_armed
+            && queue.signaler.valid ()) {
+            queue.signal_armed = true;
+            queue.signaler.send ();
         }
         queue.cv.notify_all ();
     }
@@ -711,6 +737,73 @@ int spot_data_plane_forwarder_t::drain_publish_ingress_queue (
         spot_clear_msg_parts (&entry.parts);
         local.pop_front ();
     }
+    return flush_staged_messages (runtime_, state_);
+}
+
+int spot_data_plane_forwarder_t::drain_pub_ingress_socket (
+  spot_runtime_t *runtime_,
+  spot_data_plane_runtime_state_t *state_)
+{
+    if (!runtime_ || !state_ || !state_->pub_ingress_sub)
+        return 0;
+
+    unsigned int processed = 0;
+    size_t processed_bytes = 0;
+    for (;;) {
+        msg_t topic_msg;
+        if (topic_msg.init () != 0)
+            return -1;
+        if (state_->pub_ingress_sub->recv (&topic_msg, ZLINK_DONTWAIT) != 0) {
+            const int err = errno;
+            topic_msg.close ();
+            if (err == EAGAIN || err == EINTR)
+                break;
+            errno = err;
+            return -1;
+        }
+
+        processed_bytes += topic_msg.size ();
+        const bool has_payload = (topic_msg.flags () & msg_t::more) != 0;
+        std::string topic (
+          static_cast<const char *> (topic_msg.data ()), topic_msg.size ());
+        topic_msg.close ();
+
+        if (!has_payload) {
+            ++processed;
+            if (processed >= publish_ingress_drain_batch_limit
+                || processed_bytes >= publish_ingress_drain_batch_bytes_limit)
+                break;
+            continue;
+        }
+
+        spot_owned_msg_parts_t frames;
+        if (spot_io::recv_remaining_frames_to_parts (
+              state_->pub_ingress_sub, &frames, &processed_bytes)
+            != 0) {
+            if (errno == EAGAIN || errno == EINTR)
+                break;
+            return -1;
+        }
+
+        if (topic.empty ()
+            || spot_control_protocol::is_reserved_subject (topic.data (),
+                                                           topic.size ())) {
+            spot_clear_msg_parts (&frames);
+        } else if (stage_message (state_, topic, frames, false, true,
+                                  runtime_->mesh_pub != NULL)
+                   != 0) {
+            spot_clear_msg_parts (&frames);
+            return -1;
+        } else {
+            spot_clear_msg_parts (&frames);
+        }
+
+        ++processed;
+        if (processed >= publish_ingress_drain_batch_limit
+            || processed_bytes >= publish_ingress_drain_batch_bytes_limit)
+            break;
+    }
+
     return flush_staged_messages (runtime_, state_);
 }
 

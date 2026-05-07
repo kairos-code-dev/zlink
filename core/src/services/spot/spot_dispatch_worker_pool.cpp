@@ -29,7 +29,9 @@ spot_dispatch_worker_pool_t::spot_dispatch_worker_pool_t () :
     _min_workers (0),
     _max_workers (0),
     _live_workers (0),
-    _idle_workers (0)
+    _idle_workers (0),
+    _spawn_failures (0),
+    _last_spawn_errno (0)
 {
 }
 
@@ -173,6 +175,18 @@ int spot_dispatch_worker_pool_t::max_workers () const
     return _max_workers;
 }
 
+int spot_dispatch_worker_pool_t::spawn_failures () const
+{
+    std::lock_guard<std::mutex> lock (_mutex);
+    return _spawn_failures;
+}
+
+int spot_dispatch_worker_pool_t::last_spawn_errno () const
+{
+    std::lock_guard<std::mutex> lock (_mutex);
+    return _last_spawn_errno;
+}
+
 void spot_dispatch_worker_pool_t::worker_entry (void *arg_)
 {
     static_cast<spot_dispatch_worker_pool_t *> (arg_)->run_worker ();
@@ -183,6 +197,8 @@ bool spot_dispatch_worker_pool_t::spawn_worker_locked ()
     thread_t *thread = new (std::nothrow) thread_t ();
     if (!thread) {
         errno = ENOMEM;
+        ++_spawn_failures;
+        _last_spawn_errno = ENOMEM;
         return false;
     }
     _threads.push_back (thread);

@@ -86,11 +86,44 @@ void test_spot_node_pub_ingress_local_spot_subscribe_surface ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (pub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
 
-    TEST_ASSERT_NOT_EQUAL (ZLINK_CONFIG_OK,
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (spot, "pub-ingress:topic"));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
                            zlink_spot_node_attach_pub_ingress (node, pub));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (pub));
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (
+      &zlink_publish, pub, "pub-ingress:topic", "via-raw-pub", 0));
+    TEST_ASSERT_TRUE (wait_for_spot_recv_message (
+      spot, "pub-ingress:topic", "via-raw-pub", 11, 3000));
+
+    void *peer_node = create_spot_node (ctx, "spot-node-pub-ingress-peer");
+    TEST_ASSERT_NOT_NULL (peer_node);
+    void *peer_spot = zlink_spot_new (peer_node);
+    TEST_ASSERT_NOT_NULL (peer_spot);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (peer_spot, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    int port_seed = 22150;
+    TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+      node, "tcp://127.0.0.1:", &port_seed, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_peer (peer_node, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_subscription (peer_spot, "pub-ingress:remote"));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
+      peer_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (
+      &zlink_publish, pub, "pub-ingress:remote", "via-peer", 0));
+    TEST_ASSERT_TRUE (wait_for_spot_recv_message (
+      peer_spot, "pub-ingress:remote", "via-peer", 8, 3000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&peer_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&peer_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (pub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }

@@ -295,12 +295,14 @@ struct spot_node_service_attachment_state_t
     std::deque<spot_node_attachment_monitor_handle_t> monitors;
     std::map<std::string, discovery_t *> discoveries;
     std::map<std::string, discovery_t *> channel_dealer_discoveries;
+    socket_base_t *pub_ingress;
     std::set<std::string> pending_refresh_services;
     std::shared_ptr<service_sub_cache_t> sub_cache;
     std::shared_ptr<readable_sub_cache_t> readable_sub_cache;
     std::shared_ptr<socket_poller_t> readable_sub_poller;
 
     spot_node_service_attachment_state_t () :
+        pub_ingress (NULL),
         sub_cache (new service_sub_cache_t ()),
         readable_sub_cache (new readable_sub_cache_t ()),
         readable_sub_poller (new socket_poller_t ())

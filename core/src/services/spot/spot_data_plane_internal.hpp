@@ -455,6 +455,7 @@ struct spot_data_plane_runtime_state_t
     socket_base_t *ctrl;
     socket_base_t *mesh_pub;
     socket_base_t *mesh_xsub;
+    socket_base_t *pub_ingress_sub;
     socket_base_t *mesh_xsub_monitor;
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
@@ -603,6 +604,9 @@ struct spot_data_plane_forwarder_t
                                         zlink_send_flags_t flags_,
                                         int sndtimeo_ms_);
     static int drain_publish_ingress_queue (
+      spot_runtime_t *runtime_,
+      spot_data_plane_runtime_state_t *state_);
+    static int drain_pub_ingress_socket (
       spot_runtime_t *runtime_,
       spot_data_plane_runtime_state_t *state_);
     static int flush_local_fanout_pending (spot_runtime_t *runtime_,

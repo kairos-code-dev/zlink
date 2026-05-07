@@ -40,8 +40,8 @@ void spot_runtime_shutdown_logf_local (const char *fmt_, ...)
 
 void spot_runtime_t::stop_sockets ()
 {
-    runtime_socket_slot_ref_t refs[8];
-    socket_base_t *sockets[8];
+    runtime_socket_slot_ref_t refs[9];
+    socket_base_t *sockets[9];
     const size_t slot_count = fill_runtime_socket_slot_refs (this, refs);
 
     {
@@ -59,11 +59,11 @@ void spot_runtime_t::stop_sockets ()
 int spot_runtime_t::close_control_sockets ()
 {
     int first_error = 0;
-    runtime_socket_slot_ref_t refs[8];
-    socket_base_t *sockets[8];
-    const std::string *endpoints[8];
-    const bool close_directly[8] = {
-      false, false, false, false, false, false, false, false};
+    runtime_socket_slot_ref_t refs[9];
+    socket_base_t *sockets[9];
+    const std::string *endpoints[9];
+    const bool close_directly[9] = {
+      false, false, false, false, false, false, false, false, false};
     const size_t slot_count = fill_runtime_socket_slot_refs (this, refs);
     {
         scoped_lock_t lock (owner->_sync);
@@ -78,7 +78,7 @@ int spot_runtime_t::close_control_sockets ()
     if (spot_shutdown_debug_enabled ()) {
         std::fprintf (
           stderr,
-          "[spot-close] ctrl_front=%d ctrl_back=%d mesh_pub=%d mesh_xsub=%d peer_ctrl_pub=%d peer_ctrl_sub=%d external_router=%d fanout=%d\n",
+          "[spot-close] ctrl_front=%d ctrl_back=%d mesh_pub=%d mesh_xsub=%d pub_ingress_sub=%d peer_ctrl_pub=%d peer_ctrl_sub=%d external_router=%d fanout=%d\n",
           sockets[0] ? sockets[0]->socket_id () : -1,
           sockets[1] ? sockets[1]->socket_id () : -1,
           sockets[2] ? sockets[2]->socket_id () : -1,
@@ -86,7 +86,8 @@ int spot_runtime_t::close_control_sockets ()
           sockets[4] ? sockets[4]->socket_id () : -1,
           sockets[5] ? sockets[5]->socket_id () : -1,
           sockets[6] ? sockets[6]->socket_id () : -1,
-          sockets[7] ? sockets[7]->socket_id () : -1);
+          sockets[7] ? sockets[7]->socket_id () : -1,
+          sockets[8] ? sockets[8]->socket_id () : -1);
         std::fflush (stderr);
     }
 
@@ -95,13 +96,13 @@ int spot_runtime_t::close_control_sockets ()
             if (sockets[i] && endpoints[i] && !endpoints[i]->empty ())
                 (void) sockets[i]->term_endpoint (endpoints[i]->c_str ());
         }
-        if (sockets[6] && !external_router_bind_endpoint.empty ())
-            (void) sockets[6]->term_endpoint (external_router_bind_endpoint.c_str ());
+        if (sockets[7] && !external_router_bind_endpoint.empty ())
+            (void) sockets[7]->term_endpoint (external_router_bind_endpoint.c_str ());
         for (size_t i = 0; i < slot_count; ++i) {
             if (sockets[i])
                 sockets[i]->set_all_pipes_nodelay ();
         }
-        stop_runtime_dispatch_local (sockets[6]);
+        stop_runtime_dispatch_local (sockets[7]);
         for (size_t i = 0; i < slot_count; ++i) {
             if (!sockets[i])
                 continue;
@@ -130,6 +131,7 @@ int spot_runtime_t::detach_runtime_endpoints ()
     socket_base_t *ctrl_back = NULL;
     socket_base_t *external_router_local = NULL;
     socket_base_t *fanout = NULL;
+    socket_base_t *pub_ingress = NULL;
 
     {
         scoped_lock_t lock (owner->_sync);
@@ -137,6 +139,7 @@ int spot_runtime_t::detach_runtime_endpoints ()
         ctrl_back = data_ctrl_back;
         external_router_local = external_router;
         fanout = local_fanout_xpub;
+        pub_ingress = pub_ingress_sub;
     }
 
     if (ctrl_front && !data_ctrl_endpoint.empty ())
@@ -148,6 +151,8 @@ int spot_runtime_t::detach_runtime_endpoints ()
           external_router_bind_endpoint.c_str ());
     if (fanout && !sub_fanout_endpoint.empty ())
         (void) fanout->term_endpoint (sub_fanout_endpoint.c_str ());
+    if (pub_ingress && !pub_ingress_endpoint.empty ())
+        (void) pub_ingress->term_endpoint (pub_ingress_endpoint.c_str ());
     return 0;
 }
 
@@ -225,7 +230,7 @@ int spot_runtime_t::stop_and_join ()
 size_t spot_runtime_t::live_socket_slot_count () const
 {
     size_t count = 0;
-    const_runtime_socket_slot_ref_t refs[8];
+    const_runtime_socket_slot_ref_t refs[9];
     const size_t slot_count =
       fill_runtime_socket_slot_refs (this, refs);
     scoped_lock_t lock (owner->_sync);
@@ -262,6 +267,7 @@ int spot_runtime_t::abortive_stop ()
     socket_base_t *ctrl_back = NULL;
     socket_base_t *mesh_pub_local = NULL;
     socket_base_t *mesh_xsub_local = NULL;
+    socket_base_t *pub_ingress_sub_local = NULL;
     socket_base_t *peer_ctrl_pub_local = NULL;
     socket_base_t *peer_ctrl_sub_local = NULL;
     socket_base_t *external_router_local = NULL;
@@ -272,6 +278,7 @@ int spot_runtime_t::abortive_stop ()
         ctrl_back = data_ctrl_back;
         mesh_pub_local = mesh_pub;
         mesh_xsub_local = mesh_xsub;
+        pub_ingress_sub_local = pub_ingress_sub;
         peer_ctrl_pub_local = peer_ctrl_pub;
         peer_ctrl_sub_local = peer_ctrl_sub;
         external_router_local = external_router;
@@ -280,6 +287,7 @@ int spot_runtime_t::abortive_stop ()
         data_ctrl_back = NULL;
         mesh_pub = NULL;
         mesh_xsub = NULL;
+        pub_ingress_sub = NULL;
         peer_ctrl_pub = NULL;
         peer_ctrl_sub = NULL;
         external_router = NULL;
@@ -315,6 +323,8 @@ int spot_runtime_t::abortive_stop ()
             mesh_pub_local->set_all_pipes_nodelay ();
         if (mesh_xsub_local)
             mesh_xsub_local->set_all_pipes_nodelay ();
+        if (pub_ingress_sub_local)
+            pub_ingress_sub_local->set_all_pipes_nodelay ();
         if (peer_ctrl_pub_local)
             peer_ctrl_pub_local->set_all_pipes_nodelay ();
         if (peer_ctrl_sub_local)
@@ -328,6 +338,7 @@ int spot_runtime_t::abortive_stop ()
         (void) close_runtime_socket (ctrl_back, 1000);
         (void) close_runtime_socket (mesh_pub_local, 1000);
         (void) close_runtime_socket (mesh_xsub_local, 1000);
+        (void) close_runtime_socket (pub_ingress_sub_local, 1000);
         (void) close_runtime_socket (peer_ctrl_pub_local, 1000);
         (void) close_runtime_socket (peer_ctrl_sub_local, 1000);
         (void) close_runtime_socket (external_router_local, 1000);
@@ -341,6 +352,7 @@ int spot_runtime_t::abortive_stop ()
         close_socket_ptr (&ctrl_back);
         close_socket_ptr (&mesh_pub_local);
         close_socket_ptr (&mesh_xsub_local);
+        close_socket_ptr (&pub_ingress_sub_local);
         close_socket_ptr (&peer_ctrl_pub_local);
         close_socket_ptr (&peer_ctrl_sub_local);
         close_socket_ptr (&external_router_local);

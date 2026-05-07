@@ -193,6 +193,7 @@ struct spot_runtime_t
     socket_base_t *data_ctrl_back;
     socket_base_t *mesh_pub;
     socket_base_t *mesh_xsub;
+    socket_base_t *pub_ingress_sub;
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
     socket_base_t *external_router;
@@ -203,6 +204,7 @@ struct spot_runtime_t
     uint32_t node_id;
     std::string bound_endpoint;
     std::string sub_fanout_endpoint;
+    std::string pub_ingress_endpoint;
     std::string data_ctrl_endpoint;
     std::string peer_ctrl_endpoint;
     std::string external_router_bind_endpoint;

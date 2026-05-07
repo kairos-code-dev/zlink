@@ -110,6 +110,7 @@ static void close_runtime_sockets (spot_node_t *node_,
     spot_data_plane_t::close_socket_ptr (node_, state_->peer_ctrl_sub);
     spot_data_plane_t::close_socket_ptr (node_, state_->peer_ctrl_pub);
     spot_data_plane_t::close_socket_ptr (node_, state_->mesh_xsub_monitor);
+    spot_data_plane_t::close_socket_ptr (node_, state_->pub_ingress_sub);
     spot_data_plane_t::close_socket_ptr (node_, state_->mesh_xsub);
     spot_data_plane_t::close_socket_ptr (node_, state_->mesh_pub);
     spot_data_plane_t::close_socket_ptr (node_, state_->ctrl);
@@ -182,6 +183,8 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
         apply_common_internal_opts (state_->mesh_pub, linger);
     if (state_->mesh_xsub)
         apply_common_internal_opts (state_->mesh_xsub, linger);
+    if (state_->pub_ingress_sub)
+        apply_common_internal_opts (state_->pub_ingress_sub, linger);
     if (state_->peer_ctrl_pub)
         apply_common_internal_opts (state_->peer_ctrl_pub, linger);
     if (state_->peer_ctrl_sub)
@@ -200,6 +203,9 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                              auto_hwm_role_recv_ingress, ZLINK_CORE_SOCKET_XSUB,
                              connected_peer_count, active_peer_count, false,
                              true);
+    apply_internal_auto_hwm (ctx, state_->pub_ingress_sub,
+                             auto_hwm_role_recv_ingress, ZLINK_CORE_SOCKET_SUB,
+                             local_pub_count, local_pub_count, false, true);
     apply_internal_auto_hwm (ctx, state_->peer_ctrl_pub, auto_hwm_role_control,
                              ZLINK_CORE_SOCKET_PUB, connected_peer_count,
                              active_peer_count, false, false);
@@ -241,6 +247,15 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
         }
         state_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &neg_one,
                                         sizeof (neg_one));
+    }
+    if (state_->pub_ingress_sub) {
+        if (pubsub_hwm_override) {
+            state_->pub_ingress_sub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
+                                                 &mesh_xsub_rcvhwm,
+                                                 sizeof (mesh_xsub_rcvhwm));
+        }
+        state_->pub_ingress_sub->setsockopt (ZLINK_INTERNAL_OPT_SUBSCRIBE, "",
+                                             0);
     }
     if (state_->peer_ctrl_pub) {
         state_->peer_ctrl_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
@@ -286,6 +301,7 @@ spot_data_plane_runtime_state_t::spot_data_plane_runtime_state_t () :
     ctrl (NULL),
     mesh_pub (NULL),
     mesh_xsub (NULL),
+    pub_ingress_sub (NULL),
     mesh_xsub_monitor (NULL),
     peer_ctrl_pub (NULL),
     peer_ctrl_sub (NULL),
@@ -320,6 +336,7 @@ void spot_data_plane_t::clear_runtime_socket_refs (
     runtime_->data_ctrl_back = NULL;
     runtime_->mesh_pub = NULL;
     runtime_->mesh_xsub = NULL;
+    runtime_->pub_ingress_sub = NULL;
     runtime_->peer_ctrl_pub = NULL;
     runtime_->peer_ctrl_sub = NULL;
     runtime_->external_router = NULL;
@@ -344,6 +361,8 @@ int spot_data_plane_t::initialize_runtime (
         state_out_->mesh_pub = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
         state_out_->mesh_xsub =
           node_->_ctx->create_socket (ZLINK_CORE_SOCKET_XSUB);
+        state_out_->pub_ingress_sub =
+          node_->_ctx->create_socket (ZLINK_CORE_SOCKET_SUB);
         state_out_->fanout = node_->_ctx->create_socket (ZLINK_CORE_SOCKET_PUB);
     }
     state_out_->peer_ctrl_pub =
@@ -358,7 +377,7 @@ int spot_data_plane_t::initialize_runtime (
     if (!state_out_->ctrl
         || (pubsub_enabled
             && (!state_out_->mesh_pub || !state_out_->mesh_xsub
-                || !state_out_->fanout))
+                || !state_out_->pub_ingress_sub || !state_out_->fanout))
         || !state_out_->peer_ctrl_pub || !state_out_->peer_ctrl_sub
         || (routed_enabled && !state_out_->external_router)) {
         const int err = errno != 0 ? errno : ENOMEM;
@@ -384,6 +403,8 @@ int spot_data_plane_t::initialize_runtime (
         state_out_->mesh_pub->set_auto_hwm_policy_enabled (false);
     if (state_out_->mesh_xsub)
         state_out_->mesh_xsub->set_auto_hwm_policy_enabled (false);
+    if (state_out_->pub_ingress_sub)
+        state_out_->pub_ingress_sub->set_auto_hwm_policy_enabled (false);
     state_out_->peer_ctrl_pub->set_auto_hwm_policy_enabled (false);
     state_out_->peer_ctrl_sub->set_auto_hwm_policy_enabled (false);
     if (state_out_->external_router)
@@ -396,6 +417,7 @@ int spot_data_plane_t::initialize_runtime (
         runtime_->data_ctrl_back = state_out_->ctrl;
         runtime_->mesh_pub = state_out_->mesh_pub;
         runtime_->mesh_xsub = state_out_->mesh_xsub;
+        runtime_->pub_ingress_sub = state_out_->pub_ingress_sub;
         runtime_->peer_ctrl_pub = state_out_->peer_ctrl_pub;
         runtime_->peer_ctrl_sub = state_out_->peer_ctrl_sub;
         runtime_->external_router = state_out_->external_router;
@@ -403,6 +425,7 @@ int spot_data_plane_t::initialize_runtime (
         node_->track_owned_socket (state_out_->ctrl);
         node_->track_owned_socket (state_out_->mesh_pub);
         node_->track_owned_socket (state_out_->mesh_xsub);
+        node_->track_owned_socket (state_out_->pub_ingress_sub);
         node_->track_owned_socket (state_out_->peer_ctrl_pub);
         node_->track_owned_socket (state_out_->peer_ctrl_sub);
         node_->track_owned_socket (state_out_->external_router);
@@ -460,6 +483,10 @@ int spot_data_plane_t::initialize_runtime (
             && state_out_->poller->add (state_out_->mesh_xsub, NULL,
                                         ZLINK_POLLIN)
                  != 0)
+        || (state_out_->pub_ingress_sub
+            && state_out_->poller->add (state_out_->pub_ingress_sub, NULL,
+                                        ZLINK_POLLIN)
+                 != 0)
         || (state_out_->peer_ctrl_sub
             && state_out_->poller->add (state_out_->peer_ctrl_sub, NULL,
                                         ZLINK_POLLIN)
@@ -502,6 +529,10 @@ int spot_data_plane_t::initialize_runtime (
 
     if ((state_out_->mesh_xsub
          && subscribe_runtime_mesh_topics (runtime_, state_out_->mesh_xsub) != 0)
+        || (state_out_->pub_ingress_sub
+            && state_out_->pub_ingress_sub->bind (
+                 runtime_->pub_ingress_endpoint.c_str ())
+                 != 0)
         || (state_out_->fanout
             && state_out_->fanout->bind (runtime_->sub_fanout_endpoint.c_str ())
                  != 0)) {

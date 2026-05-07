@@ -313,20 +313,6 @@ zlink_submit_result_t spot_publish_impl (void *spot_,
                                  flags_));
     }
 
-    zlink::socket_base_t *service_pub =
-      zlink::spot_node_access_t::service_pub_socket (spot->node, service_name_);
-    if (service_pub) {
-        return zlink::submit_result_internal::from_rc (
-          zlink_socket_publish_internal (service_pub, topic_id_, parts_,
-                                         part_count_, flags_));
-    }
-
-    const int service_pub_errno = errno;
-    if (service_pub_errno == ENOTCONN) {
-        errno = ENOTCONN;
-        return ZLINK_SUBMIT_NOT_CONNECTED;
-    }
-
     zlink_multipart_close (parts_, part_count_);
     errno = 0;
     return ZLINK_SUBMIT_OK;

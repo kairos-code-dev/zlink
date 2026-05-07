@@ -1,7 +1,7 @@
-# SPOT Data Plane Ingress 정리 초안
+# SPOT Data Plane Ingress 구현 추적 초안
 
-> **이 문서는 구현 전 초안이며 현재 공개 계약이 아니다.**
-> 아래 내용은 `core/src/services/spot/` 내부 구조를 정리하기 위한 설계안이다.
+> **이 문서는 현재 공개 계약이 아닌 draft 추적 문서다.**
+> 아래 내용은 `core/src/services/spot/` 내부 구조와 구현 반영 상태를 정리한다.
 > 공개 API 계약은 여전히 `core/include/zlink.h`와
 > `doc/spec/core/service/spot.ko.md`를 기준으로 한다.
 
@@ -9,6 +9,55 @@
 data-plane으로 들어가는 경로를 함께 정리한다. 목표는 public 호출자가 내부 socket 배선과
 HWM 조합을 알지 않아도 되게 하고, `SpotNode`가 소유한 data-plane이 local fanout,
 mesh publish, routed delivery를 한곳에서 처리하도록 만드는 것이다.
+
+이 문서는 처음에는 구현 전 설계안으로 작성되었지만, 현재 코드는 핵심 구조 전환을 이미
+상당 부분 반영한 상태다. 따라서 이 문서의 역할은 두 가지다.
+
+1. 현재 구현에 이미 반영된 data-plane ingress 구조를 코드 기준으로 설명한다.
+2. 계획대로 구현하려 했지만 실제 구현 기준에서 그대로 적용하기 어려운 부분을 분리해,
+   계획 자체를 수정한다.
+
+`zlink_spot_publish()`는 `SpotNode`가 속한 channel의 SPOT topic publish 경로다.
+외부 channel로 메시지를 보내는 기능은 attached channel `DEALER` 경로가 맡고,
+외부 일반 `PUB`에서 내부 SPOT topic plane으로 publish를 넣는 기능은
+`zlink_spot_node_attach_pub_ingress()`가 맡는다. 이 둘은 publish ingress queue와
+혼동하면 안 된다.
+
+## 현재 구현 대조 요약
+
+| 항목 | 현재 상태 | 판단 |
+|------|-----------|------|
+| `pub-ingress-tx` / `ingress-sub` 제거 | core 구현에서 제거됨 | 적용됨 |
+| `internal-router-tx` / `internal-router` 제거 | core 구현에서 제거됨 | 적용됨 |
+| SPOT topic publish ingress queue | `enqueue_publish_ingress()`와 data-plane drain 경로 존재 | 적용됨 |
+| routed send queue | `enqueue_runtime_routed_send()`와 data-plane drain 경로 존재 | 적용됨 |
+| `external-router` inbound queue | dispatch callback이 `external-router ingress queue`로 frame을 넘김 | 적용됨 |
+| `external-router` `POLLIN` 중복 등록 방지 | dispatch callback이 켜진 상태에서는 data-plane poller 입력으로 등록하지 않음 | 적용됨 |
+| `SpotNode` 전용 data-plane thread | `spot-data` thread가 node runtime에서 시작됨 | 적용됨 |
+| `SpotNode` dispatch worker pool | min/max option과 worker pool 구현 존재 | 적용됨 |
+| `zlink_spot_publish()` raw `PUB` fallback | `service_pub_socket()` 경로 제거 | 적용됨 |
+| queue drain batch `2048` / `16 MiB` | publish/routed send drain에 batch 한도 적용 | 적용됨 |
+| dispatch worker 생성 실패 기록 | worker spawn 실패 횟수와 마지막 errno를 pool 내부에 기록 | 적용됨 |
+| 정식 spec / internals 문서 반영 | 일부 문서가 예전 socket 이름을 아직 설명함 | 문서 후속 작업 |
+
+## 계획 수정이 필요한 지점
+
+아래 항목은 단순한 미구현이 아니다. 초안에서 구현 대상으로 잡았지만, 현재 구현을 확인하면
+원래 문장 그대로 적용하는 것이 맞지 않은 부분이다.
+
+| 항목 | 원래 계획 | 구현 중 확인한 이슈 | 수정 기준 |
+|------|-----------|---------------------|-----------|
+| `external-router` inbound 처리 | data-plane thread가 `external-router`에서 직접 recv한다 | 현재 socket dispatch handler 경로가 이미 inbound frame을 받는다. 같은 socket을 data-plane poller `POLLIN`에도 넣으면 recv 소유권이 둘로 나뉘고 dispatch handler와 data-plane poller가 같은 입력을 두고 경쟁한다. | dispatch callback은 frame 소유권을 `external-router ingress queue`로 넘기는 bridge로만 둔다. 실제 routed delivery는 data-plane thread가 queue를 drain해서 처리한다. |
+
+## 미구현으로 판단해 반영한 지점
+
+아래 항목은 현재 구조와 충돌하지 않았다. 따라서 계획을 낮추지 않고 코드에 반영한다.
+
+| 항목 | 반영 기준 |
+|------|-----------|
+| `zlink_spot_publish()` raw `PUB` fallback 제거 | `zlink_spot_publish()`는 attached channel `DEALER`나 외부 channel용 raw publish socket을 사용하지 않는다. 현재 `SpotNode` channel의 SPOT topic publish만 data-plane publish ingress queue로 넘긴다. |
+| queue drain batch 한도 | publish ingress queue와 routed send queue는 한 번에 최대 `2048` messages 또는 `16 MiB`까지만 local deque로 옮긴다. 단일 entry가 byte 한도보다 크면 그 entry 하나는 처리한다. |
+| dispatch worker spawn 실패 기록 | worker pool은 thread 객체 생성 실패 횟수와 마지막 errno를 내부 상태로 기록한다. scale-up 실패가 dispatch post 성공 의미를 바꾸지는 않는다. |
 
 ## 용어
 
@@ -18,9 +67,11 @@ mesh publish, routed delivery를 한곳에서 처리하도록 만드는 것이�
 |------|------|
 | `Spot instance` | 사용자가 `zlink_spot_new(node)`로 받은 `Spot` 핸들 하나 |
 | `Spot state` | `Spot instance`가 내부에서 가리키는 subscription, receive queue, dispatch 상태 |
-| `SpotNode publish ingress queue` | 같은 `SpotNode`에 속한 모든 `Spot instance`의 publish가 공유하는 data-plane 입력 queue |
+| `SpotNode publish ingress queue` | 같은 `SpotNode`에 속한 `Spot instance`의 SPOT topic publish가 공유하는 data-plane 입력 queue |
 | `SpotNode routed send queue` | 같은 `SpotNode`에 속한 public routed send가 공유하는 send admission queue |
 | `external-router ingress queue` | `external-router`가 받은 routed frame을 data-plane thread로 넘기는 내부 입력 queue |
+| attached channel `DEALER` | 다른 channel의 `ROUTER` 집합에 channel send/request를 보내기 위해 `SpotNode`에 붙이는 client socket |
+| pub ingress attachment | 외부 일반 `PUB`에서 내부 SPOT topic plane으로 publish를 넣기 위해 `SpotNode`에 붙이는 ingress source |
 | `Spot subscribe queue` | 특정 `Spot state`가 소유하는 topic publish 수신 queue |
 | `Spot routed recv queue` | 특정 `Spot state`가 소유하는 request/reply routed 수신 queue |
 | `Spot dispatch event queue` | 특정 `Spot state`의 readable event를 모아 application dispatch callback으로 넘기는 event queue |
@@ -330,7 +381,7 @@ drain하지 않는 상태가 되어 busy loop가 생길 수 있기 때문이다.
 1. `pub-ingress-tx`와 `ingress-sub` 내부 PUB/SUB hop을 제거한다.
 2. `internal-router`와 `internal-router-tx` 내부 ROUTER/DEALER hop을 제거한다.
 3. `mesh-pub`와 `external-router`는 data-plane thread만 사용한다.
-4. public publish는 publish ingress queue에 메시지를 enqueue한다.
+4. `SpotNode` 소유 SPOT topic publish는 publish ingress queue에 메시지를 enqueue한다.
 5. public routed send는 routed send queue에 메시지를 enqueue한다.
 6. local fanout, mesh publish, routed recv delivery 순서는 data-plane이 하나의 경로에서 결정한다.
 7. 내부 queue admission 실패는 기존 socket send와 같은 backpressure로 정의한다.
@@ -354,8 +405,8 @@ drain하지 않는 상태가 되어 busy loop가 생길 수 있기 때문이다.
 
 ## TO-BE: publish ingress 구조
 
-새 구조에서 public publish는 socket send가 아니라 runtime queue enqueue다. data-plane
-thread만 `mesh-pub`와 local fanout을 사용한다.
+새 구조에서 `SpotNode` 소유 SPOT topic publish는 socket send가 아니라 runtime queue
+enqueue다. data-plane thread만 `mesh-pub`와 local fanout을 사용한다.
 
 ```mermaid
 flowchart LR
@@ -388,7 +439,7 @@ sequenceDiagram
     participant Mesh as mesh-pub
     participant Peer as remote SpotNode
 
-    App->>Spot: zlink_spot_publish(topic, parts, flags)
+    App->>Spot: zlink_spot_publish(service_name, topic, parts, flags)
     Spot->>Queue: enqueue owned topic message
     alt queue admission succeeds
         Queue->>Wake: signal if queue was empty
@@ -408,8 +459,11 @@ sequenceDiagram
     end
 ```
 
-새 흐름에서 public publish의 admission 경계는 socket pipe가 아니라 명시적인
-publish ingress queue다. `mesh-pub` 접근은 계속 data-plane thread 안에 머문다.
+새 흐름에서 `SpotNode` 소유 topic publish의 admission 경계는 socket pipe가 아니라
+명시적인 publish ingress queue다. `mesh-pub` 접근은 계속 data-plane thread 안에 머문다.
+토픽 평면의 공개 인자 이름은 아직 `service_name`이지만, 이 값은 channel/topic namespace를
+가리키는 현재 계약 이름이다. 외부 channel 호출은 `zlink_spot_send_channel()` 또는
+`zlink_spot_request_channel()`의 attached channel `DEALER` 경로를 사용한다.
 
 ## TO-BE: routed send 구조
 
@@ -471,13 +525,16 @@ sequenceDiagram
     end
 ```
 
-inbound peer traffic도 data-plane thread가 `external-router`에서 읽어 처리한다. 즉
-`external-router`는 계속 존재하지만, public thread와 외부 dispatch callback이 data-plane
+inbound peer traffic도 최종 처리는 data-plane thread가 맡는다. 현재 구현에서는
+`external-router` socket message dispatch callback이 먼저 frame 소유권을
+`external-router ingress queue`로 넘기고, data-plane thread가 이 queue를 drain해서 처리한다.
+즉 `external-router`는 계속 존재하지만, public thread와 외부 dispatch callback이 data-plane
 state를 직접 변경하지 않는다.
 
 inbound peer traffic은 routed send queue를 거치지 않는다. 이 queue는 public send admission
-전용이다. peer에서 들어온 routed frame은 data-plane thread가 `external-router`에서 읽고,
-target `Spot state`의 routed recv queue에 넣은 뒤 `ROUTED_READABLE` dispatch event를 post한다.
+전용이다. peer에서 들어온 routed frame은 `external-router ingress queue`를 거쳐 data-plane
+thread로 넘어가고, data-plane thread가 target `Spot state`의 routed recv queue에 넣은 뒤
+`ROUTED_READABLE` dispatch event를 post한다.
 
 ```mermaid
 sequenceDiagram
@@ -490,8 +547,8 @@ sequenceDiagram
     participant App as application dispatch handler
 
     Peer->>External: routed frames
-    External-->>DP: POLLIN
-    DP->>External: recv routed frames
+    External-->>DP: dispatch callback enqueues frames
+    DP->>DP: drain external-router ingress queue
     DP->>RecvQ: enqueue routed message
     DP->>EventQ: post ROUTED_READABLE
     EventQ-->>Worker: wake dispatch worker
@@ -518,16 +575,16 @@ application callback 재진입, send-ready callback, socket shutdown 순서가 d
 | `mesh-xsub` | 유지 | remote subscription ingress |
 | `peer_ctrl_pub` / `peer_ctrl_sub` | 유지 | peer control |
 
-`zlink_spot_node_attach_pub_ingress()` 공개 함수는 기존 헤더에 남아 있을 수 있다. 이 함수는
-새 data-plane ingress socket을 만들지 않으며 `ENOTSUP`로 거부된다. 이 초안에서 제거한다는
-대상은 public API 심볼이 아니라 `pub-ingress-tx`/`ingress-sub` 내부 socket hop과 그 runtime
-상태다. 공개 API 심볼 제거는 별도 API 정리에서 다룬다.
+`zlink_spot_node_attach_pub_ingress()` 공개 함수는 외부 일반 `PUB`를 내부 SPOT topic
+plane 입력 경로에 연결하는 별도 surface다. 이 초안에서 제거한다는 대상은 public API 심볼이
+아니라 `zlink_spot_publish()` 호출 경로에 숨어 있던 `pub-ingress-tx`/`ingress-sub` 내부
+socket hop과 그 runtime 상태다.
 
 ### AS-IS와 TO-BE 비교
 
 | 항목 | AS-IS | TO-BE |
 |------|-------|-------|
-| public publish 첫 동작 | 내부 `PUB` socket send | runtime queue enqueue |
+| SPOT topic publish 첫 동작 | 내부 `PUB` socket send | runtime queue enqueue |
 | public routed 첫 동작 | `internal-router-tx` send 또는 `external-router` direct send | routed send queue enqueue |
 | publish data-plane 입력 | `ingress-sub` socket recv | publish ingress queue batch drain |
 | routed data-plane 입력 | `internal-router` socket recv | routed send queue batch drain |
@@ -541,7 +598,7 @@ application callback 재진입, send-ready callback, socket shutdown 순서가 d
 
 | 항목 | 소유자 | 설명 |
 |------|--------|------|
-| publish ingress queue container | `spot_runtime_t` | public publish와 data-plane이 공유하는 staging queue |
+| publish ingress queue container | `spot_runtime_t` | SPOT topic publish와 data-plane이 공유하는 staging queue |
 | routed send queue container | `spot_runtime_t` | routed send와 data-plane이 공유하는 staging queue |
 | per-Spot send queue | 없음 | send admission은 `SpotNode` publish/routed send queue에서만 처리한다 |
 | `Spot subscribe queue` | `Spot state` | topic publish가 delivery된 뒤 recv API가 읽는 queue |
@@ -1107,8 +1164,8 @@ batch 한도는 기존 ingress socket drain 정책과 맞춘다.
 이 한도는 data-plane이 queue drain만 하느라 peer control, routed, mesh subscription 처리를
 굶기지 않도록 둔다.
 
-routed send queue도 같은 batch 한도를 쓴다. routed send queue entry는 data-plane thread가
-가져간 뒤 아래 순서로 처리한다.
+routed send queue도 publish ingress queue와 같은 batch 한도를 쓴다. routed send queue
+entry는 data-plane thread가 가져간 뒤 아래 순서로 처리한다.
 
 1. `routed_send.sync`를 잡고 batch 한도까지 entry를 local vector로 move한다.
 2. queue counters를 줄이고, resume limit 이하가 되면 waiting sender를 깨운다.
@@ -1686,9 +1743,10 @@ thread 수가 과도하게 늘어나지 않게 하는 상한이다.
 | 주요 리스크 | queue 구현이 hidden HWM이 되거나, shutdown에서 ownership cleanup이 누락되는 것 |
 | 리스크 대응 | hysteresis, 단일 admission 기준, ownership test, shutdown test, Actor dispatch regression을 필수 회귀로 둠 |
 
-publish, routed send, dispatch worker 기준으로 구현 전 남은 결정은 없다. 구현 중 수치 조정이
-필요해 보여도 queue 전용 public option을 만들지 않고, 먼저 data-plane scheduling, dispatch
-worker saturation, 기존 `SpotNode` pub/sub 또는 router admission을 확인해야 한다.
+`zlink_spot_publish()`는 attached channel `DEALER`나 외부 channel용 raw publish socket으로
+우회하지 않고 `SpotNode` 소유 SPOT topic publish 경로만 사용한다. 구현 중 수치 조정이 필요해
+보여도 queue 전용 public option을 만들지 않고, 먼저 data-plane scheduling, dispatch worker
+saturation, 기존 `SpotNode` pub/sub 또는 router admission을 확인해야 한다.
 
 ## 구현 완료 후 문서 반영
 

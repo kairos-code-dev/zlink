@@ -42,6 +42,9 @@ bool spot_direct_route_debug_enabled ()
     return std::getenv ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE") != NULL;
 }
 
+const size_t routed_send_drain_batch_limit = 2048;
+const size_t routed_send_drain_batch_bytes_limit = 16 * 1024 * 1024;
+
 bool is_transient_routed_send_error (int err_)
 {
     return err_ == EAGAIN || err_ == ENOTCONN || err_ == EHOSTUNREACH;
@@ -457,14 +460,34 @@ int zlink::spot_reqrep_internal::drain_runtime_routed_send_queue (
             && zlink::clock_t ().now_ms () < queue.retry_after_ms)
             return 0;
         queue.retry_after_ms = 0;
-        local.swap (queue.messages);
-        queue.queued_bytes = 0;
+        size_t moved_bytes = 0;
+        size_t moved_count = 0;
+        while (!queue.messages.empty ()) {
+            const size_t entry_bytes =
+              routed_parts_encoded_bytes (queue.messages.front ().parts);
+            if (moved_count > 0
+                && (moved_count >= routed_send_drain_batch_limit
+                    || moved_bytes + entry_bytes
+                         > routed_send_drain_batch_bytes_limit))
+                break;
+            moved_bytes += entry_bytes;
+            local.push_back (std::move (queue.messages.front ()));
+            queue.messages.pop_front ();
+            ++moved_count;
+        }
+        queue.queued_bytes =
+          queue.queued_bytes > moved_bytes ? queue.queued_bytes - moved_bytes : 0;
         const int hwm = spot_node_router_admission_hwm (
           runtime_->hwm_config_snapshot ());
         if (queue.backpressure_active
             && routed_queue_can_resume (queue, hwm, 1)) {
             queue.backpressure_active = false;
             notify_recovery = true;
+        }
+        if (!queue.messages.empty () && !queue.signal_armed
+            && queue.signaler.valid ()) {
+            queue.signal_armed = true;
+            queue.signaler.send ();
         }
         queue.cv.notify_all ();
     }
@@ -492,7 +515,6 @@ int zlink::spot_reqrep_internal::drain_runtime_routed_send_queue (
                   &queue = runtime_->execution.data_plane_state.routed_send;
                 std::lock_guard<std::mutex> lock (queue.mutex);
                 if (!queue.closed) {
-                    queue.queued_bytes = 0;
                     while (!retry.empty ()) {
                         queue.queued_bytes += routed_parts_encoded_bytes (
                           retry.back ().parts);

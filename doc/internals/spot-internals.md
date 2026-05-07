@@ -17,7 +17,8 @@ dispatch in a single unified runtime.
 | Goal | Implementation choice |
 |------|-----------------------|
 | **No per-Spot physical sockets** | All transport sockets are owned by `SpotNode`. A `Spot` facade owns only a logical queue and dispatch context. |
-| **Single admission boundary** | HWM knobs live only on `SpotNode`-owned ingress sockets (`ingress-sub`, `internal-router`). Relay and delivery sockets use HWM `0` to prevent hidden per-peer queue caps from making disconnect/drop decisions. |
+| **Explicit admission boundary** | Public publish and routed send enqueue into `SpotNode`-owned send-side queues (`publish_ingress_queue`, `routed_send_queue`). Socket HWM computation and admission decision are separated, so internal socket wiring cannot contaminate the error semantics of public API calls. Relay and delivery sockets use HWM `0` to prevent hidden per-peer queue caps from making disconnect/drop decisions. |
+| **Data-plane-thread-exclusive sockets** | `mesh-pub`, `fanout`, and `external-router` are accessed only by the `SpotNode`-dedicated data-plane thread. Public threads cannot directly touch these sockets, preventing ownership diffusion. |
 | **Aggregate subscription** | Remote mesh subscriptions are reference-counted at the node level, not per-Spot. This prevents duplicate remote subscriptions when multiple local Spots subscribe to the same topic. |
 | **Actor-to-Spot decoupling** | Actors do not own sockets or inproc endpoints. Parts are relayed through the SpotNode Actor table and dispatched into a Spot's logical queue, allowing Actors to move between Spots (join) without tearing down transport connections. |
 | **Deterministic teardown** | Destroying a `Spot` facade does not destroy the backing `SpotNode`. Entry Spot lifetime is tied to the `SpotNode`, not to any facade. |
@@ -32,6 +33,12 @@ dispatch in a single unified runtime.
   handle initial session setup, authentication, and Actor routing decisions.
 - **Actor**: a routing target managed by the `SpotNode` Actor table. Identified by
   `zlink_actor_ref_t` (node rid + actor id + generation). No socket ownership.
+- **data-plane thread**: one dedicated OS thread per `SpotNode`. Exclusively owns
+  `mesh-pub`, `fanout`, and `external-router` sockets; drains send-side queues; and
+  performs local fanout and remote routing.
+- **dispatch worker pool**: one pool per `SpotNode`. Workers pull readable events
+  posted by the data-plane thread and execute application dispatch callbacks while
+  guaranteeing per-Spot callback serialization.
 
 ### 0.3 Document map
 
@@ -40,11 +47,14 @@ dispatch in a single unified runtime.
 | §1 | Runtime component overview |
 | §2 | Internal socket topology by mode |
 | §3–4 | Topic and routed data planes |
-| §5–6 | Admission HWM and control plane |
-| §7–8 | Actor dispatch model and Entry Spot queue ownership |
-| §9 | Socket removal model rationale |
-| §10 | STREAM session and Actor binding sequences |
-| §11–12 | Internal data structures and Actor join lifecycle |
+| §5 | Send-side queues and admission |
+| §6 | Admission HWM |
+| §7 | Control plane |
+| §8 | Data-plane thread and dispatch worker pool |
+| §9–10 | Actor dispatch model and Entry Spot queue ownership |
+| §11 | Socket removal model rationale |
+| §12 | STREAM session and Actor binding sequences |
+| §13–14 | Internal data structures and Actor join lifecycle |
 
 ## 1. Overview
 
@@ -57,32 +67,38 @@ flowchart TB
         node["SpotNode"]
     end
 
-    subgraph RuntimeLayer["Runtime"]
-        runtime["spot_runtime_t"]
-        agg["aggregate subscription state"]
-        route_ids["external route id map"]
-        entry_state["Entry Spot logical state"]
+    subgraph SendQueues["Send-side Queues (owned by spot_runtime_t)"]
+        piq["publish_ingress_queue"]
+        rsq["routed_send_queue"]
     end
 
-    subgraph DataPlane["Data Plane Thread"]
+    subgraph DataPlane["Data-plane Thread (SpotNode-dedicated)"]
         loop["spot_data_plane_loop_t"]
         topic["topic forwarding"]
         routed["routed forwarding"]
         control["peer control"]
+        eriq["external_router_ingress_queue drain"]
+    end
+
+    subgraph Workers["Dispatch Worker Pool"]
+        wp["spot_dispatch_worker_pool_t"]
+        cb["application dispatch callback"]
     end
 
     app --> spot
     app --> entry
     spot --> node
     entry --> node
-    node --> runtime
-    node --> entry_state
-    runtime --> agg
-    runtime --> route_ids
-    runtime --> loop
+    node --> piq
+    node --> rsq
+    piq --> loop
+    rsq --> loop
     loop --> topic
     loop --> routed
     loop --> control
+    loop --> eriq
+    loop --> wp
+    wp --> cb
 ```
 
 `SpotNode` owns lifecycle. `Spot` is a borrowed data-plane facade layered on top
@@ -111,23 +127,21 @@ disabled API.
 
 ```mermaid
 flowchart LR
-    subgraph LocalTopic["Local Topic"]
-        spot_pub["Spot PUB"]
-        ingress_sub["ingress-sub<br/>SUB"]
-        local_pub["local-pub<br/>PUB"]
-        spot_sub["Spot SUB"]
+    subgraph PublicPath["Public Thread"]
+        pub_api["zlink_spot_publish()"]
+        route_api["routed send API"]
     end
 
-    subgraph RemoteTopic["Remote Topic Mesh"]
+    subgraph SendQueues["Send-side Queues"]
+        piq["publish_ingress_queue"]
+        rsq["routed_send_queue"]
+    end
+
+    subgraph DataPlane["Data-plane Thread (exclusive)"]
+        fanout["fanout<br/>PUB (local)"]
         mesh_pub["mesh-pub<br/>PUB"]
         mesh_xsub["mesh-xsub<br/>XSUB"]
-        remote_topic["Remote SpotNode"]
-    end
-
-    subgraph RoutedPlane["Routed Plane"]
-        internal_router["internal-router<br/>ROUTER"]
         external_router["external-router<br/>ROUTER"]
-        remote_router["Remote external-router"]
     end
 
     subgraph ControlPlane["Peer Control"]
@@ -135,58 +149,75 @@ flowchart LR
         peer_ctrl_sub["peer_ctrl_sub<br/>SUB"]
     end
 
-    spot_pub --> ingress_sub
-    ingress_sub --> local_pub
-    local_pub --> spot_sub
-    ingress_sub --> mesh_pub
-    remote_topic --> mesh_xsub
-    mesh_xsub --> local_pub
+    subgraph RemoteNode["Remote SpotNode"]
+        remote_mesh["mesh-xsub"]
+        remote_router["external-router"]
+    end
 
-    internal_router --> external_router
+    pub_api --> piq
+    route_api --> rsq
+    piq --> fanout
+    piq --> mesh_pub
+    rsq --> external_router
+    rsq -.->|local delivery| fanout
+    mesh_xsub --> fanout
+    mesh_xsub <--> remote_mesh
     external_router <--> remote_router
-
-    peer_ctrl_pub --> remote_topic
-    remote_topic --> peer_ctrl_sub
+    peer_ctrl_pub --> remote_mesh
+    remote_mesh --> peer_ctrl_sub
 ```
 
 | socket | type | role | HWM policy |
 |--------|------|------|------------|
-| `ingress-sub` | `SUB` | receives local publish input | pubsub admission RCVHWM |
-| `local-pub` | `PUB` | fans out to subscribers in this node | relay SNDHWM 0 |
-| `mesh-pub` | `PUB` | forwards topic publish to remote nodes | relay SNDHWM 0 |
-| `mesh-xsub` | `XSUB` | receives topic publish from remote nodes | relay RCVHWM 0 |
-| `internal-router` | `ROUTER` | delivers routed messages to target Spots in this node | router admission RCVHWM, delivery SNDHWM 0 |
-| `external-router` | `ROUTER` | exchanges routed frames with peer nodes | relay HWM 0 |
+| `fanout` | `PUB` | fans out to local subscribers | SNDHWM 0 |
+| `mesh-pub` | `PUB` | forwards topic publish to remote nodes | pubsub admission SNDHWM (auto-HWM or override) |
+| `mesh-xsub` | `XSUB` | receives topic publish from remote nodes | pubsub admission RCVHWM |
+| `external-router` | `ROUTER` | exchanges routed frames with peer nodes | router admission HWM (auto-HWM or override) |
 | `peer_ctrl_pub` | `PUB` | sends peer control messages | control defaults |
 | `peer_ctrl_sub` | `SUB` | receives peer control messages | control defaults |
 
-`zlink_spot_node_internal_sockets_snapshot()` returns only sockets that already
-exist. The perf `Auto-HWM spotnode` table uses these snapshot names directly.
+`pub-ingress-tx`, `ingress-sub`, `internal-router`, and `internal-router-tx` have
+been removed. Their staging role is replaced by `publish_ingress_queue` and
+`routed_send_queue`. `zlink_spot_node_internal_sockets_snapshot()` no longer returns
+rows for those four sockets. The perf `Auto-HWM spotnode` table is updated accordingly.
 
 ## 3. Topic Plane
 
 The topic plane relies on native socket subscription filters for both local and
 remote delivery. Runtime does not perform publish-time target lookup.
 
+Public publish enqueues an owned message entry into `publish_ingress_queue` and
+returns immediately. The data-plane thread drains the queue and performs local
+fanout (`fanout` socket) and remote mesh publish (`mesh-pub` socket).
+
 ```mermaid
 sequenceDiagram
-    participant Pub as Spot PUB
-    participant In as ingress-sub
-    participant Local as local-pub
-    participant Mesh as mesh-pub
-    participant Sub as Spot SUB
+    participant App as Application
+    participant Spot as Spot facade
+    participant Q as publish_ingress_queue
+    participant DP as data-plane thread
+    participant Local as fanout PUB
+    participant Mesh as mesh-pub PUB
+    participant Sub as Spot subscribe queue
     participant Peer as Remote mesh-xsub
 
-    Pub->>In: topic + payload
-    In->>Local: local fanout
-    In->>Mesh: remote mesh publish
-    Local-->>Sub: socket filter match
-    Mesh-->>Peer: aggregate subscription match
+    App->>Spot: zlink_spot_publish(topic, parts, flags)
+    Spot->>Q: enqueue owned entry (lock → push → signal if empty → unlock)
+    Q-->>App: success (or EAGAIN/ENOMEM if full)
+    Q-->>DP: signaler wakeup
+    DP->>Q: drain batch (lock → move → unlock)
+    opt local subscribers exist
+        DP->>Local: forward_local_fanout()
+        Local-->>Sub: socket filter match → Spot subscribe queue
+    end
+    opt remote mesh targets exist
+        DP->>Mesh: forward_mesh_pub()
+        Mesh-->>Peer: aggregate subscription match
+    end
 ```
 
-Local topic matching is owned by each `Spot SUB` subscription state. Remote
-topic matching is owned by each peer node's `mesh-xsub` aggregate subscription
-state.
+Local topic matching is owned by the `fanout` PUB socket subscription state. Remote
+topic matching is owned by each peer node's `mesh-xsub` aggregate subscription state.
 
 ### 3.1 Aggregate Subscription Lifetime
 
@@ -208,61 +239,148 @@ subscriptions.
 
 ## 4. Routed Plane
 
-The routed plane has two router axes.
+The routed plane has a single router axis.
 
 | router | scope | role |
 |--------|-------|------|
-| `internal-router` | inside one node | delivers to the target `Spot` routed receive queue |
 | `external-router` | between nodes | exchanges routed frames with peer `external-router` sockets |
 
-There is no separate routed ingress broker and no topic-mesh fallback for
-routed delivery. Local routed delivery is tracked through `internal-router`.
-Remote routed delivery is tracked through `external-router`.
+`internal-router` has been removed. Local routed delivery goes through
+`routed_send_queue`; the data-plane thread delivers frames directly to the target
+`Spot` routed recv queue without any intermediate socket hop.
 
-### 4.1 Local Routed Delivery
+### 4.1 Outbound routed send (local and remote)
+
+Public routed send enqueues into `routed_send_queue` regardless of whether the
+target is local or remote. The data-plane thread makes the local/remote decision
+after dequeue.
 
 ```mermaid
 sequenceDiagram
-    participant Sender as Origin Spot
-    participant Internal as internal-router
-    participant Target as Target Spot
+    participant App as Application
+    participant Spot as Spot facade
+    participant Q as routed_send_queue
+    participant DP as data-plane thread
+    participant RecvQ as target Spot routed recv queue
+    participant External as external-router
+    participant Peer as Remote SpotNode
 
-    Sender->>Internal: routed frame
-    Internal->>Target: enqueue target queue
-    Target->>Target: zlink_spot_recv()
+    App->>Spot: routed send API
+    Spot->>Q: enqueue owned routed entry
+    Q-->>App: success (or EAGAIN/ENOMEM if full)
+    Q-->>DP: signaler wakeup
+    DP->>Q: drain batch
+    alt local target
+        DP->>RecvQ: deliver frames → post ROUTED_READABLE event
+    else remote target
+        DP->>External: send routed frames
+        External-->>Peer: ROUTER peer link
+    end
 ```
 
-Local routed delivery does not disconnect a target because an internal delivery
-queue grew. Backpressure is expressed by the admission HWM on the internal
-router receive side and by the normal receive API returning no data when the
-application has drained the queue.
+### 4.2 Inbound routed traffic (external_router_ingress_queue)
 
-### 4.2 Remote Routed Delivery
+Inbound routed frames from peers arrive through the `external-router` socket msg
+dispatch callback into `external_router_ingress_queue`. The data-plane thread drains
+this queue and delivers to the target `Spot` routed recv queue. Inbound traffic does
+not pass through `routed_send_queue`.
 
 ```mermaid
 sequenceDiagram
-    participant ASpot as Origin Spot
-    participant AInternal as Node A internal-router
-    participant AExternal as Node A external-router
-    participant BExternal as Node B external-router
-    participant BInternal as Node B internal-router
-    participant BSpot as Target Spot
+    participant Peer as Remote SpotNode
+    participant External as external-router
+    participant EIQ as external_router_ingress_queue
+    participant DP as data-plane thread
+    participant RecvQ as target Spot routed recv queue
+    participant Worker as dispatch worker
+    participant App as application dispatch handler
 
-    ASpot->>AInternal: routed frame
-    AInternal->>AExternal: destination node is remote
-    AExternal->>BExternal: ROUTER peer link
-    BExternal->>BInternal: local delivery handoff
-    BInternal->>BSpot: enqueue target queue
+    Peer->>External: routed frames
+    External->>EIQ: msg dispatch callback → enqueue
+    EIQ-->>DP: signaler wakeup
+    DP->>EIQ: drain
+    DP->>RecvQ: deliver → post ROUTED_READABLE event
+    RecvQ-->>Worker: dispatch worker wakeup
+    Worker-->>App: invoke dispatch callback
 ```
 
 Remote routed delivery uses an external route id map per peer. Only
 `spot_runtime_t` methods update that map, so callers do not need to know the
 map structure or locking rules.
 
-## 5. Admission HWM
+## 5. Send-side Queues and Admission
 
-SpotNode exposes only admission HWM knobs. These knobs cap how much local input
-enters the node before the data plane owns it.
+The first action of public publish and routed send is a queue enqueue, not a
+socket send.
+
+### 5.1 Queue structure
+
+Three queues live inside `spot_data_plane_runtime_state_t`.
+
+| Queue | Owner | Direction | Role |
+|-------|-------|-----------|------|
+| `publish_ingress_queue` | `spot_data_plane_runtime_state_t` | outbound | public publish → data-plane forwarding |
+| `routed_send_queue` | `spot_data_plane_runtime_state_t` | outbound | public routed send → data-plane forwarding |
+| `external_router_ingress_queue` | `spot_data_plane_runtime_state_t` | inbound | peer `external-router` recv → routed delivery |
+
+`publish_ingress_queue` and `routed_send_queue` are MPSC: public threads write,
+the data-plane thread reads. `external_router_ingress_queue` is written by the
+`external-router` socket msg dispatch callback and read by the data-plane thread.
+
+### 5.2 Backpressure and hysteresis
+
+| Condition | Result |
+|-----------|--------|
+| Space available | enqueue succeeds; signals data-plane thread if queue was empty |
+| Full + `ZLINK_DONTWAIT` | `EAGAIN` |
+| Full + blocking | wait on `condition_variable` until drained or timed out |
+| Shutdown in progress | `ESHUTDOWN` |
+| Allocation failure | `ENOMEM` |
+
+Backpressure uses hysteresis: `backpressure_active = true` when the hard limit is
+reached; `cv.broadcast()` wakes waiting senders when the data-plane drains the
+queue to roughly half.
+
+`zlink_send_ready_handler()` and `ZLINK_POLLOUT` are wired to send-side queue
+admission. When the queue drops below its resume limit, armed send-ready callbacks
+fire. The semantics are "SPOT send admission is worth retrying", not "the transport
+socket is writable".
+
+### 5.3 Drain order
+
+Each loop iteration of the data-plane thread runs:
+
+```text
+1. drain_runtime_external_router_ingress_queue()   // inbound peer traffic
+2. drain_publish_ingress_queue()                   // public publish entries
+3. drain_runtime_routed_send_queue()               // public routed send entries
+4. flush_mesh_pub_pending()                        // staged mesh messages
+5. flush_local_fanout_pending()                    // staged local messages
+6. flush_staged_messages()                         // ingress → staged overflow
+```
+
+The batch limit is 2048 messages or 16 MiB of bytes, whichever comes first, to
+prevent queue drain from starving peer control and mesh subscription processing.
+
+### 5.4 Queue limit calculation
+
+Queue limits are derived from the existing `SpotNode` admission HWM results. There
+is no separate public option.
+
+| Value | Derivation |
+|-------|-----------|
+| publish `admission_slots` | `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` override or auto-HWM pubsub admission |
+| routed `admission_slots` | `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` override or auto-HWM router admission |
+| byte limit | `admission_slots * message_unit_bytes` (memory protection only) |
+
+When queue full is frequent, do not increase the queue limit first. Check whether
+the data-plane thread drains promptly, whether local fanout / `mesh-pub` / `external-router`
+are returning `EAGAIN`, and whether pending queues are building up.
+
+## 6. Admission HWM
+
+SpotNode exposes only admission HWM knobs. These knobs apply to both send-side
+queue limits and transport socket HWM.
 
 | option | admission path | default behavior |
 |--------|----------------|------------------|
@@ -272,40 +390,19 @@ enters the node before the data plane owns it.
 | `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | routed admission numeric override | positive value, `0` returns to auto-HWM |
 
 With no numeric override, SpotNode data-path sockets use the shared auto-HWM
-planner. Balanced profile gives the same sequence as ordinary routed sockets:
-HWM `1024` for small messages up to 1024 B, HWM `16` for 64 KiB, HWM `8` for
-128 KiB, and HWM `4` for 256 KiB. The peer control sockets stay outside this
-admission group and keep their control-plane HWM.
+planner. Balanced profile: HWM `1024` for ≤1024 B messages, HWM `16` for 64 KiB,
+HWM `8` for 128 KiB, HWM `4` for 256 KiB. Peer control sockets stay outside this
+admission group.
 
-The shared relay and delivery sockets use HWM `0`. This prevents hidden
-per-peer or per-target queue caps inside SPOT from deciding message loss or
-disconnect behavior. Queue growth is then controlled at the explicit admission
-boundary and by application drain rate.
+Relay sockets (`fanout` SNDHWM 0, `mesh-pub` SNDHWM per auto-HWM) and delivery
+sockets use HWM `0`. This prevents hidden per-peer or per-target queue caps inside
+SPOT from deciding message loss or disconnect behavior.
 
-`Spot` facades capture the current admission values when they are created.
-Later `SpotNode` option changes apply to later `Spot` instances, not to handles
-that already exist.
+The perf `Auto-HWM spotnode` detail shows admission HWM on `mesh-pub`, `mesh-xsub`,
+and `external-router`. Rows for `pub-ingress-tx`, `ingress-sub`, `internal-router`,
+and `internal-router-tx` no longer exist.
 
-SPOT publish queue planning keeps per-connection admission independent of
-fanout. Fanout is still useful as a diagnostic count, but it is not an input
-that reduces HWM:
-
-```text
-effective_publish_fanout =
-  max(local_sub_spot_count, active_peer_count, observed_scope_count)
-```
-
-The total spot count is metadata pressure, not the fanout queue count. Removed
-directional SpotNode HWM options and queue hard-limit options are not part of
-the public contract. Status fields that used to report disconnected delivery
-targets remain ABI fields and report zero.
-
-The perf runner uses the `core/build` runtime and must print the resolved
-`libzlink` path before running. Its `Auto-HWM spotnode` detail should show
-admission HWM only on topic ingress and routed ingress sockets; relay and
-delivery sockets should report HWM `0`.
-
-## 6. Control Plane
+## 7. Control Plane
 
 The peer control plane is separated from data traffic. It carries:
 
@@ -318,7 +415,80 @@ Control sockets may use a different message unit from data sockets. If a perf
 table shows different `MsgUnit(B)` values in the same payload-size block, the
 control plane and data plane are being calculated with different units.
 
-## 7. Actor dispatch internal model
+## 8. Data-plane Thread and Dispatch Worker Pool
+
+### 8.1 Data-plane thread
+
+Each `SpotNode` runs one dedicated OS thread (`spot_runtime_t::data_plane_thread`)
+executing `spot_data_plane_loop_t::run_until_shutdown()`. This thread exclusively
+owns:
+
+- `mesh-pub`, `fanout`, `external-router`, `mesh-xsub`, `peer_ctrl_pub`,
+  `peer_ctrl_sub` sockets
+- drain of `publish_ingress_queue`, `routed_send_queue`, `external_router_ingress_queue`
+- local fanout delivery, remote mesh publish, inbound/outbound routed forwarding
+
+Public threads do not directly access these sockets. Violating this boundary mixes
+socket ownership, poller interest, and shutdown ordering into the public call path.
+
+```
+Invariants:
+  Public thread does not send/recv mesh-pub, fanout, or external-router directly.
+  Data-plane thread does not invoke application dispatch callbacks directly.
+```
+
+The data-plane thread loop uses a poller together with signaler FDs from all three
+queues. Any empty→non-empty queue transition wakes the thread immediately. The
+idle tick is 100 ms (`data_plane_idle_tick_ms`).
+
+The service-data runtime periodic task dependency has been fully removed. SPOT
+data-plane scheduling is determined exclusively by the `SpotNode`-dedicated thread.
+
+### 8.2 Dispatch worker pool
+
+`spot_runtime_t::dispatch_workers` (`spot_dispatch_worker_pool_t`) executes
+application dispatch callbacks.
+
+The data-plane thread never calls dispatch callbacks directly. Instead, when a
+target `Spot state` becomes ready, it calls `post_dispatch_event(void* spot_)` on
+the pool. The pool manages a `_queued` set for coalescing: the same Spot pointer
+is not enqueued twice.
+
+```cpp
+// spot_dispatch_worker_pool_t key fields
+std::deque<void*>              _ready;    // Spot pointers waiting to be drained
+std::unordered_set<void*>      _queued;   // Spots already in ready queue (dedup)
+std::unordered_set<void*>      _active;   // Spots currently being executed
+std::unordered_set<void*>      _dirty;    // Spots that need re-check after callback
+```
+
+Per-Spot serialization: at most one worker runs a given Spot at a time. After a
+callback returns, if `_dirty` shows unread events for that Spot, it is re-enqueued
+into `_ready`.
+
+Worker count defaults:
+
+```text
+cpu_count = max(1, hardware_concurrency)
+default_min = min(2, cpu_count)
+default_max = max(1, cpu_count)
+idle_timeout = 1000 ms (internal constant)
+```
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN` | `min(2, cpu_count)` | always-maintained worker count |
+| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX` | `max(1, cpu_count)` | burst ceiling |
+
+Why the data-plane thread does not call callbacks directly:
+
+1. Application callbacks may call SPOT send/recv APIs — reentrancy into data-plane
+   lock or socket ownership.
+2. Slow callbacks stall `mesh-pub`, `external-router` flushes.
+3. `ZLINK_POLLOUT` and send-ready callbacks are in the dispatch axis — mixing them
+   with the forwarding loop corrupts readiness/forwarding ordering.
+
+## 9. Actor dispatch internal model
 
 An Actor is a routing target managed by `SpotNode`. There is no public Actor
 handle; `zlink_actor_ref_t` identifies the Actor. Actors do not own a socket,
@@ -330,7 +500,7 @@ consumed by the application via `zlink_spot_node_actor_recv_part()`.
 Each Actor has a **joined Spot** (also called `current Spot`): the Spot whose
 dispatch context will receive `ACTOR_READABLE` events for this Actor. A newly
 created Actor's joined Spot is always the Entry Spot. The Actor moves to a
-different Spot through the join protocol (§12); until that completes the Entry
+different Spot through the join protocol (§14); until that completes the Entry
 Spot remains current.
 
 A newly created Actor's current Spot is always the Entry Spot. Actor messages are
@@ -368,7 +538,7 @@ relay arrives after the target Actor has been removed, the target node discards
 the part. A completed submit result on the sender side does not change after
 that.
 
-### 7.1 Actor table state
+### 9.1 Actor table state
 
 Each Actor table row holds:
 
@@ -385,7 +555,7 @@ Actor destroy checks the joined state, bound session detach, and any in-flight
 multipart relay first. When the detach cannot complete or a timeout occurs,
 the Actor slot and unread state are left in the pre-call state.
 
-### 7.2 Dispatch event
+### 9.2 Dispatch event
 
 When the Actor unread state gains a readable part and the Actor is joined to a
 Spot, `ACTOR_READABLE` readiness is posted to the Spot dispatch stream. The
@@ -397,7 +567,7 @@ Readiness does not correspond 1:1 to message counts. Dispatch callbacks must
 drain each drain API until it returns `NO_DATA`. The internal implementation
 preserves part order within the same Actor.
 
-### 7.3 Active route publish
+### 9.3 Active route publish
 
 The Actor active route is not published when the Actor is created or when it
 joins a Spot. It is published when the Actor owner SpotNode's Discovery has
@@ -405,7 +575,7 @@ actor route sync enabled and a `zlink_stream_bind_actor()` call succeeds.
 Unbind and session disconnect cleanup do not remove the active route. When the
 Actor that the active route points to is destroyed, route cleanup is performed.
 
-## 8. Entry Spot and Spot queue ownership
+## 10. Entry Spot and Spot queue ownership
 
 A `Spot` facade does not create physical sockets. Messages demultiplexed from
 transport sockets owned by the `SpotNode` are delivered into the target `Spot`'s
@@ -430,7 +600,7 @@ A user Spot's logical state is destroyed when the last facade is closed, provide
 no Actor is currently joined and no join request is pending. Entry Spot logical state
 is owned by the `SpotNode` and is not reference-counted.
 
-## 9. Spot socket removal model
+## 11. Spot socket removal model
 
 In the previous structure, a `Spot` facade or side handle could create per-Spot
 sockets and use inproc sockets as queues. In a design where `SpotNode` receives
@@ -462,12 +632,12 @@ The `Spot` facade does not directly own physical sockets such as `spot_pub_t`,
 `spot_sub_t`, or routed receive sockets. What a `Spot` needs is a reference to its
 logical state.
 
-## 10. STREAM session and Actor binding
+## 12. STREAM session and Actor binding
 
 The session owner node and the Actor owner node may be the same or different. The
 internal paths differ, but the public API is identical.
 
-### 10.1 Local Actor binding (co-located)
+### 12.1 Local Actor binding (co-located)
 
 ```mermaid
 sequenceDiagram
@@ -500,7 +670,7 @@ sequenceDiagram
 A local Actor completes bind, relay, and Actor-to-session send all within one node.
 No Actor socket or per-Actor inproc endpoint is created.
 
-### 10.2 Remote Actor binding (split deployment)
+### 12.2 Remote Actor binding (split deployment)
 
 ```mermaid
 sequenceDiagram
@@ -546,7 +716,7 @@ list compare-and-swap result is authoritative. A disconnect before the CAS succe
 aborts to Entry Spot on the source Actor. A disconnect after the CAS succeeds
 triggers Entry Spot cleanup on the target Actor.
 
-### 10.3 Remote bind error paths
+### 12.3 Remote bind error paths
 
 | Condition | Outcome |
 |-----------|---------|
@@ -555,12 +725,12 @@ triggers Entry Spot cleanup on the target Actor.
 | `actor_ref` stale (generation mismatch) | Target node rejects the bind control request; session owner receives `INVALID_HANDLE`; no Actor table entry is created |
 | Session disconnect before bind completes | `g_session_bindings` CAS on the session owner fails because the session rid entry was already cleared; bind is aborted and any target node Actor state is cleaned up
 
-## 11. Transport logical queue internal data structures
+## 13. Transport logical queue internal data structures
 
 This section describes the key internal structures behind the transport logical queue
 implementation. These are not public contract; implementation details may change.
 
-### 11.1 Spot logical queue (`spot_logical_state_t`)
+### 13.1 Spot logical queue (`spot_logical_state_t`)
 
 `spot_logical_state_t` is the logical state shared by `Spot` facades
 (`spot_handle_t`) via `shared_ptr`. The Entry Spot is owned by
@@ -587,7 +757,7 @@ struct spot_logical_pubsub_message_t {
 };
 ```
 
-### 11.2 Actor unread queue (`actor_handle_t`)
+### 13.2 Actor unread queue (`actor_handle_t`)
 
 `actor_handle_t` corresponds to one row in the `SpotNode` Actor table. It is owned
 by the `actors_by_id` map inside `spot_node_actor_state_t`.
@@ -610,7 +780,7 @@ by the `actors_by_id` map inside `spot_node_actor_state_t`.
 | `part_flag` | `zlink_part_flag_t` | `ZLINK_PART_MORE` or `ZLINK_PART_FINAL` |
 | `owns` | `bool` | whether this wrapper owns the part (false after move) |
 
-### 11.3 Join request queue (`g_join_queues`)
+### 13.3 Join request queue (`g_join_queues`)
 
 Join requests are stored in `g_join_queues`, protected by the global
 `g_actor_mutex` in `service_spot_actor_api.cpp`:
@@ -639,7 +809,7 @@ Key fields of `queued_join_request_t`:
 `g_live_join_requests` tracks all currently pending join requests.
 `g_retired_join_requests` holds requests awaiting timeout/cleanup processing.
 
-### 11.4 Signaler and dispatch connection
+### 13.4 Signaler and dispatch connection
 
 Pubsub dispatch uses an edge-triggered signaler:
 
@@ -659,7 +829,7 @@ Actor join dispatch posts `ACTOR_JOIN_READABLE` to the target Spot's dispatch
 handler when a request is added to `g_join_queues`. The subject is the target Spot
 facade.
 
-### 11.5 Global state summary
+### 13.5 Global state summary
 
 Key global state managed by `service_spot_actor_api.cpp`. **All entries below
 are protected by `g_actor_mutex`** unless noted otherwise.
@@ -688,13 +858,13 @@ released before any blocking call. Actor table mutations and join queue mutation
 that span two SpotNode instances are serialized by taking the mutex once for the
 entire compound operation.
 
-## 12. Actor join internal lifecycle
+## 14. Actor join internal lifecycle
 
 This section describes how Actor join requests are processed inside SpotNode.
-For STREAM session binding flow see section 10. For the public join contract see
+For STREAM session binding flow see section 12. For the public join contract see
 [`doc/spec/core/service/spot.md`](../spec/core/service/spot.md).
 
-### 12.1 Local join internal sequence
+### 14.1 Local join internal sequence
 
 Local join only changes `current Spot` within the same `SpotNode`. The source Spot
 remains the Actor's `current Spot` until accept. The accept step and `current Spot`
@@ -737,7 +907,7 @@ Local join atomicity rules:
 - No new `ACTOR_READABLE` events are posted to the source Spot after accept.
 - Reject, timeout, target Spot destroy, and `SpotNode` shutdown preserve the source Spot.
 
-### 12.2 Remote join internal sequence
+### 14.2 Remote join internal sequence
 
 Remote join hands off the source node Actor to the target Spot on the target node.
 The current implementation performs this within the same process across registered
@@ -812,7 +982,7 @@ Remote join atomicity rules:
 - Source Actor retire and target activate are fenced by the join epoch. Stale relays,
   stale join replies, and late control messages apply only if the epoch matches.
 
-### 12.3 Abort paths
+### 14.3 Abort paths
 
 If the target Spot rejects, times out, prepare fails, or the target shuts down, the
 handoff aborts.

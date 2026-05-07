@@ -136,14 +136,13 @@ type ActorJoinInfo = {
 };
 type ActorPart = { info: ActorRecvInfo; message: Message; more: boolean };
 type ActorJoinRequest = { info: ActorJoinInfo; message: Message };
-function remoteActorRef(targetNodeRid: RoutingId, actorId: string): ActorRef;
 ```
 
 `ActorJoinRequest` carries the public join information and message. The native
 reply context needed by `replyActorJoin(...)` is retained inside the binding and
 is not exposed as a public field.
 
-`SpotNode` exposes `actor`, `actorLookup`, `remoteActorRef`,
+`SpotNode` exposes `createActor`, `actorLookup`, `remoteActorRef`,
 `createRemoteActor`, `destroyActor`, `onActorAdmission`, `joinActor`,
 `leaveActor`, `spotsSnapshot`, and `actorsSnapshot`. `Spot` exposes
 `recvActorJoin`, `replyActorJoin`, and `actorsSnapshot`. `StreamSocket`
@@ -277,11 +276,11 @@ Node / TypeScript nonblocking data-plane helpers follow this rule:
   when the core reports no data and still throw `RecvError` for real recv
   failures.
 
-Peer weight is not a common socket option. Bindings expose weight only on
+Peer weight is not a common socket option. Bindings expose `peerWeight` only on
 `RouterSocket` and `DealerSocket`:
 
 ```typescript
-// No common peer-weight accessor. RouterSocket and DealerSocket expose weight on their typed option facade.
+// No common peer-weight accessor. RouterSocket and DealerSocket expose peerWeight on their typed option facade.
 ```
 
 After `attachDiscovery(...)` succeeds on a socket, `connect(...)`,
@@ -372,7 +371,7 @@ class SubSocket {
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
-    subscriptionAt(index: number): SubscriptionEntry;
+    subscriptionAt(index: number): SubscriptionEntry | null;
     /** @throws {RecvError} */
     subscribe(flags?: RecvFlags): TopicMessage | null;
     /** @throws {ConfigError} */
@@ -433,7 +432,7 @@ class DealerSocket {
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     request(message: MessageLike,
-            callback: RequestResultCallback,
+            callback: RequestCallback,
             flags?: SendFlags,
             timeout?: number): boolean;
     /**
@@ -441,7 +440,7 @@ class DealerSocket {
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     request(parts: readonly MessageLike[],
-            callback: RequestResultCallback,
+            callback: RequestCallback,
             flags?: SendFlags,
             timeout?: number): boolean;
 
@@ -495,13 +494,13 @@ class RouterSocket {
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     request(peerRid: RoutingId, message: MessageLike,
-            callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
+            callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
     /**
      * @throws {SubmitError} on submit failure other than temporary backpressure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     request(peerRid: RoutingId, parts: readonly MessageLike[],
-            callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
+            callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
 
     // --- router reply ---
     /** @throws {SubmitError} */
@@ -534,14 +533,14 @@ class RouterSocket {
      */
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   message: MessageLike,
-                  callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
+                  callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
     /**
      * @throws {SubmitError} on submit failure other than temporary backpressure.
      * Callback receives `RequestResult` directly (not a `RequestError`).
      */
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   parts: readonly MessageLike[],
-                  callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
+                  callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
 
     // --- router → spot routed reply ---
     /** @throws {SubmitError} */
@@ -617,7 +616,7 @@ class XSubSocket {
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
-    subscriptionAt(index: number): SubscriptionEntry;
+    subscriptionAt(index: number): SubscriptionEntry | null;
     /** @throws {RecvError} */
     subscribe(flags?: RecvFlags): TopicMessage | null;
     /** @throws {ConfigError} */
@@ -710,21 +709,23 @@ class CommonSocketOptions {
     reconnectIntervalMax: number;// get / set (ms)
     ridDuplicatePolicy: RidDuplicatePolicyValue; // get / set
     autoHwmMsgUnitBytes: number;  // get / set
+    readonly lastEndpoint: string;
 }
 
 class DealerSocketOptions extends CommonSocketOptions {
     probe: boolean;              // set only
     requestTimeout: number;      // set only (ms)
-    weight: number;              // set only, 0..100
+    peerWeight: number;          // set only, 0..100
 }
 
 class RouterSocketOptions extends CommonSocketOptions {
     mandatory: boolean;          // get / set
     handover: boolean;           // get / set
     probe: boolean;              // get / set
-    connectRoutingId: RoutingId; // set only
+    readonly connectRoutingId: RoutingId | null;
+    setConnectRoutingId(routingId: RoutingId): void;
     requestTimeout: number;      // get / set (ms)
-    weight: number;              // get / set, 0..100
+    peerWeight: number;          // get / set, 0..100
 }
 
 class PubSocketOptions extends CommonSocketOptions {
@@ -1136,7 +1137,7 @@ class SubmitError extends ZlinkError {
 Thrown by request completion paths (Promise/async variants) and used as
 the category for request-specific failures. Wraps a `RequestResult`.
 Callback-style `request(...)` methods deliver `RequestResult` directly
-to the callback (`RequestResultCallback`) rather than throwing this
+to the callback (`RequestCallback`) rather than throwing this
 error.
 
 ```typescript
@@ -1430,13 +1431,8 @@ const SpotNodeMode = {
 } as const;
 type SpotNodeModeValue = typeof SpotNodeMode[keyof typeof SpotNodeMode];
 
-interface SpotNodeOptions {
-    readonly mode?: SpotNodeModeValue; // omitted maps to All
-}
-
 class SpotNode {
-    constructor(ctx: Context, options?: SpotNodeOptions);
-    constructor(ctx: Context);
+    constructor(ctx: Context, mode?: SpotNodeModeValue);
     /** @throws {BindError} */
     bind(endpoint: string): void;
     /** @throws {ConnectError} */
@@ -1472,10 +1468,10 @@ class SpotNode {
     /** @throws {ConfigError} */
     spotLookup(spotRid: RoutingId): Spot | null;
     /** @throws {ConfigError} */
-    actor(actorId: string): Actor;
+    createActor(actorId: string): Actor;
     /** @throws {ConfigError} */
     actorLookup(actorId: string): ActorRef;
-    remoteActorRef(targetNodeRid: RoutingId, actorId: string): ActorRef;
+    static remoteActorRef(targetNodeRid: RoutingId, actorId: string): ActorRef;
     /** @throws {RequestError} */
     createRemoteActor(targetNodeRid: RoutingId, actorId: string,
                       message: MessageLike, timeoutMs?: number): ActorCreateResult;
@@ -1483,12 +1479,15 @@ class SpotNode {
     destroyActor(actor: ActorRef, timeoutMs?: number): void;
     /** @throws {HandlerError} */
     onActorAdmission(handler: ActorAdmissionHandler): void;
+    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId,
+              message: MessageLike, timeout?: number): Promise<Message[]>;
     /** @throws {SubmitError} */
     joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId,
-              message: MessageLike, callback: RequestResultCallback,
+              message: MessageLike, callback: RequestCallback,
               flags?: SendFlags, timeout?: number): boolean;
     /** @throws {RequestError} */
-    leaveActor(actor: ActorRef, destSpotRid: RoutingId, timeoutMs?: number): void;
+    leaveActor(actor: ActorRef, currentSpotRid: RoutingId, timeoutMs?: number): void;
     /** @throws {ConfigError} */
     statusSnapshot(): SpotNodeStatus;
     /** @throws {ConfigError} */
@@ -1518,6 +1517,8 @@ class SpotNode {
 }
 ```
 
+Omitting `mode` uses `SpotNodeMode.All`.
+
 `SpotNode` owns the lifecycle. `Spot` handles are created through
 `SpotNode.createSpot()`, Entry Spot facades through `SpotNode.entrySpot()`,
 and lookup facades through `SpotNode.spotLookup(...)`. Direct
@@ -1535,11 +1536,13 @@ SpotNode dispatch callback worker pool.
 class Actor {
     readonly actorRef: ActorRef;
     ref(): ActorRef;
+    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    join(spot: Spot, message: MessageLike, timeout?: number): Promise<Message[]>;
     /** @throws {SubmitError} */
-    join(spot: Spot, message: MessageLike, callback: RequestResultCallback,
+    join(spot: Spot, message: MessageLike, callback: RequestCallback,
          flags?: SendFlags, timeout?: number): boolean;
-    /** @throws {ConfigError} */
-    leave(spot: Spot): void;
+    /** @throws {RequestError} */
+    leave(spot: Spot, timeoutMs?: number): void;
     /** @throws {RecvError} */
     recvPart(flags?: RecvFlags): ActorPart | null;
     /** @throws {SubmitError} */
@@ -1581,7 +1584,7 @@ class Spot {
      * Callback receives `RequestResult` directly.
      */
     requestChannel(channelName: string, message: MessageLike,
-                   callback: RequestResultCallback,
+                   callback: RequestCallback,
                    flags?: SendFlags,
                    timeout?: number): boolean;
     /**
@@ -1589,7 +1592,7 @@ class Spot {
      * Callback receives `RequestResult` directly.
      */
     requestChannel(channelName: string, parts: readonly MessageLike[],
-                   callback: RequestResultCallback,
+                   callback: RequestCallback,
                    flags?: SendFlags,
                    timeout?: number): boolean;
     /** @throws {ConfigError} */
@@ -1597,7 +1600,7 @@ class Spot {
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
-    subscriptionAt(index: number): SubscriptionEntry;
+    subscriptionAt(index: number): SubscriptionEntry | null;
     /** @throws {RecvError} */
     subscribe(flags?: RecvFlags): TopicMessage | null;
     /** @throws {RecvError} */
@@ -1628,14 +1631,14 @@ class Spot {
      */
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   message: MessageLike,
-                  callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
+                  callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
     /**
      * @throws {SubmitError} on submit failure other than temporary backpressure.
      * Returns false only on temporary backpressure. Callback receives `RequestResult`.
      */
     requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
                   parts: readonly MessageLike[],
-                  callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
+                  callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
 
     // --- routed request (spot → router, async) — no flags ---
     /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
@@ -1652,14 +1655,14 @@ class Spot {
      */
     requestToRouter(peerRid: RoutingId,
                     message: MessageLike,
-                    callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
+                    callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
     /**
      * @throws {SubmitError} on submit failure other than temporary backpressure.
      * Returns false only on temporary backpressure. Callback receives `RequestResult`.
      */
     requestToRouter(peerRid: RoutingId,
                     parts: readonly MessageLike[],
-                    callback: RequestResultCallback, flags?: SendFlags, timeout?: number): boolean;
+                    callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
 
     // --- routed reply (spot → spot) ---
     /** @throws {SubmitError} */
@@ -2003,51 +2006,43 @@ interface SpotNodeSocketSnapshotEntry {
 ## Poller
 
 ```typescript
-const PollerSourceKind = {
-    Socket: 1,
-    Fd: 2,
-    Timer: 3,
-} as const;
-type PollerSourceKindValue =
-    typeof PollerSourceKind[keyof typeof PollerSourceKind];
-
-const PollerEventFlag = {
+const PollEventFlag = {
     PollIn: 1,
     PollOut: 2,
     PollErr: 4,
     PollPri: 8,
 } as const;
-type PollerEventFlagValue =
-    typeof PollerEventFlag[keyof typeof PollerEventFlag];
+type PollEventFlagValue =
+    typeof PollEventFlag[keyof typeof PollEventFlag];
 
 class Poller {
     constructor();
 
     // --- socket registration ---
     /** @throws {ConfigError} */
-    addSocket(socket: BaseSocket,
-              events: readonly PollerEventFlagValue[],
-              userData?: any): void;
+    add(socket: BaseSocket,
+        events: readonly PollEventFlagValue[],
+        tag?: any): void;
     /** @throws {ConfigError} */
-    modifySocket(socket: BaseSocket,
-                 events: readonly PollerEventFlagValue[]): void;
+    modify(socket: BaseSocket,
+           events: readonly PollEventFlagValue[]): void;
     /** @throws {ConfigError} */
-    removeSocket(socket: BaseSocket): void;
+    remove(socket: BaseSocket): boolean;
 
     // --- file descriptor registration ---
     /** @throws {ConfigError} */
-    addFd(fd: number, events: readonly PollerEventFlagValue[],
-          userData?: any): void;
+    addFd(fd: number, events: readonly PollEventFlagValue[],
+          tag?: any): void;
     /** @throws {ConfigError} */
-    modifyFd(fd: number, events: readonly PollerEventFlagValue[]): void;
+    modifyFd(fd: number, events: readonly PollEventFlagValue[]): void;
     /** @throws {ConfigError} */
-    removeFd(fd: number): void;
+    removeFd(fd: number): boolean;
 
     // --- timer registration ---
     /** @throws {ConfigError} */
-    addTimer(timer: Timer, userData?: any): void;
+    add(timer: Timer, tag?: any): void;
     /** @throws {ConfigError} */
-    removeTimer(timer: Timer): void;
+    remove(timer: Timer): boolean;
 
     // --- poll ---
     /** Number of registered pollable items. Maps to zlink_poller_size. */
@@ -2056,9 +2051,6 @@ class Poller {
     wait(timeoutMs: number): PollerEvent | null;
     /** @throws {RecvError} */
     waitAll(maxEvents: number, timeoutMs: number): PollerEvent[];
-    /** @throws {RecvError} */
-    poll(timeoutMs: number): number[];
-
     /** @throws {CloseError} */
     destroy(): void;
     /** @throws {CloseError} */
@@ -2066,19 +2058,19 @@ class Poller {
 }
 
 interface PollerEvent {
-    sourceKind: PollerSourceKindValue;
     socket: BaseSocket | null;
-    fd: number;
+    fd: number | null;
     timer: Timer | null;
-    userData: any;
-    events: readonly PollerEventFlagValue[];
+    tag: any;
+    events: readonly PollEventFlagValue[];
+    revents: readonly PollEventFlagValue[];
 }
 ```
 
 The current public poller contract is still generic. It does not yet expose a
 Spot-aware result carrying owner `Spot`, dispatch event kind, and drain
 subject together.
-`PollerEventFlag.PollOut` is a send-recovery readiness signal shared with
+`PollEventFlag.PollOut` is a send-recovery readiness signal shared with
 `onSendReady(...)`, not a transport-writable bit.
 
 ---
@@ -2151,7 +2143,7 @@ interface SpotDispatchInfo {
 type ActorAdmissionHandler =
     (actorId: string, message: Message) => ActorAdmissionResult;
 type SpotDispatchEventHandler = (info: SpotDispatchInfo) => void;
-type RequestResultCallback = (result: RequestResult, parts: Message[]) => void;
+type RequestCallback = (result: RequestResult, parts: readonly Message[]) => void;
 type TimerHandler = (timer: Timer, fireCount: bigint) => void;
 ```
 

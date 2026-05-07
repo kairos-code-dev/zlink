@@ -127,8 +127,8 @@ ways:
 | Spot dispatch callbacks | `zlink_spot_handler`, `zlink_spot_dispatch_event_handler` | `Spot.onRoutedReceive`, `Spot.onDispatchEvent`, `SpotDispatchInfo` | Public API |
 | Actor dispatch | `zlink_remote_actor_get_ref`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup`, `zlink_spot_node_create_remote_actor`, `zlink_spot_node_actor_destroy`, `zlink_spot_node_actor_admission_handler`, `zlink_spot_node_actor_join_spot`, `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_spot_node_actor_leave_spot`, `zlink_spot_node_actor_recv_part`, `zlink_spot_node_actor_send_bound_session_msg`, `zlink_spot_node_actor_close_bound_session` | `Actor`, `ActorRef`, actor result/info records, `SpotNode` actor methods, `Spot.recvActorJoin`, `Spot.replyActorJoin` | Public API |
 | Spot snapshots | `zlink_spot_node_status_snapshot`, `zlink_spot_node_peers_snapshot`, `zlink_spot_node_peers_query`, `zlink_spot_node_subjects_snapshot`, `zlink_spot_node_internal_sockets_snapshot`, `zlink_spot_node_spots_snapshot`, `zlink_spot_node_actors_snapshot`, `zlink_spot_actors_snapshot`, registry/discovery topology snapshot/query entrypoints | `statusSnapshot`, peer/subject/internal-socket/spot/actor snapshot methods, registry/discovery topology records | Public API |
-| Polling | `zlink_poll`, `zlink_poller_*` | `Poller`, `PollEvent`, `PollEventType` | Public API; legacy array `zlink_poll` is intentionally not exposed |
-| Poller timers | `zlink_poller_add_timer`, `zlink_poller_remove_timer` | `Poller.add(Timer, Object)`, `Poller.remove(Timer)`, `readyTimer` | Required Java API |
+| Polling | `zlink_poll`, `zlink_poller_*` | `Poller`, `PollEvent`, `PollEventFlag` | Public API; legacy array `zlink_poll` is intentionally not exposed |
+| Poller timers | `zlink_poller_add_timer`, `zlink_poller_remove_timer` | `Poller.add(Timer, Object)`, `Poller.remove(Timer)`, `PollEvent.timer` | Required Java API |
 | Proxy | `zlink_proxy`, `zlink_proxy_steerable` | `Zlink.proxy`, `Zlink.proxySteerable` | Public API |
 | Timer | `zlink_timer_*`, `zlink_spot_timer_new` | `Timer`, `Timer.fromSpot`, `start`, `stop`, `recv`, `onFire`, `close` | Public API |
 | Stopwatch | `zlink_stopwatch_*` | `Stopwatch` | Public API |
@@ -202,7 +202,7 @@ stay focused on signatures.
 Java exposes Actor dispatch through public classes in
 `dev.kairoscode.zlink.service.spot` and related service packages.
 
-`SpotNode` exposes `actor`, `actorLookup`, `remoteActorRef`,
+`SpotNode` exposes `createActor`, `actorLookup`, `remoteActorRef`,
 `createRemoteActor`, `destroyActor`, `onActorAdmission`, `joinActor`,
 `leaveActor`, `spotsSnapshot`, and `actorsSnapshot`. `Spot` exposes
 `recvActorJoin`, `replyActorJoin`, and `actorsSnapshot`. `StreamSocket`
@@ -297,16 +297,16 @@ void setTlsServer(String certPem, String keyPem,
 void setTlsClient(String caCertPem, String hostname,
                   boolean trustSystem);                          // @throws ConfigException
 CommonSocketOptions options();
-// No common peer-weight accessor. Bindings expose weight only on
+// No common peer-weight accessor. Bindings expose peer weight only on
 // RouterSocket and DealerSocket.
 ```
 
 `send(...)` and `publish(...)` return `false` only for temporary backpressure
 when `SendFlags.DONT_WAIT` is used. Blocking submit returns `true` on success.
 Route-not-ready and other submit failures still raise `SubmitException`.
-`recv(...)`, `subscribe(...)`, `receiveSubscriptionEvent(...)`,
-`recvRouted(...)`, and monitor `recv(...)` return `null` when the core reports
-no data. Timer `recv(...)` reports no data through `RecvException` with
+Blocking no-argument receive methods do not return `null`. Nullable overloads
+that accept `RecvFlags` return `null` when `RecvFlags.DONT_WAIT` finds no data.
+Timer `recv(...)` reports no data through `RecvException` with
 `RecvResult.NO_DATA`. All receive paths still raise `RecvException` for real
 recv failures.
 
@@ -338,94 +338,45 @@ socket option objects. Socket-specific option classes extend this facade.
 
 ```java
 public class CommonSocketOptions {
-    // --- affinity and pacing ---
-    long affinity();                                                 // @throws ConfigException
-    void affinity(long value);                                       // @throws ConfigException
-    int rate();                                                      // @throws ConfigException
-    void rate(int value);                                            // @throws ConfigException
-    Duration recoveryInterval();                                     // @throws ConfigException
-    void recoveryInterval(Duration value);                           // @throws ConfigException
-
-    // --- lifecycle and timeout policy ---
     Duration linger();                                              // @throws ConfigException
     void linger(Duration value);                                    // @throws ConfigException
-    Duration sendTimeout();                                         // @throws ConfigException
-    void sendTimeout(Duration value);                               // @throws ConfigException
-    Duration recvTimeout();                                         // @throws ConfigException
-    void recvTimeout(Duration value);                               // @throws ConfigException
-    Duration handshakeInterval();                                   // @throws ConfigException
-    void handshakeInterval(Duration value);                         // @throws ConfigException
-    Duration connectTimeout();                                      // @throws ConfigException
-    void connectTimeout(Duration value);                            // @throws ConfigException
-
-    // --- buffering and admission ---
     int sendHwm();                                                  // @throws ConfigException
     void sendHwm(int value);                                        // @throws ConfigException
     int recvHwm();                                                  // @throws ConfigException
     void recvHwm(int value);                                        // @throws ConfigException
-    int sendBuffer();                                               // @throws ConfigException
-    void sendBuffer(int value);                                     // @throws ConfigException
-    int recvBuffer();                                               // @throws ConfigException
-    void recvBuffer(int value);                                     // @throws ConfigException
+    Duration sendTimeout();                                         // @throws ConfigException
+    void sendTimeout(Duration value);                               // @throws ConfigException
+    Duration recvTimeout();                                         // @throws ConfigException
+    void recvTimeout(Duration value);                               // @throws ConfigException
     boolean immediate();                                            // @throws ConfigException
     void immediate(boolean enabled);                                // @throws ConfigException
-    RidDuplicatePolicy ridDuplicatePolicy();                        // @throws ConfigException
-    void ridDuplicatePolicy(RidDuplicatePolicy value);              // @throws ConfigException
-    int routeValueMaxSize();                                        // @throws ConfigException
-    void routeValueMaxSize(int value);                              // @throws ConfigException
-    int autoHwmMessageUnitBytes();                                  // @throws ConfigException
-    void autoHwmMessageUnitBytes(int value);                        // @throws ConfigException
-
-    // --- transport and address-family policy ---
+    Duration connectTimeout();                                      // @throws ConfigException
+    void connectTimeout(Duration value);                            // @throws ConfigException
     boolean ipv6();                                                 // @throws ConfigException
     void ipv6(boolean enabled);                                     // @throws ConfigException
-    int tos();                                                       // @throws ConfigException
-    void tos(int value);                                             // @throws ConfigException
-    int multicastHops();                                             // @throws ConfigException
-    void multicastHops(int value);                                   // @throws ConfigException
-    int multicastMaxTpdu();                                          // @throws ConfigException
-    void multicastMaxTpdu(int value);                                // @throws ConfigException
-    String bindToDevice();                                           // @throws ConfigException
-    void bindToDevice(String value);                                 // @throws ConfigException
     boolean tcpNoDelay();                                           // @throws ConfigException
     void tcpNoDelay(boolean enabled);                               // @throws ConfigException
     int tcpKeepalive();                                             // @throws ConfigException
     void tcpKeepalive(int value);                                   // @throws ConfigException
-    int tcpKeepaliveCount();                                        // @throws ConfigException
-    void tcpKeepaliveCount(int value);                              // @throws ConfigException
-    Duration tcpKeepaliveIdle();                                    // @throws ConfigException
-    void tcpKeepaliveIdle(Duration value);                          // @throws ConfigException
-    Duration tcpKeepaliveInterval();                                // @throws ConfigException
-    void tcpKeepaliveInterval(Duration value);                      // @throws ConfigException
-    Duration tcpMaxRt();                                            // @throws ConfigException
-    void tcpMaxRt(Duration value);                                  // @throws ConfigException
-
-    // --- heartbeat and reconnect policy ---
     Duration heartbeatInterval();                                   // @throws ConfigException
     void heartbeatInterval(Duration value);                         // @throws ConfigException
     Duration heartbeatTtl();                                        // @throws ConfigException
     void heartbeatTtl(Duration value);                              // @throws ConfigException
     Duration heartbeatTimeout();                                    // @throws ConfigException
     void heartbeatTimeout(Duration value);                          // @throws ConfigException
-    boolean conflate();                                             // @throws ConfigException
-    void conflate(boolean enabled);                                 // @throws ConfigException
-    boolean blocky();                                               // @throws ConfigException
-    void blocky(boolean enabled);                                   // @throws ConfigException
+    RidDuplicatePolicy ridDuplicatePolicy();                        // @throws ConfigException
+    void ridDuplicatePolicy(RidDuplicatePolicy value);              // @throws ConfigException
     long maxMsgSize();                                              // @throws ConfigException
     void maxMsgSize(long value);                                    // @throws ConfigException
+    int autoHwmMessageUnitBytes();                                  // @throws ConfigException
+    void autoHwmMessageUnitBytes(int value);                        // @throws ConfigException
     int backlog();                                                  // @throws ConfigException
     void backlog(int value);                                        // @throws ConfigException
     Duration reconnectInterval();                                   // @throws ConfigException
     void reconnectInterval(Duration value);                         // @throws ConfigException
     Duration reconnectIntervalMax();                                // @throws ConfigException
     void reconnectIntervalMax(Duration value);                      // @throws ConfigException
-
-    // --- read-only diagnostics and metadata ---
-    int fd();                                                       // @throws ConfigException
-    EnumSet<PollEventType> events();                                // @throws ConfigException
-    SocketType socketType();                                        // @throws ConfigException
     String lastEndpoint();                                          // @throws ConfigException
-    void zmpMetadata(String value);                                 // @throws ConfigException
 }
 ```
 
@@ -499,8 +450,8 @@ public class PubSocketOptions extends CommonSocketOptions {
     void manualLastValue(boolean enabled);                          // @throws ConfigException
     void approveSubscribe(RoutingId routingId);                     // @throws ConfigException
     void rejectSubscribe(RoutingId routingId);                      // @throws ConfigException
-    Message welcomeMsg();                                            // @throws ConfigException
-    void welcomeMsg(Message message);                               // @throws ConfigException
+    Message welcomeMessage();                                        // @throws ConfigException
+    void welcomeMessage(Message message);                           // @throws ConfigException
     int topicsCount();                                               // @throws ConfigException
 }
 ```
@@ -607,7 +558,6 @@ public final class DealerSocket extends Socket {
 
 ```java
 public final class DealerSocketOptions extends CommonSocketOptions {
-    boolean probe();                                                 // @throws ConfigException
     void probe(boolean enabled);                                    // @throws ConfigException
     void requestTimeout(Duration value);                            // @throws ConfigException
     void peerWeight(int value);                                     // @throws ConfigException
@@ -615,9 +565,8 @@ public final class DealerSocketOptions extends CommonSocketOptions {
 ```
 
 The C core exposes `zlink_set_dealer_option` but no
-`zlink_get_dealer_option`. Java getters that already exist on
-`DealerSocketOptions` are binding-level convenience API; new core-aligned
-dealer options are setter-only unless the core adds a getter.
+`zlink_get_dealer_option`, so dealer-specific options are setter-only unless
+the core adds a getter.
 
 ### RouterSocket
 
@@ -764,7 +713,7 @@ public final class RouterSocketOptions extends CommonSocketOptions {
     void handover(boolean enabled);                                  // @throws ConfigException
     boolean probe();                                                 // @throws ConfigException
     void probe(boolean enabled);                                    // @throws ConfigException
-    RoutingId connectRoutingId();                                   // @throws ConfigException
+    Optional<RoutingId> connectRoutingId();                         // @throws ConfigException
     void connectRoutingId(RoutingId routingId);                     // @throws ConfigException
     Duration requestTimeout();                                      // @throws ConfigException
     void requestTimeout(Duration value);                            // @throws ConfigException
@@ -1132,7 +1081,7 @@ public enum AutoHwmRecalcReason {
     DEFERRED_SHRINK(5)
 }
 
-public enum PollEventType {
+public enum PollEventFlag {
     POLLIN(1),
     POLLOUT(2),
     POLLERR(4),
@@ -1442,6 +1391,9 @@ public interface RequestCallback {
     void onComplete(RequestResult result, List<Message> parts);
 }
 ```
+
+The `parts` list passed to `RequestCallback` is unmodifiable. Message ownership
+still follows the normal `Message` lifecycle rules.
 
 ### RecvResult
 
@@ -1798,7 +1750,7 @@ Implements `AutoCloseable`.
 ```java
 public final class SpotNode implements AutoCloseable {
     SpotNode(Context ctx);
-    SpotNode(Context ctx, SpotNodeOptions options);
+    SpotNode(Context ctx, SpotNodeMode mode);
 
     void bind(String endpoint);                                      // @throws BindException
     void connectPeer(String peerEndpoint);                           // @throws ConnectException
@@ -1836,7 +1788,7 @@ public final class SpotNode implements AutoCloseable {
     void dispatchWorkersMax(int value);                              // @throws ConfigException
 
     // --- actor dispatch ---
-    Actor actor(String actorId);                                     // @throws ConfigException
+    Actor createActor(String actorId);                               // @throws ConfigException
     ActorRef actorLookup(String actorId);                            // @throws ConfigException
     static ActorRef remoteActorRef(RoutingId targetNodeRid,
                                    String actorId);                  // @throws ConfigException
@@ -1851,6 +1803,15 @@ public final class SpotNode implements AutoCloseable {
     void destroyActor(ActorRef actor,
                       Duration timeout);                             // @throws RequestException
     void onActorAdmission(ActorAdmissionHandler handler);            // @throws HandlerException
+    CompletableFuture<List<Message>> joinActor(ActorRef actor,
+                      RoutingId destNodeRid,
+                      RoutingId destSpotRid,
+                      Message message);                              // @throws SubmitException
+    CompletableFuture<List<Message>> joinActor(ActorRef actor,
+                      RoutingId destNodeRid,
+                      RoutingId destSpotRid,
+                      Message message,
+                      Duration timeout);                             // @throws SubmitException
     boolean joinActor(ActorRef actor, RoutingId destNodeRid,
                       RoutingId destSpotRid, Message message,
                       RequestCallback callback); // @throws SubmitException
@@ -1867,8 +1828,8 @@ public final class SpotNode implements AutoCloseable {
                       RequestCallback callback,
                       SendFlags flags,
                       Duration timeout);                             // @throws SubmitException
-    void leaveActor(ActorRef actor, RoutingId destSpotRid);          // @throws RequestException
-    void leaveActor(ActorRef actor, RoutingId destSpotRid,
+    void leaveActor(ActorRef actor, RoutingId currentSpotRid);       // @throws RequestException
+    void leaveActor(ActorRef actor, RoutingId currentSpotRid,
                     Duration timeout);                               // @throws RequestException
 
     SpotNodeStatus statusSnapshot();                                 // @throws ConfigException
@@ -1900,16 +1861,9 @@ socket, or thread names to reason about publish delivery.
 the core I/O thread count or the data-plane thread count. Values follow the
 core validation rule: `min >= 1` and `max >= min`.
 
-### SpotNodeOptions
-
-Construction options for `SpotNode`.
-
-```java
-public record SpotNodeOptions(SpotNodeMode mode) {}
-```
-
-If `mode` is `null`, the binding uses `SpotNodeMode.ALL`. This keeps the
-default constructor and the explicit options constructor equivalent unless the
+The `SpotNode(Context, SpotNodeMode)` constructor selects the native node
+shape. If `mode` is `null`, the binding uses `SpotNodeMode.ALL`. This keeps the
+default constructor and the explicit mode constructor equivalent unless the
 caller chooses a narrower node mode.
 
 ### Spot
@@ -2149,6 +2103,9 @@ Actor object owned by a `SpotNode` and identified by `ActorRef`.
 ```java
 public final class Actor implements AutoCloseable {
     ActorRef ref();                                                  // @throws ConfigException
+    CompletableFuture<List<Message>> join(Spot spot, Message message); // @throws SubmitException
+    CompletableFuture<List<Message>> join(Spot spot, Message message,
+                                          Duration timeout);          // @throws SubmitException
     boolean join(Spot spot, Message message,
                  RequestCallback callback); // @throws SubmitException
     boolean join(Spot spot, Message message,
@@ -2199,10 +2156,10 @@ public record ActorPart(ActorRecvInfo info,
 public final class ActorJoinInfo {
     ActorRef sourceActor();
     ActorRef targetActor();
-    Optional<RoutingId> sourceNodeRid();
-    Optional<RoutingId> sourceSpotRid();
-    Optional<RoutingId> targetNodeRid();
-    Optional<RoutingId> targetSpotRid();
+    RoutingId sourceNodeRid();
+    RoutingId sourceSpotRid();
+    RoutingId targetNodeRid();
+    RoutingId targetSpotRid();
     long joinEpoch();
     int flags();
 }
@@ -2324,7 +2281,6 @@ public final class SpotDispatchInfo {
     SpotDispatchEvent event();
     SpotDispatchSubjectKind subjectKind();
     Optional<Timer> timer();
-    Optional<String> channelName();
     List<ActorPart> actorParts();
 }
 ```
@@ -2503,7 +2459,7 @@ public record RegistryTopologyFilter(AutoConnectType autoConnectType,
 
 ### Poller
 
-Event poller for multiplexing socket and file descriptor readiness.
+Event poller for multiplexing socket, file descriptor, and timer readiness.
 
 The public poller contract is generic. It reports socket, file descriptor,
 and timer readiness. SPOT dispatch ownership and drain semantics stay behind
@@ -2515,15 +2471,15 @@ public final class Poller implements AutoCloseable {
     Poller();
 
     // --- socket registration ---
-    void add(Socket socket, PollEventType... events);                // @throws ConfigException
-    void add(Socket socket, Object tag, PollEventType... events);    // @throws ConfigException
-    void modify(Socket socket, PollEventType... events);             // @throws ConfigException
+    void add(Socket socket, PollEventFlag... events);                // @throws ConfigException
+    void add(Socket socket, Object tag, PollEventFlag... events);    // @throws ConfigException
+    void modify(Socket socket, PollEventFlag... events);             // @throws ConfigException
     boolean remove(Socket socket);                                   // @throws ConfigException
 
     // --- file descriptor registration ---
-    void addFd(int fd, PollEventType... events);                     // @throws ConfigException
-    void addFd(int fd, Object tag, PollEventType... events);         // @throws ConfigException
-    void modifyFd(int fd, PollEventType... events);                  // @throws ConfigException
+    void addFd(int fd, PollEventFlag... events);                     // @throws ConfigException
+    void addFd(int fd, Object tag, PollEventFlag... events);         // @throws ConfigException
+    void modifyFd(int fd, PollEventFlag... events);                  // @throws ConfigException
     boolean removeFd(int fd);                                        // @throws ConfigException
 
     // --- timer registration ---
@@ -2533,18 +2489,8 @@ public final class Poller implements AutoCloseable {
 
     // --- poll ---
     int size();                                                      // @throws ConfigException
-    int pollCount(Duration timeout);                                 // @throws ConfigException
-    boolean pollAny(Duration timeout);                               // @throws ConfigException
-    List<PollEvent> poll(Duration timeout);                          // @throws ConfigException
-
-    // --- ready accessors ---
-    int readyCount();
-    Socket readySocket(int index);
-    Timer readyTimer(int index);
-    Object readyTag(int index);
-    int readyFd(int index);
-    EnumSet<PollEventType> readyEvents(int index);
-    EnumSet<PollEventType> readyRevents(int index);
+    @Nullable PollEvent wait(Duration timeout);                      // @throws RecvException
+    List<PollEvent> waitAll(int maxEvents, Duration timeout);         // @throws RecvException
 
     void clear();                                                    // @throws ConfigException
     void close();                                                    // @throws CloseException
@@ -2553,25 +2499,25 @@ public final class Poller implements AutoCloseable {
 
 ### PollEvent
 
-Immutable readiness result returned by `Poller.poll(...)`.
+Immutable readiness result returned by `Poller.wait(...)` and
+`Poller.waitAll(...)`.
 
 ```java
-public record PollEvent(Socket socket,
-                        EnumSet<PollEventType> revents,
-                        int fd,
+public record PollEvent(@Nullable Socket socket,
+                        @Nullable Integer fd,
+                        @Nullable Timer timer,
                         Object tag,
-                        EnumSet<PollEventType> events) {
-    public PollEvent(Socket socket, EnumSet<PollEventType> revents);
-}
+                        EnumSet<PollEventFlag> events,
+                        EnumSet<PollEventFlag> revents) {}
 ```
 
-For socket registrations, `socket()` is present and `fd()` is `0`. For file
-descriptor registrations, `fd()` carries the registered descriptor and
-`socket()` is `null`. Timer readiness does not carry the `Timer` object in
-`PollEvent`; use `readyTimer(index)` when the timer handle is needed. `tag()`
-is the optional user object supplied at registration time. `revents()` is the
-ready event set reported by the core; `events()` is the originally requested
-event set when the binding has it.
+For socket registrations, `socket()` is present and `fd()` / `timer()` are
+`null`. For file descriptor registrations, `fd()` carries the registered
+descriptor and `socket()` / `timer()` are `null`. For timer registrations,
+`timer()` carries the registered timer. `tag()` is the optional user object
+supplied at registration time.
+`revents()` is the ready event set reported by the core; `events()` is the
+originally requested event set when the binding has it.
 
 ---
 

@@ -978,6 +978,7 @@ set(spot-sources
     src/services/spot/spot_subject_publish.cpp
     src/services/spot/spot_subject_query.cpp
     src/services/spot/spot_node_access.cpp
+    src/services/spot/spot_node_child_access.cpp
     src/services/spot/spot_node.cpp
     src/services/spot/spot_node_control.cpp
     src/services/spot/spot_node_control_peer.cpp
@@ -999,6 +1000,7 @@ set(spot-sources
     src/services/spot/spot_runtime_attachment.cpp
     src/services/spot/spot_runtime_execution.cpp
     src/services/spot/spot_runtime_shutdown.cpp
+    src/services/spot/spot_sub_node_access.cpp
     src/services/spot/spot_sub_lifecycle.cpp
     src/services/spot/spot_sub_option.cpp
     src/services/spot/spot_sub_recv.cpp

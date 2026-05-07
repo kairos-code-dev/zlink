@@ -116,8 +116,8 @@ pub struct ActorJoinInfo {
     pub target_spot_rid: RoutingId,
     pub join_epoch: u64,
     pub flags: u32,
-    // non-public: opaque reply token
 }
+pub struct ActorJoinRequest { pub info: ActorJoinInfo, pub message: Message }
 impl SpotNode {
     pub fn remote_actor_ref(target_node_rid: &RoutingId, actor_id: &str)
         -> Result<ActorRef, ConfigError>;
@@ -131,6 +131,9 @@ Actor send. `Discovery` exposes Actor route resolve.
 
 `generation == 0` is an unchecked remote ref and is not invalid. Actor handles
 are represented by `ActorRef`; public `void *actor` handles are not exposed.
+Actor IDs are non-empty UTF-8 strings up to 255 bytes and must not contain NUL.
+Leaving a Spot does not drain unread Actor messages. Remote actor creation is
+create-or-get: the admission callback runs only when the target actor is missing.
 Every Actor belongs to exactly one Spot. The Entry Spot is the default Spot
 assigned immediately after Actor creation and cannot be removed by the
 application. Joining a user Spot requires the Actor to have a bound STREAM
@@ -336,6 +339,8 @@ impl PairSocket {
     pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
     /// # Errors: ConnectError
     pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect_rid(&self, rid: &RoutingId) -> Result<(), ConnectError>;
     /// # Errors: SubmitError
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
@@ -366,6 +371,8 @@ impl PubSocket {
     pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
     /// # Errors: ConnectError
     pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect_rid(&self, rid: &RoutingId) -> Result<(), ConnectError>;
     /// # Errors: SubmitError
     pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
@@ -394,6 +401,8 @@ impl SubSocket {
     pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
     /// # Errors: ConnectError
     pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect_rid(&self, rid: &RoutingId) -> Result<(), ConnectError>;
     /// # Errors: ConfigError
     pub fn set_subscription(&self, filter: &str) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
@@ -423,6 +432,8 @@ impl DealerSocket {
     pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
     /// # Errors: ConnectError
     pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect_rid(&self, rid: &RoutingId) -> Result<(), ConnectError>;
     /// # Errors: ConfigError
     pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
@@ -478,6 +489,8 @@ impl RouterSocket {
     pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
     /// # Errors: ConnectError
     pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect_rid(&self, rid: &RoutingId) -> Result<(), ConnectError>;
     /// # Errors: ConfigError
     pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
@@ -581,6 +594,8 @@ impl XPubSocket {
     pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
     /// # Errors: ConnectError
     pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect_rid(&self, rid: &RoutingId) -> Result<(), ConnectError>;
     /// # Errors: SubmitError
     pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
@@ -611,6 +626,8 @@ impl XSubSocket {
     pub fn connect(&self, addr: &str) -> Result<(), ConnectError>;
     /// # Errors: ConnectError
     pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
+    /// # Errors: ConnectError
+    pub fn disconnect_rid(&self, rid: &RoutingId) -> Result<(), ConnectError>;
     /// # Errors: ConfigError
     pub fn set_subscription(&self, filter: &str) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
@@ -638,6 +655,8 @@ impl StreamSocket {
     pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn routing_id(&self) -> Result<RoutingId, ConfigError>;
+    /// # Errors: ConnectError
+    pub fn disconnect_rid(&self, rid: &RoutingId) -> Result<(), ConnectError>;
     /// # Errors: SubmitError
     pub fn send(&self, target: &RoutingId, parts: impl IntoMultipart)
         -> Result<(), SubmitError>;
@@ -700,6 +719,38 @@ impl SendHandle {
 }
 ```
 
+### Socket Option Facades
+
+All socket option facade getters and setters return `ConfigError` on failure.
+Peer weight is only exposed by `DealerSocketOptions` and
+`RouterSocketOptions`; it is not part of `CommonSocketOptions`.
+
+```rust
+pub enum RidDuplicatePolicy {
+    Reject,
+    Handover,
+}
+
+impl<'a, S> CommonSocketOptions<'a, S> {
+    pub fn rid_duplicate_policy(&self) -> Result<RidDuplicatePolicy, ConfigError>;
+    pub fn set_rid_duplicate_policy(&self, value: RidDuplicatePolicy)
+        -> Result<(), ConfigError>;
+    pub fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError>;
+    pub fn set_auto_hwm_msg_unit_bytes(&self, value: i32)
+        -> Result<(), ConfigError>;
+}
+
+impl<'a> DealerSocketOptions<'a> {
+    pub fn weight(&self) -> Result<u32, ConfigError>;
+    pub fn set_weight(&self, value: u32) -> Result<(), ConfigError>;
+}
+
+impl<'a> RouterSocketOptions<'a> {
+    pub fn weight(&self) -> Result<u32, ConfigError>;
+    pub fn set_weight(&self, value: u32) -> Result<(), ConfigError>;
+}
+```
+
 ---
 
 ## Message / Domain
@@ -739,56 +790,10 @@ impl Message {
 
 ### Codec Extensions
 
-The binding exposes separate codec extension crates. The Cargo crate names and
-Rust import crate names are fixed to:
-
-- crate `zlink-codec-protobuf` -> `zlink_codec_protobuf`
-- crate `zlink-codec-json` -> `zlink_codec_json`
-- crate `zlink-codec-messagepack` -> `zlink_codec_messagepack`
-
-These are separate public crates layered on top of the core `zlink` crate.
-They must not become required dependencies of the core crate.
-
-JSON codec baseline: `serde_json`.
-MessagePack codec baseline: `rmp-serde`.
-
-```rust
-// zlink_codec_protobuf
-pub fn decode<T>(message: &zlink::Message) -> Result<T, Error>
-where
-    T: prost::Message + Default;
-
-pub fn encode<T>(value: &T) -> Result<zlink::Message, Error>
-where
-    T: prost::Message;
-```
-
-```rust
-// zlink_codec_json
-pub fn decode<T>(message: &zlink::Message) -> Result<T, Error>
-where
-    T: serde::de::DeserializeOwned;
-
-pub fn encode<T>(value: &T) -> Result<zlink::Message, Error>
-where
-    T: serde::Serialize;
-```
-
-```rust
-// zlink_codec_messagepack
-pub fn decode<T>(message: &zlink::Message) -> Result<T, Error>
-where
-    T: serde::de::DeserializeOwned;
-
-pub fn encode<T>(value: &T) -> Result<zlink::Message, Error>
-where
-    T: serde::Serialize;
-```
-Each codec crate defines its own `Error` type. The helper reads from
-`Message::as_bytes()` and creates new frames with `Message::from_bytes()`.
-
-These extension crates are optional. The core `zlink` crate must not depend on
-them.
+Codec adapters are separate public extension crates layered on top of the core
+crate. Their contract lives in
+[Rust Codec Extension Specification](codec.md). The core `zlink` crate does
+not expose codec entrypoints or require codec dependencies.
 
 ### RoutingId
 
@@ -1676,6 +1681,13 @@ impl Spot {
     /// # Errors: SubmitError
     pub fn send_channel_with_flags(&self, channel_name: &str,
         parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn send_to_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
+        parts: impl IntoMultipart) -> Result<(), SubmitError>;
+    /// # Errors: SubmitError
+    pub fn send_to_spot_with_flags(&self, dest_node_rid: RoutingId,
+        dest_spot_rid: RoutingId, parts: impl IntoMultipart,
+        flags: SendFlags) -> Result<(), SubmitError>;
     /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
     pub fn request_channel_callback<F>(&self, channel_name: &str,
         parts: impl IntoMultipart, callback: F,
@@ -1754,22 +1766,22 @@ impl Spot {
     pub fn recv_routed_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError>;
     /// # Errors: RecvError
     pub fn recv_actor_join_with_flags(&self, flags: RecvFlags)
-        -> Result<Option<(ActorJoinInfo, Message)>, RecvError>;
+        -> Result<Option<ActorJoinRequest>, RecvError>;
     /// # Errors: RecvError
-    pub fn recv_actor_join(&self) -> Result<(ActorJoinInfo, Message), RecvError>;
+    pub fn recv_actor_join(&self) -> Result<ActorJoinRequest, RecvError>;
     /// # Errors: SubmitError
-    pub fn reply_actor_join(&self, info: &ActorJoinInfo, accepted: bool,
+    pub fn reply_actor_join(&self, request: &ActorJoinRequest, accepted: bool,
         message: Message) -> Result<(), SubmitError>;
     /// # Errors: ConfigError
     pub fn actors_snapshot(&self) -> Result<Vec<ActorRef>, ConfigError>;
     /// # Errors: HandlerError
     pub fn on_routed_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(RoutingId, RoutingId, u64, Vec<Message>) + Send + 'static;
+        where F: Fn(Received) + Send + 'static;
     /// # Errors: HandlerError
     pub fn on_dispatch_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(SpotDispatchInfo) + Send + 'static;
+        where F: for<'a> Fn(SpotDispatchInfo<'a>) + Send + 'static;
     /// # Errors: ConfigError
-    pub fn drain_channel_reply_from(&self, subject: *mut c_void)
+    pub fn drain_channel_reply_from(&self, dealer: &DealerSocket)
         -> Result<(), ConfigError>;
 
     // --- identity / routing ---
@@ -1795,36 +1807,35 @@ pub enum SpotDispatchEvent {
     ActorJoinReadable,
 }
 
-pub enum SpotDispatchSubjectKind {
+pub enum SpotDispatchSubject<'a> {
     Spot,
-    Timer,
-    ChannelDealer,
-    Actor,
+    Timer(&'a Timer),
+    ChannelDealer(&'a DealerSocket),
+    Actor(ActorRef),
 }
 
-pub struct SpotDispatchInfo {
+pub struct SpotDispatchInfo<'a> {
     pub event: SpotDispatchEvent,
-    pub subject_kind: SpotDispatchSubjectKind,
-    pub subject: *mut c_void,
-    pub actor: Option<ActorRef>,
+    pub subject: SpotDispatchSubject<'a>,
     // non-public: owner SpotNode handle for Actor recv
 }
 
-impl SpotDispatchInfo {
+impl<'a> SpotDispatchInfo<'a> {
     /// # Errors: RecvError
     pub fn recv_actor_part_with_flags(&self, flags: RecvFlags)
         -> Result<Option<(ActorRecvInfo, Message, bool)>, RecvError>;
 }
 ```
 
-`ChannelReplyReadable` identifies the attached DEALER source through
-`SpotDispatchInfo.subject_kind` and `SpotDispatchInfo.subject`. Read the
-logical channel name from that attached DEALER with
-`DealerSocket::channel_name()`.
+`ChannelReplyReadable` carries `SpotDispatchSubject::ChannelDealer(dealer)`.
+Read the logical channel name from that attached DEALER with
+`DealerSocket::channel_name()` and pass the dealer reference to
+`drain_channel_reply_from(...)`.
 
-For `ActorReadable`, `subject` is null and `actor` contains a callback-lifetime
-copy of the readable `ActorRef`. The copied ref may be retained by user code;
-the dispatch subject pointer itself is not part of the public Actor contract.
+For `ActorReadable`, `SpotDispatchSubject::Actor(actor)` contains a copied
+`ActorRef`. The copied ref may be retained by user code; timer and dealer
+references are callback-lifetime only. No native Actor pointer is part of the
+public contract.
 
 For `SubscribeReadable` and `RoutedReadable`, callers must keep draining
 `subscribe(...)` / `recv_routed(...)` until the binding reports no data /
@@ -1858,7 +1869,7 @@ Primary entry types used in the default service flow:
 ```rust
 pub struct MemberPeerEntry {
     pub auto_connect_type: AutoConnectType,
-    pub service_role: u16,
+    pub service_role: ServiceRole,
     pub channel_name: String,
     pub endpoint: String,
     pub routing_id: RoutingId,
@@ -1867,6 +1878,7 @@ pub struct MemberPeerEntry {
 }
 
 pub struct RegistryTopologyEntry {
+    pub auto_connect_type: AutoConnectType,
     pub routing_id: RoutingId,
     pub service_kind: ServiceKind,
     pub service_role: ServiceRole,
@@ -1901,7 +1913,7 @@ Advanced / Diagnostic entry types and filters:
 
 ```rust
 pub struct RegistryServiceSummaryEntry {
-    pub service_kind: ServiceKind,
+    pub auto_connect_type: AutoConnectType,
     pub service_role: ServiceRole,
     pub channel_name: String,
     pub total_count: u32,
@@ -1938,22 +1950,39 @@ pub struct SpotNodePeerEntry {
 pub struct SpotNodeSubjectEntry {
     pub role: SpotRole,
     pub subject: String,
-    pub subject_kind: u32,
+    pub subject_kind: SubjectKind,
     pub ready_peer_count: u32,
     pub active_peer_count: u32,
     pub last_changed_ms: u64,
 }
 
+pub struct SpotNodeSocketSnapshotFilter {
+    pub owner: Option<SpotNodeSocketOwner>,
+    pub socket_type: Option<SocketType>,
+    pub socket_name: Option<String>,
+}
+
+pub struct SpotNodeSocketSnapshotEntry {
+    pub owner: SpotNodeSocketOwner,
+    pub owner_id: u64,
+    pub owner_name: String,
+    pub socket_name: String,
+    pub socket_type: SocketType,
+    pub auto_hwm_visible: bool,
+    pub snapshot: MonitorSnapshot,
+}
+
 pub struct RegistryServiceSummaryFilter {
-    pub service_kind: Option<ServiceKind>,
+    pub auto_connect_type: Option<AutoConnectType>,
     pub service_role: Option<ServiceRole>,
-    pub service_name: Option<String>,
+    pub channel_name: Option<String>,
 }
 
 pub struct RegistryTopologyFilter {
+    pub auto_connect_type: Option<AutoConnectType>,
     pub service_kind: Option<ServiceKind>,
     pub service_role: Option<ServiceRole>,
-    pub service_name: Option<String>,
+    pub channel_name: Option<String>,
     pub routing_id: Option<RoutingId>,
     pub state: Option<TopologyState>,
     pub source: Option<TopologySource>,
@@ -1968,7 +1997,7 @@ pub struct SpotNodePeerFilter {
 pub struct SpotNodeSubjectFilter {
     pub role: Option<SpotRole>,
     pub subject: Option<String>,
-    pub subject_kind: Option<u32>,
+    pub subject_kind: Option<SubjectKind>,
 }
 
 ```
@@ -2003,34 +2032,36 @@ impl Timer {
 ## Poller
 
 ```rust
-impl Poller {
+pub struct Poller<T = ()> { /* ... */ }
+
+impl<T: Clone + Send + Sync + 'static> Poller<T> {
     /// # Errors: ConfigError
     pub fn new() -> Result<Self, ConfigError>;
     /// # Errors: ConfigError
     pub fn add_socket<'a>(&self, socket: impl Into<PollTarget<'a>>,
-        events: i16) -> Result<(), ConfigError>;
+        events: PollEventFlags, user_data: Option<T>) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn modify_socket<'a>(&self, socket: impl Into<PollTarget<'a>>,
-        events: i16) -> Result<(), ConfigError>;
+        events: PollEventFlags) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn remove_socket<'a>(&self, socket: impl Into<PollTarget<'a>>)
         -> Result<(), ConfigError>;
     /// # Errors: ConfigError
-    pub fn add_fd(&self, fd: RawFd, events: i16, user_data: Option<*mut c_void>)
+    pub fn add_fd(&self, fd: RawFd, events: PollEventFlags, user_data: Option<T>)
         -> Result<(), ConfigError>;
     /// # Errors: ConfigError
-    pub fn modify_fd(&self, fd: RawFd, events: i16) -> Result<(), ConfigError>;
+    pub fn modify_fd(&self, fd: RawFd, events: PollEventFlags) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn remove_fd(&self, fd: RawFd) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
-    pub fn add_timer(&self, timer: &Timer, user_data: Option<*mut c_void>)
+    pub fn add_timer(&self, timer: &Timer, user_data: Option<T>)
         -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn remove_timer(&self, timer: &Timer) -> Result<(), ConfigError>;
     /// # Errors: RecvError
-    pub fn wait(&self, timeout_ms: i64) -> Result<Option<PollEvent>, RecvError>;
+    pub fn wait(&self, timeout_ms: i64) -> Result<Option<PollEvent<T>>, RecvError>;
     /// # Errors: RecvError
-    pub fn wait_all(&self, timeout_ms: i64) -> Result<Vec<PollEvent>, RecvError>;
+    pub fn wait_all(&self, timeout_ms: i64) -> Result<Vec<PollEvent<T>>, RecvError>;
     /// Number of registered pollable items.
     /// Maps to `zlink_poller_size`.
     pub fn size(&self) -> Result<usize, ConfigError>;
@@ -2045,18 +2076,34 @@ pub fn poll(items: &mut [PollItem], timeout_ms: i64) -> Result<i32, RecvError>;
 // a Spot-aware result carrying owner Spot, dispatch event kind, and drain
 // subject together.
 
-pub struct PollEvent {
-    // ...
+pub struct PollEvent<T = ()> {
+    pub source_kind: PollSourceKind,
+    pub events: PollEventFlags,
+    pub user_data: Option<T>,
+    // socket, fd, and timer accessors are typed and source-specific.
 }
 
-impl PollEvent {
+impl<T> PollEvent<T> {
     pub fn is_readable(&self) -> bool;
     pub fn is_writable(&self) -> bool;
 }
 
-pub const POLLIN: i16;
-pub const POLLOUT: i16;
+bitflags! {
+    pub struct PollEventFlags: i16 {
+        const IN = 0x0001;
+        const OUT = 0x0002;
+    }
+}
+
+pub enum PollSourceKind {
+    Socket,
+    Fd,
+    Timer,
+}
 ```
+
+`PollEventFlags::OUT` is send-recovery readiness shared with
+`on_send_ready(...)`, not a general transport-writable bit.
 
 ---
 

@@ -35,6 +35,7 @@ class spot_pub_t;
 class spot_sub_t;
 class spot_data_plane_t;
 class spot_internal_receiver_t;
+struct spot_node_child_access_t;
 struct spot_data_plane_protocol_t;
 struct spot_runtime_t;
 struct spot_node_access_t;
@@ -181,9 +182,8 @@ class spot_node_t : public discovery_observer_t
                                          zlink_recv_flags_t flags_);
 
   private:
-    friend class spot_pub_t;
-    friend class spot_sub_t;
     friend class spot_data_plane_t;
+    friend struct spot_node_child_access_t;
     friend struct spot_node_access_t;
 
     typedef spot_node_summary_state_t summary_state_t;

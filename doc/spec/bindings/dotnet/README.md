@@ -154,7 +154,9 @@ receive/reply and joined Actor snapshots. `StreamSocket` exposes Actor
 bind/unbind and bound Actor send. `Discovery` exposes Actor route resolve.
 
 `Generation == 0` is an unchecked remote ref and is not invalid. The public
-contract does not expose raw native Actor pointers.
+contract does not expose raw native Actor pointers. `ActorJoinRequest` carries
+only public join metadata and the join message; the native reply context stays
+inside the binding and is consumed by `Spot.ReplyActorJoin(...)`.
 
 ## Out Of Scope
 
@@ -181,9 +183,9 @@ public sealed class Context : IDisposable, IAsyncDisposable
     void Shutdown();
     /// <exception cref="ZlinkConfigException"/>
     void RecalculateAutoHwm();
-    /// <exception cref="ZlinkConfigException"/>
+    /// <exception cref="ZlinkCloseException"/>
     void Dispose();
-    /// <exception cref="ZlinkConfigException"/>
+    /// <exception cref="ZlinkCloseException"/>
     ValueTask DisposeAsync();
 }
 ```
@@ -434,7 +436,6 @@ public sealed class RouterSocketOptions
 public sealed class StreamSocketOptions
 {
     bool Notify { get; set; }
-    RoutingId ConnectRoutingId { get; set; }
 }
 
 public sealed class PubSocketOptions
@@ -444,10 +445,10 @@ public sealed class PubSocketOptions
     bool Manual { get; set; }
     bool ManualLastValue { get; set; }
     bool NoDrop { get; set; }
-    string WelcomeMessage { get; set; }
+    Message WelcomeMessage { get; set; }
     int TopicsCount { get; }
-    void ApproveSubscribe(string topicOrPattern);
-    void RejectSubscribe(string topicOrPattern);
+    void ApproveSubscribe(RoutingId routingId);
+    void RejectSubscribe(RoutingId routingId);
 }
 
 public sealed class SubSocketOptions
@@ -477,12 +478,6 @@ public enum SocketType
 public sealed class SpotNodeOptions
 {
     SpotNodeMode Mode { get; init; }
-    AutoHwmProfile RouterHwmProfile { get; set; }
-    int RouterHighWaterMark { get; set; }
-    AutoHwmProfile PubSubHwmProfile { get; set; }
-    int PubSubHighWaterMark { get; set; }
-    int DispatchWorkersMin { get; set; }
-    int DispatchWorkersMax { get; set; }
 }
 
 public enum SpotNodeMode
@@ -492,17 +487,11 @@ public enum SpotNodeMode
     All = 3
 }
 
-public sealed class SpotOptions
-{
-    TimeSpan? RequestTimeout { get; set; }
-}
 ```
 
-`SpotNodeOptions` is both the constructor configuration object and the live
-option facade returned by `SpotNode.Options`. `Mode` is creation-only because it
-selects the native node shape. The HWM properties are live after the options
-object is attached to a `SpotNode`: setting them updates the managed value and
-applies the matching native spot-node option.
+`SpotNodeOptions` is constructor configuration only. `Mode` selects the native
+node shape. Live HWM and dispatch worker settings are exposed directly on
+`SpotNode` so callers do not need to route through a shallow option facade.
 `DispatchWorkersMin` and `DispatchWorkersMax` configure the `SpotNode`-owned
 application callback worker pool. They do not configure context IO threads or
 the SPOT data-plane thread. `DispatchWorkersMin` must be at least `1`, and
@@ -602,12 +591,12 @@ public sealed class DealerSocket : MessageSocketBase
     // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool Request(Message part,
-                 Action<RequestResult, IReadOnlyList<Message>> callback,
+                 RequestCallback callback,
                  SendFlags flags = SendFlags.None,
                  TimeSpan? timeout = null);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool Request(IReadOnlyList<Message> parts,
-                 Action<RequestResult, IReadOnlyList<Message>> callback,
+                 RequestCallback callback,
                  SendFlags flags = SendFlags.None,
                  TimeSpan? timeout = null);
 }
@@ -655,12 +644,12 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
     // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool Request(RoutingId peerRid, Message part,
-                 Action<RequestResult, IReadOnlyList<Message>> callback,
+                 RequestCallback callback,
                  SendFlags flags = SendFlags.None,
                  TimeSpan? timeout = null);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool Request(RoutingId peerRid, IReadOnlyList<Message> parts,
-                 Action<RequestResult, IReadOnlyList<Message>> callback,
+                 RequestCallback callback,
                  SendFlags flags = SendFlags.None,
                  TimeSpan? timeout = null);
 
@@ -699,13 +688,13 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message message,
-                       Action<RequestResult, IReadOnlyList<Message>> callback,
+                       RequestCallback callback,
                        SendFlags flags = SendFlags.None,
                        TimeSpan timeout = default);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        IReadOnlyList<Message> parts,
-                       Action<RequestResult, IReadOnlyList<Message>> callback,
+                       RequestCallback callback,
                        SendFlags flags = SendFlags.None,
                        TimeSpan timeout = default);
 
@@ -876,70 +865,19 @@ public sealed class Message : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     Message Copy();
 
-    /// <exception cref="ZlinkCloseException"/>
+    /// <exception cref="ZlinkConfigException"/>
     void Dispose();
-    /// <exception cref="ZlinkCloseException"/>
+    /// <exception cref="ZlinkConfigException"/>
     ValueTask DisposeAsync();
 }
 ```
 
 ### Codec Extensions
 
-The binding exposes separate codec extension libraries. Package, namespace, and
-codec baseline are defined in one table so a codec module has a single
-metadata row.
-
-| Package | Namespace | Baseline |
-|---------|-----------|----------|
-| `Zlink.Codecs.Protobuf` | `Zlink.Codecs.Protobuf` | Google.Protobuf |
-| `Zlink.Codecs.Json` | `Zlink.Codecs.Json` | System.Text.Json |
-| `Zlink.Codecs.MessagePack` | `Zlink.Codecs.MessagePack` | MessagePack for C# |
-
-These extensions are separate public modules layered on top of the core
-binding. They must not be merged into the `Zlink` core assembly.
-
-```csharp
-namespace Zlink.Codecs.Protobuf;
-
-public static class ProtobufMessageExtensions
-{
-    T FromProto<T>(this Message message)
-        where T : Google.Protobuf.IMessage<T>, new();
-
-    Message ToProto<T>(this T value)
-        where T : Google.Protobuf.IMessage<T>;
-}
-```
-
-```csharp
-namespace Zlink.Codecs.Json;
-
-public static class JsonMessageExtensions
-{
-    T FromJson<T>(
-        this Message message,
-        System.Text.Json.JsonSerializerOptions? options = null);
-
-    Message ToJson<T>(
-        this T value,
-        System.Text.Json.JsonSerializerOptions? options = null);
-}
-```
-
-```csharp
-namespace Zlink.Codecs.MessagePack;
-
-public static class MessagePackMessageExtensions
-{
-    T FromMsgPack<T>(
-        this Message message,
-        MessagePack.MessagePackSerializerOptions? options = null);
-
-    Message ToMsgPack<T>(
-        this T value,
-        MessagePack.MessagePackSerializerOptions? options = null);
-}
-```
+Codec adapters are separate public extension libraries layered on top of the
+core binding. Their contract lives in
+[.NET Codec Extension Specification](codec.md). The core `Zlink` assembly does
+not expose codec entrypoints or require codec dependencies.
 
 ### RoutingId
 
@@ -1145,8 +1083,11 @@ public sealed class ZlinkHandlerException : ZlinkException
 
 ### ZlinkCloseException
 
-Thrown by lifecycle operations (`Close`, `Dispose`, `DisposeAsync`,
-`Shutdown`, `DetachStream`). Wraps a `ZlinkCloseException.ErrorCode`.
+Thrown by socket, context, monitor, poller, timer, registry, discovery, Spot,
+and SpotNode lifecycle operations (`Close`, `Dispose`, `DisposeAsync`,
+`Shutdown`, `DetachStream`). Message-frame lifecycle helpers use
+`ZlinkConfigException` because `zlink_msg_close(...)` returns the config result
+domain. Wraps a `ZlinkCloseException.ErrorCode`.
 
 ```csharp
 public sealed class ZlinkCloseException : ZlinkException
@@ -1270,6 +1211,15 @@ public enum RequestResult
 }
 ```
 
+### RequestCallback
+
+Callback type used by callback-submit request methods.
+
+```csharp
+public delegate void RequestCallback(RequestResult result,
+                                     IReadOnlyList<Message> parts);
+```
+
 ### Received
 
 Aggregates one recv result with optional routing id and message parts.
@@ -1382,13 +1332,13 @@ public sealed record ActorJoinInfo(ActorRef SourceActor,
                                    RoutingId? TargetSpotRid,
                                    ulong JoinEpoch,
                                    uint Flags);
-    public sealed record ActorPart(ActorRecvInfo Info, Message Message,
-                                   bool More);
-    public sealed class ActorJoinRequest
-    {
-        ActorJoinInfo Info { get; }
-        Message Message { get; }
-    }
+public sealed record ActorPart(ActorRecvInfo Info, Message Message,
+                               bool More);
+public sealed class ActorJoinRequest
+{
+    ActorJoinInfo Info { get; }
+    Message Message { get; }
+}
 public sealed record SpotNodeSpotEntry(RoutingId? SpotRid,
                                        bool DispatchHandlerAttached,
                                        uint JoinedActorCount,
@@ -1414,7 +1364,7 @@ public sealed class Actor : IDisposable, IAsyncDisposable
                                       CancellationToken ct = default);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool Join(Spot spot, Message message,
-              Action<RequestResult, IReadOnlyList<Message>> callback,
+              RequestCallback callback,
               SendFlags flags = SendFlags.None,
               TimeSpan? timeout = null);
     /// <exception cref="ZlinkRequestException"/>
@@ -1438,6 +1388,9 @@ Actor ids are non-empty UTF-8 strings up to 255 bytes and must not contain
 NUL. `Generation == 0` is an unchecked remote ref, not an invalid ref. One
 Actor can join only one Spot at a time. `Leave` does not drop unread Actor
 parts. There is no public per-Actor queue limit option.
+`ActorJoinRequest` keeps the reply context opaque: callers can inspect
+`Info` and `Message`, but `Spot.ReplyActorJoin(...)` receives the request
+object so the binding can use the native context without exposing it.
 `CreateRemoteActor(...)` is create-or-get: the remote admission handler is
 called only when the target Actor does not already exist. Discovery Actor
 routes become active when a STREAM session bind succeeds, not when an Actor is
@@ -1454,7 +1407,7 @@ public enum SpotDispatchEvent
     SubscribeReadable    = 1,  // topic message ready — drain via Spot.Subscribe()
     RoutedReadable       = 2,  // routed message ready — drain via Spot.RecvRouted()
     TimerReadable        = 3,  // timer fired — drain via info.Timer.Recv()
-    ChannelReplyReadable = 4,  // channel reply ready — drain via info.DrainChannelReply()
+    ChannelReplyReadable = 4,  // channel reply progress ready
     ActorReadable        = 5,  // actor part ready — drain via SpotDispatchInfo.RecvActorPart()
     ActorJoinReadable    = 6   // actor join request ready — drain via Spot.RecvActorJoin()
 }
@@ -1470,7 +1423,7 @@ public enum SpotDispatchSubjectKind
 {
     Spot          = 1,   // event source is the Spot itself
     Timer         = 2,   // event source is available through SpotDispatchInfo.Timer
-    ChannelDealer = 3,   // channel reply source is drained through DrainChannelReply()
+    ChannelDealer = 3,   // internal channel reply source
     Actor         = 4    // actor parts are available through ActorParts / RecvActorPart()
 }
 ```
@@ -1488,16 +1441,14 @@ public sealed class SpotDispatchInfo
     Timer? Timer { get; }
     IReadOnlyList<ActorPart> ActorParts { get; }
     ActorPart? RecvActorPart();
-    /// <exception cref="ZlinkConfigException"/>
-    void DrainChannelReply();
 }
 ```
 
 The native dispatch subject is callback-lifetime state owned by the binding
 and is not exposed as a raw pointer. For `TimerReadable`, `Timer` is the timer
-to drain. For `ChannelReplyReadable`, `DrainChannelReply()` drains pending
-channel reply completions from the attached dealer identified by the dispatch
-event.
+to drain. For `ChannelReplyReadable`, request futures and callbacks progress
+their replies inside the binding; the public API does not expose the native
+channel dealer subject.
 
 `SubscribeReadable` and `RoutedReadable` are readiness events. Callers must
 drain `Spot.Subscribe(...)` or `Spot.RecvRouted(...)` until the binding
@@ -1783,8 +1734,6 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     SpotNode(Context context);
     SpotNode(Context context, SpotNodeOptions options);
 
-    SpotNodeOptions Options { get; }
-
     // --- identity / routing ---
     /// <summary>
     /// Logical address for the SpotNode. Maps to zlink_set_routing_id(node, ...)
@@ -1813,8 +1762,14 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     void AttachChannelDealerManual(string channelName, DealerSocket dealer);
     /// <exception cref="ZlinkConfigException"/>
     void AttachPubIngress(PubSocket pub);
-    /// <exception cref="ZlinkHandlerException"/>
-    void OnSendReady(Action handler);
+
+    // --- node options ---
+    AutoHwmProfile RouterHwmProfile { get; set; }
+    int RouterHighWaterMark { get; set; }
+    AutoHwmProfile PubSubHwmProfile { get; set; }
+    int PubSubHighWaterMark { get; set; }
+    int DispatchWorkersMin { get; set; }
+    int DispatchWorkersMax { get; set; }
 
     /// <exception cref="ZlinkConfigException"/>
     void SetTlsServer(string certPath, string keyPath,
@@ -1859,16 +1814,9 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
                                         Message message,
                                         TimeSpan timeout = default);
     /// <exception cref="ZlinkRequestException"/>
-    void DestroyRemoteActor(ActorRef actor, TimeSpan timeout = default);
+    void DestroyActor(ActorRef actor, TimeSpan timeout = default);
     /// <exception cref="ZlinkHandlerException"/>
     void OnActorAdmission(ActorAdmissionHandler handler);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed.</exception>
-    Task<IReadOnlyList<Message>> JoinActor(ActorRef actor,
-                                           RoutingId destSpotRid,
-                                           Message message,
-                                           TimeSpan timeout = default,
-                                           CancellationToken ct = default);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     /// <exception cref="ZlinkRequestException">Reply phase failed.</exception>
     Task<IReadOnlyList<Message>> JoinActor(ActorRef actor,
@@ -1878,14 +1826,9 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
                                            TimeSpan timeout = default,
                                            CancellationToken ct = default);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool JoinActor(ActorRef actor, RoutingId destSpotRid, Message message,
-                   Action<RequestResult, IReadOnlyList<Message>> callback,
-                   SendFlags flags = SendFlags.None,
-                   TimeSpan? timeout = null);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool JoinActor(ActorRef actor, RoutingId destNodeRid,
                    RoutingId destSpotRid, Message message,
-                   Action<RequestResult, IReadOnlyList<Message>> callback,
+                   RequestCallback callback,
                    SendFlags flags = SendFlags.None,
                    TimeSpan? timeout = null);
     /// <exception cref="ZlinkRequestException"/>
@@ -1918,7 +1861,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 {
     // Spot(SpotNode) is internal. Public callers use SpotNode factories.
 
-    SpotOptions Options { get; }
+    TimeSpan? RequestTimeout { get; set; }
 
     // --- identity / routing ---
     /// <summary>
@@ -1956,12 +1899,12 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                                                 CancellationToken ct = default);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool RequestChannel(string channelName, Message message,
-                        Action<RequestResult, IReadOnlyList<Message>> callback,
+                        RequestCallback callback,
                         SendFlags flags = SendFlags.None,
                         TimeSpan? timeout = null);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool RequestChannel(string channelName, IReadOnlyList<Message> parts,
-                        Action<RequestResult, IReadOnlyList<Message>> callback,
+                        RequestCallback callback,
                         SendFlags flags = SendFlags.None,
                         TimeSpan? timeout = null);
 
@@ -1995,13 +1938,13 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        Message message,
-                       Action<RequestResult, IReadOnlyList<Message>> callback,
+                       RequestCallback callback,
                        SendFlags flags = SendFlags.None,
                        TimeSpan? timeout = null);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                        IReadOnlyList<Message> parts,
-                       Action<RequestResult, IReadOnlyList<Message>> callback,
+                       RequestCallback callback,
                        SendFlags flags = SendFlags.None,
                        TimeSpan? timeout = null);
 
@@ -2029,13 +1972,13 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool RequestToRouter(RoutingId peerRid,
                          Message message,
-                         Action<RequestResult, IReadOnlyList<Message>> callback,
+                         RequestCallback callback,
                          SendFlags flags = SendFlags.None,
                          TimeSpan? timeout = null);
     /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
     bool RequestToRouter(RoutingId peerRid,
                          IReadOnlyList<Message> parts,
-                         Action<RequestResult, IReadOnlyList<Message>> callback,
+                         RequestCallback callback,
                          SendFlags flags = SendFlags.None,
                          TimeSpan? timeout = null);
 
@@ -2070,7 +2013,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// Maps to zlink_spot_dispatch_event_handler with zlink_spot_dispatch_info_t.
     /// </summary>
     /// <exception cref="ZlinkHandlerException"/>
-    void OnDispatchEvent(Action<Spot, SpotDispatchInfo> handler);
+    void OnDispatchEvent(Action<SpotDispatchInfo> handler);
 
     // --- actor join / snapshot ---
     /// <exception cref="ZlinkRecvException"/>
@@ -2583,7 +2526,6 @@ public static class Zlink
     static void Sleep(int seconds);
 
     /// Close all parts in a multipart message array.
-    /// <exception cref="ZlinkConfigException"/>
     static void MultipartClose(IReadOnlyList<Message> parts);
 }
 ```
@@ -2697,7 +2639,7 @@ updated in the same change.
 | Socket monitoring | `zlink_socket_monitor_open`, `zlink_socket_monitor_handler`, `zlink_socket_monitor_recv`, `zlink_monitor_snapshot`, `zlink_monitor_close`, `zlink_monitor_ignore_handler` | `SocketMonitor`, `MonitorEvent`, `MonitorSnapshot`, `SocketMonitor.IgnoreHandler` |
 | Registry and Discovery | `zlink_registry_*`, `zlink_discovery_*`, `zlink_registry_query_*` | `Registry`, `Discovery`, `RegistryQueryClient`, service entry/filter records |
 | SPOT node topology | `zlink_spot_node_new`, `zlink_spot_node_destroy`, `zlink_spot_node_bind`, peer connect/disconnect, discovery/channel attachments, publish-ingress attachment, entry spot, spot lookup, snapshots, `zlink_set_spot_node_option`, `zlink_get_spot_node_option` | `SpotNode`, `SpotNodeOptions`, attachment APIs including `AttachPubIngress`, snapshot/query APIs, `CreateSpot`, `EntrySpot`, `SpotLookup`, `DisconnectPeerRid` |
-| SPOT messaging | `zlink_spot_new`, `zlink_spot_destroy`, `zlink_spot_send_channel_part`, `zlink_spot_publish_part`, `zlink_spot_subscribe_part`, `zlink_spot_subscription_event_recv`, `zlink_spot_request_*_part`, `zlink_spot_send_spot_part`, `zlink_spot_reply_*_part`, `zlink_spot_recv_part`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_spot_channel_reply_progress_from`, `zlink_set_spot_option`, `zlink_get_spot_option` | `Spot`, `SpotOptions`, channel send/request, SPOT topic publish/subscribe, routed send/request/reply/recv, dispatch callbacks, channel reply drain |
+| SPOT messaging | `zlink_spot_new`, `zlink_spot_destroy`, `zlink_spot_send_channel_part`, `zlink_spot_publish_part`, `zlink_spot_subscribe_part`, `zlink_spot_subscription_event_recv`, `zlink_spot_request_*_part`, `zlink_spot_send_spot_part`, `zlink_spot_reply_*_part`, `zlink_spot_recv_part`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_spot_channel_reply_progress_from`, `zlink_set_spot_option`, `zlink_get_spot_option` | `Spot`, direct request-timeout property, channel send/request, SPOT topic publish/subscribe, routed send/request/reply/recv, dispatch callbacks, internal channel reply progress |
 | SPOT actor lifecycle | `zlink_spot_node_actor_*`, `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_remote_actor_get_ref`, `zlink_spot_actors_snapshot` | `Actor`, `ActorRef`, `ActorCreateResult`, join/leave/create/destroy/admission APIs, actor receive/send/bound-session APIs, actor snapshots |
 | Polling and timers | `zlink_poll`, `zlink_poller_*`, `zlink_timer_*`, `zlink_spot_timer_new` | `ZlinkPoll`, `Poller`, `PollEvent`, `Timer` |
 | Utilities | `zlink_proxy`, `zlink_proxy_steerable`, `zlink_multipart_close`, `zlink_sleep`, `zlink_stopwatch_*`, `zlink_thread_*`, `zlink_atomic_counter_*` | `Zlink.Proxy`, `Zlink.ProxySteerable`, `Zlink.MultipartClose`, `Zlink.Sleep`, `ZlinkStopwatch`, `ZlinkThread`, `AtomicCounter` |

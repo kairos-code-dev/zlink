@@ -134,6 +134,9 @@ func RemoteActorRef(targetNodeRID RoutingID, actorID string) (ActorRef, error)
 
 `Generation == 0` is an unchecked remote ref. Actor join requests and replies
 carry a single `Message` payload.
+Actor IDs are non-empty UTF-8 strings up to 255 bytes and must not contain NUL.
+Leaving a Spot does not drain unread Actor messages. Remote actor creation is
+create-or-get: the admission callback runs only when the target actor is missing.
 
 ## Core
 
@@ -240,10 +243,33 @@ Go nonblocking data-plane helpers follow this rule:
   currently available and a non-nil error for real recv failures.
 
 Peer weight is not a common-socket accessor. Bindings expose it only on the
-implemented weight-bearing handles (`RouterSocket` and `DealerSocket`) through their typed option/property surfaces.
+implemented weight-bearing handles (`RouterSocket` and `DealerSocket`) through
+their typed option/property surfaces.
+`RIDDuplicatePolicy` and `AutoHwmMsgUnitBytes` are common typed socket options.
 
 ```go
 // No common peer-weight accessor.
+type RIDDuplicatePolicy int
+const (
+    RIDDuplicateReject   RIDDuplicatePolicy = 0
+    RIDDuplicateHandover RIDDuplicatePolicy = 1
+)
+
+type CommonSocketOptions struct { /* typed facade over common socket options */ }
+
+func (o *CommonSocketOptions) SetRIDDuplicatePolicy(value RIDDuplicatePolicy) error
+func (o *CommonSocketOptions) RIDDuplicatePolicy() (RIDDuplicatePolicy, error)
+func (o *CommonSocketOptions) SetAutoHwmMsgUnitBytes(value int) error
+func (o *CommonSocketOptions) AutoHwmMsgUnitBytes() (int, error)
+
+func (s *PairSocket) CommonOptions() *CommonSocketOptions
+func (s *PubSocket) CommonOptions() *CommonSocketOptions
+func (s *SubSocket) CommonOptions() *CommonSocketOptions
+func (s *DealerSocket) CommonOptions() *CommonSocketOptions
+func (s *RouterSocket) CommonOptions() *CommonSocketOptions
+func (s *XPubSocket) CommonOptions() *CommonSocketOptions
+func (s *XSubSocket) CommonOptions() *CommonSocketOptions
+func (s *StreamSocket) CommonOptions() *CommonSocketOptions
 ```
 
 ### PairSocket
@@ -257,6 +283,8 @@ func (s *PairSocket) Unbind(endpoint string) error
 func (s *PairSocket) Connect(endpoint string) error
 // Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *PairSocket) Disconnect(endpoint string) error
+// DisconnectRID closes the peer selected by routing id. Returns *ConnectError on failure.
+func (s *PairSocket) DisconnectRID(rid RoutingID) error
 // Send submits parts on the socket. Returns (false, nil) only for temporary backpressure.
 func (s *PairSocket) Send(flags SendFlags, parts ...*Message) (bool, error)
 // Recv receives a message. Returns *RecvError on failure.
@@ -293,6 +321,8 @@ func (s *PubSocket) Unbind(endpoint string) error
 func (s *PubSocket) Connect(endpoint string) error
 // Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *PubSocket) Disconnect(endpoint string) error
+// DisconnectRID closes the peer selected by routing id. Returns *ConnectError on failure.
+func (s *PubSocket) DisconnectRID(rid RoutingID) error
 // Publish sends parts on the given topic. Returns (false, nil) only for temporary backpressure.
 func (s *PubSocket) Publish(topic string, flags SendFlags, parts ...*Message) (bool, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
@@ -323,6 +353,8 @@ func (s *SubSocket) Unbind(endpoint string) error
 func (s *SubSocket) Connect(endpoint string) error
 // Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *SubSocket) Disconnect(endpoint string) error
+// DisconnectRID closes the peer selected by routing id. Returns *ConnectError on failure.
+func (s *SubSocket) DisconnectRID(rid RoutingID) error
 // Subscription filter mutation returns *ConfigError on failure.
 func (s *SubSocket) SetSubscription(filter string) error
 func (s *SubSocket) UnsetSubscription(filter string) error
@@ -348,10 +380,14 @@ func (s *DealerSocket) Unbind(endpoint string) error
 func (s *DealerSocket) Connect(endpoint string) error
 // Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *DealerSocket) Disconnect(endpoint string) error
+// DisconnectRID closes the peer selected by routing id. Returns *ConnectError on failure.
+func (s *DealerSocket) DisconnectRID(rid RoutingID) error
 // RoutingID / probe configuration returns *ConfigError on failure.
 func (s *DealerSocket) SetRoutingID(id RoutingID) error
 func (s *DealerSocket) RoutingID() (RoutingID, error)
 func (s *DealerSocket) SetProbe(value bool) error
+func (s *DealerSocket) SetWeight(value int) error
+func (s *DealerSocket) Weight() (int, error)
 // ChannelName metadata is a fixed logical tag used by attached channel dealers.
 // It must be set before attach and becomes read-only after attach.
 func (s *DealerSocket) SetChannelName(value string) error
@@ -391,6 +427,8 @@ func (s *RouterSocket) Unbind(endpoint string) error
 func (s *RouterSocket) Connect(endpoint string) error
 // Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *RouterSocket) Disconnect(endpoint string) error
+// DisconnectRID closes the peer selected by routing id. Returns *ConnectError on failure.
+func (s *RouterSocket) DisconnectRID(rid RoutingID) error
 // RoutingID and router-specific flags return *ConfigError on failure.
 func (s *RouterSocket) SetRoutingID(id RoutingID) error
 func (s *RouterSocket) RoutingID() (RoutingID, error)
@@ -398,6 +436,8 @@ func (s *RouterSocket) SetMandatory(value bool) error
 func (s *RouterSocket) SetHandover(value bool) error
 func (s *RouterSocket) SetProbe(value bool) error
 func (s *RouterSocket) SetConnectRoutingID(id RoutingID) error
+func (s *RouterSocket) SetWeight(value int) error
+func (s *RouterSocket) Weight() (int, error)
 // SendTo submits parts to a specific peer. Returns (false, nil) only for temporary backpressure.
 func (s *RouterSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) (bool, error)
 // Recv receives a message. Returns *RecvError on failure.
@@ -459,6 +499,8 @@ func (s *XPubSocket) Unbind(endpoint string) error
 func (s *XPubSocket) Connect(endpoint string) error
 // Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *XPubSocket) Disconnect(endpoint string) error
+// DisconnectRID closes the peer selected by routing id. Returns *ConnectError on failure.
+func (s *XPubSocket) DisconnectRID(rid RoutingID) error
 // Publish sends parts on the given topic. Returns (false, nil) only for temporary backpressure.
 func (s *XPubSocket) Publish(topic string, flags SendFlags, parts ...*Message) (bool, error)
 // ReceiveSubscriptionEvent receives an XPub subscription event. Returns *RecvError on failure.
@@ -489,6 +531,8 @@ func (s *XSubSocket) Unbind(endpoint string) error
 func (s *XSubSocket) Connect(endpoint string) error
 // Disconnect closes the connection to endpoint. Returns *ConnectError on failure.
 func (s *XSubSocket) Disconnect(endpoint string) error
+// DisconnectRID closes the peer selected by routing id. Returns *ConnectError on failure.
+func (s *XSubSocket) DisconnectRID(rid RoutingID) error
 // Subscription filter mutation returns *ConfigError on failure.
 func (s *XSubSocket) SetSubscription(filter string) error
 func (s *XSubSocket) UnsetSubscription(filter string) error
@@ -511,6 +555,8 @@ func (s *StreamSocket) Unbind(endpoint string) error
 // RoutingID configuration returns *ConfigError on failure.
 func (s *StreamSocket) SetRoutingID(id RoutingID) error
 func (s *StreamSocket) RoutingID() (RoutingID, error)
+// DisconnectRID closes the peer selected by routing id. Returns *ConnectError on failure.
+func (s *StreamSocket) DisconnectRID(rid RoutingID) error
 // SendTo submits parts to a specific peer. Returns (false, nil) only for temporary backpressure.
 func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) (bool, error)
 // Two mutually-exclusive receive modes on the same StreamSocket:
@@ -575,47 +621,10 @@ func (m *Message) Close() error
 
 ### Codec Extensions
 
-The binding exposes separate codec extension modules. The public package paths
-and distribution module paths are fixed to:
-
-- `zlink/codec/proto`
-- `zlink/codec/json`
-- `zlink/codec/messagepack`
-
-These are separate public packages layered on top of the core `zlink`
-package. They must not be folded into the root package as required
-dependencies.
-
-JSON codec baseline: `encoding/json`.
-MessagePack codec baseline: `vmihailenco/msgpack/v5`.
-
-```go
-package proto
-
-func Parse[T google.golang.org/protobuf/proto.Message](
-    message *zlink.Message,
-) (T, error)
-
-func ToMessage(
-    value google.golang.org/protobuf/proto.Message,
-) (*zlink.Message, error)
-```
-
-```go
-package json
-
-func Parse[T any](message *zlink.Message) (T, error)
-func ParseInto(message *zlink.Message, out any) error
-func ToMessage(value any) (*zlink.Message, error)
-```
-
-```go
-package messagepack
-
-func Parse[T any](message *zlink.Message) (T, error)
-func ParseInto(message *zlink.Message, out any) error
-func ToMessage(value any) (*zlink.Message, error)
-```
+Codec adapters are separate public extension modules layered on top of the
+core package. Their contract lives in
+[Go Codec Extension Specification](codec.md). The root `zlink` package does
+not expose codec entrypoints or require codec dependencies.
 
 ### RoutingID
 
@@ -1075,6 +1084,8 @@ type MonitorSnapshot struct {
     AutoHwmEffectiveMessageBytes        uint64
     AutoHwmAppliedSndHwm                int32
     AutoHwmAppliedRcvHwm                int32
+    AutoHwmEffectiveSndBuf              int32
+    AutoHwmEffectiveRcvBuf              int32
     AutoHwmLastRecalcMs                 uint64
     AutoHwmLastRecalcReason             uint32
     AutoHwmSendBlockedRatioPPM          uint32
@@ -1294,25 +1305,26 @@ func (s *Spot) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, er
 // RecvActorJoin receives the next actor join request. Returns *RecvError on failure.
 func (s *Spot) RecvActorJoin(flags RecvFlags) (*ActorJoinRequest, error)
 // ReplyActorJoin replies to an actor join request. Returns *SubmitError on submit failure.
-func (s *Spot) ReplyActorJoin(info ActorJoinInfo, result ActorAdmissionResult,
+func (s *Spot) ReplyActorJoin(request *ActorJoinRequest, result ActorAdmissionResult,
     flags SendFlags, message *Message) (bool, error)
 // ActorsSnapshot lists actors currently joined to this Spot. Returns *ConfigError on failure.
 func (s *Spot) ActorsSnapshot() ([]ActorRef, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *Spot) OnSendReady(handler func()) error
-// Option setters return *ConfigError on failure.
-func (s *Spot) SetSendHWM(value int) error
-func (s *Spot) SetRecvHWM(value int) error
-func (s *Spot) SetLinger(value time.Duration) error
-func (s *Spot) SetRecvTimeout(value time.Duration) error
-func (s *Spot) SetSendTimeout(value time.Duration) error
-func (s *Spot) SetNoDrop(value bool) error
+// Request timeout option returns *ConfigError on failure.
+func (s *Spot) SetRequestTimeout(value time.Duration) error
+func (s *Spot) RequestTimeout() (time.Duration, error)
 // SetRoutingID sets the spot's logical address. Maps to
 // zlink_set_routing_id(spot, ...).
 func (s *Spot) SetRoutingID(rid RoutingID) error
 // RoutingID returns the spot's current logical address. Maps to
 // zlink_get_routing_id(spot, ...).
 func (s *Spot) RoutingID() (RoutingID, error)
+
+// --- routed send (spot → spot) ---
+// SendToSpot submits parts routed to a remote Spot.
+func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID,
+    flags SendFlags, parts ...*Message) (bool, error)
 
 // --- routed request (spot → spot) ---
 // RequestToSpot submits a routed request to a remote Spot;
@@ -1342,12 +1354,11 @@ func (s *Spot) ReplyToRouter(peerRid RoutingID, requestSeq uint64,
 // RecvRouted receives a routed message. Returns *RecvError on failure.
 func (s *Spot) RecvRouted(flags RecvFlags) (*Received, error)
 // OnRoutedReceive registers a routed receive handler. Returns *HandlerError on failure.
-func (s *Spot) OnRoutedReceive(handler func(sourceRid, spotRid RoutingID,
-    requestSeq uint64, parts []*Message)) error
+func (s *Spot) OnRoutedReceive(handler func(*Received)) error
 // OnDispatchEvent registers a source-aware dispatch handler. Returns *HandlerError on failure.
 func (s *Spot) OnDispatchEvent(handler func(*Spot, SpotDispatchInfo)) error
 // DrainChannelReplyFrom drains pending channel reply completions for an attached dealer subject.
-func (s *Spot) DrainChannelReplyFrom(subject unsafe.Pointer) error
+func (s *Spot) DrainChannelReplyFrom(dealer *DealerSocket) error
 
 // Close closes the spot. Returns *CloseError on failure.
 func (s *Spot) Close() error
@@ -1393,9 +1404,9 @@ Primary entry types used in the default service flow:
 ```go
 // MemberPeerEntry — entry from Registry.MemberPeers / Discovery.MemberPeers.
 type MemberPeerEntry struct {
-    AutoConnectType    AutoConnectType
+    AutoConnectType AutoConnectType
     ServiceRole    ServiceRole
-    ServiceName    string
+    ChannelName    string
     Endpoint       string
     RoutingID      RoutingID
     Value          int64
@@ -1407,24 +1418,25 @@ func (e *MemberPeerEntry) HasRoutingID() bool
 // RegistryTopologyEntry — entry from Registry.TopologySnapshot /
 // Registry.TopologyQuery / RegistryQueryClient.Snapshot.
 type RegistryTopologyEntry struct {
-    RoutingID      RoutingID
-    ServiceKind    ServiceKind
-    ServiceRole    ServiceRole
-    ServiceName    string
-    Endpoint       string
-    Source         TopologySource
-    State          TopologyState
-    DesiredCount   uint32
-    ReadyCount     uint32
-    ErrorCode      uint32
-    LastReportedMs uint64
+    AutoConnectType AutoConnectType
+    RoutingID       RoutingID
+    ServiceKind     ServiceKind
+    ServiceRole     ServiceRole
+    ChannelName     string
+    Endpoint        string
+    Source          TopologySource
+    State           TopologyState
+    DesiredCount    uint32
+    ReadyCount      uint32
+    ErrorCode       uint32
+    LastReportedMs  uint64
 }
 
 func (e *RegistryTopologyEntry) HasRoutingID() bool
 
 // SpotNodeStatus — status snapshot from SpotNode.StatusSnapshot.
 type SpotNodeStatus struct {
-    ServiceName          string
+    ChannelName          string
     LocalEndpoint        string
     NodeRoutingID        RoutingID
     State                SpotNodeState
@@ -1443,12 +1455,11 @@ func (s *SpotNodeStatus) HasNodeRoutingID() bool
 
 // SpotDispatchInfo — source-aware payload delivered to Spot.OnDispatchEvent.
 type SpotDispatchInfo struct {
-    Event       SpotDispatchEvent
-    SubjectKind SpotDispatchSubjectKind
-    // Subject is only for timer and attached channel DEALER drain.
-    Subject     unsafe.Pointer
-    // Actor is set for ActorReadable and is a callback-lifetime ActorRef copy.
-    Actor       *ActorRef
+    Event         SpotDispatchEvent
+    SubjectKind   SpotDispatchSubjectKind
+    Timer         *Timer
+    ChannelDealer *DealerSocket
+    Actor         *ActorRef
 }
 
 func (i *SpotDispatchInfo) RecvActorPart(flags RecvFlags) (*ActorPart, error)
@@ -1459,19 +1470,19 @@ For `SpotDispatchEventSubscribeReadable` and
 `Subscribe(...)` / routed recv until the binding reports no data / `EAGAIN`.
 For `SpotDispatchEventChannelReplyReadable`, `SubjectKind` is
 `SpotDispatchSubjectChannelDealer`; use the attached dealer's `ChannelName()`
-metadata to identify the channel and pass `Subject` to
+metadata to identify the channel and pass `ChannelDealer` to
 `DrainChannelReplyFrom(...)`.
 For `SpotDispatchEventActorReadable`, `Actor` identifies the readable Actor and
-`Subject` is not part of the public Actor contract.
+no native Actor pointer is part of the public contract.
 
 Advanced / Diagnostic entry types and filters:
 
 ```go
 // RegistryServiceSummaryEntry — entry from Registry.ServiceSummarySnapshot.
 type RegistryServiceSummaryEntry struct {
-    ServiceKind     ServiceKind
+    AutoConnectType AutoConnectType
     ServiceRole     ServiceRole
-    ServiceName     string
+    ChannelName     string
     TotalCount      uint32
     ConnectingCount uint32
     ReadyCount      uint32
@@ -1495,7 +1506,7 @@ type RegistryStatus struct {
 
 // SpotNodePeerEntry — entry from SpotNode.PeersSnapshot / PeersQuery.
 type SpotNodePeerEntry struct {
-    ServiceName      string
+    ChannelName      string
     LocalEndpoint    string
     PeerEndpoint     string
     Source           SpotPeerSource
@@ -1517,20 +1528,21 @@ type SpotNodeSubjectEntry struct {
 
 // RegistryServiceSummaryFilter — optional filter for Registry.ServiceSummarySnapshot.
 type RegistryServiceSummaryFilter struct {
-    ServiceKind *ServiceKind
-    ServiceRole *ServiceRole
-    ServiceName *string
+    AutoConnectType *AutoConnectType
+    ServiceRole     *ServiceRole
+    ChannelName     *string
 }
 
 // RegistryTopologyFilter — optional filter for Registry.TopologyQuery /
 // RegistryQueryClient.Snapshot.
 type RegistryTopologyFilter struct {
-    ServiceKind *ServiceKind
-    ServiceRole *ServiceRole
-    ServiceName *string
-    RoutingID   *RoutingID
-    State       *TopologyState
-    Source      *TopologySource
+    AutoConnectType *AutoConnectType
+    ServiceKind     *ServiceKind
+    ServiceRole     *ServiceRole
+    ChannelName     *string
+    RoutingID       *RoutingID
+    State           *TopologyState
+    Source          *TopologySource
 }
 
 // SpotNodePeerFilter — optional filter for SpotNode.PeersQuery.
@@ -1545,6 +1557,25 @@ type SpotNodeSubjectFilter struct {
     Role        *SpotRole
     Subject     *string
     SubjectKind *SubjectKind
+}
+
+// SpotNodeSocketSnapshotFilter — optional diagnostic filter for
+// SpotNode.InternalSocketsSnapshot.
+type SpotNodeSocketSnapshotFilter struct {
+    Owner      *SpotNodeSocketOwner
+    SocketType *SocketType
+    SocketName *string
+}
+
+// SpotNodeSocketSnapshotEntry — diagnostic internal socket snapshot.
+type SpotNodeSocketSnapshotEntry struct {
+    Owner          SpotNodeSocketOwner
+    OwnerID        uint64
+    OwnerName      string
+    SocketName     string
+    SocketType     SocketType
+    AutoHwmVisible bool
+    Snapshot       MonitorSnapshot
 }
 
 type SpotDispatchEvent int
@@ -1602,14 +1633,22 @@ Spot-aware result carrying owner `Spot`, dispatch event kind, and drain
 subject together.
 
 ```go
+type PollerEventFlag int16
+const (
+    PollIn  PollerEventFlag = 1
+    PollOut PollerEventFlag = 2
+)
+
+type PollerSourceKind int
+
 // NewPoller allocates a poller. Returns *ConfigError on failure.
 func NewPoller() (*Poller, error)
 // Poller Add/Modify/Remove mutations return *ConfigError on failure.
-func (p *Poller) AddSocket(socket SocketTarget, events int16, userData ...interface{}) error
-func (p *Poller) ModifySocket(socket SocketTarget, events int16) error
+func (p *Poller) AddSocket(socket SocketTarget, events PollerEventFlag, userData ...interface{}) error
+func (p *Poller) ModifySocket(socket SocketTarget, events PollerEventFlag) error
 func (p *Poller) RemoveSocket(socket SocketTarget) error
-func (p *Poller) AddFd(fd int, events int16, userData ...interface{}) error
-func (p *Poller) ModifyFd(fd int, events int16) error
+func (p *Poller) AddFd(fd int, events PollerEventFlag, userData ...interface{}) error
+func (p *Poller) ModifyFd(fd int, events PollerEventFlag) error
 func (p *Poller) RemoveFd(fd int) error
 func (p *Poller) AddTimer(timer *Timer, userData ...interface{}) error
 func (p *Poller) RemoveTimer(timer *Timer) error
@@ -1630,8 +1669,8 @@ func Poll(items []PollItem, timeout time.Duration) (int, error)
 type PollItem struct {
     Socket  SocketTarget
     Fd      int
-    Events  int16
-    REvents int16
+    Events  PollerEventFlag
+    REvents PollerEventFlag
 }
 ```
 
@@ -1639,14 +1678,17 @@ type PollItem struct {
 
 ```go
 type PollerEvent struct {
-    SourceKind int
+    SourceKind PollerSourceKind
     Socket     SocketTarget
     Fd         int
     Timer      *Timer
     UserData   interface{}
-    Events     int16
+    Events     PollerEventFlag
 }
 ```
+
+`PollOut` is send-recovery readiness shared with `OnSendReady(...)`, not a
+general transport-writable bit.
 
 ---
 

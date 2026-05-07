@@ -107,9 +107,9 @@ ways:
 | Router options | `zlink_set_router_option`, `zlink_get_router_option` | `RouterSocketOptions` | Typed facade |
 | Dealer options | `zlink_set_dealer_option` | `DealerSocketOptions` | Typed facade; core has no dealer option getter |
 | Pub/XPub options | `zlink_set_pub_option`, `zlink_get_pub_option` | `PubSocketOptions` | Typed facade |
-| Sub/XSub options | `zlink_set_sub_option`, `zlink_get_sub_option`, `zlink_subscription_at` | `SubSocketOptions`, subscription methods | Typed facade |
+| Sub/XSub options | `zlink_set_sub_option`, `zlink_get_sub_option`, `zlink_subscription_at` | `SubSocketOptions`, direct subscription methods | Typed facade |
 | Stream options | `zlink_set_stream_option`, `zlink_get_stream_option` | `StreamSocketOptions` | Typed facade |
-| SPOT and SpotNode options | `zlink_set_spot_option`, `zlink_get_spot_option`, `zlink_set_spot_node_option`, `zlink_get_spot_node_option` | `SpotOptions` and SpotNode option methods | Required Java API |
+| SPOT and SpotNode options | `zlink_set_spot_option`, `zlink_get_spot_option`, `zlink_set_spot_node_option`, `zlink_get_spot_node_option` | direct `Spot` request-timeout methods and SpotNode option methods | Required Java API |
 | Channel discovery attachment | `zlink_socket_attach_discovery`, `zlink_socket_set_channel_name`, `zlink_socket_get_channel_name` | `attachDiscovery`, `DealerSocket.setChannelName`, `DealerSocket.getChannelName` | Public API |
 | Plain send/recv | `zlink_send_part`, `zlink_send_part_rid`, `zlink_recv_part`, `zlink_router_recv_part` | `send`, routed `send`, `recv`, `Received` | Public API; raw part loop stays internal |
 | Pub/sub data plane | `zlink_publish_part`, `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscribe_part`, `zlink_xpub_recv_part` | `publish`, `setSubscription`, `unsetSubscription`, `subscribe`, `receiveSubscriptionEvent` | Public API |
@@ -123,7 +123,7 @@ ways:
 | Spot lifecycle | `zlink_spot_new`, `zlink_spot_destroy`, `zlink_spot_node_new`, `zlink_spot_node_destroy`, `zlink_spot_node_entry_spot`, `zlink_spot_node_spot_lookup` | `SpotNode`, `entrySpot`, `createSpot`, `spotLookup`, `close` | Required Java API |
 | Spot node peer wiring | `zlink_spot_node_bind`, `zlink_spot_node_connect_peer`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid`, `zlink_spot_node_attach_discovery`, `zlink_spot_node_attach_channel_dealer`, `zlink_spot_node_attach_channel_dealer_manual`, `zlink_spot_node_attach_pub_ingress` | `SpotNode.bind`, `connectPeer`, `disconnectPeer`, `disconnectPeerRid`, attachment methods | Public API |
 | Spot data plane | `zlink_spot_send_channel_part`, `zlink_spot_publish_part`, `zlink_spot_subscribe_part`, `zlink_spot_subscription_event_recv`, `zlink_spot_recv_part` | `Spot.sendChannel`, `publish`, `subscribe`, `receiveSubscriptionEvent`, `recvRouted` | Public API |
-| Spot request/reply | `zlink_spot_request_channel_part`, `zlink_spot_request_spot_part`, `zlink_spot_request_router_part`, `zlink_spot_send_spot_part`, `zlink_spot_reply_spot_part`, `zlink_spot_reply_router_part`, `zlink_spot_channel_reply_progress_from` | `Spot.requestChannel`, `requestToSpot`, `requestToRouter`, `sendToSpot`, `replyToSpot`, `replyToRouter`, `drainChannelReply` | Public API |
+| Spot request/reply | `zlink_spot_request_channel_part`, `zlink_spot_request_spot_part`, `zlink_spot_request_router_part`, `zlink_spot_send_spot_part`, `zlink_spot_reply_spot_part`, `zlink_spot_reply_router_part`, `zlink_spot_channel_reply_progress_from` | `Spot.requestChannel`, `requestToSpot`, `requestToRouter`, `sendToSpot`, `replyToSpot`, `replyToRouter`; channel reply progress stays internal | Public API |
 | Spot dispatch callbacks | `zlink_spot_handler`, `zlink_spot_dispatch_event_handler` | `Spot.onRoutedReceive`, `Spot.onDispatchEvent`, `SpotDispatchInfo` | Public API |
 | Actor dispatch | `zlink_remote_actor_get_ref`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup`, `zlink_spot_node_create_remote_actor`, `zlink_spot_node_actor_destroy`, `zlink_spot_node_actor_admission_handler`, `zlink_spot_node_actor_join_spot`, `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_spot_node_actor_leave_spot`, `zlink_spot_node_actor_recv_part`, `zlink_spot_node_actor_send_bound_session_msg`, `zlink_spot_node_actor_close_bound_session` | `Actor`, `ActorRef`, actor result/info records, `SpotNode` actor methods, `Spot.recvActorJoin`, `Spot.replyActorJoin` | Public API |
 | Spot snapshots | `zlink_spot_node_status_snapshot`, `zlink_spot_node_peers_snapshot`, `zlink_spot_node_peers_query`, `zlink_spot_node_subjects_snapshot`, `zlink_spot_node_internal_sockets_snapshot`, `zlink_spot_node_spots_snapshot`, `zlink_spot_node_actors_snapshot`, `zlink_spot_actors_snapshot`, registry/discovery topology snapshot/query entrypoints | `statusSnapshot`, peer/subject/internal-socket/spot/actor snapshot methods, registry/discovery topology records | Public API |
@@ -258,8 +258,6 @@ public final class ContextOptions {
     int maxMsgSize();                                                // @throws ConfigException
     void maxMsgSize(int bytes);                                      // @throws ConfigException
     int msgTSize();                                                  // @throws ConfigException
-    int spotWorkerThreads();                                         // @throws ConfigException
-    void spotWorkerThreads(int count);                               // @throws ConfigException
     boolean blocky();                                                // @throws ConfigException
     void blocky(boolean enabled);                                    // @throws ConfigException
     boolean autoHwmEnabled();                                        // @throws ConfigException
@@ -524,6 +522,7 @@ public final class SubSocket extends Socket {
 
     void setSubscription(String filter);                             // @throws ConfigException
     void unsetSubscription(String filter);                           // @throws ConfigException
+    Optional<SubscriptionEntry> subscriptionAt(int index);           // @throws ConfigException
     TopicMessage subscribe();                                        // @throws RecvException
     @Nullable TopicMessage subscribe(RecvFlags flags);               // @throws RecvException
 
@@ -536,7 +535,6 @@ public final class SubSocket extends Socket {
 ```java
 public final class SubSocketOptions extends CommonSocketOptions {
     int topicsCount();                                               // @throws ConfigException
-    Optional<SubscriptionEntry> subscriptionAt(int index);           // @throws ConfigException
 }
 ```
 
@@ -577,27 +575,27 @@ public final class DealerSocket extends Socket {
 
     // --- request (callback submit) ---
     boolean request(Message part,
-                    BiConsumer<RequestResult, List<Message>> callback);                 // @throws SubmitException; callback receives RequestResult
+                    RequestCallback callback);                 // @throws SubmitException; callback receives RequestResult
     boolean request(Message part,
-                    BiConsumer<RequestResult, List<Message>> callback,
+                    RequestCallback callback,
                     Duration timeout);                                                  // @throws SubmitException; callback receives RequestResult
     boolean request(Message part,
-                    BiConsumer<RequestResult, List<Message>> callback,
+                    RequestCallback callback,
                     SendFlags flags);                                                   // @throws SubmitException; false only on temporary backpressure
     boolean request(Message part,
-                    BiConsumer<RequestResult, List<Message>> callback,
+                    RequestCallback callback,
                     SendFlags flags,
                     Duration timeout);                                                  // @throws SubmitException; false only on temporary backpressure
     boolean request(List<Message> parts,
-                    BiConsumer<RequestResult, List<Message>> callback);                 // @throws SubmitException; callback receives RequestResult
+                    RequestCallback callback);                 // @throws SubmitException; callback receives RequestResult
     boolean request(List<Message> parts,
-                    BiConsumer<RequestResult, List<Message>> callback,
+                    RequestCallback callback,
                     Duration timeout);                                                  // @throws SubmitException; callback receives RequestResult
     boolean request(List<Message> parts,
-                    BiConsumer<RequestResult, List<Message>> callback,
+                    RequestCallback callback,
                     SendFlags flags);                                                   // @throws SubmitException; false only on temporary backpressure
     boolean request(List<Message> parts,
-                    BiConsumer<RequestResult, List<Message>> callback,
+                    RequestCallback callback,
                     SendFlags flags,
                     Duration timeout);                                                  // @throws SubmitException; false only on temporary backpressure
 
@@ -656,27 +654,27 @@ public final class RouterSocket extends Socket {
 
     // --- request to a specific peer (callback submit) ---
     boolean request(RoutingId rid, Message part,
-                    BiConsumer<RequestResult, List<Message>> callback);                 // @throws SubmitException; callback receives RequestResult
+                    RequestCallback callback);                 // @throws SubmitException; callback receives RequestResult
     boolean request(RoutingId rid, Message part,
-                    BiConsumer<RequestResult, List<Message>> callback,
+                    RequestCallback callback,
                     Duration timeout);                                                  // @throws SubmitException; callback receives RequestResult
     boolean request(RoutingId rid, Message part,
-                    BiConsumer<RequestResult, List<Message>> callback,
+                    RequestCallback callback,
                     SendFlags flags);                                                   // @throws SubmitException; false only on temporary backpressure
     boolean request(RoutingId rid, Message part,
-                    BiConsumer<RequestResult, List<Message>> callback,
+                    RequestCallback callback,
                     SendFlags flags,
                     Duration timeout);                                                  // @throws SubmitException; false only on temporary backpressure
     boolean request(RoutingId rid, List<Message> parts,
-                    BiConsumer<RequestResult, List<Message>> callback);                 // @throws SubmitException; callback receives RequestResult
+                    RequestCallback callback);                 // @throws SubmitException; callback receives RequestResult
     boolean request(RoutingId rid, List<Message> parts,
-                    BiConsumer<RequestResult, List<Message>> callback,
+                    RequestCallback callback,
                     Duration timeout);                                                  // @throws SubmitException; callback receives RequestResult
     boolean request(RoutingId rid, List<Message> parts,
-                    BiConsumer<RequestResult, List<Message>> callback,
+                    RequestCallback callback,
                     SendFlags flags);                                                   // @throws SubmitException; false only on temporary backpressure
     boolean request(RoutingId rid, List<Message> parts,
-                    BiConsumer<RequestResult, List<Message>> callback,
+                    RequestCallback callback,
                     SendFlags flags,
                     Duration timeout);                                                  // @throws SubmitException; false only on temporary backpressure
 
@@ -711,34 +709,34 @@ public final class RouterSocket extends Socket {
     // --- router -> spot routed request (callback submit) ---
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           Message part,
-                          BiConsumer<RequestResult, List<Message>> callback);            // @throws SubmitException; callback receives RequestResult
+                          RequestCallback callback);            // @throws SubmitException; callback receives RequestResult
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           Message part,
-                          BiConsumer<RequestResult, List<Message>> callback,
+                          RequestCallback callback,
                           Duration timeout);                                             // @throws SubmitException; callback receives RequestResult
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           Message part,
-                          BiConsumer<RequestResult, List<Message>> callback,
+                          RequestCallback callback,
                           SendFlags flags);                                              // @throws SubmitException; false only on temporary backpressure
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           Message part,
-                          BiConsumer<RequestResult, List<Message>> callback,
+                          RequestCallback callback,
                           SendFlags flags,
                           Duration timeout);                                             // @throws SubmitException; false only on temporary backpressure
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           List<Message> parts,
-                          BiConsumer<RequestResult, List<Message>> callback);            // @throws SubmitException; callback receives RequestResult
+                          RequestCallback callback);            // @throws SubmitException; callback receives RequestResult
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           List<Message> parts,
-                          BiConsumer<RequestResult, List<Message>> callback,
+                          RequestCallback callback,
                           Duration timeout);                                             // @throws SubmitException; callback receives RequestResult
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           List<Message> parts,
-                          BiConsumer<RequestResult, List<Message>> callback,
+                          RequestCallback callback,
                           SendFlags flags);                                              // @throws SubmitException; false only on temporary backpressure
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           List<Message> parts,
-                          BiConsumer<RequestResult, List<Message>> callback,
+                          RequestCallback callback,
                           SendFlags flags,
                           Duration timeout);                                             // @throws SubmitException; false only on temporary backpressure
 
@@ -818,6 +816,7 @@ public final class XSubSocket extends Socket {
 
     void setSubscription(String filter);                             // @throws ConfigException
     void unsetSubscription(String filter);                           // @throws ConfigException
+    Optional<SubscriptionEntry> subscriptionAt(int index);           // @throws ConfigException
     TopicMessage subscribe();                                        // @throws RecvException
     @Nullable TopicMessage subscribe(RecvFlags flags);               // @throws RecvException
 
@@ -1001,20 +1000,6 @@ Codec adapters are separate public extension artifacts layered on top of the
 core binding. Their contract lives in [Java Codec Extension Specification](codec.md).
 The core module does not expose codec entrypoints from
 `dev.kairoscode.zlink`.
-
-Java codec extensions are distributed separately from the core binding:
-
-- Maven `zlink-codec-protobuf` exposes
-  `dev.kairoscode.zlink.codec.protobuf`.
-- Maven `zlink-codec-json` exposes `dev.kairoscode.zlink.codec.json`.
-- Maven `zlink-codec-messagepack` exposes
-  `dev.kairoscode.zlink.codec.messagepack`.
-
-The JSON baseline is Jackson. The MessagePack baseline is
-`jackson-dataformat-msgpack`. Codec helpers may convert between `Message` and
-domain objects, but they do not replace the canonical transport contract:
-`Message`, `List<Message>`, `Received`, and `TopicMessage` remain the core
-receive/request/reply result types.
 
 ### Netty Buffer Extension
 
@@ -1447,6 +1432,17 @@ public enum RequestResult {
 }
 ```
 
+### RequestCallback
+
+Callback interface used by callback-submit request methods.
+
+```java
+@FunctionalInterface
+public interface RequestCallback {
+    void onComplete(RequestResult result, List<Message> parts);
+}
+```
+
 ### RecvResult
 
 Result code for recv, subscribe, and subscription event operations.
@@ -1632,7 +1628,8 @@ public record SubscriptionEvent(Optional<RoutingId> routingId,
 
 ### SubscriptionEntry
 
-Snapshot entry returned by `SubSocketOptions.subscriptionAt`.
+Snapshot entry returned by `SubSocket.subscriptionAt`, `XSubSocket.subscriptionAt`,
+and `Spot.subscriptionAt`.
 
 ```java
 public record SubscriptionEntry(String filter, boolean pattern) {
@@ -1856,18 +1853,18 @@ public final class SpotNode implements AutoCloseable {
     void onActorAdmission(ActorAdmissionHandler handler);            // @throws HandlerException
     boolean joinActor(ActorRef actor, RoutingId destNodeRid,
                       RoutingId destSpotRid, Message message,
-                      BiConsumer<RequestResult, List<Message>> callback); // @throws SubmitException
+                      RequestCallback callback); // @throws SubmitException
     boolean joinActor(ActorRef actor, RoutingId destNodeRid,
                       RoutingId destSpotRid, Message message,
-                      BiConsumer<RequestResult, List<Message>> callback,
+                      RequestCallback callback,
                       Duration timeout);                             // @throws SubmitException
     boolean joinActor(ActorRef actor, RoutingId destNodeRid,
                       RoutingId destSpotRid, Message message,
-                      BiConsumer<RequestResult, List<Message>> callback,
+                      RequestCallback callback,
                       SendFlags flags);                              // @throws SubmitException
     boolean joinActor(ActorRef actor, RoutingId destNodeRid,
                       RoutingId destSpotRid, Message message,
-                      BiConsumer<RequestResult, List<Message>> callback,
+                      RequestCallback callback,
                       SendFlags flags,
                       Duration timeout);                             // @throws SubmitException
     void leaveActor(ActorRef actor, RoutingId destSpotRid);          // @throws RequestException
@@ -1926,7 +1923,8 @@ public final class Spot implements AutoCloseable {
     // Logical address and routed ownership key.
     void setRoutingId(RoutingId rid);                                // @throws ConfigException
     RoutingId routingId();                                           // @throws ConfigException
-    SpotOptions options();
+    Duration requestTimeout();                                      // @throws ConfigException
+    void requestTimeout(Duration value);                            // @throws ConfigException
 
     // --- channel-aware publish / request ---
     boolean publish(String serviceName, String topicId, Message part);                   // @throws SubmitException
@@ -1951,33 +1949,34 @@ public final class Spot implements AutoCloseable {
     CompletableFuture<List<Message>> requestChannel(String channelName, List<Message> parts,
                                                     Duration timeout);                   // @throws SubmitException; future completes with RequestException on failure
     boolean requestChannel(String channelName, Message part,
-                           BiConsumer<RequestResult, List<Message>> callback);           // @throws SubmitException; callback receives RequestResult
+                           RequestCallback callback);           // @throws SubmitException; callback receives RequestResult
     boolean requestChannel(String channelName, Message part,
-                           BiConsumer<RequestResult, List<Message>> callback,
+                           RequestCallback callback,
                            Duration timeout);                                            // @throws SubmitException; callback receives RequestResult
     boolean requestChannel(String channelName, Message part,
-                           BiConsumer<RequestResult, List<Message>> callback,
+                           RequestCallback callback,
                            SendFlags flags);                                             // @throws SubmitException; false only on temporary backpressure
     boolean requestChannel(String channelName, Message part,
-                           BiConsumer<RequestResult, List<Message>> callback,
+                           RequestCallback callback,
                            SendFlags flags,
                            Duration timeout);                                            // @throws SubmitException; false only on temporary backpressure
     boolean requestChannel(String channelName, List<Message> parts,
-                           BiConsumer<RequestResult, List<Message>> callback);           // @throws SubmitException; callback receives RequestResult
+                           RequestCallback callback);           // @throws SubmitException; callback receives RequestResult
     boolean requestChannel(String channelName, List<Message> parts,
-                           BiConsumer<RequestResult, List<Message>> callback,
+                           RequestCallback callback,
                            Duration timeout);                                            // @throws SubmitException; callback receives RequestResult
     boolean requestChannel(String channelName, List<Message> parts,
-                           BiConsumer<RequestResult, List<Message>> callback,
+                           RequestCallback callback,
                            SendFlags flags);                                             // @throws SubmitException; false only on temporary backpressure
     boolean requestChannel(String channelName, List<Message> parts,
-                           BiConsumer<RequestResult, List<Message>> callback,
+                           RequestCallback callback,
                            SendFlags flags,
                            Duration timeout);                                            // @throws SubmitException; false only on temporary backpressure
 
     // --- subscribe ---
     void setSubscription(String topicId);                            // @throws ConfigException
     void unsetSubscription(String topicIdOrPattern);                 // @throws ConfigException
+    Optional<SubscriptionEntry> subscriptionAt(int index);            // @throws ConfigException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
     TopicMessage subscribe();                                        // @throws RecvException
     @Nullable TopicMessage subscribe(RecvFlags flags);               // @throws RecvException
@@ -2001,33 +2000,33 @@ public final class Spot implements AutoCloseable {
     // --- routed request (spot -> spot, callback submit) ---
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           Message part,
-                          BiConsumer<RequestResult, List<Message>> callback);            // @throws SubmitException; callback receives RequestResult
+                          RequestCallback callback);            // @throws SubmitException; callback receives RequestResult
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           Message part,
-                          BiConsumer<RequestResult, List<Message>> callback,
+                          RequestCallback callback,
                           Duration timeout);                                             // @throws SubmitException; callback receives RequestResult
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           Message part,
-                          BiConsumer<RequestResult, List<Message>> callback,
+                          RequestCallback callback,
                           SendFlags flags);                                              // @throws SubmitException; false only on temporary backpressure
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           Message part,
-                          BiConsumer<RequestResult, List<Message>> callback,
+                          RequestCallback callback,
                           SendFlags flags, Duration timeout);                            // @throws SubmitException; false only on temporary backpressure
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           List<Message> parts,
-                          BiConsumer<RequestResult, List<Message>> callback);            // @throws SubmitException; callback receives RequestResult
+                          RequestCallback callback);            // @throws SubmitException; callback receives RequestResult
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           List<Message> parts,
-                          BiConsumer<RequestResult, List<Message>> callback,
+                          RequestCallback callback,
                           Duration timeout);                                             // @throws SubmitException; callback receives RequestResult
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           List<Message> parts,
-                          BiConsumer<RequestResult, List<Message>> callback,
+                          RequestCallback callback,
                           SendFlags flags);                                              // @throws SubmitException; false only on temporary backpressure
     boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                           List<Message> parts,
-                          BiConsumer<RequestResult, List<Message>> callback,
+                          RequestCallback callback,
                           SendFlags flags, Duration timeout);                            // @throws SubmitException; false only on temporary backpressure
 
     // --- routed request (spot -> router, async, no flags) ---
@@ -2043,33 +2042,33 @@ public final class Spot implements AutoCloseable {
     // --- routed request (spot -> router, callback submit) ---
     boolean requestToRouter(RoutingId peerRid,
                             Message part,
-                            BiConsumer<RequestResult, List<Message>> callback);          // @throws SubmitException; callback receives RequestResult
+                            RequestCallback callback);          // @throws SubmitException; callback receives RequestResult
     boolean requestToRouter(RoutingId peerRid,
                             Message part,
-                            BiConsumer<RequestResult, List<Message>> callback,
+                            RequestCallback callback,
                             Duration timeout);                                           // @throws SubmitException; callback receives RequestResult
     boolean requestToRouter(RoutingId peerRid,
                             Message part,
-                            BiConsumer<RequestResult, List<Message>> callback,
+                            RequestCallback callback,
                             SendFlags flags);                                            // @throws SubmitException; false only on temporary backpressure
     boolean requestToRouter(RoutingId peerRid,
                             Message part,
-                            BiConsumer<RequestResult, List<Message>> callback,
+                            RequestCallback callback,
                             SendFlags flags, Duration timeout);                          // @throws SubmitException; false only on temporary backpressure
     boolean requestToRouter(RoutingId peerRid,
                             List<Message> parts,
-                            BiConsumer<RequestResult, List<Message>> callback);          // @throws SubmitException; callback receives RequestResult
+                            RequestCallback callback);          // @throws SubmitException; callback receives RequestResult
     boolean requestToRouter(RoutingId peerRid,
                             List<Message> parts,
-                            BiConsumer<RequestResult, List<Message>> callback,
+                            RequestCallback callback,
                             Duration timeout);                                           // @throws SubmitException; callback receives RequestResult
     boolean requestToRouter(RoutingId peerRid,
                             List<Message> parts,
-                            BiConsumer<RequestResult, List<Message>> callback,
+                            RequestCallback callback,
                             SendFlags flags);                                            // @throws SubmitException; false only on temporary backpressure
     boolean requestToRouter(RoutingId peerRid,
                             List<Message> parts,
-                            BiConsumer<RequestResult, List<Message>> callback,
+                            RequestCallback callback,
                             SendFlags flags, Duration timeout);                          // @throws SubmitException; false only on temporary backpressure
 
     // --- routed reply (spot -> spot) ---
@@ -2094,7 +2093,6 @@ public final class Spot implements AutoCloseable {
     @Nullable Received recvRouted(RecvFlags flags);                  // @throws RecvException
     void onRoutedReceive(SpotRoutedHandler handler);                 // @throws HandlerException
     void onDispatchEvent(SpotDispatchEventHandler handler);          // @throws HandlerException
-    void drainChannelReply(SpotDispatchInfo info);                   // @throws ConfigException
 
     // --- actor dispatch ---
     ActorJoinRequest recvActorJoin();                                // @throws RecvException
@@ -2108,9 +2106,9 @@ public final class Spot implements AutoCloseable {
 ```
 
 `onDispatchEvent` delivers `SpotDispatchInfo`. `CHANNEL_REPLY_READABLE`
-dispatches carry an opaque channel-reply source inside `SpotDispatchInfo`.
-Pass the same info object to `drainChannelReply(...)`; do not expose the
-native DEALER subject as public API.
+dispatches are readiness notifications for internal request-progress work.
+Request futures and callbacks progress their replies inside the binding; the
+public API does not expose the native DEALER subject.
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
 `subscribe(...)` / `recvRouted(...)` until the binding surfaces no data /
 `EAGAIN`.
@@ -2141,17 +2139,8 @@ public interface SpotDispatchEventHandler {
 ```
 
 The handler receives readiness metadata only. Message delivery still happens
-through the documented drain methods such as `subscribe(...)`,
-`recvRouted(...)`, and `drainChannelReply(...)`.
-
-### SpotOptions
-
-```java
-public final class SpotOptions {
-    Duration requestTimeout();                                      // @throws ConfigException
-    void requestTimeout(Duration value);                            // @throws ConfigException
-}
-```
+through the documented drain methods such as `subscribe(...)` and
+`recvRouted(...)`.
 
 ### Actor
 
@@ -2161,15 +2150,15 @@ Actor object owned by a `SpotNode` and identified by `ActorRef`.
 public final class Actor implements AutoCloseable {
     ActorRef ref();                                                  // @throws ConfigException
     boolean join(Spot spot, Message message,
-                 BiConsumer<RequestResult, List<Message>> callback); // @throws SubmitException
+                 RequestCallback callback); // @throws SubmitException
     boolean join(Spot spot, Message message,
-                 BiConsumer<RequestResult, List<Message>> callback,
+                 RequestCallback callback,
                  Duration timeout);                                 // @throws SubmitException
     boolean join(Spot spot, Message message,
-                 BiConsumer<RequestResult, List<Message>> callback,
+                 RequestCallback callback,
                  SendFlags flags);                                  // @throws SubmitException
     boolean join(Spot spot, Message message,
-                 BiConsumer<RequestResult, List<Message>> callback,
+                 RequestCallback callback,
                  SendFlags flags,
                  Duration timeout);                                 // @throws SubmitException
     void leave(Spot spot);                                           // @throws RequestException
@@ -2340,10 +2329,9 @@ public final class SpotDispatchInfo {
 }
 ```
 
-`SpotDispatchInfo` may carry an opaque dispatch token used only by
-`Spot.drainChannelReply(info)` to progress channel replies. Callers must treat
-that token as non-inspectable state; it is not part of the public value
-surface.
+`SpotDispatchInfo` does not expose the native dispatch subject. Channel reply
+progress is driven inside the binding so request futures and callbacks can
+complete without a public drain helper.
 
 Advanced / Diagnostic entry types and filters:
 

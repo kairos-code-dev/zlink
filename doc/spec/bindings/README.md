@@ -2534,7 +2534,7 @@ Repository placement and distribution units for codec extension modules:
 | C | `bindings/c/include/zlink/`, `bindings/c/src/` | none required | n/a |
 | C++ | `bindings/cpp/include/zlink/` | `zlink-codec-protobuf`, `zlink-codec-json`, `zlink-codec-messagepack` | `bindings/cpp/codecs/zlink-codec-protobuf/`, `bindings/cpp/codecs/zlink-codec-json/`, `bindings/cpp/codecs/zlink-codec-messagepack/` |
 | .NET | `bindings/dotnet/src/Zlink/` | NuGet `Zlink.Codecs.Protobuf`, NuGet `Zlink.Codecs.Json`, NuGet `Zlink.Codecs.MessagePack` | `bindings/dotnet/codecs/Zlink.Codecs.Protobuf/`, `bindings/dotnet/codecs/Zlink.Codecs.Json/`, `bindings/dotnet/codecs/Zlink.Codecs.MessagePack/` |
-| Java | `bindings/java/src/main/java/dev/kairoscode/zlink/` | Maven `zlink-codec-protobuf`, Maven `zlink-codec-json`, Maven `zlink-codec-messagepack` | `bindings/java/codecs/zlink-codec-protobuf/`, `bindings/java/codecs/zlink-codec-json/`, `bindings/java/codecs/zlink-codec-messagepack/` |
+| Java | `bindings/java/src/main/java/dev/kairoscode/zlink/` | Maven `zlink-codec-protobuf`, Maven `zlink-codec-json`, Maven `zlink-codec-messagepack` | `bindings/java/codec/zlink-codec-protobuf/`, `bindings/java/codec/zlink-codec-json/`, `bindings/java/codec/zlink-codec-messagepack/` |
 | Node | `bindings/node/src/` | npm `@ulalax/zlink-codec-protobuf`, npm `@ulalax/zlink-codec-json`, npm `@ulalax/zlink-codec-messagepack` | `bindings/node/packages/zlink-codec-protobuf/`, `bindings/node/packages/zlink-codec-json/`, `bindings/node/packages/zlink-codec-messagepack/` |
 | Python | `bindings/python/src/zlink/` | PyPI `zlink-codec-protobuf`, PyPI `zlink-codec-json`, PyPI `zlink-codec-messagepack` | `bindings/python/codecs/zlink_codec_protobuf/`, `bindings/python/codecs/zlink_codec_json/`, `bindings/python/codecs/zlink_codec_messagepack/` |
 | Go | `bindings/go/` | Go module `zlink/codec/proto`, Go module `zlink/codec/json`, Go module `zlink/codec/messagepack` | `bindings/go/codec/proto/`, `bindings/go/codec/json/`, `bindings/go/codec/messagepack/` |
@@ -2543,8 +2543,8 @@ Repository placement and distribution units for codec extension modules:
 - placement rules:
   - codec helper source 를 core socket/message namespace 와 같은 디렉터리에 직접
     섞지 않는다.
-  - 언어별 spec 문서(`doc/spec/bindings/<lang>/README.md`)는 해당 binding 이 이
-    codec extension 을 public 으로 노출할 때, **배포 패키지 이름**과 그 안의
+  - 언어별 codec spec 문서(`doc/spec/bindings/<lang>/codec.md`)는 해당 binding 이
+    이 codec extension 을 public 으로 노출할 때, **배포 패키지 이름**과 그 안의
     public package / namespace / crate / module 이름을 함께 명시해야 한다.
   - sample 과 tests 도 core binding sample/test 와 codec extension sample/test 를
     분리한다.

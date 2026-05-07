@@ -51,6 +51,11 @@ For C, the public binding surface is the installed public header only.
 - the current public `*_part` APIs in `core/include/zlink.h` are public C
   contract
 
+## Codec Extensions
+
+C does not define required codec extension helpers. The C codec policy is
+specified separately in [C Codec Extension Specification](codec.md).
+
 ## Naming and Shape
 
 The C binding keeps the canonical C shape.

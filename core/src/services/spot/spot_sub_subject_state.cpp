@@ -6,6 +6,7 @@
 
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_child_access.hpp"
 #include "sockets/socket_base.hpp"
 
 #include <stdio.h>
@@ -82,28 +83,30 @@ int spot_sub_t::subscribe (const char *topic_)
         }
         has_filters = !_topics.empty () || !_patterns.empty ();
     }
-    {
-        scoped_lock_t node_lock (_node->_sync);
-        _node->_summary_state.subject_last_changed_ms[make_subject_key (
-          topic, ZLINK_SERVICE_EVENT_SUBJECT_TOPIC)] = zlink::clock_t ().now_ms ();
-        _node->_summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
-    }
+    spot_node_child_access_t::mark_subject_changed (
+      _node, topic, ZLINK_SERVICE_EVENT_SUBJECT_TOPIC);
 
-    _node->note_local_sub_filters_changed (had_filters, has_filters);
+    spot_node_child_access_t::note_local_sub_filters_changed (
+      _node, had_filters, has_filters);
     emit_filter_applied_event (topic.c_str (),
                                ZLINK_SERVICE_EVENT_SUBJECT_TOPIC);
     if (inserted) {
         const bool aggregate_added =
           _node->update_aggregate_subscription (topic, false, true);
-        if (aggregate_added && _node->send_subscription_update (topic, true) != 0)
+        if (aggregate_added
+            && spot_node_child_access_t::send_subscription_update (
+                 _node, topic, true)
+                 != 0)
             return -1;
-        if (_node->has_active_peers ())
-            _node->notify_subscription_forwarded (topic);
-        _node->schedule_subscription_replay ();
+        if (spot_node_child_access_t::has_active_peers (_node))
+            spot_node_child_access_t::notify_subscription_forwarded (_node,
+                                                                     topic);
+        spot_node_child_access_t::schedule_subscription_replay (_node);
         if (aggregate_added && _node->replay_subscriptions_if_active_peers () != 0)
             return -1;
     }
-    _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
+    spot_node_child_access_t::submit_sub_summary (
+      _node, this, ZLINK_TOPOLOGY_STATE_READY, 0);
     return 0;
 }
 
@@ -140,15 +143,11 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
         }
         has_filters = !_topics.empty () || !_patterns.empty ();
     }
-    {
-        scoped_lock_t node_lock (_node->_sync);
-        _node->_summary_state.subject_last_changed_ms[make_subject_key (
-          prefix + "*", ZLINK_SERVICE_EVENT_SUBJECT_PATTERN)] =
-          zlink::clock_t ().now_ms ();
-        _node->_summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
-    }
+    spot_node_child_access_t::mark_subject_changed (
+      _node, prefix + "*", ZLINK_SERVICE_EVENT_SUBJECT_PATTERN);
 
-    _node->note_local_sub_filters_changed (had_filters, has_filters);
+    spot_node_child_access_t::note_local_sub_filters_changed (
+      _node, had_filters, has_filters);
     const std::string subject = prefix + "*";
     emit_filter_applied_event (subject.c_str (),
                                ZLINK_SERVICE_EVENT_SUBJECT_PATTERN);
@@ -156,15 +155,19 @@ int spot_sub_t::subscribe_pattern (const char *pattern_)
         const bool aggregate_added =
           _node->update_aggregate_subscription (prefix, true, true);
         if (aggregate_added
-            && _node->send_subscription_update (prefix, true) != 0)
+            && spot_node_child_access_t::send_subscription_update (
+                 _node, prefix, true)
+                 != 0)
             return -1;
-        if (_node->has_active_peers ())
-            _node->notify_subscription_forwarded (prefix);
-        _node->schedule_subscription_replay ();
+        if (spot_node_child_access_t::has_active_peers (_node))
+            spot_node_child_access_t::notify_subscription_forwarded (_node,
+                                                                     prefix);
+        spot_node_child_access_t::schedule_subscription_replay (_node);
         if (aggregate_added && _node->replay_subscriptions_if_active_peers () != 0)
             return -1;
     }
-    _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
+    spot_node_child_access_t::submit_sub_summary (
+      _node, this, ZLINK_TOPOLOGY_STATE_READY, 0);
     return 0;
 }
 
@@ -219,20 +222,18 @@ int spot_sub_t::apply_aggregate_subscription (const std::string &raw_filter_,
     if (!changed)
         return 0;
 
-    {
-        scoped_lock_t node_lock (_node->_sync);
-        _node->_summary_state.subject_last_changed_ms[make_subject_key (
-          subject, subject_kind)] = zlink::clock_t ().now_ms ();
-        _node->_summary_state.summary_last_changed_ms =
-          zlink::clock_t ().now_ms ();
-    }
+    spot_node_child_access_t::mark_subject_changed (
+      _node, subject, subject_kind);
 
-    _node->note_local_sub_filters_changed (had_filters, has_filters);
+    spot_node_child_access_t::note_local_sub_filters_changed (
+      _node, had_filters, has_filters);
     if (subscribe_) {
         emit_filter_applied_event (subject.c_str (), subject_kind);
-        _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_READY, 0);
+        spot_node_child_access_t::submit_sub_summary (
+          _node, this, ZLINK_TOPOLOGY_STATE_READY, 0);
     } else {
-        _node->submit_sub_summary (
+        spot_node_child_access_t::submit_sub_summary (
+          _node,
           this, has_filters ? ZLINK_TOPOLOGY_STATE_READY
                             : ZLINK_TOPOLOGY_STATE_CONNECTING,
           0);
@@ -289,33 +290,33 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
         }
         has_filters_after = !_topics.empty () || !_patterns.empty ();
     }
-    {
-        scoped_lock_t node_lock (_node->_sync);
-        _node->_summary_state.subject_last_changed_ms[make_subject_key (
-          subject.subject, subject.subject_kind)] = zlink::clock_t ().now_ms ();
-        _node->_summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
-    }
+    spot_node_child_access_t::mark_subject_changed (
+      _node, subject.subject, subject.subject_kind);
 
-    _node->note_local_sub_filters_changed (had_filters, has_filters_after);
+    spot_node_child_access_t::note_local_sub_filters_changed (
+      _node, had_filters, has_filters_after);
     if (erased) {
         aggregate_removed =
           _node->update_aggregate_subscription (filter, is_pattern, false);
         if (aggregate_removed
-            && _node->send_subscription_update (filter, false) != 0)
+            && spot_node_child_access_t::send_subscription_update (
+                 _node, filter, false)
+                 != 0)
             first_error = errno != 0 ? errno : EIO;
     }
     release_ready_ack_endpoints (filter, &ready_ack_endpoints);
     const std::string ack_source_id = ready_ack_source_id ();
     if (aggregate_removed) {
         for (size_t i = 0; i < ready_ack_endpoints.size (); ++i) {
-            (void) _node->send_ready_ack_update (ready_ack_endpoints[i], filter,
-                                                 ack_source_id, false);
+            (void) spot_node_child_access_t::send_ready_ack_update (
+              _node, ready_ack_endpoints[i], filter, ack_source_id, false);
         }
     }
-    _node->submit_sub_summary (this, has_filters_after
-                                       ? ZLINK_TOPOLOGY_STATE_READY
-                                       : ZLINK_TOPOLOGY_STATE_CONNECTING,
-                               0);
+    spot_node_child_access_t::submit_sub_summary (
+      _node, this,
+      has_filters_after ? ZLINK_TOPOLOGY_STATE_READY
+                        : ZLINK_TOPOLOGY_STATE_CONNECTING,
+      0);
     mark_subject_lost (subject, NULL);
     if (first_error != 0) {
         errno = first_error;
@@ -377,6 +378,38 @@ void spot_sub_t::append_all_subjects (
         subject_descriptor_t subject;
         subject.subject = *it + "*";
         subject.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_PATTERN;
+        out_->push_back (subject);
+    }
+}
+
+void spot_sub_t::append_subject_snapshots (
+  std::vector<subject_snapshot_t> *out_) const
+{
+    if (!out_)
+        return;
+
+    scoped_lock_t lock (_sync);
+    out_->reserve (out_->size () + _topics.size () + _patterns.size ());
+    for (std::set<std::string>::const_iterator it = _topics.begin ();
+         it != _topics.end (); ++it) {
+        subject_snapshot_t subject;
+        subject.subject = *it;
+        subject.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_TOPIC;
+        subject.ready =
+          _ready_subject_endpoints.count (make_subject_key (
+            subject.subject, subject.subject_kind))
+          != 0;
+        out_->push_back (subject);
+    }
+    for (std::set<std::string>::const_iterator it = _patterns.begin ();
+         it != _patterns.end (); ++it) {
+        subject_snapshot_t subject;
+        subject.subject = *it + "*";
+        subject.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_PATTERN;
+        subject.ready =
+          _ready_subject_endpoints.count (make_subject_key (
+            subject.subject, subject.subject_kind))
+          != 0;
         out_->push_back (subject);
     }
 }
@@ -447,8 +480,8 @@ void spot_sub_t::mark_subject_subscription_ready (
         return;
     }
 
-    if (_node->send_ready_ack_update (endpoint_, raw_filter,
-                                      ready_ack_source_id (), true)
+    if (spot_node_child_access_t::send_ready_ack_update (
+          _node, endpoint_, raw_filter, ready_ack_source_id (), true)
         != 0)
         return;
 
@@ -491,8 +524,8 @@ void spot_sub_t::send_ready_ack_lost_for_endpoint (const char *endpoint_)
 
     const std::string ack_source_id = ready_ack_source_id ();
     for (size_t i = 0; i < raw_filters.size (); ++i)
-        (void) _node->send_ready_ack_update (endpoint, raw_filters[i],
-                                             ack_source_id, false);
+        (void) spot_node_child_access_t::send_ready_ack_update (
+          _node, endpoint, raw_filters[i], ack_source_id, false);
 }
 
 void spot_sub_t::emit_ready_event ()
@@ -530,12 +563,8 @@ void spot_sub_t::mark_subject_ready (const subject_descriptor_t &subject_,
     if (!emit)
         return;
 
-    if (_node) {
-        scoped_lock_t node_lock (_node->_sync);
-        _node->_summary_state.subject_last_changed_ms[make_subject_key (
-          subject_.subject, subject_.subject_kind)] = zlink::clock_t ().now_ms ();
-        _node->_summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
-    }
+    spot_node_child_access_t::mark_subject_changed (
+      _node, subject_.subject, subject_.subject_kind);
 
     LIBZLINK_UNUSED (endpoint_value);
 }
@@ -598,12 +627,8 @@ void spot_sub_t::mark_subject_lost (const subject_descriptor_t &subject_,
     if (!erased)
         return;
 
-    if (_node) {
-        scoped_lock_t node_lock (_node->_sync);
-        _node->_summary_state.subject_last_changed_ms[make_subject_key (
-          subject_.subject, subject_.subject_kind)] = zlink::clock_t ().now_ms ();
-        _node->_summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
-    }
+    spot_node_child_access_t::mark_subject_changed (
+      _node, subject_.subject, subject_.subject_kind);
 
     LIBZLINK_UNUSED (endpoint_);
 }
@@ -621,9 +646,9 @@ void spot_sub_t::mark_all_subjects_lost (const char *endpoint_)
     if (_node) {
         const std::string ack_source_id = ready_ack_source_id ();
         for (size_t i = 0; i < ready_ack_updates.size (); ++i) {
-            (void) _node->send_ready_ack_update (ready_ack_updates[i].second,
-                                                 ready_ack_updates[i].first,
-                                                 ack_source_id, false);
+            (void) spot_node_child_access_t::send_ready_ack_update (
+              _node, ready_ack_updates[i].second, ready_ack_updates[i].first,
+              ack_source_id, false);
         }
     }
     for (size_t i = 0; i < subjects.size (); ++i)
@@ -637,7 +662,7 @@ void spot_sub_t::handle_ready_probe (const std::string &raw_filter_,
         return;
     if (_destroying.load (std::memory_order_acquire))
         return;
-    if (_node && _node->is_shutting_down ())
+    if (_node && spot_node_child_access_t::is_shutting_down (_node))
         return;
 
     if (getenv ("ZLINK_DEBUG_SPOT_READY_PROBE")) {
@@ -682,8 +707,8 @@ void spot_sub_t::handle_ready_probe (const std::string &raw_filter_,
     if (already_acked)
         return;
 
-    if (_node->send_ready_ack_update (endpoint, raw_filter_,
-                                      ready_ack_source_id (), true)
+    if (spot_node_child_access_t::send_ready_ack_update (
+          _node, endpoint, raw_filter_, ready_ack_source_id (), true)
         != 0)
         return;
 

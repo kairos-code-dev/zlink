@@ -128,6 +128,9 @@ def remote_actor_ref(target_node_rid, actor_id): ...
 
 `ActorRef.generation == 0` is an unchecked remote ref. Actor creation places
 the Actor in the Entry Spot. The application cannot remove the Entry Spot.
+Actor IDs are non-empty UTF-8 strings up to 255 bytes and must not contain NUL.
+Leaving a Spot does not drain unread Actor messages. Remote actor creation is
+create-or-get: the admission callback runs only when the target actor is missing.
 Joining a user Spot requires a bound STREAM session. One Actor can join only
 one Spot at a time, and a STREAM session can bind multiple Actors. Actor
 readable dispatch uses a callback-lifetime ActorRef subject, not a native
@@ -232,6 +235,10 @@ Python nonblocking data-plane helpers follow this rule:
   when the core reports no data, and still raise `RecvError` for real recv
   failures.
 
+Python does not support runtime method overloading. Callback request variants use
+the minimal `_callback` suffix so the public surface is implementable and
+unambiguous.
+
 Peer weight is not a common-socket accessor. Bindings expose it only on the
 implemented weight-bearing handles (`RouterSocket` and `DealerSocket`) through their typed option/property surfaces.
 
@@ -246,6 +253,7 @@ class PairSocket:
     def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
     def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
+    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
     def send(self, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
     def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
     def on_send_ready(self, handler: Callable[[PairSocket], None]) -> None: ...  # Raises: HandlerError
@@ -266,7 +274,8 @@ class PubSocket:
     def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
     def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
-    def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
+    def publish(self, topic: str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
     def on_send_ready(self, handler: Callable[[PubSocket], None]) -> None: ...   # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
@@ -286,8 +295,9 @@ class SubSocket:
     def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
     def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
-    def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
-    def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
+    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
+    def set_subscription(self, topic: str) -> None: ...                          # Raises: ConfigError
+    def unset_subscription(self, topic: str) -> None: ...                        # Raises: ConfigError
     def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
@@ -307,6 +317,7 @@ class DealerSocket:
     def unbind(self, endpoint: str) -> None: ...                                   # Raises: ConnectError
     def connect(self, endpoint: str) -> None: ...                                  # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                               # Raises: ConnectError
+    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                   # Raises: ConnectError
     def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...           # Raises: ConfigError
     def get_routing_id(self) -> RoutingId | None: ...                              # Raises: ConfigError
     def set_channel_name(self, channel_name: str) -> None: ...                     # Raises: ConfigError
@@ -330,9 +341,9 @@ class DealerSocket:
     # Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
     # Callback receives an empty list on failure.
-    def request(self, payload: Message | bytes | list,
-                callback: Callable[[RequestResult, list[Message]], None],
-                *, flags: int = 0, timeout: int = 0) -> bool: ...
+    def request_callback(self, payload: Message | bytes | list,
+                         callback: Callable[[RequestResult, list[Message]], None],
+                         *, flags: int = 0, timeout: int = 0) -> bool: ...
 
     def close(self) -> None: ...                                                   # Raises: CloseError
 ```
@@ -350,6 +361,7 @@ class RouterSocket:
     def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
     def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
+    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
     def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
     def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
     def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> bool: ...  # Raises: SubmitError
@@ -372,10 +384,10 @@ class RouterSocket:
     # Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
     # Callback receives an empty list on failure.
-    def request(self, peer_rid: RoutingId,
-                payload: Message | bytes | list,
-                callback: Callable[[RequestResult, list[Message]], None],
-                *, flags: int = 0, timeout: int = 0) -> bool: ...
+    def request_callback(self, peer_rid: RoutingId,
+                         payload: Message | bytes | list,
+                         callback: Callable[[RequestResult, list[Message]], None],
+                         *, flags: int = 0, timeout: int = 0) -> bool: ...
 
     # --- reply ---
     def reply(self, routing_id: RoutingId, request_seq: int,
@@ -400,11 +412,11 @@ class RouterSocket:
     # Callback receives RequestResult;
     #   non-OK indicates request-completion failure (RequestError semantics).
     # Callback receives an empty list on failure.
-    def request_to_spot(self, dest_node_rid: RoutingId,
-                        dest_spot_rid: RoutingId,
-                        payload: Message | bytes | list,
-                        callback: Callable[[RequestResult, list[Message]], None],
-                        *, flags: int = 0, timeout: int = 0) -> bool: ...
+    def request_to_spot_callback(self, dest_node_rid: RoutingId,
+                                 dest_spot_rid: RoutingId,
+                                 payload: Message | bytes | list,
+                                 callback: Callable[[RequestResult, list[Message]], None],
+                                 *, flags: int = 0, timeout: int = 0) -> bool: ...
 
     # --- router → spot routed reply ---
     def reply_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
@@ -434,16 +446,10 @@ class XPubSocket:
     def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
     def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
-    def publish(self, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
+    def publish(self, topic: str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
     def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent | None: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
-    def bind_actor(self, node: SpotNode, session_rid: RoutingId,
-                   actor: ActorRef, *, timeout: int = 0) -> None: ...            # Raises: ConfigError
-    def unbind_actor(self, node: SpotNode, session_rid: RoutingId,
-                     actor_id: str, *, timeout: int = 0) -> None: ...            # Raises: ConfigError
-    def send_bound_actor(self, node: SpotNode, session_rid: RoutingId,
-                         actor_id: str, payload: Message | bytes | list,
-                         *, flags: int = 0) -> bool: ...                        # Raises: SubmitError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -461,8 +467,9 @@ class XSubSocket:
     def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
     def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
-    def set_subscription(self, topic: bytes | str) -> None: ...                  # Raises: ConfigError
-    def unset_subscription(self, topic: bytes | str) -> None: ...                # Raises: ConfigError
+    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
+    def set_subscription(self, topic: str) -> None: ...                          # Raises: ConfigError
+    def unset_subscription(self, topic: str) -> None: ...                        # Raises: ConfigError
     def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -481,6 +488,7 @@ class StreamSocket:
     def unbind(self, endpoint: str) -> None: ...                                 # Raises: ConnectError
     def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
     def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
+    def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
     def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> bool: ...  # Raises: SubmitError
     # Two mutually-exclusive receive modes on the same StreamSocket:
     #   (1) recv(), (2) on_packet(handler). Second attach raises
@@ -496,6 +504,13 @@ class StreamSocket:
         handler: Callable[[RoutingId, "Message", "Message"], None],
     ) -> None: ...                                                               # Raises: HandlerError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
+    def bind_actor(self, node: SpotNode, session_rid: RoutingId,
+                   actor: ActorRef, *, timeout: int = 0) -> None: ...            # Raises: RequestError
+    def unbind_actor(self, node: SpotNode, session_rid: RoutingId,
+                     actor_id: str, *, timeout: int = 0) -> None: ...            # Raises: RequestError
+    def send_bound_actor(self, node: SpotNode, session_rid: RoutingId,
+                         actor_id: str, payload: Message | bytes | list,
+                         *, flags: int = 0) -> bool: ...                        # Raises: SubmitError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -506,6 +521,14 @@ All option-class getters and setters raise `ConfigError` on failure.
 
 ```python
 class CommonSocketOptions:
+    @property
+    def rid_duplicate_policy(self) -> RidDuplicatePolicy: ...
+    @rid_duplicate_policy.setter
+    def rid_duplicate_policy(self, value: RidDuplicatePolicy) -> None: ...
+    @property
+    def auto_hwm_msg_unit_bytes(self) -> int: ...
+    @auto_hwm_msg_unit_bytes.setter
+    def auto_hwm_msg_unit_bytes(self, value: int) -> None: ...
     @property
     def linger_ms(self) -> int: ...
     @linger_ms.setter
@@ -536,6 +559,10 @@ class DealerSocketOptions:
     def probe(self) -> bool: ...
     @probe.setter
     def probe(self, value: bool) -> None: ...
+    @property
+    def weight(self) -> int: ...
+    @weight.setter
+    def weight(self, value: int) -> None: ...
 
 class RouterSocketOptions:
     @property
@@ -554,6 +581,10 @@ class RouterSocketOptions:
     def connect_routing_id(self) -> RoutingId: ...
     @connect_routing_id.setter
     def connect_routing_id(self, routing_id: RoutingId | bytes) -> None: ...
+    @property
+    def weight(self) -> int: ...
+    @weight.setter
+    def weight(self, value: int) -> None: ...
 
 class PubSocketOptions:
     @property
@@ -591,6 +622,10 @@ class StreamSocketOptions:
 ### SendFlags
 
 ```python
+class RidDuplicatePolicy(IntEnum):
+    REJECT = 0
+    HANDOVER = 1
+
 class SendFlags:
     NONE = 0
     DONT_WAIT = 1
@@ -632,49 +667,10 @@ class Message:
 
 ### Codec Extensions
 
-The binding exposes separate codec extension packages. The distribution package
-names and import module names are fixed to:
-
-- PyPI `zlink-codec-protobuf` -> import `zlink_codec_protobuf`
-- PyPI `zlink-codec-json` -> import `zlink_codec_json`
-- PyPI `zlink-codec-messagepack` -> import `zlink_codec_messagepack`
-
-These are separate public modules layered on top of the core `zlink` package.
-They must not be merged into `zlink.__init__` as unconditional dependencies,
-and they do not extend a shared `zlink.codec.*` namespace.
-
-JSON codec baseline: stdlib `json`.
-MessagePack codec baseline: `msgpack`.
-
-```python
-# zlink_codec_protobuf
-from typing import Any, TypeVar
-
-TProto = TypeVar("TProto")
-
-def parse_proto(message: Message, message_type: type[TProto]) -> TProto: ...
-def to_message(value: Any) -> Message: ...
-```
-
-```python
-# zlink_codec_json
-from typing import Any, TypeVar
-
-TJson = TypeVar("TJson")
-
-def parse_json(message: Message, cls: type[TJson]) -> TJson: ...
-def to_message(value: Any) -> Message: ...
-```
-
-```python
-# zlink_codec_messagepack
-from typing import Any, TypeVar
-
-TMessagePack = TypeVar("TMessagePack")
-
-def parse_messagepack(message: Message, cls: type[TMessagePack]) -> TMessagePack: ...
-def to_message(value: Any) -> Message: ...
-```
+Codec adapters are separate public extension packages layered on top of the
+core package. Their contract lives in
+[Python Codec Extension Specification](codec.md). The core `zlink` package
+does not expose codec entrypoints or require codec dependencies.
 
 ### RoutingId
 
@@ -788,7 +784,6 @@ class ActorRef:
     node_rid: RoutingId
     actor_id: str
     generation: int
-    def is_unchecked(self) -> bool: ...
 
 @dataclass(frozen=True)
 class ActorCreateResult:
@@ -1236,7 +1231,7 @@ class AutoConnectType(IntEnum):
 
 ```python
 class Discovery:
-    def __init__(self, ctx: Context, auto_connect_type: int, channel_name: str) -> None: ...
+    def __init__(self, ctx: Context, auto_connect_type: AutoConnectType, channel_name: str) -> None: ...
     def connect_registry(self, registry_endpoint: str) -> None: ...              # Raises: ConnectError
     def set_value(self, value: int) -> None: ...                                 # Raises: ConfigError
     def get_value(self) -> int: ...                                              # Raises: ConfigError
@@ -1369,16 +1364,18 @@ class Spot:
     @property
     def routing_id(self) -> RoutingId: ...                                       # Raises: ConfigError
 
-    def publish(self, service_name: str, topic: bytes | str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    def publish(self, service_name: str, topic: str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
     def send_channel(self, channel_name: str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    def send_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
+                     payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
     async def request_channel(self, channel_name: str, payload: Message | bytes | list,
                               *, timeout: int = 0) -> list[Message]: ...
-    def request_channel(self, channel_name: str,
-                        payload: Message | bytes | list,
-                        callback: Callable[[RequestResult, list[Message]], None],
-                        *, flags: int = 0, timeout: int = 0) -> bool: ...
-    def set_subscription(self, topic_or_pattern: bytes | str) -> None: ...       # Raises: ConfigError
-    def unset_subscription(self, topic_or_pattern: bytes | str) -> None: ...     # Raises: ConfigError
+    def request_channel_callback(self, channel_name: str,
+                                 payload: Message | bytes | list,
+                                 callback: Callable[[RequestResult, list[Message]], None],
+                                 *, flags: int = 0, timeout: int = 0) -> bool: ...
+    def set_subscription(self, topic_or_pattern: str) -> None: ...               # Raises: ConfigError
+    def unset_subscription(self, topic_or_pattern: str) -> None: ...             # Raises: ConfigError
     def subscribe(self, *, flags: int = 0) -> TopicMessage | None: ...           # Raises: RecvError
     def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent | None: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable[[Spot], None]) -> None: ...        # Raises: HandlerError
@@ -1396,10 +1393,10 @@ class Spot:
     # Raises: SubmitError on submit failure other than temporary backpressure.
     # Callback receives RequestResult; non-OK indicates request-completion failure.
     # Callback receives an empty list on failure.
-    def request_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-                        payload: Message | bytes | list,
-                        callback: Callable[[RequestResult, list[Message]], None],
-                        *, flags: int = 0, timeout: int = 0) -> bool: ...  # Raises: SubmitError
+    def request_to_spot_callback(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
+                                 payload: Message | bytes | list,
+                                 callback: Callable[[RequestResult, list[Message]], None],
+                                 *, flags: int = 0, timeout: int = 0) -> bool: ...  # Raises: SubmitError
 
     # --- routed request (spot → router, async) — no flags ---
     # timeout = 0 uses the socket default timeout.
@@ -1414,10 +1411,10 @@ class Spot:
     # Raises: SubmitError on submit failure other than temporary backpressure.
     # Callback receives RequestResult; non-OK indicates request-completion failure.
     # Callback receives an empty list on failure.
-    def request_to_router(self, peer_rid: RoutingId,
-                          payload: Message | bytes | list,
-                          callback: Callable[[RequestResult, list[Message]], None],
-                          *, flags: int = 0, timeout: int = 0) -> bool: ...  # Raises: SubmitError
+    def request_to_router_callback(self, peer_rid: RoutingId,
+                                   payload: Message | bytes | list,
+                                   callback: Callable[[RequestResult, list[Message]], None],
+                                   *, flags: int = 0, timeout: int = 0) -> bool: ...  # Raises: SubmitError
 
     # --- routed reply (spot → spot) ---
     def reply_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
@@ -1430,13 +1427,13 @@ class Spot:
 
     # --- routed receive ---
     def recv_routed(self, *, flags: int = 0) -> Received | None: ...             # Raises: RecvError
-    def on_routed_receive(self, handler: Callable) -> None: ...                  # Raises: HandlerError
+    def on_routed_receive(self, handler: Callable[[Received], None]) -> None: ...  # Raises: HandlerError
     def on_dispatch_event(self, handler: Callable[[Spot, SpotDispatchInfo], None]) -> None: ...  # Raises: HandlerError
     def recv_actor_join(self, *, flags: int = 0) -> ActorJoinRequest | None: ...  # Raises: RecvError
-    def reply_actor_join(self, info: ActorJoinInfo, accepted: bool,
+    def reply_actor_join(self, request: ActorJoinRequest, accepted: bool,
                          payload: Message | bytes) -> bool: ...                 # Raises: SubmitError
     def actors_snapshot(self) -> list[ActorRef]: ...                            # Raises: ConfigError
-    def drain_channel_reply_from(self, subject) -> None: ...                     # Raises: ConfigError
+    def drain_channel_reply_from(self, dealer: DealerSocket) -> None: ...        # Raises: ConfigError
 
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -1460,7 +1457,8 @@ class SpotDispatchSubjectKind(IntEnum):
 class SpotDispatchInfo:
     event: SpotDispatchEvent
     subject_kind: SpotDispatchSubjectKind
-    subject: object | None
+    timer: Timer | None
+    channel_dealer: DealerSocket | None
     actor: ActorRef | None
     def recv_actor_part(self, *, flags: int = 0) -> ActorPart | None: ...
 ```
@@ -1470,9 +1468,9 @@ For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
 `EAGAIN`.
 For `CHANNEL_REPLY_READABLE`, `subject_kind` is `CHANNEL_DEALER`; use the
 attached dealer's `get_channel_name()` metadata to identify the channel and
-pass `subject` to `drain_channel_reply_from(...)`.
-For `ACTOR_READABLE`, `actor` identifies the readable Actor and `subject` is
-not part of the public Actor contract.
+pass `channel_dealer` to `drain_channel_reply_from(...)`.
+For `ACTOR_READABLE`, `actor` identifies the readable Actor. No native Actor
+pointer is part of the public contract.
 
 ### RegistryQueryClient
 
@@ -1495,10 +1493,23 @@ in `core/include/zlink.h`; fixed-size C strings are decoded to `str`.
 Primary entry types used in the default service flow:
 
 ```python
+class ServiceKind(IntEnum): ...
+class ServiceRole(IntEnum): ...
+class SpotNodeState(IntEnum): ...
+class SpotPeerSource(IntEnum): ...
+class SpotPeerState(IntEnum): ...
+class RegistryState(IntEnum): ...
+class TopologySource(IntEnum): ...
+class TopologyState(IntEnum): ...
+class SpotRole(IntEnum): ...
+class SubjectKind(IntEnum): ...
+class SpotNodeSocketOwner(IntEnum): ...
+class SocketType(IntEnum): ...
+
 @dataclass(frozen=True)
 class MemberPeerEntry:
-    auto_connect_type: int                # zlink_auto_connect_type_t
-    service_role: int
+    auto_connect_type: AutoConnectType
+    service_role: ServiceRole
     channel_name: str
     endpoint: str
     routing_id: RoutingId
@@ -1507,13 +1518,14 @@ class MemberPeerEntry:
 
 @dataclass(frozen=True)
 class RegistryTopologyEntry:
+    auto_connect_type: AutoConnectType
     routing_id: RoutingId
-    service_kind: int                # zlink_service_kind_t
-    service_role: int
+    service_kind: ServiceKind
+    service_role: ServiceRole
     channel_name: str
     endpoint: str
-    source: int                      # zlink_topology_source_t
-    state: int                       # zlink_topology_state_t
+    source: TopologySource
+    state: TopologyState
     desired_count: int
     ready_count: int
     error_code: int
@@ -1524,7 +1536,7 @@ class SpotNodeStatus:
     channel_name: str
     local_endpoint: str
     node_routing_id: RoutingId
-    state: int                       # zlink_spot_node_state_t
+    state: SpotNodeState
     configured_peer_count: int
     active_peer_count: int
     connected_peer_count: int
@@ -1541,8 +1553,8 @@ Advanced / Diagnostic entry types and filters:
 ```python
 @dataclass(frozen=True)
 class RegistryServiceSummaryEntry:
-    service_kind: int                # zlink_service_kind_t
-    service_role: int
+    auto_connect_type: AutoConnectType
+    service_role: ServiceRole
     channel_name: str
     total_count: int
     connecting_count: int
@@ -1555,7 +1567,7 @@ class RegistryServiceSummaryEntry:
 class RegistryStatus:
     registry_id: int
     bind_endpoint: str
-    state: int                       # zlink_registry_state_t
+    state: RegistryState
     topology_entry_count: int
     peer_registry_count: int
     connected_peer_registry_count: int
@@ -1568,47 +1580,64 @@ class SpotNodePeerEntry:
     channel_name: str
     local_endpoint: str
     peer_endpoint: str
-    source: int                      # zlink_spot_peer_source_t
-    state: int                       # zlink_spot_peer_state_t
+    source: SpotPeerSource
+    state: SpotPeerState
     weight: int                      # uint32, 0..100
     connected_since_ms: int
     last_changed_ms: int
 
 @dataclass(frozen=True)
 class SpotNodeSubjectEntry:
-    role: int                        # zlink_spot_role_t
+    role: SpotRole
     subject: str
-    subject_kind: int
+    subject_kind: SubjectKind
     ready_peer_count: int
     active_peer_count: int
     last_changed_ms: int
 
 @dataclass(frozen=True)
+class SpotNodeSocketSnapshotFilter:
+    owner: SpotNodeSocketOwner | None = None
+    socket_type: SocketType | None = None
+    socket_name: str | None = None
+
+@dataclass(frozen=True)
+class SpotNodeSocketSnapshotEntry:
+    owner: SpotNodeSocketOwner
+    owner_id: int
+    owner_name: str
+    socket_name: str
+    socket_type: SocketType
+    auto_hwm_visible: bool
+    snapshot: MonitorSnapshot
+
+@dataclass(frozen=True)
 class RegistryServiceSummaryFilter:
-    service_kind: int | None = None
-    service_role: int | None = None
+    auto_connect_type: AutoConnectType | None = None
+    service_role: ServiceRole | None = None
     channel_name: str | None = None
 
 @dataclass(frozen=True)
 class RegistryTopologyFilter:
-    service_kind: int | None = None
-    service_role: int | None = None
+    auto_connect_type: AutoConnectType | None = None
+    service_kind: ServiceKind | None = None
+    service_role: ServiceRole | None = None
     channel_name: str | None = None
     routing_id: RoutingId | None = None
-    state: int | None = None
-    source: int | None = None
+    state: TopologyState | None = None
+    source: TopologySource | None = None
 
 @dataclass(frozen=True)
 class SpotNodePeerFilter:
     peer_endpoint: str | None = None
-    source: int | None = None
-    state: int | None = None
+    source: SpotPeerSource | None = None
+    state: SpotPeerState | None = None
 
 @dataclass(frozen=True)
 class SpotNodeSubjectFilter:
-    role: int | None = None
+    role: SpotRole | None = None
     subject: str | None = None
-    subject_kind: int | None = None
+    subject_kind: SubjectKind | None = None
 ```
 
 ---
@@ -1616,21 +1645,42 @@ class SpotNodeSubjectFilter:
 ## Poller
 
 ```python
+class PollEventFlag(IntFlag):
+    IN = 1
+    OUT = 2
+
+class PollSourceKind(IntEnum):
+    SOCKET = 1
+    FD = 2
+    TIMER = 3
+
+@dataclass(frozen=True)
+class PollerEvent:
+    source_kind: PollSourceKind
+    events: PollEventFlag
+    socket: object | None = None
+    fd: int | None = None
+    timer: Timer | None = None
+    tag: object | None = None
+
 class Poller:
     def __init__(self) -> None: ...
-    def add_socket(self, socket, events: int, tag: object = None) -> None: ...   # Raises: ConfigError
-    def add_fd(self, fd: int, events: int, tag: object = None) -> None: ...      # Raises: ConfigError
+    def add_socket(self, socket, events: PollEventFlag, tag: object = None) -> None: ...  # Raises: ConfigError
+    def add_fd(self, fd: int, events: PollEventFlag, tag: object = None) -> None: ...  # Raises: ConfigError
     def add_timer(self, timer: Timer, user_data: object = None) -> None: ...     # Raises: ConfigError
-    def modify_socket(self, socket, events: int) -> None: ...                    # Raises: ConfigError
-    def modify_fd(self, fd: int, events: int) -> None: ...                       # Raises: ConfigError
+    def modify_socket(self, socket, events: PollEventFlag) -> None: ...          # Raises: ConfigError
+    def modify_fd(self, fd: int, events: PollEventFlag) -> None: ...             # Raises: ConfigError
     def remove_socket(self, socket) -> None: ...                                 # Raises: ConfigError
     def remove_fd(self, fd: int) -> None: ...                                    # Raises: ConfigError
     def remove_timer(self, timer: Timer) -> None: ...                            # Raises: ConfigError
     def size(self) -> int: ...                                                   # Raises: ConfigError — number of registered items; maps to zlink_poller_size
-    def poll(self, timeout_ms: int) -> list[dict]: ...                           # Raises: RecvError
+    def poll(self, timeout_ms: int) -> list[PollerEvent]: ...                    # Raises: RecvError
     def close(self) -> None: ...                                                 # Raises: CloseError
     # supports `with` and `async with` — __exit__ raises CloseError
 ```
+
+`PollEventFlag.OUT` is send-recovery readiness shared with
+`on_send_ready(...)`, not a general transport-writable bit.
 
 The current public poller contract is still generic. It does not yet expose a
 Spot-aware result carrying owner `Spot`, dispatch event kind, and drain

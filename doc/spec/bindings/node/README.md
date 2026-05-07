@@ -371,6 +371,8 @@ class SubSocket {
     setSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
+    /** @throws {ConfigError} */
+    subscriptionAt(index: number): SubscriptionEntry;
     /** @throws {RecvError} */
     subscribe(flags?: RecvFlags): TopicMessage | null;
     /** @throws {ConfigError} */
@@ -468,8 +470,6 @@ class RouterSocket {
     setRoutingId(routingId: RoutingId): void;
     /** @throws {ConfigError} */
     getRoutingId(): RoutingId;
-    /** @throws {ConnectError} */
-    disconnectRid(routingId: RoutingId): void;
     /** @throws {SubmitError} */
     send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
@@ -616,6 +616,8 @@ class XSubSocket {
     setSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
+    /** @throws {ConfigError} */
+    subscriptionAt(index: number): SubscriptionEntry;
     /** @throws {RecvError} */
     subscribe(flags?: RecvFlags): TopicMessage | null;
     /** @throws {ConfigError} */
@@ -661,10 +663,10 @@ class StreamSocket {
     onPacket(handler: StreamPacketHandler): void;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
-    /** @throws {ConfigError} */
+    /** @throws {RequestError} */
     bindActor(node: SpotNode, sessionRid: RoutingId,
               actor: ActorRef, timeoutMs?: number): void;
-    /** @throws {ConfigError} */
+    /** @throws {RequestError} */
     unbindActor(node: SpotNode, sessionRid: RoutingId,
                 actorId: string, timeoutMs?: number): void;
     /** @throws {SubmitError} */
@@ -712,8 +714,8 @@ class CommonSocketOptions {
 
 class DealerSocketOptions extends CommonSocketOptions {
     probe: boolean;              // set only
-    requestTimeout: number;      // get / set (ms)
-    weight: number;              // get / set, 0..100
+    requestTimeout: number;      // set only (ms)
+    weight: number;              // set only, 0..100
 }
 
 class RouterSocketOptions extends CommonSocketOptions {
@@ -726,10 +728,16 @@ class RouterSocketOptions extends CommonSocketOptions {
 }
 
 class PubSocketOptions extends CommonSocketOptions {
-    verbose: boolean;            // set only
-    verboser: boolean;           // set only
-    noDrop: boolean;             // set only
-    manual: boolean;             // set only
+    verbose: boolean;            // get / set
+    verboser: boolean;           // get / set
+    noDrop: boolean;             // get / set
+    manual: boolean;             // get / set
+    manualLastValue: boolean;    // get / set
+    readonly topicsCount: number;
+    welcomeMessage(): Message;
+    setWelcomeMessage(message: MessageLike): void;
+    approveSubscribe(routingId: RoutingId): void;
+    rejectSubscribe(routingId: RoutingId): void;
 }
 
 class SubSocketOptions extends CommonSocketOptions {
@@ -740,9 +748,6 @@ class StreamSocketOptions extends CommonSocketOptions {
     notify: boolean;             // get / set
 }
 
-class SpotOptions {
-    requestTimeout: number;      // get / set (ms)
-}
 ```
 
 ---
@@ -777,82 +782,10 @@ type BufferLike = Buffer | Uint8Array | string;
 
 ### Codec Extensions
 
-The binding exposes separate codec extension packages. The public package names
-are fixed to:
-
-- `@ulalax/zlink-codec-protobuf`
-- `@ulalax/zlink-codec-json`
-- `@ulalax/zlink-codec-messagepack`
-
-These are separate public packages layered on top of the core package. They
-must not be merged into the root package entrypoint.
-
-JSON codec baseline: built-in `JSON.parse` / `JSON.stringify`. Typed validation
-may be layered on top through a schema/parser object.
-MessagePack codec baseline: `@msgpack/msgpack`.
-
-```typescript
-declare module "@ulalax/zlink-codec-protobuf" {
-    export interface ProtoDecoder<T> {
-        decode(data: Uint8Array): T;
-    }
-
-    export interface ProtoEncoder<T> {
-        encode(value: T): Uint8Array;
-    }
-
-    export function parseProto<T>(
-        message: import("@ulalax/zlink").Message,
-        decoder: ProtoDecoder<T>,
-    ): T;
-
-    export function toMessage<T>(
-        value: T,
-        encoder: ProtoEncoder<T>,
-    ): import("@ulalax/zlink").Message;
-}
-```
-
-```typescript
-declare module "@ulalax/zlink-codec-json" {
-    export interface JsonSchema<T> {
-        parse(value: unknown): T;
-    }
-
-    export function parseJson(
-        message: import("@ulalax/zlink").Message,
-    ): unknown;
-
-    export function parseJson<T>(
-        message: import("@ulalax/zlink").Message,
-        schema: JsonSchema<T>,
-    ): T;
-
-    export function toMessage(value: unknown): import("@ulalax/zlink").Message;
-}
-```
-
-```typescript
-declare module "@ulalax/zlink-codec-messagepack" {
-    export interface MessagePackDecoder<T> {
-        decode(data: Uint8Array): T;
-    }
-
-    export interface MessagePackEncoder<T> {
-        encode(value: T): Uint8Array;
-    }
-
-    export function parseMessagePack<T>(
-        message: import("@ulalax/zlink").Message,
-        decoder: MessagePackDecoder<T>,
-    ): T;
-
-    export function toMessage<T>(
-        value: T,
-        encoder: MessagePackEncoder<T>,
-    ): import("@ulalax/zlink").Message;
-}
-```
+Codec adapters are separate public extension packages layered on top of the
+core package. Their contract lives in
+[Node Codec Extension Specification](codec.md). The root `@ulalax/zlink`
+entrypoint does not expose codec entrypoints or require codec dependencies.
 
 ### RoutingId
 
@@ -956,6 +889,17 @@ class SubscriptionEvent {
     readonly topic: string;                  // UTF-8
     readonly subscribed: boolean;            // true=subscribe, false=unsubscribe
 }
+```
+
+### SubscriptionEntry
+
+Value object returned by subscription introspection methods.
+
+```typescript
+type SubscriptionEntry = {
+    readonly filter: string;
+    readonly isPattern: boolean;
+};
 ```
 
 ### SendFlags
@@ -1619,7 +1563,7 @@ successfully bound with `StreamSocket.bindActor(...)`.
 class Spot {
     // The SpotNode constructor path is internal. Public code obtains Spot
     // handles through SpotNode factories.
-    readonly options: SpotOptions;
+    requestTimeout: number;      // get / set (ms)
     /** @throws {SubmitError} */
     publish(serviceName: string, topic: string, payload: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
@@ -1652,6 +1596,8 @@ class Spot {
     setSubscription(topicOrPattern: string): void;
     /** @throws {ConfigError} */
     unsetSubscription(topicOrPattern: string): void;
+    /** @throws {ConfigError} */
+    subscriptionAt(index: number): SubscriptionEntry;
     /** @throws {RecvError} */
     subscribe(flags?: RecvFlags): TopicMessage | null;
     /** @throws {RecvError} */
@@ -1742,12 +1688,9 @@ class Spot {
     recvActorJoin(flags?: RecvFlags): ActorJoinRequest | null;
     /** @throws {SubmitError} */
     replyActorJoin(request: ActorJoinRequest, accepted: boolean,
-                   message: MessageLike): boolean;
+                   message: MessageLike): void;
     /** @throws {ConfigError} */
     actorsSnapshot(): ActorRef[];
-    /** @throws {ConfigError} */
-    drainChannelReplyFrom(dealer: DealerSocket): void;
-
     // --- identity / routing ---
     /**
      * Spot's logical address / routed ownership key.
@@ -2200,7 +2143,6 @@ interface SpotDispatchInfo {
   event: SpotDispatchEvent;
   subjectKind: SpotDispatchSubjectKind;
   timer: Timer | null;
-  channelDealer: DealerSocket | null;
   // ActorReadable carries a callback-lifetime ActorRef copy instead of a raw
   // native subject pointer.
   actorRef: ActorRef | null;
@@ -2217,10 +2159,9 @@ type TimerHandler = (timer: Timer, fireCount: bigint) => void;
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining
 `subscribe(...)` / `recvRouted(...)` until the binding reports no data /
 `EAGAIN`.
-For `ChannelReplyReadable`, `subjectKind` is
-`SpotDispatchSubjectKind.ChannelDealer`; use `channelDealer.getChannelName()`
-to identify the channel and pass `channelDealer` to
-`drainChannelReplyFrom(...)`.
+For `ChannelReplyReadable`, request promises and callbacks progress their
+replies inside the binding. The public API does not expose the native channel
+dealer subject.
 For `ActorReadable`, `actorRef` identifies the readable Actor and
 the native Actor subject pointer is not part of the public Actor contract.
 

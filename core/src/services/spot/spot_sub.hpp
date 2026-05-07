@@ -20,6 +20,7 @@ namespace zlink
 class socket_base_t;
 class spot_node_t;
 struct spot_runtime_t;
+struct spot_sub_node_access_t;
 
 typedef void (*spot_sub_direct_handler_fn) (
   const zlink_routing_id_t *source_rid_,
@@ -38,6 +39,15 @@ class spot_sub_t
 
         std::string subject;
         uint32_t subject_kind;
+    };
+
+    struct subject_snapshot_t
+    {
+        subject_snapshot_t () : subject_kind (0), ready (false) {}
+
+        std::string subject;
+        uint32_t subject_kind;
+        bool ready;
     };
 
     struct direct_handler_binding_t
@@ -78,6 +88,8 @@ class spot_sub_t
     void append_raw_filters (std::set<std::string> *out_) const;
     void append_replay_raw_filters (std::set<std::string> *out_) const;
     void append_all_subjects (std::vector<subject_descriptor_t> *out_) const;
+    void append_subject_snapshots (
+      std::vector<subject_snapshot_t> *out_) const;
     void append_subjects_for_raw_filter (
       const std::string &raw_filter_,
       std::vector<subject_descriptor_t> *out_) const;
@@ -102,7 +114,7 @@ class spot_sub_t
     int abort_create ();
 
   private:
-    friend class spot_node_t;
+    friend struct spot_sub_node_access_t;
 
     enum handler_state_t
     {

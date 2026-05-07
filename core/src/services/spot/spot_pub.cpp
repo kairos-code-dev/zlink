@@ -7,6 +7,7 @@
 #include "services/spot/spot_control_protocol.hpp"
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_child_access.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_subject_access.hpp"
 
@@ -46,7 +47,7 @@ spot_pub_t::spot_pub_t (spot_node_t *node_,
                         bool node_owned_default_) :
     _node (node_),
     _socket (socket_),
-    _runtime (node_ ? node_->runtime () : NULL),
+    _runtime (spot_node_child_access_t::runtime (node_)),
     _attachment_id (attachment_id_),
     _tag (spot_pub_tag_value),
     _node_owned_default (node_owned_default_),
@@ -101,8 +102,8 @@ void spot_pub_t::lock_routing_id ()
 void spot_pub_t::submit_error_summary (int error_code_)
 {
     if (_node)
-        _node->submit_pub_summary (this, ZLINK_TOPOLOGY_STATE_ERROR,
-                                   error_code_);
+        spot_node_child_access_t::submit_pub_summary (
+          _node, this, ZLINK_TOPOLOGY_STATE_ERROR, error_code_);
 }
 
 int spot_pub_t::publish (const char *topic_,
@@ -160,8 +161,8 @@ int spot_pub_t::set_option (int option_,
 {
     socket_base_t *socket = this->socket ();
     if (!socket) {
-        return _node ? _node->set_pub_option (option_, optval_, optvallen_)
-                     : (errno = EFAULT, -1);
+        return spot_node_child_access_t::set_pub_option (
+          _node, option_, optval_, optvallen_);
     }
     if (!optval_ || optvallen_ == 0) {
         errno = EINVAL;
@@ -320,19 +321,23 @@ int spot_pub_t::destroy_internal (bool allow_embedded_default_,
 
     socket_base_t *socket = this->socket ();
     int first_error = 0;
-    const bool node_shutting_down = _node && _node->is_shutting_down ();
+    const bool node_shutting_down =
+      spot_node_child_access_t::is_shutting_down (_node);
 
     if (notify_node_ && _node)
-        _node->remove_spot_pub (this);
+        spot_node_child_access_t::remove_spot_pub (_node, this);
     if (notify_node_ && _node)
-        _node->submit_pub_summary (this, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
+        spot_node_child_access_t::submit_pub_summary (
+          _node, this, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
 
     if (socket) {
         if (_node)
             preserve_first_error (
-              !node_shutting_down ? _node->destroy_attachment (_attachment_id)
-                                 : _node->destroy_attachment_async (
-                                     _attachment_id),
+              !node_shutting_down
+                ? spot_node_child_access_t::destroy_attachment (
+                    _node, _attachment_id)
+                : spot_node_child_access_t::destroy_attachment_async (
+                    _node, _attachment_id),
               &first_error);
         else {
             socket->stop ();

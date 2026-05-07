@@ -8,6 +8,7 @@
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_sub.hpp"
+#include "services/spot/spot_sub_node_access.hpp"
 
 #include "api/service_spot_request_reply_internal.hpp"
 #include "core/c_api_copy_internal.hpp"
@@ -521,7 +522,8 @@ int spot_node_t::update_logical_spot_subscription (
         return -1;
     }
 
-    if (sub->apply_aggregate_subscription (raw_filter_, pattern_, subscribe_)
+    if (spot_sub_node_access_t::apply_aggregate_subscription (
+          sub, raw_filter_, pattern_, subscribe_)
         != 0) {
         const int err = errno;
         const bool rollback_changed =
@@ -799,63 +801,29 @@ int spot_node_t::snapshot_subjects (
     for (size_t i = 0; i < subs.size (); ++i) {
         if (!subs[i])
             continue;
-        scoped_lock_t sub_lock (subs[i]->_sync);
-        for (std::set<std::string>::const_iterator it = subs[i]->_topics.begin ();
-             it != subs[i]->_topics.end (); ++it) {
+        std::vector<spot_sub_t::subject_snapshot_t> subjects;
+        subs[i]->append_subject_snapshots (&subjects);
+        for (size_t j = 0; j < subjects.size (); ++j) {
+            const spot_sub_t::subject_snapshot_t &subject = subjects[j];
             subject_snapshot_key_t key;
-            key.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_TOPIC;
-            key.subject = *it;
+            key.subject_kind = subject.subject_kind;
+            key.subject = subject.subject;
             zlink_spot_node_subject_entry_t &entry = grouped[key];
             if (entry.role == 0) {
                 memset (&entry, 0, sizeof (entry));
                 entry.role = ZLINK_SPOT_ROLE_SUB;
-                entry.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_TOPIC;
+                entry.subject_kind = subject.subject_kind;
                 copy_fixed_c_string_from_bytes (entry.subject,
                                                 sizeof (entry.subject),
-                                                it->data (), it->size ());
+                                                subject.subject.data (),
+                                                subject.subject.size ());
             }
             entry.active_peer_count = active_peer_count;
-            if (subs[i]->_ready_subject_endpoints.count (
-                  spot_subject_snapshot_key_local (
-                    *it, ZLINK_SERVICE_EVENT_SUBJECT_TOPIC))
-                != 0) {
+            if (subject.ready)
                 entry.ready_peer_count = 1;
-            }
             std::map<std::string, uint64_t>::const_iterator tsit =
               subject_last_changed.find (spot_subject_snapshot_key_local (
-                *it, ZLINK_SERVICE_EVENT_SUBJECT_TOPIC));
-            if (tsit != subject_last_changed.end ()
-                && tsit->second > entry.last_changed_ms) {
-                entry.last_changed_ms = tsit->second;
-            }
-        }
-        for (std::set<std::string>::const_iterator it =
-               subs[i]->_patterns.begin ();
-             it != subs[i]->_patterns.end (); ++it) {
-            const std::string pattern = *it + "*";
-            subject_snapshot_key_t key;
-            key.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_PATTERN;
-            key.subject = pattern;
-            zlink_spot_node_subject_entry_t &entry = grouped[key];
-            if (entry.role == 0) {
-                memset (&entry, 0, sizeof (entry));
-                entry.role = ZLINK_SPOT_ROLE_SUB;
-                entry.subject_kind = ZLINK_SERVICE_EVENT_SUBJECT_PATTERN;
-                copy_fixed_c_string_from_bytes (entry.subject,
-                                                sizeof (entry.subject),
-                                                pattern.data (),
-                                                pattern.size ());
-            }
-            entry.active_peer_count = active_peer_count;
-            if (subs[i]->_ready_subject_endpoints.count (
-                  spot_subject_snapshot_key_local (
-                    pattern, ZLINK_SERVICE_EVENT_SUBJECT_PATTERN))
-                != 0) {
-                entry.ready_peer_count = 1;
-            }
-            std::map<std::string, uint64_t>::const_iterator tsit =
-              subject_last_changed.find (spot_subject_snapshot_key_local (
-                pattern, ZLINK_SERVICE_EVENT_SUBJECT_PATTERN));
+                subject.subject, subject.subject_kind));
             if (tsit != subject_last_changed.end ()
                 && tsit->second > entry.last_changed_ms) {
                 entry.last_changed_ms = tsit->second;

@@ -6,6 +6,7 @@
 
 #include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_node.hpp"
+#include "services/spot/spot_node_child_access.hpp"
 
 #include "sockets/socket_base.hpp"
 
@@ -57,7 +58,8 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     std::vector<std::string> topics;
     std::vector<std::string> patterns;
     bool had_filters = false;
-    const bool node_shutting_down = _node && _node->is_shutting_down ();
+    const bool node_shutting_down =
+      spot_node_child_access_t::is_shutting_down (_node);
 
     {
         scoped_lock_t lock (_sync);
@@ -103,32 +105,35 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     if (_node && !node_shutting_down) {
         const std::string ack_source_id = ready_ack_source_id ();
         for (size_t i = 0; i < ready_ack_updates.size (); ++i) {
-            (void) _node->send_ready_ack_update (ready_ack_updates[i].second,
-                                                 ready_ack_updates[i].first,
-                                                 ack_source_id, false);
+            (void) spot_node_child_access_t::send_ready_ack_update (
+              _node, ready_ack_updates[i].second, ready_ack_updates[i].first,
+              ack_source_id, false);
         }
     }
 
     if (notify_node_ && _node)
-        _node->remove_spot_sub (this);
+        spot_node_child_access_t::remove_spot_sub (_node, this);
     if (notify_node_ && _node)
-        _node->submit_sub_summary (this, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
+        spot_node_child_access_t::submit_sub_summary (
+          _node, this, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
     if (notify_node_ && _node && !node_shutting_down) {
         for (size_t i = 0; i < topics.size (); ++i) {
             if (_node->update_aggregate_subscription (topics[i], false, false))
                 preserve_first_error (
-                  _node->send_subscription_update (topics[i], false),
+                  spot_node_child_access_t::send_subscription_update (
+                    _node, topics[i], false),
                   &first_error);
         }
         for (size_t i = 0; i < patterns.size (); ++i) {
             if (_node->update_aggregate_subscription (patterns[i], true, false))
                 preserve_first_error (
-                  _node->send_subscription_update (patterns[i], false),
+                  spot_node_child_access_t::send_subscription_update (
+                    _node, patterns[i], false),
                   &first_error);
         }
     }
     if (notify_node_ && _node && had_filters && !node_shutting_down) {
-        _node->schedule_subscription_replay ();
+        spot_node_child_access_t::schedule_subscription_replay (_node);
         preserve_first_error (_node->replay_subscriptions_if_active_peers (),
                               &first_error);
     }
@@ -147,9 +152,11 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
             spot_sub_diag_log ("destroy.before-destroy-attachment");
         if (socket && _node)
             preserve_first_error (
-              !node_shutting_down ? _node->destroy_attachment (_attachment_id)
-                                 : _node->destroy_attachment_async (
-                                     _attachment_id),
+              !node_shutting_down
+                ? spot_node_child_access_t::destroy_attachment (_node,
+                                                                _attachment_id)
+                : spot_node_child_access_t::destroy_attachment_async (
+                    _node, _attachment_id),
               &first_error);
         if (socket && _node)
             spot_sub_diag_log ("destroy.after-destroy-attachment");

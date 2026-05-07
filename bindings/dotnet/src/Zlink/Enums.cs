@@ -267,7 +267,7 @@ internal enum SpotOption
     RequestTimeout = 0x3701
 }
 
-internal enum ErrorCode
+public enum ErrorCode
 {
     None = 0,
     Unknown = -1,

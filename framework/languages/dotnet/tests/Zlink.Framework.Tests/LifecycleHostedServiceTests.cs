@@ -32,7 +32,7 @@ public sealed class LifecycleHostedServiceTests
         await host.StartAsync();
 
         Assert.NotNull(runtime.Context);
-        Assert.IsType<global::Zlink.Context>(runtime.Context!.NativeInstance);
+        Assert.IsType<global::Systems.Zlink.Context>(runtime.Context!.NativeInstance);
 
         await host.StopAsync();
 

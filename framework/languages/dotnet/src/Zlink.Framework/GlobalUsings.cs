@@ -1,4 +1,4 @@
-global using Zlink;
+global using Systems.Zlink;
 global using Zlink.Framework.Actors;
 global using Zlink.Framework.Backend.Contracts;
 global using Zlink.Framework.Backend.DotNet;

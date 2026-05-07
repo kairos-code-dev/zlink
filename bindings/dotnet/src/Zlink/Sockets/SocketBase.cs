@@ -85,6 +85,16 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         return System.Text.Encoding.UTF8.GetString(buffer, 0, checked((int)length));
     }
 
+    public void SetChannelName(string channelName)
+    {
+        SetChannelNameCore(channelName);
+    }
+
+    public string GetChannelName()
+    {
+        return GetChannelNameCore();
+    }
+
     public void SetTlsServer(string certPath, string keyPath,
         bool requireClientCert = false)
     {

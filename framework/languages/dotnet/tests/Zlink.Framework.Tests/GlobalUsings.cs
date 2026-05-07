@@ -1,4 +1,5 @@
 global using Xunit;
+global using Systems.Zlink;
 global using Zlink.Framework.Actors;
 global using Zlink.Framework.Backend.DotNet;
 global using Zlink.Framework.Backend.DotNet.Adapters;

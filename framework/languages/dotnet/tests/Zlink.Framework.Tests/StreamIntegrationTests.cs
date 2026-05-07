@@ -500,7 +500,7 @@ public sealed class StreamIntegrationTests
 
         public string? LastSessionId { get; set; }
 
-        public global::Zlink.RoutingId? LastRoutingId { get; set; }
+        public global::Systems.Zlink.RoutingId? LastRoutingId { get; set; }
 
         public string? LastLocalAddr { get; set; }
 
@@ -606,7 +606,7 @@ public sealed class StreamIntegrationTests
 
         public ValueTask OnDispatchAsync(
             ZlinkStreamHeader header,
-            global::Zlink.Message payload,
+            global::Systems.Zlink.Message payload,
             CancellationToken cancellationToken)
         {
             using var lease = recorder.EnterCallback(Context.SessionId);
@@ -798,7 +798,7 @@ public sealed class StreamIntegrationTests
 
         private CallbackExceptionCapture()
         {
-            _eventInfo = typeof(global::Zlink.Context).Assembly
+            _eventInfo = typeof(global::Systems.Zlink.Context).Assembly
                 .GetType("Zlink.Runtime", throwOnError: true)!
                 .GetEvent("UnhandledCallbackException", BindingFlags.Public | BindingFlags.Static)!
                 ?? throw new InvalidOperationException("Could not locate Zlink.Runtime.UnhandledCallbackException.");

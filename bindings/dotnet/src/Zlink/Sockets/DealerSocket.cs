@@ -40,12 +40,12 @@ public sealed class DealerSocket : MessageSocketBase
         Kernel.AttachDiscovery(discovery);
     }
 
-    public void SetChannelName(string channelName)
+    public new void SetChannelName(string channelName)
     {
         SetChannelNameCore(channelName);
     }
 
-    public string GetChannelName()
+    public new string GetChannelName()
     {
         return GetChannelNameCore();
     }

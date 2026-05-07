@@ -253,7 +253,7 @@ public sealed class SpotIntegrationTests
                     "game.stage",
                     "stage.external",
                     probeEnvelope,
-                    global::Zlink.SendFlags.None);
+                    global::Systems.Zlink.SendFlags.None);
             }
 
             var subscriberActivation = GetSingleSpotActivation(subscriberRuntime, "subscriber-node");
@@ -357,7 +357,7 @@ public sealed class SpotIntegrationTests
             },
             TimeSpan.FromSeconds(10));
 
-        global::Zlink.TopicMessage? received = null;
+        global::Systems.Zlink.TopicMessage? received = null;
         try
         {
             await RetryAsync(
@@ -372,10 +372,10 @@ public sealed class SpotIntegrationTests
 
                     try
                     {
-                        received = rawSubscriber.Subscribe(global::Zlink.RecvFlags.DontWait);
+                        received = rawSubscriber.Subscribe(global::Systems.Zlink.RecvFlags.DontWait);
                     }
-                    catch (global::Zlink.ZlinkRecvException ex)
-                        when (ex.Result == global::Zlink.RecvResult.NoData)
+                    catch (global::Systems.Zlink.ZlinkRecvException ex)
+                        when (ex.Result == global::Systems.Zlink.RecvResult.NoData)
                     {
                         received = null;
                     }
@@ -450,7 +450,7 @@ public sealed class SpotIntegrationTests
 
         var contextActor = new TestActor("actor-context", recorder);
         await actorRuntime.AttachActorAsync(contextActor, new TestStream("session-context"));
-        using (var joinBody = global::Zlink.Message.FromString(first.SpotRid.ToHex()))
+        using (var joinBody = global::Systems.Zlink.Message.FromString(first.SpotRid.ToHex()))
         {
             await actorRuntime.SubmitActorAsync(
                 contextActor,
@@ -467,7 +467,7 @@ public sealed class SpotIntegrationTests
         Assert.Equal(first.SpotRid, contextActor.Spot?.Context.SpotRid);
         Assert.Equal("room-context", contextActor.CurrentRoomId);
 
-        using (var contextDispatchBody = global::Zlink.Message.FromString("context-payload"))
+        using (var contextDispatchBody = global::Systems.Zlink.Message.FromString("context-payload"))
         {
             await actorRuntime.SubmitActorAsync(
                 contextActor,
@@ -488,8 +488,8 @@ public sealed class SpotIntegrationTests
         var stream = new TestStream("session-1");
         await actorRuntime.AttachActorAsync(actor, stream);
 
-        using var header = global::Zlink.Message.FromString("header");
-        using var body = global::Zlink.Message.FromString("payload");
+        using var header = global::Systems.Zlink.Message.FromString("header");
+        using var body = global::Systems.Zlink.Message.FromString("payload");
         await actorRuntime.SubmitActorAsync(
             actor,
                 new ZlinkStreamHeader(
@@ -561,7 +561,7 @@ public sealed class SpotIntegrationTests
         var actor = new TestActor("actor-context-client", recorder);
         await actorRuntime.AttachActorAsync(actor, new TestStream("session-context-client"));
 
-        using (var preJoinBody = global::Zlink.Message.FromString("before"))
+        using (var preJoinBody = global::Systems.Zlink.Message.FromString("before"))
         {
             await actorRuntime.SubmitActorAsync(
                 actor,
@@ -582,7 +582,7 @@ public sealed class SpotIntegrationTests
             actor,
             new JoinStageRequest("room-context-client"));
 
-        using (var postJoinBody = global::Zlink.Message.FromString("after"))
+        using (var postJoinBody = global::Systems.Zlink.Message.FromString("after"))
         {
             await actorRuntime.SubmitActorAsync(
                 actor,
@@ -953,7 +953,7 @@ public sealed class SpotIntegrationTests
             CancellationToken cancellationToken)
         {
             var reply = await actor.Context.JoinSpot(
-                    global::Zlink.RoutingId.FromString(message),
+                    global::Systems.Zlink.RoutingId.FromString(message),
                     new JoinStageRequest("room-context"))
                 .WithTimeout(TimeSpan.FromSeconds(5))
                 .Async<JoinStageReply>(cancellationToken);
@@ -990,13 +990,13 @@ public sealed class SpotIntegrationTests
     {
         public string SessionId { get; } = sessionId;
 
-        public global::Zlink.RoutingId? RoutingId => null;
+        public global::Systems.Zlink.RoutingId? RoutingId => null;
 
         public string? LocalAddr => "local";
 
         public string? RemoteAddr => "remote";
 
-        public bool Write(global::Zlink.Message payload, global::Zlink.SendFlags flags = global::Zlink.SendFlags.None)
+        public bool Write(global::Systems.Zlink.Message payload, global::Systems.Zlink.SendFlags flags = global::Systems.Zlink.SendFlags.None)
         {
             _ = payload;
             _ = flags;
@@ -1004,9 +1004,9 @@ public sealed class SpotIntegrationTests
         }
 
         public bool Write(
-            global::Zlink.Message header,
-            global::Zlink.Message body,
-            global::Zlink.SendFlags flags = global::Zlink.SendFlags.None)
+            global::Systems.Zlink.Message header,
+            global::Systems.Zlink.Message body,
+            global::Systems.Zlink.SendFlags flags = global::Systems.Zlink.SendFlags.None)
         {
             _ = header;
             _ = body;
@@ -1112,24 +1112,24 @@ public sealed class SpotIntegrationTests
 
     public sealed class SpotEventsRecorder
     {
-        private readonly ConcurrentDictionary<global::Zlink.RoutingId, string> _scopes = [];
-        private readonly ConcurrentBag<global::Zlink.RoutingId> _closing = [];
+        private readonly ConcurrentDictionary<global::Systems.Zlink.RoutingId, string> _scopes = [];
+        private readonly ConcurrentBag<global::Systems.Zlink.RoutingId> _closing = [];
 
-        public ConcurrentDictionary<global::Zlink.RoutingId, string> Initialized => _scopes;
+        public ConcurrentDictionary<global::Systems.Zlink.RoutingId, string> Initialized => _scopes;
 
-        public ConcurrentBag<global::Zlink.RoutingId> Closing => _closing;
+        public ConcurrentBag<global::Systems.Zlink.RoutingId> Closing => _closing;
 
-        public void RecordInitialized(global::Zlink.RoutingId spotRid, string scopeId)
+        public void RecordInitialized(global::Systems.Zlink.RoutingId spotRid, string scopeId)
         {
             _scopes[spotRid] = scopeId;
         }
 
-        public void RecordClosing(global::Zlink.RoutingId spotRid)
+        public void RecordClosing(global::Systems.Zlink.RoutingId spotRid)
         {
             _closing.Add(spotRid);
         }
 
-        public string? ScopeId(global::Zlink.RoutingId spotRid)
+        public string? ScopeId(global::Systems.Zlink.RoutingId spotRid)
         {
             return _scopes.TryGetValue(spotRid, out var scopeId) ? scopeId : null;
         }

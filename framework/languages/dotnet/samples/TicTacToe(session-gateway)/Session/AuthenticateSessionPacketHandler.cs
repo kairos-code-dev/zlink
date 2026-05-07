@@ -1,8 +1,8 @@
 using Systems.Zlink.Stream.Connector.Contracts;
 using TicTacToe.SessionActorDispatch.Configuration;
 using TicTacToe.SessionActorDispatch.Contracts;
-using Zlink;
-using Zlink.Codecs.Json;
+using Systems.Zlink;
+using Systems.Zlink.Codecs.Json;
 using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;

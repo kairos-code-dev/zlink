@@ -7,9 +7,9 @@ public sealed class ScaffoldSmokeTests
 {
     private static readonly HashSet<Type> AllowedBackendTypes =
     [
-        typeof(global::Zlink.Message),
-        typeof(global::Zlink.RoutingId),
-        typeof(global::Zlink.SendFlags),
+        typeof(global::Systems.Zlink.Message),
+        typeof(global::Systems.Zlink.RoutingId),
+        typeof(global::Systems.Zlink.SendFlags),
     ];
 
     [Fact]
@@ -110,7 +110,7 @@ public sealed class ScaffoldSmokeTests
             return;
         }
 
-        if (type.Assembly != typeof(global::Zlink.Context).Assembly)
+        if (type.Assembly != typeof(global::Systems.Zlink.Context).Assembly)
         {
             return;
         }

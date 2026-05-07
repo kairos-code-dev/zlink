@@ -27,6 +27,7 @@ public sealed class SpotDispatchInfo
 
     public SpotDispatchEvent Event { get; }
     public SpotDispatchSubjectKind SubjectKind { get; }
+    public IntPtr Subject => _channelDealerSubject;
     public Timer? Timer { get; }
     public IReadOnlyList<ActorPart> ActorParts { get; }
 

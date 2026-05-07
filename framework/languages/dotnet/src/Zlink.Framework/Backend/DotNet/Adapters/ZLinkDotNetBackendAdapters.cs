@@ -1,4 +1,4 @@
-using ZlinkRegistry = Zlink.Registry;
+using ZlinkRegistry = Systems.Zlink.Registry;
 
 namespace Zlink.Framework.Backend.DotNet.Adapters;
 

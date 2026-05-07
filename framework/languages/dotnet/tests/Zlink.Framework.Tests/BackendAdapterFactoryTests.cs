@@ -27,16 +27,16 @@ public sealed class BackendAdapterFactoryTests
         await using var spotNode = spotAdapter.CreateSpotNode(context);
         await using var streamSocket = streamAdapter.CreateStreamSocket(context);
 
-        Assert.IsType<global::Zlink.Context>(context.NativeInstance);
-        Assert.IsType<global::Zlink.Discovery>(discovery.NativeInstance);
-        Assert.IsType<global::Zlink.DealerSocket>(dealer.NativeInstance);
-        Assert.IsType<global::Zlink.RouterSocket>(router.NativeInstance);
-        Assert.IsType<global::Zlink.PubSocket>(publisher.NativeInstance);
-        Assert.IsType<global::Zlink.SubSocket>(subscriber.NativeInstance);
-        Assert.IsType<global::Zlink.Registry>(registry.NativeInstance);
-        Assert.IsType<global::Zlink.RegistryQueryClient>(registryQueryClient.NativeInstance);
-        Assert.IsType<global::Zlink.SpotNode>(spotNode.NativeInstance);
-        Assert.IsType<global::Zlink.StreamSocket>(streamSocket.NativeInstance);
+        Assert.IsType<global::Systems.Zlink.Context>(context.NativeInstance);
+        Assert.IsType<global::Systems.Zlink.Discovery>(discovery.NativeInstance);
+        Assert.IsType<global::Systems.Zlink.DealerSocket>(dealer.NativeInstance);
+        Assert.IsType<global::Systems.Zlink.RouterSocket>(router.NativeInstance);
+        Assert.IsType<global::Systems.Zlink.PubSocket>(publisher.NativeInstance);
+        Assert.IsType<global::Systems.Zlink.SubSocket>(subscriber.NativeInstance);
+        Assert.IsType<global::Systems.Zlink.Registry>(registry.NativeInstance);
+        Assert.IsType<global::Systems.Zlink.RegistryQueryClient>(registryQueryClient.NativeInstance);
+        Assert.IsType<global::Systems.Zlink.SpotNode>(spotNode.NativeInstance);
+        Assert.IsType<global::Systems.Zlink.StreamSocket>(streamSocket.NativeInstance);
     }
 
     [Fact]

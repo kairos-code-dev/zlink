@@ -665,7 +665,7 @@ internal sealed class TestHostRawStreamSession(TestHostRawStreamRecorder recorde
 
     public ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        global::Zlink.Message payload,
+        global::Systems.Zlink.Message payload,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;

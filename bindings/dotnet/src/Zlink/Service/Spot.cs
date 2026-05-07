@@ -1973,7 +1973,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
     }
 
-    private void DrainChannelReplyFrom(IntPtr dealerSubject)
+    public void DrainChannelReplyFrom(IntPtr dealerSubject)
     {
         EnsureNotDisposed();
         if (dealerSubject == IntPtr.Zero)

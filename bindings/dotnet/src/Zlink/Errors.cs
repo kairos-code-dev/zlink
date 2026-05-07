@@ -81,7 +81,7 @@ public abstract class ZlinkException : Exception
             throw CreateCloseException(NativeMethods.zlink_errno());
     }
 
-    internal static ErrorCode MapErrorCode(int errno)
+    public static ErrorCode MapErrorCode(int errno)
     {
         return errno switch
         {

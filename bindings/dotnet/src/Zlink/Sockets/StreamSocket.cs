@@ -21,6 +21,14 @@ public sealed class StreamSocket : RoutedMessageSocketBase
         Kernel.AttachStreamPacket(handler);
     }
 
+    public void OnPacket(Func<string, Message, int> handler)
+    {
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
+        Kernel.AttachStreamRaw((routingId, payload) =>
+            handler(routingId, payload));
+    }
+
     internal void OnPacket(StreamUInt32PacketHandler handler)
     {
         Kernel.AttachStreamRaw(handler);
@@ -29,6 +37,14 @@ public sealed class StreamSocket : RoutedMessageSocketBase
     internal void OnFramedPacket(StreamFramedPacketHandler handler)
     {
         Kernel.AttachStreamPacket(handler);
+    }
+
+    public void OnFramedPacket(Action<string, Message, Message> handler)
+    {
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
+        Kernel.AttachStreamPacket((routingId, header, body) =>
+            handler(routingId, header, body));
     }
 
     internal void OnFramedPacket(StreamUInt32FramedPacketHandler handler)
@@ -46,6 +62,11 @@ public sealed class StreamSocket : RoutedMessageSocketBase
         SendFlags flags = SendFlags.None)
     {
         Kernel.SendBorrowedSingle(routingId, payload, (int)flags);
+    }
+
+    public void DisconnectRid(RoutingId peerRid)
+    {
+        Kernel.DisconnectRid(peerRid);
     }
 
     public void DetachStream()

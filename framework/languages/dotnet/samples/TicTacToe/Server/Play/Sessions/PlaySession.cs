@@ -1,5 +1,5 @@
 using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink;
+using Systems.Zlink;
 using TicTacToe.Server.Play.Actors;
 
 namespace TicTacToe.Server.Play.Sessions;

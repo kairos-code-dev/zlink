@@ -354,7 +354,7 @@ public sealed class RegistrationValidationTests
 
         public ValueTask OnDispatchAsync(
             ZlinkStreamHeader header,
-            global::Zlink.Message body,
+            global::Systems.Zlink.Message body,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 

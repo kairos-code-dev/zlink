@@ -1,5 +1,5 @@
 using TicTacToe.SessionActorDispatch.Infrastructure;
-using Zlink;
+using Systems.Zlink;
 using Zlink.Framework.Streams;
 
 namespace TicTacToe.SessionGateway.Infrastructure;

@@ -22,6 +22,9 @@ std::mutex g_part_helper_mutex;
 std::unordered_map<void *, std::shared_ptr<zlink::part_helper_internal::handle_state_t> >
   g_part_helper_state;
 
+const bool routed_part_debug_on =
+  zlink::debug_env_enabled ("ZLINK_ROUTED_PART_DEBUG");
+
 bool &aggregate_send_mode_tls ()
 {
     static thread_local bool active = false;
@@ -30,7 +33,7 @@ bool &aggregate_send_mode_tls ()
 
 bool routed_part_debug_enabled ()
 {
-    return zlink::debug_env_enabled ("ZLINK_ROUTED_PART_DEBUG");
+    return routed_part_debug_on;
 }
 
 bool send_family_requires_routed_scope (

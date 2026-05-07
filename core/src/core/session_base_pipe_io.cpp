@@ -7,6 +7,12 @@
 #include "utils/err.hpp"
 #include "utils/debug_log.hpp"
 
+namespace
+{
+const bool spot_direct_route_trace_on =
+  zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+}
+
 int zlink::session_base_t::pull_msg (msg_t *msg_)
 {
     if (!_pipe || !_pipe->read (msg_)) {
@@ -22,7 +28,7 @@ int zlink::session_base_t::pull_msg (msg_t *msg_)
 int zlink::session_base_t::push_msg (msg_t *msg_)
 {
     const bool trace_direct_route =
-      debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE") && _socket != NULL;
+      spot_direct_route_trace_on && _socket != NULL;
 
     if ((msg_->flags () & msg_t::command) && !msg_->is_subscribe ()
         && !msg_->is_cancel ()) {
@@ -66,7 +72,7 @@ int zlink::session_base_t::push_msg (msg_t *msg_)
         }
     }
 
-    if (_socket) {
+    if (_socket && _socket->socket_msg_dispatch_active ()) {
         const int dispatch_rc = _socket->socket_msg_dispatch_from_io (msg_, _pipe);
         if (dispatch_rc < 0)
             return -1;
@@ -77,7 +83,8 @@ int zlink::session_base_t::push_msg (msg_t *msg_)
         }
     }
 
-    if (options.type == ZLINK_CORE_SOCKET_STREAM && _socket && _pipe) {
+    if (options.type == ZLINK_CORE_SOCKET_STREAM && _socket && _pipe
+        && _socket->stream_dispatch_active ()) {
         const int dispatch_rc = _socket->stream_dispatch_msg_from_io (msg_, _pipe);
         if (dispatch_rc < 0)
             return -1;

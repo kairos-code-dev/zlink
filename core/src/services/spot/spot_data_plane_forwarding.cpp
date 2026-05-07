@@ -33,9 +33,12 @@ namespace
 {
 namespace spot_io = zlink::spot_data_plane_message_io;
 
+const bool spot_direct_route_debug_on =
+  debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+
 bool spot_direct_route_debug_enabled_local ()
 {
-    return debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+    return spot_direct_route_debug_on;
 }
 
 static const size_t default_queue_message_unit_bytes = 64 * 1024;

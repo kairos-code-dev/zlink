@@ -36,9 +36,12 @@ namespace
 {
 namespace reqrep = zlink::socket_reqrep_internal;
 
+const bool spot_direct_route_debug_on =
+  zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+
 bool spot_direct_route_debug_enabled ()
 {
-    return zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+    return spot_direct_route_debug_on;
 }
 
 using zlink::spot_reqrep_internal::g_spot_request_reply_index_mutex;

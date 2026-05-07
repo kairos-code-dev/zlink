@@ -15,9 +15,12 @@
 
 namespace
 {
+const bool router_debug_on =
+  zlink::debug_env_enabled ("ZLINK_ROUTER_DEBUG");
+
 bool router_debug_enabled ()
 {
-    return zlink::debug_env_enabled ("ZLINK_ROUTER_DEBUG");
+    return router_debug_on;
 }
 
 void format_routing_id_debug (const zlink_routing_id_t *rid_,

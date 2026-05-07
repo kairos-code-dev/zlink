@@ -27,6 +27,9 @@ namespace
 {
 namespace routed_protocol = zlink::spot_routed_protocol;
 
+const bool spot_direct_route_debug_on =
+  zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+
 using zlink::spot_reqrep_internal::find_router_state_by_rid;
 using zlink::spot_reqrep_internal::find_spot_state_by_identity;
 using zlink::spot_reqrep_internal::parsed_spot_envelope_t;
@@ -38,7 +41,7 @@ using zlink::spot_reqrep_internal::router_spot_delivery_kind_t;
 
 bool spot_direct_route_debug_enabled ()
 {
-    return zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+    return spot_direct_route_debug_on;
 }
 
 const size_t routed_send_drain_batch_limit = 2048;

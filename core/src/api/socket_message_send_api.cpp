@@ -19,9 +19,12 @@
 
 namespace
 {
+const bool routed_part_debug_on =
+  zlink::debug_env_enabled ("ZLINK_ROUTED_PART_DEBUG");
+
 bool routed_part_debug_enabled ()
 {
-    return zlink::debug_env_enabled ("ZLINK_ROUTED_PART_DEBUG");
+    return routed_part_debug_on;
 }
 
 int validate_send_parts (zlink_msg_t *parts_, size_t part_count_)

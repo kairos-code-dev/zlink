@@ -20,9 +20,12 @@
 
 namespace
 {
+const bool spot_direct_route_debug_on =
+  zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+
 bool spot_direct_route_debug_enabled ()
 {
-    return zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+    return spot_direct_route_debug_on;
 }
 
 int process_route_combined_message (void *node_,

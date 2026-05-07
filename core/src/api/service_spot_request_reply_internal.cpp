@@ -48,9 +48,12 @@ size_t hash_combine (size_t seed_, size_t value_)
                     + (seed_ >> 2));
 }
 
+const bool spot_route_stats_on =
+  debug_env_enabled ("ZLINK_DEBUG_SPOT_ROUTE_STATS");
+
 bool spot_route_stats_enabled ()
 {
-    return debug_env_enabled ("ZLINK_DEBUG_SPOT_ROUTE_STATS");
+    return spot_route_stats_on;
 }
 
 struct spot_route_stats_t

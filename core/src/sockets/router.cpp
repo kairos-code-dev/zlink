@@ -16,6 +16,9 @@
 
 namespace
 {
+const bool router_debug_on =
+  zlink::debug_env_enabled ("ZLINK_ROUTER_DEBUG");
+
 void format_routing_id_debug (const zlink_routing_id_t *rid_,
                               char *buf_,
                               size_t buf_size_)
@@ -112,7 +115,7 @@ void copy_router_pipe_source_rid (zlink::pipe_t *pipe_,
 
 static bool router_debug_enabled ()
 {
-    return zlink::debug_env_enabled ("ZLINK_ROUTER_DEBUG");
+    return router_debug_on;
 }
 
 zlink::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :

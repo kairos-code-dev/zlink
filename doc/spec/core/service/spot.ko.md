@@ -158,12 +158,11 @@ SpotNode는 HWM을 `Spot`에서 `SpotNode`로 들어오는 admission control로�
 `ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
 `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`,
 `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` 네 가지다. 두 admission 채널의 기본 profile은
-balanced auto-HWM profile이다. 숫자 override가 없으면 SpotNode data-path
-socket은 일반 socket과 같은 profile/message-unit 계산식을 사용한다. balanced
-profile에서는 단위 예산이 1024 KiB이므로 64 B, 256 B, 1024 B 메시지는 HWM
-`1024`를 쓰고, 64 KiB 메시지는 HWM `16`, 128 KiB 메시지는 HWM `8`, 256 KiB
-메시지는 HWM `4`를 쓴다. 양수 HWM을 직접 설정하면 해당 채널의 자동 값보다
-우선한다. 숫자 HWM에 `0`을 설정하면 override를 지우고 자동 값으로 돌아간다.
+balanced auto-HWM profile이다. 숫자 override가 없으면 admission 경계
+(`publish_ingress_queue`, `routed_send_queue`)는 profile별 고정 메시지 수 한도를
+사용한다: COMPACT 64, LOW_LATENCY 128, BALANCED 256, THROUGHPUT 512. 양수 HWM을
+직접 설정하면 해당 채널의 자동 값보다 우선한다. 숫자 HWM에 `0`을 설정하면
+override를 지우고 자동 값으로 돌아간다.
 음수와 알 수 없는 profile은 `EINVAL`로 실패한다.
 
 `Spot` handle은 common `ZLINK_OPT_SNDHWM` 또는 `ZLINK_OPT_RCVHWM` 설정을 받지
@@ -218,8 +217,10 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
 - `snapshot.auto_hwm_profile`, `snapshot.auto_hwm_policy_class`,
   `snapshot.auto_hwm_unit_budget_bytes`, `snapshot.auto_hwm_size_cap`,
   `snapshot.auto_hwm_socket_message_slots`는 진단용 자동 HWM planner 결과다.
-- 현재 SPOT topology의 주요 node socket 이름은 `ingress-sub`, `local-pub`,
-  `mesh-pub`, `mesh-xsub`, `internal-router`, `external-router`다.
+- 현재 SPOT topology의 주요 node socket 이름은 `mesh-pub`, `mesh-xsub`,
+  `external-router`다. `publish_ingress_queue`, `routed_send_queue`,
+  `external_router_ingress_queue`는 socket 없이 런타임 큐로 동작하며 snapshot에
+  포함되지 않는다.
 - `PUBSUB` mode에서는 routed socket이 생성되지 않고, `ROUTED` mode에서는 topic
   socket이 생성되지 않는다. snapshot 호출은 꺼진 plane을 활성화하지 않는다.
 

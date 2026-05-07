@@ -158,13 +158,11 @@ The public options are `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`,
 `ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
 `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`, and
 `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM`. Both admission channels default to the
-balanced auto-HWM profile. Without a numeric override, SpotNode data-path
-sockets use the same profile/message-unit calculation as ordinary sockets:
-for the balanced profile the unit budget is 1024 KiB, so 64 B, 256 B, and
-1024 B messages use HWM `1024`, 64 KiB messages use HWM `16`, 128 KiB
-messages use HWM `8`, and 256 KiB messages use HWM `4`. A positive numeric
-HWM overrides the automatic value for that channel. Setting the numeric HWM
-to `0` clears the override and returns to the automatic value. Negative values
+balanced auto-HWM profile. Without a numeric override, the admission boundary (`publish_ingress_queue`,
+`routed_send_queue`) uses a fixed per-profile message-count limit: COMPACT 64,
+LOW_LATENCY 128, BALANCED 256, THROUGHPUT 512. A positive numeric HWM
+overrides the automatic value for that channel. Setting the numeric HWM to
+`0` clears the override and returns to the automatic value. Negative values
 and unknown profiles fail with `EINVAL`.
 
 `Spot` handles do not accept common `ZLINK_OPT_SNDHWM` or
@@ -224,8 +222,10 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
   `snapshot.auto_hwm_socket_message_slots` expose the active automatic HWM
   planner result for diagnostics.
 - The current SPOT topology exposes these main node socket names:
-  `ingress-sub`, `local-pub`, `mesh-pub`, `mesh-xsub`, `internal-router`, and
-  `external-router`.
+  `mesh-pub`, `mesh-xsub`, and `external-router`. The
+  `publish_ingress_queue`, `routed_send_queue`, and
+  `external_router_ingress_queue` operate as runtime queues with no
+  corresponding socket and do not appear in snapshot output.
 - `PUBSUB` mode does not create routed sockets, and `ROUTED` mode does not
   create topic sockets. Snapshot calls do not activate disabled planes.
 

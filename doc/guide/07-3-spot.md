@@ -512,11 +512,15 @@ delivery targets when an internal queue grew too large; the current SPOT
 delivery model no longer does this. Do not rely on these counters for
 diagnostics.
 
-**What to use instead for HWM diagnostics**: call
-`zlink_spot_node_internal_sockets_snapshot()` and inspect the `snapshot` field
-of each returned socket entry. The admission sockets (`ingress-sub` and
-`internal-router`) carry the active HWM values. Relay and delivery sockets
-always show HWM `0`, which is expected.
+**What to use instead for HWM diagnostics**: admission is enforced at the
+`publish_ingress_queue` and `routed_send_queue` queue limits — `ingress-sub`
+and `internal-router` have been removed and do not appear in snapshot output.
+Call `zlink_spot_node_internal_sockets_snapshot()` and inspect the `snapshot`
+field of the returned `mesh-pub`, `mesh-xsub`, and `external-router` entries to
+see transport socket HWM values. Relay and delivery sockets always show HWM
+`0`, which is expected. Queue admission limits are controlled by the HWM
+profile options: BALANCED 256 (default), COMPACT 64, LOW_LATENCY 128,
+THROUGHPUT 512 (message-count basis).
 
 SpotNode HWM options apply to the admission boundary only — topic publish
 admission and routed admission. There is no per-Actor HWM knob. Actor

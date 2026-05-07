@@ -545,10 +545,14 @@ zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
 delivery target을 끊던 모델의 잔재다. 현재 SPOT delivery 모델은 큐 증가를 이유로 target을
 끊지 않는다. 이 카운터는 진단에 사용하지 말아야 한다.
 
-**HWM 진단에 사용할 것**: `zlink_spot_node_internal_sockets_snapshot()`을 호출한 뒤
-각 항목의 `snapshot` 필드를 확인한다. admission socket(`ingress-sub`와
-`internal-router`)에 활성 HWM 값이 담긴다. relay 및 delivery socket은 HWM `0`을
-보고하는데, 이는 정상이다.
+**HWM 진단에 사용할 것**: admission은 `publish_ingress_queue`와
+`routed_send_queue` 큐 한도로 적용된다. `ingress-sub`와 `internal-router`는
+제거되었으며 snapshot에 나타나지 않는다.
+`zlink_spot_node_internal_sockets_snapshot()`으로 반환되는 `mesh-pub`,
+`mesh-xsub`, `external-router`의 `snapshot` 필드는 transport socket HWM을 보여준다.
+relay 및 delivery socket은 HWM `0`을 보고하는데, 이는 정상이다.
+큐 admission 한도는 HWM profile 옵션으로 제어하며, profile별 메시지 수 기준으로
+BALANCED 256 (기본), COMPACT 64, LOW_LATENCY 128, THROUGHPUT 512다.
 
 SpotNode HWM 옵션은 admission 경계에만 적용된다 — topic publish admission과 routed
 admission. Actor 전용 HWM 옵션은 없다. Actor 처리 backlog는 dispatch event, recv 결과,

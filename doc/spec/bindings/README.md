@@ -252,7 +252,8 @@ public shape를 기준으로 고정한다.
   `attach_channel_dealer_manual(...)`,
   `attach_pub_ingress(...)`,
   `send_channel`, `send_to_spot`, `request_channel`,
-  channel-aware publish / subscribe 표면을 제공해야 한다.
+  channel-aware send/request 표면과 service-aware publish / subscribe 표면을
+  제공해야 한다.
 - service-aware SPOT subscribe 결과는 topic / parts 와 함께 반드시
   `service_name` 을 노출해야 한다.
 - `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/channel-reply/timer/actor
@@ -272,16 +273,27 @@ public shape를 기준으로 고정한다.
   delivery queue hard-limit option은 노출하지 않는다. 노출 대상은
   `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`, `ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
   `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`,
-  `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` 네 가지 admission option이다.
+  `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` 네 가지 admission option과
+  `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN`,
+  `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX` 두 가지 dispatch worker option이다.
+  dispatch worker option은 `SpotNode` 소유 callback worker pool의 크기만
+  조정하며, `ZLINK_IO_THREADS`나 data-plane thread 수를 뜻하지 않는다.
+  `min`은 1 이상, `max`는 `min` 이상이어야 한다. 명시 설정이 없으면
+  CPU가 1개일 때 `min=max=1`, 그 외에는 `min=2`, `max=cpu_count`로 매핑한다.
 - SPOT binding status object는 core의
   `disconnected_sub_target_count`,
   `disconnected_routed_target_count`를 언어 관례에 맞는 이름으로 노출해야 한다.
   현재 core는 delivery queue 증가만으로 target을 끊지 않으므로 두 값은 `0`을
   보고한다.
 - SPOT binding이 internal socket snapshot 이름을 노출하거나 문서화할 때는
-  `ingress-sub`, `local-pub`, `mesh-pub`, `mesh-xsub`, `internal-router`,
-  `external-router` 기준을 사용한다.
-  `zlink_spot_handler()` 와 routed 축에서 mutually exclusive 다.
+  core가 반환하는 public snapshot 이름을 그대로 사용한다. 현재 이름은
+  `mesh-pub`, `mesh-xsub`, `peer_ctrl_pub`, `peer_ctrl_sub`,
+  `external-router`, `local-pub`, `internal_receiver` 이다.
+  `local-pub`는 같은 node 안 subscriber로 보내는 local fanout socket이다.
+  (`ingress-sub`, `pub-ingress-tx`, `internal-router`, `internal-router-tx`는
+  제거되었으며 snapshot에 포함되지 않는다.)
+- `zlink_spot_dispatch_event_handler()`는 legacy `zlink_spot_handler()`와 routed
+  축에서 mutually exclusive 다.
 - `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE` 와
   `ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE` 은 메시지 개수 알림이 아니라
   readiness 알림이다. 바인딩은 edge-trigger one-shot 처럼 설명하거나 구현하면 안 된다.
@@ -540,7 +552,8 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
    - `sendNoWait`, `recvNoWait`, `publishNoWait` 같은 transport-style 이름은
      공개 surface 에 두지 않는다.
 4. **`INTERNAL_ERROR` 상세 조회.**
-   - result code 가 `INTERNAL_ERROR` 계열 (12, 104 등) 이면
+   - result code 가 `INTERNAL_ERROR` 계열
+     (12, 105, 206, 306, 404, 505, 604, 704 등) 이면
      `zlink_errno()` 로 내부 raw errno 를 조회할 수 있다.
    - 바인딩의 에러 타입(exception 언어는 예외 객체, return-based 언어는
      에러 값)은 `internalErrno` / `internal_errno` 필드로 이를 노출한다
@@ -2012,6 +2025,13 @@ zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual(void *node,
     const char *channel_name, void *dealer);
 zlink_config_result_t zlink_spot_node_attach_pub_ingress(void *node,
     void *pub);
+
+zlink_config_result_t zlink_socket_set_channel_name(void *socket,
+    const char *channel_name);
+zlink_config_result_t zlink_socket_get_channel_name(void *socket,
+    char *channel_name_buf,
+    size_t channel_name_capacity,
+    size_t *channel_name_len_out);
 ```
 
 `options == NULL` 또는 `options->mode == 0`은 모든 SPOT 기능을 켠다. 바인딩은
@@ -2020,12 +2040,41 @@ zlink_config_result_t zlink_spot_node_attach_pub_ingress(void *node,
 관찰 API는 `zlink_spot_node_internal_sockets_snapshot()`을 기준으로 하며,
 이미 생성된 socket만 반환한다.
 
+SpotNode option facade는 core의 여섯 public option을 빠뜨리지 않아야 한다.
+
+| Core option | Binding surface |
+|-------------|-----------------|
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE` | router admission HWM profile |
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | router admission HWM override |
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE` | pub/sub admission HWM profile |
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` | pub/sub admission HWM override |
+| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN` | minimum dispatch callback workers |
+| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX` | maximum dispatch callback workers |
+
+dispatch worker min/max는 `SpotNode` dispatch callback 실행 pool 설정이다.
+data-plane thread나 transport I/O thread 수를 바꾸는 옵션으로 설명하면 안 된다.
+값 검증은 core와 동일하게 `min >= 1`, `max >= min`이다. 바인딩은 각 언어의
+typed option/property로 이 두 값을 노출하고, raw option bag을 canonical 경로로
+되살리면 안 된다.
+
 바인딩 규칙:
 - `SpotNode` 와 `Spot` 은 별도 typed handle 로 노출한다.
 - `Spot` 은 `SpotNode` 위에 올라가는 facade 다. `SpotNode` 해제 시 `Spot` 도 무효가 된다.
 - SPOT channel view는 `attach_discovery()`로 닫고, 다른 channel 호출은
   `attach_channel_dealer()` 또는 `attach_channel_dealer_manual()`로 붙인다.
+- `zlink_socket_set_channel_name()` / `zlink_socket_get_channel_name()` 은
+  channel-attached `DEALER`의 logical channel metadata를 다루는 typed API다.
+  바인딩은 이를 socket의 명시적 property/method로 노출한다.
+- `attach_channel_dealer()`와 `attach_channel_dealer_manual()`은 attached
+  `DEALER`에 channel name metadata를 채우거나 이미 설정된 metadata와 일치하는지
+  확인한다. attach가 끝난 뒤에는 같은 socket의 channel name을 바꿀 수 없다.
+- SPOT dispatch event의 subject kind가 `CHANNEL_DEALER`이면 callback이 받은
+  subject socket에서 channel name metadata를 조회해 어느 channel reply를
+  drain할지 구분한다.
 - `attach_pub_ingress()`는 일반 `PUB -> Spot` 입력 경로를 여는 전용 표면이다.
+- `Spot.publish(service_name, topic, ...)`는 `SpotNode` 자신의 topic publish
+  ingress queue로 들어가는 service-aware topic plane이다. 외부 channel 호출은
+  `send_channel()` / `request_channel()`과 attached `DEALER` 경로로 설명한다.
 - `connect_peer` / `disconnect_peer` 는 raw peer topology 전용 control
   path 다. service-aware public surface 의 중심 API 로 설명하면 안 된다.
 

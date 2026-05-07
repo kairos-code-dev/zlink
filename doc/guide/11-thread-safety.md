@@ -239,8 +239,11 @@ before returning and must not access them from another thread.
 
 ## 6. Callback Rules
 
-All callbacks (message, SPOT, XPUB, monitor, send-ready) run on the I/O
-thread. Here's what you need to know:
+Socket callbacks (message, XPUB, monitor, send-ready) run on the I/O thread.
+**SPOT dispatch callbacks** (`zlink_spot_handler`, `zlink_spot_dispatch_handler`)
+run on a SpotNode dispatch worker thread — not on the I/O thread. The no-blocking
+and offload rules apply equally to both.
+Here's what you need to know:
 
 **What you CAN do in a callback:**
 - Call `send` / `publish` on the same handle — this is the recommended

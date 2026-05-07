@@ -27,7 +27,6 @@ typedef enum zlink_ctx_option_t
     ZLINK_THREAD_AFFINITY_CPU_REMOVE   = 8,
     ZLINK_THREAD_NAME_PREFIX      = 9,
     ZLINK_CTX_OPT_BLOCKY          = 10,
-    ZLINK_SPOT_WORKER_THREADS     = 11,
     ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 12,
     ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS = 14,
     ZLINK_CTX_OPT_AUTO_HWM_PROFILE = 17
@@ -57,7 +56,6 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_THREAD_AFFINITY_CPU_REMOVE` | 8 | Remove a CPU from the I/O thread affinity set |
 | `ZLINK_THREAD_NAME_PREFIX` | 9 | Prefix for I/O thread names |
 | `ZLINK_CTX_OPT_BLOCKY` | 10 | Legacy option for blocking behavior on context termination (`int`; default 1) |
-| `ZLINK_SPOT_WORKER_THREADS` | 11 | Worker count for `zlink_spot_dispatch_event_handler()` callbacks (`0` = auto) |
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | Whether automatic HWM policy is enabled (`0` = disabled, `1` = enabled) |
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | Minimum debounce window in milliseconds before connection churn triggers another automatic HWM recalculation (`>= 0`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | Automatic HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). Invalid values fail with `EINVAL`. |
@@ -69,7 +67,6 @@ typedef enum zlink_auto_hwm_profile_t
 #define ZLINK_MAX_SOCKETS_DFLT          4095
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
-#define ZLINK_SPOT_WORKER_THREADS_DFLT  0
 #define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
 #define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
@@ -81,7 +78,6 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_MAX_SOCKETS_DFLT` | 4095 | Default maximum socket count |
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | Default thread priority (OS default) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | Default scheduling policy (OS default) |
-| `ZLINK_SPOT_WORKER_THREADS_DFLT` | 0 | Default Spot worker count (`0` = auto) |
 | `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | Automatic HWM policy enabled by default. Sockets use the balanced profile unless the application disables auto-HWM or sets manual HWM values. |
 | `ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT` | 3000 | Default debounce window for automatic HWM recalculation (ms) |
 | `ZLINK_CTX_AUTO_HWM_PROFILE_DFLT` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | Default automatic HWM profile |
@@ -169,15 +165,9 @@ Set a context option.
 zlink_config_result_t zlink_ctx_set(void *context_, zlink_ctx_option_t option_, int optval_);
 ```
 
-Configures the context before or after sockets have been created. Some options
-(such as `ZLINK_IO_THREADS` and `ZLINK_SPOT_WORKER_THREADS`) must be set before
-runtime startup to take effect. `ZLINK_SPOT_WORKER_THREADS` controls the worker
-count for `zlink_spot_dispatch_event_handler()` callbacks. A value of `0`
-means auto-select, which resolves to `min(visible logical cores, 8)` and falls
-back to `1` if the core count cannot be determined. Changing this option after
-runtime startup fails with `ZLINK_CONFIG_INVALID_ARGUMENT` (`errno=EINVAL`).
-Refer to the option constants table above for valid option names and their
-semantics. `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` takes effect on existing sockets
+Configures the context before or after sockets have been created. Refer to the
+option constants table above for valid option names and their semantics.
+`ZLINK_CTX_OPT_AUTO_HWM_ENABLE` takes effect on existing sockets
 immediately, but only for sockets that still use automatic `SNDHWM` /
 `RCVHWM` / `SNDBUF` / `RCVBUF` values rather than manual overrides.
 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` updates the profile used by the next

@@ -12,8 +12,9 @@
 #include "api/service_spot_request_reply_utils_internal.hpp"
 #include "api/socket_api_internal.hpp"
 #include "core/ctx.hpp"
-#include "services/control/service_control_runtime.hpp"
 #include "services/spot/spot_handle.hpp"
+#include "services/spot/spot_node_access.hpp"
+#include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_subject_access.hpp"
 
 namespace
@@ -193,28 +194,6 @@ void run_pending_spot_dispatch_events (
     }
 }
 
-uint32_t dispatch_runtime_key (void *spot_)
-{
-    const uintptr_t value = reinterpret_cast<uintptr_t> (spot_);
-    return static_cast<uint32_t> (value ^ (value >> 32));
-}
-
-void spot_dispatch_event_task_main (void *arg_)
-{
-    if (!arg_)
-        return;
-
-    std::shared_ptr<spot_request_reply_state_t> state =
-      zlink::spot_reqrep_internal::try_find_spot_state (arg_);
-    if (!state)
-        return;
-
-    (void)
-      zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
-        state);
-    run_pending_spot_dispatch_events (state);
-}
-
 void refresh_spot_identity_index (
   spot_handle_t *spot_,
   const std::shared_ptr<spot_request_reply_state_t> &state_)
@@ -300,25 +279,30 @@ int zlink::spot_reqrep_internal::install_spot_dispatch_event_task (
         return -1;
     }
 
-    zlink::ctx_t *ctx = resolve_spot_ctx (state_->owner);
-    if (!ctx)
+    zlink::spot_runtime_t *runtime = resolve_spot_runtime (state_->owner);
+    if (!runtime)
         return -1;
 
-    zlink::service_control_runtime_t *runtime =
-      ctx->spot_worker_runtime_for_key (dispatch_runtime_key (state_->owner));
-    if (!runtime) {
-        errno = ETERM;
-        return -1;
-    }
-
-    const uint64_t task_id = runtime->add_periodic_task (
-      &spot_dispatch_event_task_main, state_->owner, 10u, true);
-    if (task_id == 0)
+    if (runtime->start_dispatch_workers () != 0)
         return -1;
 
-    state_->dispatch.runtime = runtime;
-    state_->dispatch.task_id = task_id;
     return 0;
+}
+
+void zlink::spot_reqrep_internal::run_spot_dispatch_worker_once (void *spot_)
+{
+    if (!spot_)
+        return;
+
+    std::shared_ptr<spot_request_reply_state_t> state =
+      zlink::spot_reqrep_internal::try_find_spot_state (spot_);
+    if (!state)
+        return;
+
+    (void)
+      zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
+        state);
+    run_pending_spot_dispatch_events (state);
 }
 
 void zlink::spot_reqrep_internal::maybe_dispatch_spot_info (
@@ -365,15 +349,8 @@ void zlink::spot_reqrep_internal::maybe_dispatch_spot_info (
     }
 
     if (should_run) {
-        zlink::service_control_runtime_t *runtime = NULL;
-        uint64_t task_id = 0;
-        {
-            std::lock_guard<std::mutex> lock (state_->mutex);
-            runtime = state_->dispatch.runtime;
-            task_id = state_->dispatch.task_id;
-        }
-
-        if (!runtime || task_id == 0 || runtime->wakeup_task (task_id) != 0) {
+        zlink::spot_runtime_t *runtime = resolve_spot_runtime (state_->owner);
+        if (!runtime || runtime->post_dispatch_event (state_->owner) != 0) {
             std::lock_guard<std::mutex> dispatch_lock (state_->dispatch.mutex);
             state_->dispatch.running = false;
         }

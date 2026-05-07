@@ -197,10 +197,6 @@ impl<'a> ContextOptions<'a> {
     /// # Errors: ConfigError
     pub fn set_thread_name_prefix(&self, prefix: &str) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
-    pub fn spot_worker_threads(&self) -> Result<i32, ConfigError>;
-    /// # Errors: ConfigError
-    pub fn set_spot_worker_threads(&self, threads: i32) -> Result<(), ConfigError>;
-    /// # Errors: ConfigError
     pub fn max_msg_size(&self) -> Result<i32, ConfigError>;
     /// # Errors: ConfigError
     pub fn set_max_msg_size(&self, size: i32) -> Result<(), ConfigError>;

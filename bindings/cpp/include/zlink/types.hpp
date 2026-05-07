@@ -55,7 +55,6 @@ enum class context_option : int
     thread_affinity_cpu_remove = ZLINK_THREAD_AFFINITY_CPU_REMOVE,
     thread_name_prefix = ZLINK_THREAD_NAME_PREFIX,
     blocky = ZLINK_CTX_OPT_BLOCKY,
-    spot_worker_threads = ZLINK_SPOT_WORKER_THREADS,
     auto_hwm_enable = ZLINK_CTX_OPT_AUTO_HWM_ENABLE,
     auto_hwm_recalc_debounce_ms =
       ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS,
@@ -141,22 +140,6 @@ class cpu_index_t
 
   private:
     explicit cpu_index_t (int value_) noexcept : _value (value_) {}
-
-    int _value;
-};
-
-class spot_worker_count_t
-{
-  public:
-    static spot_worker_count_t value (int value_) noexcept
-    {
-        return spot_worker_count_t (value_);
-    }
-
-    int value () const noexcept { return _value; }
-
-  private:
-    explicit spot_worker_count_t (int value_) noexcept : _value (value_) {}
 
     int _value;
 };

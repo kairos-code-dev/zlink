@@ -33,8 +33,6 @@ class context_options_t
     void thread_scheduling_policy (thread_scheduling_policy_t value_);
     std::string thread_name_prefix () const;
     void thread_name_prefix (const std::string &value_);
-    spot_worker_count_t spot_worker_threads () const;
-    void spot_worker_threads (spot_worker_count_t value_);
     bool blocky () const;
     void blocky (bool enabled_);
     bool auto_hwm_enabled () const;
@@ -257,22 +255,6 @@ inline void context_options_t::thread_name_prefix (const std::string &value_)
       static_cast<config_result_t> (_ctx.set_option_data_raw (
         ZLINK_THREAD_NAME_PREFIX, value_.data (), value_.size ())));
     _ctx._thread_name_prefix = value_;
-}
-
-inline spot_worker_count_t context_options_t::spot_worker_threads () const
-{
-    zlink_config_result_t error = ZLINK_CONFIG_OK;
-    const int value = _ctx.get_option_raw (ZLINK_SPOT_WORKER_THREADS, &error);
-    if (error != ZLINK_CONFIG_OK)
-        throw config_error_t (static_cast<config_result_t> (error));
-    return spot_worker_count_t::value (value);
-}
-
-inline void context_options_t::spot_worker_threads (spot_worker_count_t value_)
-{
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (
-        _ctx.set_option_raw (ZLINK_SPOT_WORKER_THREADS, value_.value ())));
 }
 
 inline bool context_options_t::blocky () const

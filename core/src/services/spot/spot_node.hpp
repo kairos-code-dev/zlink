@@ -200,7 +200,6 @@ class spot_node_t : public discovery_observer_t
     spot_runtime_t *runtime () const { return _runtime; }
     spot_internal_receiver_t *ensure_internal_receiver ();
     spot_internal_receiver_t *internal_receiver () const;
-    const std::string &pub_ingress_endpoint () const;
     const std::string &sub_fanout_endpoint () const;
     bool has_active_peers () const;
     void note_local_sub_filters_changed (bool had_filters_,

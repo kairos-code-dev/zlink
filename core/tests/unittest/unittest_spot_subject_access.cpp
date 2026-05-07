@@ -140,7 +140,8 @@ void test_spot_node_options_default_zero_and_invalid_mode ()
     void *default_node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (default_node);
     TEST_ASSERT_TRUE (snapshot_has_socket (default_node, "mesh-pub"));
-    TEST_ASSERT_TRUE (snapshot_has_socket (default_node, "internal-router"));
+    TEST_ASSERT_TRUE (snapshot_has_socket (default_node, "external-router"));
+    TEST_ASSERT_FALSE (snapshot_has_socket (default_node, "internal-router"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&default_node));
 
     zlink_spot_node_options_t zero_options;
@@ -148,7 +149,8 @@ void test_spot_node_options_default_zero_and_invalid_mode ()
     void *zero_node = zlink_spot_node_new (ctx, &zero_options);
     TEST_ASSERT_NOT_NULL (zero_node);
     TEST_ASSERT_TRUE (snapshot_has_socket (zero_node, "mesh-pub"));
-    TEST_ASSERT_TRUE (snapshot_has_socket (zero_node, "internal-router"));
+    TEST_ASSERT_TRUE (snapshot_has_socket (zero_node, "external-router"));
+    TEST_ASSERT_FALSE (snapshot_has_socket (zero_node, "internal-router"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&zero_node));
 
     zlink_spot_node_options_t invalid_options;
@@ -221,7 +223,7 @@ void test_spot_node_routed_mode_disables_pubsub_sockets_without_lazy_create ()
     options.mode = ZLINK_SPOT_NODE_MODE_ROUTED;
     void *node = zlink_spot_node_new (ctx, &options);
     TEST_ASSERT_NOT_NULL (node);
-    TEST_ASSERT_TRUE (snapshot_has_socket (node, "internal-router"));
+    TEST_ASSERT_FALSE (snapshot_has_socket (node, "internal-router"));
     TEST_ASSERT_TRUE (snapshot_has_socket (node, "external-router"));
     TEST_ASSERT_FALSE (snapshot_has_socket (node, "mesh-pub"));
     TEST_ASSERT_FALSE (snapshot_has_socket (node, "ingress-sub"));
@@ -377,47 +379,35 @@ void test_spot_node_admission_hwm_socket_snapshot_contract ()
     const std::vector<zlink_spot_node_socket_snapshot_entry_t> rows =
       read_socket_snapshot (node);
 
-    const zlink_spot_node_socket_snapshot_entry_t *pub_ingress_tx =
-      find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
-                       "pub-ingress-tx");
-    const zlink_spot_node_socket_snapshot_entry_t *ingress =
-      find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "ingress-sub");
     const zlink_spot_node_socket_snapshot_entry_t *fanout =
       find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "local-pub");
     const zlink_spot_node_socket_snapshot_entry_t *mesh_pub =
       find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "mesh-pub");
     const zlink_spot_node_socket_snapshot_entry_t *mesh_xsub =
       find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "mesh-xsub");
-    const zlink_spot_node_socket_snapshot_entry_t *internal_router =
-      find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
-                       "internal-router");
     const zlink_spot_node_socket_snapshot_entry_t *external_router =
       find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
                        "external-router");
 
-    TEST_ASSERT_NOT_NULL (pub_ingress_tx);
-    TEST_ASSERT_NOT_NULL (ingress);
+    TEST_ASSERT_NULL (find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
+                                       "pub-ingress-tx"));
+    TEST_ASSERT_NULL (find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
+                                       "ingress-sub"));
+    TEST_ASSERT_NULL (find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
+                                       "internal-router"));
+    TEST_ASSERT_NULL (find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
+                                       "internal-router-tx"));
     TEST_ASSERT_NOT_NULL (fanout);
     TEST_ASSERT_NOT_NULL (mesh_pub);
     TEST_ASSERT_NOT_NULL (mesh_xsub);
-    TEST_ASSERT_NOT_NULL (internal_router);
     TEST_ASSERT_NOT_NULL (external_router);
 
-    TEST_ASSERT_EQUAL_INT (pubsub_hwm,
-	                           pub_ingress_tx->snapshot.auto_hwm_applied_sndhwm);
-    TEST_ASSERT_EQUAL_INT (0, pub_ingress_tx->snapshot.auto_hwm_applied_rcvhwm);
-    TEST_ASSERT_EQUAL_INT (pubsub_hwm,
-                           ingress->snapshot.auto_hwm_applied_rcvhwm);
     TEST_ASSERT_EQUAL_INT (0, fanout->snapshot.auto_hwm_applied_sndhwm);
     TEST_ASSERT_EQUAL_INT (pubsub_hwm,
                            mesh_pub->snapshot.auto_hwm_applied_sndhwm);
     TEST_ASSERT_EQUAL_INT (pubsub_hwm,
                            mesh_xsub->snapshot.auto_hwm_applied_rcvhwm);
 
-    TEST_ASSERT_EQUAL_INT (router_hwm,
-                           internal_router->snapshot.auto_hwm_applied_rcvhwm);
-    TEST_ASSERT_EQUAL_INT (0,
-                           internal_router->snapshot.auto_hwm_applied_sndhwm);
     TEST_ASSERT_EQUAL_INT (router_hwm,
                            external_router->snapshot.auto_hwm_applied_rcvhwm);
     TEST_ASSERT_EQUAL_INT (router_hwm,
@@ -428,7 +418,7 @@ void test_spot_node_admission_hwm_socket_snapshot_contract ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_admission_hwm_changes_apply_to_runtime_pub_ingress ()
+void test_spot_node_admission_hwm_changes_apply_to_runtime_data_plane_sockets ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -447,11 +437,6 @@ void test_spot_node_admission_hwm_changes_apply_to_runtime_pub_ingress ()
 
     const std::vector<zlink_spot_node_socket_snapshot_entry_t> rows =
       read_socket_snapshot (node);
-    const zlink_spot_node_socket_snapshot_entry_t *pub_ingress_tx =
-      find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
-                       "pub-ingress-tx");
-    const zlink_spot_node_socket_snapshot_entry_t *ingress =
-      find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "ingress-sub");
     const zlink_spot_node_socket_snapshot_entry_t *mesh_pub =
       find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "mesh-pub");
     const zlink_spot_node_socket_snapshot_entry_t *mesh_xsub =
@@ -459,15 +444,17 @@ void test_spot_node_admission_hwm_changes_apply_to_runtime_pub_ingress ()
     const zlink_spot_node_socket_snapshot_entry_t *external_router =
       find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
                        "external-router");
-    TEST_ASSERT_NOT_NULL (pub_ingress_tx);
-    TEST_ASSERT_NOT_NULL (ingress);
+    TEST_ASSERT_NULL (find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
+                                       "pub-ingress-tx"));
+    TEST_ASSERT_NULL (find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
+                                       "ingress-sub"));
+    TEST_ASSERT_NULL (find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
+                                       "internal-router"));
+    TEST_ASSERT_NULL (find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
+                                       "internal-router-tx"));
     TEST_ASSERT_NOT_NULL (mesh_pub);
     TEST_ASSERT_NOT_NULL (mesh_xsub);
     TEST_ASSERT_NOT_NULL (external_router);
-    TEST_ASSERT_EQUAL_INT (pubsub_hwm,
-                           pub_ingress_tx->snapshot.auto_hwm_applied_sndhwm);
-    TEST_ASSERT_EQUAL_INT (pubsub_hwm,
-                           ingress->snapshot.auto_hwm_applied_rcvhwm);
     TEST_ASSERT_EQUAL_INT (pubsub_hwm,
                            mesh_pub->snapshot.auto_hwm_applied_sndhwm);
     TEST_ASSERT_EQUAL_INT (pubsub_hwm,
@@ -723,7 +710,7 @@ int main ()
       test_spot_node_routed_mode_disables_pubsub_sockets_without_lazy_create);
     RUN_TEST (test_spot_node_internal_socket_snapshot_contract);
     RUN_TEST (test_spot_node_admission_hwm_socket_snapshot_contract);
-    RUN_TEST (test_spot_node_admission_hwm_changes_apply_to_runtime_pub_ingress);
+    RUN_TEST (test_spot_node_admission_hwm_changes_apply_to_runtime_data_plane_sockets);
     RUN_TEST (test_spot_subject_access_resolves_composite_and_node_poller_sockets);
     RUN_TEST (test_spot_subject_access_routes_subscription_and_routing_state);
     RUN_TEST (test_spot_subject_access_routes_composite_and_node_options);

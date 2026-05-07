@@ -230,11 +230,6 @@ int spot_node_t::start_data_plane ()
     return _runtime->start ();
 }
 
-const std::string &spot_node_t::pub_ingress_endpoint () const
-{
-    return _runtime->pub_ingress_endpoint;
-}
-
 const std::string &spot_node_t::sub_fanout_endpoint () const
 {
     return _runtime->sub_fanout_endpoint;

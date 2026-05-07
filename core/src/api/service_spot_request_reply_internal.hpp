@@ -256,6 +256,7 @@ int init_buffer_frame (zlink_msg_t *msg_, const void *data_, size_t size_);
 std::shared_ptr<spot_request_reply_state_t> try_find_spot_state (void *spot_);
 void erase_spot_owner_state (void *spot_);
 int install_spot_dispatch_event_task (spot_request_reply_state_t *state_);
+void run_spot_dispatch_worker_once (void *spot_);
 void maybe_dispatch_spot_info (
   spot_request_reply_state_t *state_,
   zlink_spot_dispatch_event_t event_,
@@ -312,9 +313,18 @@ int recv_combined_router_message (zlink::socket_base_t *socket_,
 int send_combined_parts_on_socket (zlink::socket_base_t *socket_,
                                    std::vector<zlink_msg_t> *parts_,
                                    zlink_send_flags_t flags_);
-int enqueue_runtime_internal_router_once (zlink::spot_runtime_t *runtime_,
-                                          std::vector<zlink_msg_t> *parts_,
-                                          zlink_send_flags_t flags_);
+int enqueue_runtime_routed_send (zlink::spot_runtime_t *runtime_,
+                                 std::vector<zlink_msg_t> *parts_,
+                                 zlink_send_flags_t flags_);
+int drain_runtime_routed_send_queue (zlink::spot_runtime_t *runtime_);
+int enqueue_runtime_external_router_ingress (
+  zlink::spot_runtime_t *runtime_,
+  std::vector<zlink_msg_t> *parts_);
+int drain_runtime_external_router_ingress_queue (
+  zlink::spot_runtime_t *runtime_);
+int process_external_router_combined_for_data_plane (
+  zlink::spot_node_t *node_,
+  std::vector<zlink_msg_t> *combined_);
 int build_spot_request_reply_message (uint8_t source_class_,
                                       const std::string &source_node_rid_,
                                       const std::string &source_endpoint_rid_,

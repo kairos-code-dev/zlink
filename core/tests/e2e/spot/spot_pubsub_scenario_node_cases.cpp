@@ -86,49 +86,9 @@ void test_spot_node_pub_ingress_local_spot_subscribe_surface ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (pub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (spot, "spot:ingress-local"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_attach_pub_ingress (node, pub));
-
-    bool received = false;
-    for (int attempt = 0; attempt < 100 && !received; ++attempt) {
-        TEST_ASSERT_SUCCESS_ERRNO (publish_text (
-          &zlink_publish, pub, "spot:ingress-local", "ingress-local", 0));
-
-        zlink_routing_id_t source_rid;
-        zlink_msg_t *parts = NULL;
-        size_t part_count = 0;
-        char service_name[16] = {0};
-        size_t service_name_len = sizeof (service_name);
-        char topic[64] = {0};
-        size_t topic_len = sizeof (topic);
-        memset (&source_rid, 0, sizeof (source_rid));
-
-        const zlink_recv_result_t rc = zlink_spot_subscribe (
-          spot, &source_rid, &parts, &part_count, service_name,
-          &service_name_len, topic, &topic_len,
-          static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
-        if (rc == ZLINK_RECV_NO_DATA && errno == EAGAIN) {
-            msleep (10);
-            continue;
-        }
-
-        TEST_ASSERT_EQUAL_INT (ZLINK_RECV_OK, rc);
-        TEST_ASSERT_EQUAL_UINT (0u, static_cast<unsigned int> (service_name_len));
-        TEST_ASSERT_EQUAL_UINT (
-          strlen ("spot:ingress-local"), static_cast<unsigned int> (topic_len));
-        TEST_ASSERT_EQUAL_STRING_LEN ("spot:ingress-local", topic, topic_len);
-        TEST_ASSERT_EQUAL_UINT (1u, static_cast<unsigned int> (part_count));
-        TEST_ASSERT_EQUAL_UINT (
-          strlen ("ingress-local"),
-          static_cast<unsigned int> (zlink_msg_size (&parts[0])));
-        TEST_ASSERT_EQUAL_MEMORY ("ingress-local", zlink_msg_data (&parts[0]),
-                                  strlen ("ingress-local"));
-        zlink_multipart_close (parts, part_count);
-        received = true;
-    }
-
-    TEST_ASSERT_TRUE (received);
+    TEST_ASSERT_NOT_EQUAL (ZLINK_CONFIG_OK,
+                           zlink_spot_node_attach_pub_ingress (node, pub));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (pub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));

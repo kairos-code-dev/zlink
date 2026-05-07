@@ -32,7 +32,7 @@ zlink::spot_runtime_t *resolve_active_spot_runtime (void *spot_)
 {
     zlink::spot_runtime_t *runtime = resolve_spot_runtime (spot_);
     if (!runtime || !runtime->execution.data_plane_running
-        || !runtime->internal_router) {
+        || !runtime->owner) {
         return NULL;
     }
     return runtime;

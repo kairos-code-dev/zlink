@@ -10,6 +10,7 @@
 #include "services/spot/spot_runtime.hpp"
 
 #include "api/service_api_internal.hpp"
+#include "api/service_spot_request_reply_internal.hpp"
 
 #include "services/common/monitor_decode.hpp"
 #include "core/socket_poller.hpp"
@@ -18,12 +19,16 @@
 
 #include <algorithm>
 #include <climits>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 namespace zlink
 {
 namespace
 {
+const int data_plane_idle_tick_ms = 100;
+
 void service_runtime_sockets (spot_runtime_t *runtime_,
                               spot_data_plane_runtime_state_t *state_,
                               const spot_data_plane_protocol_state_t *protocol_state_)
@@ -40,8 +45,6 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_sub);
     spot_data_plane_forwarder_t::pump_socket_commands (
       state_->external_router);
-    spot_data_plane_forwarder_t::pump_socket_commands (state_->internal_router);
-    spot_data_plane_forwarder_t::pump_socket_commands (state_->ingress);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->fanout);
 
     const uint64_t attachment_version = runtime_->attachment_state_version ();
@@ -61,10 +64,6 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
             state_->peer_ctrl_sub->set_all_pipes_nodelay ();
         if (state_->external_router)
             state_->external_router->set_all_pipes_nodelay ();
-        if (state_->internal_router)
-            state_->internal_router->set_all_pipes_nodelay ();
-        if (state_->ingress)
-            state_->ingress->set_all_pipes_nodelay ();
         if (state_->fanout)
             state_->fanout->set_all_pipes_nodelay ();
         state_->runtime_sockets_nodelay_applied = true;
@@ -74,6 +73,11 @@ void service_runtime_sockets (spot_runtime_t *runtime_,
       &state_->mesh_pub_hwm.last_hwm_version,
       &state_->mesh_pub_hwm.last_bound_endpoint);
     spot_data_plane_forwarder_t::update_pending_queue_limits (runtime_, state_);
+    (void) spot_reqrep_internal::drain_runtime_external_router_ingress_queue (
+      runtime_);
+    (void) spot_data_plane_forwarder_t::drain_publish_ingress_queue (runtime_,
+                                                                     state_);
+    (void) spot_reqrep_internal::drain_runtime_routed_send_queue (runtime_);
     (void) spot_data_plane_forwarder_t::flush_mesh_pub_pending (runtime_, state_);
     (void) spot_data_plane_forwarder_t::flush_local_fanout_pending (runtime_,
                                                                     state_);
@@ -101,10 +105,6 @@ int drain_direct_route_messages (spot_node_t *node_,
              != 0)
         return -1;
 
-    if (state_->internal_router
-        && zlink_spot_process_internal_router (node_, state_->internal_router) != 0)
-        return -1;
-
     return 0;
 }
 
@@ -113,7 +113,6 @@ bool is_ctrl_event (socket_base_t *socket_,
 {
     return socket_ == state_.ctrl || socket_ == state_.peer_ctrl_sub
            || socket_ == state_.external_router
-           || socket_ == state_.internal_router
            || socket_ == state_.mesh_xsub_monitor;
 }
 
@@ -152,14 +151,6 @@ bool handle_ctrl_event (socket_base_t *socket_,
     if (socket_ == state_->external_router) {
         if (!socket_->socket_msg_dispatch_active ()
             && zlink_spot_process_external_router (node_, socket_) != 0) {
-            *fatal_errno_out_ = errno;
-            *running_out_ = false;
-        }
-        return true;
-    }
-
-    if (socket_ == state_->internal_router) {
-        if (zlink_spot_process_internal_router (node_, socket_) != 0) {
             *fatal_errno_out_ = errno;
             *running_out_ = false;
         }
@@ -243,26 +234,6 @@ bool handle_pollout_event (socket_base_t *socket_,
     return false;
 }
 
-bool handle_ingress_event (socket_base_t *socket_,
-                           spot_node_t *node_,
-                           spot_runtime_t *runtime_,
-                           spot_data_plane_runtime_state_t *state_,
-                           bool *running_out_,
-                           int *fatal_errno_out_)
-{
-    if (!state_->ingress || socket_ != state_->ingress)
-        return false;
-
-    if (spot_data_plane_forwarder_t::recv_and_forward_ingress (
-          state_->ingress, state_->mesh_pub, state_->fanout, runtime_, state_,
-          node_)
-        != 0) {
-        *fatal_errno_out_ = errno;
-        *running_out_ = false;
-    }
-    return true;
-}
-
 int dispatch_ready_events (const socket_poller_t::event_t *events_,
                            int event_count_,
                            spot_node_t *node_,
@@ -289,12 +260,43 @@ int dispatch_ready_events (const socket_poller_t::event_t *events_,
         for (int i = 0; i < event_count_; ++i) {
             if ((events_[i].events & ZLINK_POLLIN) == 0)
                 continue;
+            if (!events_[i].socket
+                && events_[i].fd == state_->publish_ingress.signaler.get_fd ()) {
+                (void) state_->publish_ingress.signaler.recv_failable ();
+                {
+                    std::lock_guard<std::mutex> lock (
+                      state_->publish_ingress.mutex);
+                    state_->publish_ingress.signal_armed = false;
+                }
+                continue;
+            }
+            if (!events_[i].socket
+                && events_[i].fd == state_->routed_send.signaler.get_fd ()) {
+                (void) state_->routed_send.signaler.recv_failable ();
+                {
+                    std::lock_guard<std::mutex> lock (
+                      state_->routed_send.mutex);
+                    state_->routed_send.signal_armed = false;
+                }
+                continue;
+            }
+            if (!events_[i].socket
+                && events_[i].fd
+                     == state_->external_router_ingress.signaler.get_fd ()) {
+                (void) state_->external_router_ingress.signaler.recv_failable ();
+                {
+                    std::lock_guard<std::mutex> lock (
+                      state_->external_router_ingress.mutex);
+                    state_->external_router_ingress.signal_armed = false;
+                }
+                continue;
+            }
 
             socket_base_t *socket =
               static_cast<socket_base_t *> (events_[i].socket);
             if ((pass == 0 && !is_ctrl_event (socket, *state_))
                 || (pass == 1 && socket != state_->mesh_xsub)
-                || (pass == 2 && socket != state_->ingress)) {
+                || pass == 2) {
                 continue;
             }
 
@@ -302,9 +304,7 @@ int dispatch_ready_events (const socket_poller_t::event_t *events_,
                                    protocol_state_, running_out_, &fatal_errno)
                 || handle_mesh_event (socket, node_, runtime_, state_,
                                       protocol_state_, running_out_,
-                                      &fatal_errno)
-                || handle_ingress_event (socket, node_, runtime_, state_,
-                                         running_out_, &fatal_errno)) {
+                                      &fatal_errno)) {
                 if (!*running_out_)
                     break;
             }
@@ -346,16 +346,26 @@ int publish_bootstrap_if_due (spot_node_t *node_,
     return 0;
 }
 
-int resolve_data_plane_poll_timeout_ms (uint64_t next_bootstrap_ms_)
+int resolve_data_plane_poll_timeout_ms (
+  uint64_t next_bootstrap_ms_,
+  spot_data_plane_runtime_state_t *state_)
 {
-    if (next_bootstrap_ms_ == 0)
-        return 0;
+    uint64_t next_due_ms = next_bootstrap_ms_;
+    if (state_) {
+        std::lock_guard<std::mutex> lock (state_->routed_send.mutex);
+        if (state_->routed_send.retry_after_ms != 0
+            && (!next_due_ms || state_->routed_send.retry_after_ms < next_due_ms))
+            next_due_ms = state_->routed_send.retry_after_ms;
+    }
+
+    if (next_due_ms == 0)
+        return data_plane_idle_tick_ms;
 
     const uint64_t now_ms = clock_t ().now_ms ();
-    if (next_bootstrap_ms_ <= now_ms)
+    if (next_due_ms <= now_ms)
         return 0;
 
-    const uint64_t remaining_ms = next_bootstrap_ms_ - now_ms;
+    const uint64_t remaining_ms = next_due_ms - now_ms;
     return remaining_ms > static_cast<uint64_t> (INT_MAX)
              ? INT_MAX
              : static_cast<int> (remaining_ms);
@@ -379,6 +389,7 @@ int spot_data_plane_loop_t::run_until_shutdown (
     spot_data_plane_protocol_state_t *protocol_state_ptr =
       protocol_state_out_ ? protocol_state_out_ : &protocol_state;
     std::vector<socket_poller_t::event_t> events;
+    unsigned int consecutive_ready_loops = 0;
 
     while (running) {
         service_runtime_sockets (runtime_, state_, protocol_state_ptr);
@@ -397,12 +408,17 @@ int spot_data_plane_loop_t::run_until_shutdown (
             events.resize (event_capacity);
         const int rc = state_->poller->wait (
           events.empty () ? NULL : &events[0], static_cast<int> (events.size ()),
-          resolve_data_plane_poll_timeout_ms (next_bootstrap_ms));
+          resolve_data_plane_poll_timeout_ms (next_bootstrap_ms, state_));
         if (rc < 0) {
+            consecutive_ready_loops = 0;
             if (errno == EAGAIN || errno == EINTR)
                 continue;
             fatal_errno = errno;
             break;
+        }
+        if (rc > 0 && ++consecutive_ready_loops >= 64) {
+            std::this_thread::yield ();
+            consecutive_ready_loops = 0;
         }
 
         fatal_errno = dispatch_ready_events (

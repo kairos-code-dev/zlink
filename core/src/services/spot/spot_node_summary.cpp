@@ -937,23 +937,6 @@ int spot_node_t::snapshot_internal_sockets (
                  != 0
             || append_socket_snapshot_row (
                  out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                 "spotnode", "internal-router", _runtime->internal_router)
-                 != 0
-            || append_socket_snapshot_row (
-                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                 "spotnode", "internal-router-tx", _runtime->internal_router_tx)
-                 != 0
-            || append_socket_snapshot_row (
-                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                 "spotnode", "pub-ingress-tx", _runtime->pub_ingress_tx)
-                 != 0
-            || append_socket_snapshot_row (
-                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                 "spotnode", "ingress-sub",
-                 _runtime->local_pub_ingress_sub)
-                 != 0
-            || append_socket_snapshot_row (
-                 out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
                  "spotnode", "local-pub", _runtime->local_fanout_xpub)
                  != 0)
             return -1;

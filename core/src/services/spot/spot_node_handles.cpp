@@ -5,6 +5,7 @@
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_auto_hwm_internal.hpp"
+#include "services/spot/spot_dispatch_worker_pool.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_runtime_internal.hpp"
@@ -32,12 +33,6 @@ static void refresh_runtime_pubsub_admission_hwm (spot_runtime_t *runtime_,
     if (!runtime_)
         return;
 
-    if (runtime_->local_pub_ingress_sub)
-        (void) runtime_->local_pub_ingress_sub->setsockopt (
-          ZLINK_INTERNAL_OPT_RCVHWM, &hwm_, sizeof (hwm_));
-    if (runtime_->pub_ingress_tx)
-        (void) runtime_->pub_ingress_tx->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
-                                                     &hwm_, sizeof (hwm_));
     if (runtime_->mesh_pub)
         (void) runtime_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
                                                &hwm_, sizeof (hwm_));
@@ -52,9 +47,6 @@ static void refresh_runtime_router_admission_hwm (spot_runtime_t *runtime_,
     if (!runtime_)
         return;
 
-    if (runtime_->internal_router)
-        (void) runtime_->internal_router->setsockopt (
-          ZLINK_INTERNAL_OPT_RCVHWM, &hwm_, sizeof (hwm_));
     if (runtime_->external_router) {
         (void) runtime_->external_router->setsockopt (
           ZLINK_INTERNAL_OPT_SNDHWM, &hwm_, sizeof (hwm_));
@@ -76,11 +68,7 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
     socket_base_t *sockets[] = {
       runtime_->mesh_pub,
 	      runtime_->local_fanout_xpub,
-	      runtime_->local_pub_ingress_sub,
-	      runtime_->pub_ingress_tx,
 	      runtime_->mesh_xsub,
-	      runtime_->internal_router,
-	      runtime_->internal_router_tx,
 	      runtime_->external_router};
 
     for (size_t i = 0; i != sizeof (sockets) / sizeof (sockets[0]); ++i) {
@@ -102,9 +90,6 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
     runtime_->snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count,
                                         &connected_peer_count,
                                         &active_peer_count);
-    const size_t routed_local_count =
-      std::max<size_t> (std::max<size_t> (local_pub_count, local_sub_count),
-                        1u);
     const spot_node_hwm_config_t hwm = runtime_->hwm_config_snapshot ();
     const bool pubsub_hwm_override = spot_node_pubsub_hwm_overridden (hwm);
     const bool router_hwm_override = spot_node_router_hwm_overridden (hwm);
@@ -120,15 +105,6 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
                                       true, true, auto_hwm_scope_shared, 1,
                                       msg_unit});
     apply_spot_internal_auto_hwm (
-      ctx, runtime_->pub_ingress_tx,
-      spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data,
-                                      ZLINK_CORE_SOCKET_PUB,
-                                      local_pub_count, local_pub_count,
-                                      0, 0,
-                                      true, false,
-                                      true, true, auto_hwm_scope_shared, 1,
-                                      msg_unit});
-    apply_spot_internal_auto_hwm (
       ctx, runtime_->local_fanout_xpub,
       spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data,
                                       ZLINK_CORE_SOCKET_PUB,
@@ -138,39 +114,12 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
                                       true, true, auto_hwm_scope_shared, 1,
                                       msg_unit});
     apply_spot_internal_auto_hwm (
-      ctx, runtime_->local_pub_ingress_sub,
-      spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress,
-                                      ZLINK_CORE_SOCKET_SUB,
-                                      local_pub_count, local_pub_count,
-                                      0, spot_node_pubsub_admission_hwm (hwm),
-                                      false, true,
-                                      true, true, auto_hwm_scope_shared, 1,
-                                      msg_unit});
-    apply_spot_internal_auto_hwm (
       ctx, runtime_->mesh_xsub,
       spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress,
                                       ZLINK_CORE_SOCKET_XSUB,
                                       connected_peer_count,
                                       active_peer_count,
                                       0, 0, false, true,
-                                      true, true, auto_hwm_scope_shared, 1,
-                                      msg_unit});
-    apply_spot_internal_auto_hwm (
-      ctx, runtime_->internal_router,
-      spot_internal_auto_hwm_policy_t{auto_hwm_role_routed,
-                                      ZLINK_CORE_SOCKET_ROUTER,
-                                      routed_local_count, routed_local_count,
-                                      0, spot_node_router_admission_hwm (hwm),
-                                      true, true,
-                                      true, true, auto_hwm_scope_shared, 1,
-                                      msg_unit});
-    apply_spot_internal_auto_hwm (
-      ctx, runtime_->internal_router_tx,
-      spot_internal_auto_hwm_policy_t{auto_hwm_role_routed,
-                                      ZLINK_CORE_SOCKET_DEALER,
-                                      routed_local_count, routed_local_count,
-                                      0, 0,
-                                      true, false,
                                       true, true, auto_hwm_scope_shared, 1,
                                       msg_unit});
     apply_spot_internal_auto_hwm (
@@ -189,9 +138,6 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
     if (pubsub_hwm_override && runtime_->mesh_pub)
         (void) runtime_->mesh_pub->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
                                                &pubsub_hwm, sizeof (pubsub_hwm));
-    if (pubsub_hwm_override && runtime_->pub_ingress_tx)
-        (void) runtime_->pub_ingress_tx->setsockopt (
-          ZLINK_INTERNAL_OPT_SNDHWM, &pubsub_hwm, sizeof (pubsub_hwm));
     if (runtime_->local_fanout_xpub)
         (void) runtime_->local_fanout_xpub->setsockopt (
           ZLINK_INTERNAL_OPT_SNDHWM, &zero, sizeof (zero));
@@ -204,20 +150,6 @@ static void refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_,
         (void) runtime_->external_router->setsockopt (
           ZLINK_INTERNAL_OPT_RCVHWM, &router_hwm, sizeof (router_hwm));
     }
-    if (pubsub_hwm_override && runtime_->local_pub_ingress_sub)
-        (void) runtime_->local_pub_ingress_sub->setsockopt (
-          ZLINK_INTERNAL_OPT_RCVHWM, &pubsub_hwm, sizeof (pubsub_hwm));
-    if (runtime_->internal_router) {
-        (void) runtime_->internal_router->setsockopt (
-          ZLINK_INTERNAL_OPT_SNDHWM, &zero, sizeof (zero));
-        if (router_hwm_override) {
-            (void) runtime_->internal_router->setsockopt (
-              ZLINK_INTERNAL_OPT_RCVHWM, &router_hwm, sizeof (router_hwm));
-        }
-    }
-    if (runtime_->internal_router_tx)
-        (void) runtime_->internal_router_tx->setsockopt (
-          ZLINK_INTERNAL_OPT_RCVHWM, &zero, sizeof (zero));
 }
 
 static void spot_internal_receiver_fanout_handler (
@@ -275,6 +207,21 @@ static bool apply_runtime_hwm_option (spot_node_hwm_config_t *config_,
                 return false;
             config_->pubsub_hwm_override = value;
             return true;
+        case ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN:
+            if (value < 1)
+                return false;
+            config_->dispatch_workers_min = value;
+            if (config_->dispatch_workers_max > 0
+                && config_->dispatch_workers_max < value)
+                config_->dispatch_workers_max = value;
+            return true;
+        case ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX:
+            if (value < 1)
+                return false;
+            config_->dispatch_workers_max = value;
+            if (config_->dispatch_workers_min > value)
+                return false;
+            return true;
         default:
             return false;
     }
@@ -303,6 +250,18 @@ static bool read_runtime_hwm_option (ctx_t *ctx_,
             return true;
         case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM:
             *value_out_ = spot_node_pubsub_admission_hwm (config_);
+            return true;
+        case ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN:
+            *value_out_ =
+              config_.dispatch_workers_min > 0
+                ? config_.dispatch_workers_min
+                : spot_dispatch_default_workers_min ();
+            return true;
+        case ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX:
+            *value_out_ =
+              config_.dispatch_workers_max > 0
+                ? config_.dispatch_workers_max
+                : spot_dispatch_default_workers_max ();
             return true;
         default:
             return false;
@@ -601,6 +560,9 @@ int spot_node_t::set_node_option (int option_,
         case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE:
         case ZLINK_SPOT_NODE_OPT_PUBSUB_HWM:
             refresh_runtime_pubsub_admission_hwm (_runtime, pubsub_hwm);
+            return 0;
+        case ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN:
+        case ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX:
             return 0;
         default:
             errno = EINVAL;

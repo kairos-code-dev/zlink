@@ -21,6 +21,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include <utility>
 
 namespace zlink
 {
@@ -31,8 +32,6 @@ bool spot_direct_route_debug_enabled_local ()
     return std::getenv ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE") != NULL;
 }
 
-static const unsigned int ingress_forward_batch_limit = 2048;
-static const size_t ingress_forward_batch_bytes_limit = 16 * 1024 * 1024;
 static const size_t pending_queue_bytes_floor = 64 * 1024;
 
 int send_remote_mesh_message_local (socket_base_t *socket_,
@@ -128,19 +127,6 @@ socket_base_t *create_remote_mesh_sender_socket_local (spot_runtime_t *runtime_,
 void refresh_fixed_poller_interest_local (
   spot_data_plane_runtime_state_t *state_)
 {
-    const bool pause_ingress =
-      state_->local_fanout.pending_bytes >= state_->local_fanout.pending_pause_threshold
-      || state_->remote_mesh.pending_bytes >= state_->remote_mesh.pending_pause_threshold
-      || !state_->staged.ingress_messages.empty ()
-      || !state_->staged.mesh_messages.empty ();
-    const bool resume_ingress =
-      state_->local_fanout.pending_bytes <= state_->local_fanout.pending_resume_threshold
-      && state_->remote_mesh.pending_bytes <= state_->remote_mesh.pending_resume_threshold;
-    if (!state_->interest.ingress_pollin_paused && pause_ingress)
-        state_->interest.ingress_pollin_paused = true;
-    else if (state_->interest.ingress_pollin_paused && resume_ingress)
-        state_->interest.ingress_pollin_paused = false;
-
     const bool pause_mesh =
       state_->remote_mesh.pending_bytes >= state_->remote_mesh.pending_pause_threshold
       || !state_->staged.mesh_messages.empty ()
@@ -151,14 +137,6 @@ void refresh_fixed_poller_interest_local (
         state_->interest.mesh_xsub_pollin_paused = true;
     else if (state_->interest.mesh_xsub_pollin_paused && resume_mesh)
         state_->interest.mesh_xsub_pollin_paused = false;
-
-    const short ingress_events =
-      state_->interest.ingress_pollin_paused ? 0 : ZLINK_POLLIN;
-    if (state_->ingress
-        && state_->interest.ingress_pollin_armed != (ingress_events != 0)) {
-        (void) state_->poller->modify (state_->ingress, ingress_events);
-        state_->interest.ingress_pollin_armed = ingress_events != 0;
-    }
 
     const short mesh_xsub_events =
       state_->interest.mesh_xsub_pollin_paused ? 0 : ZLINK_POLLIN;
@@ -205,6 +183,67 @@ void refresh_remote_target_pollout_interest_local (
     (void) state_->poller->modify (target_->sender_socket,
                                    need_pollout ? ZLINK_POLLOUT : 0);
     target_->pollout_armed = need_pollout;
+}
+
+size_t publish_ingress_hard_limit (spot_runtime_t *runtime_)
+{
+    if (!runtime_)
+        return 0;
+    const int slots =
+      spot_node_pubsub_admission_hwm (runtime_->hwm_config_snapshot ());
+    if (slots == 0)
+        return 0;
+    const size_t unit = pending_queue_bytes_floor;
+    return static_cast<size_t> (slots) * unit;
+}
+
+bool publish_ingress_has_room (
+  const spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue_,
+  size_t hard_limit_,
+  size_t message_bytes_)
+{
+    if (hard_limit_ == 0)
+        return true;
+    if (queue_.messages.empty ())
+        return true;
+    if (message_bytes_ > hard_limit_)
+        return false;
+    return queue_.queued_bytes <= hard_limit_ - message_bytes_;
+}
+
+int copy_raw_parts_to_owned (zlink_msg_t *parts_,
+                             size_t part_count_,
+                             spot_owned_msg_parts_t *out_)
+{
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    spot_clear_msg_parts (out_);
+    if (part_count_ == 0) {
+        zlink_msg_t empty;
+        memset (&empty, 0, sizeof (empty));
+        spot_init_msg_frame (&empty);
+        if (zlink_msg_init_size (&empty, 0) != 0)
+            return -1;
+        out_->push_back (empty);
+        return 0;
+    }
+
+    for (size_t i = 0; i < part_count_; ++i) {
+        zlink_msg_t frame;
+        memset (&frame, 0, sizeof (frame));
+        spot_init_msg_frame (&frame);
+        if (zlink_msg_copy (&frame, &parts_[i]) != 0) {
+            const int err = errno;
+            spot_close_msg_frame (&frame);
+            spot_clear_msg_parts (out_);
+            errno = err;
+            return -1;
+        }
+        out_->push_back (frame);
+    }
+    return 0;
 }
 
 }
@@ -488,6 +527,90 @@ int spot_data_plane_forwarder_t::stage_message (
     return 0;
 }
 
+int spot_data_plane_forwarder_t::enqueue_publish_ingress (
+  spot_runtime_t *runtime_,
+  const char *topic_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_)
+{
+    if (!runtime_ || !topic_ || !*topic_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    spot_data_plane_runtime_state_t::staged_publish_entry_t entry;
+    entry.topic = topic_;
+    entry.need_local = true;
+    entry.need_mesh = runtime_->mesh_pub != NULL;
+    if (copy_raw_parts_to_owned (parts_, part_count_, &entry.parts) != 0)
+        return -1;
+    entry.encoded_bytes = spot_msg_parts_encoded_bytes (entry.parts);
+
+    spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue =
+      runtime_->execution.data_plane_state.publish_ingress;
+    const size_t hard_limit = publish_ingress_hard_limit (runtime_);
+    std::unique_lock<std::mutex> lock (queue.mutex);
+    while (!queue.closed
+           && !publish_ingress_has_room (queue, hard_limit,
+                                         entry.encoded_bytes)) {
+        if ((flags_ & ZLINK_DONTWAIT) != 0) {
+            spot_clear_msg_parts (&entry.parts);
+            errno = EAGAIN;
+            return -1;
+        }
+        queue.cv.wait (lock);
+    }
+    if (queue.closed) {
+        spot_clear_msg_parts (&entry.parts);
+        errno = ESHUTDOWN;
+        return -1;
+    }
+
+    queue.queued_bytes += entry.encoded_bytes;
+    queue.messages.push_back (std::move (entry));
+    if (!queue.signal_armed && queue.signaler.valid ()) {
+        queue.signal_armed = true;
+        queue.signaler.send ();
+    }
+    lock.unlock ();
+
+    zlink_multipart_close (parts_, part_count_);
+    return 0;
+}
+
+int spot_data_plane_forwarder_t::drain_publish_ingress_queue (
+  spot_runtime_t *runtime_,
+  spot_data_plane_runtime_state_t *state_)
+{
+    if (!runtime_ || !state_)
+        return 0;
+
+    std::deque<spot_data_plane_runtime_state_t::staged_publish_entry_t> local;
+    {
+        spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue =
+          state_->publish_ingress;
+        std::lock_guard<std::mutex> lock (queue.mutex);
+        local.swap (queue.messages);
+        queue.queued_bytes = 0;
+        queue.cv.notify_all ();
+    }
+
+    while (!local.empty ()) {
+        spot_data_plane_runtime_state_t::staged_publish_entry_t &entry =
+          local.front ();
+        if (stage_message (state_, entry.topic, entry.parts, false,
+                           entry.need_local, entry.need_mesh)
+            != 0) {
+            spot_clear_msg_parts (&entry.parts);
+            return -1;
+        }
+        spot_clear_msg_parts (&entry.parts);
+        local.pop_front ();
+    }
+    return flush_staged_messages (runtime_, state_);
+}
+
 int spot_data_plane_forwarder_t::flush_staged_messages (
   spot_runtime_t *runtime_, spot_data_plane_runtime_state_t *state_)
 {
@@ -722,75 +845,4 @@ int spot_data_plane_forwarder_t::flush_mesh_pub_pending (
     return 0;
 }
 
-int spot_data_plane_forwarder_t::recv_and_forward_ingress (
-  socket_base_t *src_,
-  socket_base_t *mesh_pub_,
-  socket_base_t *fanout_,
-  spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_,
-  const spot_node_t *node_)
-{
-    (void) fanout_;
-    (void) node_;
-
-    if (!src_ || !runtime_ || !state_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    unsigned int forwarded_messages = 0;
-    size_t forwarded_bytes = 0;
-
-    for (;;) {
-        std::string topic;
-        spot_owned_msg_parts_t parts;
-        size_t wire_bytes = 0;
-        if (spot_recv_logical_message_parts (
-              src_, true, &topic, &parts, &wire_bytes)
-            != 0) {
-            if (errno == EAGAIN)
-                return 0;
-            return -1;
-        }
-
-        if (spot_direct_route_debug_enabled_local ()) {
-            std::fprintf (stderr,
-                          "[spot-direct] ingress topic=%s local_targets=%zu mesh_targets=%zu parts=%zu\n",
-                          topic.c_str (), state_->local_fanout.targets.size (),
-                          state_->remote_mesh.targets.size (), parts.size ());
-        }
-
-        if (!state_->local_fanout.targets.empty ()
-            && forward_local_fanout (runtime_, state_, topic, parts) != 0) {
-            if (errno == EAGAIN
-                && stage_message (state_, topic, parts, false, true,
-                                  mesh_pub_ != NULL)
-                     == 0) {
-                spot_clear_msg_parts (&parts);
-                return 0;
-            }
-            spot_clear_msg_parts (&parts);
-            return -1;
-        }
-
-        if (mesh_pub_ && forward_mesh_pub (runtime_, state_, topic, parts) != 0) {
-            if (errno == EAGAIN
-                && stage_message (state_, topic, parts, false, false, true)
-                     == 0) {
-                spot_clear_msg_parts (&parts);
-                return 0;
-            }
-            spot_clear_msg_parts (&parts);
-            return -1;
-        }
-
-        spot_clear_msg_parts (&parts);
-
-        ++forwarded_messages;
-        forwarded_bytes += wire_bytes;
-        if (forwarded_messages >= ingress_forward_batch_limit
-            || forwarded_bytes >= ingress_forward_batch_bytes_limit)
-            return 0;
-    }
-}
 }

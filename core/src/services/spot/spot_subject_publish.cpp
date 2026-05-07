@@ -7,6 +7,7 @@
 #include "api/service_handle_internal.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
+#include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_runtime.hpp"
 #include "api/socket_message_api_internal.hpp"
@@ -40,7 +41,6 @@ int spot_subject_publish (void *subject_,
         zlink::socket_base_t *service_pub =
           zlink::spot_node_access_t::service_pub_socket (spot->node,
                                                          service_name.c_str ());
-        zlink::socket_base_t *node_pub = NULL;
         zlink::spot_runtime_t *runtime =
           zlink::spot_node_access_t::runtime (spot->node);
         zlink_spot_node_status_t status;
@@ -52,17 +52,6 @@ int spot_subject_publish (void *subject_,
               || status.active_peer_count != 0
               || status.connected_peer_count != 0);
         const bool use_transport = service_pub || node_has_transport_surface;
-        if (use_transport && !service_pub) {
-            if (!runtime
-                || runtime->ensure_sender_socket (
-                     zlink::spot_runtime_sender_pub_ingress, &node_pub)
-                     != 0) {
-                const int publish_errno = errno;
-                zlink_multipart_close (parts_, part_count_);
-                errno = publish_errno;
-                return -1;
-            }
-        }
         if (service_pub
             && zlink_socket_publish_internal (service_pub, topic_id_, parts_,
                                               part_count_, flags_)
@@ -71,21 +60,11 @@ int spot_subject_publish (void *subject_,
             errno = publish_errno;
             return -1;
         }
-        if (!service_pub && node_pub) {
-            zlink_msg_t empty_part;
-            zlink_msg_t *send_parts = parts_;
-            size_t send_part_count = part_count_;
-            if (part_count_ == 0) {
-                zlink_msg_init (&empty_part);
-                if (zlink_msg_init_size (&empty_part, 0) != 0) {
-                    const int publish_errno = errno;
-                    return -1;
-                }
-                send_parts = &empty_part;
-                send_part_count = 1;
-            }
-            const int publish_rc = zlink_socket_publish_internal (
-              node_pub, topic_id_, send_parts, send_part_count, flags_);
+        if (!service_pub && use_transport) {
+            const int publish_rc =
+              zlink::spot_data_plane_forwarder_t::enqueue_publish_ingress (
+                runtime, topic_id_, parts_, part_count_,
+                static_cast<zlink_send_flags_t> (flags_));
             const int publish_errno = errno;
             if (publish_rc != 0) {
                 errno = publish_errno;

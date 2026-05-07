@@ -150,6 +150,24 @@ int spot_data_plane_protocol_t::recv_and_process_ctrl_messages (
         if (target_endpoint.empty () || source_key.empty ())
             continue;
 
+        spot_runtime_t *runtime = spot_node_access_t::runtime (node_);
+        if (runtime && !runtime->bound_endpoint.empty ()
+            && target_endpoint == runtime->bound_endpoint) {
+            char *end = NULL;
+            const unsigned long peer_node_id =
+              strtoul (source_key.c_str (), &end, 10);
+            if (end && *end == '\0' && peer_node_id != 0
+                && peer_node_id <= UINT32_MAX) {
+                std::string route_id;
+                if (spot_control_protocol::derive_external_router_bind_endpoint (
+                      runtime->bound_endpoint,
+                      static_cast<uint32_t> (peer_node_id), &route_id)) {
+                    runtime->set_external_route_id ("ctrl:" + source_key,
+                                                    route_id);
+                }
+            }
+        }
+
         std::set<std::string> new_filters;
         for (size_t i = 3; i < frames.size (); ++i) {
             if (!frames[i].empty ())

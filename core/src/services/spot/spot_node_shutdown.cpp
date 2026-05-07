@@ -99,10 +99,7 @@ void spot_node_t::clear_service_attachment_runtime_locked (
     monitors_out_->clear ();
     scoped_lock_t lock (_sync);
     monitors_out_->swap (_service_attachment_state.monitors);
-    if (_service_attachment_state.pub_ingress) {
-        (void) _service_attachment_state.pub_ingress->term_endpoint (pub_ingress_endpoint ().c_str ());
-        _service_attachment_state.pub_ingress = NULL;
-    }
+    _service_attachment_state.pub_ingress = NULL;
     _service_attachment_state.attachments.clear ();
     _service_attachment_state.socket_index.clear ();
     _service_attachment_state.pending_refresh_services.clear ();

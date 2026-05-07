@@ -19,19 +19,13 @@ namespace zlink
 {
 class socket_base_t;
 class spot_node_t;
-class service_control_runtime_t;
 class ctx_t;
+class spot_dispatch_worker_pool_t;
 
 enum spot_attachment_kind_t
 {
     spot_attachment_pub = 1,
     spot_attachment_sub = 2
-};
-
-enum spot_runtime_sender_kind_t
-{
-    spot_runtime_sender_internal_router = 1,
-    spot_runtime_sender_pub_ingress = 2
 };
 
 enum spot_shutdown_phase_t
@@ -69,7 +63,9 @@ struct spot_node_hwm_config_t
         router_profile (ZLINK_AUTO_HWM_PROFILE_BALANCED),
         router_hwm_override (0),
         pubsub_profile (ZLINK_AUTO_HWM_PROFILE_BALANCED),
-        pubsub_hwm_override (0)
+        pubsub_hwm_override (0),
+        dispatch_workers_min (0),
+        dispatch_workers_max (0)
     {
     }
 
@@ -77,6 +73,8 @@ struct spot_node_hwm_config_t
     int router_hwm_override;
     zlink_auto_hwm_profile_t pubsub_profile;
     int pubsub_hwm_override;
+    int dispatch_workers_min;
+    int dispatch_workers_max;
 };
 
 inline int spot_node_admission_hwm_for_profile (
@@ -151,17 +149,10 @@ struct spot_runtime_t
     int close_runtime_socket_async (socket_base_t *&socket_, int timeout_ms_);
     int send_command (const char *verb_, const char *arg_) const;
     void mark_fault (int err_);
-    int ensure_sender_socket (spot_runtime_sender_kind_t kind_,
-                              socket_base_t **out_);
-    int close_sender_cache (spot_runtime_sender_kind_t kind_, int timeout_ms_);
-    int close_sender_caches (int timeout_ms_);
     void begin_shutdown ();
     void advance_shutdown_phase (spot_shutdown_phase_t phase_);
     spot_shutdown_phase_t shutdown_phase () const;
     int detach_runtime_endpoints ();
-    bool try_set_data_plane_task_id (uint64_t task_id_);
-    uint64_t data_plane_task_id () const;
-    uint64_t clear_data_plane_task_id ();
     bool try_set_control_task_id (uint64_t task_id_);
     uint64_t control_task_id () const;
     uint64_t clear_control_task_id ();
@@ -180,6 +171,9 @@ struct spot_runtime_t
     uint64_t attachment_state_version () const;
     spot_node_hwm_config_t hwm_config_snapshot () const;
     void set_hwm_config (const spot_node_hwm_config_t &config_);
+    int start_dispatch_workers ();
+    void stop_dispatch_workers ();
+    int post_dispatch_event (void *spot_);
     void set_external_route_id (const std::string &peer_endpoint_,
                                 const std::string &route_id_);
     void erase_external_route_id (const std::string &peer_endpoint_);
@@ -200,24 +194,16 @@ struct spot_runtime_t
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
     socket_base_t *external_router;
-    socket_base_t *internal_router;
-    socket_base_t *internal_router_tx;
-    socket_base_t *pub_ingress_tx;
-    socket_base_t *local_pub_ingress_sub;
     socket_base_t *local_fanout_xpub;
     thread_t data_plane_thread;
-    service_control_runtime_t *data_plane_runtime;
+    spot_dispatch_worker_pool_t *dispatch_workers;
     atomic_counter_t stop;
     uint32_t node_id;
     std::string bound_endpoint;
-    std::string pub_ingress_endpoint;
     std::string sub_fanout_endpoint;
-    std::string internal_router_endpoint;
     std::string data_ctrl_endpoint;
     std::string peer_ctrl_endpoint;
     std::string external_router_bind_endpoint;
-    std::string internal_router_sender_endpoint;
-    std::string pub_ingress_sender_endpoint;
     std::map<std::string, std::string> external_route_ids_by_endpoint;
     bool faulted;
     int fault_errno;

@@ -220,17 +220,17 @@ inline bool derive_external_router_bind_endpoint (
   uint32_t node_id_,
   std::string *out_)
 {
+    (void) node_id_;
     if (!out_ || data_endpoint_.empty ())
         return false;
 
     if (starts_with (data_endpoint_, "inproc://")) {
-        *out_ = std::string ("inproc://zlink.spot.peer-route.")
-                + node_id_string (node_id_);
+        *out_ = data_endpoint_ + ".zlink-spot-route";
         return true;
     }
 
     if (starts_with (data_endpoint_, "ipc://")) {
-        *out_ = data_endpoint_ + ".zlink-spot-route." + node_id_string (node_id_);
+        *out_ = data_endpoint_ + ".zlink-spot-route";
         return true;
     }
 

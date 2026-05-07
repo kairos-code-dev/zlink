@@ -190,31 +190,6 @@ void test_ctx_option_io_threads ()
                            zlink_ctx_get (get_test_context (), ZLINK_IO_THREADS, NULL));
 }
 
-void test_ctx_option_spot_worker_threads ()
-{
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_SPOT_WORKER_THREADS_DFLT,
-      zlink_ctx_get (get_test_context (), ZLINK_SPOT_WORKER_THREADS, NULL));
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (get_test_context (), ZLINK_SPOT_WORKER_THREADS, 3));
-    TEST_ASSERT_EQUAL_INT (
-      3, zlink_ctx_get (get_test_context (), ZLINK_SPOT_WORKER_THREADS, NULL));
-}
-
-void test_ctx_option_spot_worker_threads_rejects_change_after_runtime_start ()
-{
-    void *socket = test_context_socket (ZLINK_SOCKET_PAIR);
-    TEST_ASSERT_NOT_NULL (socket);
-
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_ctx_set (get_test_context (), ZLINK_SPOT_WORKER_THREADS, 2));
-    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-
-    test_context_socket_close (socket);
-}
-
 void test_ctx_option_msg_t_size ()
 {
 #if defined(ZLINK_MSG_T_SIZE)
@@ -508,8 +483,6 @@ int main (void)
     RUN_TEST (test_ctx_option_max_sockets);
     RUN_TEST (test_ctx_option_socket_limit);
     RUN_TEST (test_ctx_option_io_threads);
-    RUN_TEST (test_ctx_option_spot_worker_threads);
-    RUN_TEST (test_ctx_option_spot_worker_threads_rejects_change_after_runtime_start);
     RUN_TEST (test_ctx_option_msg_t_size);
     RUN_TEST (test_ctx_thread_opts);
     RUN_TEST (test_ctx_zero_copy);

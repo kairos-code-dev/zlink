@@ -22,14 +22,12 @@ struct spot_control_runtime_state_t
 struct spot_runtime_execution_state_t
 {
     spot_runtime_execution_state_t () :
-        data_plane_task_id_value (0),
         data_plane_running (false),
         next_bootstrap_ms (0),
         last_bootstrap_peer_version (UINT64_MAX)
     {
     }
 
-    uint64_t data_plane_task_id_value;
     bool data_plane_running;
     uint64_t next_bootstrap_ms;
     uint64_t last_bootstrap_peer_version;

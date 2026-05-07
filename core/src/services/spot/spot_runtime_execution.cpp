@@ -6,32 +6,6 @@
 
 namespace zlink
 {
-bool spot_runtime_t::try_set_data_plane_task_id (uint64_t task_id_)
-{
-    if (task_id_ == 0)
-        return false;
-
-    scoped_lock_t lock (execution_sync);
-    if (execution.data_plane_task_id_value != 0)
-        return false;
-    execution.data_plane_task_id_value = task_id_;
-    return true;
-}
-
-uint64_t spot_runtime_t::data_plane_task_id () const
-{
-    scoped_lock_t lock (execution_sync);
-    return execution.data_plane_task_id_value;
-}
-
-uint64_t spot_runtime_t::clear_data_plane_task_id ()
-{
-    scoped_lock_t lock (execution_sync);
-    const uint64_t task_id = execution.data_plane_task_id_value;
-    execution.data_plane_task_id_value = 0;
-    return task_id;
-}
-
 bool spot_runtime_t::try_set_control_task_id (uint64_t task_id_)
 {
     if (task_id_ == 0)

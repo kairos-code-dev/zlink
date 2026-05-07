@@ -24,7 +24,6 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 #define ZLINK_THREAD_AFFINITY_CPU_REMOVE   8
 #define ZLINK_THREAD_NAME_PREFIX      9
 #define ZLINK_CTX_OPT_BLOCKY          10
-#define ZLINK_SPOT_WORKER_THREADS     11
 #define ZLINK_CTX_OPT_AUTO_HWM_ENABLE 12
 #define ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS 14
 #define ZLINK_CTX_OPT_AUTO_HWM_PROFILE 17
@@ -53,7 +52,6 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_THREAD_AFFINITY_CPU_REMOVE` | 8 | I/O 스레드 어피니티 집합에서 CPU 제거 |
 | `ZLINK_THREAD_NAME_PREFIX` | 9 | I/O 스레드 이름 접두사 |
 | `ZLINK_CTX_OPT_BLOCKY` | 10 | context 종료 시 블로킹 동작 제어 |
-| `ZLINK_SPOT_WORKER_THREADS` | 11 | `zlink_spot_dispatch_event_handler()` 전용 worker 수 (`0` = 자동) |
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | 자동 HWM 정책 사용 여부 (`0` = 비활성, `1` = 활성) |
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | 연결 변화가 이어질 때 자동 HWM 재계산을 다시 실행하기 전에 기다리는 최소 디바운스 시간 (ms, `>= 0`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | 자동 HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). 알 수 없는 값은 `EINVAL`로 실패 |
@@ -65,7 +63,6 @@ typedef enum zlink_auto_hwm_profile_t
 #define ZLINK_MAX_SOCKETS_DFLT          4095
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
-#define ZLINK_SPOT_WORKER_THREADS_DFLT  0
 #define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
 #define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
@@ -77,7 +74,6 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_MAX_SOCKETS_DFLT` | 4095 | 기본 최대 소켓 수 |
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | 기본 스레드 우선순위 (OS 기본값) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | 기본 스케줄링 정책 (OS 기본값) |
-| `ZLINK_SPOT_WORKER_THREADS_DFLT` | 0 | 기본 Spot worker 수 (`0` = 자동) |
 | `ZLINK_CTX_AUTO_HWM_ENABLE_DFLT` | 1 | 자동 HWM 정책 기본 활성. 애플리케이션이 auto-HWM을 끄거나 수동 HWM을 설정하지 않으면 balanced profile을 사용함 |
 | `ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT` | 3000 | 자동 HWM 재계산 기본 디바운스 시간 (ms) |
 | `ZLINK_CTX_AUTO_HWM_PROFILE_DFLT` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 자동 HWM 기본 profile |
@@ -170,14 +166,7 @@ Context 옵션을 설정합니다.
 zlink_config_result_t zlink_ctx_set(void *context_, zlink_ctx_option_t option_, int optval_);
 ```
 
-소켓이 생성되기 전 또는 후에 context를 구성합니다. 일부 옵션(예:
-`ZLINK_IO_THREADS`, `ZLINK_SPOT_WORKER_THREADS`)은 runtime이 시작되기 전에
-설정해야 적용됩니다. `ZLINK_SPOT_WORKER_THREADS`는
-`zlink_spot_dispatch_event_handler()` callback을 실행하는 전용 worker 수를
-정합니다. 값 `0`은 자동 선택이며, 자동값은
-`min(visible logical cores, 8)`이고 코어 수를 알 수 없으면 `1`입니다.
-runtime이 시작된 뒤 이 값을 바꾸려 하면 `ZLINK_CONFIG_INVALID_ARGUMENT`
-(`errno=EINVAL`)로 실패합니다. 유효한 옵션 이름과 의미는 위의 옵션 상수
+소켓이 생성되기 전 또는 후에 context를 구성합니다. 유효한 옵션 이름과 의미는 위의 옵션 상수
 테이블을 참조하세요. `ZLINK_CTX_OPT_AUTO_HWM_ENABLE`은 이미 만들어진 소켓에도
 즉시 반영되며, 아직 수동 `SNDHWM` / `RCVHWM` / `SNDBUF` / `RCVBUF` 값을
 주지 않은 소켓만 자동 정책으로 다시 계산합니다.

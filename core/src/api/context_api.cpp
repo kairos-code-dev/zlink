@@ -34,7 +34,6 @@ static const public_ctx_option_descriptor_t public_ctx_options[] = {
   {ZLINK_THREAD_AFFINITY_CPU_REMOVE, true, true},
   {ZLINK_THREAD_NAME_PREFIX, true, true},
   {ZLINK_CTX_OPT_BLOCKY, true, true},
-  {ZLINK_SPOT_WORKER_THREADS, true, true},
   {ZLINK_CTX_OPT_AUTO_HWM_ENABLE, true, true},
   {ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS, true, true},
   {ZLINK_CTX_OPT_AUTO_HWM_PROFILE, true, true},

@@ -86,7 +86,6 @@ using zlink::spot_reqrep_internal::dispatch_local_request;
 using zlink::spot_reqrep_internal::dispatch_local_built_message;
 using zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_delivery;
 using zlink::spot_reqrep_internal::process_route_combined_for_local_delivery;
-using zlink::spot_reqrep_internal::enqueue_runtime_internal_router_once;
 using zlink::spot_reqrep_internal::register_router_spot_pending_request;
 using zlink::spot_reqrep_internal::register_spot_pending_request;
 using zlink::spot_reqrep_internal::resolve_runtime_for_spot_destination;
@@ -249,19 +248,6 @@ int recv_combined_plain_message (zlink::socket_base_t *socket_,
     }
 
     return 0;
-}
-
-int enqueue_spot_state_internal_router (
-  spot_request_reply_state_t *state_,
-  zlink::spot_runtime_t *runtime_,
-  std::vector<zlink_msg_t> *parts_,
-  zlink_send_flags_t flags_)
-{
-    if (!state_ || !runtime_ || !parts_) {
-        errno = EFAULT;
-        return -1;
-    }
-    return enqueue_runtime_internal_router_once (runtime_, parts_, flags_);
 }
 
 }

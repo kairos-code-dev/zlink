@@ -31,26 +31,12 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
     }
     if (ensure_healthy () != 0)
         return NULL;
-    uint64_t attachment_id = 0;
-    socket_base_t *attachment_socket = NULL;
-    if (!_runtime
-        || _runtime->create_attachment (spot_attachment_pub,
-                                        pub_ingress_endpoint ().c_str (),
-                                        &attachment_id)
-             != 0)
+    if (!_runtime)
         return NULL;
-    attachment_socket = _runtime->attachment_socket (attachment_id);
-    if (!attachment_socket || wait_facade_peer (attachment_socket) != 0) {
-        const int err = errno != 0 ? errno : ETIMEDOUT;
-        (void) _runtime->destroy_attachment (attachment_id);
-        errno = err;
-        return NULL;
-    }
 
     spot_pub_t *pub = new (std::nothrow)
-      spot_pub_t (this, attachment_socket, attachment_id, false);
+      spot_pub_t (this, NULL, 0, false);
     if (!pub) {
-        (void) _runtime->destroy_attachment (attachment_id);
         errno = ENOMEM;
         return NULL;
     }

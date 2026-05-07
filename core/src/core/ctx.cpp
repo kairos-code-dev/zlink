@@ -74,7 +74,6 @@ zlink::ctx_t::ctx_t () :
     _max_sockets (clipped_maxsocket (ZLINK_MAX_SOCKETS_DFLT)),
     _max_msgsz (INT_MAX),
     _io_thread_count (ZLINK_IO_THREADS_DFLT),
-    _spot_worker_thread_count (ZLINK_SPOT_WORKER_THREADS_DFLT),
     _auto_hwm_enabled (ZLINK_CTX_AUTO_HWM_ENABLE_DFLT != 0),
     _auto_hwm_recalc_debounce_ms (ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT),
     _auto_hwm_profile (ZLINK_CTX_AUTO_HWM_PROFILE_DFLT),
@@ -137,14 +136,6 @@ zlink::service_control_runtime_t *zlink::ctx_t::service_data_runtime_for_key (
     if (!ctx_bootstrap_t::ensure_service_runtime (*this))
         return NULL;
     return _runtime_resources.service_data_runtime_for_key (key_);
-}
-
-zlink::service_control_runtime_t *zlink::ctx_t::spot_worker_runtime_for_key (
-  uint32_t key_)
-{
-    if (!ctx_bootstrap_t::ensure_service_runtime (*this))
-        return NULL;
-    return _runtime_resources.spot_worker_runtime_for_key (key_);
 }
 
 void zlink::ctx_t::auto_hwm_recalc_task_main (void *arg_)
@@ -370,19 +361,6 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZLINK_SPOT_WORKER_THREADS:
-            if (is_int && value >= 0) {
-                scoped_lock_t runtime_lock (_slot_sync);
-                if (!_starting) {
-                    errno = EINVAL;
-                    return -1;
-                }
-                scoped_lock_t locker (_opt_sync);
-                _spot_worker_thread_count = value;
-                return 0;
-            }
-            break;
-
         case ZLINK_CTX_OPT_AUTO_HWM_ENABLE:
             if (is_int && (value == 0 || value == 1)) {
                 scoped_lock_t locker (_opt_sync);
@@ -479,14 +457,6 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _io_thread_count;
-                return 0;
-            }
-            break;
-
-        case ZLINK_SPOT_WORKER_THREADS:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _spot_worker_thread_count;
                 return 0;
             }
             break;

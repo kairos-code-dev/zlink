@@ -3,11 +3,11 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_data_plane.hpp"
+#include "services/spot/spot_dispatch_worker_pool.hpp"
 #include "services/spot/spot_auto_hwm_internal.hpp"
 #include "services/spot/spot_runtime_internal.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
-#include "services/control/service_control_runtime.hpp"
 
 #include "core/recv_internal.hpp"
 #include "sockets/socket_base.hpp"
@@ -20,18 +20,6 @@ namespace
 {
 static const int spot_runtime_default_close_timeout_ms = 2000;
 
-static uint32_t resolve_spot_data_runtime_interval_ms ()
-{
-    const char *raw = std::getenv ("ZLINK_SPOT_DATA_RUNTIME_INTERVAL_MS");
-    if (!raw || !*raw)
-        return 1;
-
-    char *end = NULL;
-    const unsigned long parsed = std::strtoul (raw, &end, 10);
-    if (!end || *end != '\0' || parsed == 0)
-        return 1;
-    return static_cast<uint32_t> (parsed);
-}
 }
 
 void preserve_first_error (int rc_, int *first_error_)
@@ -91,18 +79,6 @@ size_t fill_runtime_socket_slot_refs_impl (runtime_t *runtime_, slot_ref_t *out_
     out_[count++] = slot_ref_t{&runtime_->peer_ctrl_sub, NULL, false};
     out_[count++] = slot_ref_t{&runtime_->external_router, NULL, false};
     out_[count++] =
-      slot_ref_t{&runtime_->internal_router, &runtime_->internal_router_endpoint,
-                 false};
-    out_[count++] =
-      slot_ref_t{&runtime_->internal_router_tx,
-                 &runtime_->internal_router_sender_endpoint, true};
-    out_[count++] =
-      slot_ref_t{&runtime_->pub_ingress_tx,
-                 &runtime_->pub_ingress_sender_endpoint, true};
-    out_[count++] =
-      slot_ref_t{&runtime_->local_pub_ingress_sub,
-                 &runtime_->pub_ingress_endpoint, false};
-    out_[count++] =
       slot_ref_t{&runtime_->local_fanout_xpub, &runtime_->sub_fanout_endpoint,
                  false};
     return count;
@@ -129,12 +105,8 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     peer_ctrl_pub (NULL),
     peer_ctrl_sub (NULL),
     external_router (NULL),
-    internal_router (NULL),
-    internal_router_tx (NULL),
-    pub_ingress_tx (NULL),
-    local_pub_ingress_sub (NULL),
     local_fanout_xpub (NULL),
-    data_plane_runtime (NULL),
+    dispatch_workers (NULL),
     stop (0),
     node_id (generate_random ()),
     faulted (false),
@@ -148,12 +120,8 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
         node_id = 1;
 
     char buf[128];
-    snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.pub-in", node_id);
-    pub_ingress_endpoint = buf;
     snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.sub-out", node_id);
     sub_fanout_endpoint = buf;
-    snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.node-router", node_id);
-    internal_router_endpoint = buf;
     snprintf (buf, sizeof (buf), "inproc://zlink.spot.%u.ctrl", node_id);
     data_ctrl_endpoint = buf;
 }
@@ -177,8 +145,21 @@ ctx_t *spot_runtime_t::ctx () const
 
 void spot_runtime_t::set_hwm_config (const spot_node_hwm_config_t &config_)
 {
-    scoped_lock_t lock (hwm_config_sync);
-    hwm_config = config_;
+    {
+        scoped_lock_t lock (hwm_config_sync);
+        hwm_config = config_;
+    }
+    if (dispatch_workers) {
+        int min_workers = config_.dispatch_workers_min;
+        int max_workers = config_.dispatch_workers_max;
+        if (min_workers <= 0)
+            min_workers = spot_dispatch_default_workers_min ();
+        if (max_workers <= 0)
+            max_workers = spot_dispatch_default_workers_max ();
+        if (max_workers < min_workers)
+            max_workers = min_workers;
+        (void) dispatch_workers->update_limits (min_workers, max_workers);
+    }
 }
 
 void spot_runtime_t::set_external_route_id (
@@ -219,16 +200,21 @@ std::vector<std::string> spot_runtime_t::external_route_ids_for_destination (
 {
     std::vector<std::string> route_ids;
     scoped_lock_t lock (routed_send_sync);
+    if (!destination_node_rid_.empty ())
+        route_ids.push_back (destination_node_rid_);
     for (std::map<std::string, std::string>::const_iterator it =
            external_route_ids_by_endpoint.begin ();
          it != external_route_ids_by_endpoint.end (); ++it) {
         if (it->second == destination_node_rid_) {
-            route_ids.push_back (it->second);
             return route_ids;
         }
     }
-    if (external_route_ids_by_endpoint.size () == 1)
-        route_ids.push_back (external_route_ids_by_endpoint.begin ()->second);
+    for (std::map<std::string, std::string>::const_iterator it =
+           external_route_ids_by_endpoint.begin ();
+         it != external_route_ids_by_endpoint.end (); ++it) {
+        if (!it->second.empty ())
+            route_ids.push_back (it->second);
+    }
     return route_ids;
 }
 
@@ -270,6 +256,11 @@ int spot_runtime_t::start ()
     data_ctrl_front->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &timeout,
                                  sizeof (timeout));
 
+    if (start_dispatch_workers () != 0) {
+        close_socket_ptr (&data_ctrl_front);
+        return -1;
+    }
+
     int worker_errno = 0;
     if (spot_data_plane_t::initialize_runtime (owner, this,
                                                &execution.data_plane_state)
@@ -278,6 +269,7 @@ int spot_runtime_t::start ()
         errno = worker_errno != 0 ? worker_errno : ETIMEDOUT;
         stop.set (1);
         stop_sockets ();
+        stop_dispatch_workers ();
         spot_data_plane_t::teardown_runtime (
           owner, this, &execution.data_plane_state,
           &execution.data_plane_protocol_state);
@@ -286,52 +278,60 @@ int spot_runtime_t::start ()
         close_socket_ptr (&data_ctrl_front);
         return -1;
     }
-    if (owner->pubsub_enabled ()) {
-        socket_base_t *pub_ingress_sender = NULL;
-        if (ensure_sender_socket (spot_runtime_sender_pub_ingress,
-                                  &pub_ingress_sender)
-            != 0) {
-            const int err = errno != 0 ? errno : EIO;
-            stop.set (1);
-            stop_sockets ();
-            spot_data_plane_t::teardown_runtime (
-              owner, this, &execution.data_plane_state,
-              &execution.data_plane_protocol_state);
-            if (owner)
-                owner->untrack_owned_socket (data_ctrl_front);
-            close_socket_ptr (&data_ctrl_front);
-            errno = err;
-            return -1;
-        }
-    }
-
-    data_plane_runtime = owner->_ctx->service_data_runtime_for_key (node_id);
-    if (!data_plane_runtime) {
-        errno = ETERM;
-        stop.set (1);
-        stop_sockets ();
-        spot_data_plane_t::teardown_runtime (
-          owner, this, &execution.data_plane_state,
-          &execution.data_plane_protocol_state);
-        return -1;
-    }
-
-    const uint64_t task_id =
-      data_plane_runtime->add_periodic_task (&spot_data_plane_t::task_entry,
-                                             owner,
-                                             resolve_spot_data_runtime_interval_ms (),
-                                             true);
-    if (task_id == 0) {
-        stop.set (1);
-        stop_sockets ();
-        spot_data_plane_t::teardown_runtime (
-          owner, this, &execution.data_plane_state,
-          &execution.data_plane_protocol_state);
-        return -1;
-    }
-    execution.data_plane_task_id_value = task_id;
+    data_plane_thread.start (&spot_data_plane_t::thread_entry, owner,
+                             "spot-data");
     execution.data_plane_running = true;
     return 0;
+}
+
+int spot_runtime_t::start_dispatch_workers ()
+{
+    if (dispatch_workers)
+        return 0;
+
+    spot_node_hwm_config_t config = hwm_config_snapshot ();
+    int min_workers = config.dispatch_workers_min;
+    int max_workers = config.dispatch_workers_max;
+    if (min_workers <= 0)
+        min_workers = spot_dispatch_default_workers_min ();
+    if (max_workers <= 0)
+        max_workers = spot_dispatch_default_workers_max ();
+    if (max_workers < min_workers)
+        max_workers = min_workers;
+
+    spot_dispatch_worker_pool_t *pool =
+      new (std::nothrow) spot_dispatch_worker_pool_t ();
+    if (!pool) {
+        errno = ENOMEM;
+        return -1;
+    }
+    if (pool->start (min_workers, max_workers) != 0) {
+        const int saved_errno = errno != 0 ? errno : EIO;
+        delete pool;
+        errno = saved_errno;
+        return -1;
+    }
+    dispatch_workers = pool;
+    return 0;
+}
+
+void spot_runtime_t::stop_dispatch_workers ()
+{
+    spot_dispatch_worker_pool_t *pool = dispatch_workers;
+    dispatch_workers = NULL;
+    if (pool) {
+        pool->stop ();
+        delete pool;
+    }
+}
+
+int spot_runtime_t::post_dispatch_event (void *spot_)
+{
+    if (!dispatch_workers) {
+        errno = ETERM;
+        return -1;
+    }
+    return dispatch_workers->post (spot_);
 }
 
 int spot_runtime_t::ensure_healthy () const
@@ -358,9 +358,6 @@ int spot_runtime_t::send_command (const char *verb_, const char *arg_) const
         return -1;
     if (arg_ && send_ascii_frame (data_ctrl_front, arg_, 0) != 0)
         return -1;
-
-    if (data_plane_runtime && execution.data_plane_task_id_value != 0)
-        data_plane_runtime->wakeup_task (execution.data_plane_task_id_value);
 
     int reply_errno = 0;
     if (!spot_node_t::recv_ctrl_reply (data_ctrl_front, &reply_errno)) {

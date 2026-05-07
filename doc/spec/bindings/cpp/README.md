@@ -308,10 +308,6 @@ class context_options_t {
     /// @throws config_error_t
     void thread_name_prefix(const std::string& value);
     /// @throws config_error_t
-    spot_worker_count_t spot_worker_threads() const;
-    /// @throws config_error_t
-    void spot_worker_threads(spot_worker_count_t value);
-    /// @throws config_error_t
     bool blocky() const;
     /// @throws config_error_t
     void blocky(bool enabled);
@@ -375,11 +371,6 @@ class thread_priority_t {
 
 class cpu_index_t {
     static cpu_index_t value(int value);
-    int value() const noexcept;
-};
-
-class spot_worker_count_t {
-    static spot_worker_count_t value(int value);
     int value() const noexcept;
 };
 
@@ -1683,7 +1674,6 @@ enum class context_option : int {
     thread_affinity_cpu_remove,
     thread_name_prefix,
     blocky,
-    spot_worker_threads,
     auto_hwm_enable,
     auto_hwm_total_memory_budget_mb, // deprecated no-op compatibility option
     auto_hwm_recalc_debounce_ms,

@@ -30,9 +30,9 @@ int process_route_combined_message (void *node_,
 {
     if (spot_direct_route_debug_enabled ()) {
         std::fprintf (stderr,
-                      "[spot-direct] internal-router recv parts=%zu socket=%d\n",
+                      "[spot-direct] routed recv parts=%zu socket=%d\n",
                       combined.size (),
-                      socket->socket_id ());
+                      socket ? socket->socket_id () : -1);
     }
 
     if (!combined.empty ()) {
@@ -101,7 +101,7 @@ int process_route_combined_message (void *node_,
               "[spot-direct] ingress parse failed errno=%d parts=%zu socket=%d\n",
               saved_errno,
               combined.size (),
-              socket->socket_id ());
+              socket ? socket->socket_id () : -1);
         }
         zlink::request_reply::close_built_parts (&combined);
         errno = saved_errno;
@@ -179,51 +179,18 @@ int recv_combined_external_router_message (zlink::socket_base_t *socket_,
 }
 }
 
-extern "C" int zlink_spot_process_internal_router (void *node_, void *socket_)
+int zlink::spot_reqrep_internal::process_external_router_combined_for_data_plane (
+  zlink::spot_node_t *node_,
+  std::vector<zlink_msg_t> *combined_)
 {
-    zlink::socket_base_t *socket =
-      static_cast<zlink::socket_base_t *> (socket_);
-    if (!socket) {
+    if (!node_ || !combined_) {
         errno = EFAULT;
         return -1;
     }
 
-    while (true) {
-        std::vector<zlink_msg_t> combined;
-        if (zlink::spot_reqrep_internal::recv_combined_router_message (
-              socket, &combined)
-            != 0) {
-            if (spot_direct_route_debug_enabled () && errno == EAGAIN) {
-                std::vector<std::string> remote_endpoints;
-                socket->socket_peer_remote_endpoints (&remote_endpoints);
-                if (!remote_endpoints.empty ()) {
-                    static std::atomic<int> g_ingress_eagain_logs (0);
-                    if (g_ingress_eagain_logs.fetch_add (
-                          1, std::memory_order_acq_rel)
-                        < 32) {
-                        std::fprintf (
-                          stderr,
-                          "[spot-direct] internal-router recv eagain socket=%d peer=%s\n",
-                          socket->socket_id (),
-                          remote_endpoints.front ().c_str ());
-                    }
-                }
-            }
-            if (spot_direct_route_debug_enabled () && errno != EAGAIN) {
-                std::fprintf (stderr,
-                              "[spot-direct] internal-router recv failed errno=%d socket=%d\n",
-                              errno,
-                              socket->socket_id ());
-            }
-            if (errno == EAGAIN)
-                return 0;
-            return -1;
-        }
-
-        const int processed = process_route_combined_message (node_, socket, combined);
-        if (processed < 0)
-            return -1;
-    }
+    const int processed = process_route_combined_message (node_, NULL,
+                                                          *combined_);
+    return processed < 0 ? -1 : 0;
 }
 
 extern "C" int zlink_spot_process_external_router (void *node_, void *socket_)
@@ -238,11 +205,35 @@ extern "C" int zlink_spot_process_external_router (void *node_, void *socket_)
     while (true) {
         std::vector<zlink_msg_t> combined;
         if (recv_combined_external_router_message (socket, &combined) != 0) {
+            if (spot_direct_route_debug_enabled () && errno == EAGAIN) {
+                static std::atomic<int> g_external_eagain_logs (0);
+                if (g_external_eagain_logs.fetch_add (
+                      1, std::memory_order_acq_rel)
+                    < 64) {
+                    std::fprintf (
+                      stderr,
+                      "[spot-direct] external-router recv eagain socket=%d\n",
+                      socket->socket_id ());
+                }
+            }
+            if (spot_direct_route_debug_enabled () && errno != EAGAIN) {
+                std::fprintf (
+                  stderr,
+                  "[spot-direct] external-router recv failed errno=%d socket=%d\n",
+                  errno,
+                  socket->socket_id ());
+            }
             if (errno == EAGAIN)
                 return 0;
             return -1;
         }
 
+        if (spot_direct_route_debug_enabled ()) {
+            std::fprintf (stderr,
+                          "[spot-direct] external-router recv ok socket=%d parts=%zu\n",
+                          socket->socket_id (),
+                          combined.size ());
+        }
         if (process_route_combined_message (node_, socket, combined) < 0)
             return -1;
     }

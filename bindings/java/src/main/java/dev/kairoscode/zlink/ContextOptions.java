@@ -71,14 +71,6 @@ public final class ContextOptions {
         context.setOption(ContextOption.BLOCKY, enabled ? 1 : 0);
     }
 
-    public int spotWorkerThreads() {
-        return context.getOption(ContextOption.SPOT_WORKER_THREADS);
-    }
-
-    public void spotWorkerThreads(int count) {
-        context.setOption(ContextOption.SPOT_WORKER_THREADS, count);
-    }
-
     public boolean autoHwmEnabled() {
         return context.getOption(ContextOption.AUTO_HWM_ENABLE) != 0;
     }

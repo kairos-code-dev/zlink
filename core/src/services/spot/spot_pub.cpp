@@ -5,6 +5,7 @@
 #include "api/service_handle_internal.hpp"
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_control_protocol.hpp"
+#include "services/spot/spot_data_plane_internal.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_runtime.hpp"
 
@@ -109,7 +110,7 @@ int spot_pub_t::publish (const char *topic_,
                          int flags_)
 {
     socket_base_t *socket = this->socket ();
-    if (!_node || !socket) {
+    if (!_node) {
         errno = EFAULT;
         return -1;
     }
@@ -132,8 +133,13 @@ int spot_pub_t::publish (const char *topic_,
     lock_routing_id ();
 
     scoped_lock_t publish_lock (_publish_sync);
-    const int rc = zlink::logical_multipart_publish (
-      socket, topic_, parts_, part_count_, flags_, true);
+    const int rc =
+      socket
+        ? zlink::logical_multipart_publish (socket, topic_, parts_, part_count_,
+                                            flags_, true)
+        : zlink::spot_data_plane_forwarder_t::enqueue_publish_ingress (
+            _runtime, topic_, parts_, part_count_,
+            static_cast<zlink_send_flags_t> (flags_));
     const int saved_errno = rc == 0 ? 0 : errno;
 
     if (saved_errno != 0) {
@@ -152,8 +158,7 @@ int spot_pub_t::set_option (int option_,
 {
     socket_base_t *socket = this->socket ();
     if (!socket) {
-        errno = EFAULT;
-        return -1;
+        return 0;
     }
     if (!optval_ || optvallen_ == 0) {
         errno = EINVAL;
@@ -215,9 +220,15 @@ int spot_pub_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_,
                                         void *userdata_)
 {
     socket_base_t *socket = this->socket ();
-    if (!socket || !handler_ || !subject_) {
+    if (!handler_ || !subject_) {
         errno = EINVAL;
         return -1;
+    }
+    if (!socket) {
+        _send_ready_userdata.store (userdata_, std::memory_order_release);
+        _send_ready_subject.store (subject_, std::memory_order_release);
+        _send_ready_handler.store (handler_, std::memory_order_release);
+        return 0;
     }
 
     if (socket->socket_set_send_ready_handler_ex (&spot_pub_send_ready_adapter,
@@ -250,8 +261,9 @@ int spot_pub_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const
     }
     socket_base_t *socket = this->socket ();
     if (!socket) {
-        errno = EFAULT;
-        return -1;
+        memset (out_, 0, sizeof (*out_));
+        out_->source_kind = ZLINK_MONITOR_SOURCE_SPOT_PUB;
+        return 0;
     }
     if (socket->monitor_snapshot (out_) != 0)
         return -1;
@@ -270,6 +282,8 @@ void spot_pub_t::invoke_send_ready_for_testing ()
     socket_base_t *pub_socket = socket ();
     if (pub_socket)
         pub_socket->invoke_send_ready_handler_for_testing ();
+    else
+        dispatch_send_ready ();
 }
 
 void spot_pub_t::emit_ready_event ()

@@ -6,11 +6,14 @@
 #include <zlink.h>
 
 #include "services/spot/spot_message_parts_internal.hpp"
+#include "core/signaler.hpp"
 #include "utils/mutex.hpp"
 
 #include <atomic>
+#include <condition_variable>
 #include <deque>
 #include <map>
+#include <mutex>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -369,19 +372,77 @@ struct spot_data_plane_runtime_state_t
         std::deque<staged_publish_entry_t> mesh_messages;
     };
 
+    struct publish_ingress_queue_t
+    {
+        publish_ingress_queue_t () :
+            queued_bytes (0),
+            signal_armed (false),
+            closed (false)
+        {
+        }
+
+        std::mutex mutex;
+        std::condition_variable cv;
+        std::deque<staged_publish_entry_t> messages;
+        size_t queued_bytes;
+        signaler_t signaler;
+        bool signal_armed;
+        bool closed;
+    };
+
+    struct routed_send_entry_t
+    {
+        std::vector<zlink_msg_t> parts;
+        zlink_send_flags_t flags;
+    };
+
+    struct external_router_ingress_entry_t
+    {
+        std::vector<zlink_msg_t> parts;
+    };
+
+    struct routed_send_queue_t
+    {
+        routed_send_queue_t () :
+            retry_after_ms (0),
+            signal_armed (false),
+            closed (false)
+        {
+        }
+
+        std::mutex mutex;
+        std::condition_variable cv;
+        std::deque<routed_send_entry_t> messages;
+        uint64_t retry_after_ms;
+        signaler_t signaler;
+        bool signal_armed;
+        bool closed;
+    };
+
+    struct external_router_ingress_queue_t
+    {
+        external_router_ingress_queue_t () :
+            signal_armed (false),
+            closed (false)
+        {
+        }
+
+        std::mutex mutex;
+        std::deque<external_router_ingress_entry_t> messages;
+        signaler_t signaler;
+        bool signal_armed;
+        bool closed;
+    };
+
     struct poller_interest_state_t
     {
         poller_interest_state_t () :
-            ingress_pollin_paused (false),
             mesh_xsub_pollin_paused (false),
-            ingress_pollin_armed (true),
             mesh_xsub_pollin_armed (true)
         {
         }
 
-        bool ingress_pollin_paused;
         bool mesh_xsub_pollin_paused;
-        bool ingress_pollin_armed;
         bool mesh_xsub_pollin_armed;
     };
 
@@ -392,14 +453,15 @@ struct spot_data_plane_runtime_state_t
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
     socket_base_t *external_router;
-    socket_base_t *internal_router;
-    socket_base_t *ingress;
     socket_base_t *fanout;
     uint64_t next_pending_message_id;
     uint64_t last_attachment_version;
     bool runtime_sockets_nodelay_applied;
     mesh_pub_hwm_state_t mesh_pub_hwm;
     poller_interest_state_t interest;
+    publish_ingress_queue_t publish_ingress;
+    routed_send_queue_t routed_send;
+    external_router_ingress_queue_t external_router_ingress;
     local_fanout_state_t local_fanout;
     remote_mesh_state_t remote_mesh;
     staged_publish_state_t staged;
@@ -528,6 +590,14 @@ struct spot_data_plane_forwarder_t
                               bool source_mesh_,
                               bool need_local_,
                               bool need_mesh_);
+    static int enqueue_publish_ingress (spot_runtime_t *runtime_,
+                                        const char *topic_,
+                                        zlink_msg_t *parts_,
+                                        size_t part_count_,
+                                        zlink_send_flags_t flags_);
+    static int drain_publish_ingress_queue (
+      spot_runtime_t *runtime_,
+      spot_data_plane_runtime_state_t *state_);
     static int flush_local_fanout_pending (spot_runtime_t *runtime_,
                                            spot_data_plane_runtime_state_t *state_,
                                            socket_base_t *relay_socket_ = NULL);
@@ -536,12 +606,6 @@ struct spot_data_plane_forwarder_t
                                        socket_base_t *sender_socket_ = NULL);
     static int flush_staged_messages (spot_runtime_t *runtime_,
                                       spot_data_plane_runtime_state_t *state_);
-    static int recv_and_forward_ingress (socket_base_t *src_,
-                                         socket_base_t *mesh_pub_,
-                                         socket_base_t *fanout_,
-                                         spot_runtime_t *runtime_,
-                                         spot_data_plane_runtime_state_t *state_,
-                                         const spot_node_t *node_);
 };
 }
 

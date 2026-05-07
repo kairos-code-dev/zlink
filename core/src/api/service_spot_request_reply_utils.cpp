@@ -71,35 +71,6 @@ int zlink::spot_reqrep_internal::send_combined_parts_on_socket (
                                           parts_->size (), flags_);
 }
 
-int zlink::spot_reqrep_internal::enqueue_runtime_internal_router_once (
-  zlink::spot_runtime_t *runtime_,
-  std::vector<zlink_msg_t> *parts_,
-  zlink_send_flags_t flags_)
-{
-    if (!runtime_ || !parts_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    zlink::socket_base_t *socket = NULL;
-    if (runtime_->ensure_sender_socket (
-          zlink::spot_runtime_sender_internal_router, &socket)
-        != 0)
-        return -1;
-
-    zlink::spot_data_plane_forwarder_t::pump_socket_commands (socket);
-    socket->set_all_pipes_nodelay ();
-    const long wait_timeout_ms = (flags_ & ZLINK_DONTWAIT) != 0 ? 0 : 100;
-    if (zlink::wait_socket_events_internal (socket, ZLINK_POLLOUT,
-                                            wait_timeout_ms)
-        <= 0) {
-        errno = errno != 0 ? errno : EAGAIN;
-        return -1;
-    }
-
-    return send_combined_parts_on_socket (socket, parts_, flags_);
-}
-
 bool zlink::spot_reqrep_internal::resolve_spot_identity (
   void *spot_,
   routing_pair_t *out_)

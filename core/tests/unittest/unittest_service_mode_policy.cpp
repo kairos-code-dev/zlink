@@ -1116,7 +1116,7 @@ void test_spot_node_attach_channel_dealer_manual_rejects_channel_name_mismatch (
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_attach_pub_ingress_rejects_duplicate_attach ()
+void test_spot_node_attach_pub_ingress_is_unsupported ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -1128,11 +1128,12 @@ void test_spot_node_attach_pub_ingress_rejects_duplicate_attach ()
     TEST_ASSERT_NOT_NULL (pub_a);
     TEST_ASSERT_NOT_NULL (pub_b);
 
-    TEST_ASSERT_EQUAL_INT (
+    TEST_ASSERT_NOT_EQUAL (
       ZLINK_CONFIG_OK, zlink_spot_node_attach_pub_ingress (node, pub_a));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
     TEST_ASSERT_NOT_EQUAL (
       ZLINK_CONFIG_OK, zlink_spot_node_attach_pub_ingress (node, pub_b));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     close_zero_linger (pub_b);
@@ -1163,7 +1164,7 @@ int main (void)
     RUN_TEST (test_socket_channel_name_metadata_roundtrip);
     RUN_TEST (
       test_spot_node_attach_channel_dealer_manual_rejects_channel_name_mismatch);
-    RUN_TEST (test_spot_node_attach_pub_ingress_rejects_duplicate_attach);
+    RUN_TEST (test_spot_node_attach_pub_ingress_is_unsupported);
     RUN_TEST (test_discovery_protocol_accepts_socket_family_and_roles);
     RUN_TEST (test_discovery_protocol_derives_socket_roles_and_matching);
     RUN_TEST (test_discovery_protocol_applies_socket_auto_connect_policy);

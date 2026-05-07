@@ -141,7 +141,6 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     service_control_runtime_t *service_control_runtime ();
     service_control_runtime_t *service_data_runtime ();
     service_control_runtime_t *service_data_runtime_for_key (uint32_t key_);
-    service_control_runtime_t *spot_worker_runtime_for_key (uint32_t key_);
     void schedule_auto_hwm_recalculate ();
     int auto_hwm_recalculate_now ();
     zlink_auto_hwm_profile_t auto_hwm_profile () const;
@@ -191,9 +190,6 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
 
     //  Number of I/O threads to launch.
     int _io_thread_count;
-
-    // Number of Spot dispatch worker runtimes to launch. 0 means auto.
-    int _spot_worker_thread_count;
 
     bool _auto_hwm_enabled;
     int _auto_hwm_recalc_debounce_ms;

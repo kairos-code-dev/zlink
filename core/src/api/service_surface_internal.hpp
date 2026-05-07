@@ -67,8 +67,7 @@ extern "C" void zlink_spot_notify_dispatch_info (
   zlink_spot_dispatch_subject_kind_t subject_kind_,
   void *subject_);
 extern "C" int zlink_spot_install_external_router_dispatch (void *node_,
-                                                        void *socket_);
-extern "C" int zlink_spot_process_internal_router (void *node_, void *socket_);
+                                                            void *socket_);
 extern "C" int zlink_spot_process_external_router (void *node_, void *socket_);
 
 int zlink_spot_subject_set_common_option_internal (void *handle_,

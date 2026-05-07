@@ -20,6 +20,7 @@ mesh publish, routed delivery를 한곳에서 처리하도록 만드는 것이�
 | `Spot state` | `Spot instance`가 내부에서 가리키는 subscription, receive queue, dispatch 상태 |
 | `SpotNode publish ingress queue` | 같은 `SpotNode`에 속한 모든 `Spot instance`의 publish가 공유하는 data-plane 입력 queue |
 | `SpotNode routed send queue` | 같은 `SpotNode`에 속한 public routed send가 공유하는 send admission queue |
+| `external-router ingress queue` | `external-router`가 받은 routed frame을 data-plane thread로 넘기는 내부 입력 queue |
 | `Spot subscribe queue` | 특정 `Spot state`가 소유하는 topic publish 수신 queue |
 | `Spot routed recv queue` | 특정 `Spot state`가 소유하는 request/reply routed 수신 queue |
 | `Spot dispatch event queue` | 특정 `Spot state`의 readable event를 모아 application dispatch callback으로 넘기는 event queue |
@@ -42,6 +43,7 @@ mesh publish, routed delivery를 한곳에서 처리하도록 만드는 것이�
 SpotNode
   publish ingress queue: one
   routed send queue: one
+  external-router ingress queue: one
 
 Spot instance A
   Spot state A
@@ -56,10 +58,10 @@ Spot instance B
     dispatch event queue B
 ```
 
-즉 publish ingress queue와 routed send queue는 `SpotNode`당 하나이고, subscribe queue,
-routed recv queue, dispatch event queue는 각 `Spot state`마다 하나다. `Spot instance`와
-`Spot state`는 별도의 send queue를 갖지 않는다. 사용자 관점의 `Spot`별 queue는 recv를 위한
-`Spot subscribe queue`와 `Spot routed recv queue`뿐이다.
+즉 publish ingress queue, routed send queue, external-router ingress queue는 `SpotNode`당
+하나이고, subscribe queue, routed recv queue, dispatch event queue는 각 `Spot state`마다
+하나다. `Spot instance`와 `Spot state`는 별도의 send queue를 갖지 않는다. 사용자 관점의
+`Spot`별 queue는 recv를 위한 `Spot subscribe queue`와 `Spot routed recv queue`뿐이다.
 
 dispatch worker pool은 `SpotNode`당 하나다. `Spot`이 수천 개 생겨도 worker pool을
 `Spot`마다 만들지 않는다. 대신 worker pool은 ready 상태가 된 여러 `Spot state`의 dispatch
@@ -304,13 +306,24 @@ publish 경로와 별도로 routed 경로는 아래 선택지를 검토했다.
 |------|------|------|
 | Router A | `internal-router` HWM을 키우고 현 구조를 유지한다 | 내부 socket hop 문제가 남으므로 선택하지 않는다 |
 | Router B | public routed send가 `external-router`를 직접 사용하도록 단순화한다 | transport socket 소유권이 public thread로 퍼지므로 선택하지 않는다 |
-| Router C | `internal-router` hop을 `SpotNode routed send queue`로 바꾸고, `external-router` I/O는 data-plane thread가 수행한다 | 선택한다 |
+| Router C | `internal-router` hop을 `SpotNode routed send queue`로 바꾸고, `external-router` 처리는 data-plane으로 모은다 | 선택한다 |
 
 Router C가 선택안이다. `external-router`는 peer transport boundary라서 남긴다. 대신
 `internal-router`와 `internal-router-tx`는 routed send queue enqueue로 대체한다. public
 routed send는 local target이든 remote target이든 먼저 routed send queue에 entry를 넣고,
 data-plane thread가 target `Spot state`의 routed recv queue delivery 또는 `external-router`
 send를 결정한다.
+
+`external-router` inbound는 ROUTER socket의 dispatch wakeup을 사용할 수 있다. 다만 이
+callback은 application callback이나 local delivery를 실행하지 않는다. callback은 받은 frame
+소유권을 `external-router ingress queue`로 넘기고 data-plane thread를 깨우는 bridge 역할만
+한다. 실제 peer publish fanout, routed request delivery, routed reply delivery는 data-plane
+thread에서 처리한다.
+
+`external-router` inbound dispatch가 설치된 경우 `external-router`를 data-plane poller에
+`POLLIN`으로 함께 등록하지 않는다. 같은 socket을 dispatch callback과 poller가 동시에 입력
+소스로 보면 callback이 이미 받은 frame 때문에 poller가 계속 깨어나고, data-plane은 직접
+drain하지 않는 상태가 되어 busy loop가 생길 수 있기 때문이다.
 
 ## 목표
 
@@ -760,6 +773,14 @@ struct spot_routed_send_queue_t
     bool backpressure_active;
     bool closing;
 };
+
+struct spot_external_router_ingress_queue_t
+{
+    mutex_t sync;
+    std::deque<spot_routed_send_entry_t> entries;
+    bool signal_armed;
+    bool closing;
+};
 ```
 
 구현 위치는 `spot_runtime_execution_state_t` 아래가 적합하다. 이 상태는 data-plane 실행
@@ -772,10 +793,12 @@ struct spot_runtime_execution_state_t
     ...
     spot_publish_ingress_queue_t publish_ingress;
     spot_routed_send_queue_t routed_send;
+    spot_external_router_ingress_queue_t external_router_ingress;
 };
 ```
 
-`spot_publish_ingress_entry_t::parts`와 `spot_routed_send_entry_t::frames`는 enqueue
+`spot_publish_ingress_entry_t::parts`, `spot_routed_send_entry_t::frames`,
+`spot_external_router_ingress_queue_t::entries` 안의 frame은 enqueue
 성공 시 입력 multipart의 소유권을 가져간다. 구현은 기존 `spot_owned_msg_parts_t`와
 `spot_copy_publish_parts_to_block_local` 또는
 `spot_data_plane_pending_t::copy_msg_parts_to_owned()` 계열의 helper를 재사용한다.
@@ -843,8 +866,8 @@ table을 두면 내부 queue가 두 번째 HWM 정책이 되어 public send 의�
 운영 중 queue full이 자주 보인다면 queue limit을 먼저 키우지 않는다. 아래 순서로 본다.
 
 1. data-plane thread가 queue signal로 즉시 깨는지 확인한다.
-2. `drain_publish_ingress_queue()`와 `drain_routed_send_queue()`가 pending flush보다 먼저
-   실행되는지 확인한다.
+2. `drain_external_router_ingress_queue()`, `drain_publish_ingress_queue()`,
+   `drain_routed_send_queue()`가 pending flush보다 먼저 실행되는지 확인한다.
 3. local fanout, `mesh-pub`, `external-router` pending queue가 `EAGAIN`으로 계속 막히는지
    확인한다.
 4. 그 뒤에도 정상 traffic에서 queue full이면 `SpotNode` pub/sub 또는 router admission 자체를
@@ -1101,6 +1124,8 @@ traffic이 다른쪽 처리를 계속 굶기지 않게 한다.
 |--------|------|
 | `forward_ingress_entry(runtime, state, topic, parts)` | local fanout과 mesh publish를 수행 |
 | `recv_and_forward_ingress(src, ...)` | socket recv 후 `forward_ingress_entry()` 호출 |
+| `enqueue_external_router_ingress(runtime, frames)` | ROUTER socket dispatch callback에서 frame 소유권을 data-plane queue로 이전 |
+| `drain_external_router_ingress_queue(runtime, state)` | external-router inbound frame을 data-plane thread에서 peer publish 또는 routed delivery로 처리 |
 | `drain_publish_ingress_queue(runtime, state)` | runtime queue pop 후 `forward_ingress_entry()` 호출 |
 | `process_routed_send_entry(runtime, state, entry)` | routed recv queue delivery 또는 `external-router` send 수행 |
 | `drain_routed_send_queue(runtime, state)` | routed send queue pop 후 `process_routed_send_entry()` 호출 |
@@ -1250,15 +1275,15 @@ message 또는 routed pending 경로로 흡수해야 한다. `ENOMEM`, invalid s
 
 ## 구현 단계
 
-1. `spot_runtime_execution.hpp`에 publish ingress queue와 routed send queue 상태를
-   추가한다.
+1. `spot_runtime_execution.hpp`에 publish ingress queue, routed send queue,
+   external-router ingress queue 상태를 추가한다.
 2. `spot_data_plane_forwarding.cpp`에 `forward_ingress_entry()`를 분리한다.
 3. `spot_data_plane_forwarding.cpp`에 `drain_publish_ingress_queue()`를 추가한다.
 4. request/reply routed delivery helper를 routed send entry 처리로 분리한다.
 5. `spot_data_plane_forwarding.cpp` 또는 routed 전용 파일에 `drain_routed_send_queue()`를
    추가한다.
-6. `spot_data_plane_loop.cpp`의 data-plane loop에서 publish ingress queue와 routed send queue drain을
-   호출한다.
+6. `spot_data_plane_loop.cpp`의 data-plane loop에서 external-router ingress queue,
+   publish ingress queue, routed send queue drain을 호출한다.
 7. `spot_subject_publish.cpp`에서 `spot_runtime_sender_pub_ingress` 사용을 enqueue 호출로
    바꾼다.
 8. routed public send 경로에서 `internal-router-tx`와 direct `external-router` send를 routed
@@ -1270,9 +1295,12 @@ message 또는 routed pending 경로로 흡수해야 한다. `ENOMEM`, invalid s
     `spot_runtime_sender_internal_router` 분기, endpoint 관리를 제거한다.
 12. `spot_data_plane_runtime.cpp`에서 `ingress-sub`, `internal-router` 생성, bind, poller add를
     제거한다.
-13. `external-router` recv/send는 data-plane thread poller와 loop에서만 수행하게 정리한다.
-14. `external-router` socket message dispatch callback 경로를 제거하고, data-plane loop가
-    inbound router frames를 recv하도록 바꾼다.
+13. `external-router` send는 data-plane thread에서만 수행하게 정리한다.
+14. `external-router` socket message dispatch callback은 inbound frame을
+    external-router ingress queue에 넣는 bridge로만 사용하고, 실제 처리는 data-plane loop가
+    수행하게 바꾼다.
+    dispatch callback이 설치된 `external-router`는 data-plane poller의 `POLLIN` 입력으로
+    중복 등록하지 않는다.
 15. data-plane delivery helper는 target recv queue enqueue와 dispatch event post까지만
     수행하고 application callback을 직접 호출하지 않게 분리한다.
 16. `spot_node_handles.cpp`와 HWM refresh 경로에서 제거된 internal socket 처리를 제거한다.
@@ -1508,7 +1536,9 @@ public API test는 결과와 errno만 확인한다.
 6. `spot_runtime_t`에서 `internal_router`, `internal_router_tx`,
    `internal_router_endpoint`, `internal_router_sender_endpoint`가 제거된다.
 7. data-plane runtime이 `ingress-sub`나 `internal-router`를 만들거나 poller에 등록하지 않는다.
-8. `external-router` I/O는 data-plane thread에서만 수행된다.
+8. `external-router` inbound callback은 frame을 external-router ingress queue에 넣기만 하고,
+   실제 routed 처리와 local fanout은 data-plane thread에서 수행된다. 이때 `external-router`
+   `POLLIN`은 data-plane poller에 중복 등록되지 않는다.
 9. snapshot과 perf 출력에서 `pub-ingress-tx`, `ingress-sub`, `internal-router`,
    `internal-router-tx`가 사라지고 `external-router`는 남는다.
 10. local fanout, mesh publish, routed delivery는 data-plane thread에서만 수행된다.

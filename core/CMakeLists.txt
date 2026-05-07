@@ -994,10 +994,10 @@ set(spot-sources
     src/services/spot/spot_node_summary.cpp
     src/services/spot/spot_pub.cpp
     src/services/spot/spot_dispatch_context.cpp
+    src/services/spot/spot_dispatch_worker_pool.cpp
     src/services/spot/spot_runtime.cpp
     src/services/spot/spot_runtime_attachment.cpp
     src/services/spot/spot_runtime_execution.cpp
-    src/services/spot/spot_runtime_sender.cpp
     src/services/spot/spot_runtime_shutdown.cpp
     src/services/spot/spot_sub_lifecycle.cpp
     src/services/spot/spot_sub_option.cpp

@@ -255,9 +255,12 @@ function multipartClose(parts: Message[]): void;
 
 ## Socket Types
 
-All socket classes expose `bind()`, `unbind()`, `disconnectRid()`,
-`monitorOpen()`, and `close()`. Connectable sockets also expose `connect()` and
-`disconnect()`.
+All socket classes expose `bind()`, `unbind()`, `monitorOpen()`, and `close()`.
+They also expose common TLS helpers `setTlsServer(...)` and
+`setTlsClient(...)`.
+Connectable sockets also expose `connect()`, `disconnect()`, and
+`disconnectRid()`. `StreamSocket` is bind-only and does not expose those
+connectable-socket methods.
 
 ```typescript
 type BaseSocket =
@@ -296,6 +299,10 @@ class PairSocket {
     readonly options: CommonSocketOptions;
     /** @throws {BindError} */
     bind(endpoint: string): void;
+    /** @throws {ConfigError} */
+    setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
+    /** @throws {ConfigError} */
+    setTlsClient(ca: string, hostname: string, trustSystem?: boolean): void;
     /** @throws {ConnectError} */
     unbind(endpoint: string): void;
     /** @throws {ConnectError} */
@@ -327,6 +334,10 @@ class PubSocket {
     readonly options: PubSocketOptions;
     /** @throws {BindError} */
     bind(endpoint: string): void;
+    /** @throws {ConfigError} */
+    setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
+    /** @throws {ConfigError} */
+    setTlsClient(ca: string, hostname: string, trustSystem?: boolean): void;
     /** @throws {ConnectError} */
     unbind(endpoint: string): void;
     /** @throws {ConnectError} */
@@ -358,6 +369,10 @@ class SubSocket {
     readonly options: SubSocketOptions;
     /** @throws {BindError} */
     bind(endpoint: string): void;
+    /** @throws {ConfigError} */
+    setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
+    /** @throws {ConfigError} */
+    setTlsClient(ca: string, hostname: string, trustSystem?: boolean): void;
     /** @throws {ConnectError} */
     unbind(endpoint: string): void;
     /** @throws {ConnectError} */
@@ -391,6 +406,10 @@ class DealerSocket {
     readonly options: DealerSocketOptions;
     /** @throws {BindError} */
     bind(endpoint: string): void;
+    /** @throws {ConfigError} */
+    setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
+    /** @throws {ConfigError} */
+    setTlsClient(ca: string, hostname: string, trustSystem?: boolean): void;
     /** @throws {ConnectError} */
     unbind(endpoint: string): void;
     /** @throws {ConnectError} */
@@ -457,6 +476,10 @@ class RouterSocket {
     readonly options: RouterSocketOptions;
     /** @throws {BindError} */
     bind(endpoint: string): void;
+    /** @throws {ConfigError} */
+    setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
+    /** @throws {ConfigError} */
+    setTlsClient(ca: string, hostname: string, trustSystem?: boolean): void;
     /** @throws {ConnectError} */
     unbind(endpoint: string): void;
     /** @throws {ConnectError} */
@@ -572,6 +595,10 @@ class XPubSocket {
     readonly options: PubSocketOptions;
     /** @throws {BindError} */
     bind(endpoint: string): void;
+    /** @throws {ConfigError} */
+    setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
+    /** @throws {ConfigError} */
+    setTlsClient(ca: string, hostname: string, trustSystem?: boolean): void;
     /** @throws {ConnectError} */
     unbind(endpoint: string): void;
     /** @throws {ConnectError} */
@@ -603,6 +630,10 @@ class XSubSocket {
     readonly options: SubSocketOptions;
     /** @throws {BindError} */
     bind(endpoint: string): void;
+    /** @throws {ConfigError} */
+    setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
+    /** @throws {ConfigError} */
+    setTlsClient(ca: string, hostname: string, trustSystem?: boolean): void;
     /** @throws {ConnectError} */
     unbind(endpoint: string): void;
     /** @throws {ConnectError} */
@@ -634,6 +665,10 @@ class StreamSocket {
     readonly options: StreamSocketOptions;
     /** @throws {BindError} */
     bind(endpoint: string): void;
+    /** @throws {ConfigError} */
+    setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
+    /** @throws {ConfigError} */
+    setTlsClient(ca: string, hostname: string, trustSystem?: boolean): void;
     /** @throws {ConnectError} */
     unbind(endpoint: string): void;
     /** @throws {ConfigError} */
@@ -1349,16 +1384,16 @@ class Registry {
     bind(pubEndpoint: string, routerEndpoint: string): void;
     /** @throws {ConfigError} */
     setId(id: number): void;
-    /** @throws {ConnectError} */
+    /** @throws {ConfigError} */
     addPeer(pubEndpoint: string): void;
     /** @throws {ConfigError} */
     setHeartbeat(intervalMs: number, timeoutMs: number): void;
     /** @throws {ConfigError} */
     setBroadcastInterval(intervalMs: number): void;
     /** @throws {ConfigError} */
-    setTlsServer(cert: string, key: string, requireClient?: number): void;
+    setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
     /** @throws {ConfigError} */
-    setTlsClient(ca: string, host: string, trust?: number): void;
+    setTlsClient(ca: string, hostname: string, trustSystem?: boolean): void;
     /** @throws {ConfigError} */
     statusSnapshot(): RegistryStatus;
     /** @throws {ConfigError} */
@@ -1400,7 +1435,7 @@ class Discovery {
     /** @throws {ConfigError} */
     memberPeers(): MemberPeerEntry[];
     /** @throws {ConfigError} */
-    setTlsClient(ca: string, host: string, trust?: number): void;
+    setTlsClient(ca: string, hostname: string, trustSystem?: boolean): void;
     /**
      * Resolve the current owner node routing id for a logical spot routing id.
      * Maps to zlink_discovery_resolve_spot. Registry-backed lookup requires
@@ -1458,9 +1493,9 @@ class SpotNode {
     dispatchWorkersMin: number;               // get / set — @throws {ConfigError}
     dispatchWorkersMax: number;               // get / set — @throws {ConfigError}
     /** @throws {ConfigError} */
-    setTlsServer(cert: string, key: string, requireClient?: number): void;
+    setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
     /** @throws {ConfigError} */
-    setTlsClient(ca: string, host: string, trust?: number): void;
+    setTlsClient(ca: string, hostname: string, trustSystem?: boolean): void;
     /** @throws {ConfigError} */
     entrySpot(): Spot;
     /** @throws {ConfigError} */
@@ -2048,16 +2083,16 @@ class Poller {
     /** Number of registered pollable items. Maps to zlink_poller_size. */
     readonly size: number;
     /** @throws {RecvError} */
-    wait(timeoutMs: number): PollerEvent | null;
+    wait(timeoutMs: number): PollEvent | null;
     /** @throws {RecvError} */
-    waitAll(maxEvents: number, timeoutMs: number): PollerEvent[];
+    waitAll(maxEvents: number, timeoutMs: number): PollEvent[];
     /** @throws {CloseError} */
     destroy(): void;
     /** @throws {CloseError} */
     close(): void;
 }
 
-interface PollerEvent {
+interface PollEvent {
     socket: BaseSocket | null;
     fd: number | null;
     timer: Timer | null;
@@ -2209,7 +2244,8 @@ class AtomicCounter {
 
 ## Peer Disconnect by Routing ID
 
-Node bindings expose `socket.disconnectRid(routingId)` and
-`spotNode.disconnectPeerRid(targetNodeRid)`. The duplicate policy option and
-`NOT_FOUND` / `CONFLICT` / `BUSY` connect errors mirror the C core. `Spot`
-does not expose a peer-rid disconnect method.
+Node bindings expose `socket.disconnectRid(routingId)` on connectable raw
+sockets and `spotNode.disconnectPeerRid(targetNodeRid)` on `SpotNode`.
+`StreamSocket` is bind-only and does not expose peer-rid disconnect. The
+duplicate policy option and `NOT_FOUND` / `CONFLICT` / `BUSY` connect errors
+mirror the C core. `Spot` does not expose a peer-rid disconnect method.

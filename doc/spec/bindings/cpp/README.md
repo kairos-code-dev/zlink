@@ -12,6 +12,10 @@ runtime behavior differ from this document, those artifacts must be updated to
 match this document unless the contract itself is changed in this file first.
 
 All types live in the `zlink` namespace. Service types live in `zlink::service`.
+C++ methods use `snake_case`. Handle and value wrapper classes commonly use
+the `_t` suffix, and enum types use `_t` only when it clarifies a public value
+domain or avoids a type/member name collision. The binding must not add a
+second public alias only to satisfy a suffix convention.
 
 Only installed public headers are part of the contract. Private helper headers,
 native bridge headers, and source-tree-only utilities are internal. Perf,
@@ -171,9 +175,13 @@ updated to match this document.
 - Raw socket creation/lifecycle: typed socket classes only. Native socket
   handles are internal implementation details and are not part of the
   canonical public binding API.
-- Common socket bind/connect/disconnect: `bind(...)`, `connect(...)`,
-  `unbind(...)`, `disconnect(...)`, and `disconnect_rid(...)`.
-- TLS configuration: `set_tls_server(...)` and `set_tls_client(...)`.
+- Common socket bind/unbind and connectable socket connect/disconnect:
+  `bind(...)`, `unbind(...)`, and, on connectable raw socket types except
+  `stream_socket_t`, `connect(...)`, `disconnect(...)`, and
+  `disconnect_rid(...)`.
+- TLS configuration: raw sockets and supported service handles expose
+  `set_tls_server(...)` and/or `set_tls_client(...)` according to the native
+  handle capability.
 - Generic socket options: `common_socket_options_t`. Deprecated generic option
   key wrappers, if retained, live only under `compat::options`.
 - Socket-specific options: `pub_socket_options_t`, `sub_socket_options_t`,
@@ -250,6 +258,7 @@ struct actor_recv_info_t;
 struct actor_join_info_t;
 class actor_join_request_t;
 struct actor_part_t;
+class timer_t;
 class actor_t;
 // Convenience form is service::spot_node_t::remote_actor_ref(...).
 ```
@@ -272,7 +281,7 @@ RAII wrapper for a zlink context. Manages the lifecycle of IO threads and socket
 ```cpp
 class context_t {
     context_t();
-    explicit context_t(int io_threads);
+    explicit context_t(io_thread_count_t io_threads);
     ~context_t();
 
     context_t(context_t&& other) noexcept;
@@ -282,7 +291,8 @@ class context_t {
 
     /// @throws close_error_t
     void shutdown();
-    void term() noexcept;
+    /// @throws close_error_t
+    void term();
 
     /// @throws config_error_t
     void recalculate_auto_hwm();
@@ -301,21 +311,21 @@ class context_options_t {
 
     // All option setters/getters throw config_error_t on failure.
     /// @throws config_error_t
-    int io_threads() const;
+    io_thread_count_t io_threads() const;
     /// @throws config_error_t
-    void io_threads(int value);
+    void io_threads(io_thread_count_t value);
     /// @throws config_error_t
-    int max_sockets() const;
+    socket_count_t max_sockets() const;
     /// @throws config_error_t
-    void max_sockets(int value);
+    void max_sockets(socket_count_t value);
     /// @throws config_error_t
-    int64_t max_msg_size() const;
+    byte_size_t max_msg_size() const;
     /// @throws config_error_t
-    void max_msg_size(int64_t bytes);
+    void max_msg_size(byte_size_t value);
     /// @throws config_error_t
-    std::optional<int> thread_priority() const;
+    std::optional<thread_priority_t> thread_priority() const;
     /// @throws config_error_t
-    void thread_priority(int priority);
+    void thread_priority(thread_priority_t value);
     /// @throws config_error_t
     thread_scheduling_policy_t thread_scheduling_policy() const;
     /// @throws config_error_t
@@ -341,13 +351,13 @@ class context_options_t {
     /// @throws config_error_t
     void auto_hwm_profile(auto_hwm_profile profile);
     /// @throws config_error_t
-    int socket_limit() const;
+    socket_count_t socket_limit() const;
     /// @throws config_error_t
-    int64_t msg_t_size() const;
+    byte_size_t msg_t_size() const;
     /// @throws config_error_t
-    void add_thread_affinity(int cpu);
+    void add_thread_affinity(cpu_index_t cpu);
     /// @throws config_error_t
-    void remove_thread_affinity(int cpu);
+    void remove_thread_affinity(cpu_index_t cpu);
 };
 ```
 
@@ -370,7 +380,62 @@ enum class rid_duplicate_policy_t : int {
     reject = ZLINK_RID_DUPLICATE_REJECT,
     handover = ZLINK_RID_DUPLICATE_HANDOVER
 };
+
+class io_thread_count_t {
+    static io_thread_count_t value(int value);
+    int value() const noexcept;
+};
+
+class socket_count_t {
+    static socket_count_t value(int value);
+    int value() const noexcept;
+};
+
+class worker_count_t {
+    static worker_count_t value(int value);
+    int value() const noexcept;
+};
+
+class thread_priority_t {
+    static thread_priority_t value(int value);
+    int value() const noexcept;
+};
+
+class cpu_index_t {
+    static cpu_index_t value(int value);
+    int value() const noexcept;
+};
+
+class byte_size_t {
+    static byte_size_t bytes(int64_t value);
+    int64_t bytes() const noexcept;
+};
+
+class peer_weight_t {
+    static peer_weight_t value(uint32_t value); // valid range: 0..100
+    uint32_t value() const noexcept;
+};
+
+class message_count_t {
+    static message_count_t value(int value);
+    int value() const noexcept;
+};
+
+class socket_backlog_t {
+    static socket_backlog_t value(int value);
+    int value() const noexcept;
+};
+
+enum class tcp_keepalive_mode_t : int {
+    os_default = -1,
+    off = 0,
+    on = 1
+};
 ```
+
+These scalar value objects validate option domains before the native option
+call. Their accessors exist for logging, tests, and the native bridge; callers
+do not pass raw integers for these option domains.
 
 ---
 
@@ -381,8 +446,9 @@ The socket signatures below use shared domain types declared in
 
 When a socket is attached to `service::discovery_t` through
 `attach_discovery(...)`, Discovery owns that participant lifecycle. After a
-successful attach, direct `connect(...)`, `disconnect(...)`, `unbind(...)`, and
-`close()` on that socket are blocked with the corresponding typed zlink error.
+successful attach, direct `connect(...)`, `disconnect(...)`,
+`disconnect_rid(...)`, `unbind(...)`, and `close()` on that socket are blocked
+with the corresponding typed zlink error.
 
 ### Common Socket Methods
 
@@ -560,6 +626,10 @@ class dealer_socket_t {
     void set_routing_id(const routing_id_t& routing_id);
     /// @throws config_error_t
     void get_routing_id(routing_id_t& routing_id) const;
+    /// @throws config_error_t
+    void channel_name(const std::string& value);
+    /// @throws config_error_t
+    std::string channel_name() const;
 
     // --- dealer-specific options ---
     /// @throws config_error_t
@@ -570,6 +640,11 @@ class dealer_socket_t {
     void attach_discovery(service::discovery_t& discovery);
 };
 ```
+
+`channel_name(...)` maps to the channel metadata used by SPOT channel
+attachments. `attach_channel_dealer(...)` and
+`attach_channel_dealer_manual(...)` set or verify this metadata; after a dealer
+is attached, changing the channel name fails with `config_error_t`.
 
 ### router_socket_t
 
@@ -763,8 +838,8 @@ class xsub_socket_t {
 
 ### stream_socket_t
 
-Raw TCP stream socket. Bind-only; it does not expose `connect` or
-`disconnect`.
+Raw TCP stream socket. Bind-only; it does not expose `connect`,
+`disconnect`, or `disconnect_rid`.
 
 ```cpp
 class stream_socket_t {
@@ -844,13 +919,13 @@ class common_socket_options_t {
     /// @throws config_error_t
     void linger(std::chrono::milliseconds value);
     /// @throws config_error_t
-    int send_hwm() const;
+    message_count_t send_hwm() const;
     /// @throws config_error_t
-    void send_hwm(int value);
+    void send_hwm(message_count_t value);
     /// @throws config_error_t
-    int recv_hwm() const;
+    message_count_t recv_hwm() const;
     /// @throws config_error_t
-    void recv_hwm(int value);
+    void recv_hwm(message_count_t value);
     /// @throws config_error_t
     std::chrono::milliseconds send_timeout() const;
     /// @throws config_error_t
@@ -876,9 +951,9 @@ class common_socket_options_t {
     /// @throws config_error_t
     void tcp_no_delay(bool value);
     /// @throws config_error_t
-    int tcp_keepalive() const;  // -1 = OS default, 0 = off, 1 = on
+    tcp_keepalive_mode_t tcp_keepalive() const;
     /// @throws config_error_t
-    void tcp_keepalive(int value);
+    void tcp_keepalive(tcp_keepalive_mode_t value);
     /// @throws config_error_t
     std::chrono::milliseconds heartbeat_interval() const;
     /// @throws config_error_t
@@ -896,19 +971,19 @@ class common_socket_options_t {
     /// @throws config_error_t
     void rid_duplicate_policy(rid_duplicate_policy_t value);
     /// @throws config_error_t
-    int64_t max_message_size() const;
+    byte_size_t max_message_size() const;
     /// @throws config_error_t
-    void max_message_size(int64_t bytes);
+    void max_message_size(byte_size_t value);
     /// @throws config_error_t
-    int64_t auto_hwm_msg_unit_bytes() const;
+    byte_size_t auto_hwm_msg_unit_bytes() const;
     // Maps to ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES. 0 keeps the core default;
     // negative byte counts are rejected before the native call.
     /// @throws config_error_t
-    void auto_hwm_msg_unit_bytes(int64_t bytes);
+    void auto_hwm_msg_unit_bytes(byte_size_t value);
     /// @throws config_error_t
-    int backlog() const;
+    socket_backlog_t backlog() const;
     /// @throws config_error_t
-    void backlog(int value);
+    void backlog(socket_backlog_t value);
     /// @throws config_error_t
     std::chrono::milliseconds reconnect_interval() const;
     /// @throws config_error_t
@@ -965,7 +1040,7 @@ class dealer_socket_options_t : public common_socket_options_t {
     /// @throws config_error_t
     void request_timeout(std::chrono::milliseconds value);
     /// @throws config_error_t
-    void peer_weight(uint32_t value); // valid range: 0..100
+    void peer_weight(peer_weight_t value);
 };
 
 class router_socket_options_t : public common_socket_options_t {
@@ -990,9 +1065,9 @@ class router_socket_options_t : public common_socket_options_t {
     /// @throws config_error_t
     void request_timeout(std::chrono::milliseconds value);
     /// @throws config_error_t
-    uint32_t peer_weight() const; // valid range: 0..100
+    peer_weight_t peer_weight() const;
     /// @throws config_error_t
-    void peer_weight(uint32_t value); // valid range: 0..100
+    void peer_weight(peer_weight_t value);
 };
 
 class stream_socket_options_t : public common_socket_options_t {
@@ -1072,7 +1147,8 @@ class message_t {
     std::string to_string() const;
 
     // --- lifecycle ---
-    void close() noexcept;
+    /// @throws config_error_t
+    void close();
 };
 ```
 
@@ -1285,6 +1361,9 @@ enum class spot_dispatch_subject_kind_t : int {
 struct spot_dispatch_info_t {
     spot_dispatch_event_t event;
     spot_dispatch_subject_kind_t subject_kind;
+    timer_t* timer;
+    dealer_socket_t* channel_dealer;
+    std::optional<std::string> channel_name;
     std::optional<actor_ref_t> actor;
     std::vector<actor_part_t> actor_parts;
 };
@@ -1299,10 +1378,13 @@ context internally. Callers reply with the request object instead of passing
 node ids, Spot ids, or request sequence values back into the API.
 
 `spot_dispatch_info_t` never exposes the native `void* subject` pointer. It is
-a readiness descriptor. For `subscribe_readable`, `routed_readable`, and timer
-events, the caller drains through the corresponding `spot_t` recv method until
-`std::nullopt` is returned in nonblocking mode. Actor readable events may carry
-the actor reference and pre-drained parts when the core callback supplies them.
+a readiness descriptor. For `subscribe_readable` and `routed_readable`, the
+caller drains through the corresponding `spot_t` recv method until
+`std::nullopt` is returned in nonblocking mode. For `timer_readable`, `timer`
+identifies the timer to drain. For `channel_reply_readable`, `channel_dealer`
+and `channel_name` identify the attached channel dealer whose request replies
+must progress internally. Actor readable events may carry the actor reference
+and pre-drained parts when the core callback supplies them.
 
 ### received_t
 
@@ -1447,7 +1529,7 @@ struct monitor_event_t {
 Runtime status snapshot returned by `monitor_handle_t::snapshot()`.
 
 ```cpp
-enum class monitor_source_kind : int {
+enum class monitor_source_kind_t : int {
     socket,
     spot_pub,
     spot_sub
@@ -1494,17 +1576,17 @@ struct monitor_snapshot_t {
 };
 ```
 
-### Compatibility Appendix: Enums and Aliases
+### Enum Types
 
-The installed public headers may expose the low-level enums and aliases below
-only for source compatibility. They are not the canonical C++ API surface.
+The installed public headers may expose the low-level compatibility enums
+below only for source compatibility. They are not the canonical C++ API surface.
 New docs, samples, tests, and application code must use the typed classes above
 instead of these names.
 
 Deprecated no-op context options are compatibility-only names. They must
 not be added back as canonical typed `context_options_t` getters or setters.
 
-#### Core compatibility enums
+#### Compatibility-only core enums
 
 ```cpp
 enum class socket_type : int {
@@ -1559,50 +1641,88 @@ enum class protocol_error : int {
 
 ```
 
-#### Spot and topology enums
+#### Service and topology enums
+
+The enums below are canonical C++ service-layer value domains. They are defined
+directly as public types rather than as suffix-only aliases.
 
 ```cpp
-enum class monitor_target_kind : int {
+enum class monitor_target_kind_t : int {
     socket,
     discovery,
     spot,
     spot_node
 };
 
-enum class registry_socket_role : int {
+enum class registry_socket_role_t : int {
     pub,
     router,
     peer_sub
 };
 
-enum class service_role : int {
-    router,
-    dealer
+enum class auto_connect_type_t : int {
+    route_mesh,
+    client_server,
+    dealer_mesh,
+    fanout,
+    spot_mesh
 };
 
-enum class discovery_socket_role : int {
+enum class service_role_t : int {
+    spot,
+    router,
+    dealer,
+    pub,
     sub
 };
 
-enum class spot_node_socket_role : int {
+enum class service_kind_t : int {
+    discovery,
+    spot_sub,
+    spot_pub,
+    socket
+};
+
+enum class discovery_socket_role_t : int {
+    sub
+};
+
+enum class spot_node_socket_role_t : int {
     node,
     pub,
     sub,
     dealer
 };
 
-enum class spot_node_mode : int {
+enum class spot_node_mode_t : int {
     pubsub = 1,
     routed = 2,
     all = 3
 };
 
-enum class spot_socket_role : int {
+enum class spot_node_socket_owner_t : int {
+    any = 0,
+    node = 1,
+    spot = 2
+};
+
+enum class spot_role_t : int {
     pub,
     sub
 };
 
-enum class spot_node_state : int {
+enum class spot_node_socket_type_t : int {
+    pair,
+    dealer,
+    router,
+    stream,
+    pub,
+    xpub,
+    sub,
+    xsub
+};
+
+enum class spot_node_state_t : int {
     idle,
     connecting,
     partial_ready,
@@ -1610,32 +1730,32 @@ enum class spot_node_state : int {
     error
 };
 
-enum class spot_peer_source : int {
+enum class spot_peer_source_t : int {
     manual,
     discovery,
     mixed
 };
 
-enum class spot_peer_state : int {
+enum class spot_peer_state_t : int {
     configured,
     connecting,
     connected
 };
 
-enum class registry_state : int {
+enum class registry_state_t : int {
     idle,
     active,
     degraded,
     error
 };
 
-enum class topology_source : int {
+enum class topology_source_t : int {
     manual,
     discovery,
     registry
 };
 
-enum class topology_state : int {
+enum class topology_state_t : int {
     discovered,
     connecting,
     ready,
@@ -1643,25 +1763,12 @@ enum class topology_state : int {
     error,
     stopped
 };
-```
 
-Installed alias declarations:
-
-```cpp
-using monitor_event_type_t = monitor_event;
-using monitor_source_kind_t = monitor_source_kind;
-using auto_connect_type_t = auto_connect_type;
-using service_role_t = service_role;
-using service_kind_t = service_kind;
-using monitor_target_kind_t = monitor_target_kind;
-using spot_role_t = spot_socket_role;
-using spot_node_mode_t = spot_node_mode;
-using spot_node_state_t = spot_node_state;
-using spot_peer_source_t = spot_peer_source;
-using spot_peer_state_t = spot_peer_state;
-using topology_source_t = topology_source;
-using topology_state_t = topology_state;
-using subject_kind_t = subject_kind;
+enum class subject_kind_t : int {
+    none,
+    topic,
+    pattern
+};
 ```
 
 ### Error and Result Types
@@ -2078,7 +2185,8 @@ class monitor_handle_t {
     std::optional<monitor_event_t> recv(int flags = 0);
     /// @throws config_error_t
     monitor_snapshot_t snapshot() const;
-    void close() noexcept;
+    /// @throws close_error_t
+    void close();
 
     // No-op callback for callback-only model. Pass to on_event() when the
     // caller does not care about individual events; once installed the monitor
@@ -2093,10 +2201,10 @@ class monitor_handle_t {
 
 ### Service-Layer Entry Types
 
-Service-layer snapshot and query methods return named C++ value types
-rather than raw C structs. All entry types live in `zlink::service`
-and expose typed fields (std::string for text, `routing_id_t` for
-identities, and typed enums for categorical values).
+Service-layer snapshot and query methods return named C++ value types rather
+than raw C structs. All entry types live in `zlink::service` and expose typed
+accessors (std::string for text, `routing_id_t` for identities, and typed enums
+for categorical values). Public data members are not part of this contract.
 
 #### Primary
 
@@ -2106,14 +2214,15 @@ Member peer entry returned by `registry_t::member_peers(...)` and
 `discovery_t::member_peers(...)`.
 
 ```cpp
-struct member_peer_entry_t {
-    auto_connect_type_t auto_connect_type;
-    service_role_t service_role;
-    std::string channel_name;
-    std::string endpoint;
-    std::optional<routing_id_t> routing_id;   // nullopt when peer carries no routing id
-    uint32_t weight;
-    int64_t value;
+class member_peer_entry_t {
+public:
+    auto_connect_type_t auto_connect_type() const noexcept;
+    service_role_t service_role() const noexcept;
+    const std::string& channel_name() const noexcept;
+    const std::string& endpoint() const noexcept;
+    const std::optional<routing_id_t>& routing_id() const noexcept;
+    peer_weight_t weight() const noexcept;
+    int64_t value() const noexcept;
 };
 ```
 
@@ -2124,19 +2233,20 @@ Topology entry returned by `registry_t::topology_snapshot(...)`,
 `registry_query_client_t::snapshot(...)`.
 
 ```cpp
-struct registry_topology_entry_t {
-    auto_connect_type_t auto_connect_type;
-    std::optional<routing_id_t> routing_id;
-    service_kind_t service_kind;
-    service_role_t service_role;
-    std::string channel_name;
-    std::string endpoint;
-    topology_source_t source;
-    topology_state_t state;
-    uint32_t desired_count;
-    uint32_t ready_count;
-    uint32_t error_code;
-    std::chrono::milliseconds last_reported;
+class registry_topology_entry_t {
+public:
+    auto_connect_type_t auto_connect_type() const noexcept;
+    const std::optional<routing_id_t>& routing_id() const noexcept;
+    service_kind_t service_kind() const noexcept;
+    service_role_t service_role() const noexcept;
+    const std::string& channel_name() const noexcept;
+    const std::string& endpoint() const noexcept;
+    topology_source_t source() const noexcept;
+    topology_state_t state() const noexcept;
+    uint32_t desired_count() const noexcept;
+    uint32_t ready_count() const noexcept;
+    uint32_t error_code() const noexcept;
+    std::chrono::milliseconds last_reported() const noexcept;
 };
 ```
 
@@ -2145,20 +2255,21 @@ struct registry_topology_entry_t {
 Status snapshot returned by `spot_node_t::status_snapshot()`.
 
 ```cpp
-struct spot_node_status_t {
-    std::string service_name;
-    std::string local_endpoint;
-    std::optional<routing_id_t> node_routing_id;
-    spot_node_state_t state;
-    uint32_t configured_peer_count;
-    uint32_t active_peer_count;
-    uint32_t connected_peer_count;
-    uint32_t subject_count;
-    uint32_t ready_subject_count;
-    uint32_t disconnected_sub_target_count;
-    uint32_t disconnected_routed_target_count;
-    int32_t last_error;
-    std::chrono::milliseconds last_changed;
+class spot_node_status_t {
+public:
+    const std::string& service_name() const noexcept;
+    const std::string& local_endpoint() const noexcept;
+    const std::optional<routing_id_t>& node_routing_id() const noexcept;
+    spot_node_state_t state() const noexcept;
+    uint32_t configured_peer_count() const noexcept;
+    uint32_t active_peer_count() const noexcept;
+    uint32_t connected_peer_count() const noexcept;
+    uint32_t subject_count() const noexcept;
+    uint32_t ready_subject_count() const noexcept;
+    uint32_t disconnected_sub_target_count() const noexcept;
+    uint32_t disconnected_routed_target_count() const noexcept;
+    int32_t last_error() const noexcept;
+    std::chrono::milliseconds last_changed() const noexcept;
 };
 ```
 
@@ -2170,22 +2281,29 @@ Service summary entry returned by
 `registry_t::service_summary_snapshot(...)`.
 
 ```cpp
-struct registry_service_summary_entry_t {
-    auto_connect_type_t auto_connect_type;
-    service_role_t service_role;
-    std::string channel_name;
-    uint32_t total_count;
-    uint32_t connecting_count;
-    uint32_t ready_count;
-    uint32_t error_count;
-    uint32_t stopped_count;
-    std::chrono::milliseconds last_reported;
+class registry_service_summary_entry_t {
+public:
+    auto_connect_type_t auto_connect_type() const noexcept;
+    service_role_t service_role() const noexcept;
+    const std::string& channel_name() const noexcept;
+    uint32_t total_count() const noexcept;
+    uint32_t connecting_count() const noexcept;
+    uint32_t ready_count() const noexcept;
+    uint32_t error_count() const noexcept;
+    uint32_t stopped_count() const noexcept;
+    std::chrono::milliseconds last_reported() const noexcept;
 };
 
-struct registry_service_summary_filter_t {
-    auto_connect_type_t auto_connect_type;
-    service_role_t service_role;
-    std::string channel_name;
+class registry_service_summary_filter_t {
+public:
+    registry_service_summary_filter_t();
+    registry_service_summary_filter_t& auto_connect_type(auto_connect_type_t value);
+    registry_service_summary_filter_t& service_role(service_role_t value);
+    registry_service_summary_filter_t& channel_name(std::string value);
+
+    const std::optional<auto_connect_type_t>& auto_connect_type() const noexcept;
+    const std::optional<service_role_t>& service_role() const noexcept;
+    const std::optional<std::string>& channel_name() const noexcept;
 };
 ```
 
@@ -2194,16 +2312,17 @@ struct registry_service_summary_filter_t {
 Status snapshot returned by `registry_t::status_snapshot()`.
 
 ```cpp
-struct registry_status_t {
-    uint32_t registry_id;
-    std::string bind_endpoint;
-    registry_state_t state;
-    uint32_t topology_entry_count;
-    uint32_t peer_registry_count;
-    uint32_t connected_peer_registry_count;
-    uint64_t list_seq;
-    int32_t last_error;
-    std::chrono::milliseconds last_changed;
+class registry_status_t {
+public:
+    uint32_t registry_id() const noexcept;
+    const std::string& bind_endpoint() const noexcept;
+    registry_state_t state() const noexcept;
+    uint32_t topology_entry_count() const noexcept;
+    uint32_t peer_registry_count() const noexcept;
+    uint32_t connected_peer_registry_count() const noexcept;
+    uint64_t list_seq() const noexcept;
+    int32_t last_error() const noexcept;
+    std::chrono::milliseconds last_changed() const noexcept;
 };
 ```
 
@@ -2213,21 +2332,28 @@ Peer entry returned by `spot_node_t::peers_snapshot(...)` and
 `spot_node_t::peers_query(...)`.
 
 ```cpp
-struct spot_node_peer_entry_t {
-    std::string service_name;
-    std::string local_endpoint;
-    std::string peer_endpoint;
-    spot_peer_source_t source;
-    spot_peer_state_t state;
-    uint32_t weight;
-    std::chrono::milliseconds connected_since;
-    std::chrono::milliseconds last_changed;
+class spot_node_peer_entry_t {
+public:
+    const std::string& service_name() const noexcept;
+    const std::string& local_endpoint() const noexcept;
+    const std::string& peer_endpoint() const noexcept;
+    spot_peer_source_t source() const noexcept;
+    spot_peer_state_t state() const noexcept;
+    peer_weight_t weight() const noexcept;
+    std::chrono::milliseconds connected_since() const noexcept;
+    std::chrono::milliseconds last_changed() const noexcept;
 };
 
-struct spot_node_peer_filter_t {
-    std::string peer_endpoint;
-    spot_peer_source_t source;
-    spot_peer_state_t state;
+class spot_node_peer_filter_t {
+public:
+    spot_node_peer_filter_t();
+    spot_node_peer_filter_t& peer_endpoint(std::string value);
+    spot_node_peer_filter_t& source(spot_peer_source_t value);
+    spot_node_peer_filter_t& state(spot_peer_state_t value);
+
+    const std::optional<std::string>& peer_endpoint() const noexcept;
+    const std::optional<spot_peer_source_t>& source() const noexcept;
+    const std::optional<spot_peer_state_t>& state() const noexcept;
 };
 ```
 
@@ -2236,63 +2362,89 @@ struct spot_node_peer_filter_t {
 Subject entry returned by `spot_node_t::subjects_snapshot(...)`.
 
 ```cpp
-struct spot_node_subject_entry_t {
-    spot_role_t role;
-    std::string subject;
-    subject_kind_t subject_kind;
-    uint32_t ready_peer_count;
-    uint32_t active_peer_count;
-    std::chrono::milliseconds last_changed;
+class spot_node_subject_entry_t {
+public:
+    spot_role_t role() const noexcept;
+    const std::string& subject() const noexcept;
+    subject_kind_t subject_kind() const noexcept;
+    uint32_t ready_peer_count() const noexcept;
+    uint32_t active_peer_count() const noexcept;
+    std::chrono::milliseconds last_changed() const noexcept;
 };
 
-struct spot_node_subject_filter_t {
-    spot_role_t role;
-    std::string subject;
-    subject_kind_t subject_kind;
+class spot_node_subject_filter_t {
+public:
+    spot_node_subject_filter_t();
+    spot_node_subject_filter_t& role(spot_role_t value);
+    spot_node_subject_filter_t& subject(std::string value);
+    spot_node_subject_filter_t& subject_kind(subject_kind_t value);
+
+    const std::optional<spot_role_t>& role() const noexcept;
+    const std::optional<std::string>& subject() const noexcept;
+    const std::optional<subject_kind_t>& subject_kind() const noexcept;
 };
 
-struct spot_node_socket_snapshot_filter_t {
-    spot_node_socket_owner_t owner;
-    socket_type type;
-    std::string socket_name;
+class spot_node_socket_snapshot_filter_t {
+public:
+    spot_node_socket_snapshot_filter_t();
+    spot_node_socket_snapshot_filter_t& owner(spot_node_socket_owner_t value);
+    spot_node_socket_snapshot_filter_t& socket_type(spot_node_socket_type_t value);
+    spot_node_socket_snapshot_filter_t& socket_name(std::string value);
+
+    const std::optional<spot_node_socket_owner_t>& owner() const noexcept;
+    const std::optional<spot_node_socket_type_t>& socket_type() const noexcept;
+    const std::optional<std::string>& socket_name() const noexcept;
 };
 
-struct spot_node_socket_snapshot_entry_t {
-    spot_node_socket_owner_t owner;
-    uint64_t owner_id;
-    std::string owner_name;
-    std::string socket_name;
-    socket_type type;
-    bool auto_hwm_visible;
-    monitor_snapshot_t snapshot;
+class spot_node_socket_snapshot_entry_t {
+public:
+    spot_node_socket_owner_t owner() const noexcept;
+    uint64_t owner_id() const noexcept;
+    const std::string& owner_name() const noexcept;
+    const std::string& socket_name() const noexcept;
+    spot_node_socket_type_t socket_type() const noexcept;
+    bool auto_hwm_visible() const noexcept;
+    const monitor_snapshot_t& snapshot() const noexcept;
 };
 
-struct spot_node_spot_entry_t {
-    routing_id_t spot_rid;
-    bool dispatch_handler_attached;
-    uint32_t joined_actor_count;
-    uint32_t pending_actor_join_count;
-    bool route_synced;
-    std::chrono::milliseconds last_changed;
+class spot_node_spot_entry_t {
+public:
+    const routing_id_t& spot_rid() const noexcept;
+    bool dispatch_handler_attached() const noexcept;
+    uint32_t joined_actor_count() const noexcept;
+    uint32_t pending_actor_join_count() const noexcept;
+    bool route_synced() const noexcept;
+    std::chrono::milliseconds last_changed() const noexcept;
 };
 
-struct spot_node_actor_entry_t {
-    actor_ref_t actor;
-    bool joined;
-    std::optional<routing_id_t> joined_spot_rid;
-    bool route_synced;
-    uint32_t pending_message_count;
-    std::chrono::milliseconds last_changed;
+class spot_node_actor_entry_t {
+public:
+    const actor_ref_t& actor() const noexcept;
+    bool joined() const noexcept;
+    const std::optional<routing_id_t>& joined_spot_rid() const noexcept;
+    bool route_synced() const noexcept;
+    uint32_t pending_message_count() const noexcept;
+    std::chrono::milliseconds last_changed() const noexcept;
 };
 
-struct registry_topology_filter_t {
-    auto_connect_type_t auto_connect_type;
-    service_kind_t service_kind;
-    service_role_t service_role;
-    std::string channel_name;
-    std::optional<routing_id_t> routing_id;
-    topology_state_t state;
-    topology_source_t source;
+class registry_topology_filter_t {
+public:
+    registry_topology_filter_t();
+    registry_topology_filter_t& auto_connect_type(auto_connect_type_t value);
+    registry_topology_filter_t& service_kind(service_kind_t value);
+    registry_topology_filter_t& service_role(service_role_t value);
+    registry_topology_filter_t& channel_name(std::string value);
+    registry_topology_filter_t& routing_id(routing_id_t value);
+    registry_topology_filter_t& state(topology_state_t value);
+    registry_topology_filter_t& source(topology_source_t value);
+
+    const std::optional<auto_connect_type_t>& auto_connect_type() const noexcept;
+    const std::optional<service_kind_t>& service_kind() const noexcept;
+    const std::optional<service_role_t>& service_role() const noexcept;
+    const std::optional<std::string>& channel_name() const noexcept;
+    const std::optional<routing_id_t>& routing_id() const noexcept;
+    const std::optional<topology_state_t>& state() const noexcept;
+    const std::optional<topology_source_t>& source() const noexcept;
 };
 ```
 
@@ -2316,13 +2468,21 @@ class registry_t {
     void bind(const std::string& pub_endpoint, const std::string& router_endpoint);
     /// @throws config_error_t
     void set_id(uint32_t registry_id);
-    /// @throws connect_error_t
+    /// @throws config_error_t
     void add_peer(const std::string& peer_pub_endpoint);
     /// @throws config_error_t
     void set_heartbeat(std::chrono::milliseconds interval,
                        std::chrono::milliseconds timeout);
     /// @throws config_error_t
     void set_broadcast_interval(std::chrono::milliseconds interval);
+    /// @throws config_error_t
+    void set_tls_server(const std::string& cert,
+                        const std::string& key,
+                        bool require_client_cert = false);
+    /// @throws config_error_t
+    void set_tls_client(const std::string& ca_cert,
+                        const std::string& hostname = std::string(),
+                        bool trust_system = false);
 
     /// @throws config_error_t
     registry_status_t status_snapshot() const;
@@ -2355,7 +2515,7 @@ namespace service {
 
 class discovery_t {
     discovery_t(context_t& ctx,
-                auto_connect_type auto_connect_type,
+                auto_connect_type_t auto_connect_type,
                 const std::string& channel_name);
     ~discovery_t();
 
@@ -2366,6 +2526,10 @@ class discovery_t {
 
     /// @throws connect_error_t
     void connect_registry(const std::string& endpoint);
+    /// @throws config_error_t
+    void set_tls_client(const std::string& ca_cert,
+                        const std::string& hostname = std::string(),
+                        bool trust_system = false);
     /// @throws config_error_t
     void set_value(int64_t value);
     /// @throws config_error_t
@@ -2457,25 +2621,25 @@ class spot_node_t {
     /// @throws config_error_t
     void router_admission_hwm_profile(auto_hwm_profile profile);
     /// @throws config_error_t
-    int router_admission_hwm() const;
+    message_count_t router_admission_hwm() const;
     /// @throws config_error_t
-    void router_admission_hwm(int value);
+    void router_admission_hwm(message_count_t value);
     /// @throws config_error_t
     auto_hwm_profile pubsub_admission_hwm_profile() const;
     /// @throws config_error_t
     void pubsub_admission_hwm_profile(auto_hwm_profile profile);
     /// @throws config_error_t
-    int pubsub_admission_hwm() const;
+    message_count_t pubsub_admission_hwm() const;
     /// @throws config_error_t
-    void pubsub_admission_hwm(int value);
+    void pubsub_admission_hwm(message_count_t value);
     /// @throws config_error_t
-    int dispatch_workers_min() const;
+    worker_count_t dispatch_workers_min() const;
     /// @throws config_error_t
-    void dispatch_workers_min(int value);
+    void dispatch_workers_min(worker_count_t value);
     /// @throws config_error_t
-    int dispatch_workers_max() const;
+    worker_count_t dispatch_workers_max() const;
     /// @throws config_error_t
-    void dispatch_workers_max(int value);
+    void dispatch_workers_max(worker_count_t value);
 
     // --- snapshots ---
     /// @throws config_error_t
@@ -2940,7 +3104,8 @@ class poller_t {
         size_t max_events,
         std::optional<std::chrono::milliseconds> timeout = std::nullopt);
 
-    void destroy() noexcept;
+    /// @throws close_error_t
+    void destroy();
 };
 ```
 
@@ -3060,15 +3225,16 @@ void zlink_version(int& major, int& minor, int& patch);
 
 /// Start a built-in proxy between frontend and backend sockets.
 /// An optional capture socket receives copies of all messages.
-/// @throws zlink_error_t
+/// @throws config_error_t
 template<typename FrontendSocket, typename BackendSocket>
 void proxy(FrontendSocket& frontend, BackendSocket& backend);
 
+/// @throws config_error_t
 template<typename FrontendSocket, typename BackendSocket, typename CaptureSocket>
 void proxy(FrontendSocket& frontend, BackendSocket& backend, CaptureSocket& capture);
 
 /// Start a steerable proxy with an additional control socket.
-/// @throws zlink_error_t
+/// @throws config_error_t
 template<typename FrontendSocket, typename BackendSocket,
          typename CaptureSocket, typename ControlSocket>
 void proxy_steerable(FrontendSocket& frontend, BackendSocket& backend,
@@ -3084,8 +3250,8 @@ void sleep(std::chrono::duration<Rep, Period> duration);
 
 ## Peer Disconnect by Routing ID
 
-C++ bindings expose raw socket `disconnect_rid(routing_id_t)` and SpotNode
-`disconnect_peer_rid(routing_id_t)`. They map the duplicate policy option and
-the connect result values `not_found`, `conflict`, and `busy` to the same
-contract as the C core. Spot facades do not expose a peer-rid disconnect
-method.
+C++ bindings expose `disconnect_rid(routing_id_t)` on connectable raw socket
+types except `stream_socket_t`, and `disconnect_peer_rid(routing_id_t)` on
+SpotNode. They map the duplicate policy option and the connect result values
+`not_found`, `conflict`, and `busy` to the same contract as the C core. Spot
+facades do not expose a peer-rid disconnect method.

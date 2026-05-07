@@ -121,6 +121,26 @@ stay focused on signatures.
   chooses one initiator per pair by total order on
   `(routingId, advertiseEndpoint)`. Users do not configure this.
 
+## Boundary Validation Rules
+
+The .NET binding validates fixed-size native boundary values before calling
+core and never truncates user input.
+
+- `RoutingId` validates its `1..255` byte size when the value object is
+  created.
+- Actor ids are non-empty UTF-8 strings up to 255 bytes and must not contain
+  NUL.
+- Endpoint strings passed to `Bind`, `Connect`, `Disconnect`, registry, and
+  peer-connect APIs must fit in 255 UTF-8 bytes and must not contain NUL.
+- SPOT `serviceName` values must fit in 255 UTF-8 bytes and must not contain
+  NUL.
+- Topic and subscription filter strings must not contain NUL. Their length is
+  left to core because the native API accepts C strings rather than a fixed
+  struct field.
+- `TimeSpan` values converted to native milliseconds or nanoseconds must be in
+  range. Overflow, negative values where core does not accept them, and lossy
+  truncation raise .NET argument exceptions before the native call.
+
 ## Actor Dispatch Public Surface
 
 .NET exposes Actor dispatch through public types in the zlink assembly. Actor
@@ -132,8 +152,8 @@ public sealed record ActorCreateResult(ActorCreateStatus Status,
                                        ActorRef Actor);
 public sealed record ActorRoute(ActorRef Actor, bool Joined,
                                 RoutingId? JoinedSpotRid);
-public sealed record ActorRecvInfo(ActorRef Actor, RoutingId? SourceNodeRid,
-                                   RoutingId? SourceSessionRid, uint Flags);
+public sealed record ActorRecvInfo(ActorRef Actor, RoutingId SourceNodeRid,
+                                   RoutingId SourceSessionRid, uint Flags);
 public sealed record ActorJoinInfo(ActorRef SourceActor,
                                    ActorRef TargetActor,
                                    RoutingId SourceNodeRid,
@@ -148,15 +168,19 @@ public sealed class ActorJoinRequest { ... }
 public sealed class Actor : IDisposable, IAsyncDisposable { ... }
 ```
 
-`SpotNode` exposes Actor factory/lookup, remote create-or-get, admission,
-join/leave, destroy, and Actor snapshots. `Spot` exposes Actor join
-receive/reply and joined Actor snapshots. `StreamSocket` exposes Actor
-bind/unbind and bound Actor send. `Discovery` exposes Actor route resolve.
+`SpotNode` exposes Actor factory/lookup, unchecked remote refs, remote
+create-or-get, ref-based destroy/join/leave, admission, and Actor snapshots.
+`Actor` owns handle-based join/leave, destroy, receive, and bound-session
+operations. `Spot` exposes Actor join receive/reply and joined Actor snapshots.
+`StreamSocket` exposes Actor bind/unbind and bound Actor send. `Discovery`
+exposes Actor route resolve.
 
-`Generation == 0` is an unchecked remote ref and is not invalid. The public
-contract does not expose raw native Actor pointers. `ActorJoinRequest` carries
-only public join metadata and the join message; the native reply context stays
-inside the binding and is consumed by `Spot.ReplyActorJoin(...)`.
+`Generation == 0` is an unchecked remote ref and is not invalid.
+`SpotNode.RemoteActorRef(nodeRid, actorId)` is the unchecked remote-ref factory.
+The public contract does not expose raw native Actor pointers.
+`ActorJoinRequest` carries only public join metadata and the join message; the
+native reply context stays inside the binding and is consumed by
+`Spot.ReplyActorJoin(...)`.
 
 ## Out Of Scope
 
@@ -470,6 +494,12 @@ defaults are `min=2` and `max=Environment.ProcessorCount`.
 set-only because the core API exposes `zlink_set_dealer_option(...)` but does
 not expose a matching `zlink_get_dealer_option(...)`.
 
+After a socket is attached to `Discovery` through `AttachDiscovery(...)`, the
+Discovery handle owns that participant's lifecycle. Manual `Connect(...)`,
+`Disconnect(...)`, `DisconnectRid(...)`, `Unbind(...)`, and `Close(...)` calls
+on the attached socket raise the corresponding zlink exception with the native
+busy/lifecycle error.
+
 ### PairSocket
 
 Bidirectional exclusive pair socket.
@@ -568,6 +598,11 @@ public sealed class DealerSocket : MessageSocketBase
                  TimeSpan? timeout = null);
 }
 ```
+
+`DealerSocket.Request(...)` requires every connected peer to be a ROUTER. If a
+Dealer is connected to a mixture of ROUTER and DEALER peers, request can fail.
+The binding does not try to infer or validate peer socket types at runtime; the
+application is responsible for keeping this topology valid.
 
 ### RouterSocket
 
@@ -713,7 +748,8 @@ public sealed class XSubSocket : SubscriberSocketBase
 
 ### StreamSocket
 
-Raw TCP stream socket. Bind-only; does not support `Connect`.
+Raw TCP stream socket. Bind-only; does not support `Connect`,
+`Disconnect`, or `DisconnectRid`.
 
 ```csharp
 public sealed class StreamSocket : RoutedMessageSocketBase
@@ -726,9 +762,6 @@ public sealed class StreamSocket : RoutedMessageSocketBase
     void SetRoutingId(RoutingId routingId);
     /// <exception cref="ZlinkConfigException"/>
     RoutingId GetRoutingId();
-
-    /// <exception cref="ZlinkCloseException"/>
-    void DetachStream();
 
     /// Two mutually-exclusive receive modes on the same StreamSocket:
     ///   (1) Recv(), (2) OnPacket(handler). Second attach throws
@@ -1052,7 +1085,7 @@ public sealed class ZlinkHandlerException : ZlinkException
 
 Thrown by socket, context, monitor, poller, timer, registry, discovery, Spot,
 and SpotNode lifecycle operations (`Close`, `Dispose`, `DisposeAsync`,
-`Shutdown`, `DetachStream`). Message-frame lifecycle helpers use
+`Shutdown`). Message-frame lifecycle helpers use
 `ZlinkConfigException` because `zlink_msg_close(...)` returns the config result
 domain. Wraps a `ZlinkCloseException.ErrorCode`.
 
@@ -1276,8 +1309,6 @@ public readonly struct ActorRef : IEquatable<ActorRef>
     string ActorId { get; }
     ulong Generation { get; }
     bool IsUnchecked { get; }
-    static ActorRef Unchecked(RoutingId nodeRid, string actorId);
-    static ActorRef Remote(RoutingId targetNodeRid, string actorId);
 }
 
 public enum ActorCreateStatus { Created = 1, Existing = 2 }
@@ -1288,8 +1319,8 @@ public sealed record ActorCreateResult(ActorCreateStatus Status,
 public sealed record ActorRoute(ActorRef Actor, bool Joined,
                                 RoutingId? JoinedSpotRid);
 public sealed record ActorRecvInfo(ActorRef Actor,
-                                   RoutingId? SourceNodeRid,
-                                   RoutingId? SourceSessionRid,
+                                   RoutingId SourceNodeRid,
+                                   RoutingId SourceSessionRid,
                                    uint Flags);
 public sealed record ActorJoinInfo(ActorRef SourceActor,
                                    ActorRef TargetActor,
@@ -1361,7 +1392,9 @@ object so the binding can use the native context without exposing it.
 `CreateRemoteActor(...)` is create-or-get: the remote admission handler is
 called only when the target Actor does not already exist. Discovery Actor
 routes become active when a STREAM session bind succeeds, not when an Actor is
-created.
+created. `Actor.Close(...)` destroys the local Actor handle. `SpotNode`
+also exposes ref-based `DestroyActor(...)`, `JoinActor(...)`, and
+`LeaveActor(...)` methods for callers that hold only an `ActorRef`.
 
 ### SpotDispatchEvent
 
@@ -1609,9 +1642,15 @@ public sealed class Registry : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConfigException"/>
     void AddPeer(string peerPubEndpoint);
     /// <exception cref="ZlinkConfigException"/>
-    void SetHeartbeat(uint intervalMs, uint timeoutMs);
+    void SetHeartbeat(TimeSpan interval, TimeSpan timeout);
     /// <exception cref="ZlinkConfigException"/>
-    void SetBroadcastInterval(uint intervalMs);
+    void SetBroadcastInterval(TimeSpan interval);
+    /// <exception cref="ZlinkConfigException"/>
+    void SetTlsServer(string certPath, string keyPath,
+                      bool requireClientCert = false);
+    /// <exception cref="ZlinkConfigException"/>
+    void SetTlsClient(string caCertPath, string hostname,
+                      bool trustSystem = false);
 
     /// <exception cref="ZlinkConfigException"/>
     RegistryStatus StatusSnapshot();
@@ -1657,6 +1696,9 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkConnectException"/>
     void ConnectRegistry(string registryPubEndpoint);
     /// <exception cref="ZlinkConfigException"/>
+    void SetTlsClient(string caCertPath, string hostname,
+                      bool trustSystem = false);
+    /// <exception cref="ZlinkConfigException"/>
     void SetValue(long value);
     /// <exception cref="ZlinkConfigException"/>
     long GetValue();
@@ -1689,6 +1731,10 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
     ValueTask DisposeAsync();
 }
 ```
+
+`Discovery.Close()` / `Dispose()` closes every participant attached through
+that Discovery handle, including attached raw sockets and `SpotNode` instances.
+After close, those participant handles are no longer usable.
 
 ### SpotNode
 
@@ -2356,9 +2402,9 @@ public sealed class Poller : IDisposable, IAsyncDisposable
 
     // --- wait ---
     /// <exception cref="ZlinkRecvException"/>
-    PollEvent? Wait(int timeoutMs);
+    PollEvent? Wait(TimeSpan timeout);
     /// <exception cref="ZlinkRecvException"/>
-    IReadOnlyList<PollEvent> WaitAll(int maxEvents, int timeoutMs);
+    IReadOnlyList<PollEvent> WaitAll(int maxEvents, TimeSpan timeout);
 
     /// <exception cref="ZlinkConfigException"/>
     void Clear();
@@ -2460,8 +2506,8 @@ public static class Zlink
     static void ProxySteerable(IZlinkSocket frontend, IZlinkSocket backend,
                                IZlinkSocket? capture, IZlinkSocket control);
 
-    /// Sleep for the given number of seconds.
-    static void Sleep(int seconds);
+    /// Sleep for the given duration.
+    static void Sleep(TimeSpan duration);
 
     /// Close all parts in a multipart message array.
     static void MultipartClose(IReadOnlyList<Message> parts);
@@ -2565,7 +2611,7 @@ updated in the same change.
 | Errors and version | `zlink_errno`, `zlink_strerror`, `zlink_version`, `zlink_has` | typed exceptions, `Zlink.Strerror`, `Zlink.Version`, `Zlink.Has` |
 | Context lifecycle and options | `zlink_ctx_new`, `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_ctx_set`, `zlink_ctx_set_data`, `zlink_ctx_get`, `zlink_ctx_auto_hwm_recalculate` | `Context`, `Context.Dispose`, `Context.Shutdown`, `ContextOptions`, `Context.RecalculateAutoHwm` |
 | Message frames | `zlink_msg_init`, `zlink_msg_init_size`, `zlink_msg_init_data`, `zlink_msg_close`, `zlink_msg_move`, `zlink_msg_copy`, `zlink_msg_adopt`, `zlink_msg_data`, `zlink_msg_size`, `zlink_msg_refcnt`, `zlink_msg_gets` | `Message` constructors, factories, accessors, `Move`, `Copy`, `Dispose`, `GetProperty` |
-| Raw socket lifecycle | `zlink_socket`, `zlink_close`, `zlink_bind`, `zlink_unbind`, `zlink_connect`, `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_socket_attach_discovery` | concrete socket constructors, `Close`, `Bind`, `Unbind`, `Connect`, `Disconnect`, `DisconnectRid`, `AttachDiscovery` |
+| Raw socket lifecycle | `zlink_socket`, `zlink_close`, `zlink_bind`, `zlink_unbind`, `zlink_connect`, `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_socket_attach_discovery` | concrete socket constructors, `Close`, `Bind`, `Unbind`, `Connect` / `Disconnect` / `DisconnectRid` on connectable raw sockets, `AttachDiscovery` |
 | Common socket options | `zlink_set_option`, `zlink_get_option`, `zlink_set_routing_id`, `zlink_get_routing_id`, `zlink_set_tls_server`, `zlink_set_tls_client` | typed option facades, routing-id methods/properties, TLS methods |
 | Dealer channel metadata | `zlink_socket_set_channel_name`, `zlink_socket_get_channel_name` | `DealerSocket.SetChannelName`, `DealerSocket.GetChannelName` |
 | Typed socket options | `zlink_set_router_option`, `zlink_get_router_option`, `zlink_set_dealer_option`, `zlink_set_pub_option`, `zlink_get_pub_option`, `zlink_set_sub_option`, `zlink_get_sub_option`, `zlink_set_stream_option`, `zlink_get_stream_option` | `RouterSocketOptions`, `DealerSocketOptions`, `PubSocketOptions`, `SubSocketOptions`, `StreamSocketOptions` |
@@ -2575,9 +2621,9 @@ updated in the same change.
 | STREAM and actor bridge | `zlink_stream_packet_handler`, `zlink_stream_bind_actor`, `zlink_stream_unbind_actor`, `zlink_stream_send_bound_actor_part`; `zlink_recv_handler` is internal-only | `StreamSocket.OnPacket`, `StreamSocket.Recv`, `BindActor`, `UnbindActor`, `SendBoundActor` |
 | Send-ready callbacks | `zlink_send_ready_handler` | `OnSendReady(...)` on send-capable handles |
 | Socket monitoring | `zlink_socket_monitor_open`, `zlink_socket_monitor_handler`, `zlink_socket_monitor_recv`, `zlink_monitor_snapshot`, `zlink_monitor_close`, `zlink_monitor_ignore_handler` | `SocketMonitor`, `MonitorEvent`, `MonitorSnapshot`, `SocketMonitor.IgnoreHandler` |
-| Registry and Discovery | `zlink_registry_*`, `zlink_discovery_*`, `zlink_registry_query_*` | `Registry`, `Discovery`, `RegistryQueryClient`, service entry/filter records |
+| Registry and Discovery | `zlink_registry_*`, `zlink_discovery_*`, `zlink_registry_query_*`, `zlink_set_tls_server`, `zlink_set_tls_client` on service handles | `Registry`, `Discovery`, `RegistryQueryClient`, service entry/filter records, service TLS methods |
 | SPOT node topology | `zlink_spot_node_new`, `zlink_spot_node_destroy`, `zlink_spot_node_bind`, peer connect/disconnect, discovery/channel attachments, publish-ingress attachment, entry spot, spot lookup, snapshots, `zlink_set_spot_node_option`, `zlink_get_spot_node_option` | `SpotNode`, `SpotNodeMode`, attachment APIs including `AttachPubIngress`, snapshot/query APIs, `CreateSpot`, `EntrySpot`, `SpotLookup`, `DisconnectPeerRid` |
 | SPOT messaging | `zlink_spot_new`, `zlink_spot_destroy`, `zlink_spot_send_channel_part`, `zlink_spot_publish_part`, `zlink_spot_subscribe_part`, `zlink_spot_subscription_event_recv`, `zlink_spot_request_*_part`, `zlink_spot_send_spot_part`, `zlink_spot_reply_*_part`, `zlink_spot_recv_part`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_spot_channel_reply_progress_from`, `zlink_set_spot_option`, `zlink_get_spot_option` | `Spot`, direct request-timeout property, channel send/request, SPOT topic publish/subscribe, routed send/request/reply/recv, dispatch callbacks, internal channel reply progress |
 | SPOT actor lifecycle | `zlink_spot_node_actor_*`, `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_remote_actor_get_ref`, `zlink_spot_actors_snapshot` | `Actor`, `ActorRef`, `ActorCreateResult`, join/leave/create/destroy/admission APIs, actor receive/send/bound-session APIs, actor snapshots |
 | Polling and timers | `zlink_poll`, `zlink_poller_*`, `zlink_timer_*`, `zlink_spot_timer_new` | `Poller`, `PollEvent`, `Timer`; legacy array `zlink_poll` is intentionally not exposed |
-| Utilities | `zlink_proxy`, `zlink_proxy_steerable`, `zlink_multipart_close`, `zlink_sleep`, `zlink_stopwatch_*`, `zlink_thread_*`, `zlink_atomic_counter_*` | `Zlink.Proxy`, `Zlink.ProxySteerable`, `Zlink.MultipartClose`, `Zlink.Sleep`, `ZlinkStopwatch`, `ZlinkThread`, `AtomicCounter` |
+| Utilities | `zlink_proxy`, `zlink_proxy_steerable`, `zlink_multipart_close`, `zlink_sleep`, `zlink_stopwatch_*`, `zlink_thread_*`, `zlink_atomic_counter_*` | `Zlink.Proxy`, `Zlink.ProxySteerable`, `Zlink.MultipartClose`, `Zlink.Sleep(TimeSpan)`, `ZlinkStopwatch`, `ZlinkThread`, `AtomicCounter` |

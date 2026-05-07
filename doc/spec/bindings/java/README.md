@@ -101,7 +101,7 @@ ways:
 | Message ownership and copying | `zlink_msg_init`, `zlink_msg_init_size`, `zlink_msg_close`, `zlink_msg_move`, `zlink_msg_copy`, `zlink_msg_adopt`, `zlink_msg_data`, `zlink_msg_size`, `zlink_msg_refcnt`, `zlink_msg_gets` | `Message` constructors, `Message.copyOf`, `move`, `data`, `size`, `refCount`, `getProperty`, `close` | Public API / typed facade |
 | Borrowed external message storage | `zlink_msg_init_data` with caller free hook | No public borrowed-wrap API; public adapters copy into owned `Message` | Internal primitive |
 | Socket construction and lifecycle | `zlink_socket`, `zlink_close` | typed socket classes and `close` | Public API |
-| Bind/connect lifecycle | `zlink_bind`, `zlink_connect`, `zlink_unbind`, `zlink_disconnect`, `zlink_disconnect_rid` | socket `bind`, `connect`, `unbind`, `disconnect`, `disconnectRid`; `SpotNode` peer methods | Public API |
+| Bind/connect lifecycle | `zlink_bind`, `zlink_connect`, `zlink_unbind`, `zlink_disconnect`, `zlink_disconnect_rid` | socket `bind`, `connect`, `unbind`, `disconnect`, `disconnectRid` on connectable raw sockets; `SpotNode` peer methods | Public API |
 | Common socket options | `zlink_set_option`, `zlink_get_option`, `zlink_set_routing_id`, `zlink_get_routing_id` | typed socket option classes and routing-id accessors | Public API / typed facade |
 | TLS helpers | `zlink_set_tls_server`, `zlink_set_tls_client` | `Socket.setTlsServer`, `Socket.setTlsClient`, service TLS methods | Public API |
 | Router options | `zlink_set_router_option`, `zlink_get_router_option` | `RouterSocketOptions` | Typed facade |
@@ -233,10 +233,11 @@ public final class Context implements AutoCloseable {
 
 ## Peer Disconnect by Routing ID
 
-Java bindings expose `disconnectRid(routingId)` on raw sockets and
-`disconnectPeerRid(targetNodeRid)` on `SpotNode`. The duplicate policy option
-and `NOT_FOUND` / `CONFLICT` / `BUSY` connect errors mirror the C core. `Spot`
-does not expose a peer-rid disconnect method.
+Java bindings expose `disconnectRid(routingId)` on connectable raw sockets and
+`disconnectPeerRid(targetNodeRid)` on `SpotNode`. `StreamSocket` is bind-only
+and does not expose peer-rid disconnect. The duplicate policy option and
+`NOT_FOUND` / `CONFLICT` / `BUSY` connect errors mirror the C core. `Spot` does
+not expose a peer-rid disconnect method.
 
 ### ContextOptions
 
@@ -312,9 +313,10 @@ recv failures.
 
 After `attachDiscovery(...)` succeeds on a `DealerSocket`, `RouterSocket`,
 `PubSocket`, or `SubSocket`, the attached socket lifecycle is owned by the
-`Discovery` instance. Direct `connect(...)`, `disconnect(...)`, `unbind(...)`,
-and `close()` calls on that socket fail through the documented native error
-mapping; `Discovery.close()` closes attached participants.
+`Discovery` instance. Direct `connect(...)`, `disconnect(...)`,
+`disconnectRid(...)`, `unbind(...)`, and `close()` calls on that socket fail
+through the documented native error mapping; `Discovery.close()` closes
+attached participants.
 
 ### SendReadyHandler
 
@@ -330,6 +332,10 @@ public interface SendReadyHandler {
 `onReady()` is a readiness notification shared with `POLLOUT`. It means a
 previous nonblocking send path may be retried; it is not a guarantee that every
 transport peer is writable.
+
+All handler registration methods reject `null` handlers. Passing `null` is not
+a detach operation; registered callbacks are released only by closing the
+owning socket, monitor, timer, or service object.
 
 ### CommonSocketOptions
 
@@ -775,7 +781,8 @@ public final class XSubSocket extends Socket {
 
 ### StreamSocket
 
-Raw TCP stream socket. Bind-only; does not support `connect`.
+Raw TCP stream socket. Bind-only; does not support `connect`, `disconnect`,
+or `disconnectRid`.
 
 ```java
 public final class StreamSocket extends Socket {
@@ -783,7 +790,6 @@ public final class StreamSocket extends Socket {
 
     void bind(String endpoint);                                      // @throws BindException
     void unbind(String endpoint);                                    // @throws ConnectException
-    void disconnectRid(RoutingId routingId);                         // @throws ConnectException
 
     void setRoutingId(RoutingId rid);                                // @throws ConfigException
     RoutingId routingId();                                           // @throws ConfigException
@@ -942,6 +948,27 @@ public interface ByteSpan {
 `ByteSpan` does not transfer ownership of the backing memory. APIs that accept
 `ByteSpan` as public input copy the bytes into an owned `Message` unless the
 method explicitly documents a different lifetime rule.
+
+### Boundary Validation
+
+Java validates values that can overflow, truncate, or break native string
+contracts before calling core. These validation failures use Java-native
+exceptions such as `IllegalArgumentException`, `IndexOutOfBoundsException`, or
+`NullPointerException`, not `ZlinkException`.
+
+- `RoutingId` rejects empty input and values longer than 255 bytes at value
+  object creation time.
+- Actor ids must be non-empty UTF-8 strings, must not contain NUL, and must be
+  at most 255 bytes.
+- Endpoint strings passed to bind/connect-style APIs must be at most 255 bytes.
+- `serviceName` values passed to SPOT service-aware APIs must be at most
+  255 bytes.
+- Topic and subscription filter strings must not contain NUL. Their length
+  limit is left to core.
+- `Duration` conversions to native milliseconds or nanoseconds must fail before
+  truncation or overflow.
+- Byte array, `ByteBuffer`, `MemorySegment`, and `ByteSpan` offset/length
+  ranges are checked before native calls.
 
 ### Codec Extensions
 
@@ -1393,7 +1420,8 @@ public interface RequestCallback {
 ```
 
 The `parts` list passed to `RequestCallback` is unmodifiable. Message ownership
-still follows the normal `Message` lifecycle rules.
+still follows the normal `Message` lifecycle rules. When `result !=
+RequestResult.OK`, `parts` is an empty list.
 
 ### RecvResult
 
@@ -1541,9 +1569,10 @@ public final class Received implements AutoCloseable {
 
 `Received` owns the reply context needed to answer the original sender.
 `reply(...)` encapsulates routing id, optional spot id, and request sequence
-so callers do not need to rebuild the route. Calling `reply(...)` after the
-source socket is closed raises `SubmitException` with the terminated submit
-result.
+so callers do not need to rebuild the route. Calling `reply(...)` when
+`requestSeq()` is empty, when the reply context is invalid, or after the source
+socket is closed raises `SubmitException`. A closed source socket maps to the
+terminated submit result.
 
 ### TopicMessage
 
@@ -1552,19 +1581,23 @@ Implements `AutoCloseable`.
 
 ```java
 public final class TopicMessage implements AutoCloseable {
-    TopicMessage(RoutingId routingId, String serviceName, String topic, Message[] parts);
-
     Optional<RoutingId> routingId();
     Optional<String> serviceName();          // empty for raw SUB / XSUB
     String topic();                          // UTF-8
     List<Message> parts();
     boolean isSinglePart();
-    Message firstPart();
-    Message singlePartOrThrow();
+    Message firstPart();                                             // @throws RecvException
+    Message singlePartOrThrow();                                     // @throws RecvException
 
     void close();                                                    // @throws CloseException
 }
 ```
+
+`TopicMessage` instances are produced by `subscribe(...)` receive paths. Public
+constructors are not part of the contract because the binding owns the native
+message parts and service/topic decoding rules. `firstPart()` raises
+`RecvException` when the message has no parts. `singlePartOrThrow()` raises
+`RecvException` unless the message has exactly one part.
 
 ### SubscriptionEvent
 
@@ -2123,7 +2156,8 @@ public final class Actor implements AutoCloseable {
     ActorPart recvPart();                                            // @throws RecvException
     @Nullable ActorPart recvPart(RecvFlags flags);                   // @throws RecvException
     boolean sendBoundSession(Message message);                       // @throws SubmitException
-    boolean sendBoundSession(Message message, SendFlags flags);      // @throws SubmitException
+    boolean sendBoundSession(Message message,
+                             SendFlags flags);                       // @throws SubmitException
     void closeBoundSession();                                        // @throws RequestException
     void closeBoundSession(Duration timeout);                        // @throws RequestException
     void close();                                                    // @throws RequestException
@@ -2131,11 +2165,15 @@ public final class Actor implements AutoCloseable {
 }
 ```
 
+`sendBoundSession(...)` and `closeBoundSession(...)` use the Actor's current
+bound STREAM session. Callers that need to select a specific session routing id
+use `StreamSocket.sendBoundActor(...)`, which selects by session routing id and
+actor id.
+
 Actor value objects:
 
 ```java
 public record ActorRef(RoutingId nodeRid, String actorId, long generation) {
-    boolean unchecked();
 }
 
 public record ActorCreateResult(ActorCreateStatus status, ActorRef actor) {}
@@ -2151,7 +2189,9 @@ public record ActorRecvInfo(ActorRef actor,
 
 public record ActorPart(ActorRecvInfo info,
                         Message message,
-                        boolean hasMore) implements AutoCloseable {}
+                        boolean hasMore) implements AutoCloseable {
+    void close();                                                    // @throws CloseException
+}
 
 public final class ActorJoinInfo {
     ActorRef sourceActor();
@@ -2175,6 +2215,10 @@ public interface ActorAdmissionHandler {
     ActorAdmissionResult onActorAdmission(String actorId, Message message);
 }
 ```
+
+`ActorPart` owns its message and closes that message from `close()`. The
+`message` passed to `ActorAdmissionHandler` is valid only for the callback
+duration. Applications must copy it if they need to retain it after returning.
 
 ### RegistryQueryClient
 
@@ -2537,7 +2581,6 @@ public final class Timer implements AutoCloseable {
     void start(Duration interval, long repeatCount);                 // @throws ConfigException
     void stop();                                                     // @throws ConfigException
     long recv();                                                     // @throws RecvException
-    long recv(RecvFlags flags);                                      // @throws RecvException
     void onFire(TimerHandler handler);                               // @throws HandlerException
 
     void close();                                                    // @throws CloseException
@@ -2546,10 +2589,9 @@ public final class Timer implements AutoCloseable {
 
 `start(...)` accepts a Java `Duration`; the binding converts it to the
 nanosecond interval used by core without truncation. `recv()` returns the
-timer fire count reported by core. `RecvFlags.NONE` is
-the supported receive flag. Unsupported flags raise `RecvException` with
-`RecvResult.NOT_SUPPORTED`; no-data raises `RecvException` with
-`RecvResult.NO_DATA`.
+timer fire count reported by core. No `RecvFlags` overload is exposed because
+the core timer receive API has no flags parameter. If no timer fire is pending,
+`recv()` raises `RecvException` with `RecvResult.NO_DATA`.
 
 ### TimerHandler
 

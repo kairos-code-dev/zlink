@@ -243,9 +243,11 @@ public shape를 기준으로 고정한다.
   callback 만 노출하고, direct receive callback 은 제공하지 않는다.
 - core raw `STREAM` 은 `recv`, raw callback (`zlink_recv_handler()`),
   packet callback (`zlink_stream_packet_handler()`) 의 세 모드 중 하나를
-  선택하는 예외 타입이다. 고수준 바인딩은 `recv` 와 packet callback
-  surface 를 기본 계약으로 노출해야 하고, raw direct callback 은 해당
-  언어 문서가 명시할 때만 추가로 public 으로 노출한다.
+  선택하는 예외 타입이다. 고수준 바인딩의 canonical public 계약은
+  `recv` 와 packet callback surface 만 노출한다. raw direct callback 은
+  바인딩 내부 primitive 로만 사용하며, public API 로 추가하려면 먼저 이
+  정책 문서와 해당 언어 spec 을 함께 바꾸어 별도 raw/low-level surface 로
+  분리해야 한다.
 - SPOT 은 channel-aware 모델이다. 바인딩은
   `attach_discovery(...)`,
   `attach_channel_dealer(...)`,
@@ -319,9 +321,11 @@ public shape를 기준으로 고정한다.
   (a) `zlink_recv_part()` 기반 blocking/non-blocking recv, (b) `zlink_recv_handler()`
   raw direct callback, (c) `zlink_stream_packet_handler()` 빅엔디언
   `u16 header_size + u32 body_size + header + body` 프레이밍 packet callback.
-  두 번째 attach 시 `EBUSY` 가 반환된다. 고수준 바인딩이 raw direct
-  callback 을 공개하지 않더라도, public 으로 노출한 `STREAM` receive
-  surface 들 사이에는 같은 배타 규칙을 유지해야 한다.
+  두 번째 attach 시 `EBUSY` 가 반환된다. 고수준 바인딩은 public 으로
+  노출한 `STREAM` receive surface 들 사이에 같은 배타 규칙을 유지해야
+  한다. `detachStream`, `streamDetach`, callback detach 같은 별도 public
+  해제 API 는 core 공개 계약에 없으므로 canonical binding surface 에
+  추가하지 않는다. 수신 모드 해제와 callback 정리는 socket close 가 맡는다.
 - `zlink_recv_handler()` 는 raw `STREAM` 전용이다. `PAIR`/`DEALER`/`SUB`/
   `XSUB`/`ROUTER` 에 attach 하면 `ZLINK_HANDLER_NOT_SUPPORTED` 로 실패한다.
 - Discovery auto-connect 으로 같은 서비스의 두 ROUTER 가 쌍을 이룰 때,
@@ -346,12 +350,33 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   허용하지 않는다.
 - Actor ref는 `node_rid`, `actor_id`, `generation`을 가진다.
   `generation == 0`은 unchecked remote ref이며 유효하지 않은 값으로 보지 않는다.
+- unchecked remote Actor ref 생성은 `SpotNode`가 소유한다. 언어 관례상 static
+  method 또는 factory function 으로 표현할 수 있지만, canonical 문서와 sample 은
+  `SpotNode` 소유 surface 를 기준으로 한다. `ActorRef` 자체에 별도 unchecked
+  factory 를 중복 public API 로 추가하지 않는다.
 - local Actor는 `SpotNode`가 만든다. 한 Actor는 동시에 하나의 Spot에만 join할
   수 있고, leave는 unread 메시지를 비우지 않는다.
+- `Actor.close` 또는 동등한 lifecycle method 는 그 Actor handle 이 소유한 local
+  Actor 를 파괴한다. `SpotNode.destroyActor(actorRef)` 또는 동등한 method 는
+  Actor handle 없이 Actor ref 만 가진 caller 를 위한 ref 기반 파괴 surface 다.
+  둘은 같은 책임을 다른 이름으로 반복하는 API 가 아니라, owner 가 다른 두
+  진입점이므로 언어별 spec 은 이 차이를 문서화해야 한다.
+- `Actor.join` / `Actor.leave` 는 local Actor handle 을 가진 caller 를 위한
+  표면이다. `SpotNode.joinActor(actorRef, ...)` /
+  `SpotNode.leaveActor(actorRef, ...)` 는 Actor ref 만 가진 caller 를 위한
+  표면이다. 한쪽만 제공하면 ref-only 흐름 또는 owned-handle 흐름 중 하나가
+  불필요하게 복잡해진다.
 - 한 STREAM session은 여러 Actor를 bind할 수 있다. bind/unbind는 session routing
   id와 actor id 또는 Actor ref를 기준으로 한다.
 - STREAM에서 Actor로 보내는 public API는 bound session과 actor id를 선택자로
   사용한다. 제거된 lookup/send helper 이름은 public API에 남기지 않는다.
+- `Actor.sendBoundSession` 과 `Actor.closeBoundSession` 은 session routing id 를
+  인자로 받지 않는다. Actor 가 현재 bound session 선택을 내부에서 숨긴다.
+  caller 가 session routing id 로 직접 선택해야 하는 경우에는
+  `StreamSocket.sendBoundActor(...)` 를 사용한다.
+- Actor recv info 의 `source_node_rid` 와 `source_session_rid` 는 core 구조체의
+  값 필드이므로 nullable / optional 로 문서화하지 않는다. no-data 는 recv 결과
+  자체의 empty/null/exception 표현으로만 전달한다.
 - Actor readable dispatch event는 어떤 Actor를 drain해야 하는지 알 수 있어야
   한다. callback을 다른 실행 컨텍스트로 넘기는 언어는 callback 진입 시점에
   Actor part를 nonblocking으로 미리 drain해서 public dispatch info가 그 part를
@@ -377,6 +402,8 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   - `Target`: 장기적으로 맞춰가야 하는 목표 항목. 해당 바인딩이 이
     컴포넌트를 구현하기로 결정한 경우에만 적용된다. 구현하지 않기로
     결정한 경우 리뷰에서 요구하지 않는다.
+  - `Internal-only`: 바인딩 구현 내부에서는 사용할 수 있지만 public API,
+    sample, guide, spec signature 로 노출하면 안 되는 항목이다.
 - 별도 표시가 없으면 정책 본문은 `Required`로 본다.
 - 섹션 제목에 `(Target)` 또는 `(Recommended)`가 표시된 경우, 해당 섹션
   전체는 표시된 수준으로 해석한다. 무표시 기본값(`Required`)보다 우선한다.
@@ -423,6 +450,12 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   - 예: routing id 길이 제한
   - 예: send failure contract
   - 예: typed option ownership
+- 여러 언어가 공유하는 capability, owner, no-data, error, naming 규칙은 이
+  정책 문서가 한 번만 소유한다. 언어별 spec 은 같은 규칙을 다시 설계하지
+  않고, 이 문서의 계약을 언어 관례에 맞게 표현한다.
+- 언어별 spec 이 이 문서와 다른 규칙을 필요로 하면, 개별 문서부터 바꾸지
+  않는다. 먼저 이 정책 문서에 예외 사유와 적용 범위를 적고, 그 다음 해당
+  언어 문서를 갱신한다. 그래야 같은 설계 결정이 여러 문서에 흩어지지 않는다.
 - 시간 순서에 의존하는 분해(temporal decomposition)를 줄인다.
   - 예: 사용자가 `setOption` 조합 순서를 기억해야 하는 API 금지
 - public API는 “무엇을 할 수 있는지”를 드러내고, “내부에서 어떻게 배선되는지”를
@@ -448,10 +481,11 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   올리면 안 된다.
 - public base에서 외부 접근을 허용해도 되는 공통 기능 예:
   - `bind`, `unbind`
-  - `connect`, `disconnect` on connectable base only
+  - `connect`, `disconnect`, `disconnectRid` on connectable base only
   - `close` / `dispose`
   - common typed options
   - `monitorOpen` 또는 동등한 monitor 진입점
+  - `setTlsServer`, `setTlsClient` 또는 동등한 TLS helper
 - generic root base 또는 raw compat base에서 외부 접근을 허용하면 안 되는 기능:
   - `send(...)`
   - `send(routingId, ...)`
@@ -697,6 +731,18 @@ request(parts, callback, flags, timeout)   // callback
 request(parts, timeout)
 request_callback(parts, callback, flags, timeout)
 ```
+
+#### 공통 결과 타입 이름
+
+공통 결과 타입은 owner 이름을 반복하지 않는다. 타입 이름은 값이 나타내는
+도메인 개념을 직접 드러낸다.
+
+- Poller 대기 결과 타입의 canonical 이름은 `PollEvent` 이다.
+  C++은 `poll_event_t`, Java/.NET은 `PollEvent`, Node/TypeScript는
+  `PollEvent` 형태를 사용한다. `PollerEvent`처럼 owner를 한 번 더 붙인
+  이름은 canonical public API 로 쓰지 않는다.
+- Timer, monitor, dispatch 결과도 같은 규칙을 따른다. owner가 이미
+  반환 타입이나 네임스페이스에서 드러나면 타입 이름에 owner를 반복하지 않는다.
 
 #### SPOT 대상 네이밍
 
@@ -986,9 +1032,15 @@ raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `cla
 ### Socket Capability Matrix
 - 이 표는 `core/include/zlink.h` C API를 기준으로 각 소켓 타입이 가져야 할
   능력을 정의한다.
+- 이 표는 모든 언어 바인딩에 공통으로 적용되는 공개 기능 계약이다.
+  바인딩마다 기능성이 달라지면 안 된다.
+- 언어별 차이는 케이싱, overload, nullable, exception/error 표현처럼
+  같은 기능을 해당 언어 관례에 맞게 드러내는 방식에만 허용된다.
 - 각 바인딩은 이 표를 정답으로 삼아 surface test를 작성한다.
-- `Y`는 해당 능력을 반드시 public API로 노출해야 함을 의미한다.
-- `—`는 해당 능력을 public API로 노출하면 안 됨을 의미한다.
+- `Y`는 모든 바인딩이 해당 능력을 반드시 public API로 노출해야 함을
+  의미한다.
+- `—`는 어떤 바인딩도 해당 능력을 public API로 노출하면 안 됨을
+  의미한다.
 
 #### Connection Capabilities
 
@@ -998,6 +1050,13 @@ raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `cla
 | `unbind` | Y | Y | Y | Y | Y | Y | Y | Y |
 | `connect` | Y | Y | Y | Y | Y | Y | Y | — |
 | `disconnect` | Y | Y | Y | Y | Y | Y | Y | — |
+| `disconnectRid` | Y | Y | Y | Y | Y | Y | Y | — |
+
+`disconnectRid` 는 connectable raw socket 의 peer-rid disconnect 표면이다.
+`STREAM` 은 bind-only socket 이며 `connect`, `disconnect`, `disconnectRid`
+를 public API 로 노출하지 않는다. `Spot` 도 raw peer-rid disconnect 를
+노출하지 않고, SPOT node peer 연결 해제는 `SpotNode.disconnectPeerRid`
+계열이 담당한다.
 
 #### Send Capabilities
 
@@ -1027,13 +1086,15 @@ raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `cla
 | Capability | Pair | Dealer | Router | Pub | Sub | XPub | XSub | Stream |
 |---|---|---|---|---|---|---|---|---|
 | `onPacket` | — | — | — | — | — | — | — | Y |
+| `onReceive` | — | — | — | — | — | — | — | — |
 | `onSubscribe` | — | — | — | — | — | — | — | — |
 | `onSendReady` | Y | Y | Y | Y | — | Y | — | Y |
 
-`STREAM` public surface 는 최소 `recv` 와 `onPacket` 을 제공해야 한다.
-일부 바인딩은 raw direct callback `onReceive` 를 추가로 노출할 수 있다.
+`STREAM` public surface 는 `recv` 와 `onPacket` 을 제공해야 한다.
+raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
 이미 한 수신 모드가 걸려 있는 상태에서 다른 모드 attach 를 시도하면
-`HandlerResult::BUSY` (또는 동등한 `EBUSY`) 를 반환한다.
+`HandlerResult::BUSY` (또는 동등한 `EBUSY`) 를 반환한다. public
+`detachStream` / `streamDetach` 류 해제 API 는 제공하지 않는다.
 
 #### Typed Option Capabilities
 
@@ -1048,8 +1109,9 @@ raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `cla
 | RoutingId (set/get) | Dealer, Router, Stream |
 | `attachDiscovery` | Dealer, Router, Pub, Sub |
 
-- `attachDiscovery` 후 해당 소켓에서 `connect`, `disconnect`, `unbind`,
-  `close`는 차단된다. Discovery `close`가 소켓 lifecycle을 관리한다.
+- `attachDiscovery` 후 해당 소켓에서 `connect`, `disconnect`,
+  `disconnectRid`, `unbind`, `close`는 차단된다. Discovery `close`가 소켓
+  lifecycle을 관리한다.
 
 ## Language Spec File Compliance Rules
 
@@ -1057,16 +1119,29 @@ raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `cla
 반드시 준수해야 한다. 스펙 파일 작성이나 리뷰 시 이 체크리스트를 적용한다.
 
 ### Capability Matrix 정합성
-- 각 소켓 타입 클래스는 위 Socket Capability Matrix에서 `Y`인 능력만
-  public 메서드로 노출해야 한다.
-- `—`인 능력은 해당 소켓 타입 클래스에 존재하면 안 된다.
+- 각 언어별 스펙은 위 Socket Capability Matrix의 기능성을 빠뜨리거나
+  추가하면 안 된다.
+- 각 소켓 타입 클래스는 위 Socket Capability Matrix에서 `Y`인 능력을
+  해당 언어 관례에 맞는 public surface로 반드시 제공해야 한다.
+- `—`인 능력은 어떤 언어 바인딩에서도 해당 소켓 타입 클래스에 존재하면
+  안 된다.
+- Socket Capability Matrix가 다루지 않는 service layer 기능은 별도
+  capability matrix 또는 정책 섹션에 명시된 경우에만 public API로 노출할
+  수 있다.
 - 특히 다음 위반이 자주 발생하므로 주의한다:
   - `RouterSocket` / `StreamSocket`에 plain `send` (routingId 없는 send) 금지 —
     반드시 `send(routingId, ...)` 형태여야 한다.
+  - `StreamSocket`에 `connect`, `disconnect`, `disconnectRid` 노출 금지 —
+    `STREAM`은 bind-only socket이다.
   - `PairSocket` / `XPubSocket` / `StreamSocket` / `XSubSocket`에 `attachDiscovery` 금지 —
     Dealer, Router, Pub, Sub에만 허용된다.
   - `XPubSocket`에 `onSubscribe` 콜백 금지 —
     XPub는 `receiveSubscriptionEvent`만 허용된다.
+  - `STREAM` raw direct callback `onReceive` 및 `detachStream` 류 해제 API 금지 —
+    canonical surface 는 `recv` / `onPacket` / `close` 조합이다.
+  - socket 공통 TLS helper(`setTlsServer`, `setTlsClient` 또는 동등한 이름) 누락
+    금지 — TLS 설정은 transport 공통 기능이므로 모든 raw socket 타입에서 같은
+    위치에 있어야 한다.
 
 ### Routed Send 필수 인자
 - `RouterSocket`과 `StreamSocket`의 send는 routingId를 **필수** 인자로 받아야 한다.
@@ -1088,7 +1163,11 @@ raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `cla
   - C#: `PascalCase` 전체.
   - Go: `PascalCase` exported.
   - Rust: `snake_case` 메서드, `PascalCase` 타입.
-  - C++: `snake_case` 메서드, `_t` 접미사 타입.
+  - C++: `snake_case` 메서드. 타입명은 한 바인딩 안에서 일관되게
+    유지한다. `_t` 접미사는 핸들/값 래퍼 타입이나 타입명과 메서드명이
+    충돌하기 쉬운 경우에 사용할 수 있지만, 모든 enum/class에 강제하지
+    않는다. 접미사 규칙을 맞추기 위해 같은 타입에 별도 alias만 추가하지
+    않는다.
   - Node/TypeScript: `camelCase` 메서드, `PascalCase` 클래스.
 
 ### C API 전수 커버리지
@@ -1372,12 +1451,15 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 |---|---|---|
 | local Actor create | `SpotNode` | `zlink_spot_node_actor_new` |
 | local Actor lookup | `SpotNode` | `zlink_spot_node_actor_lookup` |
-| unchecked remote Actor ref | `SpotNode` 또는 module factory | `zlink_remote_actor_get_ref` |
+| unchecked remote Actor ref | `SpotNode` | `zlink_remote_actor_get_ref` |
 | remote create-or-get | `SpotNode` | `zlink_spot_node_create_remote_actor` |
-| Actor destroy | `SpotNode` 또는 `Actor` | `zlink_spot_node_actor_destroy` |
+| Actor destroy by ref | `SpotNode` | `zlink_spot_node_actor_destroy` |
+| owned Actor close/destroy | `Actor` | `zlink_spot_node_actor_destroy` |
 | Actor admission handler | `SpotNode` | `zlink_spot_node_actor_admission_handler` |
-| Actor join | `SpotNode` 또는 `Actor` | `zlink_spot_node_actor_join_spot` |
-| Actor leave | `SpotNode` 또는 `Actor` | `zlink_spot_node_actor_leave_spot` |
+| Actor join by ref | `SpotNode` | `zlink_spot_node_actor_join_spot` |
+| owned Actor join | `Actor` | `zlink_spot_node_actor_join_spot` |
+| Actor leave by ref | `SpotNode` | `zlink_spot_node_actor_leave_spot` |
+| owned Actor leave | `Actor` | `zlink_spot_node_actor_leave_spot` |
 | Actor part recv | `Actor` | `zlink_spot_node_actor_recv_part` |
 | bound session send | `Actor` | `zlink_spot_node_actor_send_bound_session_msg` |
 | bound session close | `Actor` | `zlink_spot_node_actor_close_bound_session` |
@@ -1424,6 +1506,7 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | `setValue` / `getValue` | Y |
 | `spotOwnerSyncEnabled` | Y |
 | `actorRouteSyncEnabled` | Y |
+| `setTlsClient` | Y |
 | `resolveSpot` / `resolveActor` | Y |
 | `memberPeers` | Y |
 | `close` | Y |
@@ -1447,6 +1530,8 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | `addPeer` | Y (클러스터 동기화) |
 | `setHeartbeat` (interval, timeout) | Y |
 | `setBroadcastInterval` | Y |
+| `setTlsServer` | Y |
+| `setTlsClient` | Y |
 | `statusSnapshot` | Y |
 | `serviceSummarySnapshot` | Y |
 | `memberPeers` | Y |
@@ -1532,13 +1617,15 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | SpotNode | `attachChannelDealerManual` | 수동 channel DEALER attach |
 | SpotNode | `attachPubIngress` | 외부 PUB ingress attach |
 | SpotNode | `attachDiscovery` | Discovery 연결 |
-| SpotNode | `subjectsSnapshot` | subject 목록 스냅샷 |
 | SpotNode | `setTlsServer` | TLS 서버 설정 |
 | SpotNode | `setTlsClient` | TLS 클라이언트 설정 |
 | SpotNode | `statusSnapshot` | 노드 상태 스냅샷 |
 | SpotNode | `peersSnapshot` | peer 목록 스냅샷 |
 | SpotNode | `peersQuery` | peer 필터 조회 |
 | SpotNode | `subjectsSnapshot` | subject 목록 스냅샷 |
+| SpotNode | `internalSocketsSnapshot` | 내부 socket 진단 스냅샷 |
+| SpotNode | `spotsSnapshot` | node 소유 Spot 스냅샷 |
+| SpotNode | `actorsSnapshot` | node 소유 Actor 스냅샷 |
 | SpotNode | `close` | 노드 종료 |
 | Spot | `publish(service_name, topic, ...)` | 서비스 단위 토픽 발행 |
 | Spot | `subscribe` | 토픽 구독 수신 |
@@ -1551,6 +1638,7 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | Spot | `close` | facade 종료 |
 | Discovery | `connectRegistry` | Registry에 연결 |
 | Discovery | `setValue` / `getValue` | 서비스 값 설정/조회 |
+| Discovery | `setTlsClient` | Registry 연결 TLS 클라이언트 설정 |
 | Discovery | `resolveSpot` / `resolveActor` | SPOT owner와 Actor active route 조회 |
 | Discovery | `memberPeers` | 멤버 peer 목록 조회 |
 | Discovery | `close` | Discovery 종료 (participant 포함) |
@@ -1559,6 +1647,8 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | Registry | `addPeer` | 클러스터 peer 추가 |
 | Registry | `setHeartbeat` | heartbeat interval/timeout 설정 |
 | Registry | `setBroadcastInterval` | 브로드캐스트 주기 설정 |
+| Registry | `setTlsServer` | Registry TLS 서버 설정 |
+| Registry | `setTlsClient` | Registry cluster peer TLS 클라이언트 설정 |
 | Registry | `statusSnapshot` | Registry 상태 스냅샷 |
 | Registry | `serviceSummarySnapshot` | 서비스 요약 스냅샷 |
 | Registry | `memberPeers` | 멤버 peer 목록 조회 |
@@ -1581,6 +1671,7 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - Discovery capability matrix 정렬 확인
 - Registry capability matrix 정렬 확인 (구현된 경우)
 - RegistryQueryClient capability matrix 정렬 확인 (구현된 경우)
+- service TLS helper 존재 확인
 - typed domain object 존재 확인 (SpotNodeStatus,
   MemberPeerEntry 등)
 - typed enum 존재 확인 (AutoConnectType, ServiceRole, SpotNodeState 등)
@@ -1612,7 +1703,7 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - Registry statusSnapshot 결과 확인 (구현된 경우)
 - Registry topologySnapshot/topologyQuery 결과 확인 (구현된 경우)
 - RegistryQueryClient snapshot 결과 확인 (구현된 경우)
-- Socket attachDiscovery → connect/disconnect/unbind/close 차단 확인
+- Socket attachDiscovery → connect/disconnect/disconnectRid/unbind/close 차단 확인
   (Discovery 지원 시)
 
 #### Service Layer Introspection Tests
@@ -1662,14 +1753,12 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - callback 등록 API는 각 소켓 타입의 capability에 따라 노출한다.
 - 위 Callback Capabilities 표가 기준이다.
 - canonical callback 이름:
-  - `onReceive`: raw `STREAM` direct fragment callback
-    (해당 바인딩이 이 optional extension 을 public 으로 노출할 때만 사용)
   - `onDispatchEvent`: SPOT unified readable notification callback
   - `onRoutedReceive`: SPOT direct routed callback
   - `onSendReady`: send ready 상태 callback
-- callback payload shape는 direct receive와 동일해야 한다.
-  - `onReceive` callback payload = raw `STREAM` recv shape
-    (binding-specific optional extension)
+- `onReceive` 는 raw `STREAM` direct fragment callback 의 내부 이름으로만
+  사용할 수 있다. canonical public binding API 이름으로 쓰지 않는다.
+- callback payload shape는 대응하는 direct receive와 동일해야 한다.
   - `onRoutedReceive` callback payload = SPOT routed recv shape
 - callback 등록 후 동일 subject에 대한 direct recv/subscribe는 native 계약에
   따라 차단된다 (EBUSY).
@@ -2999,7 +3088,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 - 메서드명은 언어 관례만 반영한다.
 - 개념 이름은 바인딩 간 최대한 동일하게 유지한다.
 - 아래 목록은 의미 기준 canonical name 이다.
-- 실제 바인딩 메서드명은 다음 두 가지 변형만 허용한다.
+- 실제 바인딩 메서드명은 다음 세 가지 변형만 허용한다.
   1. **케이싱 변형**: 언어 관례에 맞게 camelCase/PascalCase/snake_case를
      변환한다. 단어 구성은 바뀌지 않는다.
      - 예: `connectPeer` → Go: `ConnectPeer`, Python: `connect_peer`,
@@ -3019,8 +3108,15 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
        - overloading: Java, C#, C++
        - keyword / optional parameter: Python
        - optional / union type: Node/TypeScript
+  3. **언어별 property/getter 관례**: 값을 읽는 accessor는 언어 관례에 맞는
+     property 또는 getter 형태를 사용할 수 있다. 단, 개념 이름은 같아야 하고
+     새로운 동작 이름을 만들면 안 된다.
+     - 예: canonical `getValue` → C++ `value()`, .NET `Value` 또는
+       `GetValue()`, Java/Node `getValue()`
+     - 예: canonical `routingId`/`getRoutingId` → C++ `routing_id()`,
+       Java `routingId()`, Node `getRoutingId()`
 - **그 외의 단어 교체, 단어 생략, 다른 단어 대체는 허용하지 않는다.**
-  - 금지 예: `onReceive`를 `recvHandler`로 바꾸는 것 → 단어 교체
+  - 금지 예: `onDispatchEvent`를 `spotDispatchHandler`로 바꾸는 것 → 단어 교체
   - 금지 예: `querySnapshot`을 `snapshot`으로 줄이는 것 → 단어 생략이므로,
     canonical 이름 자체를 `snapshot`으로 정의해야 한다
 - 케이싱이나 접미사가 달라져도 역할 구분과 의미 계약은 같아야 한다.
@@ -3034,7 +3130,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
   - `subscribe`
   - `receiveSubscriptionEvent`
   - `setSubscription`, `unsetSubscription`
-  - `onReceive`, `onDispatchEvent`, `onRoutedReceive`, `onSendReady`
+  - `onPacket`, `onDispatchEvent`, `onRoutedReceive`, `onSendReady`
 
 ### Method Name Conciseness
 - 이 규칙은 public API에 엄격히 적용한다.
@@ -3154,12 +3250,17 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 | Non-blocking send explicit outcome | Core enum/result | Required | Required | Required | Required | Required | Required | Required |
 | Public flags surface | Raw C flags | `int flags` | `SendFlags` / `RecvFlags` | `SendFlags` overload | `flags SendFlags` | `_with_flags` variant | `flags?: SendFlags` | keyword `flags` |
 | Typed option surface | N/A raw C options | Required | Required | Required | Required | Required | Required | Required |
+| Socket TLS helpers | `zlink_set_tls_*` | Required | Required | Required | Required | Required | Required | Required |
+| Service TLS helpers | `zlink_set_tls_*` on service handles | Required | Required | Required | Required | Required | Required | Required |
 | Socket Capability Matrix 준수 | Core 기준 | Required | Required | Required | Required | Required | Required | Required |
-| `onReceive` callback | STREAM raw fn ptr | Optional | Optional | Optional | Optional | Optional | Optional | Optional |
+| `onReceive` callback | STREAM raw fn ptr | Internal-only | Internal-only | Internal-only | Internal-only | Internal-only | Internal-only | Internal-only |
 | `onDispatchEvent` callback | SPOT raw fn ptr | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required |
 | `onRoutedReceive` callback | SPOT raw fn ptr | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required |
 | `onSendReady` callback | Raw fn ptr | Required | Required | Required | Required | Required | Required | Required |
 | StreamSocket `connect` 차단 | N/A | Required | Required | Required | Required | Required | Required | Required |
+| StreamSocket `disconnectRid` 차단 | N/A | Required | Required | Required | Required | Required | Required | Required |
+| Public `detachStream` 비노출 | N/A | Required | Required | Required | Required | Required | Required | Required |
+| Poller result type name | N/A | `poll_event_t` | `PollEvent` | `PollEvent` | `PollEvent` | `PollEvent` | `PollEvent` | `PollEvent` |
 | Monitor typed event surface | Raw struct | Required | Required | Required | Required | Required | Required | Required |
 
 ## Testing Policy
@@ -3223,6 +3324,8 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 - canonical public API surface test
 - socket type capability 분리 확인
 - typed option surface 존재 확인
+- socket 공통 TLS helper 존재 확인
+- service TLS helper 존재 확인
 - raw option bag 비노출 확인
 - monitor canonical surface 존재 확인
   - `recv()`
@@ -3417,6 +3520,8 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 - 검증: surface test가 matrix와 일치해야 한다.
 - 대표 위반 예:
   - StreamSocket에 `connect()` 노출 → 제거
+  - StreamSocket에 `disconnectRid()` 노출 → 제거
+  - StreamSocket에 `detachStream()` 노출 → 제거
   - Node에 `onSendReady` 없음 → 추가
   - 잘못된 소켓에 publish/subscribe 노출 → 제거
 
@@ -3426,7 +3531,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 - deprecated alias는 제거한다.
 - 검증: surface test에서 canonical 이름 존재를 확인한다.
 - 대표 위반 예:
-  - `recvHandler` → `onReceive`
+  - public `recvHandler` / `onReceive` → 제거하거나 internal raw STREAM bridge로 이동
   - `spotDispatchHandler` → `onDispatchEvent`
   - `on_topic_message` → `subscribe`
 
@@ -3515,7 +3620,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 2. **이름 정규화 완료**
    - 모든 public API가 Naming Policy의 canonical 이름을 사용한다.
    - deprecated alias가 남아 있지 않다.
-   - Callback API Policy의 canonical 이름(`onReceive`, `onDispatchEvent`,
+   - Callback API Policy의 canonical 이름(`onPacket`, `onDispatchEvent`,
      `onRoutedReceive`, `onSendReady`)이 해당 capability에 맞게 존재한다.
 
 3. **얕은 래퍼 제거**
@@ -3700,11 +3805,12 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 
 ## Peer Disconnect by Routing ID
 
-All bindings expose the core peer-rid disconnect surface. The raw socket API
-maps to `zlink_disconnect_rid()`, and the SpotNode API maps to
-`zlink_spot_node_disconnect_peer_rid()`. Spot facade types do not expose a
-separate peer-rid disconnect method because peer mesh ownership belongs to
-SpotNode.
+All bindings expose the core peer-rid disconnect surface on connectable raw
+socket types. The raw socket API maps to `zlink_disconnect_rid()`, and the
+SpotNode API maps to `zlink_spot_node_disconnect_peer_rid()`. `StreamSocket`
+is bind-only and does not expose peer-rid disconnect. Spot facade types do not
+expose a separate peer-rid disconnect method because peer mesh ownership
+belongs to SpotNode.
 
 | Language | Raw socket name | SpotNode name |
 |---|---|---|

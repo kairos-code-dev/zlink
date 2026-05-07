@@ -1703,7 +1703,8 @@ been added. JavaScript runtime code must perform the same validation and throw
 a validation error for submit without payload. Repeated `message(...)` calls
 append multipart payload parts in order. Async request submission uses
 `submitAsync()` and has no submit flags; callback submission may use
-`flags(...)` before `submit(callback)`.
+`flags(...)` before `submit(callback)`. Submit consumes the operation;
+reusing the same operation object after submit must throw a validation error.
 
 `onDispatchEvent(...)` is the canonical SPOT readable-notification surface.
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining

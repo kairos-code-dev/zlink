@@ -1363,8 +1363,15 @@ class RequestOp:
     def message(self, payload: Message | bytes) -> RequestOp: ...
     def messages(self, *payloads: Message | bytes) -> RequestOp: ...
     def timeout(self, timeout: int) -> RequestOp: ...
-    def flags(self, flags: int) -> RequestOp: ...
+    def flags(self, flags: int) -> RequestCallbackOp: ...
     async def submit_async(self) -> list[Message]: ...                           # Raises: SubmitError, RequestError
+    def submit(self, callback: Callable[[RequestResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
+
+class RequestCallbackOp:
+    def message(self, payload: Message | bytes) -> RequestCallbackOp: ...
+    def messages(self, *payloads: Message | bytes) -> RequestCallbackOp: ...
+    def timeout(self, timeout: int) -> RequestCallbackOp: ...
+    def flags(self, flags: int) -> RequestCallbackOp: ...
     def submit(self, callback: Callable[[RequestResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
 
 class ReplyOp:
@@ -1422,7 +1429,11 @@ class Spot:
 multiple parts without forcing callers to build a list. `submit` without any
 payload raises a validation error before calling native code. Async request
 submission uses `submit_async()` and must not use submit flags; callback
-submission uses `submit(callback)` and may use `flags(...)`.
+submission uses `submit(callback)` and may use `flags(...)`. Calling
+`flags(...)` on a request operation returns `RequestCallbackOp`, where
+`submit_async()` is not part of the public contract. Submit consumes the
+operation; reusing the same operation object after submit raises a validation
+error.
 
 ```python
 class SpotDispatchEvent(IntEnum):

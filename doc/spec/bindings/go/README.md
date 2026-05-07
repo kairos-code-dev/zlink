@@ -1392,7 +1392,8 @@ the context at execution time, so the operation start methods do not take
 `context.Context`. Request `Submit(ctx)` is the reply-producing form and does
 not use submit flags. Callback submission uses `SubmitCallback(ctx, callback)`
 and may use `Flags(...)`; it returns `(false, nil)` only for temporary
-backpressure.
+backpressure. Submit consumes the operation; reusing the same operation object
+after submit returns a validation error.
 
 ### Actor
 

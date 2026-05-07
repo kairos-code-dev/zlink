@@ -251,9 +251,14 @@ SPOT의 send/request/reply 계열은 조합 축이 많다. 대상 경로, payloa
 펼치면 `Spot`이 얕고 넓은 인터페이스가 된다. 고수준 바인딩은 이 조합
 복잡성을 operation 객체 안으로 숨겨야 한다.
 
-이 정책은 C ABI 바인딩에는 적용하지 않는다. C 바인딩은 `zlink.h`에 맞춘
+이 정책은 `Spot` endpoint가 소유한 data-plane 시작점에 적용한다.
+`RouterSocket` / `router_socket_t`의 router-to-spot helper는 router socket
+capability 표면이므로 이 절의 적용 대상이 아니다. 그 표면을 별도 builder로
+정리하려면 `RouterSocket` 정책과 모든 언어 문서를 함께 바꾼다.
+
+이 정책은 C ABI 바인딩에도 적용하지 않는다. C 바인딩은 `zlink.h`에 맞춘
 함수형 계약을 유지한다. C++ / Java / .NET / Node / Python / Go / Rust 같은
-고수준 바인딩의 canonical SPOT public API에는 아래 형태를 적용한다.
+고수준 바인딩의 canonical `Spot` endpoint public API에는 아래 형태를 적용한다.
 
 - `Spot`은 작업 시작점만 노출한다.
   - `publish(...)`
@@ -2165,9 +2170,10 @@ zlink_config_result_t zlink_unset_subscription(void *handle, const char *filter)
 #### Routed Direct Messaging
 
 SPOT routed direct messaging 은 특정 Spot 또는 Router peer, routed reply 대상에
-직접 메시지를 보낸다. `Spot` facade는 spot-to-spot send/request, spot-to-router
-request/reply를 제공하고, `RouterSocket`은 router-to-spot send/request/reply를
-제공한다.
+직접 메시지를 보낸다. Core substrate는 아래 part 기반 C 함수로 표현된다.
+고수준 바인딩의 `Spot` facade는 이 기능을 `SPOT Operation Builder Policy`에
+맞춘 operation builder 시작점으로 노출한다. `RouterSocket`의 router-to-spot
+helper는 router socket capability 표면이므로 기존 router socket 규칙을 따른다.
 
 ```c
 /* spot -> spot */
@@ -2186,7 +2192,9 @@ zlink_submit_result_t zlink_router_send_spot_part(void *router,
 ```
 
 바인딩 규칙:
-- routed send 는 기존 `sendRid` 패턴과 동일하다.
+- C ABI와 RouterSocket helper의 routed send 는 기존 `sendRid` 패턴과 동일하다.
+- 고수준 `Spot` endpoint의 routed send/request/reply 는 이 문서의
+  `SPOT Operation Builder Policy`를 따른다.
 - 목적지 주소는 `peer_rid` 또는 reply 대상의
   `dest_node_rid + dest_spot_rid` 로 지정한다.
 - routed recv 는 아래 Event Dispatcher 의 handler/recv surface 를 사용한다.

@@ -1998,7 +1998,8 @@ least one `message(...)` before any submit method is visible. Repeated
 not expose separate single-message and `List<Message>` overloads for
 send/request/reply paths. `RequestSubmitOp.submitAsync()` is the async request
 form and does not accept submit flags. Calling `.flags(...)` moves the request
-operation to the callback-submit stage.
+operation to the callback-submit stage. Submit consumes the operation; using
+the same operation object again after submit must fail with a validation error.
 
 `onDispatchEvent` delivers `SpotDispatchInfo`. `CHANNEL_REPLY_READABLE`
 dispatches are readiness notifications for internal request-progress work.

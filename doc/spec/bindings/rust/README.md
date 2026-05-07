@@ -1795,7 +1795,8 @@ only for `Ready` or `CallbackReady` states, so a payload-less submit is a type
 error. Repeated `message(...)` calls append multipart payload parts in order.
 Request `submit()` is the async reply-producing form and has no submit flags.
 Adding `flags(...)` moves the operation to `CallbackReady`, where only
-`submit_callback(...)` is available.
+`submit_callback(...)` is available. Submit consumes the operation by value, so
+the same operation cannot be submitted twice.
 
 ```rust
 pub enum SpotDispatchEvent {

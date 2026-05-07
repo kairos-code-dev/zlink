@@ -2020,7 +2020,11 @@ address attached channel `DEALER` handles by `channelName`.
 operation with `Submit()` / `SubmitAsync(...)` / `Submit(callback)`.
 Implementations must reject submit without at least one message. The canonical
 surface does not add separate `Message` and `IReadOnlyList<Message>` overloads
-on `Spot` for these paths.
+on `Spot` for these paths. Submit consumes the operation; reusing the same
+operation object after submit must fail with a validation error.
+`RequestSubmitOperation.SubmitAsync(...)` is the async request form and does
+not accept submit flags. Calling `Flags(...)` moves the request operation to
+the callback-submit stage.
 
 ### RegistryQueryClient
 

@@ -24,12 +24,13 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
 
     public Received RecvRouted(RecvFlags flags)
     {
-        return nativeSpot.RecvRouted(flags);
+        return nativeSpot.RecvRouted(flags)
+            ?? throw new ZlinkRecvException(ZlinkRecvException.ErrorCode.NoData);
     }
 
     public void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler)
     {
-        nativeSpot.OnDispatchEvent((_, info) => handler(info.ToFramework()));
+        nativeSpot.OnDispatchEvent(info => handler(info.ToFramework()));
     }
 
     public void OnSendReady(Action handler)
@@ -37,19 +38,22 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         nativeSpot.OnSendReady(handler);
     }
 
-    public void DrainChannelReplyFrom(IntPtr dealerSubject)
-    {
-        nativeSpot.DrainChannelReplyFrom(dealerSubject);
-    }
-
     public bool RequestChannel(
         string channelName,
         Message message,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
+        RequestCallback callback,
         SendFlags flags,
         TimeSpan? timeout)
     {
-        return nativeSpot.RequestChannel(channelName, message, callback, flags, timeout);
+        var operation = nativeSpot.RequestChannel(channelName)
+            .Message(message)
+            .Flags(flags);
+        if (timeout is { } value)
+        {
+            operation = operation.Timeout(value);
+        }
+
+        return operation.Submit(callback);
     }
 
     public bool SendChannel(
@@ -57,7 +61,10 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         Message message,
         SendFlags flags)
     {
-        return nativeSpot.SendChannel(channelName, message, flags);
+        return nativeSpot.SendChannel(channelName)
+            .Message(message)
+            .Flags(flags)
+            .Submit();
     }
 
     public bool Publish(
@@ -66,7 +73,10 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         Message message,
         SendFlags flags)
     {
-        return nativeSpot.Publish(serviceName, topic, message, flags);
+        return nativeSpot.Publish(serviceName, topic)
+            .Message(message)
+            .Flags(flags)
+            .Submit();
     }
 
     public bool SendToSpot(
@@ -75,7 +85,39 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
         Message message,
         SendFlags flags)
     {
-        return nativeSpot.SendToSpot(targetRid, spotRid, message, flags);
+        return nativeSpot.SendToSpot(targetRid, spotRid)
+            .Message(message)
+            .Flags(flags)
+            .Submit();
+    }
+
+    public ZLinkBackendActorJoinRequest? RecvActorJoin(RecvFlags flags)
+    {
+        var request = nativeSpot.RecvActorJoin(flags);
+        if (request is null)
+        {
+            return null;
+        }
+
+        return new ZLinkBackendActorJoinRequest(
+            request.Info.SourceActor.ToBackend(),
+            request.Info.TargetActor.ToBackend(),
+            request.Info.SourceNodeRid,
+            request.Info.TargetSpotRid,
+            request.Info.JoinEpoch,
+            request.Message)
+        {
+            NativeRequest = request
+        };
+    }
+
+    public void ReplyActorJoin(
+        ZLinkBackendActorJoinRequest request,
+        bool accepted,
+        Message reply)
+    {
+        var nativeRequest = (ActorJoinRequest)request.NativeRequest!;
+        nativeSpot.ReplyActorJoin(nativeRequest, accepted, reply);
     }
 
     public ValueTask DisposeAsync() => nativeSpot.DisposeAsync();

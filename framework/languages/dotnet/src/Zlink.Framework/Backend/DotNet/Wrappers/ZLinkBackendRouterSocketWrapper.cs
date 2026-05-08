@@ -12,7 +12,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
 
     public void SetChannelName(string channelName)
     {
-        nativeSocket.SetChannelName(channelName);
+        ZLinkBackendNativeAccess.SetNativeChannelName(nativeSocket, channelName);
     }
 
     public void AttachDiscovery(IZLinkBackendDiscovery discovery)
@@ -37,7 +37,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
 
     public void SetRoutingId(RoutingId routingId)
     {
-        nativeSocket.RouterOptions.RoutingId = routingId;
+        nativeSocket.SetRoutingId(routingId);
     }
 
     public Received? Recv(RecvFlags flags = RecvFlags.None)
@@ -56,7 +56,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
     public bool Request(
         RoutingId routingId,
         Message message,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
+        RequestCallback callback,
         SendFlags flags,
         TimeSpan? timeout)
     {

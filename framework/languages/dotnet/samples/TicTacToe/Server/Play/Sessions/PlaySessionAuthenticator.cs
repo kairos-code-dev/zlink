@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Systems.Zlink;
 using TicTacToe.Server.Play.Actors;
 
@@ -7,12 +8,14 @@ internal sealed class PlaySessionAuthenticator(
     PlayActorFactory actorFactory,
     ILogger<PlaySessionAuthenticator> logger)
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     public async ValueTask<PlayActor> AuthenticateAsync(
         IZLinkSessionContext context,
         Message body,
         CancellationToken cancellationToken)
     {
-        var authenticate = body.FromJson<AuthenticateReq>();
+        var authenticate = body.FromJson<AuthenticateReq>(JsonOptions);
 
         logger.LogInformation(
             "play stream -> api: authenticate requested. sessionId={SessionId}",

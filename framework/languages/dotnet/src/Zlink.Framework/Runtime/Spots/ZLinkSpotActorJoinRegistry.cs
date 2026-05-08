@@ -43,4 +43,19 @@ internal sealed class ZLinkSpotActorJoinRegistry
     {
         return _descriptorsByRequestType.TryGetValue(requestType, out descriptor);
     }
+
+    public bool TryResolveByName(string messageName, out ZLinkSpotActorJoinDescriptor? descriptor)
+    {
+        foreach (var entry in _descriptorsByRequestType.Values)
+        {
+            if (string.Equals(entry.MessageName, messageName, StringComparison.Ordinal))
+            {
+                descriptor = entry;
+                return true;
+            }
+        }
+
+        descriptor = null;
+        return false;
+    }
 }

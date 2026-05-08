@@ -135,10 +135,10 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             {
                 return;
             }
-            catch (ZlinkException ex)
+            catch (ZlinkRecvException ex)
                 when (cancellationToken.IsCancellationRequested
-                      || ex.InternalErrno is (int)ErrorCode.EFault
-                      or (int)ErrorCode.EBadf)
+                      || ex.Result is ZlinkRecvException.ErrorCode.InternalError
+                      or ZlinkRecvException.ErrorCode.InvalidHandle)
             {
                 return;
             }

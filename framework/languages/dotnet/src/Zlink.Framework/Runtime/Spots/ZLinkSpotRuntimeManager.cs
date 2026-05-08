@@ -66,6 +66,7 @@ internal sealed class ZLinkSpotRuntimeManager(
                 nodeRuntime.GetOrCreatePublisherBundle(channelName);
             }
 
+            nodeRuntime.InitializeEntrySpot();
             state.SpotNodes.Add(spotNodeRegistration.SpotNodeName, nodeRuntime);
         }
     }
@@ -295,6 +296,13 @@ internal sealed class ZLinkSpotRuntimeManager(
         return state.SpotNodes.TryGetValue(spotNodeName, out var node)
             ? node
             : throw new InvalidOperationException($"SPOT node '{spotNodeName}' is not registered.");
+    }
+
+    public ZLinkSpotActivation? GetActivationBySpotRid(
+        ZLinkFrameworkRuntimeState state,
+        RoutingId spotRid)
+    {
+        return GetActivation(state, spotRid);
     }
 
     private static ZLinkSpotActivation? GetActivation(

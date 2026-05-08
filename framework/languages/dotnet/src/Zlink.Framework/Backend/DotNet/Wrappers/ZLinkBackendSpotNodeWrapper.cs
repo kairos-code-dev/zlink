@@ -70,5 +70,70 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
             dealer.RequireNative<DealerSocket>());
     }
 
+    public IZLinkBackendSpot EntrySpot()
+    {
+        return new ZLinkBackendSpotWrapper(nativeSpotNode.EntrySpot());
+    }
+
+    public ZLinkBackendActorRef CreateActor(string actorId)
+    {
+        var actor = nativeSpotNode.CreateActor(actorId);
+        return actor.Ref.ToBackend();
+    }
+
+    public ZLinkBackendActorRef? ActorLookup(string actorId)
+    {
+        try
+        {
+            var actorRef = nativeSpotNode.ActorLookup(actorId);
+            return actorRef.ToBackend();
+        }
+        catch (ZlinkConfigException ex) when (ex.Result == ZlinkConfigException.ErrorCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    public bool JoinActor(
+        ZLinkBackendActorRef actor,
+        RoutingId destNodeRid,
+        RoutingId destSpotRid,
+        Message message,
+        RequestCallback callback,
+        TimeSpan? timeout)
+    {
+        return nativeSpotNode.JoinActor(
+            actor.ToNative(),
+            destNodeRid,
+            destSpotRid,
+            message,
+            callback,
+            SendFlags.DontWait,
+            timeout);
+    }
+
+    public void LeaveActor(
+        ZLinkBackendActorRef actor,
+        RoutingId currentSpotRid,
+        TimeSpan timeout)
+    {
+        nativeSpotNode.LeaveActor(actor.ToNative(), currentSpotRid, timeout);
+    }
+
+    public void DestroyActor(
+        ZLinkBackendActorRef actor,
+        TimeSpan timeout)
+    {
+        nativeSpotNode.DestroyActor(actor.ToNative(), timeout);
+    }
+
+    public void OnActorAdmission(Func<string, Message, bool> handler)
+    {
+        nativeSpotNode.OnActorAdmission((actorId, message) =>
+            handler(actorId, message)
+                ? ActorAdmissionResult.Accept
+                : ActorAdmissionResult.Reject);
+    }
+
     public ValueTask DisposeAsync() => nativeSpotNode.DisposeAsync();
 }

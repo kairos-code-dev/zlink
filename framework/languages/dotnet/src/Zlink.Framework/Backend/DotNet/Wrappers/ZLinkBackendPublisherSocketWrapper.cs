@@ -12,7 +12,7 @@ internal sealed class ZLinkBackendPublisherSocketWrapper(PubSocket nativeSocket)
 
     public void SetChannelName(string channelName)
     {
-        nativeSocket.SetChannelName(channelName);
+        ZLinkBackendNativeAccess.SetNativeChannelName(nativeSocket, channelName);
     }
 
     public void AttachDiscovery(IZLinkBackendDiscovery discovery)

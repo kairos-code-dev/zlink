@@ -123,6 +123,20 @@ internal sealed class ZLinkSessionContext(
         var actor = _actor
             ?? throw new InvalidOperationException("No actor is attached to the current session.");
 
+        var node = runtime.GetActorSpotNode();
+        var actorState = runtime.GetOrCreateActorState(actor.ActorId);
+        if (node is not null
+            && actorState.NativeActorRef is not null
+            && stream is ZLinkManagedStream managedStream)
+        {
+            using var encodedHeader = Message.FromBytes(HeaderCodec.Encode(header).Span);
+            using (body)
+            {
+                managedStream.SendBoundActor(node, actor.ActorId, [encodedHeader, body]);
+            }
+            return ValueTask.CompletedTask;
+        }
+
         return runtime.SubmitActorAsync(actor, header, body, cancellationToken);
     }
 

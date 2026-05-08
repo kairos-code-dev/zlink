@@ -82,12 +82,12 @@ internal sealed class ZLinkChannelMessagePump(
         Received received,
         CancellationToken cancellationToken)
     {
-        if (received.Count == 0)
+        if (received.Parts.Count == 0)
         {
             return;
         }
 
-        var header = ZLinkEnvelopeCodec.DecodeHeader(received[0]);
+        var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts[0]);
 
         switch (header.Kind)
         {
@@ -96,7 +96,7 @@ internal sealed class ZLinkChannelMessagePump(
                     .ConfigureAwait(false);
                 break;
             case ZLinkMessageKind.Command:
-                await HandleCommandAsync(channelName, received[0], header, cancellationToken)
+                await HandleCommandAsync(channelName, received.Parts[0], header, cancellationToken)
                     .ConfigureAwait(false);
                 break;
         }
@@ -110,7 +110,7 @@ internal sealed class ZLinkChannelMessagePump(
         CancellationToken cancellationToken)
     {
         var endpoint = handlerRegistry.GetRequest(header.MessageName);
-        var message = ZLinkEnvelopeCodec.DecodeBody(received[0], endpoint.MessageType);
+        var message = ZLinkEnvelopeCodec.DecodeBody(received.Parts[0], endpoint.MessageType);
         var context = new ZLinkRequestContext(
             channelName,
             header.MessageName,

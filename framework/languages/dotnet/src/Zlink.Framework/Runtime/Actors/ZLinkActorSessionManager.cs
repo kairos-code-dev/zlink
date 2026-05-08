@@ -4,7 +4,8 @@ namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorSessionManager(
     ZLinkFrameworkRuntime runtime,
-    IServiceProvider services)
+    IServiceProvider services,
+    Func<IZLinkBackendSpotNode?> getActorSpotNode)
 {
     private readonly ZLinkActorSessionRegistry _actorSessions = new();
 
@@ -31,6 +32,14 @@ internal sealed class ZLinkActorSessionManager(
 
         var state = _actorSessions.GetOrCreate(actor.ActorId);
         EnsureActorContext(actor, state);
+
+        var node = getActorSpotNode();
+        if (node is not null && state.NativeActorRef is null)
+        {
+            var existingRef = node.ActorLookup(actor.ActorId);
+            state.NativeActorRef = existingRef ?? node.CreateActor(actor.ActorId);
+        }
+
         return new CreateActorResult(actor, true);
     }
 
@@ -104,6 +113,7 @@ internal sealed class ZLinkActorSessionManager(
         var state = _actorSessions.GetOrCreate(actor.ActorId);
         EnsureActorContext(actor, state);
         var shouldPrune = false;
+        var currentSpotRid = activation.SpotRid;
 
         shouldPrune = await state.ExecuteLockedAsync(
             () =>
@@ -117,6 +127,18 @@ internal sealed class ZLinkActorSessionManager(
             return false;
         },
             cancellationToken).ConfigureAwait(false);
+
+        var node = getActorSpotNode();
+        if (node is not null && state.NativeActorRef is { } actorRef)
+        {
+            try
+            {
+                node.LeaveActor(actorRef, currentSpotRid, runtime.Registration.DefaultTimeout);
+            }
+            catch (ZlinkException)
+            {
+            }
+        }
 
         if (shouldPrune)
         {
@@ -138,6 +160,14 @@ internal sealed class ZLinkActorSessionManager(
             state.Stream = stream;
         },
             cancellationToken).ConfigureAwait(false);
+
+        var node = getActorSpotNode();
+        if (node is not null
+            && state.NativeActorRef is { } actorRef
+            && stream is ZLinkManagedStream managedStream)
+        {
+            managedStream.BindActor(node, actorRef, runtime.Registration.DefaultTimeout);
+        }
     }
 
     public async ValueTask DisconnectActorAsync(
@@ -175,6 +205,20 @@ internal sealed class ZLinkActorSessionManager(
         if (!disconnect.ShouldDisconnect)
         {
             return;
+        }
+
+        var node = getActorSpotNode();
+        if (node is not null
+            && state.NativeActorRef is { } actorRef
+            && stream is ZLinkManagedStream managedStream)
+        {
+            try
+            {
+                managedStream.UnbindActor(node, actor.ActorId, runtime.Registration.DefaultTimeout);
+            }
+            catch (ZlinkException)
+            {
+            }
         }
 
         activation = disconnect.Activation;
@@ -316,6 +360,11 @@ internal sealed class ZLinkActorSessionManager(
         }
 
         return context;
+    }
+
+    public ZLinkActorRuntimeState GetOrCreateState(string actorId)
+    {
+        return _actorSessions.GetOrCreate(actorId);
     }
 
 }

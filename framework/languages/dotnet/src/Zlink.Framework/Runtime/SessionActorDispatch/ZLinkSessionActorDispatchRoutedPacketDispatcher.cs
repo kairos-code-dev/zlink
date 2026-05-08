@@ -25,7 +25,7 @@ internal sealed class ZLinkSessionActorDispatchRoutedPacketDispatcher(IServicePr
         Received received,
         CancellationToken cancellationToken)
     {
-        var header = ZLinkEnvelopeCodec.DecodeHeader(received[0]);
+        var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts[0]);
         switch (header.MessageName)
         {
             case ZLinkInternalPacketNames.ActorDispatch:
@@ -150,7 +150,7 @@ internal sealed class ZLinkSessionActorDispatchRoutedPacketDispatcher(IServicePr
         string failureMessage)
         where TPacket : class
     {
-        return (TPacket?)ZLinkEnvelopeCodec.DecodeBody(received[0], typeof(TPacket))
+        return (TPacket?)ZLinkEnvelopeCodec.DecodeBody(received.Parts[0], typeof(TPacket))
             ?? throw new InvalidOperationException(failureMessage);
     }
 

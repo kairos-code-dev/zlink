@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Systems.Zlink.Stream.Connector.Protocol;
 using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Spots;
@@ -18,6 +19,7 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
     private readonly ZLinkSpotTimerRegistry _timers = new();
     private readonly TimeSpan _defaultTimeout;
     private readonly ZLinkAsyncSubmitter _submitter;
+    private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
     private static readonly TimeSpan SubscriptionPollInterval = TimeSpan.FromMilliseconds(20);
     private Task? _subscriptionPump;
     private int _disposed;
@@ -152,28 +154,35 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
 
     public async ValueTask InitializeAsync(CancellationToken cancellationToken)
     {
-        if (_packets.HasPackets || _actorJoins.HasHandlers)
+        RegisterWithoutSynchronizationContext(() =>
         {
-            RegisterWithoutSynchronizationContext(() =>
+            NativeSpot.OnDispatchEvent(info =>
             {
-                NativeSpot.OnDispatchEvent(info =>
+                if (info.Event == ZLinkBackendSpotDispatchEvent.RoutedReadable)
                 {
-                    if (info.Event == ZLinkBackendSpotDispatchEvent.RoutedReadable)
-                    {
-                        QueueSerialized(
-                            static (activation, ct) => activation.DispatchRoutedDrainAsync(ct));
-                    }
-                    else if (info.Event == ZLinkBackendSpotDispatchEvent.ChannelReplyReadable
-                        && info.Subject is IntPtr dealerSubject
-                        && dealerSubject != IntPtr.Zero)
-                    {
-                        NativeSpot.DrainChannelReplyFrom(dealerSubject);
-                    }
-                });
-
-                return 0;
+                    QueueSerialized(
+                        static (activation, ct) => activation.DispatchRoutedDrainAsync(ct));
+                }
+                else if (info.Event == ZLinkBackendSpotDispatchEvent.ChannelReplyReadable)
+                {
+                    info.DrainChannelReply?.Invoke();
+                }
+                else if (info.Event == ZLinkBackendSpotDispatchEvent.ActorJoinReadable)
+                {
+                    QueueSerialized(
+                        static (activation, ct) => activation.DispatchActorJoinDrainAsync(ct));
+                }
+                else if (info.Event == ZLinkBackendSpotDispatchEvent.ActorReadable
+                    && info.ActorParts is { Count: > 0 } actorParts)
+                {
+                    QueueSerialized(
+                        static (activation, state, ct) => activation.DispatchActorPartsAsync(state, ct),
+                        actorParts);
+                }
             });
-        }
+
+            return 0;
+        });
 
         if (_subscriptions.HasSubscriptions)
         {
@@ -290,6 +299,13 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
     }
 
     public CancellationToken StopToken => _stopSource.Token;
+
+    public bool TryResolveActorJoinDescriptor(
+        Type requestType,
+        out ZLinkSpotActorJoinDescriptor? descriptor)
+    {
+        return _actorJoins.TryResolve(requestType, out descriptor);
+    }
 
     public async ValueTask<TReply> JoinActorAsync<TRequest, TReply>(
         IZLinkActor actor,
@@ -460,23 +476,155 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
         _serial.Queue(operation);
     }
 
-    private async ValueTask DispatchRoutedAsync(Received received, CancellationToken cancellationToken)
+    private void QueueSerialized<TState>(
+        Func<ZLinkSpotActivation, TState, CancellationToken, ValueTask> operation,
+        TState state)
     {
-        using (received)
+        var capturedOp = operation;
+        var capturedState = state;
+        _serial.Queue((activation, ct) => capturedOp(activation, capturedState, ct));
+    }
+
+    private async ValueTask DispatchActorJoinDrainAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
         {
-            if (received.Count == 0)
+            ZLinkBackendActorJoinRequest? request;
+            try
+            {
+                request = NativeSpot.RecvActorJoin(RecvFlags.DontWait);
+            }
+            catch (ZlinkRecvException ex)
+                when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
             {
                 return;
             }
 
-            var header = ZLinkEnvelopeCodec.DecodeHeader(received[0]);
+            if (request is null)
+            {
+                return;
+            }
+
+            await DispatchActorJoinAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask DispatchActorJoinAsync(
+        ZLinkBackendActorJoinRequest joinRequest,
+        CancellationToken cancellationToken)
+    {
+        var header = ZLinkEnvelopeCodec.DecodeHeader(joinRequest.Message);
+        if (!_actorJoins.TryResolveByName(header.MessageName, out var descriptor) || descriptor is null)
+        {
+            using var emptyReply = Message.FromBytes(ReadOnlySpan<byte>.Empty);
+            NativeSpot.ReplyActorJoin(joinRequest, accepted: false, emptyReply);
+            return;
+        }
+
+        if (!_actors.TryGetActor(joinRequest.TargetActor.ActorId, out var actor) || actor is null)
+        {
+            using var emptyReply = Message.FromBytes(ReadOnlySpan<byte>.Empty);
+            NativeSpot.ReplyActorJoin(joinRequest, accepted: false, emptyReply);
+            return;
+        }
+
+        var requestObj = ZLinkEnvelopeCodec.DecodeBody(joinRequest.Message, descriptor.RequestType)!;
+        var replyObj = await InvokeActorJoinAsync(descriptor, actor, requestObj, cancellationToken)
+            .ConfigureAwait(false);
+
+        var replyEnvelopeHeader = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Response,
+            ChannelName,
+            descriptor.MessageName,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            null, null, null, null, null);
+        using var replyMessage = ZLinkEnvelopeCodec.Encode(replyEnvelopeHeader, replyObj, descriptor.ReplyType);
+        NativeSpot.ReplyActorJoin(joinRequest, accepted: true, replyMessage);
+    }
+
+    private async ValueTask DispatchActorPartsAsync(
+        IReadOnlyList<ZLinkBackendActorPart> parts,
+        CancellationToken cancellationToken)
+    {
+        int i = 0;
+        while (i < parts.Count)
+        {
+            var headerPart = parts[i++];
+            if (!_actors.TryGetActor(headerPart.Actor.ActorId, out var actor) || actor is null)
+            {
+                headerPart.Message.Dispose();
+                while (i < parts.Count && parts[i - 1].More)
+                {
+                    parts[i++].Message.Dispose();
+                }
+                continue;
+            }
+
+            if (!headerPart.More)
+            {
+                await DispatchActorStreamPartAsync(
+                    actor,
+                    headerPart.Actor.ActorId,
+                    HeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory()),
+                    Message.FromBytes(ReadOnlySpan<byte>.Empty),
+                    cancellationToken).ConfigureAwait(false);
+                headerPart.Message.Dispose();
+                continue;
+            }
+
+            if (i >= parts.Count)
+            {
+                headerPart.Message.Dispose();
+                continue;
+            }
+
+            var bodyPart = parts[i++];
+            var streamHeader = HeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
+            headerPart.Message.Dispose();
+            using var body = bodyPart.Message;
+            await DispatchActorStreamPartAsync(actor, headerPart.Actor.ActorId, streamHeader, body, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask DispatchActorStreamPartAsync(
+        IZLinkActor actor,
+        string actorId,
+        ZlinkStreamHeader streamHeader,
+        Message body,
+        CancellationToken cancellationToken)
+    {
+        var runtimeState = _runtime.GetOrCreateActorState(actorId);
+        var previousDispatch = runtimeState.CurrentDispatch;
+        runtimeState.CurrentDispatch = new ZLinkActorDispatchState(streamHeader);
+        try
+        {
+            await runtimeState.DispatchAsync(_runtime.Services, actor, streamHeader, body, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            runtimeState.CurrentDispatch = previousDispatch;
+        }
+    }
+
+    private async ValueTask DispatchRoutedAsync(Received received, CancellationToken cancellationToken)
+    {
+        using (received)
+        {
+            if (received.Parts.Count == 0)
+            {
+                return;
+            }
+
+            var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts[0]);
             if (!_packets.TryResolve(header, out var descriptor)
                 || descriptor is null)
             {
                 return;
             }
 
-            var message = ZLinkEnvelopeCodec.DecodeBody(received[0], descriptor.MessageType);
+            var message = ZLinkEnvelopeCodec.DecodeBody(received.Parts[0], descriptor.MessageType);
             if (descriptor.IsRequest)
             {
                 var reply = await InvokeRequestAsync(descriptor, message, cancellationToken);
@@ -508,8 +656,8 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
             {
                 received = NativeSpot.RecvRouted(RecvFlags.DontWait);
             }
-            catch (ZlinkException ex)
-                when (ex.InternalErrno == (int)ErrorCode.EAgain)
+            catch (ZlinkRecvException ex)
+                when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
             {
                 return;
             }
@@ -544,10 +692,10 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
             {
                 return;
             }
-            catch (ZlinkException ex)
+            catch (ZlinkRecvException ex)
                 when (cancellationToken.IsCancellationRequested
-                      || ex.InternalErrno is (int)ErrorCode.EFault
-                      or (int)ErrorCode.EBadf)
+                      || ex.Result is ZlinkRecvException.ErrorCode.InternalError
+                      or ZlinkRecvException.ErrorCode.InvalidHandle)
             {
                 return;
             }

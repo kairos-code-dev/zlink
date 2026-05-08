@@ -16,6 +16,11 @@ internal sealed class ZLinkSpotActorMembership
         _actorsById[actor.ActorId] = actor;
     }
 
+    public bool TryGetActor(string actorId, out IZLinkActor? actor)
+    {
+        return _actorsById.TryGetValue(actorId, out actor);
+    }
+
     public void RemoveIfCurrent(IZLinkActor actor)
     {
         if (_actorsById.TryGetValue(actor.ActorId, out var existing)

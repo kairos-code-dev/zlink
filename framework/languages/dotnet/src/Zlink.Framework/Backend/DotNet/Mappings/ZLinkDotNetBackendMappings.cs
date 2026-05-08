@@ -142,13 +142,43 @@ internal static class ZLinkDotNetBackendMappings
 
     public static ZLinkBackendSpotDispatchInfo ToFramework(this SpotDispatchInfo info)
     {
+        IReadOnlyList<ZLinkBackendActorPart>? actorParts = null;
+        if (info.Event == SpotDispatchEvent.ActorReadable && info.ActorParts.Count > 0)
+        {
+            actorParts = info.ActorParts
+                .Select(static p => p.ToFramework())
+                .ToArray();
+        }
+
         return new ZLinkBackendSpotDispatchInfo(
             info.Event switch
             {
                 SpotDispatchEvent.RoutedReadable => ZLinkBackendSpotDispatchEvent.RoutedReadable,
                 SpotDispatchEvent.ChannelReplyReadable => ZLinkBackendSpotDispatchEvent.ChannelReplyReadable,
+                SpotDispatchEvent.ActorJoinReadable => ZLinkBackendSpotDispatchEvent.ActorJoinReadable,
+                SpotDispatchEvent.ActorReadable => ZLinkBackendSpotDispatchEvent.ActorReadable,
                 _ => ZLinkBackendSpotDispatchEvent.Internal,
             },
-            info.Subject);
+            ActorParts: actorParts);
+    }
+
+    public static ZLinkBackendActorPart ToFramework(this ActorPart part)
+    {
+        return new ZLinkBackendActorPart(
+            part.Info.Actor.ToBackend(),
+            part.Info.SourceNodeRid,
+            part.Info.SourceSessionRid,
+            part.Message,
+            part.More);
+    }
+
+    public static ZLinkBackendActorRef ToBackend(this ActorRef actorRef)
+    {
+        return new ZLinkBackendActorRef(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+    }
+
+    public static ActorRef ToNative(this ZLinkBackendActorRef actorRef)
+    {
+        return new ActorRef(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
     }
 }

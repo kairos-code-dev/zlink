@@ -14,12 +14,14 @@ internal sealed class ZLinkBackendRegistryWrapper(ZlinkRegistry nativeRegistry) 
 
     public void SetHeartbeat(uint intervalMs, uint timeoutMs)
     {
-        nativeRegistry.SetHeartbeat(intervalMs, timeoutMs);
+        nativeRegistry.SetHeartbeat(
+            TimeSpan.FromMilliseconds(intervalMs),
+            TimeSpan.FromMilliseconds(timeoutMs));
     }
 
     public void SetBroadcastInterval(uint intervalMs)
     {
-        nativeRegistry.SetBroadcastInterval(intervalMs);
+        nativeRegistry.SetBroadcastInterval(TimeSpan.FromMilliseconds(intervalMs));
     }
 
     public void AddPeer(string endpoint)

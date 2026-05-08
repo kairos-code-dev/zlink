@@ -209,7 +209,7 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
             {
                 return;
             }
-            catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
+            catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
             {
                 await Task.Delay(1, cancellationToken).ConfigureAwait(false);
             }
@@ -217,14 +217,14 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
             {
                 return;
             }
-            catch (ZlinkException ex)
+            catch (ZlinkRecvException ex)
                 when (cancellationToken.IsCancellationRequested
-                      || ex.InternalErrno == (int)ErrorCode.EBadf)
+                      || ex.Result == ZlinkRecvException.ErrorCode.InvalidHandle)
             {
                 return;
             }
-            catch (ZlinkException ex)
-                when (ex.InternalErrno == (int)ErrorCode.EFault)
+            catch (ZlinkRecvException ex)
+                when (ex.Result == ZlinkRecvException.ErrorCode.InternalError)
             {
                 await Task.Delay(1, cancellationToken).ConfigureAwait(false);
             }
@@ -239,12 +239,12 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
         Received received,
         CancellationToken cancellationToken)
     {
-        if (received.Count == 0)
+        if (received.Parts.Count == 0)
         {
             return;
         }
 
-        var header = ZLinkEnvelopeCodec.DecodeHeader(received[0]);
+        var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts[0]);
         if (header.Kind == ZLinkMessageKind.Command)
         {
             await DispatchSendAsync(received, header, cancellationToken).ConfigureAwait(false);
@@ -277,7 +277,7 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
                 RouterChannelId,
                 sourceRid,
                 header,
-                received[0],
+                received.Parts[0],
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -309,7 +309,7 @@ internal sealed class ZLinkRoutedChannelRuntime : IAsyncDisposable
                     RouterChannelId,
                     sourceRid,
                     header,
-                    received[0],
+                    received.Parts[0],
                     cancellationToken)
                 .ConfigureAwait(false);
             var replyHeader = new ZLinkEnvelopeHeader(

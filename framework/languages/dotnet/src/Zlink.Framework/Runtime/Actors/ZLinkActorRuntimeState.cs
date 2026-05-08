@@ -18,6 +18,8 @@ internal sealed class ZLinkActorRuntimeState
 
     public IZLinkStream? Stream { get; set; }
 
+    public ZLinkBackendActorRef? NativeActorRef { get; set; }
+
     public ZLinkSpotActivation? Activation { get; set; }
 
     public ZLinkActorDispatchState? CurrentDispatch { get; set; }

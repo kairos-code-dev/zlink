@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend.Contracts;
@@ -114,7 +115,16 @@ internal sealed class ZLinkHandlerDispatcher(
         {
             var handler = scope.ServiceProvider.GetRequiredService(endpoint.DeclaringType);
             var args = BuildArguments(endpoint, message, scopedContext, ct);
-            var result = endpoint.Method.Invoke(handler, args);
+            object? result;
+            try
+            {
+                result = endpoint.Method.Invoke(handler, args);
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException is not null)
+            {
+                ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+                throw; // unreachable
+            }
             return await ZLinkHandlerResultAwaiter.AwaitAsync(result);
         }
 

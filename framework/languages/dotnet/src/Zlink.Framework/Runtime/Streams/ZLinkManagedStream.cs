@@ -53,4 +53,29 @@ internal sealed class ZLinkManagedStream : IZLinkStream
         LocalAddr = localAddr;
         RemoteAddr = remoteAddr;
     }
+
+    internal void BindActor(
+        IZLinkBackendSpotNode node,
+        ZLinkBackendActorRef actor,
+        TimeSpan timeout)
+    {
+        _socket.BindActor(node, _routingId, actor, timeout);
+    }
+
+    internal void UnbindActor(
+        IZLinkBackendSpotNode node,
+        string actorId,
+        TimeSpan timeout)
+    {
+        _socket.UnbindActor(node, _routingId, actorId, timeout);
+    }
+
+    internal bool SendBoundActor(
+        IZLinkBackendSpotNode node,
+        string actorId,
+        IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
+    {
+        return _socket.SendBoundActor(node, _routingId, actorId, parts, flags);
+    }
 }

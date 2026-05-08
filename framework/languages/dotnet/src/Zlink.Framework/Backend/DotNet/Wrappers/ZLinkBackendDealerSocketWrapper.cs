@@ -42,7 +42,7 @@ internal sealed class ZLinkBackendDealerSocketWrapper(DealerSocket nativeSocket)
 
     public bool Request(
         Message message,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
+        RequestCallback callback,
         SendFlags flags,
         TimeSpan? timeout)
     {

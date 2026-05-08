@@ -12,19 +12,19 @@ internal sealed class ZLinkBackendStreamSocketWrapper(StreamSocket nativeSocket)
 
     public void SetChannelName(string channelName)
     {
-        nativeSocket.SetChannelName(channelName);
+        ZLinkBackendNativeAccess.SetNativeChannelName(nativeSocket, channelName);
     }
 
     public void OnRawPacket(Func<string, Message, int> handler)
     {
-        nativeSocket.OnPacket(handler.Invoke);
+        ZLinkBackendNativeAccess.OnNativeStreamRawPacket(nativeSocket, handler.Invoke);
     }
 
     public void OnFramedPacket(Action<string, Message, Message> handler)
     {
-        nativeSocket.OnFramedPacket((routingIdText, header, body) =>
+        nativeSocket.OnPacket((routingId, header, body) =>
         {
-            handler(routingIdText, header, body);
+            handler("hex:" + routingId.ToHex(), header, body);
         });
     }
 
@@ -46,7 +46,48 @@ internal sealed class ZLinkBackendStreamSocketWrapper(StreamSocket nativeSocket)
 
     public void DisconnectPeer(RoutingId routingId)
     {
-        nativeSocket.DisconnectRid(routingId);
+        ZLinkBackendNativeAccess.DisconnectNativeStreamPeer(nativeSocket, routingId);
+    }
+
+    public void BindActor(
+        IZLinkBackendSpotNode node,
+        RoutingId sessionRid,
+        ZLinkBackendActorRef actor,
+        TimeSpan timeout)
+    {
+        nativeSocket.BindActor(
+            node.RequireNative<SpotNode>(),
+            sessionRid,
+            actor.ToNative(),
+            timeout);
+    }
+
+    public void UnbindActor(
+        IZLinkBackendSpotNode node,
+        RoutingId sessionRid,
+        string actorId,
+        TimeSpan timeout)
+    {
+        nativeSocket.UnbindActor(
+            node.RequireNative<SpotNode>(),
+            sessionRid,
+            actorId,
+            timeout);
+    }
+
+    public bool SendBoundActor(
+        IZLinkBackendSpotNode node,
+        RoutingId sessionRid,
+        string actorId,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        return nativeSocket.SendBoundActor(
+            node.RequireNative<SpotNode>(),
+            sessionRid,
+            actorId,
+            parts,
+            flags);
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();

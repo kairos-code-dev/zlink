@@ -22,6 +22,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly HashSet<string> _pubSubManualConnections = new(StringComparer.Ordinal);
     private readonly HashSet<string> _pubSubDiscoveredConnections = new(StringComparer.Ordinal);
     private Task? _discoveryPeerReconciliationTask;
+    private IZLinkBackendSpot? _entrySpot;
+    private static readonly ZlinkStreamHeaderCodec EntrySpotHeaderCodec = new();
 
     public ZLinkSpotNodeRuntime(
         IServiceProvider services,
@@ -56,6 +58,82 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Values;
 
     public IZLinkBackendDiscovery? SpotDiscovery { get; set; }
+
+    public void InitializeEntrySpot()
+    {
+        _entrySpot = Node.EntrySpot();
+        var entrySpot = _entrySpot;
+        var runtime = _runtime;
+        var stopToken = _stopSource.Token;
+
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
+        try
+        {
+            entrySpot.OnDispatchEvent(info =>
+            {
+                if (info.Event != ZLinkBackendSpotDispatchEvent.ActorReadable
+                    || info.ActorParts is not { Count: > 0 } actorParts)
+                {
+                    return;
+                }
+
+                _ = Task.Run(
+                    () => DispatchEntrySpotActorPartsAsync(runtime, actorParts, stopToken),
+                    CancellationToken.None);
+            });
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+    }
+
+    private static async Task DispatchEntrySpotActorPartsAsync(
+        ZLinkFrameworkRuntime runtime,
+        IReadOnlyList<ZLinkBackendActorPart> parts,
+        CancellationToken cancellationToken)
+    {
+        int i = 0;
+        while (i < parts.Count)
+        {
+            var headerPart = parts[i++];
+            var actorState = runtime.GetOrCreateActorState(headerPart.Actor.ActorId);
+            var actor = actorState.Actor;
+            if (actor is null)
+            {
+                headerPart.Message.Dispose();
+                while (i < parts.Count && parts[i - 1].More)
+                {
+                    parts[i++].Message.Dispose();
+                }
+                continue;
+            }
+
+            if (!headerPart.More)
+            {
+                var header = EntrySpotHeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
+                headerPart.Message.Dispose();
+                using var emptyBody = Message.FromBytes(ReadOnlySpan<byte>.Empty);
+                await runtime.SubmitActorAsync(actor, header, emptyBody, cancellationToken)
+                    .ConfigureAwait(false);
+                continue;
+            }
+
+            if (i >= parts.Count)
+            {
+                headerPart.Message.Dispose();
+                continue;
+            }
+
+            var bodyPart = parts[i++];
+            var streamHeader = EntrySpotHeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
+            headerPart.Message.Dispose();
+            using var body = bodyPart.Message;
+            await runtime.SubmitActorAsync(actor, streamHeader, body, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
 
     public void StartDiscoveryPeerReconciliation()
     {
@@ -339,7 +417,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             Node.ConnectPeer(endpoint);
         }
         catch (ZlinkConnectException error)
-            when (error.InternalErrno == (int)ErrorCode.EBusy)
+            when (error.Result == ZlinkConnectException.ErrorCode.Busy)
         {
         }
         return ValueTask.FromResult(true);
@@ -358,7 +436,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             Node.ConnectPeer(endpoint);
         }
         catch (ZlinkConnectException error)
-            when (error.InternalErrno == (int)ErrorCode.EBusy)
+            when (error.Result == ZlinkConnectException.ErrorCode.Busy)
         {
         }
         return ValueTask.FromResult(true);
@@ -459,6 +537,11 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         foreach (var channel in _channelBundles.Values)
         {
             await channel.DisposeAsync();
+        }
+
+        if (_entrySpot is not null)
+        {
+            await _entrySpot.DisposeAsync();
         }
 
         await Node.DisposeAsync();

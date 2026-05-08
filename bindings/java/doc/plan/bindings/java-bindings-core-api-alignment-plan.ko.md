@@ -408,7 +408,7 @@ record SubscriptionEntry(byte[] filter, boolean pattern) {}
 - project dir:
   - `bindings/java/samples/Zlink.Samples`
 - package:
-  - `dev.kairoscode.zlink.samples`
+  - `systems.zlink.samples`
 - 실행 방식:
   - `JavaExec` task 로 각 샘플 개별 실행
 
@@ -474,10 +474,10 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
   - 즉시 치환
 
 대상 파일:
-- `bindings/java/src/main/java/dev/kairoscode/zlink/internal/Native.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/internal/NativeMsg.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/**`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/service/**`
+- `bindings/java/src/main/java/systems/zlink/internal/Native.java`
+- `bindings/java/src/main/java/systems/zlink/internal/NativeMsg.java`
+- `bindings/java/src/main/java/systems/zlink/**`
+- `bindings/java/src/main/java/systems/zlink/service/**`
 
 산출물:
 - Java-to-core API matrix
@@ -573,7 +573,7 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
   `zlink_subscription_event`) 과 direct callback downcall
   (`zlink_recv_handler`, `zlink_subscribe_handler`,
   `zlink_send_ready_handler`) 도 `Native` 에 추가했고,
-  `src/test/java/dev/kairoscode/zlink/NativeContractTest.java` 에
+  `src/test/java/systems/zlink/NativeContractTest.java` 에
   `router/pub/sub/stream` option family smoke 를 보강한 뒤
   `cd bindings/java && ./gradlew test --no-daemon` 가 계속 통과한다.
 - `NativeMsg` 에서 `zlink_msg_send` / `zlink_msg_recv` / `zlink_msg_more`
@@ -585,7 +585,7 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
   찾도록 보정했다.
 - 이후 core regression
   `core/tests/integration/test_public_inproc_multipart_send.cpp` 와 Java
-  regression `src/test/java/dev/kairoscode/zlink/NativeContractTest.java`
+  regression `src/test/java/systems/zlink/NativeContractTest.java`
   로 `Socket.sendMessageFrame -> zlink_send_part` 의 blocking `EINVAL` 를 재현했고,
   `core/src/core/multipart_send_txn.cpp` 에서 blocking `sndtimeo` 조회 실패 시
   public send fallback 을 타도록 보정해 해소했다.
@@ -831,7 +831,7 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
 
 완료 기준:
 
-- `bindings/java/src/main/java/dev/kairoscode/zlink/service/receiver/*` 가 삭제된다.
+- `bindings/java/src/main/java/systems/zlink/service/receiver/*` 가 삭제된다.
 - 관련 문서/테스트/샘플이 모두 새 경로로 이동한다.
 
 ### 3.4 `SpotNode`
@@ -949,7 +949,7 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
 
 contract test 소스 구조 결정:
 
-- `src/test/java/dev/kairoscode/zlink/contract/**`
+- `src/test/java/systems/zlink/contract/**`
 - 기존 top-level/core/integration 테스트는 이 구조로 재배치하거나 삭제
 
 sample 실행 task 결정:
@@ -998,7 +998,7 @@ sample 구현 규칙:
 
 진행 메모 (2026-03-26):
 
-- `src/test/java/dev/kairoscode/zlink/integration/*.java` 의 old ported
+- `src/test/java/systems/zlink/integration/*.java` 의 old ported
   integration 묶음과 top-level `*PortedTest.java` 를 제거해 test source set 을
   contract 중심으로 축소했다.
 - `TestSupport` 에 남아 있던 sleep/polling helper 도 삭제해 test 자산에서
@@ -1099,35 +1099,35 @@ sample 구현 규칙:
 
 ### 우선 수정 대상
 
-- `bindings/java/src/main/java/dev/kairoscode/zlink/internal/Native.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/internal/NativeMsg.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/internal/NativeLayouts.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/Socket.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/Message.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/MonitorSocket.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/RoutingId.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/Received.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/SubscriptionEntry.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/Poller.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/SocketOption.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/options/SocketOptions.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/service/discovery/Discovery.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/service/registry/Registry.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/service/spot/SpotNode.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/service/spot/Spot.java`
+- `bindings/java/src/main/java/systems/zlink/internal/Native.java`
+- `bindings/java/src/main/java/systems/zlink/internal/NativeMsg.java`
+- `bindings/java/src/main/java/systems/zlink/internal/NativeLayouts.java`
+- `bindings/java/src/main/java/systems/zlink/Socket.java`
+- `bindings/java/src/main/java/systems/zlink/Message.java`
+- `bindings/java/src/main/java/systems/zlink/MonitorSocket.java`
+- `bindings/java/src/main/java/systems/zlink/RoutingId.java`
+- `bindings/java/src/main/java/systems/zlink/Received.java`
+- `bindings/java/src/main/java/systems/zlink/SubscriptionEntry.java`
+- `bindings/java/src/main/java/systems/zlink/Poller.java`
+- `bindings/java/src/main/java/systems/zlink/SocketOption.java`
+- `bindings/java/src/main/java/systems/zlink/options/SocketOptions.java`
+- `bindings/java/src/main/java/systems/zlink/service/discovery/Discovery.java`
+- `bindings/java/src/main/java/systems/zlink/service/registry/Registry.java`
+- `bindings/java/src/main/java/systems/zlink/service/spot/SpotNode.java`
+- `bindings/java/src/main/java/systems/zlink/service/spot/Spot.java`
 - `bindings/java/build.gradle`
 - `bindings/java/settings.gradle`
 
 ### 강한 삭제/축소 후보
 
-- `bindings/java/src/main/java/dev/kairoscode/zlink/service/receiver/Receiver.java`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/service/receiver/*`
+- `bindings/java/src/main/java/systems/zlink/service/receiver/Receiver.java`
+- `bindings/java/src/main/java/systems/zlink/service/receiver/*`
 - old role enums / info records that only support receiver-based model
 
 ### 테스트 수정 대상
 
-- `bindings/java/src/test/java/dev/kairoscode/zlink/**`
-- `bindings/java/src/test/java/dev/kairoscode/zlink/integration/**`
+- `bindings/java/src/test/java/systems/zlink/**`
+- `bindings/java/src/test/java/systems/zlink/integration/**`
 - 특히 sleep/retry helper 를 가진 `TestSupport.java`
 
 ### 신규/재구성 대상
@@ -1135,7 +1135,7 @@ sample 구현 규칙:
 - `bindings/java/samples/Zlink.Samples/**`
 - `bindings/java/samples/Zlink.Samples/build.gradle`
 - sample runner 또는 sample execution Gradle task
-- `bindings/java/src/test/java/dev/kairoscode/zlink/contract/**`
+- `bindings/java/src/test/java/systems/zlink/contract/**`
 
 ## 7. 리스크와 대응
 

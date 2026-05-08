@@ -23,7 +23,7 @@ This report covers issues found while porting core tests to `bindings/java` with
 - Source equivalent: `core/tests/spot/test_spot_send_blocking_wakeup.cpp`
 - Command:
   - `cd bindings/java`
-  - `./gradlew integrationTest --no-daemon --tests dev.kairoscode.zlink.integration.TestSpotSendBlockingWakeupPortedTest`
+  - `./gradlew integrationTest --no-daemon --tests systems.zlink.integration.TestSpotSendBlockingWakeupPortedTest`
 - Result: **2/2 fail**
 - Failure detail:
   - `spot topology not ready: ReadyProbeResult[ready=false, sendOk=0, sendFail=..., recvOk=0, recvFail=0]`

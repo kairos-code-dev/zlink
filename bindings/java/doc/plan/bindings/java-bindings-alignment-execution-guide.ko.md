@@ -112,7 +112,7 @@ cd bindings/java && ./gradlew integrationTest --no-daemon
 주의:
 
 - 2026-03-26 현재 `integrationTest` 는
-  `dev.kairoscode.zlink.integration.contract.*` 만 실행하도록 좁혔다.
+  `systems.zlink.integration.contract.*` 만 실행하도록 좁혔다.
 - 즉 기존 ported integration 묶음은 더 이상 gate 대상이 아니며,
   Slice 5에서 `contract/sample/delete` 구조로 실제 삭제/이동을 계속해야 한다.
 - 따라서 현재 `integrationTest` green 은 새 canonical integration contract
@@ -179,9 +179,9 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
 
 대상:
 
-- `src/main/java/dev/kairoscode/zlink/internal/Native.java`
-- `src/main/java/dev/kairoscode/zlink/internal/NativeMsg.java`
-- `src/main/java/dev/kairoscode/zlink/internal/NativeLayouts.java`
+- `src/main/java/systems/zlink/internal/Native.java`
+- `src/main/java/systems/zlink/internal/NativeMsg.java`
+- `src/main/java/systems/zlink/internal/NativeLayouts.java`
 
 작업:
 
@@ -253,11 +253,11 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
   public send fallback 으로 흡수하도록 보정해 해소했다.
 - 재현은 core regression
   `core/tests/integration/test_public_inproc_multipart_send.cpp` 와 Java
-  regression `src/test/java/dev/kairoscode/zlink/NativeContractTest.java`
+  regression `src/test/java/systems/zlink/NativeContractTest.java`
   로 고정했고, 수정 후 `cd core/build && ctest --output-on-failure -R '^test_public_inproc_multipart_send$'`,
   `cd bindings/java && ./gradlew test --no-daemon` 가 통과한다.
 - dedicated option family downcall 추가 후에도
-  `src/test/java/dev/kairoscode/zlink/NativeContractTest.java` 의
+  `src/test/java/systems/zlink/NativeContractTest.java` 의
   native contract smoke (`router/pub/sub/stream` option family 호출) 와
   `cd bindings/java && ./gradlew test --no-daemon` 는 계속 통과한다.
 - 이후 `Native.java` 의 non-canonical 심볼
@@ -298,11 +298,11 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
 
 대상:
 
-- `src/main/java/dev/kairoscode/zlink/Message.java`
-- `src/main/java/dev/kairoscode/zlink/Socket.java`
-- `src/main/java/dev/kairoscode/zlink/RoutingId.java`
-- `src/main/java/dev/kairoscode/zlink/Received.java`
-- `src/main/java/dev/kairoscode/zlink/SubscriptionEntry.java`
+- `src/main/java/systems/zlink/Message.java`
+- `src/main/java/systems/zlink/Socket.java`
+- `src/main/java/systems/zlink/RoutingId.java`
+- `src/main/java/systems/zlink/Received.java`
+- `src/main/java/systems/zlink/SubscriptionEntry.java`
 
 작업:
 
@@ -342,7 +342,7 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
 - `Socket` 의 `byte[]` / `ByteBuffer` / `ByteBuf` / `MemorySegment` /
   `ByteSpan` direct send/recv surface 도 삭제 전 단계로
   deprecated compatibility path 로 표시했다.
-- `src/test/java/dev/kairoscode/zlink/contract/` 아래에
+- `src/test/java/systems/zlink/contract/` 아래에
   `MessageCopyWrapContractTest`, `ReceivedContractTest`,
   `SocketSubscriptionContractTest` 를 추가했고,
   `cd bindings/java && ./gradlew test --no-daemon` 는 통과한다.
@@ -354,7 +354,7 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
   multipart 배열을 managed `Message` / `Received` 로 이동한 뒤
   callback 반환 시 `Received.close()` 로 frame lifecycle 을 정리하도록
   고정했다.
-- `src/test/java/dev/kairoscode/zlink/CallbackModeContractTest.java` 에
+- `src/test/java/systems/zlink/CallbackModeContractTest.java` 에
   raw pair recv callback, raw sub subscribe callback, send-ready replace
   contract 를 추가했고, FFM pointer reinterpret / callback multipart close
   경로를 보정한 뒤 `cd bindings/java && ./gradlew test --no-daemon` 가
@@ -401,10 +401,10 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
 
 대상:
 
-- `src/main/java/dev/kairoscode/zlink/MonitorSocket.java`
-- `src/main/java/dev/kairoscode/zlink/Poller.java`
-- `src/main/java/dev/kairoscode/zlink/SocketOption.java`
-- `src/main/java/dev/kairoscode/zlink/options/SocketOptions.java`
+- `src/main/java/systems/zlink/MonitorSocket.java`
+- `src/main/java/systems/zlink/Poller.java`
+- `src/main/java/systems/zlink/SocketOption.java`
+- `src/main/java/systems/zlink/options/SocketOptions.java`
 
 작업:
 
@@ -455,11 +455,11 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
 
 대상:
 
-- `src/main/java/dev/kairoscode/zlink/service/discovery/Discovery.java`
-- `src/main/java/dev/kairoscode/zlink/service/registry/Registry.java`
-- `src/main/java/dev/kairoscode/zlink/service/spot/SpotNode.java`
-- `src/main/java/dev/kairoscode/zlink/service/spot/Spot.java`
-- `src/main/java/dev/kairoscode/zlink/service/receiver/*`
+- `src/main/java/systems/zlink/service/discovery/Discovery.java`
+- `src/main/java/systems/zlink/service/registry/Registry.java`
+- `src/main/java/systems/zlink/service/spot/SpotNode.java`
+- `src/main/java/systems/zlink/service/spot/Spot.java`
+- `src/main/java/systems/zlink/service/receiver/*`
 
 작업:
 
@@ -500,7 +500,7 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
   `Registry.status/service-summary/topology/member-peer/query-client`,
   `SpotNode.status/peers/subjects snapshot/query` facade 를 구현했다.
 - `build.gradle` 의 `integrationTest` 는 새
-  `dev.kairoscode.zlink.integration.contract.*` 만 실행하도록 좁혔고,
+  `systems.zlink.integration.contract.*` 만 실행하도록 좁혔고,
   `ServiceContractsIntegrationTest` 로 service/monitor canonical facade 를
   검증한다. 현재 `cd bindings/java && ./gradlew test --no-daemon`,
   `cd bindings/java && ./gradlew integrationTest --no-daemon` 는 모두 통과한다.
@@ -557,7 +557,7 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
 대상:
 
 - `samples/Zlink.Samples/**`
-- `src/test/java/dev/kairoscode/zlink/contract/**`
+- `src/test/java/systems/zlink/contract/**`
 
 작업:
 
@@ -574,14 +574,14 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
 
 진행 메모:
 
-- `src/test/java/dev/kairoscode/zlink/contract/` 와
-  `src/test/java/dev/kairoscode/zlink/integration/contract/` 아래에
+- `src/test/java/systems/zlink/contract/` 와
+  `src/test/java/systems/zlink/integration/contract/` 아래에
   canonical contract test 축을 추가했고,
   `cd bindings/java && ./gradlew test --no-daemon`,
   `cd bindings/java && ./gradlew integrationTest --no-daemon` 는 현재 통과한다.
 - `build.gradle` 의 `integrationTest` 도 contract 묶음만 gate 하도록 좁혀
   새 검증 축을 기준으로 동작하게 만들었다.
-- 후속 정리로 `src/test/java/dev/kairoscode/zlink/integration/*.java` 의
+- 후속 정리로 `src/test/java/systems/zlink/integration/*.java` 의
   old ported integration 묶음과 top-level `*PortedTest.java` 를 제거해
   main/integration test source set 을 contract 중심으로 축소했다.
 - `TestSupport` 의 sleep/polling helper 도 제거해 Java 테스트 자산에서

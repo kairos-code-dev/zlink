@@ -8,12 +8,12 @@
 - `doc/guide/03-2-pubsub*.md`
 - `doc/guide/03-3-dealer*.md`
 - `doc/guide/03-5-stream.md`
-- `bindings/java/src/main/java/dev/kairoscode/zlink/Socket.java`
+- `bindings/java/src/main/java/systems/zlink/Socket.java`
 
 ## 1. 목적
 
 이 문서는 `bindings/java`의 raw socket public surface를 재정의하고,
-현재 단일 [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Socket.java)
+현재 단일 [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Socket.java)
 에 몰려 있는 책임을 Java 스타일과 POSD 철학에 맞게 분리하는 상세 계획이다.
 
 목표는 다음 세 가지다.
@@ -26,7 +26,7 @@
 
 ## 2. 현재 상태와 분리 필요성
 
-현재 Java 바인딩의 [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Socket.java)
+현재 Java 바인딩의 [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Socket.java)
 는 약 2200라인 규모의 giant class다. 한 클래스 안에 다음 책임이 동시에 들어 있다.
 
 - handle ownership / lifecycle
@@ -174,21 +174,21 @@ LegacySocketCompat (package-private final)
 
 최종 파일 배치는 아래를 목표로 한다.
 
-- `src/main/java/dev/kairoscode/zlink/Socket.java`
-- `src/main/java/dev/kairoscode/zlink/PairSocket.java`
-- `src/main/java/dev/kairoscode/zlink/DealerSocket.java`
-- `src/main/java/dev/kairoscode/zlink/RouterSocket.java`
-- `src/main/java/dev/kairoscode/zlink/StreamSocket.java`
-- `src/main/java/dev/kairoscode/zlink/PubSocket.java`
-- `src/main/java/dev/kairoscode/zlink/SubSocket.java`
-- `src/main/java/dev/kairoscode/zlink/XPubSocket.java`
-- `src/main/java/dev/kairoscode/zlink/XSubSocket.java`
-- `src/main/java/dev/kairoscode/zlink/SubscriptionEntry.java`
-- `src/main/java/dev/kairoscode/zlink/SubscriptionEvent.java`
-- `src/main/java/dev/kairoscode/zlink/SocketCore.java`
-- `src/main/java/dev/kairoscode/zlink/MessagePlane.java`
-- `src/main/java/dev/kairoscode/zlink/TopicPlane.java`
-- `src/main/java/dev/kairoscode/zlink/LegacySocketCompat.java`
+- `src/main/java/systems/zlink/Socket.java`
+- `src/main/java/systems/zlink/PairSocket.java`
+- `src/main/java/systems/zlink/DealerSocket.java`
+- `src/main/java/systems/zlink/RouterSocket.java`
+- `src/main/java/systems/zlink/StreamSocket.java`
+- `src/main/java/systems/zlink/PubSocket.java`
+- `src/main/java/systems/zlink/SubSocket.java`
+- `src/main/java/systems/zlink/XPubSocket.java`
+- `src/main/java/systems/zlink/XSubSocket.java`
+- `src/main/java/systems/zlink/SubscriptionEntry.java`
+- `src/main/java/systems/zlink/SubscriptionEvent.java`
+- `src/main/java/systems/zlink/SocketCore.java`
+- `src/main/java/systems/zlink/MessagePlane.java`
+- `src/main/java/systems/zlink/TopicPlane.java`
+- `src/main/java/systems/zlink/LegacySocketCompat.java`
 
 의도:
 
@@ -705,7 +705,7 @@ socket split은 이 세 타입까지 같이 고정해야 한다.
 
 ### 13.1 `Poller`
 
-현재 [`Poller.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Poller.java)
+현재 [`Poller.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Poller.java)
 는 `Socket`에 직접 결합돼 있다. 최종 상태에서는 이 결합을 유지한다.
 
 정책:
@@ -716,7 +716,7 @@ socket split은 이 세 타입까지 같이 고정해야 한다.
 
 ### 13.2 `SocketPollSet`
 
-현재 [`SocketPollSet.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/SocketPollSet.java)
+현재 [`SocketPollSet.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/SocketPollSet.java)
 도 `Socket[]`에 직접 의존한다.
 
 정책:
@@ -733,7 +733,7 @@ socket split은 이 세 타입까지 같이 고정해야 한다.
 - 최종 상태에서 `MonitorSocket`는 monitor handle 전용 internal owner를 사용한다.
   - 선택지 A: `SocketCore`를 직접 소유
   - 선택지 B: package-private `MonitorPeerSocket extends Socket`
-- [`MonitorSocket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/MonitorSocket.java)의 `socket()` accessor는 canonical surface에서 제거 또는 deprecated 처리한다.
+- [`MonitorSocket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/MonitorSocket.java)의 `socket()` accessor는 canonical surface에서 제거 또는 deprecated 처리한다.
   - monitor handle을 또 다른 user-facing socket처럼 노출하면 abstract `Socket` 전환을 방해한다.
 
 ## 14. deprecated 호환 정책
@@ -773,7 +773,7 @@ socket split은 이 세 타입까지 같이 고정해야 한다.
 
 파일:
 
-- [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Socket.java)
+- [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Socket.java)
 - `SocketCore.java`
 - `MessagePlane.java`
 - `TopicPlane.java`
@@ -804,7 +804,7 @@ socket split은 이 세 타입까지 같이 고정해야 한다.
 - `XPubSocket.java`
 - `XSubSocket.java`
 - `SubscriptionEvent.java`
-- [`SubscriptionEntry.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/SubscriptionEntry.java)
+- [`SubscriptionEntry.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/SubscriptionEntry.java)
 
 작업:
 
@@ -823,10 +823,10 @@ socket split은 이 세 타입까지 같이 고정해야 한다.
 
 파일:
 
-- [`Poller.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Poller.java)
-- [`SocketPollSet.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/SocketPollSet.java)
-- [`MonitorSocket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/MonitorSocket.java)
-- [`Message.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Message.java)
+- [`Poller.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Poller.java)
+- [`SocketPollSet.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/SocketPollSet.java)
+- [`MonitorSocket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/MonitorSocket.java)
+- [`Message.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Message.java)
 
 작업:
 
@@ -879,15 +879,15 @@ socket split은 이 세 타입까지 같이 고정해야 한다.
 
 대상:
 
-- [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Socket.java)
+- [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Socket.java)
 - `SocketCore.java`
 - `MessagePlane.java`
 - `TopicPlane.java`
 - typed socket facade 전반
-- [`Poller.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Poller.java)
-- [`SocketPollSet.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/SocketPollSet.java)
-- [`MonitorSocket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/MonitorSocket.java)
-- [`Message.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Message.java)
+- [`Poller.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Poller.java)
+- [`SocketPollSet.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/SocketPollSet.java)
+- [`MonitorSocket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/MonitorSocket.java)
+- [`Message.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Message.java)
 
 작업:
 

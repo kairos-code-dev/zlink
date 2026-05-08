@@ -1,7 +1,7 @@
 # zlink Java Binding API Reference
 
 This reference is generated from the public Java API in
-`bindings/java/src/main/java/dev/kairoscode/zlink/`.
+`bindings/java/src/main/java/systems/zlink/`.
 
 ## Generate
 
@@ -18,7 +18,7 @@ bindings/java/build/docs/javadoc/index.html
 
 ## Scope
 
-- Public API classes in `dev.kairoscode.zlink`
-- Option types in `dev.kairoscode.zlink.options`
-- Service wrappers in `dev.kairoscode.zlink.service`
-- Internal package (`dev.kairoscode.zlink.internal`) is excluded
+- Public API classes in `systems.zlink`
+- Option types in `systems.zlink`
+- Service wrappers in `systems.zlink.service`
+- Internal package (`systems.zlink.internal`) is excluded

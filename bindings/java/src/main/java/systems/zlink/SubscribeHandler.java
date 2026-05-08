@@ -1,0 +1,8 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+package systems.zlink;
+
+@FunctionalInterface
+interface SubscribeHandler {
+    void onMessage(RoutingId routingId, String topicId, Received received);
+}

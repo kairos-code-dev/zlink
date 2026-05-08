@@ -36,7 +36,7 @@ tasks.test {
 
 application {
     applicationName = "zlink-java-perf-multi"
-    mainClass.set("dev.kairoscode.zlink.perf.multi.PerfMain")
+    mainClass.set("systems.zlink.perf.multi.PerfMain")
     applicationDefaultJvmArgs = listOf(
         "--enable-native-access=ALL-UNNAMED",
         "-server",

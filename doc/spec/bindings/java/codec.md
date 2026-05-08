@@ -4,7 +4,7 @@
 
 This document defines the public contract for Java codec extension artifacts.
 The core Java binding does not expose these entrypoints from
-`dev.kairoscode.zlink`, so applications opt in to codec dependencies
+`systems.zlink`, so applications opt in to codec dependencies
 explicitly.
 
 ## Artifacts And Packages
@@ -13,9 +13,9 @@ explicitly.
 - Maven `zlink-codec-json`
 - Maven `zlink-codec-messagepack`
 
-- `dev.kairoscode.zlink.codec.protobuf`
-- `dev.kairoscode.zlink.codec.json`
-- `dev.kairoscode.zlink.codec.messagepack`
+- `systems.zlink.codec.protobuf`
+- `systems.zlink.codec.json`
+- `systems.zlink.codec.messagepack`
 
 JSON codec baseline: `Jackson`.
 MessagePack codec baseline: `jackson-dataformat-msgpack`.
@@ -23,14 +23,14 @@ MessagePack codec baseline: `jackson-dataformat-msgpack`.
 ## Protobuf
 
 ```java
-package dev.kairoscode.zlink.codec.protobuf;
+package systems.zlink.codec.protobuf;
 
 public final class ProtobufCodec {
     public static <T extends com.google.protobuf.MessageLite> T parseProto(
-        dev.kairoscode.zlink.Message message,
+        systems.zlink.Message message,
         com.google.protobuf.Parser<T> parser);
 
-    public static dev.kairoscode.zlink.Message toMessage(
+    public static systems.zlink.Message toMessage(
         com.google.protobuf.MessageLite value);
 }
 ```
@@ -38,27 +38,27 @@ public final class ProtobufCodec {
 ## JSON
 
 ```java
-package dev.kairoscode.zlink.codec.json;
+package systems.zlink.codec.json;
 
 public final class JsonCodec {
     public static <T> T parseJson(
-        dev.kairoscode.zlink.Message message,
+        systems.zlink.Message message,
         Class<T> type);
 
-    public static dev.kairoscode.zlink.Message toMessage(Object value);
+    public static systems.zlink.Message toMessage(Object value);
 }
 ```
 
 ## MessagePack
 
 ```java
-package dev.kairoscode.zlink.codec.messagepack;
+package systems.zlink.codec.messagepack;
 
 public final class MessagePackCodec {
     public static <T> T parseMessagePack(
-        dev.kairoscode.zlink.Message message,
+        systems.zlink.Message message,
         Class<T> type);
 
-    public static dev.kairoscode.zlink.Message toMessage(Object value);
+    public static systems.zlink.Message toMessage(Object value);
 }
 ```

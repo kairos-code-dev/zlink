@@ -169,7 +169,7 @@ ZLINK_JAVA_EXPORT void zlink_java_bench_copy_to_heap(const uint8_t *src,
 }
 
 ZLINK_JAVA_EXPORT JNIEXPORT jlong JNICALL
-Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniNoop0(
+Java_systems_zlink_FfmVsJniMicrobench_jniNoop0(
   JNIEnv *env,
   jclass cls,
   jlong value) {
@@ -179,7 +179,7 @@ Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniNoop0(
 }
 
 ZLINK_JAVA_EXPORT JNIEXPORT void JNICALL
-Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniCopyToNative0(
+Java_systems_zlink_FfmVsJniMicrobench_jniCopyToNative0(
   JNIEnv *env,
   jclass cls,
   jbyteArray src,
@@ -204,7 +204,7 @@ Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniCopyToNative0(
 }
 
 ZLINK_JAVA_EXPORT JNIEXPORT void JNICALL
-Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniCopyToHeap0(
+Java_systems_zlink_FfmVsJniMicrobench_jniCopyToHeap0(
   JNIEnv *env,
   jclass cls,
   jlong src_address,
@@ -229,7 +229,7 @@ Java_dev_kairoscode_zlink_FfmVsJniMicrobench_jniCopyToHeap0(
 }
 
 ZLINK_JAVA_EXPORT JNIEXPORT void JNICALL
-Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgInitClose0(
+Java_systems_zlink_MsgInteropFfmVsJniMicrobench_jniMsgInitClose0(
   JNIEnv *env,
   jclass cls,
   jlong msg_address) {
@@ -245,7 +245,7 @@ Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgInitClose0(
 }
 
 ZLINK_JAVA_EXPORT JNIEXPORT void JNICALL
-Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgInitSizeClose0(
+Java_systems_zlink_MsgInteropFfmVsJniMicrobench_jniMsgInitSizeClose0(
   JNIEnv *env,
   jclass cls,
   jlong msg_address,
@@ -262,7 +262,7 @@ Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgInitSizeClose0(
 }
 
 ZLINK_JAVA_EXPORT JNIEXPORT void JNICALL
-Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgMovePath0(
+Java_systems_zlink_MsgInteropFfmVsJniMicrobench_jniMsgMovePath0(
   JNIEnv *env,
   jclass cls,
   jlong src_address,
@@ -291,7 +291,7 @@ Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgMovePath0(
 }
 
 ZLINK_JAVA_EXPORT JNIEXPORT void JNICALL
-Java_dev_kairoscode_zlink_MsgInteropFfmVsJniMicrobench_jniMsgCopyPath0(
+Java_systems_zlink_MsgInteropFfmVsJniMicrobench_jniMsgCopyPath0(
   JNIEnv *env,
   jclass cls,
   jlong src_address,

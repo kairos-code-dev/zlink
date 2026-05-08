@@ -20,20 +20,20 @@ dependencies {
 }
 
 def sampleMainClasses = [
-    runRequestReplyAsync: 'dev.kairoscode.zlink.samples.RequestReplyAsyncSample',
-    runPairRecv: 'dev.kairoscode.zlink.samples.PairRecvSample',
-    runPubSubRecv: 'dev.kairoscode.zlink.samples.PubSubRecvSample',
-    runDealerRouterRecv: 'dev.kairoscode.zlink.samples.DealerRouterRecvSample',
-    runStreamRecv: 'dev.kairoscode.zlink.samples.StreamRecvSample',
-    runStreamPacketCallback: 'dev.kairoscode.zlink.samples.StreamPacketCallbackSample',
-    runMonitorRecv: 'dev.kairoscode.zlink.samples.MonitorRecvSample',
-    runSpotRecv: 'dev.kairoscode.zlink.samples.SpotRecvSample',
-    runSpotRequestAsync: 'dev.kairoscode.zlink.samples.SpotRequestAsyncSample',
-    runDiscoveryRegistry: 'dev.kairoscode.zlink.samples.DiscoveryRegistrySample',
-    runRegistryQuery: 'dev.kairoscode.zlink.samples.RegistryQuerySample',
-    runActorRoomServer: 'dev.kairoscode.zlink.samples.ActorRoomServerSample',
-    runActorGatewayRelay: 'dev.kairoscode.zlink.samples.ActorGatewayRelaySample',
-    runActorSinglePlayerQueue: 'dev.kairoscode.zlink.samples.ActorSinglePlayerQueueSample'
+    runRequestReplyAsync: 'systems.zlink.samples.RequestReplyAsyncSample',
+    runPairRecv: 'systems.zlink.samples.PairRecvSample',
+    runPubSubRecv: 'systems.zlink.samples.PubSubRecvSample',
+    runDealerRouterRecv: 'systems.zlink.samples.DealerRouterRecvSample',
+    runStreamRecv: 'systems.zlink.samples.StreamRecvSample',
+    runStreamPacketCallback: 'systems.zlink.samples.StreamPacketCallbackSample',
+    runMonitorRecv: 'systems.zlink.samples.MonitorRecvSample',
+    runSpotRecv: 'systems.zlink.samples.SpotRecvSample',
+    runSpotRequestAsync: 'systems.zlink.samples.SpotRequestAsyncSample',
+    runDiscoveryRegistry: 'systems.zlink.samples.DiscoveryRegistrySample',
+    runRegistryQuery: 'systems.zlink.samples.RegistryQuerySample',
+    runActorRoomServer: 'systems.zlink.samples.ActorRoomServerSample',
+    runActorGatewayRelay: 'systems.zlink.samples.ActorGatewayRelaySample',
+    runActorSinglePlayerQueue: 'systems.zlink.samples.ActorSinglePlayerQueueSample'
 ]
 
 sampleMainClasses.each { taskName, mainClassName ->

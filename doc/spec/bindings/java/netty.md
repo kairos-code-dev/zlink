@@ -4,13 +4,13 @@
 
 This document defines the public contract for the Java Netty `ByteBuf`
 extension. The adapter is separate from the core binding so Netty-specific
-entrypoints do not become part of `dev.kairoscode.zlink`, and applications
+entrypoints do not become part of `systems.zlink`, and applications
 opt in to the Netty dependency explicitly.
 
 ## Artifact And Package
 
 - Maven `zlink-ext-netty`
-- `dev.kairoscode.zlink.netty`
+- `systems.zlink.netty`
 
 ## Ownership Rules
 
@@ -28,14 +28,14 @@ opt in to the Netty dependency explicitly.
 ## API
 
 ```java
-package dev.kairoscode.zlink.netty;
+package systems.zlink.netty;
 
 public final class NettyMessages {
-    public static dev.kairoscode.zlink.Message copyOf(
+    public static systems.zlink.Message copyOf(
         io.netty.buffer.ByteBuf source);
 
     public static int copyTo(
-        dev.kairoscode.zlink.Message message,
+        systems.zlink.Message message,
         io.netty.buffer.ByteBuf destination);
 }
 ```

@@ -1,7 +1,7 @@
 # Java Socket Surface Split 실행 가이드
 
 > 상태: 완료
-> 대상 범위: `bindings/java/src/main/java/dev/kairoscode/zlink/**`, `bindings/java/src/test/java/dev/kairoscode/zlink/**`, `bindings/java/plan/socket/**`
+> 대상 범위: `bindings/java/src/main/java/systems/zlink/**`, `bindings/java/src/test/java/systems/zlink/**`, `bindings/java/plan/socket/**`
 > 보조 참조 스펙: [`2026-03-27-java-socket-surface-detailed-design.ko.md`](/home/hep7/project/kairos/zlink/bindings/java/plan/socket/2026-03-27-java-socket-surface-detailed-design.ko.md)
 > 최종 종료 판정: `미적용 사항이 없습니다.`
 
@@ -11,7 +11,7 @@
 
 작업 목적:
 
-- giant [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Socket.java)를 Java/POSD 기준으로 분해한다.
+- giant [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Socket.java)를 Java/POSD 기준으로 분해한다.
 - typed socket facade(`PairSocket`, `DealerSocket`, `RouterSocket`, `StreamSocket`, `PubSocket`, `SubSocket`, `XPubSocket`, `XSubSocket`)를 추가한다.
 - 기존 성능 경로를 유지하면서 compile-time surface 제한을 강화한다.
 - `Poller`, `SocketPollSet`, `MonitorSocket`, `Message`, contract tests를 새 socket surface에 맞춘다.
@@ -146,7 +146,7 @@ cd bindings/java && ./gradlew test --no-daemon --tests '*CallbackModeContractTes
 
 대상:
 
-- [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Socket.java)
+- [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Socket.java)
 - `SocketCore.java`
 - `MessagePlane.java`
 - `TopicPlane.java`
@@ -194,7 +194,7 @@ cd bindings/java && ./gradlew test --no-daemon
 - `SubSocket.java`
 - `XPubSocket.java`
 - `XSubSocket.java`
-- [`SubscriptionEntry.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/SubscriptionEntry.java)
+- [`SubscriptionEntry.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/SubscriptionEntry.java)
 - `SubscriptionEvent.java`
 
 작업:
@@ -228,10 +228,10 @@ cd bindings/java && ./gradlew test --no-daemon
 
 대상:
 
-- [`Poller.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Poller.java)
-- [`SocketPollSet.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/SocketPollSet.java)
-- [`MonitorSocket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/MonitorSocket.java)
-- [`Message.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Message.java)
+- [`Poller.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Poller.java)
+- [`SocketPollSet.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/SocketPollSet.java)
+- [`MonitorSocket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/MonitorSocket.java)
+- [`Message.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Message.java)
 
 작업:
 
@@ -265,7 +265,7 @@ cd bindings/java && ./gradlew test --no-daemon --tests '*SocketContractTest'
 
 대상:
 
-- `src/test/java/dev/kairoscode/zlink/**`
+- `src/test/java/systems/zlink/**`
 - `bindings/java/plan/socket/**`
 
 작업:
@@ -300,7 +300,7 @@ cd bindings/java && ./gradlew test --no-daemon
 
 대상:
 
-- [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Socket.java)
+- [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Socket.java)
 - generic `Socket` 호출부 전반
 
 작업:
@@ -335,8 +335,8 @@ cd bindings/java && ./gradlew integrationTest --no-daemon
 
 대상:
 
-- `bindings/java/src/main/java/dev/kairoscode/zlink/**`
-- `bindings/java/src/test/java/dev/kairoscode/zlink/**`
+- `bindings/java/src/main/java/systems/zlink/**`
+- `bindings/java/src/test/java/systems/zlink/**`
 - `bindings/java/plan/socket/**`
 
 작업:
@@ -355,7 +355,7 @@ cd bindings/java && ./gradlew integrationTest --no-daemon
 진행 메모:
 
 - 2026-03-27: `SocketCore`로 callback/scratch 공통 상태를 더 흡수하고 `Message` legacy helper 사용을 main 경로에서 걷어내면서 Slice 1~3 완료 기준을 충족시켰다.
-- 2026-03-27: [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/dev/kairoscode/zlink/Socket.java) 에 남아 있던 compat-only stream unsupported stub 군을 제거해 legacy STREAM API가 `PairSocket` 등 다른 facade로 public 상속 누수되지 않게 정리했다.
+- 2026-03-27: [`Socket.java`](/home/hep7/project/kairos/zlink/bindings/java/src/main/java/systems/zlink/Socket.java) 에 남아 있던 compat-only stream unsupported stub 군을 제거해 legacy STREAM API가 `PairSocket` 등 다른 facade로 public 상속 누수되지 않게 정리했다.
 - 2026-03-27: `SocketCore`, `MessagePlane`, `TopicPlane`, `LegacySocketCompat`가 `Socket`의 package-private 직접 경계를 사용하도록 바꿔 helper 경계용 `*Internal` shim 다발을 제거했다.
 - 2026-03-27: `SocketContractTest`에 reflection 기반 surface contract를 추가해 `PairSocket`/`StreamSocket`에 legacy stream 또는 비허용 public 메서드가 다시 노출되지 않음을 고정했다.
 - 2026-03-27: `./gradlew compileJava --no-daemon`, `./gradlew test --no-daemon --tests '*SocketContractTest'`, `./gradlew test --no-daemon --tests '*SocketSubscriptionContractTest'`, `./gradlew clean test --no-daemon`, `./gradlew integrationTest --no-daemon` 통과.

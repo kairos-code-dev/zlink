@@ -215,9 +215,12 @@ core가 aggregate 함수와 `*_part` substrate를 모두 제공하던 시기에�
 | Binding | Canonical public identity |
 |---|---|
 | .NET | NuGet package id와 root namespace는 `Systems.Zlink` |
+| Java | Maven group id, JPMS module, root package는 `systems.zlink` |
 
 - .NET extension package와 namespace는 `Systems.Zlink.*` 아래에 둔다.
   예: `Systems.Zlink.Codecs.Protobuf`.
+- Java extension package는 `systems.zlink.*` 아래에 둔다.
+  예: `systems.zlink.codec.protobuf`.
 - 새 문서, 샘플, 테스트는 canonical identity만 사용한다.
 - 기존 `Zlink` root namespace 또는 package id가 구현 호환성 때문에 남아 있더라도
   canonical public identity가 아니며, 새 public API를 그 아래에 추가하지 않는다.
@@ -2742,7 +2745,7 @@ Repository placement and distribution units for codec extension modules:
 | C | `bindings/c/include/zlink/`, `bindings/c/src/` | none required | n/a |
 | C++ | `bindings/cpp/include/zlink/` | `zlink-codec-protobuf`, `zlink-codec-json`, `zlink-codec-messagepack` | `bindings/cpp/codecs/zlink-codec-protobuf/`, `bindings/cpp/codecs/zlink-codec-json/`, `bindings/cpp/codecs/zlink-codec-messagepack/` |
 | .NET | `bindings/dotnet/src/Zlink/` | NuGet `Systems.Zlink.Codecs.Protobuf`, NuGet `Systems.Zlink.Codecs.Json`, NuGet `Systems.Zlink.Codecs.MessagePack` | `bindings/dotnet/codecs/Zlink.Codecs.Protobuf/`, `bindings/dotnet/codecs/Zlink.Codecs.Json/`, `bindings/dotnet/codecs/Zlink.Codecs.MessagePack/` |
-| Java | `bindings/java/src/main/java/dev/kairoscode/zlink/` | Maven `zlink-codec-protobuf`, Maven `zlink-codec-json`, Maven `zlink-codec-messagepack` | `bindings/java/codec/zlink-codec-protobuf/`, `bindings/java/codec/zlink-codec-json/`, `bindings/java/codec/zlink-codec-messagepack/` |
+| Java | `bindings/java/src/main/java/systems/zlink/` | Maven `systems.zlink:zlink-codec-protobuf`, Maven `systems.zlink:zlink-codec-json`, Maven `systems.zlink:zlink-codec-messagepack` | `bindings/java/codec/zlink-codec-protobuf/`, `bindings/java/codec/zlink-codec-json/`, `bindings/java/codec/zlink-codec-messagepack/` |
 | Node | `bindings/node/src/` | npm `@ulalax/zlink-codec-protobuf`, npm `@ulalax/zlink-codec-json`, npm `@ulalax/zlink-codec-messagepack` | `bindings/node/packages/zlink-codec-protobuf/`, `bindings/node/packages/zlink-codec-json/`, `bindings/node/packages/zlink-codec-messagepack/` |
 | Python | `bindings/python/src/zlink/` | PyPI `zlink-codec-protobuf`, PyPI `zlink-codec-json`, PyPI `zlink-codec-messagepack` | `bindings/python/codecs/zlink_codec_protobuf/`, `bindings/python/codecs/zlink_codec_json/`, `bindings/python/codecs/zlink_codec_messagepack/` |
 | Go | `bindings/go/` | Go module `zlink/codec/proto`, Go module `zlink/codec/json`, Go module `zlink/codec/messagepack` | `bindings/go/codec/proto/`, `bindings/go/codec/json/`, `bindings/go/codec/messagepack/` |

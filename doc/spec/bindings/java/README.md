@@ -10,10 +10,10 @@ When this document lists an API absent from the Java source, this document is
 the implementation target. Java binding work must add that API or explicitly
 change this specification before claiming core alignment.
 
-Core binding types live in the `dev.kairoscode.zlink` package.
-Service extension types live in `dev.kairoscode.zlink.service.registry`,
-`dev.kairoscode.zlink.service.discovery`, and
-`dev.kairoscode.zlink.service.spot`.
+Core binding types live in the `systems.zlink` package.
+Service extension types live in `systems.zlink.service.registry`,
+`systems.zlink.service.discovery`, and
+`systems.zlink.service.spot`.
 Codec and Netty adapter contracts are specified in separate extension
 documents linked from the `Message` section.
 
@@ -200,7 +200,7 @@ stay focused on signatures.
 ## Actor Dispatch Public Surface
 
 Java exposes Actor dispatch through public classes in
-`dev.kairoscode.zlink.service.spot` and related service packages.
+`systems.zlink.service.spot` and related service packages.
 
 `SpotNode` exposes `createActor`, `actorLookup`, `remoteActorRef`,
 `createRemoteActor`, `destroyActor`, `onActorAdmission`, `joinActor`,
@@ -975,16 +975,16 @@ exceptions such as `IllegalArgumentException`, `IndexOutOfBoundsException`, or
 Codec adapters are separate public extension artifacts layered on top of the
 core binding. Their contract lives in [Java Codec Extension Specification](codec.md).
 The core module does not expose codec entrypoints from
-`dev.kairoscode.zlink`.
+`systems.zlink`.
 
 ### Netty Buffer Extension
 
 Netty `ByteBuf` support is a separate public extension. Its contract lives in
 [Java Netty Extension Specification](netty.md). Netty-specific entrypoints are
-not part of the core `dev.kairoscode.zlink` package.
+not part of the core `systems.zlink` package.
 
 The Netty extension is distributed as Maven `zlink-ext-netty` and exposes
-`dev.kairoscode.zlink.netty`.
+`systems.zlink.netty`.
 
 ### RoutingId
 

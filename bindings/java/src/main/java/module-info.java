@@ -1,9 +1,9 @@
-module dev.kairoscode.zlink {
+module systems.zlink {
     requires static io.netty.buffer;
     requires jdk.unsupported;
 
-    exports dev.kairoscode.zlink;
-    exports dev.kairoscode.zlink.service.discovery;
-    exports dev.kairoscode.zlink.service.registry;
-    exports dev.kairoscode.zlink.service.spot;
+    exports systems.zlink;
+    exports systems.zlink.service.discovery;
+    exports systems.zlink.service.registry;
+    exports systems.zlink.service.spot;
 }

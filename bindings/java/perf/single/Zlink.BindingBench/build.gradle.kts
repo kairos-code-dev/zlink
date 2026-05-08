@@ -30,7 +30,7 @@ dependencies {
 
 application {
     applicationName = "zlink-java-perf-single"
-    mainClass.set("dev.kairoscode.zlink.perf.single.PerfMain")
+    mainClass.set("systems.zlink.perf.single.PerfMain")
     applicationDefaultJvmArgs = listOf(
         "--enable-native-access=ALL-UNNAMED",
         "-server",

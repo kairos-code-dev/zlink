@@ -3,7 +3,7 @@ plugins {
     id 'maven-publish'
 }
 
-group = 'dev.kairoscode'
+group = 'systems.zlink'
 version = '5.3.10'
 description = 'zlink Java bindings — high-performance async messaging library'
 
@@ -106,7 +106,7 @@ test {
         systemProperty 'zlink.reqrep.debug', reqrepDebug
     }
     filter {
-        excludeTestsMatching 'dev.kairoscode.zlink.integration.*'
+        excludeTestsMatching 'systems.zlink.integration.*'
     }
 }
 
@@ -121,7 +121,7 @@ tasks.register('integrationTest', Test) {
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     filter {
-        includeTestsMatching 'dev.kairoscode.zlink.integration.contract.*'
+        includeTestsMatching 'systems.zlink.integration.contract.*'
     }
 }
 
@@ -130,7 +130,7 @@ tasks.register('runMessageOutboundMicrobench', JavaExec) {
     description = 'Run Java outbound message-path microbenchmarks'
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'dev.kairoscode.zlink.MessageOutboundMicrobench'
+    mainClass = 'systems.zlink.MessageOutboundMicrobench'
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
@@ -139,7 +139,7 @@ tasks.register('runFfmVsJniMicrobench', JavaExec) {
     description = 'Compare FFM and JNI call/copy overhead on the Java bridge'
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'dev.kairoscode.zlink.FfmVsJniMicrobench'
+    mainClass = 'systems.zlink.FfmVsJniMicrobench'
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
@@ -148,7 +148,7 @@ tasks.register('runMsgOperationMicrobench', JavaExec) {
     description = 'Measure msg_t and Message hot-path operations'
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'dev.kairoscode.zlink.MsgOperationMicrobench'
+    mainClass = 'systems.zlink.MsgOperationMicrobench'
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
@@ -157,14 +157,14 @@ tasks.register('runMsgInteropFfmVsJniMicrobench', JavaExec) {
     description = 'Compare msg_t primitive operations via FFM and JNI'
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'dev.kairoscode.zlink.MsgInteropFfmVsJniMicrobench'
+    mainClass = 'systems.zlink.MsgInteropFfmVsJniMicrobench'
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
 javadoc {
     source = sourceSets.main.allJava.matching {
-        exclude 'dev/kairoscode/zlink/internal/**'
-        exclude 'dev/kairoscode/zlink/InternalAccess.java'
+        exclude 'systems/zlink/internal/**'
+        exclude 'systems/zlink/InternalAccess.java'
     }
     options.encoding = 'UTF-8'
     options.docTitle = 'zlink Java Binding API'

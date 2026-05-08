@@ -78,7 +78,8 @@ async function main() {
     for (const dealer of dealers) {
       try {
         dealer.close();
-      } catch {
+      } catch (err) {
+        console.error(`[perf] close failed: ${err}`);
       }
     }
 

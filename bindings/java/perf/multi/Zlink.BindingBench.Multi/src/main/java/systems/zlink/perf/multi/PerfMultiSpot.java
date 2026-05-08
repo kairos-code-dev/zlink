@@ -22,7 +22,7 @@ import java.util.List;
 
 final class PerfMultiSpot {
     private static final String TOPIC = "bench";
-    private static final String SERVICE_NAME = "bench-svc";
+    private static final String CHANNEL_NAME = "bench-svc";
     private static final int MAX_DRAIN_PER_SPOT = 1024;
 
     private PerfMultiSpot() {
@@ -33,7 +33,7 @@ final class PerfMultiSpot {
         String registryRouterEndpoint = derivedEndpoint(config.endpoint(), 2);
         try (Context ctx = PerfUtil.newContext(config);
              Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH, SERVICE_NAME);
+             Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH, CHANNEL_NAME);
              SpotNode node = new SpotNode(ctx);
              Spot publisher = node.createSpot()) {
             node.setRoutingId(routingId("z-java-multi-spot-server"));
@@ -53,7 +53,7 @@ final class PerfMultiSpot {
             while (System.nanoTime() < activeEnd) {
                 try (Message active = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    publisher.publish(SERVICE_NAME, TOPIC)
+                    publisher.publish(TOPIC)
                         .message(active)
                         .flags(SendFlags.DONT_WAIT)
                         .submit();
@@ -63,7 +63,7 @@ final class PerfMultiSpot {
             while (System.nanoTime() < cooldownEnd) {
                 try (Message cooldown = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                    publisher.publish(SERVICE_NAME, TOPIC)
+                    publisher.publish(TOPIC)
                         .message(cooldown)
                         .flags(SendFlags.DONT_WAIT)
                         .submit();
@@ -79,7 +79,7 @@ final class PerfMultiSpot {
             derivedEndpoint(config.endpoint(), 2), config.transport());
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         try (Context ctx = PerfUtil.newContext(config);
-             Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH, SERVICE_NAME);
+             Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH, CHANNEL_NAME);
              SpotNode node = new SpotNode(ctx)) {
             node.setRoutingId(routingId("a-java-multi-spot-client"));
             PerfUtil.applySpotOptions(node, config);
@@ -152,9 +152,6 @@ final class PerfMultiSpot {
                 }
                 if (allCooldownSeen(cooldownSeen)) {
                     return;
-                }
-                if (!progressed) {
-                    sleepQuietly(1);
                 }
             }
             return;

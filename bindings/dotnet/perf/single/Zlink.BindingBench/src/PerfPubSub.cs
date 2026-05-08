@@ -177,8 +177,9 @@ internal static class PerfPubSub
             {
                 continue;
             }
-            catch
+            catch (Exception ex)
             {
+                Console.Error.WriteLine($"[single-pubsub] send failed: {ex.Message}");
                 sendFailed = true;
                 break;
             }

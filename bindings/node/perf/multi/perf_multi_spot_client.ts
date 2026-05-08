@@ -35,7 +35,7 @@ const {
 
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
-const SERVICE_NAME = 'perf.spot';
+const CHANNEL_NAME = 'perf.spot';
 const AUTO_CONNECT_SPOT_MESH = 5;
 const TRACE = process.env.PERF_MULTI_SPOT_TRACE === '1';
 
@@ -80,7 +80,8 @@ function tryControlPublish(pub, payload) {
 function closeQuietly(resource) {
   try {
     resource?.close();
-  } catch {
+  } catch (err) {
+    console.error(`[multi-spot-client] close failed: ${err}`);
   }
 }
 
@@ -162,7 +163,7 @@ async function main() {
     }
     trace(`creating-slots count=${options.clients}`);
     sharedNode = new zlink.SpotNode(ctx);
-    sharedDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
+    sharedDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
     configureTlsClient(sharedNode, options.transport);
     sharedDiscovery.connectRegistry(options.endpoint);
     sharedNode.attachDiscovery(sharedDiscovery);

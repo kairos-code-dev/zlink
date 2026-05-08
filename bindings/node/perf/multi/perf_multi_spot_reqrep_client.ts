@@ -76,7 +76,8 @@ function closeParts(parts) {
 function closeQuietly(resource) {
   try {
     resource?.close();
-  } catch {
+  } catch (err) {
+    console.error(`[multi-spot-reqrep-client] close failed: ${err}`);
   }
 }
 
@@ -112,7 +113,8 @@ async function waitForProbeReady(routers, payloads, runId, msgSize) {
         if (reply && reply.phase === 0 && reply.runId === runId && reply.msgSize === msgSize) {
           ready.add(i);
         }
-      } catch {
+      } catch (err) {
+        console.error(`[multi-spot-reqrep-client] probe failed: ${err}`);
       }
     }
     if (ready.size < routers.length) {

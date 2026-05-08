@@ -174,22 +174,26 @@ final class PerfMultiDealerDealer {
             for (MonitorSocket monitor : monitors) {
                 try {
                     monitor.close();
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    System.err.println("[multi-dealer-dealer] cleanup failed: " + e);
                 }
             }
             for (DealerSocket client : clients) {
                 try {
                     client.disconnect(config.endpoint());
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    System.err.println("[multi-dealer-dealer] cleanup failed: " + e);
                 }
                 try {
                     client.close();
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    System.err.println("[multi-dealer-dealer] cleanup failed: " + e);
                 }
             }
             try {
                 ctx.close();
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                System.err.println("[multi-dealer-dealer] cleanup failed: " + e);
             }
         }
     }

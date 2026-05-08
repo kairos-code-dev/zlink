@@ -72,7 +72,8 @@ async function main() {
         for (const sub of subs) {
           try {
             sub.close();
-          } catch {
+          } catch (err) {
+            console.error(`[perf] close failed: ${err}`);
           }
         }
         break;

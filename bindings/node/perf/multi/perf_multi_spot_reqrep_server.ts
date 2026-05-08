@@ -19,7 +19,7 @@ const {
 } = require('./perf_multi_runtime');
 
 const CONTROL_TOPIC = 'perf.control';
-const SERVICE_NAME = 'perf.spot';
+const CHANNEL_NAME = 'perf.spot';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(
   Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii')
 );
@@ -48,7 +48,8 @@ function tryRecvRouted(spot) {
 function closeQuietly(resource) {
   try {
     resource?.close();
-  } catch {
+  } catch (err) {
+    console.error(`[multi-spot-reqrep-server] close failed: ${err}`);
   }
 }
 

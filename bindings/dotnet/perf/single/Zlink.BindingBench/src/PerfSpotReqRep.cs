@@ -151,8 +151,9 @@ internal static class PerfSpotReqRep
                 if (reply.Phase == WarmupPhase)
                     return true;
             }
-            catch
+            catch (Exception ex)
             {
+                Console.Error.WriteLine($"[single-spot-reqrep] warmup probe failed: {ex.Message}");
                 Thread.Sleep(10);
             }
         }

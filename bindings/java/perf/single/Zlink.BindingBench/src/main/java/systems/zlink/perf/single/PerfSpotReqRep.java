@@ -137,7 +137,8 @@ final class PerfSpotReqRep {
                 if (reply.phase() == PerfUtil.PHASE_WARMUP) {
                     return true;
                 }
-            } catch (Throwable ignored) {
+            } catch (Throwable e) {
+                System.err.println("[single-spot-reqrep] warmup probe failed: " + e);
                 try {
                     Thread.sleep(10L);
                 } catch (InterruptedException ex) {

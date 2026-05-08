@@ -22,16 +22,18 @@ internal static class PerfRouterRouter
         {
             sender.Disconnect(endpoint);
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[single-router-router] cleanup disconnect failed: {ex.Message}");
         }
 
         try
         {
             receiver.Unbind(endpoint);
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[single-router-router] cleanup unbind failed: {ex.Message}");
         }
     }
 
@@ -275,8 +277,9 @@ internal static class PerfRouterRouter
             {
                 continue;
             }
-            catch
+            catch (Exception ex)
             {
+                Console.Error.WriteLine($"[single-router-router] send failed: {ex.Message}");
                 sendFailed = true;
                 break;
             }

@@ -288,20 +288,12 @@ bool echo_routed_payload(void *spot,
     zlink_submit_result_t submit_rc =
       zlink_spot_send_spot(
         spot, source_rid, source_spot_rid, parts, part_count, ZLINK_DONTWAIT);
-    if (submit_rc == ZLINK_SUBMIT_BACKPRESSURED) {
-        submit_rc = zlink_spot_send_spot(
-          spot,
-          source_rid,
-          source_spot_rid,
-          parts,
-          part_count,
-          ZLINK_SEND_FLAGS_NONE);
-    }
     if (submit_rc == ZLINK_SUBMIT_OK)
         return true;
 
     const int submit_errno = zlink_errno();
-    if (is_peer_disconnect_submit(submit_rc)
+    if (submit_rc == ZLINK_SUBMIT_BACKPRESSURED
+        || is_peer_disconnect_submit(submit_rc)
         || is_transient_submit_errno(submit_errno)) {
         zlink_multipart_close(parts, part_count);
         return true;

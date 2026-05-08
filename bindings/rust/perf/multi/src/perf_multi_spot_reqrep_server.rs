@@ -173,7 +173,10 @@ fn main() {
                     }
                 }
                 Err(err) if err.code() == RecvResult::NoData => break,
-                Err(_) => break,
+                Err(err) => {
+                    eprintln!("[spot-reqrep-server] recv error in dispatch: {:?}", err);
+                    break;
+                }
             }
         }
     })

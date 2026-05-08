@@ -26,13 +26,13 @@ const {
 
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
-const SERVICE_NAME = 'perf.spot';
+const CHANNEL_NAME = 'perf.spot';
 const AUTO_CONNECT_SPOT_MESH = 5;
 
-function trySpotPublish(spot, serviceName, topic, payload) {
+function trySpotPublish(spot, _channelName, topic, payload) {
   return trySocketPublish({
     publish(currentTopic, currentPayload, flags) {
-      return spot.publish(serviceName, currentTopic)
+      return spot.publish(currentTopic)
         .message(currentPayload)
         .flags(flags)
         .submit();
@@ -43,7 +43,8 @@ function trySpotPublish(spot, serviceName, topic, payload) {
 function closeQuietly(resource) {
   try {
     resource?.close();
-  } catch {
+  } catch (err) {
+    console.error(`[multi-spot-server] close failed: ${err}`);
   }
 }
 
@@ -67,7 +68,7 @@ async function main() {
   const ctx = new zlink.Context();
   applyContextPolicy(ctx, 'server', 'MULTI_SPOT');
   const registry = new zlink.Registry(ctx);
-  const discovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
+  const discovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
   const node = new zlink.SpotNode(ctx);
   const controlPub = new zlink.PubSocket(ctx);
   const controlSub = new zlink.SubSocket(ctx);
@@ -159,7 +160,7 @@ async function main() {
         }
       }
       stampPayload(payload, { phase: 0, runId: createRunId(1), msgSize: options.msgSize, seq: 0n });
-      trySpotPublish(spot, SERVICE_NAME, TOPIC, payload);
+      trySpotPublish(spot, CHANNEL_NAME, TOPIC, payload);
       if (readyCount < options.clients && !drained) {
         await sleepImmediate();
       }
@@ -211,7 +212,7 @@ async function main() {
     let seq = 1n;
     while (process.hrtime.bigint() < activeStopNs) {
       stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-      if (trySpotPublish(spot, SERVICE_NAME, TOPIC, payload)) {
+      if (trySpotPublish(spot, CHANNEL_NAME, TOPIC, payload)) {
         seq += 1n;
         continue;
       }
@@ -219,7 +220,7 @@ async function main() {
     }
     stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
     for (;;) {
-      if (trySpotPublish(spot, SERVICE_NAME, TOPIC, payload)) {
+      if (trySpotPublish(spot, CHANNEL_NAME, TOPIC, payload)) {
         break;
       }
       await sleepImmediate();

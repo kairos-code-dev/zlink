@@ -88,8 +88,6 @@ def main(argv=None):
                             ):
                                 latencies.append(latency_ns_from_message(data) / 2.0)
                             progressed = True
-                    if not progressed:
-                        time.sleep(0.001)
                 if not latencies:
                     raise RuntimeError(
                         "multi router-router benchmark did not receive any active reply"
@@ -108,8 +106,8 @@ def main(argv=None):
             for sock in sockets:
                 try:
                     sock.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    print(f"[perf] close failed: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":

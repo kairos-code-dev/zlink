@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Threading;
 using Systems.Zlink;
 using static PerfRunner;
 
@@ -7,6 +8,7 @@ internal static class PerfMultiSpotServer
 {
     private const uint RunId = 1;
     private const string Topic = "bench";
+    private const string ControlTopic = "ctrl";
 
     internal static int Run(PerfOptions options)
     {
@@ -14,11 +16,13 @@ internal static class PerfMultiSpotServer
         using var ctx = new Context();
         using var controlState = new RunnerControlState(config.Size);
         ApplyMultiServerContextOptions(ctx, options);
+
         using var registry = new Registry(ctx);
         using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh,
-            config.ServiceName);
+            config.ChannelName);
         using var nodePub = new SpotNode(ctx);
         using var spotPub = nodePub.CreateSpot();
+
         ConfigureSpotRegistryTlsIfNeeded(registry, config.Transport);
         registry.Bind(config.RegistryPubEndpoint, config.RegistryRouterEndpoint);
         registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
@@ -26,11 +30,30 @@ internal static class PerfMultiSpotServer
         discovery.ConnectRegistry(config.RegistryRouterEndpoint);
 
         ConfigureSpotNodeTlsIfNeeded(nodePub, config.Transport);
-        ConfigureSpotNodePublisher(nodePub, options);
+        ConfigureSpotNodePublisher(nodePub, options, config);
         nodePub.Bind(config.DataEndpoint);
         nodePub.AttachDiscovery(discovery);
+
+        using var controlNode = new SpotNode(ctx);
+        ConfigureSpotNodeTlsIfNeeded(controlNode, config.Transport);
+        controlNode.Bind(config.ControlEndpoint);
+
+        controlState.SetConnectControlCallback(peerEndpoint =>
+        {
+            try
+            {
+                controlNode.ConnectPeer(peerEndpoint);
+                WriteStdoutLine($"CONTROL_CONNECTED,{peerEndpoint}");
+            }
+            catch (ZlinkException ex)
+            {
+                Console.Error.WriteLine($"[multi-spot-server] peer connect failed: {ex.Message}");
+            }
+        });
+
         WriteStdoutLine(
             $"READY,{config.DataEndpoint}|{config.RegistryRouterEndpoint}");
+        WriteStdoutLine($"CONTROL_READY,{config.ControlEndpoint}");
 
         if (!controlState.WaitForStart(config.ReadyTimeoutMs))
         {
@@ -49,18 +72,26 @@ internal static class PerfMultiSpotServer
             Math.Max(1, options.Size),
             Math.Max(1, ResolveMultiDurationSeconds(options)),
             ResolveMultiConnectReadyTimeoutMs(options),
-            ResolveMultiSpotRouteWarmupMs(),
             MultiEndpointFor(options.Transport, "multi-spot-data", options),
-            MultiEndpointFor(options.Transport, "multi-spot-registry-pub", options),
-            MultiEndpointFor(options.Transport, "multi-spot-registry-router", options));
+            MultiEndpointFor(options.Transport, "multi-spot-registry-pub",
+                options),
+            MultiEndpointFor(options.Transport, "multi-spot-registry-router",
+                options),
+            MultiEndpointFor(options.Transport, "multi-spot-control", options));
     }
 
     private static void ConfigureSpotNodePublisher(SpotNode node,
-        PerfOptions options)
+        PerfOptions options, SpotServerConfig config)
     {
         int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
         int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
-        TrySetSpotOption(() => node.PubSubHighWaterMark = Math.Max(sndHwm, rcvHwm));
+        TrySetSpotOption(() => node.PubSubHighWaterMark = Math.Max(sndHwm,
+            rcvHwm));
+        if (options.SpotXpubNoDrop > 0)
+            TrySetSpotOption(() => node.PublisherNoDrop = true);
+        TrySetSpotOption(() =>
+            node.PublisherSendTimeout =
+                TimeSpan.FromMilliseconds(config.ReadyTimeoutMs));
     }
 
     private static int RunActivePhase(Spot spotPub,
@@ -69,28 +100,36 @@ internal static class PerfMultiSpotServer
         ulong seq = 1;
         var payload = new byte[Math.Max(config.Size, PerfMetricHeaderSize)];
         Array.Fill(payload, (byte)'a');
-        long warmupDeadlineTicks = config.RouteWarmupMs > 0
-            ? DeadlineTicksFromMilliseconds(config.RouteWarmupMs)
-            : Stopwatch.GetTimestamp();
-        while (config.RouteWarmupMs > 0
-               && !controlState.StopRequested
-               && Stopwatch.GetTimestamp() < warmupDeadlineTicks)
-        {
-            StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Warmup,
-                config.Size, seq++, EpochNs());
-            TryPublish(spotPub, config, payload, SendFlags.DontWait);
-            Thread.Sleep(5);
-        }
 
         long activeDeadlineTicks = DeadlineTicksFromSeconds(config.DurationSeconds);
+        bool sendPending = false;
+        long lastSendAttemptTicks = 0;
 
         while (!controlState.StopRequested
                && Stopwatch.GetTimestamp() < activeDeadlineTicks)
         {
             StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Active,
-                config.Size, seq++, EpochNs());
-            TryPublish(spotPub, config, payload, SendFlags.None);
+                config.Size, seq, EpochNs());
+            bool sent = TryPublish(spotPub, config, payload, SendFlags.DontWait);
+            if (sent)
+            {
+                seq++;
+                sendPending = false;
+            }
+            else
+            {
+                sendPending = true;
+                long now = Stopwatch.GetTimestamp();
+                if (now - lastSendAttemptTicks
+                    < Stopwatch.Frequency / 500)
+                {
+                    Thread.Sleep(2);
+                }
+                lastSendAttemptTicks = now;
+            }
         }
+
+        _ = sendPending;
 
         for (int i = 0; i < 32 && !controlState.StopRequested; i++)
         {
@@ -108,7 +147,7 @@ internal static class PerfMultiSpotServer
         try
         {
             using Message message = Message.FromBytes(payload);
-            return spotPub.Publish(config.ServiceName, Topic)
+            return spotPub.Publish(Topic)
                 .Message(message)
                 .Flags(flags)
                 .Submit();
@@ -131,7 +170,8 @@ internal static class PerfMultiSpotServer
         {
             configure();
         }
-        catch (ZlinkException ex) when (ShouldIgnoreSpotOptionError(ex.InternalErrno))
+        catch (ZlinkException ex) when (ShouldIgnoreSpotOptionError(
+                                            ex.InternalErrno))
         {
         }
     }
@@ -139,29 +179,29 @@ internal static class PerfMultiSpotServer
     private readonly struct SpotServerConfig
     {
         internal SpotServerConfig(string transport, int size,
-            int durationSeconds, int readyTimeoutMs, int routeWarmupMs,
+            int durationSeconds, int readyTimeoutMs,
             string dataEndpoint, string registryPubEndpoint,
-            string registryRouterEndpoint)
+            string registryRouterEndpoint, string controlEndpoint)
         {
             Transport = transport;
             Size = size;
             DurationSeconds = durationSeconds;
             ReadyTimeoutMs = readyTimeoutMs;
-            RouteWarmupMs = routeWarmupMs;
             DataEndpoint = dataEndpoint;
             RegistryPubEndpoint = registryPubEndpoint;
             RegistryRouterEndpoint = registryRouterEndpoint;
-            ServiceName = MultiSpotServiceName(registryRouterEndpoint);
+            ControlEndpoint = controlEndpoint;
+            ChannelName = MultiSpotChannelName(registryRouterEndpoint);
         }
 
         internal string Transport { get; }
         internal int Size { get; }
         internal int DurationSeconds { get; }
         internal int ReadyTimeoutMs { get; }
-        internal int RouteWarmupMs { get; }
         internal string DataEndpoint { get; }
         internal string RegistryPubEndpoint { get; }
         internal string RegistryRouterEndpoint { get; }
-        internal string ServiceName { get; }
+        internal string ControlEndpoint { get; }
+        internal string ChannelName { get; }
     }
 }

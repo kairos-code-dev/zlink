@@ -170,8 +170,9 @@ internal static class PerfMultiSpotReqRep
                                 return;
                             }
                         }
-                        catch
+                        catch (Exception ex)
                         {
+                            Console.Error.WriteLine($"[multi-spot-reqrep] warmup probe failed: {ex.Message}");
                             Thread.Sleep(10);
                         }
                     }

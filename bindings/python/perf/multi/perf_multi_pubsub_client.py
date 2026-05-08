@@ -64,8 +64,6 @@ def main(argv=None):
                             continue
                         latencies.append(latency_ns_from_message(data))
                         count += 1
-                if not progressed:
-                    time.sleep(0.001)
 
             elapsed = time.perf_counter() - started
             if count <= 0:
@@ -83,8 +81,8 @@ def main(argv=None):
             for sock in sockets:
                 try:
                     sock.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    print(f"[perf] close failed: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -99,8 +99,8 @@ def main(argv=None):
             for sock in sockets:
                 try:
                     sock.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    print(f"[perf] close failed: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":

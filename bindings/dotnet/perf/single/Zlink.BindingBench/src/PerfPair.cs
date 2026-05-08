@@ -162,8 +162,9 @@ internal static class PerfPair
             {
                 continue;
             }
-            catch
+            catch (Exception ex)
             {
+                Console.Error.WriteLine($"[single-pair] send failed: {ex.Message}");
                 sendFailed = true;
                 break;
             }

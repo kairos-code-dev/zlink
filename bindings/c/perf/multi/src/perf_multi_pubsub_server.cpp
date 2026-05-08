@@ -271,12 +271,13 @@ inline bool run_server_loop (void *ctx,
                     apply_benchmark_auto_hwm_msg_unit (
                       server, k_server_socket_type, current_phase_msg_size);
                     apply_benchmark_hwm (server, settings.hwm);
-                    if (zlink_ctx_auto_hwm_recalculate (ctx)
-                        != ZLINK_CONFIG_OK
-                        && bench_debug_enabled ()) {
-                        std::cerr
-                          << "[multi-pubsub-server] ctx auto-hwm recalc failed err="
-                          << zlink_errno () << std::endl;
+                    if (zlink_ctx_auto_hwm_recalculate (ctx) != ZLINK_CONFIG_OK) {
+                        if (bench_debug_enabled ()) {
+                            std::cerr
+                              << "[multi-pubsub-server] ctx auto-hwm recalc failed err="
+                              << zlink_errno () << std::endl;
+                        }
+                        return false;
                     }
                     perf_print_auto_hwm_snapshot (
                       server,

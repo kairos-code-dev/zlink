@@ -42,6 +42,14 @@
   내부 헤더나 내부 함수를 직접 호출하지 않는다.
 - `bindings/<lang>/perf`는 해당 언어 binding의 public API만 사용한다. binding
   내부/private API, 내부 구현 클래스, native 내부 helper를 직접 호출하지 않는다.
+  C를 제외한 바인딩 perf는 `zlink_*` C API나 C FFI 함수를 hot path에서 직접
+  호출해 수치를 만들면 안 된다. C API는 해당 바인딩 라이브러리 내부 구현에서만
+  사용할 수 있으며, perf는 그 바인딩이 사용자에게 공개한 API를 통해서만
+  send/recv/publish/subscribe를 수행한다.
+  성능 수치 달성만을 위해 새 public API, native API, raw handle API, zero-copy
+  전용 API를 추가해 perf가 그 경로를 타게 하는 것도 우회로 본다. 공개 API
+  누락이 별도 버그로 확인되지 않는 한, 성능 개선은 기존 바인딩 공개 API의
+  내부 구현을 고치는 방식으로 수행한다.
 - single/multi 기본 경로는 모두 context auto-HWM 을 사용한다. `PERF_*_HWM`,
   `PERF_*_SNDHWM`, `PERF_*_RCVHWM`, `PERF_*_SNDBUF`, `PERF_*_RCVBUF`
   override 는 debug 예외 경로이며 allow flag 가 켜진 경우에만 허용한다.
@@ -282,6 +290,17 @@ total: 29 bytes (고정)
 - routing 검증이 필요한 패턴(예: ROUTER)은 monitor-ready 이후
   단발성 self-check 1회만 수행하고, 실패 시 즉시 fail 처리한다.
 - registry/bootstrap/query/summary 조회는 measurement phase 밖에서만 수행한다.
+
+### 1.1.3 오류 가시성 원칙
+
+- setup/configuration 실패는 즉시 fail로 보고한다. 오류를 삼키거나
+  무시하는 패턴(빈 catch, silent ignore wrapper 등)은 허용하지 않는다.
+- best-effort 경로(stop token 전송 등)에서 발생한 오류는 이후 코드가
+  오류 상태를 읽을 수 있도록 보존한다. 오류를 버리지 않는다.
+- 오류 처리 로직은 함수/메서드 단위로 모아 하나의 처리 경로로 관리한다.
+  오퍼레이션마다 동일한 동작(fail 반환)의 처리 블록을 반복 나열하지 않는다.
+- 조건부 오류 분기(예: `EAGAIN`/`EINTR` → retry, 그 외 → fail)가 필요한
+  경우에는 해당 처리를 개별로 유지한다.
 
 ## 1.2 Binary And Runner Responsibilities
 

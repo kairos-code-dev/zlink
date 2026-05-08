@@ -132,7 +132,8 @@ final class PerfMultiSpotReqRep {
                             if (reply.phase() == PerfUtil.PHASE_WARMUP) {
                                 return;
                             }
-                        } catch (Throwable ignored) {
+                        } catch (Throwable e) {
+                            System.err.println("[multi-spot-reqrep] warmup probe failed: " + e);
                             sleepQuietly(10);
                         }
                     }

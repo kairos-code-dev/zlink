@@ -7,7 +7,7 @@ using static PerfRunner;
 
 internal static class PerfSpot
 {
-    private const string ServiceName = "bench-svc";
+    private const string ChannelName = "bench-svc";
     private const string Topic = "bench";
     private const uint RunId = 1;
     private const uint ReadyPhase = 0;
@@ -40,9 +40,9 @@ internal static class PerfSpot
         ApplySingleContextOptions(ctx);
         using var registry = new Registry(ctx);
         using var pubDiscovery = new Discovery(ctx, AutoConnectType.SpotMesh,
-            ServiceName);
+            ChannelName);
         using var subDiscovery = new Discovery(ctx, AutoConnectType.SpotMesh,
-            ServiceName);
+            ChannelName);
         using var pubNode = new SpotNode(ctx);
         using var subNode = new SpotNode(ctx);
         using var spotPub = pubNode.CreateSpot();
@@ -116,7 +116,7 @@ internal static class PerfSpot
                 seq++;
                 try
                 {
-                    PerfSocketIo.Publish(spotPub, ServiceName, Topic,
+                    PerfSocketIo.Publish(spotPub, Topic,
                         activePayload, SendFlags.None);
                 }
                 catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
@@ -128,7 +128,7 @@ internal static class PerfSpot
 
             StampMetricHeader(activePayload.AsSpan(), RunId, CooldownPhase,
                 size, seq, EpochNs());
-            PerfSocketIo.Publish(spotPub, ServiceName, Topic, activePayload,
+            PerfSocketIo.Publish(spotPub, Topic, activePayload,
                 SendFlags.None);
 
             if (!dispatchState.WaitForIdleDrain(recvTimeoutMs))
@@ -166,7 +166,7 @@ internal static class PerfSpot
             seq++;
             try
             {
-                PerfSocketIo.Publish(publisher, ServiceName, Topic,
+                PerfSocketIo.Publish(publisher, Topic,
                     probePayload, SendFlags.None);
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
@@ -199,8 +199,9 @@ internal static class PerfSpot
             {
                 return;
             }
-            catch
+            catch (Exception ex)
             {
+                Console.Error.WriteLine($"[single-spot] receive failed: {ex.Message}");
                 state.MarkFatal();
                 return;
             }

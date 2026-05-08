@@ -17,16 +17,18 @@ internal static class PerfDealerDealer
         {
             sender.Disconnect(endpoint);
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[single-dealer-dealer] cleanup disconnect failed: {ex.Message}");
         }
 
         try
         {
             receiver.Unbind(endpoint);
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[single-dealer-dealer] cleanup unbind failed: {ex.Message}");
         }
     }
 
@@ -96,8 +98,9 @@ internal static class PerfDealerDealer
             {
                 ctx.Shutdown();
             }
-            catch
+            catch (Exception shutdownEx)
             {
+                Console.Error.WriteLine($"[single-dealer-dealer] shutdown failed: {shutdownEx.Message}");
             }
             TryCleanup(sender, receiver, endpoint);
             Console.Error.WriteLine($"single_dealer_dealer_error:{ex}");
@@ -206,8 +209,9 @@ internal static class PerfDealerDealer
             {
                 continue;
             }
-            catch
+            catch (Exception ex)
             {
+                Console.Error.WriteLine($"[single-dealer-dealer] send failed: {ex.Message}");
                 sendFailed = true;
                 break;
             }

@@ -515,11 +515,14 @@ inline int run_server_benchmark (const std::string &lib_name,
             ok = false;
             break;
         }
-        if (zlink_ctx_auto_hwm_recalculate (ctx.get ()) != ZLINK_CONFIG_OK
-            && bench_debug_enabled ()) {
-            std::cerr
-              << "[multi-dealer-dealer-server] ctx auto-hwm recalc failed err="
-              << zlink_errno () << std::endl;
+        if (zlink_ctx_auto_hwm_recalculate (ctx.get ()) != ZLINK_CONFIG_OK) {
+            if (bench_debug_enabled ()) {
+                std::cerr
+                  << "[multi-dealer-dealer-server] ctx auto-hwm recalc failed err="
+                  << zlink_errno () << std::endl;
+            }
+            ok = false;
+            break;
         }
         if (bench_transition_debug_enabled ()) {
             std::cerr << "[multi-dealer-dealer-server] start size="

@@ -21,7 +21,7 @@ from perf_multi_common import (
 )
 
 
-SERVICE_NAME = "spot-svc"
+CHANNEL_NAME = "spot-svc"
 
 
 def _trace(message):
@@ -110,7 +110,7 @@ def main(argv=None):
 
     with zlink.Context() as ctx:
         registry = zlink.Registry(ctx)
-        discovery = zlink.Discovery(ctx, zlink.AutoConnectType.SPOT_MESH, SERVICE_NAME)
+        discovery = zlink.Discovery(ctx, zlink.AutoConnectType.SPOT_MESH, CHANNEL_NAME)
         data_node = zlink.SpotNode(ctx)
         configure_multi_tls_server(data_node, args.transport)
         data_node.set_routing_id(b"z-python-multi-spot-server")
@@ -179,7 +179,7 @@ def main(argv=None):
                 phase = 1 if time.perf_counter() < active_deadline else 2
                 sent = spot_publish_nonblocking(
                     data_spot,
-                    SERVICE_NAME,
+                    CHANNEL_NAME,
                     TOPIC,
                     [stamp_payload(payload, phase=phase, run_id=run_id)],
                 )
@@ -193,20 +193,20 @@ def main(argv=None):
         sys.stdout.flush()
         try:
             data_spot.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[perf] close failed: {exc}", file=sys.stderr)
         try:
             data_node.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[perf] close failed: {exc}", file=sys.stderr)
         try:
             discovery.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[perf] close failed: {exc}", file=sys.stderr)
         try:
             registry.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[perf] close failed: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -220,8 +220,9 @@ public static class PerfShared
         {
             disposable.Dispose();
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[perf-shared] dispose failed: {ex.Message}");
         }
     }
 
@@ -258,16 +259,15 @@ public static class PerfShared
             if (File.Exists(path))
                 File.Delete(path);
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[perf-shared] delete file failed: {ex.Message}");
         }
     }
 
     private static int InitializePortSeed()
     {
-        int pid = Environment.ProcessId;
-        int tick = Environment.TickCount & 0x7FFFFFFF;
-        return 20000 + Math.Abs(((pid * 131) ^ tick) % 20000);
+        return Random.Shared.Next(20000, 40001);
     }
 
     private static int GetPort()

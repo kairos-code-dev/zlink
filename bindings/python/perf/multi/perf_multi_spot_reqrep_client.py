@@ -123,8 +123,8 @@ def main(argv=None):
                 try:
                     started_size[0] = int(text.split(",", 1)[1])
                     started_event.set()
-                except Exception:
-                    pass
+                except ValueError as e:
+                    print(f"[spot-reqrep-client] malformed START message: {text!r}: {e}", file=sys.stderr, flush=True)
             elif text in {"STOP", "QUIT"}:
                 return
 
@@ -232,8 +232,6 @@ def main(argv=None):
                         run_id=run_id,
                     ):
                         latencies.append(latency_ns_from_message(data) / 2.0)
-                if not progressed:
-                    time.sleep(0.001)
 
             if not latencies:
                 raise RuntimeError(
@@ -255,8 +253,8 @@ def main(argv=None):
             for spot in spots:
                 try:
                     spot.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    print(f"[perf] close failed: {exc}", file=sys.stderr)
             node.close()
 
 

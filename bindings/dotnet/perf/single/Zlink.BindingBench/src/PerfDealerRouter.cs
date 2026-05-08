@@ -21,8 +21,9 @@ internal static class PerfDealerRouter
         {
             sender.Disconnect(endpoint);
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[single-dealer-router] cleanup disconnect failed: {ex.Message}");
             ok = false;
         }
 
@@ -30,8 +31,9 @@ internal static class PerfDealerRouter
         {
             receiver.Unbind(endpoint);
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[single-dealer-router] cleanup unbind failed: {ex.Message}");
             ok = false;
         }
 
@@ -273,8 +275,9 @@ internal static class PerfDealerRouter
             {
                 continue;
             }
-            catch
+            catch (Exception ex)
             {
+                Console.Error.WriteLine($"[single-dealer-router] send failed: {ex.Message}");
                 sendFailed = true;
                 break;
             }

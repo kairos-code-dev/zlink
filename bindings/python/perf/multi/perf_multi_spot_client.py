@@ -25,7 +25,7 @@ from perf_multi_common import (
 )
 
 
-SERVICE_NAME = "spot-svc"
+CHANNEL_NAME = "spot-svc"
 WAIT_SLICE_S = 0.01
 IDLE_DRAIN_S = 2.0
 
@@ -98,8 +98,8 @@ def main(argv=None):
                 try:
                     started_size[0] = int(text.split(",", 1)[1])
                     started_event.set()
-                except Exception:
-                    pass
+                except ValueError as e:
+                    print(f"[spot-client] malformed START message: {text!r}: {e}", file=sys.stderr, flush=True)
             elif text in {"STOP", "QUIT"}:
                 return
 
@@ -121,7 +121,7 @@ def main(argv=None):
         clients = []
         node = zlink.SpotNode(ctx)
         configure_multi_tls_client(node, args.transport)
-        discovery = zlink.Discovery(ctx, zlink.AutoConnectType.SPOT_MESH, SERVICE_NAME)
+        discovery = zlink.Discovery(ctx, zlink.AutoConnectType.SPOT_MESH, CHANNEL_NAME)
         node.set_routing_id(b"a-python-multi-spot-client")
         discovery.connect_registry(registry_router_endpoint)
         apply_multi_spot_node_admission(node)

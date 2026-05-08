@@ -190,11 +190,13 @@ async function main() {
   } finally {
     try {
       socket?.close();
-    } catch {
+    } catch (err) {
+      console.error(`[perf] close failed: ${err}`);
     }
     try {
       ctx.close();
-    } catch {
+    } catch (err) {
+      console.error(`[perf] close failed: ${err}`);
     }
   }
 }

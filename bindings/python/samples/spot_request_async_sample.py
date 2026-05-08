@@ -41,10 +41,11 @@ async def main():
                                 received.close()
 
                         responder_task = asyncio.create_task(respond())
-                        reply = await requester.request_channel(
-                            CHANNEL_NAME,
-                            [REQUEST_PAYLOAD],
-                            timeout=2.0,
+                        reply = await (
+                            requester.request_channel(CHANNEL_NAME)
+                            .message(REQUEST_PAYLOAD)
+                            .timeout(2.0)
+                            .submit_async()
                         )
                         try:
                             if [part.to_bytes() for part in reply] != [REPLY_PAYLOAD]:

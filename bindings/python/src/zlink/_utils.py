@@ -227,6 +227,9 @@ class Timer:
             _raise_result_error(ConfigError, ConfigResult, 701, lib().zlink_errno())
         obj._handler = None
         obj._handler_cb = None
+        obj._spot = spot
+        if hasattr(spot, "_register_timer"):
+            spot._register_timer(obj)
         return obj
 
     def start(self, interval_ns: int, repeat_count: int) -> None:
@@ -247,11 +250,13 @@ class Timer:
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
-    def recv(self, flags: int = 0) -> int:
+    def recv(self) -> int | None:
         if not self._handle:
             raise RecvError(RecvResult.INVALID_HANDLE, lib().zlink_errno())
         fire_count = ctypes.c_uint64()
         rc = lib().zlink_timer_recv(self._handle, ctypes.byref(fire_count))
+        if rc == RecvResult.NO_DATA:
+            return None
         if rc != 0:
             _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
         return int(fire_count.value)
@@ -279,9 +284,13 @@ class Timer:
         if not self._handle:
             return
         handle = ctypes.c_void_p(self._handle)
+        spot = getattr(self, "_spot", None)
+        if spot is not None and hasattr(spot, "_unregister_timer"):
+            spot._unregister_timer(self)
         self._handle = None
         self._handler = None
         self._handler_cb = None
+        self._spot = None
         rc = lib().zlink_timer_destroy(ctypes.byref(handle))
         if rc != 0:
             _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())

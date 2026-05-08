@@ -48,6 +48,7 @@ struct timer_handle_t
     int scheduler_busy_refs;
     bool scheduler_registered;
     uint64_t scheduled_deadline_ns;
+    std::multimap<uint64_t, timer_handle_t *>::iterator schedule_it;
     uint64_t interval_ns;
     uint64_t repeat_count;
     uint64_t next_fire_count;
@@ -71,11 +72,8 @@ struct scheduler_state_t
 
 typedef std::map<void *, std::shared_ptr<scheduler_state_t> > spot_scheduler_map_t;
 
-extern std::shared_ptr<scheduler_state_t> g_global_scheduler;
-extern std::mutex g_spot_scheduler_map_mutex;
-extern spot_scheduler_map_t g_spot_schedulers;
-
 uint64_t monotonic_now_ns ();
+std::shared_ptr<scheduler_state_t> global_timer_scheduler ();
 void drain_timer_signal_locked (timer_handle_t *timer_);
 void ensure_timer_signal_locked (timer_handle_t *timer_);
 void remove_timer_registration_locked (timer_handle_t *timer_);

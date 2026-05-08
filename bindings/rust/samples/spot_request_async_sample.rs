@@ -67,11 +67,13 @@ fn main() {
         server_done_tx.send(()).expect("server done send failed");
     });
 
-    let reply = block_on(requester.request_channel(
-        channel_name,
-        vec![Message::copy_from(b"spot-ping").expect("request message failed")],
-        Duration::from_secs(5),
-    ))
+    let reply = block_on(
+        requester
+            .request_channel(channel_name)
+            .message(Message::copy_from(b"spot-ping").expect("request message failed"))
+            .timeout(Duration::from_secs(5))
+            .submit(),
+    )
     .expect("spot request failed");
     assert_eq!(reply[0].as_str().unwrap_or("?"), "spot-pong");
     server_done_rx

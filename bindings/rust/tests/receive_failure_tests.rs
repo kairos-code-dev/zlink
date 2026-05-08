@@ -5,13 +5,12 @@ use zlink::*;
 
 #[test]
 fn eagain_returns_none_not_error() {
-    // Non-blocking recv with no data should surface a recv error.
     let ctx = Context::new().unwrap();
     let sock = ctx.pair_socket().unwrap();
     sock.bind("inproc://rf-eagain").unwrap();
 
     let result = sock.recv_with_flags(RecvFlags::DONT_WAIT);
-    assert!(result.is_err(), "EAGAIN must surface as an error");
+    assert!(result.unwrap().is_none(), "EAGAIN must return Ok(None)");
 }
 
 #[test]
@@ -22,7 +21,7 @@ fn eagain_sub_returns_none() {
     sub.set_subscription("").unwrap();
 
     let result = sub.subscribe_with_flags(RecvFlags::DONT_WAIT);
-    assert!(result.is_err(), "EAGAIN on sub must surface as an error");
+    assert!(result.unwrap().is_none(), "EAGAIN on sub must return Ok(None)");
 }
 
 #[test]
@@ -32,7 +31,7 @@ fn eagain_xpub_subscription_event_returns_none() {
     xpub.bind("inproc://rf-xpub-eagain").unwrap();
 
     let result = xpub.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT);
-    assert!(result.is_err());
+    assert!(result.unwrap().is_none(), "EAGAIN on xpub must return Ok(None)");
 }
 
 #[test]

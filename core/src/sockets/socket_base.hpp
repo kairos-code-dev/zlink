@@ -630,8 +630,8 @@ class socket_base_t : public own_t,
     uint32_t _auto_hwm_last_recalc_reason;
     int32_t _auto_hwm_deferred_sndhwm;
     int32_t _auto_hwm_deferred_rcvhwm;
-    std::atomic<uint64_t> _auto_hwm_send_attempts;
-    std::atomic<uint64_t> _auto_hwm_send_blocked_attempts;
+    alignas (64) std::atomic<uint64_t> _auto_hwm_send_attempts;
+    alignas (64) std::atomic<uint64_t> _auto_hwm_send_blocked_attempts;
     uint32_t _local_peer_weight;
     socket_discovery_attachment_t *_service_attachment;
     std::string _channel_name;

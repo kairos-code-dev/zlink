@@ -361,6 +361,10 @@ class CommonSocketOptions:
 
 
 class DealerSocketOptions:
+    _PROBE = 0x3201
+    _WEIGHT = 0x3203
+    _DEFAULT_WEIGHT = 100
+
     def __init__(self, socket):
         self._socket = socket
 
@@ -370,8 +374,18 @@ class DealerSocketOptions:
 
     @probe.setter
     def probe(self, value):
-        self._socket._set_dealer_option(0x3201, _bool_bytes(value))
+        self._socket._set_dealer_option(self._PROBE, _bool_bytes(value))
         self._socket._dealer_probe_option = bool(value)
+
+    @property
+    def weight(self):
+        # zlink_get_dealer_option is not available; return cached value or default 100.
+        return int(getattr(self._socket, "_dealer_weight_option", self._DEFAULT_WEIGHT))
+
+    @weight.setter
+    def weight(self, value):
+        self._socket._set_dealer_option(self._WEIGHT, _int32_bytes(value))
+        self._socket._dealer_weight_option = int(value)
 
 
 class StreamSocketOptions:
@@ -927,6 +941,12 @@ class _RouterOptionSocket(_Socket):
 
     def _get_router_bool_option(self, option):
         return bool(_read_int32(self._get_router_option(option, ctypes.sizeof(ctypes.c_int32))))
+
+    def _set_router_int_option(self, option, value):
+        self._set_router_option(option, _int32_bytes(value))
+
+    def _get_router_int_option(self, option):
+        return _read_int32(self._get_router_option(option, ctypes.sizeof(ctypes.c_int32)))
 
     def _set_router_bytes_option(self, option, value):
         self._set_router_option(option, bytes(_as_bytes_view(value)))

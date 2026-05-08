@@ -28,10 +28,20 @@ static inline int zlink_spot_dispatch_event_handler_go_local(void *s, uintptr_t 
 static inline int zlink_spot_request_channel_part_go_local(void *spot, const char *channel_name, zlink_msg_t *part, zlink_send_flags_t flags, zlink_part_flag_t part_flag, uint32_t timeout_ms, uintptr_t userdata) {
     return zlink_spot_request_channel_part(spot, channel_name, part, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, part_flag, timeout_ms);
 }
+
+static inline int zlink_spot_request_spot_part_go_local(void *spot, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *part, zlink_send_flags_t flags, zlink_part_flag_t part_flag, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_spot_request_spot_part(spot, dest_node_rid, dest_spot_rid, part, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, part_flag, timeout_ms);
+}
+
+static inline int zlink_spot_request_router_part_go_local(void *spot, const zlink_routing_id_t *peer_rid, zlink_msg_t *part, zlink_send_flags_t flags, zlink_part_flag_t part_flag, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_spot_request_router_part(spot, peer_rid, part, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, part_flag, timeout_ms);
+}
 */
 import "C"
 
 import (
+	"context"
+	"errors"
 	"runtime/cgo"
 	"strings"
 	"sync"
@@ -46,6 +56,7 @@ type SpotNode struct {
 	mu              sync.Mutex
 	spots           map[*spotCore]struct{}
 	admissionHandle cgo.Handle
+	dealerRegistry  sync.Map
 }
 
 type SpotNodeMode int
@@ -81,10 +92,12 @@ const (
 type SpotNodeOption int
 
 const (
-	SpotNodeOptionRouterHWMProfile SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE)
-	SpotNodeOptionRouterHWM        SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM)
-	SpotNodeOptionPubSubHWMProfile SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE)
-	SpotNodeOptionPubSubHWM        SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM)
+	SpotNodeOptionRouterHWMProfile    SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE)
+	SpotNodeOptionRouterHWM           SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM)
+	SpotNodeOptionPubSubHWMProfile    SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE)
+	SpotNodeOptionPubSubHWM           SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM)
+	SpotNodeOptionDispatchWorkersMin  SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN)
+	SpotNodeOptionDispatchWorkersMax  SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX)
 )
 
 type SpotNodeOptions struct {
@@ -92,9 +105,9 @@ type SpotNodeOptions struct {
 }
 
 type SpotNodeSocketSnapshotFilter struct {
-	Owner      SpotNodeSocketOwner
-	SocketType SocketType
-	SocketName string
+	Owner      *SpotNodeSocketOwner
+	SocketType *SocketType
+	SocketName *string
 }
 
 type SpotNodeSocketSnapshotEntry struct {
@@ -181,7 +194,11 @@ func (n *SpotNode) AttachChannelDealer(discovery *Discovery, dealer *DealerSocke
 	if err != nil {
 		return err
 	}
-	return configErrorFromResult(C.zlink_spot_node_attach_channel_dealer(handle, discovery.raw(), dealerHandle))
+	if err := configErrorFromResult(C.zlink_spot_node_attach_channel_dealer(handle, discovery.raw(), dealerHandle)); err != nil {
+		return err
+	}
+	n.dealerRegistry.Store(dealerHandle, dealer)
+	return nil
 }
 
 func (n *SpotNode) AttachChannelDealerManual(channelName string, dealer *DealerSocket) error {
@@ -193,9 +210,20 @@ func (n *SpotNode) AttachChannelDealerManual(channelName string, dealer *DealerS
 	if err != nil {
 		return err
 	}
-	return n.withCString(channelName, func(cstr *C.char) error {
+	if err := n.withCString(channelName, func(cstr *C.char) error {
 		return configErrorFromResult(C.zlink_spot_node_attach_channel_dealer_manual(handle, cstr, dealerHandle))
-	})
+	}); err != nil {
+		return err
+	}
+	n.dealerRegistry.Store(dealerHandle, dealer)
+	return nil
+}
+
+func (n *SpotNode) lookupDealer(handle unsafe.Pointer) *DealerSocket {
+	if v, ok := n.dealerRegistry.Load(handle); ok {
+		return v.(*DealerSocket)
+	}
+	return nil
 }
 
 func (n *SpotNode) AttachPubIngress(pub *PubSocket) error {
@@ -274,6 +302,22 @@ func (n *SpotNode) SetPubSubHWMProfile(value AutoHwmProfile) error {
 func (n *SpotNode) PubSubHWMProfile() (AutoHwmProfile, error) {
 	value, err := n.Option(SpotNodeOptionPubSubHWMProfile)
 	return AutoHwmProfile(value), err
+}
+
+func (n *SpotNode) SetDispatchWorkersMin(value int) error {
+	return n.SetOption(SpotNodeOptionDispatchWorkersMin, value)
+}
+
+func (n *SpotNode) DispatchWorkersMin() (int, error) {
+	return n.Option(SpotNodeOptionDispatchWorkersMin)
+}
+
+func (n *SpotNode) SetDispatchWorkersMax(value int) error {
+	return n.SetOption(SpotNodeOptionDispatchWorkersMax, value)
+}
+
+func (n *SpotNode) DispatchWorkersMax() (int, error) {
+	return n.Option(SpotNodeOptionDispatchWorkersMax)
 }
 
 func (n *SpotNode) SetRoutingID(id RoutingID) error {
@@ -567,6 +611,227 @@ func (s *spotCore) withCString(value string, fn func(*C.char) error) error {
 	return fn(cstr)
 }
 
+// Builder interfaces for spot send/request/reply operations.
+
+type SendOp interface {
+	Message(message *Message) SendSubmitOp
+}
+
+type SendSubmitOp interface {
+	Message(message *Message) SendSubmitOp
+	Flags(flags SendFlags) SendSubmitOp
+	Submit(ctx context.Context) (bool, error)
+}
+
+type RequestOp interface {
+	Message(message *Message) RequestSubmitOp
+}
+
+type RequestSubmitOp interface {
+	Message(message *Message) RequestSubmitOp
+	Timeout(timeout time.Duration) RequestSubmitOp
+	Flags(flags SendFlags) RequestCallbackSubmitOp
+	Submit(ctx context.Context) ([]*Message, error)
+	SubmitCallback(ctx context.Context, callback RequestReplyCallback) (bool, error)
+}
+
+type RequestCallbackSubmitOp interface {
+	Message(message *Message) RequestCallbackSubmitOp
+	Timeout(timeout time.Duration) RequestCallbackSubmitOp
+	Flags(flags SendFlags) RequestCallbackSubmitOp
+	SubmitCallback(ctx context.Context, callback RequestReplyCallback) (bool, error)
+}
+
+type ReplyOp interface {
+	Message(message *Message) ReplySubmitOp
+}
+
+type ReplySubmitOp interface {
+	Message(message *Message) ReplySubmitOp
+	Flags(flags SendFlags) ReplySubmitOp
+	Submit(ctx context.Context) error
+}
+
+// --- sendBuilder ---
+
+type sendBuilder struct {
+	spot     *Spot
+	msg      *Message
+	flags    SendFlags
+	submitted bool
+	submit   func(msg *Message, flags SendFlags) error
+}
+
+func newSendBuilder(spot *Spot, submit func(msg *Message, flags SendFlags) error) SendOp {
+	return &sendBuilder{spot: spot, submit: submit}
+}
+
+func (b *sendBuilder) Message(message *Message) SendSubmitOp {
+	b.msg = message
+	return b
+}
+
+func (b *sendBuilder) Flags(flags SendFlags) SendSubmitOp {
+	b.flags = flags
+	return b
+}
+
+func (b *sendBuilder) Submit(_ context.Context) (bool, error) {
+	if b.submitted {
+		return false, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
+	}
+	if b.msg == nil {
+		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	b.submitted = true
+	if err := b.submit(b.msg, b.flags); err != nil {
+		var submitErr *SubmitError
+		if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// --- requestBuilder ---
+
+type requestBuilderState struct {
+	msg       *Message
+	flags     SendFlags
+	timeout   time.Duration
+	submitted bool
+	submit    func(msg *Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error
+}
+
+type requestBuilder struct {
+	state *requestBuilderState
+}
+
+type requestCallbackBuilder struct {
+	state *requestBuilderState
+}
+
+func newRequestBuilder(spot *Spot, submit func(msg *Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error) RequestOp {
+	return &requestBuilder{state: &requestBuilderState{submit: submit}}
+}
+
+func (b *requestBuilder) Message(message *Message) RequestSubmitOp {
+	b.state.msg = message
+	return b
+}
+
+func (b *requestBuilder) Timeout(timeout time.Duration) RequestSubmitOp {
+	b.state.timeout = timeout
+	return b
+}
+
+func (b *requestBuilder) Flags(flags SendFlags) RequestCallbackSubmitOp {
+	b.state.flags = flags
+	return &requestCallbackBuilder{state: b.state}
+}
+
+func (b *requestBuilder) Submit(_ context.Context) ([]*Message, error) {
+	return b.state.doSubmitSync()
+}
+
+func (b *requestBuilder) SubmitCallback(_ context.Context, callback RequestReplyCallback) (bool, error) {
+	return b.state.doSubmitCallback(callback)
+}
+
+func (b *requestCallbackBuilder) Message(message *Message) RequestCallbackSubmitOp {
+	b.state.msg = message
+	return b
+}
+
+func (b *requestCallbackBuilder) Timeout(timeout time.Duration) RequestCallbackSubmitOp {
+	b.state.timeout = timeout
+	return b
+}
+
+func (b *requestCallbackBuilder) Flags(flags SendFlags) RequestCallbackSubmitOp {
+	b.state.flags = flags
+	return b
+}
+
+func (b *requestCallbackBuilder) SubmitCallback(_ context.Context, callback RequestReplyCallback) (bool, error) {
+	return b.state.doSubmitCallback(callback)
+}
+
+func (s *requestBuilderState) doSubmitSync() ([]*Message, error) {
+	if s.submitted {
+		return nil, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
+	}
+	if s.msg == nil {
+		return nil, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	s.submitted = true
+	result := make(chan requestResult, 1)
+	if err := s.submit(s.msg, s.flags, s.timeout, func(r RequestResult, parts []*Message) {
+		result <- requestResult{result: r, parts: parts}
+	}); err != nil {
+		return nil, err
+	}
+	res := <-result
+	if res.result != RequestOK {
+		return nil, &RequestError{Result: res.result}
+	}
+	return res.parts, nil
+}
+
+func (s *requestBuilderState) doSubmitCallback(callback RequestReplyCallback) (bool, error) {
+	if s.submitted {
+		return false, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
+	}
+	if s.msg == nil || callback == nil {
+		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	s.submitted = true
+	if err := s.submit(s.msg, s.flags, s.timeout, callback); err != nil {
+		var submitErr *SubmitError
+		if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// --- replyBuilder ---
+
+type replyBuilder struct {
+	spot      *Spot
+	msg       *Message
+	flags     SendFlags
+	submitted bool
+	submit    func(msg *Message, flags SendFlags) error
+}
+
+func newReplyBuilder(spot *Spot, submit func(msg *Message, flags SendFlags) error) ReplyOp {
+	return &replyBuilder{spot: spot, submit: submit}
+}
+
+func (b *replyBuilder) Message(message *Message) ReplySubmitOp {
+	b.msg = message
+	return b
+}
+
+func (b *replyBuilder) Flags(flags SendFlags) ReplySubmitOp {
+	b.flags = flags
+	return b
+}
+
+func (b *replyBuilder) Submit(_ context.Context) error {
+	if b.submitted {
+		return &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
+	}
+	if b.msg == nil {
+		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	b.submitted = true
+	return b.submit(b.msg, b.flags)
+}
+
 type Spot struct {
 	core *spotCore
 }
@@ -620,6 +885,30 @@ func (s *Spot) SetSendTimeout(value time.Duration) error {
 	return s.core.setDurationOption(C.ZLINK_OPT_SNDTIMEO, value)
 }
 
+func (s *Spot) SetRequestTimeout(value time.Duration) error {
+	if s == nil || s.core == nil || s.core.closed {
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	ms, err := durationToMillis(value)
+	if err != nil {
+		return err
+	}
+	raw := C.int(ms)
+	return configErrorFromResult(C.zlink_set_spot_option(s.raw(), C.zlink_spot_option_t(C.ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS), unsafe.Pointer(&raw), C.size_t(C.sizeof_int)))
+}
+
+func (s *Spot) RequestTimeout() (time.Duration, error) {
+	if s == nil || s.core == nil || s.core.closed {
+		return 0, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	var raw C.int
+	size := C.size_t(C.sizeof_int)
+	if err := configErrorFromResult(C.zlink_get_spot_option(s.raw(), C.zlink_spot_option_t(C.ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS), unsafe.Pointer(&raw), &size)); err != nil {
+		return 0, err
+	}
+	return time.Duration(raw) * time.Millisecond, nil
+}
+
 func (s *Spot) SetNoDrop(value bool) error {
 	if s == nil || s.core == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
@@ -627,65 +916,175 @@ func (s *Spot) SetNoDrop(value bool) error {
 	return setNativePubBoolOption(s.raw(), s.core.closed, "spot is closed", C.ZLINK_PUB_OPT_NODROP, value)
 }
 
-func (s *Spot) Publish(serviceName, topic string, flags SendFlags, parts ...*Message) error {
-	return s.core.withCString(serviceName, func(serviceC *C.char) error {
-		return s.core.withCString(topic, func(topicC *C.char) error {
-			return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-				return submitErrorFromResult(C.zlink_spot_publish_part(s.raw(), serviceC, topicC, part, C.zlink_send_flags_t(flags), partFlag))
+func (s *Spot) Publish(serviceName, topic string) SendOp {
+	return newSendBuilder(s, func(msg *Message, flags SendFlags) error {
+		return s.core.withCString(serviceName, func(serviceC *C.char) error {
+			return s.core.withCString(topic, func(topicC *C.char) error {
+				return submitMultipartFromClones([]*Message{msg}, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+					return submitErrorFromResult(C.zlink_spot_publish_part(s.raw(), serviceC, topicC, part, C.zlink_send_flags_t(flags), partFlag))
+				})
 			})
 		})
 	})
 }
 
-func (s *Spot) SendChannel(channelName string, flags SendFlags, parts ...*Message) error {
-	return s.core.withCString(channelName, func(cstr *C.char) error {
-		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-			return submitErrorFromResult(C.zlink_spot_send_channel_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
+func (s *Spot) SendChannel(channelName string) SendOp {
+	return newSendBuilder(s, func(msg *Message, flags SendFlags) error {
+		return s.core.withCString(channelName, func(cstr *C.char) error {
+			return submitMultipartFromClones([]*Message{msg}, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+				return submitErrorFromResult(C.zlink_spot_send_channel_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
+			})
 		})
 	})
 }
 
-func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID, flags SendFlags, parts ...*Message) error {
-	node := destNodeRid.toC()
-	spot := destSpotRid.toC()
-	return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-		return submitErrorFromResult(C.zlink_spot_send_spot_part(s.raw(), &node, &spot, part, C.zlink_send_flags_t(flags), partFlag))
+func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID) SendOp {
+	return newSendBuilder(s, func(msg *Message, flags SendFlags) error {
+		node := destNodeRid.toC()
+		spot := destSpotRid.toC()
+		return submitMultipartFromClones([]*Message{msg}, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitErrorFromResult(C.zlink_spot_send_spot_part(s.raw(), &node, &spot, part, C.zlink_send_flags_t(flags), partFlag))
+		})
 	})
 }
 
-func (s *Spot) RequestChannel(channelName string, callback RequestReplyCallback, flags SendFlags, timeout time.Duration, parts ...*Message) error {
-	if callback == nil {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	resultCh, err := s.startChannelRequest(channelName, flags, timeout, parts...)
-	if err != nil {
-		return err
-	}
-	go func() {
-		result := <-resultCh
-		callback(result.result, result.parts)
-	}()
-	return nil
-}
-
-func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error {
-	if err := validateReplyFlags(flags); err != nil {
-		return err
-	}
-	node := destNodeRid.toC()
-	spot := destSpotRid.toC()
-	return submitMultipartFromClones(parts, false, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-		return submitErrorFromResult(C.zlink_spot_reply_spot_part(s.raw(), &node, &spot, C.uint64_t(requestSeq), part, partFlag))
+func (s *Spot) RequestChannel(channelName string) RequestOp {
+	return newRequestBuilder(s, func(msg *Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+		if callback == nil {
+			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		}
+		resultCh, err := s.startChannelRequest(channelName, flags, timeout, msg)
+		if err != nil {
+			return err
+		}
+		go func() {
+			result := <-resultCh
+			callback(result.result, result.parts)
+		}()
+		return nil
 	})
 }
 
-func (s *Spot) ReplyToRouter(peerRid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error {
-	if err := validateReplyFlags(flags); err != nil {
-		return err
-	}
-	peer := peerRid.toC()
-	return submitMultipartFromClones(parts, false, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-		return submitErrorFromResult(C.zlink_spot_reply_router_part(s.raw(), &peer, C.uint64_t(requestSeq), part, partFlag))
+func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp {
+	return newRequestBuilder(s, func(msg *Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+		if callback == nil {
+			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		}
+		if timeout <= 0 {
+			timeout = defaultRequestTimeout
+		}
+		cloned, err := cloneParts([]*Message{msg})
+		if err != nil {
+			return err
+		}
+		prepared, err := prepareMultipart(cloned)
+		if err != nil {
+			closeMessageSlice(cloned)
+			return err
+		}
+		state := &replyCallbackState{
+			result: make(chan requestResult, 1),
+			done:   make(chan struct{}),
+		}
+		handle := cgo.NewHandle(state)
+		node := destNodeRid.toC()
+		spot := destSpotRid.toC()
+		if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitErrorFromResult(C.zlink_spot_request_spot_part_go_local(
+				s.raw(),
+				&node,
+				&spot,
+				part,
+				C.zlink_send_flags_t(flags),
+				partFlag,
+				C.uint32_t(requestTimeoutMillis(timeout)),
+				C.uintptr_t(handle),
+			))
+		}); err != nil {
+			handle.Delete()
+			prepared.commit()
+			return err
+		}
+		prepared.commit()
+		startSpotRequestProgress(s.raw(), state)
+		go func() {
+			result := <-state.result
+			callback(result.result, result.parts)
+		}()
+		return nil
+	})
+}
+
+func (s *Spot) RequestToRouter(peerRid RoutingID) RequestOp {
+	return newRequestBuilder(s, func(msg *Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+		if callback == nil {
+			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		}
+		if timeout <= 0 {
+			timeout = defaultRequestTimeout
+		}
+		cloned, err := cloneParts([]*Message{msg})
+		if err != nil {
+			return err
+		}
+		prepared, err := prepareMultipart(cloned)
+		if err != nil {
+			closeMessageSlice(cloned)
+			return err
+		}
+		state := &replyCallbackState{
+			result: make(chan requestResult, 1),
+			done:   make(chan struct{}),
+		}
+		handle := cgo.NewHandle(state)
+		peer := peerRid.toC()
+		if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitErrorFromResult(C.zlink_spot_request_router_part_go_local(
+				s.raw(),
+				&peer,
+				part,
+				C.zlink_send_flags_t(flags),
+				partFlag,
+				C.uint32_t(requestTimeoutMillis(timeout)),
+				C.uintptr_t(handle),
+			))
+		}); err != nil {
+			handle.Delete()
+			prepared.commit()
+			return err
+		}
+		prepared.commit()
+		startSpotRequestProgress(s.raw(), state)
+		go func() {
+			result := <-state.result
+			callback(result.result, result.parts)
+		}()
+		return nil
+	})
+}
+
+func (s *Spot) ReplyToSpot(destNodeRid, destSpotRid RoutingID, requestSeq uint64) ReplyOp {
+	return newReplyBuilder(s, func(msg *Message, flags SendFlags) error {
+		if err := validateReplyFlags(flags); err != nil {
+			return err
+		}
+		node := destNodeRid.toC()
+		spot := destSpotRid.toC()
+		return submitMultipartFromClones([]*Message{msg}, false, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitErrorFromResult(C.zlink_spot_reply_spot_part(s.raw(), &node, &spot, C.uint64_t(requestSeq), part, partFlag))
+		})
+	})
+}
+
+func (s *Spot) ReplyToRouter(peerRid RoutingID, requestSeq uint64) ReplyOp {
+	return newReplyBuilder(s, func(msg *Message, flags SendFlags) error {
+		if err := validateReplyFlags(flags); err != nil {
+			return err
+		}
+		peer := peerRid.toC()
+		return submitMultipartFromClones([]*Message{msg}, false, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitErrorFromResult(C.zlink_spot_reply_router_part(s.raw(), &peer, C.uint64_t(requestSeq), part, partFlag))
+		})
 	})
 }
 
@@ -756,11 +1155,11 @@ func (s *Spot) RecvRouted(flags RecvFlags) (*Received, error) {
 	}, nil
 }
 
-func (s *Spot) OnRoutedReceive(handler func(sourceRid, spotRid RoutingID, requestSeq uint64, parts []*Message)) error {
+func (s *Spot) OnRoutedReceive(handler func(*Received)) error {
 	if handler == nil {
 		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
-	state := newSpotRoutedCallbackState(handler)
+	state := newSpotRoutedCallbackState(s, handler)
 	handle := cgo.NewHandle(state)
 	if err := handlerErrorFromResult(C.zlink_spot_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
 		state.close()
@@ -792,14 +1191,14 @@ func (s *Spot) OnDispatchEvent(handler func(*Spot, SpotDispatchInfo)) error {
 	return nil
 }
 
-func (s *Spot) DrainChannelReplyFrom(subject unsafe.Pointer) error {
+func (s *Spot) DrainChannelReplyFrom(dealer *DealerSocket) error {
 	if s == nil || s.core == nil || s.core.closed {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	if subject == nil {
+	if dealer == nil || dealer.raw() == nil {
 		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
-	if rc := C.zlink_spot_channel_reply_progress_from(s.raw(), subject); rc != 0 {
+	if rc := C.zlink_spot_channel_reply_progress_from(s.raw(), dealer.raw()); rc != 0 {
 		return configErrorFromErrno(currentErrno())
 	}
 	return nil

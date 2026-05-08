@@ -62,13 +62,12 @@ def _request_spot_reply(spot, payload, timeout_s):
         box["messages"] = messages
         done.set()
 
-    submitted = spot.request_to_spot(
-        SERVER_NODE_RID,
-        SERVER_SPOT_RID,
-        [bytes(payload)],
-        on_reply,
-        flags=zlink.SendFlags.DONT_WAIT,
-        timeout=timeout_s,
+    submitted = (
+        spot.request_to_spot(SERVER_NODE_RID, SERVER_SPOT_RID)
+        .message(bytes(payload))
+        .timeout(timeout_s)
+        .flags(zlink.SendFlags.DONT_WAIT)
+        .submit(on_reply)
     )
     if not submitted:
         return None

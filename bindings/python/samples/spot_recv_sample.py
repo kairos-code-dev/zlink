@@ -64,8 +64,7 @@ def main():
                                         publisher.publish(
                                             SERVICE_NAME,
                                             TOPIC,
-                                            [b"hello-spot"],
-                                        )
+                                        ).message(b"hello-spot").submit()
                                         try:
                                             received = subscriber.subscribe(
                                                 flags=zlink.RecvFlags.DONT_WAIT

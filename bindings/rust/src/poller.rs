@@ -289,6 +289,21 @@ impl Timer {
         })
     }
 
+    /// Create a timer that belongs to (and is dispatched by) the given `Spot`.
+    pub fn from_spot(spot: &crate::service::Spot) -> Result<Self, ConfigError> {
+        let handle = unsafe { ffi::zlink_spot_timer_new(spot.raw()) };
+        if handle.is_null() {
+            return Err(crate::error::ConfigError::new(
+                crate::error::ConfigResult::InvalidArgument,
+                crate::error::last_errno(),
+            ));
+        }
+        Ok(Self {
+            handle,
+            callback: None,
+        })
+    }
+
     pub fn start(&self, interval_ns: u64, repeat_count: u64) -> Result<(), ConfigError> {
         check_config_rc(unsafe { ffi::zlink_timer_start(self.handle, interval_ns, repeat_count) })
     }
@@ -297,10 +312,18 @@ impl Timer {
         check_config_rc(unsafe { ffi::zlink_timer_stop(self.handle) })
     }
 
-    pub fn recv(&self, flags: i32) -> Result<u64, RecvError> {
+    /// Receive a timer fire count. Returns `Ok(None)` when no data is available (EAGAIN).
+    pub fn recv(&self) -> Result<Option<u64>, RecvError> {
         let mut count = 0u64;
-        check_recv_rc(unsafe { ffi::zlink_timer_recv(self.handle, &mut count, flags) })?;
-        Ok(count)
+        let rc = unsafe { ffi::zlink_timer_recv(self.handle, &mut count, ffi::ZLINK_DONTWAIT as i32) };
+        if rc != 0 {
+            let errno = crate::error::last_errno();
+            if errno == libc::EAGAIN {
+                return Ok(None);
+            }
+            return Err(check_recv_rc(rc).unwrap_err());
+        }
+        Ok(Some(count))
     }
 
     pub fn on_fire<F>(&mut self, handler: F) -> Result<(), HandlerError>

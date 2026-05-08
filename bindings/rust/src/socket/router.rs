@@ -69,27 +69,27 @@ impl RouterSocket {
         target: &RoutingId,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), SubmitError> {
+    ) -> Result<bool, SubmitError> {
         self.inner.send_to_with_flags(target, parts, flags)
     }
 
     pub fn recv(&self) -> Result<Received, RecvError> {
         self.recv_with_flags(RecvFlags::NONE)
+            .and_then(|opt| opt.ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN)))
     }
 
     pub fn try_recv(&self) -> Result<Option<Received>, RecvError> {
         recv_router_once(self.inner.handle, ffi::ZLINK_DONTWAIT)
     }
 
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError> {
         if flags.bits() == 0 {
             let primed = recv_router_once(self.inner.handle, ffi::ZLINK_DONTWAIT)?;
             if let Some(received) = primed {
-                return Ok(received);
+                return Ok(Some(received));
             }
         }
-        recv_router_once(self.inner.handle, flags.bits())?
-            .ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))
+        recv_router_once(self.inner.handle, flags.bits())
     }
 
     pub async fn request(
@@ -433,6 +433,31 @@ impl RouterSocket {
                 ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
                 id.data().as_ptr() as *const c_void,
                 id.len(),
+            )
+        })
+    }
+
+    pub(crate) fn weight(&self) -> Result<u32, ConfigError> {
+        let mut value: u32 = 0;
+        let mut len = std::mem::size_of::<u32>();
+        check_config_rc(unsafe {
+            ffi::zlink_get_router_option(
+                self.inner.handle,
+                ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_WEIGHT,
+                &mut value as *mut u32 as *mut c_void,
+                &mut len,
+            )
+        })?;
+        Ok(value)
+    }
+
+    pub(crate) fn set_weight(&self, value: u32) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
+            ffi::zlink_set_router_option(
+                self.inner.handle,
+                ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_WEIGHT,
+                &value as *const u32 as *const c_void,
+                std::mem::size_of::<u32>(),
             )
         })
     }

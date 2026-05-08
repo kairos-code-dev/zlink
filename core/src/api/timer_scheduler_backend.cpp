@@ -40,6 +40,8 @@ scheduler_state_t::scheduler_state_t () :
 {
 }
 
+namespace
+{
 // Keep the two scheduler families separate.
 // Generic timers and Spot timers may share utility code, but they must not
 // collapse into a single backend because their ownership and scaling model are
@@ -47,6 +49,7 @@ scheduler_state_t::scheduler_state_t () :
 std::shared_ptr<scheduler_state_t> g_global_scheduler (new scheduler_state_t ());
 std::mutex g_spot_scheduler_map_mutex;
 spot_scheduler_map_t g_spot_schedulers;
+}
 
 uint64_t monotonic_now_ns ()
 {
@@ -54,6 +57,11 @@ uint64_t monotonic_now_ns ()
       std::chrono::duration_cast<std::chrono::nanoseconds> (
         std::chrono::steady_clock::now ().time_since_epoch ())
         .count ());
+}
+
+std::shared_ptr<scheduler_state_t> global_timer_scheduler ()
+{
+    return g_global_scheduler;
 }
 
 void drain_timer_signal_locked (timer_handle_t *timer_)
@@ -81,18 +89,7 @@ void remove_timer_registration_locked (timer_handle_t *timer_)
         return;
 
     scheduler_state_t *scheduler = timer_->scheduler;
-    const uint64_t deadline = timer_->scheduled_deadline_ns;
-    const std::multimap<uint64_t, timer_handle_t *>::iterator begin =
-      scheduler->schedule.lower_bound (deadline);
-    const std::multimap<uint64_t, timer_handle_t *>::iterator end =
-      scheduler->schedule.upper_bound (deadline);
-    for (std::multimap<uint64_t, timer_handle_t *>::iterator it = begin;
-         it != end; ++it) {
-        if (it->second == timer_) {
-            scheduler->schedule.erase (it);
-            break;
-        }
-    }
+    scheduler->schedule.erase (timer_->schedule_it);
 
     timer_->scheduler_registered = false;
     timer_->scheduled_deadline_ns = 0;
@@ -103,7 +100,8 @@ void schedule_timer_locked (timer_handle_t *timer_, uint64_t deadline_ns_)
     remove_timer_registration_locked (timer_);
     timer_->scheduler_registered = true;
     timer_->scheduled_deadline_ns = deadline_ns_;
-    timer_->scheduler->schedule.insert (std::make_pair (deadline_ns_, timer_));
+    timer_->schedule_it =
+      timer_->scheduler->schedule.insert (std::make_pair (deadline_ns_, timer_));
 }
 
 void scheduler_fire_timer (timer_handle_t *timer_)

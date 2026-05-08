@@ -100,14 +100,14 @@ fn main() {
         let mut saw_message = false;
         loop {
             match router.recv_with_flags(RecvFlags::DONT_WAIT) {
-                Ok(received) => {
+                Ok(Some(received)) => {
                     let data = common::message_payload(received.parts());
                     if collect_active {
                         common::handle_recv(data, config.size, &stats);
                     }
                     saw_message = true;
                 }
-                Err(err) if err.code() == RecvResult::NoData => break,
+                Ok(None) => break,
                 Err(_) => break,
             }
         }

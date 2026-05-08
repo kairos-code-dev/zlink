@@ -19,6 +19,7 @@ pub enum SubmitResult {
     OutOfMemory = 10,
     SeqExhausted = 11,
     InternalError = 12,
+    NotAdmitted = 13,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +49,7 @@ pub enum RecvResult {
     Terminated = 203,
     InvalidHandle = 204,
     NotSupported = 205,
+    InternalError = 206,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +61,7 @@ pub enum HandlerResult {
     NotSupported = 303,
     Deadlock = 304,
     InvalidHandle = 305,
+    InternalError = 306,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,6 +71,7 @@ pub enum CloseResult {
     Busy = 401,
     Shutdown = 402,
     InvalidHandle = 403,
+    InternalError = 404,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +82,7 @@ pub enum BindResult {
     AddrInUse = 502,
     NotSupported = 503,
     InvalidHandle = 504,
+    InternalError = 505,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,6 +92,10 @@ pub enum ConnectResult {
     InvalidArgument = 601,
     NotSupported = 602,
     InvalidHandle = 603,
+    InternalError = 604,
+    NotFound = 605,
+    Conflict = 606,
+    Busy = 607,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,6 +105,9 @@ pub enum ConfigResult {
     InvalidHandle = 701,
     InvalidArgument = 702,
     NotSupported = 703,
+    InternalError = 704,
+    InvalidState = 705,
+    NotFound = 706,
 }
 
 macro_rules! define_error_type {
@@ -264,7 +276,7 @@ fn recv_result_from_errno(err: i32) -> RecvResult {
         libc::EFAULT => RecvResult::InvalidHandle,
         libc::ENOTSUP => RecvResult::NotSupported,
         x if x == eopnotsupp() => RecvResult::NotSupported,
-        _ => RecvResult::Terminated,
+        _ => RecvResult::InternalError,
     }
 }
 
@@ -277,7 +289,7 @@ fn handler_result_from_errno(err: i32) -> HandlerResult {
         x if x == eopnotsupp() => HandlerResult::NotSupported,
         libc::EDEADLK => HandlerResult::Deadlock,
         libc::EFAULT => HandlerResult::InvalidHandle,
-        _ => HandlerResult::InvalidHandle,
+        _ => HandlerResult::InternalError,
     }
 }
 
@@ -287,7 +299,7 @@ fn close_result_from_errno(err: i32) -> CloseResult {
         libc::EBUSY => CloseResult::Busy,
         x if x == eshutdown() => CloseResult::Shutdown,
         libc::EFAULT => CloseResult::InvalidHandle,
-        _ => CloseResult::InvalidHandle,
+        _ => CloseResult::InternalError,
     }
 }
 
@@ -299,7 +311,7 @@ fn bind_result_from_errno(err: i32) -> BindResult {
         libc::ENOTSUP => BindResult::NotSupported,
         x if x == eopnotsupp() => BindResult::NotSupported,
         libc::EFAULT => BindResult::InvalidHandle,
-        _ => BindResult::InvalidHandle,
+        _ => BindResult::InternalError,
     }
 }
 
@@ -310,7 +322,9 @@ fn connect_result_from_errno(err: i32) -> ConnectResult {
         libc::ENOTSUP => ConnectResult::NotSupported,
         x if x == eopnotsupp() => ConnectResult::NotSupported,
         libc::EFAULT => ConnectResult::InvalidHandle,
-        _ => ConnectResult::InvalidHandle,
+        libc::ENOENT => ConnectResult::NotFound,
+        libc::EBUSY => ConnectResult::Busy,
+        _ => ConnectResult::InternalError,
     }
 }
 
@@ -321,7 +335,9 @@ fn config_result_from_errno(err: i32) -> ConfigResult {
         libc::EINVAL => ConfigResult::InvalidArgument,
         libc::ENOTSUP => ConfigResult::NotSupported,
         x if x == eopnotsupp() => ConfigResult::NotSupported,
-        _ => ConfigResult::InvalidArgument,
+        libc::ENOENT => ConfigResult::NotFound,
+        libc::EBUSY => ConfigResult::InvalidState,
+        _ => ConfigResult::InternalError,
     }
 }
 

@@ -44,9 +44,9 @@ bool spot_direct_route_debug_enabled ()
     return spot_direct_route_debug_on;
 }
 
-using zlink::spot_reqrep_internal::g_spot_request_reply_index_mutex;
-using zlink::spot_reqrep_internal::g_spot_state_identity_index;
-using zlink::spot_reqrep_internal::g_router_state_identity_index;
+using zlink::spot_reqrep_internal::spot_request_reply_index_mutex;
+using zlink::spot_reqrep_internal::spot_state_identity_index;
+using zlink::spot_reqrep_internal::router_state_identity_index;
 using zlink::spot_reqrep_internal::has_valid_routing_id;
 using zlink::spot_reqrep_internal::init_buffer_frame;
 using zlink::spot_reqrep_internal::parsed_spot_envelope_t;

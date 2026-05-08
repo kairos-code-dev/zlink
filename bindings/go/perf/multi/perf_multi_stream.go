@@ -65,6 +65,7 @@ func startMultiStreamEchoServer(server *zlink.StreamSocket) {
 		packet := perfcommon.FrameStreamPacketMessage(header, body)
 		_ = header.Close()
 		_ = body.Close()
-		perfcommon.Must(server.SendTo(source, zlink.SendFlagsNone, packet))
+		_, sendErr := server.SendTo(source, zlink.SendFlagsNone, packet)
+		perfcommon.Must(sendErr)
 	}))
 }

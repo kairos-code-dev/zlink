@@ -61,24 +61,27 @@ func main() {
 	joinCh := make(chan zlink.RequestResult, 1)
 	playSpotRID := mustRID(playSpot.RoutingID())
 	playNodeRID := mustRID(playNode.RoutingID())
-	samplecommon.Must(gatewayNode.JoinActor(actorRef, playNodeRID, playSpotRID, func(result zlink.RequestResult, parts []*zlink.Message) {
+	_, joinErr := gatewayNode.JoinActor(actorRef, playNodeRID, playSpotRID, samplecommon.Message("join-play"), func(result zlink.RequestResult, parts []*zlink.Message) {
 		for _, part := range parts {
 			part.Close()
 		}
 		joinCh <- result
-	}, zlink.SendFlagsDontWait, time.Second, samplecommon.Message("join-play")))
-	info, message, err := playSpot.RecvActorJoin(zlink.RecvFlagsDontWait)
+	}, zlink.SendFlagsDontWait, time.Second)
+	samplecommon.Must(joinErr)
+	request, err := playSpot.RecvActorJoin(zlink.RecvFlagsDontWait)
 	samplecommon.Must(err)
-	if string(message.Data()) != "join-play" {
+	if string(request.Message.Data()) != "join-play" {
 		samplecommon.Must(fmt.Errorf("unexpected join payload"))
 	}
-	message.Close()
-	samplecommon.Must(playSpot.ReplyActorJoin(info, true, samplecommon.Message("accepted")))
+	request.Message.Close()
+	_, replyErr := playSpot.ReplyActorJoin(request, zlink.ActorAdmissionAccept, zlink.SendFlagsNone, samplecommon.Message("accepted"))
+	samplecommon.Must(replyErr)
 	if result := <-joinCh; result != zlink.RequestOK {
 		samplecommon.Must(fmt.Errorf("unexpected join result %v", result))
 	}
 
-	samplecommon.Must(stream.SendBoundActor(gatewayNode, session, "play-session-actor", zlink.SendFlagsDontWait, samplecommon.Message("client-input")))
+	_, sendErr := stream.SendBoundActor(gatewayNode, session, samplecommon.Message("client-input"), zlink.SendFlagsDontWait)
+	samplecommon.Must(sendErr)
 	select {
 	case payload := <-payloadCh:
 		if payload != "client-input" {

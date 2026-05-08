@@ -192,12 +192,12 @@ def send_nonblocking(sock, payload, *, method="send", routing_id=None):
 def send_to_spot_nonblocking(sock, dest_node_rid, dest_spot_rid, payload):
     zlink_mod = _require_zlink()
     try:
-        return bool(sock.send_to_spot(
-            dest_node_rid,
-            dest_spot_rid,
-            payload,
-            flags=zlink_mod.SendFlags.DONT_WAIT,
-        ))
+        op = sock.send_to_spot(dest_node_rid, dest_spot_rid).flags(zlink_mod.SendFlags.DONT_WAIT)
+        if isinstance(payload, (list, tuple)):
+            op.messages(*payload)
+        else:
+            op.message(payload)
+        return bool(op.submit())
     except zlink_mod.SubmitError as exc:
         if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
             return False
@@ -217,12 +217,12 @@ def publish_nonblocking(sock, topic, payload):
 def spot_publish_nonblocking(spot, service_name, topic, payload):
     zlink_mod = _require_zlink()
     try:
-        return bool(spot.publish(
-            service_name,
-            topic,
-            payload,
-            flags=zlink_mod.SendFlags.DONT_WAIT,
-        ))
+        op = spot.publish(service_name, topic).flags(zlink_mod.SendFlags.DONT_WAIT)
+        if isinstance(payload, (list, tuple)):
+            op.messages(*payload)
+        else:
+            op.message(payload)
+        return bool(op.submit())
     except zlink_mod.SubmitError as exc:
         if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
             return False

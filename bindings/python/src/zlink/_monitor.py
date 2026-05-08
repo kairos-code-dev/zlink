@@ -51,6 +51,8 @@ class MonitorSnapshot:
         auto_hwm_effective_message_bytes=None,
         auto_hwm_applied_sndhwm=None,
         auto_hwm_applied_rcvhwm=None,
+        auto_hwm_effective_sndbuf=None,
+        auto_hwm_effective_rcvbuf=None,
         auto_hwm_last_recalc_ms=None,
         auto_hwm_last_recalc_reason=None,
         auto_hwm_send_blocked_ratio_ppm=None,
@@ -72,6 +74,8 @@ class MonitorSnapshot:
         self.auto_hwm_effective_message_bytes = auto_hwm_effective_message_bytes
         self.auto_hwm_applied_sndhwm = auto_hwm_applied_sndhwm
         self.auto_hwm_applied_rcvhwm = auto_hwm_applied_rcvhwm
+        self.auto_hwm_effective_sndbuf = auto_hwm_effective_sndbuf
+        self.auto_hwm_effective_rcvbuf = auto_hwm_effective_rcvbuf
         self.auto_hwm_last_recalc_ms = auto_hwm_last_recalc_ms
         self.auto_hwm_last_recalc_reason = auto_hwm_last_recalc_reason
         self.auto_hwm_send_blocked_ratio_ppm = auto_hwm_send_blocked_ratio_ppm
@@ -113,6 +117,8 @@ def _monitor_snapshot_from_native(snapshot):
         ),
         auto_hwm_applied_sndhwm=int(snapshot.auto_hwm_applied_sndhwm),
         auto_hwm_applied_rcvhwm=int(snapshot.auto_hwm_applied_rcvhwm),
+        auto_hwm_effective_sndbuf=int(snapshot.auto_hwm_effective_sndbuf),
+        auto_hwm_effective_rcvbuf=int(snapshot.auto_hwm_effective_rcvbuf),
         auto_hwm_last_recalc_ms=int(snapshot.auto_hwm_last_recalc_ms),
         auto_hwm_last_recalc_reason=int(snapshot.auto_hwm_last_recalc_reason),
         auto_hwm_send_blocked_ratio_ppm=int(
@@ -249,9 +255,11 @@ class MonitorSocket(_BaseMonitor):
             remote_addr=_decode_fixed(native.remote_addr),
         )
 
-    def recv(self):
+    def recv(self, *, flags=0):
         native = ZlinkMonitorEvent()
-        rc = lib().zlink_socket_monitor_recv(self._handle, ctypes.byref(native), 0)
+        rc = lib().zlink_socket_monitor_recv(self._handle, ctypes.byref(native), flags)
+        if rc == RecvResult.NO_DATA:
+            return None
         if rc != 0:
             _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
         return self._decode_event(native)

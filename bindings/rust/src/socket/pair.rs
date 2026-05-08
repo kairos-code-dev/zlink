@@ -39,7 +39,7 @@ impl PairSocket {
         &self,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), SubmitError> {
+    ) -> Result<bool, SubmitError> {
         self.inner.send_with_flags(parts, flags)
     }
 
@@ -51,7 +51,7 @@ impl PairSocket {
         self.inner.recv_no_wait()
     }
 
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError> {
         self.inner.recv_with_flags(flags)
     }
 

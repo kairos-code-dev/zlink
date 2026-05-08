@@ -429,6 +429,12 @@ func TestSurfaceTypedOptionMethods(t *testing.T) {
 	if !hasMethod((*zlink.RouterSocket)(nil), "SetRidDuplicatePolicy") {
 		t.Fatalf("RouterSocket should expose rid duplicate policy")
 	}
+	if !hasMethod((*zlink.RouterSocket)(nil), "CommonOptions") {
+		t.Fatalf("RouterSocket should expose CommonOptions")
+	}
+	if !hasMethod((*zlink.DealerSocket)(nil), "CommonOptions") {
+		t.Fatalf("DealerSocket should expose CommonOptions")
+	}
 	if !hasMethod((*zlink.DealerSocket)(nil), "SetProbe") {
 		t.Fatalf("DealerSocket should expose dealer-specific options")
 	}

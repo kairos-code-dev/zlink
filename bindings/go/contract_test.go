@@ -305,7 +305,7 @@ func TestRouterRequestSupportPreservesDataReceiveSurface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMessage() error = %v", err)
 	}
-	if err := dealerSocket.Send(zlink.SendFlagsNone, payload); err != nil {
+	if _, err := dealerSocket.Send(zlink.SendFlagsNone, payload); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 	received, err := routerSocket.Recv(zlink.RecvFlagsNone)
@@ -373,7 +373,7 @@ func TestStreamRecvCanonicalRoundTrip(t *testing.T) {
 	}
 
 	reply := newMessage(t, "hello-stream")
-	if err := stream.SendTo(received.RoutingID(), zlink.SendFlagsNone, reply); err != nil {
+	if _, err := stream.SendTo(received.RoutingID(), zlink.SendFlagsNone, reply); err != nil {
 		t.Fatalf("SendTo() error = %v", err)
 	}
 
@@ -421,7 +421,7 @@ func TestStreamOnPacketCanonicalRoundTrip(t *testing.T) {
 		packet := frameStreamPacketMessage(t, header, body)
 		_ = header.Close()
 		_ = body.Close()
-		if err := stream.SendTo(source, zlink.SendFlagsNone, packet); err != nil {
+		if _, err := stream.SendTo(source, zlink.SendFlagsNone, packet); err != nil {
 			_ = packet.Close()
 			done <- err
 			return

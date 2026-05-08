@@ -54,9 +54,9 @@ const (
 	RequestRejected      RequestResult = 106
 	RequestConflict      RequestResult = 107
 	RequestBusy          RequestResult = 108
-	RequestNotConnected  RequestResult = 109
-	RequestInvalidArg    RequestResult = 110
-	RequestInvalidState  RequestResult = 111
+	RequestNotConnected     RequestResult = 109
+	RequestInvalidArgument  RequestResult = 110
+	RequestInvalidState     RequestResult = 111
 	RequestNotSupported  RequestResult = 112
 )
 
@@ -81,6 +81,7 @@ const (
 	HandlerNotSupported    HandlerResult = 303
 	HandlerDeadlock        HandlerResult = 304
 	HandlerInvalidHandle   HandlerResult = 305
+	HandlerInternalError   HandlerResult = 306
 )
 
 type CloseResult int
@@ -90,6 +91,7 @@ const (
 	CloseBusy          CloseResult = 401
 	CloseShutdown      CloseResult = 402
 	CloseInvalidHandle CloseResult = 403
+	CloseInternalError CloseResult = 404
 )
 
 type BindResult int
@@ -100,6 +102,7 @@ const (
 	BindAddrInUse       BindResult = 502
 	BindNotSupported    BindResult = 503
 	BindInvalidHandle   BindResult = 504
+	BindInternalError   BindResult = 505
 )
 
 type ConnectResult int
@@ -109,6 +112,10 @@ const (
 	ConnectInvalidArgument ConnectResult = 601
 	ConnectNotSupported    ConnectResult = 602
 	ConnectInvalidHandle   ConnectResult = 603
+	ConnectInternalError   ConnectResult = 604
+	ConnectNotFound        ConnectResult = 605
+	ConnectConflict        ConnectResult = 606
+	ConnectBusy            ConnectResult = 607
 )
 
 type ConfigResult int
@@ -118,6 +125,9 @@ const (
 	ConfigInvalidHandle   ConfigResult = 701
 	ConfigInvalidArgument ConfigResult = 702
 	ConfigNotSupported    ConfigResult = 703
+	ConfigInternalError   ConfigResult = 704
+	ConfigInvalidState    ConfigResult = 705
+	ConfigNotFound        ConfigResult = 706
 )
 
 type SpotDispatchEvent int
@@ -141,20 +151,22 @@ const (
 )
 
 type SpotDispatchInfo struct {
-	Event       SpotDispatchEvent
-	SubjectKind SpotDispatchSubjectKind
-	Subject     unsafe.Pointer
-	Node        unsafe.Pointer
+	Event         SpotDispatchEvent
+	SubjectKind   SpotDispatchSubjectKind
+	Timer         *Timer
+	ChannelDealer *DealerSocket
+	Actor         *ActorRef
+	nodeHandle    unsafe.Pointer
 }
 
-func (i SpotDispatchInfo) RecvActorPart(flags RecvFlags) (*ActorPart, error) {
+func (i *SpotDispatchInfo) RecvActorPart(flags RecvFlags) (*ActorPart, error) {
 	if i.Event != SpotDispatchEventActorReadable || i.SubjectKind != SpotDispatchSubjectActor {
 		return nil, &RecvError{Result: RecvNotSupported, internalErrno: int(C.ENOTSUP)}
 	}
-	if i.Subject == nil {
+	if i.Actor == nil {
 		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	return recvActorPart(i.Node, actorRefFromC(*(*C.zlink_actor_ref_t)(i.Subject)), flags)
+	return recvActorPart(i.nodeHandle, *i.Actor, flags)
 }
 
 type Received struct {
@@ -384,27 +396,38 @@ func receivedReplyToRouter(reply func(RoutingID, uint64, SendFlags, ...*Message)
 	}
 }
 
-func receivedReplyToSpotPeer(socket interface {
-	ReplyToSpot(RoutingID, RoutingID, uint64, SendFlags, ...*Message) error
-}, nodeRID RoutingID, spotRID RoutingID, requestSeq uint64) func(SendFlags, []*Message) error {
-	return func(flags SendFlags, parts []*Message) error {
-		return socket.ReplyToSpot(nodeRID, spotRID, requestSeq, flags, parts...)
-	}
+type routerReplier interface {
+	ReplyToSpot(RoutingID, RoutingID, uint64, SendFlags, ...*Message) (bool, error)
 }
 
-func receivedReplyToSpotRouter(socket interface {
-	ReplyToRouter(RoutingID, uint64, SendFlags, ...*Message) error
-}, peerRID RoutingID, requestSeq uint64) func(SendFlags, []*Message) error {
+func receivedReplyToSpotPeer(socket routerReplier, nodeRID RoutingID, spotRID RoutingID, requestSeq uint64) func(SendFlags, []*Message) error {
 	return func(flags SendFlags, parts []*Message) error {
-		return socket.ReplyToRouter(peerRID, requestSeq, flags, parts...)
+		_, err := socket.ReplyToSpot(nodeRID, spotRID, requestSeq, flags, parts...)
+		return err
 	}
 }
 
 func receivedReplyToSpot(socket *Spot, routingID RoutingID, spotRID RoutingID, requestSeq uint64) func(SendFlags, []*Message) error {
 	if spotRID.Size() == 0 {
-		return receivedReplyToSpotRouter(socket, routingID, requestSeq)
+		return func(flags SendFlags, parts []*Message) error {
+			if len(parts) == 0 {
+				return &SubmitError{Result: SubmitInvalidArgument}
+			}
+			replyOp := socket.ReplyToRouter(routingID, requestSeq)
+			submitOp := replyOp.Message(parts[0])
+			submitOp = submitOp.Flags(flags)
+			return submitOp.Submit(nil)
+		}
 	}
-	return receivedReplyToSpotPeer(socket, routingID, spotRID, requestSeq)
+	return func(flags SendFlags, parts []*Message) error {
+		if len(parts) == 0 {
+			return &SubmitError{Result: SubmitInvalidArgument}
+		}
+		replyOp := socket.ReplyToSpot(routingID, spotRID, requestSeq)
+		submitOp := replyOp.Message(parts[0])
+		submitOp = submitOp.Flags(flags)
+		return submitOp.Submit(nil)
+	}
 }
 
 func monitorHasRoutingID(routingID RoutingID) bool {

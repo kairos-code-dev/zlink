@@ -28,25 +28,27 @@ func main() {
 	samplecommon.Must(err)
 	defer stream.Close()
 	session := zlink.NewRoutingID([]byte("single-player-session"))
-	ref, err := actor.Ref()
-	samplecommon.Must(err)
+	ref := actor.Ref()
 	samplecommon.Must(stream.BindActor(node, session, ref, time.Second))
 
 	firstJoin := make(chan zlink.RequestResult, 1)
-	samplecommon.Must(actor.Join(firstSpot, func(result zlink.RequestResult, parts []*zlink.Message) {
+	_, joinErr := actor.Join(firstSpot, samplecommon.Message("join-first"), func(result zlink.RequestResult, parts []*zlink.Message) {
 		for _, part := range parts {
 			part.Close()
 		}
 		firstJoin <- result
-	}, zlink.SendFlagsDontWait, time.Second, samplecommon.Message("join-first")))
+	}, zlink.SendFlagsDontWait, time.Second)
+	samplecommon.Must(joinErr)
 	acceptJoin(firstSpot, "join-first")
 	if result := <-firstJoin; result != zlink.RequestOK {
 		samplecommon.Must(fmt.Errorf("unexpected first join result %v", result))
 	}
 
-	samplecommon.Must(stream.SendBoundActor(node, session, "single-player", zlink.SendFlagsDontWait, samplecommon.Message("before")))
-	samplecommon.Must(actor.Leave(firstSpot))
-	samplecommon.Must(stream.SendBoundActor(node, session, "single-player", zlink.SendFlagsDontWait, samplecommon.Message("between")))
+	_, sendErr1 := stream.SendBoundActor(node, session, samplecommon.Message("before"), zlink.SendFlagsDontWait)
+	samplecommon.Must(sendErr1)
+	samplecommon.Must(actor.Leave(firstSpot, time.Second))
+	_, sendErr2 := stream.SendBoundActor(node, session, samplecommon.Message("between"), zlink.SendFlagsDontWait)
+	samplecommon.Must(sendErr2)
 
 	payloads := make(chan string, 2)
 	samplecommon.Must(secondSpot.OnDispatchEvent(func(_ *zlink.Spot, info zlink.SpotDispatchInfo) {
@@ -63,12 +65,13 @@ func main() {
 		}
 	}))
 	secondJoin := make(chan zlink.RequestResult, 1)
-	samplecommon.Must(node.JoinActor(ref, mustRID(node.RoutingID()), mustRID(secondSpot.RoutingID()), func(result zlink.RequestResult, parts []*zlink.Message) {
+	_, joinErr2 := node.JoinActor(ref, mustRID(node.RoutingID()), mustRID(secondSpot.RoutingID()), samplecommon.Message("join-second"), func(result zlink.RequestResult, parts []*zlink.Message) {
 		for _, part := range parts {
 			part.Close()
 		}
 		secondJoin <- result
-	}, zlink.SendFlagsDontWait, time.Second, samplecommon.Message("join-second")))
+	}, zlink.SendFlagsDontWait, time.Second)
+	samplecommon.Must(joinErr2)
 	acceptJoin(secondSpot, "join-second")
 	if result := <-secondJoin; result != zlink.RequestOK {
 		samplecommon.Must(fmt.Errorf("unexpected second join result %v", result))
@@ -78,18 +81,19 @@ func main() {
 	if first != "before" || second != "between" {
 		samplecommon.Must(fmt.Errorf("unexpected payload order %q %q", first, second))
 	}
-	samplecommon.Must(actor.Leave(secondSpot))
+	samplecommon.Must(actor.Leave(secondSpot, time.Second))
 	samplecommon.Must(actor.Close())
 }
 
 func acceptJoin(spot *zlink.Spot, expected string) {
-	info, message, err := spot.RecvActorJoin(zlink.RecvFlagsDontWait)
+	request, err := spot.RecvActorJoin(zlink.RecvFlagsDontWait)
 	samplecommon.Must(err)
-	if string(message.Data()) != expected {
-		samplecommon.Must(fmt.Errorf("unexpected join payload %q", string(message.Data())))
+	if string(request.Message.Data()) != expected {
+		samplecommon.Must(fmt.Errorf("unexpected join payload %q", string(request.Message.Data())))
 	}
-	message.Close()
-	samplecommon.Must(spot.ReplyActorJoin(info, true, samplecommon.Message("accepted")))
+	request.Message.Close()
+	_, replyErr := spot.ReplyActorJoin(request, zlink.ActorAdmissionAccept, zlink.SendFlagsNone, samplecommon.Message("accepted"))
+	samplecommon.Must(replyErr)
 }
 
 func waitPayload(ch <-chan string) string {

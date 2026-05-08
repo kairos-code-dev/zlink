@@ -77,12 +77,12 @@ fn main() {
 
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
-        match publisher.publish(
-            SERVICE_NAME,
-            TOPIC,
-            Message::copy_from(b"hello-spot").unwrap(),
-        ) {
-            Ok(()) => {}
+        match publisher
+            .publish(SERVICE_NAME, TOPIC)
+            .message(Message::copy_from(b"hello-spot").unwrap())
+            .submit()
+        {
+            Ok(_) => {}
             Err(err) if err.code() == SubmitResult::NotFound => {
                 std::thread::sleep(Duration::from_millis(10));
                 continue;
@@ -90,17 +90,20 @@ fn main() {
             Err(err) => panic!("publish failed: {err}"),
         }
         match subscriber.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-            Ok(message) => {
-                let payload = message.parts()[0].as_str().unwrap_or("(binary)");
+            Ok(Some(message)) => {
+                let payload = message.parts[0].as_str().unwrap_or("(binary)");
                 assert_eq!(message.service_name.as_deref(), Some(SERVICE_NAME));
-                assert_eq!(message.topic(), TOPIC);
+                assert_eq!(message.topic, TOPIC);
                 assert_eq!(payload, "hello-spot");
                 println!(
                     "[spot/recv] service: \"{SERVICE_NAME}\" tick: 1 publish: \"{TOPIC}/hello-spot\" -> recv: \"{}/{}\"",
-                    message.topic(),
+                    message.topic,
                     payload
                 );
                 return;
+            }
+            Ok(None) => {
+                std::thread::sleep(Duration::from_millis(10));
             }
             Err(err)
                 if err.code() == RecvResult::NoData || err.internal_errno() == libc::ENOENT =>

@@ -77,7 +77,7 @@ func TestMonitorOnEventReceivesStateChange(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("OnEvent() error = %v", err)
 	}
-	if _, err := serverMon.Recv(); err == nil {
+	if _, err := serverMon.Recv(0); err == nil {
 		t.Fatalf("Recv() after OnEvent() should fail")
 	}
 

@@ -78,7 +78,7 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 				err,
 			))
 		}
-		err = publisher.Publish("bench.topic", zlink.SendFlagsDontWait, msg)
+		_, err = publisher.Publish("bench.topic", zlink.SendFlagsDontWait, msg)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue

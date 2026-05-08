@@ -1,4 +1,5 @@
-use std::ffi::c_void;
+use std::ffi::{CString, c_void};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::error::{
@@ -36,7 +37,7 @@ impl AutoHwmProfile {
         }
     }
 
-    fn from_raw(raw: i32) -> Result<Self, ConfigError> {
+    pub(crate) fn from_raw(raw: i32) -> Result<Self, ConfigError> {
         match raw {
             x if x == ffi::zlink_auto_hwm_profile_t::ZLINK_AUTO_HWM_PROFILE_COMPACT as i32 => {
                 Ok(AutoHwmProfile::Compact)
@@ -62,6 +63,8 @@ impl AutoHwmProfile {
 /// from it are closed.
 pub struct Context {
     handle: *mut c_void,
+    /// Cached thread name prefix (write-only in the C API; readable from cache).
+    thread_name_prefix: Mutex<String>,
 }
 
 /// Typed facade over `zlink_ctx_*` options.
@@ -82,13 +85,23 @@ impl Context {
                 crate::error::last_errno(),
             ));
         }
-        Ok(Self { handle })
+        Ok(Self {
+            handle,
+            thread_name_prefix: Mutex::new(String::new()),
+        })
     }
 
     /// Interrupt all blocking calls on sockets of this context with ETERM.
     /// `drop` / `zlink_ctx_term` must still be called for final cleanup.
     pub fn shutdown(&self) -> Result<(), CloseError> {
         check_close_rc(unsafe { ffi::zlink_ctx_shutdown(self.handle) })
+    }
+
+    /// Recalculate and apply auto HWM for the entire context immediately.
+    ///
+    /// If auto HWM is disabled, this is a no-op that returns success.
+    pub fn recalculate_auto_hwm(&self) -> Result<(), ConfigError> {
+        check_config_rc(unsafe { ffi::zlink_ctx_auto_hwm_recalculate(self.handle) })
     }
 
     /// Access typed context options.
@@ -98,6 +111,17 @@ impl Context {
 
     pub(crate) fn set_int_option(&self, option: i32, value: i32) -> Result<(), ConfigError> {
         check_config_rc(unsafe { ffi::zlink_ctx_set(self.handle, raw_option(option), value) })
+    }
+
+    pub(crate) fn set_data_option(
+        &self,
+        option: i32,
+        data: *const c_void,
+        len: usize,
+    ) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
+            ffi::zlink_ctx_set_data(self.handle, raw_option(option), data, len)
+        })
     }
 
     pub(crate) fn get_int_option(&self, option: i32) -> Result<i32, ConfigError> {
@@ -238,6 +262,66 @@ impl ContextOptions<'_> {
         self.context.set_int_option(
             ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_BLOCKY as i32,
             if blocky { 1 } else { 0 },
+        )
+    }
+
+    /// Get the thread name prefix (returned from the cached value set via `set_thread_name_prefix`).
+    pub fn thread_name_prefix(&self) -> Result<String, ConfigError> {
+        Ok(self
+            .context
+            .thread_name_prefix
+            .lock()
+            .map_err(|_| config_validation_error())?
+            .clone())
+    }
+
+    /// Set the thread name prefix (applied to I/O threads created by this context).
+    pub fn set_thread_name_prefix(&self, prefix: &str) -> Result<(), ConfigError> {
+        let c = CString::new(prefix).map_err(|_| config_validation_error())?;
+        let bytes = c.as_bytes(); // excludes NUL
+        self.context.set_data_option(
+            ffi::zlink_ctx_option_t::ZLINK_THREAD_NAME_PREFIX as i32,
+            bytes.as_ptr().cast(),
+            bytes.len(),
+        )?;
+        *self
+            .context
+            .thread_name_prefix
+            .lock()
+            .map_err(|_| config_validation_error())? = prefix.to_owned();
+        Ok(())
+    }
+
+    /// Get whether auto HWM is enabled.
+    pub fn auto_hwm_enabled(&self) -> Result<bool, ConfigError> {
+        Ok(self
+            .context
+            .get_int_option(ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_ENABLE as i32)?
+            != 0)
+    }
+
+    /// Enable or disable auto HWM.
+    pub fn set_auto_hwm_enabled(&self, enabled: bool) -> Result<(), ConfigError> {
+        self.context.set_int_option(
+            ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_ENABLE as i32,
+            if enabled { 1 } else { 0 },
+        )
+    }
+
+    /// Get the auto HWM recalculation debounce interval.
+    pub fn auto_hwm_recalc_debounce(&self) -> Result<Duration, ConfigError> {
+        let ms = self.context.get_int_option(
+            ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS as i32,
+        )?;
+        Ok(Duration::from_millis(ms.max(0) as u64))
+    }
+
+    /// Set the auto HWM recalculation debounce interval.
+    pub fn set_auto_hwm_recalc_debounce(&self, value: Duration) -> Result<(), ConfigError> {
+        let ms = crate::ctx::duration_to_millis(value)?;
+        self.context.set_int_option(
+            ffi::zlink_ctx_option_t::ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS as i32,
+            ms,
         )
     }
 

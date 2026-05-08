@@ -17,20 +17,6 @@
 
 namespace
 {
-void refresh_registration_indices_from (poller_handle_t *poller_, size_t start_)
-{
-    if (!poller_)
-        return;
-
-    for (size_t i = start_; i < poller_->registrations.size (); ++i) {
-        const poller_registration_t &registration = poller_->registrations[i];
-        if (registration.socket)
-            poller_->socket_registration_indices[registration.socket] = i;
-        else
-            poller_->fd_registration_indices[registration.fd] = i;
-    }
-}
-
 const poller_registration_t *find_registration_for_native (
   poller_handle_t *poller_,
   const zlink::socket_poller_t::event_t &native_)
@@ -159,81 +145,6 @@ long remaining_timeout_ms (long timeout_ms_,
     if (now_ms >= deadline_ms_)
         return 0;
     return static_cast<long> (deadline_ms_ - now_ms);
-}
-
-int fill_public_poller_event (poller_handle_t *poller_,
-                              const zlink::socket_poller_t::event_t &native_,
-                              zlink_poller_event_t *event_out_)
-{
-    if (!poller_ || !event_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    memset (event_out_, 0, sizeof (*event_out_));
-    event_out_->fd = 0;
-
-    for (size_t i = 0; i < poller_->registrations.size (); ++i) {
-        const poller_registration_t &registration = poller_->registrations[i];
-        if (registration.socket && registration.socket == native_.socket) {
-            event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
-            event_out_->socket =
-              is_spot_recv_fd_registration (registration.subject_kind)
-                ? registration.subject
-                : native_.socket;
-            event_out_->fd = native_.fd;
-            event_out_->timer = NULL;
-            event_out_->user_data = registration.user_data;
-            event_out_->events = native_.events;
-            return 0;
-        }
-        if (!registration.socket && registration.fd == native_.fd) {
-            if (registration.subject_kind == poller_subject_timer) {
-                event_out_->source_kind = ZLINK_POLLER_SOURCE_TIMER;
-                event_out_->socket = NULL;
-                event_out_->fd = native_.fd;
-                event_out_->timer = registration.subject;
-                event_out_->user_data = native_.user_data;
-                event_out_->events = native_.events;
-                return 0;
-            }
-            if (is_spot_recv_fd_registration (registration.subject_kind)
-                || is_spot_send_ready_fd_registration (
-                  registration.subject_kind)) {
-                if (is_spot_send_ready_fd_registration (
-                      registration.subject_kind))
-                    drain_spot_send_ready_signal (registration.subject);
-                event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
-                event_out_->socket = registration.subject;
-                event_out_->fd = native_.fd;
-                event_out_->timer = NULL;
-                event_out_->user_data = native_.user_data;
-                event_out_->events =
-                  is_spot_send_ready_fd_registration (
-                    registration.subject_kind)
-                    ? ZLINK_POLLOUT
-                    : native_.events;
-                return 0;
-            }
-
-            event_out_->source_kind = ZLINK_POLLER_SOURCE_FD;
-            event_out_->socket = NULL;
-            event_out_->fd = native_.fd;
-            event_out_->timer = NULL;
-            event_out_->user_data = native_.user_data;
-            event_out_->events = native_.events;
-            return 0;
-        }
-    }
-
-    event_out_->source_kind =
-      native_.socket ? ZLINK_POLLER_SOURCE_SOCKET : ZLINK_POLLER_SOURCE_FD;
-    event_out_->socket = native_.socket;
-    event_out_->fd = native_.fd;
-    event_out_->timer = NULL;
-    event_out_->user_data = native_.user_data;
-    event_out_->events = native_.events;
-    return 0;
 }
 
 int fill_public_poller_event_from_registration (
@@ -426,9 +337,18 @@ int poller_remove_registration_at (poller_handle_t *poller_, int index_)
             poller_->socket_registration_indices.erase (registration.socket);
         else
             poller_->fd_registration_indices.erase (registration.fd);
-        poller_->registrations.erase (poller_->registrations.begin () + index_);
-        refresh_registration_indices_from (
-          poller_, static_cast<size_t> (index_));
+        const size_t index = static_cast<size_t> (index_);
+        const size_t last = poller_->registrations.size () - 1;
+        if (index != last) {
+            poller_->registrations[index] = poller_->registrations[last];
+            const poller_registration_t &moved =
+              poller_->registrations[index];
+            if (moved.socket)
+                poller_->socket_registration_indices[moved.socket] = index;
+            else
+                poller_->fd_registration_indices[moved.fd] = index;
+        }
+        poller_->registrations.pop_back ();
     }
     return rc;
 }

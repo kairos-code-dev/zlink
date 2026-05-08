@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use zlink::{
     ActorAdmissionResult, Context, Message, RecvFlags, RecvResult, SendFlags, SpotDispatchEvent,
-    SpotDispatchSubjectKind, SpotNode,
+    SpotDispatchSubject, SpotNode,
 };
 
 #[path = "sample_support.rs"]
@@ -40,14 +40,15 @@ fn main() {
     let received_payload_cb = Arc::clone(&received_payload);
     play_spot
         .on_dispatch_event(move |info| {
-            if info.event == SpotDispatchEvent::ActorReadable
-                && info.subject_kind == SpotDispatchSubjectKind::Actor
-            {
-                if let Some((_recv_info, part, _more)) = info
-                    .recv_actor_part_with_flags(RecvFlags::DONT_WAIT)
-                    .expect("actor event recv failed")
-                {
-                    *received_payload_cb.lock().unwrap() = Some(part.as_str().unwrap().to_owned());
+            if info.event == SpotDispatchEvent::ActorReadable {
+                if let SpotDispatchSubject::Actor(_) = &info.subject {
+                    if let Some((_recv_info, part, _more)) = info
+                        .recv_actor_part_with_flags(RecvFlags::DONT_WAIT)
+                        .expect("actor event recv failed")
+                    {
+                        *received_payload_cb.lock().unwrap() =
+                            Some(part.as_str().unwrap().to_owned());
+                    }
                 }
             }
         })
@@ -76,10 +77,10 @@ fn main() {
 
     sample_support::wait_until(
         || match play_spot.recv_actor_join_with_flags(RecvFlags::DONT_WAIT) {
-            Ok(Some((info, message))) => {
-                assert_eq!(message.as_str().unwrap(), "join-play");
+            Ok(Some(request)) => {
+                assert_eq!(request.message.as_str().unwrap(), "join-play");
                 play_spot
-                    .reply_actor_join(&info, true, Message::copy_from(b"accepted").unwrap())
+                    .reply_actor_join(&request, true, Message::copy_from(b"accepted").unwrap())
                     .unwrap();
                 true
             }

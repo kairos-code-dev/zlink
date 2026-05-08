@@ -245,9 +245,9 @@ typedef std::unordered_map<std::string, std::weak_ptr<router_spot_request_reply_
 std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >
   &spot_owner_states ();
 
-extern std::mutex g_spot_request_reply_index_mutex;
-extern spot_state_identity_index_t g_spot_state_identity_index;
-extern router_state_identity_index_t g_router_state_identity_index;
+std::mutex &spot_request_reply_index_mutex ();
+spot_state_identity_index_t &spot_state_identity_index ();
+router_state_identity_index_t &router_state_identity_index ();
 
 struct spot_recv_metadata_tls_t
 {

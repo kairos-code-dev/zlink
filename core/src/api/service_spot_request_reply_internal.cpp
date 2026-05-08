@@ -263,9 +263,27 @@ router_spot_request_reply_state_t::router_spot_request_reply_state_t (
 {
 }
 
+namespace
+{
 std::mutex g_spot_request_reply_index_mutex;
 spot_state_identity_index_t g_spot_state_identity_index;
 router_state_identity_index_t g_router_state_identity_index;
+}
+
+std::mutex &spot_request_reply_index_mutex ()
+{
+    return g_spot_request_reply_index_mutex;
+}
+
+spot_state_identity_index_t &spot_state_identity_index ()
+{
+    return g_spot_state_identity_index;
+}
+
+router_state_identity_index_t &router_state_identity_index ()
+{
+    return g_router_state_identity_index;
+}
 
 spot_recv_metadata_tls_t &spot_recv_metadata_tls ()
 {

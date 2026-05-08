@@ -143,7 +143,7 @@ fn router_typed_options() {
     common
         .set_linger(std::time::Duration::from_millis(1))
         .unwrap();
-    common.set_rid_duplicate_policy(0).unwrap();
+    common.set_rid_duplicate_policy(RidDuplicatePolicy::Reject).unwrap();
 }
 
 #[test]

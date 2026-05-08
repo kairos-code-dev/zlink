@@ -37,7 +37,7 @@ impl PubSocket {
         topic: &str,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), SubmitError> {
+    ) -> Result<bool, SubmitError> {
         self.inner.publish_with_flags(topic, parts, flags)
     }
 

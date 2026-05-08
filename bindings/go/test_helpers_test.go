@@ -59,7 +59,7 @@ func waitForMonitorEvent(t testing.TB, mon *zlink.SocketMonitor, timeout time.Du
 	}
 	ch := make(chan result, 1)
 	go func() {
-		event, err := mon.Recv()
+		event, err := mon.Recv(0)
 		ch <- result{event: event, err: err}
 	}()
 

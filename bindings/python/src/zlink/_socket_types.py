@@ -93,8 +93,6 @@ _STREAM_PACKET_HANDLER = ctypes.CFUNCTYPE(
 )
 
 
-_UNSET = object()
-
 
 def _part_flag(part_index, part_count):
     return ZLINK_PART_FINAL if part_index == part_count - 1 else ZLINK_PART_MORE
@@ -159,6 +157,11 @@ class PubSocketOptions:
 
 
 class RouterSocketOptions:
+    # RID_DUPLICATE_POLICY common option values (mirrors ZLINK_RID_DUPLICATE_*)
+    _RID_DUPLICATE_POLICY_OPTION = 0x3033
+    _RID_DUPLICATE_REJECT = 0
+    _RID_DUPLICATE_HANDOVER = 1
+
     def __init__(self, socket):
         self._socket = socket
 
@@ -169,6 +172,18 @@ class RouterSocketOptions:
     @mandatory.setter
     def mandatory(self, enabled):
         self._socket._set_router_bool_option(RouterOption.MANDATORY, enabled)
+
+    @property
+    def handover(self):
+        return (
+            self._socket._get_common_int_option(self._RID_DUPLICATE_POLICY_OPTION)
+            == self._RID_DUPLICATE_HANDOVER
+        )
+
+    @handover.setter
+    def handover(self, value):
+        policy = self._RID_DUPLICATE_HANDOVER if value else self._RID_DUPLICATE_REJECT
+        self._socket._set_common_int_option(self._RID_DUPLICATE_POLICY_OPTION, policy)
 
     @property
     def probe(self):
@@ -196,6 +211,14 @@ class RouterSocketOptions:
         )
         self._socket._connect_routing_id_option = typed_routing_id
 
+    @property
+    def weight(self):
+        return self._socket._get_router_int_option(RouterOption.WEIGHT)
+
+    @weight.setter
+    def weight(self, value):
+        self._socket._set_router_int_option(RouterOption.WEIGHT, value)
+
 
 class PairSocket(_SendReadySocket, _EndpointSocket, _MessageSocket):
     _socket_type_value = SocketType.PAIR
@@ -220,18 +243,11 @@ class DealerSocket(
             lambda: bool(self._pending_requests),
         )
 
-    def request(self, payload, *args, timeout=0, flags=_UNSET):
-        if len(args) > 1:
-            raise TypeError("request() takes at most 2 positional arguments after self")
-        if not args:
-            if flags is not _UNSET:
-                raise TypeError("request() got an unexpected keyword argument 'flags'")
-            return self._request_async(payload, timeout=timeout)
-        callback = args[0]
-        callback_flags = 0 if flags is _UNSET else flags
-        return self._request_callback(
-            payload, callback, flags=callback_flags, timeout=timeout
-        )
+    async def request(self, payload, *, timeout=0):
+        return await self._request_async(payload, timeout=timeout)
+
+    def request_callback(self, payload, callback, *, flags=0, timeout=0):
+        return self._request_callback(payload, callback, flags=flags, timeout=timeout)
 
     def close(self):
         self._cancel_pending_requests(RequestResult.TERMINATED)
@@ -339,18 +355,11 @@ class RouterSocket(
     def router_options(self):
         return RouterSocketOptions(self)
 
-    def request(self, routing_id, payload, *args, timeout=0, flags=_UNSET):
-        if len(args) > 1:
-            raise TypeError("request() takes at most 3 positional arguments after self")
-        if not args:
-            if flags is not _UNSET:
-                raise TypeError("request() got an unexpected keyword argument 'flags'")
-            return self._request_async(routing_id, payload, timeout=timeout)
-        callback = args[0]
-        callback_flags = 0 if flags is _UNSET else flags
-        return self._request_callback(
-            routing_id, payload, callback, flags=callback_flags, timeout=timeout
-        )
+    async def request(self, peer_rid, payload, *, timeout=0):
+        return await self._request_async(peer_rid, payload, timeout=timeout)
+
+    def request_callback(self, peer_rid, payload, callback, *, flags=0, timeout=0):
+        return self._request_callback(peer_rid, payload, callback, flags=flags, timeout=timeout)
 
     def reply(self, routing_id, request_seq, payload, *, flags=0):
         _ensure_reply_flags_supported(flags)
@@ -536,48 +545,42 @@ class RouterSocket(
             self._pending_requests.pop(handle, None)
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
-    def request_to_spot(self, dest_node_rid, dest_spot_rid, payload, *args, timeout=0, flags=_UNSET):
-        if len(args) > 1:
-            raise TypeError(
-                "request_to_spot() takes at most 4 positional arguments after self"
-            )
-        if not args and flags is not _UNSET:
-            raise TypeError(
-                "request_to_spot() got an unexpected keyword argument 'flags'"
-            )
+    async def request_to_spot(self, dest_node_rid, dest_spot_rid, payload, *, timeout=0):
         native_parts = _spot_clone_payload(payload)
         native_node = _copy_routing_id(dest_node_rid)
         native_spot = _copy_routing_id(dest_spot_rid)
         reply_handler = self._ensure_spot_reply_handler()
 
-        if not args:
-            async def _run():
-                pending = _PendingRequest(loop=asyncio.get_running_loop())
-                handle = id(pending)
-                self._spot_request_pending[handle] = pending
-                rc, err = _submit_parts(
-                    native_parts,
-                    lambda part_ptr, part_flag: lib().zlink_router_request_spot_part(
-                        self._handle,
-                        ctypes.byref(native_node),
-                        ctypes.byref(native_spot),
-                        part_ptr,
-                        reply_handler,
-                        ctypes.c_void_p(handle),
-                        0,
-                        part_flag,
-                        _spot_timeout_to_ms(timeout),
-                    ),
-                )
-                if rc != 0:
-                    self._spot_request_pending.pop(handle, None)
-                    _raise_result_error(SubmitError, SubmitResult, rc, err)
-                self._request_progress.ensure_running()
-                return await pending.future
+        pending = _PendingRequest(loop=asyncio.get_running_loop())
+        handle = id(pending)
+        self._spot_request_pending[handle] = pending
+        rc, err = _submit_parts(
+            native_parts,
+            lambda part_ptr, part_flag: lib().zlink_router_request_spot_part(
+                self._handle,
+                ctypes.byref(native_node),
+                ctypes.byref(native_spot),
+                part_ptr,
+                reply_handler,
+                ctypes.c_void_p(handle),
+                0,
+                part_flag,
+                _spot_timeout_to_ms(timeout),
+            ),
+        )
+        if rc != 0:
+            self._spot_request_pending.pop(handle, None)
+            _raise_result_error(SubmitError, SubmitResult, rc, err)
+        self._request_progress.ensure_running()
+        return await pending.future
 
-            return _run()
+    def request_to_spot_callback(self, dest_node_rid, dest_spot_rid, payload, callback, *, flags=0, timeout=0):
+        native_parts = _spot_clone_payload(payload)
+        native_node = _copy_routing_id(dest_node_rid)
+        native_spot = _copy_routing_id(dest_spot_rid)
+        reply_handler = self._ensure_spot_reply_handler()
 
-        pending = _PendingRequest(callback=args[0])
+        pending = _PendingRequest(callback=callback)
         handle = id(pending)
         self._spot_request_pending[handle] = pending
         try:
@@ -590,7 +593,7 @@ class RouterSocket(
                     part_ptr,
                     reply_handler,
                     ctypes.c_void_p(handle),
-                    int(0 if flags is _UNSET else flags),
+                    int(flags),
                     part_flag,
                     _spot_timeout_to_ms(timeout),
                 ),
@@ -602,7 +605,7 @@ class RouterSocket(
             return True
         except SubmitError as ex:
             self._spot_request_pending.pop(handle, None)
-            if int(0 if flags is _UNSET else flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
+            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
                 return False
             raise
 
@@ -730,7 +733,7 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
             try:
                 routing_id = None
                 if source_rid_ptr:
-                    routing_id = _routing_id_bytes(source_rid_ptr.contents)
+                    routing_id = RoutingId(_routing_id_bytes(source_rid_ptr.contents))
                 header = Message.from_bytes(_msg_to_bytes(header_ptr.contents))
                 body = Message.from_bytes(_msg_to_bytes(body_ptr.contents))
                 events.put((routing_id, header, body))

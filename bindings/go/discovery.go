@@ -136,7 +136,7 @@ type RegistryQueryClient struct {
 }
 
 type SpotNodeStatus struct {
-	ServiceName                   string
+	ChannelName                   string
 	LocalEndpoint                 string
 	NodeRoutingID                 RoutingID
 	State                         SpotNodeState
@@ -152,7 +152,7 @@ type SpotNodeStatus struct {
 }
 
 type SpotNodePeerEntry struct {
-	ServiceName      string
+	ChannelName      string
 	LocalEndpoint    string
 	PeerEndpoint     string
 	Source           SpotPeerSource
@@ -910,10 +910,14 @@ func (f SpotNodeSubjectFilter) toC() C.zlink_spot_node_subject_filter_t {
 
 func (f SpotNodeSocketSnapshotFilter) toC() C.zlink_spot_node_socket_snapshot_filter_t {
 	var out C.zlink_spot_node_socket_snapshot_filter_t
-	out.owner = C.zlink_spot_node_socket_owner_t(f.Owner)
-	out.socket_type = C.zlink_socket_type_t(f.SocketType)
-	if f.SocketName != "" {
-		mustCopyFixedCString(unsafe.Pointer(&out.socket_name[0]), 64, f.SocketName)
+	if f.Owner != nil {
+		out.owner = C.zlink_spot_node_socket_owner_t(*f.Owner)
+	}
+	if f.SocketType != nil {
+		out.socket_type = C.zlink_socket_type_t(*f.SocketType)
+	}
+	if f.SocketName != nil && *f.SocketName != "" {
+		mustCopyFixedCString(unsafe.Pointer(&out.socket_name[0]), 64, *f.SocketName)
 	}
 	return out
 }
@@ -934,7 +938,7 @@ func mustCopyFixedCString(ptr unsafe.Pointer, size int, value string) {
 
 func spotNodeStatusFromC(raw C.zlink_spot_node_status_t) *SpotNodeStatus {
 	return &SpotNodeStatus{
-		ServiceName:                   C.GoString(&raw.service_name[0]),
+		ChannelName:                   C.GoString(&raw.service_name[0]),
 		LocalEndpoint:                 C.GoString(&raw.local_endpoint[0]),
 		NodeRoutingID:                 routingIDFromC(raw.node_routing_id),
 		State:                         SpotNodeState(raw.state),
@@ -952,7 +956,7 @@ func spotNodeStatusFromC(raw C.zlink_spot_node_status_t) *SpotNodeStatus {
 
 func spotNodePeerEntryFromC(raw C.zlink_spot_node_peer_entry_t) SpotNodePeerEntry {
 	return SpotNodePeerEntry{
-		ServiceName:      C.GoString(&raw.service_name[0]),
+		ChannelName:      C.GoString(&raw.service_name[0]),
 		LocalEndpoint:    C.GoString(&raw.local_endpoint[0]),
 		PeerEndpoint:     C.GoString(&raw.peer_endpoint[0]),
 		Source:           SpotPeerSource(raw.source),
@@ -1149,14 +1153,14 @@ func validateSpotNodePeerFilter(filter SpotNodePeerFilter) error {
 }
 
 func validateSpotNodeSocketSnapshotFilter(filter SpotNodeSocketSnapshotFilter) error {
-	if filter.SocketName == "" {
+	if filter.SocketName == nil || *filter.SocketName == "" {
 		return nil
 	}
-	if strings.IndexByte(filter.SocketName, 0) >= 0 {
+	if strings.IndexByte(*filter.SocketName, 0) >= 0 {
 		return validationError("socket_name contains null byte")
 	}
-	if len(filter.SocketName) > 63 {
-		return validationError("socket_name length %d exceeds 63", len(filter.SocketName))
+	if len(*filter.SocketName) > 63 {
+		return validationError("socket_name length %d exceeds 63", len(*filter.SocketName))
 	}
 	return nil
 }

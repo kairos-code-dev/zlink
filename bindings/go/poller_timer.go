@@ -29,20 +29,31 @@ import (
 	"unsafe"
 )
 
+// PollerEventFlag is a bitmask of poll readiness event flags.
+type PollerEventFlag int16
+
+const (
+	PollIn  PollerEventFlag = 1
+	PollOut PollerEventFlag = 2
+)
+
+// PollerSourceKind identifies the kind of source in a PollerEvent.
+type PollerSourceKind int
+
 type PollItem struct {
 	Socket  SocketTarget
 	Fd      int
-	Events  int16
-	REvents int16
+	Events  PollerEventFlag
+	REvents PollerEventFlag
 }
 
 type PollerEvent struct {
-	SourceKind int
+	SourceKind PollerSourceKind
 	Socket     SocketTarget
 	Fd         int
 	Timer      *Timer
 	UserData   interface{}
-	Events     int16
+	Events     PollerEventFlag
 }
 
 type pollerEntryKind int
@@ -137,16 +148,22 @@ func (t *Timer) Stop() error {
 	return configErrorFromResult(C.zlink_timer_stop(t.handle))
 }
 
-func (t *Timer) Recv(flags int) (uint64, error) {
+// Recv drains the next timer fire. Returns (count, true, nil) when data is
+// available, (0, false, nil) when no timer fire is pending (EAGAIN), or
+// (0, false, err) on error.
+func (t *Timer) Recv() (uint64, bool, error) {
 	if t == nil || t.closed || t.handle == nil {
-		return 0, &RecvError{Result: RecvTerminated, internalErrno: int(C.EFAULT)}
+		return 0, false, &RecvError{Result: RecvTerminated, internalErrno: int(C.EFAULT)}
 	}
 	var fireCount C.uint64_t
-	if err := recvErrorFromResult(C.zlink_timer_recv(t.handle, &fireCount)); err != nil {
-		return 0, err
+	rc := C.zlink_timer_recv(t.handle, &fireCount)
+	if rc == C.zlink_recv_result_t(RecvNoData) {
+		return 0, false, nil
 	}
-	_ = flags
-	return uint64(fireCount), nil
+	if err := recvErrorFromResult(rc); err != nil {
+		return 0, false, err
+	}
+	return uint64(fireCount), true, nil
 }
 
 func (t *Timer) OnFire(handler func(timer *Timer, fireCount uint64)) error {
@@ -219,7 +236,7 @@ func (p *Poller) Size() int {
 	return int(size)
 }
 
-func (p *Poller) AddSocket(socket SocketTarget, events int16, userData ...interface{}) error {
+func (p *Poller) AddSocket(socket SocketTarget, events PollerEventFlag, userData ...interface{}) error {
 	if p == nil || p.closed || p.handle == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
@@ -245,7 +262,7 @@ func (p *Poller) AddSocket(socket SocketTarget, events int16, userData ...interf
 	return nil
 }
 
-func (p *Poller) ModifySocket(socket SocketTarget, events int16) error {
+func (p *Poller) ModifySocket(socket SocketTarget, events PollerEventFlag) error {
 	if p == nil || p.closed || p.handle == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
@@ -276,7 +293,7 @@ func (p *Poller) RemoveSocket(socket SocketTarget) error {
 	return nil
 }
 
-func (p *Poller) AddFd(fd int, events int16, userData ...interface{}) error {
+func (p *Poller) AddFd(fd int, events PollerEventFlag, userData ...interface{}) error {
 	if p == nil || p.closed || p.handle == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
@@ -298,7 +315,7 @@ func (p *Poller) AddFd(fd int, events int16, userData ...interface{}) error {
 	return nil
 }
 
-func (p *Poller) ModifyFd(fd int, events int16) error {
+func (p *Poller) ModifyFd(fd int, events PollerEventFlag) error {
 	if p == nil || p.closed || p.handle == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
@@ -483,9 +500,9 @@ func (e *pollerEntry) close() {
 
 func (p *Poller) eventFromC(raw C.zlink_poller_event_t) *PollerEvent {
 	event := &PollerEvent{
-		SourceKind: int(raw.source_kind),
+		SourceKind: PollerSourceKind(raw.source_kind),
 		Fd:         int(raw.fd),
-		Events:     int16(raw.events),
+		Events:     PollerEventFlag(raw.events),
 	}
 	if raw.user_data != nil {
 		event.UserData = cgo.Handle(C.zlink_handle_from_userdata(raw.user_data)).Value()
@@ -561,7 +578,7 @@ func Poll(items []PollItem, timeout time.Duration) (int, error) {
 		return 0, configErrorFromErrno(currentErrno())
 	}
 	for i := range items {
-		items[i].REvents = int16(converted[i].revents)
+		items[i].REvents = PollerEventFlag(converted[i].revents)
 	}
 	return int(count), nil
 }

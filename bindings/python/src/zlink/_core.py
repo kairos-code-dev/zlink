@@ -634,6 +634,11 @@ class Context:
             _raise_zlink_error(ConfigError, _config_result_from_errno(lib().zlink_errno()))
         return rc
 
+    def recalculate_auto_hwm(self):
+        rc = lib().zlink_ctx_auto_hwm_recalculate(self._handle)
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
     def shutdown(self):
         rc = lib().zlink_ctx_shutdown(self._handle)
         if rc != 0:
@@ -662,6 +667,7 @@ class Context:
 class ContextOptions:
     def __init__(self, context):
         self._context = context
+        self._thread_name_prefix = ""
 
     @property
     def io_threads(self):
@@ -702,6 +708,42 @@ class ContextOptions:
     @thread_scheduling_policy.setter
     def thread_scheduling_policy(self, value):
         self._context._set_option(ContextOption.THREAD_SCHED_POLICY, value)
+
+    @property
+    def thread_name_prefix(self):
+        return self._thread_name_prefix
+
+    @thread_name_prefix.setter
+    def thread_name_prefix(self, value):
+        if isinstance(value, str):
+            raw = value.encode("utf-8")
+        else:
+            raw = bytes(value)
+        rc = lib().zlink_ctx_set_data(
+            self._context._handle,
+            int(ContextOption.THREAD_NAME_PREFIX),
+            ctypes.c_char_p(raw),
+            len(raw),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        self._thread_name_prefix = value if isinstance(value, str) else raw.decode("utf-8", errors="replace")
+
+    @property
+    def auto_hwm_enabled(self):
+        return bool(self._context._get_option(ContextOption.AUTO_HWM_ENABLE))
+
+    @auto_hwm_enabled.setter
+    def auto_hwm_enabled(self, value):
+        self._context._set_option(ContextOption.AUTO_HWM_ENABLE, int(bool(value)))
+
+    @property
+    def auto_hwm_recalc_debounce(self):
+        return self._context._get_option(ContextOption.AUTO_HWM_RECALC_DEBOUNCE_MS)
+
+    @auto_hwm_recalc_debounce.setter
+    def auto_hwm_recalc_debounce(self, value):
+        self._context._set_option(ContextOption.AUTO_HWM_RECALC_DEBOUNCE_MS, value)
 
     @property
     def blocky(self):

@@ -7,6 +7,12 @@ use crate::socket::{
     XSubSocket,
 };
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RidDuplicatePolicy {
+    Reject = 0,
+    Handover = 1,
+}
+
 pub struct CommonSocketOptions<'a, T> {
     socket: &'a T,
 }
@@ -115,11 +121,16 @@ where
     pub fn set_immediate(&self, enabled: bool) -> Result<(), ConfigError> {
         self.socket.set_immediate(enabled)
     }
-    pub fn set_rid_duplicate_policy(&self, value: i32) -> Result<(), ConfigError> {
-        self.socket.set_rid_duplicate_policy(value)
+    pub fn set_rid_duplicate_policy(&self, value: RidDuplicatePolicy) -> Result<(), ConfigError> {
+        self.socket.set_rid_duplicate_policy(value as i32)
     }
-    pub fn rid_duplicate_policy(&self) -> Result<i32, ConfigError> {
-        self.socket.rid_duplicate_policy()
+    pub fn rid_duplicate_policy(&self) -> Result<RidDuplicatePolicy, ConfigError> {
+        let raw = self.socket.rid_duplicate_policy()?;
+        Ok(if raw == 1 {
+            RidDuplicatePolicy::Handover
+        } else {
+            RidDuplicatePolicy::Reject
+        })
     }
     pub fn set_connect_timeout(&self, d: Duration) -> Result<(), ConfigError> {
         self.socket.set_connect_timeout(d)
@@ -179,6 +190,12 @@ impl<'a> RouterSocketOptions<'a> {
     pub fn set_connect_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError> {
         self.socket.set_connect_routing_id(id)
     }
+    pub fn weight(&self) -> Result<u32, ConfigError> {
+        self.socket.weight()
+    }
+    pub fn set_weight(&self, value: u32) -> Result<(), ConfigError> {
+        self.socket.set_weight(value)
+    }
 }
 
 pub struct DealerSocketOptions<'a> {
@@ -191,6 +208,12 @@ impl<'a> DealerSocketOptions<'a> {
     }
     pub fn set_probe(&self, enabled: bool) -> Result<(), ConfigError> {
         self.socket.set_probe(enabled)
+    }
+    pub fn weight(&self) -> Result<u32, ConfigError> {
+        self.socket.weight()
+    }
+    pub fn set_weight(&self, value: u32) -> Result<(), ConfigError> {
+        self.socket.set_weight(value)
     }
 }
 

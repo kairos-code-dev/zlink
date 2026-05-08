@@ -38,7 +38,8 @@ func main() {
 	}
 
 	payload := "101.25"
-	samplecommon.Must(publisher.Publish(topic, zlink.SendFlagsNone, samplecommon.Message(payload)))
+	_, err = publisher.Publish(topic, zlink.SendFlagsNone, samplecommon.Message(payload))
+	samplecommon.Must(err)
 
 	message, err := subscriber.Subscribe(zlink.RecvFlagsNone)
 	samplecommon.Must(err)

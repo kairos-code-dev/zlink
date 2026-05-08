@@ -100,7 +100,7 @@ func WaitMonitorEvent(mon *zlink.SocketMonitor) *zlink.MonitorEvent {
 	}
 	ch := make(chan result, 1)
 	go func() {
-		event, err := mon.Recv()
+		event, err := mon.Recv(0)
 		ch <- result{event: event, err: err}
 	}()
 	select {

@@ -82,12 +82,13 @@ void *zlink_timer_new (void)
         return NULL;
     }
 
-    timer->scheduler = g_global_scheduler.get ();
+    std::shared_ptr<scheduler_state_t> scheduler = global_timer_scheduler ();
+    timer->scheduler = scheduler.get ();
     {
-        std::lock_guard<std::mutex> lock (g_global_scheduler->mutex);
-        ++g_global_scheduler->active_timers;
+        std::lock_guard<std::mutex> lock (scheduler->mutex);
+        ++scheduler->active_timers;
     }
-    ensure_scheduler_started (g_global_scheduler);
+    ensure_scheduler_started (scheduler);
     return timer.release ();
 }
 

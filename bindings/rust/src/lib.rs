@@ -49,8 +49,8 @@ pub use monitor::{
     SocketMonitor,
 };
 pub use options::{
-    CommonSocketOptions, DealerSocketOptions, PubSocketOptions, RouterSocketOptions,
-    StreamSocketOptions, SubSocketOptions,
+    CommonSocketOptions, DealerSocketOptions, PubSocketOptions, RidDuplicatePolicy,
+    RouterSocketOptions, StreamSocketOptions, SubSocketOptions,
 };
 pub use poller::{
     POLLIN, POLLOUT, PollEvent, PollItem, PollTarget, Poller, Stopwatch, Timer, poll,
@@ -58,15 +58,16 @@ pub use poller::{
 pub use runtime::{multipart_close, proxy, proxy_steerable, sleep};
 pub use service::{
     Actor, ActorAdmissionResult, ActorCreateResult, ActorCreateStatus, ActorJoinInfo,
-    ActorRecvInfo, ActorRef, ActorRoute, AutoConnectType, Discovery, MemberPeerEntry, Registry,
-    RegistryQueryClient, RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryState,
-    RegistryStatus, RegistryTopologyEntry, RegistryTopologyFilter, ServiceKind, ServiceRole,
-    SocketType, Spot, SpotDispatchEvent, SpotDispatchInfo, SpotDispatchSubjectKind, SpotNode,
-    SpotNodeActorEntry, SpotNodeMode, SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter,
-    SpotNodeSocketOwner, SpotNodeSocketSnapshotEntry, SpotNodeSocketSnapshotFilter,
-    SpotNodeSpotEntry, SpotNodeState, SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter,
-    SpotPeerSource, SpotPeerState, SpotRole, SpotServiceAttachmentRole, TopologySource,
-    TopologyState,
+    ActorJoinRequest, ActorRecvInfo, ActorRef, ActorRoute, AutoConnectType, CallbackReady,
+    Discovery, Empty, MemberPeerEntry, Ready, Registry, RegistryQueryClient,
+    RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryState, RegistryStatus,
+    RegistryTopologyEntry, RegistryTopologyFilter, ReplyOp, RequestOp, SendOp, ServiceKind,
+    ServiceRole, SocketType, Spot, SpotDispatchEvent, SpotDispatchInfo, SpotDispatchSubject,
+    SpotDispatchSubjectKind, SpotNode, SpotNodeActorEntry, SpotNodeMode, SpotNodeOptions,
+    SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketOwner, SpotNodeSocketSnapshotEntry,
+    SpotNodeSocketSnapshotFilter, SpotNodeSpotEntry, SpotNodeState, SpotNodeStatus,
+    SpotNodeSubjectEntry, SpotNodeSubjectFilter, SpotPeerSource, SpotPeerState, SpotRole,
+    SpotServiceAttachmentRole, SubjectKind, TopologySource, TopologyState,
 };
 pub use socket::{
     DealerSocket, PairSocket, PubSocket, RouterSocket, SendHandle, StreamSocket, SubSocket,

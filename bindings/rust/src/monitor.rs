@@ -166,6 +166,8 @@ pub struct MonitorSnapshot {
     pub auto_hwm_effective_message_bytes: u64,
     pub auto_hwm_applied_sndhwm: i32,
     pub auto_hwm_applied_rcvhwm: i32,
+    pub auto_hwm_effective_sndbuf: i32,
+    pub auto_hwm_effective_rcvbuf: i32,
     pub auto_hwm_last_recalc_ms: u64,
     pub auto_hwm_last_recalc_reason: u32,
     pub auto_hwm_send_blocked_ratio_ppm: u32,
@@ -201,6 +203,8 @@ impl MonitorSnapshot {
             auto_hwm_effective_message_bytes: raw.auto_hwm_effective_message_bytes,
             auto_hwm_applied_sndhwm: raw.auto_hwm_applied_sndhwm,
             auto_hwm_applied_rcvhwm: raw.auto_hwm_applied_rcvhwm,
+            auto_hwm_effective_sndbuf: raw.auto_hwm_effective_sndbuf,
+            auto_hwm_effective_rcvbuf: raw.auto_hwm_effective_rcvbuf,
             auto_hwm_last_recalc_ms: raw.auto_hwm_last_recalc_ms,
             auto_hwm_last_recalc_reason: raw.auto_hwm_last_recalc_reason,
             auto_hwm_send_blocked_ratio_ppm: raw.auto_hwm_send_blocked_ratio_ppm,
@@ -261,10 +265,21 @@ impl SocketMonitor {
 
     /// Blocking receive of a monitor event.
     pub fn recv(&self) -> Result<MonitorEvent, RecvError> {
+        self.recv_with_flags(crate::flags::RecvFlags::NONE)
+            .and_then(|opt| opt.ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN)))
+    }
+
+    /// Non-blocking receive of a monitor event. Returns `Ok(None)` when no event is available.
+    pub fn recv_with_flags(&self, flags: crate::flags::RecvFlags) -> Result<Option<MonitorEvent>, RecvError> {
+        use crate::error::RecvResult;
         let mut raw = MaybeUninit::<ffi::zlink_socket_monitor_event_t>::uninit();
-        check_recv_rc(unsafe { ffi::zlink_socket_monitor_recv(self.handle, raw.as_mut_ptr(), 0) })?;
+        let rc = unsafe { ffi::zlink_socket_monitor_recv(self.handle, raw.as_mut_ptr(), flags.bits()) };
+        if rc == RecvResult::NoData as i32 {
+            return Ok(None);
+        }
+        check_recv_rc(rc)?;
         let val = unsafe { raw.assume_init() };
-        Ok(MonitorEvent::from_raw(&val))
+        Ok(Some(MonitorEvent::from_raw(&val)))
     }
 
     /// Read the current state snapshot.

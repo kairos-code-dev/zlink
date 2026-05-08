@@ -58,12 +58,13 @@ func main() {
 			serverDone <- fmt.Errorf("unexpected spot request payload")
 			return
 		}
-		serverDone <- responderRouter.Reply(
+		_, replyErr := responderRouter.Reply(
 			received.RoutingID(),
 			received.RequestSeq(),
 			zlink.SendFlagsNone,
 			samplecommon.Message(replyPayload),
 		)
+		serverDone <- replyErr
 	}()
 
 	type result struct {
@@ -71,18 +72,10 @@ func main() {
 		replyParts    []*zlink.Message
 	}
 	replyCh := make(chan result, 1)
-	samplecommon.MustStep(
-		"requester.RequestChannel",
-		requester.RequestChannel(
-			channelName,
-			func(requestResult zlink.RequestResult, replyParts []*zlink.Message) {
-				replyCh <- result{requestResult: requestResult, replyParts: replyParts}
-			},
-			zlink.SendFlagsNone,
-			5*time.Second,
-			samplecommon.Message(requestPayload),
-		),
-	)
+	_, reqErr := requester.RequestChannel(channelName).Message(samplecommon.Message(requestPayload)).Timeout(5*time.Second).SubmitCallback(nil, func(requestResult zlink.RequestResult, replyParts []*zlink.Message) {
+		replyCh <- result{requestResult: requestResult, replyParts: replyParts}
+	})
+	samplecommon.MustStep("requester.RequestChannel", reqErr)
 
 	out := <-replyCh
 	if out.requestResult != zlink.RequestOK {

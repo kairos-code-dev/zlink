@@ -19,7 +19,7 @@ fn drain_spot_readable(
     let mut processed = false;
     loop {
         match subscriber.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-            Ok(received) => {
+            Ok(Some(received)) => {
                 {
                     let data = common::message_payload(received.parts());
                     if collect_active {
@@ -31,11 +31,7 @@ fn drain_spot_readable(
                 drop(received);
                 processed = true;
             }
-            Err(err)
-                if err.code() == RecvResult::NoData || err.internal_errno() == libc::ENOENT =>
-            {
-                break;
-            }
+            Ok(None) => break,
             Err(err) => panic!("spot subscribe drain failed: {err}"),
         }
     }
@@ -52,12 +48,12 @@ fn wait_for_spot_ready(
     let mut probe = vec![0u8; common::HEADER_SIZE];
     common::encode_header(&mut probe, common::PHASE_WARMUP, config.size as u32, 0);
     while Instant::now() < deadline {
-        match publisher.publish(
-            service_name,
-            TOPIC,
-            Message::copy_from(&probe).expect("probe message"),
-        ) {
-            Ok(()) => {}
+        match publisher
+            .publish(service_name, TOPIC)
+            .message(Message::copy_from(&probe).expect("probe message"))
+            .submit()
+        {
+            Ok(_) => {}
             Err(err)
                 if matches!(
                     err.code(),
@@ -207,13 +203,13 @@ fn main() {
                     config.size as u32,
                     seq,
                 );
-                match publisher.publish_with_flags(
-                    &service_name,
-                    TOPIC,
-                    Message::copy_from(&payload).expect("active message"),
-                    SendFlags::DONT_WAIT,
-                ) {
-                    Ok(()) => {
+                match publisher
+                    .publish(&service_name, TOPIC)
+                    .message(Message::copy_from(&payload).expect("active message"))
+                    .flags(SendFlags::DONT_WAIT)
+                    .submit()
+                {
+                    Ok(_) => {
                         seq += 1;
                     }
                     Err(err)
@@ -234,12 +230,11 @@ fn main() {
                 config.size as u32,
                 seq,
             );
-            let _ = publisher.publish_with_flags(
-                &service_name,
-                TOPIC,
-                Message::copy_from(&payload).expect("cooldown message"),
-                SendFlags::DONT_WAIT,
-            );
+            let _ = publisher
+                .publish(&service_name, TOPIC)
+                .message(Message::copy_from(&payload).expect("cooldown message"))
+                .flags(SendFlags::DONT_WAIT)
+                .submit();
         }
     });
 

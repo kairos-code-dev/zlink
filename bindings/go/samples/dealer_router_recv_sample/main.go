@@ -31,12 +31,14 @@ func main() {
 	samplecommon.Must(dealer.Connect(endpoint))
 	samplecommon.WaitConnected(routerMon, dealerMon)
 
-	samplecommon.Must(dealer.Send(zlink.SendFlagsNone, samplecommon.Message("ping")))
+	_, err = dealer.Send(zlink.SendFlagsNone, samplecommon.Message("ping"))
+	samplecommon.Must(err)
 
 	request, err := router.Recv(zlink.RecvFlagsNone)
 	samplecommon.Must(err)
 	defer request.Close()
-	samplecommon.Must(router.SendTo(request.RoutingID(), zlink.SendFlagsNone, samplecommon.Message("pong")))
+	_, err = router.SendTo(request.RoutingID(), zlink.SendFlagsNone, samplecommon.Message("pong"))
+	samplecommon.Must(err)
 
 	reply, err := dealer.Recv(zlink.RecvFlagsNone)
 	samplecommon.Must(err)

@@ -215,6 +215,8 @@ pub enum zlink_spot_node_option_t {
     ZLINK_SPOT_NODE_OPT_ROUTER_HWM = 0x360F,
     ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE = 0x3610,
     ZLINK_SPOT_NODE_OPT_PUBSUB_HWM = 0x3611,
+    ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN = 0x3612,
+    ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX = 0x3613,
 }
 
 // ---------------------------------------------------------------------------
@@ -284,12 +286,14 @@ pub enum zlink_router_option_t {
     ZLINK_ROUTER_OPT_MANDATORY = 0x3101,
     ZLINK_ROUTER_OPT_PROBE = 0x3103,
     ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID = 0x3104,
+    ZLINK_ROUTER_OPT_WEIGHT = 0x3106,
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum zlink_dealer_option_t {
     ZLINK_DEALER_OPT_PROBE = 0x3201,
+    ZLINK_DEALER_OPT_WEIGHT = 0x3203,
 }
 
 #[repr(C)]
@@ -414,6 +418,8 @@ pub struct zlink_monitor_snapshot_t {
     pub auto_hwm_effective_message_bytes: u64,
     pub auto_hwm_applied_sndhwm: i32,
     pub auto_hwm_applied_rcvhwm: i32,
+    pub auto_hwm_effective_sndbuf: i32,
+    pub auto_hwm_effective_rcvbuf: i32,
     pub auto_hwm_last_recalc_ms: u64,
     pub auto_hwm_last_recalc_reason: u32,
     pub auto_hwm_send_blocked_ratio_ppm: u32,
@@ -874,11 +880,18 @@ unsafe extern "C" {
     pub fn zlink_ctx_term(ctx: *mut c_void) -> c_int;
     pub fn zlink_ctx_shutdown(ctx: *mut c_void) -> c_int;
     pub fn zlink_ctx_set(ctx: *mut c_void, option: zlink_ctx_option_t, optval: c_int) -> c_int;
+    pub fn zlink_ctx_set_data(
+        ctx: *mut c_void,
+        option: zlink_ctx_option_t,
+        optval: *const c_void,
+        optvallen: usize,
+    ) -> c_int;
     pub fn zlink_ctx_get(
         ctx: *mut c_void,
         option: zlink_ctx_option_t,
         error_out: *mut zlink_config_result_t,
     ) -> c_int;
+    pub fn zlink_ctx_auto_hwm_recalculate(ctx: *mut c_void) -> c_int;
 
     // -- Message -----------------------------------------------------------
     pub fn zlink_msg_init(msg: *mut zlink_msg_t) -> c_int;
@@ -1355,6 +1368,21 @@ unsafe extern "C" {
         value: *const c_void,
         value_size: usize,
     ) -> c_int;
+    pub fn zlink_get_spot_node_option(
+        node: *mut c_void,
+        option: zlink_spot_node_option_t,
+        value: *mut c_void,
+        value_size: *mut usize,
+    ) -> c_int;
+    pub fn zlink_spot_node_entry_spot(
+        node: *mut c_void,
+        spot_out: *mut *mut c_void,
+    ) -> c_int;
+    pub fn zlink_spot_node_spot_lookup(
+        node: *mut c_void,
+        spot_rid: *const zlink_routing_id_t,
+        spot_out: *mut *mut c_void,
+    ) -> c_int;
     pub fn zlink_spot_node_internal_sockets_snapshot(
         node: *mut c_void,
         filter: *const zlink_spot_node_socket_snapshot_filter_t,
@@ -1578,6 +1606,7 @@ unsafe extern "C" {
         error_out: *mut c_int,
     ) -> c_int;
     pub fn zlink_timer_new() -> *mut c_void;
+    pub fn zlink_spot_timer_new(spot: *mut c_void) -> *mut c_void;
     pub fn zlink_timer_destroy(timer_p: *mut *mut c_void) -> c_int;
     pub fn zlink_timer_start(timer: *mut c_void, interval_ns: u64, repeat_count: u64) -> c_int;
     pub fn zlink_timer_stop(timer: *mut c_void) -> c_int;

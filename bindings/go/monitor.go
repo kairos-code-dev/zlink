@@ -84,6 +84,8 @@ type MonitorSnapshot struct {
 	AutoHwmEffectiveMessageBytes     uint64
 	AutoHwmAppliedSndHwm             int32
 	AutoHwmAppliedRcvHwm             int32
+	AutoHwmEffectiveSndBuf           int32
+	AutoHwmEffectiveRcvBuf           int32
 	AutoHwmLastRecalcMs              uint64
 	AutoHwmLastRecalcReason          uint32
 	AutoHwmSendBlockedRatioPPM       uint32
@@ -112,6 +114,8 @@ func monitorSnapshotFromC(raw C.zlink_monitor_snapshot_t) MonitorSnapshot {
 			AutoHwmEffectiveMessageBytes:     uint64(raw.auto_hwm_effective_message_bytes),
 			AutoHwmAppliedSndHwm:             int32(raw.auto_hwm_applied_sndhwm),
 			AutoHwmAppliedRcvHwm:             int32(raw.auto_hwm_applied_rcvhwm),
+			AutoHwmEffectiveSndBuf:           int32(raw.auto_hwm_effective_sndbuf),
+			AutoHwmEffectiveRcvBuf:           int32(raw.auto_hwm_effective_rcvbuf),
 			AutoHwmLastRecalcMs:              uint64(raw.auto_hwm_last_recalc_ms),
 			AutoHwmLastRecalcReason:          uint32(raw.auto_hwm_last_recalc_reason),
 			AutoHwmSendBlockedRatioPPM:       uint32(raw.auto_hwm_send_blocked_ratio_ppm),
@@ -125,7 +129,7 @@ type SocketMonitor struct {
 	callback cgo.Handle
 }
 
-var IgnoreMonitorHandler = func(MonitorEvent) {}
+var IgnoreMonitorHandler func(*MonitorEvent) = func(*MonitorEvent) {}
 
 func resolveMonitorEvents(events []MonitorEventMask) MonitorEventMask {
 	if len(events) == 0 {
@@ -152,9 +156,9 @@ func OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*Socket
 	return &SocketMonitor{handle: handle}, nil
 }
 
-func (m *SocketMonitor) Recv() (*MonitorEvent, error) {
+func (m *SocketMonitor) Recv(flags RecvFlags) (*MonitorEvent, error) {
 	var raw C.zlink_socket_monitor_event_t
-	if err := recvErrorFromResult(C.zlink_socket_monitor_recv(m.handle, &raw, 0)); err != nil {
+	if err := recvErrorFromResult(C.zlink_socket_monitor_recv(m.handle, &raw, C.int(flags))); err != nil {
 		return nil, err
 	}
 	return monitorEventFromC(raw), nil

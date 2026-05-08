@@ -40,13 +40,12 @@ def _request_spot_reply(requester, node_rid, spot_rid, payload, *, timeout_s):
         state["parts"] = parts
         done.set()
 
-    requester.request_to_spot(
-        node_rid,
-        spot_rid,
-        payload,
-        on_reply,
-        timeout=timeout_s,
-    )
+    op = requester.request_to_spot(node_rid, spot_rid).timeout(timeout_s)
+    if isinstance(payload, (list, tuple)):
+        op.messages(*payload)
+    else:
+        op.message(payload)
+    op.submit(on_reply)
     if not done.wait(timeout_s + 1.0):
         raise RuntimeError("spot request timed out")
     if state["result"] != zlink.RequestResult.OK:

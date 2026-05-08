@@ -19,8 +19,8 @@
 
 namespace
 {
-using zlink::spot_reqrep_internal::g_spot_request_reply_index_mutex;
-using zlink::spot_reqrep_internal::g_spot_state_identity_index;
+using zlink::spot_reqrep_internal::spot_request_reply_index_mutex;
+using zlink::spot_reqrep_internal::spot_state_identity_index;
 using zlink::spot_reqrep_internal::resolve_spot_identity;
 using zlink::spot_reqrep_internal::routing_pair_t;
 using zlink::spot_reqrep_internal::router_spot_request_reply_state_t;
@@ -205,8 +205,8 @@ void refresh_spot_identity_index (
     if (!resolve_spot_identity (spot_, &identity))
         return;
 
-    std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
-    g_spot_state_identity_index[identity.node_rid][identity.spot_rid] = state_;
+    std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex());
+    spot_state_identity_index()[identity.node_rid][identity.spot_rid] = state_;
 }
 }
 
@@ -224,7 +224,7 @@ zlink::spot_reqrep_internal::try_find_spot_state (void *spot_)
     if (spot->logical_state && spot->logical_state->request_reply_state)
         return spot->logical_state->request_reply_state;
 
-    std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+    std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex());
     std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator
       it = spot_owner_states ().find (spot_);
     return it != spot_owner_states ().end ()
@@ -238,7 +238,7 @@ void zlink::spot_reqrep_internal::erase_spot_owner_state (void *spot_)
     if (!spot)
         return;
 
-    std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+    std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex());
     std::shared_ptr<spot_request_reply_state_t> state;
     std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator
       owned = spot_owner_states ().find (spot_);
@@ -372,7 +372,7 @@ zlink::spot_reqrep_internal::find_or_create_spot_state (void *spot_)
     if (spot->logical_state)
         state = spot->logical_state->request_reply_state;
     {
-        std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+        std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex());
         std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator
           it = spot_owner_states ().find (spot_);
         if (!state && it != spot_owner_states ().end ())

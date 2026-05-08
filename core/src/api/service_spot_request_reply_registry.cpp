@@ -19,9 +19,9 @@
 
 namespace
 {
-using zlink::spot_reqrep_internal::g_router_state_identity_index;
-using zlink::spot_reqrep_internal::g_spot_request_reply_index_mutex;
-using zlink::spot_reqrep_internal::g_spot_state_identity_index;
+using zlink::spot_reqrep_internal::router_state_identity_index;
+using zlink::spot_reqrep_internal::spot_request_reply_index_mutex;
+using zlink::spot_reqrep_internal::spot_state_identity_index;
 using zlink::spot_reqrep_internal::has_valid_routing_id;
 using zlink::spot_reqrep_internal::resolve_spot_identity;
 using zlink::spot_reqrep_internal::resolve_spot_runtime;

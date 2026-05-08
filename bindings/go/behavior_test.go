@@ -25,7 +25,7 @@ func TestPairSendRecvRoundTrip(t *testing.T) {
 		t.Fatalf("Connect() error = %v", err)
 	}
 
-	if err := client.Send(zlink.SendFlagsNone, newMessage(t, "hello-pair")); err != nil {
+	if _, err := client.Send(zlink.SendFlagsNone, newMessage(t, "hello-pair")); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 
@@ -57,7 +57,7 @@ func TestPairMultipartRoundTrip(t *testing.T) {
 	_ = server.Bind(endpoint)
 	_ = client.Connect(endpoint)
 
-	if err := client.Send(zlink.SendFlagsNone, newMessage(t, "frame-1"), newMessage(t, "frame-2")); err != nil {
+	if _, err := client.Send(zlink.SendFlagsNone, newMessage(t, "frame-1"), newMessage(t, "frame-2")); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 
@@ -122,7 +122,7 @@ func TestDealerRouterRoundTrip(t *testing.T) {
 	_ = dealer.Connect(endpoint)
 	_ = dealer.SetRecvTimeout(5 * time.Second)
 
-	if err := dealer.Send(zlink.SendFlagsNone, newMessage(t, "request")); err != nil {
+	if _, err := dealer.Send(zlink.SendFlagsNone, newMessage(t, "request")); err != nil {
 		t.Fatalf("dealer Send() error = %v", err)
 	}
 
@@ -132,7 +132,7 @@ func TestDealerRouterRoundTrip(t *testing.T) {
 	}
 	defer request.Close()
 
-	if err := router.SendTo(request.RoutingID(), zlink.SendFlagsNone, newMessage(t, "response")); err != nil {
+	if _, err := router.SendTo(request.RoutingID(), zlink.SendFlagsNone, newMessage(t, "response")); err != nil {
 		t.Fatalf("router SendTo() error = %v", err)
 	}
 
@@ -163,7 +163,7 @@ func TestPubSubRoundTrip(t *testing.T) {
 	_ = subSocket.SetSubscription("market.")
 	_ = subSocket.SetRecvTimeout(5 * time.Second)
 
-	if err := pubSocket.Publish("market.price", zlink.SendFlagsNone, newMessage(t, "42.5")); err != nil {
+	if _, err := pubSocket.Publish("market.price", zlink.SendFlagsNone, newMessage(t, "42.5")); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 

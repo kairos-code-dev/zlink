@@ -59,7 +59,8 @@ class stream_dispatch_send_policy_t
         _deadline (sndtimeo_ < 0
                      ? std::chrono::steady_clock::time_point::max ()
                      : std::chrono::steady_clock::now ()
-                         + std::chrono::milliseconds (sndtimeo_))
+                         + std::chrono::milliseconds (sndtimeo_)),
+        _retry_count (0)
     {
     }
 
@@ -75,25 +76,37 @@ class stream_dispatch_send_policy_t
         if (_dontwait)
             return false;
 
-        unsigned int spin_count = 0;
-        while (std::chrono::steady_clock::now () < _deadline) {
-            if (spin_count < 32) {
-                ++spin_count;
-                std::this_thread::yield ();
-                return true;
-            }
+        const std::chrono::steady_clock::time_point now =
+          std::chrono::steady_clock::now ();
+        if (now >= _deadline)
+            return false;
 
-            std::this_thread::sleep_for (std::chrono::microseconds (100));
+        if (_retry_count < 32) {
+            ++_retry_count;
+            std::this_thread::yield ();
             return true;
         }
 
-        return false;
+        const std::chrono::microseconds remaining =
+          std::chrono::duration_cast<std::chrono::microseconds> (_deadline
+                                                                 - now);
+        const std::chrono::microseconds backoff =
+          remaining < std::chrono::microseconds (100)
+            ? remaining
+            : std::chrono::microseconds (100);
+        if (backoff.count () > 0)
+            std::this_thread::sleep_for (backoff);
+        else
+            std::this_thread::yield ();
+
+        return true;
     }
 
   private:
     bool _dontwait;
     int _sndtimeo;
     std::chrono::steady_clock::time_point _deadline;
+    mutable unsigned int _retry_count;
 };
 }
 

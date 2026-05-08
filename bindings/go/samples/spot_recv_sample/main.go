@@ -61,7 +61,8 @@ func main() {
 	var message *zlink.TopicMessage
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		samplecommon.MustStep("publisher.Publish", publisher.Publish(serviceName, topic, zlink.SendFlagsNone, samplecommon.Message(payload)))
+		_, pubErr := publisher.Publish(serviceName, topic).Message(samplecommon.Message(payload)).Submit(nil)
+		samplecommon.MustStep("publisher.Publish", pubErr)
 		received, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
 		if err != nil {
 			continue

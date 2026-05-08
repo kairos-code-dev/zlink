@@ -1,11 +1,11 @@
 use std::ffi::c_void;
 
-use crate::error::{SubmitError, check_submit_rc};
+use crate::error::SubmitError;
 use crate::ffi;
 use crate::flags::SendFlags;
 use crate::message::{IntoMultipart, RoutingId};
 
-use super::{prepare_send_parts, submit_part_sequence};
+use super::{check_send_flags_rc, prepare_send_parts, submit_part_sequence};
 
 /// A lightweight, cloneable handle for sending messages on a socket.
 ///
@@ -50,14 +50,14 @@ impl SendHandle {
 
     /// Send a non-routed message (PAIR, DEALER, etc.).
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError> {
-        self.send_with_flags(parts, SendFlags::NONE)
+        self.send_with_flags(parts, SendFlags::NONE).map(|_| ())
     }
 
     pub fn send_with_flags(
         &self,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), SubmitError> {
+    ) -> Result<bool, SubmitError> {
         let mut parts = parts.into_parts();
         let mut native =
             prepare_send_parts(&mut parts).map_err(|_| crate::error::submit_state_error())?;
@@ -65,7 +65,7 @@ impl SendHandle {
             ffi::zlink_send_part(self.handle, part, flags.bits(), part_flag)
         })?;
         drop(parts);
-        check_submit_rc(rc)
+        check_send_flags_rc(rc)
     }
 
     /// Send a routed message to a specific peer (ROUTER).
@@ -90,6 +90,6 @@ impl SendHandle {
             ffi::zlink_send_part_rid(self.handle, target.as_raw(), part, flags.bits(), part_flag)
         })?;
         drop(parts);
-        check_submit_rc(rc)
+        check_send_flags_rc(rc).map(|_| ())
     }
 }

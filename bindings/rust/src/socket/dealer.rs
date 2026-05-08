@@ -1,4 +1,5 @@
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -41,12 +42,14 @@ struct CallbackRequestState {
 /// Capabilities: `send`, `recv`, `on_send_ready`.
 pub struct DealerSocket {
     pub(crate) inner: SocketInner,
+    weight: AtomicU32,
 }
 
 impl DealerSocket {
     pub(crate) fn new(ctx: &Context) -> Result<Self, ConfigError> {
         Ok(Self {
             inner: SocketInner::create(ctx, ffi::zlink_socket_type_t::ZLINK_SOCKET_DEALER)?,
+            weight: AtomicU32::new(100),
         })
     }
 
@@ -62,7 +65,7 @@ impl DealerSocket {
         &self,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), SubmitError> {
+    ) -> Result<bool, SubmitError> {
         self.inner.send_with_flags(parts, flags)
     }
 
@@ -74,7 +77,7 @@ impl DealerSocket {
         self.inner.recv_no_wait()
     }
 
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError> {
         self.inner.recv_with_flags(flags)
     }
 
@@ -230,6 +233,23 @@ impl DealerSocket {
             ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_PROBE,
             enabled,
         )
+    }
+
+    pub(crate) fn weight(&self) -> Result<u32, ConfigError> {
+        Ok(self.weight.load(Ordering::Relaxed))
+    }
+
+    pub(crate) fn set_weight(&self, value: u32) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
+            ffi::zlink_set_dealer_option(
+                self.inner.handle,
+                ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_WEIGHT,
+                &value as *const u32 as *const c_void,
+                std::mem::size_of::<u32>(),
+            )
+        })?;
+        self.weight.store(value, Ordering::Relaxed);
+        Ok(())
     }
 
     fn request_callback_with_flags<F>(

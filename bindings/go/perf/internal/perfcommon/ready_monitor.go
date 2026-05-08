@@ -21,7 +21,7 @@ func waitMonitorReady(
 		}
 		ch := make(chan result, 1)
 		go func() {
-			event, err := monitor.Recv()
+			event, err := monitor.Recv(0)
 			ch <- result{event: event, err: err}
 		}()
 		select {

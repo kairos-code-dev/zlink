@@ -58,7 +58,8 @@ func main() {
 			requestDone <- fmt.Errorf("missing request sequence")
 			return
 		}
-		requestDone <- routerSocket.Reply(received.RoutingID(), requestSeq, zlink.SendFlagsNone, samplecommon.Message("pong"))
+		_, replyErr := routerSocket.Reply(received.RoutingID(), requestSeq, zlink.SendFlagsNone, samplecommon.Message("pong"))
+		requestDone <- replyErr
 	}()
 
 	replyCh := make(chan []*zlink.Message, 1)

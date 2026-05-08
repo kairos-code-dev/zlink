@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from ._enums import (
     AutoConnectType,
     RegistryState,
+    ServiceKind,
     ServiceRole,
     SocketOption,
     TopologySource,
@@ -49,20 +50,20 @@ def _decode_fixed(buf):
 
 @dataclass(frozen=True)
 class MemberPeerEntry:
-    auto_connect_type: int
-    service_role: int
+    auto_connect_type: AutoConnectType
+    service_role: ServiceRole
     channel_name: str
     endpoint: str
-    routing_id: bytes
-    weight: int
+    routing_id: RoutingId
     value: int
+    weight: int
 
 
 @dataclass(frozen=True)
 class RegistryStatus:
     registry_id: int
     bind_endpoint: str
-    state: int
+    state: RegistryState
     topology_entry_count: int
     peer_registry_count: int
     connected_peer_registry_count: int
@@ -73,8 +74,8 @@ class RegistryStatus:
 
 @dataclass(frozen=True)
 class RegistryServiceSummaryEntry:
-    auto_connect_type: int
-    service_role: int
+    auto_connect_type: AutoConnectType
+    service_role: ServiceRole
     channel_name: str
     total_count: int
     connecting_count: int
@@ -86,21 +87,21 @@ class RegistryServiceSummaryEntry:
 
 @dataclass(frozen=True)
 class RegistryServiceSummaryFilter:
-    auto_connect_type: int | None = None
-    service_role: int | None = None
+    auto_connect_type: AutoConnectType | None = None
+    service_role: ServiceRole | None = None
     channel_name: str | None = None
 
 
 @dataclass(frozen=True)
 class RegistryTopologyEntry:
-    auto_connect_type: int
-    routing_id: bytes
-    service_kind: int
-    service_role: int
+    auto_connect_type: AutoConnectType
+    routing_id: RoutingId
+    service_kind: ServiceKind
+    service_role: ServiceRole
     channel_name: str
     endpoint: str
-    source: int
-    state: int
+    source: TopologySource
+    state: TopologyState
     desired_count: int
     ready_count: int
     error_code: int
@@ -109,13 +110,13 @@ class RegistryTopologyEntry:
 
 @dataclass(frozen=True)
 class RegistryTopologyFilter:
-    auto_connect_type: int | None = None
-    service_kind: int | None = None
-    service_role: int | None = None
+    auto_connect_type: AutoConnectType | None = None
+    service_kind: ServiceKind | None = None
+    service_role: ServiceRole | None = None
     channel_name: str | None = None
-    routing_id: bytes | None = None
-    state: int | None = None
-    source: int | None = None
+    routing_id: RoutingId | None = None
+    state: TopologyState | None = None
+    source: TopologySource | None = None
 
 
 def _member_peer_from_native(entry):
@@ -125,8 +126,8 @@ def _member_peer_from_native(entry):
         channel_name=_decode_fixed(entry.channel_name),
         endpoint=_decode_fixed(entry.endpoint),
         routing_id=_routing_id_bytes(entry.routing_id),
-        weight=int(entry.weight),
         value=int(entry.value),
+        weight=int(entry.weight),
     )
 
 
@@ -149,7 +150,7 @@ def _topology_entry_from_native(entry):
     return RegistryTopologyEntry(
         auto_connect_type=AutoConnectType(int(entry.auto_connect_type)),
         routing_id=_routing_id_bytes(entry.routing_id),
-        service_kind=int(entry.service_kind),
+        service_kind=ServiceKind(int(entry.service_kind)),
         service_role=ServiceRole(int(entry.service_role)),
         channel_name=_decode_fixed(entry.channel_name),
         endpoint=_decode_fixed(entry.endpoint),

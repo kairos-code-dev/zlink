@@ -291,7 +291,7 @@ func fallbackRequestErrno(result RequestResult) int {
 		return int(C.EIO)
 	case RequestRejected:
 		return int(C.ECONNREFUSED)
-	case RequestConflict, RequestInvalidArg, RequestInvalidState:
+	case RequestConflict, RequestInvalidArgument, RequestInvalidState:
 		return int(C.EINVAL)
 	case RequestBusy:
 		return int(C.EBUSY)

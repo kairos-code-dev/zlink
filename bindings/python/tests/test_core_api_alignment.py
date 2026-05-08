@@ -394,7 +394,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
             with zlink.SpotNode(ctx) as node:
                 with node.create_spot() as spot:
                     with self.assertRaises(ValueError):
-                        spot.publish("svc", b"bad\0topic", b"payload")
+                        spot.publish("svc", b"bad\0topic").message(b"payload").submit()
 
             with zlink.PairSocket(ctx) as pair:
                 with self.assertRaises(ValueError):

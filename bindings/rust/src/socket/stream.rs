@@ -53,7 +53,7 @@ impl StreamSocket {
         target: &RoutingId,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), SubmitError> {
+    ) -> Result<bool, SubmitError> {
         self.inner.send_to_with_flags(target, parts, flags)
     }
 
@@ -65,7 +65,7 @@ impl StreamSocket {
         self.inner.recv_no_wait()
     }
 
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError> {
         self.inner.recv_with_flags(flags)
     }
 

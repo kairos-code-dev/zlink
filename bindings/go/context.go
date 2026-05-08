@@ -3,6 +3,7 @@
 package zlink
 
 /*
+#include <stdlib.h>
 #include "zlink.h"
 */
 import "C"
@@ -28,9 +29,10 @@ func RuntimeVersion() Version {
 }
 
 type Context struct {
-	handle  unsafe.Pointer
-	closed  bool
-	options *ContextOptions
+	handle           unsafe.Pointer
+	closed           bool
+	options          *ContextOptions
+	threadNamePrefix string
 }
 
 type ContextOptions struct {
@@ -79,6 +81,14 @@ func (c *Context) Shutdown() error {
 	return closeErrorFromResult(C.zlink_ctx_shutdown(c.handle))
 }
 
+// RecalculateAutoHwm forces an automatic HWM recalculation. Returns *ConfigError on failure.
+func (c *Context) RecalculateAutoHwm() error {
+	if c == nil || c.closed {
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	return configErrorFromResult(C.zlink_ctx_auto_hwm_recalculate(c.handle))
+}
+
 func (c *Context) Options() *ContextOptions {
 	if c == nil {
 		return nil
@@ -120,6 +130,61 @@ func (o *ContextOptions) SetThreadSchedulingPolicy(value int) error {
 
 func (o *ContextOptions) ThreadSchedulingPolicy() (int, error) {
 	return o.ctx.getIntOption(C.ZLINK_THREAD_SCHED_POLICY)
+}
+
+func (o *ContextOptions) SetThreadNamePrefix(value string) error {
+	if o == nil || o.ctx == nil || o.ctx.closed {
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	if len(value) > 16 {
+		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	var ptr unsafe.Pointer
+	var n C.size_t
+	if len(value) > 0 {
+		cstr := C.CString(value)
+		defer C.free(unsafe.Pointer(cstr))
+		ptr = unsafe.Pointer(cstr)
+		n = C.size_t(len(value))
+	}
+	if err := configErrorFromResult(C.zlink_ctx_set_data(o.ctx.handle, C.ZLINK_THREAD_NAME_PREFIX, ptr, n)); err != nil {
+		return err
+	}
+	o.ctx.threadNamePrefix = value
+	return nil
+}
+
+func (o *ContextOptions) ThreadNamePrefix() (string, error) {
+	if o == nil || o.ctx == nil || o.ctx.closed {
+		return "", &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	return o.ctx.threadNamePrefix, nil
+}
+
+func (o *ContextOptions) SetAutoHwmEnabled(value bool) error {
+	raw := 0
+	if value {
+		raw = 1
+	}
+	return o.ctx.setIntOption(C.ZLINK_CTX_OPT_AUTO_HWM_ENABLE, raw)
+}
+
+func (o *ContextOptions) AutoHwmEnabled() (bool, error) {
+	value, err := o.ctx.getIntOption(C.ZLINK_CTX_OPT_AUTO_HWM_ENABLE)
+	return value != 0, err
+}
+
+func (o *ContextOptions) SetAutoHwmRecalcDebounce(value time.Duration) error {
+	ms := value / time.Millisecond
+	if ms > math.MaxInt32 {
+		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	return o.ctx.setIntOption(C.ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS, int(ms))
+}
+
+func (o *ContextOptions) AutoHwmRecalcDebounce() (time.Duration, error) {
+	value, err := o.ctx.getIntOption(C.ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS)
+	return time.Duration(value) * time.Millisecond, err
 }
 
 func (o *ContextOptions) SetMaxMessageSize(value int) error {

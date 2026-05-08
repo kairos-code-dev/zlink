@@ -40,12 +40,23 @@ class service_control_runtime_t
   private:
     struct task_entry_t
     {
+        task_entry_t () :
+            id (0),
+            fn (NULL),
+            arg (NULL),
+            interval_ms (0),
+            next_run_ms (0),
+            scheduled (false)
+        {
+        }
+
         uint64_t id;
         service_control_task_fn *fn;
         void *arg;
         uint32_t interval_ms;
         uint64_t next_run_ms;
-        bool pending_wakeup;
+        bool scheduled;
+        std::multimap<uint64_t, uint64_t>::iterator schedule_it;
     };
 
     struct due_call_t
@@ -56,6 +67,8 @@ class service_control_runtime_t
     };
 
     static void run (void *arg_);
+    void schedule_task_locked (task_entry_t *task_);
+    void deschedule_task_locked (task_entry_t *task_);
     void loop ();
 
     ctx_t *_ctx;
@@ -64,6 +77,7 @@ class service_control_runtime_t
     mutex_t _sync;
     condition_variable_t _cv;
     std::map<uint64_t, task_entry_t> _tasks;
+    std::multimap<uint64_t, uint64_t> _schedule;
     uint64_t _next_task_id;
     uint64_t _active_task_id;
     bool _running;

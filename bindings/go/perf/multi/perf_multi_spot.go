@@ -120,7 +120,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampWindowPayload(payload, window.ActiveAt)
-		err := publisher.Publish(multiSpotServiceName, multiSpotTopic, zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
+		_, err := publisher.Publish(multiSpotServiceName, multiSpotTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -130,7 +130,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	}
 	perfcommon.StampCooldownPayload(payload)
 	for {
-		err := publisher.Publish(multiSpotServiceName, multiSpotTopic, zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
+		_, err := publisher.Publish(multiSpotServiceName, multiSpotTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		if err == nil {
 			break
 		}

@@ -157,14 +157,14 @@ impl SocketInner {
     // -- Send (non-routed) -------------------------------------------------
 
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError> {
-        self.send_with_flags(parts, SendFlags::NONE)
+        self.send_with_flags(parts, SendFlags::NONE).map(|_| ())
     }
 
     pub fn send_with_flags(
         &self,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), SubmitError> {
+    ) -> Result<bool, SubmitError> {
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
         let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
@@ -172,7 +172,7 @@ impl SocketInner {
         })?;
         // Native took ownership, close the empty source messages
         drop(parts);
-        check_submit_rc(rc)
+        check_send_flags_rc(rc)
     }
 
     pub(crate) fn send_no_wait_result(
@@ -206,7 +206,7 @@ impl SocketInner {
         target: &RoutingId,
         parts: impl IntoMultipart,
     ) -> Result<(), SubmitError> {
-        self.send_to_with_flags(target, parts, SendFlags::NONE)
+        self.send_to_with_flags(target, parts, SendFlags::NONE).map(|_| ())
     }
 
     pub fn send_to_with_flags(
@@ -214,14 +214,14 @@ impl SocketInner {
         target: &RoutingId,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), SubmitError> {
+    ) -> Result<bool, SubmitError> {
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
         let rc = submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
             ffi::zlink_send_part_rid(self.handle, target.as_raw(), part, flags.bits(), part_flag)
         })?;
         drop(parts);
-        check_submit_rc(rc)
+        check_send_flags_rc(rc)
     }
 
     pub(crate) fn send_no_wait_result_to(
@@ -262,13 +262,14 @@ impl SocketInner {
     // -- Recv (direct) -----------------------------------------------------
 
     pub fn recv(&self) -> Result<Received, RecvError> {
-        self.recv_with_flags(RecvFlags::NONE)
-    }
-
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Received, RecvError> {
-        let (routing_id, parts) = recv_basic_parts(self.handle, flags.bits())?
+        let (routing_id, parts) = recv_basic_parts(self.handle, RecvFlags::NONE.bits())?
             .ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))?;
         Ok(Received::new(routing_id, parts))
+    }
+
+    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError> {
+        Ok(recv_basic_parts(self.handle, flags.bits())?
+            .map(|(routing_id, parts)| Received::new(routing_id, parts)))
     }
 
     pub(crate) fn recv_no_wait(&self) -> Result<Option<Received>, RecvError> {
@@ -279,7 +280,7 @@ impl SocketInner {
     // -- Publish -----------------------------------------------------------
 
     pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError> {
-        self.publish_with_flags(topic, parts, SendFlags::NONE)
+        self.publish_with_flags(topic, parts, SendFlags::NONE).map(|_| ())
     }
 
     pub fn publish_with_flags(
@@ -287,7 +288,7 @@ impl SocketInner {
         topic: &str,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), SubmitError> {
+    ) -> Result<bool, SubmitError> {
         let c_topic = CString::new(topic).map_err(|_| submit_validation_error())?;
         let mut parts = parts.into_parts();
         let mut native = prepare_send_parts(&mut parts)?;
@@ -295,7 +296,7 @@ impl SocketInner {
             ffi::zlink_publish_part(self.handle, c_topic.as_ptr(), part, flags.bits(), part_flag)
         })?;
         drop(parts);
-        check_submit_rc(rc)
+        check_send_flags_rc(rc)
     }
 
     pub(crate) fn publish_no_wait_result(
@@ -323,14 +324,13 @@ impl SocketInner {
 
     pub fn subscribe_recv(&self) -> Result<TopicMessage, RecvError> {
         self.subscribe_recv_with_flags(RecvFlags::NONE)
+            .and_then(|opt| opt.ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN)))
     }
 
-    pub fn subscribe_recv_with_flags(&self, flags: RecvFlags) -> Result<TopicMessage, RecvError> {
+    pub fn subscribe_recv_with_flags(&self, flags: RecvFlags) -> Result<Option<TopicMessage>, RecvError> {
         let mut topic_buf = [0i8; 256];
-        let (routing_id, topic, parts) =
-            recv_subscribed_parts(self.handle, &mut topic_buf, flags.bits())?
-                .ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))?;
-        Ok(TopicMessage::new(routing_id, None, topic, parts))
+        Ok(recv_subscribed_parts(self.handle, &mut topic_buf, flags.bits())?
+            .map(|(routing_id, topic, parts)| TopicMessage::new(routing_id, None, topic, parts)))
     }
 
     pub(crate) fn subscribe_recv_no_wait(&self) -> Result<Option<TopicMessage>, RecvError> {
@@ -356,41 +356,12 @@ impl SocketInner {
 
     pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError> {
         self.receive_subscription_event_with_flags(RecvFlags::NONE)
+            .and_then(|opt| opt.ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN)))
     }
 
     pub fn receive_subscription_event_with_flags(
         &self,
         flags: RecvFlags,
-    ) -> Result<SubscriptionEvent, RecvError> {
-        let mut subscribed: i32 = 0;
-        let mut topic_buf = [0i8; 256];
-        let mut topic_len: usize = 256;
-        let mut source_rid_ptr = ptr::null();
-
-        let rc = unsafe {
-            ffi::zlink_xpub_recv_part(
-                self.handle,
-                &mut source_rid_ptr,
-                &mut subscribed,
-                topic_buf.as_mut_ptr(),
-                topic_buf.len(),
-                &mut topic_len,
-                flags.bits(),
-            )
-        };
-        check_recv_rc(rc)?;
-
-        let topic = cstr_buf_to_string(&topic_buf, topic_len);
-        Ok(SubscriptionEvent::new(
-            routing_id_from_ptr(source_rid_ptr),
-            None,
-            subscribed != 0,
-            topic,
-        ))
-    }
-
-    pub(crate) fn try_receive_subscription_event(
-        &self,
     ) -> Result<Option<SubscriptionEvent>, RecvError> {
         let mut subscribed: i32 = 0;
         let mut topic_buf = [0i8; 256];
@@ -405,7 +376,7 @@ impl SocketInner {
                 topic_buf.as_mut_ptr(),
                 topic_buf.len(),
                 &mut topic_len,
-                ffi::ZLINK_DONTWAIT,
+                flags.bits(),
             )
         };
         if rc == RecvResult::NoData as i32 {
@@ -426,6 +397,12 @@ impl SocketInner {
             subscribed != 0,
             topic,
         )))
+    }
+
+    pub(crate) fn try_receive_subscription_event(
+        &self,
+    ) -> Result<Option<SubscriptionEvent>, RecvError> {
+        self.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT)
     }
 
     // -- Callback installation ---------------------------------------------
@@ -986,6 +963,18 @@ pub(crate) fn check_send_result(rc: i32) -> Result<SendResult, SubmitError> {
             crate::error::SubmitResult::InternalError,
             last_errno(),
         )),
+    }
+}
+
+/// Map a send return code to `Result<bool, SubmitError>`.
+///
+/// Returns `Ok(true)` when sent, `Ok(false)` on temporary backpressure
+/// (rc=1 / EAGAIN with DontWait), and `Err` for all other failures.
+pub(crate) fn check_send_flags_rc(rc: i32) -> Result<bool, SubmitError> {
+    match rc {
+        0 => Ok(true),
+        1 => Ok(false),
+        _ => check_submit_rc(rc).map(|_| true),
     }
 }
 

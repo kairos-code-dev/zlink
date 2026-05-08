@@ -51,7 +51,7 @@ fn pair_try_recv_empty() {
     sock.bind("inproc://beh-pair-try").unwrap();
 
     let result = sock.recv_with_flags(RecvFlags::DONT_WAIT);
-    assert!(result.is_err());
+    assert!(result.unwrap().is_none());
 }
 
 #[test]
@@ -112,7 +112,7 @@ fn sub_try_subscribe_empty() {
     sub_sock.set_subscription("").unwrap();
 
     let result = sub_sock.subscribe_with_flags(RecvFlags::DONT_WAIT);
-    assert!(result.is_err());
+    assert!(result.unwrap().is_none());
 }
 
 #[test]
@@ -143,7 +143,7 @@ fn xpub_try_receive_subscription_event_empty() {
     xpub.bind("inproc://beh-xpub-try").unwrap();
 
     let result = xpub.receive_subscription_event_with_flags(RecvFlags::DONT_WAIT);
-    assert!(result.is_err());
+    assert!(result.unwrap().is_none());
 }
 
 // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ import errno
 import queue
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ._socket_base import (
     _classify_nonblocking_send_errno,
@@ -20,6 +20,8 @@ from ._enums import (
     ActorAdmissionResult,
     ActorCreateStatus,
     AutoHwmProfile,
+    ServiceKind,
+    SocketType,
     SpotDispatchEvent,
     SpotDispatchSubjectKind,
     SpotNodeMode,
@@ -28,6 +30,8 @@ from ._enums import (
     SpotNodeState,
     SpotPeerSource,
     SpotPeerState,
+    SpotRole,
+    SubjectKind,
 )
 from ._ffi import (
     ZLINK_PART_FINAL,
@@ -170,9 +174,10 @@ def _timeout_to_ms(timeout):
 class SpotDispatchInfo:
     event: SpotDispatchEvent
     subject_kind: SpotDispatchSubjectKind
-    subject: int | None
+    timer: "object | None" = None
+    channel_dealer: "object | None" = None
     actor: "ActorRef | None" = None
-    _node_handle: ctypes.c_void_p | None = None
+    _node_handle: ctypes.c_void_p | None = field(default=None, repr=False, compare=False, hash=False)
 
     def recv_actor_part(self, *, flags=0):
         if (
@@ -214,7 +219,7 @@ class ActorCreateResult:
 class ActorRoute:
     actor: ActorRef
     joined: bool
-    joined_spot_rid: RoutingId
+    joined_spot_rid: RoutingId | None
 
 
 @dataclass(frozen=True)
@@ -225,18 +230,16 @@ class ActorRecvInfo:
     flags: int
 
 
-@dataclass
+@dataclass(frozen=True)
 class ActorJoinInfo:
-    actor: ActorRef
     source_actor: ActorRef
     target_actor: ActorRef
     source_node_rid: RoutingId
-    source_spot_rid: RoutingId | None
-    target_node_rid: RoutingId | None
-    target_spot_rid: RoutingId | None
+    source_spot_rid: RoutingId
+    target_node_rid: RoutingId
+    target_spot_rid: RoutingId
     join_epoch: int
     flags: int
-    _native: ZlinkActorJoinInfo
 
 
 @dataclass(frozen=True)
@@ -250,6 +253,7 @@ class ActorPart:
 class ActorJoinRequest:
     info: ActorJoinInfo
     message: Message
+    _native: object = field(default=None, repr=False, compare=False, hash=False)
 
     def __iter__(self):
         yield self.info
@@ -270,7 +274,7 @@ class SpotNodeSpotEntry:
 class SpotNodeActorEntry:
     actor: ActorRef
     joined: bool
-    joined_spot_rid: RoutingId
+    joined_spot_rid: RoutingId | None
     route_synced: bool
     pending_message_count: int
     last_changed_ms: int
@@ -325,6 +329,11 @@ def _routing_id_or_none(native):
     return _routing_id_bytes(native)
 
 
+def _routing_id_or_empty(native):
+    raw = bytes(native.data[: native.size])
+    return RoutingId(raw)
+
+
 def _recv_actor_part(node_handle, actor_ref, flags=0):
     info = ZlinkActorRecvInfo()
     part = ZlinkMsg()
@@ -354,18 +363,17 @@ def _recv_actor_part(node_handle, actor_ref, flags=0):
 
 def _make_spot_routed_reply_sender(spot, node_rid, spot_rid, seq):
     if spot_rid:
-        return lambda payload, *, flags=0: spot.reply_to_spot(
-            node_rid,
-            spot_rid,
-            seq,
-            payload,
-            flags=flags,
+        return lambda payload, *, flags=0: (
+            spot.reply_to_spot(node_rid, spot_rid, seq)
+            .message(payload)
+            .flags(flags)
+            .submit()
         )
-    return lambda payload, *, flags=0: spot.reply_to_router(
-        node_rid,
-        seq,
-        payload,
-        flags=flags,
+    return lambda payload, *, flags=0: (
+        spot.reply_to_router(node_rid, seq)
+        .message(payload)
+        .flags(flags)
+        .submit()
     )
 
 
@@ -800,10 +808,10 @@ class Actor:
 
 @dataclass(frozen=True)
 class SpotNodeStatus:
-    service_name: str
+    channel_name: str
     local_endpoint: str
-    node_routing_id: bytes
-    state: int
+    node_routing_id: RoutingId
+    state: SpotNodeState
     configured_peer_count: int
     active_peer_count: int
     connected_peer_count: int
@@ -817,11 +825,11 @@ class SpotNodeStatus:
 
 @dataclass(frozen=True)
 class SpotNodePeerEntry:
-    service_name: str
+    channel_name: str
     local_endpoint: str
     peer_endpoint: str
-    source: int
-    state: int
+    source: SpotPeerSource
+    state: SpotPeerState
     weight: int
     connected_since_ms: int
     last_changed_ms: int
@@ -830,15 +838,15 @@ class SpotNodePeerEntry:
 @dataclass(frozen=True)
 class SpotNodePeerFilter:
     peer_endpoint: str | None = None
-    source: int | None = None
-    state: int | None = None
+    source: SpotPeerSource | None = None
+    state: SpotPeerState | None = None
 
 
 @dataclass(frozen=True)
 class SpotNodeSubjectEntry:
-    role: int
+    role: SpotRole
     subject: str
-    subject_kind: int
+    subject_kind: SubjectKind
     ready_peer_count: int
     active_peer_count: int
     last_changed_ms: int
@@ -846,25 +854,25 @@ class SpotNodeSubjectEntry:
 
 @dataclass(frozen=True)
 class SpotNodeSubjectFilter:
-    role: int | None = None
+    role: SpotRole | None = None
     subject: str | None = None
-    subject_kind: int | None = None
+    subject_kind: SubjectKind | None = None
 
 
 @dataclass(frozen=True)
 class SpotNodeSocketSnapshotFilter:
-    owner: int | None = None
-    socket_type: int | None = None
+    owner: SpotNodeSocketOwner | None = None
+    socket_type: SocketType | None = None
     socket_name: str | None = None
 
 
 @dataclass(frozen=True)
 class SpotNodeSocketSnapshotEntry:
-    owner: int
+    owner: SpotNodeSocketOwner
     owner_id: int
     owner_name: str
     socket_name: str
-    socket_type: int
+    socket_type: SocketType
     auto_hwm_visible: bool
     snapshot: MonitorSnapshot
 
@@ -885,6 +893,7 @@ class SpotNode:
         self._actor_admission_cb = None
         self._actor_request_pending = {}
         self._actor_reply_handler = None
+        self._channel_dealers = {}
 
     def bind(self, endpoint: str):
         rc = lib().zlink_spot_node_bind(
@@ -934,6 +943,7 @@ class SpotNode:
         )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        self._channel_dealers[dealer._handle] = dealer
 
     def attach_channel_dealer_manual(self, channel_name, dealer):
         channel_bytes = _validated_c_string_value(
@@ -946,11 +956,26 @@ class SpotNode:
         )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        self._channel_dealers[dealer._handle] = dealer
 
     def attach_pub_ingress(self, pub):
         rc = lib().zlink_spot_node_attach_pub_ingress(self._handle, pub._handle)
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
+    def _get_spot_node_option_int32(self, option: int | SpotNodeOption):
+        opt = int(option)
+        native = ctypes.c_int32(0)
+        size = ctypes.c_size_t(ctypes.sizeof(native))
+        rc = lib().zlink_get_spot_node_option(
+            self._handle,
+            opt,
+            ctypes.byref(native),
+            ctypes.byref(size),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return int(native.value)
 
     def _set_spot_node_option(self, option: int | SpotNodeOption, value):
         view = _as_bytes_view(value)
@@ -1004,8 +1029,85 @@ class SpotNode:
             ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native)),
         )
 
+    @property
+    def router_hwm_profile(self):
+        return AutoHwmProfile(self._get_spot_node_option_int32(SpotNodeOption.ROUTER_HWM_PROFILE))
+
+    @router_hwm_profile.setter
+    def router_hwm_profile(self, value):
+        self.set_router_hwm_profile(value)
+
+    @property
+    def router_hwm(self):
+        return self._get_spot_node_option_int32(SpotNodeOption.ROUTER_HWM)
+
+    @router_hwm.setter
+    def router_hwm(self, value):
+        self.set_router_hwm(value)
+
+    @property
+    def pubsub_hwm_profile(self):
+        return AutoHwmProfile(self._get_spot_node_option_int32(SpotNodeOption.PUBSUB_HWM_PROFILE))
+
+    @pubsub_hwm_profile.setter
+    def pubsub_hwm_profile(self, value):
+        self.set_pubsub_hwm_profile(value)
+
+    @property
+    def pubsub_hwm(self):
+        return self._get_spot_node_option_int32(SpotNodeOption.PUBSUB_HWM)
+
+    @pubsub_hwm.setter
+    def pubsub_hwm(self, value):
+        self.set_pubsub_hwm(value)
+
+    @property
+    def dispatch_workers_min(self):
+        return self._get_spot_node_option_int32(SpotNodeOption.DISPATCH_WORKERS_MIN)
+
+    @dispatch_workers_min.setter
+    def dispatch_workers_min(self, value: int):
+        native = ctypes.c_int32(_validated_int32(value))
+        self._set_spot_node_option(
+            SpotNodeOption.DISPATCH_WORKERS_MIN,
+            ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native)),
+        )
+
+    @property
+    def dispatch_workers_max(self):
+        return self._get_spot_node_option_int32(SpotNodeOption.DISPATCH_WORKERS_MAX)
+
+    @dispatch_workers_max.setter
+    def dispatch_workers_max(self, value: int):
+        native = ctypes.c_int32(_validated_int32(value))
+        self._set_spot_node_option(
+            SpotNodeOption.DISPATCH_WORKERS_MAX,
+            ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native)),
+        )
+
     def create_spot(self):
         return Spot._create(self)
+
+    def entry_spot(self):
+        spot_handle = ctypes.c_void_p()
+        rc = lib().zlink_spot_node_entry_spot(self._handle, ctypes.byref(spot_handle))
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return Spot._wrap_handle(self, spot_handle.value)
+
+    def spot_lookup(self, spot_rid):
+        native_rid = _copy_routing_id(spot_rid)
+        spot_handle = ctypes.c_void_p()
+        rc = lib().zlink_spot_node_spot_lookup(
+            self._handle, ctypes.byref(native_rid), ctypes.byref(spot_handle)
+        )
+        if rc != 0:
+            if rc == int(ConfigResult.NOT_FOUND):
+                return None
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        if not spot_handle.value:
+            return None
+        return Spot._wrap_handle(self, spot_handle.value)
 
     def actor(self, actor_id):
         native = ZlinkActorRef()
@@ -1256,7 +1358,7 @@ class SpotNode:
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return SpotNodeStatus(
-            service_name=_decode_fixed(native.service_name),
+            channel_name=_decode_fixed(native.service_name),
             local_endpoint=_decode_fixed(native.local_endpoint),
             node_routing_id=_routing_id_bytes(native.node_routing_id),
             state=SpotNodeState(int(native.state)),
@@ -1301,7 +1403,7 @@ class SpotNode:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return [
             SpotNodePeerEntry(
-                service_name=_decode_fixed(entry.service_name),
+                channel_name=_decode_fixed(entry.service_name),
                 local_endpoint=_decode_fixed(entry.local_endpoint),
                 peer_endpoint=_decode_fixed(entry.peer_endpoint),
                 source=SpotPeerSource(int(entry.source)),
@@ -1338,9 +1440,9 @@ class SpotNode:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return [
             SpotNodeSubjectEntry(
-                role=int(entry.role),
+                role=SpotRole(int(entry.role)),
                 subject=_decode_fixed(entry.subject),
-                subject_kind=int(entry.subject_kind),
+                subject_kind=SubjectKind(int(entry.subject_kind)),
                 ready_peer_count=int(entry.ready_peer_count),
                 active_peer_count=int(entry.active_peer_count),
                 last_changed_ms=int(entry.last_changed_ms),
@@ -1383,7 +1485,7 @@ class SpotNode:
                 owner_id=int(entry.owner_id),
                 owner_name=_decode_fixed(entry.owner_name),
                 socket_name=_decode_fixed(entry.socket_name),
-                socket_type=int(entry.socket_type),
+                socket_type=SocketType(int(entry.socket_type)),
                 auto_hwm_visible=bool(entry.auto_hwm_visible),
                 snapshot=_monitor_snapshot_from_native(entry.snapshot),
             )
@@ -1426,10 +1528,197 @@ class SpotNode:
         self.close()
 
 
+class SendOp:
+    """Fluent builder for Spot send operations."""
+    __slots__ = ('_spot', '_op_fn', '_parts', '_flags', '_submitted')
+
+    def __init__(self, spot, op_fn):
+        self._spot = spot
+        self._op_fn = op_fn
+        self._parts = []
+        self._flags = 0
+        self._submitted = False
+
+    def message(self, payload):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.append(payload)
+        return self
+
+    def messages(self, *payloads):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.extend(payloads)
+        return self
+
+    def flags(self, flags):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._flags = int(flags)
+        return self
+
+    def submit(self):
+        """Returns True on success, False on DONTWAIT backpressure. Raises SubmitError on failure."""
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if not self._parts:
+            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        self._submitted = True
+        return self._op_fn(self._parts, self._flags)
+
+
+class RequestOp:
+    """Fluent builder for Spot request operations (async or callback)."""
+    __slots__ = ('_spot', '_op_async_fn', '_op_cb_fn', '_parts', '_timeout', '_submitted')
+
+    def __init__(self, spot, op_async_fn, op_cb_fn):
+        self._spot = spot
+        self._op_async_fn = op_async_fn
+        self._op_cb_fn = op_cb_fn
+        self._parts = []
+        self._timeout = 0
+        self._submitted = False
+
+    def message(self, payload):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.append(payload)
+        return self
+
+    def messages(self, *payloads):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.extend(payloads)
+        return self
+
+    def timeout(self, timeout):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._timeout = timeout
+        return self
+
+    def flags(self, flags):
+        """Calling flags() transitions to a RequestCallbackOp."""
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        return RequestCallbackOp(self._spot, self._op_cb_fn, self._parts, self._timeout, int(flags))
+
+    def submit_async(self):
+        """Submit as async coroutine. Returns awaitable list[Message]."""
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if not self._parts:
+            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        self._submitted = True
+        return self._op_async_fn(self._parts, timeout=self._timeout)
+
+    def submit(self, callback):
+        """Submit with callback. Returns True/False for backpressure."""
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if not self._parts:
+            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        self._submitted = True
+        return self._op_cb_fn(self._parts, callback, flags=0, timeout=self._timeout)
+
+
+class RequestCallbackOp:
+    """Request operation builder after flags() has been called - async submit is not available."""
+    __slots__ = ('_spot', '_op_cb_fn', '_parts', '_timeout', '_flags', '_submitted')
+
+    def __init__(self, spot, op_cb_fn, parts, timeout, flags):
+        self._spot = spot
+        self._op_cb_fn = op_cb_fn
+        self._parts = list(parts)
+        self._timeout = timeout
+        self._flags = flags
+        self._submitted = False
+
+    def message(self, payload):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.append(payload)
+        return self
+
+    def messages(self, *payloads):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.extend(payloads)
+        return self
+
+    def timeout(self, timeout):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._timeout = timeout
+        return self
+
+    def flags(self, flags):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._flags = int(flags)
+        return self
+
+    def submit(self, callback):
+        """Submit with callback. Returns True/False for backpressure."""
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if not self._parts:
+            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        self._submitted = True
+        return self._op_cb_fn(self._parts, callback, flags=self._flags, timeout=self._timeout)
+
+
+class ReplyOp:
+    """Fluent builder for Spot reply operations."""
+    __slots__ = ('_op_fn', '_parts', '_flags', '_submitted')
+
+    def __init__(self, op_fn):
+        self._op_fn = op_fn
+        self._parts = []
+        self._flags = 0
+        self._submitted = False
+
+    def message(self, payload):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.append(payload)
+        return self
+
+    def messages(self, *payloads):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.extend(payloads)
+        return self
+
+    def flags(self, flags):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._flags = int(flags)
+        return self
+
+    def submit(self):
+        """Submit the reply. Raises SubmitError on failure."""
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if not self._parts:
+            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        self._submitted = True
+        self._op_fn(self._parts, self._flags)
+
+
 class Spot:
     @classmethod
     def _create(cls, node):
         return cls(node, _internal=_SPOT_INIT_TOKEN)
+
+    @classmethod
+    def _wrap_handle(cls, node, handle):
+        """Wrap an existing native spot handle returned by entry_spot/spot_lookup."""
+        spot = cls.__new__(cls)
+        spot._init_state(node)
+        spot._handle = handle
+        node._register_spot(spot)
+        return spot
 
     def _init_state(self, node):
         self._node = node
@@ -1451,10 +1740,17 @@ class Spot:
         self._send_ready_handler = None
         self._send_ready_handler_cb = None
         self._own = True
+        self._timers = {}
         self._request_progress = _RequestProgressPump(
             self._drain_request_progress,
             lambda: bool(self._request_pending),
         )
+
+    def _register_timer(self, timer):
+        self._timers[timer._handle] = timer
+
+    def _unregister_timer(self, timer):
+        self._timers.pop(timer._handle, None)
 
     def _drain_request_progress(self):
         seen = set()
@@ -1515,14 +1811,22 @@ class Spot:
             native_parts.append(native)
         return native_parts
 
-    def publish(self, service_name, topic, payload, *, flags=0):
+    def publish(self, service_name, topic):
+        return SendOp(
+            self,
+            lambda parts, flags: self._publish_submit(
+                service_name, topic, parts, flags
+            ),
+        )
+
+    def _publish_submit(self, service_name, topic, parts, flags=0):
         try:
             _ensure_not_in_callback("blocking publish")
             service_bytes = _validated_c_string_value(
                 service_name, field="service_name", max_length=255
             )
             topic_bytes = _validated_c_string_value(topic, field="topic", max_length=255)
-            native_parts = self._native_parts_from_payload(payload)
+            native_parts = self._native_parts_from_payload(parts)
             rc, err = _submit_parts(
                 native_parts,
                 lambda part_ptr, part_flag: lib().zlink_spot_publish_part(
@@ -1542,13 +1846,21 @@ class Spot:
                 return False
             raise
 
-    def send_channel(self, channel_name, payload, *, flags=0):
+    def send_channel(self, channel_name):
+        return SendOp(
+            self,
+            lambda parts, flags: self._send_channel_submit(
+                channel_name, parts, flags
+            ),
+        )
+
+    def _send_channel_submit(self, channel_name, parts, flags=0):
         try:
             _ensure_not_in_callback("blocking send")
             channel_bytes = _validated_c_string_value(
                 channel_name, field="channel_name", max_length=255
             )
-            native_parts = self._native_parts_from_payload(payload)
+            native_parts = self._native_parts_from_payload(parts)
             rc, err = _submit_parts(
                 native_parts,
                 lambda part_ptr, part_flag: lib().zlink_spot_send_channel_part(
@@ -1567,10 +1879,18 @@ class Spot:
                 return False
             raise
 
-    def send_to_spot(self, dest_node_rid, dest_spot_rid, payload, *, flags=0):
+    def send_to_spot(self, dest_node_rid, dest_spot_rid):
+        return SendOp(
+            self,
+            lambda parts, flags: self._send_to_spot_submit(
+                dest_node_rid, dest_spot_rid, parts, flags
+            ),
+        )
+
+    def _send_to_spot_submit(self, dest_node_rid, dest_spot_rid, parts, flags=0):
         try:
             _ensure_not_in_callback("blocking send")
-            native_parts = self._native_parts_from_payload(payload)
+            native_parts = self._native_parts_from_payload(parts)
             native_node = _copy_routing_id(dest_node_rid)
             native_spot = _copy_routing_id(dest_spot_rid)
             rc, err = _submit_parts(
@@ -1592,32 +1912,18 @@ class Spot:
                 return False
             raise
 
-    def request_channel(self, channel_name, payload, *args, timeout=0, flags=_UNSET):
-        if len(args) > 1:
-            raise TypeError(
-                "request_channel() takes at most 3 positional arguments after self"
-            )
+    def request_channel(self, channel_name):
         channel_bytes = _validated_c_string_value(
             channel_name, field="channel_name", max_length=255
         )
-        if not args:
-            if flags is not _UNSET:
-                raise TypeError(
-                    "request_channel() got an unexpected keyword argument 'flags'"
-                )
-            return self._request_channel_async(
-                channel_bytes,
-                payload,
-                timeout=timeout,
-            )
-        callback = args[0]
-        callback_flags = 0 if flags is _UNSET else flags
-        return self._request_channel_callback(
-            channel_bytes,
-            payload,
-            callback,
-            flags=callback_flags,
-            timeout=timeout,
+        return RequestOp(
+            self,
+            lambda parts, *, timeout=0: self._request_channel_async(
+                channel_bytes, parts, timeout=timeout
+            ),
+            lambda parts, callback, *, flags=0, timeout=0: self._request_channel_callback(
+                channel_bytes, parts, callback, flags=flags, timeout=timeout
+            ),
         )
 
     def _request_channel_async(self, channel_bytes, payload, *, timeout=0):
@@ -1682,54 +1988,75 @@ class Spot:
             self._request_progress_targets.pop(handle, None)
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
-    def request_to_spot(self, dest_node_rid, dest_spot_rid, payload, *args, timeout=0, flags=_UNSET):
-        if len(args) > 1:
-            raise TypeError(
-                "request_to_spot() takes at most 4 positional arguments after self"
-            )
-        if not args:
-            if flags is not _UNSET:
-                raise TypeError(
-                    "request_to_spot() got an unexpected keyword argument 'flags'"
-                )
-            async def _run():
-                loop = asyncio.get_running_loop()
-                pending = _PendingRequest(loop=loop)
-                handle = id(pending)
-                self._request_pending[handle] = pending
-                try:
-                    self._start_spot_request(
-                        dest_node_rid, dest_spot_rid, payload, 0, timeout, handle
-                    )
-                except Exception:
-                    self._request_pending.pop(handle, None)
-                    self._request_progress_targets.pop(handle, None)
-                    raise
-                self._request_progress.ensure_running()
-                return await pending.future
+    def request_to_spot(self, dest_node_rid, dest_spot_rid):
+        return RequestOp(
+            self,
+            lambda parts, *, timeout=0: self._request_to_spot_async(
+                dest_node_rid, dest_spot_rid, parts, timeout=timeout
+            ),
+            lambda parts, callback, *, flags=0, timeout=0: self._request_to_spot_callback(
+                dest_node_rid, dest_spot_rid, parts, callback, flags=flags, timeout=timeout
+            ),
+        )
 
-            return _run()
-        callback = args[0]
-        callback_flags = 0 if flags is _UNSET else flags
+    def _request_to_spot_async(self, dest_node_rid, dest_spot_rid, parts, *, timeout=0):
+        async def _run():
+            loop = asyncio.get_running_loop()
+            pending = _PendingRequest(loop=loop)
+            handle = id(pending)
+            self._request_pending[handle] = pending
+            try:
+                self._start_spot_request(
+                    dest_node_rid, dest_spot_rid, parts, 0, timeout, handle
+                )
+            except Exception:
+                self._request_pending.pop(handle, None)
+                self._request_progress_targets.pop(handle, None)
+                raise
+            self._request_progress.ensure_running()
+            return await pending.future
+
+        return _run()
+
+    def _request_to_spot_callback(self, dest_node_rid, dest_spot_rid, parts, callback, *, flags=0, timeout=0):
         pending = _PendingRequest(callback=callback)
         handle = id(pending)
         self._request_pending[handle] = pending
         try:
             self._start_spot_request(
-                dest_node_rid, dest_spot_rid, payload, callback_flags, timeout, handle
+                dest_node_rid, dest_spot_rid, parts, flags, timeout, handle
             )
             self._request_progress.ensure_running()
             return True
         except SubmitError as ex:
             self._request_pending.pop(handle, None)
             self._request_progress_targets.pop(handle, None)
-            if int(callback_flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
+            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
                 return False
             raise
         except Exception:
             self._request_pending.pop(handle, None)
             self._request_progress_targets.pop(handle, None)
             raise
+
+    def request_to_router(self, peer_rid):
+        return RequestOp(
+            self,
+            lambda parts, *, timeout=0: self._request_async(
+                lib().zlink_spot_request_router_part,
+                (peer_rid,),
+                parts,
+                timeout=timeout,
+            ),
+            lambda parts, callback, *, flags=0, timeout=0: self._request_callback(
+                lib().zlink_spot_request_router_part,
+                (peer_rid,),
+                parts,
+                callback,
+                flags=flags,
+                timeout=timeout,
+            ),
+        )
 
     def _start_spot_request(self, dest_node_rid, dest_spot_rid, payload, flags, timeout, handle):
         native_parts = self._native_parts_from_payload(payload)
@@ -1967,9 +2294,9 @@ class Spot:
             received = _make_message_list(parts, part_count)
         pending.resolve(result, received, _request_result_internal_errno(result))
 
-    def reply_to_spot(self, dest_node_rid, dest_spot_rid, request_seq, payload, *, flags=0):
+    def _submit_reply_to_spot(self, dest_node_rid, dest_spot_rid, request_seq, parts, flags):
         _ensure_reply_flags_supported(flags)
-        native_parts = _clone_payload(payload)
+        native_parts = _clone_payload(parts)
         native_node = _copy_routing_id(dest_node_rid)
         native_spot = _copy_routing_id(dest_spot_rid)
         rc, err = _submit_parts(
@@ -1986,9 +2313,16 @@ class Spot:
         if rc != 0:
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
-    def reply_to_router(self, peer_rid, request_seq, payload, *, flags=0):
+    def reply_to_spot(self, dest_node_rid, dest_spot_rid, request_seq):
+        return ReplyOp(
+            lambda parts, flags: self._submit_reply_to_spot(
+                dest_node_rid, dest_spot_rid, request_seq, parts, flags
+            )
+        )
+
+    def _submit_reply_to_router(self, peer_rid, request_seq, parts, flags):
         _ensure_reply_flags_supported(flags)
-        native_parts = _clone_payload(payload)
+        native_parts = _clone_payload(parts)
         native_peer = _copy_routing_id(peer_rid)
         rc, err = _submit_parts(
             native_parts,
@@ -2002,6 +2336,13 @@ class Spot:
         )
         if rc != 0:
             _raise_result_error(SubmitError, SubmitResult, rc, err)
+
+    def reply_to_router(self, peer_rid, request_seq):
+        return ReplyOp(
+            lambda parts, flags: self._submit_reply_to_router(
+                peer_rid, request_seq, parts, flags
+            )
+        )
 
     def recv_routed(self, *, flags=0):
         try:
@@ -2080,26 +2421,28 @@ class Spot:
             info = info_ptr.contents
             try:
                 actor_ref = None
-                subject = None
+                timer = None
+                channel_dealer = None
+                subject_kind = SpotDispatchSubjectKind(int(info.subject_kind))
                 if info.subject:
-                    if (
-                        int(info.event) == int(SpotDispatchEvent.ACTOR_READABLE)
-                        and int(info.subject_kind) == int(SpotDispatchSubjectKind.ACTOR)
-                    ):
+                    if subject_kind == SpotDispatchSubjectKind.ACTOR:
                         actor_ref = _actor_ref_from_native(
                             ctypes.cast(
                                 info.subject,
                                 ctypes.POINTER(ZlinkActorRef),
                             ).contents
                         )
-                    else:
-                        subject = int(ctypes.cast(info.subject, ctypes.c_void_p).value)
+                    elif subject_kind == SpotDispatchSubjectKind.TIMER:
+                        timer = self._timers.get(info.subject)
+                    elif subject_kind == SpotDispatchSubjectKind.CHANNEL_DEALER:
+                        channel_dealer = self._node._channel_dealers.get(info.subject)
                 handler(
                     self,
                     SpotDispatchInfo(
                         event=SpotDispatchEvent(int(info.event)),
-                        subject_kind=SpotDispatchSubjectKind(int(info.subject_kind)),
-                        subject=subject,
+                        subject_kind=subject_kind,
+                        timer=timer,
+                        channel_dealer=channel_dealer,
                         actor=actor_ref,
                         _node_handle=self._node._handle,
                     ),
@@ -2146,30 +2489,29 @@ class Spot:
                 raise
         return ActorJoinRequest(
             info=ActorJoinInfo(
-                actor=_actor_ref_from_native(info.source_actor),
                 source_actor=_actor_ref_from_native(info.source_actor),
                 target_actor=_actor_ref_from_native(info.target_actor),
                 source_node_rid=_routing_id_bytes(info.source_node_rid),
-                source_spot_rid=_routing_id_or_none(info.source_spot_rid),
-                target_node_rid=_routing_id_or_none(info.target_node_rid),
-                target_spot_rid=_routing_id_or_none(info.target_spot_rid),
+                source_spot_rid=_routing_id_or_empty(info.source_spot_rid),
+                target_node_rid=_routing_id_or_empty(info.target_node_rid),
+                target_spot_rid=_routing_id_or_empty(info.target_spot_rid),
                 join_epoch=int(info.join_epoch),
                 flags=int(info.flags),
-                _native=info,
             ),
             message=_message_from_native(message),
+            _native=info,
         )
 
-    def reply_actor_join(self, info, accepted, payload):
-        if not isinstance(info, ActorJoinInfo):
-            raise TypeError("info must be ActorJoinInfo")
+    def reply_actor_join(self, request, accepted, payload):
+        if not isinstance(request, ActorJoinRequest):
+            raise TypeError("request must be ActorJoinRequest")
         native_parts = _clone_payload(payload)
         if len(native_parts) != 1:
             _close_native_parts(native_parts)
             raise ValueError("actor join reply payload must be a single message")
         rc = lib().zlink_spot_actor_join_reply(
             self._handle,
-            ctypes.byref(info._native),
+            ctypes.byref(request._native),
             1 if accepted else 0,
             ctypes.byref(native_parts[0]),
         )

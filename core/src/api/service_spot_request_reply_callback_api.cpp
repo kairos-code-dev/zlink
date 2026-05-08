@@ -25,9 +25,9 @@ using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::try_find_spot_state;
 using zlink::spot_reqrep_internal::router_spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::find_or_create_router_state;
-using zlink::spot_reqrep_internal::g_router_state_identity_index;
-using zlink::spot_reqrep_internal::g_spot_request_reply_index_mutex;
-using zlink::spot_reqrep_internal::g_spot_state_identity_index;
+using zlink::spot_reqrep_internal::router_state_identity_index;
+using zlink::spot_reqrep_internal::spot_request_reply_index_mutex;
+using zlink::spot_reqrep_internal::spot_state_identity_index;
 using zlink::spot_reqrep_internal::router_state_identity_index_t;
 using zlink::spot_reqrep_internal::spot_state_identity_index_t;
 using zlink::spot_reqrep_internal::spot_state_spot_index_t;
@@ -486,10 +486,10 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
         }
     }
     erase_spot_owner_state (spot_);
-    std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+    std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex());
     for (spot_state_identity_index_t::iterator it =
-           g_spot_state_identity_index.begin ();
-         it != g_spot_state_identity_index.end ();) {
+           spot_state_identity_index().begin ();
+         it != spot_state_identity_index().end ();) {
         spot_state_spot_index_t &spot_index = it->second;
         for (spot_state_spot_index_t::iterator spot_it = spot_index.begin ();
              spot_it != spot_index.end ();) {
@@ -501,7 +501,7 @@ extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_)
                 ++spot_it;
         }
         if (spot_index.empty ())
-            it = g_spot_state_identity_index.erase (it);
+            it = spot_state_identity_index().erase (it);
         else
             ++it;
     }
@@ -524,14 +524,14 @@ extern "C" void zlink_spot_request_reply_cleanup_router (void *router_)
         zlink::request_completion::close (&state->completion);
     }
     handle.socket->clear_router_spot_request_reply_state ();
-    std::lock_guard<std::mutex> lock (g_spot_request_reply_index_mutex);
+    std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex());
     for (router_state_identity_index_t::iterator it =
-           g_router_state_identity_index.begin ();
-         it != g_router_state_identity_index.end ();) {
+           router_state_identity_index().begin ();
+         it != router_state_identity_index().end ();) {
         std::shared_ptr<router_spot_request_reply_state_t> indexed =
           it->second.lock ();
         if (!indexed || indexed == state)
-            it = g_router_state_identity_index.erase (it);
+            it = router_state_identity_index().erase (it);
         else
             ++it;
     }

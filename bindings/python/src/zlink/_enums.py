@@ -148,6 +148,7 @@ class RecvResult(IntEnum):
     TERMINATED = 203
     INVALID_HANDLE = 204
     NOT_SUPPORTED = 205
+    INTERNAL_ERROR = 206
 
 
 class HandlerResult(IntEnum):
@@ -157,6 +158,7 @@ class HandlerResult(IntEnum):
     NOT_SUPPORTED = 303
     DEADLOCK = 304
     INVALID_HANDLE = 305
+    INTERNAL_ERROR = 306
 
 
 class CloseResult(IntEnum):
@@ -164,6 +166,7 @@ class CloseResult(IntEnum):
     BUSY = 401
     SHUTDOWN = 402
     INVALID_HANDLE = 403
+    INTERNAL_ERROR = 404
 
 
 class BindResult(IntEnum):
@@ -172,6 +175,7 @@ class BindResult(IntEnum):
     ADDR_IN_USE = 502
     NOT_SUPPORTED = 503
     INVALID_HANDLE = 504
+    INTERNAL_ERROR = 505
 
 
 class ConnectResult(IntEnum):
@@ -179,6 +183,10 @@ class ConnectResult(IntEnum):
     INVALID_ARGUMENT = 601
     NOT_SUPPORTED = 602
     INVALID_HANDLE = 603
+    INTERNAL_ERROR = 604
+    NOT_FOUND = 605
+    CONFLICT = 606
+    BUSY = 607
 
 
 class ConfigResult(IntEnum):
@@ -186,6 +194,9 @@ class ConfigResult(IntEnum):
     INVALID_HANDLE = 701
     INVALID_ARGUMENT = 702
     NOT_SUPPORTED = 703
+    INTERNAL_ERROR = 704
+    INVALID_STATE = 705
+    NOT_FOUND = 706
 
 
 class SendResult(IntEnum):
@@ -257,6 +268,11 @@ class PollEvent(IntFlag):
     POLLPRI = 8
 
 
+class PollEventFlag(IntFlag):
+    IN = 1
+    OUT = 2
+
+
 class AutoConnectType(IntEnum):
     INVALID = 0
     ROUTE_MESH = 1
@@ -309,6 +325,8 @@ class SpotNodeOption(IntEnum):
     ROUTER_HWM = 0x360F
     PUBSUB_HWM_PROFILE = 0x3610
     PUBSUB_HWM = 0x3611
+    DISPATCH_WORKERS_MIN = 0x3612
+    DISPATCH_WORKERS_MAX = 0x3613
 
 
 class SpotNodeState(IntEnum):
@@ -388,3 +406,27 @@ class TopologyState(IntEnum):
     LOST = 4
     ERROR = 5
     STOPPED = 6
+
+
+class ServiceKind(IntEnum):
+    DISCOVERY = 1
+    SPOT_SUB = 3
+    SPOT_PUB = 4
+    SOCKET = 5
+
+
+class SubjectKind(IntEnum):
+    NONE = 0
+    TOPIC = 1
+    PATTERN = 2
+
+
+class SpotRole(IntEnum):
+    PUB = 1
+    SUB = 2
+
+
+class PollSourceKind(IntEnum):
+    SOCKET = 1
+    FD = 2
+    TIMER = 3

@@ -62,11 +62,14 @@ class SpotRequestAsyncTests(unittest.TestCase):
             _wait_spot_peer_connected(requester_node)
 
             async def issue_request():
-                reply = await requester.request_to_spot(
-                    responder_node.routing_id,
-                    responder.routing_id,
-                    [b"spot-ping"],
-                    timeout=2.0,
+                reply = await (
+                    requester.request_to_spot(
+                        responder_node.routing_id,
+                        responder.routing_id,
+                    )
+                    .message(b"spot-ping")
+                    .timeout(2.0)
+                    .submit_async()
                 )
                 try:
                     self.assertEqual([part.to_bytes() for part in reply], [b"spot-pong"])

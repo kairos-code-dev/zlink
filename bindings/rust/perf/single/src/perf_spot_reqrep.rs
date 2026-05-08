@@ -161,7 +161,7 @@ fn main() {
                 let replier = unsafe { &*(spot_ptr as *const Spot) };
                 loop {
                     match replier.recv_routed_with_flags(RecvFlags::DONT_WAIT) {
-                        Ok(received) => {
+                        Ok(Some(received)) => {
                             let data = common::message_payload(received.parts());
                             if common::is_valid_message(data, config.size) {
                                 responder_ready.store(true, Ordering::Release);
@@ -169,7 +169,7 @@ fn main() {
                                 received.reply(vec![reply]).expect("reply");
                             }
                         }
-                        Err(err) if err.code() == RecvResult::NoData => break,
+                        Ok(None) => break,
                         Err(err) => panic!("spot reqrep recv_routed drain failed: {err}"),
                     }
                 }

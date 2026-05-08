@@ -185,14 +185,15 @@ func (r *routerRequestSupport) TryRequestCallback(routingID RoutingID, callback 
 	return r.requestCallback(routingID, callback, SendFlagsDontWait, timeout, parts...)
 }
 
-func (r *routerRequestSupport) Reply(routingID RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) error {
+func (r *routerRequestSupport) Reply(routingID RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) (bool, error) {
 	if err := validateReplyFlags(flags); err != nil {
-		return err
+		return false, err
 	}
 	rid := routingID.toC()
-	return submitMultipartFromClones(parts, false, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+	err := submitMultipartFromClones(parts, false, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 		return submitErrorFromResult(C.zlink_router_reply_part(r.socket.raw(), &rid, C.uint64_t(requestSeq), part, partFlag))
 	})
+	return submitBackpressureResult(err)
 }
 
 func (r *routerRequestSupport) startRequest(routingID RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {

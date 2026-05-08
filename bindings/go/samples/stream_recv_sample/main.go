@@ -36,7 +36,8 @@ func main() {
 		samplecommon.Must(fmt.Errorf("unexpected payload %q", string(part.Data())))
 	}
 
-	samplecommon.Must(server.SendTo(received.RoutingID(), zlink.SendFlagsNone, samplecommon.Message(sent)))
+	_, err = server.SendTo(received.RoutingID(), zlink.SendFlagsNone, samplecommon.Message(sent))
+	samplecommon.Must(err)
 
 	buffer := make([]byte, len(sent))
 	_, err = io.ReadFull(conn, buffer)

@@ -65,14 +65,14 @@ fn main() {
         let mut saw_message = false;
         loop {
             match sub_sock.subscribe_with_flags(RecvFlags::DONT_WAIT) {
-                Ok(topic_msg) => {
+                Ok(Some(topic_msg)) => {
                     let data = common::message_payload(topic_msg.parts());
                     if collect_active {
                         common::handle_recv(data, config.size, &stats);
                     }
                     saw_message = true;
                 }
-                Err(err) if err.code() == RecvResult::NoData => break,
+                Ok(None) => break,
                 Err(_) => break,
             }
         }
@@ -90,15 +90,8 @@ fn main() {
     let send_thread = std::thread::spawn(move || {
         common::send_loop(active_deadline, config.size, common::PHASE_ACTIVE, |msg| {
             match pub_sock.publish_with_flags("P", msg, SendFlags::DONT_WAIT) {
-                Ok(()) => true,
-                Err(err)
-                    if matches!(
-                        err.code(),
-                        SubmitResult::Backpressured | SubmitResult::NotConnected
-                    ) =>
-                {
-                    false
-                }
+                Ok(sent) => sent,
+                Err(err) if err.code() == SubmitResult::NotConnected => false,
                 Err(err) => panic!("active publish: {err}"),
             }
         });

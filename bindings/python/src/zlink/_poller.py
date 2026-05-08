@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
+from dataclasses import dataclass
 
 from ._ffi import ZlinkPollerEvent, lib
 from ._core import (
@@ -13,6 +14,17 @@ from ._core import (
     _raise_last_error,
     _raise_result_error,
 )
+from ._enums import PollEventFlag, PollSourceKind
+
+
+@dataclass(frozen=True)
+class PollerEvent:
+    source_kind: PollSourceKind
+    events: PollEventFlag
+    socket: object | None = None
+    fd: int | None = None
+    timer: object | None = None
+    tag: object | None = None
 
 
 class Poller:
@@ -122,15 +134,21 @@ class Poller:
             item = self._items.get(event.user_data)
             if item is None:
                 continue
+            if item["socket"] is not None:
+                source_kind = PollSourceKind.SOCKET
+            elif item["fd"] is not None:
+                source_kind = PollSourceKind.FD
+            else:
+                source_kind = PollSourceKind.TIMER
             results.append(
-                {
-                    "socket": item["socket"],
-                    "fd": item["fd"],
-                    "timer": item["timer"],
-                    "events": int(event.events),
-                    "tag": item["tag"],
-                    "user_data": item["tag"],
-                }
+                PollerEvent(
+                    source_kind=source_kind,
+                    events=PollEventFlag(int(event.events)),
+                    socket=item["socket"],
+                    fd=item["fd"],
+                    timer=item["timer"],
+                    tag=item["tag"],
+                )
             )
         return results
 

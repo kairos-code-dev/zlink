@@ -78,8 +78,8 @@ fn router_option_mandatory() {
 fn common_option_rid_duplicate_policy() {
     let ctx = Context::new().unwrap();
     let sock = ctx.router_socket().unwrap();
-    sock.common_options().set_rid_duplicate_policy(1).unwrap();
-    assert_eq!(sock.common_options().rid_duplicate_policy().unwrap(), 1);
+    sock.common_options().set_rid_duplicate_policy(RidDuplicatePolicy::Handover).unwrap();
+    assert_eq!(sock.common_options().rid_duplicate_policy().unwrap(), RidDuplicatePolicy::Handover);
 }
 
 #[test]
@@ -94,6 +94,27 @@ fn dealer_option_probe() {
     let ctx = Context::new().unwrap();
     let sock = ctx.dealer_socket().unwrap();
     sock.dealer_options().set_probe(true).unwrap();
+}
+
+#[test]
+fn router_option_weight() {
+    let ctx = Context::new().unwrap();
+    let sock = ctx.router_socket().unwrap();
+    let opts = sock.router_options();
+    let initial = opts.weight().unwrap();
+    opts.set_weight(50).unwrap();
+    assert_eq!(opts.weight().unwrap(), 50);
+    opts.set_weight(initial).unwrap();
+}
+
+#[test]
+fn dealer_option_weight() {
+    let ctx = Context::new().unwrap();
+    let sock = ctx.dealer_socket().unwrap();
+    let opts = sock.dealer_options();
+    assert_eq!(opts.weight().unwrap(), 100); // default
+    opts.set_weight(75).unwrap();
+    assert_eq!(opts.weight().unwrap(), 75);
 }
 
 #[test]

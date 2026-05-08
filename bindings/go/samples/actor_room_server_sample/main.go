@@ -38,29 +38,31 @@ func main() {
 	samplecommon.Must(err)
 	defer stream.Close()
 	session := zlink.NewRoutingID([]byte("room-session"))
-	ref, err := actor.Ref()
-	samplecommon.Must(err)
+	ref := actor.Ref()
 	samplecommon.Must(stream.BindActor(node, session, ref, time.Second))
 
 	joinCh := make(chan zlink.RequestResult, 1)
-	samplecommon.Must(actor.Join(spot, func(result zlink.RequestResult, parts []*zlink.Message) {
+	_, joinErr := actor.Join(spot, samplecommon.Message("enter-room"), func(result zlink.RequestResult, parts []*zlink.Message) {
 		for _, part := range parts {
 			part.Close()
 		}
 		joinCh <- result
-	}, zlink.SendFlagsDontWait, time.Second, samplecommon.Message("enter-room")))
-	info, message, err := spot.RecvActorJoin(zlink.RecvFlagsDontWait)
+	}, zlink.SendFlagsDontWait, time.Second)
+	samplecommon.Must(joinErr)
+	request, err := spot.RecvActorJoin(zlink.RecvFlagsDontWait)
 	samplecommon.Must(err)
-	if !bytes.Equal(message.Data(), []byte("enter-room")) {
+	if !bytes.Equal(request.Message.Data(), []byte("enter-room")) {
 		samplecommon.Must(fmt.Errorf("unexpected join payload"))
 	}
-	message.Close()
-	samplecommon.Must(spot.ReplyActorJoin(info, true, samplecommon.Message("accepted")))
+	request.Message.Close()
+	_, replyErr := spot.ReplyActorJoin(request, zlink.ActorAdmissionAccept, zlink.SendFlagsNone, samplecommon.Message("accepted"))
+	samplecommon.Must(replyErr)
 	if result := <-joinCh; result != zlink.RequestOK {
 		samplecommon.Must(fmt.Errorf("unexpected join result %v", result))
 	}
 
-	samplecommon.Must(stream.SendBoundActor(node, session, "room-player-1", zlink.SendFlagsDontWait, samplecommon.Message("move:north")))
+	_, sendErr := stream.SendBoundActor(node, session, samplecommon.Message("move:north"), zlink.SendFlagsDontWait)
+	samplecommon.Must(sendErr)
 
 	select {
 	case payload := <-payloadCh:
@@ -71,6 +73,6 @@ func main() {
 		samplecommon.Must(fmt.Errorf("timed out waiting for actor payload"))
 	}
 
-	samplecommon.Must(actor.Leave(spot))
+	samplecommon.Must(actor.Leave(spot, time.Second))
 	samplecommon.Must(actor.Close())
 }

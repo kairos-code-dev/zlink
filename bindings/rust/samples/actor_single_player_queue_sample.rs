@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use zlink::{
     Context, Message, RecvFlags, RecvResult, SendFlags, Spot, SpotDispatchEvent,
-    SpotDispatchSubjectKind, SpotNode,
+    SpotDispatchSubject, SpotNode,
 };
 
 #[path = "sample_support.rs"]
@@ -13,9 +13,9 @@ mod sample_support;
 fn accept_join(spot: &Spot, expected: &'static [u8]) {
     sample_support::wait_until(
         || match spot.recv_actor_join_with_flags(RecvFlags::DONT_WAIT) {
-            Ok(Some((info, message))) => {
-                assert_eq!(message.as_bytes(), expected);
-                spot.reply_actor_join(&info, true, Message::copy_from(b"accepted").unwrap())
+            Ok(Some(request)) => {
+                assert_eq!(request.message.as_bytes(), expected);
+                spot.reply_actor_join(&request, true, Message::copy_from(b"accepted").unwrap())
                     .unwrap();
                 true
             }
@@ -83,9 +83,10 @@ fn main() {
     let payloads_cb = Arc::clone(&payloads);
     second_spot
         .on_dispatch_event(move |info| {
-            if info.event != SpotDispatchEvent::ActorReadable
-                || info.subject_kind != SpotDispatchSubjectKind::Actor
-            {
+            if info.event != SpotDispatchEvent::ActorReadable {
+                return;
+            }
+            if !matches!(info.subject, SpotDispatchSubject::Actor(_)) {
                 return;
             }
             loop {

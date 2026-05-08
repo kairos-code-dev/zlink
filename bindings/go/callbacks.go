@@ -192,12 +192,14 @@ func (s *sendReadyCallbackState) close() {
 
 type spotRoutedCallbackState struct {
 	dispatcher *callbackDispatcher
-	handler    func(RoutingID, RoutingID, uint64, []*Message)
+	spot       *Spot
+	handler    func(*Received)
 }
 
-func newSpotRoutedCallbackState(handler func(RoutingID, RoutingID, uint64, []*Message)) *spotRoutedCallbackState {
+func newSpotRoutedCallbackState(spot *Spot, handler func(*Received)) *spotRoutedCallbackState {
 	return &spotRoutedCallbackState{
 		dispatcher: newCallbackDispatcher(),
+		spot:       spot,
 		handler:    handler,
 	}
 }
@@ -448,16 +450,28 @@ func goZlinkSpotRoutedTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpot
 	}
 	sourceNode := routingIDFromCPtr(sourceNodeRID)
 	sourceSpot := routingIDFromCPtr(sourceSpotRID)
+	received := &Received{
+		routingID:     sourceNode,
+		spotRID:       sourceSpot,
+		parts:         clonedParts,
+		requestSeq:    uint64(requestSeq),
+		hasRequestSeq: requestSeq != 0,
+	}
+	if received.hasRequestSeq && state.spot != nil {
+		received.reply = receivedReplyToSpot(state.spot, sourceNode, sourceSpot, uint64(requestSeq))
+	}
 	if state.dispatcher.enqueue(&callbackTask{
 		label: "spot-routed",
 		invoke: func() {
-			defer MultipartClose(clonedParts)
-			state.handler(sourceNode, sourceSpot, uint64(requestSeq), clonedParts)
+			state.handler(received)
+		},
+		cleanup: func() {
+			_ = received.Close()
 		},
 	}) {
 		return
 	}
-	MultipartClose(clonedParts)
+	_ = received.Close()
 }
 
 //export goZlinkSpotDispatchEventTrampoline
@@ -470,11 +484,31 @@ func goZlinkSpotDispatchEventTrampoline(_ unsafe.Pointer, info *C.zlink_spot_dis
 	if !ok || state == nil || info == nil {
 		return
 	}
+	nodeHandle := state.spot.core.owner.handle
+	subjectKind := SpotDispatchSubjectKind(info.subject_kind)
 	dispatchInfo := SpotDispatchInfo{
 		Event:       SpotDispatchEvent(info.event),
-		SubjectKind: SpotDispatchSubjectKind(info.subject_kind),
-		Subject:     info.subject,
-		Node:        state.spot.core.owner.handle,
+		SubjectKind: subjectKind,
+		nodeHandle:  nodeHandle,
+	}
+	switch subjectKind {
+	case SpotDispatchSubjectTimer:
+		if info.subject != nil {
+			dispatchInfo.Timer = borrowedTimer(info.subject)
+		}
+	case SpotDispatchSubjectChannelDealer:
+		if info.subject != nil {
+			if d := state.spot.core.owner.lookupDealer(info.subject); d != nil {
+				dispatchInfo.ChannelDealer = d
+			} else {
+				dispatchInfo.ChannelDealer = borrowedDealerSocket(info.subject)
+			}
+		}
+	case SpotDispatchSubjectActor:
+		if info.subject != nil {
+			ref := actorRefFromC(*(*C.zlink_actor_ref_t)(info.subject))
+			dispatchInfo.Actor = &ref
+		}
 	}
 	// Spot dispatch callbacks must run in the native dispatch callback context.
 	// Core only permits spot recv/subscribe drains while the dispatch callback

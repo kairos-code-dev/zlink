@@ -50,7 +50,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 		defer close(sendDone)
 		for time.Now().Before(window.StopAt) {
 			perfcommon.StampWindowPayload(payload, window.ActiveAt)
-			err := publisher.Publish(
+			_, err := publisher.Publish(
 				"bench.topic",
 				zlink.SendFlagsNone,
 				perfcommon.NewMessage(payload),
@@ -63,7 +63,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 			}
 		}
 		perfcommon.StampCooldownPayload(payload)
-		err := publisher.Publish(
+		_, err := publisher.Publish(
 			"bench.topic",
 			zlink.SendFlagsNone,
 			perfcommon.NewMessage(payload),

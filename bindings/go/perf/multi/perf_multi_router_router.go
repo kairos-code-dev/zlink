@@ -164,11 +164,12 @@ func validateMultiRouterRoutes(serverID zlink.RoutingID, clients []multiRouterCl
 	for index, client := range clients {
 		payload := perfcommon.PreparePayload(msgSize)
 		perfcommon.StampProbePayload(payload)
-		perfcommon.Must(client.socket.SendTo(
+		_, sendErr := client.socket.SendTo(
 			serverID,
 			zlink.SendFlagsNone,
 			perfcommon.NewMessage(payload),
-		))
+		)
+		perfcommon.Must(sendErr)
 
 		poller := perfcommon.NewSocketPoller(client.socket, perfcommon.ZLinkPollIn)
 		deadline := time.Now().Add(perfcommon.MultiReadyTimeout())
@@ -322,12 +323,5 @@ func drainRouterReplies(
 }
 
 func tryRouterSend(socket *zlink.RouterSocket, target zlink.RoutingID, payload []byte) (bool, error) {
-	err := socket.SendTo(target, zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
-	if err == nil {
-		return true, nil
-	}
-	if perfcommon.IsTransient(err) {
-		return false, nil
-	}
-	return false, err
+	return socket.SendTo(target, zlink.SendFlagsDontWait, perfcommon.NewMessage(payload))
 }

@@ -56,6 +56,7 @@ void service_control_runtime_t::stop ()
 
     scoped_lock_t lock (_sync);
     _tasks.clear ();
+    _schedule.clear ();
     _active_task_id = 0;
     _running = false;
     _stopping = false;
@@ -88,10 +89,11 @@ uint64_t service_control_runtime_t::add_periodic_task (
     task.fn = fn_;
     task.arg = arg_;
     task.interval_ms = interval_ms_;
-    task.next_run_ms = run_immediately_ ? 0 : now + interval_ms_;
-    task.pending_wakeup = run_immediately_;
+    task.next_run_ms = run_immediately_ ? now : now + interval_ms_;
 
-    _tasks[task.id] = task;
+    std::pair<std::map<uint64_t, task_entry_t>::iterator, bool> inserted =
+      _tasks.insert (std::make_pair (task.id, task));
+    schedule_task_locked (&inserted.first->second);
     _cv.broadcast ();
     return task.id;
 }
@@ -104,10 +106,19 @@ int service_control_runtime_t::remove_task (uint64_t task_id_)
     scoped_lock_t lock (_sync);
     if (_thread.get_started () && _thread.is_current_thread ()
         && _active_task_id == task_id_) {
-        _tasks.erase (task_id_);
+        std::map<uint64_t, task_entry_t>::iterator it =
+          _tasks.find (task_id_);
+        if (it != _tasks.end ()) {
+            deschedule_task_locked (&it->second);
+            _tasks.erase (it);
+        }
         return 0;
     }
-    _tasks.erase (task_id_);
+    std::map<uint64_t, task_entry_t>::iterator it = _tasks.find (task_id_);
+    if (it != _tasks.end ()) {
+        deschedule_task_locked (&it->second);
+        _tasks.erase (it);
+    }
     while (_active_task_id == task_id_)
         _cv.wait (&_sync, -1);
     return 0;
@@ -124,8 +135,9 @@ int service_control_runtime_t::wakeup_task (uint64_t task_id_)
         errno = EINVAL;
         return -1;
     }
-    it->second.pending_wakeup = true;
+    deschedule_task_locked (&it->second);
     it->second.next_run_ms = 0;
+    schedule_task_locked (&it->second);
     _cv.broadcast ();
     return 0;
 }
@@ -142,6 +154,26 @@ void service_control_runtime_t::run (void *arg_)
     self->loop ();
 }
 
+void service_control_runtime_t::schedule_task_locked (task_entry_t *task_)
+{
+    if (!task_)
+        return;
+
+    deschedule_task_locked (task_);
+    task_->schedule_it =
+      _schedule.insert (std::make_pair (task_->next_run_ms, task_->id));
+    task_->scheduled = true;
+}
+
+void service_control_runtime_t::deschedule_task_locked (task_entry_t *task_)
+{
+    if (!task_ || !task_->scheduled)
+        return;
+
+    _schedule.erase (task_->schedule_it);
+    task_->scheduled = false;
+}
+
 void service_control_runtime_t::loop ()
 {
     zlink::clock_t clock;
@@ -153,38 +185,41 @@ void service_control_runtime_t::loop ()
             scoped_lock_t lock (_sync);
             while (due_calls.empty () && !_stopping) {
                 const uint64_t now = clock.now_ms ();
-                bool have_next_deadline = false;
-                uint64_t next_deadline = 0;
 
-                for (std::map<uint64_t, task_entry_t>::iterator it =
-                       _tasks.begin ();
-                     it != _tasks.end (); ++it) {
-                    task_entry_t &task = it->second;
-                    const bool due =
-                      task.pending_wakeup || now >= task.next_run_ms;
-                    if (due) {
-                        task.pending_wakeup = false;
-                        task.next_run_ms = now + task.interval_ms;
-                        due_call_t call;
-                        call.task_id = task.id;
-                        call.fn = task.fn;
-                        call.arg = task.arg;
-                        due_calls.push_back (call);
-                    } else {
-                        if (!have_next_deadline
-                            || task.next_run_ms < next_deadline) {
-                            next_deadline = task.next_run_ms;
-                            have_next_deadline = true;
-                        }
-                    }
+                while (!_schedule.empty ()) {
+                    const std::multimap<uint64_t, uint64_t>::iterator next =
+                      _schedule.begin ();
+                    if (next->first > now)
+                        break;
+
+                    const uint64_t task_id = next->second;
+                    _schedule.erase (next);
+
+                    std::map<uint64_t, task_entry_t>::iterator task_it =
+                      _tasks.find (task_id);
+                    if (task_it == _tasks.end ())
+                        continue;
+
+                    task_entry_t &task = task_it->second;
+                    task.scheduled = false;
+
+                    task.next_run_ms = now + task.interval_ms;
+                    schedule_task_locked (&task);
+
+                    due_call_t call;
+                    call.task_id = task.id;
+                    call.fn = task.fn;
+                    call.arg = task.arg;
+                    due_calls.push_back (call);
                 }
 
                 if (!due_calls.empty () || _stopping)
                     break;
 
-                if (!have_next_deadline) {
+                if (_schedule.empty ()) {
                     _cv.wait (&_sync, -1);
                 } else {
+                    const uint64_t next_deadline = _schedule.begin ()->first;
                     const int wait_ms =
                       next_deadline <= now
                         ? 0

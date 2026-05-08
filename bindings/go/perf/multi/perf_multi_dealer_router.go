@@ -79,7 +79,7 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 			payload := perfcommon.PreparePayload(cfg.msgSize)
 			for time.Now().Before(window.StopAt) {
 				perfcommon.StampWindowPayload(payload, window.ActiveAt)
-				err := socket.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
+				_, err := socket.Send(zlink.SendFlagsNone, perfcommon.NewMessage(payload))
 				if err != nil {
 					if perfcommon.IsTransient(err) {
 						continue

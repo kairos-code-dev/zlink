@@ -29,7 +29,7 @@ func main() {
 		packet := samplecommon.FrameStreamPacketMessage(header, body)
 		_ = header.Close()
 		_ = body.Close()
-		if err := server.SendTo(source, zlink.SendFlagsNone, packet); err != nil {
+		if _, err := server.SendTo(source, zlink.SendFlagsNone, packet); err != nil {
 			_ = packet.Close()
 			done <- err
 			return

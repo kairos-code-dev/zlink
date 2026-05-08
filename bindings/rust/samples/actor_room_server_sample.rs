@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use zlink::{
-    Context, Message, RecvFlags, RecvResult, SendFlags, SpotDispatchEvent, SpotDispatchSubjectKind,
+    Context, Message, RecvFlags, RecvResult, SendFlags, SpotDispatchEvent, SpotDispatchSubject,
     SpotNode,
 };
 
@@ -13,9 +13,9 @@ mod sample_support;
 fn accept_next_join(spot: &zlink::Spot) {
     sample_support::wait_until(
         || match spot.recv_actor_join_with_flags(RecvFlags::DONT_WAIT) {
-            Ok(Some((info, message))) => {
-                assert_eq!(message.as_str().unwrap(), "enter-room");
-                spot.reply_actor_join(&info, true, Message::copy_from(b"accepted").unwrap())
+            Ok(Some(request)) => {
+                assert_eq!(request.message.as_str().unwrap(), "enter-room");
+                spot.reply_actor_join(&request, true, Message::copy_from(b"accepted").unwrap())
                     .unwrap();
                 true
             }
@@ -61,9 +61,10 @@ fn main() {
     let payload = Arc::new(Mutex::new(None::<String>));
     let payload_cb = Arc::clone(&payload);
     spot.on_dispatch_event(move |info| {
-        if info.event != SpotDispatchEvent::ActorReadable
-            || info.subject_kind != SpotDispatchSubjectKind::Actor
-        {
+        if info.event != SpotDispatchEvent::ActorReadable {
+            return;
+        }
+        if !matches!(info.subject, SpotDispatchSubject::Actor(_)) {
             return;
         }
         if let Some((_info, part, _more)) = info

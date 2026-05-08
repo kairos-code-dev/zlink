@@ -35,7 +35,7 @@ impl XPubSocket {
         topic: &str,
         parts: impl IntoMultipart,
         flags: SendFlags,
-    ) -> Result<(), SubmitError> {
+    ) -> Result<bool, SubmitError> {
         self.inner.publish_with_flags(topic, parts, flags)
     }
 
@@ -46,7 +46,7 @@ impl XPubSocket {
     pub fn receive_subscription_event_with_flags(
         &self,
         flags: RecvFlags,
-    ) -> Result<SubscriptionEvent, RecvError> {
+    ) -> Result<Option<SubscriptionEvent>, RecvError> {
         self.inner.receive_subscription_event_with_flags(flags)
     }
 

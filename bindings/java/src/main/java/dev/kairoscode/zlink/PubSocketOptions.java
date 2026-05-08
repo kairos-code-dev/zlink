@@ -62,15 +62,23 @@ public class PubSocketOptions extends CommonSocketOptions {
         setSubscribeDecision(SocketOptions.PUB_REJECT_SUBSCRIBE_BYTES, routingId);
     }
 
-    public Message welcomeMsg() {
+    Message welcomeMsg() {
         byte[] value = socket.getOption(SocketOptions.XPUB_WELCOME_MSG_BYTES);
         return Message.copyOf(value);
     }
 
-    public void welcomeMsg(Message message) {
+    public Message welcomeMessage() {
+        return welcomeMsg();
+    }
+
+    void welcomeMsg(Message message) {
         Objects.requireNonNull(message, "message");
         socket.setSockOptRaw(SocketOptions.XPUB_WELCOME_MSG.optionId(),
             message.dataSegment(), message.size());
+    }
+
+    public void welcomeMessage(Message message) {
+        welcomeMsg(message);
     }
 
     public int topicsCount() {

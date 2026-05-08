@@ -2,6 +2,7 @@
 
 package dev.kairoscode.zlink.service.spot;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import java.lang.foreign.Arena;
@@ -18,8 +19,10 @@ public record SpotNodePeerFilter(String peerEndpoint, SpotPeerSource source,
             MemorySegment.copy(endpoint, 0, segment, 0,
               Math.min(endpoint.byteSize(), 256));
         }
-        segment.set(ValueLayout.JAVA_INT, 256, source == null ? 0 : source.getValue());
-        segment.set(ValueLayout.JAVA_INT, 260, state == null ? 0 : state.getValue());
+        segment.set(ValueLayout.JAVA_INT, 256,
+          source == null ? 0 : EnumCodecs.spotPeerSourceValue(source));
+        segment.set(ValueLayout.JAVA_INT, 260,
+          state == null ? 0 : EnumCodecs.spotPeerStateValue(state));
         return segment;
     }
 }

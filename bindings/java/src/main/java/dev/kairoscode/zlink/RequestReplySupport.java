@@ -129,22 +129,6 @@ final class RequestReplySupport {
         return REQUEST_COMPLETIONS;
     }
 
-    static <T> CompletableFuture<T> startRequestExecution(Supplier<T> supplier) {
-        try {
-            return CompletableFuture.completedFuture(supplier.get());
-        } catch (Throwable error) {
-            return CompletableFuture.failedFuture(error);
-        }
-    }
-
-    static <T> CompletableFuture<T> startTimedRequestExecution(
-            Supplier<T> supplier,
-            long timeoutMs) {
-        if (timeoutMs < 0L)
-            throw new IllegalArgumentException("timeoutMs must be >= 0");
-        return startRequestExecution(supplier);
-    }
-
     static <T> void completeAsync(CompletableFuture<T> future,
                                   Supplier<T> supplier) {
         callbackCompletions().execute(() -> {

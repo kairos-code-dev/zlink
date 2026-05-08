@@ -4,6 +4,7 @@ package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
 import java.lang.foreign.MemorySegment;
+import java.time.Duration;
 
 public final class Stopwatch implements AutoCloseable {
     private MemorySegment handle;
@@ -16,17 +17,17 @@ public final class Stopwatch implements AutoCloseable {
         }
     }
 
-    public long intermediate() {
+    public Duration intermediate() {
         ensureOpen();
-        return Native.stopwatchIntermediate(handle);
+        return Duration.ofNanos(Native.stopwatchIntermediate(handle));
     }
 
-    public long stop() {
+    public Duration stop() {
         ensureOpen();
         long elapsed = Native.stopwatchStop(handle);
         handle = MemorySegment.NULL;
         stopped = true;
-        return elapsed;
+        return Duration.ofNanos(elapsed);
     }
 
     @Override

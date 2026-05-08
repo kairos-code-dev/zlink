@@ -9,6 +9,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 
 public final class RouterSocketOptions extends CommonSocketOptions {
     private static final int OPT_REQUEST_TIMEOUT_MS = 0x3105;
@@ -26,6 +27,17 @@ public final class RouterSocketOptions extends CommonSocketOptions {
         socket.setOption(SocketOptions.ROUTER_MANDATORY, enabled ? 1 : 0);
     }
 
+    public boolean handover() {
+        return socket.options().ridDuplicatePolicy()
+            == RidDuplicatePolicy.HANDOVER;
+    }
+
+    public void handover(boolean enabled) {
+        socket.options().ridDuplicatePolicy(enabled
+            ? RidDuplicatePolicy.HANDOVER
+            : RidDuplicatePolicy.REJECT);
+    }
+
     public boolean probe() {
         return socket.getOption(SocketOptions.PROBE_ROUTER) != 0;
     }
@@ -34,9 +46,10 @@ public final class RouterSocketOptions extends CommonSocketOptions {
         socket.setOption(SocketOptions.PROBE_ROUTER, enabled ? 1 : 0);
     }
 
-    public RoutingId connectRoutingId() {
+    public Optional<RoutingId> connectRoutingId() {
         byte[] value = socket.getOption(SocketOptions.CONNECT_ROUTING_ID_BYTES);
-        return value.length == 0 ? null : RoutingId.fromBytes(value);
+        return value.length == 0 ? Optional.empty()
+            : Optional.of(RoutingId.fromBytes(value));
     }
 
     public void connectRoutingId(RoutingId routingId) {

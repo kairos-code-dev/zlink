@@ -2,26 +2,18 @@
 
 package dev.kairoscode.zlink.service.spot;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum SpotNodeSocketOwner {
-    ANY(0),
-    NODE(1),
-    SPOT(2);
+    ANY,
+    NODE,
+    SPOT;
 
-    private final int value;
-
-    SpotNodeSocketOwner(int value) {
-        this.value = value;
-    }
-
-    public int getValue() {
-        return value;
+    int getValue() {
+        return EnumCodecs.spotNodeSocketOwnerValue(this);
     }
 
     static SpotNodeSocketOwner fromValue(int value) {
-        for (SpotNodeSocketOwner owner : values()) {
-            if (owner.value == value)
-                return owner;
-        }
-        return ANY;
+        return EnumCodecs.spotNodeSocketOwnerFromValue(value);
     }
 }

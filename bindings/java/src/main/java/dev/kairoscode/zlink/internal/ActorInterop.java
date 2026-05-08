@@ -4,7 +4,6 @@ package dev.kairoscode.zlink.internal;
 
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.service.spot.ActorCreateResult;
-import dev.kairoscode.zlink.service.spot.ActorCreateStatus;
 import dev.kairoscode.zlink.service.spot.ActorRecvInfo;
 import dev.kairoscode.zlink.service.spot.ActorRef;
 import dev.kairoscode.zlink.service.spot.ActorRoute;
@@ -96,7 +95,7 @@ public final class ActorInterop {
         MemorySegment view = segment.reinterpret(
           NativeLayouts.ACTOR_CREATE_RESULT_LAYOUT.byteSize());
         return new ActorCreateResult(
-          ActorCreateStatus.fromValue(view.get(ValueLayout.JAVA_INT,
+          EnumCodecs.actorCreateStatusFromValue(view.get(ValueLayout.JAVA_INT,
             NativeLayouts.ACTOR_CREATE_RESULT_STATUS_OFFSET)),
           actorRefFromNative(view.asSlice(
             NativeLayouts.ACTOR_CREATE_RESULT_ACTOR_OFFSET,

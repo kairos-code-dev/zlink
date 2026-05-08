@@ -45,6 +45,8 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("auto_hwm_effective_message_bytes"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_applied_sndhwm"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_applied_rcvhwm"),
+                    ValueLayout.JAVA_INT.withName("auto_hwm_effective_sndbuf"),
+                    ValueLayout.JAVA_INT.withName("auto_hwm_effective_rcvbuf"),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("auto_hwm_last_recalc_ms"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_last_recalc_reason"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_send_blocked_ratio_ppm"),
@@ -95,6 +97,12 @@ public final class NativeLayouts {
     public static final long MONITOR_SNAPSHOT_AUTO_HWM_APPLIED_RCVHWM_OFFSET =
             MONITOR_SNAPSHOT_LAYOUT.byteOffset(
                     PathElement.groupElement("auto_hwm_applied_rcvhwm"));
+    public static final long MONITOR_SNAPSHOT_AUTO_HWM_EFFECTIVE_SNDBUF_OFFSET =
+            MONITOR_SNAPSHOT_LAYOUT.byteOffset(
+                    PathElement.groupElement("auto_hwm_effective_sndbuf"));
+    public static final long MONITOR_SNAPSHOT_AUTO_HWM_EFFECTIVE_RCVBUF_OFFSET =
+            MONITOR_SNAPSHOT_LAYOUT.byteOffset(
+                    PathElement.groupElement("auto_hwm_effective_rcvbuf"));
     public static final long MONITOR_SNAPSHOT_AUTO_HWM_LAST_RECALC_MS_OFFSET =
             MONITOR_SNAPSHOT_LAYOUT.byteOffset(
                     PathElement.groupElement("auto_hwm_last_recalc_ms"));

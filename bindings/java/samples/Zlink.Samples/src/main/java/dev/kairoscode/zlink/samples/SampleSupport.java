@@ -74,14 +74,6 @@ final class SampleSupport {
         return received.singlePartOrThrow().toUtf8String();
     }
 
-    static final int CONNECTION_READY_EVENT =
-        MonitorEventType.CONNECTION_READY.getValue();
-    static final int STREAM_READY_EVENTS =
-        MonitorEventType.ACCEPTED.getValue()
-            | MonitorEventType.CONNECTION_READY.getValue();
-    static final int PUBSUB_READY_EVENTS =
-        MonitorEventType.CONNECTION_READY.getValue();
-
     static void waitConnected(MonitorSocket... monitors) {
         for (MonitorSocket monitor : monitors) {
             monitor.recv();
@@ -100,10 +92,8 @@ final class SampleSupport {
 
     static void waitPubSubReady(MonitorSocket pubMonitor,
                                 MonitorSocket subMonitor) {
-        waitMonitorEvent(subMonitor,
-            MonitorEventType.CONNECTION_READY.getValue());
-        waitMonitorEvent(pubMonitor,
-            MonitorEventType.CONNECTION_READY.getValue());
+        waitMonitorEvent(subMonitor, MonitorEventType.CONNECTION_READY);
+        waitMonitorEvent(pubMonitor, MonitorEventType.CONNECTION_READY);
     }
 
     static void waitSpotPeerConnected(SpotNode node) {
@@ -181,10 +171,11 @@ final class SampleSupport {
         return data;
     }
 
-    private static void waitMonitorEvent(MonitorSocket monitor, int eventType) {
+    private static void waitMonitorEvent(MonitorSocket monitor,
+                                         MonitorEventType eventType) {
         while (true) {
             var event = monitor.recv();
-            if (event.event().getValue() == eventType) {
+            if (event.event() == eventType) {
                 return;
             }
         }

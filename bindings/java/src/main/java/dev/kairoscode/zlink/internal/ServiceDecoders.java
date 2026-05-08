@@ -4,8 +4,6 @@ package dev.kairoscode.zlink.internal;
 
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
-import dev.kairoscode.zlink.service.registry.AutoConnectType;
-import dev.kairoscode.zlink.service.registry.ServiceRole;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
@@ -17,10 +15,10 @@ public final class ServiceDecoders {
     }
 
     public static MemberPeerEntry memberPeerEntry(MemorySegment segment) {
-        AutoConnectType autoConnectType = AutoConnectType.fromValue(
+        var autoConnectType = EnumCodecs.autoConnectTypeFromValue(
           segment.get(ValueLayout.JAVA_INT,
             NativeLayouts.MEMBER_PEER_AUTO_CONNECT_TYPE_OFFSET));
-        ServiceRole serviceRole = ServiceRole.fromValue(
+        var serviceRole = EnumCodecs.serviceRoleFromValue(
           segment.get(ValueLayout.JAVA_INT,
             NativeLayouts.MEMBER_PEER_SERVICE_ROLE_OFFSET));
         String channelName = NativeHelpers.fromCString(segment.asSlice(

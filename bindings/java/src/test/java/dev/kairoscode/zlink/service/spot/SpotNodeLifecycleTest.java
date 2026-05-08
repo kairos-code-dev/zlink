@@ -62,9 +62,8 @@ class SpotNodeLifecycleTest {
             node.pubsubHwm(64);
             assertEquals(64, node.pubsubHwm());
 
-            spot.options().requestTimeout(Duration.ofMillis(123));
-            assertEquals(Duration.ofMillis(123),
-                spot.options().requestTimeout());
+            spot.requestTimeout(Duration.ofMillis(123));
+            assertEquals(Duration.ofMillis(123), spot.requestTimeout());
         }
     }
 

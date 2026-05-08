@@ -2,27 +2,18 @@
 
 package dev.kairoscode.zlink.service.spot;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum SpotPeerSource {
-    MANUAL(1),
-    DISCOVERY(2),
-    MIXED(3);
+    MANUAL,
+    DISCOVERY,
+    MIXED;
 
-    private final int value;
-
-    SpotPeerSource(int value) {
-        this.value = value;
+    int getValue() {
+        return EnumCodecs.spotPeerSourceValue(this);
     }
 
-    public int getValue() {
-        return value;
-    }
-
-    public static SpotPeerSource fromValue(int value) {
-        for (SpotPeerSource source : values()) {
-            if (source.value == value) {
-                return source;
-            }
-        }
-        throw new IllegalArgumentException("unknown SpotPeerSource: " + value);
+    static SpotPeerSource fromValue(int value) {
+        return EnumCodecs.spotPeerSourceFromValue(value);
     }
 }

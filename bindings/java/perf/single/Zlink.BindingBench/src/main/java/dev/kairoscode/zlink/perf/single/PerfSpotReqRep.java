@@ -156,8 +156,11 @@ final class PerfSpotReqRep {
                                                 Duration timeout) {
         List<Message> replyParts;
         try {
-            replyParts = requester.requestChannel(
-                CHANNEL_NAME, payload, timeout).get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            replyParts = requester.requestChannel(CHANNEL_NAME)
+                .message(payload)
+                .timeout(timeout)
+                .submitAsync()
+                .get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("spot reqrep request interrupted", ex);

@@ -13,7 +13,7 @@ public final class TopicMessage implements AutoCloseable {
     private final List<Message> parts;
     private boolean closed;
 
-    public TopicMessage(RoutingId routingId, String serviceName, String topicId,
+    TopicMessage(RoutingId routingId, String serviceName, String topicId,
                         Message[] parts) {
         this.routingId = routingId;
         this.serviceName = serviceName;

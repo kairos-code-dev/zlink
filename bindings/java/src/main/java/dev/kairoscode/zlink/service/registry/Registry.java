@@ -12,6 +12,7 @@ import dev.kairoscode.zlink.internal.ServiceDecoders;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -27,7 +28,7 @@ public final class Registry implements AutoCloseable {
     public Registry(Context ctx) {
         this.handle = Native.registryNew(InternalAccess.contextHandle(ctx));
         if (handle == null || handle.address() == 0)
-            throw ZlinkException.fromLastError("zlink_registry_new");
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_new");
     }
 
     /** Binds the registry's PUB and ROUTER endpoints. */
@@ -37,7 +38,7 @@ public final class Registry implements AutoCloseable {
               NativeHelpers.toCString(arena, pubEndpoint),
               NativeHelpers.toCString(arena, routerEndpoint));
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_registry_bind");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_bind");
         }
     }
 
@@ -45,7 +46,7 @@ public final class Registry implements AutoCloseable {
     public void setId(int id) {
         int rc = Native.registrySetId(handle, id);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_registry_set_id");
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_set_id");
     }
 
     /** Adds one peer registry PUB endpoint. */
@@ -54,22 +55,25 @@ public final class Registry implements AutoCloseable {
             int rc = Native.registryAddPeer(handle,
               NativeHelpers.toCString(arena, peerPubEndpoint));
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_registry_add_peer");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_add_peer");
         }
     }
 
-    /** Configures heartbeat interval and timeout in milliseconds. */
-    public void setHeartbeat(int intervalMs, int timeoutMs) {
+    /** Configures heartbeat interval and timeout. */
+    public void setHeartbeat(Duration interval, Duration timeout) {
+        int intervalMs = toIntMillis(interval, "interval");
+        int timeoutMs = toIntMillis(timeout, "timeout");
         int rc = Native.registrySetHeartbeat(handle, intervalMs, timeoutMs);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_registry_set_heartbeat");
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_set_heartbeat");
     }
 
-    /** Configures the topology broadcast interval in milliseconds. */
-    public void setBroadcastInterval(int intervalMs) {
+    /** Configures the topology broadcast interval. */
+    public void setBroadcastInterval(Duration interval) {
+        int intervalMs = toIntMillis(interval, "interval");
         int rc = Native.registrySetBroadcastInterval(handle, intervalMs);
         if (rc != 0) {
-            throw ZlinkException.fromLastError(
+            throw InternalAccess.zlinkExceptionFromLastError(
               "zlink_registry_set_broadcast_interval");
         }
     }
@@ -83,7 +87,7 @@ public final class Registry implements AutoCloseable {
               NativeHelpers.toCString(arena, keyPem),
               requireClientCert ? 1 : 0);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_set_tls_server");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_set_tls_server");
             }
         }
     }
@@ -97,7 +101,7 @@ public final class Registry implements AutoCloseable {
               NativeHelpers.toCString(arena, hostname),
               trustSystem ? 1 : 0);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_set_tls_client");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_set_tls_client");
             }
         }
     }
@@ -108,7 +112,7 @@ public final class Registry implements AutoCloseable {
             MemorySegment out = arena.allocate(NativeLayouts.REGISTRY_STATUS_LAYOUT);
             int rc = Native.registryStatusSnapshot(handle, out);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_registry_status_snapshot");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_status_snapshot");
             return RegistryStatus.fromNative(out);
         }
     }
@@ -128,7 +132,7 @@ public final class Registry implements AutoCloseable {
             int rc = Native.registryServiceSummarySnapshot(handle, nativeFilter,
               MemorySegment.NULL, count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_registry_service_summary_snapshot");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
@@ -140,7 +144,7 @@ public final class Registry implements AutoCloseable {
             rc = Native.registryServiceSummarySnapshot(handle, nativeFilter,
               entries, count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_registry_service_summary_snapshot");
             }
             int actual = Math.min(available, boundedCount(
@@ -171,7 +175,7 @@ public final class Registry implements AutoCloseable {
             int rc = Native.registryMemberPeers(handle,
               NativeHelpers.toCString(arena, channelName), entries, countOut);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_registry_member_peers");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_member_peers");
             int actual = Math.min(count, boundedCount(
               countOut.get(ValueLayout.JAVA_LONG, 0)));
             long stride = NativeLayouts.MEMBER_PEER_ENTRY_LAYOUT.byteSize();
@@ -216,7 +220,7 @@ public final class Registry implements AutoCloseable {
               : Native.registryTopologyQuery(handle, nativeFilter,
                 MemorySegment.NULL, count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(filter == null
+                throw InternalAccess.zlinkExceptionFromLastError(filter == null
                   ? "zlink_registry_topology_snapshot"
                   : "zlink_registry_topology_query");
             }
@@ -231,7 +235,7 @@ public final class Registry implements AutoCloseable {
               : Native.registryTopologyQuery(handle, nativeFilter, entries,
                 count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(filter == null
+                throw InternalAccess.zlinkExceptionFromLastError(filter == null
                   ? "zlink_registry_topology_snapshot"
                   : "zlink_registry_topology_query");
             }
@@ -254,7 +258,7 @@ public final class Registry implements AutoCloseable {
               NativeHelpers.toCString(arena, channelName), MemorySegment.NULL,
               count);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_registry_member_peers");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_member_peers");
             return boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
         }
     }
@@ -265,6 +269,25 @@ public final class Registry implements AutoCloseable {
         if (value > Integer.MAX_VALUE)
             return Integer.MAX_VALUE;
         return (int) value;
+    }
+
+    private static int toIntMillis(Duration duration, String name) {
+        Objects.requireNonNull(duration, name);
+        long nanos;
+        try {
+            nanos = duration.toNanos();
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException(name + " is too large", ex);
+        }
+        if (nanos % 1_000_000L != 0L) {
+            throw new IllegalArgumentException(name + " must be millisecond aligned");
+        }
+        long millis = nanos / 1_000_000L;
+        if (millis < 0 || millis > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+              name + " is outside native millisecond range");
+        }
+        return (int) millis;
     }
 
 }

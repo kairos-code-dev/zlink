@@ -9,7 +9,6 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.BiConsumer;
 
 public final class RouterSocket extends Socket {
     private static final boolean DEBUG_REQREP =
@@ -27,6 +26,7 @@ public final class RouterSocket extends Socket {
     public void connect(String endpoint) { super.connect(endpoint); }
     public void unbind(String endpoint) { super.unbind(endpoint); }
     public void disconnect(String endpoint) { super.disconnect(endpoint); }
+    public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
     public void attachDiscovery(Discovery discovery) { super.attachDiscovery(discovery); }
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
     public RoutingId routingId() { return super.routingId(); }
@@ -78,42 +78,42 @@ public final class RouterSocket extends Socket {
             RequestReplySupport.takeReceivedParts(reply));
     }
     public boolean request(RoutingId rid, Message part,
-                        BiConsumer<RequestResult, List<Message>> callback) {
+                        RequestCallback callback) {
         return request(rid, List.of(part), callback);
     }
     public boolean request(RoutingId rid, Message part,
-                        BiConsumer<RequestResult, List<Message>> callback,
+                        RequestCallback callback,
                         Duration timeout) {
         return request(rid, List.of(part), callback, SendFlags.NONE, timeout);
     }
     public boolean request(RoutingId rid, List<Message> parts,
-                        BiConsumer<RequestResult, List<Message>> callback,
+                        RequestCallback callback,
                         Duration timeout) {
         return request(rid, parts, callback, SendFlags.NONE, timeout);
     }
     public boolean request(RoutingId rid, Message part,
-                        BiConsumer<RequestResult, List<Message>> callback,
+                        RequestCallback callback,
                         SendFlags flags) {
         return request(rid, List.of(part), callback, flags);
     }
     public boolean request(RoutingId rid, Message part,
-                        BiConsumer<RequestResult, List<Message>> callback,
+                        RequestCallback callback,
                         SendFlags flags, Duration timeout) {
         return request(rid, List.of(part), callback, flags, timeout);
     }
     public boolean request(RoutingId rid, List<Message> parts,
-                        BiConsumer<RequestResult, List<Message>> callback) {
+                        RequestCallback callback) {
         return request(rid, parts, callback, SendFlags.NONE,
             Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
     public boolean request(RoutingId rid, List<Message> parts,
-                        BiConsumer<RequestResult, List<Message>> callback,
+                        RequestCallback callback,
                         SendFlags flags) {
         return request(rid, parts, callback, flags,
             Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
     public boolean request(RoutingId rid, List<Message> parts,
-                        BiConsumer<RequestResult, List<Message>> callback,
+                        RequestCallback callback,
                         SendFlags flags, Duration timeout) {
         try {
             routedRequests.request(rid, parts, (result, reply) -> {
@@ -121,7 +121,7 @@ public final class RouterSocket extends Socket {
                 if (reply != null) {
                     payload = RequestReplySupport.takeReceivedParts(reply);
                 }
-                callback.accept(result, payload);
+                callback.onComplete(result, payload);
             }, flags, timeout);
             return true;
         } catch (SubmitException ex) {
@@ -216,55 +216,55 @@ public final class RouterSocket extends Socket {
     }
     public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               Message part,
-                              BiConsumer<RequestResult, List<Message>> callback) {
+                              RequestCallback callback) {
         return requestToSpot(destNodeRid, destSpotRid, List.of(part), callback);
     }
     public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               Message part,
-                              BiConsumer<RequestResult, List<Message>> callback,
+                              RequestCallback callback,
                               Duration timeout) {
         return requestToSpot(destNodeRid, destSpotRid, List.of(part), callback,
           SendFlags.NONE, timeout);
     }
     public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               List<Message> parts,
-                              BiConsumer<RequestResult, List<Message>> callback,
+                              RequestCallback callback,
                               Duration timeout) {
         return requestToSpot(destNodeRid, destSpotRid, parts, callback,
           SendFlags.NONE, timeout);
     }
     public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               Message part,
-                              BiConsumer<RequestResult, List<Message>> callback,
+                              RequestCallback callback,
                               SendFlags flags) {
         return requestToSpot(destNodeRid, destSpotRid, List.of(part), callback, flags);
     }
     public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               Message part,
-                              BiConsumer<RequestResult, List<Message>> callback,
+                              RequestCallback callback,
                               SendFlags flags, Duration timeout) {
         return requestToSpot(destNodeRid, destSpotRid, List.of(part), callback, flags,
           timeout);
     }
     public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               List<Message> parts,
-                              BiConsumer<RequestResult, List<Message>> callback) {
+                              RequestCallback callback) {
         return requestToSpot(destNodeRid, destSpotRid, parts, callback, SendFlags.NONE,
           Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
     public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               List<Message> parts,
-                              BiConsumer<RequestResult, List<Message>> callback,
+                              RequestCallback callback,
                               SendFlags flags) {
         return requestToSpot(destNodeRid, destSpotRid, parts, callback, flags,
           Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
     public boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               List<Message> parts,
-                              BiConsumer<RequestResult, List<Message>> callback,
+                              RequestCallback callback,
                               SendFlags flags, Duration timeout) {
-        return spotSupport.requestToSpot(destNodeRid, destSpotRid, parts, callback,
-          flags, timeout);
+        return spotSupport.requestToSpot(destNodeRid, destSpotRid, parts,
+          callback::onComplete, flags, timeout);
     }
     public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                             long requestSeq, Message message) {

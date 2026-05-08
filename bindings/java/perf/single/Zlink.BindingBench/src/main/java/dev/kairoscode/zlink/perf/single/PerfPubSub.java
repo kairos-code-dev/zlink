@@ -5,7 +5,7 @@ package dev.kairoscode.zlink.perf.single;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
-import dev.kairoscode.zlink.PollEventType;
+import dev.kairoscode.zlink.PollEventFlag;
 import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.SubSocket;
@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfPubSub {
-    private static final int READY_EVENTS = MonitorEventType.CONNECTION_READY.getValue();
+    private static final MonitorEventType READY_EVENT = MonitorEventType.CONNECTION_READY;
     private static final String TOPIC = "perf.topic";
 
     private PerfPubSub() {
@@ -48,10 +48,10 @@ final class PerfPubSub {
             pub.bind(endpoint);
             sub.setSubscription(TOPIC);
             sub.connect(endpoint);
-            PerfUtil.waitForMonitorEvent(pubMonitor, READY_EVENTS, 1,
+            PerfUtil.waitForMonitorEvent(pubMonitor, READY_EVENT, 1,
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "pubsub publisher ready");
-            PerfUtil.waitForMonitorEvent(subMonitor, READY_EVENTS, 1,
+            PerfUtil.waitForMonitorEvent(subMonitor, READY_EVENT, 1,
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "pubsub subscriber ready");
             } finally {
@@ -64,11 +64,11 @@ final class PerfPubSub {
                 long lastRecvNs = System.nanoTime();
                 long flushNs = Duration.ofMillis(Math.max(1, config.recvTimeoutMs())).toNanos();
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                    List.of(sub), PollEventType.POLLIN.getValue())) {
+                    List.of(sub), PollEventFlag.POLLIN)) {
                     while (true) {
                         int timeoutMs = idleDrain.get() ? Math.max(1, config.recvTimeoutMs()) : -1;
                         int rc = pollSet.poll(timeoutMs);
-                        if (rc > 0 && pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
+                        if (rc > 0 && pollSet.isReady(0, PollEventFlag.POLLIN)) {
                             while (true) {
                                 try (TopicMessage received = sub.subscribe(RecvFlags.DONT_WAIT)) {
                                     if (received == null) {

@@ -54,7 +54,7 @@ final class PerfMeasurement {
         if (message == null || message.size() < PerfUtil.HEADER_SIZE) {
             return (byte) PerfUtil.PHASE_UNKNOWN;
         }
-        return message.readByte(8);
+        return message.dataBuffer().get(8);
     }
 
     static long latencyNanos(Message message) {

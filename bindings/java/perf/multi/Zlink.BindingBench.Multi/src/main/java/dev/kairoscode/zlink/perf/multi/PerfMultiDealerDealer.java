@@ -7,7 +7,7 @@ import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.MonitorSocket;
-import dev.kairoscode.zlink.PollEventType;
+import dev.kairoscode.zlink.PollEventFlag;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.SubmitResult;
@@ -20,7 +20,7 @@ import java.time.Duration;
 import java.util.List;
 
 final class PerfMultiDealerDealer {
-    private static final int READY_EVENTS = MonitorEventType.CONNECTION_READY.getValue();
+    private static final MonitorEventType READY_EVENT = MonitorEventType.CONNECTION_READY;
 
     private PerfMultiDealerDealer() {
     }
@@ -29,7 +29,7 @@ final class PerfMultiDealerDealer {
         try (Context ctx = PerfUtil.newContext(config);
              DealerSocket server = new DealerSocket(ctx);
              PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                 List.of(server), PollEventType.POLLIN.getValue())) {
+                 List.of(server), PollEventFlag.POLLIN)) {
             PerfUtil.applySocketOptions(server, config);
             PerfUtil.configureServerTls(server, config.transport());
             server.bind(config.endpoint());
@@ -45,13 +45,13 @@ final class PerfMultiDealerDealer {
                     throw new IllegalStateException("dealer/dealer server cooldown timed out");
                 }
                 long remainingNs = Math.max(1L, finishDeadline - System.nanoTime());
-                pollSet.setEvents(0, PollEventType.POLLIN.getValue());
+                pollSet.setEvents(0, PollEventFlag.POLLIN);
                 int timeoutMs = idleDrain
                     ? idleDrainTimeoutMs
                     : Math.max(1, (int) Math.min(Integer.MAX_VALUE,
                         Duration.ofNanos(remainingNs).toMillis()));
                 if (pollSet.poll(timeoutMs) <= 0
-                    || !pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
+                    || !pollSet.isReady(0, PollEventFlag.POLLIN)) {
                     if (idleDrain) {
                         return metrics.finishMulti(config);
                     }
@@ -98,7 +98,7 @@ final class PerfMultiDealerDealer {
             }
             Duration readyTimeout = Duration.ofMillis(config.connectReadyTimeoutMs());
             for (int i = 0; i < monitors.size(); i++) {
-                PerfUtil.waitForMonitorEvent(monitors.get(i), READY_EVENTS, 1,
+                PerfUtil.waitForMonitorEvent(monitors.get(i), READY_EVENT, 1,
                     readyTimeout, "dealer/dealer client ready");
             }
             PerfControl.emitClientReady(config.size());
@@ -106,9 +106,9 @@ final class PerfMultiDealerDealer {
             List<dev.kairoscode.zlink.Socket> pollSockets = new ArrayList<>(clients.size());
             pollSockets.addAll(clients);
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                     pollSockets, PollEventType.POLLOUT.getValue())) {
+                     pollSockets, PollEventFlag.POLLOUT)) {
                 for (int i = 0; i < clients.size(); i++) {
-                    pollSet.setEvents(i, 0);
+                    pollSet.setEvents(i);
                 }
                 boolean[] pending = new boolean[clients.size()];
                 long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
@@ -145,8 +145,8 @@ final class PerfMultiDealerDealer {
             DealerSocket cooldownClient = clients.get(0);
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                      List.of((dev.kairoscode.zlink.Socket) cooldownClient),
-                     PollEventType.POLLOUT.getValue())) {
-                pollSet.setEvents(0, 0);
+                     PollEventFlag.POLLOUT)) {
+                pollSet.setEvents(0);
                 long cooldownDeadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
                 while (System.nanoTime() < cooldownDeadline) {
                     try (Message cooldown = PerfUtil.payload(config.size(),
@@ -164,7 +164,7 @@ final class PerfMultiDealerDealer {
                         }
                     }
                     long remainingNs = Math.max(1L, cooldownDeadline - System.nanoTime());
-                    pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
+                    pollSet.setEvents(0, PollEventFlag.POLLOUT);
                     pollSet.poll(Math.max(1, (int) Math.min(Integer.MAX_VALUE,
                         Duration.ofNanos(remainingNs).toMillis())));
                 }
@@ -199,7 +199,7 @@ final class PerfMultiDealerDealer {
         try (Message payload = PerfUtil.payload(size, phase, System.nanoTime())) {
             if (socket.send(payload, SendFlags.DONT_WAIT)) {
                 pending[index] = false;
-                pollSet.setEvents(index, 0);
+                pollSet.setEvents(index);
                 return true;
             }
         } catch (SubmitException ex) {
@@ -207,18 +207,18 @@ final class PerfMultiDealerDealer {
                 throw ex;
             }
             pending[index] = true;
-            pollSet.setEvents(index, PollEventType.POLLOUT.getValue());
+            pollSet.setEvents(index, PollEventFlag.POLLOUT);
             return true;
         } catch (ZlinkException ex) {
             if (!isTransient(ex)) {
                 throw ex;
             }
             pending[index] = true;
-            pollSet.setEvents(index, PollEventType.POLLOUT.getValue());
+            pollSet.setEvents(index, PollEventFlag.POLLOUT);
             return true;
         }
         pending[index] = true;
-        pollSet.setEvents(index, PollEventType.POLLOUT.getValue());
+        pollSet.setEvents(index, PollEventFlag.POLLOUT);
         return true;
     }
 
@@ -231,11 +231,11 @@ final class PerfMultiDealerDealer {
             if (!pending[i]) {
                 continue;
             }
-            if (!pollSet.isReady(i, PollEventType.POLLOUT.getValue())) {
+            if (!pollSet.isReady(i, PollEventFlag.POLLOUT)) {
                 continue;
             }
             pending[i] = false;
-            pollSet.setEvents(i, 0);
+            pollSet.setEvents(i);
         }
     }
 

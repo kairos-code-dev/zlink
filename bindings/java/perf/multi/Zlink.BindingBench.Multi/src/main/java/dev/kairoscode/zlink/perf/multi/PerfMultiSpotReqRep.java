@@ -188,7 +188,10 @@ final class PerfMultiSpotReqRep {
                                                 Duration timeout) {
         List<Message> replyParts;
         try {
-            replyParts = requester.requestChannel(CHANNEL_NAME, payload, timeout)
+            replyParts = requester.requestChannel(CHANNEL_NAME)
+                .message(payload)
+                .timeout(timeout)
+                .submitAsync()
                 .get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();

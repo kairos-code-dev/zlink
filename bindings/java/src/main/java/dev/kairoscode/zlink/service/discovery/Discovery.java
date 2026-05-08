@@ -9,6 +9,7 @@ import dev.kairoscode.zlink.service.registry.MemberPeerEntry;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.ActorInterop;
+import dev.kairoscode.zlink.internal.EnumCodecs;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
@@ -43,11 +44,11 @@ public final class Discovery implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             this.handle = Native.discoveryNewFixed(
               InternalAccess.contextHandle(ctx),
-              autoConnectType.getValue(),
+              EnumCodecs.autoConnectTypeValue(autoConnectType),
               NativeHelpers.toCString(arena, channelName));
         }
         if (handle == null || handle.address() == 0)
-            throw ZlinkException.fromLastError("zlink_discovery_new");
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_discovery_new");
     }
 
     /** Returns the native discovery handle. */
@@ -56,7 +57,7 @@ public final class Discovery implements AutoCloseable {
     }
 
     /** Internal bridge for binding helpers. */
-    public MemorySegment handleInternal() {
+    MemorySegment handleInternal() {
         return handle();
     }
 
@@ -66,7 +67,7 @@ public final class Discovery implements AutoCloseable {
             int rc = Native.discoveryConnectRegistry(handle,
               NativeHelpers.toCString(arena, registryEndpoint));
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_discovery_connect_registry");
             }
         }
@@ -82,7 +83,7 @@ public final class Discovery implements AutoCloseable {
             int rc = Native.discoveryResolveSpot(handle, nativeSpotRid,
               ownerNodeRidOut);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_discovery_resolve_spot");
             }
             return readRoutingId(ownerNodeRidOut);
@@ -97,7 +98,7 @@ public final class Discovery implements AutoCloseable {
             int rc = Native.discoveryResolveActor(handle,
               NativeHelpers.toCString(arena, actorId), out);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_discovery_resolve_actor");
             }
             return ActorInterop.actorRouteFromNative(out);
@@ -108,7 +109,7 @@ public final class Discovery implements AutoCloseable {
     public void setValue(long value) {
         int rc = Native.discoverySetValue(handle, value);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_discovery_set_value");
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_discovery_set_value");
     }
 
     /** Returns the current service-local discovery value. */
@@ -117,7 +118,7 @@ public final class Discovery implements AutoCloseable {
             MemorySegment out = arena.allocate(ValueLayout.JAVA_LONG);
             int rc = Native.discoveryGetValue(handle, out);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_discovery_get_value");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_discovery_get_value");
             return out.get(ValueLayout.JAVA_LONG, 0);
         }
     }
@@ -130,7 +131,7 @@ public final class Discovery implements AutoCloseable {
             int rc = Native.setSockOpt(handle, OPT_DISCOVERY_SPOT_OWNER_SYNC, value,
               ValueLayout.JAVA_INT.byteSize());
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_set_option");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_set_option");
         }
     }
 
@@ -143,7 +144,7 @@ public final class Discovery implements AutoCloseable {
             int rc = Native.getSockOpt(handle, OPT_DISCOVERY_SPOT_OWNER_SYNC,
               value, len);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_get_option");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_get_option");
             return value.get(ValueLayout.JAVA_INT, 0) != 0;
         }
     }
@@ -156,7 +157,7 @@ public final class Discovery implements AutoCloseable {
             int rc = Native.setSockOpt(handle, OPT_DISCOVERY_ACTOR_ROUTE_SYNC, value,
               ValueLayout.JAVA_INT.byteSize());
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_set_option");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_set_option");
         }
     }
 
@@ -169,7 +170,7 @@ public final class Discovery implements AutoCloseable {
             int rc = Native.getSockOpt(handle, OPT_DISCOVERY_ACTOR_ROUTE_SYNC,
               value, len);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_get_option");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_get_option");
             return value.get(ValueLayout.JAVA_INT, 0) != 0;
         }
     }
@@ -183,7 +184,7 @@ public final class Discovery implements AutoCloseable {
               NativeHelpers.toCString(arena, hostname),
               trustSystem ? 1 : 0);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_set_tls_client");
             }
         }
@@ -201,7 +202,7 @@ public final class Discovery implements AutoCloseable {
             countOut.set(ValueLayout.JAVA_LONG, 0, count);
             int rc = Native.discoveryMemberPeers(handle, entries, countOut);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_discovery_member_peers");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_discovery_member_peers");
             int actual = boundedCount(countOut.get(ValueLayout.JAVA_LONG, 0),
               count);
             long stride = NativeLayouts.MEMBER_PEER_ENTRY_LAYOUT.byteSize();
@@ -228,7 +229,7 @@ public final class Discovery implements AutoCloseable {
             int rc = Native.discoveryMemberPeers(handle, MemorySegment.NULL,
               count);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_discovery_member_peers");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_discovery_member_peers");
             return boundedCount(count.get(ValueLayout.JAVA_LONG, 0),
               Integer.MAX_VALUE);
         }

@@ -15,7 +15,7 @@ public final class SubSocketOptions extends CommonSocketOptions {
         return socket.getOption(SocketOptions.TOPICS_COUNT);
     }
 
-    public Optional<SubscriptionEntry> subscriptionAt(int index) {
+    Optional<SubscriptionEntry> subscriptionAt(int index) {
         if (index < 0)
             throw new IndexOutOfBoundsException("subscription index " + index);
         List<SubscriptionEntry> entries = socket.subscriptions();

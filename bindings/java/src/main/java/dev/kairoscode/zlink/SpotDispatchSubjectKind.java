@@ -2,29 +2,19 @@
 
 package dev.kairoscode.zlink;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum SpotDispatchSubjectKind {
-    SPOT(1),
-    TIMER(2),
-    CHANNEL_DEALER(3),
-    ACTOR(4);
+    SPOT,
+    TIMER,
+    CHANNEL_DEALER,
+    ACTOR;
 
-    private final int value;
-
-    SpotDispatchSubjectKind(int value) {
-        this.value = value;
+    int value() {
+        return EnumCodecs.spotDispatchSubjectKindValue(this);
     }
 
-    public int value() {
-        return value;
-    }
-
-    public static SpotDispatchSubjectKind fromValue(int value) {
-        for (SpotDispatchSubjectKind kind : values()) {
-            if (kind.value == value) {
-                return kind;
-            }
-        }
-        throw new IllegalArgumentException(
-          "invalid SpotDispatchSubjectKind value: " + value);
+    static SpotDispatchSubjectKind fromValue(int value) {
+        return EnumCodecs.spotDispatchSubjectKindFromValue(value);
     }
 }

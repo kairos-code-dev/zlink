@@ -2,31 +2,21 @@
 
 package dev.kairoscode.zlink;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum AutoHwmRecalcReason {
-    NONE(0),
-    INITIAL(1),
-    ROLE_CHANGE(2),
-    POLICY_TOGGLE(3),
-    REFRESH(4),
-    DEFERRED_SHRINK(5);
+    NONE,
+    INITIAL,
+    ROLE_CHANGE,
+    POLICY_TOGGLE,
+    REFRESH,
+    DEFERRED_SHRINK;
 
-    private final int value;
-
-    AutoHwmRecalcReason(int value) {
-        this.value = value;
+    int value() {
+        return EnumCodecs.autoHwmRecalcReasonValue(this);
     }
 
-    public int value() {
-        return value;
-    }
-
-    public static AutoHwmRecalcReason fromValue(int value) {
-        for (AutoHwmRecalcReason reason : values()) {
-            if (reason.value == value) {
-                return reason;
-            }
-        }
-        throw new IllegalArgumentException(
-            "invalid AutoHwmRecalcReason value: " + value);
+    static AutoHwmRecalcReason fromValue(int value) {
+        return EnumCodecs.autoHwmRecalcReasonFromValue(value);
     }
 }

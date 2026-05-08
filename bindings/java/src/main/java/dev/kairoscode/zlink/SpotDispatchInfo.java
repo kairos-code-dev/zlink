@@ -56,7 +56,7 @@ public final class SpotDispatchInfo {
         return Optional.ofNullable(timer);
     }
 
-    public Optional<String> channelName() {
+    Optional<String> channelName() {
         return Optional.ofNullable(channelName);
     }
 

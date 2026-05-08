@@ -3,6 +3,8 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
+import dev.kairoscode.zlink.internal.NativeHelpers;
+import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -71,6 +73,19 @@ public final class Context implements AutoCloseable {
         int rc = Native.ctxSet(handle, option.getValue(), value);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_ctx_set");
+    }
+
+    void setOptionData(ContextOption option, String value) {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment bytes = NativeHelpers.toCString(arena, value);
+            int byteLength = bytes.getString(0).getBytes(
+                java.nio.charset.StandardCharsets.UTF_8).length;
+            int rc = Native.ctxSetData(handle, option.getValue(), bytes,
+                byteLength);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_ctx_set_data");
+        }
     }
 
     int getOption(ContextOption option) {

@@ -2,27 +2,18 @@
 
 package dev.kairoscode.zlink.service.spot;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum SpotPeerState {
-    CONFIGURED(1),
-    CONNECTING(2),
-    CONNECTED(3);
+    CONFIGURED,
+    CONNECTING,
+    CONNECTED;
 
-    private final int value;
-
-    SpotPeerState(int value) {
-        this.value = value;
+    int getValue() {
+        return EnumCodecs.spotPeerStateValue(this);
     }
 
-    public int getValue() {
-        return value;
-    }
-
-    public static SpotPeerState fromValue(int value) {
-        for (SpotPeerState state : values()) {
-            if (state.value == value) {
-                return state;
-            }
-        }
-        throw new IllegalArgumentException("unknown SpotPeerState: " + value);
+    static SpotPeerState fromValue(int value) {
+        return EnumCodecs.spotPeerStateFromValue(value);
     }
 }

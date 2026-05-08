@@ -9,7 +9,7 @@ public final class ActorJoinRequest implements AutoCloseable {
     private final ActorJoinInfo info;
     private final Message message;
 
-    public ActorJoinRequest(ActorJoinInfo info, Message message) {
+    ActorJoinRequest(ActorJoinInfo info, Message message) {
         this.info = Objects.requireNonNull(info, "info");
         this.message = Objects.requireNonNull(message, "message");
     }

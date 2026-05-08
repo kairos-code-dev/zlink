@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink.perf;
 
 import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.MonitorSocket;
 import dev.kairoscode.zlink.PerfSocketOptions;
 import dev.kairoscode.zlink.Socket;
@@ -105,7 +106,8 @@ final class PerfTransport {
         }
     }
 
-    static void waitForMonitorEvent(MonitorSocket monitor, long expectedMask,
+    static void waitForMonitorEvent(MonitorSocket monitor,
+                                    MonitorEventType expectedEvent,
                                     int expectedCount, Duration timeout,
                                     String label) {
         CountDownLatch done = new CountDownLatch(1);
@@ -115,7 +117,7 @@ final class PerfTransport {
                 int seen = 0;
                 while (seen < expectedCount) {
                     var event = monitor.recv();
-                    if ((event.event().getValue() & expectedMask) == 0L) {
+                    if (event.event() != expectedEvent) {
                         continue;
                     }
                     seen++;

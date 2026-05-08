@@ -43,16 +43,14 @@ public final class SpotRequestAsyncSample {
             final List<Message>[] replyHolder = new List[] { List.of() };
             final RequestResult[] resultHolder = new RequestResult[] { RequestResult.TIMED_OUT };
             try (Message request = Message.copyOfUtf8("spot-ping")) {
-                requester.requestChannel(
-                    channelName,
-                    List.of(request),
-                    (requestResult, replyParts) -> {
+                requester.requestChannel(channelName)
+                    .message(request)
+                    .timeout(Duration.ofSeconds(5))
+                    .submit((requestResult, replyParts) -> {
                         resultHolder[0] = requestResult;
                         replyHolder[0] = replyParts;
                         replyLatch.countDown();
-                    },
-                    SendFlags.NONE,
-                    Duration.ofSeconds(5));
+                    });
             }
             if (!replyLatch.await(5, TimeUnit.SECONDS)) {
                 throw new IllegalStateException("spot request async callback timed out");

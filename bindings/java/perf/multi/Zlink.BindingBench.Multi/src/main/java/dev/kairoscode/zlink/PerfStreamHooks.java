@@ -16,9 +16,8 @@ public final class PerfStreamHooks {
 
     public static void attachFramedPacketHandler(StreamSocket socket,
                                                  FramedPacketHandler handler) {
-        socket.onFramedPacket((StreamFramedPacketHandler)
-            (routingId, header, body) ->
-                handler.onPacket(routingId, header, body));
+        socket.onPacket((routingId, header, body) ->
+            handler.onPacket(routingId, header, body));
     }
 
     public static void sendFramedPacket(StreamSocket socket,
@@ -28,8 +27,10 @@ public final class PerfStreamHooks {
                                         SendFlags flags) {
         Message packet = buildPacketFrame(header, body);
         try (packet) {
-            if (socket.sendNoWaitResult(routingId, packet) != SendResult.SENT) {
-                throw ZlinkException.fromLastError("zlink_send_rid");
+            SendFlags effectiveFlags =
+                flags == SendFlags.NONE ? SendFlags.DONT_WAIT : flags;
+            if (!socket.send(routingId, packet, effectiveFlags)) {
+                throw new SubmitException(SubmitResult.BACKPRESSURED);
             }
         }
     }

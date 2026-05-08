@@ -2,17 +2,13 @@
 
 package dev.kairoscode.zlink.service.spot;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum ActorAdmissionResult {
-    ACCEPT(1),
-    REJECT(2);
+    ACCEPT,
+    REJECT;
 
-    private final int value;
-
-    ActorAdmissionResult(int value) {
-        this.value = value;
-    }
-
-    public int value() {
-        return value;
+    int value() {
+        return EnumCodecs.actorAdmissionResultValue(this);
     }
 }

@@ -2,6 +2,7 @@
 
 package dev.kairoscode.zlink.service.registry;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -14,8 +15,8 @@ public record RegistryServiceSummaryEntry(AutoConnectType autoConnectType,
                                           long lastReportedMs) {
     static RegistryServiceSummaryEntry fromNative(MemorySegment segment) {
         return new RegistryServiceSummaryEntry(
-          AutoConnectType.fromValue(segment.get(ValueLayout.JAVA_INT, 0)),
-          ServiceRole.fromValue(segment.get(ValueLayout.JAVA_INT, 4)),
+          EnumCodecs.autoConnectTypeFromValue(segment.get(ValueLayout.JAVA_INT, 0)),
+          EnumCodecs.serviceRoleFromValue(segment.get(ValueLayout.JAVA_INT, 4)),
           NativeHelpers.fromCString(segment.asSlice(8, 256), 256),
           segment.get(ValueLayout.JAVA_INT, 264),
           segment.get(ValueLayout.JAVA_INT, 268),

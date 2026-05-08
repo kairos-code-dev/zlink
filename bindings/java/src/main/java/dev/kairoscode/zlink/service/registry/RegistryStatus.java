@@ -2,6 +2,7 @@
 
 package dev.kairoscode.zlink.service.registry;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -14,7 +15,7 @@ public record RegistryStatus(int registryId, String bindEndpoint, RegistryState 
         return new RegistryStatus(
           segment.get(ValueLayout.JAVA_INT, 0),
           NativeHelpers.fromCString(segment.asSlice(4, 256), 256),
-          RegistryState.fromValue(segment.get(ValueLayout.JAVA_INT, 260)),
+          EnumCodecs.registryStateFromValue(segment.get(ValueLayout.JAVA_INT, 260)),
           segment.get(ValueLayout.JAVA_INT, 264),
           segment.get(ValueLayout.JAVA_INT, 268),
           segment.get(ValueLayout.JAVA_INT, 272),

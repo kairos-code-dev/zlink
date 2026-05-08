@@ -21,7 +21,7 @@ public final class RegistryQueryClient implements AutoCloseable {
         this.handle = Native.registryQueryClientNew(
             InternalAccess.contextHandle(ctx));
         if (handle == null || handle.address() == 0) {
-            throw ZlinkException.fromLastError("zlink_registry_query_client_new");
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_query_client_new");
         }
     }
 
@@ -30,7 +30,7 @@ public final class RegistryQueryClient implements AutoCloseable {
             int rc = Native.registryQueryClientConnect(handle,
               NativeHelpers.toCString(arena, endpoint));
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_registry_query_client_connect");
             }
         }
@@ -48,7 +48,7 @@ public final class RegistryQueryClient implements AutoCloseable {
             int rc = Native.registryQuerySnapshot(handle, nativeFilter,
               MemorySegment.NULL, count);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_registry_query_snapshot");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_query_snapshot");
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0)
                 return List.of();
@@ -58,7 +58,7 @@ public final class RegistryQueryClient implements AutoCloseable {
             rc = Native.registryQuerySnapshot(handle, nativeFilter, entries,
               count);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_registry_query_snapshot");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_query_snapshot");
             int actual = Math.min(available, boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));
             long stride = NativeLayouts.REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteSize();

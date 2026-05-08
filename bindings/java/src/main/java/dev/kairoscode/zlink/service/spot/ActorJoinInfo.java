@@ -18,7 +18,7 @@ public final class ActorJoinInfo {
     private final MemorySegment request;
     private final int flags;
 
-    public ActorJoinInfo(ActorRef actor, RoutingId sourceNodeRid, int flags) {
+    ActorJoinInfo(ActorRef actor, RoutingId sourceNodeRid, int flags) {
         this(actor, actor, sourceNodeRid, null, null, null, 0L,
           MemorySegment.NULL, flags);
     }
@@ -52,7 +52,7 @@ public final class ActorJoinInfo {
         this.flags = flags;
     }
 
-    public ActorRef actor() {
+    ActorRef actor() {
         return sourceActor;
     }
 

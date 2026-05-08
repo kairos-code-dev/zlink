@@ -12,6 +12,7 @@ public final class PairSocket extends Socket {
     public void connect(String endpoint) { super.connect(endpoint); }
     public void unbind(String endpoint) { super.unbind(endpoint); }
     public void disconnect(String endpoint) { super.disconnect(endpoint); }
+    public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
     public boolean send(Message part) { return super.send(part); }
     public boolean send(Message part, SendFlags flags) { return super.send(part, SendFlag.fromValue(flags.value())); }
     public boolean send(List<Message> parts) { return super.send(parts); }

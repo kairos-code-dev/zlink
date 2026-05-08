@@ -2,30 +2,21 @@
 
 package dev.kairoscode.zlink.service.registry;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum TopologyState {
-    DISCOVERED(1),
-    CONNECTING(2),
-    READY(3),
-    LOST(4),
-    ERROR(5),
-    STOPPED(6);
+    DISCOVERED,
+    CONNECTING,
+    READY,
+    LOST,
+    ERROR,
+    STOPPED;
 
-    private final int value;
-
-    TopologyState(int value) {
-        this.value = value;
+    int getValue() {
+        return EnumCodecs.topologyStateValue(this);
     }
 
-    public int getValue() {
-        return value;
-    }
-
-    public static TopologyState fromValue(int value) {
-        for (TopologyState state : values()) {
-            if (state.value == value) {
-                return state;
-            }
-        }
-        throw new IllegalArgumentException("unknown TopologyState: " + value);
+    static TopologyState fromValue(int value) {
+        return EnumCodecs.topologyStateFromValue(value);
     }
 }

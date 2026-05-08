@@ -2,18 +2,14 @@
 
 package dev.kairoscode.zlink.service.spot;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum SpotNodeMode {
-    PUBSUB(1),
-    ROUTED(2),
-    ALL(3);
+    PUBSUB,
+    ROUTED,
+    ALL;
 
-    private final int value;
-
-    SpotNodeMode(int value) {
-        this.value = value;
-    }
-
-    public int getValue() {
-        return value;
+    int getValue() {
+        return EnumCodecs.spotNodeModeValue(this);
     }
 }

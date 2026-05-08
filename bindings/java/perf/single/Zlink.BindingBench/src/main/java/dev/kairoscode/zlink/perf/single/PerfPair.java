@@ -5,7 +5,7 @@ package dev.kairoscode.zlink.perf.single;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
-import dev.kairoscode.zlink.PollEventType;
+import dev.kairoscode.zlink.PollEventFlag;
 import dev.kairoscode.zlink.PairSocket;
 import dev.kairoscode.zlink.perf.PerfSocketPollSet;
 import dev.kairoscode.zlink.perf.PerfUtil;
@@ -15,7 +15,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfPair {
-    private static final int READY_EVENTS = MonitorEventType.CONNECTION_READY.getValue();
+    private static final MonitorEventType READY_EVENT = MonitorEventType.CONNECTION_READY;
 
     private PerfPair() {
     }
@@ -39,16 +39,16 @@ final class PerfPair {
             PerfUtil.configureClientTls(sender, config.transport());
             receiver.bind(endpoint);
             sender.connect(endpoint);
-            PerfUtil.waitForMonitorEvent(senderMonitor, READY_EVENTS, 1,
+            PerfUtil.waitForMonitorEvent(senderMonitor, READY_EVENT, 1,
                 readyTimeout, "pair sender ready");
-            PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENTS, 1,
+            PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENT, 1,
                 readyTimeout, "pair receiver ready");
 
             Thread receiverThread = new Thread(() -> {
                 boolean idleDrain = false;
                 int idleDrainTimeoutMs = Math.max(1, config.recvTimeoutMs());
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                    List.of(receiver), PollEventType.POLLIN.getValue())) {
+                    List.of(receiver), PollEventFlag.POLLIN)) {
                     while (finished.getCount() > 0L) {
                         int rc = pollSet.poll(idleDrain ? idleDrainTimeoutMs : -1);
                         if (idleDrain && rc == 0) {

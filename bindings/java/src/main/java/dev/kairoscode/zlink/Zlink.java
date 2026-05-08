@@ -6,6 +6,7 @@ import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 
@@ -49,13 +50,23 @@ public final class Zlink {
             control.handle());
     }
 
-    public static void sleep(int seconds) {
+    static void sleep(int seconds) {
         if (seconds < 0)
             throw new IllegalArgumentException("seconds must be >= 0");
         Native.sleep(seconds);
     }
 
-    public static void multipartClose(Message[] parts) {
+    public static void sleep(Duration duration) {
+        Objects.requireNonNull(duration, "duration");
+        long seconds = duration.toSeconds();
+        if (seconds < 0 || seconds > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+              "duration seconds out of int range: " + seconds);
+        }
+        Native.sleep((int) seconds);
+    }
+
+    static void multipartClose(Message[] parts) {
         Message.closeAll(parts);
     }
 }

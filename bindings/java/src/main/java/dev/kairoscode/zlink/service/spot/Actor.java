@@ -6,6 +6,7 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RecvException;
 import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.RecvResult;
+import dev.kairoscode.zlink.RequestCallback;
 import dev.kairoscode.zlink.RequestException;
 import dev.kairoscode.zlink.RequestResult;
 import dev.kairoscode.zlink.SendFlags;
@@ -23,6 +24,7 @@ import java.lang.foreign.ValueLayout;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
 public final class Actor implements AutoCloseable {
@@ -43,13 +45,64 @@ public final class Actor implements AutoCloseable {
         return ref;
     }
 
-    public boolean join(Spot spot,
+    public CompletableFuture<List<Message>> join(Spot spot, Message message) {
+        return join(spot, message, Duration.ofMillis(5_000L));
+    }
+
+    public CompletableFuture<List<Message>> join(Spot spot, Message message,
+                                                 Duration timeout) {
+        CompletableFuture<List<Message>> future = new CompletableFuture<>();
+        join(spot, message,
+          (BiConsumer<RequestResult, List<Message>>) (result, parts) -> {
+            if (result == RequestResult.OK) {
+                future.complete(parts);
+            } else {
+                future.completeExceptionally(new RequestException(result));
+            }
+        }, timeout);
+        return future;
+    }
+
+    public boolean join(Spot spot, Message message,
+                        RequestCallback callback) {
+        return join(spot, message, callback, Duration.ofMillis(5_000L));
+    }
+
+    public boolean join(Spot spot, Message message,
+                        RequestCallback callback,
+                        Duration timeout) {
+        return join(spot, message, callback, SendFlags.NONE, timeout);
+    }
+
+    public boolean join(Spot spot, Message message,
+                        RequestCallback callback,
+                        SendFlags flags) {
+        return join(spot, message, callback, flags, Duration.ofMillis(5_000L));
+    }
+
+    public boolean join(Spot spot, Message message,
+                        RequestCallback callback,
+                        SendFlags flags,
+                        Duration timeout) {
+        return joinInternal(spot, message, callback::onComplete, flags, timeout);
+    }
+
+    boolean join(Spot spot,
                         Message message,
                         BiConsumer<RequestResult, List<Message>> callback,
+                        Duration timeout) {
+        return joinInternal(spot, message, callback, SendFlags.NONE, timeout);
+    }
+
+    private boolean joinInternal(Spot spot,
+                        Message message,
+                        BiConsumer<RequestResult, List<Message>> callback,
+                        SendFlags flags,
                         Duration timeout) {
         Objects.requireNonNull(spot, "spot");
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(callback, "callback");
+        Objects.requireNonNull(flags, "flags");
         ensureOpen();
         ActorRequestCallbacks.PendingToken pending =
           ActorRequestCallbacks.register(callback);
@@ -61,7 +114,7 @@ public final class Actor implements AutoCloseable {
               ActorInterop.nativeRoutingId(arena, node.routingId()),
               ActorInterop.nativeRoutingId(arena, spot.routingId()), nativeMsg,
               ActorRequestCallbacks.REPLY_CALLBACK,
-              MemorySegment.ofAddress(pending.id()), SendFlags.NONE.value(),
+              MemorySegment.ofAddress(pending.id()), flags.value(),
               timeoutMillis(timeout));
             if (rc != 0) {
                 ActorRequestCallbacks.remove(pending.id());
@@ -74,19 +127,24 @@ public final class Actor implements AutoCloseable {
         }
     }
 
-    public boolean join(Spot spot,
+    boolean join(Spot spot,
                         Message message,
                         BiConsumer<RequestResult, List<Message>> callback) {
         return join(spot, message, callback, Duration.ofMillis(5_000L));
     }
 
     public void leave(Spot spot) {
+        leave(spot, Duration.ofMillis(5_000L));
+    }
+
+    public void leave(Spot spot, Duration timeout) {
         Objects.requireNonNull(spot, "spot");
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             int rc = Native.spotNodeActorLeaveSpot(nodeHandle(),
               ActorInterop.actorRefToNative(arena, ref),
-              ActorInterop.nativeRoutingId(arena, spot.routingId()), 0);
+              ActorInterop.nativeRoutingId(arena, spot.routingId()),
+              timeoutMillis(timeout));
             if (rc != 0) {
                 throw new RequestException(RequestResult.fromValue(rc));
             }

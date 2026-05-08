@@ -25,6 +25,8 @@ public final class StreamSocket extends Socket {
 
     public void bind(String endpoint) { super.bind(endpoint); }
     public void unbind(String endpoint) { super.unbind(endpoint); }
+    public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
+    public RoutingId routingId() { return super.routingId(); }
     boolean send(int rid, Message part) {
         return super.send(RoutingId.fromU32(rid), part, SendFlag.NONE);
     }
@@ -54,7 +56,12 @@ public final class StreamSocket extends Socket {
     public Received recv() { return super.recv(); }
     public Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
-    public void onPacket(StreamPacketHandler handler) { super.attachStreamRaw(handler); }
+    public void onPacket(StreamPacketHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        super.attachStreamPacket((StreamFramedPacketHandler)
+            (routingId, header, body) -> handler.onPacket(routingId, header,
+                body));
+    }
     void onPacketNative(StreamUInt32RawNativeHandler handler) {
         super.attachStreamRaw(handler);
     }
@@ -141,6 +148,50 @@ public final class StreamSocket extends Socket {
     public boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
                                   String actorId, Message part) {
         return sendBoundActor(node, sessionRid, actorId, part, SendFlags.NONE);
+    }
+
+    public boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
+                                  String actorId, List<Message> parts,
+                                  SendFlags flags) {
+        Objects.requireNonNull(parts, "parts");
+        if (parts.isEmpty()) {
+            throw new IllegalArgumentException("parts must not be empty");
+        }
+        for (int i = 0; i < parts.size(); i++) {
+            Objects.requireNonNull(parts.get(i), "parts[" + i + "]");
+        }
+        Objects.requireNonNull(node, "node");
+        Objects.requireNonNull(sessionRid, "sessionRid");
+        Objects.requireNonNull(actorId, "actorId");
+        Objects.requireNonNull(flags, "flags");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeSessionRid =
+              ActorInterop.nativeRoutingId(arena, sessionRid);
+            MemorySegment nativeActorId =
+              NativeHelpers.toCString(arena, actorId);
+            MemorySegment nodeHandle = InternalAccess.spotNodeHandle(node);
+            MemorySegment socketHandle = handle();
+            for (int i = 0; i < parts.size(); i++) {
+                MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+                InternalAccess.messageCopyTo(parts.get(i), nativeMsg);
+                int more = i + 1 < parts.size()
+                  ? Native.PART_MORE
+                  : Native.PART_FINAL;
+                int rc = Native.streamSendBoundActorPart(nodeHandle,
+                  socketHandle, nativeSessionRid, nativeActorId, nativeMsg,
+                  flags.value(), more);
+                if (rc != 0) {
+                    NativeMsg.msgClose(nativeMsg);
+                    throw new SubmitException(SubmitResult.fromValue(rc));
+                }
+            }
+            return true;
+        }
+    }
+
+    public boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
+                                  String actorId, List<Message> parts) {
+        return sendBoundActor(node, sessionRid, actorId, parts, SendFlags.NONE);
     }
     @Override public StreamSocketOptions options() { return options; }
 

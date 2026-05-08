@@ -2,27 +2,18 @@
 
 package dev.kairoscode.zlink.service.registry;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum TopologySource {
-    MANUAL(1),
-    DISCOVERY(2),
-    REGISTRY(3);
+    MANUAL,
+    DISCOVERY,
+    REGISTRY;
 
-    private final int value;
-
-    TopologySource(int value) {
-        this.value = value;
+    int getValue() {
+        return EnumCodecs.topologySourceValue(this);
     }
 
-    public int getValue() {
-        return value;
-    }
-
-    public static TopologySource fromValue(int value) {
-        for (TopologySource source : values()) {
-            if (source.value == value) {
-                return source;
-            }
-        }
-        throw new IllegalArgumentException("unknown TopologySource: " + value);
+    static TopologySource fromValue(int value) {
+        return EnumCodecs.topologySourceFromValue(value);
     }
 }

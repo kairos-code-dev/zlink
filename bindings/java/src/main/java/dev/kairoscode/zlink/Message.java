@@ -359,27 +359,27 @@ public final class Message implements AutoCloseable {
         return NATIVE_LITTLE_ENDIAN ? value : Integer.reverseBytes(value);
     }
 
-    public int readIntBe(int offset) {
+    int readIntBe(int offset) {
         int size = size();
         validateRange(size, offset, Integer.BYTES, "offset");
         int value = UNSAFE.getInt(null, cachedAddress + offset);
         return NATIVE_LITTLE_ENDIAN ? Integer.reverseBytes(value) : value;
     }
 
-    public byte readByte(int offset) {
+    byte readByte(int offset) {
         int size = size();
         validateRange(size, offset, 1, "offset");
         return UNSAFE.getByte(null, cachedAddress + offset);
     }
 
-    public short readShortBe(int offset) {
+    short readShortBe(int offset) {
         int size = size();
         validateRange(size, offset, Short.BYTES, "offset");
         short value = UNSAFE.getShort(null, cachedAddress + offset);
         return NATIVE_LITTLE_ENDIAN ? Short.reverseBytes(value) : value;
     }
 
-    public boolean contentEquals(byte[] expected) {
+    boolean contentEquals(byte[] expected) {
         Objects.requireNonNull(expected, "expected");
         int size = size();
         if (size != expected.length)
@@ -490,7 +490,7 @@ public final class Message implements AutoCloseable {
         return true;
     }
 
-    public void reset(int size) {
+    void reset(int size) {
         if (arena == null)
             throw new IllegalStateException("message is not reusable");
         if (size < 0)
@@ -551,21 +551,21 @@ public final class Message implements AutoCloseable {
         UNSAFE.putLong(null, cachedAddress + offset, encoded);
     }
 
-    public void writeShortBe(int offset, short value) {
+    void writeShortBe(int offset, short value) {
         int size = size();
         validateRange(size, offset, Short.BYTES, "offset");
         short encoded = NATIVE_LITTLE_ENDIAN ? Short.reverseBytes(value) : value;
         UNSAFE.putShort(null, cachedAddress + offset, encoded);
     }
 
-    public void writeIntBe(int offset, int value) {
+    void writeIntBe(int offset, int value) {
         int size = size();
         validateRange(size, offset, Integer.BYTES, "offset");
         int encoded = NATIVE_LITTLE_ENDIAN ? Integer.reverseBytes(value) : value;
         UNSAFE.putInt(null, cachedAddress + offset, encoded);
     }
 
-    public int copyFrom(byte[] source, int sourceOffset, int destinationOffset,
+    int copyFrom(byte[] source, int sourceOffset, int destinationOffset,
                         int length) {
         Objects.requireNonNull(source, "source");
         validateRange(source.length, sourceOffset, length, "source");
@@ -578,7 +578,7 @@ public final class Message implements AutoCloseable {
         return length;
     }
 
-    public int copyFrom(Message source, int sourceOffset, int destinationOffset,
+    int copyFrom(Message source, int sourceOffset, int destinationOffset,
                         int length) {
         Objects.requireNonNull(source, "source");
         int sourceSize = source.size();

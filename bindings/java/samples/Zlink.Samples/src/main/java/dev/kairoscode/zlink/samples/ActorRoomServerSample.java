@@ -2,6 +2,7 @@ package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.RequestCallback;
 import dev.kairoscode.zlink.MonitorEventType;
 import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.RequestResult;
@@ -27,7 +28,7 @@ public final class ActorRoomServerSample {
              Spot spot = node.createSpot();
              StreamSocket stream = new StreamSocket(ctx);
              var monitor = stream.monitorOpen(MonitorEventType.ACCEPTED)) {
-            Actor actor = node.actor("room-1");
+            Actor actor = node.createActor("room-1");
             ActorRef actorRef = actor.ref();
             List<String> joins = new ArrayList<>();
             List<RequestResult> replies = new ArrayList<>();
@@ -60,7 +61,7 @@ public final class ActorRoomServerSample {
                   Duration.ofSeconds(2));
 
                 try (Message request = Message.copyOfUtf8("join-room")) {
-                    actor.join(spot, request, (result, messages) -> {
+                    actor.join(spot, request, (RequestCallback) (result, messages) -> {
                         replies.add(result);
                         messages.forEach(Message::close);
                     }, Duration.ofSeconds(2));

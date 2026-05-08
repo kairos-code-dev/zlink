@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink.service.registry;
 
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.internal.EnumCodecs;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
@@ -20,11 +21,12 @@ public record RegistryTopologyFilter(AutoConnectType autoConnectType,
         MemorySegment segment = arena.allocate(
           NativeLayouts.REGISTRY_TOPOLOGY_FILTER_LAYOUT);
         segment.set(ValueLayout.JAVA_INT, 0,
-          autoConnectType == null ? 0 : autoConnectType.getValue());
+          autoConnectType == null ? 0
+            : EnumCodecs.autoConnectTypeValue(autoConnectType));
         segment.set(ValueLayout.JAVA_INT, 4,
-          serviceKind == null ? 0 : serviceKind.getValue());
+          serviceKind == null ? 0 : EnumCodecs.serviceKindValue(serviceKind));
         segment.set(ValueLayout.JAVA_INT, 8,
-          serviceRole == null ? 0 : serviceRole.getValue());
+          serviceRole == null ? 0 : EnumCodecs.serviceRoleValue(serviceRole));
         if (channelName != null && !channelName.isEmpty()) {
             MemorySegment name = NativeHelpers.toCString(arena, channelName);
             MemorySegment.copy(name, 0, segment, 12,
@@ -38,8 +40,10 @@ public record RegistryTopologyFilter(AutoConnectType autoConnectType,
                   269, bytes.length);
             }
         }
-        segment.set(ValueLayout.JAVA_INT, 524, state == null ? 0 : state.getValue());
-        segment.set(ValueLayout.JAVA_INT, 528, source == null ? 0 : source.getValue());
+        segment.set(ValueLayout.JAVA_INT, 524,
+          state == null ? 0 : EnumCodecs.topologyStateValue(state));
+        segment.set(ValueLayout.JAVA_INT, 528,
+          source == null ? 0 : EnumCodecs.topologySourceValue(source));
         return segment;
     }
 }

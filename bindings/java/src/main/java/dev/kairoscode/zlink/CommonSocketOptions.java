@@ -6,34 +6,34 @@ import dev.kairoscode.zlink.SocketOptions;
 import java.time.Duration;
 import java.util.Objects;
 
-class CommonSocketOptions {
+public class CommonSocketOptions {
     final Socket socket;
 
     CommonSocketOptions(Socket socket) {
         this.socket = socket;
     }
 
-    public long affinity() {
+    long affinity() {
         return socket.getOption(SocketOptions.AFFINITY);
     }
 
-    public void affinity(long value) {
+    void affinity(long value) {
         socket.setOption(SocketOptions.AFFINITY, value);
     }
 
-    public int rate() {
+    int rate() {
         return socket.getOption(SocketOptions.RATE);
     }
 
-    public void rate(int value) {
+    void rate(int value) {
         socket.setOption(SocketOptions.RATE, value);
     }
 
-    public Duration recoveryInterval() {
+    Duration recoveryInterval() {
         return Duration.ofMillis(socket.getOption(SocketOptions.RECOVERY_IVL));
     }
 
-    public void recoveryInterval(Duration value) {
+    void recoveryInterval(Duration value) {
         Objects.requireNonNull(value, "value");
         socket.setOption(SocketOptions.RECOVERY_IVL, toIntMillis(value, "value"));
     }
@@ -63,19 +63,19 @@ class CommonSocketOptions {
         socket.setOption(SocketOptions.RCVHWM, value);
     }
 
-    public int sendBuffer() {
+    int sendBuffer() {
         return socket.getOption(SocketOptions.SNDBUF);
     }
 
-    public void sendBuffer(int value) {
+    void sendBuffer(int value) {
         socket.setOption(SocketOptions.SNDBUF, value);
     }
 
-    public int recvBuffer() {
+    int recvBuffer() {
         return socket.getOption(SocketOptions.RCVBUF);
     }
 
-    public void recvBuffer(int value) {
+    void recvBuffer(int value) {
         socket.setOption(SocketOptions.RCVBUF, value);
     }
 
@@ -97,11 +97,11 @@ class CommonSocketOptions {
         socket.setOption(SocketOptions.RCVTIMEO, toIntMillis(value, "value"));
     }
 
-    public Duration handshakeInterval() {
+    Duration handshakeInterval() {
         return Duration.ofMillis(socket.getOption(SocketOptions.HANDSHAKE_IVL));
     }
 
-    public void handshakeInterval(Duration value) {
+    void handshakeInterval(Duration value) {
         Objects.requireNonNull(value, "value");
         socket.setOption(SocketOptions.HANDSHAKE_IVL, toIntMillis(value, "value"));
     }
@@ -124,11 +124,11 @@ class CommonSocketOptions {
         socket.setOption(SocketOptions.RID_DUPLICATE_POLICY, value.value());
     }
 
-    public int routeValueMaxSize() {
+    int routeValueMaxSize() {
         return socket.getOption(SocketOptions.ROUTE_VALUE_MAX_SIZE);
     }
 
-    public void routeValueMaxSize(int value) {
+    void routeValueMaxSize(int value) {
         socket.setOption(SocketOptions.ROUTE_VALUE_MAX_SIZE, value);
     }
 
@@ -157,35 +157,35 @@ class CommonSocketOptions {
         socket.setOption(SocketOptions.IPV6, enabled ? 1 : 0);
     }
 
-    public int tos() {
+    int tos() {
         return socket.getOption(SocketOptions.TOS);
     }
 
-    public void tos(int value) {
+    void tos(int value) {
         socket.setOption(SocketOptions.TOS, value);
     }
 
-    public int multicastHops() {
+    int multicastHops() {
         return socket.getOption(SocketOptions.MULTICAST_HOPS);
     }
 
-    public void multicastHops(int value) {
+    void multicastHops(int value) {
         socket.setOption(SocketOptions.MULTICAST_HOPS, value);
     }
 
-    public int multicastMaxTpdu() {
+    int multicastMaxTpdu() {
         return socket.getOption(SocketOptions.MULTICAST_MAXTPDU);
     }
 
-    public void multicastMaxTpdu(int value) {
+    void multicastMaxTpdu(int value) {
         socket.setOption(SocketOptions.MULTICAST_MAXTPDU, value);
     }
 
-    public String bindToDevice() {
+    String bindToDevice() {
         return socket.getOption(SocketOptions.BINDTODEVICE);
     }
 
-    public void bindToDevice(String value) {
+    void bindToDevice(String value) {
         Objects.requireNonNull(value, "value");
         socket.setOption(SocketOptions.BINDTODEVICE, value);
     }
@@ -206,35 +206,35 @@ class CommonSocketOptions {
         socket.setOption(SocketOptions.TCP_KEEPALIVE, value);
     }
 
-    public int tcpKeepaliveCount() {
+    int tcpKeepaliveCount() {
         return socket.getOption(SocketOptions.TCP_KEEPALIVE_CNT);
     }
 
-    public void tcpKeepaliveCount(int value) {
+    void tcpKeepaliveCount(int value) {
         socket.setOption(SocketOptions.TCP_KEEPALIVE_CNT, value);
     }
 
-    public int tcpKeepaliveIdle() {
+    int tcpKeepaliveIdle() {
         return socket.getOption(SocketOptions.TCP_KEEPALIVE_IDLE);
     }
 
-    public void tcpKeepaliveIdle(int value) {
+    void tcpKeepaliveIdle(int value) {
         socket.setOption(SocketOptions.TCP_KEEPALIVE_IDLE, value);
     }
 
-    public int tcpKeepaliveInterval() {
+    int tcpKeepaliveInterval() {
         return socket.getOption(SocketOptions.TCP_KEEPALIVE_INTVL);
     }
 
-    public void tcpKeepaliveInterval(int value) {
+    void tcpKeepaliveInterval(int value) {
         socket.setOption(SocketOptions.TCP_KEEPALIVE_INTVL, value);
     }
 
-    public int tcpMaxRt() {
+    int tcpMaxRt() {
         return socket.getOption(SocketOptions.TCP_MAXRT);
     }
 
-    public void tcpMaxRt(int value) {
+    void tcpMaxRt(int value) {
         socket.setOption(SocketOptions.TCP_MAXRT, value);
     }
 
@@ -265,27 +265,27 @@ class CommonSocketOptions {
         socket.setOption(SocketOptions.HEARTBEAT_TIMEOUT, toIntMillis(value, "value"));
     }
 
-    public boolean conflate() {
+    boolean conflate() {
         return socket.getOption(SocketOptions.CONFLATE) != 0;
     }
 
-    public void conflate(boolean enabled) {
+    void conflate(boolean enabled) {
         socket.setOption(SocketOptions.CONFLATE, enabled ? 1 : 0);
     }
 
-    public boolean blocky() {
+    boolean blocky() {
         return socket.getOption(SocketOptions.BLOCKY) != 0;
     }
 
-    public void blocky(boolean enabled) {
+    void blocky(boolean enabled) {
         socket.setOption(SocketOptions.BLOCKY, enabled ? 1 : 0);
     }
 
-    public boolean invertMatching() {
+    boolean invertMatching() {
         return socket.getOption(SocketOptions.INVERT_MATCHING) != 0;
     }
 
-    public void invertMatching(boolean enabled) {
+    void invertMatching(boolean enabled) {
         socket.setOption(SocketOptions.INVERT_MATCHING, enabled ? 1 : 0);
     }
 
@@ -323,15 +323,15 @@ class CommonSocketOptions {
         socket.setOption(SocketOptions.RECONNECT_IVL_MAX, toIntMillis(value, "value"));
     }
 
-    public int fd() {
+    int fd() {
         return socket.getOption(SocketOptions.FD);
     }
 
-    public int events() {
+    int events() {
         return socket.getOption(SocketOptions.EVENTS);
     }
 
-    public SocketType socketType() {
+    SocketType socketType() {
         return SocketType.fromValue(socket.getOption(SocketOptions.TYPE));
     }
 
@@ -339,7 +339,7 @@ class CommonSocketOptions {
         return socket.getOption(SocketOptions.LAST_ENDPOINT);
     }
 
-    public void zmpMetadata(String value) {
+    void zmpMetadata(String value) {
         Objects.requireNonNull(value, "value");
         socket.setOption(SocketOptions.ZMP_METADATA, value);
     }

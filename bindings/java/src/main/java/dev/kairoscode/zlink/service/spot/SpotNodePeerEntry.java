@@ -2,6 +2,7 @@
 
 package dev.kairoscode.zlink.service.spot;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -15,8 +16,8 @@ public record SpotNodePeerEntry(String serviceName, String localEndpoint,
           NativeHelpers.fromCString(segment.asSlice(0, 256), 256),
           NativeHelpers.fromCString(segment.asSlice(256, 256), 256),
           NativeHelpers.fromCString(segment.asSlice(512, 256), 256),
-          SpotPeerSource.fromValue(segment.get(ValueLayout.JAVA_INT, 768)),
-          SpotPeerState.fromValue(segment.get(ValueLayout.JAVA_INT, 772)),
+          EnumCodecs.spotPeerSourceFromValue(segment.get(ValueLayout.JAVA_INT, 768)),
+          EnumCodecs.spotPeerStateFromValue(segment.get(ValueLayout.JAVA_INT, 772)),
           segment.get(ValueLayout.JAVA_INT, 776),
           segment.get(ValueLayout.JAVA_LONG, 784),
           segment.get(ValueLayout.JAVA_LONG, 792));

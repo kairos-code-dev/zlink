@@ -120,7 +120,7 @@ public final class RoutingId {
     }
 
     /** Returns a read-only buffer view over the routing id bytes. */
-    public ByteBuffer asReadOnlyBuffer() {
+    ByteBuffer asReadOnlyBuffer() {
         return ByteBuffer.wrap(value).asReadOnlyBuffer();
     }
 
@@ -130,7 +130,7 @@ public final class RoutingId {
     }
 
     /** Returns whether the routing id is empty. */
-    public boolean empty() {
+    boolean empty() {
         return value.length == 0;
     }
 

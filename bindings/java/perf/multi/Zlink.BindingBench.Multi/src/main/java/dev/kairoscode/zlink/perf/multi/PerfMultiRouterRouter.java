@@ -5,7 +5,7 @@ package dev.kairoscode.zlink.perf.multi;
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.MonitorEventType;
-import dev.kairoscode.zlink.PollEventType;
+import dev.kairoscode.zlink.PollEventFlag;
 import dev.kairoscode.zlink.RouterSocket;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.SendFlags;
@@ -20,7 +20,8 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 
 final class PerfMultiRouterRouter {
-    private static final int READY_EVENTS = MonitorEventType.CONNECTION_READY.getValue();
+    private static final MonitorEventType READY_EVENT =
+        MonitorEventType.CONNECTION_READY;
     private static final RoutingId SERVER_ID = RoutingId.fromBytes(
         "PERF_SERVER".getBytes(StandardCharsets.UTF_8));
 
@@ -37,20 +38,22 @@ final class PerfMultiRouterRouter {
             PerfUtil.configureServerTls(server, config.transport());
             server.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
-            PerfUtil.waitForMonitorEvent(monitor, READY_EVENTS, config.clients(),
+            PerfUtil.waitForMonitorEvent(monitor, READY_EVENT, config.clients(),
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "router/router server ready");
             int stops = 0;
             Deque<PendingReply> pendingReplies = new ArrayDeque<>();
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                List.of(server), PollEventType.POLLIN.getValue())) {
+                List.of(server), PollEventFlag.POLLIN)) {
                 while (stops < config.clients()) {
-                    int events = pendingReplies.isEmpty()
-                        ? PollEventType.POLLIN.getValue()
-                        : PollEventType.POLLIN.getValue() | PollEventType.POLLOUT.getValue();
-                    pollSet.setEvents(0, events);
+                    if (pendingReplies.isEmpty()) {
+                        pollSet.setEvents(0, PollEventFlag.POLLIN);
+                    } else {
+                        pollSet.setEvents(0, PollEventFlag.POLLIN,
+                            PollEventFlag.POLLOUT);
+                    }
                     pollSet.poll(-1);
-                    if (pollSet.isReady(0, PollEventType.POLLOUT.getValue())) {
+                    if (pollSet.isReady(0, PollEventFlag.POLLOUT)) {
                         flushPending(server, pendingReplies);
                     }
                     while (true) {
@@ -105,7 +108,7 @@ final class PerfMultiRouterRouter {
                 PerfUtil.applySocketOptions(client, config);
                 PerfUtil.configureClientTls(client, config.transport());
                 client.connect(config.endpoint());
-                PerfUtil.waitForMonitorEvent(monitor, READY_EVENTS, 1,
+                PerfUtil.waitForMonitorEvent(monitor, READY_EVENT, 1,
                     Duration.ofMillis(config.connectReadyTimeoutMs()),
                     "router/router client ready");
                 connected.countDown();
@@ -115,7 +118,7 @@ final class PerfMultiRouterRouter {
                 }
                 PerfUtil.await(go, "router/router start", Duration.ofSeconds(10));
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                    List.of(client), PollEventType.POLLIN.getValue())) {
+                    List.of(client), PollEventFlag.POLLIN)) {
                     long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
                     while (System.nanoTime() < activeEnd) {
                         try (Message request = PerfUtil.payload(config.size(),
@@ -162,7 +165,7 @@ final class PerfMultiRouterRouter {
                 throw new IllegalStateException("router/router send timed out");
             }
             long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
-            pollSet.setEvents(0, PollEventType.POLLOUT.getValue());
+            pollSet.setEvents(0, PollEventFlag.POLLOUT);
             pollSet.poll(Math.max(1, (int) Math.min(Integer.MAX_VALUE,
                 Duration.ofNanos(remainingNs).toMillis())));
         }
@@ -172,7 +175,7 @@ final class PerfMultiRouterRouter {
         while (System.nanoTime() < deadlineNs) {
             try {
                 long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
-                pollSet.setEvents(0, PollEventType.POLLIN.getValue());
+                pollSet.setEvents(0, PollEventFlag.POLLIN);
                 if (pollSet.poll(Math.max(1, (int) Math.min(Integer.MAX_VALUE,
                     Duration.ofNanos(remainingNs).toMillis()))) > 0) {
                     return true;

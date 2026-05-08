@@ -6,7 +6,9 @@ import dev.kairoscode.zlink.internal.Native;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,11 +41,11 @@ public final class Poller implements AutoCloseable {
             throw ZlinkException.fromLastError("zlink_poller_new");
     }
 
-    public void add(Socket socket, int events) {
+    void add(Socket socket, int events) {
         add(socket, events, null);
     }
 
-    public void add(Socket socket, int events, Object tag) {
+    void add(Socket socket, int events, Object tag) {
         ensureOpen();
         Objects.requireNonNull(socket, "socket");
         PollItem item = newPollItem(socket, socket.handle(), 0, events, tag,
@@ -55,19 +57,35 @@ public final class Poller implements AutoCloseable {
         registerItem(item);
     }
 
-    public void add(Socket socket, PollEventType... events) {
+    void add(Socket socket, PollEventType... events) {
         add(socket, PollEventType.combine(events), null);
     }
 
-    public void add(Socket socket, Object tag, PollEventType... events) {
+    void add(Socket socket, PollEventType event) {
+        add(socket, PollEventType.combine(event), null);
+    }
+
+    void add(Socket socket, Object tag, PollEventType... events) {
         add(socket, PollEventType.combine(events), tag);
     }
 
-    public void addFd(int fd, int events) {
+    public void add(Socket socket, PollEventFlag... events) {
+        add(socket, PollEventFlag.combine(events), null);
+    }
+
+    public void add(Socket socket, PollEventFlag event) {
+        add(socket, PollEventFlag.combine(event), null);
+    }
+
+    public void add(Socket socket, Object tag, PollEventFlag... events) {
+        add(socket, PollEventFlag.combine(events), tag);
+    }
+
+    void addFd(int fd, int events) {
         addFd(fd, events, null);
     }
 
-    public void addFd(int fd, int events, Object tag) {
+    void addFd(int fd, int events, Object tag) {
         ensureOpen();
         PollItem item = newPollItem(null, MemorySegment.NULL, fd, events, tag,
           false);
@@ -77,12 +95,28 @@ public final class Poller implements AutoCloseable {
         registerItem(item);
     }
 
-    public void addFd(int fd, PollEventType... events) {
+    void addFd(int fd, PollEventType... events) {
         addFd(fd, PollEventType.combine(events), null);
     }
 
-    public void addFd(int fd, Object tag, PollEventType... events) {
+    void addFd(int fd, PollEventType event) {
+        addFd(fd, PollEventType.combine(event), null);
+    }
+
+    void addFd(int fd, Object tag, PollEventType... events) {
         addFd(fd, PollEventType.combine(events), tag);
+    }
+
+    public void addFd(int fd, PollEventFlag... events) {
+        addFd(fd, PollEventFlag.combine(events), null);
+    }
+
+    public void addFd(int fd, PollEventFlag event) {
+        addFd(fd, PollEventFlag.combine(event), null);
+    }
+
+    public void addFd(int fd, Object tag, PollEventFlag... events) {
+        addFd(fd, PollEventFlag.combine(events), tag);
     }
 
     public void add(Timer timer) {
@@ -101,7 +135,7 @@ public final class Poller implements AutoCloseable {
         registerItem(item);
     }
 
-    public void modify(Socket socket, int events) {
+    void modify(Socket socket, int events) {
         ensureOpen();
         Objects.requireNonNull(socket, "socket");
         int index = findSocket(socket.handle());
@@ -113,11 +147,15 @@ public final class Poller implements AutoCloseable {
         items.get(index).events = events;
     }
 
-    public void modify(Socket socket, PollEventType... events) {
+    void modify(Socket socket, PollEventType... events) {
         modify(socket, PollEventType.combine(events));
     }
 
-    public void modifyFd(int fd, int events) {
+    public void modify(Socket socket, PollEventFlag... events) {
+        modify(socket, PollEventFlag.combine(events));
+    }
+
+    void modifyFd(int fd, int events) {
         ensureOpen();
         int index = findFd(fd);
         if (index < 0)
@@ -128,8 +166,12 @@ public final class Poller implements AutoCloseable {
         items.get(index).events = events;
     }
 
-    public void modifyFd(int fd, PollEventType... events) {
+    void modifyFd(int fd, PollEventType... events) {
         modifyFd(fd, PollEventType.combine(events));
+    }
+
+    public void modifyFd(int fd, PollEventFlag... events) {
+        modifyFd(fd, PollEventFlag.combine(events));
     }
 
     public boolean remove(Socket socket) {
@@ -196,7 +238,7 @@ public final class Poller implements AutoCloseable {
         return rc;
     }
 
-    public int pollCount(int timeoutMs) {
+    int pollCount(int timeoutMs) {
         ensureOpen();
         if (items.isEmpty()) {
             lastReadyCount = 0;
@@ -220,11 +262,11 @@ public final class Poller implements AutoCloseable {
         return readyCount;
     }
 
-    public boolean pollAny(int timeoutMs) {
+    boolean pollAny(int timeoutMs) {
         return pollCount(timeoutMs) > 0;
     }
 
-    public List<PollEvent> poll(int timeoutMs) {
+    List<PollEvent> poll(int timeoutMs) {
         int readyCount = pollCount(timeoutMs);
         if (readyCount == 0)
             return List.of();
@@ -234,46 +276,84 @@ public final class Poller implements AutoCloseable {
             PollItem item = cachedReadyItem(i);
             int fd = readyFd(i);
             short revents = readyRevents(i);
-            out.add(new PollEvent(item == null ? null : item.socket, revents,
-              fd, item == null ? null : item.tag,
-              item == null ? revents : item.events));
+            out.add(toPollEvent(item, fd, revents));
         }
         return out;
     }
 
-    public int readyCount() {
+    public PollEvent wait(Duration timeout) {
+        List<PollEvent> events = waitAll(1, timeout);
+        return events.isEmpty() ? null : events.get(0);
+    }
+
+    public List<PollEvent> waitAll(int maxEvents, Duration timeout) {
+        if (maxEvents <= 0)
+            throw new IllegalArgumentException("maxEvents must be > 0");
+        int readyCount = pollCount(toIntMillis(timeout));
+        if (readyCount == 0)
+            return List.of();
+        int count = Math.min(maxEvents, readyCount);
+        List<PollEvent> out = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            out.add(toPollEvent(cachedReadyItem(i), readyFd(i),
+              readyRevents(i)));
+        }
+        return out;
+    }
+
+    int readyCount() {
         ensureOpen();
         return lastReadyCount;
     }
 
-    public Socket readySocket(int index) {
+    Socket readySocket(int index) {
         PollItem item = cachedReadyItem(index);
         return item == null ? null : item.socket;
     }
 
-    public Timer readyTimer(int index) {
+    Timer readyTimer(int index) {
         PollItem item = cachedReadyItem(index);
         return item == null ? null : item.timer;
     }
 
-    public Object readyTag(int index) {
+    Object readyTag(int index) {
         PollItem item = cachedReadyItem(index);
         return item == null ? null : item.tag;
     }
 
-    public int readyFd(int index) {
+    int readyFd(int index) {
         checkReadyIndex(index);
         return readyFdCache[index];
     }
 
-    public int readyEvents(int index) {
+    int readyEvents(int index) {
         PollItem item = cachedReadyItem(index);
         return item == null ? readyRevents(index) : item.events;
     }
 
-    public short readyRevents(int index) {
+    short readyRevents(int index) {
         checkReadyIndex(index);
         return readyReventsCache[index];
+    }
+
+    private PollEvent toPollEvent(PollItem item, int fd, int revents) {
+        EnumSet<PollEventFlag> requested = PollEventFlag.fromMask(
+          item == null ? revents : item.events);
+        EnumSet<PollEventFlag> ready = PollEventFlag.fromMask(revents);
+        return new PollEvent(item == null ? null : item.socket,
+          item != null && (item.isSocket || item.isTimer) ? null : fd,
+          item == null ? null : item.timer,
+          item == null ? null : item.tag,
+          requested, ready);
+    }
+
+    private static int toIntMillis(Duration timeout) {
+        long millis = Objects.requireNonNull(timeout, "timeout").toMillis();
+        if (millis < Integer.MIN_VALUE || millis > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+              "timeout millis out of int range: " + millis);
+        }
+        return (int) millis;
     }
 
     @Override

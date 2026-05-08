@@ -2,6 +2,7 @@
 
 package dev.kairoscode.zlink;
 
+import dev.kairoscode.zlink.internal.ReceivedPartCursor;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -20,13 +21,6 @@ import java.util.function.BiConsumer;
  * underlying part array. Closing the aggregate closes every owned part.
  */
 public final class Received implements AutoCloseable {
-    public interface PartCursor extends AutoCloseable {
-        Message nextPartOrNull();
-
-        @Override
-        void close();
-    }
-
     private final long requestSequence;
     private final boolean hasRequestSequence;
     private final BiConsumer<List<Message>, SendFlags> replySender;
@@ -34,7 +28,7 @@ public final class Received implements AutoCloseable {
     private final byte[] spotRidBytes;
     private final Runnable onTerminalState;
     private final ArrayList<Message> realizedParts;
-    private PartCursor cursor;
+    private ReceivedPartCursor cursor;
     private RoutingId routingId;
     private RoutingId spotRid;
     private List<Message> partsView;
@@ -163,7 +157,7 @@ public final class Received implements AutoCloseable {
     }
 
     Received(byte[] routingIdBytes, byte[] spotRidBytes, Message firstPart,
-             PartCursor cursor, long requestSequence,
+             ReceivedPartCursor cursor, long requestSequence,
              boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
              Runnable onTerminalState) {
@@ -181,7 +175,7 @@ public final class Received implements AutoCloseable {
     }
 
     Received(RoutingId routingId, RoutingId spotRid, Message firstPart,
-             PartCursor cursor, long requestSequence,
+             ReceivedPartCursor cursor, long requestSequence,
              boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
              Runnable onTerminalState) {
@@ -302,7 +296,7 @@ public final class Received implements AutoCloseable {
 
     @Override
     public void close() {
-        PartCursor pendingCursor;
+        ReceivedPartCursor pendingCursor;
         List<Message> toClose;
         synchronized (this) {
             if (closed)
@@ -357,7 +351,7 @@ public final class Received implements AutoCloseable {
     }
 
     List<Message> takeParts() {
-        PartCursor pendingCursor;
+        ReceivedPartCursor pendingCursor;
         ArrayList<Message> detached;
         synchronized (this) {
             ensureOpen();
@@ -409,7 +403,7 @@ public final class Received implements AutoCloseable {
         }
     }
 
-    private static void closeCursorQuietly(PartCursor cursor) {
+    private static void closeCursorQuietly(ReceivedPartCursor cursor) {
         if (cursor == null)
             return;
         try {

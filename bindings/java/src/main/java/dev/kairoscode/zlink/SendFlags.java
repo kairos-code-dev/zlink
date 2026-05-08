@@ -16,7 +16,7 @@ public enum SendFlags {
         return value;
     }
 
-    public static SendFlags fromValue(int value) {
+    static SendFlags fromValue(int value) {
         return switch (value) {
             case 0 -> NONE;
             case 1 -> DONT_WAIT;

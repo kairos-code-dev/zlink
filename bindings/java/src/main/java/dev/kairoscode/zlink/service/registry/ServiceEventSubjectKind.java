@@ -2,27 +2,18 @@
 
 package dev.kairoscode.zlink.service.registry;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum ServiceEventSubjectKind {
-    NONE(0),
-    TOPIC(1),
-    PATTERN(2);
+    NONE,
+    TOPIC,
+    PATTERN;
 
-    private final int value;
-
-    ServiceEventSubjectKind(int value) {
-        this.value = value;
+    int getValue() {
+        return EnumCodecs.serviceEventSubjectKindValue(this);
     }
 
-    public int getValue() {
-        return value;
-    }
-
-    public static ServiceEventSubjectKind fromValue(int value) {
-        for (ServiceEventSubjectKind kind : values()) {
-            if (kind.value == value) {
-                return kind;
-            }
-        }
-        throw new IllegalArgumentException("unknown ServiceEventSubjectKind: " + value);
+    static ServiceEventSubjectKind fromValue(int value) {
+        return EnumCodecs.serviceEventSubjectKindFromValue(value);
     }
 }

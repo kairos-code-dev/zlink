@@ -16,7 +16,7 @@ public enum RecvFlags {
         return value;
     }
 
-    public static RecvFlags fromValue(int value) {
+    static RecvFlags fromValue(int value) {
         return switch (value) {
             case 0 -> NONE;
             case 1 -> DONT_WAIT;

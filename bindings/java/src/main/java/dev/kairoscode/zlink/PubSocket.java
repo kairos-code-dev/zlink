@@ -16,6 +16,7 @@ public final class PubSocket extends Socket {
     public void connect(String endpoint) { super.connect(endpoint); }
     public void unbind(String endpoint) { super.unbind(endpoint); }
     public void disconnect(String endpoint) { super.disconnect(endpoint); }
+    public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
     public void attachDiscovery(Discovery discovery) { super.attachDiscovery(discovery); }
     public boolean publish(String topicId, Message part) { return super.publish(topicId, part); }
     public boolean publish(String topicId, Message part, SendFlags flags) { return super.publish(topicId, part, SendFlag.fromValue(flags.value())); }

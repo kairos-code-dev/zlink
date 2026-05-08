@@ -2,6 +2,7 @@ package dev.kairoscode.zlink.samples;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.RequestCallback;
 import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.RequestResult;
 import dev.kairoscode.zlink.RoutingId;
@@ -28,7 +29,7 @@ public final class ActorGatewayRelaySample {
              StreamSocket stream = new StreamSocket(ctx);
              var monitor = stream.monitorOpen(
                  dev.kairoscode.zlink.MonitorEventType.ACCEPTED)) {
-            Actor actor = node.actor("player-1");
+            Actor actor = node.createActor("player-1");
             ActorRef actorRef = actor.ref();
             List<String> payloads = new ArrayList<>();
             List<RequestResult> replies = new ArrayList<>();
@@ -64,7 +65,7 @@ public final class ActorGatewayRelaySample {
                 }
                 stream.bindActor(node, sessionRid, actorRef, Duration.ofSeconds(2));
                 try (Message request = Message.copyOfUtf8("join")) {
-                    actor.join(spot, request, (result, messages) -> {
+                    actor.join(spot, request, (RequestCallback) (result, messages) -> {
                         replies.add(result);
                         messages.forEach(Message::close);
                     }, Duration.ofSeconds(2));

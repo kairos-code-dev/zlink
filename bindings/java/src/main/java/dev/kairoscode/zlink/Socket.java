@@ -6,6 +6,7 @@ import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
+import dev.kairoscode.zlink.internal.ReceivedPartCursor;
 import dev.kairoscode.zlink.SocketOptionKey;
 import dev.kairoscode.zlink.SocketOptions;
 import dev.kairoscode.zlink.SocketOptionValueType;
@@ -58,7 +59,7 @@ public abstract class Socket implements AutoCloseable {
         COMMON, ROUTER, PUB, SUB, STREAM
     }
 
-    public void disconnectRid(RoutingId peerRid) {
+    void disconnectRid(RoutingId peerRid) {
         socketCore.disconnectRid(peerRid);
     }
 
@@ -194,7 +195,7 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    void attachStreamRaw(StreamPacketHandler handler) {
+    void attachStreamRaw(StreamRawPacketHandler handler) {
         socketCore.attachStreamRaw(handler);
     }
 
@@ -263,7 +264,7 @@ public abstract class Socket implements AutoCloseable {
         return socketCore.getOption(option);
     }
 
-    CommonSocketOptions options() {
+    public CommonSocketOptions options() {
         return options;
     }
 
@@ -602,7 +603,7 @@ public abstract class Socket implements AutoCloseable {
                         firstPart.finishReceive(hasMore);
                         byte[] routingId = decodeRoutingIdPtr(
                             sourceRidOut.get(ValueLayout.ADDRESS, 0));
-                        Received.PartCursor cursor = hasMore
+                        ReceivedPartCursor cursor = hasMore
                             ? new BasicReceiveCursor(flags.getValue())
                             : null;
                         Received[] ref = new Received[1];
@@ -712,7 +713,7 @@ public abstract class Socket implements AutoCloseable {
         socketCore.onSendReady(handler);
     }
 
-    private final class BasicReceiveCursor implements Received.PartCursor {
+    private final class BasicReceiveCursor implements ReceivedPartCursor {
         private final int flags;
         private final Arena arena = Arena.ofConfined();
         private final MemorySegment sourceRidOut = arena.allocate(

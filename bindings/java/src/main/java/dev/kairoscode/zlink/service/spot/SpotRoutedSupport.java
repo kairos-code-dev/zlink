@@ -22,10 +22,12 @@ import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.ActorInterop;
+import dev.kairoscode.zlink.internal.EnumCodecs;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
+import dev.kairoscode.zlink.internal.ReceivedPartCursor;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -99,6 +101,74 @@ final class SpotRoutedSupport implements AutoCloseable {
         return true;
     }
 
+    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
+                                                   RoutingId destSpotRid,
+                                                   List<Message> parts,
+                                                   Duration timeout,
+                                                   SendFlags flags) {
+        Objects.requireNonNull(flags, "flags");
+        return requestViaNative(parts, timeout, (arena, payload, requestId,
+                                                timeoutMs) -> {
+            submitSpotRequestSpot(destNodeRid, destSpotRid, payload,
+              REPLY_CALLBACK, MemorySegment.ofAddress(requestId), flags.value(),
+              toTimeoutInt(timeoutMs));
+            return 0;
+        });
+    }
+
+    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                          List<Message> parts,
+                          BiConsumer<RequestResult, List<Message>> callback,
+                          SendFlags flags,
+                          Duration timeout) {
+        try {
+            requestToSpot(destNodeRid, destSpotRid, parts, timeout, flags)
+              .whenComplete((reply, error) -> callback.accept(error == null
+                ? RequestResult.OK : requestResult(error),
+                reply == null ? List.of() : reply));
+            return true;
+        } catch (SubmitException ex) {
+            if (flags == SendFlags.DONT_WAIT
+                && ex.getResult() == SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        }
+    }
+
+    CompletableFuture<List<Message>> requestToRouter(RoutingId peerRid,
+                                                     List<Message> parts,
+                                                     Duration timeout,
+                                                     SendFlags flags) {
+        Objects.requireNonNull(flags, "flags");
+        return requestViaNative(parts, timeout, (arena, payload, requestId,
+                                                timeoutMs) -> {
+            submitSpotRequestRouter(peerRid, payload, REPLY_CALLBACK,
+              MemorySegment.ofAddress(requestId), flags.value(),
+              toTimeoutInt(timeoutMs));
+            return 0;
+        });
+    }
+
+    boolean requestToRouter(RoutingId peerRid, List<Message> parts,
+                            BiConsumer<RequestResult, List<Message>> callback,
+                            SendFlags flags,
+                            Duration timeout) {
+        try {
+            requestToRouter(peerRid, parts, timeout, flags)
+              .whenComplete((reply, error) -> callback.accept(error == null
+                ? RequestResult.OK : requestResult(error),
+                reply == null ? List.of() : reply));
+            return true;
+        } catch (SubmitException ex) {
+            if (flags == SendFlags.DONT_WAIT
+                && ex.getResult() == SubmitResult.BACKPRESSURED) {
+                return false;
+            }
+            throw ex;
+        }
+    }
+
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                      long requestSeq, List<Message> parts, SendFlags flags) {
         requireReplyFlagsSupported(flags);
@@ -142,7 +212,7 @@ final class SpotRoutedSupport implements AutoCloseable {
                 RoutingId source = readRoutingIdOut(sourceRidOut);
                 RoutingId sourceSpot = readRoutingIdOut(spotRidOut);
                 long requestSeq = requestSeqOut.get(ValueLayout.JAVA_LONG, 0);
-                Received.PartCursor cursor = hasMore
+                ReceivedPartCursor cursor = hasMore
                     ? new SpotReceiveCursor(flags.value()) : null;
                 Received[] ref = new Received[1];
                 Runnable onTerminal = () -> {
@@ -349,9 +419,9 @@ final class SpotRoutedSupport implements AutoCloseable {
             throw new IllegalArgumentException("dispatch info must not be null");
         }
         info = info.reinterpret(NativeLayouts.SPOT_DISPATCH_INFO_LAYOUT.byteSize());
-        SpotDispatchEvent event = SpotDispatchEvent.fromValue(info.get(
+        SpotDispatchEvent event = EnumCodecs.spotDispatchEventFromValue(info.get(
           ValueLayout.JAVA_INT, NativeLayouts.SPOT_DISPATCH_INFO_EVENT_OFFSET));
-        SpotDispatchSubjectKind subjectKind = SpotDispatchSubjectKind.fromValue(
+        SpotDispatchSubjectKind subjectKind = EnumCodecs.spotDispatchSubjectKindFromValue(
           info.get(ValueLayout.JAVA_INT,
             NativeLayouts.SPOT_DISPATCH_INFO_SUBJECT_KIND_OFFSET));
         MemorySegment subject = info.get(ValueLayout.ADDRESS,
@@ -495,6 +565,59 @@ final class SpotRoutedSupport implements AutoCloseable {
         }
     }
 
+    private void submitSpotRequestSpot(RoutingId destNodeRid,
+                                       RoutingId destSpotRid,
+                                       List<Message> payload,
+                                       MemorySegment handler,
+                                       MemorySegment userData,
+                                       int flags,
+                                       int timeoutMs) {
+        Objects.requireNonNull(destNodeRid, "destNodeRid");
+        Objects.requireNonNull(destSpotRid, "destSpotRid");
+        for (int i = 0; i < payload.size(); i++) {
+            int partFlag = i + 1 < payload.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = spotRequestSpotPartOnce(destNodeRid, destSpotRid,
+                  payload.get(i), i + 1 < payload.size() ? MemorySegment.NULL
+                    : handler,
+                  i + 1 < payload.size() ? MemorySegment.NULL : userData,
+                  flags, partFlag, i + 1 < payload.size() ? 0 : timeoutMs);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == ERRNO_EINTR)
+                    continue;
+                throw submitFailure("zlink_spot_request_spot_part");
+            }
+        }
+    }
+
+    private void submitSpotRequestRouter(RoutingId peerRid,
+                                         List<Message> payload,
+                                         MemorySegment handler,
+                                         MemorySegment userData,
+                                         int flags,
+                                         int timeoutMs) {
+        Objects.requireNonNull(peerRid, "peerRid");
+        for (int i = 0; i < payload.size(); i++) {
+            int partFlag = i + 1 < payload.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = spotRequestRouterPartOnce(peerRid, payload.get(i),
+                  i + 1 < payload.size() ? MemorySegment.NULL : handler,
+                  i + 1 < payload.size() ? MemorySegment.NULL : userData,
+                  flags, partFlag, i + 1 < payload.size() ? 0 : timeoutMs);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == ERRNO_EINTR)
+                    continue;
+                throw submitFailure("zlink_spot_request_router_part");
+            }
+        }
+    }
+
     private void submitSpotReplyRouter(RoutingId peerRid, long requestSeq,
                                        List<Message> payload) {
         for (int i = 0; i < payload.size(); i++) {
@@ -543,6 +666,40 @@ final class SpotRoutedSupport implements AutoCloseable {
         }
     }
 
+    private int spotRequestSpotPartOnce(RoutingId destNodeRid,
+                                        RoutingId destSpotRid,
+                                        Message part,
+                                        MemorySegment handler,
+                                        MemorySegment userData,
+                                        int flags,
+                                        int partFlag,
+                                        int timeoutMs) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
+            MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            InternalAccess.messageCopyTo(part, nativeMsg);
+            return Native.spotRequestSpotPart(handle(), nodeRid, spotRid,
+              nativeMsg, handler, userData, flags, partFlag, timeoutMs);
+        }
+    }
+
+    private int spotRequestRouterPartOnce(RoutingId peerRid,
+                                          Message part,
+                                          MemorySegment handler,
+                                          MemorySegment userData,
+                                          int flags,
+                                          int partFlag,
+                                          int timeoutMs) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeRid = nativeRoutingId(arena, peerRid);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            InternalAccess.messageCopyTo(part, nativeMsg);
+            return Native.spotRequestRouterPart(handle(), nativeRid,
+              nativeMsg, handler, userData, flags, partFlag, timeoutMs);
+        }
+    }
+
     private int spotReplyRouterPartOnce(RoutingId peerRid,
                                         long requestSeq,
                                         Message part,
@@ -564,10 +721,10 @@ final class SpotRoutedSupport implements AutoCloseable {
         if (errno == 107 || errno == 10057 || errno == 113 || errno == 10065) {
             return new SubmitException(SubmitResult.NOT_CONNECTED, errno);
         }
-        throw ZlinkException.fromLastError(apiName);
+        throw InternalAccess.zlinkExceptionFromLastError(apiName);
     }
 
-    private final class SpotReceiveCursor implements Received.PartCursor {
+    private final class SpotReceiveCursor implements ReceivedPartCursor {
         private final int flags;
         private final Arena arena = Arena.ofConfined();
         private final MemorySegment sourceRidOut = arena.allocate(
@@ -619,7 +776,7 @@ final class SpotRoutedSupport implements AutoCloseable {
                 if (errno == 4)
                     continue;
                 closeArena();
-                throw ZlinkException.fromLastError("zlink_spot_recv_part");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_recv_part");
             }
         }
 

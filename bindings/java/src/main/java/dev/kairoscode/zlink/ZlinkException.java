@@ -44,12 +44,12 @@ public abstract class ZlinkException extends RuntimeException {
         return null;
     }
 
-    public static ZlinkException fromLastError(String operation) {
+    static ZlinkException fromLastError(String operation) {
         int errno = safeErrno();
         return fromErrno(operation, errno);
     }
 
-    public static ZlinkException fromErrno(String operation, int errno) {
+    static ZlinkException fromErrno(String operation, int errno) {
         String op = operation == null ? "" : operation.toLowerCase(Locale.ROOT);
         if (containsAny(op, "handler")) {
             return new HandlerException(mapHandlerResult(errno), errno);

@@ -2,9 +2,7 @@
 
 package dev.kairoscode.zlink;
 
-import dev.kairoscode.zlink.internal.NativeLayouts;
-import dev.kairoscode.zlink.internal.NativeMsg;
-import dev.kairoscode.zlink.internal.NativeRequestReplyBridge;
+import dev.kairoscode.zlink.internal.Native;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.time.Duration;
@@ -112,8 +110,21 @@ final class DealerRequestSupport implements AutoCloseable {
                                                         SendFlags flags) {
         Objects.requireNonNull(parts, "parts");
         long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
-        return RequestReplySupport.startTimedRequestExecution(
-            () -> submitRequest(parts, timeoutMs, flags), timeoutMs);
+        long requestId = RoutedRequestSupport.nextRequestId();
+        CompletableFuture<Received> future =
+            RoutedRequestSupport.registerPending(requestId, timeoutMs);
+        try (Arena arena = Arena.ofConfined()) {
+            submitRequest(parts, timeoutMs, flags,
+                RoutedRequestSupport.replyCallback(),
+                RoutedRequestSupport.userData(requestId));
+            RequestReplySupport.startSocketRequestProgress(future,
+                socket.handle(), "zlink-dealer-request-progress");
+        } catch (RuntimeException ex) {
+            RoutedRequestSupport.removePending(requestId);
+            future.cancel(false);
+            throw ex;
+        }
+        return future;
     }
 
     @Override
@@ -123,68 +134,28 @@ final class DealerRequestSupport implements AutoCloseable {
         }
     }
 
-    private static MemorySegment copyPayloadToNative(Arena arena,
-                                                     List<Message> payload) {
-        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-        MemorySegment nativeParts = arena.allocate(msgSize * payload.size(),
-            NativeLayouts.MSG_LAYOUT.byteAlignment());
-        int built = 0;
-        try {
-            for (int i = 0; i < payload.size(); i++) {
-                payload.get(i).copyTo(nativeParts.asSlice((long) i * msgSize,
-                    msgSize));
-                built++;
-            }
-            return nativeParts;
-        } catch (RuntimeException ex) {
-            for (int i = 0; i < built; i++) {
-                try {
-                    NativeMsg.msgClose(nativeParts.asSlice((long) i * msgSize,
-                        msgSize));
-                } catch (RuntimeException ignored) {
+    private void submitRequest(List<Message> payload,
+                               long timeoutMs,
+                               SendFlags flags,
+                               MemorySegment handler,
+                               MemorySegment userData) {
+        int nativeFlags = flags == null ? 0 : flags.value();
+        int timeout = RoutedRequestSupport.toTimeoutInt(timeoutMs);
+        for (int i = 0; i < payload.size(); i++) {
+            int partFlag = i + 1 < payload.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment nativeMsg = arena.allocate(
+                    dev.kairoscode.zlink.internal.NativeLayouts.MSG_LAYOUT);
+                payload.get(i).copyTo(nativeMsg);
+                int rc = Native.dealerRequestPart(socket.handle(), nativeMsg,
+                    nativeFlags, partFlag, i + 1 < payload.size() ? 0 : timeout,
+                    i + 1 < payload.size() ? MemorySegment.NULL : handler,
+                    i + 1 < payload.size() ? MemorySegment.NULL : userData);
+                if (rc != SubmitResult.OK.value()) {
+                    throw new SubmitException(SubmitResult.fromValue(rc));
                 }
             }
-            throw ex;
-        }
-    }
-
-    private static int toTimeoutInt(long timeoutMs) {
-        if (timeoutMs <= 1L) {
-            return 1;
-        }
-        return timeoutMs >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) timeoutMs;
-    }
-
-    private Received submitRequest(List<Message> payload,
-                                   long timeoutMs,
-                                   SendFlags flags) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeParts = copyPayloadToNative(arena, payload);
-            NativeRequestReplyBridge.ReplyResult reply =
-                NativeRequestReplyBridge.dealerRequestSync(
-                    socket.handle(), nativeParts, payload.size(),
-                    flags == null ? 0 : flags.value(), toTimeoutInt(timeoutMs));
-            if (reply.submitResult() != SubmitResult.OK.value()) {
-                throw new SubmitException(SubmitResult.fromValue(reply.submitResult()));
-            }
-            if (reply.requestResult() != RequestResult.OK.value()) {
-                throw new RequestException(
-                    RequestResult.fromValue(reply.requestResult()),
-                    reply.requestResult());
-            }
-            return new Received((RoutingId) null,
-                Message.fromMsgVector(reply.replyParts(), reply.replyPartCount()),
-                true);
-        } catch (Throwable error) {
-            if (error instanceof SubmitException submitException) {
-                throw submitException;
-            }
-            if (error instanceof RequestException requestException) {
-                throw requestException;
-            }
-            throw error instanceof RuntimeException runtimeException
-                ? runtimeException
-                : new IllegalStateException("request submission failed", error);
         }
     }
 }

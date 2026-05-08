@@ -39,7 +39,7 @@ final class PerfMultiSpot {
             node.setRoutingId(routingId("z-java-multi-spot-server"));
             publisher.setRoutingId(routingId("z-java-multi-spot-server-spot"));
             registry.bind(registryPubEndpoint, registryRouterEndpoint);
-            registry.setBroadcastInterval(50);
+            registry.setBroadcastInterval(Duration.ofMillis(50));
             discovery.connectRegistry(registryRouterEndpoint);
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureServerTls(node, config.transport());
@@ -51,14 +51,20 @@ final class PerfMultiSpot {
             while (System.nanoTime() < activeEnd) {
                 try (Message active = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    publisher.publish(SERVICE_NAME, TOPIC, active, SendFlags.DONT_WAIT);
+                    publisher.publish(SERVICE_NAME, TOPIC)
+                        .message(active)
+                        .flags(SendFlags.DONT_WAIT)
+                        .submit();
                 }
             }
             long cooldownEnd = System.nanoTime() + Duration.ofSeconds(2).toNanos();
             while (System.nanoTime() < cooldownEnd) {
                 try (Message cooldown = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                    publisher.publish(SERVICE_NAME, TOPIC, cooldown, SendFlags.DONT_WAIT);
+                    publisher.publish(SERVICE_NAME, TOPIC)
+                        .message(cooldown)
+                        .flags(SendFlags.DONT_WAIT)
+                        .submit();
                 }
                 sleepQuietly(1);
             }

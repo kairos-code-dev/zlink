@@ -2,28 +2,19 @@
 
 package dev.kairoscode.zlink.service.registry;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum RegistryState {
-    IDLE(1),
-    ACTIVE(2),
-    DEGRADED(3),
-    ERROR(4);
+    IDLE,
+    ACTIVE,
+    DEGRADED,
+    ERROR;
 
-    private final int value;
-
-    RegistryState(int value) {
-        this.value = value;
+    int getValue() {
+        return EnumCodecs.registryStateValue(this);
     }
 
-    public int getValue() {
-        return value;
-    }
-
-    public static RegistryState fromValue(int value) {
-        for (RegistryState state : values()) {
-            if (state.value == value) {
-                return state;
-            }
-        }
-        throw new IllegalArgumentException("unknown RegistryState: " + value);
+    static RegistryState fromValue(int value) {
+        return EnumCodecs.registryStateFromValue(value);
     }
 }

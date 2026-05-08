@@ -2,30 +2,21 @@
 
 package dev.kairoscode.zlink;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum SpotDispatchEvent {
-    SUBSCRIBE_READABLE(1),
-    ROUTED_READABLE(2),
-    TIMER_READABLE(3),
-    CHANNEL_REPLY_READABLE(4),
-    ACTOR_READABLE(5),
-    ACTOR_JOIN_READABLE(6);
+    SUBSCRIBE_READABLE,
+    ROUTED_READABLE,
+    TIMER_READABLE,
+    CHANNEL_REPLY_READABLE,
+    ACTOR_READABLE,
+    ACTOR_JOIN_READABLE;
 
-    private final int value;
-
-    SpotDispatchEvent(int value) {
-        this.value = value;
+    int value() {
+        return EnumCodecs.spotDispatchEventValue(this);
     }
 
-    public int value() {
-        return value;
-    }
-
-    public static SpotDispatchEvent fromValue(int value) {
-        for (SpotDispatchEvent event : values()) {
-            if (event.value == value) {
-                return event;
-            }
-        }
-        throw new IllegalArgumentException("invalid SpotDispatchEvent value: " + value);
+    static SpotDispatchEvent fromValue(int value) {
+        return EnumCodecs.spotDispatchEventFromValue(value);
     }
 }

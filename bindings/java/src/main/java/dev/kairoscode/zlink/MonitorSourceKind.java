@@ -2,28 +2,18 @@
 
 package dev.kairoscode.zlink;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum MonitorSourceKind {
-    SOCKET(1),
-    SPOT_PUB(3),
-    SPOT_SUB(4);
+    SOCKET,
+    SPOT_PUB,
+    SPOT_SUB;
 
-    private final int value;
-
-    MonitorSourceKind(int value) {
-        this.value = value;
+    int value() {
+        return EnumCodecs.monitorSourceKindValue(this);
     }
 
-    public int value() {
-        return value;
-    }
-
-    public static MonitorSourceKind fromValue(int value) {
-        for (MonitorSourceKind kind : values()) {
-            if (kind.value == value) {
-                return kind;
-            }
-        }
-        throw new IllegalArgumentException(
-            "invalid MonitorSourceKind value: " + value);
+    static MonitorSourceKind fromValue(int value) {
+        return EnumCodecs.monitorSourceKindFromValue(value);
     }
 }

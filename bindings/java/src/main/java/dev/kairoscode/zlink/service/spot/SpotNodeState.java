@@ -2,29 +2,20 @@
 
 package dev.kairoscode.zlink.service.spot;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum SpotNodeState {
-    IDLE(1),
-    CONNECTING(2),
-    PARTIAL_READY(3),
-    READY(4),
-    ERROR(5);
+    IDLE,
+    CONNECTING,
+    PARTIAL_READY,
+    READY,
+    ERROR;
 
-    private final int value;
-
-    SpotNodeState(int value) {
-        this.value = value;
+    int getValue() {
+        return EnumCodecs.spotNodeStateValue(this);
     }
 
-    public int getValue() {
-        return value;
-    }
-
-    public static SpotNodeState fromValue(int value) {
-        for (SpotNodeState state : values()) {
-            if (state.value == value) {
-                return state;
-            }
-        }
-        throw new IllegalArgumentException("unknown SpotNodeState: " + value);
+    static SpotNodeState fromValue(int value) {
+        return EnumCodecs.spotNodeStateFromValue(value);
     }
 }

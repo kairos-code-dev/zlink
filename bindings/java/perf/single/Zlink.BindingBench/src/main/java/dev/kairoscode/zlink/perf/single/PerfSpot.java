@@ -62,16 +62,20 @@ final class PerfSpot {
             while (System.nanoTime() < activeEnd) {
                 try (Message active = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    publisher.publish(SERVICE_NAME, topic, active,
-                        SendFlags.DONT_WAIT);
+                    publisher.publish(SERVICE_NAME, topic)
+                        .message(active)
+                        .flags(SendFlags.DONT_WAIT)
+                        .submit();
                 }
                 drainSubscriber(subscriber, config, metrics, activeEnd, true);
             }
 
             try (Message cooldown = PerfUtil.payload(config.size(),
                      (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                publisher.publish(SERVICE_NAME, topic, cooldown,
-                    SendFlags.DONT_WAIT);
+                publisher.publish(SERVICE_NAME, topic)
+                    .message(cooldown)
+                    .flags(SendFlags.DONT_WAIT)
+                    .submit();
             }
 
             long idleDeadline = System.nanoTime()
@@ -95,8 +99,10 @@ final class PerfSpot {
         while (System.nanoTime() < deadline) {
             try (Message probe = PerfUtil.payload(config.size(),
                      (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                publisher.publish(SERVICE_NAME, topic, probe,
-                    SendFlags.DONT_WAIT);
+                publisher.publish(SERVICE_NAME, topic)
+                    .message(probe)
+                    .flags(SendFlags.DONT_WAIT)
+                    .submit();
             }
             if (drainSubscriber(subscriber, config, metrics, Long.MAX_VALUE,
                     false)) {

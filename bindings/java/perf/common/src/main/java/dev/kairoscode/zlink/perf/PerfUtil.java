@@ -225,10 +225,12 @@ public final class PerfUtil {
         PerfTransport.join(thread, label, timeout);
     }
 
-    public static void waitForMonitorEvent(MonitorSocket monitor, long expectedMask,
+    public static void waitForMonitorEvent(MonitorSocket monitor,
+                                           dev.kairoscode.zlink.MonitorEventType expectedEvent,
                                            int expectedCount, Duration timeout,
                                            String label) {
-        PerfTransport.waitForMonitorEvent(monitor, expectedMask, expectedCount, timeout, label);
+        PerfTransport.waitForMonitorEvent(monitor, expectedEvent, expectedCount,
+            timeout, label);
     }
 
     public static dev.kairoscode.zlink.Received recvNoWait(PairSocket socket) {

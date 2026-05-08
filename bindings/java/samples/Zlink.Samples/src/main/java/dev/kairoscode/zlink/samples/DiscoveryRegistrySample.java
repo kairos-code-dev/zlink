@@ -7,6 +7,7 @@ import dev.kairoscode.zlink.service.registry.Registry;
 import dev.kairoscode.zlink.service.registry.RegistryQueryClient;
 import dev.kairoscode.zlink.service.registry.AutoConnectType;
 import dev.kairoscode.zlink.Context;
+import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -28,7 +29,7 @@ public final class DiscoveryRegistrySample {
             query = new RegistryQueryClient(ctx);
             provider = new PubSocket(ctx);
             registry.bind(registryPub, registryRouter);
-            registry.setBroadcastInterval(50);
+            registry.setBroadcastInterval(Duration.ofMillis(50));
             providerDiscovery.connectRegistry(registryRouter);
             query.connect(registryRouter);
             final RegistryQueryClient queryView = query;

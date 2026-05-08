@@ -11,7 +11,7 @@ public record ActorRef(RoutingId nodeRid, String actorId, long generation) {
         Objects.requireNonNull(actorId, "actorId");
     }
 
-    public boolean unchecked() {
+    boolean unchecked() {
         return generation == 0L;
     }
 }

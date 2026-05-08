@@ -35,13 +35,13 @@ public class SocketSubscriptionContractTest {
             sub.setSubscription("topic-b");
             assertEquals(2, sub.options().topicsCount());
             List<String> filters = List.of(
-                sub.options().subscriptionAt(0).map(SubscriptionEntry::filter)
+                sub.subscriptionAt(0).map(SubscriptionEntry::filter)
                     .orElseThrow(),
-                sub.options().subscriptionAt(1).map(SubscriptionEntry::filter)
+                sub.subscriptionAt(1).map(SubscriptionEntry::filter)
                     .orElseThrow());
             assertTrue(filters.contains("topic-a"));
             assertTrue(filters.contains("topic-b"));
-            assertTrue(sub.options().subscriptionAt(2).isEmpty());
+            assertTrue(sub.subscriptionAt(2).isEmpty());
             sub.unsetSubscription("topic-b");
         }
     }

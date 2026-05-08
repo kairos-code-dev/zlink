@@ -2,26 +2,17 @@
 
 package dev.kairoscode.zlink.service.spot;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum SpotRole {
-    PUB(1),
-    SUB(2);
+    PUB,
+    SUB;
 
-    private final int value;
-
-    SpotRole(int value) {
-        this.value = value;
+    int getValue() {
+        return EnumCodecs.spotRoleValue(this);
     }
 
-    public int getValue() {
-        return value;
-    }
-
-    public static SpotRole fromValue(int value) {
-        for (SpotRole role : values()) {
-            if (role.value == value) {
-                return role;
-            }
-        }
-        throw new IllegalArgumentException("unknown SpotRole: " + value);
+    static SpotRole fromValue(int value) {
+        return EnumCodecs.spotRoleFromValue(value);
     }
 }

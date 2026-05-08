@@ -10,6 +10,7 @@ import java.util.Objects;
  */
 public final class ContextOptions {
     private final Context context;
+    private String threadNamePrefix = "";
 
     ContextOptions(Context context) {
         this.context = context;
@@ -49,6 +50,16 @@ public final class ContextOptions {
 
     public void threadSchedulingPolicy(int policy) {
         context.setOption(ContextOption.THREAD_SCHED_POLICY, policy);
+    }
+
+    public String threadNamePrefix() {
+        return threadNamePrefix;
+    }
+
+    public void threadNamePrefix(String prefix) {
+        Objects.requireNonNull(prefix, "prefix");
+        context.setOptionData(ContextOption.THREAD_NAME_PREFIX, prefix);
+        threadNamePrefix = prefix;
     }
 
     public int maxMsgSize() {

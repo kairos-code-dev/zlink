@@ -2,6 +2,7 @@
 
 package dev.kairoscode.zlink.service.registry;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
 import java.lang.foreign.Arena;
@@ -15,9 +16,10 @@ public record RegistryServiceSummaryFilter(AutoConnectType autoConnectType,
         MemorySegment segment = arena.allocate(
           NativeLayouts.REGISTRY_SERVICE_SUMMARY_FILTER_LAYOUT);
         segment.set(ValueLayout.JAVA_INT, 0,
-          autoConnectType == null ? 0 : autoConnectType.getValue());
+          autoConnectType == null ? 0
+            : EnumCodecs.autoConnectTypeValue(autoConnectType));
         segment.set(ValueLayout.JAVA_INT, 4,
-          serviceRole == null ? 0 : serviceRole.getValue());
+          serviceRole == null ? 0 : EnumCodecs.serviceRoleValue(serviceRole));
         if (channelName != null && !channelName.isEmpty()) {
             MemorySegment name = NativeHelpers.toCString(arena, channelName);
             MemorySegment.copy(name, 0, segment, 8,

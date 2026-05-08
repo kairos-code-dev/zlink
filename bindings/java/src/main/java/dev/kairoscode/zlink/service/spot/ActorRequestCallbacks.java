@@ -14,6 +14,7 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -77,7 +78,7 @@ final class ActorRequestCallbacks {
               ? InternalAccess.messageFromOwnedMsgVectorShared(parts, partCount)
               : new Message[0];
             pending.callback().accept(RequestResult.fromValue(result),
-              List.copyOf(Arrays.asList(messages)));
+              Collections.unmodifiableList(Arrays.asList(messages)));
             pending.future().complete(null);
         } catch (RuntimeException ex) {
             pending.future().completeExceptionally(ex);

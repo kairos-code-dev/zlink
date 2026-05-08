@@ -74,7 +74,7 @@ final class SocketCore {
     private SocketMessageHandler receiveHandler;
     private SubscribeHandler subscribeHandler;
     private SendReadyHandler sendReadyHandler;
-    private StreamPacketHandler streamPacketHandler;
+    private StreamRawPacketHandler streamPacketHandler;
     private StreamUInt32RawNativeHandler streamUInt32RawNativeHandler;
     private StreamFramedPacketHandler streamFramedPacketHandler;
     private StreamUInt32FramedPacketHandler streamUInt32FramedPacketHandler;
@@ -389,7 +389,7 @@ final class SocketCore {
         }
     }
 
-    void attachStreamRaw(StreamPacketHandler handler) {
+    void attachStreamRaw(StreamRawPacketHandler handler) {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
         ensureNoCallbackFailure();
@@ -775,7 +775,7 @@ final class SocketCore {
     private int handleStreamRawCallback(MemorySegment sourceRid,
                                         MemorySegment message,
                                         MemorySegment userdata) {
-        StreamPacketHandler handler = streamPacketHandler;
+        StreamRawPacketHandler handler = streamPacketHandler;
         if (handler == null)
             return 0;
         try {
@@ -854,7 +854,7 @@ final class SocketCore {
         }
     }
 
-    private void dispatchStreamRaw(StreamPacketHandler handler,
+    private void dispatchStreamRaw(StreamRawPacketHandler handler,
                                    RoutingId routingId,
                                    Message payload) {
         enterCallback();

@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -87,7 +88,7 @@ class PerfMultiDealerDealerRegressionTest {
             if (!process.isAlive()) {
                 throw new AssertionError(label + " process exited early:\n" + current);
             }
-            Thread.onSpinWait();
+            LockSupport.parkNanos(Duration.ofMillis(1).toNanos());
         }
         throw new AssertionError(label + " timed out");
     }
@@ -121,7 +122,7 @@ class PerfMultiDealerDealerRegressionTest {
     }
 
     private static final class ProcessOutput {
-        private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        private final SynchronizedBuffer buffer = new SynchronizedBuffer();
         private final Thread reader;
 
         private ProcessOutput(InputStream input) {
@@ -140,11 +141,22 @@ class PerfMultiDealerDealerRegressionTest {
         }
 
         String snapshot() {
-            return buffer.toString(StandardCharsets.UTF_8);
+            return buffer.snapshot();
         }
 
         void awaitClose(Duration timeout) throws Exception {
             reader.join(timeout.toMillis());
+        }
+    }
+
+    private static final class SynchronizedBuffer extends ByteArrayOutputStream {
+        @Override
+        public synchronized void write(byte[] data, int offset, int length) {
+            super.write(data, offset, length);
+        }
+
+        synchronized String snapshot() {
+            return toString(StandardCharsets.UTF_8);
         }
     }
 }

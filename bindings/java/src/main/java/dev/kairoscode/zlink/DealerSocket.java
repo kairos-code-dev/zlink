@@ -9,7 +9,6 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.BiConsumer;
 
 public final class DealerSocket extends Socket {
     private static final boolean DEBUG_REQREP =
@@ -26,6 +25,7 @@ public final class DealerSocket extends Socket {
     public void connect(String endpoint) { super.connect(endpoint); }
     public void unbind(String endpoint) { super.unbind(endpoint); }
     public void disconnect(String endpoint) { super.disconnect(endpoint); }
+    public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
     public void attachDiscovery(Discovery discovery) { super.attachDiscovery(discovery); }
     public void setChannelName(String channelName) { super.setChannelName(channelName); }
     public String getChannelName() { return super.getChannelName(); }
@@ -68,35 +68,35 @@ public final class DealerSocket extends Socket {
         return dealerRequests.request(parts, timeout, flags).thenApply(reply ->
             RequestReplySupport.takeReceivedParts(reply));
     }
-    public boolean request(Message part, BiConsumer<RequestResult, List<Message>> callback) {
+    public boolean request(Message part, RequestCallback callback) {
         return request(List.of(part), callback);
     }
-    public boolean request(List<Message> parts, BiConsumer<RequestResult, List<Message>> callback) {
+    public boolean request(List<Message> parts, RequestCallback callback) {
         return request(parts, callback, SendFlags.NONE,
             Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
-    public boolean request(Message part, BiConsumer<RequestResult, List<Message>> callback,
+    public boolean request(Message part, RequestCallback callback,
                         Duration timeout) {
         return request(List.of(part), callback, SendFlags.NONE, timeout);
     }
-    public boolean request(List<Message> parts, BiConsumer<RequestResult, List<Message>> callback,
+    public boolean request(List<Message> parts, RequestCallback callback,
                         Duration timeout) {
         return request(parts, callback, SendFlags.NONE, timeout);
     }
-    public boolean request(Message part, BiConsumer<RequestResult, List<Message>> callback,
+    public boolean request(Message part, RequestCallback callback,
                         SendFlags flags) {
         return request(List.of(part), callback, flags);
     }
-    public boolean request(List<Message> parts, BiConsumer<RequestResult, List<Message>> callback,
+    public boolean request(List<Message> parts, RequestCallback callback,
                         SendFlags flags) {
         return request(parts, callback, flags,
             Duration.ofMillis(RequestReplySupport.DEFAULT_TIMEOUT_MS));
     }
-    public boolean request(Message part, BiConsumer<RequestResult, List<Message>> callback,
+    public boolean request(Message part, RequestCallback callback,
                         SendFlags flags, Duration timeout) {
         return request(List.of(part), callback, flags, timeout);
     }
-    public boolean request(List<Message> parts, BiConsumer<RequestResult, List<Message>> callback,
+    public boolean request(List<Message> parts, RequestCallback callback,
                         SendFlags flags, Duration timeout) {
         try {
             dealerRequests.request(parts, (result, reply) -> {
@@ -104,7 +104,7 @@ public final class DealerSocket extends Socket {
                 if (reply != null) {
                     payload = RequestReplySupport.takeReceivedParts(reply);
                 }
-                callback.accept(result, payload);
+                callback.onComplete(result, payload);
             }, flags, timeout);
             return true;
         } catch (SubmitException ex) {

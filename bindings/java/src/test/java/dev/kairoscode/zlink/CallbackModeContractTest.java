@@ -87,7 +87,7 @@ public class CallbackModeContractTest {
             });
 
             try (Message part = Message.copyOfUtf8("payload")) {
-                publisher.publish(serviceName, "alpha", part);
+                publisher.publish(serviceName, "alpha").message(part).submit();
             }
 
             assertTrue(delivered.await(TestSupport.DEFAULT_TIMEOUT_MS,

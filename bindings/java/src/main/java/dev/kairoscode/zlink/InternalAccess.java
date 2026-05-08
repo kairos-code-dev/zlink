@@ -6,7 +6,11 @@ import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.service.spot.ActorPart;
 import dev.kairoscode.zlink.service.spot.Spot;
 import dev.kairoscode.zlink.service.spot.SpotNode;
+import dev.kairoscode.zlink.internal.ReceivedPartCursor;
 import java.lang.foreign.MemorySegment;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.List;
 import java.util.function.BiConsumer;
 
@@ -18,7 +22,13 @@ import java.util.function.BiConsumer;
  * @hidden
  */
 @Deprecated(forRemoval = true)
-public final class InternalAccess {
+final class InternalAccess {
+    private static final MethodHandle DISCOVERY_HANDLE =
+        handleMethod(Discovery.class);
+    private static final MethodHandle SPOT_HANDLE = handleMethod(Spot.class);
+    private static final MethodHandle SPOT_NODE_HANDLE =
+        handleMethod(SpotNode.class);
+
     private InternalAccess() {
     }
 
@@ -27,7 +37,11 @@ public final class InternalAccess {
     }
 
     public static MemorySegment discoveryHandle(Discovery discovery) {
-        return discovery.handleInternal();
+        try {
+            return (MemorySegment) DISCOVERY_HANDLE.invokeExact(discovery);
+        } catch (Throwable t) {
+            throw unchecked(t);
+        }
     }
 
     public static MemorySegment socketHandle(Socket socket) {
@@ -35,11 +49,19 @@ public final class InternalAccess {
     }
 
     public static MemorySegment spotHandle(Spot spot) {
-        return spot.handleInternal();
+        try {
+            return (MemorySegment) SPOT_HANDLE.invokeExact(spot);
+        } catch (Throwable t) {
+            throw unchecked(t);
+        }
     }
 
     public static MemorySegment spotNodeHandle(SpotNode node) {
-        return node.handleInternal();
+        try {
+            return (MemorySegment) SPOT_NODE_HANDLE.invokeExact(node);
+        } catch (Throwable t) {
+            throw unchecked(t);
+        }
     }
 
     public static MemorySegment spotDispatchSubject(SpotDispatchInfo info) {
@@ -158,7 +180,7 @@ public final class InternalAccess {
     public static Received receivedLazy(byte[] routingIdBytes,
                                         byte[] spotRidBytes,
                                         Message firstPart,
-                                        Received.PartCursor cursor,
+                                        ReceivedPartCursor cursor,
                                         long requestSeq,
                                         boolean hasRequestSeq,
                                         BiConsumer<List<Message>, SendFlags> replySender,
@@ -170,13 +192,20 @@ public final class InternalAccess {
     public static Received receivedLazy(RoutingId routingId,
                                         RoutingId spotRid,
                                         Message firstPart,
-                                        Received.PartCursor cursor,
+                                        ReceivedPartCursor cursor,
                                         long requestSeq,
                                         boolean hasRequestSeq,
                                         BiConsumer<List<Message>, SendFlags> replySender,
                                         Runnable onTerminalState) {
         return new Received(routingId, spotRid, firstPart, cursor, requestSeq,
             hasRequestSeq, replySender, onTerminalState);
+    }
+
+    public static TopicMessage topicMessage(RoutingId routingId,
+                                            String serviceName,
+                                            String topicId,
+                                            Message[] parts) {
+        return new TopicMessage(routingId, serviceName, topicId, parts);
     }
 
     public static void receivedForceMaterialize(Received received) {
@@ -205,5 +234,34 @@ public final class InternalAccess {
 
     public static byte[] routingIdTrustedBytes(RoutingId routingId) {
         return routingId.trustedBytes();
+    }
+
+    public static ZlinkException zlinkExceptionFromLastError(String operation) {
+        return ZlinkException.fromLastError(operation);
+    }
+
+    public static ZlinkException zlinkExceptionFromErrno(String operation,
+                                                         int errno) {
+        return ZlinkException.fromErrno(operation, errno);
+    }
+
+    private static MethodHandle handleMethod(Class<?> type) {
+        try {
+            return MethodHandles.privateLookupIn(type, MethodHandles.lookup())
+              .findVirtual(type, "handleInternal",
+                MethodType.methodType(MemorySegment.class));
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    private static RuntimeException unchecked(Throwable t) {
+        if (t instanceof RuntimeException runtime) {
+            return runtime;
+        }
+        if (t instanceof Error error) {
+            throw error;
+        }
+        throw new AssertionError(t);
     }
 }

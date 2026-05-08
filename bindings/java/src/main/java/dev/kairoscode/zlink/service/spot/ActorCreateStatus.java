@@ -2,27 +2,17 @@
 
 package dev.kairoscode.zlink.service.spot;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum ActorCreateStatus {
-    CREATED(1),
-    EXISTING(2);
+    CREATED,
+    EXISTING;
 
-    private final int value;
-
-    ActorCreateStatus(int value) {
-        this.value = value;
+    int value() {
+        return EnumCodecs.actorCreateStatusValue(this);
     }
 
-    public int value() {
-        return value;
-    }
-
-    public static ActorCreateStatus fromValue(int value) {
-        for (ActorCreateStatus status : values()) {
-            if (status.value == value) {
-                return status;
-            }
-        }
-        throw new IllegalArgumentException(
-          "invalid ActorCreateStatus value: " + value);
+    static ActorCreateStatus fromValue(int value) {
+        return EnumCodecs.actorCreateStatusFromValue(value);
     }
 }

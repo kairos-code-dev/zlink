@@ -13,6 +13,7 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -62,7 +63,11 @@ public final class Timer implements AutoCloseable {
         return handle;
     }
 
-    public void start(long intervalNs, long repeatCount) {
+    public void start(Duration interval, long repeatCount) {
+        startNanos(toNanos(interval, "interval"), repeatCount);
+    }
+
+    void startNanos(long intervalNs, long repeatCount) {
         ensureOpen();
         int rc = Native.timerStart(handle, intervalNs, repeatCount);
         if (rc != 0) {
@@ -79,15 +84,7 @@ public final class Timer implements AutoCloseable {
     }
 
     public long recv() {
-        return recv(RecvFlags.NONE);
-    }
-
-    public long recv(RecvFlags flags) {
-        Objects.requireNonNull(flags, "flags");
         ensureOpen();
-        if (flags != RecvFlags.NONE) {
-            throw new RecvException(RecvResult.NOT_SUPPORTED);
-        }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment fireCount = arena.allocate(ValueLayout.JAVA_LONG);
             int rc = Native.timerRecv(handle, fireCount);
@@ -95,6 +92,15 @@ public final class Timer implements AutoCloseable {
                 return fireCount.get(ValueLayout.JAVA_LONG, 0);
             }
             throw new RecvException(RecvResult.NO_DATA);
+        }
+    }
+
+    private static long toNanos(Duration duration, String name) {
+        Objects.requireNonNull(duration, name);
+        try {
+            return duration.toNanos();
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException(name + " is too large", ex);
         }
     }
 

@@ -2,27 +2,19 @@
 
 package dev.kairoscode.zlink;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum AutoHwmProfile {
-    COMPACT(0),
-    LOW_LATENCY(1),
-    BALANCED(2),
-    THROUGHPUT(3);
+    COMPACT,
+    LOW_LATENCY,
+    BALANCED,
+    THROUGHPUT;
 
-    private final int value;
-
-    AutoHwmProfile(int value) {
-        this.value = value;
+    int value() {
+        return EnumCodecs.autoHwmProfileValue(this);
     }
 
-    public int value() {
-        return value;
-    }
-
-    public static AutoHwmProfile fromValue(int value) {
-        for (AutoHwmProfile profile : values()) {
-            if (profile.value == value)
-                return profile;
-        }
-        throw new IllegalArgumentException("unknown auto-HWM profile: " + value);
+    static AutoHwmProfile fromValue(int value) {
+        return EnumCodecs.autoHwmProfileFromValue(value);
     }
 }

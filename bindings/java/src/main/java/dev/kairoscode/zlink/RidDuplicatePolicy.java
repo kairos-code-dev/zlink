@@ -2,27 +2,17 @@
 
 package dev.kairoscode.zlink;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum RidDuplicatePolicy {
-    REJECT(0),
-    HANDOVER(1);
+    REJECT,
+    HANDOVER;
 
-    private final int value;
-
-    RidDuplicatePolicy(int value) {
-        this.value = value;
+    int value() {
+        return EnumCodecs.ridDuplicatePolicyValue(this);
     }
 
-    public int value() {
-        return value;
-    }
-
-    public static RidDuplicatePolicy fromValue(int value) {
-        for (RidDuplicatePolicy policy : values()) {
-            if (policy.value == value) {
-                return policy;
-            }
-        }
-        throw new IllegalArgumentException(
-            "invalid RidDuplicatePolicy value: " + value);
+    static RidDuplicatePolicy fromValue(int value) {
+        return EnumCodecs.ridDuplicatePolicyFromValue(value);
     }
 }

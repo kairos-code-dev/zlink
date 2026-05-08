@@ -58,7 +58,14 @@ tasks.register('buildZlinkJavaBridge', Exec) {
     inputs.dir(new File(repoRoot, 'core/include'))
     inputs.dir(new File(repoRoot, 'core/src'))
     inputs.dir(new File(repoRoot, 'core/external/boost'))
-    inputs.dir(coreBuildDir)
+    inputs.files(fileTree(coreBuildDir) {
+        include '*.h'
+        include '**/*.h'
+        include 'lib/libzlink.so'
+        include 'lib/libzlink.so.*'
+        include 'libzlink.pc'
+        exclude '**/tests/**'
+    })
     inputs.dir(linkDir)
     inputs.dir(jniIncludeDir)
     inputs.dir(jniOsIncludeDir)
@@ -86,7 +93,10 @@ tasks.register('buildZlinkJavaBridge', Exec) {
         '-lzlink'
 }
 
-processResources.dependsOn tasks.named('buildZlinkJavaBridge')
+processResources {
+    dependsOn tasks.named('buildZlinkJavaBridge')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
 
 test {
     useJUnitPlatform()

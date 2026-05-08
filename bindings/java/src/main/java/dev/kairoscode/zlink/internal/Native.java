@@ -110,9 +110,12 @@ public final class Native {
     private static final MethodHandle MH_CTX_SET = downcall("zlink_ctx_set",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_CTX_SET_DATA = downcall("zlink_ctx_set_data",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_CTX_GET = downcall("zlink_ctx_get",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT));
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_CTX_SHUTDOWN = downcall("zlink_ctx_shutdown",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_CTX_AUTO_HWM_RECALCULATE = downcall(
@@ -545,6 +548,18 @@ public final class Native {
         ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_REQUEST_CHANNEL_PART = downcall(
       "zlink_spot_request_channel_part",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+        ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_REQUEST_SPOT_PART = downcall(
+      "zlink_spot_request_spot_part",
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_REQUEST_ROUTER_PART = downcall(
+      "zlink_spot_request_router_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
@@ -1087,9 +1102,20 @@ public final class Native {
         }
     }
 
-    public static int ctxGet(MemorySegment ctx, int option) {
+    public static int ctxSetData(MemorySegment ctx, int option,
+                                 MemorySegment value, long valueLength) {
         try {
-            return (int) MH_CTX_GET.invokeExact(ctx, option);
+            return (int) MH_CTX_SET_DATA.invokeExact(ctx, option, value,
+              valueLength);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_ctx_set_data failed", t);
+        }
+    }
+
+    public static int ctxGet(MemorySegment ctx, int option) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
+            return (int) MH_CTX_GET.invokeExact(ctx, option, errorOut);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_ctx_get failed", t);
         }
@@ -1825,7 +1851,7 @@ public final class Native {
             MemorySegment evt = arena.allocate(NativeLayouts.MONITOR_EVENT_LAYOUT);
             int rc = (int) MH_MONITOR_RECV.invokeExact(socket, evt, flags);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_socket_monitor_recv");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_socket_monitor_recv");
             long event = evt.get(ValueLayout.JAVA_LONG, NativeLayouts.MONITOR_EVENT_OFFSET);
             long value = evt.get(ValueLayout.JAVA_LONG, NativeLayouts.MONITOR_VALUE_OFFSET);
             int routingSize = evt.get(ValueLayout.JAVA_BYTE,
@@ -1840,7 +1866,7 @@ public final class Native {
             }
             String local = NativeHelpers.fromCString(evt.asSlice(NativeLayouts.MONITOR_LOCAL_OFFSET, 256), 256);
             String remote = NativeHelpers.fromCString(evt.asSlice(NativeLayouts.MONITOR_REMOTE_OFFSET, 256), 256);
-            return new MonitorEvent(MonitorEventType.fromValue(event), value,
+            return new MonitorEvent(EnumCodecs.monitorEventTypeFromValue(event), value,
               routingSize == 0 ? java.util.Optional.empty()
                 : java.util.Optional.of(RoutingId.fromBytes(routing)),
               local, remote);
@@ -3617,6 +3643,42 @@ public final class Native {
               timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_request_channel_part failed",
+              t);
+        }
+    }
+
+    public static int spotRequestSpotPart(MemorySegment spot,
+                                          MemorySegment destNodeRid,
+                                          MemorySegment destSpotRid,
+                                          MemorySegment part,
+                                          MemorySegment handler,
+                                          MemorySegment userdata,
+                                          int flags,
+                                          int partFlag,
+                                          int timeoutMs) {
+        try {
+            return (int) MH_SPOT_REQUEST_SPOT_PART.invokeExact(spot,
+              destNodeRid, destSpotRid, part, handler, userdata, flags,
+              partFlag, timeoutMs);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_request_spot_part failed",
+              t);
+        }
+    }
+
+    public static int spotRequestRouterPart(MemorySegment spot,
+                                            MemorySegment peerRid,
+                                            MemorySegment part,
+                                            MemorySegment handler,
+                                            MemorySegment userdata,
+                                            int flags,
+                                            int partFlag,
+                                            int timeoutMs) {
+        try {
+            return (int) MH_SPOT_REQUEST_ROUTER_PART.invokeExact(spot,
+              peerRid, part, handler, userdata, flags, partFlag, timeoutMs);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_request_router_part failed",
               t);
         }
     }

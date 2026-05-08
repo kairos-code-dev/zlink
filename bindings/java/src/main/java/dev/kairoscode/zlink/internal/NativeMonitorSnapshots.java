@@ -2,10 +2,7 @@
 
 package dev.kairoscode.zlink.internal;
 
-import dev.kairoscode.zlink.AutoHwmProfile;
-import dev.kairoscode.zlink.AutoHwmRecalcReason;
 import dev.kairoscode.zlink.MonitorSnapshot;
-import dev.kairoscode.zlink.MonitorSourceKind;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
@@ -15,7 +12,7 @@ public final class NativeMonitorSnapshots {
 
     public static MonitorSnapshot fromNative(MemorySegment segment) {
         return new MonitorSnapshot(
-          MonitorSourceKind.fromValue(segment.get(ValueLayout.JAVA_INT,
+          EnumCodecs.monitorSourceKindFromValue(segment.get(ValueLayout.JAVA_INT,
             NativeLayouts.MONITOR_SNAPSHOT_SOURCE_KIND_OFFSET)),
           segment.get(ValueLayout.JAVA_INT,
             NativeLayouts.MONITOR_SNAPSHOT_STATE_FLAGS_OFFSET),
@@ -27,7 +24,7 @@ public final class NativeMonitorSnapshots {
             NativeLayouts.MONITOR_SNAPSHOT_RCV_PENDING_MSGS_OFFSET),
           segment.get(ValueLayout.JAVA_INT,
             NativeLayouts.MONITOR_SNAPSHOT_AUTO_HWM_ENABLED_OFFSET) != 0,
-          AutoHwmProfile.fromValue(segment.get(ValueLayout.JAVA_INT,
+          EnumCodecs.autoHwmProfileFromValue(segment.get(ValueLayout.JAVA_INT,
             NativeLayouts.MONITOR_SNAPSHOT_AUTO_HWM_PROFILE_OFFSET)),
 	          segment.get(ValueLayout.JAVA_INT,
 	            NativeLayouts.MONITOR_SNAPSHOT_AUTO_HWM_ROLE_OFFSET),
@@ -45,9 +42,13 @@ public final class NativeMonitorSnapshots {
 	            NativeLayouts.MONITOR_SNAPSHOT_AUTO_HWM_APPLIED_SNDHWM_OFFSET),
 	          segment.get(ValueLayout.JAVA_INT,
 	            NativeLayouts.MONITOR_SNAPSHOT_AUTO_HWM_APPLIED_RCVHWM_OFFSET),
+	          segment.get(ValueLayout.JAVA_INT,
+	            NativeLayouts.MONITOR_SNAPSHOT_AUTO_HWM_EFFECTIVE_SNDBUF_OFFSET),
+	          segment.get(ValueLayout.JAVA_INT,
+	            NativeLayouts.MONITOR_SNAPSHOT_AUTO_HWM_EFFECTIVE_RCVBUF_OFFSET),
 	          segment.get(ValueLayout.JAVA_LONG_UNALIGNED,
 	            NativeLayouts.MONITOR_SNAPSHOT_AUTO_HWM_LAST_RECALC_MS_OFFSET),
-	          AutoHwmRecalcReason.fromValue(segment.get(ValueLayout.JAVA_INT,
+	          EnumCodecs.autoHwmRecalcReasonFromValue(segment.get(ValueLayout.JAVA_INT,
 	            NativeLayouts.MONITOR_SNAPSHOT_AUTO_HWM_LAST_RECALC_REASON_OFFSET)),
 	          segment.get(ValueLayout.JAVA_INT,
 	            NativeLayouts.MONITOR_SNAPSHOT_AUTO_HWM_SEND_BLOCKED_RATIO_PPM_OFFSET),

@@ -272,34 +272,31 @@ public class CallbackSendContractTest {
              StreamSocket server = new StreamSocket(ctx)) {
             server.options().notify(true);
             server.bind(endpoint);
-            server.onPacket((routingId, payload) -> {
+            server.onPacket((routingId, header, payload) -> {
                 try {
                     if (routingId == null)
-                        return 0;
+                        return;
                     int size = payload.size();
                     if (size == 0)
-                        return 0;
-                    if (size == 1) {
-                        int marker = payload.data()[0] & 0xFF;
-                        if (marker == 0x00 || marker == 0x01)
-                            return 0;
+                        return;
+                    try (Message reply = frame(Message.copyOf(new byte[0]),
+                            payload)) {
+                        server.send(routingId, reply, SendFlags.DONT_WAIT);
                     }
-                    server.send(routingId, payload, SendFlags.DONT_WAIT);
                     echoed.countDown();
-                    return 0;
                 } catch (Throwable t) {
                     callbackError.compareAndSet(null, t);
-                    return 1;
                 }
             });
 
             try (java.net.Socket client = new java.net.Socket("127.0.0.1", port)) {
                 client.setSoTimeout(TestSupport.DEFAULT_TIMEOUT_MS);
-                client.getOutputStream().write(outbound);
+                byte[] frame = frameBytes(outbound);
+                client.getOutputStream().write(frame);
                 client.getOutputStream().flush();
-                byte[] echoedPayload = client.getInputStream().readNBytes(
-                    outbound.length);
-                assertArrayEquals(outbound, echoedPayload);
+                byte[] echoedPayload = client.getInputStream().readNBytes(frame.length);
+                assertArrayEquals(outbound,
+                    Arrays.copyOfRange(echoedPayload, 6, echoedPayload.length));
             }
 
             assertTrue(echoed.await(TestSupport.DEFAULT_TIMEOUT_MS,
@@ -315,5 +312,33 @@ public class CallbackSendContractTest {
         TestSupport.assumeNative();
         assertFalse(Arrays.stream(PairSocket.class.getMethods())
             .anyMatch(method -> method.getName().equals("onReceive")));
+    }
+
+    private static byte[] frameBytes(byte[] body) {
+        byte[] frame = new byte[6 + body.length];
+        frame[2] = (byte) (body.length >>> 24);
+        frame[3] = (byte) (body.length >>> 16);
+        frame[4] = (byte) (body.length >>> 8);
+        frame[5] = (byte) body.length;
+        System.arraycopy(body, 0, frame, 6, body.length);
+        return frame;
+    }
+
+    private static Message frame(Message header, Message body) {
+        try (header) {
+            byte[] headerBytes = header.toByteArray();
+            byte[] bodyBytes = body.toByteArray();
+            byte[] frame = new byte[6 + headerBytes.length + bodyBytes.length];
+            frame[0] = (byte) (headerBytes.length >>> 8);
+            frame[1] = (byte) headerBytes.length;
+            frame[2] = (byte) (bodyBytes.length >>> 24);
+            frame[3] = (byte) (bodyBytes.length >>> 16);
+            frame[4] = (byte) (bodyBytes.length >>> 8);
+            frame[5] = (byte) bodyBytes.length;
+            System.arraycopy(headerBytes, 0, frame, 6, headerBytes.length);
+            System.arraycopy(bodyBytes, 0, frame, 6 + headerBytes.length,
+                bodyBytes.length);
+            return Message.copyOf(frame);
+        }
     }
 }

@@ -2,29 +2,21 @@
 
 package dev.kairoscode.zlink.service.registry;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum AutoConnectType {
-    INVALID(0),
-    ROUTE_MESH(1),
-    CLIENT_SERVER(2),
-    DEALER_MESH(3),
-    FANOUT(4),
-    SPOT_MESH(5);
+    INVALID,
+    ROUTE_MESH,
+    CLIENT_SERVER,
+    DEALER_MESH,
+    FANOUT,
+    SPOT_MESH;
 
-    private final int value;
-
-    AutoConnectType(int value) {
-        this.value = value;
+    int getValue() {
+        return EnumCodecs.autoConnectTypeValue(this);
     }
 
-    public int getValue() {
-        return value;
-    }
-
-    public static AutoConnectType fromValue(int value) {
-        for (AutoConnectType type : values()) {
-            if (type.value == value)
-                return type;
-        }
-        throw new IllegalArgumentException("unknown AutoConnectType: " + value);
+    static AutoConnectType fromValue(int value) {
+        return EnumCodecs.autoConnectTypeFromValue(value);
     }
 }

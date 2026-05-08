@@ -1,5 +1,6 @@
 package dev.kairoscode.zlink;
 
+import dev.kairoscode.zlink.internal.ReceivedPartCursor;
 import org.junit.jupiter.api.Test;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -33,7 +34,7 @@ public class ReceivedContractTest {
              Message third = Message.copyOfUtf8("third")) {
             AtomicInteger pulls = new AtomicInteger();
             Message[] trailing = {second, third};
-            Received.PartCursor cursor = new Received.PartCursor() {
+            ReceivedPartCursor cursor = new ReceivedPartCursor() {
                 private int index;
 
                 @Override

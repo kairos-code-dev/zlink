@@ -4,7 +4,7 @@ package dev.kairoscode.zlink.perf.multi;
 
 import dev.kairoscode.zlink.Context;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.PollEventType;
+import dev.kairoscode.zlink.PollEventFlag;
 import dev.kairoscode.zlink.PubSocket;
 import dev.kairoscode.zlink.RecvFlags;
 import dev.kairoscode.zlink.SendFlags;
@@ -73,13 +73,13 @@ final class PerfMultiPubSub {
                 long finishDeadline = System.nanoTime()
                     + Duration.ofSeconds(config.durationSeconds() + 3L).toNanos();
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                    List.of(sub), PollEventType.POLLIN.getValue())) {
+                    List.of(sub), PollEventFlag.POLLIN)) {
                     while (System.nanoTime() < finishDeadline) {
                         int timeoutMs = Math.max(1, (int) Math.min(Integer.MAX_VALUE,
                             Duration.ofNanos(
                                 Math.max(1L, finishDeadline - System.nanoTime())).toMillis()));
                         if (pollSet.poll(timeoutMs) <= 0
-                            || !pollSet.isReady(0, PollEventType.POLLIN.getValue())) {
+                            || !pollSet.isReady(0, PollEventFlag.POLLIN)) {
                             continue;
                         }
                         while (true) {

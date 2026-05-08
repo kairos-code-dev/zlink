@@ -10,6 +10,7 @@ import dev.kairoscode.zlink.DealerSocket;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.PubSocket;
+import dev.kairoscode.zlink.RequestCallback;
 import dev.kairoscode.zlink.RequestException;
 import dev.kairoscode.zlink.RequestResult;
 import dev.kairoscode.zlink.SendFlags;
@@ -17,6 +18,7 @@ import dev.kairoscode.zlink.SubmitException;
 import dev.kairoscode.zlink.SubmitResult;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.ActorInterop;
+import dev.kairoscode.zlink.internal.EnumCodecs;
 import dev.kairoscode.zlink.internal.InternalAccess;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
@@ -38,6 +40,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
 /** Lifecycle and topology facade for the current unified spot node model. */
@@ -48,6 +51,8 @@ public final class SpotNode implements AutoCloseable {
     private static final int OPT_ROUTER_HWM = 0x360F;
     private static final int OPT_PUBSUB_HWM_PROFILE = 0x3610;
     private static final int OPT_PUBSUB_HWM = 0x3611;
+    private static final int OPT_DISPATCH_WORKERS_MIN = 0x3612;
+    private static final int OPT_DISPATCH_WORKERS_MAX = 0x3613;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_ACTOR_ADMISSION =
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -63,11 +68,16 @@ public final class SpotNode implements AutoCloseable {
 
     /** Creates a spot node owned by the supplied context. */
     public SpotNode(Context ctx) {
-        this(ctx, null);
+        this(ctx, SpotNodeMode.ALL);
     }
 
     /** Creates a spot node with an explicit creation mode. */
-    public SpotNode(Context ctx, SpotNodeOptions options) {
+    public SpotNode(Context ctx, SpotNodeMode mode) {
+        this(ctx, new SpotNodeOptions(mode));
+    }
+
+    /** Creates a spot node with an explicit creation mode. */
+    SpotNode(Context ctx, SpotNodeOptions options) {
         Objects.requireNonNull(ctx, "ctx");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeOptions = MemorySegment.NULL;
@@ -75,13 +85,13 @@ public final class SpotNode implements AutoCloseable {
                 nativeOptions =
                   arena.allocate(NativeLayouts.SPOT_NODE_OPTIONS_LAYOUT);
                 nativeOptions.set(ValueLayout.JAVA_INT, 0,
-                  options.mode().getValue());
+                  EnumCodecs.spotNodeModeValue(options.mode()));
             }
             this.handle = Native.spotNodeNew(
               InternalAccess.contextHandle(ctx), nativeOptions);
         }
         if (handle == null || handle.address() == 0)
-            throw ZlinkException.fromLastError("zlink_spot_node_new");
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_node_new");
     }
 
     MemorySegment handle() {
@@ -89,7 +99,7 @@ public final class SpotNode implements AutoCloseable {
     }
 
     /** Internal bridge for binding helpers. */
-    public MemorySegment handleInternal() {
+    MemorySegment handleInternal() {
         return handle();
     }
 
@@ -99,7 +109,7 @@ public final class SpotNode implements AutoCloseable {
             int rc = Native.spotNodeBind(handle, NativeHelpers.toCString(arena,
               endpoint));
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_spot_node_bind");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_node_bind");
         }
     }
 
@@ -109,7 +119,7 @@ public final class SpotNode implements AutoCloseable {
             int rc = Native.spotNodeConnectPeer(handle,
               NativeHelpers.toCString(arena, peerEndpoint));
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_connect_peer");
             }
         }
@@ -121,7 +131,7 @@ public final class SpotNode implements AutoCloseable {
             int rc = Native.spotNodeDisconnectPeer(handle,
               NativeHelpers.toCString(arena, peerEndpoint));
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_disconnect_peer");
             }
         }
@@ -134,7 +144,7 @@ public final class SpotNode implements AutoCloseable {
             MemorySegment nativeRid = nativeRoutingId(arena, targetNodeRid);
             int rc = Native.spotNodeDisconnectPeerRid(handle, nativeRid);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_disconnect_peer_rid");
             }
         }
@@ -146,7 +156,7 @@ public final class SpotNode implements AutoCloseable {
         int rc = Native.spotNodeAttachDiscovery(handle,
             InternalAccess.discoveryHandle(discovery));
         if (rc != 0) {
-            throw ZlinkException.fromLastError(
+            throw InternalAccess.zlinkExceptionFromLastError(
               "zlink_spot_node_attach_discovery");
         }
     }
@@ -159,7 +169,7 @@ public final class SpotNode implements AutoCloseable {
           InternalAccess.discoveryHandle(discovery),
           InternalAccess.socketHandle(dealer));
         if (rc != 0) {
-            throw ZlinkException.fromLastError(
+            throw InternalAccess.zlinkExceptionFromLastError(
               "zlink_spot_node_attach_channel_dealer");
         }
     }
@@ -173,7 +183,7 @@ public final class SpotNode implements AutoCloseable {
               NativeHelpers.toCString(arena, requireServiceName(channelName)),
               InternalAccess.socketHandle(dealer));
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_attach_channel_dealer_manual");
             }
         }
@@ -185,7 +195,7 @@ public final class SpotNode implements AutoCloseable {
         int rc = Native.spotNodeAttachPubIngress(handle,
           InternalAccess.socketHandle(pub));
         if (rc != 0) {
-            throw ZlinkException.fromLastError(
+            throw InternalAccess.zlinkExceptionFromLastError(
               "zlink_spot_node_attach_pub_ingress");
         }
     }
@@ -198,7 +208,7 @@ public final class SpotNode implements AutoCloseable {
               NativeHelpers.toCString(arena, certPem),
               NativeHelpers.toCString(arena, keyPem));
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_set_tls_server");
             }
         }
@@ -213,7 +223,7 @@ public final class SpotNode implements AutoCloseable {
               NativeHelpers.toCString(arena, hostname),
               trustSystem ? 1 : 0);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_set_tls_client");
             }
         }
@@ -232,7 +242,7 @@ public final class SpotNode implements AutoCloseable {
             }
             int rc = Native.setRoutingId(handle, nativeValue, value.length);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_set_routing_id");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_set_routing_id");
             }
         }
     }
@@ -244,7 +254,7 @@ public final class SpotNode implements AutoCloseable {
             MemorySegment outRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
             int rc = Native.getRoutingId(handle, outRid);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_get_routing_id");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_get_routing_id");
             }
             int size = outRid.get(ValueLayout.JAVA_BYTE,
               NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
@@ -311,7 +321,11 @@ public final class SpotNode implements AutoCloseable {
     }
 
     /** Creates one local Actor owned by this node. */
-    public Actor actor(String actorId) {
+    public Actor createActor(String actorId) {
+        return actor(actorId);
+    }
+
+    Actor actor(String actorId) {
         Objects.requireNonNull(actorId, "actorId");
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
@@ -428,7 +442,7 @@ public final class SpotNode implements AutoCloseable {
           MemorySegment.NULL);
         if (rc != 0) {
             arena.close();
-            throw ZlinkException.fromLastError(
+            throw InternalAccess.zlinkExceptionFromLastError(
               "zlink_spot_node_actor_admission_handler");
         }
         if (actorAdmissionArena != null) {
@@ -439,7 +453,7 @@ public final class SpotNode implements AutoCloseable {
         actorAdmissionHandler = handler;
     }
 
-    public boolean joinActor(ActorRef actor,
+    boolean joinActor(ActorRef actor,
                              RoutingId destNodeRid,
                              RoutingId destSpotRid,
                              Message message,
@@ -449,7 +463,67 @@ public final class SpotNode implements AutoCloseable {
           SendFlags.NONE, timeout);
     }
 
-    public boolean joinActor(ActorRef actor,
+    public CompletableFuture<List<Message>> joinActor(ActorRef actor,
+                             RoutingId destNodeRid,
+                             RoutingId destSpotRid,
+                             Message message) {
+        return joinActor(actor, destNodeRid, destSpotRid, message,
+          Duration.ofMillis(5_000L));
+    }
+
+    public CompletableFuture<List<Message>> joinActor(ActorRef actor,
+                             RoutingId destNodeRid,
+                             RoutingId destSpotRid,
+                             Message message,
+                             Duration timeout) {
+        CompletableFuture<List<Message>> future = new CompletableFuture<>();
+        joinActor(actor, destNodeRid, destSpotRid, message,
+          (BiConsumer<RequestResult, List<Message>>)
+          (result, parts) -> {
+              if (result == RequestResult.OK) {
+                  future.complete(parts);
+              } else {
+                  future.completeExceptionally(new RequestException(result));
+              }
+          }, timeout);
+        return future;
+    }
+
+    public boolean joinActor(ActorRef actor, RoutingId destNodeRid,
+                             RoutingId destSpotRid, Message message,
+                             RequestCallback callback) {
+        return joinActor(actor, destNodeRid, destSpotRid, message, callback,
+          Duration.ofMillis(5_000L));
+    }
+
+    public boolean joinActor(ActorRef actor, RoutingId destNodeRid,
+                             RoutingId destSpotRid, Message message,
+                             RequestCallback callback,
+                             Duration timeout) {
+        return joinActor(actor, destNodeRid, destSpotRid, message,
+          (BiConsumer<RequestResult, List<Message>>) callback::onComplete,
+          SendFlags.NONE, timeout);
+    }
+
+    public boolean joinActor(ActorRef actor, RoutingId destNodeRid,
+                             RoutingId destSpotRid, Message message,
+                             RequestCallback callback,
+                             SendFlags flags) {
+        return joinActor(actor, destNodeRid, destSpotRid, message, callback,
+          flags, Duration.ofMillis(5_000L));
+    }
+
+    public boolean joinActor(ActorRef actor, RoutingId destNodeRid,
+                             RoutingId destSpotRid, Message message,
+                             RequestCallback callback,
+                             SendFlags flags,
+                             Duration timeout) {
+        return joinActor(actor, destNodeRid, destSpotRid, message,
+          (BiConsumer<RequestResult, List<Message>>) callback::onComplete,
+          flags, timeout);
+    }
+
+    boolean joinActor(ActorRef actor,
                              RoutingId destNodeRid,
                              RoutingId destSpotRid,
                              Message message,
@@ -484,7 +558,7 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
-    public boolean joinActor(ActorRef actor,
+    boolean joinActor(ActorRef actor,
                              RoutingId destNodeRid,
                              RoutingId destSpotRid,
                              Message message,
@@ -522,12 +596,14 @@ public final class SpotNode implements AutoCloseable {
     }
 
     public AutoHwmProfile routerHwmProfile() {
-        return AutoHwmProfile.fromValue(getIntOption(OPT_ROUTER_HWM_PROFILE));
+        return EnumCodecs.autoHwmProfileFromValue(
+          getIntOption(OPT_ROUTER_HWM_PROFILE));
     }
 
     public void routerHwmProfile(AutoHwmProfile profile) {
         Objects.requireNonNull(profile, "profile");
-        setIntOption(OPT_ROUTER_HWM_PROFILE, profile.value());
+        setIntOption(OPT_ROUTER_HWM_PROFILE,
+          EnumCodecs.autoHwmProfileValue(profile));
     }
 
     public int routerHwm() {
@@ -539,12 +615,14 @@ public final class SpotNode implements AutoCloseable {
     }
 
     public AutoHwmProfile pubsubHwmProfile() {
-        return AutoHwmProfile.fromValue(getIntOption(OPT_PUBSUB_HWM_PROFILE));
+        return EnumCodecs.autoHwmProfileFromValue(
+          getIntOption(OPT_PUBSUB_HWM_PROFILE));
     }
 
     public void pubsubHwmProfile(AutoHwmProfile profile) {
         Objects.requireNonNull(profile, "profile");
-        setIntOption(OPT_PUBSUB_HWM_PROFILE, profile.value());
+        setIntOption(OPT_PUBSUB_HWM_PROFILE,
+          EnumCodecs.autoHwmProfileValue(profile));
     }
 
     public int pubsubHwm() {
@@ -555,13 +633,29 @@ public final class SpotNode implements AutoCloseable {
         setIntOption(OPT_PUBSUB_HWM, value);
     }
 
+    public int dispatchWorkersMin() {
+        return getIntOption(OPT_DISPATCH_WORKERS_MIN);
+    }
+
+    public void dispatchWorkersMin(int value) {
+        setIntOption(OPT_DISPATCH_WORKERS_MIN, value);
+    }
+
+    public int dispatchWorkersMax() {
+        return getIntOption(OPT_DISPATCH_WORKERS_MAX);
+    }
+
+    public void dispatchWorkersMax(int value) {
+        setIntOption(OPT_DISPATCH_WORKERS_MAX, value);
+    }
+
     /** Returns the current node status snapshot. */
     public SpotNodeStatus statusSnapshot() {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment out = arena.allocate(NativeLayouts.SPOT_NODE_STATUS_LAYOUT);
             int rc = Native.spotNodeStatusSnapshot(handle, out);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_status_snapshot");
             }
             return SpotNodeStatus.fromNative(out);
@@ -594,7 +688,7 @@ public final class SpotNode implements AutoCloseable {
             int rc = Native.spotNodeSubjectsSnapshot(handle, nativeFilter,
               MemorySegment.NULL, count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_subjects_snapshot");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
@@ -606,7 +700,7 @@ public final class SpotNode implements AutoCloseable {
             rc = Native.spotNodeSubjectsSnapshot(handle, nativeFilter, entries,
               count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_subjects_snapshot");
             }
             int actual = Math.min(available, boundedCount(
@@ -623,8 +717,12 @@ public final class SpotNode implements AutoCloseable {
     }
 
     /** Returns diagnostic socket snapshot rows that exist on this node. */
-    public List<SpotNodeSocketSnapshotEntry> socketSnapshots() {
+    public List<SpotNodeSocketSnapshotEntry> internalSocketsSnapshot() {
         return socketSnapshots(null);
+    }
+
+    List<SpotNodeSocketSnapshotEntry> socketSnapshots() {
+        return internalSocketsSnapshot();
     }
 
     public List<SpotNodeSpotEntry> spotsSnapshot() {
@@ -633,7 +731,7 @@ public final class SpotNode implements AutoCloseable {
             int rc = Native.spotNodeSpotsSnapshot(handle, MemorySegment.NULL,
               count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_spots_snapshot");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
@@ -645,7 +743,7 @@ public final class SpotNode implements AutoCloseable {
             count.set(ValueLayout.JAVA_LONG, 0, available);
             rc = Native.spotNodeSpotsSnapshot(handle, entries, count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_spots_snapshot");
             }
             int actual = Math.min(available, boundedCount(
@@ -666,7 +764,7 @@ public final class SpotNode implements AutoCloseable {
             int rc = Native.spotNodeActorsSnapshot(handle, MemorySegment.NULL,
               count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_actors_snapshot");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
@@ -678,7 +776,7 @@ public final class SpotNode implements AutoCloseable {
             count.set(ValueLayout.JAVA_LONG, 0, available);
             rc = Native.spotNodeActorsSnapshot(handle, entries, count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_actors_snapshot");
             }
             int actual = Math.min(available, boundedCount(
@@ -694,7 +792,7 @@ public final class SpotNode implements AutoCloseable {
     }
 
     /** Returns diagnostic socket snapshot rows matching the supplied filter. */
-    public List<SpotNodeSocketSnapshotEntry> socketSnapshots(
+    public List<SpotNodeSocketSnapshotEntry> internalSocketsSnapshot(
       SpotNodeSocketSnapshotFilter filter) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
@@ -703,7 +801,7 @@ public final class SpotNode implements AutoCloseable {
             int rc = Native.spotNodeInternalSocketsSnapshot(handle,
               nativeFilter, MemorySegment.NULL, count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_internal_sockets_snapshot");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
@@ -715,7 +813,7 @@ public final class SpotNode implements AutoCloseable {
             rc = Native.spotNodeInternalSocketsSnapshot(handle, nativeFilter,
               entries, count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(
+                throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_internal_sockets_snapshot");
             }
             int actual = Math.min(available, boundedCount(
@@ -730,6 +828,11 @@ public final class SpotNode implements AutoCloseable {
             }
             return List.copyOf(out);
         }
+    }
+
+    List<SpotNodeSocketSnapshotEntry> socketSnapshots(
+      SpotNodeSocketSnapshotFilter filter) {
+        return internalSocketsSnapshot(filter);
     }
 
     @Override
@@ -831,7 +934,7 @@ public final class SpotNode implements AutoCloseable {
               : Native.spotNodePeersQuery(handle, nativeFilter,
                 MemorySegment.NULL, count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(filter == null
+                throw InternalAccess.zlinkExceptionFromLastError(filter == null
                   ? "zlink_spot_node_peers_snapshot"
                   : "zlink_spot_node_peers_query");
             }
@@ -845,7 +948,7 @@ public final class SpotNode implements AutoCloseable {
               ? Native.spotNodePeersSnapshot(handle, entries, count)
               : Native.spotNodePeersQuery(handle, nativeFilter, entries, count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError(filter == null
+                throw InternalAccess.zlinkExceptionFromLastError(filter == null
                   ? "zlink_spot_node_peers_snapshot"
                   : "zlink_spot_node_peers_query");
             }
@@ -884,7 +987,8 @@ public final class SpotNode implements AutoCloseable {
                                      MemorySegment userdata) {
         ActorAdmissionHandler handler = actorAdmissionHandler;
         if (handler == null) {
-            return ActorAdmissionResult.REJECT.value();
+            return EnumCodecs.actorAdmissionResultValue(
+              ActorAdmissionResult.REJECT);
         }
         try {
             int size = Math.toIntExact(NativeMsg.msgSize(message));
@@ -899,7 +1003,8 @@ public final class SpotNode implements AutoCloseable {
                   copied).value();
             }
         } catch (RuntimeException ex) {
-            return ActorAdmissionResult.REJECT.value();
+            return EnumCodecs.actorAdmissionResultValue(
+              ActorAdmissionResult.REJECT);
         }
     }
 
@@ -933,7 +1038,7 @@ public final class SpotNode implements AutoCloseable {
                   : Native.setSubOption(handle, optionId, nativeValue,
                       Integer.BYTES);
                 if (rc != 0) {
-                    throw ZlinkException.fromLastError(publishOption
+                    throw InternalAccess.zlinkExceptionFromLastError(publishOption
                       ? "zlink_set_pub_option"
                       : "zlink_set_sub_option");
                 }

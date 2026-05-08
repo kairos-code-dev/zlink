@@ -2,8 +2,8 @@
 
 package dev.kairoscode.zlink.service.spot;
 
-public record SpotNodeOptions(SpotNodeMode mode) {
-    public SpotNodeOptions {
+record SpotNodeOptions(SpotNodeMode mode) {
+    SpotNodeOptions {
         if (mode == null)
             mode = SpotNodeMode.ALL;
     }

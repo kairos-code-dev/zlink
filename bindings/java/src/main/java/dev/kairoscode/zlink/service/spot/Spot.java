@@ -6,6 +6,7 @@ import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.ConfigException;
 import dev.kairoscode.zlink.ConfigResult;
 import dev.kairoscode.zlink.RequestResult;
+import dev.kairoscode.zlink.RequestCallback;
 import dev.kairoscode.zlink.Received;
 import dev.kairoscode.zlink.RoutingId;
 import dev.kairoscode.zlink.RecvException;
@@ -15,6 +16,7 @@ import dev.kairoscode.zlink.RequestException;
 import dev.kairoscode.zlink.SendFlags;
 import dev.kairoscode.zlink.SendReadyHandler;
 import dev.kairoscode.zlink.TopicMessage;
+import dev.kairoscode.zlink.SubscriptionEntry;
 import dev.kairoscode.zlink.SubscriptionEvent;
 import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.SpotDispatchEvent;
@@ -70,7 +72,9 @@ public final class Spot implements AutoCloseable {
     private static final int TOPIC_CACHE_LIMIT = 1024;
     private static final int TOPIC_SCRATCH_INITIAL_CAPACITY = 64;
     private static final int ERRNO_EINTR = 4;
+    private static final int ERRNO_ENOENT = 2;
     private static final int ERRNO_EAGAIN = 11;
+    private static final int ERRNO_EINVAL = 22;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
     private static final int ERRNO_ENOTCONN = 107;
     private static final int ERRNO_ENOTCONN_WIN = 10057;
@@ -147,7 +151,7 @@ public final class Spot implements AutoCloseable {
         Objects.requireNonNull(node, "node");
         MemorySegment nativeHandle = Native.spotNew(node.handle());
         if (nativeHandle == null || nativeHandle.address() == 0)
-            throw ZlinkException.fromLastError("zlink_spot_new");
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_new");
         this.ownerNode = node;
         this.handle = nativeHandle;
         this.routedSupport = new SpotRoutedSupport(this);
@@ -181,7 +185,7 @@ public final class Spot implements AutoCloseable {
     }
 
     /** Internal bridge for binding helpers. */
-    public MemorySegment handleInternal() {
+    MemorySegment handleInternal() {
         return handle();
     }
 
@@ -189,7 +193,7 @@ public final class Spot implements AutoCloseable {
         return ownerNode == null ? MemorySegment.NULL : ownerNode.handleInternal();
     }
 
-    public SpotOptions options() {
+    SpotOptions options() {
         ensureOpen();
         return options;
     }
@@ -207,7 +211,7 @@ public final class Spot implements AutoCloseable {
             }
             int rc = Native.setRoutingId(handle, nativeValue, value.length);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_set_routing_id");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_set_routing_id");
             }
         }
     }
@@ -219,19 +223,79 @@ public final class Spot implements AutoCloseable {
             MemorySegment outRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
             int rc = Native.getRoutingId(handle, outRid);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_get_routing_id");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_get_routing_id");
             }
             return readRoutingId(outRid);
         }
     }
 
+    public Duration requestTimeout() {
+        return options.requestTimeout();
+    }
+
+    public void requestTimeout(Duration value) {
+        options.requestTimeout(value);
+    }
+
+    public SendOp publish(String serviceName, String topicId) {
+        return new SendBuilder((parts, flags) ->
+            publish(serviceName, topicId, parts, flags));
+    }
+
+    public SendOp sendChannel(String channelName) {
+        return new SendBuilder((parts, flags) ->
+            sendChannel(channelName, parts, flags));
+    }
+
+    public SendOp sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid) {
+        return new SendBuilder((parts, flags) ->
+            sendToSpot(destNodeRid, destSpotRid, parts, flags));
+    }
+
+    public RequestOp requestChannel(String channelName) {
+        return new RequestBuilder((parts, timeout, flags) ->
+            requestChannel(channelName, parts, timeout),
+          (parts, callback, flags, timeout) ->
+            requestChannel(channelName, parts, callback::onComplete, flags,
+              timeout));
+    }
+
+    public RequestOp requestToSpot(RoutingId destNodeRid,
+                                   RoutingId destSpotRid) {
+        return new RequestBuilder((parts, timeout, flags) ->
+            routedSupport.requestToSpot(destNodeRid, destSpotRid, parts,
+              timeout, flags),
+          (parts, callback, flags, timeout) ->
+            routedSupport.requestToSpot(destNodeRid, destSpotRid, parts,
+              callback::onComplete, flags, timeout));
+    }
+
+    public RequestOp requestToRouter(RoutingId peerRid) {
+        return new RequestBuilder((parts, timeout, flags) ->
+            routedSupport.requestToRouter(peerRid, parts, timeout, flags),
+          (parts, callback, flags, timeout) ->
+            routedSupport.requestToRouter(peerRid, parts,
+              callback::onComplete, flags, timeout));
+    }
+
+    public ReplyOp replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                               long requestSeq) {
+        return new ReplyBuilder((parts, flags) ->
+            replyToSpot(destNodeRid, destSpotRid, requestSeq, parts, flags));
+    }
+
+    public ReplyOp replyToRouter(RoutingId peerRid, long requestSeq) {
+        return new ReplyBuilder((parts, flags) ->
+            replyToRouter(peerRid, requestSeq, parts, flags));
+    }
+
     /** Publishes one payload part through a service-aware Spot attachment. */
-    public boolean publish(String serviceName, String topicId, Message part) {
+    boolean publish(String serviceName, String topicId, Message part) {
         Objects.requireNonNull(part, "part");
         return publish(serviceName, topicId, part, SendFlags.NONE);
     }
 
-    public boolean publish(String serviceName, String topicId, Message part,
+    boolean publish(String serviceName, String topicId, Message part,
                         SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
         try {
@@ -247,12 +311,12 @@ public final class Spot implements AutoCloseable {
     }
 
     /** Publishes a multipart payload through a service-aware Spot attachment. */
-    public boolean publish(String serviceName, String topicId,
+    boolean publish(String serviceName, String topicId,
                         List<Message> parts) {
         return publish(serviceName, topicId, parts, SendFlags.NONE);
     }
 
-    public boolean publish(String serviceName, String topicId,
+    boolean publish(String serviceName, String topicId,
                         List<Message> parts, SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
         try {
@@ -267,20 +331,20 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    public boolean sendChannel(String channelName, Message part) {
+    boolean sendChannel(String channelName, Message part) {
         return sendChannel(channelName, part, SendFlags.NONE);
     }
 
-    public boolean sendChannel(String channelName, Message part, SendFlags flags) {
+    boolean sendChannel(String channelName, Message part, SendFlags flags) {
         Objects.requireNonNull(part, "part");
         return sendChannel(channelName, List.of(part), flags);
     }
 
-    public boolean sendChannel(String channelName, List<Message> parts) {
+    boolean sendChannel(String channelName, List<Message> parts) {
         return sendChannel(channelName, parts, SendFlags.NONE);
     }
 
-    public boolean sendChannel(String channelName, List<Message> parts,
+    boolean sendChannel(String channelName, List<Message> parts,
                             SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
         try {
@@ -295,24 +359,24 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    public boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               Message part) {
         return sendToSpot(destNodeRid, destSpotRid, List.of(part),
           SendFlags.NONE);
     }
 
-    public boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               Message part, SendFlags flags) {
         Objects.requireNonNull(part, "part");
         return sendToSpot(destNodeRid, destSpotRid, List.of(part), flags);
     }
 
-    public boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               List<Message> parts) {
         return sendToSpot(destNodeRid, destSpotRid, parts, SendFlags.NONE);
     }
 
-    public boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                               List<Message> parts, SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
         try {
@@ -327,7 +391,7 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    public CompletableFuture<List<Message>> requestChannel(String channelName,
+    CompletableFuture<List<Message>> requestChannel(String channelName,
                                                            Message part) {
         return requestChannel(channelName, List.of(part));
     }
@@ -338,7 +402,7 @@ public final class Spot implements AutoCloseable {
         return requestChannel(channelName, List.of(part), flags);
     }
 
-    public CompletableFuture<List<Message>> requestChannel(String channelName,
+    CompletableFuture<List<Message>> requestChannel(String channelName,
                                                            Message part,
                                                            Duration timeout) {
         return requestChannel(channelName, List.of(part), timeout);
@@ -351,7 +415,7 @@ public final class Spot implements AutoCloseable {
         return requestChannel(channelName, List.of(part), flags, timeout);
     }
 
-    public CompletableFuture<List<Message>> requestChannel(String channelName,
+    CompletableFuture<List<Message>> requestChannel(String channelName,
                                                            List<Message> parts) {
         return requestChannel(channelName, parts, SendFlags.NONE);
     }
@@ -363,7 +427,7 @@ public final class Spot implements AutoCloseable {
           Duration.ofMillis(5_000L));
     }
 
-    public CompletableFuture<List<Message>> requestChannel(String channelName,
+    CompletableFuture<List<Message>> requestChannel(String channelName,
                                                            List<Message> parts,
                                                            Duration timeout) {
         return requestChannel(channelName, parts, SendFlags.NONE, timeout);
@@ -377,53 +441,53 @@ public final class Spot implements AutoCloseable {
         return requestChannelInternal(channelName, parts, timeout, flags);
     }
 
-    public boolean requestChannel(String channelName, Message part,
+    boolean requestChannel(String channelName, Message part,
                                   BiConsumer<RequestResult, List<Message>> callback) {
         return requestChannel(channelName, List.of(part), callback,
           SendFlags.NONE, Duration.ofMillis(5_000L));
     }
 
-    public boolean requestChannel(String channelName, Message part,
+    boolean requestChannel(String channelName, Message part,
                                   BiConsumer<RequestResult, List<Message>> callback,
                                   SendFlags flags) {
         return requestChannel(channelName, List.of(part), callback, flags,
           Duration.ofMillis(5_000L));
     }
 
-    public boolean requestChannel(String channelName, Message part,
+    boolean requestChannel(String channelName, Message part,
                                   BiConsumer<RequestResult, List<Message>> callback,
                                   Duration timeout) {
         return requestChannel(channelName, List.of(part), callback,
           SendFlags.NONE, timeout);
     }
 
-    public boolean requestChannel(String channelName, Message part,
+    boolean requestChannel(String channelName, Message part,
                                   BiConsumer<RequestResult, List<Message>> callback,
                                   SendFlags flags, Duration timeout) {
         return requestChannel(channelName, List.of(part), callback, flags, timeout);
     }
 
-    public boolean requestChannel(String channelName, List<Message> parts,
+    boolean requestChannel(String channelName, List<Message> parts,
                                   BiConsumer<RequestResult, List<Message>> callback) {
         return requestChannel(channelName, parts, callback, SendFlags.NONE,
           Duration.ofMillis(5_000L));
     }
 
-    public boolean requestChannel(String channelName, List<Message> parts,
+    boolean requestChannel(String channelName, List<Message> parts,
                                   BiConsumer<RequestResult, List<Message>> callback,
                                   SendFlags flags) {
         return requestChannel(channelName, parts, callback, flags,
           Duration.ofMillis(5_000L));
     }
 
-    public boolean requestChannel(String channelName, List<Message> parts,
+    boolean requestChannel(String channelName, List<Message> parts,
                                   BiConsumer<RequestResult, List<Message>> callback,
                                   Duration timeout) {
         return requestChannel(channelName, parts, callback, SendFlags.NONE,
           timeout);
     }
 
-    public boolean requestChannel(String channelName, List<Message> parts,
+    boolean requestChannel(String channelName, List<Message> parts,
                                   BiConsumer<RequestResult, List<Message>> callback,
                                   SendFlags flags, Duration timeout) {
         Objects.requireNonNull(callback, "callback");
@@ -548,12 +612,12 @@ public final class Spot implements AutoCloseable {
         ensureOpen();
         int rc = Native.spotChannelReplyProgressFrom(handle, dealerSubject);
         if (rc != 0) {
-            throw ZlinkException.fromLastError(
+            throw InternalAccess.zlinkExceptionFromLastError(
               "zlink_spot_channel_reply_progress_from");
         }
     }
 
-    public void drainChannelReply(SpotDispatchInfo info) {
+    void drainChannelReply(SpotDispatchInfo info) {
         Objects.requireNonNull(info, "info");
         if (info.event() != SpotDispatchEvent.CHANNEL_REPLY_READABLE
             || info.subjectKind() != SpotDispatchSubjectKind.CHANNEL_DEALER) {
@@ -574,7 +638,7 @@ public final class Spot implements AutoCloseable {
             || errno == ERRNO_EHOSTUNREACH || errno == ERRNO_EHOSTUNREACH_WIN) {
             return new SubmitException(SubmitResult.NOT_CONNECTED, errno);
         }
-        throw ZlinkException.fromLastError(apiName);
+        throw InternalAccess.zlinkExceptionFromLastError(apiName);
     }
 
     /** Subscribes to one topic or pattern string. */
@@ -582,7 +646,7 @@ public final class Spot implements AutoCloseable {
         MemorySegment filter = topicCString(topicId);
         int rc = Native.setSubscription(handle, filter);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_set_subscription");
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_set_subscription");
     }
 
     /** Removes a topic or pattern subscription. */
@@ -590,7 +654,46 @@ public final class Spot implements AutoCloseable {
         MemorySegment filter = topicCString(topicIdOrPattern);
         int rc = Native.unsetSubscription(handle, filter);
         if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_unset_subscription");
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_unset_subscription");
+    }
+
+    public Optional<SubscriptionEntry> subscriptionAt(int index) {
+        if (index < 0)
+            throw new IndexOutOfBoundsException("subscription index " + index);
+        int capacity = TOPIC_SCRATCH_INITIAL_CAPACITY;
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment lenInOut = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment isPatternOut = arena.allocate(ValueLayout.JAVA_INT);
+            while (true) {
+                MemorySegment filterOut = capacity == 0 ? MemorySegment.NULL
+                    : arena.allocate(capacity);
+                lenInOut.set(ValueLayout.JAVA_LONG, 0, capacity);
+                isPatternOut.set(ValueLayout.JAVA_INT, 0, 0);
+                int rc = Native.subscriptionAt(handle, index, filterOut,
+                  lenInOut, isPatternOut);
+                if (rc == 0) {
+                    int actual = boundedCount(
+                      lenInOut.get(ValueLayout.JAVA_LONG, 0));
+                    byte[] bytes = new byte[actual];
+                    if (actual > 0) {
+                        MemorySegment.copy(filterOut, 0,
+                          MemorySegment.ofArray(bytes), 0, actual);
+                    }
+                    return Optional.of(new SubscriptionEntry(
+                      new String(bytes, StandardCharsets.UTF_8),
+                      isPatternOut.get(ValueLayout.JAVA_INT, 0) != 0));
+                }
+                int errno = Native.errno();
+                if (errno == ERRNO_ENOENT)
+                    return Optional.empty();
+                if (errno == ERRNO_EINVAL) {
+                    capacity = boundedCount(
+                      lenInOut.get(ValueLayout.JAVA_LONG, 0));
+                    continue;
+                }
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_subscription_at");
+            }
+        }
     }
 
     /** Installs the send-ready callback. */
@@ -614,7 +717,7 @@ public final class Spot implements AutoCloseable {
         try {
             int rc = Native.sendReadyHandler(handle, stub, MemorySegment.NULL);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_send_ready_handler");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_send_ready_handler");
             success = true;
             closeArena(sendReadyCallbackArena);
             sendReadyCallbackArena = arena;
@@ -663,45 +766,45 @@ public final class Spot implements AutoCloseable {
             ERRNO_EAGAIN));
     }
 
-    public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                             long requestSeq, Message message) {
         replyToSpot(destNodeRid, destSpotRid, requestSeq, List.of(message),
           SendFlags.NONE);
     }
 
-    public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                             long requestSeq, Message message, SendFlags flags) {
         replyToSpot(destNodeRid, destSpotRid, requestSeq, List.of(message),
           flags);
     }
 
-    public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                             long requestSeq, List<Message> parts) {
         replyToSpot(destNodeRid, destSpotRid, requestSeq, parts, SendFlags.NONE);
     }
 
-    public void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                             long requestSeq, List<Message> parts,
                             SendFlags flags) {
         routedSupport.replyToSpot(destNodeRid, destSpotRid, requestSeq, parts,
           flags);
     }
 
-    public void replyToRouter(RoutingId peerRid, long requestSeq, Message message) {
+    void replyToRouter(RoutingId peerRid, long requestSeq, Message message) {
         replyToRouter(peerRid, requestSeq, List.of(message), SendFlags.NONE);
     }
 
-    public void replyToRouter(RoutingId peerRid, long requestSeq, Message message,
+    void replyToRouter(RoutingId peerRid, long requestSeq, Message message,
                               SendFlags flags) {
         replyToRouter(peerRid, requestSeq, List.of(message), flags);
     }
 
-    public void replyToRouter(RoutingId peerRid, long requestSeq,
+    void replyToRouter(RoutingId peerRid, long requestSeq,
                               List<Message> parts) {
         replyToRouter(peerRid, requestSeq, parts, SendFlags.NONE);
     }
 
-    public void replyToRouter(RoutingId peerRid, long requestSeq,
+    void replyToRouter(RoutingId peerRid, long requestSeq,
                               List<Message> parts, SendFlags flags) {
         routedSupport.replyToRouter(peerRid, requestSeq, parts, flags);
     }
@@ -853,7 +956,7 @@ public final class Spot implements AutoCloseable {
             int rc = Native.spotActorsSnapshot(handle, MemorySegment.NULL,
               count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_spot_actors_snapshot");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_actors_snapshot");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0) {
@@ -864,7 +967,7 @@ public final class Spot implements AutoCloseable {
             count.set(ValueLayout.JAVA_LONG, 0, available);
             rc = Native.spotActorsSnapshot(handle, entries, count);
             if (rc != 0) {
-                throw ZlinkException.fromLastError("zlink_spot_actors_snapshot");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_actors_snapshot");
             }
             int actual = Math.min(available, boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));
@@ -876,6 +979,215 @@ public final class Spot implements AutoCloseable {
             }
             return List.copyOf(out);
         }
+    }
+
+    private final class SendBuilder implements SendOp, SendSubmitOp {
+        private final SendInvoker invoker;
+        private final ArrayList<Message> parts = new ArrayList<>();
+        private SendFlags flags = SendFlags.NONE;
+        private boolean submitted;
+
+        private SendBuilder(SendInvoker invoker) {
+            this.invoker = invoker;
+        }
+
+        @Override
+        public SendSubmitOp message(Message part) {
+            ensureNotSubmitted();
+            parts.add(Objects.requireNonNull(part, "part"));
+            return this;
+        }
+
+        @Override
+        public SendSubmitOp flags(SendFlags value) {
+            ensureNotSubmitted();
+            flags = Objects.requireNonNull(value, "flags");
+            return this;
+        }
+
+        @Override
+        public boolean submit() {
+            markSubmitted();
+            return invoker.submit(List.copyOf(parts), flags);
+        }
+
+        private void markSubmitted() {
+            ensureNotSubmitted();
+            if (parts.isEmpty())
+                throw new IllegalArgumentException("at least one message required");
+            submitted = true;
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
+        }
+    }
+
+    private final class RequestBuilder implements RequestOp, RequestSubmitOp {
+        private final RequestAsyncInvoker asyncInvoker;
+        private final RequestCallbackInvoker callbackInvoker;
+        private final ArrayList<Message> parts = new ArrayList<>();
+        private Duration timeout = Duration.ofMillis(5_000L);
+        private SendFlags flags = SendFlags.NONE;
+        private boolean submitted;
+
+        private RequestBuilder(RequestAsyncInvoker asyncInvoker,
+                               RequestCallbackInvoker callbackInvoker) {
+            this.asyncInvoker = asyncInvoker;
+            this.callbackInvoker = callbackInvoker;
+        }
+
+        @Override
+        public RequestSubmitOp message(Message part) {
+            addMessage(part);
+            return this;
+        }
+
+        @Override
+        public RequestSubmitOp timeout(Duration value) {
+            ensureNotSubmitted();
+            timeout = Objects.requireNonNull(value, "timeout");
+            return this;
+        }
+
+        @Override
+        public RequestCallbackSubmitOp flags(SendFlags value) {
+            ensureNotSubmitted();
+            return new CallbackRequestBuilder(this,
+              Objects.requireNonNull(value, "flags"));
+        }
+
+        @Override
+        public CompletableFuture<List<Message>> submitAsync() {
+            markSubmitted();
+            return asyncInvoker.submit(List.copyOf(parts), timeout, flags);
+        }
+
+        @Override
+        public boolean submit(RequestCallback callback) {
+            markSubmitted();
+            return callbackInvoker.submit(List.copyOf(parts),
+              Objects.requireNonNull(callback, "callback"), flags, timeout);
+        }
+
+        private void addMessage(Message part) {
+            ensureNotSubmitted();
+            parts.add(Objects.requireNonNull(part, "part"));
+        }
+
+        private void markSubmitted() {
+            ensureNotSubmitted();
+            if (parts.isEmpty())
+                throw new IllegalArgumentException("at least one message required");
+            submitted = true;
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
+        }
+    }
+
+    private final class CallbackRequestBuilder
+      implements RequestCallbackSubmitOp {
+        private final RequestBuilder source;
+        private SendFlags flags;
+
+        private CallbackRequestBuilder(RequestBuilder source,
+                                       SendFlags flags) {
+            this.source = source;
+            this.flags = flags;
+        }
+
+        @Override
+        public RequestCallbackSubmitOp message(Message part) {
+            source.addMessage(part);
+            return this;
+        }
+
+        @Override
+        public RequestCallbackSubmitOp timeout(Duration timeout) {
+            source.timeout(timeout);
+            return this;
+        }
+
+        @Override
+        public RequestCallbackSubmitOp flags(SendFlags value) {
+            source.ensureNotSubmitted();
+            flags = Objects.requireNonNull(value, "flags");
+            return this;
+        }
+
+        @Override
+        public boolean submit(RequestCallback callback) {
+            source.markSubmitted();
+            return source.callbackInvoker.submit(List.copyOf(source.parts),
+              Objects.requireNonNull(callback, "callback"), flags,
+              source.timeout);
+        }
+    }
+
+    private final class ReplyBuilder implements ReplyOp, ReplySubmitOp {
+        private final ReplyInvoker invoker;
+        private final ArrayList<Message> parts = new ArrayList<>();
+        private SendFlags flags = SendFlags.NONE;
+        private boolean submitted;
+
+        private ReplyBuilder(ReplyInvoker invoker) {
+            this.invoker = invoker;
+        }
+
+        @Override
+        public ReplySubmitOp message(Message part) {
+            ensureNotSubmitted();
+            parts.add(Objects.requireNonNull(part, "part"));
+            return this;
+        }
+
+        @Override
+        public ReplySubmitOp flags(SendFlags value) {
+            ensureNotSubmitted();
+            flags = Objects.requireNonNull(value, "flags");
+            return this;
+        }
+
+        @Override
+        public void submit() {
+            ensureNotSubmitted();
+            if (parts.isEmpty())
+                throw new IllegalArgumentException("at least one message required");
+            submitted = true;
+            invoker.submit(List.copyOf(parts), flags);
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
+        }
+    }
+
+    @FunctionalInterface
+    private interface SendInvoker {
+        boolean submit(List<Message> parts, SendFlags flags);
+    }
+
+    @FunctionalInterface
+    private interface RequestAsyncInvoker {
+        CompletableFuture<List<Message>> submit(List<Message> parts,
+                                                Duration timeout,
+                                                SendFlags flags);
+    }
+
+    @FunctionalInterface
+    private interface RequestCallbackInvoker {
+        boolean submit(List<Message> parts, RequestCallback callback,
+                       SendFlags flags, Duration timeout);
+    }
+
+    @FunctionalInterface
+    private interface ReplyInvoker {
+        void submit(List<Message> parts, SendFlags flags);
     }
 
     @Override
@@ -1135,7 +1447,8 @@ public final class Spot implements AutoCloseable {
                             }
                             parts[partCount++] = part;
                             if (!InternalAccess.messageMore(part)) {
-                                return Optional.of(new TopicMessage(routingId,
+                                return Optional.of(InternalAccess.topicMessage(
+                                  routingId,
                                   serviceName.isEmpty() ? null : serviceName,
                                   topicId,
                                   partCount == parts.length ? parts
@@ -1164,7 +1477,7 @@ public final class Spot implements AutoCloseable {
                         || errno == ERRNO_EWOULDBLOCK_WIN)) {
                         return Optional.empty();
                     }
-                    throw ZlinkException.fromLastError("zlink_spot_subscribe_part");
+                    throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_subscribe_part");
                 }
             }
         }
@@ -1202,7 +1515,7 @@ public final class Spot implements AutoCloseable {
                     int errno = Native.errno();
                     if (errno == ERRNO_EINTR)
                         continue;
-                    throw ZlinkException.fromLastError("zlink_xpub_recv_part");
+                    throw InternalAccess.zlinkExceptionFromLastError("zlink_xpub_recv_part");
                 }
                 if (result == RecvResult.NO_DATA && nonBlocking) {
                     return Optional.empty();

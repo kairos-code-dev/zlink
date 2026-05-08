@@ -2,27 +2,19 @@
 
 package dev.kairoscode.zlink.service.registry;
 
+import dev.kairoscode.zlink.internal.EnumCodecs;
+
 public enum ServiceKind {
-    DISCOVERY(1),
-    SPOT_SUB(3),
-    SPOT_PUB(4),
-    SOCKET(5);
+    DISCOVERY,
+    SPOT_SUB,
+    SPOT_PUB,
+    SOCKET;
 
-    private final int value;
-
-    ServiceKind(int value) {
-        this.value = value;
+    int getValue() {
+        return EnumCodecs.serviceKindValue(this);
     }
 
-    public int getValue() {
-        return value;
-    }
-
-    public static ServiceKind fromValue(int value) {
-        for (ServiceKind kind : values()) {
-            if (kind.value == value)
-                return kind;
-        }
-        throw new IllegalArgumentException("unknown ServiceKind: " + value);
+    static ServiceKind fromValue(int value) {
+        return EnumCodecs.serviceKindFromValue(value);
     }
 }

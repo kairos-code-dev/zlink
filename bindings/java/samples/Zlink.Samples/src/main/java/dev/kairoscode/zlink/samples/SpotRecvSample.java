@@ -43,7 +43,7 @@ public final class SpotRecvSample {
             subscriber.setRoutingId(RoutingId.fromBytes(
                 "a-java-spot-recv-subscriber-spot".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             registry.bind(registryPub, registryRouter);
-            registry.setBroadcastInterval(50);
+            registry.setBroadcastInterval(Duration.ofMillis(50));
             publisherDiscovery.connectRegistry(registryRouter);
             subscriberDiscovery.connectRegistry(registryRouter);
             publisherNode.bind(publisherEndpoint);
@@ -57,7 +57,7 @@ public final class SpotRecvSample {
             Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
             while (Instant.now().isBefore(deadline)) {
                 try (Message payload = Message.copyOfUtf8(SampleSupport.SPOT_PAYLOAD)) {
-                    publisher.publish(serviceName, topic, payload);
+                    publisher.publish(serviceName, topic).message(payload).submit();
                 }
                 try (TopicMessage topicMessage = subscriber.subscribe(RecvFlags.DONT_WAIT)) {
                     if (topicMessage == null) {

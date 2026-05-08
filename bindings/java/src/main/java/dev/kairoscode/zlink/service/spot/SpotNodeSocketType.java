@@ -2,7 +2,7 @@
 
 package dev.kairoscode.zlink.service.spot;
 
-public enum SpotNodeSocketType {
+enum SpotNodeSocketType {
     ANY(0),
     PAIR(0x1001),
     PUB(0x1002),

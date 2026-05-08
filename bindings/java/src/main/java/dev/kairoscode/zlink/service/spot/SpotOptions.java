@@ -11,7 +11,7 @@ import java.lang.foreign.ValueLayout;
 import java.time.Duration;
 import java.util.Objects;
 
-public final class SpotOptions {
+final class SpotOptions {
     private static final int OPT_REQUEST_TIMEOUT_MS = 0x3701;
 
     private final Spot spot;
@@ -20,11 +20,11 @@ public final class SpotOptions {
         this.spot = spot;
     }
 
-    public Duration requestTimeout() {
+    Duration requestTimeout() {
         return Duration.ofMillis(getIntOption(OPT_REQUEST_TIMEOUT_MS));
     }
 
-    public void requestTimeout(Duration value) {
+    void requestTimeout(Duration value) {
         Objects.requireNonNull(value, "value");
         setIntOption(OPT_REQUEST_TIMEOUT_MS, toIntMillis(value, "value"));
     }

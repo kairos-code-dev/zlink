@@ -2,9 +2,9 @@
 
 package dev.kairoscode.zlink;
 
-public record PollEvent(Socket socket, int revents, int fd, Object tag,
-                        int events) {
-    public PollEvent(Socket socket, int revents) {
-        this(socket, revents, 0, null, 0);
-    }
+import java.util.EnumSet;
+
+public record PollEvent(Socket socket, Integer fd, Timer timer, Object tag,
+                        EnumSet<PollEventFlag> events,
+                        EnumSet<PollEventFlag> revents) {
 }

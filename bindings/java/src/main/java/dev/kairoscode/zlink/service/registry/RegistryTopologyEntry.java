@@ -3,6 +3,7 @@
 package dev.kairoscode.zlink.service.registry;
 
 import dev.kairoscode.zlink.RoutingId;
+import dev.kairoscode.zlink.internal.EnumCodecs;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -24,14 +25,14 @@ public record RegistryTopologyEntry(AutoConnectType autoConnectType,
               routingSize);
         }
         return new RegistryTopologyEntry(
-          AutoConnectType.fromValue(segment.get(ValueLayout.JAVA_INT, 0)),
+          EnumCodecs.autoConnectTypeFromValue(segment.get(ValueLayout.JAVA_INT, 0)),
           RoutingId.fromBytes(routing),
-          ServiceKind.fromValue(segment.get(ValueLayout.JAVA_INT, 260)),
-          ServiceRole.fromValue(segment.get(ValueLayout.JAVA_INT, 264)),
+          EnumCodecs.serviceKindFromValue(segment.get(ValueLayout.JAVA_INT, 260)),
+          EnumCodecs.serviceRoleFromValue(segment.get(ValueLayout.JAVA_INT, 264)),
           NativeHelpers.fromCString(segment.asSlice(268, 256), 256),
           NativeHelpers.fromCString(segment.asSlice(524, 256), 256),
-          TopologySource.fromValue(segment.get(ValueLayout.JAVA_INT, 780)),
-          TopologyState.fromValue(segment.get(ValueLayout.JAVA_INT, 784)),
+          EnumCodecs.topologySourceFromValue(segment.get(ValueLayout.JAVA_INT, 780)),
+          EnumCodecs.topologyStateFromValue(segment.get(ValueLayout.JAVA_INT, 784)),
           segment.get(ValueLayout.JAVA_INT, 788),
           segment.get(ValueLayout.JAVA_INT, 792),
           segment.get(ValueLayout.JAVA_INT, 796),

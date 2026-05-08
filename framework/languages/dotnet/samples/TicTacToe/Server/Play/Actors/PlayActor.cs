@@ -13,28 +13,20 @@ internal sealed class PlayActor(
 
     public string GameId { get; private set; } = string.Empty;
 
-    public string Mark { get; private set; } = string.Empty;
-
     public void Configure()
     {
         Context.AddPacket<PlayActorJoinGameHandler>();
         Context.AddPacket<PlayActorPlaceMarkHandler>();
     }
 
-    public void JoinGame(string gameId, string mark)
+    public void JoinGame(string gameId)
     {
         if (string.IsNullOrWhiteSpace(gameId))
         {
             throw new ArgumentException("Game id must not be empty.", nameof(gameId));
         }
 
-        if (mark is not ("X" or "O"))
-        {
-            throw new ArgumentException("Mark must be X or O.", nameof(mark));
-        }
-
         GameId = gameId;
-        Mark = mark;
     }
 
     public string RequireJoinedGame()

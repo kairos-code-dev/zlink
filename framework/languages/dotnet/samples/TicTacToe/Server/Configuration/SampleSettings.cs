@@ -44,7 +44,6 @@ sealed record SampleSettings(
                     apiChannel = ReadValue();
                     break;
                 case "--play-channel-endpoint":
-                case "--control-endpoint":
                     playChannel = ReadValue();
                     break;
                 case "--play-endpoint":

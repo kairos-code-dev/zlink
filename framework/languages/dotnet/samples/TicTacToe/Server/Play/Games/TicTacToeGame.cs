@@ -48,7 +48,7 @@ sealed class TicTacToeGame(IZLinkSpotContext context) : IZLinkSpot
         CancellationToken cancellationToken)
     {
         var (slot, isNewPlayer) = GetOrAddPlayer(actor);
-        actor.JoinGame(gameId, slot.Mark);
+        actor.JoinGame(gameId);
         await Context.JoinActorAsync(actor, cancellationToken);
         UpdateWaitingStatus();
 

@@ -27,7 +27,7 @@ public final class PerfMain {
         } catch (Throwable failure) {
             result = PerfUtil.classifyFailure(config, failure);
         }
-        String line = result.toLine("current");
+        String line = result.toLine("java");
         if (!line.isEmpty()) {
             System.out.println(line);
         }

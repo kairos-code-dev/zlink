@@ -50,25 +50,32 @@ internal static class PerfSpot
 
         try
         {
-            int sndHwm = PerfEnv.ReadPositive("PERF_SINGLE_SNDHWM",
-                PerfEnv.ReadPositive("PERF_SINGLE_HWM", 1000));
-            int rcvHwm = PerfEnv.ReadPositive("PERF_SINGLE_RCVHWM",
-                PerfEnv.ReadPositive("PERF_SINGLE_HWM", 1000));
-            pubNode.PubSubHighWaterMark = sndHwm;
-            subNode.PubSubHighWaterMark = rcvHwm;
+            if (PerfEnv.ReadPositive("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES",
+                    PerfEnv.ReadPositive("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES", 0)) > 0)
+            {
+                int sndHwm = PerfEnv.ReadPositive("PERF_SINGLE_SNDHWM",
+                    PerfEnv.ReadPositive("PERF_SINGLE_HWM", 1000));
+                int rcvHwm = PerfEnv.ReadPositive("PERF_SINGLE_RCVHWM",
+                    PerfEnv.ReadPositive("PERF_SINGLE_HWM", 1000));
+                pubNode.PubSubHighWaterMark = sndHwm;
+                subNode.PubSubHighWaterMark = rcvHwm;
+            }
             pubNode.SetRoutingId(PubNodeRoutingId);
             subNode.SetRoutingId(SubNodeRoutingId);
             spotPub.SetRoutingId(PubSpotRoutingId);
             spotSub.SetRoutingId(SubSpotRoutingId);
 
-            ConfigureSpotTlsPublisherIfNeeded(pubNode, transport);
-            ConfigureSpotTlsSubscriberIfNeeded(subNode, transport);
+            ConfigureSpotNodeTlsIfNeeded(pubNode, transport);
+            ConfigureSpotNodeTlsIfNeeded(subNode, transport);
 
             string registryPub = EndpointFor(transport, "spot-registry-pub");
             string registryRouter = EndpointFor(transport,
                 "spot-registry-router");
+            ConfigureSpotRegistryTlsIfNeeded(registry, transport);
             registry.Bind(registryPub, registryRouter);
             registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
+            ConfigureSpotDiscoveryTlsIfNeeded(pubDiscovery, transport);
+            ConfigureSpotDiscoveryTlsIfNeeded(subDiscovery, transport);
             pubDiscovery.ConnectRegistry(registryRouter);
             subDiscovery.ConnectRegistry(registryRouter);
 

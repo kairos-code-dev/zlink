@@ -128,7 +128,7 @@ public static class PerfShared
                 ? value.ToString("F3", CultureInfo.InvariantCulture)
                 : value.ToString(CultureInfo.InvariantCulture);
             WriteStdoutLine(
-                $"RESULT,current,{pattern},{transport},{size},{metric},{formatted}");
+                $"RESULT,dotnet,{pattern},{transport},{size},{metric},{formatted}");
         }
     }
 
@@ -137,7 +137,7 @@ public static class PerfShared
     {
         _ = size;
         _ = reason;
-        WriteStdoutLine($"UNSUPPORTED,current,{pattern},{transport}");
+        WriteStdoutLine($"UNSUPPORTED,dotnet,{pattern},{transport}");
         return 0;
     }
 

@@ -3,6 +3,7 @@
 package systems.zlink.perf.single;
 
 import systems.zlink.Message;
+import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
 import systems.zlink.TopicMessage;
 import systems.zlink.perf.PerfUtil;
@@ -11,6 +12,7 @@ import systems.zlink.service.registry.Registry;
 import systems.zlink.service.registry.AutoConnectType;
 import systems.zlink.service.spot.Spot;
 import systems.zlink.service.spot.SpotNode;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 final class PerfSpot {
@@ -41,16 +43,25 @@ final class PerfSpot {
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
             PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-            registry.bind(registryPub, registryRouter);
-            discovery.connectRegistry(registryRouter);
-            publisherNode.attachDiscovery(discovery);
-            subscriberNode.attachDiscovery(discovery);
+            PerfUtil.configureServerTls(registry, config.transport());
+            PerfUtil.configureClientTls(discovery, config.transport());
             PerfUtil.applySpotOptions(publisherNode, config);
             PerfUtil.applySpotOptions(subscriberNode, config);
             PerfUtil.configureServerTls(publisherNode, config.transport());
+            PerfUtil.configureClientTls(publisherNode, config.transport());
+            PerfUtil.configureServerTls(subscriberNode, config.transport());
             PerfUtil.configureClientTls(subscriberNode, config.transport());
+            publisherNode.setRoutingId(routingId("z-java-perf-spot-publisher"));
+            subscriberNode.setRoutingId(routingId("a-java-perf-spot-subscriber"));
+            publisher.setRoutingId(routingId("z-java-perf-spot-publisher-spot"));
+            subscriber.setRoutingId(routingId("a-java-perf-spot-subscriber-spot"));
+            registry.bind(registryPub, registryRouter);
+            registry.setBroadcastInterval(Duration.ofMillis(50));
+            discovery.connectRegistry(registryRouter);
             publisherNode.bind(publisherEndpoint);
             subscriberNode.bind(subscriberEndpoint);
+            publisherNode.attachDiscovery(discovery);
+            subscriberNode.attachDiscovery(discovery);
             subscriber.setSubscription(topic);
 
             waitForReadyProbe(publisher, subscriber, config, topic, metrics);
@@ -169,5 +180,9 @@ final class PerfSpot {
             return endpoint;
         }
         return endpoint.replace("://127.0.0.1:", "://localhost:");
+    }
+
+    private static RoutingId routingId(String value) {
+        return RoutingId.fromBytes(value.getBytes(StandardCharsets.UTF_8));
     }
 }

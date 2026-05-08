@@ -345,7 +345,7 @@ with open(sys.argv[1], encoding="utf-8", errors="replace") as handle:
     for row in reader:
         if len(row) != 7:
             continue
-        if row[0] != "RESULT" or row[1] != "current":
+        if row[0] != "RESULT" or row[1] != "dotnet":
             continue
         if row[2] not in {expected, base}:
             continue
@@ -391,7 +391,7 @@ for path in (primary, secondary):
     with path.open(encoding="utf-8", errors="replace") as handle:
         reader = csv.reader(handle)
         for row in reader:
-            if len(row) != 7 or row[0] != "RESULT" or row[1] != "current":
+            if len(row) != 7 or row[0] != "RESULT" or row[1] != "dotnet":
                 continue
             if row[2] not in {expected, base} or row[3] != transport or row[4] != size:
                 continue
@@ -484,10 +484,10 @@ expected = sys.argv[1]
 transport = sys.argv[2]
 base = expected[len("MULTI_"):] if expected.startswith("MULTI_") else expected
 needles = {
-    f"UNSUPPORTED,current,{expected},{transport}",
-    f"UNSUPPORTED,current,{base},{transport}",
+    f"UNSUPPORTED,dotnet,{expected},{transport}",
+    f"UNSUPPORTED,dotnet,{base},{transport}",
 }
-canonical = f"UNSUPPORTED,current,{expected},{transport}"
+canonical = f"UNSUPPORTED,dotnet,{expected},{transport}"
 
 for raw_path in sys.argv[3:]:
     path = pathlib.Path(raw_path)
@@ -632,10 +632,18 @@ run_multi_process() {
   local control_fd="${4:-}"
   local background="${5:-0}"
   local shell_cmd="${PERF_BINARY@Q} --multi-${role} ${pattern@Q} ${transport@Q} ${size@Q}"
+  local effective_ready_timeout="${READY_TIMEOUT_MS}"
+  if [[ "${pattern}" == "MULTI_SPOT" || "${pattern}" == "MULTI_SPOT_REQREP" ]]; then
+    if [[ "${transport}" == "tls" || "${transport}" == "wss" ]]; then
+      if (( effective_ready_timeout < 12000 )); then
+        effective_ready_timeout=12000
+      fi
+    fi
+  fi
   local env_prefix=(
     "PERF_MULTI_CLIENTS=${pattern_clients}"
     "PERF_MULTI_DURATION_SECONDS=${DURATION}"
-    "PERF_MULTI_CONNECT_READY_TIMEOUT_MS=${READY_TIMEOUT_MS}"
+    "PERF_MULTI_CONNECT_READY_TIMEOUT_MS=${effective_ready_timeout}"
     "DOTNET_TieredCompilation=0"
   )
 
@@ -846,7 +854,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           printf 'START,%s\n' "${size}" >&${server_control_fd}
           printf 'START,%s\n' "${size}" >&${client_control_fd}
           if ! wait_for_result_line "${client_log}" \
-            "RESULT,current,SPOT,${transport},${size},latency_p99," \
+            "RESULT,dotnet,SPOT,${transport},${size},latency_p99," \
             $((DURATION + 30)); then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"
@@ -933,7 +941,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           fi
 
           if ! wait_for_result_line "${client_log}" \
-            "RESULT,current,${pattern#MULTI_},${transport},${size},latency_p99," \
+            "RESULT,dotnet,${pattern#MULTI_},${transport},${size},latency_p99," \
             $((DURATION + 30)); then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"

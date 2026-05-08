@@ -20,17 +20,42 @@ internal static class PerfMultiSpotClient
             return 1;
         }
 
+        string serviceName = MultiSpotServiceName(registryEndpoint);
         SpotClientConfig config = BuildConfig(options,
             NormalizeClientEndpoint(dataEndpoint, options.Transport),
-            NormalizeClientEndpoint(registryEndpoint, options.Transport));
+            NormalizeClientEndpoint(registryEndpoint, options.Transport),
+            serviceName);
         using var ctx = new Context();
         using var controlState = new RunnerControlState(config.Size);
         ApplyMultiClientContextOptions(ctx, options);
+
+        using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh,
+            config.ServiceName);
+        using var node = new SpotNode(ctx);
+
+        ConfigureSpotDiscoveryTlsIfNeeded(discovery, config.Transport);
+        ConfigureSpotNodeTlsIfNeeded(node, config.Transport);
+        ApplySpotSubscriberOptions(node, options);
+        discovery.ConnectRegistry(config.RegistryEndpoint);
+        node.Bind(MultiEndpointFor(config.Transport, "multi-spot-client", options));
+        node.AttachDiscovery(discovery);
+
         var slots = new List<SpotClientSlot>(config.ClientCount);
         try
         {
             for (int i = 0; i < config.ClientCount; i++)
-                slots.Add(CreateSlot(ctx, config, options, i));
+            {
+                var subscriber = node.CreateSpot();
+                subscriber.SetSubscription(Topic);
+                slots.Add(new SpotClientSlot(subscriber,
+                    new SpotClientSlotState(config.LatencySampleCap)));
+            }
+
+            if (!WaitForSubscriptionReady(node, config.ConnectReadyTimeoutMs))
+            {
+                Console.Error.WriteLine("multi_client_error:subscription_not_ready");
+                return 2;
+            }
 
             if (config.ReadySettleMs > 0)
                 Thread.Sleep(config.ReadySettleMs);
@@ -52,7 +77,7 @@ internal static class PerfMultiSpotClient
     }
 
     private static SpotClientConfig BuildConfig(PerfOptions options,
-        string dataEndpoint, string registryEndpoint)
+        string dataEndpoint, string registryEndpoint, string serviceName)
     {
         return new SpotClientConfig(
             options.Transport,
@@ -65,43 +90,7 @@ internal static class PerfMultiSpotClient
             ResolveMultiSpotRouteWarmupMs(),
             dataEndpoint,
             registryEndpoint,
-            MultiSpotServiceName(registryEndpoint));
-    }
-
-    private static SpotClientSlot CreateSlot(Context ctx,
-        SpotClientConfig config, PerfOptions options, int index)
-    {
-        var discovery = new Discovery(ctx, AutoConnectType.SpotMesh,
-            config.ServiceName);
-        var node = new SpotNode(ctx);
-        var subscriber = node.CreateSpot();
-        var state = new SpotClientSlotState(config.LatencySampleCap);
-
-        try
-        {
-            ConfigureSpotTlsSubscriberIfNeeded(node, config.Transport);
-            ApplySpotSubscriberOptions(node, options);
-            discovery.ConnectRegistry(config.RegistryEndpoint);
-            node.Bind(MultiEndpointFor(config.Transport,
-                $"multi-spot-client-{index}", options));
-            node.AttachDiscovery(discovery);
-            subscriber.SetSubscription(Topic);
-            if (!WaitForSubscriptionReady(node, config.ConnectReadyTimeoutMs))
-            {
-                Console.Error.WriteLine("multi_client_error:subscription_not_ready");
-                throw new TimeoutException("SPOT subscription route was not ready.");
-            }
-
-            return new SpotClientSlot(discovery, node, subscriber, state);
-        }
-        catch
-        {
-            state.Dispose();
-            subscriber.Dispose();
-            node.Dispose();
-            discovery.Dispose();
-            throw;
-        }
+            serviceName);
     }
 
     private static int RunActivePhase(List<SpotClientSlot> slots,
@@ -243,11 +232,8 @@ internal static class PerfMultiSpotClient
         {
             try
             {
-                foreach (SpotNodeSubjectEntry entry in node.SubjectsSnapshot())
-                {
-                    if (entry.Subject == Topic)
-                        return true;
-                }
+                if (node.StatusSnapshot().ReadySubjectCount > 0)
+                    return true;
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                             || IsInterrupted(ex.InternalErrno))
@@ -347,17 +333,12 @@ internal static class PerfMultiSpotClient
 
     private sealed class SpotClientSlot : IDisposable
     {
-        internal SpotClientSlot(Discovery discovery, SpotNode node,
-            Spot subscriber, SpotClientSlotState state)
+        internal SpotClientSlot(Spot subscriber, SpotClientSlotState state)
         {
-            Discovery = discovery;
-            Node = node;
             Subscriber = subscriber;
             State = state;
         }
 
-        internal Discovery Discovery { get; }
-        internal SpotNode Node { get; }
         internal Spot Subscriber { get; }
         internal SpotClientSlotState State { get; }
 
@@ -365,8 +346,6 @@ internal static class PerfMultiSpotClient
         {
             State.Dispose();
             Subscriber.Dispose();
-            Node.Dispose();
-            Discovery.Dispose();
         }
     }
 

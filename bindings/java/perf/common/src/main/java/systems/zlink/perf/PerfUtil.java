@@ -15,6 +15,8 @@ import systems.zlink.StreamSocket;
 import systems.zlink.SubSocket;
 import systems.zlink.TopicMessage;
 import systems.zlink.Context;
+import systems.zlink.service.discovery.Discovery;
+import systems.zlink.service.registry.Registry;
 import systems.zlink.service.spot.SpotNode;
 import systems.zlink.service.spot.Spot;
 import java.nio.file.Path;
@@ -203,6 +205,14 @@ public final class PerfUtil {
 
     public static void configureClientTls(SpotNode node, String transport) {
         PerfTransport.configureClientTls(node, transport);
+    }
+
+    public static void configureServerTls(Registry registry, String transport) {
+        PerfTransport.configureServerTls(registry, transport);
+    }
+
+    public static void configureClientTls(Discovery discovery, String transport) {
+        PerfTransport.configureClientTls(discovery, transport);
     }
 
     public static Context newContext(Config config) {

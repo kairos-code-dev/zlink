@@ -19,11 +19,13 @@ internal static class PerfMultiSpotServer
             config.ServiceName);
         using var nodePub = new SpotNode(ctx);
         using var spotPub = nodePub.CreateSpot();
+        ConfigureSpotRegistryTlsIfNeeded(registry, config.Transport);
         registry.Bind(config.RegistryPubEndpoint, config.RegistryRouterEndpoint);
         registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
+        ConfigureSpotDiscoveryTlsIfNeeded(discovery, config.Transport);
         discovery.ConnectRegistry(config.RegistryRouterEndpoint);
 
-        ConfigureSpotTlsPublisherIfNeeded(nodePub, config.Transport);
+        ConfigureSpotNodeTlsIfNeeded(nodePub, config.Transport);
         ConfigureSpotNodePublisher(nodePub, options);
         nodePub.Bind(config.DataEndpoint);
         nodePub.AttachDiscovery(discovery);

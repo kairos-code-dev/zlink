@@ -38,6 +38,8 @@ final class PerfMultiSpot {
              Spot publisher = node.createSpot()) {
             node.setRoutingId(routingId("z-java-multi-spot-server"));
             publisher.setRoutingId(routingId("z-java-multi-spot-server-spot"));
+            PerfUtil.configureServerTls(registry, config.transport());
+            PerfUtil.configureClientTls(discovery, config.transport());
             registry.bind(registryPubEndpoint, registryRouterEndpoint);
             registry.setBroadcastInterval(Duration.ofMillis(50));
             discovery.connectRegistry(registryRouterEndpoint);
@@ -82,6 +84,7 @@ final class PerfMultiSpot {
             node.setRoutingId(routingId("a-java-multi-spot-client"));
             PerfUtil.applySpotOptions(node, config);
             PerfUtil.configureClientTls(node, config.transport());
+            PerfUtil.configureClientTls(discovery, config.transport());
 
             List<Spot> subscribers = new ArrayList<>(config.clients());
             try {

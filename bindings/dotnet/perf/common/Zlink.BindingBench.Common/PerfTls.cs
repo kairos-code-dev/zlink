@@ -52,6 +52,34 @@ public static class PerfTls
     public static void ConfigureSpotTlsPublisherIfNeeded(SpotNode spotNode,
         string transport, bool verbose = true)
     {
+        ConfigureSpotNodeTlsIfNeeded(spotNode, transport, verbose);
+    }
+
+    public static void ConfigureSpotTlsSubscriberIfNeeded(SpotNode spotNode,
+        string transport, bool verbose = true)
+    {
+        ConfigureSpotNodeTlsIfNeeded(spotNode, transport, verbose);
+    }
+
+    public static void ConfigureSpotNodeTlsIfNeeded(SpotNode spotNode,
+        string transport, bool verbose = true)
+    {
+        if (!IsSecureTransport(transport))
+            return;
+        if (!TryResolvePerfTlsPaths(out string certPath, out string keyPath,
+                out string caPath))
+        {
+            throw new InvalidOperationException(verbose
+                ? "TLS certificate files not found under bindings/dotnet/tests/certs"
+                : "TLS certificate files not found.");
+        }
+        spotNode.SetTlsServer(certPath, keyPath);
+        spotNode.SetTlsClient(caPath, "localhost");
+    }
+
+    public static void ConfigureSpotRegistryTlsIfNeeded(Registry registry,
+        string transport, bool verbose = true)
+    {
         if (!IsSecureTransport(transport))
             return;
         if (!TryResolvePerfTlsPaths(out string certPath, out string keyPath,
@@ -61,10 +89,10 @@ public static class PerfTls
                 ? "TLS certificate files not found under bindings/dotnet/tests/certs"
                 : "TLS certificate files not found.");
         }
-        spotNode.SetTlsServer(certPath, keyPath);
+        registry.SetTlsServer(certPath, keyPath);
     }
 
-    public static void ConfigureSpotTlsSubscriberIfNeeded(SpotNode spotNode,
+    public static void ConfigureSpotDiscoveryTlsIfNeeded(Discovery discovery,
         string transport, bool verbose = true)
     {
         if (!IsSecureTransport(transport))
@@ -75,7 +103,7 @@ public static class PerfTls
                 ? "TLS CA file not found under bindings/dotnet/tests/certs"
                 : "TLS CA file not found.");
         }
-        spotNode.SetTlsClient(caPath, "localhost");
+        discovery.SetTlsClient(caPath, "localhost");
     }
 
     public static bool TryResolvePerfTlsPaths(out string certPath,

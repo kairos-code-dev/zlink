@@ -226,7 +226,7 @@ import sys
 path = pathlib.Path(sys.argv[1])
 pattern = sys.argv[2]
 transport = sys.argv[3]
-needle = f"UNSUPPORTED,current,{pattern},{transport}"
+needle = f"UNSUPPORTED,dotnet,{pattern},{transport}"
 
 if not path.exists():
     raise SystemExit(1)
@@ -333,7 +333,7 @@ with open(sys.argv[1], encoding="utf-8", errors="replace") as handle:
     for row in reader:
         if len(row) != 7:
             continue
-        if row[0] != "RESULT" or row[1] != "current":
+        if row[0] != "RESULT" or row[1] != "dotnet":
             continue
         if row[2] != sys.argv[2] or row[3] != sys.argv[3] or row[4] != sys.argv[4]:
             continue
@@ -501,7 +501,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
       [[ -n "${transport}" ]] || continue
 
       if ! pattern_supports_transport "${pattern}" "${transport}"; then
-        print_line "UNSUPPORTED,current,${pattern},${transport}"
+        print_line "UNSUPPORTED,dotnet,${pattern},${transport}"
         continue
       fi
 

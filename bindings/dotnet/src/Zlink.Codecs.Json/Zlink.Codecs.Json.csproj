@@ -3,6 +3,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Systems.Zlink.Codecs.Json</AssemblyName>
     <PackageId>Systems.Zlink.Codecs.Json</PackageId>
     <RootNamespace>Systems.Zlink.Codecs.Json</RootNamespace>
     <Version>5.3.4</Version>

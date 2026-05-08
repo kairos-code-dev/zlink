@@ -11,8 +11,6 @@
     <RootNamespace>Systems.Zlink.Codecs.Protobuf</RootNamespace>
     <Authors>ulalax</Authors>
     <Description>Protobuf codec extensions for zlink .NET bindings</Description>
-    <PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/ulala-x/zlink</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>

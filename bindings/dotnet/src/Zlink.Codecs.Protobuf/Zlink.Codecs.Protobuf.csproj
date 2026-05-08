@@ -4,6 +4,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Systems.Zlink.Codecs.Protobuf</AssemblyName>
     <PackageId>Systems.Zlink.Codecs.Protobuf</PackageId>
     <RootNamespace>Systems.Zlink.Codecs.Protobuf</RootNamespace>
     <Version>5.3.4</Version>

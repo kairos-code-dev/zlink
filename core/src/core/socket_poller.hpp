@@ -42,10 +42,12 @@ class socket_poller_t
 
     int add (socket_base_t *socket_, void *user_data_, short events_);
     int modify (const socket_base_t *socket_, short events_);
+    int modify_user_data (const socket_base_t *socket_, void *user_data_);
     int remove (socket_base_t *socket_);
 
     int add_fd (fd_t fd_, void *user_data_, short events_);
     int modify_fd (fd_t fd_, short events_);
+    int modify_fd_user_data (fd_t fd_, void *user_data_);
     int remove_fd (fd_t fd_);
     // Returns an error (signalers are not used).
     int signaler_fd (fd_t *fd_) const;

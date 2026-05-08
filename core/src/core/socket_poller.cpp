@@ -139,6 +139,21 @@ int zlink::socket_poller_t::modify (const socket_base_t *socket_, short events_)
     return 0;
 }
 
+int zlink::socket_poller_t::modify_user_data (const socket_base_t *socket_,
+                                              void *user_data_)
+{
+    const items_t::iterator it =
+      find_if2 (_items.begin (), _items.end (), socket_, &is_socket);
+
+    if (it == _items.end ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    it->user_data = user_data_;
+    return 0;
+}
+
 
 int zlink::socket_poller_t::modify_fd (fd_t fd_, short events_)
 {
@@ -156,6 +171,20 @@ int zlink::socket_poller_t::modify_fd (fd_t fd_, short events_)
     it->events = events_;
     _need_rebuild = true;
 
+    return 0;
+}
+
+int zlink::socket_poller_t::modify_fd_user_data (fd_t fd_, void *user_data_)
+{
+    const items_t::iterator it =
+      find_if2 (_items.begin (), _items.end (), fd_, &is_fd);
+
+    if (it == _items.end ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    it->user_data = user_data_;
     return 0;
 }
 

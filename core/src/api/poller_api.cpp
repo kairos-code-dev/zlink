@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include <new>
+#include <stdint.h>
 #include <unordered_map>
 #include <vector>
 
@@ -17,12 +18,29 @@
 
 namespace
 {
+void *poller_index_user_data (size_t index_);
+bool poller_index_from_user_data (void *user_data_,
+                                  size_t item_count_,
+                                  size_t *index_out_);
+bool registration_matches_native (
+  const poller_registration_t &registration_,
+  const zlink::socket_poller_t::event_t &native_);
+
 const poller_registration_t *find_registration_for_native (
   poller_handle_t *poller_,
   const zlink::socket_poller_t::event_t &native_)
 {
     if (!poller_)
         return NULL;
+    size_t native_index = 0;
+    if (poller_index_from_user_data (native_.user_data,
+                                     poller_->registrations.size (),
+                                     &native_index)) {
+        const poller_registration_t &registration =
+          poller_->registrations[native_index];
+        if (registration_matches_native (registration, native_))
+            return &registration;
+    }
     if (native_.socket) {
         std::unordered_map<void *, size_t>::const_iterator it =
           poller_->socket_registration_indices.find (native_.socket);
@@ -147,6 +165,51 @@ long remaining_timeout_ms (long timeout_ms_,
     return static_cast<long> (deadline_ms_ - now_ms);
 }
 
+void *poller_index_user_data (size_t index_)
+{
+    return reinterpret_cast<void *> (static_cast<uintptr_t> (index_) + 1u);
+}
+
+bool poller_index_from_user_data (void *user_data_,
+                                  size_t item_count_,
+                                  size_t *index_out_)
+{
+    if (!user_data_ || !index_out_)
+        return false;
+    const uintptr_t encoded = reinterpret_cast<uintptr_t> (user_data_);
+    if (encoded == 0u)
+        return false;
+    const uintptr_t index_value = encoded - 1u;
+    if (index_value >= static_cast<uintptr_t> (item_count_)) {
+        return false;
+    }
+    *index_out_ = static_cast<size_t> (index_value);
+    return true;
+}
+
+bool registration_matches_native (
+  const poller_registration_t &registration_,
+  const zlink::socket_poller_t::event_t &native_)
+{
+    return (registration_.socket && registration_.socket == native_.socket)
+           || (!registration_.socket && !native_.socket
+               && registration_.fd == native_.fd);
+}
+
+void set_pollitem_revents_by_identity (
+  zlink_pollitem_t *items_,
+  int nitems_,
+  const zlink::socket_poller_t::event_t &event_)
+{
+    for (int j = 0; j < nitems_; ++j) {
+        if ((items_[j].socket && items_[j].socket == event_.socket)
+            || (!items_[j].socket && items_[j].fd == event_.fd)) {
+            items_[j].revents = event_.events;
+            return;
+        }
+    }
+}
+
 int fill_public_poller_event_from_registration (
   const poller_registration_t *registration_,
   const zlink::socket_poller_t::event_t &native_,
@@ -189,7 +252,7 @@ int fill_public_poller_event_from_registration (
         event_out_->socket = NULL;
         event_out_->fd = native_.fd;
         event_out_->timer = registration_->subject;
-        event_out_->user_data = native_.user_data;
+        event_out_->user_data = registration_->user_data;
         event_out_->events = native_.events;
         return 0;
     }
@@ -214,7 +277,7 @@ int fill_public_poller_event_from_registration (
     event_out_->socket = NULL;
     event_out_->fd = native_.fd;
     event_out_->timer = NULL;
-    event_out_->user_data = native_.user_data;
+    event_out_->user_data = registration_->user_data;
     event_out_->events = native_.events;
     return 0;
 }
@@ -231,7 +294,10 @@ int poller_add_registration (poller_handle_t *poller_,
         errno = EFAULT;
         return -1;
     }
-    if (poller_->poller.add (socket_, user_data_, events_) != 0)
+    const size_t registration_index = poller_->registrations.size ();
+    if (poller_->poller.add (socket_, poller_index_user_data (registration_index),
+                             events_)
+        != 0)
         return -1;
 
     poller_registration_t registration;
@@ -258,7 +324,10 @@ int poller_add_fd_registration (poller_handle_t *poller_,
         errno = EFAULT;
         return -1;
     }
-    if (poller_->poller.add_fd (fd_, user_data_, events_) != 0)
+    const size_t registration_index = poller_->registrations.size ();
+    if (poller_->poller.add_fd (fd_, poller_index_user_data (registration_index),
+                                events_)
+        != 0)
         return -1;
 
     poller_registration_t registration;
@@ -343,10 +412,16 @@ int poller_remove_registration_at (poller_handle_t *poller_, int index_)
             poller_->registrations[index] = poller_->registrations[last];
             const poller_registration_t &moved =
               poller_->registrations[index];
-            if (moved.socket)
+            if (moved.socket) {
                 poller_->socket_registration_indices[moved.socket] = index;
-            else
+                (void) poller_->poller.modify_user_data (
+                  static_cast<zlink::socket_base_t *> (moved.socket),
+                  poller_index_user_data (index));
+            } else {
                 poller_->fd_registration_indices[moved.fd] = index;
+                (void) poller_->poller.modify_fd_user_data (
+                  moved.fd, poller_index_user_data (index));
+            }
         }
         poller_->registrations.pop_back ();
     }
@@ -396,15 +471,10 @@ int zlink_poll (zlink_pollitem_t *items_,
     }
 
     zlink::socket_poller_t poller;
-    const bool use_event_index = nitems_ > 8;
-    std::unordered_map<void *, int> socket_item_indices;
-    std::unordered_map<zlink_fd_t, int> fd_item_indices;
-    if (use_event_index) {
-        socket_item_indices.reserve (static_cast<size_t> (nitems_));
-        fd_item_indices.reserve (static_cast<size_t> (nitems_));
-    }
     for (int i = 0; i < nitems_; ++i) {
         items_[i].revents = 0;
+        void *index_user_data =
+          poller_index_user_data (static_cast<size_t> (i));
         if (items_[i].socket) {
             socket_handle_t handle = as_socket_handle (items_[i].socket);
             if (!handle.socket) {
@@ -419,19 +489,18 @@ int zlink_poll (zlink_pollitem_t *items_,
                     *error_out_ = ZLINK_CONFIG_INVALID_ARGUMENT;
                 return -1;
             }
-            if (poller.add (handle.socket, NULL, items_[i].events) != 0) {
+            if (poller.add (handle.socket, index_user_data, items_[i].events)
+                != 0) {
                 if (error_out_)
                     *error_out_ = zlink::config_result_internal::from_errno (errno);
                 return -1;
             }
-            if (use_event_index)
-                socket_item_indices[handle.socket] = i;
-        } else if (poller.add_fd (items_[i].fd, NULL, items_[i].events) != 0) {
+        } else if (poller.add_fd (items_[i].fd, index_user_data,
+                                  items_[i].events)
+                   != 0) {
             if (error_out_)
                 *error_out_ = zlink::config_result_internal::from_errno (errno);
             return -1;
-        } else if (use_event_index) {
-            fd_item_indices[items_[i].fd] = i;
         }
     }
 
@@ -448,27 +517,21 @@ int zlink_poll (zlink_pollitem_t *items_,
             *error_out_ = ZLINK_CONFIG_OK;
         return 0;
     }
+    if (nitems_ == 1) {
+        items_[0].revents = events[0].events;
+        if (error_out_)
+            *error_out_ = ZLINK_CONFIG_OK;
+        return rc;
+    }
 
     for (int i = 0; i < rc; ++i) {
-        if (!use_event_index) {
-            for (int j = 0; j < nitems_; ++j) {
-                if ((items_[j].socket && items_[j].socket == events[i].socket)
-                    || (!items_[j].socket && items_[j].fd == events[i].fd)) {
-                    items_[j].revents = events[i].events;
-                    break;
-                }
-            }
-        } else if (events[i].socket) {
-            const std::unordered_map<void *, int>::const_iterator it =
-              socket_item_indices.find (events[i].socket);
-            if (it != socket_item_indices.end ())
-                items_[it->second].revents = events[i].events;
-        } else {
-            const std::unordered_map<zlink_fd_t, int>::const_iterator it =
-              fd_item_indices.find (events[i].fd);
-            if (it != fd_item_indices.end ())
-                items_[it->second].revents = events[i].events;
+        size_t index = 0;
+        if (poller_index_from_user_data (
+              events[i].user_data, static_cast<size_t> (nitems_), &index)) {
+            items_[static_cast<int> (index)].revents = events[i].events;
+            continue;
         }
+        set_pollitem_revents_by_identity (items_, nitems_, events[i]);
     }
     if (error_out_)
         *error_out_ = ZLINK_CONFIG_OK;

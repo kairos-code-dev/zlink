@@ -897,6 +897,71 @@ static int spot_request_channel_parts(void *spot,
     return ZLINK_SUBMIT_OK;
 }
 
+static int spot_request_spot_parts(void *spot,
+                                   const zlink_routing_id_t *dest_node_rid,
+                                   const zlink_routing_id_t *dest_spot_rid,
+                                   zlink_msg_t *parts,
+                                   size_t part_count,
+                                   zlink_reply_handler_fn handler,
+                                   void *userdata,
+                                   zlink_send_flags_t flags,
+                                   uint32_t timeout_ms)
+{
+    if (!parts || part_count == 0) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+
+    for (size_t i = 0; i < part_count; ++i) {
+        const bool is_final = (i + 1u == part_count);
+        const zlink_part_flag_t part_flag =
+          is_final ? ZLINK_PART_FINAL : ZLINK_PART_MORE;
+        int rc = zlink_spot_request_spot_part(
+          spot, dest_node_rid, dest_spot_rid, &parts[i],
+          is_final ? handler : NULL, is_final ? userdata : NULL, flags,
+          part_flag, is_final ? timeout_ms : 0u);
+        if (rc != ZLINK_SUBMIT_OK) {
+            for (size_t j = i + 1u; j < part_count; ++j)
+                zlink_msg_close(&parts[j]);
+            return rc;
+        }
+    }
+
+    return ZLINK_SUBMIT_OK;
+}
+
+static int spot_request_router_parts(void *spot,
+                                     const zlink_routing_id_t *peer_rid,
+                                     zlink_msg_t *parts,
+                                     size_t part_count,
+                                     zlink_reply_handler_fn handler,
+                                     void *userdata,
+                                     zlink_send_flags_t flags,
+                                     uint32_t timeout_ms)
+{
+    if (!parts || part_count == 0) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+
+    for (size_t i = 0; i < part_count; ++i) {
+        const bool is_final = (i + 1u == part_count);
+        const zlink_part_flag_t part_flag =
+          is_final ? ZLINK_PART_FINAL : ZLINK_PART_MORE;
+        int rc = zlink_spot_request_router_part(
+          spot, peer_rid, &parts[i], is_final ? handler : NULL,
+          is_final ? userdata : NULL, flags, part_flag,
+          is_final ? timeout_ms : 0u);
+        if (rc != ZLINK_SUBMIT_OK) {
+            for (size_t j = i + 1u; j < part_count; ++j)
+                zlink_msg_close(&parts[j]);
+            return rc;
+        }
+    }
+
+    return ZLINK_SUBMIT_OK;
+}
+
 static int spot_subscribe_recv_parts(void *spot,
                                      zlink_routing_id_t *source_rid,
                                      char *service_name,
@@ -2018,6 +2083,10 @@ static napi_value create_monitor_snapshot_value(
                        snapshot.auto_hwm_applied_sndhwm);
     set_int64_property(env, obj, "autoHwmAppliedRcvHwm",
                        snapshot.auto_hwm_applied_rcvhwm);
+    set_int64_property(env, obj, "autoHwmEffectiveSndBuf",
+                       snapshot.auto_hwm_effective_sndbuf);
+    set_int64_property(env, obj, "autoHwmEffectiveRcvBuf",
+                       snapshot.auto_hwm_effective_rcvbuf);
     set_int64_property(env, obj, "autoHwmLastRecalcMs",
                        static_cast<int64_t>(snapshot.auto_hwm_last_recalc_ms));
     set_uint32_property(env, obj, "autoHwmLastRecalcReason",
@@ -2822,6 +2891,151 @@ napi_value spot_node_setsockopt(napi_env env, napi_callback_info info)
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
+}
+
+napi_value spot_node_getsockopt(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error(env, NULL, "spotNodeGetOption expects node, option");
+        return NULL;
+    }
+
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    int32_t opt = 0;
+    if (napi_get_value_int32(env, argv[1], &opt) != napi_ok) {
+        napi_throw_type_error(env, NULL, "option must be an integer");
+        return NULL;
+    }
+
+    size_t len = sizeof(int);
+    void *data = NULL;
+    napi_value buf;
+    napi_create_buffer(env, len, &data, &buf);
+    int rc = zlink_get_spot_node_option(
+      node, static_cast<zlink_spot_node_option_t>(opt), data, &len);
+    if (rc != 0)
+        return throw_last_error(env, "spotNodeGetOption failed");
+    return buf;
+}
+
+napi_value spot_node_entry_spot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 1) {
+        napi_throw_type_error(env, NULL, "spotNodeEntrySpot expects node");
+        return NULL;
+    }
+
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    void *spot = NULL;
+    zlink_config_result_t rc = zlink_spot_node_entry_spot(node, &spot);
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "spotNodeEntrySpot failed");
+
+    napi_value out;
+    napi_create_external(env, spot, NULL, NULL, &out);
+    return out;
+}
+
+napi_value spot_node_spot_lookup(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error(env, NULL, "spotNodeSpotLookup expects node, spotRid");
+        return NULL;
+    }
+
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    zlink_routing_id_t spot_rid;
+    if (!parse_routing_id_value(env, argv[1], &spot_rid))
+        return NULL;
+
+    void *spot = NULL;
+    zlink_config_result_t rc = zlink_spot_node_spot_lookup(node, &spot_rid, &spot);
+    if (rc == ZLINK_CONFIG_NOT_FOUND) {
+        napi_value none;
+        napi_get_null(env, &none);
+        return none;
+    }
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "spotNodeSpotLookup failed");
+
+    napi_value out;
+    napi_create_external(env, spot, NULL, NULL, &out);
+    return out;
+}
+
+napi_value spot_set_option(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 3) {
+        napi_throw_type_error(env, NULL, "spotSetOption expects spot, option, value");
+        return NULL;
+    }
+
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    int32_t opt = 0;
+    if (napi_get_value_int32(env, argv[1], &opt) != napi_ok) {
+        napi_throw_type_error(env, NULL, "option must be an integer");
+        return NULL;
+    }
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[2], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "value must be Buffer");
+        return NULL;
+    }
+
+    int rc = zlink_set_spot_option(
+      spot, static_cast<zlink_spot_option_t>(opt), data, len);
+    if (rc != 0)
+        return throw_last_error(env, "spotSetOption failed");
+
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_get_option(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error(env, NULL, "spotGetOption expects spot, option");
+        return NULL;
+    }
+
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    int32_t opt = 0;
+    if (napi_get_value_int32(env, argv[1], &opt) != napi_ok) {
+        napi_throw_type_error(env, NULL, "option must be an integer");
+        return NULL;
+    }
+
+    size_t len = sizeof(int);
+    void *data = NULL;
+    napi_value buf;
+    napi_create_buffer(env, len, &data, &buf);
+    int rc = zlink_get_spot_option(
+      spot, static_cast<zlink_spot_option_t>(opt), data, &len);
+    if (rc != 0)
+        return throw_last_error(env, "spotGetOption failed");
+    return buf;
 }
 
 napi_value spot_node_status_snapshot(napi_env env, napi_callback_info info)
@@ -3831,6 +4045,113 @@ napi_value spot_request_channel(napi_env env, napi_callback_info info)
             state->tsfn = NULL;
         }
         return throw_last_error(env, "spotRequestChannel failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_request_spot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[7];
+    size_t argc = 7;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 7) {
+        napi_throw_type_error(
+          env, NULL,
+          "spotRequestSpot requires (spot, destNodeRid, destSpotRid, parts, handler, flags, timeoutMs)");
+        return NULL;
+    }
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    zlink_routing_id_t dest_node_rid;
+    zlink_routing_id_t dest_spot_rid;
+    if (!parse_routing_id_value(env, argv[1], &dest_node_rid))
+        return NULL;
+    if (!parse_routing_id_value(env, argv[2], &dest_spot_rid))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[3], &parts))
+        return NULL;
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[4], &handler_type);
+    if (handler_type != napi_function) {
+        close_msg_vector(parts);
+        napi_throw_type_error(env, NULL, "spotRequestSpot handler must be a function");
+        return NULL;
+    }
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[5], &flags);
+    int32_t timeout_ms = 0;
+    napi_get_value_int32(env, argv[6], &timeout_ms);
+    request_js_state_t *state = create_request_js_state(env, argv[4]);
+    if (!state) {
+        close_msg_vector(parts);
+        return NULL;
+    }
+    int rc = spot_request_spot_parts(spot, &dest_node_rid, &dest_spot_rid,
+                                     parts.data(), parts.size(),
+                                     request_reply_callback_trampoline, state,
+                                     static_cast<zlink_send_flags_t>(flags),
+                                     static_cast<uint32_t>(timeout_ms));
+    if (rc != ZLINK_SUBMIT_OK) {
+        if (state->tsfn) {
+            (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_abort);
+            state->tsfn = NULL;
+        }
+        return throw_last_error(env, "spotRequestSpot failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_request_router(napi_env env, napi_callback_info info)
+{
+    napi_value argv[6];
+    size_t argc = 6;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 6) {
+        napi_throw_type_error(
+          env, NULL,
+          "spotRequestRouter requires (spot, peerRid, parts, handler, flags, timeoutMs)");
+        return NULL;
+    }
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    zlink_routing_id_t peer_rid;
+    if (!parse_routing_id_value(env, argv[1], &peer_rid))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[2], &parts))
+        return NULL;
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[3], &handler_type);
+    if (handler_type != napi_function) {
+        close_msg_vector(parts);
+        napi_throw_type_error(env, NULL, "spotRequestRouter handler must be a function");
+        return NULL;
+    }
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[4], &flags);
+    int32_t timeout_ms = 0;
+    napi_get_value_int32(env, argv[5], &timeout_ms);
+    request_js_state_t *state = create_request_js_state(env, argv[3]);
+    if (!state) {
+        close_msg_vector(parts);
+        return NULL;
+    }
+    int rc = spot_request_router_parts(spot, &peer_rid, parts.data(),
+                                       parts.size(),
+                                       request_reply_callback_trampoline, state,
+                                       static_cast<zlink_send_flags_t>(flags),
+                                       static_cast<uint32_t>(timeout_ms));
+    if (rc != ZLINK_SUBMIT_OK) {
+        if (state->tsfn) {
+            (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_abort);
+            state->tsfn = NULL;
+        }
+        return throw_last_error(env, "spotRequestRouter failed");
     }
     napi_value ok;
     napi_get_undefined(env, &ok);

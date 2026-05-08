@@ -2,7 +2,7 @@
 
 'use strict';
 
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const {
   createMetricCollector,
   createPayload,
@@ -59,7 +59,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
   applyContextPolicy(ctx);
   const receiver = new zlink.RouterSocket(ctx);
-  const receiverMonitor = receiver.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
+  const receiverMonitor = receiver.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
   const endpoint = await benchmarkEndpoint(options.transport, `router-router-${msgSize}`);
   let worker = null;
 

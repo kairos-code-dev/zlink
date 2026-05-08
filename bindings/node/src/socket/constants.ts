@@ -34,11 +34,14 @@ export const SocketOption = Object.freeze({
   ROUTING_ID: 5, SUBSCRIBE: 6, UNSUBSCRIBE: 7,
   ROUTER_MANDATORY: 0x3101,
   PROBE_ROUTER: 0x3103, CONNECT_ROUTING_ID: 0x3104,
-  DEALER_PROBE: 0x3201,
+  ROUTER_REQUEST_TIMEOUT_MS: 0x3105, ROUTER_WEIGHT: 0x3106,
+  DEALER_PROBE: 0x3201, DEALER_REQUEST_TIMEOUT_MS: 0x3202,
+  DEALER_WEIGHT: 0x3203,
   XPUB_VERBOSE: 0x3301, XPUB_VERBOSER: 0x3302, XPUB_MANUAL: 0x3303,
   XPUB_MANUAL_LAST_VALUE: 0x3304, XPUB_NODROP: 0x3305,
-  XPUB_WELCOME_MSG: 0x3306, TOPICS_COUNT: 0x3307,
-  ONLY_FIRST_SUBSCRIBE: 0x3308, SUB_TOPICS_COUNT: 0x3400,
+  XPUB_WELCOME_MSG: 0x3306, XPUB_TOPICS_COUNT: 0x3307,
+  XPUB_APPROVE_SUBSCRIBE: 0x3308, XPUB_REJECT_SUBSCRIBE: 0x3309,
+  SUB_TOPICS_COUNT: 0x3400,
   STREAM_NOTIFY: 0x3501
 } as const);
 
@@ -54,3 +57,12 @@ export const RidDuplicatePolicy = Object.freeze({
 } as const);
 export type RidDuplicatePolicy =
   typeof RidDuplicatePolicy[keyof typeof RidDuplicatePolicy];
+
+export const PollEventFlag = Object.freeze({
+  PollIn: 1,
+  PollOut: 2,
+  PollErr: 4,
+  PollPri: 8
+} as const);
+export type PollEventFlagValue =
+  typeof PollEventFlag[keyof typeof PollEventFlag];

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyContextPolicy, applySocketPolicy, recvNoWait, resolveMultiLatencySampleCap, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWait, resolveMultiLatencySampleCap, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 const SERVER_ID = Buffer.from('multi-router-router-server', 'ascii');
 const SERVER_ROUTING_ID = zlink.RoutingId.fromBytes(SERVER_ID);
 async function main() {
@@ -28,7 +28,7 @@ async function main() {
         }
         for (let i = 0; i < routers.length; i += 1) {
             await waitForConnectionReady(routers[i], () => routers[i].connect(options.endpoint));
-            poller.addSocket(routers[i], POLLIN | POLLOUT, i);
+            poller.add(routers[i], pollEvents(POLLIN | POLLOUT), i);
         }
         const runId = createRunId(1);
         const activeStartNs = currentEpochNs();
@@ -86,10 +86,10 @@ async function main() {
                 if (!Number.isInteger(index)) {
                     continue;
                 }
-                if ((event.events & POLLOUT) !== 0) {
+                if (pollEventHas(event, POLLOUT)) {
                     sendPending[index] = false;
                 }
-                if ((event.events & POLLIN) !== 0) {
+                if (pollEventHas(event, POLLIN)) {
                     drainReply(index);
                 }
             }

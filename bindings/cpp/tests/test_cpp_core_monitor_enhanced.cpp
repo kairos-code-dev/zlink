@@ -59,7 +59,7 @@ static void test_monitor_open_and_connection_ready ()
     assert (ready.routing_id.len () > 0);
     assert (!ready.remote_address.empty () || !ready.local_address.empty ());
 
-    assert (client.close () == 0);
+    client.close ();
 
     zlink::monitor_event_t disconnected;
     assert (wait_for_event (

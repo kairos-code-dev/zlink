@@ -28,13 +28,13 @@ int main ()
            std::vector<zlink::message_t> parts) {
           actor_sample_join_reply (capture, result, std::move (parts));
       },
-      zlink::send_flags_t::dontwait, std::chrono::milliseconds (1000)));
+      ZLINK_DONTWAIT, std::chrono::milliseconds (1000)));
     assert (wait_until_flag (capture, &actor_sample_capture_t::joined));
     assert (capture.join_result == zlink::request_result_t::ok);
 
     zlink::message_t event = zlink::message_t::from_string ("move:north");
-    assert (stream.send_bound_actor_part (
-      node, session, "room-player-1", event, zlink::send_flags_t::dontwait));
+    assert (stream.send_bound_actor (
+      node, session, "room-player-1", event, ZLINK_DONTWAIT));
     assert (wait_until_flag (capture, &actor_sample_capture_t::actor_read));
     assert (capture.payload == "move:north");
 

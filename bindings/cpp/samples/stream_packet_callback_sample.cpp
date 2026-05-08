@@ -38,7 +38,7 @@ int main ()
     zlink::context_t ctx;
     zlink::stream_socket_t server (ctx);
     zlink::monitor_handle_t server_monitor = server.monitor_handle ();
-    server.stream_options ().notify (false);
+    server.options ().notify (false);
 
     server.bind ("tcp://127.0.0.1:0");
     const std::string endpoint = server.options ().last_endpoint ();

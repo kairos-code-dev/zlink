@@ -74,13 +74,13 @@ inline bool wait_for_monitor_readable (MonitorLike &monitor_, int timeout_ms_)
     if (!poller.valid ())
         return false;
     try {
-        poller.add (monitor_, zlink::poll_event::pollin);
+        poller.add (monitor_, zlink::poll_event_flag_t::pollin);
     }
     catch (const zlink::zlink_error_t &) {
         return false;
     }
 
-    return poller.wait (timeout_ms_).has_value ();
+    return poller.wait (std::chrono::milliseconds (timeout_ms_)).has_value ();
 }
 
 inline bool wait_for_socket_monitor_event (zlink::monitor_handle_t &monitor_,
@@ -101,7 +101,7 @@ inline bool wait_for_socket_monitor_event (zlink::monitor_handle_t &monitor_,
             continue;
 
         const std::optional<zlink::monitor_event_t> event =
-          monitor_.recv (zlink::recv_flags_t::dontwait);
+          monitor_.recv (ZLINK_DONTWAIT);
         if (!event)
             continue;
         if (static_cast<uint64_t> (event->event) != event_type_)

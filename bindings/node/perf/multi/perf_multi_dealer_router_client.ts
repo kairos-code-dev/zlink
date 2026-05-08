@@ -2,7 +2,7 @@
 
 'use strict';
 
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const {
   createMetricCollector,
   createPayload,
@@ -19,6 +19,8 @@ const {
   POLLOUT,
   applyContextPolicy,
   applySocketPolicy,
+  pollEvents,
+  pollEventHas,
   recvNoWait,
   resolveMultiLatencySampleCap,
   trySocketSend,
@@ -47,7 +49,7 @@ async function main() {
     }
     for (let i = 0; i < dealers.length; i += 1) {
       await waitForConnectionReady(dealers[i], () => dealers[i].connect(options.endpoint));
-      poller.addSocket(dealers[i], POLLIN | POLLOUT, i);
+      poller.add(dealers[i], pollEvents(POLLIN | POLLOUT), i);
     }
     const runId = createRunId(1);
     const activeStartNs = currentEpochNs();
@@ -111,10 +113,10 @@ async function main() {
         if (!Number.isInteger(index)) {
           continue;
         }
-        if ((event.events & POLLOUT) !== 0) {
+        if (pollEventHas(event, POLLOUT)) {
           sendPending[index] = false;
         }
-        if ((event.events & POLLIN) !== 0) {
+        if (pollEventHas(event, POLLIN)) {
           drainReply(index);
         }
       }

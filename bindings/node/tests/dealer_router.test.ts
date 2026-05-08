@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 
 test('dealer/router uses routing id through Received and routed send', () => {
   const ctx = new zlink.Context();

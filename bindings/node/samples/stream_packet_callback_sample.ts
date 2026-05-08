@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 
 async function reservePort() {
   const server = net.createServer();
@@ -17,9 +17,10 @@ async function reservePort() {
 }
 
 function frame(payload) {
-  const framed = Buffer.allocUnsafe(payload.length + 4);
-  framed.writeUInt32BE(payload.length, 0);
-  payload.copy(framed, 4);
+  const framed = Buffer.allocUnsafe(payload.length + 6);
+  framed.writeUInt16BE(0, 0);
+  framed.writeUInt32BE(payload.length, 2);
+  payload.copy(framed, 6);
   return framed;
 }
 
@@ -45,7 +46,7 @@ async function main() {
         return;
       }
       const payload = Buffer.from('hello-stream');
-      client.write(Buffer.concat([frame(Buffer.alloc(0)), frame(payload)]));
+      client.write(frame(payload));
     });
 
     try {

@@ -13,7 +13,7 @@ template<typename T> class has_actor_ref_public_contract_t
     template<typename U>
     static auto test (int)
       -> decltype (std::declval<const U &> ().node_rid (),
-                    std::declval<const U &> ().actor_id_string (),
+                    std::declval<const U &> ().actor_id (),
                     std::declval<const U &> ().generation (),
                     std::declval<const U &> ().unchecked (),
                     std::true_type ());

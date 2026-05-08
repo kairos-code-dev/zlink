@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 
 const AUTO_CONNECT_SPOT_MESH = 5;
 const AUTO_CONNECT_CLIENT_SERVER = 2;
@@ -40,6 +40,7 @@ test('service objects expose aligned monitor and query surface', () => {
   const node = new zlink.SpotNode(ctx);
   const spot = node.createSpot();
   const query = new zlink.RegistryQueryClient(ctx);
+  ctx.recalculateAutoHwm();
 
   registry.bind('inproc://registry-pub', 'inproc://registry-router');
   query.connect('inproc://registry-router');
@@ -64,7 +65,7 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(typeof discovery.resolveSpot, 'function');
   assert.equal(discovery.setDealerPeerMode, undefined);
   assert.equal(typeof spot.onDispatchEvent, 'function');
-  assert.equal(typeof spot.drainChannelReplyFrom, 'function');
+  assert.equal(spot.drainChannelReplyFrom, undefined);
   assert.equal(node.peersSnapshot().length, 0);
   assert.equal(node.peersQuery().length, 0);
   assert.equal(node.subjectsSnapshot().length, 0);
@@ -72,6 +73,13 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(node.routingId.toBytes().toString(), 'node-id');
   spot.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('spot-id')));
   assert.equal(spot.routingId.toBytes().toString(), 'spot-id');
+  const entrySpot = node.entrySpot();
+  entrySpot.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('entry-spot-id')));
+  const lookedUpSpot = node.spotLookup(zlink.RoutingId.fromBytes(Buffer.from('entry-spot-id')));
+  assert.ok(lookedUpSpot);
+  assert.equal(lookedUpSpot.routingId.toBytes().toString(), 'entry-spot-id');
+  lookedUpSpot.close();
+  entrySpot.close();
   assert.equal(zlink.SpotNodeOption, undefined);
   assert.equal(zlink.SpotNodePubMode, undefined);
   assert.equal(zlink.SpotNodePubQueueFullPolicy, undefined);
@@ -107,18 +115,37 @@ test('Spot must be created through SpotNode.createSpot()', () => {
   ctx.close();
 });
 
+test('utility wrappers follow the canonical surface', () => {
+  const counter = new zlink.AtomicCounter(3);
+  assert.equal(counter.value(), 3);
+  assert.equal(counter.inc(), 3);
+  assert.equal(counter.value(), 4);
+  assert.equal(counter.dec(), 1);
+  assert.equal(counter.value(), 3);
+  counter.set(0);
+  counter.dec();
+  assert.equal(counter.value(), -1);
+  counter.close();
+
+  const thread = new zlink.Thread(() => {});
+  thread.join();
+});
+
 test('rid disconnect surface exists on sockets and spot nodes', () => {
   const ctx = new zlink.Context();
   const pair = new zlink.PairSocket(ctx);
+  const dealer = new zlink.DealerSocket(ctx);
   const stream = new zlink.StreamSocket(ctx);
   const node = new zlink.SpotNode(ctx);
 
   assert.equal(typeof pair.disconnectRid, 'function');
-  assert.equal(typeof stream.disconnectRid, 'function');
+  assert.equal(typeof dealer.disconnectRid, 'function');
+  assert.equal(stream.disconnectRid, undefined);
   assert.equal(typeof node.disconnectPeerRid, 'function');
 
   node.close();
   stream.close();
+  dealer.close();
   pair.close();
   ctx.close();
 });
@@ -131,6 +158,7 @@ test('removed receiver stays removed from aligned api', () => {
 test('context options, shutdown, and tls facades follow the aligned surface', () => {
   const ctx = new zlink.Context();
   const pair = new zlink.PairSocket(ctx);
+  const dealer = new zlink.DealerSocket(ctx);
   const registry = new zlink.Registry(ctx);
   const discovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, 'surface-tls');
   const node = new zlink.SpotNode(ctx);
@@ -161,8 +189,10 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
 
   assert.equal(typeof pair.setTlsServer, 'function');
   assert.equal(typeof pair.setTlsClient, 'function');
-  assert.equal(typeof pair.setChannelName, 'function');
-  assert.equal(typeof pair.getChannelName, 'function');
+  assert.equal(typeof pair.setChannelName, 'undefined');
+  assert.equal(typeof pair.getChannelName, 'undefined');
+  assert.equal(typeof dealer.setChannelName, 'function');
+  assert.equal(typeof dealer.getChannelName, 'function');
   assert.equal(typeof registry.setTlsServer, 'function');
   assert.equal(typeof registry.setTlsClient, 'function');
   assert.equal(typeof discovery.setTlsServer, 'undefined');
@@ -183,6 +213,7 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
   node.close();
   discovery.close();
   registry.close();
+  dealer.close();
   pair.close();
   ctx.shutdown();
   ctx.close();
@@ -204,6 +235,26 @@ test('threadSchedulingPolicy getter surfaces ConfigError failures', () => {
 
   ctx.getOptionRawStrictInternal = original;
   ctx.close();
+});
+
+test('native failures surface documented zlink error classes', () => {
+  const ctx = new zlink.Context();
+  const pair = new zlink.PairSocket(ctx);
+  const monitor = pair.monitorOpen();
+
+  try {
+    assert.throws(() => pair.bind('bad://endpoint'), zlink.BindError);
+    assert.throws(() => pair.connect('bad://endpoint'), zlink.ConnectError);
+
+    monitor.onEvent(() => {});
+    assert.throws(() => monitor.recv(), zlink.RecvError);
+
+    monitor.close();
+    assert.throws(() => monitor.snapshot(), zlink.ConfigError);
+  } finally {
+    pair.close();
+    ctx.close();
+  }
 });
 
 test('spot close leaves spot node alive and discovery close tears down attached participants', async () => {
@@ -331,6 +382,7 @@ test('canonical socket options are exposed through typed facades', () => {
   const dealer = new zlink.DealerSocket(ctx);
   const router = new zlink.RouterSocket(ctx);
   const stream = new zlink.StreamSocket(ctx);
+  const pub = new zlink.PubSocket(ctx);
   const xpub = new zlink.XPubSocket(ctx);
   const sub = new zlink.SubSocket(ctx);
 
@@ -354,12 +406,20 @@ test('canonical socket options are exposed through typed facades', () => {
   router.options.mandatory = true;
   pair.options.ridDuplicatePolicy = zlink.RidDuplicatePolicy.Handover;
   router.options.probe = true;
-  router.options.connectRoutingId = zlink.RoutingId.fromBytes(Buffer.from('route'));
+  router.options.setConnectRoutingId(zlink.RoutingId.fromBytes(Buffer.from('route')));
   stream.options.notify = true;
+  pub.options.verbose = true;
+  pub.options.verboser = true;
+  pub.options.noDrop = true;
+  pub.options.manual = true;
+  pub.options.manualLastValue = true;
+  pub.options.setWelcomeMessage('welcome');
   xpub.options.verbose = true;
   xpub.options.verboser = true;
   xpub.options.noDrop = true;
   xpub.options.manual = true;
+  xpub.options.manualLastValue = true;
+  xpub.options.setWelcomeMessage('welcome');
   sub.setSubscription('topic');
 
   assert.equal(pair.options.linger, 0);
@@ -381,10 +441,23 @@ test('canonical socket options are exposed through typed facades', () => {
   assert.equal(router.options.mandatory, true);
   assert.equal(router.options.probe, true);
   assert.equal(stream.options.notify, true);
+  assert.equal(pub.options.verbose, true);
+  assert.equal(pub.options.verboser, true);
+  assert.equal(pub.options.noDrop, true);
+  assert.equal(pub.options.manual, true);
+  assert.equal(pub.options.manualLastValue, true);
+  assert.equal(pub.options.welcomeMessage().data().toString(), 'welcome');
+  assert.equal(xpub.options.verbose, true);
+  assert.equal(xpub.options.verboser, true);
+  assert.equal(xpub.options.noDrop, true);
+  assert.equal(xpub.options.manual, true);
+  assert.equal(xpub.options.manualLastValue, true);
+  assert.equal(xpub.options.welcomeMessage().data().toString(), 'welcome');
   assert.equal(typeof sub.options.topicsCount, 'number');
 
   sub.close();
   xpub.close();
+  pub.close();
   stream.close();
   router.close();
   dealer.close();

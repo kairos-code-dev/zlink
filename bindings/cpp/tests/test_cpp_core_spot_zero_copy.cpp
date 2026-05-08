@@ -94,10 +94,10 @@ void test_spot_publish_external_buffer_delivery ()
 
     char *payload = alloc_payload ("pong", 4);
     zlink::message_t part =
-      zlink::message_t::from_external (payload, 4, &counting_free_fn,
+      zlink::advanced::external_message_t::adopt (payload, 4, &counting_free_fn,
                                        &free_count);
     assert (part.valid ());
-    pub_spot.publish (service_name, "zero:topic", part);
+    pub_spot.publish (service_name, "zero:topic").message (part).submit ();
     assert (!part.valid ());
 
     std::vector<zlink::message_t> recv_parts;
@@ -125,12 +125,12 @@ void test_spot_publish_external_buffer_failure_keeps_buffer_alive ()
     char *payload = alloc_payload ("bad", 3);
     {
         zlink::message_t part =
-          zlink::message_t::from_external (payload, 3, &counting_free_fn,
+          zlink::advanced::external_message_t::adopt (payload, 3, &counting_free_fn,
                                            &free_count);
         assert (part.valid ());
         bool threw = false;
         try {
-            spot.publish (std::string (), "zero:topic", part);
+            spot.publish (std::string (), "zero:topic").message (part).submit ();
         }
         catch (const zlink::submit_error_t &) {
             threw = true;
@@ -147,7 +147,7 @@ void test_spot_publish_external_buffer_rejects_invalid_buffer ()
 {
     std::atomic<int> free_count (0);
     zlink::message_t part =
-      zlink::message_t::from_external (NULL, 1, &counting_free_fn,
+      zlink::advanced::external_message_t::adopt (NULL, 1, &counting_free_fn,
                                        &free_count);
     assert (!part.valid ());
     assert (free_count.load (std::memory_order_relaxed) == 0);

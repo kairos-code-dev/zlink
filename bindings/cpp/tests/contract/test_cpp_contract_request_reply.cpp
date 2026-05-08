@@ -132,7 +132,7 @@ void test_received_reply_rejects_non_none_flags ()
 
           zlink::message_t rejected = make_request_message ("reply:rejected");
           try {
-              received->reply (rejected, zlink::send_flags_t::dontwait);
+              received->reply (rejected, ZLINK_DONTWAIT);
               assert (false && "reply flags must be rejected");
           } catch (const zlink::submit_error_t &error) {
               assert (error.result () == zlink::submit_result_t::not_supported);

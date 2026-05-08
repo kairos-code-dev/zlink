@@ -41,11 +41,11 @@ inline void install_signal_handlers ()
 #endif
 }
 
-inline zlink::message_t build_packet_frame (zlink_msg_t *header_,
-                                            zlink_msg_t *body_)
+inline zlink::message_t build_packet_frame (const zlink::message_t &header_,
+                                            const zlink::message_t &body_)
 {
-    const size_t header_size = zlink_msg_size (header_);
-    const size_t body_size = zlink_msg_size (body_);
+    const size_t header_size = header_.size ();
+    const size_t body_size = body_.size ();
     const size_t packet_size = 6 + header_size + body_size;
     zlink::message_t packet (packet_size);
     if (!packet.valid ())
@@ -59,45 +59,31 @@ inline zlink::message_t build_packet_frame (zlink_msg_t *header_,
     dst[4] = static_cast<unsigned char> ((body_size >> 8) & 0xFF);
     dst[5] = static_cast<unsigned char> (body_size & 0xFF);
     if (header_size > 0) {
-        std::memcpy (
-          dst + 6, zlink_msg_data (header_), header_size);
+        std::memcpy (dst + 6, header_.data (), header_size);
     }
     if (body_size > 0) {
-        std::memcpy (
-          dst + 6 + header_size, zlink_msg_data (body_), body_size);
+        std::memcpy (dst + 6 + header_size, body_.data (), body_size);
     }
     return packet;
 }
 
-void stream_packet_handler (void *,
-                            const zlink_routing_id_t *source_rid_,
-                            zlink_msg_t *header_,
-                            zlink_msg_t *body_,
-                            void *userdata_)
+void stream_packet_handler (const zlink::routing_id_t &source_rid_,
+                            zlink::message_t header_,
+                            zlink::message_t body_,
+                            stream_handler_context_t *ctx)
 {
-    stream_handler_context_t *ctx =
-      static_cast<stream_handler_context_t *> (userdata_);
-    if (!source_rid_ || !header_ || !body_ || !ctx || !ctx->server) {
-        if (header_)
-            (void) zlink_msg_close (header_);
-        if (body_)
-            (void) zlink_msg_close (body_);
+    if (!ctx || !ctx->server) {
         g_stop_requested.store (true, std::memory_order_release);
         return;
     }
 
     try {
-        zlink::routing_id_t routing_id = zlink::routing_id_t::from_bytes (
-          source_rid_->data, source_rid_->size);
         zlink::message_t packet = build_packet_frame (header_, body_);
-        (void) ctx->server->send (routing_id, packet);
+        (void) ctx->server->send (source_rid_, packet);
     }
     catch (const std::exception &) {
         g_stop_requested.store (true, std::memory_order_release);
     }
-
-    (void) zlink_msg_close (header_);
-    (void) zlink_msg_close (body_);
 }
 
 void wait_for_stop_stdin ()
@@ -161,7 +147,14 @@ bool perf_stream_server (const std::string &lib_name,
     install_signal_handlers ();
 
     stream_handler_context_t handler_context = {&server.sock ()};
-    if (server.sock ().on_packet (&stream_packet_handler, &handler_context) != 0) {
+    if (server.sock ().on_packet (
+          [&handler_context] (const zlink::routing_id_t &source_rid_,
+                              zlink::message_t header_,
+                              zlink::message_t body_) {
+              stream_packet_handler (
+                source_rid_, std::move (header_), std::move (body_),
+                &handler_context);
+          }) != 0) {
         return false;
     }
 

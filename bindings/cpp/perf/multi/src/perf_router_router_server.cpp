@@ -5,6 +5,7 @@
 #include "../common/perf_common.hpp"
 #include "../common/perf_entry.hpp"
 
+#include <any>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
@@ -87,12 +88,12 @@ bool try_send_reply (::perf::socket_t &sock,
         return true;
 
     const int payload_sent =
-      sock.send (reply.client_id, reply.payload, zlink::send_flags_t::dontwait);
+      sock.send (reply.client_id, reply.payload, ZLINK_DONTWAIT);
     if (payload_sent != 0) {
         if (payload_sent < 0 && errno == EAGAIN) {
             try {
                 poller.modify (
-                  sock, zlink::poll_event::pollin | zlink::poll_event::pollout);
+                  sock, zlink::poll_event_flag_t::pollin | zlink::poll_event_flag_t::pollout);
                 return true;
             }
             catch (const zlink::zlink_error_t &) {
@@ -106,7 +107,7 @@ bool try_send_reply (::perf::socket_t &sock,
     reply.client_id = routing_id_from_ascii ("x");
     reply.payload = zlink::message_t ();
     try {
-        poller.modify (sock, zlink::poll_event::pollin);
+        poller.modify (sock, zlink::poll_event_flag_t::pollin);
         return true;
     }
     catch (const zlink::zlink_error_t &) {
@@ -168,8 +169,8 @@ bool perf_router_router_server (const std::string &lib_name,
 
     zlink::poller_t poller;
     (void) poller.add (
-      server.sock (), zlink::poll_event::pollin,
-      reinterpret_cast<std::uintptr_t> (&server.sock ()));
+      server.sock (), zlink::poll_event_flag_t::pollin,
+      &server.sock ());
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
     reply_state_t reply;
@@ -177,7 +178,9 @@ bool perf_router_router_server (const std::string &lib_name,
     bool stop_requested = false;
     bool failed = false;
     while (!stop_requested && std::chrono::steady_clock::now () < deadline) {
-        events = poller.wait_all (compute_wait_ms (deadline));
+        events = poller.wait_all (
+          0,
+          std::chrono::milliseconds (compute_wait_ms (deadline)));
         const int poll_rc = static_cast<int> (events.size ());
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
@@ -189,12 +192,15 @@ bool perf_router_router_server (const std::string &lib_name,
             continue;
 
         for (size_t i = 0; i < events.size () && !stop_requested; ++i) {
-            ::perf::socket_t *sock =
-              static_cast<::perf::socket_t *> (reinterpret_cast<void *> (events[i].user_token));
+            ::perf::socket_t *sock = NULL;
+            if (::perf::socket_t *const *tag =
+                  std::any_cast<::perf::socket_t *> (&events[i].tag)) {
+                sock = *tag;
+            }
             if (!sock)
                 continue;
 
-            if ((static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event::pollout))
+            if ((static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollout))
                 && reply.pending) {
                 if (!try_send_reply (*sock, poller, reply)) {
                     stop_requested = true;
@@ -205,7 +211,7 @@ bool perf_router_router_server (const std::string &lib_name,
                     continue;
             }
 
-            if (!(static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event::pollin))) {
+            if (!(static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))) {
                 continue;
             }
 
@@ -214,7 +220,7 @@ bool perf_router_router_server (const std::string &lib_name,
                     break;
 
                 zlink::received_t received;
-                if (sock->receive (received, zlink::recv_flags_t::dontwait)
+                if (sock->receive (received, ZLINK_DONTWAIT)
                     < 0) {
                     const int err = errno;
                     if (err == EAGAIN)

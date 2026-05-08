@@ -7,24 +7,55 @@ const { once } = require('node:events');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs, resolveMultiConnectConcurrency } = require('./perf_multi_common');
 const { resolveMultiLatencySampleCap } = require('./perf_multi_runtime');
-function buildLengthPrefixedFrame(body) {
-    const frame = Buffer.allocUnsafe(4 + body.length);
-    frame.writeUInt32BE(body.length, 0);
-    body.copy(frame, 4);
+function buildStreamPacketFrame(body) {
+    const frame = Buffer.allocUnsafe(6 + body.length);
+    frame.writeUInt16BE(0, 0);
+    frame.writeUInt32BE(body.length, 2);
+    body.copy(frame, 6);
     return frame;
 }
 function buildStreamPacketFrames(body) {
-    return Buffer.concat([
-        buildLengthPrefixedFrame(Buffer.alloc(0)),
-        buildLengthPrefixedFrame(body)
-    ]);
+    return buildStreamPacketFrame(body);
+}
+function readFixedPayload(state, payloadSize) {
+    const first = state.chunks[0];
+    if (first.length === payloadSize) {
+        state.chunks.shift();
+        state.bufferedBytes -= payloadSize;
+        return first;
+    }
+    if (first.length > payloadSize) {
+        const payload = first.subarray(0, payloadSize);
+        state.chunks[0] = first.subarray(payloadSize);
+        state.bufferedBytes -= payloadSize;
+        return payload;
+    }
+    const payload = Buffer.allocUnsafe(payloadSize);
+    let copied = 0;
+    while (copied < payloadSize) {
+        const chunk = state.chunks[0];
+        const remaining = payloadSize - copied;
+        const take = Math.min(chunk.length, remaining);
+        chunk.copy(payload, copied, 0, take);
+        copied += take;
+        if (take === chunk.length) {
+            state.chunks.shift();
+        }
+        else {
+            state.chunks[0] = chunk.subarray(take);
+        }
+    }
+    state.bufferedBytes -= payloadSize;
+    return payload;
 }
 function parseFixedPayloads(state, chunk, payloadSize) {
-    state.buffer = Buffer.concat([state.buffer, chunk]);
+    if (chunk.length > 0) {
+        state.chunks.push(chunk);
+        state.bufferedBytes += chunk.length;
+    }
     const payloads = [];
-    while (state.buffer.length >= payloadSize) {
-        payloads.push(state.buffer.subarray(0, payloadSize));
-        state.buffer = state.buffer.subarray(payloadSize);
+    while (state.bufferedBytes >= payloadSize) {
+        payloads.push(readFixedPayload(state, payloadSize));
     }
     return payloads;
 }
@@ -45,7 +76,8 @@ function normalizeBinaryChunk(data) {
 }
 function createFrameReader(transport, payloadSize) {
     const state = {
-        buffer: Buffer.alloc(0),
+        chunks: [],
+        bufferedBytes: 0,
         pending: [],
         waiters: []
     };

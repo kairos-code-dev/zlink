@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 
 const AUTO_CONNECT_SPOT_MESH = 5;
 
@@ -73,8 +73,8 @@ test('typed numeric options fail fast on int32 and int64 boundary violations', (
     pair.options.connectTimeout = 1.5;
   }, /must be an integer/);
   assert.throws(() => {
-    pair.options.maxMsgSize = Number.MAX_SAFE_INTEGER + 1;
-  }, /safe integer/);
+    (pair.options as any).maxMsgSize = Number.MAX_SAFE_INTEGER + 1;
+  }, /bigint/);
   assert.throws(() => {
     pair.options.maxMsgSize = 1n << 63n;
   }, /fit in int64/);

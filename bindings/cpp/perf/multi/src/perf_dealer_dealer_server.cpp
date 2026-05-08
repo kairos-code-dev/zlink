@@ -7,6 +7,7 @@
 #include "../common/perf_metric_header.hpp"
 
 #include <algorithm>
+#include <any>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
@@ -57,8 +58,8 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
 
     zlink::poller_t poller;
     (void) poller.add (
-      server.sock (), zlink::poll_event::pollin,
-      reinterpret_cast<std::uintptr_t> (&server.sock ()));
+      server.sock (), zlink::poll_event_flag_t::pollin,
+      &server.sock ());
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
     bool stop_requested = false;
@@ -76,7 +77,7 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        events = poller.wait_all (wait_ms);
+        events = poller.wait_all (0, std::chrono::milliseconds (wait_ms));
         const int poll_rc = static_cast<int> (events.size ());
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
@@ -88,15 +89,17 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
             continue;
 
         for (size_t i = 0; i < events.size () && !stop_requested; ++i) {
-            ::perf::socket_t *sock =
-              static_cast<::perf::socket_t *> (reinterpret_cast<void *> (events[i].user_token));
+            ::perf::socket_t *sock = NULL;
+            if (::perf::socket_t *const *tag =
+                  std::any_cast<::perf::socket_t *> (&events[i].tag))
+                sock = *tag;
             if (!sock)
                 continue;
 
             for (;;) {
                 zlink::message_t inbound;
                 const int rc =
-                  sock->recv (inbound, zlink::recv_flags_t::dontwait);
+                  sock->recv (inbound, ZLINK_DONTWAIT);
                 if (rc < 0) {
                     const int err = errno;
                     if (err == EAGAIN)

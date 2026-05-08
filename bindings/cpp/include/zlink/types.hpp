@@ -23,6 +23,8 @@ class routing_id_t;
 class actor_ref_t;
 class received_t;
 class topic_message_t;
+class dealer_socket_t;
+class timer_t;
 namespace service
 {
 class spot_node_t;
@@ -80,6 +82,7 @@ enum class thread_scheduling_policy_t : int
 enum class rid_duplicate_policy_t : int
 {
     reject = ZLINK_RID_DUPLICATE_REJECT,
+    handover = ZLINK_RID_DUPLICATE_HANDOVER,
     replace = ZLINK_RID_DUPLICATE_HANDOVER
 };
 
@@ -111,6 +114,22 @@ class socket_count_t
 
   private:
     explicit socket_count_t (int value_) noexcept : _value (value_) {}
+
+    int _value;
+};
+
+class worker_count_t
+{
+  public:
+    static worker_count_t value (int value_) noexcept
+    {
+        return worker_count_t (value_);
+    }
+
+    int value () const noexcept { return _value; }
+
+  private:
+    explicit worker_count_t (int value_) noexcept : _value (value_) {}
 
     int _value;
 };
@@ -208,6 +227,13 @@ class socket_backlog_t
     explicit socket_backlog_t (int value_) noexcept : _value (value_) {}
 
     int _value;
+};
+
+enum class tcp_keepalive_mode_t : int
+{
+    os_default = -1,
+    off = 0,
+    on = 1
 };
 
 namespace compat
@@ -557,8 +583,8 @@ class common_socket_options_t
     void ipv6 (bool value);
     bool tcp_no_delay () const;
     void tcp_no_delay (bool value);
-    bool tcp_keepalive () const;
-    void tcp_keepalive (bool value);
+    tcp_keepalive_mode_t tcp_keepalive () const;
+    void tcp_keepalive (tcp_keepalive_mode_t value);
     std::chrono::milliseconds heartbeat_interval () const;
     void heartbeat_interval (std::chrono::milliseconds value);
     std::chrono::milliseconds heartbeat_ttl () const;
@@ -569,6 +595,8 @@ class common_socket_options_t
     void rid_duplicate_policy (rid_duplicate_policy_t value);
     byte_size_t max_message_size () const;
     void max_message_size (byte_size_t value);
+    byte_size_t auto_hwm_msg_unit_bytes () const;
+    void auto_hwm_msg_unit_bytes (byte_size_t value);
     socket_backlog_t backlog () const;
     void backlog (socket_backlog_t value);
     std::chrono::milliseconds reconnect_interval () const;
@@ -577,15 +605,15 @@ class common_socket_options_t
     void reconnect_interval_max (std::chrono::milliseconds value);
     std::string last_endpoint () const;
 
-  private:
+  protected:
     void *_handle;
 };
 
-class router_socket_options_t
+class router_socket_options_t : public common_socket_options_t
 {
   public:
     explicit router_socket_options_t (void *handle_ = NULL) noexcept
-        : _handle (handle_)
+        : common_socket_options_t (handle_)
     {
     }
 
@@ -593,54 +621,49 @@ class router_socket_options_t
     void mandatory (bool value);
     bool handover () const;
     void handover (bool value);
-    bool probe_router () const;
-    void probe_router (bool value);
+    bool probe () const;
+    void probe (bool value);
     std::optional<routing_id_t> connect_routing_id () const;
     void connect_routing_id (const routing_id_t &value);
+    std::chrono::milliseconds request_timeout () const;
+    void request_timeout (std::chrono::milliseconds value);
     peer_weight_t peer_weight () const;
     void peer_weight (peer_weight_t value);
-
-  private:
-    void *_handle;
 };
 
-class dealer_socket_options_t
+class dealer_socket_options_t : public common_socket_options_t
 {
   public:
     explicit dealer_socket_options_t (void *handle_ = NULL) noexcept
-        : _handle (handle_)
+        : common_socket_options_t (handle_)
     {
     }
 
-    bool probe_router () const;
-    void probe_router (bool value);
+    bool probe () const;
+    void probe (bool value);
+    std::chrono::milliseconds request_timeout () const;
+    void request_timeout (std::chrono::milliseconds value);
     peer_weight_t peer_weight () const;
     void peer_weight (peer_weight_t value);
-
-  private:
-    void *_handle;
 };
 
-class stream_socket_options_t
+class stream_socket_options_t : public common_socket_options_t
 {
   public:
     explicit stream_socket_options_t (void *handle_ = NULL) noexcept
-        : _handle (handle_)
+        : common_socket_options_t (handle_)
     {
     }
 
     bool notify () const;
     void notify (bool value);
-
-  private:
-    void *_handle;
 };
 
-class pub_socket_options_t
+class pub_socket_options_t : public common_socket_options_t
 {
   public:
     explicit pub_socket_options_t (void *handle_ = NULL) noexcept
-        : _handle (handle_)
+        : common_socket_options_t (handle_)
     {
     }
 
@@ -652,36 +675,96 @@ class pub_socket_options_t
     void no_drop (bool value);
     bool manual () const;
     void manual (bool value);
-
-  private:
-    void *_handle;
+    bool manual_last_value () const;
+    void manual_last_value (bool value);
+    message_t welcome_message () const;
+    void welcome_message (const message_t &message);
+    void approve_subscribe (const routing_id_t &routing_id);
+    void reject_subscribe (const routing_id_t &routing_id);
+    int topics_count () const;
 };
 
-class sub_socket_options_t
+class sub_socket_options_t : public common_socket_options_t
 {
   public:
     explicit sub_socket_options_t (void *handle_ = NULL) noexcept
-        : _handle (handle_)
+        : common_socket_options_t (handle_)
     {
     }
 
     int topics_count () const;
+};
+
+class send_flags_t
+{
+  public:
+    constexpr send_flags_t (int value_ = ZLINK_SEND_FLAGS_NONE) noexcept
+        : _value (value_)
+    {
+    }
+
+    constexpr operator int () const noexcept { return _value; }
+    constexpr operator zlink_send_flags_t () const noexcept
+    {
+        return static_cast<zlink_send_flags_t> (_value);
+    }
+
+    static const send_flags_t none;
+    static const send_flags_t dontwait;
 
   private:
-    void *_handle;
+    int _value;
 };
 
-enum class send_flags_t : int
+inline constexpr bool operator== (send_flags_t a_, send_flags_t b_) noexcept
 {
-    none = 0,
-    dontwait = 1
+    return static_cast<int> (a_) == static_cast<int> (b_);
+}
+
+inline constexpr bool operator!= (send_flags_t a_, send_flags_t b_) noexcept
+{
+    return !(a_ == b_);
+}
+
+class recv_flags_t
+{
+  public:
+    constexpr recv_flags_t (int value_ = ZLINK_RECV_FLAGS_NONE) noexcept
+        : _value (value_)
+    {
+    }
+
+    constexpr operator int () const noexcept { return _value; }
+    constexpr operator zlink_recv_flags_t () const noexcept
+    {
+        return static_cast<zlink_recv_flags_t> (_value);
+    }
+    constexpr operator zlink_send_flags_t () const noexcept
+    {
+        return static_cast<zlink_send_flags_t> (_value);
+    }
+
+    static const recv_flags_t none;
+    static const recv_flags_t dontwait;
+
+  private:
+    int _value;
 };
 
-enum class recv_flags_t : int
+inline constexpr bool operator== (recv_flags_t a_, recv_flags_t b_) noexcept
 {
-    none = 0,
-    dontwait = 1
-};
+    return static_cast<int> (a_) == static_cast<int> (b_);
+}
+
+inline constexpr bool operator!= (recv_flags_t a_, recv_flags_t b_) noexcept
+{
+    return !(a_ == b_);
+}
+
+inline const send_flags_t send_flags_t::none {ZLINK_SEND_FLAGS_NONE};
+inline const send_flags_t send_flags_t::dontwait {ZLINK_SEND_FLAGS_DONTWAIT};
+inline const recv_flags_t recv_flags_t::none {ZLINK_RECV_FLAGS_NONE};
+inline const recv_flags_t recv_flags_t::dontwait {ZLINK_RECV_FLAGS_DONTWAIT};
 
 enum class send_result_t : int
 {
@@ -725,6 +808,9 @@ enum class request_result_t : int
     not_supported = ZLINK_REQUEST_NOT_SUPPORTED
 };
 
+using request_callback_t =
+  std::function<void(request_result_t, std::vector<message_t>)>;
+
 enum class recv_result_t : int
 {
     ok = ZLINK_RECV_OK,
@@ -732,7 +818,8 @@ enum class recv_result_t : int
     busy = ZLINK_RECV_BUSY,
     terminated = ZLINK_RECV_TERMINATED,
     invalid_handle = ZLINK_RECV_INVALID_HANDLE,
-    not_supported = ZLINK_RECV_NOT_SUPPORTED
+    not_supported = ZLINK_RECV_NOT_SUPPORTED,
+    internal_error = ZLINK_RECV_INTERNAL_ERROR
 };
 
 enum class handler_result_t : int
@@ -742,7 +829,8 @@ enum class handler_result_t : int
     busy = ZLINK_HANDLER_BUSY,
     not_supported = ZLINK_HANDLER_NOT_SUPPORTED,
     deadlock = ZLINK_HANDLER_DEADLOCK,
-    invalid_handle = ZLINK_HANDLER_INVALID_HANDLE
+    invalid_handle = ZLINK_HANDLER_INVALID_HANDLE,
+    internal_error = ZLINK_HANDLER_INTERNAL_ERROR
 };
 
 enum class close_result_t : int
@@ -750,7 +838,8 @@ enum class close_result_t : int
     ok = ZLINK_CLOSE_OK,
     busy = ZLINK_CLOSE_BUSY,
     shutdown = ZLINK_CLOSE_SHUTDOWN,
-    invalid_handle = ZLINK_CLOSE_INVALID_HANDLE
+    invalid_handle = ZLINK_CLOSE_INVALID_HANDLE,
+    internal_error = ZLINK_CLOSE_INTERNAL_ERROR
 };
 
 enum class bind_result_t : int
@@ -759,7 +848,8 @@ enum class bind_result_t : int
     invalid_argument = ZLINK_BIND_INVALID_ARGUMENT,
     addr_in_use = ZLINK_BIND_ADDR_IN_USE,
     not_supported = ZLINK_BIND_NOT_SUPPORTED,
-    invalid_handle = ZLINK_BIND_INVALID_HANDLE
+    invalid_handle = ZLINK_BIND_INVALID_HANDLE,
+    internal_error = ZLINK_BIND_INTERNAL_ERROR
 };
 
 enum class connect_result_t : int
@@ -767,7 +857,11 @@ enum class connect_result_t : int
     ok = ZLINK_CONNECT_OK,
     invalid_argument = ZLINK_CONNECT_INVALID_ARGUMENT,
     not_supported = ZLINK_CONNECT_NOT_SUPPORTED,
-    invalid_handle = ZLINK_CONNECT_INVALID_HANDLE
+    invalid_handle = ZLINK_CONNECT_INVALID_HANDLE,
+    internal_error = ZLINK_CONNECT_INTERNAL_ERROR,
+    not_found = ZLINK_CONNECT_NOT_FOUND,
+    conflict = ZLINK_CONNECT_CONFLICT,
+    busy = ZLINK_CONNECT_BUSY
 };
 
 enum class config_result_t : int
@@ -775,7 +869,10 @@ enum class config_result_t : int
     ok = ZLINK_CONFIG_OK,
     invalid_handle = ZLINK_CONFIG_INVALID_HANDLE,
     invalid_argument = ZLINK_CONFIG_INVALID_ARGUMENT,
-    not_supported = ZLINK_CONFIG_NOT_SUPPORTED
+    not_supported = ZLINK_CONFIG_NOT_SUPPORTED,
+    internal_error = ZLINK_CONFIG_INTERNAL_ERROR,
+    invalid_state = ZLINK_CONFIG_INVALID_STATE,
+    not_found = ZLINK_CONFIG_NOT_FOUND
 };
 
 class routing_id_t
@@ -970,16 +1067,19 @@ class actor_ref_t
 
     explicit actor_ref_t (const zlink_actor_ref_t &native_) : _native (native_) {}
 
-    const routing_id_t node_rid () const
+    routing_id_t node_rid () const
     {
         return detail::native_routing_id (_native.node_rid);
     }
 
-    const char *actor_id () const noexcept { return _native.actor_id; }
+    std::string actor_id () const
+    {
+        return fixed_string_to_string (_native.actor_id);
+    }
 
     std::string actor_id_string () const
     {
-        return fixed_string_to_string (_native.actor_id);
+        return actor_id ();
     }
 
     uint64_t generation () const noexcept { return _native.generation; }
@@ -1088,6 +1188,23 @@ struct actor_join_info_t
     friend class service::spot_t;
 };
 
+class actor_join_request_t
+{
+  public:
+    actor_join_request_t (actor_join_info_t info_, message_t message_)
+        : _info (std::move (info_)), _message (std::move (message_))
+    {
+    }
+
+    const actor_join_info_t &info () const noexcept { return _info; }
+    message_t &message () noexcept { return _message; }
+    const message_t &message () const noexcept { return _message; }
+
+  private:
+    actor_join_info_t _info;
+    message_t _message;
+};
+
 struct actor_create_result_t
 {
     actor_create_result_t () : status (actor_create_status_t::created), actor () {}
@@ -1161,7 +1278,11 @@ struct spot_dispatch_info_t
     spot_dispatch_info_t ()
         : event (spot_dispatch_event_t::subscribe_readable),
           subject_kind (spot_dispatch_subject_kind_t::spot),
-          actor (std::nullopt), actor_parts ()
+          timer (NULL),
+          channel_dealer (NULL),
+          channel_name (std::nullopt),
+          actor (std::nullopt),
+          actor_parts ()
     {
     }
 
@@ -1169,7 +1290,11 @@ struct spot_dispatch_info_t
         : event (static_cast<spot_dispatch_event_t> (native_.event)),
           subject_kind (
             static_cast<spot_dispatch_subject_kind_t> (native_.subject_kind)),
-          actor (std::nullopt), actor_parts ()
+          timer (NULL),
+          channel_dealer (NULL),
+          channel_name (std::nullopt),
+          actor (std::nullopt),
+          actor_parts ()
     {
         if (subject_kind == spot_dispatch_subject_kind_t::actor
             && native_.subject) {
@@ -1181,6 +1306,9 @@ struct spot_dispatch_info_t
 
     spot_dispatch_event_t event;
     spot_dispatch_subject_kind_t subject_kind;
+    timer_t *timer;
+    dealer_socket_t *channel_dealer;
+    std::optional<std::string> channel_name;
     std::optional<actor_ref_t> actor;
     std::vector<actor_part_t> actor_parts;
 };
@@ -1310,6 +1438,8 @@ struct subscription_filter_t
     bool is_pattern = false;
 };
 
+using subscription_entry_t = subscription_filter_t;
+
 enum class error_code : int
 {
     efsm = EFSM,
@@ -1397,7 +1527,7 @@ enum class disconnect_reason : int
     ctx_term = ZLINK_DISCONNECT_REASON_CTX_TERM
 };
 
-enum class poll_event : short
+enum class poll_event_flag_t : short
 {
     none = 0,
     pollin = ZLINK_POLLIN,
@@ -1405,10 +1535,10 @@ enum class poll_event : short
     pollerr = ZLINK_POLLERR
 };
 
-inline poll_event operator| (poll_event a, poll_event b)
+inline poll_event_flag_t operator| (poll_event_flag_t a, poll_event_flag_t b)
 {
-    return static_cast<poll_event> (static_cast<short> (a)
-                                    | static_cast<short> (b));
+    return static_cast<poll_event_flag_t> (static_cast<short> (a)
+                                           | static_cast<short> (b));
 }
 
 enum class poll_source_kind_t : int
@@ -1478,12 +1608,13 @@ struct monitor_snapshot_t
     monitor_snapshot_t ()
         : source_kind (monitor_source_kind::socket), state_flags (0),
           detail_flags (0), snd_pending_msgs (0), rcv_pending_msgs (0),
-          auto_hwm_enabled (false), auto_hwm_profile_value (0),
+          auto_hwm_enabled (false), auto_hwm_profile (0),
           auto_hwm_role (0), auto_hwm_policy_class (0),
           auto_hwm_unit_budget_bytes (0), auto_hwm_size_cap (0),
           auto_hwm_socket_message_slots (0),
           auto_hwm_effective_message_bytes (0),
           auto_hwm_applied_sndhwm (0), auto_hwm_applied_rcvhwm (0),
+          auto_hwm_effective_sndbuf (0), auto_hwm_effective_rcvbuf (0),
           auto_hwm_last_recalc_ms (0),
           auto_hwm_last_recalc_reason (0),
           auto_hwm_send_blocked_ratio_ppm (0),
@@ -1499,7 +1630,7 @@ struct monitor_snapshot_t
           snd_pending_msgs (native_.snd_pending_msgs),
           rcv_pending_msgs (native_.rcv_pending_msgs),
           auto_hwm_enabled (native_.auto_hwm_enabled != 0),
-          auto_hwm_profile_value (native_.auto_hwm_profile),
+          auto_hwm_profile (native_.auto_hwm_profile),
           auto_hwm_role (native_.auto_hwm_role),
           auto_hwm_policy_class (native_.auto_hwm_policy_class),
           auto_hwm_unit_budget_bytes (native_.auto_hwm_unit_budget_bytes),
@@ -1510,6 +1641,8 @@ struct monitor_snapshot_t
             native_.auto_hwm_effective_message_bytes),
           auto_hwm_applied_sndhwm (native_.auto_hwm_applied_sndhwm),
           auto_hwm_applied_rcvhwm (native_.auto_hwm_applied_rcvhwm),
+          auto_hwm_effective_sndbuf (native_.auto_hwm_effective_sndbuf),
+          auto_hwm_effective_rcvbuf (native_.auto_hwm_effective_rcvbuf),
           auto_hwm_last_recalc_ms (native_.auto_hwm_last_recalc_ms),
           auto_hwm_last_recalc_reason (native_.auto_hwm_last_recalc_reason),
           auto_hwm_send_blocked_ratio_ppm (
@@ -1530,7 +1663,7 @@ struct monitor_snapshot_t
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
     bool auto_hwm_enabled;
-    uint32_t auto_hwm_profile_value;
+    uint32_t auto_hwm_profile;
     uint32_t auto_hwm_role;
     uint32_t auto_hwm_policy_class;
     uint64_t auto_hwm_unit_budget_bytes;
@@ -1539,6 +1672,8 @@ struct monitor_snapshot_t
     uint64_t auto_hwm_effective_message_bytes;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
+    int32_t auto_hwm_effective_sndbuf;
+    int32_t auto_hwm_effective_rcvbuf;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
@@ -1548,6 +1683,14 @@ struct monitor_snapshot_t
 
 using monitor_event_handler_fn = void (*) (const monitor_event_t *event_,
                                            void *userdata_);
+
+enum class monitor_target_kind_t : int
+{
+    socket = 0,
+    discovery = 1,
+    spot = 2,
+    spot_node = 3
+};
 
 enum class registry_socket_role : int
 {
@@ -1567,6 +1710,18 @@ enum class spot_node_socket_role : int
     pub = 1,
     sub = 2,
     dealer = 3
+};
+
+enum class spot_node_socket_type_t : int
+{
+    pair = ZLINK_SOCKET_PAIR,
+    dealer = ZLINK_SOCKET_DEALER,
+    router = ZLINK_SOCKET_ROUTER,
+    stream = ZLINK_SOCKET_STREAM,
+    pub = ZLINK_SOCKET_PUB,
+    xpub = ZLINK_SOCKET_XPUB,
+    sub = ZLINK_SOCKET_SUB,
+    xsub = ZLINK_SOCKET_XSUB
 };
 
 enum class spot_socket_role : int
@@ -1648,6 +1803,9 @@ enum class subject_kind : uint32_t
 
 using monitor_event_type_t = monitor_event;
 using monitor_source_kind_t = monitor_source_kind;
+using registry_socket_role_t = registry_socket_role;
+using discovery_socket_role_t = discovery_socket_role;
+using spot_node_socket_role_t = spot_node_socket_role;
 using auto_connect_type_t = auto_connect_type;
 using service_role_t = service_role;
 using service_kind_t = service_kind;
@@ -1657,408 +1815,812 @@ using spot_node_mode_t = spot_node_mode;
 using spot_node_socket_owner_t = spot_node_socket_owner;
 using spot_peer_source_t = spot_peer_source;
 using spot_peer_state_t = spot_peer_state;
+using registry_state_t = registry_state;
 using topology_source_t = topology_source;
 using topology_state_t = topology_state;
 using subject_kind_t = subject_kind;
 
-struct member_peer_entry_t
+class member_peer_entry_t
 {
+  public:
     member_peer_entry_t ()
-        : auto_connect_type (zlink::auto_connect_type::invalid),
-          service_role (service_role::invalid), channel_name (), endpoint (),
-          routing_id (std::nullopt), weight (0),
-          value (0)
+        : auto_connect_type_ (zlink::auto_connect_type::invalid),
+          service_role_ (service_role::invalid), channel_name_ (), endpoint_ (),
+          routing_id_ (std::nullopt), weight_ (0),
+          value_ (0)
     {
     }
 
     explicit member_peer_entry_t (const zlink_member_peer_entry_t &entry_)
-        : auto_connect_type (
+        : auto_connect_type_ (
             static_cast<zlink::auto_connect_type> (entry_.auto_connect_type)),
-          service_role (static_cast<zlink::service_role> (entry_.service_role)),
-          channel_name (fixed_string_to_string (entry_.channel_name)),
-          endpoint (fixed_string_to_string (entry_.endpoint)),
-          routing_id (entry_.routing_id.size > 0
+          service_role_ (static_cast<zlink::service_role> (entry_.service_role)),
+          channel_name_ (fixed_string_to_string (entry_.channel_name)),
+          endpoint_ (fixed_string_to_string (entry_.endpoint)),
+          routing_id_ (entry_.routing_id.size > 0
                         ? std::optional<routing_id_t> (
                             detail::native_routing_id (entry_.routing_id))
                         : std::nullopt),
-          weight (entry_.weight),
-          value (entry_.value)
+          weight_ (entry_.weight),
+          value_ (entry_.value)
     {
     }
 
-    zlink::auto_connect_type auto_connect_type;
-    zlink::service_role service_role;
-    std::string channel_name;
-    std::string endpoint;
-    std::optional<routing_id_t> routing_id;
-    uint32_t weight;
-    int64_t value;
+    auto_connect_type_t auto_connect_type () const noexcept
+    {
+        return auto_connect_type_;
+    }
+
+    service_role_t service_role () const noexcept { return service_role_; }
+
+    const std::string &channel_name () const noexcept { return channel_name_; }
+
+    const std::string &endpoint () const noexcept { return endpoint_; }
+
+    const std::optional<routing_id_t> &routing_id () const noexcept
+    {
+        return routing_id_;
+    }
+
+    peer_weight_t weight () const noexcept { return peer_weight_t::value (weight_); }
+
+    int64_t value () const noexcept { return value_; }
+
+  private:
+    zlink::auto_connect_type auto_connect_type_;
+    zlink::service_role service_role_;
+    std::string channel_name_;
+    std::string endpoint_;
+    std::optional<routing_id_t> routing_id_;
+    uint32_t weight_;
+    int64_t value_;
 };
 
-struct registry_topology_entry_t
+class registry_topology_entry_t
 {
+  public:
     registry_topology_entry_t ()
-        : auto_connect_type (zlink::auto_connect_type::invalid),
-          routing_id (std::nullopt), service_kind (service_kind::socket),
-          service_role (service_role::invalid), channel_name (), endpoint (),
-          source (topology_source::manual), state (topology_state::discovered),
-          desired_count (0), ready_count (0), error_code (0),
-          last_reported_ms (0)
+        : auto_connect_type_ (zlink::auto_connect_type::invalid),
+          routing_id_ (std::nullopt), service_kind_ (service_kind::socket),
+          service_role_ (service_role::invalid), channel_name_ (), endpoint_ (),
+          source_ (topology_source::manual), state_ (topology_state::discovered),
+          desired_count_ (0), ready_count_ (0), error_code_ (0),
+          last_reported_ms_ (0)
     {
     }
 
     explicit registry_topology_entry_t (
       const zlink_registry_topology_entry_t &entry_)
-        : auto_connect_type (
+        : auto_connect_type_ (
             static_cast<zlink::auto_connect_type> (entry_.auto_connect_type)),
-          routing_id (entry_.routing_id.size > 0
+          routing_id_ (entry_.routing_id.size > 0
                         ? std::optional<routing_id_t> (
                             detail::native_routing_id (entry_.routing_id))
                         : std::nullopt),
-          service_kind (static_cast<zlink::service_kind> (entry_.service_kind)),
-          service_role (static_cast<zlink::service_role> (entry_.service_role)),
-          channel_name (fixed_string_to_string (entry_.channel_name)),
-          endpoint (fixed_string_to_string (entry_.endpoint)),
-          source (static_cast<topology_source> (entry_.source)),
-          state (static_cast<topology_state> (entry_.state)),
-          desired_count (entry_.desired_count),
-          ready_count (entry_.ready_count),
-          error_code (entry_.error_code),
-          last_reported_ms (entry_.last_reported_ms)
+          service_kind_ (static_cast<zlink::service_kind> (entry_.service_kind)),
+          service_role_ (static_cast<zlink::service_role> (entry_.service_role)),
+          channel_name_ (fixed_string_to_string (entry_.channel_name)),
+          endpoint_ (fixed_string_to_string (entry_.endpoint)),
+          source_ (static_cast<topology_source> (entry_.source)),
+          state_ (static_cast<topology_state> (entry_.state)),
+          desired_count_ (entry_.desired_count),
+          ready_count_ (entry_.ready_count),
+          error_code_ (entry_.error_code),
+          last_reported_ms_ (entry_.last_reported_ms)
     {
     }
 
-    zlink::auto_connect_type auto_connect_type;
-    std::optional<routing_id_t> routing_id;
-    zlink::service_kind service_kind;
-    zlink::service_role service_role;
-    std::string channel_name;
-    std::string endpoint;
-    topology_source source;
-    topology_state state;
-    uint32_t desired_count;
-    uint32_t ready_count;
-    uint32_t error_code;
-    uint64_t last_reported_ms;
+    auto_connect_type_t auto_connect_type () const noexcept
+    {
+        return auto_connect_type_;
+    }
+
+    const std::optional<routing_id_t> &routing_id () const noexcept
+    {
+        return routing_id_;
+    }
+
+    service_kind_t service_kind () const noexcept { return service_kind_; }
+
+    service_role_t service_role () const noexcept { return service_role_; }
+
+    const std::string &channel_name () const noexcept { return channel_name_; }
+
+    const std::string &endpoint () const noexcept { return endpoint_; }
+
+    topology_source_t source () const noexcept { return source_; }
+
+    topology_state_t state () const noexcept { return state_; }
+
+    uint32_t desired_count () const noexcept { return desired_count_; }
+
+    uint32_t ready_count () const noexcept { return ready_count_; }
+
+    uint32_t error_code () const noexcept { return error_code_; }
+
+    std::chrono::milliseconds last_reported () const noexcept
+    {
+        return std::chrono::milliseconds (
+          static_cast<int64_t> (last_reported_ms_));
+    }
+
+  private:
+    zlink::auto_connect_type auto_connect_type_;
+    std::optional<routing_id_t> routing_id_;
+    zlink::service_kind service_kind_;
+    zlink::service_role service_role_;
+    std::string channel_name_;
+    std::string endpoint_;
+    topology_source source_;
+    topology_state state_;
+    uint32_t desired_count_;
+    uint32_t ready_count_;
+    uint32_t error_code_;
+    uint64_t last_reported_ms_;
 };
 
-struct spot_node_status_t
+class spot_node_status_t
 {
+  public:
     spot_node_status_t ()
-        : service_name (), local_endpoint (), node_routing_id (std::nullopt),
-          state (spot_node_state::idle), configured_peer_count (0),
-          active_peer_count (0), connected_peer_count (0), subject_count (0),
-          ready_subject_count (0), disconnected_sub_target_count (0),
-          disconnected_routed_target_count (0), last_error (0),
-          last_changed_ms (0)
+        : service_name_ (), local_endpoint_ (), node_routing_id_ (std::nullopt),
+          state_ (spot_node_state::idle), configured_peer_count_ (0),
+          active_peer_count_ (0), connected_peer_count_ (0), subject_count_ (0),
+          ready_subject_count_ (0), disconnected_sub_target_count_ (0),
+          disconnected_routed_target_count_ (0), last_error_ (0),
+          last_changed_ms_ (0)
     {
     }
 
     explicit spot_node_status_t (const zlink_spot_node_status_t &status_)
-        : service_name (fixed_string_to_string (status_.service_name)),
-          local_endpoint (fixed_string_to_string (status_.local_endpoint)),
-          node_routing_id (status_.node_routing_id.size > 0
+        : service_name_ (fixed_string_to_string (status_.service_name)),
+          local_endpoint_ (fixed_string_to_string (status_.local_endpoint)),
+          node_routing_id_ (status_.node_routing_id.size > 0
                              ? std::optional<routing_id_t> (
                                  detail::native_routing_id (status_.node_routing_id))
                              : std::nullopt),
-          state (static_cast<spot_node_state> (status_.state)),
-          configured_peer_count (status_.configured_peer_count),
-          active_peer_count (status_.active_peer_count),
-          connected_peer_count (status_.connected_peer_count),
-          subject_count (status_.subject_count),
-          ready_subject_count (status_.ready_subject_count),
-          disconnected_sub_target_count (status_.disconnected_sub_target_count),
-          disconnected_routed_target_count (
+          state_ (static_cast<spot_node_state> (status_.state)),
+          configured_peer_count_ (status_.configured_peer_count),
+          active_peer_count_ (status_.active_peer_count),
+          connected_peer_count_ (status_.connected_peer_count),
+          subject_count_ (status_.subject_count),
+          ready_subject_count_ (status_.ready_subject_count),
+          disconnected_sub_target_count_ (status_.disconnected_sub_target_count),
+          disconnected_routed_target_count_ (
             status_.disconnected_routed_target_count),
-          last_error (status_.last_error),
-          last_changed_ms (status_.last_changed_ms)
+          last_error_ (status_.last_error),
+          last_changed_ms_ (status_.last_changed_ms)
     {
     }
 
-    std::string service_name;
-    std::string local_endpoint;
-    std::optional<routing_id_t> node_routing_id;
-    spot_node_state state;
-    uint32_t configured_peer_count;
-    uint32_t active_peer_count;
-    uint32_t connected_peer_count;
-    uint32_t subject_count;
-    uint32_t ready_subject_count;
-    uint32_t disconnected_sub_target_count;
-    uint32_t disconnected_routed_target_count;
-    int32_t last_error;
-    uint64_t last_changed_ms;
+    const std::string &service_name () const noexcept { return service_name_; }
+
+    const std::string &local_endpoint () const noexcept { return local_endpoint_; }
+
+    const std::optional<routing_id_t> &node_routing_id () const noexcept
+    {
+        return node_routing_id_;
+    }
+
+    spot_node_state_t state () const noexcept { return state_; }
+
+    uint32_t configured_peer_count () const noexcept
+    {
+        return configured_peer_count_;
+    }
+
+    uint32_t active_peer_count () const noexcept { return active_peer_count_; }
+
+    uint32_t connected_peer_count () const noexcept
+    {
+        return connected_peer_count_;
+    }
+
+    uint32_t subject_count () const noexcept { return subject_count_; }
+
+    uint32_t ready_subject_count () const noexcept
+    {
+        return ready_subject_count_;
+    }
+
+    uint32_t disconnected_sub_target_count () const noexcept
+    {
+        return disconnected_sub_target_count_;
+    }
+
+    uint32_t disconnected_routed_target_count () const noexcept
+    {
+        return disconnected_routed_target_count_;
+    }
+
+    int32_t last_error () const noexcept { return last_error_; }
+
+    std::chrono::milliseconds last_changed () const noexcept
+    {
+        return std::chrono::milliseconds (static_cast<int64_t> (last_changed_ms_));
+    }
+
+  private:
+    std::string service_name_;
+    std::string local_endpoint_;
+    std::optional<routing_id_t> node_routing_id_;
+    spot_node_state state_;
+    uint32_t configured_peer_count_;
+    uint32_t active_peer_count_;
+    uint32_t connected_peer_count_;
+    uint32_t subject_count_;
+    uint32_t ready_subject_count_;
+    uint32_t disconnected_sub_target_count_;
+    uint32_t disconnected_routed_target_count_;
+    int32_t last_error_;
+    uint64_t last_changed_ms_;
 };
 
-struct registry_service_summary_entry_t
+class registry_service_summary_entry_t
 {
+  public:
     registry_service_summary_entry_t ()
-        : auto_connect_type (zlink::auto_connect_type::invalid),
-          service_role (service_role::invalid), channel_name (),
-          total_count (0), connecting_count (0), ready_count (0),
-          error_count (0), stopped_count (0), last_reported_ms (0)
+        : auto_connect_type_ (zlink::auto_connect_type::invalid),
+          service_role_ (service_role::invalid), channel_name_ (),
+          total_count_ (0), connecting_count_ (0), ready_count_ (0),
+          error_count_ (0), stopped_count_ (0), last_reported_ms_ (0)
     {
     }
 
     explicit registry_service_summary_entry_t (
       const zlink_registry_service_summary_entry_t &entry_)
-        : auto_connect_type (
+        : auto_connect_type_ (
             static_cast<zlink::auto_connect_type> (entry_.auto_connect_type)),
-          service_role (static_cast<zlink::service_role> (entry_.service_role)),
-          channel_name (fixed_string_to_string (entry_.channel_name)),
-          total_count (entry_.total_count),
-          connecting_count (entry_.connecting_count),
-          ready_count (entry_.ready_count),
-          error_count (entry_.error_count),
-          stopped_count (entry_.stopped_count),
-          last_reported_ms (entry_.last_reported_ms)
+          service_role_ (static_cast<zlink::service_role> (entry_.service_role)),
+          channel_name_ (fixed_string_to_string (entry_.channel_name)),
+          total_count_ (entry_.total_count),
+          connecting_count_ (entry_.connecting_count),
+          ready_count_ (entry_.ready_count),
+          error_count_ (entry_.error_count),
+          stopped_count_ (entry_.stopped_count),
+          last_reported_ms_ (entry_.last_reported_ms)
     {
     }
 
-    zlink::auto_connect_type auto_connect_type;
-    zlink::service_role service_role;
-    std::string channel_name;
-    uint32_t total_count;
-    uint32_t connecting_count;
-    uint32_t ready_count;
-    uint32_t error_count;
-    uint32_t stopped_count;
-    uint64_t last_reported_ms;
+    auto_connect_type_t auto_connect_type () const noexcept
+    {
+        return auto_connect_type_;
+    }
+
+    service_role_t service_role () const noexcept { return service_role_; }
+
+    const std::string &channel_name () const noexcept { return channel_name_; }
+
+    uint32_t total_count () const noexcept { return total_count_; }
+
+    uint32_t connecting_count () const noexcept { return connecting_count_; }
+
+    uint32_t ready_count () const noexcept { return ready_count_; }
+
+    uint32_t error_count () const noexcept { return error_count_; }
+
+    uint32_t stopped_count () const noexcept { return stopped_count_; }
+
+    std::chrono::milliseconds last_reported () const noexcept
+    {
+        return std::chrono::milliseconds (
+          static_cast<int64_t> (last_reported_ms_));
+    }
+
+  private:
+    zlink::auto_connect_type auto_connect_type_;
+    zlink::service_role service_role_;
+    std::string channel_name_;
+    uint32_t total_count_;
+    uint32_t connecting_count_;
+    uint32_t ready_count_;
+    uint32_t error_count_;
+    uint32_t stopped_count_;
+    uint64_t last_reported_ms_;
 };
 
-struct registry_service_summary_filter_t
+class registry_service_summary_filter_t
 {
-    zlink::auto_connect_type auto_connect_type =
-      zlink::auto_connect_type::invalid;
-    zlink::service_role service_role = service_role::invalid;
-    std::string channel_name;
+  public:
+    registry_service_summary_filter_t () = default;
+
+    registry_service_summary_filter_t &
+    auto_connect_type (auto_connect_type_t value_)
+    {
+        auto_connect_type_ = value_;
+        return *this;
+    }
+
+    registry_service_summary_filter_t &service_role (service_role_t value_)
+    {
+        service_role_ = value_;
+        return *this;
+    }
+
+    registry_service_summary_filter_t &channel_name (std::string value_)
+    {
+        channel_name_ = std::move (value_);
+        return *this;
+    }
+
+    const std::optional<auto_connect_type_t> &auto_connect_type () const noexcept
+    {
+        return auto_connect_type_;
+    }
+
+    const std::optional<service_role_t> &service_role () const noexcept
+    {
+        return service_role_;
+    }
+
+    const std::optional<std::string> &channel_name () const noexcept
+    {
+        return channel_name_;
+    }
+
+  private:
+    std::optional<auto_connect_type_t> auto_connect_type_;
+    std::optional<service_role_t> service_role_;
+    std::optional<std::string> channel_name_;
 };
 
-struct registry_status_t
+class registry_status_t
 {
+  public:
     registry_status_t ()
-        : registry_id (0), bind_endpoint (), state (registry_state::idle),
-          topology_entry_count (0), peer_registry_count (0),
-          connected_peer_registry_count (0), list_seq (0), last_error (0),
-          last_changed_ms (0)
+        : registry_id_ (0), bind_endpoint_ (), state_ (registry_state::idle),
+          topology_entry_count_ (0), peer_registry_count_ (0),
+          connected_peer_registry_count_ (0), list_seq_ (0), last_error_ (0),
+          last_changed_ms_ (0)
     {
     }
 
     explicit registry_status_t (const zlink_registry_status_t &status_)
-        : registry_id (status_.registry_id),
-          bind_endpoint (fixed_string_to_string (status_.bind_endpoint)),
-          state (static_cast<registry_state> (status_.state)),
-          topology_entry_count (status_.topology_entry_count),
-          peer_registry_count (status_.peer_registry_count),
-          connected_peer_registry_count (
+        : registry_id_ (status_.registry_id),
+          bind_endpoint_ (fixed_string_to_string (status_.bind_endpoint)),
+          state_ (static_cast<registry_state> (status_.state)),
+          topology_entry_count_ (status_.topology_entry_count),
+          peer_registry_count_ (status_.peer_registry_count),
+          connected_peer_registry_count_ (
             status_.connected_peer_registry_count),
-          list_seq (status_.list_seq),
-          last_error (status_.last_error),
-          last_changed_ms (status_.last_changed_ms)
+          list_seq_ (status_.list_seq),
+          last_error_ (status_.last_error),
+          last_changed_ms_ (status_.last_changed_ms)
     {
     }
 
-    uint32_t registry_id;
-    std::string bind_endpoint;
-    registry_state state;
-    uint32_t topology_entry_count;
-    uint32_t peer_registry_count;
-    uint32_t connected_peer_registry_count;
-    uint64_t list_seq;
-    int32_t last_error;
-    uint64_t last_changed_ms;
+    uint32_t registry_id () const noexcept { return registry_id_; }
+
+    const std::string &bind_endpoint () const noexcept { return bind_endpoint_; }
+
+    registry_state_t state () const noexcept { return state_; }
+
+    uint32_t topology_entry_count () const noexcept
+    {
+        return topology_entry_count_;
+    }
+
+    uint32_t peer_registry_count () const noexcept
+    {
+        return peer_registry_count_;
+    }
+
+    uint32_t connected_peer_registry_count () const noexcept
+    {
+        return connected_peer_registry_count_;
+    }
+
+    uint64_t list_seq () const noexcept { return list_seq_; }
+
+    int32_t last_error () const noexcept { return last_error_; }
+
+    std::chrono::milliseconds last_changed () const noexcept
+    {
+        return std::chrono::milliseconds (static_cast<int64_t> (last_changed_ms_));
+    }
+
+  private:
+    uint32_t registry_id_;
+    std::string bind_endpoint_;
+    registry_state state_;
+    uint32_t topology_entry_count_;
+    uint32_t peer_registry_count_;
+    uint32_t connected_peer_registry_count_;
+    uint64_t list_seq_;
+    int32_t last_error_;
+    uint64_t last_changed_ms_;
 };
 
-struct spot_node_peer_entry_t
+class spot_node_peer_entry_t
 {
+  public:
     spot_node_peer_entry_t ()
-        : service_name (), local_endpoint (), peer_endpoint (),
-          source (spot_peer_source::manual), state (spot_peer_state::configured),
-          weight (0), connected_since_ms (0),
-          last_changed_ms (0)
+        : service_name_ (), local_endpoint_ (), peer_endpoint_ (),
+          source_ (spot_peer_source::manual), state_ (spot_peer_state::configured),
+          weight_ (0), connected_since_ms_ (0),
+          last_changed_ms_ (0)
     {
     }
 
     explicit spot_node_peer_entry_t (const zlink_spot_node_peer_entry_t &entry_)
-        : service_name (fixed_string_to_string (entry_.service_name)),
-          local_endpoint (fixed_string_to_string (entry_.local_endpoint)),
-          peer_endpoint (fixed_string_to_string (entry_.peer_endpoint)),
-          source (static_cast<spot_peer_source> (entry_.source)),
-          state (static_cast<spot_peer_state> (entry_.state)),
-          weight (entry_.weight),
-          connected_since_ms (entry_.connected_since_ms),
-          last_changed_ms (entry_.last_changed_ms)
+        : service_name_ (fixed_string_to_string (entry_.service_name)),
+          local_endpoint_ (fixed_string_to_string (entry_.local_endpoint)),
+          peer_endpoint_ (fixed_string_to_string (entry_.peer_endpoint)),
+          source_ (static_cast<spot_peer_source> (entry_.source)),
+          state_ (static_cast<spot_peer_state> (entry_.state)),
+          weight_ (entry_.weight),
+          connected_since_ms_ (entry_.connected_since_ms),
+          last_changed_ms_ (entry_.last_changed_ms)
     {
     }
 
-    std::string service_name;
-    std::string local_endpoint;
-    std::string peer_endpoint;
-    spot_peer_source source;
-    spot_peer_state state;
-    uint32_t weight;
-    uint64_t connected_since_ms;
-    uint64_t last_changed_ms;
+    const std::string &service_name () const noexcept { return service_name_; }
+
+    const std::string &local_endpoint () const noexcept { return local_endpoint_; }
+
+    const std::string &peer_endpoint () const noexcept { return peer_endpoint_; }
+
+    spot_peer_source_t source () const noexcept { return source_; }
+
+    spot_peer_state_t state () const noexcept { return state_; }
+
+    peer_weight_t weight () const noexcept { return peer_weight_t::value (weight_); }
+
+    std::chrono::milliseconds connected_since () const noexcept
+    {
+        return std::chrono::milliseconds (
+          static_cast<int64_t> (connected_since_ms_));
+    }
+
+    std::chrono::milliseconds last_changed () const noexcept
+    {
+        return std::chrono::milliseconds (static_cast<int64_t> (last_changed_ms_));
+    }
+
+  private:
+    std::string service_name_;
+    std::string local_endpoint_;
+    std::string peer_endpoint_;
+    spot_peer_source source_;
+    spot_peer_state state_;
+    uint32_t weight_;
+    uint64_t connected_since_ms_;
+    uint64_t last_changed_ms_;
 };
 
-struct spot_node_peer_filter_t
+class spot_node_peer_filter_t
 {
-    std::string peer_endpoint;
-    spot_peer_source source = spot_peer_source::manual;
-    spot_peer_state state = spot_peer_state::configured;
+  public:
+    spot_node_peer_filter_t () = default;
+
+    spot_node_peer_filter_t &peer_endpoint (std::string value_)
+    {
+        peer_endpoint_ = std::move (value_);
+        return *this;
+    }
+
+    spot_node_peer_filter_t &source (spot_peer_source_t value_)
+    {
+        source_ = value_;
+        return *this;
+    }
+
+    spot_node_peer_filter_t &state (spot_peer_state_t value_)
+    {
+        state_ = value_;
+        return *this;
+    }
+
+    const std::optional<std::string> &peer_endpoint () const noexcept
+    {
+        return peer_endpoint_;
+    }
+
+    const std::optional<spot_peer_source_t> &source () const noexcept
+    {
+        return source_;
+    }
+
+    const std::optional<spot_peer_state_t> &state () const noexcept
+    {
+        return state_;
+    }
+
+  private:
+    std::optional<std::string> peer_endpoint_;
+    std::optional<spot_peer_source_t> source_;
+    std::optional<spot_peer_state_t> state_;
 };
 
-struct spot_node_subject_entry_t
+class spot_node_subject_entry_t
 {
+  public:
     spot_node_subject_entry_t ()
-        : role (spot_socket_role::pub), subject (),
-          subject_kind (zlink::subject_kind::none), ready_peer_count (0),
-          active_peer_count (0), last_changed_ms (0)
+        : role_ (spot_socket_role::pub), subject_ (),
+          subject_kind_ (zlink::subject_kind::none), ready_peer_count_ (0),
+          active_peer_count_ (0), last_changed_ms_ (0)
     {
     }
 
     explicit spot_node_subject_entry_t (
       const zlink_spot_node_subject_entry_t &entry_)
-        : role (static_cast<spot_socket_role> (entry_.role)),
-          subject (fixed_string_to_string (entry_.subject)),
-          subject_kind (static_cast<zlink::subject_kind> (entry_.subject_kind)),
-          ready_peer_count (entry_.ready_peer_count),
-          active_peer_count (entry_.active_peer_count),
-          last_changed_ms (entry_.last_changed_ms)
+        : role_ (static_cast<spot_socket_role> (entry_.role)),
+          subject_ (fixed_string_to_string (entry_.subject)),
+          subject_kind_ (static_cast<zlink::subject_kind> (entry_.subject_kind)),
+          ready_peer_count_ (entry_.ready_peer_count),
+          active_peer_count_ (entry_.active_peer_count),
+          last_changed_ms_ (entry_.last_changed_ms)
     {
     }
 
-    spot_socket_role role;
-    std::string subject;
-    zlink::subject_kind subject_kind;
-    uint32_t ready_peer_count;
-    uint32_t active_peer_count;
-    uint64_t last_changed_ms;
-};
+    spot_role_t role () const noexcept { return role_; }
 
-struct spot_node_subject_filter_t
-{
-    spot_socket_role role = spot_socket_role::pub;
-    std::string subject;
-    zlink::subject_kind subject_kind = zlink::subject_kind::none;
-};
+    const std::string &subject () const noexcept { return subject_; }
 
-struct spot_node_options_t
-{
-    spot_node_mode mode = spot_node_mode::all;
-    auto_hwm_profile router_admission_hwm_profile =
-      auto_hwm_profile::balanced;
-    message_count_t router_admission_hwm = message_count_t::value (0);
-    auto_hwm_profile pubsub_admission_hwm_profile =
-      auto_hwm_profile::balanced;
-    message_count_t pubsub_admission_hwm = message_count_t::value (0);
+    subject_kind_t subject_kind () const noexcept { return subject_kind_; }
+
+    uint32_t ready_peer_count () const noexcept { return ready_peer_count_; }
+
+    uint32_t active_peer_count () const noexcept { return active_peer_count_; }
+
+    std::chrono::milliseconds last_changed () const noexcept
+    {
+        return std::chrono::milliseconds (static_cast<int64_t> (last_changed_ms_));
+    }
 
   private:
-    zlink_spot_node_options_t native () const
+    spot_socket_role role_;
+    std::string subject_;
+    zlink::subject_kind subject_kind_;
+    uint32_t ready_peer_count_;
+    uint32_t active_peer_count_;
+    uint64_t last_changed_ms_;
+};
+
+class spot_node_subject_filter_t
+{
+  public:
+    spot_node_subject_filter_t () = default;
+
+    spot_node_subject_filter_t &role (spot_role_t value_)
     {
-        zlink_spot_node_options_t options;
-        std::memset (&options, 0, sizeof (options));
-        options.mode = static_cast<zlink_spot_node_mode_t> (mode);
-        return options;
+        role_ = value_;
+        return *this;
     }
 
-    friend class service::spot_node_t;
+    spot_node_subject_filter_t &subject (std::string value_)
+    {
+        subject_ = std::move (value_);
+        return *this;
+    }
+
+    spot_node_subject_filter_t &subject_kind (subject_kind_t value_)
+    {
+        subject_kind_ = value_;
+        return *this;
+    }
+
+    const std::optional<spot_role_t> &role () const noexcept { return role_; }
+
+    const std::optional<std::string> &subject () const noexcept
+    {
+        return subject_;
+    }
+
+    const std::optional<subject_kind_t> &subject_kind () const noexcept
+    {
+        return subject_kind_;
+    }
+
+  private:
+    std::optional<spot_role_t> role_;
+    std::optional<std::string> subject_;
+    std::optional<subject_kind_t> subject_kind_;
 };
 
-struct spot_node_socket_snapshot_filter_t
+class spot_node_socket_snapshot_filter_t
 {
-    spot_node_socket_owner owner = spot_node_socket_owner::any;
-    socket_type type = socket_type::any;
-    std::string socket_name;
+  public:
+    spot_node_socket_snapshot_filter_t () = default;
+
+    spot_node_socket_snapshot_filter_t &owner (spot_node_socket_owner_t value_)
+    {
+        owner_ = value_;
+        return *this;
+    }
+
+    spot_node_socket_snapshot_filter_t &socket_type (
+      spot_node_socket_type_t value_)
+    {
+        socket_type_ = value_;
+        return *this;
+    }
+
+    spot_node_socket_snapshot_filter_t &socket_name (std::string value_)
+    {
+        socket_name_ = std::move (value_);
+        return *this;
+    }
+
+    const std::optional<spot_node_socket_owner_t> &owner () const noexcept
+    {
+        return owner_;
+    }
+
+    const std::optional<spot_node_socket_type_t> &socket_type () const noexcept
+    {
+        return socket_type_;
+    }
+
+    const std::optional<std::string> &socket_name () const noexcept
+    {
+        return socket_name_;
+    }
+
+  private:
+    std::optional<spot_node_socket_owner_t> owner_;
+    std::optional<spot_node_socket_type_t> socket_type_;
+    std::optional<std::string> socket_name_;
 };
 
-struct spot_node_socket_snapshot_entry_t
+class spot_node_socket_snapshot_entry_t
 {
+  public:
     spot_node_socket_snapshot_entry_t ()
-        : owner (spot_node_socket_owner::any), owner_id (0), owner_name (),
-          socket_name (), type (socket_type::any),
-          auto_hwm_visible (false), snapshot ()
+        : owner_ (spot_node_socket_owner::any), owner_id_ (0), owner_name_ (),
+          socket_name_ (), socket_type_ (spot_node_socket_type_t::pair),
+          auto_hwm_visible_ (false), snapshot_ ()
     {
     }
 
     explicit spot_node_socket_snapshot_entry_t (
       const zlink_spot_node_socket_snapshot_entry_t &entry_)
-        : owner (static_cast<spot_node_socket_owner> (entry_.owner)),
-          owner_id (entry_.owner_id),
-          owner_name (fixed_string_to_string (entry_.owner_name)),
-          socket_name (fixed_string_to_string (entry_.socket_name)),
-          type (static_cast<socket_type> (entry_.socket_type)),
-          auto_hwm_visible (entry_.auto_hwm_visible != 0),
-          snapshot (entry_.snapshot)
+        : owner_ (static_cast<spot_node_socket_owner> (entry_.owner)),
+          owner_id_ (entry_.owner_id),
+          owner_name_ (fixed_string_to_string (entry_.owner_name)),
+          socket_name_ (fixed_string_to_string (entry_.socket_name)),
+          socket_type_ (
+            static_cast<spot_node_socket_type_t> (entry_.socket_type)),
+          auto_hwm_visible_ (entry_.auto_hwm_visible != 0),
+          snapshot_ (entry_.snapshot)
     {
     }
 
-    spot_node_socket_owner owner;
-    uint64_t owner_id;
-    std::string owner_name;
-    std::string socket_name;
-    socket_type type;
-    bool auto_hwm_visible;
-    monitor_snapshot_t snapshot;
+    spot_node_socket_owner_t owner () const noexcept { return owner_; }
+
+    uint64_t owner_id () const noexcept { return owner_id_; }
+
+    const std::string &owner_name () const noexcept { return owner_name_; }
+
+    const std::string &socket_name () const noexcept { return socket_name_; }
+
+    spot_node_socket_type_t socket_type () const noexcept
+    {
+        return socket_type_;
+    }
+
+    bool auto_hwm_visible () const noexcept { return auto_hwm_visible_; }
+
+    const monitor_snapshot_t &snapshot () const noexcept { return snapshot_; }
+
+  private:
+    spot_node_socket_owner owner_;
+    uint64_t owner_id_;
+    std::string owner_name_;
+    std::string socket_name_;
+    spot_node_socket_type_t socket_type_;
+    bool auto_hwm_visible_;
+    monitor_snapshot_t snapshot_;
 };
 
-struct spot_node_spot_entry_t
+class spot_node_spot_entry_t
 {
+  public:
     spot_node_spot_entry_t ()
-        : spot_rid (detail::unchecked_empty_routing_id ()), dispatch_handler_attached (false),
-          joined_actor_count (0), pending_actor_join_count (0),
-          route_synced (false), last_changed_ms (0)
+        : spot_rid_ (detail::unchecked_empty_routing_id ()),
+          dispatch_handler_attached_ (false),
+          joined_actor_count_ (0), pending_actor_join_count_ (0),
+          route_synced_ (false), last_changed_ms_ (0)
     {
     }
 
     explicit spot_node_spot_entry_t (
       const zlink_spot_node_spot_entry_t &entry_)
-        : spot_rid (detail::native_routing_id (entry_.spot_rid)),
-          dispatch_handler_attached (entry_.dispatch_handler_attached != 0),
-          joined_actor_count (entry_.joined_actor_count),
-          pending_actor_join_count (entry_.pending_actor_join_count),
-          route_synced (entry_.route_synced != 0),
-          last_changed_ms (entry_.last_changed_ms)
+        : spot_rid_ (detail::native_routing_id (entry_.spot_rid)),
+          dispatch_handler_attached_ (entry_.dispatch_handler_attached != 0),
+          joined_actor_count_ (entry_.joined_actor_count),
+          pending_actor_join_count_ (entry_.pending_actor_join_count),
+          route_synced_ (entry_.route_synced != 0),
+          last_changed_ms_ (entry_.last_changed_ms)
     {
     }
 
-    routing_id_t spot_rid;
-    bool dispatch_handler_attached;
-    uint32_t joined_actor_count;
-    uint32_t pending_actor_join_count;
-    bool route_synced;
-    uint64_t last_changed_ms;
+    const routing_id_t &spot_rid () const noexcept { return spot_rid_; }
+
+    bool dispatch_handler_attached () const noexcept
+    {
+        return dispatch_handler_attached_;
+    }
+
+    uint32_t joined_actor_count () const noexcept
+    {
+        return joined_actor_count_;
+    }
+
+    uint32_t pending_actor_join_count () const noexcept
+    {
+        return pending_actor_join_count_;
+    }
+
+    bool route_synced () const noexcept { return route_synced_; }
+
+    std::chrono::milliseconds last_changed () const noexcept
+    {
+        return std::chrono::milliseconds (static_cast<int64_t> (last_changed_ms_));
+    }
+
+  private:
+    routing_id_t spot_rid_;
+    bool dispatch_handler_attached_;
+    uint32_t joined_actor_count_;
+    uint32_t pending_actor_join_count_;
+    bool route_synced_;
+    uint64_t last_changed_ms_;
 };
 
-struct spot_node_actor_entry_t
+class spot_node_actor_entry_t
 {
+  public:
     spot_node_actor_entry_t ()
-        : actor (), joined (false), joined_spot_rid (std::nullopt), route_synced (false),
-          pending_message_count (0), last_changed_ms (0)
+        : actor_ (), joined_ (false), joined_spot_rid_ (std::nullopt),
+          route_synced_ (false), pending_message_count_ (0),
+          last_changed_ms_ (0)
     {
     }
 
     explicit spot_node_actor_entry_t (
       const zlink_spot_node_actor_entry_t &entry_)
-        : actor (entry_.actor),
-          joined (entry_.joined != 0),
-          joined_spot_rid (
+        : actor_ (entry_.actor),
+          joined_ (entry_.joined != 0),
+          joined_spot_rid_ (
             entry_.joined_spot_rid.size > 0
               ? std::optional<routing_id_t> (
                   detail::native_routing_id (entry_.joined_spot_rid))
               : std::nullopt),
-          route_synced (entry_.route_synced != 0),
-          pending_message_count (entry_.pending_message_count),
-          last_changed_ms (entry_.last_changed_ms)
+          route_synced_ (entry_.route_synced != 0),
+          pending_message_count_ (entry_.pending_message_count),
+          last_changed_ms_ (entry_.last_changed_ms)
     {
     }
 
-    actor_ref_t actor;
-    bool joined;
-    std::optional<routing_id_t> joined_spot_rid;
-    bool route_synced;
-    uint32_t pending_message_count;
-    uint64_t last_changed_ms;
+    const actor_ref_t &actor () const noexcept { return actor_; }
+
+    bool joined () const noexcept { return joined_; }
+
+    const std::optional<routing_id_t> &joined_spot_rid () const noexcept
+    {
+        return joined_spot_rid_;
+    }
+
+    bool route_synced () const noexcept { return route_synced_; }
+
+    uint32_t pending_message_count () const noexcept
+    {
+        return pending_message_count_;
+    }
+
+    std::chrono::milliseconds last_changed () const noexcept
+    {
+        return std::chrono::milliseconds (static_cast<int64_t> (last_changed_ms_));
+    }
+
+  private:
+    actor_ref_t actor_;
+    bool joined_;
+    std::optional<routing_id_t> joined_spot_rid_;
+    bool route_synced_;
+    uint32_t pending_message_count_;
+    uint64_t last_changed_ms_;
 };
 
 enum class spot_service_attachment_role_t
@@ -2081,16 +2643,96 @@ struct spot_service_attachment_stats_t
 
 template<size_t N> inline std::string fixed_string_to_string (const char (&src_)[N]);
 
-struct registry_topology_filter_t
+class registry_topology_filter_t
 {
-    zlink::auto_connect_type auto_connect_type =
-      zlink::auto_connect_type::invalid;
-    zlink::service_kind service_kind = service_kind::socket;
-    zlink::service_role service_role = service_role::invalid;
-    std::string channel_name;
-    std::optional<routing_id_t> routing_id;
-    topology_state state = topology_state::discovered;
-    topology_source source = topology_source::manual;
+  public:
+    registry_topology_filter_t () = default;
+
+    registry_topology_filter_t &auto_connect_type (auto_connect_type_t value_)
+    {
+        auto_connect_type_ = value_;
+        return *this;
+    }
+
+    registry_topology_filter_t &service_kind (service_kind_t value_)
+    {
+        service_kind_ = value_;
+        return *this;
+    }
+
+    registry_topology_filter_t &service_role (service_role_t value_)
+    {
+        service_role_ = value_;
+        return *this;
+    }
+
+    registry_topology_filter_t &channel_name (std::string value_)
+    {
+        channel_name_ = std::move (value_);
+        return *this;
+    }
+
+    registry_topology_filter_t &routing_id (routing_id_t value_)
+    {
+        routing_id_ = std::move (value_);
+        return *this;
+    }
+
+    registry_topology_filter_t &state (topology_state_t value_)
+    {
+        state_ = value_;
+        return *this;
+    }
+
+    registry_topology_filter_t &source (topology_source_t value_)
+    {
+        source_ = value_;
+        return *this;
+    }
+
+    const std::optional<auto_connect_type_t> &auto_connect_type () const noexcept
+    {
+        return auto_connect_type_;
+    }
+
+    const std::optional<service_kind_t> &service_kind () const noexcept
+    {
+        return service_kind_;
+    }
+
+    const std::optional<service_role_t> &service_role () const noexcept
+    {
+        return service_role_;
+    }
+
+    const std::optional<std::string> &channel_name () const noexcept
+    {
+        return channel_name_;
+    }
+
+    const std::optional<routing_id_t> &routing_id () const noexcept
+    {
+        return routing_id_;
+    }
+
+    const std::optional<topology_state_t> &state () const noexcept
+    {
+        return state_;
+    }
+
+    const std::optional<topology_source_t> &source () const noexcept
+    {
+        return source_;
+    }
+
+  private:
+    std::optional<auto_connect_type_t> auto_connect_type_;
+    std::optional<service_kind_t> service_kind_;
+    std::optional<service_role_t> service_role_;
+    std::optional<std::string> channel_name_;
+    std::optional<routing_id_t> routing_id_;
+    std::optional<topology_state_t> state_;
+    std::optional<topology_source_t> source_;
 };
 
 template<size_t N> inline std::string fixed_string_to_string (const char (&src_)[N])

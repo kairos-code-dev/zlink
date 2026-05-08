@@ -7,9 +7,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { once } = require('node:events');
 const { Worker } = require('node:worker_threads');
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const {
-  MonitorEvent,
+  MonitorEventType,
   RecvFlags,
   RecvResult
 } = zlink;
@@ -23,6 +23,14 @@ const {
   configureTlsServer,
 } = require('../common/perf_tls');
 const POLLIN = 1;
+
+function pollEvents(mask) {
+  const events = [];
+  if ((mask & POLLIN) !== 0) {
+    events.push(zlink.PollEventFlag.PollIn);
+  }
+  return events;
+}
 
 async function reservePort() {
   const server = net.createServer();
@@ -79,23 +87,15 @@ function applySocketPolicy(socket, options = {}) {
     ? options.lingerMs
     : integerEnv('PERF_SINGLE_LINGER_MS', 0);
 
-  if (typeof socket.setSendHighWaterMark === 'function') {
-    socket.setSendHighWaterMark(sendHwm);
-  }
-  if (typeof socket.setReceiveHighWaterMark === 'function') {
-    socket.setReceiveHighWaterMark(recvHwm);
-  }
-  if (typeof socket.setSendTimeout === 'function') {
-    socket.setSendTimeout(sendTimeout);
-  }
-  if (typeof socket.setReceiveTimeout === 'function') {
-    socket.setReceiveTimeout(options.recvTimeout ?? recvTimeout);
-  }
-  if (typeof socket.setLinger === 'function') {
-    socket.setLinger(linger);
-  }
-  if (typeof socket.setNoDrop === 'function' && options.noDrop !== undefined) {
-    socket.setNoDrop(Boolean(options.noDrop));
+  if (socket.options) {
+    socket.options.sendHwm = sendHwm;
+    socket.options.recvHwm = recvHwm;
+    socket.options.sendTimeout = sendTimeout;
+    socket.options.recvTimeout = options.recvTimeout ?? recvTimeout;
+    socket.options.linger = linger;
+    if ('noDrop' in socket.options && options.noDrop !== undefined) {
+      socket.options.noDrop = Boolean(options.noDrop);
+    }
   }
 }
 
@@ -110,12 +110,8 @@ function applySpotNodeAdmission(node, options = {}) {
     ? options.recvHwm
     : integerEnv('PERF_SINGLE_RCVHWM', hwm);
 
-  if (typeof node.setPubSubHighWaterMark === 'function') {
-    node.setPubSubHighWaterMark(sendHwm);
-  }
-  if (typeof node.setRouterHighWaterMark === 'function') {
-    node.setRouterHighWaterMark(recvHwm);
-  }
+  node.pubsubHwm = sendHwm;
+  node.routerHwm = recvHwm;
 }
 
 function applyContextPolicy(ctx) {
@@ -161,7 +157,7 @@ async function waitForConnectionReady(
   connectFn = null,
   timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 5000)
 ) {
-  const monitor = socket.monitorOpen(MonitorEvent.CONNECTION_READY);
+  const monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
   try {
     if (typeof connectFn === 'function') {
       await connectFn();
@@ -170,7 +166,7 @@ async function waitForConnectionReady(
     while (Date.now() < deadline) {
       try {
         const event = monitor.recv(RecvFlags.DontWait);
-        if (event.event === MonitorEvent.CONNECTION_READY) {
+        if (event && event.event === MonitorEventType.ConnectionReady) {
           return;
         }
       } catch (error) {
@@ -201,7 +197,7 @@ async function waitForMonitorConnectionReady(
   while (Date.now() < deadline) {
     try {
       const event = monitor.recv(RecvFlags.DontWait);
-      if (event.event === MonitorEvent.CONNECTION_READY) {
+      if (event && event.event === MonitorEventType.ConnectionReady) {
         return;
       }
     } catch (error) {
@@ -233,13 +229,13 @@ function resolveSingleIdleDrainMs(overrides = {}) {
 
 async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25) {
   const poller = new zlink.Poller();
-  poller.addSocket(socket, POLLIN);
+  poller.add(socket, pollEvents(POLLIN));
 
   try {
     while (!shouldStop()) {
       let ready = [];
       try {
-        ready = poller.poll(pollTimeoutMs);
+        ready = poller.waitAll(Math.max(1, poller.size), pollTimeoutMs);
       } catch (error) {
         const text = String(error && error.message ? error.message : error);
         if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {

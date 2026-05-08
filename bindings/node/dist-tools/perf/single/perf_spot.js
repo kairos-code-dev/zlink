@@ -5,7 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const node_net_1 = __importDefault(require("node:net"));
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const perf_metrics_1 = require("../common/perf_metrics");
 const perf_single_common_1 = require("./perf_single_common");
 const AUTO_CONNECT_SPOT_MESH = 5;
@@ -13,7 +13,10 @@ const SERVICE_NAME = 'perf.spot';
 const TOPIC = 'perf.topic';
 function trySpotPublish(spot, payload) {
     try {
-        return spot.publish(SERVICE_NAME, TOPIC, payload, zlink.SendFlags.DontWait);
+        return spot.publish(SERVICE_NAME, TOPIC)
+            .message(payload)
+            .flags(zlink.SendFlags.DontWait)
+            .submit();
     }
     catch (error) {
         if (error instanceof zlink.SubmitError &&
@@ -98,8 +101,6 @@ async function runSpotBenchmark(msgSize, options) {
         subscriberNode.bind(subscriberEndpoint);
         publisherNode.attachDiscovery(publisherDiscovery);
         subscriberNode.attachDiscovery(subscriberDiscovery);
-        publisher.setLinger(Number(process.env.PERF_SINGLE_LINGER_MS ?? 0));
-        subscriber.setLinger(Number(process.env.PERF_SINGLE_LINGER_MS ?? 0));
         subscriber.setSubscription(TOPIC);
         const runId = (0, perf_metrics_1.createRunId)(options.runId ?? 1);
         const payload = (0, perf_metrics_1.createPayload)(msgSize);

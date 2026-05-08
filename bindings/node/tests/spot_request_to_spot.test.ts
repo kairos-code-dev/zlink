@@ -6,7 +6,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 
 async function reservePort() {
   const server = net.createServer();

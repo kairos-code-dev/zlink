@@ -1,11 +1,27 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const zlink = require('../../dist/canonical');
-const { MonitorEvent, RecvFlags, RecvResult } = zlink;
+const zlink = require('../../..');
+const { MonitorEventType, RecvFlags, RecvResult } = zlink;
 const { sleepImmediate } = require('../common/perf_metrics');
 const POLLIN = 1;
 const POLLOUT = 2;
+function pollEvents(mask) {
+    const events = [];
+    if ((mask & POLLIN) !== 0) {
+        events.push(zlink.PollEventFlag.PollIn);
+    }
+    if ((mask & POLLOUT) !== 0) {
+        events.push(zlink.PollEventFlag.PollOut);
+    }
+    return events;
+}
+function pollEventHas(event, mask) {
+    if (Array.isArray(event?.revents)) {
+        return event.revents.some((flag) => (flag & mask) !== 0);
+    }
+    return ((event?.events ?? 0) & mask) !== 0;
+}
 function integerEnv(name, fallback) {
     const raw = process.env[name];
     if (raw === undefined || raw === '') {
@@ -21,35 +37,23 @@ function applySocketPolicy(socket, options = {}) {
     const sendTimeout = integerEnv('PERF_MULTI_SNDTIMEO_MS', 200);
     const recvTimeout = integerEnv('PERF_MULTI_RCVTIMEO_MS', 200);
     const linger = integerEnv('PERF_MULTI_LINGER_MS', 0);
-    if (typeof socket.setSendHighWaterMark === 'function') {
-        socket.setSendHighWaterMark(sendHwm);
-    }
-    if (typeof socket.setReceiveHighWaterMark === 'function') {
-        socket.setReceiveHighWaterMark(recvHwm);
-    }
-    if (typeof socket.setSendTimeout === 'function') {
-        socket.setSendTimeout(sendTimeout);
-    }
-    if (typeof socket.setReceiveTimeout === 'function') {
-        socket.setReceiveTimeout(options.recvTimeout ?? recvTimeout);
-    }
-    if (typeof socket.setLinger === 'function') {
-        socket.setLinger(linger);
-    }
-    if (typeof socket.setNoDrop === 'function' && options.noDrop !== undefined) {
-        socket.setNoDrop(Boolean(options.noDrop));
+    if (socket.options) {
+        socket.options.sendHwm = sendHwm;
+        socket.options.recvHwm = recvHwm;
+        socket.options.sendTimeout = sendTimeout;
+        socket.options.recvTimeout = options.recvTimeout ?? recvTimeout;
+        socket.options.linger = linger;
+        if ('noDrop' in socket.options && options.noDrop !== undefined) {
+            socket.options.noDrop = Boolean(options.noDrop);
+        }
     }
 }
 function applySpotNodeAdmission(node) {
     const hwm = integerEnv('PERF_MULTI_HWM', 1000);
     const sendHwm = integerEnv('PERF_MULTI_SNDHWM', hwm);
     const recvHwm = integerEnv('PERF_MULTI_RCVHWM', hwm);
-    if (typeof node.setPubSubHighWaterMark === 'function') {
-        node.setPubSubHighWaterMark(sendHwm);
-    }
-    if (typeof node.setRouterHighWaterMark === 'function') {
-        node.setRouterHighWaterMark(recvHwm);
-    }
+    node.pubsubHwm = sendHwm;
+    node.routerHwm = recvHwm;
 }
 function resolveMultiIoThreads(role, pattern) {
     const normalizedRole = String(role || '').trim().toLowerCase();
@@ -111,7 +115,7 @@ async function waitForConnectionReady(socket, connectFn = null, timeoutMs = inte
     return waitForConnectionReadyCount(socket, 1, connectFn, timeoutMs);
 }
 async function waitForConnectionReadyCount(socket, expectedCount, connectFn = null, timeoutMs = integerEnv('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 5000)) {
-    const monitor = socket.monitorOpen(MonitorEvent.CONNECTION_READY);
+    const monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
     try {
         if (typeof connectFn === 'function') {
             await connectFn();
@@ -124,8 +128,11 @@ async function waitForConnectionReadyCount(socket, expectedCount, connectFn = nu
             try {
                 while (true) {
                     const event = monitor.recv(RecvFlags.DontWait);
+                    if (!event) {
+                        break;
+                    }
                     drained = true;
-                    if (event.event === MonitorEvent.CONNECTION_READY) {
+                    if (event.event === MonitorEventType.ConnectionReady) {
                         readyCount += 1;
                         if (readyCount >= targetCount) {
                             return;
@@ -178,24 +185,9 @@ function trySocketPublish(socket, topic, payload) {
         throw error;
     }
 }
-function trySendToSpot(socket, destNodeRid, destSpotRid, payload) {
-    try {
-        return socket.sendToSpot(destNodeRid, destSpotRid, payload, zlink.SendFlags.DontWait);
-    }
-    catch (error) {
-        if (error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.Backpressured) {
-            return false;
-        }
-        const text = String(error && error.message ? error.message : error);
-        if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
-            return false;
-        }
-        throw error;
-    }
-}
 async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25) {
     const poller = new zlink.Poller();
-    poller.addSocket(socket, POLLIN);
+    poller.add(socket, pollEvents(POLLIN));
     try {
         while (!shouldStop()) {
             let ready = null;
@@ -240,7 +232,7 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
 }
 function createSocketEventWaiter(socket, events, pollTimeoutMs = 25) {
     const poller = new zlink.Poller();
-    poller.addSocket(socket, events);
+    poller.add(socket, pollEvents(events));
     return {
         async wait(mask = events) {
             while (true) {
@@ -256,7 +248,7 @@ function createSocketEventWaiter(socket, events, pollTimeoutMs = 25) {
                     }
                     throw error;
                 }
-                if (ready && (ready.events & mask) !== 0) {
+                if (ready && pollEventHas(ready, mask)) {
                     return ready;
                 }
                 await sleepImmediate();
@@ -275,10 +267,11 @@ module.exports = {
     applySocketPolicy,
     createSocketEventWaiter,
     drainRecvSocket,
+    pollEvents,
+    pollEventHas,
     recvNoWait,
     resolveMultiLatencySampleCap,
     subscribeNoWait,
-    trySendToSpot,
     trySocketPublish,
     trySocketSend,
     waitForConnectionReadyCount,

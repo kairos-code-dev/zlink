@@ -27,15 +27,15 @@ bool wait_for_spot_ready (zlink::service::spot_node_t &node_,
         }
 
         const bool pub_ready =
-          !status.local_endpoint.empty ()
+          !status.local_endpoint ().empty ()
           && (min_active_peer_count_ == 0
-              || status.active_peer_count >= min_active_peer_count_);
+              || status.active_peer_count () >= min_active_peer_count_);
         const bool sub_ready =
           require_subject_
-            ? status.subject_count > 0
-                && (status.active_peer_count >= min_active_peer_count_
-                    || status.connected_peer_count >= min_active_peer_count_)
-            : status.active_peer_count >= min_active_peer_count_;
+            ? status.subject_count () > 0
+                && (status.active_peer_count () >= min_active_peer_count_
+                    || status.connected_peer_count () >= min_active_peer_count_)
+            : status.active_peer_count () >= min_active_peer_count_;
         if (require_subject_ ? sub_ready : pub_ready)
             return true;
         std::this_thread::yield ();
@@ -77,8 +77,10 @@ int main ()
     while (std::chrono::steady_clock::now () < deadline) {
         zlink::message_t outbound =
           detail::make_message ("spot-callback");
-        spot.publish (detail::k_spot_service, "topic:alpha", outbound);
-        inbound = spot.subscribe (zlink::recv_flags_t::dontwait);
+        spot.publish (detail::k_spot_service, "topic:alpha")
+          .message (outbound)
+          .submit ();
+        inbound = spot.subscribe (ZLINK_DONTWAIT);
         if (inbound.has_value ())
             break;
         std::this_thread::sleep_for (std::chrono::milliseconds (10));

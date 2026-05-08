@@ -132,7 +132,7 @@ target_include_directories(zlink-cpp INTERFACE
   ${CMAKE_CURRENT_LIST_DIR}/include
 )
 
-target_compile_features(zlink-cpp INTERFACE cxx_std_17)
+target_compile_features(zlink-cpp INTERFACE cxx_std_20)
 
 find_package(Doxygen QUIET)
 if(DOXYGEN_FOUND)

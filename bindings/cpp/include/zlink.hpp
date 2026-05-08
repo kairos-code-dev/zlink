@@ -6,6 +6,7 @@
 #include "zlink/types.hpp"
 #include "zlink/error.hpp"
 #include "zlink/message.hpp"
+#include "zlink/multipart.hpp"
 #include "zlink/context.hpp"
 #include "zlink/sockets/pair.hpp"
 #include "zlink/sockets/dealer.hpp"

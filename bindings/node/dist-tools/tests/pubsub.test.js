@@ -6,7 +6,7 @@ const net = require('node:net');
 const { spawn } = require('node:child_process');
 const { once } = require('node:events');
 const path = require('node:path');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 const SPOT_PEER_SOURCE_MANUAL = 1;
 const SPOT_SERVICE_NAME = 'pubsub-spot-service';
 async function reservePort() {
@@ -52,7 +52,7 @@ test.skip('remote spot peer delivery works over tcp direct peer connect', async 
         while (Date.now() < deadline) {
             if (serverNode.statusSnapshot().connectedPeerCount > 0
                 && clientNode.statusSnapshot().connectedPeerCount > 0) {
-                serverSpot.publish(SPOT_SERVICE_NAME, topic, 'payload');
+                serverSpot.publish(SPOT_SERVICE_NAME, topic).message('payload').submit();
             }
             let received = null;
             try {

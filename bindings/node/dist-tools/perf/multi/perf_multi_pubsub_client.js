@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, summarizeMetrics } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { applyContextPolicy, applySocketPolicy, drainRecvSocket, resolveMultiLatencySampleCap } = require('./perf_multi_runtime');

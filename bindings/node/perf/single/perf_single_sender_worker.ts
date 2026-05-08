@@ -3,7 +3,7 @@
 'use strict';
 
 const { parentPort, workerData } = require('node:worker_threads');
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const {
   createPayload,
   stampPayload

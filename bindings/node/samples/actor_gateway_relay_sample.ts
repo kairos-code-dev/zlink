@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 
 async function reservePort() {
   const server = net.createServer();
@@ -17,9 +17,10 @@ async function reservePort() {
 }
 
 function frame(payload) {
-  const framed = Buffer.allocUnsafe(payload.length + 4);
-  framed.writeUInt32BE(payload.length, 0);
-  payload.copy(framed, 4);
+  const framed = Buffer.allocUnsafe(payload.length + 6);
+  framed.writeUInt16BE(0, 0);
+  framed.writeUInt32BE(payload.length, 2);
+  payload.copy(framed, 6);
   return framed;
 }
 
@@ -57,13 +58,13 @@ async function main() {
       }
     });
     stream.bind(endpoint);
-    actor = node.actor('gateway-player-1');
+    actor = node.createActor('gateway-player-1');
     client = net.createConnection({ host: '127.0.0.1', port });
     await once(client, 'connect');
 
     session = await new Promise((resolve) => {
       stream.onPacket((sourceRid) => resolve(sourceRid));
-      client.write(Buffer.concat([frame(Buffer.alloc(0)), frame(Buffer.from('open'))]));
+      client.write(frame(Buffer.from('open')));
     });
 
     stream.bindActor(node, session, actor.ref(), 2000);
@@ -73,7 +74,7 @@ async function main() {
       }, zlink.SendFlags.None, 2000);
     });
     const joinRequest = waitForJoin(spot);
-    spot.replyActorJoin(joinRequest.info, true, Buffer.from('ok'));
+    spot.replyActorJoin(joinRequest, true, Buffer.from('ok'));
     await joinReply;
     stream.sendBoundActor(node, session, 'gateway-player-1', Buffer.from('relay'));
 

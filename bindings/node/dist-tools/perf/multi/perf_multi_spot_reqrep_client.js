@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
 const { POLLIN, POLLOUT, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, resolveMultiLatencySampleCap, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
@@ -109,7 +109,6 @@ async function main() {
         await waitForConnectionReady(controlSub, () => controlSub.connect(options.serverControlEndpoint));
         console.log(`CONTROL_CONNECTED,${options.serverControlEndpoint}`);
         trace('control-connected');
-        replier.setLinger(Number(process.env.PERF_MULTI_LINGER_MS ?? 0));
         replierNode.setRoutingId(SERVER_NODE_ROUTING_ID);
         replier.setRoutingId(SERVER_SPOT_ROUTING_ID);
         const dataEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-reqrep-client-${process.pid}`);
@@ -122,7 +121,7 @@ async function main() {
                     continue;
                 }
                 try {
-                    received.reply(received.parts.map((part) => zlink.Message.from(Buffer.from(part.data()))));
+                    received.reply(received.parts);
                 }
                 finally {
                     closeReceived(received);

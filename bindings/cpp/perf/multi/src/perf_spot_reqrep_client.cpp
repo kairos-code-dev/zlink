@@ -198,8 +198,11 @@ class spot_reqrep_client_bench_t
             return false;
 
         try {
-            slot_.pending.emplace (slot_.spot->request_channel (
-              k_channel, request_parts, std::chrono::milliseconds (2000)));
+            slot_.pending.emplace (
+              slot_.spot->request_channel (k_channel)
+                .message (request_parts.front ())
+                .timeout (std::chrono::milliseconds (2000))
+                .submit_async ());
             return true;
         }
         catch (const std::exception &) {

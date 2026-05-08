@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 
 test('canonical socket classes expose only directionally valid methods', () => {
   const ctx = new zlink.Context();
@@ -90,6 +90,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(stream.subscribe, undefined);
   assert.equal(stream.connect, undefined);
   assert.equal(stream.disconnect, undefined);
+  assert.equal(stream.disconnectRid, undefined);
   assert.equal(stream.streamAttach, undefined);
   assert.equal(stream.setSockOpt, undefined);
   assert.equal(typeof stream.setRoutingId, 'function');
@@ -123,23 +124,24 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(typeof spotNode.attachChannelDealer, 'function');
   assert.equal(typeof spotNode.attachChannelDealerManual, 'function');
   assert.equal(typeof spotNode.attachPubIngress, 'function');
-  assert.equal(typeof spotNode.actor, 'function');
+  assert.equal(typeof spotNode.createActor, 'function');
   assert.equal(typeof spotNode.actorLookup, 'function');
-  assert.equal(typeof spotNode.remoteActorRef, 'function');
+  assert.equal(typeof zlink.SpotNode.remoteActorRef, 'function');
   assert.equal(typeof spotNode.createRemoteActor, 'function');
   assert.equal(typeof spotNode.destroyActor, 'function');
   assert.equal(typeof spotNode.onActorAdmission, 'function');
   assert.equal(typeof spotNode.joinActor, 'function');
   assert.equal(typeof spotNode.leaveActor, 'function');
+  assert.equal(typeof spotNode.entrySpot, 'function');
+  assert.equal(typeof spotNode.spotLookup, 'function');
   assert.equal(typeof spotNode.spotsSnapshot, 'function');
   assert.equal(typeof spotNode.actorsSnapshot, 'function');
   spotNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('node-surface')));
   assert.ok(spotNode.routingId instanceof zlink.RoutingId);
-  const actor = spotNode.actor('surface-actor');
+  const actor = spotNode.createActor('surface-actor');
   const actorRef = actor.ref();
   assert.equal(actorRef.actorId, 'surface-actor');
-  assert.equal(actorRef.unchecked, false);
-  assert.equal(actorRef.isUnchecked(), false);
+  assert.equal(actorRef.generation === 0n, false);
   assert.equal(typeof actor.join, 'function');
   assert.equal(typeof actor.leave, 'function');
   assert.equal(typeof actor.recvPart, 'function');
@@ -162,7 +164,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
   actor.close();
   spotNode.close();
 
-  const monitor = stream.monitorOpen(zlink.MonitorEvent.ALL);
+  const monitor = stream.monitorOpen();
   assert.equal(typeof monitor.recv, 'function');
   assert.equal(typeof monitor.onEvent, 'function');
   assert.equal(typeof zlink.MonitorSocket.ignoreHandler, 'function');
@@ -180,5 +182,45 @@ test('canonical socket classes expose only directionally valid methods', () => {
   sub.close();
   xpub.close();
   pub.close();
+  ctx.close();
+});
+
+test('value and handle objects without documented constructors are runtime guarded', () => {
+  const ctx = new zlink.Context();
+  const pub = new zlink.PubSocket(ctx);
+
+  assert.throws(() => new zlink.RoutingId(Buffer.from('id')), TypeError);
+  assert.throws(() => new zlink.Received([]), TypeError);
+  assert.throws(() => new zlink.TopicMessage('topic', []), TypeError);
+  assert.throws(() => new zlink.SubscriptionEvent('topic', true), TypeError);
+  assert.throws(() => new zlink.MonitorEvent({ event: zlink.MonitorEventType.Connected, value: 0 }), TypeError);
+  assert.throws(() => new zlink.Actor(), TypeError);
+  assert.throws(() => new zlink.Spot(ctx), TypeError);
+  assert.throws(() => new zlink.CommonSocketOptions(pub), TypeError);
+  assert.throws(() => new zlink.ContextOptions(ctx), TypeError);
+
+  assert.ok(zlink.RoutingId.fromBytes(Buffer.from('id')) instanceof zlink.RoutingId);
+  assert.ok(new zlink.Message('payload') instanceof zlink.Message);
+
+  pub.close();
+  ctx.close();
+});
+
+test('spot operation builders keep payload and single-submit validation centralized', () => {
+  const ctx = new zlink.Context();
+  const node = new zlink.SpotNode(ctx);
+  const spot = node.createSpot();
+  const rid = zlink.RoutingId.fromBytes(Buffer.from('builder-target'));
+
+  assert.throws(() => spot.sendChannel('svc').submit(), /requires at least one message/);
+  assert.throws(() => spot.requestChannel('svc').submitAsync(), /requires at least one message/);
+  assert.throws(() => spot.replyToRouter(rid, 1n).submit(), /requires at least one message/);
+
+  const op = spot.sendChannel('svc').message('payload');
+  assert.throws(() => op.submit(), zlink.SubmitError);
+  assert.throws(() => op.message('again'), /already been submitted/);
+
+  spot.close();
+  node.close();
   ctx.close();
 });

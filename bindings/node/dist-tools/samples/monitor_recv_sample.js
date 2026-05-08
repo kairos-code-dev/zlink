@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 async function reservePort() {
     const srv = net.createServer();
     srv.listen(0, '127.0.0.1');
@@ -19,15 +19,15 @@ async function main() {
     const ctx = new zlink.Context();
     const server = new zlink.PairSocket(ctx);
     const client = new zlink.PairSocket(ctx);
-    const serverMonitor = server.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
-    const clientMonitor = client.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
+    const serverMonitor = server.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
+    const clientMonitor = client.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
     try {
         server.bind(endpoint);
         client.connect(endpoint);
         const serverEvent = serverMonitor.recv();
         const clientEvent = clientMonitor.recv();
-        assert.equal(serverEvent.event, zlink.MonitorEvent.CONNECTION_READY);
-        assert.equal(clientEvent.event, zlink.MonitorEvent.CONNECTION_READY);
+        assert.equal(serverEvent.event, zlink.MonitorEventType.ConnectionReady);
+        assert.equal(clientEvent.event, zlink.MonitorEventType.ConnectionReady);
         console.log('[monitor/recv] recv: "connection-ready"');
     }
     finally {

@@ -3,7 +3,7 @@
 'use strict';
 
 const readline = require('node:readline');
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
@@ -73,7 +73,6 @@ async function main() {
   try {
     applySpotNodeAdmission(node);
     spot = node.createSpot();
-    spot.setLinger(Number(process.env.PERF_MULTI_LINGER_MS ?? 0));
     node.setRoutingId(SERVER_NODE_ROUTING_ID);
     spot.setRoutingId(SERVER_SPOT_ROUTING_ID);
     node.bind(options.peerEndpoint);
@@ -85,7 +84,7 @@ async function main() {
           continue;
         }
         try {
-          received.reply(received.parts.map((part) => zlink.Message.from(Buffer.from(part.data()))));
+          received.reply(received.parts);
         } finally {
           received.close();
         }

@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 const AUTO_CONNECT_SPOT_MESH = 5;
 
 const SERVICE_NAME = 'sample';
@@ -49,7 +49,7 @@ async function main() {
     const deadline = Date.now() + 15000;
     let received = null;
     while (Date.now() < deadline) {
-      publisher.publish(SERVICE_NAME, topic, Buffer.from(sent));
+      publisher.publish(SERVICE_NAME, topic).message(Buffer.from(sent)).submit();
       try {
         received = subscriber.subscribe(zlink.RecvFlags.DontWait);
         if (received) {

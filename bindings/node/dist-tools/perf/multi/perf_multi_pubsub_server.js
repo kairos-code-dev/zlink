@@ -2,10 +2,10 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const { createPayload, createRunId, sleepImmediate, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applyContextPolicy, applySocketPolicy, trySocketPublish } = require('./perf_multi_runtime');
+const { POLLOUT, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, trySocketPublish } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -19,7 +19,7 @@ async function main() {
             noDrop: Number(process.env.PERF_MULTI_PUBSUB_XPUB_NODROP ?? 1) !== 0
         });
         pub.bind(options.endpoint);
-        poller.addSocket(pub, POLLOUT);
+        poller.add(pub, pollEvents(POLLOUT));
         console.log(`READY,${options.endpoint}`);
         rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
         for await (const line of rl) {
@@ -43,7 +43,7 @@ async function main() {
                     pending = true;
                 }
                 const ready = poller.wait(25);
-                if (!ready || (ready.events & POLLOUT) === 0) {
+                if (!ready || !pollEventHas(ready, POLLOUT)) {
                     await sleepImmediate();
                     continue;
                 }
@@ -57,7 +57,7 @@ async function main() {
                     continue;
                 }
                 const ready = poller.wait(25);
-                if (!ready || (ready.events & POLLOUT) === 0) {
+                if (!ready || !pollEventHas(ready, POLLOUT)) {
                     await sleepImmediate();
                 }
             }

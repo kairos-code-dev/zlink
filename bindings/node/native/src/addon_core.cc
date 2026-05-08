@@ -1093,8 +1093,18 @@ int set_socket_option(void *sock, int32_t opt, const void *data, size_t len)
     case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
         return zlink_set_router_option(sock, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
                                        data, len);
+    case ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS:
+        return zlink_set_router_option(sock, ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS,
+                                       data, len);
+    case ZLINK_ROUTER_OPT_WEIGHT:
+        return zlink_set_router_option(sock, ZLINK_ROUTER_OPT_WEIGHT, data, len);
     case ZLINK_DEALER_OPT_PROBE:
         return zlink_set_dealer_option(sock, ZLINK_DEALER_OPT_PROBE, data, len);
+    case ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS:
+        return zlink_set_dealer_option(sock, ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS,
+                                       data, len);
+    case ZLINK_DEALER_OPT_WEIGHT:
+        return zlink_set_dealer_option(sock, ZLINK_DEALER_OPT_WEIGHT, data, len);
     case ZLINK_STREAM_OPT_NOTIFY:
         return zlink_set_stream_option(sock, ZLINK_STREAM_OPT_NOTIFY, data, len);
     case ZLINK_PUB_OPT_VERBOSE:
@@ -1145,8 +1155,11 @@ int get_socket_option(void *sock, int32_t opt, void *data, size_t *len)
     case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
         return zlink_get_router_option(sock, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
                                        data, len);
-    case ZLINK_DEALER_OPT_PROBE:
-        return zlink_get_router_option(sock, ZLINK_ROUTER_OPT_PROBE, data, len);
+    case ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS:
+        return zlink_get_router_option(sock, ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS,
+                                       data, len);
+    case ZLINK_ROUTER_OPT_WEIGHT:
+        return zlink_get_router_option(sock, ZLINK_ROUTER_OPT_WEIGHT, data, len);
     case ZLINK_STREAM_OPT_NOTIFY:
         return zlink_get_stream_option(sock, ZLINK_STREAM_OPT_NOTIFY, data, len);
     case ZLINK_PUB_OPT_VERBOSE:
@@ -1719,6 +1732,91 @@ static stream_slot_raw_legacy_callback_t
     STREAM_SLOT_RAW_LEGACY_CALLBACK(7),
 };
 #undef STREAM_SLOT_RAW_LEGACY_CALLBACK
+
+template <size_t Slot>
+void stream_on_packet_slot(void *stream_,
+                           const zlink_routing_id_t *rid_,
+                           zlink_msg_t *header_,
+                           zlink_msg_t *body_,
+                           void *userdata_)
+{
+    (void) stream_;
+    (void) userdata_;
+
+    const auto close_messages = [header_, body_]() {
+        if (header_)
+            (void) zlink_msg_close(header_);
+        if (body_)
+            (void) zlink_msg_close(body_);
+    };
+
+    if (!rid_ || !header_ || !body_) {
+        close_messages();
+        return;
+    }
+
+    stream_js_state_t *state = &g_stream_slots[Slot];
+    napi_threadsafe_function tsfn = NULL;
+    std::unique_ptr<stream_js_payload_t> payload;
+    {
+        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        if (!state->used || !state->tsfn) {
+            close_messages();
+            return;
+        }
+        if (state->stop_requested.load(std::memory_order_acquire) != 0) {
+            close_messages();
+            return;
+        }
+        tsfn = state->tsfn;
+        remember_stream_peer_unsafe(state, rid_);
+        payload.reset(new stream_js_payload_t());
+        payload->routing_id.assign(rid_->data, rid_->data + rid_->size);
+
+        const unsigned char *header_data =
+          static_cast<const unsigned char *>(zlink_msg_data(header_));
+        const size_t header_size = zlink_msg_size(header_);
+        std::vector<unsigned char> header;
+        if (header_data && header_size > 0)
+            header.assign(header_data, header_data + header_size);
+        payload->packets.push_back(header);
+
+        const unsigned char *body_data =
+          static_cast<const unsigned char *>(zlink_msg_data(body_));
+        const size_t body_size = zlink_msg_size(body_);
+        std::vector<unsigned char> body;
+        if (body_data && body_size > 0)
+            body.assign(body_data, body_data + body_size);
+        payload->packets.push_back(body);
+    }
+
+    close_messages();
+
+    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_blocking)
+        == napi_ok) {
+        payload.release();
+    }
+}
+
+typedef void (*stream_slot_packet_callback_t)(void *,
+                                              const zlink_routing_id_t *,
+                                              zlink_msg_t *,
+                                              zlink_msg_t *,
+                                              void *);
+
+#define STREAM_SLOT_PACKET_CALLBACK(N) &stream_on_packet_slot<N>
+static stream_slot_packet_callback_t
+  g_stream_slot_packet_callbacks[k_stream_slot_count] = {
+    STREAM_SLOT_PACKET_CALLBACK(0),
+    STREAM_SLOT_PACKET_CALLBACK(1),
+    STREAM_SLOT_PACKET_CALLBACK(2),
+    STREAM_SLOT_PACKET_CALLBACK(3),
+    STREAM_SLOT_PACKET_CALLBACK(4),
+    STREAM_SLOT_PACKET_CALLBACK(5),
+    STREAM_SLOT_PACKET_CALLBACK(6),
+    STREAM_SLOT_PACKET_CALLBACK(7),
+};
+#undef STREAM_SLOT_PACKET_CALLBACK
 
 void stream_release_slot(void *socket)
 {
@@ -2503,6 +2601,20 @@ napi_value ctx_setopt(napi_env env, napi_callback_info info)
     int32_t opt = 0;
     int32_t value = 0;
     napi_get_value_int32(env, argv[1], &opt);
+    bool is_buffer = false;
+    napi_is_buffer(env, argv[2], &is_buffer);
+    if (is_buffer) {
+        void *data = NULL;
+        size_t length = 0;
+        napi_get_buffer_info(env, argv[2], &data, &length);
+        zlink_config_result_t rc =
+          zlink_ctx_set_data(ctx, static_cast<zlink_ctx_option_t>(opt), data, length);
+        if (rc != ZLINK_CONFIG_OK)
+            return throw_last_error(env, "ctx_setopt failed");
+        napi_value ok;
+        napi_get_undefined(env, &ok);
+        return ok;
+    }
     napi_get_value_int32(env, argv[2], &value);
     int rc = zlink_ctx_set(ctx, static_cast<zlink_ctx_option_t>(opt), value);
     if (rc != 0)
@@ -2528,6 +2640,21 @@ napi_value ctx_getopt(napi_env env, napi_callback_info info)
     napi_value out;
     napi_create_int32(env, rc, &out);
     return out;
+}
+
+napi_value ctx_recalculate_auto_hwm(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *ctx = NULL;
+    napi_get_value_external(env, argv[0], &ctx);
+    zlink_config_result_t rc = zlink_ctx_auto_hwm_recalculate(ctx);
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "ctx_auto_hwm_recalculate failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
 }
 
 napi_value socket_new(napi_env env, napi_callback_info info)
@@ -3280,6 +3407,50 @@ napi_value socket_try_subscription_event(napi_env env, napi_callback_info info)
     }
 }
 
+napi_value subscription_at(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error(env, NULL, "subscriptionAt expects handle, index");
+        return NULL;
+    }
+
+    void *handle = NULL;
+    napi_get_value_external(env, argv[0], &handle);
+    uint32_t index = 0;
+    napi_get_value_uint32(env, argv[1], &index);
+
+    std::vector<char> filter(256, '\0');
+    size_t filter_len = filter.size();
+    int is_pattern = 0;
+    for (;;) {
+        zlink_config_result_t rc = zlink_subscription_at(
+          handle, static_cast<size_t>(index), filter.data(), &filter_len,
+          &is_pattern);
+        if (rc == ZLINK_CONFIG_OK) {
+            napi_value obj;
+            napi_create_object(env, &obj);
+            napi_value filter_value;
+            napi_create_string_utf8(env, filter.data(), filter_len, &filter_value);
+            napi_set_named_property(env, obj, "filter", filter_value);
+            napi_value pattern_value;
+            napi_get_boolean(env, is_pattern != 0, &pattern_value);
+            napi_set_named_property(env, obj, "isPattern", pattern_value);
+            return obj;
+        }
+        if (rc == ZLINK_CONFIG_NOT_FOUND) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        if (zlink_errno() != EMSGSIZE)
+            return throw_last_error(env, "subscription_at failed");
+        filter.assign(filter_len > 0 ? filter_len : 1, '\0');
+    }
+}
+
 napi_value socket_recv_into(napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
@@ -3376,7 +3547,7 @@ napi_value socket_stream_attach(napi_env env, napi_callback_info info)
         napi_get_value_int32(env, argv[2], &mode);
     if (mode != k_stream_dispatch_none && mode != k_stream_dispatch_len32be) {
         napi_throw_range_error(env, NULL,
-                               "streamAttach mode must be NONE(0) or LEN32BE(1)");
+                               "streamAttach mode must be NONE(0) or PACKET(1)");
         return NULL;
     }
 
@@ -3425,11 +3596,20 @@ napi_value socket_stream_attach(napi_env env, napi_callback_info info)
         slot->peer_routing_ids.clear();
     }
 
-    int rc = zlink_stream_attach_raw(
-      sock, g_stream_slot_raw_legacy_callbacks[slot_index]);
-    if (rc != 0) {
-        stream_release_slot(sock);
-        return throw_last_error(env, "streamAttach failed");
+    if (mode == k_stream_dispatch_len32be) {
+        zlink_handler_result_t rc = zlink_stream_packet_handler(
+          sock, g_stream_slot_packet_callbacks[slot_index], NULL);
+        if (rc != ZLINK_HANDLER_OK) {
+            stream_release_slot(sock);
+            return throw_last_error(env, "streamAttach failed");
+        }
+    } else {
+        int rc = zlink_stream_attach_raw(
+          sock, g_stream_slot_raw_legacy_callbacks[slot_index]);
+        if (rc != 0) {
+            stream_release_slot(sock);
+            return throw_last_error(env, "streamAttach failed");
+        }
     }
 
     napi_value ok;
@@ -4065,6 +4245,7 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     napi_value auto_hwm_socket_message_slots;
     napi_value auto_hwm_effective_message_bytes;
     napi_value auto_hwm_applied_sndhwm, auto_hwm_applied_rcvhwm;
+    napi_value auto_hwm_effective_sndbuf, auto_hwm_effective_rcvbuf;
     napi_value auto_hwm_last_recalc_ms;
     napi_value auto_hwm_last_recalc_reason;
     napi_value auto_hwm_send_blocked_ratio_ppm;
@@ -4099,6 +4280,10 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
                       &auto_hwm_applied_sndhwm);
     napi_create_int32(env, snapshot.auto_hwm_applied_rcvhwm,
                       &auto_hwm_applied_rcvhwm);
+    napi_create_int32(env, snapshot.auto_hwm_effective_sndbuf,
+                      &auto_hwm_effective_sndbuf);
+    napi_create_int32(env, snapshot.auto_hwm_effective_rcvbuf,
+                      &auto_hwm_effective_rcvbuf);
     napi_create_int64(env,
                       static_cast<int64_t> (snapshot.auto_hwm_last_recalc_ms),
                       &auto_hwm_last_recalc_ms);
@@ -4131,6 +4316,10 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
                             auto_hwm_applied_sndhwm);
     napi_set_named_property(env, obj, "autoHwmAppliedRcvHwm",
                             auto_hwm_applied_rcvhwm);
+    napi_set_named_property(env, obj, "autoHwmEffectiveSndBuf",
+                            auto_hwm_effective_sndbuf);
+    napi_set_named_property(env, obj, "autoHwmEffectiveRcvBuf",
+                            auto_hwm_effective_rcvbuf);
     napi_set_named_property(env, obj, "autoHwmLastRecalcMs",
                             auto_hwm_last_recalc_ms);
     napi_set_named_property(env, obj, "autoHwmLastRecalcReason",
@@ -4172,6 +4361,18 @@ static napi_value create_external_or_null(napi_env env, void *ptr)
     return out;
 }
 
+static napi_value create_userdata_value(napi_env env, void *ptr)
+{
+    napi_value out;
+    if (!ptr) {
+        napi_get_null(env, &out);
+        return out;
+    }
+    napi_create_bigint_uint64(
+      env, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(ptr)), &out);
+    return out;
+}
+
 static void *get_external_or_null(napi_env env, napi_value value)
 {
     if (!value)
@@ -4181,6 +4382,20 @@ static void *get_external_or_null(napi_env env, napi_value value)
         return NULL;
     if (type == napi_null || type == napi_undefined)
         return NULL;
+    if (type == napi_bigint) {
+        uint64_t raw = 0;
+        bool lossless = false;
+        if (napi_get_value_bigint_uint64(env, value, &raw, &lossless) == napi_ok
+            && lossless)
+            return reinterpret_cast<void *>(static_cast<uintptr_t>(raw));
+        return NULL;
+    }
+    if (type == napi_number) {
+        uint32_t raw = 0;
+        if (napi_get_value_uint32(env, value, &raw) == napi_ok)
+            return reinterpret_cast<void *>(static_cast<uintptr_t>(raw));
+        return NULL;
+    }
     if (type != napi_external)
         return NULL;
     void *ptr = NULL;
@@ -4202,7 +4417,7 @@ static napi_value create_poller_event_value(napi_env env,
     napi_create_int64(env, static_cast<int64_t>(event.fd), &value);
     napi_set_named_property(env, obj, "fd", value);
     napi_set_named_property(env, obj, "timer", create_external_or_null(env, event.timer));
-    napi_set_named_property(env, obj, "userData", create_external_or_null(env, event.user_data));
+    napi_set_named_property(env, obj, "userData", create_userdata_value(env, event.user_data));
     napi_create_int32(env, static_cast<int32_t>(event.events), &value);
     napi_set_named_property(env, obj, "events", value);
     return obj;
@@ -4858,4 +5073,79 @@ napi_value stopwatch_stop(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &watch);
     unsigned long value = zlink_stopwatch_stop(watch);
     return create_stopwatch_value(env, value);
+}
+
+napi_value atomic_counter_new(napi_env env, napi_callback_info info)
+{
+    (void) info;
+    void *counter = zlink_atomic_counter_new();
+    if (!counter)
+        return throw_last_error(env, "atomic_counter_new failed");
+    napi_value out;
+    napi_create_external(env, counter, NULL, NULL, &out);
+    return out;
+}
+
+napi_value atomic_counter_set(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *counter = NULL;
+    int32_t value = 0;
+    napi_get_value_external(env, argv[0], &counter);
+    napi_get_value_int32(env, argv[1], &value);
+    zlink_atomic_counter_set(counter, value);
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value atomic_counter_inc(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *counter = NULL;
+    napi_get_value_external(env, argv[0], &counter);
+    napi_value out;
+    napi_create_int32(env, zlink_atomic_counter_inc(counter), &out);
+    return out;
+}
+
+napi_value atomic_counter_dec(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *counter = NULL;
+    napi_get_value_external(env, argv[0], &counter);
+    napi_value out;
+    napi_create_int32(env, zlink_atomic_counter_dec(counter), &out);
+    return out;
+}
+
+napi_value atomic_counter_value(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *counter = NULL;
+    napi_get_value_external(env, argv[0], &counter);
+    napi_value out;
+    napi_create_int32(env, zlink_atomic_counter_value(counter), &out);
+    return out;
+}
+
+napi_value atomic_counter_destroy(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *counter = NULL;
+    napi_get_value_external(env, argv[0], &counter);
+    zlink_atomic_counter_destroy(&counter);
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
 }

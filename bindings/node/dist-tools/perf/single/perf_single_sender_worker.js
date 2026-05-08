@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const { parentPort, workerData } = require('node:worker_threads');
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const { createPayload, stampPayload } = require('../common/perf_metrics');
 const { applyContextPolicy, applySocketPolicy, configureTlsClient, configureTlsServer, waitForConnectionReady, } = require('./perf_single_common');
 const DEFAULT_TOPIC = 'perf.topic';

@@ -83,6 +83,51 @@ template<typename SocketT> class has_attach_discovery_t
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
+template<typename SocketT> class has_connect_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().connect (
+                      std::declval<const std::string &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+template<typename SocketT> class has_disconnect_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().disconnect (
+                      std::declval<const std::string &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+template<typename SocketT> class has_disconnect_rid_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().disconnect_rid (
+                      std::declval<const zlink::routing_id_t &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
 template<typename SocketT> class has_recv_spot_t
 {
   private:
@@ -134,6 +179,12 @@ static_assert (has_receive_t<zlink::stream_socket_t>::value,
                "stream_socket_t must expose recv");
 static_assert (!has_attach_discovery_t<zlink::stream_socket_t>::value,
                "stream_socket_t must not expose attach_discovery");
+static_assert (!has_connect_t<zlink::stream_socket_t>::value,
+               "stream_socket_t must not expose connect");
+static_assert (!has_disconnect_t<zlink::stream_socket_t>::value,
+               "stream_socket_t must not expose disconnect");
+static_assert (!has_disconnect_rid_t<zlink::stream_socket_t>::value,
+               "stream_socket_t must not expose disconnect_rid");
 
 void test_pair_send_recv_single_part ()
 {

@@ -4,6 +4,8 @@
 
 #include "error.hpp"
 
+#include <chrono>
+
 namespace zlink
 {
 
@@ -25,8 +27,6 @@ class timer_t
 {
   public:
     timer_t () : _timer (zlink_timer_new ()) {}
-
-    explicit timer_t (void *timer_) : _timer (timer_) {}
 
     ~timer_t ()
     {
@@ -68,13 +68,25 @@ class timer_t
 
     bool valid () const noexcept { return _timer != NULL; }
 
-    void start (uint64_t interval_ns_, uint64_t repeat_count_)
+    template<class Rep, class Period>
+    void start (std::chrono::duration<Rep, Period> interval_,
+                uint64_t repeat_count_ = 0)
+    {
+        const uint64_t interval_ns = static_cast<uint64_t> (
+          std::chrono::duration_cast<std::chrono::nanoseconds> (interval_)
+            .count ());
+        start_ns (interval_ns, repeat_count_);
+    }
+
+  private:
+    void start_ns (uint64_t interval_ns_, uint64_t repeat_count_)
     {
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
             zlink_timer_start (_timer, interval_ns_, repeat_count_)));
     }
 
+  public:
     void stop ()
     {
         detail::throw_if_failed<config_error_t> (
@@ -113,6 +125,8 @@ class timer_t
     }
 
   private:
+    explicit timer_t (void *timer_) : _timer (timer_) {}
+
     friend void *detail::native_handle (timer_t &timer_) noexcept;
     friend const void *
     detail::native_handle (const timer_t &timer_) noexcept;

@@ -39,8 +39,8 @@ class context_options_t
     void auto_hwm_enabled (bool enabled_);
     std::chrono::milliseconds auto_hwm_recalc_debounce () const;
     void auto_hwm_recalc_debounce (std::chrono::milliseconds value_);
-    auto_hwm_profile auto_hwm_profile_value () const;
-    void auto_hwm_profile_value (auto_hwm_profile profile_);
+    zlink::auto_hwm_profile auto_hwm_profile () const;
+    void auto_hwm_profile (zlink::auto_hwm_profile profile_);
     socket_count_t socket_limit () const;
     byte_size_t msg_t_size () const;
     void add_thread_affinity (cpu_index_t cpu_);
@@ -55,13 +55,14 @@ class context_t
   public:
     context_t () : _ctx (zlink_ctx_new ()), _thread_name_prefix () {}
 
-    explicit context_t (int io_threads) : _ctx (zlink_ctx_new ()), _thread_name_prefix ()
+    explicit context_t (io_thread_count_t io_threads_)
+        : _ctx (zlink_ctx_new ()), _thread_name_prefix ()
     {
         if (_ctx)
-            (void) zlink_ctx_set (_ctx, ZLINK_IO_THREADS, io_threads);
+            (void) zlink_ctx_set (_ctx, ZLINK_IO_THREADS, io_threads_.value ());
     }
 
-    ~context_t () { (void) term (); }
+    ~context_t () { term_noexcept (); }
 
     context_t (context_t &&other) noexcept
         : _ctx (other._ctx),
@@ -74,7 +75,7 @@ class context_t
     {
         if (this == &other)
             return *this;
-        (void) term ();
+        term_noexcept ();
         _ctx = other._ctx;
         _thread_name_prefix = std::move (other._thread_name_prefix);
         other._ctx = NULL;
@@ -94,13 +95,14 @@ class context_t
           static_cast<close_result_t> (zlink_ctx_shutdown (_ctx)));
     }
 
-    void term () noexcept
+    void term ()
     {
         if (!_ctx)
             return;
         void *ctx = _ctx;
         _ctx = NULL;
-        (void) zlink_ctx_term (ctx);
+        detail::throw_if_failed<close_error_t> (
+          static_cast<close_result_t> (zlink_ctx_term (ctx)));
     }
 
     context_options_t options () { return context_options_t (*this); }
@@ -118,6 +120,15 @@ class context_t
     friend class context_options_t;
     friend void *detail::native_handle (context_t &ctx_) noexcept;
     friend const void *detail::native_handle (const context_t &ctx_) noexcept;
+
+    void term_noexcept () noexcept
+    {
+        if (!_ctx)
+            return;
+        void *ctx = _ctx;
+        _ctx = NULL;
+        (void) zlink_ctx_term (ctx);
+    }
 
     int get_option_raw (zlink_ctx_option_t option_, zlink_config_result_t *error_out_) const
     {
@@ -309,17 +320,18 @@ inline void context_options_t::auto_hwm_recalc_debounce (
         static_cast<int> (value_.count ()))));
 }
 
-inline auto_hwm_profile context_options_t::auto_hwm_profile_value () const
+inline zlink::auto_hwm_profile context_options_t::auto_hwm_profile () const
 {
     zlink_config_result_t error = ZLINK_CONFIG_OK;
     const int value =
       _ctx.get_option_raw (ZLINK_CTX_OPT_AUTO_HWM_PROFILE, &error);
     if (error != ZLINK_CONFIG_OK)
         throw config_error_t (static_cast<config_result_t> (error));
-    return static_cast<auto_hwm_profile> (value);
+    return static_cast<zlink::auto_hwm_profile> (value);
 }
 
-inline void context_options_t::auto_hwm_profile_value (auto_hwm_profile profile_)
+inline void context_options_t::auto_hwm_profile (
+  zlink::auto_hwm_profile profile_)
 {
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (_ctx.set_option_raw (

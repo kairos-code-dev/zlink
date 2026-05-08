@@ -75,7 +75,9 @@ static void test_spot_peer_pubsub ()
 
         std::vector<zlink::message_t> parts;
         parts.push_back (make_msg ("pong", 4));
-        spot_a.publish (service_name_a, "peer:topic", parts);
+        spot_a.publish (service_name_a, "peer:topic")
+          .message (parts[0])
+          .submit ();
 
         zlink::topic_message_t received;
         assert (recv_spot_with_timeout (spot_b, received, 4000));
@@ -115,7 +117,10 @@ static void test_spot_multipart_peer_pubsub ()
     std::vector<zlink::message_t> parts;
     parts.push_back (make_msg ("one", 3));
     parts.push_back (make_msg ("two", 3));
-    spot_a.publish (service_name_a, "mp:topic", parts);
+    spot_a.publish (service_name_a, "mp:topic")
+      .message (parts[0])
+      .message (parts[1])
+      .submit ();
 
     zlink::topic_message_t received;
     assert (recv_spot_with_timeout (spot_b, received, 2000));

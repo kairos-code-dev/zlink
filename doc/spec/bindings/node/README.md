@@ -29,6 +29,9 @@ Design review uses these POSD constraints:
 
 - shared send/recv, nonblocking, ownership, and error mapping rules are
   centralized instead of copied across socket classes
+- native-origin message materialization is centralized so callback, request,
+  routed, actor, and stream packet paths do not each decide whether to copy or
+  wrap N-API-owned `Buffer` values
 - canonical result and facade methods do not ask callers to pass state already
   captured by the object, such as a source socket, request sequence, or
   service address
@@ -43,12 +46,28 @@ Design review uses these POSD constraints:
 ## High-Performance Requirements
 
 The Node/TypeScript binding is part of a high-performance messaging library.
-Hot paths must not use reflection-style property walking, dynamic dispatch by
-string lookup, unnecessary allocation, avoidable `Buffer` copies, coarse lock
-or worker-thread contention, hidden waits, sleeps, busy waits, or thread joins.
-Native addon code must construct public `Message` and result objects directly
-from the core `*_part` substrate and must not create native aggregate arrays
-only to copy them into JavaScript arrays.
+Hot data-plane paths must not use reflection-style property walking, dynamic
+dispatch by string lookup, unnecessary allocation, avoidable `Buffer` copies,
+coarse lock or worker-thread contention, hidden sleeps, busy waits, or thread
+joins.
+
+The public API accepts `Buffer` / `Uint8Array` / `string` inputs and returns
+owned `Message` objects. Crossing the N-API thread boundary may require copying
+core-owned message bytes into JavaScript-owned `Buffer` objects. The binding
+must not add extra JavaScript concatenation or request-local timer churn on top
+of that boundary transfer. In particular:
+
+- request-reply progress is shared per native handle while requests are
+  outstanding, not one polling timer per request
+- native-origin `Buffer` values produced by recv, request callbacks, routed
+  callbacks, actor dispatch, and stream packet callbacks are wrapped as owned
+  `Message` objects without an additional JavaScript `Buffer` copy
+- `StreamSocket.onPacket(...)` maps to `zlink_stream_packet_handler()` and
+  receives the core-decoded `header` / `body` pair without rebuilding body bytes
+  in TypeScript
+- poll result materialization uses a fixed flag table, not reflection-style
+  enum/property walking on each `Poller.wait(...)` result
+- perf, samples, and tests import the public package entrypoint only
 
 ## Core Alignment Rules
 
@@ -816,6 +835,11 @@ type MessageLike = Message | Buffer | Uint8Array | string;
 type BufferLike = Buffer | Uint8Array | string;
 ```
 
+`Message.from(...)` and `new Message(...)` are public input adapters and copy
+the caller-provided data. Native recv and callback paths use an internal
+owned-buffer materializer so the JavaScript `Buffer` already created at the
+N-API boundary is not copied again before it becomes a `Message`.
+
 ### Codec Extensions
 
 Codec adapters are separate public extension packages layered on top of the
@@ -1561,9 +1585,9 @@ and lookup facades through `SpotNode.spotLookup(...)`. Direct
 contract.
 
 `dispatchWorkersMin` must be at least `1`; `dispatchWorkersMax` must be at
-least `dispatchWorkersMin`. If unset, core defaults are CPU count `1`:
-`min=max=1`; otherwise `min=2`, `max=cpuCount`. These values size only the
-SpotNode dispatch callback worker pool.
+least `dispatchWorkersMin`. If unset, core uses `min=max=1` on a one-CPU
+runtime, and otherwise uses `min=2`, `max=cpuCount`. These values size only
+the SpotNode dispatch callback worker pool.
 
 ### Actor
 
@@ -2181,8 +2205,9 @@ class Stopwatch {
 
 ### Thread
 
-Thin wrapper for the core native thread utility. This is an explicit blocking
-utility and is not used by messaging hot paths.
+Worker-based utility for running a standalone JavaScript handler and joining
+it explicitly. This is an explicit blocking utility and is not used by
+messaging hot paths.
 
 ```typescript
 class Thread {

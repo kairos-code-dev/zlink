@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 async function reservePort() {
     const srv = net.createServer();
     srv.listen(0, '127.0.0.1');
@@ -26,8 +26,8 @@ async function main() {
     const dealerSocket = new zlink.DealerSocket(ctx);
     const clientRoutingId = zlink.RoutingId.fromBytes(Buffer.from('request-reply-client'));
     try {
-        const routerMonitor = routerSocket.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
-        const dealerMonitor = dealerSocket.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
+        const routerMonitor = routerSocket.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
+        const dealerMonitor = dealerSocket.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
         try {
             dealerSocket.setRoutingId(clientRoutingId);
             routerSocket.bind(endpoint);

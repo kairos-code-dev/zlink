@@ -134,7 +134,7 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
 
     zlink::poller_t poller;
     try {
-        poller.add (responder, zlink::poll_event::pollin);
+        poller.add (responder, zlink::poll_event_flag_t::pollin);
     }
     catch (const zlink::zlink_error_t &) {
         stop_requested.store (true, std::memory_order_release);
@@ -144,7 +144,8 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
 
     bool failed = false;
     while (!stop_requested.load (std::memory_order_acquire)) {
-        std::optional<zlink::poll_event_t> event = poller.wait (20);
+        std::optional<zlink::poll_event_t> event =
+          poller.wait (std::chrono::milliseconds (20));
         const int poll_rc = event ? 1 : 0;
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
@@ -153,7 +154,7 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
             break;
         }
         if (poll_rc == 0
-            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event::pollin))
+            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))
                  == 0) {
             continue;
         }
@@ -161,7 +162,7 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
         for (;;) {
             try {
                 std::optional<zlink::received_t> received =
-                  responder.recv (zlink::recv_flags_t::dontwait);
+                  responder.recv (ZLINK_DONTWAIT);
                 if (!received.has_value ())
                     break;
                 if (!reply_with_payload (*received)) {

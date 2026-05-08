@@ -59,7 +59,7 @@ bool perf_debug_enabled ()
 std::optional<zlink::topic_message_t>
 try_subscribe_from_spot (zlink::service::spot_t &spot_)
 {
-    return spot_.subscribe (zlink::recv_flags_t::dontwait);
+    return spot_.subscribe (ZLINK_DONTWAIT);
 }
 
 struct spot_dispatch_state_t
@@ -113,7 +113,10 @@ bool send_spot_payload (zlink::service::spot_t &spot_,
 
     try {
         const bool sent =
-          spot_.publish (service_name_, k_topic, part, zlink::send_flags_t::dontwait);
+          spot_.publish (service_name_, k_topic)
+            .message (part)
+            .flags (ZLINK_DONTWAIT)
+            .submit ();
         if (sent_out_)
             *sent_out_ = sent;
         return true;
@@ -380,7 +383,12 @@ bool run_pattern_spot (const std::string &transport,
             return false;
         }
         try {
+            registry.set_tls_server (cert, key, false);
+            pub_discovery.set_tls_client (ca, std::string ("localhost"), false);
+            sub_discovery.set_tls_client (ca, std::string ("localhost"), false);
             pub_node.set_tls_server (cert, key, false);
+            pub_node.set_tls_client (ca, std::string ("localhost"), false);
+            sub_node.set_tls_server (cert, key, false);
             sub_node.set_tls_client (ca, std::string ("localhost"), false);
         }
         catch (const std::exception &) {
@@ -438,12 +446,6 @@ bool run_pattern_spot (const std::string &transport,
         return false;
     }
 
-    pub_spot.options ().send_timeout (
-      std::chrono::milliseconds (
-        perf::single::resolve_single_send_timeout_ms ()));
-    sub_spot.options ().recv_timeout (
-      std::chrono::milliseconds (
-        perf::single::resolve_single_recv_timeout_ms ()));
     sub_spot.set_subscription (k_topic);
 
     const size_t payload_size =

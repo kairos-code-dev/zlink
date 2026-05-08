@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 const AUTO_CONNECT_SPOT_MESH = 5;
 test('routing id accepts 255-byte maximum and rejects overflow', () => {
     const ctx = new zlink.Context();
@@ -64,7 +64,7 @@ test('typed numeric options fail fast on int32 and int64 boundary violations', (
     }, /must be an integer/);
     assert.throws(() => {
         pair.options.maxMsgSize = Number.MAX_SAFE_INTEGER + 1;
-    }, /safe integer/);
+    }, /bigint/);
     assert.throws(() => {
         pair.options.maxMsgSize = 1n << 63n;
     }, /fit in int64/);

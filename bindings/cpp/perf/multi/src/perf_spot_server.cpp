@@ -80,7 +80,7 @@ bool recv_raw_control_payload (zlink::service::spot_t &spot_,
 
     try {
         const std::optional<zlink::topic_message_t> received =
-          spot_.subscribe (zlink::recv_flags_t::dontwait);
+          spot_.subscribe (ZLINK_DONTWAIT);
         if (!received.has_value ())
             return true;
 
@@ -123,8 +123,9 @@ bool publish_raw_control_payload (zlink::service::spot_t &spot_,
             std::memcpy (part.data (), payload_.data (), payload_.size ());
 
         try {
-            if (spot_.publish (
-                  service_name_, k_control_topic, part, zlink::send_flags_t::none))
+            if (spot_.publish (service_name_, k_control_topic)
+                  .message (part)
+                  .submit ())
                 return true;
         }
         catch (const zlink::submit_error_t &) {
@@ -328,8 +329,10 @@ bool run_phase (zlink::service::spot_t &spot_,
               }
 
               try {
-                  const bool ok = spot_.publish (
-                    service_name_, k_topic, part, flags_);
+                  const bool ok = spot_.publish (service_name_, k_topic)
+                    .message (part)
+                    .flags (static_cast<int> (flags_))
+                    .submit ();
                   *saved_errno_out_ = ok ? 0 : EAGAIN;
                   return ok ? 0 : -1;
               }
@@ -340,9 +343,9 @@ bool run_phase (zlink::service::spot_t &spot_,
           };
 
         int saved_errno = 0;
-        int rc = publish_once (zlink::send_flags_t::dontwait, &saved_errno);
+        int rc = publish_once (ZLINK_DONTWAIT, &saved_errno);
         if (rc != 0 && saved_errno == EAGAIN)
-            rc = publish_once (zlink::send_flags_t::none, &saved_errno);
+            rc = publish_once (0, &saved_errno);
 
         if (rc == 0) {
             ++seq_;
@@ -426,19 +429,10 @@ bool perf_spot_server (const std::string &lib_name,
     if (control_endpoint.empty ())
         return false;
 
-    spot.options ().send_timeout (
-      std::chrono::milliseconds (settings.sndtimeo_ms));
-    spot.publisher_options ().no_drop (
-      perf::multi::parse_positive_env ("PERF_MULTI_SPOT_XPUB_NODROP", 1) > 0);
     const int control_timeout_ms =
       std::max (1000, settings.connect_ready_timeout_ms);
-    control_pub.options ().linger (std::chrono::milliseconds (0));
-    control_pub.options ().send_timeout (
-      std::chrono::milliseconds (control_timeout_ms));
-    control_pub.publisher_options ().no_drop (true);
-    control_sub.options ().linger (std::chrono::milliseconds (0));
-    control_sub.options ().recv_timeout (
-      std::chrono::milliseconds (control_timeout_ms));
+    control_pub.request_timeout (std::chrono::milliseconds (control_timeout_ms));
+    control_sub.request_timeout (std::chrono::milliseconds (control_timeout_ms));
     control_sub.set_subscription (k_control_topic);
 
     const std::vector<size_t> msg_sizes (1, msg_size_);

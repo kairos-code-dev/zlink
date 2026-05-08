@@ -116,8 +116,10 @@ bool warmup_probe (zlink::service::spot_t &requester_,
 
     try {
         zlink::async_result_t<std::vector<zlink::message_t> > future =
-          requester_.request_channel (
-            k_channel, request_parts, std::chrono::milliseconds (5000));
+          requester_.request_channel (k_channel)
+            .message (request_parts.front ())
+            .timeout (std::chrono::milliseconds (5000))
+            .submit_async ();
         std::vector<zlink::message_t> reply_parts = future.get ();
         return !reply_parts.empty () && reply_parts.front ().valid ()
                && reply_parts.front ().size () == payload_size_;
@@ -192,7 +194,7 @@ bool run_pattern_spot_reqrep (const std::string &transport,
     std::thread responder_thread ([&]() {
         zlink::poller_t poller;
         try {
-            poller.add (responder, zlink::poll_event::pollin);
+            poller.add (responder, zlink::poll_event_flag_t::pollin);
         }
         catch (const zlink::zlink_error_t &) {
             responder_ok.store (false, std::memory_order_release);
@@ -200,7 +202,8 @@ bool run_pattern_spot_reqrep (const std::string &transport,
         }
 
         while (!stop_requested.load (std::memory_order_acquire)) {
-            std::optional<zlink::poll_event_t> event = poller.wait (10);
+            std::optional<zlink::poll_event_t> event =
+              poller.wait (std::chrono::milliseconds (10));
         const int poll_rc = event ? 1 : 0;
             if (poll_rc < 0) {
                 if (errno == EINTR || errno == EAGAIN)
@@ -209,7 +212,7 @@ bool run_pattern_spot_reqrep (const std::string &transport,
                 return;
             }
             if (poll_rc == 0
-                || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event::pollin))
+                || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))
                      == 0) {
                 continue;
             }
@@ -217,7 +220,7 @@ bool run_pattern_spot_reqrep (const std::string &transport,
             for (;;) {
                 try {
                     std::optional<zlink::received_t> received =
-                      responder.recv (zlink::recv_flags_t::dontwait);
+                      responder.recv (ZLINK_DONTWAIT);
                     if (!received.has_value ())
                         break;
 
@@ -295,8 +298,10 @@ bool run_pattern_spot_reqrep (const std::string &transport,
 
         try {
             zlink::async_result_t<std::vector<zlink::message_t> > future =
-              requester.request_channel (
-                k_channel, request_parts, std::chrono::milliseconds (2000));
+              requester.request_channel (k_channel)
+                .message (request_parts.front ())
+                .timeout (std::chrono::milliseconds (2000))
+                .submit_async ();
             std::vector<zlink::message_t> reply_parts = future.get ();
             if (reply_parts.size () != 1 || !reply_parts.front ().valid ()
                 || reply_parts.front ().size () != payload_size) {

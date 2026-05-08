@@ -20,8 +20,6 @@ class monitor_handle_t
 {
   public:
     monitor_handle_t () : _monitor (NULL) {}
-    inline static std::function<void(const monitor_event_t &)> ignore_handler =
-      [] (const monitor_event_t &) {};
 
     template<typename SocketLike>
     static monitor_handle_t open (const SocketLike &socket_,
@@ -38,7 +36,7 @@ class monitor_handle_t
         return monitor_handle_t (monitor);
     }
 
-    ~monitor_handle_t () { close (); }
+    ~monitor_handle_t () { close_noexcept (); }
 
     monitor_handle_t (monitor_handle_t &&other) noexcept
         : _monitor (other._monitor), _event_handler (other._event_handler),
@@ -53,7 +51,7 @@ class monitor_handle_t
     {
         if (this == &other)
             return *this;
-        close ();
+        close_noexcept ();
         _monitor = other._monitor;
         _event_handler = other._event_handler;
         _event_userdata = other._event_userdata;
@@ -79,6 +77,8 @@ class monitor_handle_t
         _event_userdata = NULL;
     }
 
+    static void ignore_event (const monitor_event_t &) noexcept {}
+
     std::optional<monitor_event_t> recv (
       recv_flags_t flags_ = recv_flags_t::none)
     {
@@ -102,7 +102,25 @@ class monitor_handle_t
         return monitor_snapshot_t (snapshot);
     }
 
-    void close () noexcept
+    void close ()
+    {
+        if (!_monitor)
+            return;
+        void *monitor = _monitor;
+        const close_result_t result =
+          static_cast<close_result_t> (zlink_monitor_close (&monitor));
+        if (result != close_result_t::ok)
+            throw close_error_t (result, zlink_errno ());
+        _monitor = NULL;
+        _event_handler = NULL;
+        _event_userdata = NULL;
+        _event_function_handler = nullptr;
+    }
+
+  private:
+    explicit monitor_handle_t (void *monitor_) : _monitor (monitor_) {}
+
+    void close_noexcept () noexcept
     {
         if (!_monitor)
             return;
@@ -113,9 +131,6 @@ class monitor_handle_t
         _event_userdata = NULL;
         _event_function_handler = nullptr;
     }
-
-  private:
-    explicit monitor_handle_t (void *monitor_) : _monitor (monitor_) {}
 
     friend class base_socket_t;
     friend void *detail::native_handle (monitor_handle_t &monitor_) noexcept;

@@ -2,7 +2,7 @@
 'use strict';
 
 import net from 'node:net';
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 import {
   createPayload,
   createRunId,
@@ -24,7 +24,10 @@ const TOPIC = 'perf.topic';
 
 function trySpotPublish(spot: any, payload: Buffer): boolean {
   try {
-    return spot.publish(SERVICE_NAME, TOPIC, payload, zlink.SendFlags.DontWait);
+    return spot.publish(SERVICE_NAME, TOPIC)
+      .message(payload)
+      .flags(zlink.SendFlags.DontWait)
+      .submit();
   } catch (error: any) {
     if (error instanceof zlink.SubmitError &&
         error.result === zlink.SubmitResult.Backpressured) {
@@ -114,8 +117,6 @@ async function runSpotBenchmark(msgSize: number, options: any) {
     subscriberNode.bind(subscriberEndpoint);
     publisherNode.attachDiscovery(publisherDiscovery);
     subscriberNode.attachDiscovery(subscriberDiscovery);
-    publisher.setLinger(Number(process.env.PERF_SINGLE_LINGER_MS ?? 0));
-    subscriber.setLinger(Number(process.env.PERF_SINGLE_LINGER_MS ?? 0));
     subscriber.setSubscription(TOPIC);
 
     const runId = createRunId(options.runId ?? 1);

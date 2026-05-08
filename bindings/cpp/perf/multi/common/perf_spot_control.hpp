@@ -91,9 +91,12 @@ try_publish_nowait (SpotHandle &spot_,
                     zlink::message_t &outbound)
 {
     try {
-        spot_.publish (
-          service_name_, topic_, outbound, zlink::send_flags_t::dontwait);
-        return zlink::send_result_t::sent;
+        return spot_.publish (service_name_, topic_)
+            .message (outbound)
+            .flags (ZLINK_DONTWAIT)
+            .submit ()
+          ? zlink::send_result_t::sent
+          : zlink::send_result_t::backpressured;
     }
     catch (const zlink::submit_error_t &err) {
         switch (err.result ()) {
@@ -114,7 +117,7 @@ inline std::optional<zlink::topic_message_t>
 try_subscribe_nowait (SpotHandle &spot_)
 {
     std::optional<zlink::topic_message_t> message =
-      spot_.subscribe (zlink::recv_flags_t::dontwait);
+      spot_.subscribe (ZLINK_DONTWAIT);
     if (!message.has_value ())
         return std::nullopt;
     return std::optional<zlink::topic_message_t> (std::move (*message));
@@ -523,7 +526,7 @@ inline bool initialize_client_slot (
         return false;
     }
 
-    slot_->spot->options ().recv_timeout (
+    slot_->spot->request_timeout (
       std::chrono::milliseconds (settings_.rcvtimeo_ms));
     slot_->spot->set_subscription (topic_);
 

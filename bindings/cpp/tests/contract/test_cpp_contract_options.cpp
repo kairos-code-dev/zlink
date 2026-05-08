@@ -33,8 +33,8 @@ template<typename T> class has_router_socket_options_facade_t
     static auto test (int)
       -> decltype (std::declval<U &> ().mandatory (),
                     std::declval<U &> ().mandatory (true),
-                    std::declval<U &> ().probe_router (),
-                    std::declval<U &> ().probe_router (true),
+                    std::declval<U &> ().probe (),
+                    std::declval<U &> ().probe (true),
                     std::declval<U &> ().connect_routing_id (),
                     std::declval<U &> ().connect_routing_id (
                       std::declval<const zlink::routing_id_t &> ()),
@@ -54,8 +54,8 @@ template<typename T> class has_dealer_socket_options_facade_t
   private:
     template<typename U>
     static auto test (int)
-      -> decltype (std::declval<U &> ().probe_router (),
-                    std::declval<U &> ().probe_router (true),
+      -> decltype (std::declval<U &> ().probe (),
+                    std::declval<U &> ().probe (true),
                     std::declval<U &> ().peer_weight (),
                     std::declval<U &> ().peer_weight (
                       zlink::peer_weight_t::value (1)),
@@ -136,8 +136,8 @@ template<typename T> class has_context_options_facade_t
                       zlink::thread_scheduling_policy_t::other),
                     std::declval<U &> ().blocky (),
                     std::declval<U &> ().blocky (true),
-                    std::declval<U &> ().auto_hwm_profile_value (),
-                    std::declval<U &> ().auto_hwm_profile_value (
+                    std::declval<U &> ().auto_hwm_profile (),
+                    std::declval<U &> ().auto_hwm_profile (
                       zlink::auto_hwm_profile::balanced),
                     std::declval<U &> ().socket_limit (),
                     std::declval<U &> ().msg_t_size (),
@@ -189,8 +189,8 @@ static_assert (has_context_options_facade_t<
                "context_options_t must exist");
 static_assert (has_socket_options_entry_t<zlink::router_socket_t>::value,
                "router_socket_t must expose options()");
-static_assert (has_socket_options_entry_t<zlink::service::spot_t>::value,
-               "spot_t must expose options()");
+static_assert (!has_socket_options_entry_t<zlink::service::spot_t>::value,
+               "spot_t must not expose raw socket options()");
 
 void test_context_options ()
 {
@@ -198,10 +198,10 @@ void test_context_options ()
     zlink::context_options_t options = ctx.options ();
     options.blocky (false);
     assert (!options.blocky ());
-    options.auto_hwm_profile_value (zlink::auto_hwm_profile::compact);
-    assert (options.auto_hwm_profile_value () == zlink::auto_hwm_profile::compact);
-    options.auto_hwm_profile_value (zlink::auto_hwm_profile::throughput);
-    assert (options.auto_hwm_profile_value () == zlink::auto_hwm_profile::throughput);
+    options.auto_hwm_profile (zlink::auto_hwm_profile::compact);
+    assert (options.auto_hwm_profile () == zlink::auto_hwm_profile::compact);
+    options.auto_hwm_profile (zlink::auto_hwm_profile::throughput);
+    assert (options.auto_hwm_profile () == zlink::auto_hwm_profile::throughput);
 
     options.io_threads (zlink::io_thread_count_t::value (2));
     assert (options.io_threads ().value () == 2);
@@ -226,7 +226,7 @@ void test_socket_common_and_router_options ()
     assert (common.linger () == std::chrono::milliseconds (0));
 
     zlink::stream_socket_t stream (ctx);
-    zlink::stream_socket_options_t stream_options = stream.stream_options ();
+    zlink::stream_socket_options_t stream_options = stream.options ();
     stream_options.notify (true);
     assert (stream_options.notify ());
 
@@ -249,9 +249,8 @@ void test_spot_options ()
     zlink::service::spot_t spot = node.create_spot ();
     assert (spot.valid ());
 
-    (void) spot.options ();
-    (void) spot.publisher_options ();
-    (void) spot.subscriber_options ();
+    spot.request_timeout (std::chrono::milliseconds (25));
+    assert (spot.request_timeout () == std::chrono::milliseconds (25));
 }
 
 } // namespace

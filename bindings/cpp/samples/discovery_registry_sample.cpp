@@ -33,8 +33,8 @@ int main ()
         const std::vector<zlink::member_peer_entry_t> peers =
           client_discovery.member_peers ();
         for (size_t i = 0; i < peers.size (); ++i) {
-            if (peers[i].channel_name == detail::k_spot_service
-                && peers[i].endpoint == service_endpoint) {
+            if (peers[i].channel_name () == detail::k_spot_service
+                && peers[i].endpoint () == service_endpoint) {
                 discovered = true;
                 break;
             }

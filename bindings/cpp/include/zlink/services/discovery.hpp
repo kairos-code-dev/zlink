@@ -42,6 +42,14 @@ class discovery_t
             _last_error = errno != 0 ? errno : EFAULT;
     }
 
+    discovery_t (context_t &ctx_,
+                 const std::string &channel_name_,
+                 auto_connect_type_t auto_connect_type_,
+                 service_role_t)
+        : discovery_t (ctx_, auto_connect_type_, channel_name_)
+    {
+    }
+
     ~discovery_t ()
     {
         try {
@@ -86,6 +94,19 @@ class discovery_t
             zlink_discovery_connect_registry (_discovery, endpoint_.c_str ())));
     }
 
+    void set_tls_client (const std::string &ca_cert_,
+                         const std::string &hostname_ = std::string (),
+                         bool trust_system_ = false)
+    {
+        const char *ca = ca_cert_.empty () ? NULL : ca_cert_.c_str ();
+        const char *hostname =
+          hostname_.empty () ? NULL : hostname_.c_str ();
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_set_tls_client (
+              _discovery, ca, hostname, trust_system_ ? 1 : 0)));
+    }
+
     void set_value (int64_t value_)
     {
         detail::throw_if_failed<config_error_t> (
@@ -98,6 +119,13 @@ class discovery_t
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
             zlink_discovery_get_value (_discovery, value_out_)));
+    }
+
+    int64_t value () const
+    {
+        int64_t result = 0;
+        get_value (&result);
+        return result;
     }
 
     void set_spot_owner_sync_enabled (bool enabled_)

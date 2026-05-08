@@ -106,7 +106,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
 
     zlink::poller_t poller;
     try {
-        poller.add (server.sock (), zlink::poll_event::pollin);
+        poller.add (server.sock (), zlink::poll_event_flag_t::pollin);
     }
     catch (const zlink::zlink_error_t &) {
         return false;
@@ -118,10 +118,10 @@ bool perf_dealer_router_server (const std::string &lib_name,
     bool stop_requested = false;
     bool failed = false;
     while (!stop_requested) {
-        const zlink::poll_event wait_events =
+        const zlink::poll_event_flag_t wait_events =
           pending_replies.empty ()
-            ? zlink::poll_event::pollin
-            : (zlink::poll_event::pollin | zlink::poll_event::pollout);
+            ? zlink::poll_event_flag_t::pollin
+            : (zlink::poll_event_flag_t::pollin | zlink::poll_event_flag_t::pollout);
         try {
             poller.modify (server.sock (), wait_events);
         }
@@ -130,7 +130,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
             break;
         }
 
-        events = poller.wait_all (50);
+        events = poller.wait_all (0, std::chrono::milliseconds (50));
         const int poll_rc = static_cast<int> (events.size ());
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
@@ -142,14 +142,14 @@ bool perf_dealer_router_server (const std::string &lib_name,
             continue;
 
         for (size_t i = 0; i < events.size () && !stop_requested; ++i) {
-            if ((static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event::pollout))
+            if ((static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollout))
                 != 0
                 && !flush_pending_replies (server.sock (), pending_replies)) {
                 failed = true;
                 break;
             }
 
-            if ((static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event::pollin))
+            if ((static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))
                 == 0) {
                 continue;
             }
@@ -158,7 +158,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
                 zlink::routing_id_t source_rid = routing_id_from_ascii ("x");
                 zlink::message_t part;
                 const int recv_rc = server.sock ().recv (
-                  source_rid, part, zlink::recv_flags_t::dontwait);
+                  source_rid, part, ZLINK_DONTWAIT);
                 if (recv_rc < 0) {
                     const int err = errno;
                     if (err == EINTR)

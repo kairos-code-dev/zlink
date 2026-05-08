@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 
 test('public flag and result enums stay frozen', () => {
   assert.equal(zlink.SendFlags.None, 0);
@@ -24,6 +24,17 @@ test('public flag and result enums stay frozen', () => {
   assert.equal(zlink.AutoHwmProfile.LowLatency, 1);
   assert.equal(zlink.AutoHwmProfile.Balanced, 2);
   assert.equal(zlink.AutoHwmProfile.Throughput, 3);
+  assert.equal(zlink.AutoConnectType.SpotMesh, 5);
+  assert.equal(zlink.ServiceRole.Spot, 2);
+  assert.equal(zlink.ServiceKind.SpotPub, 4);
+  assert.equal(zlink.SpotRole.Pub, 1);
+  assert.equal(zlink.SpotPeerSource.Manual, 1);
+  assert.equal(zlink.SpotPeerState.Connected, 3);
+  assert.equal(zlink.SpotNodeState.Ready, 4);
+  assert.equal(zlink.RegistryState.Active, 2);
+  assert.equal(zlink.TopologySource.Registry, 3);
+  assert.equal(zlink.TopologyState.Ready, 3);
+  assert.equal(zlink.SpotNodeSocketOwner.Spot, 2);
   assert.ok(Object.isFrozen(zlink.SendFlags));
   assert.ok(Object.isFrozen(zlink.RecvFlags));
   assert.ok(Object.isFrozen(zlink.SubmitResult));
@@ -33,29 +44,33 @@ test('public flag and result enums stay frozen', () => {
   assert.ok(Object.isFrozen(zlink.ActorCreateStatus));
   assert.ok(Object.isFrozen(zlink.ActorAdmissionResult));
   assert.ok(Object.isFrozen(zlink.AutoHwmProfile));
+  assert.ok(Object.isFrozen(zlink.AutoConnectType));
+  assert.ok(Object.isFrozen(zlink.ServiceRole));
+  assert.ok(Object.isFrozen(zlink.ServiceKind));
+  assert.ok(Object.isFrozen(zlink.SpotRole));
+  assert.ok(Object.isFrozen(zlink.SpotPeerSource));
+  assert.ok(Object.isFrozen(zlink.SpotPeerState));
+  assert.ok(Object.isFrozen(zlink.SpotNodeState));
+  assert.ok(Object.isFrozen(zlink.RegistryState));
+  assert.ok(Object.isFrozen(zlink.TopologySource));
+  assert.ok(Object.isFrozen(zlink.TopologyState));
+  assert.ok(Object.isFrozen(zlink.SpotNodeSocketOwner));
+  assert.ok(Object.isFrozen(zlink.MonitorEventType));
+  assert.ok(Object.isFrozen(zlink.MonitorSourceKind));
+  assert.ok(Object.isFrozen(zlink.SocketType));
 });
 
 test('compat enums and errno helper are not public', () => {
   assert.ok(Object.isFrozen(zlink.MonitorEvent));
   assert.equal(zlink.errno, undefined);
   assert.equal(zlink.ContextOption, undefined);
-  assert.equal(zlink.SocketType, undefined);
   assert.equal(zlink.SocketOption, undefined);
-  assert.equal(zlink.MonitorSourceKind, undefined);
   assert.equal(zlink.MonitorState, undefined);
   assert.equal(zlink.MonitorSnapshotDetail, undefined);
   assert.equal(zlink.ServiceMonitorEvent, undefined);
   assert.equal(zlink.ServiceType, undefined);
   assert.equal(zlink.AUTO_CONNECT_SPOT_MESH, undefined);
   assert.equal(zlink.AUTO_CONNECT_CLIENT_SERVER, undefined);
-  assert.equal(zlink.ServiceRole, undefined);
-  assert.equal(zlink.ServiceKind, undefined);
-  assert.equal(zlink.SpotPeerSource, undefined);
-  assert.equal(zlink.SpotPeerState, undefined);
-  assert.equal(zlink.SpotNodeState, undefined);
-  assert.equal(zlink.RegistryState, undefined);
-  assert.equal(zlink.TopologySource, undefined);
-  assert.equal(zlink.TopologyState, undefined);
   assert.equal(zlink.METADATA_KEY_USER_MIN, undefined);
   assert.equal(zlink.METADATA_VALUE_MAX, undefined);
 });

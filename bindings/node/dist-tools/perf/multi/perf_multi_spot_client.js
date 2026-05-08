@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const { configureTlsClient } = require('../common/perf_tls');
 const { runSpotBenchmark } = require('../single/perf_spot');
 const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics } = require('../common/perf_metrics');
@@ -137,7 +137,6 @@ async function main() {
         for (let i = 0; i < spotCount; i += 1) {
             trace(`slot-${i} create-spot`);
             const spot = sharedNode.createSpot();
-            spot.setLinger(Number(process.env.PERF_MULTI_LINGER_MS ?? 0));
             spot.setSubscription(TOPIC);
             slots.push({ spot });
         }

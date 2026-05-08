@@ -22,7 +22,7 @@ bool send_single_part (void *userdata_, const void *data_, size_t size_)
         return false;
 
     zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
-    return msg.valid () && socket->send (msg, zlink::send_flags_t::none) == 0;
+    return msg.valid () && socket->send (msg, 0) == 0;
 }
 
 bool record_pair_payload (const zlink::received_t &received,
@@ -144,9 +144,10 @@ bool run_pattern_pair (const std::string &transport,
     });
 
     zlink::poller_t poller;
-    poller.add (bind_socket.sock (), zlink::poll_event::pollin);
+    poller.add (bind_socket.sock (), zlink::poll_event_flag_t::pollin);
     while (!sender_done.load (std::memory_order_acquire)) {
-        std::optional<zlink::poll_event_t> event = poller.wait (5);
+        std::optional<zlink::poll_event_t> event =
+          poller.wait (std::chrono::milliseconds (5));
         const int poll_rc = event ? 1 : 0;
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
@@ -155,7 +156,7 @@ bool run_pattern_pair (const std::string &transport,
             break;
         }
         if (poll_rc == 0
-            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event::pollin))
+            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))
                  == 0) {
             continue;
         }
@@ -163,7 +164,7 @@ bool run_pattern_pair (const std::string &transport,
         for (;;) {
             zlink::received_t received;
             const int recv_rc =
-              bind_socket.sock ().receive (received, zlink::recv_flags_t::dontwait);
+              bind_socket.sock ().receive (received, ZLINK_DONTWAIT);
             if (recv_rc != 0) {
                 if (errno == EAGAIN || errno == EINTR)
                     break;
@@ -191,7 +192,7 @@ bool run_pattern_pair (const std::string &transport,
            && std::chrono::steady_clock::now () < drain_deadline) {
         zlink::received_t received;
         const int recv_rc =
-          bind_socket.sock ().receive (received, zlink::recv_flags_t::dontwait);
+          bind_socket.sock ().receive (received, ZLINK_DONTWAIT);
         if (recv_rc != 0) {
             if (errno == EAGAIN || errno == EINTR)
                 break;

@@ -1,6 +1,6 @@
 'use strict';
 
-const zlink = require('../../dist/canonical');
+const zlink = require('../..');
 
 const TOPIC = 'spot:child';
 const SERVICE_NAME = 'spot-child-service';

@@ -2,7 +2,7 @@
 
 'use strict';
 
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const {
   createMetricCollector,
   createPayload,

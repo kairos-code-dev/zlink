@@ -74,6 +74,35 @@ inline std::string get_common_option_string (void *handle_, compat::options::soc
     throw config_error_t (config_result_t::invalid_argument, EINVAL);
 }
 
+inline std::string get_pub_option_string (void *handle_,
+                                          compat::options::pub_option option_)
+{
+    ensure_config_handle (handle_);
+    size_t cap = 256u;
+    const size_t max_cap = 64u * 1024u;
+    while (cap <= max_cap) {
+        std::vector<char> buffer (cap);
+        size_t size = cap;
+        const config_result_t result = static_cast<config_result_t> (
+          zlink_get_pub_option (
+            handle_, static_cast<zlink_pub_option_t> (option_),
+            buffer.data (), &size));
+        if (result == config_result_t::ok) {
+            const size_t bounded = size <= buffer.size () ? size : buffer.size ();
+            size_t out_size = bounded;
+            if (out_size > 0 && buffer[out_size - 1] == '\0')
+                --out_size;
+            return std::string (buffer.data (), out_size);
+        }
+        if (errno != EINVAL || cap == max_cap)
+            throw config_error_t (result, zlink_errno ());
+        cap *= 2u;
+        if (cap > max_cap)
+            cap = max_cap;
+    }
+    throw config_error_t (config_result_t::invalid_argument, EINVAL);
+}
+
 template<typename T>
 inline T get_router_option_value (void *handle_, compat::options::router_option option_)
 {
@@ -337,17 +366,18 @@ inline void common_socket_options_t::tcp_no_delay (bool value)
       _handle, compat::options::socket_option::tcp_nodelay, value ? 1 : 0);
 }
 
-inline bool common_socket_options_t::tcp_keepalive () const
+inline tcp_keepalive_mode_t common_socket_options_t::tcp_keepalive () const
 {
-    return detail::get_common_option_value<int> (
-             _handle, compat::options::socket_option::tcp_keepalive)
-           != 0;
+    return static_cast<tcp_keepalive_mode_t> (
+      detail::get_common_option_value<int> (
+        _handle, compat::options::socket_option::tcp_keepalive));
 }
 
-inline void common_socket_options_t::tcp_keepalive (bool value)
+inline void common_socket_options_t::tcp_keepalive (tcp_keepalive_mode_t value)
 {
     detail::set_common_option_value<int> (
-      _handle, compat::options::socket_option::tcp_keepalive, value ? 1 : 0);
+      _handle, compat::options::socket_option::tcp_keepalive,
+      static_cast<int> (value));
 }
 
 inline std::chrono::milliseconds common_socket_options_t::heartbeat_interval () const
@@ -421,6 +451,23 @@ inline void common_socket_options_t::max_message_size (byte_size_t value)
 {
     detail::set_common_option_value<int64_t> (
       _handle, compat::options::socket_option::maxmsgsize, value.bytes ());
+}
+
+inline byte_size_t common_socket_options_t::auto_hwm_msg_unit_bytes () const
+{
+    return byte_size_t::bytes (
+      detail::get_common_option_value<int64_t> (
+        _handle, compat::options::socket_option::auto_hwm_msg_unit_bytes));
+}
+
+inline void common_socket_options_t::auto_hwm_msg_unit_bytes (
+  byte_size_t value)
+{
+    if (value.bytes () < 0)
+        throw config_error_t (config_result_t::invalid_argument, EINVAL);
+    detail::set_common_option_value<int64_t> (
+      _handle, compat::options::socket_option::auto_hwm_msg_unit_bytes,
+      value.bytes ());
 }
 
 inline socket_backlog_t common_socket_options_t::backlog () const
@@ -498,13 +545,13 @@ inline void router_socket_options_t::handover (bool value)
       value ? ZLINK_RID_DUPLICATE_HANDOVER : ZLINK_RID_DUPLICATE_REJECT);
 }
 
-inline bool router_socket_options_t::probe_router () const
+inline bool router_socket_options_t::probe () const
 {
     return detail::get_router_option_value<int> (_handle, compat::options::router_option::probe)
            != 0;
 }
 
-inline void router_socket_options_t::probe_router (bool value)
+inline void router_socket_options_t::probe (bool value)
 {
     detail::set_router_option_value<int> (
       _handle, compat::options::router_option::probe, value ? 1 : 0);
@@ -541,6 +588,21 @@ router_socket_options_t::connect_routing_id (const routing_id_t &value)
           native.data, native.size)));
 }
 
+inline std::chrono::milliseconds router_socket_options_t::request_timeout () const
+{
+    return std::chrono::milliseconds (
+      detail::get_router_option_value<int> (
+        _handle, compat::options::router_option::request_timeout_ms));
+}
+
+inline void router_socket_options_t::request_timeout (
+  std::chrono::milliseconds value)
+{
+    detail::set_router_option_value<int> (
+      _handle, compat::options::router_option::request_timeout_ms,
+      static_cast<int> (value.count ()));
+}
+
 inline peer_weight_t router_socket_options_t::peer_weight () const
 {
     return peer_weight_t::value (
@@ -554,16 +616,31 @@ inline void router_socket_options_t::peer_weight (peer_weight_t value)
       _handle, compat::options::router_option::weight, value.value ());
 }
 
-inline bool dealer_socket_options_t::probe_router () const
+inline bool dealer_socket_options_t::probe () const
 {
     return detail::get_dealer_option_value<int> (_handle, compat::options::dealer_option::probe)
            != 0;
 }
 
-inline void dealer_socket_options_t::probe_router (bool value)
+inline void dealer_socket_options_t::probe (bool value)
 {
     detail::set_dealer_option_value<int> (
       _handle, compat::options::dealer_option::probe, value ? 1 : 0);
+}
+
+inline std::chrono::milliseconds dealer_socket_options_t::request_timeout () const
+{
+    return std::chrono::milliseconds (
+      detail::get_dealer_option_value<int> (
+        _handle, compat::options::dealer_option::request_timeout_ms));
+}
+
+inline void dealer_socket_options_t::request_timeout (
+  std::chrono::milliseconds value)
+{
+    detail::set_dealer_option_value<int> (
+      _handle, compat::options::dealer_option::request_timeout_ms,
+      static_cast<int> (value.count ()));
 }
 
 inline peer_weight_t dealer_socket_options_t::peer_weight () const
@@ -633,6 +710,66 @@ inline void pub_socket_options_t::manual (bool value)
 {
     detail::set_pub_option_value<int> (
       _handle, compat::options::pub_option::manual, value ? 1 : 0);
+}
+
+inline bool pub_socket_options_t::manual_last_value () const
+{
+    return detail::get_pub_option_value<int> (
+             _handle, compat::options::pub_option::manual_last_value)
+           != 0;
+}
+
+inline void pub_socket_options_t::manual_last_value (bool value)
+{
+    detail::set_pub_option_value<int> (
+      _handle, compat::options::pub_option::manual_last_value, value ? 1 : 0);
+}
+
+inline message_t pub_socket_options_t::welcome_message () const
+{
+    const std::string value =
+      detail::get_pub_option_string (
+        _handle, compat::options::pub_option::welcome_msg);
+    return message_t::from_bytes (
+      reinterpret_cast<const void *> (value.data ()), value.size ());
+}
+
+inline void pub_socket_options_t::welcome_message (const message_t &message)
+{
+    detail::ensure_config_handle (_handle);
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        zlink_set_pub_option (
+          _handle, ZLINK_PUB_OPT_WELCOME_MSG, message.data (),
+          message.size ())));
+}
+
+inline void pub_socket_options_t::approve_subscribe (
+  const routing_id_t &routing_id)
+{
+    detail::ensure_config_handle (_handle);
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        zlink_set_pub_option (
+          _handle, ZLINK_PUB_OPT_APPROVE_SUBSCRIBE, routing_id.data (),
+          routing_id.size ())));
+}
+
+inline void pub_socket_options_t::reject_subscribe (
+  const routing_id_t &routing_id)
+{
+    detail::ensure_config_handle (_handle);
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        zlink_set_pub_option (
+          _handle, ZLINK_PUB_OPT_REJECT_SUBSCRIBE, routing_id.data (),
+          routing_id.size ())));
+}
+
+inline int pub_socket_options_t::topics_count () const
+{
+    return detail::get_pub_option_value<int> (
+      _handle, compat::options::pub_option::topics_count);
 }
 
 inline int sub_socket_options_t::topics_count () const

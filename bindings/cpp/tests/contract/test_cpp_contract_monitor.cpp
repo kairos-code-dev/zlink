@@ -53,12 +53,13 @@ template<typename T> class has_on_event_t
 static_assert (has_on_event_t<zlink::monitor_handle_t>::value,
                "monitor_handle_t must expose on_event");
 
-template<typename T> class has_ignore_handler_t
+template<typename T> class has_ignore_event_t
 {
   private:
     template<typename U>
     static auto test (int)
-      -> decltype (U::ignore_handler, std::true_type ());
+      -> decltype (U::ignore_event (std::declval<const zlink::monitor_event_t &> ()),
+                    std::true_type ());
 
     template<typename> static std::false_type test (...);
 
@@ -79,8 +80,8 @@ template<typename T> class has_size_t
     static const bool value = decltype (test<T> (0))::value;
 };
 
-static_assert (has_ignore_handler_t<zlink::monitor_handle_t>::value,
-               "monitor_handle_t must expose ignore_handler");
+static_assert (has_ignore_event_t<zlink::monitor_handle_t>::value,
+               "monitor_handle_t must expose ignore_event");
 static_assert (has_size_t<zlink::poller_t>::value,
                "poller_t must expose size");
 
@@ -120,7 +121,7 @@ bool wait_for_any_socket_monitor_event (zlink::monitor_handle_t &monitor_,
             continue;
         }
 
-        if (monitor_.recv (zlink::recv_flags_t::dontwait))
+        if (monitor_.recv (ZLINK_DONTWAIT))
             return true;
     }
 
@@ -142,17 +143,19 @@ void test_socket_monitor_open_recv_snapshot ()
     assert (!endpoint.empty ());
     client.connect (endpoint);
 
-    (void) monitor.recv (zlink::recv_flags_t::dontwait);
+    (void) monitor.recv (ZLINK_DONTWAIT);
     assert (wait_for_any_socket_monitor_event (monitor, 2000));
     const zlink::monitor_snapshot_t snapshot = monitor.snapshot ();
-    (void) snapshot.auto_hwm_profile_value;
+    (void) snapshot.auto_hwm_profile;
     (void) snapshot.auto_hwm_policy_class;
     (void) snapshot.auto_hwm_unit_budget_bytes;
     (void) snapshot.auto_hwm_size_cap;
     (void) snapshot.auto_hwm_socket_message_slots;
+    (void) snapshot.auto_hwm_effective_sndbuf;
+    (void) snapshot.auto_hwm_effective_rcvbuf;
 }
 
-void test_socket_monitor_ignore_handler_and_poller_size ()
+void test_socket_monitor_ignore_event_and_poller_size ()
 {
     zlink::context_t ctx;
     zlink::pair_socket_t server (ctx);
@@ -160,10 +163,10 @@ void test_socket_monitor_ignore_handler_and_poller_size ()
     zlink::monitor_handle_t monitor = server.monitor_handle ();
     zlink::poller_t poller;
 
-    poller.add (server, zlink::poll_event::pollin);
+    poller.add (server, zlink::poll_event_flag_t::pollin);
     assert (poller.size () == 1);
 
-    monitor.on_event (zlink::monitor_handle_t::ignore_handler);
+    monitor.on_event (zlink::monitor_handle_t::ignore_event);
 
     server.bind ("tcp://127.0.0.1:*");
     const std::string endpoint = server.options ().last_endpoint ();
@@ -240,7 +243,7 @@ void test_socket_monitor_on_event_callback ()
 int main ()
 {
     test_socket_monitor_open_recv_snapshot ();
-    test_socket_monitor_ignore_handler_and_poller_size ();
+    test_socket_monitor_ignore_event_and_poller_size ();
     test_socket_monitor_on_event_callback ();
     return 0;
 }

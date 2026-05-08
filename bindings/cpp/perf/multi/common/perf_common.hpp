@@ -199,7 +199,7 @@ inline int poll_connect_ready_count (connect_monitor_t &mon)
     int ready = 0;
     for (;;) {
         const std::optional<zlink::monitor_event_t> ev =
-          mon.monitor->recv (zlink::recv_flags_t::dontwait);
+          mon.monitor->recv (ZLINK_DONTWAIT);
         if (!ev)
             break;
         if (static_cast<uint64_t> (ev->event)
@@ -230,7 +230,7 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon,
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
     try {
-        poller.add (*mon.monitor, zlink::poll_event::pollin, 0);
+        poller.add (*mon.monitor, zlink::poll_event_flag_t::pollin, 0);
     }
     catch (const zlink::zlink_error_t &) {
         return false;
@@ -249,7 +249,7 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        events = poller.wait_all (wait_ms);
+        events = poller.wait_all (0, std::chrono::milliseconds (wait_ms));
         const int rc = static_cast<int> (events.size ());
         if (rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
@@ -301,7 +301,7 @@ inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
     try {
         for (size_t i = 0; i < active_indices.size (); ++i) {
             poller.add (*monitors[active_indices[i]].monitor,
-                        zlink::poll_event::pollin, 0);
+                        zlink::poll_event_flag_t::pollin, 0);
         }
     }
     catch (const zlink::zlink_error_t &) {
@@ -321,7 +321,7 @@ inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        events = poller.wait_all (wait_ms);
+        events = poller.wait_all (0, std::chrono::milliseconds (wait_ms));
         const int rc = static_cast<int> (events.size ());
         if (rc < 0) {
             if (errno == EINTR || errno == EAGAIN)

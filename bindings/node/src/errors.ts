@@ -41,7 +41,8 @@ export const RecvResult = Object.freeze({
   Busy: 202,
   Terminated: 203,
   InvalidHandle: 204,
-  NotSupported: 205
+  NotSupported: 205,
+  InternalError: 206
 } as const);
 export type RecvResult = typeof RecvResult[keyof typeof RecvResult];
 
@@ -51,7 +52,8 @@ export const HandlerResult = Object.freeze({
   Busy: 302,
   NotSupported: 303,
   Deadlock: 304,
-  InvalidHandle: 305
+  InvalidHandle: 305,
+  InternalError: 306
 } as const);
 export type HandlerResult = typeof HandlerResult[keyof typeof HandlerResult];
 
@@ -59,7 +61,8 @@ export const CloseResult = Object.freeze({
   Ok: 0,
   Busy: 401,
   Shutdown: 402,
-  InvalidHandle: 403
+  InvalidHandle: 403,
+  InternalError: 404
 } as const);
 export type CloseResult = typeof CloseResult[keyof typeof CloseResult];
 
@@ -68,7 +71,8 @@ export const BindResult = Object.freeze({
   InvalidArgument: 501,
   AddrInUse: 502,
   NotSupported: 503,
-  InvalidHandle: 504
+  InvalidHandle: 504,
+  InternalError: 505
 } as const);
 export type BindResult = typeof BindResult[keyof typeof BindResult];
 
@@ -76,7 +80,11 @@ export const ConnectResult = Object.freeze({
   Ok: 0,
   InvalidArgument: 601,
   NotSupported: 602,
-  InvalidHandle: 603
+  InvalidHandle: 603,
+  InternalError: 604,
+  NotFound: 605,
+  Conflict: 606,
+  Busy: 607
 } as const);
 export type ConnectResult = typeof ConnectResult[keyof typeof ConnectResult];
 
@@ -84,7 +92,10 @@ export const ConfigResult = Object.freeze({
   Ok: 0,
   InvalidHandle: 701,
   InvalidArgument: 702,
-  NotSupported: 703
+  NotSupported: 703,
+  InternalError: 704,
+  InvalidState: 705,
+  NotFound: 706
 } as const);
 export type ConfigResult = typeof ConfigResult[keyof typeof ConfigResult];
 
@@ -92,6 +103,9 @@ export class ZlinkError extends Error {
   readonly code: number;
   readonly internalErrno: number;
 
+  constructor(code: number, internalErrno?: number);
+  /** @internal */
+  constructor(code: number, internalErrno: number | undefined, message: string | undefined);
   constructor(code: number, internalErrno = 0, message?: string) {
     super(message ?? `zlink error ${code}`);
     this.name = 'ZlinkError';
@@ -103,6 +117,9 @@ export class ZlinkError extends Error {
 export class SubmitError extends ZlinkError {
   readonly result: SubmitResult;
 
+  constructor(result: SubmitResult, internalErrno?: number);
+  /** @internal */
+  constructor(result: SubmitResult, internalErrno: number | undefined, message: string | undefined);
   constructor(result: SubmitResult, internalErrno = 0, message?: string) {
     super(result, internalErrno, message);
     this.name = 'SubmitError';
@@ -113,6 +130,9 @@ export class SubmitError extends ZlinkError {
 export class RequestError extends ZlinkError {
   readonly result: RequestResult;
 
+  constructor(result: RequestResult, internalErrno?: number);
+  /** @internal */
+  constructor(result: RequestResult, internalErrno: number | undefined, message: string | undefined);
   constructor(result: RequestResult, internalErrno = 0, message?: string) {
     super(result, internalErrno, message);
     this.name = 'RequestError';
@@ -123,6 +143,9 @@ export class RequestError extends ZlinkError {
 export class RecvError extends ZlinkError {
   readonly result: RecvResult;
 
+  constructor(result: RecvResult, internalErrno?: number);
+  /** @internal */
+  constructor(result: RecvResult, internalErrno: number | undefined, message: string | undefined);
   constructor(result: RecvResult, internalErrno = 0, message?: string) {
     super(result, internalErrno, message);
     this.name = 'RecvError';
@@ -133,6 +156,9 @@ export class RecvError extends ZlinkError {
 export class HandlerError extends ZlinkError {
   readonly result: HandlerResult;
 
+  constructor(result: HandlerResult, internalErrno?: number);
+  /** @internal */
+  constructor(result: HandlerResult, internalErrno: number | undefined, message: string | undefined);
   constructor(result: HandlerResult, internalErrno = 0, message?: string) {
     super(result, internalErrno, message);
     this.name = 'HandlerError';
@@ -143,6 +169,9 @@ export class HandlerError extends ZlinkError {
 export class CloseError extends ZlinkError {
   readonly result: CloseResult;
 
+  constructor(result: CloseResult, internalErrno?: number);
+  /** @internal */
+  constructor(result: CloseResult, internalErrno: number | undefined, message: string | undefined);
   constructor(result: CloseResult, internalErrno = 0, message?: string) {
     super(result, internalErrno, message);
     this.name = 'CloseError';
@@ -153,6 +182,9 @@ export class CloseError extends ZlinkError {
 export class BindError extends ZlinkError {
   readonly result: BindResult;
 
+  constructor(result: BindResult, internalErrno?: number);
+  /** @internal */
+  constructor(result: BindResult, internalErrno: number | undefined, message: string | undefined);
   constructor(result: BindResult, internalErrno = 0, message?: string) {
     super(result, internalErrno, message);
     this.name = 'BindError';
@@ -163,6 +195,9 @@ export class BindError extends ZlinkError {
 export class ConnectError extends ZlinkError {
   readonly result: ConnectResult;
 
+  constructor(result: ConnectResult, internalErrno?: number);
+  /** @internal */
+  constructor(result: ConnectResult, internalErrno: number | undefined, message: string | undefined);
   constructor(result: ConnectResult, internalErrno = 0, message?: string) {
     super(result, internalErrno, message);
     this.name = 'ConnectError';
@@ -173,6 +208,9 @@ export class ConnectError extends ZlinkError {
 export class ConfigError extends ZlinkError {
   readonly result: ConfigResult;
 
+  constructor(result: ConfigResult, internalErrno?: number);
+  /** @internal */
+  constructor(result: ConfigResult, internalErrno: number | undefined, message: string | undefined);
   constructor(result: ConfigResult, internalErrno = 0, message?: string) {
     super(result, internalErrno, message);
     this.name = 'ConfigError';
@@ -236,7 +274,7 @@ export function mapNativeErrno(category: ErrorCategory, errno: number): number {
         case 16: return RecvResult.Busy;
         case 125: return RecvResult.Terminated;
         case 14: return RecvResult.InvalidHandle;
-        default: return RecvResult.NotSupported;
+        default: return RecvResult.InternalError;
       }
     case 'handler':
       switch (errno) {
@@ -245,7 +283,7 @@ export function mapNativeErrno(category: ErrorCategory, errno: number): number {
         case 16: return HandlerResult.Busy;
         case 35: return HandlerResult.Deadlock;
         case 14: return HandlerResult.InvalidHandle;
-        default: return HandlerResult.NotSupported;
+        default: return HandlerResult.InternalError;
       }
     case 'close':
       switch (errno) {
@@ -253,7 +291,7 @@ export function mapNativeErrno(category: ErrorCategory, errno: number): number {
         case 16: return CloseResult.Busy;
         case 108: return CloseResult.Shutdown;
         case 14: return CloseResult.InvalidHandle;
-        default: return CloseResult.InvalidHandle;
+        default: return CloseResult.InternalError;
       }
     case 'bind':
       switch (errno) {
@@ -263,7 +301,7 @@ export function mapNativeErrno(category: ErrorCategory, errno: number): number {
         case 95:
         case 93: return BindResult.NotSupported;
         case 14: return BindResult.InvalidHandle;
-        default: return BindResult.InvalidArgument;
+        default: return BindResult.InternalError;
       }
     case 'connect':
       switch (errno) {
@@ -272,7 +310,10 @@ export function mapNativeErrno(category: ErrorCategory, errno: number): number {
         case 95:
         case 93: return ConnectResult.NotSupported;
         case 14: return ConnectResult.InvalidHandle;
-        default: return ConnectResult.InvalidArgument;
+        case 2: return ConnectResult.NotFound;
+        case 17: return ConnectResult.Conflict;
+        case 16: return ConnectResult.Busy;
+        default: return ConnectResult.InternalError;
       }
     case 'config':
       switch (errno) {
@@ -281,7 +322,9 @@ export function mapNativeErrno(category: ErrorCategory, errno: number): number {
         case 22: return ConfigResult.InvalidArgument;
         case 95:
         case 93: return ConfigResult.NotSupported;
-        default: return ConfigResult.InvalidArgument;
+        case 16: return ConfigResult.InvalidState;
+        case 2: return ConfigResult.NotFound;
+        default: return ConfigResult.InternalError;
       }
   }
 }

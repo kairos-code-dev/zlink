@@ -49,10 +49,10 @@ inline void actor_sample_dispatch (
   const zlink::spot_dispatch_info_t &info_)
 {
     if (info_.event == zlink::spot_dispatch_event_t::actor_join_readable) {
-        auto request = state_.spot->recv_actor_join (zlink::recv_flags_t::dontwait);
+        auto request = state_.spot->recv_actor_join (ZLINK_DONTWAIT);
         assert (request.has_value ());
         zlink::message_t reply = zlink::message_t::from_string ("accepted");
-        state_.spot->reply_actor_join (request->first, true, reply);
+        state_.spot->reply_actor_join (*request, true, reply);
         return;
     }
 
@@ -60,7 +60,7 @@ inline void actor_sample_dispatch (
         assert (info_.actor.has_value ());
         for (;;) {
             std::optional<zlink::actor_part_t> part =
-              state_.actor->recv_part (zlink::recv_flags_t::dontwait);
+              state_.actor->recv_part (ZLINK_DONTWAIT);
             if (!part)
                 break;
             std::lock_guard<std::mutex> lock (state_.capture->mutex);

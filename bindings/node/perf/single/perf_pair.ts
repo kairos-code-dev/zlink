@@ -2,7 +2,7 @@
 
 'use strict';
 
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const {
   createMetricCollector,
   createPayload,
@@ -35,7 +35,7 @@ async function runPairBenchmark(msgSize, options) {
   const ctx = new zlink.Context();
   applyContextPolicy(ctx);
   const server = new zlink.PairSocket(ctx);
-  const serverMonitor = server.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
+  const serverMonitor = server.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
   const endpoint = await benchmarkEndpoint(options.transport, `pair-${msgSize}`);
   let worker = null;
 

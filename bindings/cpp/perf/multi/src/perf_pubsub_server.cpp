@@ -80,11 +80,11 @@ bool run_phase (::perf::socket_t &publisher,
         }
 
         const int sent = publisher.publish (
-          k_topic, payload_part, zlink::send_flags_t::dontwait);
+          k_topic, payload_part, ZLINK_DONTWAIT);
         if (sent == 0) {
             pending = false;
             try {
-                poller.modify (publisher, static_cast<zlink::poll_event> (0));
+                poller.modify (publisher, zlink::poll_event_flag_t::none);
             }
             catch (const zlink::zlink_error_t &) {
                 return false;
@@ -95,7 +95,7 @@ bool run_phase (::perf::socket_t &publisher,
         if (errno == EAGAIN) {
             pending = true;
             try {
-                poller.modify (publisher, zlink::poll_event::pollout);
+                poller.modify (publisher, zlink::poll_event_flag_t::pollout);
             }
             catch (const zlink::zlink_error_t &) {
                 return false;
@@ -104,7 +104,9 @@ bool run_phase (::perf::socket_t &publisher,
             return false;
         }
 
-        events = poller.wait_all (compute_wait_ms (settings, deadline));
+        events = poller.wait_all (
+          0,
+          std::chrono::milliseconds (compute_wait_ms (settings, deadline)));
         const int poll_rc = static_cast<int> (events.size ());
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
@@ -168,8 +170,8 @@ bool perf_pubsub_server (const std::string &lib_name,
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
-    (void) poller.add (publisher.sock (), zlink::poll_event::pollout);
-    (void) poller.modify (publisher.sock (), static_cast<zlink::poll_event> (0));
+    (void) poller.add (publisher.sock (), zlink::poll_event_flag_t::pollout);
+    (void) poller.modify (publisher.sock (), zlink::poll_event_flag_t::none);
 
     if (!run_phase (publisher.sock (),
                     poller,

@@ -9,10 +9,10 @@ static void join_only_dispatch (
     if (info_.event != zlink::spot_dispatch_event_t::actor_join_readable)
         return;
 
-    auto request = state_.spot->recv_actor_join (zlink::recv_flags_t::dontwait);
+    auto request = state_.spot->recv_actor_join (ZLINK_DONTWAIT);
     assert (request.has_value ());
     zlink::message_t reply = zlink::message_t::from_string ("accepted");
-    state_.spot->reply_actor_join (request->first, true, reply);
+    state_.spot->reply_actor_join (*request, true, reply);
 }
 
 int main ()
@@ -42,18 +42,18 @@ int main ()
            std::vector<zlink::message_t> parts) {
           actor_sample_join_reply (first_capture, result, std::move (parts));
       },
-      zlink::send_flags_t::dontwait, std::chrono::milliseconds (1000)));
+      ZLINK_DONTWAIT, std::chrono::milliseconds (1000)));
     assert (wait_until_flag (first_capture, &actor_sample_capture_t::joined));
     assert (first_capture.join_result == zlink::request_result_t::ok);
 
     zlink::message_t before = zlink::message_t::from_string ("before-");
-    assert (stream.send_bound_actor_part (
-      node, session, "single-player", before, zlink::send_flags_t::dontwait));
+    assert (stream.send_bound_actor (
+      node, session, "single-player", before, ZLINK_DONTWAIT));
     actor.leave (first_spot);
 
     zlink::message_t between = zlink::message_t::from_string ("between-");
-    assert (stream.send_bound_actor_part (
-      node, session, "single-player", between, zlink::send_flags_t::dontwait));
+    assert (stream.send_bound_actor (
+      node, session, "single-player", between, ZLINK_DONTWAIT));
 
     actor_sample_capture_t second_capture;
     actor_sample_dispatch_state_t second_state {&second_spot, &node,
@@ -70,7 +70,7 @@ int main ()
            std::vector<zlink::message_t> parts) {
           actor_sample_join_reply (second_capture, result, std::move (parts));
       },
-      zlink::send_flags_t::dontwait, std::chrono::milliseconds (1000)));
+      ZLINK_DONTWAIT, std::chrono::milliseconds (1000)));
     assert (wait_until_flag (second_capture, &actor_sample_capture_t::joined));
     assert (second_capture.join_result == zlink::request_result_t::ok);
     assert (wait_until_flag (second_capture, &actor_sample_capture_t::actor_read));

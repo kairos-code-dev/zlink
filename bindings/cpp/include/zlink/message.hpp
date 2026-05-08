@@ -5,11 +5,17 @@
 #include "common.hpp"
 
 #include <optional>
+#include <span>
 
 namespace zlink
 {
 
 class message_t;
+
+namespace advanced
+{
+class external_message_t;
+}
 
 namespace detail
 {
@@ -48,7 +54,7 @@ class message_t
     /**
      * @brief Close the message if initialized.
      */
-    ~message_t () { close (); }
+    ~message_t () { close_noexcept (); }
 
     message_t (const message_t &other) : _valid (false)
     {
@@ -71,7 +77,7 @@ class message_t
         if (this == &other)
             return *this;
 
-        close ();
+        close_noexcept ();
         if (!other._valid)
             return *this;
 
@@ -109,7 +115,7 @@ class message_t
         if (this == &other)
             return *this;
 
-        close ();
+        close_noexcept ();
         if (!other._valid)
             return *this;
 
@@ -149,20 +155,15 @@ class message_t
           bytes_.empty () ? NULL : &bytes_[0], bytes_.size ());
     }
 
+    static message_t from_bytes (std::span<const std::byte> bytes_)
+    {
+        return from_bytes (bytes_.empty () ? NULL : bytes_.data (),
+                           bytes_.size ());
+    }
+
     static message_t from_string (const std::string &text_)
     {
         return from_bytes (text_.data (), text_.size ());
-    }
-
-    static message_t
-    from_external (void *data_,
-                   size_t size_,
-                   zlink_free_fn *ffn_ = NULL,
-                   void *hint_ = NULL)
-    {
-        message_t msg;
-        (void) msg.init (data_, size_, ffn_, hint_);
-        return msg;
     }
 
     /**
@@ -185,27 +186,8 @@ class message_t
      */
     void init (size_t size_)
     {
-        close ();
+        close_noexcept ();
         if (zlink_msg_init_size (&_msg, size_) != 0)
-            return;
-        _valid = true;
-    }
-
-    /**
-     * @brief Reinitialize with externally provided data ownership.
-     * @param data_ Payload buffer.
-     * @param size_ Payload size in bytes.
-     * @param ffn_ Optional free callback for `data_`.
-     * @param hint_ Optional callback context pointer.
-     * @return 0 on success, -1 on failure.
-     */
-    void init (void *data_,
-              size_t size_,
-              zlink_free_fn *ffn_ = NULL,
-              void *hint_ = NULL)
-    {
-        close ();
-        if (zlink_msg_init_data (&_msg, data_, size_, ffn_, hint_) != 0)
             return;
         _valid = true;
     }
@@ -223,6 +205,17 @@ class message_t
     const void *data () const noexcept
     {
         return _valid ? zlink_msg_data (const_cast<zlink_msg_t *> (&_msg)) : NULL;
+    }
+
+    std::span<std::byte> bytes () noexcept
+    {
+        return std::span<std::byte> (static_cast<std::byte *> (data ()), size ());
+    }
+
+    std::span<const std::byte> bytes () const noexcept
+    {
+        return std::span<const std::byte> (
+          static_cast<const std::byte *> (data ()), size ());
     }
 
     /**
@@ -275,7 +268,7 @@ class message_t
      * @brief Close and invalidate the message.
      * @return 0 on success, -1 on failure.
      */
-    void close () noexcept
+    void close ()
     {
         if (!_valid)
             return;
@@ -284,6 +277,7 @@ class message_t
     }
 
   private:
+    friend class advanced::external_message_t;
     friend zlink_msg_t *detail::native_handle (message_t &message_) noexcept;
     friend const zlink_msg_t *
     detail::native_handle (const message_t &message_) noexcept;
@@ -301,8 +295,38 @@ class message_t
         return zlink_msg_gets (&_msg, property_.c_str ());
     }
 
+    static message_t
+    from_external (void *data_,
+                   size_t size_,
+                   zlink_free_fn *ffn_ = NULL,
+                   void *hint_ = NULL)
+    {
+        message_t msg;
+        (void) msg.init (data_, size_, ffn_, hint_);
+        return msg;
+    }
+
+    void init (void *data_,
+              size_t size_,
+              zlink_free_fn *ffn_ = NULL,
+              void *hint_ = NULL)
+    {
+        close_noexcept ();
+        if (zlink_msg_init_data (&_msg, data_, size_, ffn_, hint_) != 0)
+            return;
+        _valid = true;
+    }
+
     zlink_msg_t *handle () noexcept { return &_msg; }
     const zlink_msg_t *handle () const noexcept { return &_msg; }
+
+    void close_noexcept () noexcept
+    {
+        if (!_valid)
+            return;
+        (void) zlink_msg_close (&_msg);
+        _valid = false;
+    }
 
     /**
      * @brief Adopt ownership from an already initialized native message.
@@ -314,7 +338,7 @@ class message_t
         if (!src_)
             return;
 
-        close ();
+        close_noexcept ();
         if (zlink_msg_init (&_msg) != 0)
             return;
 
@@ -366,6 +390,21 @@ class message_t
     zlink_msg_t _msg;
     bool _valid;
 };
+
+namespace advanced
+{
+class external_message_t
+{
+  public:
+    static message_t adopt (void *data_,
+                            size_t size_,
+                            zlink_free_fn *release_,
+                            void *hint_ = NULL)
+    {
+        return message_t::from_external (data_, size_, release_, hint_);
+    }
+};
+} // namespace advanced
 
 namespace detail
 {

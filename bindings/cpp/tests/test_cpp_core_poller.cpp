@@ -1,5 +1,6 @@
 #include "test_helpers.hpp"
 
+#include <any>
 #include <vector>
 
 namespace {
@@ -17,28 +18,39 @@ void test_poller_modify_switches_event_mask ()
     sleep_ms (50);
 
     zlink::poller_t poller;
-    poller.add (receiver, zlink::poll_event::pollin);
+    poller.add (receiver, zlink::poll_event_flag_t::pollin, &receiver);
     assert (poller.size () == 1);
 
     send_string_expect_success (sender, "ping");
 
-    poller.modify (receiver, zlink::poll_event::pollout);
+    poller.modify (receiver, zlink::poll_event_flag_t::pollout);
 
-    std::vector<zlink::poll_event_t> events;
-    assert (poller.wait (events, 1000) == 1);
-    assert (!events.empty ());
-    assert (events[0].socket == &receiver);
-    assert ((events[0].revents & ZLINK_POLLOUT) != 0);
-    assert ((events[0].revents & ZLINK_POLLIN) == 0);
+    std::optional<zlink::poll_event_t> event =
+      poller.wait (std::chrono::milliseconds (1000));
+    assert (event.has_value ());
+    zlink::pair_socket_t **first_tag =
+      std::any_cast<zlink::pair_socket_t *> (&event->tag);
+    assert (first_tag && *first_tag == &receiver);
+    assert ((static_cast<short> (event->revents)
+             & static_cast<short> (zlink::poll_event_flag_t::pollout))
+            != 0);
+    assert ((static_cast<short> (event->revents)
+             & static_cast<short> (zlink::poll_event_flag_t::pollin))
+            == 0);
 
-    poller.modify (receiver, zlink::poll_event::pollin);
+    poller.modify (receiver, zlink::poll_event_flag_t::pollin);
 
-    events.clear ();
-    assert (poller.wait (events, 1000) == 1);
-    assert (!events.empty ());
-    assert (events[0].socket == &receiver);
-    assert ((events[0].revents & ZLINK_POLLIN) != 0);
-    assert ((events[0].revents & ZLINK_POLLOUT) == 0);
+    event = poller.wait (std::chrono::milliseconds (1000));
+    assert (event.has_value ());
+    zlink::pair_socket_t **second_tag =
+      std::any_cast<zlink::pair_socket_t *> (&event->tag);
+    assert (second_tag && *second_tag == &receiver);
+    assert ((static_cast<short> (event->revents)
+             & static_cast<short> (zlink::poll_event_flag_t::pollin))
+            != 0);
+    assert ((static_cast<short> (event->revents)
+             & static_cast<short> (zlink::poll_event_flag_t::pollout))
+            == 0);
 
     recv_string_expect_success (receiver, "ping");
 }

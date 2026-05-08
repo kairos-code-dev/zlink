@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 
 const REQUEST_PAYLOAD = 'spot-ping';
 const REPLY_PAYLOAD = 'spot-pong';
@@ -34,11 +34,10 @@ async function main() {
     requesterDealer.connect(endpoint);
     requesterNode.attachChannelDealerManual(CHANNEL_NAME, requesterDealer);
 
-    const pendingReply = requester.requestChannel(
-      CHANNEL_NAME,
-      Buffer.from(REQUEST_PAYLOAD),
-      2000
-    );
+    const pendingReply = requester.requestChannel(CHANNEL_NAME)
+      .message(Buffer.from(REQUEST_PAYLOAD))
+      .timeout(2000)
+      .submitAsync();
     const received = responderRouter.recv();
     try {
       assert.ok(received.routingId);

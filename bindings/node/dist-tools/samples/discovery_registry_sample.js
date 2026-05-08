@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 const AUTO_CONNECT_SPOT_MESH = 5;
 async function reservePort() {
     const server = net.createServer();

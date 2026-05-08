@@ -35,12 +35,12 @@ int main ()
     topic_spot.set_subscription (topic);
 
     zlink::message_t published = detail::make_message (publish_payload);
-    topic_spot.publish (service_name, topic, published);
+    topic_spot.publish (service_name, topic).message (published).submit ();
     std::optional<zlink::topic_message_t> inbound;
     const std::chrono::steady_clock::time_point subscribe_deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (5);
     while (std::chrono::steady_clock::now () < subscribe_deadline) {
-        inbound = topic_spot.subscribe (zlink::recv_flags_t::dontwait);
+        inbound = topic_spot.subscribe (ZLINK_DONTWAIT);
         if (inbound.has_value ())
             break;
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
@@ -53,7 +53,7 @@ int main ()
     assert (inbound->parts ()[0].to_string () == publish_payload);
     inbound->close ();
 
-    timer.start (20 * 1000 * 1000ULL, 1);
+    timer.start (std::chrono::milliseconds (20), 1);
     std::optional<uint64_t> fire_count = timer.recv ();
     assert (fire_count && *fire_count == 1);
 

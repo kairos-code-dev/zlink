@@ -56,7 +56,7 @@ void reconnect_default ()
 
     const int zero = 0;
     assert (pub.set_option (zlink::socket_option::linger, zero) == 0);
-    assert (pub.close () == 0);
+    pub.close ();
 
     assert (expect_monitor_event (
       sub_mon, static_cast<uint64_t> (ZLINK_EVENT_DISCONNECTED), 3000));
@@ -65,7 +65,7 @@ void reconnect_default ()
     assert (has_no_monitor_event (sub_mon, 2000));
 
     assert (sub.set_option (zlink::socket_option::linger, zero) == 0);
-    assert (sub.close () == 0);
+    sub.close ();
     sub_mon.close ();
 }
 
@@ -93,7 +93,7 @@ void reconnect_success ()
 
     const int zero = 0;
     assert (pub.set_option (zlink::socket_option::linger, zero) == 0);
-    assert (pub.close () == 0);
+    pub.close ();
 
     assert (expect_monitor_event (
       sub_mon, static_cast<uint64_t> (ZLINK_EVENT_DISCONNECTED), 3000));
@@ -115,8 +115,8 @@ void reconnect_success ()
 
     assert (sub.set_option (zlink::socket_option::linger, zero) == 0);
     assert (pub2.set_option (zlink::socket_option::linger, zero) == 0);
-    assert (sub.close () == 0);
-    assert (pub2.close () == 0);
+    sub.close ();
+    pub2.close ();
     sub_mon.close ();
 }
 

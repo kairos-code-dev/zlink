@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 
 async function reservePort() {
   const srv = net.createServer();
@@ -24,8 +24,8 @@ async function main() {
   const sub = new zlink.SubSocket(ctx);
 
   try {
-    const pubMonitor = pub.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
-    const subMonitor = sub.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
+    const pubMonitor = pub.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
+    const subMonitor = sub.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
     try {
       pub.bind(endpoint);
       sub.connect(endpoint);

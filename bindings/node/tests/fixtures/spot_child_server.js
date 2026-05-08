@@ -1,6 +1,6 @@
 'use strict';
 
-const zlink = require('../../dist/canonical');
+const zlink = require('../..');
 
 const TOPIC = 'spot:child';
 const SERVICE_NAME = 'spot-child-service';
@@ -32,7 +32,7 @@ async function main() {
     const deadline = Date.now() + 5000;
     let sent = 0;
     while (Date.now() < deadline) {
-      spot.publish(SERVICE_NAME, TOPIC, Buffer.from('payload'));
+      spot.publish(SERVICE_NAME, TOPIC).message(Buffer.from('payload')).submit();
       sent += 1;
       if (sent === 1) {
         console.log('PUBLISHED');

@@ -3,7 +3,7 @@
 'use strict';
 
 const readline = require('node:readline');
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const {
   createPayload,
   createRunId,
@@ -15,6 +15,8 @@ const {
   POLLOUT,
   applyContextPolicy,
   applySocketPolicy,
+  pollEvents,
+  pollEventHas,
   trySocketSend,
   waitForConnectionReadyCount
 } = require('./perf_multi_runtime');
@@ -31,7 +33,7 @@ async function main() {
   try {
     applySocketPolicy(server);
     server.bind(options.endpoint);
-    poller.addSocket(server, POLLOUT);
+    poller.add(server, pollEvents(POLLOUT));
     const readyBarrier = waitForConnectionReadyCount(server, options.clients);
     console.log(`READY,${options.endpoint}`);
 
@@ -60,7 +62,7 @@ async function main() {
         }
 
         const ready = poller.wait(25);
-        if (!ready || (ready.events & POLLOUT) === 0) {
+        if (!ready || !pollEventHas(ready, POLLOUT)) {
           await sleepImmediate();
           continue;
         }
@@ -74,7 +76,7 @@ async function main() {
           continue;
         }
         const ready = poller.wait(25);
-        if (!ready || (ready.events & POLLOUT) === 0) {
+        if (!ready || !pollEventHas(ready, POLLOUT)) {
           await sleepImmediate();
         }
       }

@@ -70,7 +70,7 @@ int main ()
 
     assert (raw_send (frontend, "Hello", 5, zlink::send_flag::dontwait) == 5);
 
-    assert (backend.close () == 0);
+    backend.close ();
     sleep_ms (200);
 
     assert (wait_send_eagain (frontend, "Hello", 2000));

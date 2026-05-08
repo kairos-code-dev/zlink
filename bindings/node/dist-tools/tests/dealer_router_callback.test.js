@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 test('router can send reply in a synchronous request-reply exchange', () => {
     const ctx = new zlink.Context();
     const router = new zlink.RouterSocket(ctx);

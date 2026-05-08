@@ -31,7 +31,7 @@ int main ()
         try {
             const auto entries = query.snapshot ();
             for (const auto &entry : entries) {
-                if (entry.channel_name == detail::k_spot_service) {
+                if (entry.channel_name () == detail::k_spot_service) {
                     found = true;
                     break;
                 }

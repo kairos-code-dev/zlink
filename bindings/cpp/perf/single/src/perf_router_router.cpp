@@ -54,7 +54,7 @@ bool complete_handshake (::perf::socket_t &receiver, ::perf::socket_t &sender)
     }
 
     zlink::received_t inbound;
-    if (receiver.receive (inbound, zlink::recv_flags_t::none) != 0) {
+    if (receiver.receive (inbound, 0) != 0) {
         if (perf_debug_enabled ())
             std::cerr << "router_router: handshake receive failed errno="
                       << errno << std::endl;
@@ -77,7 +77,7 @@ bool complete_handshake (::perf::socket_t &receiver, ::perf::socket_t &sender)
     }
 
     zlink::received_t response;
-    if (sender.receive (response, zlink::recv_flags_t::none) != 0) {
+    if (sender.receive (response, 0) != 0) {
         if (perf_debug_enabled ())
             std::cerr << "router_router: handshake response recv failed errno="
                       << errno << std::endl;
@@ -240,9 +240,10 @@ bool run_pattern_router_router (const std::string &transport,
     unsigned long long received = 0;
     perf::single::latency_stats_t latency;
     zlink::poller_t poller;
-    poller.add (receiver.sock (), zlink::poll_event::pollin);
+    poller.add (receiver.sock (), zlink::poll_event_flag_t::pollin);
     while (!sender_done.load (std::memory_order_acquire)) {
-        std::optional<zlink::poll_event_t> event = poller.wait (5);
+        std::optional<zlink::poll_event_t> event =
+          poller.wait (std::chrono::milliseconds (5));
         const int poll_rc = event ? 1 : 0;
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
@@ -251,7 +252,7 @@ bool run_pattern_router_router (const std::string &transport,
             break;
         }
         if (poll_rc == 0
-            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event::pollin))
+            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))
                  == 0) {
             continue;
         }
@@ -259,7 +260,7 @@ bool run_pattern_router_router (const std::string &transport,
         for (;;) {
             try {
                 zlink::received_t inbound;
-                if (receiver.sock ().receive (inbound, zlink::recv_flags_t::dontwait)
+                if (receiver.sock ().receive (inbound, ZLINK_DONTWAIT)
                     != 0) {
                     if (errno == EAGAIN || errno == EINTR)
                         break;
@@ -313,7 +314,7 @@ bool run_pattern_router_router (const std::string &transport,
            && std::chrono::steady_clock::now () < drain_deadline) {
         try {
             zlink::received_t inbound;
-            if (receiver.sock ().receive (inbound, zlink::recv_flags_t::dontwait)
+            if (receiver.sock ().receive (inbound, ZLINK_DONTWAIT)
                 != 0) {
                 if (errno == EAGAIN || errno == EINTR)
                     break;

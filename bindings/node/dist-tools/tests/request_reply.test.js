@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 test('request-reply helpers expose canonical socket accessors', () => {
     const ctx = new zlink.Context();
     const routerSocket = new zlink.RouterSocket(ctx);
@@ -52,8 +52,10 @@ test('reply helpers reject non-none flags when the core lacks reply flag support
     assert.throws(() => routerSocket.reply(routingId, 1n, 'pong', zlink.SendFlags.DontWait), (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported);
     assert.throws(() => routerSocket.replyToSpot(routingId, spotRoutingId, 1n, 'pong', zlink.SendFlags.DontWait), (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported);
     assert.equal(typeof spot.sendToSpot, 'function');
-    assert.equal(spot.replyToSpot, undefined);
-    assert.equal(spot.replyToRouter, undefined);
+    assert.equal(typeof spot.replyToSpot, 'function');
+    assert.equal(typeof spot.replyToRouter, 'function');
+    assert.throws(() => spot.replyToSpot(routingId, spotRoutingId, 1n).message('pong').flags(zlink.SendFlags.DontWait).submit(), (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported);
+    assert.throws(() => spot.replyToRouter(routingId, 1n).message('pong').flags(zlink.SendFlags.DontWait).submit(), (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported);
     spot.close();
     spotNode.close();
     routerSocket.close();

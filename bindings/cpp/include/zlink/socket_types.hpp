@@ -471,16 +471,6 @@ class dealer_socket_t : public message_socket_t
         return true;
     }
 
-    void set_default_request_timeout (std::chrono::milliseconds timeout_)
-    {
-        _default_request_timeout = timeout_;
-    }
-
-    std::chrono::milliseconds get_default_request_timeout () const
-    {
-        return _default_request_timeout;
-    }
-
     void set_routing_id (const routing_id_t &routing_id_)
     {
         if (base_socket_t::set_routing_id_raw (
@@ -495,16 +485,41 @@ class dealer_socket_t : public message_socket_t
             detail::throw_config_error_from_errno (zlink_errno ());
     }
 
+    void channel_name (const std::string &value_)
+    {
+        detail::validate_bounded_c_string (value_, 255u, "channel_name");
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_socket_set_channel_name (handle (), value_.c_str ())));
+    }
+
+    std::string channel_name () const
+    {
+        size_t size = 0;
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_socket_get_channel_name (
+              const_cast<void *> (handle ()), NULL, 0, &size)));
+        std::vector<char> buffer (size);
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_socket_get_channel_name (
+              const_cast<void *> (handle ()),
+              buffer.empty () ? NULL : buffer.data (), buffer.size (),
+              &size)));
+        return std::string (buffer.data (), size);
+    }
+
+    dealer_socket_options_t options ()
+    {
+        return dealer_socket_options_t (handle ());
+    }
+
     template<typename DiscoveryT>
     void attach_discovery (DiscoveryT &discovery_)
     {
         if (base_socket_t::attach_discovery (discovery_) != 0)
             detail::throw_config_error_from_errno (zlink_errno ());
-    }
-
-    dealer_socket_options_t dealer_options ()
-    {
-        return dealer_socket_options_t (handle ());
     }
 
   private:
@@ -714,16 +729,6 @@ class router_socket_t : public routed_message_socket_t
         }
     }
 
-    void set_default_request_timeout (std::chrono::milliseconds timeout_)
-    {
-        _default_request_timeout = timeout_;
-    }
-
-    std::chrono::milliseconds get_default_request_timeout () const
-    {
-        return _default_request_timeout;
-    }
-
     void set_routing_id (const routing_id_t &routing_id_)
     {
         if (base_socket_t::set_routing_id_raw (
@@ -901,7 +906,7 @@ class router_socket_t : public routed_message_socket_t
             detail::throw_config_error_from_errno (zlink_errno ());
     }
 
-    router_socket_options_t router_options ()
+    router_socket_options_t options ()
     {
         return router_socket_options_t (handle ());
     }
@@ -919,8 +924,6 @@ class stream_socket_t : public routed_message_socket_t
         : routed_message_socket_t (ctx_, socket_type::stream)
     {
     }
-
-    void connect (const std::string &) = delete;
 
     bool send (const routing_id_t &target_rid_, message_t &part_,
                send_flags_t flags_ = send_flags_t::none)
@@ -972,15 +975,6 @@ class stream_socket_t : public routed_message_socket_t
         return std::optional<received_t> (std::move (received));
     }
 
-    void on_receive (std::function<void(received_t)> handler_)
-    {
-        _receive_handler = std::move (handler_);
-        if (base_socket_t::on_receive (
-              &stream_socket_t::receive_trampoline, this)
-            != 0)
-            detail::throw_handler_error_from_errno (zlink_errno ());
-    }
-
     void on_packet (
       std::function<void(const routing_id_t &, message_t, message_t)> handler_)
     {
@@ -1010,7 +1004,7 @@ class stream_socket_t : public routed_message_socket_t
             detail::throw_config_error_from_errno (zlink_errno ());
     }
 
-    stream_socket_options_t stream_options ()
+    stream_socket_options_t options ()
     {
         return stream_socket_options_t (handle ());
     }
@@ -1045,24 +1039,46 @@ class stream_socket_t : public routed_message_socket_t
     }
 
     template<typename SpotNodeT>
-    bool send_bound_actor_part (SpotNodeT &node_,
-                                const routing_id_t &session_rid_,
-                                const std::string &actor_id_,
-                                message_t &part_,
-                                send_flags_t flags_ = send_flags_t::none)
+    bool send_bound_actor (SpotNodeT &node_,
+                           const routing_id_t &session_rid_,
+                           const std::string &actor_id_,
+                           message_t &part_,
+                           send_flags_t flags_ = send_flags_t::none)
+    {
+        std::vector<message_t> parts;
+        parts.push_back (std::move (part_));
+        const bool submitted =
+          send_bound_actor (node_, session_rid_, actor_id_, parts, flags_);
+        if (!submitted && !parts.empty ())
+            part_ = std::move (parts.front ());
+        return submitted;
+    }
+
+    template<typename SpotNodeT>
+    bool send_bound_actor (SpotNodeT &node_,
+                           const routing_id_t &session_rid_,
+                           const std::string &actor_id_,
+                           std::vector<message_t> &parts_,
+                           send_flags_t flags_ = send_flags_t::none)
     {
         detail::validate_bounded_c_string (actor_id_, ZLINK_ACTOR_ID_MAX - 1u,
                                    "actor_id");
-        zlink_msg_t native;
-        detail::move_to_native(part_, &native);
+        std::vector<zlink_msg_t> native;
+        if (detail::move_parts_to_native (parts_, native) != 0)
+            throw last_error ();
+        size_t failed_index = 0;
         const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_stream_send_bound_actor_part (
-            zlink::detail::native_handle (node_), handle (), zlink::detail::routing_id_native (session_rid_),
-            actor_id_.c_str (), &native,
-            static_cast<zlink_send_flags_t> (flags_), ZLINK_PART_FINAL));
+          detail::submit_native_parts (
+            native, failed_index,
+            [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
+                return zlink_stream_send_bound_actor_part (
+                  zlink::detail::native_handle (node_), handle (),
+                  zlink::detail::routing_id_native (session_rid_),
+                  actor_id_.c_str (), part_out_,
+                  static_cast<zlink_send_flags_t> (flags_), part_flag_);
+            }));
         if (rc != submit_result_t::ok) {
-            part_.init ();
-            (void) zlink_msg_move (detail::native_handle(part_), &native);
+            detail::restore_parts_from_native (parts_, native, failed_index);
             if (flags_ == send_flags_t::dontwait
                 && rc == submit_result_t::backpressured)
                 return false;
@@ -1072,19 +1088,6 @@ class stream_socket_t : public routed_message_socket_t
     }
 
   private:
-    static void receive_trampoline (const zlink_routing_id_t *source_rid_,
-                                    zlink_msg_t *parts_,
-                                    size_t part_count_,
-                                    void *userdata_)
-    {
-        stream_socket_t *self = static_cast<stream_socket_t *> (userdata_);
-        if (!self || !self->_receive_handler)
-            return;
-        self->_receive_handler (
-          detail::make_received (
-            source_rid_, NULL, 0, false, parts_, part_count_));
-    }
-
     static void packet_trampoline (void *,
                                    const zlink_routing_id_t *source_rid_,
                                    zlink_msg_t *header_,
@@ -1105,13 +1108,13 @@ class stream_socket_t : public routed_message_socket_t
           source, std::move (header), std::move (body));
     }
 
-    std::function<void(received_t)> _receive_handler;
     std::function<void(const routing_id_t &, message_t, message_t)>
       _packet_handler;
     using routed_message_socket_t::recv;
     using routed_message_socket_t::send;
     using base_socket_t::connect;
     using base_socket_t::disconnect;
+    using base_socket_t::disconnect_rid;
 };
 
 class pub_socket_t : public publisher_socket_t
@@ -1166,7 +1169,7 @@ class pub_socket_t : public publisher_socket_t
             detail::throw_config_error_from_errno (zlink_errno ());
     }
 
-    pub_socket_options_t pub_options ()
+    pub_socket_options_t options ()
     {
         return pub_socket_options_t (handle ());
     }
@@ -1258,7 +1261,7 @@ class xpub_socket_t : public publisher_socket_t
         return std::optional<subscription_event_t> (std::move (event));
     }
 
-    pub_socket_options_t pub_options ()
+    pub_socket_options_t options ()
     {
         return pub_socket_options_t (handle ());
     }
@@ -1321,7 +1324,7 @@ class sub_socket_t : public subscriber_socket_t
             detail::throw_config_error_from_errno (zlink_errno ());
     }
 
-    sub_socket_options_t sub_options ()
+    sub_socket_options_t options ()
     {
         return sub_socket_options_t (handle ());
     }
@@ -1379,7 +1382,7 @@ class xsub_socket_t : public subscriber_socket_t
         return std::optional<topic_message_t> (std::move (message));
     }
 
-    sub_socket_options_t sub_options ()
+    sub_socket_options_t options ()
     {
         return sub_socket_options_t (handle ());
     }

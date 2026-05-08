@@ -30,6 +30,7 @@ function normalizeMessageProperties(
 const EMPTY_PROPERTIES: Readonly<Record<string, string>> = Object.freeze({});
 const EMPTY_METADATA: Readonly<Map<number, Buffer>> = Object.freeze(new Map<number, Buffer>());
 const ROUTING_ID_MAX_LENGTH = 255;
+const DOMAIN_CREATE_TOKEN = Symbol('domain-value.create');
 
 interface ReplyContext {
   reply(parts: readonly Message[], flags: SendFlags): void;
@@ -164,40 +165,30 @@ export class Message {
       : null;
   }
 
-  /** Get a metadata value by key. Returns null if absent. */
-  getMetadata(key: number): Buffer | null {
-    return this._metadata.get(key) ?? null;
-  }
-
   refCount(): number {
     return this._refCount;
   }
 
   close(): void {}
-
-  [Symbol.dispose](): void {
-    this.close();
-  }
-
-  async [Symbol.asyncDispose](): Promise<void> {
-    this.close();
-  }
 }
 
 export class RoutingId {
   private readonly _bytes: Buffer;
 
-  private constructor(bytes: Buffer) {
+  private constructor(token: symbol, bytes: Buffer) {
+    if (token !== DOMAIN_CREATE_TOKEN) {
+      throw new TypeError('RoutingId values are created with RoutingId.fromBytes() or RoutingId.fromString()');
+    }
     this._bytes = bytes;
     Object.freeze(this);
   }
 
   static fromBytes(bytes: Buffer | Uint8Array): RoutingId {
-    return new RoutingId(normalizeRoutingIdBytes(bytes, 'bytes'));
+    return new RoutingId(DOMAIN_CREATE_TOKEN, normalizeRoutingIdBytes(bytes, 'bytes'));
   }
 
   static fromString(value: string): RoutingId {
-    return new RoutingId(normalizeRoutingIdString(value));
+    return new RoutingId(DOMAIN_CREATE_TOKEN, normalizeRoutingIdString(value));
   }
 
   toBytes(): Buffer {
@@ -246,10 +237,6 @@ class MultipartEnvelope {
     return this.parts[0];
   }
 
-  toBytesList(): Buffer[] {
-    return this.parts.map((part) => part.data());
-  }
-
   close(): void {
     for (const part of this.parts) {
       part.close();
@@ -264,18 +251,33 @@ export class Received {
   readonly requestSeq: bigint | null;
   private readonly _replyContext: ReplyContext | null;
 
-  constructor(
+  private constructor(
+    token: symbol,
     parts: readonly Message[],
     routingId: RoutingId | null = null,
     requestSeq: bigint | null = null,
     spotRid: RoutingId | null = null,
     replyContext: ReplyContext | null = null
   ) {
+    if (token !== DOMAIN_CREATE_TOKEN) {
+      throw new TypeError('Received values are created by recv operations');
+    }
     this.parts = Object.freeze(parts.slice()) as Message[];
     this.routingId = routingId;
     this.spotRid = spotRid;
     this.requestSeq = requestSeq;
     this._replyContext = replyContext;
+  }
+
+  /** @internal */
+  static create(
+    parts: readonly Message[],
+    routingId: RoutingId | null = null,
+    requestSeq: bigint | null = null,
+    spotRid: RoutingId | null = null,
+    replyContext: ReplyContext | null = null
+  ): Received {
+    return new Received(DOMAIN_CREATE_TOKEN, parts, routingId, requestSeq, spotRid, replyContext);
   }
 
   isSinglePart(): boolean {
@@ -296,10 +298,8 @@ export class Received {
     return this.parts[0];
   }
 
-  toBytesList(): Buffer[] {
-    return this.parts.map((part) => part.data());
-  }
-
+  reply(part: Message, flags?: SendFlags): void;
+  reply(parts: Message[], flags?: SendFlags): void;
   reply(partOrParts: Message | readonly Message[], flags: SendFlags = SendFlags.None): void {
     if (!this.requestSeq || !this._replyContext) {
       throw invalidReplyContextError();
@@ -320,16 +320,30 @@ export class TopicMessage extends MultipartEnvelope {
   readonly serviceName: string | null;
   readonly topic: string;
 
-  constructor(
+  private constructor(
+    token: symbol,
     topic: string,
     parts: readonly Message[],
     routingId: RoutingId | null = null,
     serviceName: string | null = null
   ) {
+    if (token !== DOMAIN_CREATE_TOKEN) {
+      throw new TypeError('TopicMessage values are created by subscribe operations');
+    }
     super(parts);
     this.routingId = routingId;
     this.serviceName = serviceName;
     this.topic = topic;
+  }
+
+  /** @internal */
+  static create(
+    topic: string,
+    parts: readonly Message[],
+    routingId: RoutingId | null = null,
+    serviceName: string | null = null
+  ): TopicMessage {
+    return new TopicMessage(DOMAIN_CREATE_TOKEN, topic, parts, routingId, serviceName);
   }
 }
 
@@ -339,16 +353,30 @@ export class SubscriptionEvent {
   readonly topic: string;
   readonly subscribed: boolean;
 
-  constructor(
+  private constructor(
+    token: symbol,
     topic: string,
     subscribed: boolean,
     routingId: RoutingId | null = null,
     serviceName: string | null = null
   ) {
+    if (token !== DOMAIN_CREATE_TOKEN) {
+      throw new TypeError('SubscriptionEvent values are created by subscription event operations');
+    }
     this.routingId = routingId;
     this.serviceName = serviceName;
     this.topic = topic;
     this.subscribed = subscribed === true;
+  }
+
+  /** @internal */
+  static create(
+    topic: string,
+    subscribed: boolean,
+    routingId: RoutingId | null = null,
+    serviceName: string | null = null
+  ): SubscriptionEvent {
+    return new SubscriptionEvent(DOMAIN_CREATE_TOKEN, topic, subscribed, routingId, serviceName);
   }
 }
 

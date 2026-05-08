@@ -3,7 +3,7 @@
 'use strict';
 
 const readline = require('node:readline');
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
@@ -11,6 +11,8 @@ const {
   POLLOUT,
   applyContextPolicy,
   applySocketPolicy,
+  pollEvents,
+  pollEventHas,
   recvNoWait,
   trySocketSend,
   waitForConnectionReadyCount
@@ -29,7 +31,7 @@ async function main() {
   try {
     applySocketPolicy(router);
     router.bind(options.endpoint);
-    poller.addSocket(router, POLLIN);
+    poller.add(router, pollEvents(POLLIN));
     const readyBarrier = waitForConnectionReadyCount(router, options.clients);
     console.log(`READY,${options.endpoint}`);
 
@@ -46,14 +48,14 @@ async function main() {
     await readyBarrier;
 
     while (!stop) {
-      poller.modifySocket(router, pending.length > 0 ? (POLLIN | POLLOUT) : POLLIN);
+      poller.modify(router, pollEvents(pending.length > 0 ? (POLLIN | POLLOUT) : POLLIN));
       const ready = poller.wait(25);
       if (!ready) {
         await sleepImmediate();
         continue;
       }
 
-      if ((ready.events & POLLIN) !== 0) {
+      if (pollEventHas(ready, POLLIN)) {
         while (true) {
           const received = recvNoWait(router);
           if (!received) {
@@ -76,7 +78,7 @@ async function main() {
         }
       }
 
-      if ((ready.events & POLLOUT) !== 0) {
+      if (pollEventHas(ready, POLLOUT)) {
         while (pending.length > 0) {
           const current = pending[0];
           if (!trySocketSend(router, current.routingId, current.parts)) {

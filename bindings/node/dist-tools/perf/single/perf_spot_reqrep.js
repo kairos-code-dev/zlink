@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { applyContextPolicy, applySpotNodeAdmission, applySocketPolicy, benchmarkEndpoint, configureTlsClient, configureTlsServer, parseSingleBinaryArgs, resolveSingleLatencySampleCap, waitForPostReadySettle } = require('./perf_single_common');
 const NODE_RID = zlink.RoutingId.fromBytes(Buffer.from('perf-spot-reqrep-node', 'ascii'));
@@ -82,7 +82,6 @@ async function runSpotReqRepBenchmark(msgSize, options) {
     let responderLoop = null;
     try {
         applySocketPolicy(requester, options);
-        replier.setLinger(Number(process.env.PERF_SINGLE_LINGER_MS ?? 0));
         configureTlsServer(replierNode, options.transport);
         configureTlsClient(requester, options.transport);
         requester.setRoutingId(REQUESTER_RID);
@@ -98,7 +97,7 @@ async function runSpotReqRepBenchmark(msgSize, options) {
                     continue;
                 }
                 try {
-                    received.reply(received.parts.map((part) => zlink.Message.from(Buffer.from(part.data()))));
+                    received.reply(received.parts);
                 }
                 finally {
                     received.close();

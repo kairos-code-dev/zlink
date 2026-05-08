@@ -97,7 +97,7 @@ bool run_pattern_pubsub (const std::string &transport,
         return false;
     }
 
-    publisher.pub_options ().no_drop (true);
+    publisher.options ().no_drop (true);
 
     if (!perf::single::setup_connected_pair (publisher,
                                              subscriber,
@@ -152,9 +152,10 @@ bool run_pattern_pubsub (const std::string &transport,
     });
 
     zlink::poller_t poller;
-    poller.add (subscriber, zlink::poll_event::pollin);
+    poller.add (subscriber, zlink::poll_event_flag_t::pollin);
     while (!sender_done.load (std::memory_order_acquire)) {
-        std::optional<zlink::poll_event_t> event = poller.wait (5);
+        std::optional<zlink::poll_event_t> event =
+          poller.wait (std::chrono::milliseconds (5));
         const int poll_rc = event ? 1 : 0;
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
@@ -163,14 +164,14 @@ bool run_pattern_pubsub (const std::string &transport,
             break;
         }
         if (poll_rc == 0
-            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event::pollin))
+            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))
                  == 0) {
             continue;
         }
 
         for (;;) {
             std::optional<zlink::topic_message_t> message =
-              subscriber.subscribe (zlink::recv_flags_t::dontwait);
+              subscriber.subscribe (ZLINK_DONTWAIT);
             if (!message.has_value ())
                 break;
 
@@ -194,7 +195,7 @@ bool run_pattern_pubsub (const std::string &transport,
              < sent_count.load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < drain_deadline) {
         std::optional<zlink::topic_message_t> message =
-          subscriber.subscribe (zlink::recv_flags_t::dontwait);
+          subscriber.subscribe (ZLINK_DONTWAIT);
         if (!message.has_value ())
             break;
 

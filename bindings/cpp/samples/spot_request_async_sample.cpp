@@ -39,8 +39,10 @@ int main ()
     std::vector<zlink::message_t> request_parts;
     request_parts.push_back (detail::make_message ("spot-ping"));
     zlink::async_result_t<std::vector<zlink::message_t>> reply_future =
-      requester.request_channel (
-        channel_name, request_parts, std::chrono::milliseconds (5000));
+      requester.request_channel (channel_name)
+        .message (request_parts.front ())
+        .timeout (std::chrono::milliseconds (5000))
+        .submit_async ();
     std::vector<zlink::message_t> reply_parts = reply_future.get ();
     assert (reply_parts.size () == 1);
     const std::string reply = reply_parts[0].to_string ();

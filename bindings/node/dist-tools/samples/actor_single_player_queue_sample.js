@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 async function reservePort() {
     const server = net.createServer();
     server.listen(0, '127.0.0.1');
@@ -14,9 +14,10 @@ async function reservePort() {
     return port;
 }
 function frame(payload) {
-    const framed = Buffer.allocUnsafe(payload.length + 4);
-    framed.writeUInt32BE(payload.length, 0);
-    payload.copy(framed, 4);
+    const framed = Buffer.allocUnsafe(payload.length + 6);
+    framed.writeUInt16BE(0, 0);
+    framed.writeUInt32BE(payload.length, 2);
+    payload.copy(framed, 6);
     return framed;
 }
 function waitForJoin(spot) {
@@ -33,7 +34,7 @@ async function acceptJoin(actor, spot, payload) {
         actor.join(spot, Buffer.from(payload), (result, parts) => resolve({ result, parts }), zlink.SendFlags.None, 2000);
     });
     const request = waitForJoin(spot);
-    spot.replyActorJoin(request.info, true, Buffer.from('ok'));
+    spot.replyActorJoin(request, true, Buffer.from('ok'));
     const reply = await replyPromise;
     assert.equal(reply.result, zlink.RequestResult.Ok);
 }
@@ -49,7 +50,7 @@ async function main() {
     let session = null;
     try {
         spot = node.createSpot();
-        actor = node.actor('queue-player-1');
+        actor = node.createActor('queue-player-1');
         const payloads = [];
         spot.onDispatchEvent((info) => {
             if (info.event !== zlink.SpotDispatchEvent.ActorReadable) {
@@ -67,7 +68,7 @@ async function main() {
         await once(client, 'connect');
         session = await new Promise((resolve) => {
             stream.onPacket((sourceRid) => resolve(sourceRid));
-            client.write(Buffer.concat([frame(Buffer.alloc(0)), frame(Buffer.from('open'))]));
+            client.write(frame(Buffer.from('open')));
         });
         stream.bindActor(node, session, actor.ref(), 2000);
         await acceptJoin(actor, spot, 'first-join');

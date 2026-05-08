@@ -9,6 +9,7 @@
 #include "../common/perf_spot_phase.hpp"
 
 #include <algorithm>
+#include <any>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -95,7 +96,7 @@ bool recv_raw_control_payload (zlink::service::spot_t &spot_,
 
     try {
         const std::optional<zlink::topic_message_t> received =
-          spot_.subscribe (zlink::recv_flags_t::dontwait);
+          spot_.subscribe (ZLINK_DONTWAIT);
         if (!received.has_value ())
             return true;
 
@@ -137,8 +138,9 @@ bool publish_raw_control_payload (zlink::service::spot_t &spot_,
             std::memcpy (part.data (), payload_.data (), payload_.size ());
 
         try {
-            if (spot_.publish (
-                  service_name_, k_control_topic, part, zlink::send_flags_t::none))
+            if (spot_.publish (service_name_, k_control_topic)
+                  .message (part)
+                  .submit ())
                 return true;
         }
         catch (const zlink::submit_error_t &) {
@@ -469,12 +471,9 @@ class spot_client_bench_t
             return false;
         }
 
-        _control_pub->options ().linger (std::chrono::milliseconds (0));
-        _control_pub->options ().send_timeout (
+        _control_pub->request_timeout (
           std::chrono::milliseconds (control_timeout_ms));
-        _control_pub->publisher_options ().no_drop (true);
-        _control_sub->options ().linger (std::chrono::milliseconds (0));
-        _control_sub->options ().recv_timeout (
+        _control_sub->request_timeout (
           std::chrono::milliseconds (control_timeout_ms));
         _control_sub->set_subscription (k_control_topic);
 
@@ -601,7 +600,7 @@ class spot_client_bench_t
         for (;;) {
             std::optional<zlink::topic_message_t> subscribed;
             try {
-                subscribed = slot_.spot->subscribe (zlink::recv_flags_t::dontwait);
+                subscribed = slot_.spot->subscribe (ZLINK_DONTWAIT);
             }
             catch (const zlink::recv_error_t &) {
                 const int err = zlink_errno () != 0 ? zlink_errno () : errno;
@@ -710,7 +709,8 @@ class spot_client_bench_t
         spot_client_bench_t *bench = first_slot->owner;
 
         while (!bench->_recv_stop.load (std::memory_order_acquire)) {
-            worker_->events = worker_->poller.wait_all (5);
+            worker_->events =
+              worker_->poller.wait_all (0, std::chrono::milliseconds (5));
         const int poll_rc = static_cast<int> (worker_->events.size ());
             if (poll_rc < 0) {
                 if (bench->_recv_stop.load (std::memory_order_acquire))
@@ -722,13 +722,17 @@ class spot_client_bench_t
             }
 
             for (int i = 0; i < poll_rc; ++i) {
-                if ((static_cast<short> (worker_->events[static_cast<size_t> (i)].revents) & static_cast<short> (zlink::poll_event::pollin))
+                if ((static_cast<short> (worker_->events[static_cast<size_t> (i)].revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))
                     == 0) {
                     continue;
                 }
 
-                client_slot_t *slot = static_cast<client_slot_t *> (
-                  reinterpret_cast<void *> (worker_->events[static_cast<size_t> (i)].user_token));
+                client_slot_t *slot = NULL;
+                if (client_slot_t *const *tag =
+                      std::any_cast<client_slot_t *> (
+                        &worker_->events[static_cast<size_t> (i)].tag)) {
+                    slot = *tag;
+                }
                 if (!slot || !slot->owner)
                     continue;
                 if (!slot->owner->drain_recv (*slot, false, 0)) {
@@ -759,8 +763,8 @@ class spot_client_bench_t
             }
             try {
                 worker.poller.add (
-                  *slot->spot, zlink::poll_event::pollin,
-                  reinterpret_cast<std::uintptr_t> (slot));
+                  *slot->spot, zlink::poll_event_flag_t::pollin,
+                  slot);
             }
             catch (const zlink::config_error_t &err) {
                 debug_log ("recv worker poller add failed result="

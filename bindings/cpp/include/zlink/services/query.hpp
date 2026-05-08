@@ -91,23 +91,30 @@ class registry_query_client_t
         const zlink_registry_topology_filter_t *filter_ptr = NULL;
         if (filter_) {
             std::memset (&native_filter, 0, sizeof (native_filter));
-            native_filter.auto_connect_type =
-              static_cast<zlink_auto_connect_type_t> (
-                filter_->auto_connect_type);
-            native_filter.service_kind =
-              static_cast<zlink_service_kind_t> (filter_->service_kind);
-            native_filter.service_role =
-              static_cast<zlink_service_role_t> (filter_->service_role);
-            std::snprintf (
-              native_filter.channel_name, sizeof (native_filter.channel_name),
-              "%s", filter_->channel_name.c_str ());
-            native_filter.state =
-              static_cast<zlink_topology_state_t> (filter_->state);
-            native_filter.source =
-              static_cast<zlink_topology_source_t> (filter_->source);
-            if (filter_->routing_id)
+            if (filter_->auto_connect_type ())
+                native_filter.auto_connect_type =
+                  static_cast<zlink_auto_connect_type_t> (
+                    *filter_->auto_connect_type ());
+            if (filter_->service_kind ())
+                native_filter.service_kind =
+                  static_cast<zlink_service_kind_t> (*filter_->service_kind ());
+            if (filter_->service_role ())
+                native_filter.service_role =
+                  static_cast<zlink_service_role_t> (*filter_->service_role ());
+            if (filter_->channel_name ())
+                std::snprintf (
+                  native_filter.channel_name,
+                  sizeof (native_filter.channel_name), "%s",
+                  filter_->channel_name ()->c_str ());
+            if (filter_->state ())
+                native_filter.state =
+                  static_cast<zlink_topology_state_t> (*filter_->state ());
+            if (filter_->source ())
+                native_filter.source =
+                  static_cast<zlink_topology_source_t> (*filter_->source ());
+            if (filter_->routing_id ())
                 native_filter.routing_id =
-                  *zlink::detail::routing_id_native (*filter_->routing_id);
+                  *zlink::detail::routing_id_native (*filter_->routing_id ());
             filter_ptr = &native_filter;
         }
 

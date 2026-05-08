@@ -70,6 +70,37 @@ class actor_t
         _active = false;
     }
 
+    async_result_t<std::vector<message_t>>
+    join (spot_t &spot_,
+          message_t &message_,
+          std::chrono::milliseconds timeout_ = {})
+    {
+        detail::request_state_t *state = detail::make_future_request_state ();
+        std::future<std::vector<message_t>> future =
+          state->promise->get_future ();
+        zlink_msg_t native;
+        zlink::detail::move_to_native (message_, &native);
+        const routing_id_t dest_node_rid = _node->routing_id ();
+        const routing_id_t dest_spot_rid = spot_.routing_id ();
+        const submit_result_t rc = static_cast<submit_result_t> (
+          zlink_spot_node_actor_join_spot (
+            zlink::detail::native_handle (*_node), zlink::detail::actor_ref_native (_ref),
+            zlink::detail::routing_id_native (dest_node_rid),
+            zlink::detail::routing_id_native (dest_spot_rid), &native,
+            &detail::request_callback_trampoline, state,
+            ZLINK_SEND_FLAGS_NONE,
+            static_cast<uint32_t> (timeout_.count ())));
+        if (rc != submit_result_t::ok) {
+            delete state;
+            message_.init ();
+            (void) zlink_msg_move (zlink::detail::native_handle (message_), &native);
+            throw submit_error_t (rc, zlink_errno ());
+        }
+        return async_result_t<std::vector<message_t>> (
+          std::move (future),
+          detail::make_spot_request_progress (zlink::detail::native_handle (spot_)));
+    }
+
     bool join (spot_t &spot_,
                message_t &message_,
                std::function<void(request_result_t, std::vector<message_t>)> callback_,
@@ -140,8 +171,8 @@ class actor_t
           has_more != ZLINK_PART_FINAL);
     }
 
-    bool send_bound_session_msg (message_t &message_,
-                                 send_flags_t flags_ = send_flags_t::none)
+    bool send_bound_session (message_t &message_,
+                             send_flags_t flags_ = send_flags_t::none)
     {
         zlink_msg_t native;
         zlink::detail::move_to_native (message_, &native);
@@ -156,6 +187,16 @@ class actor_t
                 && rc == submit_result_t::backpressured)
                 return false;
             throw submit_error_t (rc, zlink_errno ());
+        }
+        return true;
+    }
+
+    bool send_bound_session (std::vector<message_t> &parts_,
+                             send_flags_t flags_ = send_flags_t::none)
+    {
+        for (size_t i = 0; i < parts_.size (); ++i) {
+            if (!send_bound_session (parts_[i], flags_))
+                return false;
         }
         return true;
     }

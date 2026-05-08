@@ -59,8 +59,7 @@ template<typename SpotT> class has_service_publish_t
     static auto test (int)
       -> decltype (std::declval<T &> ().publish (
                       std::declval<const std::string &> (),
-                      std::declval<const std::string &> (),
-                      std::declval<zlink::message_t &> ()),
+                      std::declval<const std::string &> ()),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -379,7 +378,7 @@ void test_registry_query_and_discovery_metadata ()
     assert (registry.valid ());
 
     const zlink::registry_status_t status = registry.status_snapshot ();
-    assert (status.registry_id == 0);
+    assert (status.registry_id () == 0);
 
     const std::vector<zlink::registry_topology_entry_t> topology =
       registry.topology_snapshot ();
@@ -416,7 +415,8 @@ void test_spot_node_snapshot_contract ()
     node.bind (endpoint);
 
     const zlink::spot_node_status_t status = node.status_snapshot ();
-    assert (status.local_endpoint.empty () || status.local_endpoint == endpoint);
+    assert (status.local_endpoint ().empty ()
+            || status.local_endpoint () == endpoint);
 
     const std::vector<zlink::spot_node_peer_entry_t> peers =
       node.peers_snapshot ();
@@ -480,13 +480,13 @@ void test_unified_spot_self_delivery_recv_contract ()
     assert (spot.routing_id ().to_bytes ()
             == std::vector<uint8_t> ({'s', 'p', 'o', 't', '-', 's', 'e',
                                       'l', 'f', '-', 'r', 'i', 'd'}));
-    spot.publish (service_name, "topic:service-self", outbound);
+    spot.publish (service_name, "topic:service-self").message (outbound).submit ();
 
     std::optional<zlink::topic_message_t> inbound;
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (5);
     while (std::chrono::steady_clock::now () < deadline) {
-        inbound = spot.subscribe (zlink::recv_flags_t::dontwait);
+        inbound = spot.subscribe (ZLINK_DONTWAIT);
         if (inbound.has_value ())
             break;
         std::this_thread::sleep_for (std::chrono::milliseconds (10));

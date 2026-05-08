@@ -3,7 +3,7 @@
 'use strict';
 
 const readline = require('node:readline');
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const { configureTlsServer } = require('../common/perf_tls');
 const {
   createPayload,
@@ -32,7 +32,10 @@ const AUTO_CONNECT_SPOT_MESH = 5;
 function trySpotPublish(spot, serviceName, topic, payload) {
   return trySocketPublish({
     publish(currentTopic, currentPayload, flags) {
-      return spot.publish(serviceName, currentTopic, currentPayload, flags);
+      return spot.publish(serviceName, currentTopic)
+        .message(currentPayload)
+        .flags(flags)
+        .submit();
     }
   }, topic, payload);
 }
@@ -92,7 +95,6 @@ async function main() {
     applySpotNodeAdmission(node);
     node.bind(dataBindEndpoint);
     spot = node.createSpot();
-    spot.setLinger(Number(process.env.PERF_MULTI_LINGER_MS ?? 0));
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
     controlPub.bind(options.controlEndpoint);

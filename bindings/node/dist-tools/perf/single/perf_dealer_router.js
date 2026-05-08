@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const zlink = require('../../dist/canonical');
+const zlink = require('../../..');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsClient, configureTlsServer, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 async function runDealerRouterBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     applyContextPolicy(ctx);
     const router = new zlink.RouterSocket(ctx);
-    const routerMonitor = router.monitorOpen(zlink.MonitorEvent.CONNECTION_READY);
+    const routerMonitor = router.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
     const endpoint = await benchmarkEndpoint(options.transport, `dealer-router-${msgSize}`);
     let worker = null;
     try {

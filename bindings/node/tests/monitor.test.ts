@@ -6,7 +6,7 @@ const { spawn } = require('node:child_process');
 const { once } = require('node:events');
 const net = require('node:net');
 const path = require('node:path');
-const zlink = require('../dist/canonical');
+const zlink = require('../..');
 
 const AUTO_CONNECT_SPOT_MESH = 5;
 async function reservePort() {
@@ -63,7 +63,7 @@ test('socket monitor receives bind state events', async () => {
     await once(client, 'connect');
 
     const event = monitor.recv();
-    assert.equal(event.event, zlink.MonitorEvent.LISTENING);
+    assert.equal(event.event, zlink.MonitorEventType.Listening);
   } finally {
     if (client) {
       client.destroy();
@@ -98,7 +98,7 @@ test('socket monitor onEvent receives bind state events', async () => {
     await once(client, 'connect');
 
     const event = await eventPromise;
-    assert.equal(event.event, zlink.MonitorEvent.LISTENING);
+    assert.equal(event.event, zlink.MonitorEventType.Listening);
     assert.throws(() => monitor.recv(), /busy|state|current/i);
   } finally {
     if (client) {

@@ -6,6 +6,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <functional>
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -314,7 +315,7 @@ class socket_t
         });
     }
 
-    int send (message_t &part_, send_flags_t flags_ = send_flags_t::none)
+    int send (message_t &part_, int flags_ = 0)
     {
         return visit ([&] (auto &socket_) -> int {
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
@@ -330,7 +331,7 @@ class socket_t
 
     int send (const routing_id_t &routing_id_,
               message_t &part_,
-              send_flags_t flags_ = send_flags_t::none)
+              int flags_ = 0)
     {
         return visit ([&] (auto &socket_) -> int {
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
@@ -347,14 +348,14 @@ class socket_t
 
     int send (const zlink_routing_id_t &routing_id_,
               message_t &part_,
-              send_flags_t flags_ = send_flags_t::none)
+              int flags_ = 0)
     {
         return send (zlink::detail::native_routing_id (routing_id_), part_, flags_);
     }
 
     int publish (const std::string &topic_id_,
                  message_t &part_,
-                 send_flags_t flags_ = send_flags_t::none)
+                 int flags_ = 0)
     {
         return visit ([&] (auto &socket_) -> int {
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
@@ -368,7 +369,7 @@ class socket_t
         });
     }
 
-    int recv (message_t &part_, recv_flags_t flags_ = recv_flags_t::none)
+    int recv (message_t &part_, int flags_ = 0)
     {
         return visit ([&] (auto &socket_) -> int {
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
@@ -384,7 +385,7 @@ class socket_t
 
     int recv (routing_id_t &source_rid_out_,
               message_t &part_,
-              recv_flags_t flags_ = recv_flags_t::none)
+              int flags_ = 0)
     {
         return visit ([&] (auto &socket_) -> int {
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
@@ -401,7 +402,7 @@ class socket_t
 
     int recv (zlink_routing_id_t &source_rid_out_,
               message_t &part_,
-              recv_flags_t flags_ = recv_flags_t::none)
+              int flags_ = 0)
     {
         routing_id_t routing_id = zlink::detail::unchecked_empty_routing_id ();
         const int rc = recv (routing_id, part_, flags_);
@@ -412,7 +413,7 @@ class socket_t
     }
 
     int receive (received_t &received_out_,
-                 recv_flags_t flags_ = recv_flags_t::none)
+                 int flags_ = 0)
     {
         return visit ([&] (auto &socket_) -> int {
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
@@ -434,7 +435,7 @@ class socket_t
     {
         result_ = send_result_t::sent;
         try {
-            const int rc = send (target_rid_, part_, send_flags_t::dontwait);
+            const int rc = send (target_rid_, part_, ZLINK_DONTWAIT);
             if (rc == 0)
                 return 0;
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ETIMEDOUT) {
@@ -458,14 +459,20 @@ class socket_t
         }
     }
 
-    int on_packet (zlink_stream_packet_handler_fn handler_,
-                   void *userdata_ = NULL)
+    int on_packet (
+      std::function<void(const routing_id_t &, message_t, message_t)> handler_)
     {
         return visit ([&] (auto &socket_) -> int {
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
             if constexpr (std::is_same<socket_type_t, stream_socket_t>::value) {
-                return zlink_stream_packet_handler (
-                  detail::native_handle (socket_), handler_, userdata_);
+                try {
+                    socket_.on_packet (std::move (handler_));
+                    return 0;
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
             } else {
                 errno = EOPNOTSUPP;
                 return -1;
@@ -494,7 +501,7 @@ class socket_t
     }
 
     int subscribe (topic_message_t &topic_message_out_,
-                   recv_flags_t flags_ = recv_flags_t::none)
+                   int flags_ = 0)
     {
         return visit ([&] (auto &socket_) -> int {
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
@@ -678,13 +685,13 @@ class socket_t
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
             if constexpr (std::is_same<socket_type_t, router_socket_t>::value) {
                 try {
-                    router_socket_options_t options = socket_.router_options ();
+                    router_socket_options_t options = socket_.options ();
                     switch (option_) {
                     case router_option::mandatory:
                         options.mandatory (static_cast<int> (value_) != 0);
                         return 0;
                     case router_option::probe:
-                        options.probe_router (static_cast<int> (value_) != 0);
+                        options.probe (static_cast<int> (value_) != 0);
                         return 0;
                     default:
                         errno = EOPNOTSUPP;
@@ -717,7 +724,7 @@ class socket_t
                     if (routing_id_from_bytes (
                           value_.data (), value_.size (), routing_id) != 0)
                         return -1;
-                    socket_.router_options ().connect_routing_id (routing_id);
+                    socket_.options ().connect_routing_id (routing_id);
                     return 0;
                 }
                 catch (const zlink_error_t &err) {
@@ -740,7 +747,7 @@ class socket_t
                 try {
                     switch (option_) {
                     case dealer_option::probe:
-                        socket_.dealer_options ().probe_router (
+                        socket_.options ().probe (
                           static_cast<int> (value_) != 0);
                         return 0;
                     default:
@@ -769,7 +776,7 @@ class socket_t
                 try {
                     switch (option_) {
                     case pub_option::nodrop:
-                        socket_.pub_options ().no_drop (static_cast<int> (value_) != 0);
+                        socket_.options ().no_drop (static_cast<int> (value_) != 0);
                         return 0;
                     default:
                         errno = EOPNOTSUPP;
@@ -805,7 +812,7 @@ class socket_t
                 try {
                     switch (option_) {
                     case stream_option::notify:
-                        socket_.stream_options ().notify (
+                        socket_.options ().notify (
                           static_cast<int> (value_) != 0);
                         return 0;
                     default:
@@ -835,7 +842,7 @@ class socket_t
                     case router_option::mandatory:
                         value_ = static_cast<T> (
                           const_cast<socket_type_t &> (socket_)
-                              .router_options ()
+                              .options ()
                               .mandatory ()
                             ? 1
                             : 0);
@@ -868,7 +875,7 @@ class socket_t
                     case pub_option::nodrop:
                         value_ = static_cast<T> (
                           const_cast<socket_type_t &> (socket_)
-                              .pub_options ()
+                              .options ()
                               .no_drop ()
                             ? 1
                             : 0);

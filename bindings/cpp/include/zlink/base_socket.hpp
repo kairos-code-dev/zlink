@@ -501,6 +501,14 @@ class base_socket_t : public socket_handle_t
   public:
     bool valid () const noexcept { return socket_handle_t::valid (); }
 
+    void close ()
+    {
+        const int rc = socket_handle_t::close ();
+        if (rc != 0)
+            throw close_error_t (static_cast<close_result_t> (rc),
+                                 zlink_errno ());
+    }
+
     void bind (const std::string &endpoint_)
     {
         const int rc = zlink_bind (handle (), endpoint_.c_str ());

@@ -9,6 +9,7 @@
 #include "../common/perf_metric_header.hpp"
 
 #include <algorithm>
+#include <any>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
@@ -140,8 +141,8 @@ class pubsub_client_bench_t
 
             _sockets.push_back (&sock);
             (void) _poller.add (
-              sock, zlink::poll_event::pollin,
-              reinterpret_cast<std::uintptr_t> (&sock));
+              sock, zlink::poll_event_flag_t::pollin,
+              &sock);
         }
         return !_sockets.empty ();
     }
@@ -178,7 +179,8 @@ class pubsub_client_bench_t
             if (wait_ms < 1)
                 wait_ms = 1;
 
-            _poll_events = _poller.wait_all (wait_ms);
+            _poll_events =
+              _poller.wait_all (0, std::chrono::milliseconds (wait_ms));
         const int poll_rc = static_cast<int> (_poll_events.size ());
             if (poll_rc < 0) {
                 if (errno == EINTR || errno == EAGAIN)
@@ -189,15 +191,17 @@ class pubsub_client_bench_t
                 continue;
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
-                ::perf::socket_t *sock =
-                  static_cast<::perf::socket_t *> (reinterpret_cast<void *> (_poll_events[i].user_token));
+                ::perf::socket_t *sock = NULL;
+                if (::perf::socket_t *const *tag =
+                      std::any_cast<::perf::socket_t *> (&_poll_events[i].tag))
+                    sock = *tag;
                 if (!sock)
                     continue;
 
                 for (;;) {
                     zlink::topic_message_t subscribed;
                     const int recv_rc =
-                      sock->subscribe (subscribed, zlink::recv_flags_t::dontwait);
+                      sock->subscribe (subscribed, ZLINK_DONTWAIT);
                     if (recv_rc != 0) {
                         const int err = errno;
                         if (err == EAGAIN)

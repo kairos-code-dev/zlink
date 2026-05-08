@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -10,7 +9,7 @@ namespace Systems.Zlink;
 internal delegate void ReceivedReplyHandler(IReadOnlyList<Message> parts,
     SendFlags flags);
 
-public sealed class Received : IDisposable, IReadOnlyList<Message>
+public sealed class Received : IDisposable
 {
     private readonly ReceivedReplyHandler? _replyHandler;
     private readonly byte[]? _routingIdBytes;
@@ -151,11 +150,11 @@ public sealed class Received : IDisposable, IReadOnlyList<Message>
 
     public ulong? RequestSeq { get; }
 
-    public IReadOnlyList<Message> Parts => this;
+    public IReadOnlyList<Message> Parts => _parts;
 
-    public int Count => _parts.Count;
+    internal int Count => _parts.Count;
 
-    public Message this[int index] => _parts[index];
+    internal Message this[int index] => _parts[index];
 
     public bool IsSinglePart => _parts.IsSinglePart;
 
@@ -174,24 +173,15 @@ public sealed class Received : IDisposable, IReadOnlyList<Message>
         return _parts.TakeMessages();
     }
 
-    public void Reply(Message part)
-    {
-        Reply(part, SendFlags.None);
-    }
-
-    public void Reply(Message part, SendFlags flags)
+    public void Reply(Message part, SendFlags flags = SendFlags.None)
     {
         if (part == null)
             throw new ArgumentNullException(nameof(part));
         Reply(new[] { part }, flags);
     }
 
-    public void Reply(IReadOnlyList<Message> parts)
-    {
-        Reply(parts, SendFlags.None);
-    }
-
-    public void Reply(IReadOnlyList<Message> parts, SendFlags flags)
+    public void Reply(IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
@@ -211,14 +201,9 @@ public sealed class Received : IDisposable, IReadOnlyList<Message>
         _parts.Dispose();
     }
 
-    public IEnumerator<Message> GetEnumerator()
+    internal IEnumerator<Message> GetEnumerator()
     {
         return _parts.GetEnumerator();
-    }
-
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
     }
 }
 
@@ -228,4 +213,4 @@ public sealed record SubscriptionEvent(
     string Topic,
     bool Subscribed);
 
-public sealed record SubscriptionInfo(string Filter, bool IsPattern);
+public sealed record SubscriptionEntry(string Filter, bool IsPattern);

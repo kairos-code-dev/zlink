@@ -40,7 +40,7 @@ public enum SpotNodeSocketType
     Stream = 0x1008
 }
 
-public sealed class SpotNodeOptions
+internal sealed class SpotNodeOptions
 {
     private SpotNode? _owner;
     private AutoHwmProfile _routerHwmProfile = AutoHwmProfile.Balanced;
@@ -129,7 +129,7 @@ public sealed record SpotNodeSocketSnapshotEntry(
     }
 }
 
-public sealed class SpotOptions
+internal sealed class SpotOptions
 {
     private readonly Spot _spot;
 
@@ -159,16 +159,21 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     private Action? _sendReadyHandler;
     private SynchronizationContext? _sendReadyHandlerContext;
     private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
-    public SpotNodeOptions Options { get; }
-    public SpotNodePublisherOptions PublisherOptions { get; }
-    public SpotNodeSubscriberOptions SubscriberOptions { get; }
+    internal SpotNodeOptions Options { get; }
+    internal SpotNodePublisherOptions PublisherOptions { get; }
+    internal SpotNodeSubscriberOptions SubscriberOptions { get; }
 
     public SpotNode(Context context)
         : this(context, null)
     {
     }
 
-    public SpotNode(Context context, SpotNodeOptions? options)
+    public SpotNode(Context context, SpotNodeMode mode)
+        : this(context, new SpotNodeOptions { Mode = mode })
+    {
+    }
+
+    internal SpotNode(Context context, SpotNodeOptions? options)
     {
         if (context == null)
             throw new ArgumentNullException(nameof(context));
@@ -197,6 +202,52 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     }
 
     internal IntPtr Handle => _handle;
+
+    public AutoHwmProfile RouterHwmProfile
+    {
+        get => Options.RouterHwmProfile;
+        set => Options.RouterHwmProfile = value;
+    }
+
+    public int RouterHighWaterMark
+    {
+        get => Options.RouterHighWaterMark;
+        set => Options.RouterHighWaterMark = value;
+    }
+
+    public AutoHwmProfile PubSubHwmProfile
+    {
+        get => Options.PubSubHwmProfile;
+        set => Options.PubSubHwmProfile = value;
+    }
+
+    public int PubSubHighWaterMark
+    {
+        get => Options.PubSubHighWaterMark;
+        set => Options.PubSubHighWaterMark = value;
+    }
+
+    public int DispatchWorkersMin
+    {
+        get => GetAdmissionOption(SpotNodeOption.DispatchWorkersMin);
+        set
+        {
+            if (value < 1)
+                throw new ArgumentOutOfRangeException(nameof(value));
+            SetAdmissionOption(SpotNodeOption.DispatchWorkersMin, value);
+        }
+    }
+
+    public int DispatchWorkersMax
+    {
+        get => GetAdmissionOption(SpotNodeOption.DispatchWorkersMax);
+        set
+        {
+            if (value < 1 || value < DispatchWorkersMin)
+                throw new ArgumentOutOfRangeException(nameof(value));
+            SetAdmissionOption(SpotNodeOption.DispatchWorkersMax, value);
+        }
+    }
 
     public void SetRoutingId(RoutingId routingId)
     {
@@ -345,20 +396,30 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         return spot;
     }
 
-    public Spot LookupSpot(RoutingId spotRid)
+    public Spot? SpotLookup(RoutingId spotRid)
     {
         EnsureNotDisposed();
         ZlinkRoutingId nativeRid = NativeHelpers.WriteRoutingId(
             spotRid.ToByteArray());
         int rc = NativeMethods.zlink_spot_node_spot_lookup(_handle,
             ref nativeRid, out IntPtr spotHandle);
-        ZlinkException.ThrowConfigIfError(rc);
+        try
+        {
+            ZlinkException.ThrowConfigIfError(rc);
+        }
+        catch (ZlinkConfigException error)
+            when (error.Result == ZlinkConfigException.ErrorCode.NotFound)
+        {
+            return null;
+        }
+        if (spotHandle == IntPtr.Zero)
+            return null;
         Spot spot = new(this, spotHandle, ownsHandle: true);
         RegisterSpot(spot);
         return spot;
     }
 
-    public Actor Actor(string actorId)
+    public Actor CreateActor(string actorId)
     {
         ActorInterop.ValidateActorId(actorId, nameof(actorId));
         EnsureNotDisposed();
@@ -379,7 +440,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         return ActorInterop.FromNative(ref actor);
     }
 
-    public ActorRef RemoteActorRef(RoutingId targetNodeRid, string actorId)
+    public static ActorRef RemoteActorRef(RoutingId targetNodeRid, string actorId)
         => ActorRef.Remote(targetNodeRid, actorId);
 
     public ActorCreateResult CreateRemoteActor(RoutingId targetNodeRid,
@@ -414,7 +475,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         }
     }
 
-    internal void DestroyActor(ActorRef actor, TimeSpan timeout = default)
+    public void DestroyActor(ActorRef actor, TimeSpan timeout = default)
     {
         EnsureNotDisposed();
         ZlinkActorRef nativeActor = ActorInterop.ToNative(actor);
@@ -424,12 +485,12 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             throw ZlinkException.CreateRequestException(NativeMethods.zlink_errno());
     }
 
-    public void DestroyRemoteActor(ActorRef actor, TimeSpan timeout = default)
+    internal void DestroyRemoteActor(ActorRef actor, TimeSpan timeout = default)
     {
         DestroyActor(actor, timeout);
     }
 
-    public void OnSendReady(Action handler)
+    internal void OnSendReady(Action handler)
     {
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
@@ -460,16 +521,22 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         _actorAdmissionNative = native;
     }
 
-    public Task<IReadOnlyList<Message>> JoinActorAsync(ActorRef actor,
+    internal Task<IReadOnlyList<Message>> JoinActor(ActorRef actor,
         RoutingId destSpotRid, Message message, TimeSpan timeout = default,
         SendFlags flags = SendFlags.None, CancellationToken ct = default)
-        => JoinActorAsync(actor, RoutingId, destSpotRid, message, timeout,
+        => JoinActor(actor, RoutingId, destSpotRid, message, timeout,
             flags, ct);
 
-    public Task<IReadOnlyList<Message>> JoinActorAsync(ActorRef actor,
+    public Task<IReadOnlyList<Message>> JoinActor(ActorRef actor,
         RoutingId destNodeRid, RoutingId destSpotRid, Message message,
-        TimeSpan timeout = default, SendFlags flags = SendFlags.None,
+        TimeSpan timeout = default,
         CancellationToken ct = default)
+        => JoinActor(actor, destNodeRid, destSpotRid, message, timeout,
+            SendFlags.None, ct);
+
+    internal Task<IReadOnlyList<Message>> JoinActor(ActorRef actor,
+        RoutingId destNodeRid, RoutingId destSpotRid, Message message,
+        TimeSpan timeout, SendFlags flags, CancellationToken ct)
     {
         if (message == null)
             throw new ArgumentNullException(nameof(message));
@@ -518,7 +585,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         }
     }
 
-    public bool JoinActor(ActorRef actor, RoutingId destSpotRid, Message message,
+    internal bool JoinActor(ActorRef actor, RoutingId destSpotRid, Message message,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan? timeout = null, SendFlags flags = SendFlags.None)
     {
@@ -527,8 +594,8 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         try
         {
             ActorInterop.AttachPartsCallback(
-                () => JoinActorAsync(actor, destSpotRid, message,
-                    timeout ?? TimeSpan.Zero, flags),
+                () => JoinActor(actor, destSpotRid, message,
+                    timeout ?? TimeSpan.Zero, flags, CancellationToken.None),
                 callback);
             return true;
         }
@@ -542,17 +609,17 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
 
     public bool JoinActor(ActorRef actor, RoutingId destNodeRid,
         RoutingId destSpotRid, Message message,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan? timeout = null, SendFlags flags = SendFlags.None)
+        RequestCallback callback,
+        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
     {
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         try
         {
             ActorInterop.AttachPartsCallback(
-                () => JoinActorAsync(actor, destNodeRid, destSpotRid, message,
-                    timeout ?? TimeSpan.Zero, flags),
-                callback);
+                () => JoinActor(actor, destNodeRid, destSpotRid, message,
+                    timeout ?? TimeSpan.Zero, flags, CancellationToken.None),
+                (result, parts) => callback(result, parts));
             return true;
         }
         catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
@@ -615,6 +682,20 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             int rc = NativeMethods.zlink_set_spot_node_option(_handle, option,
                 new IntPtr(&local), (nuint)sizeof(int));
             ZlinkException.ThrowConfigIfError(rc);
+        }
+    }
+
+    internal int GetAdmissionOption(SpotNodeOption option)
+    {
+        EnsureNotDisposed();
+        unsafe
+        {
+            int value = 0;
+            nuint size = (nuint)sizeof(int);
+            int rc = NativeMethods.zlink_get_spot_node_option(_handle, option,
+                new IntPtr(&value), ref size);
+            ZlinkException.ThrowConfigIfError(rc);
+            return value;
         }
     }
 
@@ -1154,14 +1235,14 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     private readonly bool _ownsHandle;
     private Action? _sendReadyHandler;
     private Action<Received>? _routedReceiveHandler;
-    private Action<Spot, SpotDispatchInfo>? _dispatchEventHandler;
+    private Action<SpotDispatchInfo>? _dispatchEventHandler;
     private SynchronizationContext? _sendReadyHandlerContext;
     private SynchronizationContext? _routedReceiveHandlerContext;
     private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
     private NativeMethods.ZlinkSpotRequestHandlerDelegate? _routedReceiveHandlerNative;
     private NativeMethods.ZlinkSpotDispatchEventHandlerDelegate? _dispatchEventHandlerNative;
     internal IntPtr Handle => _handle;
-    public SpotOptions Options { get; }
+    internal SpotOptions Options { get; }
 
     internal Spot(SpotNode node)
     {
@@ -1238,7 +1319,48 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         return value;
     }
 
-    public bool Publish(string serviceName, string topic, Message message,
+    public TimeSpan? RequestTimeout
+    {
+        get => Options.RequestTimeout;
+        set => Options.RequestTimeout = value;
+    }
+
+    public SendOperation Publish(string serviceName, string topic)
+        => new SpotSendOperation(this, SpotOperationKind.Publish, serviceName,
+            topic);
+
+    public SendOperation SendChannel(string channelName)
+        => new SpotSendOperation(this, SpotOperationKind.SendChannel,
+            topicOrChannel: channelName);
+
+    public RequestOperation RequestChannel(string channelName)
+        => new SpotRequestOperation(this, SpotOperationKind.RequestChannel,
+            channelName: channelName);
+
+    public SendOperation SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid)
+        => new SpotSendOperation(this, SpotOperationKind.SendToSpot,
+            destNodeRid: destNodeRid, destSpotRid: destSpotRid);
+
+    public RequestOperation RequestToSpot(RoutingId destNodeRid,
+        RoutingId destSpotRid)
+        => new SpotRequestOperation(this, SpotOperationKind.RequestToSpot,
+            destNodeRid: destNodeRid, destSpotRid: destSpotRid);
+
+    public RequestOperation RequestToRouter(RoutingId peerRid)
+        => new SpotRequestOperation(this, SpotOperationKind.RequestToRouter,
+            peerRid: peerRid);
+
+    public ReplyOperation ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+        ulong requestSeq)
+        => new SpotReplyOperation(this, SpotOperationKind.ReplyToSpot,
+            destNodeRid: destNodeRid, destSpotRid: destSpotRid,
+            requestSeq: requestSeq);
+
+    public ReplyOperation ReplyToRouter(RoutingId peerRid, ulong requestSeq)
+        => new SpotReplyOperation(this, SpotOperationKind.ReplyToRouter,
+            peerRid: peerRid, requestSeq: requestSeq);
+
+    internal bool Publish(string serviceName, string topic, Message message,
         SendFlags flags = SendFlags.None)
     {
         ValidateServiceName(serviceName, nameof(serviceName));
@@ -1267,7 +1389,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         return PublishNoWaitSingleCore(serviceName, topic, message);
     }
 
-    public bool Publish(string serviceName, string topic,
+    internal bool Publish(string serviceName, string topic,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         if (parts == null)
@@ -1331,7 +1453,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         return PublishNoWaitParts(serviceName, topic, copied, nameof(parts));
     }
 
-    public bool SendChannel(string channelName, Message message,
+    internal bool SendChannel(string channelName, Message message,
         SendFlags flags = SendFlags.None)
     {
         ValidateServiceName(channelName, nameof(channelName));
@@ -1352,7 +1474,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    public bool SendChannel(string channelName, IReadOnlyList<Message> parts,
+    internal bool SendChannel(string channelName, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
         if (parts == null)
@@ -1392,42 +1514,44 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    public Task<IReadOnlyList<Message>> RequestChannelAsync(string channelName,
+    internal async Task<IReadOnlyList<Message>> RequestChannelAsync(string channelName,
         Message message, TimeSpan timeout = default, CancellationToken ct = default)
     {
         ValidateServiceName(channelName, nameof(channelName));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
-        return RequestChannelAsyncInternal(channelName, new[] { message }, timeout,
-            ct).ContinueWith(task => task.Result.Parts, TaskScheduler.Default);
+        Received received = await RequestChannelAsyncInternal(channelName,
+            new[] { message }, timeout, ct).ConfigureAwait(false);
+        return received.Parts;
     }
 
-    public Task<IReadOnlyList<Message>> RequestChannelAsync(string channelName,
+    internal async Task<IReadOnlyList<Message>> RequestChannelAsync(string channelName,
         IReadOnlyList<Message> parts, TimeSpan timeout = default,
         CancellationToken ct = default)
     {
         ValidateServiceName(channelName, nameof(channelName));
-        return RequestChannelAsyncInternal(channelName, parts, timeout, ct)
-            .ContinueWith(task => task.Result.Parts, TaskScheduler.Default);
+        Received received = await RequestChannelAsyncInternal(channelName,
+            parts, timeout, ct).ConfigureAwait(false);
+        return received.Parts;
     }
 
-    public bool RequestChannel(string channelName, Message message,
+    internal bool RequestChannel(string channelName, Message message,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan? timeout = null)
         => RequestChannel(channelName, message, callback, SendFlags.None, timeout);
 
-    public bool RequestChannel(string channelName, IReadOnlyList<Message> parts,
+    internal bool RequestChannel(string channelName, IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         TimeSpan? timeout = null)
         => RequestChannel(channelName, parts, callback, SendFlags.None, timeout);
 
-    public bool RequestChannel(string channelName, Message message,
+    internal bool RequestChannel(string channelName, Message message,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags, TimeSpan? timeout = null)
         => RequestChannel(channelName, new[] { message }, callback, flags,
             timeout);
 
-    public bool RequestChannel(string channelName, IReadOnlyList<Message> parts,
+    internal bool RequestChannel(string channelName, IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags, TimeSpan? timeout = null)
     {
@@ -1519,7 +1643,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         ZlinkException.ThrowConfigIfError(rc);
     }
 
-    public SubscriptionInfo SubscriptionAt(int index)
+    public SubscriptionEntry? SubscriptionAt(int index)
     {
         EnsureNotDisposed();
         return SubscriptionIntrospection.At(_handle, index);
@@ -1583,30 +1707,33 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         _sendReadyHandlerNative = native;
     }
 
-    public void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    internal void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         ulong requestSeq, Message message, SendFlags flags = SendFlags.None)
         => ReplyToSpot(destNodeRid, destSpotRid, requestSeq, new[] { message },
             flags);
 
-    public Task<IReadOnlyList<Message>> RequestToSpotAsync(
+    internal Task<IReadOnlyList<Message>> RequestToSpotAsync(
         RoutingId destNodeRid, RoutingId destSpotRid, Message message,
         TimeSpan timeout = default, CancellationToken ct = default)
         => RequestToSpotAsync(destNodeRid, destSpotRid, new[] { message },
             timeout, ct);
 
-    public Task<IReadOnlyList<Message>> RequestToSpotAsync(
+    internal async Task<IReadOnlyList<Message>> RequestToSpotAsync(
         RoutingId destNodeRid, RoutingId destSpotRid, IReadOnlyList<Message> parts,
         TimeSpan timeout = default, CancellationToken ct = default)
-        => RequestToSpotAsyncInternal(destNodeRid, destSpotRid, parts, timeout,
-            ct).ContinueWith(task => task.Result.Parts, TaskScheduler.Default);
+    {
+        Received received = await RequestToSpotAsyncInternal(destNodeRid,
+            destSpotRid, parts, timeout, ct).ConfigureAwait(false);
+        return received.Parts;
+    }
 
-    public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    internal bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         Message message, Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
         => RequestToSpot(destNodeRid, destSpotRid, new[] { message }, callback,
             flags, timeout);
 
-    public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    internal bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
@@ -1638,11 +1765,11 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    public bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    internal bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         Message message, SendFlags flags = SendFlags.None)
         => SendToSpot(destNodeRid, destSpotRid, new[] { message }, flags);
 
-    public unsafe bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    internal unsafe bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         EnsureParts(parts, nameof(parts));
@@ -1691,7 +1818,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    public unsafe void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    internal unsafe void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         ulong requestSeq, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
@@ -1735,28 +1862,31 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    public void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
+    internal void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
         Message message, SendFlags flags = SendFlags.None)
         => ReplyToRouter(peerRid, requestSeq, new[] { message }, flags);
 
-    public Task<IReadOnlyList<Message>> RequestToRouterAsync(RoutingId peerRid,
+    internal Task<IReadOnlyList<Message>> RequestToRouterAsync(RoutingId peerRid,
         Message message, TimeSpan timeout = default,
         CancellationToken ct = default)
         => RequestToRouterAsync(peerRid, new[] { message }, timeout, ct);
 
-    public Task<IReadOnlyList<Message>> RequestToRouterAsync(RoutingId peerRid,
+    internal async Task<IReadOnlyList<Message>> RequestToRouterAsync(RoutingId peerRid,
         IReadOnlyList<Message> parts, TimeSpan timeout = default,
         CancellationToken ct = default)
-        => RequestToRouterAsyncInternal(peerRid, parts, timeout, ct)
-            .ContinueWith(task => task.Result.Parts, TaskScheduler.Default);
+    {
+        Received received = await RequestToRouterAsyncInternal(peerRid, parts,
+            timeout, ct).ConfigureAwait(false);
+        return received.Parts;
+    }
 
-    public bool RequestToRouter(RoutingId peerRid, Message message,
+    internal bool RequestToRouter(RoutingId peerRid, Message message,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
         => RequestToRouter(peerRid, new[] { message }, callback, flags,
             timeout);
 
-    public bool RequestToRouter(RoutingId peerRid, IReadOnlyList<Message> parts,
+    internal bool RequestToRouter(RoutingId peerRid, IReadOnlyList<Message> parts,
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
     {
@@ -1787,7 +1917,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    public unsafe void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
+    internal unsafe void ReplyToRouter(RoutingId peerRid, ulong requestSeq,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         _ = flags;
@@ -1883,7 +2013,15 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         return new ActorJoinRequest(info, message);
     }
 
-    public void ReplyActorJoin(ActorJoinInfo info, bool accepted,
+    public void ReplyActorJoin(ActorJoinRequest request, bool accepted,
+        Message message)
+    {
+        if (request == null)
+            throw new ArgumentNullException(nameof(request));
+        ReplyActorJoin(request.Info, accepted, message);
+    }
+
+    internal void ReplyActorJoin(ActorJoinInfo info, bool accepted,
         Message message)
     {
         if (info == null)
@@ -1959,7 +2097,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
     }
 
-    public unsafe void OnDispatchEvent(Action<Spot, SpotDispatchInfo> handler)
+    public unsafe void OnDispatchEvent(Action<SpotDispatchInfo> handler)
     {
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
@@ -1971,7 +2109,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
     }
 
-    public void DrainChannelReplyFrom(IntPtr dealerSubject)
+    internal void DrainChannelReplyFrom(IntPtr dealerSubject)
     {
         EnsureNotDisposed();
         if (dealerSubject == IntPtr.Zero)
@@ -2400,7 +2538,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     private unsafe void OnNativeDispatchEvent(IntPtr spot,
         ZlinkSpotDispatchInfoNative* info, IntPtr userData)
     {
-        Action<Spot, SpotDispatchInfo>? handler = _dispatchEventHandler;
+        Action<SpotDispatchInfo>? handler = _dispatchEventHandler;
         if (handler == null || info == null)
             return;
 
@@ -2425,7 +2563,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             timer, channelDealerSubject, DrainChannelReplyFrom, actorParts);
         try
         {
-            handler(this, dispatchInfo);
+            handler(dispatchInfo);
         }
         catch (Exception ex)
         {
@@ -2464,14 +2602,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 
     private static uint NormalizeTimeout(TimeSpan timeout)
     {
-        if (timeout <= TimeSpan.Zero)
-            return 0;
-        double millis = timeout.TotalMilliseconds;
-        if (millis <= 1)
-            return 1;
-        if (millis >= uint.MaxValue)
-            return uint.MaxValue;
-        return (uint)millis;
+        return BoundaryValidation.EncodeTimeoutMilliseconds(timeout,
+            nameof(timeout));
     }
 
     private static void EnsureParts(IReadOnlyList<Message> parts, string paramName)
@@ -2484,17 +2616,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 
     private static void ValidateTopicId(string value, string paramName)
     {
-        if (value == null)
-            throw new ArgumentNullException(paramName);
-        if (value.Length == 0)
-            throw new ArgumentException("Value must not be empty.", paramName);
-
-        int byteCount = Encoding.UTF8.GetByteCount(value);
-        if (byteCount == 0 || byteCount > 255)
-        {
-            throw new ArgumentOutOfRangeException(paramName,
-                "UTF-8 length must be between 1 and 255 bytes.");
-        }
+        BoundaryValidation.ValidateTopicOrFilterUtf8(value, paramName,
+            allowEmpty: false);
     }
 
     private static void ValidateServiceName(string value, string paramName)
@@ -2872,7 +2995,9 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             {
                 ZlinkMsg part = default;
                 int initRc = NativeMethods.zlink_msg_init(ref part);
-                ZlinkException.ThrowIfError(initRc);
+                if (initRc != 0)
+                    throw ZlinkException.CreateRecvException(
+                        NativeMethods.zlink_errno());
                 bool initialized = true;
                 int rc = NativeMethods.zlink_spot_recv_part(_handle,
                     out IntPtr sourceNodeRid, out IntPtr sourceSpotRid,
@@ -2918,7 +3043,9 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             {
                 ZlinkMsg part = default;
                 int initRc = NativeMethods.zlink_msg_init(ref part);
-                ZlinkException.ThrowIfError(initRc);
+                if (initRc != 0)
+                    throw ZlinkException.CreateRecvException(
+                        NativeMethods.zlink_errno());
                 bool initialized = true;
                 int rc = NativeMethods.zlink_spot_subscribe_part(_handle,
                     out IntPtr sourceRoutingId, serviceBuffer,
@@ -2963,7 +3090,9 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         {
             ZlinkMsg part = default;
             int initRc = NativeMethods.zlink_msg_init(ref part);
-            ZlinkException.ThrowIfError(initRc);
+            if (initRc != 0)
+                throw ZlinkException.CreateRecvException(
+                    NativeMethods.zlink_errno());
             bool initialized = true;
             int rc = NativeMethods.zlink_spot_subscribe_part(_handle,
                 out _, serviceBuffer, (nuint)serviceBuffer.Length, out _,
@@ -3039,7 +3168,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     {
         ZlinkMsg stored = default;
         int initRc = NativeMethods.zlink_msg_init(ref stored);
-        ZlinkException.ThrowIfError(initRc);
+        if (initRc != 0)
+            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
         try
         {
             int rc = NativeMethods.zlink_msg_move(ref stored, ref source);

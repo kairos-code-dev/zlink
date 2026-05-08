@@ -70,38 +70,38 @@ internal sealed class SocketKernel : IDisposable
 
     public void Bind(string address)
     {
-        if (address == null)
-            throw new ArgumentNullException(nameof(address));
+        BoundaryValidation.ValidateFixedUtf8(address, nameof(address));
 
         int rc = NativeMethods.zlink_bind(Handle, address);
-        ZlinkException.ThrowIfError(rc);
+        if (rc != 0)
+            throw ZlinkException.CreateBindException(NativeMethods.zlink_errno());
     }
 
     public void Connect(string address)
     {
-        if (address == null)
-            throw new ArgumentNullException(nameof(address));
+        BoundaryValidation.ValidateFixedUtf8(address, nameof(address));
 
         int rc = NativeMethods.zlink_connect(Handle, address);
-        ZlinkException.ThrowIfError(rc);
+        if (rc != 0)
+            throw ZlinkException.CreateConnectException(NativeMethods.zlink_errno());
     }
 
     public void Unbind(string address)
     {
-        if (address == null)
-            throw new ArgumentNullException(nameof(address));
+        BoundaryValidation.ValidateFixedUtf8(address, nameof(address));
 
         int rc = NativeMethods.zlink_unbind(Handle, address);
-        ZlinkException.ThrowIfError(rc);
+        if (rc != 0)
+            throw ZlinkException.CreateConnectException(NativeMethods.zlink_errno());
     }
 
     public void Disconnect(string address)
     {
-        if (address == null)
-            throw new ArgumentNullException(nameof(address));
+        BoundaryValidation.ValidateFixedUtf8(address, nameof(address));
 
         int rc = NativeMethods.zlink_disconnect(Handle, address);
-        ZlinkException.ThrowIfError(rc);
+        if (rc != 0)
+            throw ZlinkException.CreateConnectException(NativeMethods.zlink_errno());
     }
 
     public void DisconnectRid(RoutingId peerRid)
@@ -627,8 +627,7 @@ internal sealed class SocketKernel : IDisposable
     public void Publish(string topic, Message message, SendFlags flags = SendFlags.None)
     {
         EnsureSupports(nameof(Publish), SocketTypePolicy.SocketCapability.Publish);
-        if (topic == null)
-            throw new ArgumentNullException(nameof(topic));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(topic, nameof(topic));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         PublishSingleCore(topic, message, (int)flags);
@@ -638,8 +637,7 @@ internal sealed class SocketKernel : IDisposable
     {
         EnsureSupports(nameof(PublishNoWaitResult),
             SocketTypePolicy.SocketCapability.Publish);
-        if (topic == null)
-            throw new ArgumentNullException(nameof(topic));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(topic, nameof(topic));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         return PublishNoWaitSingleCore(topic, message);
@@ -650,8 +648,7 @@ internal sealed class SocketKernel : IDisposable
     {
         EnsureSupports(nameof(PublishRawSingle),
             SocketTypePolicy.SocketCapability.Publish);
-        if (topic == null)
-            throw new ArgumentNullException(nameof(topic));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(topic, nameof(topic));
         PublishRawSingleCore(topic, payload, flags);
     }
 
@@ -660,8 +657,7 @@ internal sealed class SocketKernel : IDisposable
     {
         EnsureSupports(nameof(PublishRawSingleNoWait),
             SocketTypePolicy.SocketCapability.Publish);
-        if (topic == null)
-            throw new ArgumentNullException(nameof(topic));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(topic, nameof(topic));
         return PublishRawSingleNoWaitCore(topic, payload);
     }
 
@@ -669,8 +665,7 @@ internal sealed class SocketKernel : IDisposable
     {
         EnsureSupports(nameof(PublishBorrowedSingle),
             SocketTypePolicy.SocketCapability.Publish);
-        if (topic == null)
-            throw new ArgumentNullException(nameof(topic));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(topic, nameof(topic));
         if (payload == null)
             throw new ArgumentNullException(nameof(payload));
         PublishBorrowedSingleCore(topic, payload, flags);
@@ -680,8 +675,7 @@ internal sealed class SocketKernel : IDisposable
     {
         EnsureSupports(nameof(PublishBorrowedSingleNoWait),
             SocketTypePolicy.SocketCapability.Publish);
-        if (topic == null)
-            throw new ArgumentNullException(nameof(topic));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(topic, nameof(topic));
         if (payload == null)
             throw new ArgumentNullException(nameof(payload));
         return PublishBorrowedSingleNoWaitCore(topic, payload);
@@ -691,8 +685,7 @@ internal sealed class SocketKernel : IDisposable
         SendFlags flags = SendFlags.None)
     {
         EnsureSupports(nameof(Publish), SocketTypePolicy.SocketCapability.Publish);
-        if (topic == null)
-            throw new ArgumentNullException(nameof(topic));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(topic, nameof(topic));
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
         if (parts.Count == 0)
@@ -721,8 +714,7 @@ internal sealed class SocketKernel : IDisposable
     {
         EnsureSupports(nameof(PublishNoWaitResult),
             SocketTypePolicy.SocketCapability.Publish);
-        if (topic == null)
-            throw new ArgumentNullException(nameof(topic));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(topic, nameof(topic));
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
         if (parts.Count == 0)
@@ -734,8 +726,8 @@ internal sealed class SocketKernel : IDisposable
     {
         EnsureSupports(nameof(SetSubscription),
             SocketTypePolicy.SocketCapability.SubscriptionControl);
-        if (topicOrPattern == null)
-            throw new ArgumentNullException(nameof(topicOrPattern));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(topicOrPattern,
+            nameof(topicOrPattern));
 
         int rc = NativeMethods.zlink_set_subscription(Handle, topicOrPattern);
         ZlinkException.ThrowConfigIfError(rc);
@@ -745,8 +737,8 @@ internal sealed class SocketKernel : IDisposable
     {
         EnsureSupports(nameof(UnsetSubscription),
             SocketTypePolicy.SocketCapability.SubscriptionControl);
-        if (topicOrPattern == null)
-            throw new ArgumentNullException(nameof(topicOrPattern));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(topicOrPattern,
+            nameof(topicOrPattern));
 
         int rc = NativeMethods.zlink_unset_subscription(Handle, topicOrPattern);
         ZlinkException.ThrowConfigIfError(rc);
@@ -867,7 +859,7 @@ internal sealed class SocketKernel : IDisposable
             _subscribeHandler = null;
             _subscribeHandlerContext = null;
             _subscribeHandlerNative = null;
-            ZlinkException.ThrowIfError(rc);
+            throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
         }
         _subscribeHandler = handler;
         _subscribeHandlerContext = context;
@@ -1522,7 +1514,9 @@ internal sealed class SocketKernel : IDisposable
             {
                 ZlinkMsg part = default;
                 int initRc = NativeMethods.zlink_msg_init(ref part);
-                ZlinkException.ThrowIfError(initRc);
+                if (initRc != 0)
+                    throw ZlinkException.CreateRecvException(
+                        NativeMethods.zlink_errno());
                 bool initialized = true;
                 int rc = NativeMethods.zlink_recv_part(Handle,
                     out IntPtr sourceRoutingId, ref part, out int hasMore, flags);
@@ -1574,7 +1568,9 @@ internal sealed class SocketKernel : IDisposable
             {
                 ZlinkMsg part = default;
                 int initRc = NativeMethods.zlink_msg_init(ref part);
-                ZlinkException.ThrowIfError(initRc);
+                if (initRc != 0)
+                    throw ZlinkException.CreateRecvException(
+                        NativeMethods.zlink_errno());
                 bool initialized = true;
                 int rc;
                 IntPtr sourceNodeRid;
@@ -1624,7 +1620,9 @@ internal sealed class SocketKernel : IDisposable
             {
                 ZlinkMsg part = default;
                 int initRc = NativeMethods.zlink_msg_init(ref part);
-                ZlinkException.ThrowIfError(initRc);
+                if (initRc != 0)
+                    throw ZlinkException.CreateRecvException(
+                        NativeMethods.zlink_errno());
                 bool initialized = true;
                 int rc = NativeMethods.zlink_router_recv_part(Handle,
                     out IntPtr sourceNodeRid, out IntPtr sourceSpotRid,
@@ -1679,7 +1677,9 @@ internal sealed class SocketKernel : IDisposable
             {
                 ZlinkMsg part = default;
                 int initRc = NativeMethods.zlink_msg_init(ref part);
-                ZlinkException.ThrowIfError(initRc);
+                if (initRc != 0)
+                    throw ZlinkException.CreateRecvException(
+                        NativeMethods.zlink_errno());
                 bool initialized = true;
                 int rc = NativeMethods.zlink_subscribe_part(Handle,
                     out IntPtr sourceRoutingId, topicBuffer,
@@ -1727,7 +1727,9 @@ internal sealed class SocketKernel : IDisposable
             {
                 ZlinkMsg part = default;
                 int initRc = NativeMethods.zlink_msg_init(ref part);
-                ZlinkException.ThrowIfError(initRc);
+                if (initRc != 0)
+                    throw ZlinkException.CreateRecvException(
+                        NativeMethods.zlink_errno());
                 bool initialized = true;
                 int rc = NativeMethods.zlink_subscribe_part(Handle,
                     out _, topicBuffer, (nuint)topicBuffer.Length,
@@ -1773,7 +1775,9 @@ internal sealed class SocketKernel : IDisposable
         {
             ZlinkMsg part = default;
             int initRc = NativeMethods.zlink_msg_init(ref part);
-            ZlinkException.ThrowIfError(initRc);
+            if (initRc != 0)
+                throw ZlinkException.CreateRecvException(
+                    NativeMethods.zlink_errno());
             bool initialized = true;
             int rc;
             IntPtr sourceNodeRid;
@@ -1845,7 +1849,8 @@ internal sealed class SocketKernel : IDisposable
     {
         ZlinkMsg stored = default;
         int initRc = NativeMethods.zlink_msg_init(ref stored);
-        ZlinkException.ThrowIfError(initRc);
+        if (initRc != 0)
+            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
         try
         {
             int rc = NativeMethods.zlink_msg_move(ref stored, ref source);

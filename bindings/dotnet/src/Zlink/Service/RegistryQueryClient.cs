@@ -127,34 +127,45 @@ public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
     internal static RegistryTopologyEntry[] ReadTopologyEntries(IntPtr handle,
         IntPtr filterPtr, TopologyReadFn nativeCall)
     {
-        nuint count = 0;
-        int rc = nativeCall(handle, filterPtr, IntPtr.Zero, ref count);
-        ZlinkException.ThrowConfigIfError(rc);
-        if (count == 0)
-            return Array.Empty<RegistryTopologyEntry>();
-
-        int entrySize = Marshal.SizeOf<ZlinkRegistryTopologyEntry>();
-        IntPtr entries = Marshal.AllocHGlobal(checked((int)(count * (nuint)entrySize)));
-        try
+        for (int attempt = 0; attempt < 4; attempt++)
         {
-            nuint actual = count;
-            rc = nativeCall(handle, filterPtr, entries, ref actual);
+            nuint count = 0;
+            int rc = nativeCall(handle, filterPtr, IntPtr.Zero, ref count);
             ZlinkException.ThrowConfigIfError(rc);
+            if (count == 0)
+                return Array.Empty<RegistryTopologyEntry>();
 
-            RegistryTopologyEntry[] result = new RegistryTopologyEntry[(int)actual];
-            for (int i = 0; i < result.Length; i++)
+            int entrySize = Marshal.SizeOf<ZlinkRegistryTopologyEntry>();
+            IntPtr entries = Marshal.AllocHGlobal(
+                checked((int)(count * (nuint)entrySize)));
+            try
             {
-                IntPtr current = IntPtr.Add(entries, i * entrySize);
-                ZlinkRegistryTopologyEntry native =
-                    Marshal.PtrToStructure<ZlinkRegistryTopologyEntry>(current);
-                result[i] = RegistryTopologyEntry.FromNative(ref native);
+                nuint actual = count;
+                rc = nativeCall(handle, filterPtr, entries, ref actual);
+                if (rc != 0 && RegistryReadSupport.IsRetryableSizeRace(
+                    NativeMethods.zlink_errno()))
+                    continue;
+                ZlinkException.ThrowConfigIfError(rc);
+
+                RegistryTopologyEntry[] result =
+                    new RegistryTopologyEntry[(int)actual];
+                for (int i = 0; i < result.Length; i++)
+                {
+                    IntPtr current = IntPtr.Add(entries, i * entrySize);
+                    ZlinkRegistryTopologyEntry native =
+                        Marshal.PtrToStructure<ZlinkRegistryTopologyEntry>(
+                            current);
+                    result[i] = RegistryTopologyEntry.FromNative(ref native);
+                }
+                return result;
             }
-            return result;
+            finally
+            {
+                Marshal.FreeHGlobal(entries);
+            }
         }
-        finally
-        {
-            Marshal.FreeHGlobal(entries);
-        }
+
+        throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
     internal delegate int TopologyReadFn(IntPtr handle, IntPtr filter,
@@ -174,5 +185,13 @@ public sealed class RegistryQueryClient : IDisposable, IAsyncDisposable
             destination[i] = 0;
         for (int i = 0; i < encoded.Length; i++)
             destination[i] = encoded[i];
+    }
+}
+
+internal static class RegistryReadSupport
+{
+    internal static bool IsRetryableSizeRace(int errno)
+    {
+        return ZlinkException.MapErrorCode(errno) == ErrorCode.ENoBufs;
     }
 }

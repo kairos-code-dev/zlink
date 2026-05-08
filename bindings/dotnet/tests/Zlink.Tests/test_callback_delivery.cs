@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -20,12 +19,6 @@ public sealed class test_callback_delivery
         return client;
     }
 
-    private static void SendAll(NetworkStream stream, ReadOnlySpan<byte> payload)
-    {
-        stream.Write(payload);
-        stream.Flush();
-    }
-
     private static byte[] ReceiveExact(NetworkStream stream, int size)
     {
         byte[] buffer = new byte[size];
@@ -41,7 +34,7 @@ public sealed class test_callback_delivery
         return buffer;
     }
 
-    [Fact(Skip = "Raw STREAM callback behavior is no longer part of the public .NET contract.")]
+    [Fact]
     public void stream_packet_handler_hops_to_registered_context_and_send_semantics_hold()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -61,9 +54,10 @@ public sealed class test_callback_delivery
 
         callbackContext.Invoke(() =>
         {
-            stream.OnPacket((StreamPacketHandler)((routingId, _, payload) =>
+            stream.OnPacket((StreamPacketHandler)((routingId, header, payload) =>
             {
                 callbackThreadId = Environment.CurrentManagedThreadId;
+                header.Dispose();
                 observedPayload = payload;
                 try
                 {
@@ -78,7 +72,7 @@ public sealed class test_callback_delivery
         });
 
         using var client = ConnectRawClient(port);
-        SendAll(client.GetStream(), "ping"u8);
+        CoreTestSupport.SendStreamPacket(client.GetStream(), "ping"u8);
 
         Assert.True(callbackSignal.Wait(3000));
         Assert.Equal(callbackContext.ThreadId, callbackThreadId);
@@ -171,7 +165,7 @@ public sealed class test_callback_delivery
 
         callbackContext.Invoke(() =>
         {
-            spot.OnDispatchEvent((currentSpot, info) =>
+            spot.OnDispatchEvent(info =>
             {
                 dispatchThreadId = Environment.CurrentManagedThreadId;
                 if (info.Event == SpotDispatchEvent.ChannelReplyReadable)
@@ -194,7 +188,10 @@ public sealed class test_callback_delivery
             });
 
             using Message request = Message.FromString("ping");
-            spot.RequestChannel("svc", request, (result, parts) =>
+            spot.RequestChannel("svc")
+                .Message(request)
+                .Timeout(TimeSpan.FromSeconds(2))
+                .Submit((result, parts) =>
             {
                 callbackThreadId = Environment.CurrentManagedThreadId;
                 callbackCount++;
@@ -214,7 +211,7 @@ public sealed class test_callback_delivery
                 {
                     callbackSignal.Set();
                 }
-            }, timeout: TimeSpan.FromSeconds(2));
+            });
         });
 
         using Received received = router.Recv();

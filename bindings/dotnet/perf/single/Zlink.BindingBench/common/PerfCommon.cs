@@ -33,7 +33,7 @@ internal static partial class PerfRunner
             {
                 while (true)
                 {
-                    MonitorEvent? evt = monitor.Recv(true);
+                    MonitorEvent? evt = monitor.Recv(RecvFlags.DontWait);
                     if (evt == null)
                         break;
                     if (evt.Event == MonitorEventType.ConnectionReady)
@@ -140,8 +140,11 @@ internal static partial class PerfRunner
     {
         try
         {
-            int written = poller.Wait(events, timeoutMs, out int totalReady);
-            return written > 0 || totalReady > 0;
+            IReadOnlyList<PollEvent> ready = poller.WaitAll(events.Length,
+                TimeSpan.FromMilliseconds(timeoutMs));
+            for (int i = 0; i < ready.Count && i < events.Length; i++)
+                events[i] = ready[i];
+            return ready.Count > 0;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                         || IsWouldBlock(ex.InternalErrno))

@@ -54,7 +54,7 @@ internal struct ZlinkPollItemWindows
 [StructLayout(LayoutKind.Sequential)]
 internal struct ZlinkPollerEvent
 {
-    public int SourceKind;
+    public int MonitorSourceKind;
     public IntPtr Socket;
     public int Fd;
     public IntPtr Timer;

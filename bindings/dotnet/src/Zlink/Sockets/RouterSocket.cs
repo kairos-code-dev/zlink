@@ -20,12 +20,12 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         Marshal.GetFunctionPointerForDelegate(RequestReplyHandler);
     private static readonly IntPtr SpotReplyHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(SpotReplyHandler);
-    public RouterSocketOptions RouterOptions { get; }
+    public new RouterSocketOptions Options { get; }
 
     public RouterSocket(Context context)
         : base(context, SocketType.Router)
     {
-        RouterOptions = new RouterSocketOptions(this);
+        Options = new RouterSocketOptions(this);
     }
 
     public void AttachDiscovery(Discovery discovery)
@@ -33,15 +33,25 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         Kernel.AttachDiscovery(discovery);
     }
 
-    public Task<IReadOnlyList<Message>> RequestAsync(RoutingId peerRid,
+    public void SetRoutingId(RoutingId routingId)
+    {
+        Kernel.SetOption(SocketOptions.RoutingId, routingId.ToBytes());
+    }
+
+    public RoutingId GetRoutingId()
+    {
+        return RoutingId.FromBytes(Kernel.GetOption(SocketOptions.RoutingId));
+    }
+
+    public Task<IReadOnlyList<Message>> Request(RoutingId peerRid,
         Message part, CancellationToken ct = default)
-        => RequestAsync(peerRid, new[] { part }, ct);
+        => Request(peerRid, new[] { part }, ct);
 
-    public Task<IReadOnlyList<Message>> RequestAsync(RoutingId peerRid,
+    public Task<IReadOnlyList<Message>> Request(RoutingId peerRid,
         Message part, TimeSpan timeout, CancellationToken ct = default)
-        => RequestAsync(peerRid, new[] { part }, timeout, ct);
+        => Request(peerRid, new[] { part }, timeout, ct);
 
-    public async Task<IReadOnlyList<Message>> RequestAsync(RoutingId peerRid,
+    public async Task<IReadOnlyList<Message>> Request(RoutingId peerRid,
         IReadOnlyList<Message> parts, CancellationToken ct = default)
     {
         Received received = await RequestAsyncCore(peerRid, parts,
@@ -49,7 +59,7 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         return received.Parts;
     }
 
-    public async Task<IReadOnlyList<Message>> RequestAsync(RoutingId peerRid,
+    public async Task<IReadOnlyList<Message>> Request(RoutingId peerRid,
         IReadOnlyList<Message> parts, TimeSpan timeout,
         CancellationToken ct = default)
     {
@@ -59,23 +69,13 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
     }
 
     public bool Request(RoutingId peerRid, Message part,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan? timeout = null)
-        => Request(peerRid, part, callback, SendFlags.None, timeout);
-
-    public bool Request(RoutingId peerRid, IReadOnlyList<Message> parts,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan? timeout = null)
-        => Request(peerRid, parts, callback, SendFlags.None, timeout);
-
-    public bool Request(RoutingId peerRid, Message part,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        SendFlags flags, TimeSpan? timeout = null)
+        RequestCallback callback,
+        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
         => Request(peerRid, new[] { part }, callback, flags, timeout);
 
     public bool Request(RoutingId peerRid, IReadOnlyList<Message> parts,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        SendFlags flags, TimeSpan? timeout = null)
+        RequestCallback callback,
+        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
     {
         try
         {
@@ -204,47 +204,38 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
         }
     }
 
-    public Task<IReadOnlyList<Message>> RequestToSpotAsync(RoutingId destNodeRid,
+    public Task<IReadOnlyList<Message>> RequestToSpot(RoutingId destNodeRid,
         RoutingId destSpotRid, Message message, TimeSpan timeout = default,
         CancellationToken ct = default)
-        => RequestToSpotAsync(destNodeRid, destSpotRid, new[] { message }, timeout,
+        => RequestToSpot(destNodeRid, destSpotRid, new[] { message }, timeout,
             ct);
 
-    public Task<IReadOnlyList<Message>> RequestToSpotAsync(RoutingId destNodeRid,
+    public async Task<IReadOnlyList<Message>> RequestToSpot(RoutingId destNodeRid,
         RoutingId destSpotRid, IReadOnlyList<Message> parts,
         TimeSpan timeout = default, CancellationToken ct = default)
-        => RequestToSpotAsyncInternal(destNodeRid, destSpotRid, parts, timeout, ct)
-            .ContinueWith(task => task.Result.Parts, TaskScheduler.Default);
+    {
+        Received received = await RequestToSpotAsyncInternal(destNodeRid,
+            destSpotRid, parts, timeout, ct).ConfigureAwait(false);
+        return received.Parts;
+    }
 
     public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        Message message, Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan timeout = default)
-        => RequestToSpot(destNodeRid, destSpotRid, message, callback,
-            SendFlags.None, timeout);
-
-    public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        IReadOnlyList<Message> parts,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan timeout = default)
-        => RequestToSpot(destNodeRid, destSpotRid, parts, callback,
-            SendFlags.None, timeout);
-
-    public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-        Message message, Action<RequestResult, IReadOnlyList<Message>> callback,
-        SendFlags flags, TimeSpan timeout = default)
+        Message message, RequestCallback callback,
+        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
         => RequestToSpot(destNodeRid, destSpotRid, new[] { message }, callback,
             flags, timeout);
 
     public bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         IReadOnlyList<Message> parts,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        SendFlags flags, TimeSpan timeout = default)
+        RequestCallback callback,
+        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
     {
         try
         {
             RequestReplySupport.AttachResultCallback(
                 () => RequestToSpotAsyncInternal(destNodeRid, destSpotRid, parts,
-                    timeout, CancellationToken.None, (int)flags),
+                    timeout ?? TimeSpan.Zero, CancellationToken.None,
+                    (int)flags),
                 (result, reply) =>
                 {
                     IReadOnlyList<Message> payload = Array.Empty<Message>();
@@ -462,25 +453,17 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
 
     private static uint NormalizeTimeout(TimeSpan timeout)
     {
-        if (timeout <= TimeSpan.Zero)
-            return 0;
-        double millis = timeout.TotalMilliseconds;
-        if (millis <= 1)
-            return 1;
-        if (millis >= uint.MaxValue)
-            return uint.MaxValue;
-        return (uint)millis;
+        return BoundaryValidation.EncodeTimeoutMilliseconds(timeout,
+            nameof(timeout));
     }
 
     private static uint NormalizeRequestTimeout(TimeSpan timeout)
     {
-        TimeSpan effective = timeout <= TimeSpan.Zero ? DefaultRequestTimeout : timeout;
-        double millis = effective.TotalMilliseconds;
-        if (millis <= 1)
-            return 1;
-        if (millis >= uint.MaxValue)
-            return uint.MaxValue;
-        return (uint)millis;
+        TimeSpan effective = timeout == TimeSpan.Zero
+            ? DefaultRequestTimeout
+            : timeout;
+        return BoundaryValidation.EncodeTimeoutMilliseconds(effective,
+            nameof(timeout));
     }
 
     private static void EnsureParts(IReadOnlyList<Message> parts, string paramName)

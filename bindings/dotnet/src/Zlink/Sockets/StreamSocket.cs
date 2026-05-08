@@ -8,12 +8,25 @@ namespace Systems.Zlink;
 
 public sealed class StreamSocket : RoutedMessageSocketBase
 {
-    public StreamSocketOptions StreamOptions { get; }
+    private RoutingId? _routingId;
+
+    public new StreamSocketOptions Options { get; }
 
     public StreamSocket(Context context)
         : base(context, SocketType.Stream)
     {
-        StreamOptions = new StreamSocketOptions(this);
+        Options = new StreamSocketOptions(this);
+    }
+
+    public void SetRoutingId(RoutingId routingId)
+    {
+        _routingId = routingId;
+    }
+
+    public RoutingId GetRoutingId()
+    {
+        return _routingId ?? throw new ZlinkConfigException(
+            ZlinkConfigException.ErrorCode.NotFound);
     }
 
     public void OnPacket(StreamPacketHandler handler)
@@ -21,7 +34,7 @@ public sealed class StreamSocket : RoutedMessageSocketBase
         Kernel.AttachStreamPacket(handler);
     }
 
-    public void OnPacket(Func<string, Message, int> handler)
+    internal void OnPacket(Func<string, Message, int> handler)
     {
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
@@ -39,7 +52,7 @@ public sealed class StreamSocket : RoutedMessageSocketBase
         Kernel.AttachStreamPacket(handler);
     }
 
-    public void OnFramedPacket(Action<string, Message, Message> handler)
+    internal void OnFramedPacket(Action<string, Message, Message> handler)
     {
         if (handler == null)
             throw new ArgumentNullException(nameof(handler));
@@ -64,12 +77,12 @@ public sealed class StreamSocket : RoutedMessageSocketBase
         Kernel.SendBorrowedSingle(routingId, payload, (int)flags);
     }
 
-    public void DisconnectRid(RoutingId peerRid)
+    internal void DisconnectRid(RoutingId peerRid)
     {
         Kernel.DisconnectRid(peerRid);
     }
 
-    public void DetachStream()
+    internal void DetachStream()
     {
         Kernel.DetachStream();
     }

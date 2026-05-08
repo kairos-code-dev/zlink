@@ -33,8 +33,8 @@ internal static class PerfMultiRouterRouterClient
                 ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
                 client.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeoutMs);
-                client.RouterOptions.RoutingId = RoutingId.FromBytes(
-                    System.Text.Encoding.ASCII.GetBytes($"CLIENT-{i}"));
+                client.SetRoutingId(RoutingId.FromBytes(
+                    System.Text.Encoding.ASCII.GetBytes($"CLIENT-{i}")));
                 var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
                 client.Connect(endpoint);
                 clients.Add(client);
@@ -102,7 +102,7 @@ internal static class PerfMultiRouterRouterClient
         var metrics = new RouterRouterMetrics(latSamples, latencySampleCap);
 
         var sockets = CollectSockets(slots);
-        var eventMasks = new PollEvents[slots.Length];
+        var eventMasks = new PollEventFlags[slots.Length];
         ResetPollMasks(slots, eventMasks);
 
         long benchStartTicks = Stopwatch.GetTimestamp();
@@ -147,7 +147,7 @@ internal static class PerfMultiRouterRouterClient
     }
 
     private static void TryScheduleIdleSends(RouterRouterClientSlot[] slots,
-        PollEvents[] eventMasks, int msgSize, uint runId, PerfPhase phase, ref ulong seq,
+        PollEventFlags[] eventMasks, int msgSize, uint runId, PerfPhase phase, ref ulong seq,
         ref int rrIndex)
     {
         int startIndex = rrIndex;
@@ -177,7 +177,7 @@ internal static class PerfMultiRouterRouterClient
 
     private static void HandleClientEvent(PollManager pollManager,
         RouterRouterClientSlot[] slots,
-        int slotIndex, PollEvents[] eventMasks,
+        int slotIndex, PollEventFlags[] eventMasks,
         int msgSize, uint runId, PerfPhase phase, ref ulong seq,
         RouterRouterMetrics metrics, bool allowSend, long activeDeadlineTicks)
     {
@@ -202,7 +202,7 @@ internal static class PerfMultiRouterRouterClient
         while (true)
         {
             using Received? receivedMessage = TryRecvNoWait((RouterSocket)slot.Socket);
-            if (receivedMessage == null || receivedMessage.Count == 0)
+            if (receivedMessage == null || receivedMessage.Parts.Count == 0)
                 break;
 
             if (!slot.WaitingForReply)
@@ -258,16 +258,16 @@ internal static class PerfMultiRouterRouterClient
     }
 
     private static void ResetPollMasks(RouterRouterClientSlot[] slots,
-        PollEvents[] eventMasks)
+        PollEventFlags[] eventMasks)
     {
         for (int i = 0; i < slots.Length; i++)
             UpdatePollMask(slots[i], eventMasks, i);
     }
 
     private static void UpdatePollMask(RouterRouterClientSlot slot,
-        PollEvents[] eventMasks, int index)
+        PollEventFlags[] eventMasks, int index)
     {
-        PollEvents events = SocketPollIn;
+        PollEventFlags events = SocketPollIn;
         if (slot.WaitingForWritable && !slot.WaitingForReply)
             events |= SocketPollOut;
         eventMasks[index] = events;

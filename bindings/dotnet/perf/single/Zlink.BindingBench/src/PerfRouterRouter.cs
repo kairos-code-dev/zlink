@@ -59,11 +59,11 @@ internal static class PerfRouterRouter
             receiverMonitor = receiver.MonitorOpen(SocketEvent.ConnectionReady);
             senderMonitor = sender.MonitorOpen(SocketEvent.ConnectionReady);
 
-            receiver.RouterOptions.RoutingId = ReceiverRoutingId;
-            sender.RouterOptions.RoutingId = SenderRoutingId;
-            sender.RouterOptions.ConnectRoutingId = ReceiverRoutingId;
-            receiver.RouterOptions.Mandatory = true;
-            sender.RouterOptions.Mandatory = true;
+            receiver.SetRoutingId(ReceiverRoutingId);
+            sender.SetRoutingId(SenderRoutingId);
+            sender.Options.SetConnectRoutingId(ReceiverRoutingId);
+            receiver.Options.Mandatory = true;
+            sender.Options.Mandatory = true;
             receiver.Bind(endpoint);
             sender.Connect(endpoint);
             if (!(WaitForConnectionReady(receiverMonitor, readyTimeoutMs)
@@ -148,7 +148,7 @@ internal static class PerfRouterRouter
 
         using var poller = new Poller();
         var events = new PollEvent[1];
-        poller.Add(receiver, PollEvents.PollIn);
+        poller.Add(receiver, PollEventFlags.PollIn);
         long deadlineTicks = DeadlineTicksFromMilliseconds(Math.Max(1000,
             recvTimeoutMs));
         while (Stopwatch.GetTimestamp() < deadlineTicks)
@@ -197,7 +197,7 @@ internal static class PerfRouterRouter
             using var poller = new Poller();
             var events = new PollEvent[1];
             long lastRecvTicks = Stopwatch.GetTimestamp();
-            poller.Add(receiver, PollEvents.PollIn);
+            poller.Add(receiver, PollEventFlags.PollIn);
 
             try
             {

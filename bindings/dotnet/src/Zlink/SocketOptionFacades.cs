@@ -4,305 +4,305 @@ using System;
 
 namespace Systems.Zlink;
 
-public sealed class CommonSocketOptions
+public class CommonSocketOptions
 {
-    private readonly SocketBase _socket;
+    private protected readonly SocketBase Socket;
 
     internal CommonSocketOptions(SocketBase socket)
     {
-        _socket = socket;
+        Socket = socket;
     }
 
-    public ulong Affinity
+    internal ulong Affinity
     {
-        get => _socket.GetOption(SocketOptions.Affinity);
-        set => _socket.SetOption(SocketOptions.Affinity, value);
+        get => Socket.GetOption(SocketOptions.Affinity);
+        set => Socket.SetOption(SocketOptions.Affinity, value);
     }
 
-    public int Rate
+    internal int Rate
     {
-        get => _socket.GetOption(SocketOptions.Rate);
-        set => _socket.SetOption(SocketOptions.Rate, value);
+        get => Socket.GetOption(SocketOptions.Rate);
+        set => Socket.SetOption(SocketOptions.Rate, value);
     }
 
-    public TimeSpan? RecoveryInterval
+    internal TimeSpan? RecoveryInterval
     {
-        get => DecodeDuration(_socket.GetOption(SocketOptions.RecoveryIvl));
-        set => _socket.SetOption(SocketOptions.RecoveryIvl,
+        get => DecodeDuration(Socket.GetOption(SocketOptions.RecoveryIvl));
+        set => Socket.SetOption(SocketOptions.RecoveryIvl,
             EncodeDuration(value, nameof(value)));
     }
 
     public long MaxMessageSize
     {
-        get => _socket.GetOption(SocketOptions.MaxMsgSize);
-        set => _socket.SetOption(SocketOptions.MaxMsgSize, value);
+        get => Socket.GetOption(SocketOptions.MaxMsgSize);
+        set => Socket.SetOption(SocketOptions.MaxMsgSize, value);
     }
 
     public int SendHighWaterMark
     {
-        get => _socket.GetOption(SocketOptions.SndHwm);
-        set => _socket.SetOption(SocketOptions.SndHwm, value);
+        get => Socket.GetOption(SocketOptions.SndHwm);
+        set => Socket.SetOption(SocketOptions.SndHwm, value);
     }
 
     public int ReceiveHighWaterMark
     {
-        get => _socket.GetOption(SocketOptions.RcvHwm);
-        set => _socket.SetOption(SocketOptions.RcvHwm, value);
+        get => Socket.GetOption(SocketOptions.RcvHwm);
+        set => Socket.SetOption(SocketOptions.RcvHwm, value);
     }
 
-    public int SendBufferSize
+    internal int SendBufferSize
     {
-        get => _socket.GetOption(SocketOptions.SndBuf);
-        set => _socket.SetOption(SocketOptions.SndBuf, value);
+        get => Socket.GetOption(SocketOptions.SndBuf);
+        set => Socket.SetOption(SocketOptions.SndBuf, value);
     }
 
-    public int ReceiveBufferSize
+    internal int ReceiveBufferSize
     {
-        get => _socket.GetOption(SocketOptions.RcvBuf);
-        set => _socket.SetOption(SocketOptions.RcvBuf, value);
+        get => Socket.GetOption(SocketOptions.RcvBuf);
+        set => Socket.SetOption(SocketOptions.RcvBuf, value);
     }
 
     public TimeSpan? Linger
     {
-        get => DecodeDuration(_socket.GetOption(SocketOptions.Linger));
-        set => _socket.SetOption(SocketOptions.Linger,
+        get => DecodeDuration(Socket.GetOption(SocketOptions.Linger));
+        set => Socket.SetOption(SocketOptions.Linger,
             EncodeDuration(value, nameof(value)));
     }
 
     public TimeSpan? ReconnectInterval
     {
-        get => DecodeDuration(_socket.GetOption(SocketOptions.ReconnectIvl));
-        set => _socket.SetOption(SocketOptions.ReconnectIvl,
+        get => DecodeDuration(Socket.GetOption(SocketOptions.ReconnectIvl));
+        set => Socket.SetOption(SocketOptions.ReconnectIvl,
             EncodeDuration(value, nameof(value)));
     }
 
     public TimeSpan? ReconnectIntervalMax
     {
-        get => DecodeDuration(_socket.GetOption(SocketOptions.ReconnectIvlMax));
-        set => _socket.SetOption(SocketOptions.ReconnectIvlMax,
+        get => DecodeDuration(Socket.GetOption(SocketOptions.ReconnectIvlMax));
+        set => Socket.SetOption(SocketOptions.ReconnectIvlMax,
             EncodeDuration(value, nameof(value)));
     }
 
     public int Backlog
     {
-        get => _socket.GetOption(SocketOptions.Backlog);
-        set => _socket.SetOption(SocketOptions.Backlog, value);
+        get => Socket.GetOption(SocketOptions.Backlog);
+        set => Socket.SetOption(SocketOptions.Backlog, value);
     }
 
-    public int MulticastHops
+    internal int MulticastHops
     {
-        get => _socket.GetOption(SocketOptions.MulticastHops);
-        set => _socket.SetOption(SocketOptions.MulticastHops, value);
+        get => Socket.GetOption(SocketOptions.MulticastHops);
+        set => Socket.SetOption(SocketOptions.MulticastHops, value);
     }
 
     public TimeSpan? ReceiveTimeout
     {
-        get => DecodeDuration(_socket.GetOption(SocketOptions.RcvTimeo));
-        set => _socket.SetOption(SocketOptions.RcvTimeo,
+        get => DecodeDuration(Socket.GetOption(SocketOptions.RcvTimeo));
+        set => Socket.SetOption(SocketOptions.RcvTimeo,
             EncodeDuration(value, nameof(value)));
     }
 
     public TimeSpan? SendTimeout
     {
-        get => DecodeDuration(_socket.GetOption(SocketOptions.SndTimeo));
-        set => _socket.SetOption(SocketOptions.SndTimeo,
+        get => DecodeDuration(Socket.GetOption(SocketOptions.SndTimeo));
+        set => Socket.SetOption(SocketOptions.SndTimeo,
             EncodeDuration(value, nameof(value)));
     }
 
     public TimeSpan? ConnectTimeout
     {
-        get => DecodeDuration(_socket.GetOption(SocketOptions.ConnectTimeout));
-        set => _socket.SetOption(SocketOptions.ConnectTimeout,
+        get => DecodeDuration(Socket.GetOption(SocketOptions.ConnectTimeout));
+        set => Socket.SetOption(SocketOptions.ConnectTimeout,
             EncodeDuration(value, nameof(value)));
     }
 
-    public TimeSpan? HandshakeInterval
+    internal TimeSpan? HandshakeInterval
     {
-        get => DecodeDuration(_socket.GetOption(SocketOptions.HandshakeIvl));
-        set => _socket.SetOption(SocketOptions.HandshakeIvl,
+        get => DecodeDuration(Socket.GetOption(SocketOptions.HandshakeIvl));
+        set => Socket.SetOption(SocketOptions.HandshakeIvl,
             EncodeDuration(value, nameof(value)));
     }
 
     public int TcpKeepAlive
     {
-        get => _socket.GetOption(SocketOptions.TcpKeepalive);
-        set => _socket.SetOption(SocketOptions.TcpKeepalive, value);
+        get => Socket.GetOption(SocketOptions.TcpKeepalive);
+        set => Socket.SetOption(SocketOptions.TcpKeepalive, value);
     }
 
-    public int TcpKeepAliveCount
+    internal int TcpKeepAliveCount
     {
-        get => _socket.GetOption(SocketOptions.TcpKeepaliveCnt);
-        set => _socket.SetOption(SocketOptions.TcpKeepaliveCnt, value);
+        get => Socket.GetOption(SocketOptions.TcpKeepaliveCnt);
+        set => Socket.SetOption(SocketOptions.TcpKeepaliveCnt, value);
     }
 
-    public int TcpKeepAliveIdleSeconds
+    internal int TcpKeepAliveIdleSeconds
     {
-        get => _socket.GetOption(SocketOptions.TcpKeepaliveIdle);
-        set => _socket.SetOption(SocketOptions.TcpKeepaliveIdle, value);
+        get => Socket.GetOption(SocketOptions.TcpKeepaliveIdle);
+        set => Socket.SetOption(SocketOptions.TcpKeepaliveIdle, value);
     }
 
-    public int TcpKeepAliveIntervalSeconds
+    internal int TcpKeepAliveIntervalSeconds
     {
-        get => _socket.GetOption(SocketOptions.TcpKeepaliveIntvl);
-        set => _socket.SetOption(SocketOptions.TcpKeepaliveIntvl, value);
+        get => Socket.GetOption(SocketOptions.TcpKeepaliveIntvl);
+        set => Socket.SetOption(SocketOptions.TcpKeepaliveIntvl, value);
     }
 
-    public int TcpMaxRetransmitTimeout
+    internal int TcpMaxRetransmitTimeout
     {
-        get => _socket.GetOption(SocketOptions.TcpMaxRt);
-        set => _socket.SetOption(SocketOptions.TcpMaxRt, value);
+        get => Socket.GetOption(SocketOptions.TcpMaxRt);
+        set => Socket.SetOption(SocketOptions.TcpMaxRt, value);
     }
 
     public TimeSpan? HeartbeatInterval
     {
-        get => DecodeDuration(_socket.GetOption(SocketOptions.HeartbeatIvl));
-        set => _socket.SetOption(SocketOptions.HeartbeatIvl,
+        get => DecodeDuration(Socket.GetOption(SocketOptions.HeartbeatIvl));
+        set => Socket.SetOption(SocketOptions.HeartbeatIvl,
             EncodeDuration(value, nameof(value)));
     }
 
     public TimeSpan? HeartbeatTtl
     {
-        get => DecodeDuration(_socket.GetOption(SocketOptions.HeartbeatTtl));
-        set => _socket.SetOption(SocketOptions.HeartbeatTtl,
+        get => DecodeDuration(Socket.GetOption(SocketOptions.HeartbeatTtl));
+        set => Socket.SetOption(SocketOptions.HeartbeatTtl,
             EncodeDuration(value, nameof(value)));
     }
 
     public TimeSpan? HeartbeatTimeout
     {
-        get => DecodeDuration(_socket.GetOption(SocketOptions.HeartbeatTimeout));
-        set => _socket.SetOption(SocketOptions.HeartbeatTimeout,
+        get => DecodeDuration(Socket.GetOption(SocketOptions.HeartbeatTimeout));
+        set => Socket.SetOption(SocketOptions.HeartbeatTimeout,
             EncodeDuration(value, nameof(value)));
     }
 
     public bool IPv6
     {
-        get => _socket.GetOption(SocketOptions.Ipv6) != 0;
-        set => _socket.SetOption(SocketOptions.Ipv6, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.Ipv6) != 0;
+        set => Socket.SetOption(SocketOptions.Ipv6, value ? 1 : 0);
     }
 
     public bool TcpNoDelay
     {
-        get => _socket.GetOption(SocketOptions.TcpNoDelay) != 0;
-        set => _socket.SetOption(SocketOptions.TcpNoDelay, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.TcpNoDelay) != 0;
+        set => Socket.SetOption(SocketOptions.TcpNoDelay, value ? 1 : 0);
     }
 
-    public int TypeOfService
+    internal int TypeOfService
     {
-        get => _socket.GetOption(SocketOptions.Tos);
-        set => _socket.SetOption(SocketOptions.Tos, value);
+        get => Socket.GetOption(SocketOptions.Tos);
+        set => Socket.SetOption(SocketOptions.Tos, value);
     }
 
-    public int MulticastMaxTransportDataUnit
+    internal int MulticastMaxTransportDataUnit
     {
-        get => _socket.GetOption(SocketOptions.MulticastMaxTpdu);
-        set => _socket.SetOption(SocketOptions.MulticastMaxTpdu, value);
+        get => Socket.GetOption(SocketOptions.MulticastMaxTpdu);
+        set => Socket.SetOption(SocketOptions.MulticastMaxTpdu, value);
     }
 
-    public string BindToDevice
+    internal string BindToDevice
     {
-        get => _socket.GetOption(SocketOptions.BindToDevice);
-        set => _socket.SetOption(SocketOptions.BindToDevice, value);
+        get => Socket.GetOption(SocketOptions.BindToDevice);
+        set => Socket.SetOption(SocketOptions.BindToDevice, value);
     }
 
     public bool Immediate
     {
-        get => _socket.GetOption(SocketOptions.Immediate) != 0;
-        set => _socket.SetOption(SocketOptions.Immediate, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.Immediate) != 0;
+        set => Socket.SetOption(SocketOptions.Immediate, value ? 1 : 0);
     }
 
-    public bool Conflate
+    internal bool Conflate
     {
-        get => _socket.GetOption(SocketOptions.Conflate) != 0;
-        set => _socket.SetOption(SocketOptions.Conflate, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.Conflate) != 0;
+        set => Socket.SetOption(SocketOptions.Conflate, value ? 1 : 0);
     }
 
-    public bool Blocky
+    internal bool Blocky
     {
-        get => _socket.GetOption(SocketOptions.Blocky) != 0;
-        set => _socket.SetOption(SocketOptions.Blocky, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.Blocky) != 0;
+        set => Socket.SetOption(SocketOptions.Blocky, value ? 1 : 0);
     }
 
-    public bool InvertMatching
+    internal bool InvertMatching
     {
-        get => _socket.GetOption(SocketOptions.InvertMatching) != 0;
-        set => _socket.SetOption(SocketOptions.InvertMatching, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.InvertMatching) != 0;
+        set => Socket.SetOption(SocketOptions.InvertMatching, value ? 1 : 0);
     }
 
-    public bool ZmpMetadata
+    internal bool ZmpMetadata
     {
-        get => _socket.GetOption(SocketOptions.ZmpMetadata) != 0;
-        set => _socket.SetOption(SocketOptions.ZmpMetadata, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.ZmpMetadata) != 0;
+        set => Socket.SetOption(SocketOptions.ZmpMetadata, value ? 1 : 0);
     }
 
-    public string TlsCertificatePath
+    internal string TlsCertificatePath
     {
-        get => _socket.GetOption(SocketOptions.TlsCert);
-        set => _socket.SetOption(SocketOptions.TlsCert, value);
+        get => Socket.GetOption(SocketOptions.TlsCert);
+        set => Socket.SetOption(SocketOptions.TlsCert, value);
     }
 
-    public string TlsKeyPath
+    internal string TlsKeyPath
     {
-        get => _socket.GetOption(SocketOptions.TlsKey);
-        set => _socket.SetOption(SocketOptions.TlsKey, value);
+        get => Socket.GetOption(SocketOptions.TlsKey);
+        set => Socket.SetOption(SocketOptions.TlsKey, value);
     }
 
-    public string TlsCaCertificatePath
+    internal string TlsCaCertificatePath
     {
-        get => _socket.GetOption(SocketOptions.TlsCa);
-        set => _socket.SetOption(SocketOptions.TlsCa, value);
+        get => Socket.GetOption(SocketOptions.TlsCa);
+        set => Socket.SetOption(SocketOptions.TlsCa, value);
     }
 
-    public bool TlsVerify
+    internal bool TlsVerify
     {
-        get => _socket.GetOption(SocketOptions.TlsVerify) != 0;
-        set => _socket.SetOption(SocketOptions.TlsVerify, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.TlsVerify) != 0;
+        set => Socket.SetOption(SocketOptions.TlsVerify, value ? 1 : 0);
     }
 
-    public bool TlsRequireClientCertificate
+    internal bool TlsRequireClientCertificate
     {
-        get => _socket.GetOption(SocketOptions.TlsRequireClientCert) != 0;
-        set => _socket.SetOption(SocketOptions.TlsRequireClientCert,
+        get => Socket.GetOption(SocketOptions.TlsRequireClientCert) != 0;
+        set => Socket.SetOption(SocketOptions.TlsRequireClientCert,
             value ? 1 : 0);
     }
 
-    public string TlsHostname
+    internal string TlsHostname
     {
-        get => _socket.GetOption(SocketOptions.TlsHostname);
-        set => _socket.SetOption(SocketOptions.TlsHostname, value);
+        get => Socket.GetOption(SocketOptions.TlsHostname);
+        set => Socket.SetOption(SocketOptions.TlsHostname, value);
     }
 
-    public bool TlsTrustSystem
+    internal bool TlsTrustSystem
     {
-        get => _socket.GetOption(SocketOptions.TlsTrustSystem) != 0;
-        set => _socket.SetOption(SocketOptions.TlsTrustSystem, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.TlsTrustSystem) != 0;
+        set => Socket.SetOption(SocketOptions.TlsTrustSystem, value ? 1 : 0);
     }
 
-    public string TlsPassword
+    internal string TlsPassword
     {
-        get => _socket.GetOption(SocketOptions.TlsPassword);
-        set => _socket.SetOption(SocketOptions.TlsPassword, value);
+        get => Socket.GetOption(SocketOptions.TlsPassword);
+        set => Socket.SetOption(SocketOptions.TlsPassword, value);
     }
 
     public RidDuplicatePolicy RoutingIdDuplicatePolicy
     {
-        get => (RidDuplicatePolicy)_socket.GetOption(
+        get => (RidDuplicatePolicy)Socket.GetOption(
             SocketOptions.RidDuplicatePolicy);
-        set => _socket.SetOption(SocketOptions.RidDuplicatePolicy, (int)value);
+        set => Socket.SetOption(SocketOptions.RidDuplicatePolicy, (int)value);
     }
 
     public int AutoHwmMessageUnitBytes
     {
-        get => _socket.GetOption(SocketOptions.AutoHwmMsgUnitBytes);
-        set => _socket.SetOption(SocketOptions.AutoHwmMsgUnitBytes, value);
+        get => Socket.GetOption(SocketOptions.AutoHwmMsgUnitBytes);
+        set => Socket.SetOption(SocketOptions.AutoHwmMsgUnitBytes, value);
     }
 
-    public string LastEndpoint => _socket.GetOption(SocketOptions.LastEndpoint);
+    public string LastEndpoint => Socket.GetOption(SocketOptions.LastEndpoint);
 
-    public int FileDescriptor => _socket.GetOption(SocketOptions.Fd);
+    internal int FileDescriptor => Socket.GetOption(SocketOptions.Fd);
 
-    public SocketType SocketType => _socket.Kernel.Type;
+    internal SocketType SocketType => Socket.Kernel.Type;
 
-    public PollEvents Events => (PollEvents)_socket.GetOption(SocketOptions.Events);
+    internal PollEventFlags Events => (PollEventFlags)Socket.GetOption(SocketOptions.Events);
 
     internal static TimeSpan? DecodeDuration(int millis)
     {
@@ -323,251 +323,194 @@ public sealed class CommonSocketOptions
 
         return (int)Math.Ceiling(millis);
     }
+
+    internal static int EncodePeerWeight(int value, string paramName)
+    {
+        if (value < 0 || value > 100)
+            throw new ArgumentOutOfRangeException(paramName);
+        return value;
+    }
 }
 
-public sealed class DealerSocketOptions
+public sealed class DealerSocketOptions : CommonSocketOptions
 {
-    private readonly DealerSocket _socket;
-
     internal DealerSocketOptions(DealerSocket socket)
+        : base(socket)
     {
-        _socket = socket;
     }
 
-    public RoutingId RoutingId
+    internal RoutingId RoutingId
     {
-        get => RoutingId.FromBytes(_socket.GetOption(SocketOptions.RoutingId));
-        set => _socket.SetOption(SocketOptions.RoutingId, value.ToBytes());
+        get => RoutingId.FromBytes(Socket.GetOption(SocketOptions.RoutingId));
+        set => Socket.SetOption(SocketOptions.RoutingId, value.ToBytes());
     }
 
-    public bool ProbeRouter
+    public bool Probe
     {
-        get => _socket.GetOption(SocketOptions.ProbeRouter) != 0;
-        set => _socket.SetOption(SocketOptions.ProbeRouter, value ? 1 : 0);
+        set => Socket.SetOption(SocketOptions.ProbeRouter, value ? 1 : 0);
     }
 
     public TimeSpan? RequestTimeout
     {
-        set => _socket.SetOption(SocketOptions.DealerRequestTimeout,
+        set => Socket.SetOption(SocketOptions.DealerRequestTimeout,
             CommonSocketOptions.EncodeDuration(value, nameof(value)));
     }
 
-    public int Weight
+    public int PeerWeight
     {
-        set => _socket.SetOption(SocketOptions.DealerWeight, value);
+        set => Socket.SetOption(SocketOptions.DealerWeight,
+            CommonSocketOptions.EncodePeerWeight(value, nameof(value)));
     }
 }
 
-public sealed class RouterSocketOptions
+public sealed class RouterSocketOptions : CommonSocketOptions
 {
-    private readonly RouterSocket _socket;
-
     internal RouterSocketOptions(RouterSocket socket)
+        : base(socket)
     {
-        _socket = socket;
     }
 
-    public RoutingId RoutingId
+    internal RoutingId RoutingId
     {
-        get => RoutingId.FromBytes(_socket.GetOption(SocketOptions.RoutingId));
-        set => _socket.SetOption(SocketOptions.RoutingId, value.ToBytes());
+        get => RoutingId.FromBytes(Socket.GetOption(SocketOptions.RoutingId));
+        set => Socket.SetOption(SocketOptions.RoutingId, value.ToBytes());
     }
 
     public bool Mandatory
     {
-        get => _socket.GetOption(SocketOptions.RouterMandatory) != 0;
-        set => _socket.SetOption(SocketOptions.RouterMandatory, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.RouterMandatory) != 0;
+        set => Socket.SetOption(SocketOptions.RouterMandatory, value ? 1 : 0);
     }
 
     public bool Handover
     {
-        get => _socket.Options.RoutingIdDuplicatePolicy
+        get => Socket.Options.RoutingIdDuplicatePolicy
             == RidDuplicatePolicy.Handover;
-        set => _socket.Options.RoutingIdDuplicatePolicy = value
+        set => Socket.Options.RoutingIdDuplicatePolicy = value
             ? RidDuplicatePolicy.Handover
             : RidDuplicatePolicy.Reject;
     }
 
     public bool Probe
     {
-        get => _socket.GetOption(SocketOptions.ProbeRouter) != 0;
-        set => _socket.SetOption(SocketOptions.ProbeRouter, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.ProbeRouter) != 0;
+        set => Socket.SetOption(SocketOptions.ProbeRouter, value ? 1 : 0);
     }
 
-    public RoutingId ConnectRoutingId
+    public RoutingId? ConnectRoutingId
     {
-        get => RoutingId.FromBytes(_socket.GetOption(SocketOptions.ConnectRoutingId));
-        set => _socket.SetOption(SocketOptions.ConnectRoutingId, value.ToBytes());
+        get
+        {
+            byte[] bytes = Socket.GetOption(SocketOptions.ConnectRoutingId);
+            return bytes.Length == 0 ? null : RoutingId.FromBytes(bytes);
+        }
+    }
+
+    public void SetConnectRoutingId(RoutingId routingId)
+    {
+        Socket.SetOption(SocketOptions.ConnectRoutingId, routingId.ToBytes());
     }
 
     public TimeSpan? RequestTimeout
     {
         get => CommonSocketOptions.DecodeDuration(
-            _socket.GetOption(SocketOptions.RouterRequestTimeout));
-        set => _socket.SetOption(SocketOptions.RouterRequestTimeout,
+            Socket.GetOption(SocketOptions.RouterRequestTimeout));
+        set => Socket.SetOption(SocketOptions.RouterRequestTimeout,
             CommonSocketOptions.EncodeDuration(value, nameof(value)));
     }
 
-    public int Weight
+    public int PeerWeight
     {
-        get => _socket.GetOption(SocketOptions.RouterWeight);
-        set => _socket.SetOption(SocketOptions.RouterWeight, value);
+        get => Socket.GetOption(SocketOptions.RouterWeight);
+        set => Socket.SetOption(SocketOptions.RouterWeight,
+            CommonSocketOptions.EncodePeerWeight(value, nameof(value)));
     }
 }
 
-public sealed class StreamSocketOptions
+public sealed class StreamSocketOptions : CommonSocketOptions
 {
-    private readonly StreamSocket _socket;
-
     internal StreamSocketOptions(StreamSocket socket)
+        : base(socket)
     {
-        _socket = socket;
     }
 
     public bool Notify
     {
-        get => _socket.GetOption(SocketOptions.StreamNotify) != 0;
-        set => _socket.SetOption(SocketOptions.StreamNotify, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.StreamNotify) != 0;
+        set => Socket.SetOption(SocketOptions.StreamNotify, value ? 1 : 0);
     }
 
-    public RoutingId ConnectRoutingId
-    {
-        get => RoutingId.FromBytes(_socket.GetOption(SocketOptions.ConnectRoutingId));
-        set => _socket.SetOption(SocketOptions.ConnectRoutingId, value.ToBytes());
-    }
 }
 
-public sealed class XPubSocketOptions
+public sealed class PubSocketOptions : CommonSocketOptions
 {
-    private readonly XPubSocket _socket;
-
-    internal XPubSocketOptions(XPubSocket socket)
+    internal PubSocketOptions(SocketBase socket)
+        : base(socket)
     {
-        _socket = socket;
     }
 
     public bool Verbose
     {
-        get => _socket.GetOption(SocketOptions.XPubVerbose) != 0;
-        set => _socket.SetOption(SocketOptions.XPubVerbose, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.XPubVerbose) != 0;
+        set => Socket.SetOption(SocketOptions.XPubVerbose, value ? 1 : 0);
     }
 
     public bool Verboser
     {
-        get => _socket.GetOption(SocketOptions.XPubVerboser) != 0;
-        set => _socket.SetOption(SocketOptions.XPubVerboser, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.XPubVerboser) != 0;
+        set => Socket.SetOption(SocketOptions.XPubVerboser, value ? 1 : 0);
     }
 
     public bool Manual
     {
-        get => _socket.GetOption(SocketOptions.XPubManual) != 0;
-        set => _socket.SetOption(SocketOptions.XPubManual, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.XPubManual) != 0;
+        set => Socket.SetOption(SocketOptions.XPubManual, value ? 1 : 0);
     }
 
     public bool ManualLastValue
     {
-        get => _socket.GetOption(SocketOptions.XPubManualLastValue) != 0;
-        set => _socket.SetOption(SocketOptions.XPubManualLastValue,
+        get => Socket.GetOption(SocketOptions.XPubManualLastValue) != 0;
+        set => Socket.SetOption(SocketOptions.XPubManualLastValue,
             value ? 1 : 0);
     }
 
     public bool NoDrop
     {
-        get => _socket.GetOption(SocketOptions.XPubNoDrop) != 0;
-        set => _socket.SetOption(SocketOptions.XPubNoDrop, value ? 1 : 0);
+        get => Socket.GetOption(SocketOptions.XPubNoDrop) != 0;
+        set => Socket.SetOption(SocketOptions.XPubNoDrop, value ? 1 : 0);
     }
 
-    public string WelcomeMessage
+    public Message WelcomeMessage
     {
-        get => _socket.GetOption(SocketOptions.XPubWelcomeMsg);
-        set => _socket.SetOption(SocketOptions.XPubWelcomeMsg, value);
+        get => Message.FromString(Socket.GetOption(SocketOptions.XPubWelcomeMsg));
+        set => Socket.SetOption(SocketOptions.XPubWelcomeMsg,
+            value?.GetString() ?? throw new ArgumentNullException(nameof(value)));
     }
 
-    public int TopicsCount => _socket.GetOption(SocketOptions.TopicsCount);
+    public int TopicsCount => Socket.GetOption(SocketOptions.TopicsCount);
 
-    public void ApproveSubscribe(string topicOrPattern)
+    public void ApproveSubscribe(RoutingId routingId)
     {
-        _socket.SetOption(SocketOptions.XPubApproveSubscribe, topicOrPattern);
+        Socket.SetOption(SocketOptions.XPubApproveSubscribe, routingId.ToHex());
     }
 
-    public void RejectSubscribe(string topicOrPattern)
+    public void RejectSubscribe(RoutingId routingId)
     {
-        _socket.SetOption(SocketOptions.XPubRejectSubscribe, topicOrPattern);
+        Socket.SetOption(SocketOptions.XPubRejectSubscribe, routingId.ToHex());
     }
 }
 
-public sealed class PubSocketOptions
+public sealed class SubSocketOptions : CommonSocketOptions
 {
-    private readonly PubSocket _socket;
-
-    internal PubSocketOptions(PubSocket socket)
-    {
-        _socket = socket;
-    }
-
-    public bool Verbose
-    {
-        get => _socket.GetOption(SocketOptions.XPubVerbose) != 0;
-        set => _socket.SetOption(SocketOptions.XPubVerbose, value ? 1 : 0);
-    }
-
-    public bool Verboser
-    {
-        get => _socket.GetOption(SocketOptions.XPubVerboser) != 0;
-        set => _socket.SetOption(SocketOptions.XPubVerboser, value ? 1 : 0);
-    }
-
-    public bool Manual
-    {
-        get => _socket.GetOption(SocketOptions.XPubManual) != 0;
-        set => _socket.SetOption(SocketOptions.XPubManual, value ? 1 : 0);
-    }
-
-    public bool ManualLastValue
-    {
-        get => _socket.GetOption(SocketOptions.XPubManualLastValue) != 0;
-        set => _socket.SetOption(SocketOptions.XPubManualLastValue,
-            value ? 1 : 0);
-    }
-
-    public bool NoDrop
-    {
-        get => _socket.GetOption(SocketOptions.XPubNoDrop) != 0;
-        set => _socket.SetOption(SocketOptions.XPubNoDrop, value ? 1 : 0);
-    }
-
-    public string WelcomeMessage
-    {
-        get => _socket.GetOption(SocketOptions.XPubWelcomeMsg);
-        set => _socket.SetOption(SocketOptions.XPubWelcomeMsg, value);
-    }
-
-    public int TopicsCount => _socket.GetOption(SocketOptions.TopicsCount);
-
-    public void ApproveSubscribe(string topicOrPattern)
-    {
-        _socket.SetOption(SocketOptions.XPubApproveSubscribe, topicOrPattern);
-    }
-
-    public void RejectSubscribe(string topicOrPattern)
-    {
-        _socket.SetOption(SocketOptions.XPubRejectSubscribe, topicOrPattern);
-    }
-}
-
-public sealed class SubSocketOptions
-{
-    private readonly SocketBase _socket;
-
     internal SubSocketOptions(SocketBase socket)
+        : base(socket)
     {
-        _socket = socket;
     }
 
-    public int TopicsCount => _socket.GetOption(SocketOptions.SubTopicsCount);
+    public int TopicsCount => Socket.GetOption(SocketOptions.SubTopicsCount);
 }
 
-public sealed class SpotNodePublisherOptions
+internal sealed class SpotNodePublisherOptions
 {
     private readonly SpotNode _node;
 
@@ -606,7 +549,7 @@ public sealed class SpotNodePublisherOptions
     }
 }
 
-public sealed class SpotNodeSubscriberOptions
+internal sealed class SpotNodeSubscriberOptions
 {
     private readonly SpotNode _node;
 

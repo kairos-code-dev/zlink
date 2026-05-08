@@ -4,12 +4,12 @@ namespace Systems.Zlink;
 
 public sealed class XPubSocket : PublisherSocketBase
 {
-    public XPubSocketOptions XPubOptions { get; }
+    public new PubSocketOptions Options { get; }
 
     public XPubSocket(Context context)
         : base(context, SocketType.XPub)
     {
-        XPubOptions = new XPubSocketOptions(this);
+        Options = new PubSocketOptions(this);
     }
 
     public SubscriptionEvent? ReceiveSubscriptionEvent(

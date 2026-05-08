@@ -71,14 +71,14 @@ public readonly struct RoutingId : IEquatable<RoutingId>
 
     public int Size => _bytes?.Length ?? 0;
 
-    public bool IsEmpty => Size == 0;
+    internal bool IsEmpty => Size == 0;
 
     public ReadOnlySpan<byte> ToBytes()
     {
         return _bytes ?? ReadOnlySpan<byte>.Empty;
     }
 
-    public byte[] ToByteArray()
+    internal byte[] ToByteArray()
     {
         return _bytes?.ToArray() ?? Array.Empty<byte>();
     }
@@ -90,7 +90,7 @@ public readonly struct RoutingId : IEquatable<RoutingId>
 
     public override string ToString()
     {
-        return Encoding.UTF8.GetString(ToBytes());
+        return ToHex();
     }
 
     public bool Equals(RoutingId other)

@@ -147,7 +147,7 @@ internal static class PerfDealerRouter
 
         using var poller = new Poller();
         var events = new PollEvent[1];
-        poller.Add(receiver, PollEvents.PollIn);
+        poller.Add(receiver, PollEventFlags.PollIn);
         long deadlineTicks = DeadlineTicksFromMilliseconds(Math.Max(1000,
             recvTimeoutMs));
         while (Stopwatch.GetTimestamp() < deadlineTicks)
@@ -196,7 +196,7 @@ internal static class PerfDealerRouter
             using var poller = new Poller();
             var events = new PollEvent[1];
             long lastRecvTicks = Stopwatch.GetTimestamp();
-            poller.Add(receiver, PollEvents.PollIn);
+            poller.Add(receiver, PollEventFlags.PollIn);
 
             try
             {

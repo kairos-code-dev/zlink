@@ -28,7 +28,7 @@ public abstract class SubscriberSocketBase : ConnectableSocketBase
         Kernel.UnsetSubscription(topicOrPattern);
     }
 
-    public SubscriptionInfo SubscriptionAt(int index)
+    public SubscriptionEntry? SubscriptionAt(int index)
     {
         return SubscriptionIntrospection.At(Handle, index);
     }

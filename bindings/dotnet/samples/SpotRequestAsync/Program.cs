@@ -28,10 +28,10 @@ Task responderTask = Task.Run(() =>
 });
 
 using var request = Message.FromString("spot-ping");
-var replyParts = await requester.RequestChannelAsync(
-    channelName,
-    request,
-    TimeSpan.FromSeconds(2));
+var replyParts = await requester.RequestChannel(channelName)
+    .Message(request)
+    .Timeout(TimeSpan.FromSeconds(2))
+    .SubmitAsync();
 using Message replyPart = replyParts[0];
 SampleSupport.EnsureEqual("spot-pong", replyPart.GetString(), "reply");
 for (int i = 1; i < replyParts.Count; i++)

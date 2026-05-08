@@ -110,16 +110,15 @@ public sealed class test_pair_tcp
         Thread.Sleep(50);
 
         var poller = new Poller();
-        poller.Add(receiver, PollEvents.PollIn);
+        poller.Add(receiver, PollEventFlags.PollIn);
 
         CoreTestSupport.SendWithRetry(sender, "x"u8, 2000);
 
-        PollEvent[] events = new PollEvent[4];
-        int written = poller.Wait(events, 2000, out int totalReady);
-        Assert.True(totalReady >= 1);
-        Assert.True(written >= 1);
+        IReadOnlyList<PollEvent> events = poller.WaitAll(4,
+            TimeSpan.FromMilliseconds(2000));
+        Assert.NotEmpty(events);
         Assert.NotNull(events[0].Socket);
-        Assert.NotEqual(PollEvents.None, events[0].Revents & PollEvents.PollIn);
+        Assert.NotEqual(PollEventFlags.None, events[0].Revents & PollEventFlags.PollIn);
     }
 
     [Fact]
@@ -137,15 +136,13 @@ public sealed class test_pair_tcp
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        poller.Add(receiver, PollEvents.PollIn);
-        Assert.Equal(1, poller.Count);
+        poller.Add(receiver, PollEventFlags.PollIn);
+        Assert.Equal(1, poller.Size);
 
         poller.Clear();
 
-        Assert.Equal(0, poller.Count);
-        var events = new List<PollEvent>();
-        Assert.Equal(0, poller.Wait(events, 0));
-        Assert.Empty(events);
+        Assert.Equal(0, poller.Size);
+        Assert.Equal(0, poller.WaitAll(1, TimeSpan.Zero).Count);
     }
 
     [Fact]
@@ -164,21 +161,21 @@ public sealed class test_pair_tcp
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        poller.Add(receiver, PollEvents.PollIn);
-        Assert.Equal(1, poller.Count);
+        poller.Add(receiver, PollEventFlags.PollIn);
+        Assert.Equal(1, poller.Size);
 
         CoreTestSupport.SendWithRetry(sender, "ping"u8, 2000);
 
-        var events = new List<PollEvent>();
-        Assert.Equal(1, poller.Wait(events, 2000));
+        IReadOnlyList<PollEvent> events = poller.WaitAll(1,
+            TimeSpan.FromMilliseconds(2000));
+        Assert.Equal(1, events.Count);
         Assert.NotEmpty(events);
-        Assert.NotEqual(PollEvents.None, events[0].Revents & PollEvents.PollIn);
+        Assert.NotEqual(PollEventFlags.None, events[0].Revents & PollEventFlags.PollIn);
 
         Assert.Equal("ping", CoreTestSupport.ReceiveUtf8WithTimeout(receiver,
             2000));
 
-        events.Clear();
-        poller.Modify(receiver, PollEvents.PollOut);
+        poller.Modify(receiver, PollEventFlags.PollOut);
 
         CoreTestSupport.SendWithRetry(sender, "pong"u8, 2000);
 
@@ -186,14 +183,15 @@ public sealed class test_pair_tcp
         // After switching the registration away from POLLIN, the queued receive
         // message must no longer surface as a poll-ready event until POLLIN is
         // registered again.
-        Assert.Equal(0, poller.Wait(events, 100));
+        events = poller.WaitAll(1, TimeSpan.FromMilliseconds(100));
         Assert.Empty(events);
 
-        poller.Modify(receiver, PollEvents.PollIn);
-        Assert.Equal(1, poller.Wait(events, 2000));
+        poller.Modify(receiver, PollEventFlags.PollIn);
+        events = poller.WaitAll(1, TimeSpan.FromMilliseconds(2000));
+        Assert.Equal(1, events.Count);
         Assert.NotEmpty(events);
-        Assert.NotEqual(PollEvents.None, events[0].Revents & PollEvents.PollIn);
-        Assert.Equal(PollEvents.None, events[0].Revents & PollEvents.PollOut);
+        Assert.NotEqual(PollEventFlags.None, events[0].Revents & PollEventFlags.PollIn);
+        Assert.Equal(PollEventFlags.None, events[0].Revents & PollEventFlags.PollOut);
         Assert.Equal("pong", CoreTestSupport.ReceiveUtf8WithTimeout(receiver,
             2000));
     }
@@ -214,16 +212,17 @@ public sealed class test_pair_tcp
         Thread.Sleep(50);
 
         int fd = receiver.GetOption(SocketOptions.Fd);
-        poller.AddFd(fd, PollEvents.PollIn);
+        poller.AddFd(fd, PollEventFlags.PollIn);
 
         CoreTestSupport.SendWithRetry(sender, "fd"u8, 2000);
 
-        var events = new List<PollEvent>();
-        Assert.Equal(1, poller.Wait(events, 2000));
+        IReadOnlyList<PollEvent> events = poller.WaitAll(1,
+            TimeSpan.FromMilliseconds(2000));
+        Assert.Equal(1, events.Count);
         Assert.NotEmpty(events);
         Assert.Equal(fd, events[0].Fd);
         Assert.Null(events[0].Socket);
-        Assert.NotEqual(PollEvents.None, events[0].Revents & PollEvents.PollIn);
+        Assert.NotEqual(PollEventFlags.None, events[0].Revents & PollEventFlags.PollIn);
 
         Assert.Equal("fd", CoreTestSupport.ReceiveUtf8WithTimeout(receiver, 2000));
     }
@@ -288,7 +287,7 @@ public sealed class test_pair_tcp
         Thread.Sleep(50);
 
         MonitorSnapshot snapshot = monitor.Snapshot();
-        Assert.Equal<SourceKind>(SourceKind.Socket, snapshot.SourceKind);
+        Assert.Equal<MonitorSourceKind>(MonitorSourceKind.Socket, snapshot.SourceKind);
         Assert.True(snapshot.SndPendingMsgs >= 0);
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
@@ -370,12 +369,12 @@ public sealed class test_pair_tcp
 
         using var ctx = new Context();
         using var router = new RouterSocket(ctx);
-        router.RouterOptions.Mandatory = true;
+        router.Options.Mandatory = true;
 
         using Message message = Message.FromString("no-route");
         var ex = Assert.Throws<ZlinkSubmitException>(() =>
-            router.Send("UNKNOWN", message, SendFlags.DontWait));
-        Assert.Equal(SubmitResult.NotConnected, ex.Result);
+            router.Send(RoutingId.FromBytes("UNKNOWN"u8), message, SendFlags.DontWait));
+        Assert.Equal(ZlinkSubmitException.ErrorCode.NotConnected, ex.Result);
     }
 
     [Fact]
@@ -386,11 +385,11 @@ public sealed class test_pair_tcp
 
         using var ctx = new Context();
         using var router = new RouterSocket(ctx);
-        router.RouterOptions.Mandatory = true;
+        router.Options.Mandatory = true;
 
         using Message message = Message.FromString("no-route");
         var ex = Assert.Throws<ZlinkSubmitException>(() =>
-            router.Send("UNKNOWN", message, SendFlags.DontWait));
-        Assert.Equal(SubmitResult.NotConnected, ex.Result);
+            router.Send(RoutingId.FromBytes("UNKNOWN"u8), message, SendFlags.DontWait));
+        Assert.Equal(ZlinkSubmitException.ErrorCode.NotConnected, ex.Result);
     }
 }

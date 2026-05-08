@@ -28,10 +28,10 @@ public readonly struct ActorRef : IEquatable<ActorRef>
     public ulong Generation { get; }
     public bool IsUnchecked => Generation == 0;
 
-    public static ActorRef Unchecked(RoutingId nodeRid, string actorId)
+    internal static ActorRef Unchecked(RoutingId nodeRid, string actorId)
         => new(nodeRid, actorId, 0);
 
-    public static ActorRef Remote(RoutingId targetNodeRid, string actorId)
+    internal static ActorRef Remote(RoutingId targetNodeRid, string actorId)
     {
         ZlinkRoutingId nodeRid = NativeHelpers.WriteRoutingId(
             targetNodeRid.ToByteArray());
@@ -65,12 +65,12 @@ public sealed record ActorCreateResult(ActorCreateStatus Status,
 public sealed record ActorRoute(ActorRef Actor, bool Joined,
     RoutingId? JoinedSpotRid);
 
-public sealed record ActorRecvInfo(ActorRef Actor, RoutingId? SourceNodeRid,
-    RoutingId? SourceSessionRid, uint Flags);
+public sealed record ActorRecvInfo(ActorRef Actor, RoutingId SourceNodeRid,
+    RoutingId SourceSessionRid, uint Flags);
 
 public sealed record ActorJoinInfo(ActorRef SourceActor, ActorRef TargetActor,
-    RoutingId? SourceNodeRid, RoutingId? SourceSpotRid,
-    RoutingId? TargetNodeRid, RoutingId? TargetSpotRid, ulong JoinEpoch,
+    RoutingId SourceNodeRid, RoutingId SourceSpotRid,
+    RoutingId TargetNodeRid, RoutingId TargetSpotRid, ulong JoinEpoch,
     uint Flags)
 {
     internal ZlinkActorJoinInfo NativeInfo { get; init; }
@@ -79,7 +79,17 @@ public sealed record ActorJoinInfo(ActorRef SourceActor, ActorRef TargetActor,
 public sealed record ActorPart(ActorRecvInfo Info, Message Message,
     bool More);
 
-public sealed record ActorJoinRequest(ActorJoinInfo Info, Message Message);
+public sealed class ActorJoinRequest
+{
+    internal ActorJoinRequest(ActorJoinInfo info, Message message)
+    {
+        Info = info;
+        Message = message;
+    }
+
+    public ActorJoinInfo Info { get; }
+    public Message Message { get; }
+}
 
 public sealed record SpotNodeSpotEntry(RoutingId? SpotRid,
     bool DispatchHandlerAttached, uint JoinedActorCount,
@@ -103,9 +113,12 @@ public sealed class Actor : IDisposable, IAsyncDisposable
 
     public ActorRef Ref { get { EnsureNotDisposed(); return _ref; } }
 
-    public Task<IReadOnlyList<Message>> JoinAsync(Spot spot, Message message,
-        TimeSpan timeout = default, SendFlags flags = SendFlags.None,
-        CancellationToken ct = default)
+    public Task<IReadOnlyList<Message>> Join(Spot spot, Message message,
+        TimeSpan timeout = default, CancellationToken ct = default)
+        => Join(spot, message, timeout, SendFlags.None, ct);
+
+    internal Task<IReadOnlyList<Message>> Join(Spot spot, Message message,
+        TimeSpan timeout, SendFlags flags, CancellationToken ct = default)
     {
         if (spot == null)
             throw new ArgumentNullException(nameof(spot));
@@ -159,16 +172,16 @@ public sealed class Actor : IDisposable, IAsyncDisposable
     }
 
     public bool Join(Spot spot, Message message,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan? timeout = null, SendFlags flags = SendFlags.None)
+        RequestCallback callback,
+        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
     {
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         try
         {
             ActorInterop.AttachPartsCallback(
-                () => JoinAsync(spot, message, timeout ?? TimeSpan.Zero, flags),
-                callback);
+                () => Join(spot, message, timeout ?? TimeSpan.Zero, flags),
+                (result, parts) => callback(result, parts));
             return true;
         }
         catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
@@ -179,7 +192,7 @@ public sealed class Actor : IDisposable, IAsyncDisposable
         }
     }
 
-    public void Leave(Spot spot)
+    public void Leave(Spot spot, TimeSpan timeout = default)
     {
         if (spot == null)
             throw new ArgumentNullException(nameof(spot));
@@ -188,7 +201,8 @@ public sealed class Actor : IDisposable, IAsyncDisposable
         ZlinkRoutingId currentSpotRid = NativeHelpers.WriteRoutingId(
             spot.RoutingId.ToByteArray());
         int rc = NativeMethods.zlink_spot_node_actor_leave_spot(_node.Handle,
-            ref nativeActor, ref currentSpotRid, 0);
+            ref nativeActor, ref currentSpotRid,
+            ActorInterop.NormalizeTimeout(timeout));
         if (rc != 0)
             throw ZlinkException.CreateRequestException(NativeMethods.zlink_errno());
     }
@@ -283,7 +297,8 @@ public sealed class Actor : IDisposable, IAsyncDisposable
             return;
         }
         if (throwOnError)
-            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
+            throw ZlinkException.CreateRequestException(
+                NativeMethods.zlink_errno());
     }
 }
 
@@ -332,8 +347,10 @@ internal static class ActorInterop
     {
         return new ActorRecvInfo(
             FromNative(ref native.Actor),
-            RoutingId.FromNative(ref native.SourceNodeRid),
-            RoutingId.FromNative(ref native.SourceSessionRid),
+            RoutingId.FromNative(ref native.SourceNodeRid)
+                ?? throw new ZlinkRecvException(ZlinkRecvException.ErrorCode.InternalError),
+            RoutingId.FromNative(ref native.SourceSessionRid)
+                ?? throw new ZlinkRecvException(ZlinkRecvException.ErrorCode.InternalError),
             native.Flags);
     }
 
@@ -342,10 +359,14 @@ internal static class ActorInterop
         return new ActorJoinInfo(
             FromNative(ref native.SourceActor),
             FromNative(ref native.TargetActor),
-            RoutingId.FromNative(ref native.SourceNodeRid),
-            RoutingId.FromNative(ref native.SourceSpotRid),
-            RoutingId.FromNative(ref native.TargetNodeRid),
-            RoutingId.FromNative(ref native.TargetSpotRid),
+            RoutingId.FromNative(ref native.SourceNodeRid)
+                ?? throw new ZlinkRecvException(ZlinkRecvException.ErrorCode.InternalError),
+            RoutingId.FromNative(ref native.SourceSpotRid)
+                ?? throw new ZlinkRecvException(ZlinkRecvException.ErrorCode.InternalError),
+            RoutingId.FromNative(ref native.TargetNodeRid)
+                ?? throw new ZlinkRecvException(ZlinkRecvException.ErrorCode.InternalError),
+            RoutingId.FromNative(ref native.TargetSpotRid)
+                ?? throw new ZlinkRecvException(ZlinkRecvException.ErrorCode.InternalError),
             native.JoinEpoch,
             native.Flags)
         {
@@ -361,14 +382,8 @@ internal static class ActorInterop
 
     internal static uint NormalizeTimeout(TimeSpan timeout)
     {
-        if (timeout <= TimeSpan.Zero)
-            return 0;
-        double millis = timeout.TotalMilliseconds;
-        if (millis <= 1)
-            return 1;
-        if (millis >= uint.MaxValue)
-            return uint.MaxValue;
-        return (uint)millis;
+        return BoundaryValidation.EncodeTimeoutMilliseconds(timeout,
+            nameof(timeout));
     }
 
     internal static Message CopyMessageFromPointer(IntPtr message)
@@ -487,7 +502,7 @@ internal static class ActorInterop
                 Exception error = task.Exception?.GetBaseException()
                     ?? new ZlinkRequestException(RequestResult.InternalError);
                 RequestResult result = error is ZlinkRequestException requestError
-                    ? requestError.Result
+                    ? (RequestResult)requestError.Code
                     : RequestResult.InternalError;
                 CallbackDelivery.Post(context, () => callback(result,
                     Array.Empty<Message>()));

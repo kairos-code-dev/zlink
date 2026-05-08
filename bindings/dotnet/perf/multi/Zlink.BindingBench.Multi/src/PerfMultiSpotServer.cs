@@ -20,7 +20,7 @@ internal static class PerfMultiSpotServer
         using var nodePub = new SpotNode(ctx);
         using var spotPub = nodePub.CreateSpot();
         registry.Bind(config.RegistryPubEndpoint, config.RegistryRouterEndpoint);
-        registry.SetBroadcastInterval(50);
+        registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
         discovery.ConnectRegistry(config.RegistryRouterEndpoint);
 
         ConfigureSpotTlsPublisherIfNeeded(nodePub, config.Transport);
@@ -58,19 +58,7 @@ internal static class PerfMultiSpotServer
     {
         int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
         int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
-        int sndTimeo = ResolveMultiSndTimeoutMs(options);
-        int rcvTimeo = ResolveMultiRcvTimeoutMs(options);
-        bool xpubNoDrop = options.SpotXpubNoDrop > 0;
-
-        TrySetSpotOption(() => node.PublisherOptions.Linger = TimeSpan.Zero);
-        TrySetSpotOption(() => node.PublisherOptions.SendHighWaterMark = sndHwm);
-        TrySetSpotOption(() => node.PublisherOptions.SendTimeout =
-            TimeSpan.FromMilliseconds(sndTimeo));
-        TrySetSpotOption(() => node.PublisherOptions.NoDrop = xpubNoDrop);
-        TrySetSpotOption(() => node.SubscriberOptions.Linger = TimeSpan.Zero);
-        TrySetSpotOption(() => node.SubscriberOptions.ReceiveHighWaterMark = rcvHwm);
-        TrySetSpotOption(() => node.SubscriberOptions.ReceiveTimeout =
-            TimeSpan.FromMilliseconds(rcvTimeo));
+        TrySetSpotOption(() => node.PubSubHighWaterMark = Math.Max(sndHwm, rcvHwm));
     }
 
     private static int RunActivePhase(Spot spotPub,
@@ -118,7 +106,10 @@ internal static class PerfMultiSpotServer
         try
         {
             using Message message = Message.FromBytes(payload);
-            return spotPub.Publish(config.ServiceName, Topic, message, flags);
+            return spotPub.Publish(config.ServiceName, Topic)
+                .Message(message)
+                .Flags(flags)
+                .Submit();
         }
         catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                         || IsInterrupted(ex.InternalErrno))

@@ -14,8 +14,7 @@ using var routerSocket = new RouterSocket(ctx);
 string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
 using var dealerMonitor = dealerSocket.MonitorOpen(SocketEvent.ConnectionReady);
 using var routerMonitor = routerSocket.MonitorOpen(SocketEvent.ConnectionReady);
-dealerSocket.DealerOptions.RoutingId =
-    RoutingId.FromBytes(Encoding.UTF8.GetBytes("request-reply-client"));
+dealerSocket.SetRoutingId(RoutingId.FromBytes(Encoding.UTF8.GetBytes("request-reply-client")));
 routerSocket.Bind(endpoint);
 dealerSocket.Connect(endpoint);
 SampleSupport.WaitConnected(routerMonitor, dealerMonitor);
@@ -40,7 +39,7 @@ Task serverTask = Task.Run(() =>
 });
 
 using var sent = Message.FromString("ping");
-IReadOnlyList<Message> replyReceived = await dealerSocket.RequestAsync(sent,
+IReadOnlyList<Message> replyReceived = await dealerSocket.Request(sent,
     TimeSpan.FromSeconds(2));
 using Message replyPart = replyReceived[0];
 SampleSupport.EnsureEqual("pong", replyPart.GetString(), "reply");

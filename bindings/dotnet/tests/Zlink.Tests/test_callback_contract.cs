@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -20,13 +19,7 @@ public sealed class test_callback_contract
         return client;
     }
 
-    private static void SendAll(NetworkStream stream, ReadOnlySpan<byte> payload)
-    {
-        stream.Write(payload);
-        stream.Flush();
-    }
-
-    [Fact(Skip = "Raw STREAM callback behavior is no longer part of the public .NET contract.")]
+    [Fact]
     public void stream_packet_handler_transfers_message_ownership_to_application()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -41,14 +34,15 @@ public sealed class test_callback_contract
 
         using var receivedSignal = new ManualResetEventSlim(false);
         Message? owned = null;
-        stream.OnPacket((StreamPacketHandler)((_, _, payload) =>
+        stream.OnPacket((StreamPacketHandler)((_, header, payload) =>
         {
+            header.Dispose();
             owned = payload;
             receivedSignal.Set();
         }));
 
         using var client = ConnectRawClient(port);
-        SendAll(client.GetStream(), "callback-owned"u8);
+        CoreTestSupport.SendStreamPacket(client.GetStream(), "callback-owned"u8);
 
         Assert.True(receivedSignal.Wait(20000));
         Assert.NotNull(owned);
@@ -58,7 +52,7 @@ public sealed class test_callback_contract
         Assert.Throws<ObjectDisposedException>(() => _ = owned.Size);
     }
 
-    [Fact(Skip = "Raw STREAM callback behavior is no longer part of the public .NET contract.")]
+    [Fact]
     public void stream_packet_handler_exception_reports_unhandled_callback_exception()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -82,14 +76,16 @@ public sealed class test_callback_contract
         Runtime.UnhandledCallbackException += OnUnhandled;
         try
         {
-            stream.OnPacket((StreamPacketHandler)((_, _, payload) =>
+            stream.OnPacket((StreamPacketHandler)((_, header, payload) =>
             {
+                header.Dispose();
                 payload.Dispose();
                 throw new InvalidOperationException("stream-packet-fail");
             }));
 
             using var client = ConnectRawClient(port);
-            SendAll(client.GetStream(), "stream-packet-fail"u8);
+            CoreTestSupport.SendStreamPacket(client.GetStream(),
+                "stream-packet-fail"u8);
 
             Assert.True(observedSignal.Wait(10000));
             Assert.NotNull(observed);

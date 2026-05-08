@@ -80,7 +80,7 @@ public enum TopologyState
     Stopped = 6
 }
 
-public enum SubjectKind : uint
+public enum SubjectKind
 {
     None = 0,
     Topic = 1,

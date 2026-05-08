@@ -48,7 +48,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         _nativeEvents = Array.Empty<ZlinkPollerEvent>();
     }
 
-    public int Count
+    internal int Count
     {
         get
         {
@@ -63,7 +63,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
 
     public int Size => Count;
 
-    public void Add(IZlinkSocket socket, PollEvents events, object? tag = null)
+    public void Add(IZlinkSocket socket, PollEventFlags events, object? tag = null)
     {
         EnsureNotDisposed();
         SocketBase concreteSocket = SocketInterop.RequireSocket(socket,
@@ -82,7 +82,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             concreteSocket.Handle, 0, null, events, tag));
     }
 
-    public void AddFd(int fd, PollEvents events, object? tag = null)
+    public void AddFd(int fd, PollEventFlags events, object? tag = null)
     {
         EnsureNotDisposed();
         EnumValidation.EnsurePollEvents(events, nameof(events));
@@ -99,7 +99,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             fd, null, events, tag));
     }
 
-    public void AddTimer(Timer timer, object? tag = null)
+    public void Add(Timer timer, object? tag = null)
     {
         EnsureNotDisposed();
         if (timer == null)
@@ -114,10 +114,10 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             ZlinkException.ThrowConfigIfError(rc);
         }
         RegisterItem(new PollItem(PollItemKind.Timer, null, userData,
-            IntPtr.Zero, 0, timer, PollEvents.PollIn, tag));
+            IntPtr.Zero, 0, timer, PollEventFlags.PollIn, tag));
     }
 
-    public void Modify(IZlinkSocket socket, PollEvents events)
+    public void Modify(IZlinkSocket socket, PollEventFlags events)
     {
         EnsureNotDisposed();
         SocketBase concreteSocket = SocketInterop.RequireSocket(socket,
@@ -135,7 +135,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         _items[index].Events = events;
     }
 
-    public void ModifyFd(int fd, PollEvents events)
+    public void ModifyFd(int fd, PollEventFlags events)
     {
         EnsureNotDisposed();
         EnumValidation.EnsurePollEvents(events, nameof(events));
@@ -218,7 +218,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         Dispose();
     }
 
-    public int Wait(List<PollEvent> events, int timeoutMs)
+    internal int Wait(List<PollEvent> events, int timeoutMs)
     {
         EnsureNotDisposed();
         if (events == null)
@@ -241,7 +241,32 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         return ready;
     }
 
-    public int Wait(Span<PollEvent> destination, int timeoutMs,
+    public PollEvent? Wait(TimeSpan timeout)
+    {
+        PollEvent[] destination = new PollEvent[1];
+        int written = Wait(destination, ToTimeoutMilliseconds(timeout),
+            out _);
+        return written == 0 ? null : destination[0];
+    }
+
+    public IReadOnlyList<PollEvent> WaitAll(int maxEvents, TimeSpan timeout)
+    {
+        if (maxEvents < 0)
+            throw new ArgumentOutOfRangeException(nameof(maxEvents));
+        if (maxEvents == 0)
+            return Array.Empty<PollEvent>();
+        PollEvent[] destination = new PollEvent[maxEvents];
+        int written = Wait(destination, ToTimeoutMilliseconds(timeout),
+            out _);
+        if (written == 0)
+            return Array.Empty<PollEvent>();
+        if (written == destination.Length)
+            return destination;
+        Array.Resize(ref destination, written);
+        return destination;
+    }
+
+    internal int Wait(Span<PollEvent> destination, int timeoutMs,
         out int totalReady)
     {
         EnsureNotDisposed();
@@ -316,6 +341,16 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         return missing;
     }
 
+    private static int ToTimeoutMilliseconds(TimeSpan timeout)
+    {
+        if (timeout < TimeSpan.Zero)
+            return -1;
+        double millis = timeout.TotalMilliseconds;
+        if (millis > int.MaxValue)
+            return int.MaxValue;
+        return (int)Math.Ceiling(millis);
+    }
+
     private void EnsureEventCapacity(int count)
     {
         if (_nativeEvents.Length < count)
@@ -369,8 +404,8 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             && nativeEvent.Timer == IntPtr.Zero)
             fd = nativeEvent.Fd;
         return new PollEvent(item?.Socket, fd, timer, item?.Tag,
-            item?.Events ?? (PollEvents)nativeEvent.Events,
-            (PollEvents)nativeEvent.Events);
+            item?.Events ?? (PollEventFlags)nativeEvent.Events,
+            (PollEventFlags)nativeEvent.Events);
     }
 
     private PollItem? FindSocketItem(IntPtr handle)
@@ -442,7 +477,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
     private sealed class PollItem
     {
         public PollItem(PollItemKind kind, IZlinkSocket? socket, IntPtr userData,
-            IntPtr socketHandle, int fd, Timer? timer, PollEvents events,
+            IntPtr socketHandle, int fd, Timer? timer, PollEventFlags events,
             object? tag)
         {
             Kind = kind;
@@ -461,7 +496,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         public IntPtr SocketHandle { get; }
         public int Fd { get; }
         public Timer? Timer { get; }
-        public PollEvents Events { get; set; }
+        public PollEventFlags Events { get; set; }
         public object? Tag { get; }
         public bool IsSocket => Kind == PollItemKind.Socket;
     }
@@ -469,8 +504,8 @@ public sealed class Poller : IDisposable, IAsyncDisposable
 
 public readonly struct PollEvent
 {
-    public PollEvent(IZlinkSocket? socket, int? fd, Timer? timer, object? tag,
-        PollEvents events, PollEvents revents)
+    internal PollEvent(IZlinkSocket? socket, int? fd, Timer? timer, object? tag,
+        PollEventFlags events, PollEventFlags revents)
     {
         Socket = socket;
         Fd = fd;
@@ -484,6 +519,6 @@ public readonly struct PollEvent
     public int? Fd { get; }
     public Timer? Timer { get; }
     public object? Tag { get; }
-    public PollEvents Events { get; }
-    public PollEvents Revents { get; }
+    public PollEventFlags Events { get; }
+    public PollEventFlags Revents { get; }
 }

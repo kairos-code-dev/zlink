@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Collections.Generic;
 
 namespace Systems.Zlink;
 
@@ -151,7 +152,7 @@ public enum RecvFlags
     DontWait = 1
 }
 
-public enum SubmitResult
+internal enum SubmitResult
 {
     Ok = 0,
     Backpressured = 1,
@@ -186,6 +187,9 @@ public enum RequestResult
     NotSupported = 112
 }
 
+public delegate void RequestCallback(RequestResult result,
+    IReadOnlyList<Message> parts);
+
 public enum ActorCreateStatus
 {
     Created = 1,
@@ -198,7 +202,7 @@ public enum ActorAdmissionResult
     Reject = 2
 }
 
-public enum RecvResult
+internal enum RecvResult
 {
     Ok = 0,
     NoData = 201,
@@ -209,7 +213,7 @@ public enum RecvResult
     InternalError = 206
 }
 
-public enum HandlerResult
+internal enum HandlerResult
 {
     Ok = 0,
     InvalidArgument = 301,
@@ -220,7 +224,7 @@ public enum HandlerResult
     InternalError = 306
 }
 
-public enum CloseResult
+internal enum CloseResult
 {
     Ok = 0,
     Busy = 401,
@@ -229,7 +233,7 @@ public enum CloseResult
     InternalError = 404
 }
 
-public enum BindResult
+internal enum BindResult
 {
     Ok = 0,
     InvalidArgument = 501,
@@ -239,7 +243,7 @@ public enum BindResult
     InternalError = 505
 }
 
-public enum ConnectResult
+internal enum ConnectResult
 {
     Ok = 0,
     InvalidArgument = 601,
@@ -251,7 +255,7 @@ public enum ConnectResult
     Busy = 607
 }
 
-public enum ConfigResult
+internal enum ConfigResult
 {
     Ok = 0,
     InvalidHandle = 701,
@@ -267,7 +271,7 @@ internal enum SpotOption
     RequestTimeout = 0x3701
 }
 
-public enum ErrorCode
+internal enum ErrorCode
 {
     None = 0,
     Unknown = -1,
@@ -361,14 +365,7 @@ internal enum DisconnectReason
     CtxTerm = 5
 }
 
-internal enum MonitorSourceKind
-{
-    Socket = 1,
-    SpotPub = 3,
-    SpotSub = 4
-}
-
-public enum SourceKind
+public enum MonitorSourceKind
 {
     Socket = 1,
     SpotPub = 3,
@@ -392,7 +389,7 @@ internal enum MonitorSnapshotDetail
     ReceivePendingMessages = 1 << 2
 }
 
-public enum PollEvents
+public enum PollEventFlags
 {
     None = 0,
     PollIn = 1,
@@ -421,7 +418,9 @@ internal enum SpotNodeOption
     RouterHwmProfile = 0x360E,
     RouterHwm = 0x360F,
     PubSubHwmProfile = 0x3610,
-    PubSubHwm = 0x3611
+    PubSubHwm = 0x3611,
+    DispatchWorkersMin = 0x3612,
+    DispatchWorkersMax = 0x3613
 }
 
 internal enum MessageType : byte

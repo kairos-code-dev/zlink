@@ -21,7 +21,7 @@ internal static class PerfMultiRouterRouterServer
         using var server = new RouterSocket(ctx);
         ApplyMultiSocketOptions(server, options);
         ConfigureTlsServerIfNeeded(server, options.Transport);
-        server.RouterOptions.RoutingId = RoutingId.FromBytes("SERVER"u8);
+        server.SetRoutingId(RoutingId.FromBytes("SERVER"u8));
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
         server.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeoutMs);
@@ -59,7 +59,7 @@ internal static class PerfMultiRouterRouterServer
             while (true)
             {
                 using Received? received = TryRecvNoWait(server);
-                if (received == null || received.Count == 0)
+                if (received == null || received.Parts.Count == 0)
                     break;
 
                 Message bodyMessage = received.SinglePartOrThrow();

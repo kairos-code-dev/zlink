@@ -48,7 +48,7 @@ public sealed class test_monitor_contract
         Assert.Equal(MonitorEventType.ConnectionReady, evt.Event);
 
         MonitorSnapshot snapshot = monitor.Snapshot();
-        Assert.Equal<SourceKind>(SourceKind.Socket, snapshot.SourceKind);
+        Assert.Equal<MonitorSourceKind>(MonitorSourceKind.Socket, snapshot.SourceKind);
         Assert.True(snapshot.SndPendingMsgs >= 0);
         Assert.True(snapshot.AutoHwmProfile >= 0);
         Assert.True(snapshot.AutoHwmPolicyClass >= 0);
@@ -74,7 +74,7 @@ public sealed class test_monitor_contract
 
         using SocketMonitor monitor = server.MonitorOpen();
 
-        Assert.Null(monitor.Recv(true));
+        Assert.Null(monitor.Recv(RecvFlags.DontWait));
     }
 
     [Fact]
@@ -108,6 +108,6 @@ public sealed class test_monitor_contract
         }, 3000));
 
         ZlinkRecvException error = Assert.Throws<ZlinkRecvException>(() => monitor.Recv());
-        Assert.Equal(RecvResult.Busy, error.Result);
+        Assert.Equal(ZlinkRecvException.ErrorCode.Busy, error.Result);
     }
 }

@@ -37,7 +37,7 @@ public sealed class test_request_reply
         });
 
         using Message request = Message.FromString("ping");
-        IReadOnlyList<Message> reply = await dealerSocket.RequestAsync(request,
+        IReadOnlyList<Message> reply = await dealerSocket.Request(request,
             TimeSpan.FromSeconds(2));
         try
         {

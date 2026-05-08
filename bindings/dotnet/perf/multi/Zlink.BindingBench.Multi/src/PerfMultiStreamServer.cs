@@ -47,22 +47,23 @@ internal static class PerfMultiStreamServer
         var control = new ControlState();
         StartControlWatcher(control);
 
-        server.OnPacket((routingId, payload) =>
+        server.OnPacket((routingId, header, payload) =>
         {
+            header.Dispose();
             PendingStreamMessage request = new();
             request.Assign(routingId, payload);
             SendStatus sendStatus = TrySendPendingMessage(server, request);
             if (sendStatus == SendStatus.Done)
             {
                 request.Clear();
-                return 0;
+                return;
             }
 
             if (sendStatus == SendStatus.Fatal)
             {
                 request.Clear();
                 Interlocked.Exchange(ref control.StopRequested, 1);
-                return -1;
+                return;
             }
 
             lock (pendingLock)
@@ -71,13 +72,12 @@ internal static class PerfMultiStreamServer
                 {
                     request.Clear();
                     Interlocked.Exchange(ref control.StopRequested, 1);
-                    return -1;
+                    return;
                 }
 
                 pending.Enqueue(request);
                 pendingSignal.Set();
             }
-            return 0;
         });
 
         int rc = 0;
@@ -200,11 +200,11 @@ internal static class PerfMultiStreamServer
 
     private sealed class PendingStreamMessage
     {
-        internal string RoutingId { get; private set; } = string.Empty;
+        internal RoutingId RoutingId { get; private set; }
         internal Message? Payload { get; private set; }
         internal bool Pending => Payload != null;
 
-        internal void Assign(string routingId, Message payload)
+        internal void Assign(RoutingId routingId, Message payload)
         {
             RoutingId = routingId;
             Payload = payload;
@@ -214,7 +214,7 @@ internal static class PerfMultiStreamServer
         {
             Payload?.Dispose();
             Payload = null;
-            RoutingId = string.Empty;
+            RoutingId = default;
         }
     }
 

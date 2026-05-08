@@ -231,18 +231,8 @@ internal static class PerfMultiSpotClient
     private static void ApplySpotSubscriberOptions(SpotNode node,
         PerfOptions options)
     {
-        int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
         int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
-        int rcvTimeo = ResolveMultiRcvTimeoutMs(options);
-        bool xpubNoDrop = options.SpotXpubNoDrop > 0;
-
-        TrySetSpotOption(() => node.SubscriberOptions.Linger = TimeSpan.Zero);
-        TrySetSpotOption(() => node.SubscriberOptions.ReceiveHighWaterMark = rcvHwm);
-        TrySetSpotOption(() => node.SubscriberOptions.ReceiveTimeout =
-            TimeSpan.FromMilliseconds(rcvTimeo));
-        TrySetSpotOption(() => node.PublisherOptions.Linger = TimeSpan.Zero);
-        TrySetSpotOption(() => node.PublisherOptions.SendHighWaterMark = sndHwm);
-        TrySetSpotOption(() => node.PublisherOptions.NoDrop = xpubNoDrop);
+        TrySetSpotOption(() => node.PubSubHighWaterMark = rcvHwm);
     }
 
     private static bool WaitForSubscriptionReady(SpotNode node, int timeoutMs)

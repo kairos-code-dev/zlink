@@ -20,11 +20,37 @@ public abstract class ConnectableRoutedMessageSocketBase : RoutedMessageSocketBa
 
     public void Connect(string address)
     {
-        Kernel.Connect(address);
+        try
+        {
+            Kernel.Connect(address);
+        }
+        catch (ZlinkException ex)
+        {
+            throw ZlinkException.CreateConnectException(ex.InternalErrno);
+        }
     }
 
     public void Disconnect(string address)
     {
-        Kernel.Disconnect(address);
+        try
+        {
+            Kernel.Disconnect(address);
+        }
+        catch (ZlinkException ex)
+        {
+            throw ZlinkException.CreateConnectException(ex.InternalErrno);
+        }
+    }
+
+    public void DisconnectRid(RoutingId peerRid)
+    {
+        try
+        {
+            Kernel.DisconnectRid(peerRid);
+        }
+        catch (ZlinkException ex)
+        {
+            throw ZlinkException.CreateConnectException(ex.InternalErrno);
+        }
     }
 }

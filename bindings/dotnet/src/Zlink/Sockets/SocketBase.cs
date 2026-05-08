@@ -68,8 +68,7 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
 
     internal void SetChannelNameCore(string channelName)
     {
-        if (channelName == null)
-            throw new ArgumentNullException(nameof(channelName));
+        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
         int rc = NativeMethods.zlink_socket_set_channel_name(Handle, channelName);
         if (rc != 0)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
@@ -85,12 +84,12 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         return System.Text.Encoding.UTF8.GetString(buffer, 0, checked((int)length));
     }
 
-    public void SetChannelName(string channelName)
+    internal void SetChannelName(string channelName)
     {
         SetChannelNameCore(channelName);
     }
 
-    public string GetChannelName()
+    internal string GetChannelName()
     {
         return GetChannelNameCore();
     }

@@ -104,7 +104,7 @@ internal static class PerfMultiDealerDealerClient
                 {
                     using Received? received = TryRecvNoWait(
                         (DealerSocket)activeClients[i]);
-                    if (received == null || received.Count == 0)
+                    if (received == null || received.Parts.Count == 0)
                         break;
 
                     ReadOnlySpan<byte> body = received.SinglePartOrThrow()

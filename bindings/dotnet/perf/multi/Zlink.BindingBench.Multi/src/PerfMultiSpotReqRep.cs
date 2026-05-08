@@ -30,20 +30,26 @@ internal static class PerfMultiSpotReqRep
 
             int stopRequested = 0;
             StartStopWatcher(() => Volatile.Write(ref stopRequested, 1));
+            using var poller = new Poller();
+            var events = new List<PollEvent>(1);
+            poller.Add(responder, PollEventFlags.PollIn);
             while (Volatile.Read(ref stopRequested) == 0)
             {
-                using Received? received = responder.Recv(RecvFlags.DontWait);
-                if (received == null)
-                {
-                    Thread.Sleep(1);
+                if (!WaitForEvents(poller, events, 10))
                     continue;
-                }
 
-                RoutingId routingId = received.RoutingId
-                    ?? throw new InvalidOperationException("missing routing id");
-                ulong requestSeq = received.RequestSeq ?? 0UL;
-                using Message reply = received.FirstPart().Move();
-                responder.Reply(routingId, requestSeq, reply);
+                while (true)
+                {
+                    using Received? received = responder.Recv(RecvFlags.DontWait);
+                    if (received == null)
+                        break;
+
+                    RoutingId routingId = received.RoutingId
+                        ?? throw new InvalidOperationException("missing routing id");
+                    ulong requestSeq = received.RequestSeq ?? 0UL;
+                    using Message reply = received.FirstPart().Move();
+                    responder.Reply(routingId, requestSeq, reply);
+                }
             }
 
             return 0;
@@ -300,8 +306,10 @@ internal static class PerfMultiSpotReqRep
     private static PerfMetricHeader RequestReply(Spot requester, int size,
         Message payload, TimeSpan timeout)
     {
-        IReadOnlyList<Message> replyParts = requester.RequestChannelAsync(
-                ChannelName, payload, timeout)
+        IReadOnlyList<Message> replyParts = requester.RequestChannel(ChannelName)
+            .Message(payload)
+            .Timeout(timeout)
+            .SubmitAsync()
             .GetAwaiter().GetResult();
         try
         {

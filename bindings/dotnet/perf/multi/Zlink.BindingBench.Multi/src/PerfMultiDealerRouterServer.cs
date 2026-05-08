@@ -58,7 +58,7 @@ internal static class PerfMultiDealerRouterServer
             while (true)
             {
                 using Received? received = TryRecvNoWait(server);
-                if (received == null || received.Count == 0)
+                if (received == null || received.Parts.Count == 0)
                     break;
 
                 Message bodyMessage = received.SinglePartOrThrow();

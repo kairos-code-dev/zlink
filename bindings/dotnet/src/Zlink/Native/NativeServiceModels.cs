@@ -16,7 +16,7 @@ internal struct ZlinkSocketMonitorOpenOptions
 [StructLayout(LayoutKind.Sequential)]
 internal struct ZlinkMonitorSnapshot
 {
-    public int SourceKind;
+    public int MonitorSourceKind;
     public uint StateFlags;
     public uint DetailFlags;
     public ulong SndPendingMsgs;
@@ -31,6 +31,8 @@ internal struct ZlinkMonitorSnapshot
     public ulong AutoHwmEffectiveMessageBytes;
     public int AutoHwmAppliedSndHwm;
     public int AutoHwmAppliedRcvHwm;
+    public int AutoHwmEffectiveSndbuf;
+    public int AutoHwmEffectiveRcvbuf;
     public ulong AutoHwmLastRecalcMs;
     public uint AutoHwmLastRecalcReason;
     public uint AutoHwmSendBlockedRatioPpm;

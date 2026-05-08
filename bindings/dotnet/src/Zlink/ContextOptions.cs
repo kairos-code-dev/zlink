@@ -75,7 +75,7 @@ public sealed class ContextOptions
             EncodeMilliseconds(value, nameof(value)));
     }
 
-    public int SpotWorkerThreads
+    internal int SpotWorkerThreads
     {
         get => _context.GetOption(ContextOption.SpotWorkerThreads);
         set => _context.SetOption(ContextOption.SpotWorkerThreads, value);
@@ -88,6 +88,9 @@ public sealed class ContextOptions
         {
             if (value == null)
                 throw new ArgumentNullException(nameof(value));
+            if (value.IndexOf('\0') >= 0)
+                throw new ArgumentException("Value must not contain NUL.",
+                    nameof(value));
             if (value.Length > 16)
                 throw new ArgumentOutOfRangeException(nameof(value));
             byte[] bytes = Encoding.UTF8.GetBytes(value);

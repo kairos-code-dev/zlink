@@ -27,7 +27,7 @@ public sealed class SpotDispatchInfo
 
     public SpotDispatchEvent Event { get; }
     public SpotDispatchSubjectKind SubjectKind { get; }
-    public IntPtr Subject => _channelDealerSubject;
+    internal IntPtr Subject => _channelDealerSubject;
     public Timer? Timer { get; }
     public IReadOnlyList<ActorPart> ActorParts { get; }
 
@@ -37,7 +37,7 @@ public sealed class SpotDispatchInfo
         return index < ActorParts.Count ? ActorParts[index] : null;
     }
 
-    public void DrainChannelReply()
+    internal void DrainChannelReply()
     {
         if (_drainChannelReply == null || _channelDealerSubject == IntPtr.Zero)
         {

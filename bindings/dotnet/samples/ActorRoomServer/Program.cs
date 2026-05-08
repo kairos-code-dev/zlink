@@ -7,13 +7,13 @@ if (!SampleSupport.IsNativeAvailable())
 using var ctx = new Context();
 using var node = new SpotNode(ctx);
 using var spot = node.CreateSpot();
-using var actor = node.Actor("room-player-1");
+using var actor = node.CreateActor("room-player-1");
 using var stream = new StreamSocket(ctx);
 RoutingId sessionRid = SampleSupport.RoutingIdUtf8("room-session");
 stream.BindActor(node, sessionRid, actor.Ref, TimeSpan.FromSeconds(2));
 using Message joinMessage = Message.FromString("join:lobby");
 
-Task<IReadOnlyList<Message>> joinTask = actor.JoinAsync(spot, joinMessage,
+Task<IReadOnlyList<Message>> joinTask = actor.Join(spot, joinMessage,
     TimeSpan.FromSeconds(2));
 ActorJoinRequest? request = null;
 SampleSupport.WaitOrThrow(() =>
@@ -29,7 +29,7 @@ using (request!.Message)
 }
 
 using Message reply = Message.FromString("accepted:lobby");
-spot.ReplyActorJoin(request.Info, accepted: true, reply);
+spot.ReplyActorJoin(request, accepted: true, reply);
 IReadOnlyList<Message> replies =
     await joinTask.WaitAsync(TimeSpan.FromSeconds(5));
 using (replies[0])

@@ -7,10 +7,10 @@ namespace Systems.Zlink;
 internal static class EnumValidation
 {
     private const SocketEvent ValidSocketEvents = SocketEvent.All;
-    private const PollEvents ValidPollEvents = PollEvents.PollIn
-        | PollEvents.PollOut
-        | PollEvents.PollErr
-        | PollEvents.PollPri;
+    private const PollEventFlags ValidPollEvents = PollEventFlags.PollIn
+        | PollEventFlags.PollOut
+        | PollEventFlags.PollErr
+        | PollEventFlags.PollPri;
 
     internal static void EnsureContextOption(ContextOption option,
         string paramName)
@@ -31,7 +31,7 @@ internal static class EnumValidation
         }
     }
 
-    internal static void EnsurePollEvents(PollEvents events, string paramName)
+    internal static void EnsurePollEvents(PollEventFlags events, string paramName)
     {
         if ((((int)events) & ~((int)ValidPollEvents)) != 0)
         {

@@ -27,7 +27,7 @@ subscriberNode.SetRoutingId(SampleSupport.RoutingIdUtf8("a-sample-spot-sub"));
 publisher.SetRoutingId(SampleSupport.RoutingIdUtf8("z-sample-spot-pub-spot"));
 subscriber.SetRoutingId(SampleSupport.RoutingIdUtf8("a-sample-spot-sub-spot"));
 registry.Bind(registryPub, registryRouter);
-registry.SetBroadcastInterval(50);
+registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
 publisherDiscovery.ConnectRegistry(registryRouter);
 subscriberDiscovery.ConnectRegistry(registryRouter);
 publisherNode.Bind(publisherEndpoint);
@@ -49,11 +49,11 @@ SampleSupport.WaitOrThrow(() =>
     try
     {
         using Message message = Message.FromString(payload);
-        publisher.Publish(serviceName, topic, message);
+        publisher.Publish(serviceName, topic).Message(message).Submit();
         subscribed = subscriber.Subscribe(RecvFlags.DontWait);
         return subscribed is not null;
     }
-    catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
+    catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
     {
         return false;
     }

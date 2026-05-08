@@ -69,7 +69,18 @@ public sealed class Timer : IDisposable, IAsyncDisposable
         return new Timer(handle, ownsHandle: false);
     }
 
-    public void Start(ulong intervalNs, ulong repeatCount)
+    public void Start(TimeSpan interval, ulong repeatCount)
+    {
+        if (interval < TimeSpan.Zero
+            || interval.Ticks > (long)(ulong.MaxValue / 100UL))
+        {
+            throw new ArgumentOutOfRangeException(nameof(interval));
+        }
+
+        Start((ulong)interval.Ticks * 100UL, repeatCount);
+    }
+
+    internal void Start(ulong intervalNs, ulong repeatCount)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_timer_start(_handle, intervalNs,

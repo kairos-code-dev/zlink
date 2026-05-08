@@ -163,8 +163,10 @@ internal static class PerfSpotReqRep
     private static PerfMetricHeader RequestReply(Spot requester, int size,
         Message payload, TimeSpan timeout)
     {
-        IReadOnlyList<Message> replyParts = requester.RequestChannelAsync(
-                ChannelName, payload, timeout)
+        IReadOnlyList<Message> replyParts = requester.RequestChannel(ChannelName)
+            .Message(payload)
+            .Timeout(timeout)
+            .SubmitAsync()
             .GetAwaiter().GetResult();
         try
         {

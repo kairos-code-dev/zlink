@@ -47,30 +47,23 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
             throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
     }
 
-    public MonitorEvent Recv()
+    public MonitorEvent? Recv(RecvFlags flags = RecvFlags.None)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_socket_monitor_recv(_handle, out var native,
-            0);
-        if (rc != 0)
-            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
-        return MonitorEvent.FromNative(ref native);
-    }
-
-    public MonitorEvent? Recv(bool nonBlocking)
-    {
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_socket_monitor_recv(_handle, out var native,
-            nonBlocking ? 1 : 0);
+            (flags & RecvFlags.DontWait) != 0 ? 1 : 0);
         if (rc == 0)
             return MonitorEvent.FromNative(ref native);
-        if (nonBlocking && ZlinkException.MapErrorCode(NativeMethods.zlink_errno())
-            == ErrorCode.EAgain)
+        if ((flags & RecvFlags.DontWait) != 0
+            && ZlinkException.MapErrorCode(NativeMethods.zlink_errno()) == ErrorCode.EAgain)
         {
             return null;
         }
         throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
     }
+
+    internal MonitorEvent? Recv(bool nonBlocking)
+        => Recv(nonBlocking ? RecvFlags.DontWait : RecvFlags.None);
 
     internal bool RecvNoWait(out MonitorEvent? monitorEvent)
     {
@@ -212,14 +205,16 @@ public sealed record MonitorEvent(
 
 public sealed class MonitorSnapshot
 {
-    public MonitorSnapshot(SourceKind sourceKind, uint stateFlags,
+    internal MonitorSnapshot(MonitorSourceKind sourceKind, uint stateFlags,
         uint detailFlags, ulong sndPendingMsgs, ulong rcvPendingMsgs,
         uint autoHwmEnabled, uint autoHwmProfile, uint autoHwmRole,
         uint autoHwmPolicyClass,
         ulong autoHwmUnitBudgetBytes, uint autoHwmSizeCap,
         ulong autoHwmSocketMessageSlots, ulong autoHwmEffectiveMessageBytes,
         int autoHwmAppliedSndHwm,
-        int autoHwmAppliedRcvHwm, ulong autoHwmLastRecalcMs,
+        int autoHwmAppliedRcvHwm,
+        int autoHwmEffectiveSndbuf, int autoHwmEffectiveRcvbuf,
+        ulong autoHwmLastRecalcMs,
         uint autoHwmLastRecalcReason, uint autoHwmSendBlockedRatioPpm,
         int autoHwmDeferredSndHwm, int autoHwmDeferredRcvHwm)
     {
@@ -238,6 +233,8 @@ public sealed class MonitorSnapshot
         AutoHwmEffectiveMessageBytes = autoHwmEffectiveMessageBytes;
         AutoHwmAppliedSndHwm = autoHwmAppliedSndHwm;
         AutoHwmAppliedRcvHwm = autoHwmAppliedRcvHwm;
+        AutoHwmEffectiveSndbuf = autoHwmEffectiveSndbuf;
+        AutoHwmEffectiveRcvbuf = autoHwmEffectiveRcvbuf;
         AutoHwmLastRecalcMs = autoHwmLastRecalcMs;
         AutoHwmLastRecalcReason = autoHwmLastRecalcReason;
         AutoHwmSendBlockedRatioPpm = autoHwmSendBlockedRatioPpm;
@@ -245,7 +242,7 @@ public sealed class MonitorSnapshot
         AutoHwmDeferredRcvHwm = autoHwmDeferredRcvHwm;
     }
 
-    public SourceKind SourceKind { get; }
+    public MonitorSourceKind SourceKind { get; }
     public uint StateFlags { get; }
     public uint DetailFlags { get; }
     public ulong SndPendingMsgs { get; }
@@ -260,17 +257,19 @@ public sealed class MonitorSnapshot
     public ulong AutoHwmEffectiveMessageBytes { get; }
     public int AutoHwmAppliedSndHwm { get; }
     public int AutoHwmAppliedRcvHwm { get; }
+    public int AutoHwmEffectiveSndbuf { get; }
+    public int AutoHwmEffectiveRcvbuf { get; }
     public ulong AutoHwmLastRecalcMs { get; }
     public uint AutoHwmLastRecalcReason { get; }
     public uint AutoHwmSendBlockedRatioPpm { get; }
     public int AutoHwmDeferredSndHwm { get; }
     public int AutoHwmDeferredRcvHwm { get; }
-    public bool IsReady => SourceKind == SourceKind.Socket
+    public bool IsReady => SourceKind == MonitorSourceKind.Socket
         && (StateFlags & 0x1u) != 0;
 
     internal static MonitorSnapshot FromNative(ref ZlinkMonitorSnapshot native)
     {
-        return new MonitorSnapshot((SourceKind)native.SourceKind,
+        return new MonitorSnapshot((MonitorSourceKind)native.MonitorSourceKind,
             native.StateFlags, native.DetailFlags, native.SndPendingMsgs,
             native.RcvPendingMsgs, native.AutoHwmEnabled,
             native.AutoHwmProfile, native.AutoHwmRole,
@@ -280,6 +279,7 @@ public sealed class MonitorSnapshot
             native.AutoHwmSocketMessageSlots,
             native.AutoHwmEffectiveMessageBytes,
             native.AutoHwmAppliedSndHwm, native.AutoHwmAppliedRcvHwm,
+            native.AutoHwmEffectiveSndbuf, native.AutoHwmEffectiveRcvbuf,
             native.AutoHwmLastRecalcMs,
             native.AutoHwmLastRecalcReason,
             native.AutoHwmSendBlockedRatioPpm,

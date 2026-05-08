@@ -39,6 +39,17 @@ public sealed class Discovery : IDisposable, IAsyncDisposable
         ZlinkException.ThrowConnectIfError(rc);
     }
 
+    public void SetTlsClient(string caCertPath, string hostname,
+        bool trustSystem = false)
+    {
+        BoundaryValidation.ValidateFixedUtf8(caCertPath, nameof(caCertPath));
+        BoundaryValidation.ValidateFixedUtf8(hostname, nameof(hostname));
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_set_tls_client(_handle, caCertPath,
+            hostname, trustSystem ? 1 : 0);
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
     public void SetValue(long value)
     {
         EnsureNotDisposed();

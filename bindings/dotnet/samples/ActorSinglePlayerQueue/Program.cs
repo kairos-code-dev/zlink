@@ -1,21 +1,13 @@
-using System.Text;
 using SampleCommon;
 using Systems.Zlink;
 
 if (!SampleSupport.IsNativeAvailable())
     return;
 
-static RoutingId PublicRoutingId(string value)
-{
-    return value.StartsWith("hex:", StringComparison.OrdinalIgnoreCase)
-        ? RoutingId.FromString(value[4..])
-        : SampleSupport.RoutingIdUtf8(value);
-}
-
 static async Task JoinAndAccept(Spot spot, Actor actor)
 {
     using Message joinMessage = Message.FromString("join:queue");
-    Task<IReadOnlyList<Message>> joinTask = actor.JoinAsync(spot, joinMessage,
+    Task<IReadOnlyList<Message>> joinTask = actor.Join(spot, joinMessage,
         TimeSpan.FromSeconds(2));
     ActorJoinRequest? request = null;
     SampleSupport.WaitOrThrow(() =>
@@ -24,7 +16,7 @@ static async Task JoinAndAccept(Spot spot, Actor actor)
         return request != null;
     }, 2000, "actor queue join request");
     using Message reply = Message.FromString("accepted:queue");
-    spot.ReplyActorJoin(request!.Info, accepted: true, reply);
+    spot.ReplyActorJoin(request!, accepted: true, reply);
     foreach (Message part in await joinTask.WaitAsync(TimeSpan.FromSeconds(5)))
         part.Dispose();
 }
@@ -32,12 +24,12 @@ static async Task JoinAndAccept(Spot spot, Actor actor)
 using var ctx = new Context();
 using var node = new SpotNode(ctx);
 using var spot = node.CreateSpot();
-using var actor = node.Actor("solo-player-1");
+using var actor = node.CreateActor("solo-player-1");
 List<string> actorMessages = new();
 using var sessionReady = new ManualResetEventSlim(false);
 RoutingId? sessionRid = null;
 
-spot.OnDispatchEvent((_, info) =>
+spot.OnDispatchEvent(info =>
 {
     ActorPart? part;
     while ((part = info.RecvActorPart()) != null)
@@ -51,19 +43,16 @@ using var stream = new StreamSocket(ctx);
 string endpoint = SampleSupport.NewEndpoint("tcp", "actor-queue");
 int port = SampleSupport.ExtractPort(endpoint);
 stream.Bind(endpoint);
-stream.OnPacket((routingId, payload) =>
+stream.OnPacket((routingId, header, payload) =>
 {
-    sessionRid = PublicRoutingId(routingId);
-    using (payload)
-    {
-        _ = Encoding.UTF8.GetString(payload.AsReadOnlySpan());
-    }
+    header.Dispose();
+    sessionRid = routingId;
+    payload.Dispose();
     sessionReady.Set();
-    return 0;
 });
 
 using var client = SampleSupport.ConnectRawClient(port);
-SampleSupport.SendAll(client.GetStream(), "open"u8);
+SampleSupport.SendStreamPacket(client.GetStream(), "open"u8);
 if (!sessionReady.Wait(5000) || sessionRid == null)
     throw new TimeoutException("stream session");
 stream.BindActor(node, sessionRid.Value, actor.Ref, TimeSpan.FromSeconds(2));

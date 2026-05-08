@@ -35,7 +35,7 @@ internal static class PerfPubSub
             string endpoint = EndpointFor(transport, "pubsub");
             int xpubNoDrop = PerfEnv.ReadPositive(
                 "PERF_SINGLE_PUBSUB_XPUB_NODROP", 1) > 0 ? 1 : 0;
-            pub.PubOptions.NoDrop = xpubNoDrop != 0;
+            pub.Options.NoDrop = xpubNoDrop != 0;
             pub.Bind(endpoint);
             sub.SetSubscription(Topic);
             sub.Connect(endpoint);
@@ -93,7 +93,7 @@ internal static class PerfPubSub
             using var poller = new Poller();
             var events = new PollEvent[1];
             long lastRecvTicks = Stopwatch.GetTimestamp();
-            poller.Add(receiver, PollEvents.PollIn);
+            poller.Add(receiver, PollEventFlags.PollIn);
 
             try
             {

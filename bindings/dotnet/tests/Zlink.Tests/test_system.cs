@@ -30,7 +30,7 @@ public sealed class test_system
         using var socket = new PairSocket(ctx);
 
         Assert.Null(socket.Recv(RecvFlags.DontWait));
-        Assert.True(Runtime.Has("tcp") || !Runtime.Has("tcp"));
+        Assert.True(Zlink.Has("tcp") || !Zlink.Has("tcp"));
     }
 
     [Fact]
@@ -39,8 +39,7 @@ public sealed class test_system
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        Runtime.SleepSeconds(0);
-        Runtime.Sleep(TimeSpan.Zero);
+        Zlink.Sleep(TimeSpan.Zero);
     }
 
     [Fact]
@@ -96,7 +95,7 @@ public sealed class test_system
             return;
 
         using var timer = new Timer();
-        timer.Start(5_000_000, 1);
+        timer.Start(TimeSpan.FromMilliseconds(5), 1);
 
         ulong? fireCount = timer.Recv();
 
@@ -114,7 +113,7 @@ public sealed class test_system
         using var spot = node.CreateSpot();
         using var timer = Timer.FromSpot(spot);
 
-        timer.Start(5_000_000, 1);
+        timer.Start(TimeSpan.FromMilliseconds(5), 1);
 
         ulong? fireCount = timer.Recv();
 
@@ -136,7 +135,7 @@ public sealed class test_system
             observed = fireCount;
             fired.Set();
         });
-        timer.Start(5_000_000, 1);
+        timer.Start(TimeSpan.FromMilliseconds(5), 1);
 
         Assert.True(fired.Wait(20000));
         Assert.Equal(1UL, observed);

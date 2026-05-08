@@ -99,7 +99,7 @@ internal static class PerfMultiDealerRouterClient
         var metrics = new DealerRouterMetrics(latSamples, latencySampleCap);
 
         var sockets = CollectSockets(slots);
-        var eventMasks = new PollEvents[slots.Length];
+        var eventMasks = new PollEventFlags[slots.Length];
         ResetPollMasks(slots, eventMasks);
 
         long benchStartTicks = Stopwatch.GetTimestamp();
@@ -144,7 +144,7 @@ internal static class PerfMultiDealerRouterClient
     }
 
     private static void TryScheduleIdleSends(DealerRouterClientSlot[] slots,
-        PollEvents[] eventMasks, int msgSize, uint runId, PerfPhase phase, ref ulong seq,
+        PollEventFlags[] eventMasks, int msgSize, uint runId, PerfPhase phase, ref ulong seq,
         ref int rrIndex)
     {
         int startIndex = rrIndex;
@@ -174,7 +174,7 @@ internal static class PerfMultiDealerRouterClient
 
     private static void HandleClientEvent(PollManager pollManager,
         DealerRouterClientSlot[] slots,
-        int slotIndex, PollEvents[] eventMasks,
+        int slotIndex, PollEventFlags[] eventMasks,
         int msgSize, uint runId, PerfPhase phase, ref ulong seq,
         DealerRouterMetrics metrics, bool allowSend, long activeDeadlineTicks)
     {
@@ -200,7 +200,7 @@ internal static class PerfMultiDealerRouterClient
         while (true)
         {
             using Received? receivedMessage = TryRecvNoWait((DealerSocket)slot.Socket);
-            if (receivedMessage == null || receivedMessage.Count == 0)
+            if (receivedMessage == null || receivedMessage.Parts.Count == 0)
                 break;
 
             if (!slot.WaitingForReply)
@@ -261,16 +261,16 @@ internal static class PerfMultiDealerRouterClient
     }
 
     private static void ResetPollMasks(DealerRouterClientSlot[] slots,
-        PollEvents[] eventMasks)
+        PollEventFlags[] eventMasks)
     {
         for (int i = 0; i < slots.Length; i++)
             UpdatePollMask(slots[i], eventMasks, i);
     }
 
     private static void UpdatePollMask(DealerRouterClientSlot slot,
-        PollEvents[] eventMasks, int index)
+        PollEventFlags[] eventMasks, int index)
     {
-        PollEvents events = SocketPollIn;
+        PollEventFlags events = SocketPollIn;
         if (slot.WaitingForWritable)
             events |= SocketPollOut;
         eventMasks[index] = events;

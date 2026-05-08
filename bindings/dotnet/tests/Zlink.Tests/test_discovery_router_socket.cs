@@ -28,12 +28,12 @@ public sealed class test_discovery_router_socket
         var rightRid = RoutingId.FromString("02");
 
         registry.Bind(registryPub, registryRouter);
-        registry.SetBroadcastInterval(50);
+        registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
         leftDiscovery.ConnectRegistry(registryRouter);
         rightDiscovery.ConnectRegistry(registryRouter);
 
-        left.RouterOptions.RoutingId = leftRid;
-        right.RouterOptions.RoutingId = rightRid;
+        left.SetRoutingId(leftRid);
+        right.SetRoutingId(rightRid);
         left.AttachDiscovery(leftDiscovery);
         right.AttachDiscovery(rightDiscovery);
         left.Bind(leftEndpoint);
@@ -63,7 +63,7 @@ public sealed class test_discovery_router_socket
         });
 
         using var ping = Message.FromString("ping");
-        var replies = await left.RequestAsync(rightRid, ping, TimeSpan.FromSeconds(3));
+        var replies = await left.Request(rightRid, ping, TimeSpan.FromSeconds(3));
         try
         {
             Assert.Equal("pong", replies[0].GetString());

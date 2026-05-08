@@ -22,10 +22,8 @@ public static class PerfSocketIo
     public static int Send(RoutedMessageSocketBase socket, string routingId,
         ReadOnlySpan<byte> payload, SendFlags flags = SendFlags.None)
     {
-        using Message message = Message.FromBytes(payload);
-        if (!socket.Send(routingId, message, flags))
-            ThrowWouldBlock();
-        return payload.Length;
+        return Send(socket, RoutingId.FromBytes(System.Text.Encoding.UTF8.GetBytes(routingId)),
+            payload, flags);
     }
 
     public static int Send(RoutedMessageSocketBase socket, RoutingId routingId,
@@ -50,14 +48,14 @@ public static class PerfSocketIo
         ReadOnlySpan<byte> payload, SendFlags flags = SendFlags.None)
     {
         using Message message = Message.FromBytes(payload);
-        if (!spot.Publish(serviceName, topic, message, flags))
+        if (!spot.Publish(serviceName, topic).Message(message).Flags(flags).Submit())
             ThrowWouldBlock();
         return payload.Length;
     }
 
     private static void ThrowWouldBlock()
     {
-        throw new ZlinkSubmitException(SubmitResult.Backpressured,
+        throw new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.Backpressured,
             PerfShared.ErrnoEagain);
     }
 }

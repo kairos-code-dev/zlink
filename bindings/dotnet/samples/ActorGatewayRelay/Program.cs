@@ -5,22 +5,15 @@ using Systems.Zlink;
 if (!SampleSupport.IsNativeAvailable())
     return;
 
-static RoutingId PublicRoutingId(string value)
-{
-    return value.StartsWith("hex:", StringComparison.OrdinalIgnoreCase)
-        ? RoutingId.FromString(value[4..])
-        : SampleSupport.RoutingIdUtf8(value);
-}
-
 using var ctx = new Context();
 using var node = new SpotNode(ctx);
 using var spot = node.CreateSpot();
-using var actor = node.Actor("gateway-player-1");
+using var actor = node.CreateActor("gateway-player-1");
 using var sessionReady = new ManualResetEventSlim(false);
 RoutingId? sessionRid = null;
 string receivedPayload = "";
 
-spot.OnDispatchEvent((_, info) =>
+spot.OnDispatchEvent(info =>
 {
     ActorPart? part = info.RecvActorPart();
     if (part == null)
@@ -35,26 +28,26 @@ using var stream = new StreamSocket(ctx);
 string endpoint = SampleSupport.NewEndpoint("tcp", "actor-gateway");
 int port = SampleSupport.ExtractPort(endpoint);
 stream.Bind(endpoint);
-stream.OnPacket((routingId, payload) =>
+stream.OnPacket((routingId, header, payload) =>
 {
-    sessionRid = PublicRoutingId(routingId);
+    header.Dispose();
+    sessionRid = routingId;
     using (payload)
     {
         receivedPayload = Encoding.UTF8.GetString(payload.AsReadOnlySpan());
     }
     sessionReady.Set();
-    return 0;
 });
 
 using var client = SampleSupport.ConnectRawClient(port);
-SampleSupport.SendAll(client.GetStream(), "hello-gateway"u8);
+SampleSupport.SendStreamPacket(client.GetStream(), "hello-gateway"u8);
 if (!sessionReady.Wait(5000) || sessionRid == null)
     throw new TimeoutException("stream session");
 
 stream.BindActor(node, sessionRid.Value, actor.Ref, TimeSpan.FromSeconds(2));
 
 using Message joinMessage = Message.FromString("join:gateway");
-Task<IReadOnlyList<Message>> joinTask = actor.JoinAsync(spot, joinMessage,
+Task<IReadOnlyList<Message>> joinTask = actor.Join(spot, joinMessage,
     TimeSpan.FromSeconds(2));
 ActorJoinRequest? request = null;
 SampleSupport.WaitOrThrow(() =>
@@ -63,7 +56,7 @@ SampleSupport.WaitOrThrow(() =>
     return request != null;
 }, 2000, "actor join request");
 using Message joinReply = Message.FromString("accepted:gateway");
-spot.ReplyActorJoin(request!.Info, accepted: true, joinReply);
+spot.ReplyActorJoin(request!, accepted: true, joinReply);
 foreach (Message reply in await joinTask.WaitAsync(TimeSpan.FromSeconds(5)))
     reply.Dispose();
 

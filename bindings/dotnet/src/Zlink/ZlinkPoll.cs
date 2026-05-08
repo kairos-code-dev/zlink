@@ -7,7 +7,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public static class ZlinkPoll
+internal static class ZlinkPoll
 {
     [ThreadStatic]
     private static ZlinkPollItemUnix[]? _unixItems;
@@ -19,18 +19,18 @@ public static class ZlinkPoll
     {
         if (sockets == null)
             throw new ArgumentNullException(nameof(sockets));
-        PollEvents[] events = new PollEvents[sockets.Count];
-        Span<PollEvents> revents = sockets.Count <= 64
-            ? stackalloc PollEvents[sockets.Count]
-            : new PollEvents[sockets.Count];
-        Array.Fill(events, PollEvents.PollIn);
+        PollEventFlags[] events = new PollEventFlags[sockets.Count];
+        Span<PollEventFlags> revents = sockets.Count <= 64
+            ? stackalloc PollEventFlags[sockets.Count]
+            : new PollEventFlags[sockets.Count];
+        Array.Fill(events, PollEventFlags.PollIn);
         return PollSocketsCore(sockets.Count,
             i => SocketInterop.RequireSocket(sockets[i], nameof(sockets)).Handle,
             events, revents, timeoutMs);
     }
 
     public static int Poll(IReadOnlyList<IZlinkSocket> sockets,
-        IReadOnlyList<PollEvents> events, Span<PollEvents> revents,
+        IReadOnlyList<PollEventFlags> events, Span<PollEventFlags> revents,
         int timeoutMs)
     {
         if (sockets == null)
@@ -44,17 +44,17 @@ public static class ZlinkPoll
     {
         if (monitors == null)
             throw new ArgumentNullException(nameof(monitors));
-        PollEvents[] events = new PollEvents[monitors.Count];
-        Span<PollEvents> revents = monitors.Count <= 64
-            ? stackalloc PollEvents[monitors.Count]
-            : new PollEvents[monitors.Count];
-        Array.Fill(events, PollEvents.PollIn);
+        PollEventFlags[] events = new PollEventFlags[monitors.Count];
+        Span<PollEventFlags> revents = monitors.Count <= 64
+            ? stackalloc PollEventFlags[monitors.Count]
+            : new PollEventFlags[monitors.Count];
+        Array.Fill(events, PollEventFlags.PollIn);
         return PollSocketsCore(monitors.Count, i => monitors[i].Handle, events,
             revents, timeoutMs);
     }
 
     public static int Poll(IReadOnlyList<SocketMonitor> monitors,
-        IReadOnlyList<PollEvents> events, Span<PollEvents> revents,
+        IReadOnlyList<PollEventFlags> events, Span<PollEventFlags> revents,
         int timeoutMs)
     {
         if (monitors == null)
@@ -64,7 +64,7 @@ public static class ZlinkPoll
     }
 
     private static int PollSocketsCore(int count, Func<int, IntPtr> getHandle,
-        IReadOnlyList<PollEvents> events, Span<PollEvents> revents,
+        IReadOnlyList<PollEventFlags> events, Span<PollEventFlags> revents,
         int timeoutMs)
     {
         if (getHandle == null)
@@ -98,7 +98,7 @@ public static class ZlinkPoll
             if (rc < 0)
                 throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
             for (int i = 0; i < count; i++)
-                revents[i] = (PollEvents)items[i].Revents;
+                revents[i] = (PollEventFlags)items[i].Revents;
             return rc;
         }
 
@@ -116,7 +116,7 @@ public static class ZlinkPoll
         if (rc < 0)
             throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
         for (int i = 0; i < count; i++)
-            revents[i] = (PollEvents)unixItems[i].Revents;
+            revents[i] = (PollEventFlags)unixItems[i].Revents;
         return rc;
     }
 

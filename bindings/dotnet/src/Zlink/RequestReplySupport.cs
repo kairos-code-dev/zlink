@@ -50,7 +50,7 @@ internal static class RequestReplySupport
                 if (error is ZlinkRequestException requestError)
                 {
                     CallbackDelivery.Post(context, () => callback(
-                        requestError.Result, null));
+                        (RequestResult)requestError.Code, null));
                     return;
                 }
 

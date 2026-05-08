@@ -19,7 +19,7 @@ public abstract class RoutedMessageSocketBase : SocketBase
     {
     }
 
-    public bool Send(string routingId, Message message,
+    internal bool Send(string routingId, Message message,
         SendFlags flags = SendFlags.None)
     {
         if ((flags & SendFlags.DontWait) != 0)
@@ -45,7 +45,7 @@ public abstract class RoutedMessageSocketBase : SocketBase
         return true;
     }
 
-    public bool Send(string routingId, IReadOnlyList<Message> parts,
+    internal bool Send(string routingId, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
         if ((flags & SendFlags.DontWait) != 0)

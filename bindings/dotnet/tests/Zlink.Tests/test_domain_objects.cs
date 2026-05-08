@@ -13,8 +13,10 @@ public sealed class test_domain_objects
         RoutingId binary = RoutingId.FromBytes(new byte[] { 0x01, 0x02, 0xA0, 0xFF });
         RoutingId parsed = RoutingId.FromString("0102A0ff");
 
-        Assert.Equal("dealer-1", plain.ToString());
+        Assert.Equal(plain.ToHex(), plain.ToString());
+        Assert.Equal("6465616c65722d31", plain.ToString());
         Assert.Equal("0102a0ff", binary.ToHex());
+        Assert.Equal(binary.ToHex(), binary.ToString());
         Assert.Equal(binary, parsed);
         Assert.Equal(255, RoutingId.FromString(new string('a', 510)).Size);
         Assert.Throws<ArgumentOutOfRangeException>(() =>
@@ -33,7 +35,8 @@ public sealed class test_domain_objects
             new[] { part.Move() });
 
         Assert.True(received.IsSinglePart);
-        Assert.Equal("route-a", received.RoutingId?.ToString());
+        Assert.Equal(CoreTestSupport.RoutingIdUtf8("route-a").ToHex(),
+            received.RoutingId?.ToString());
         using Message single = received.SinglePartOrThrow();
         Assert.Equal("one", single.GetString());
     }
@@ -49,7 +52,8 @@ public sealed class test_domain_objects
         Assert.False(topicMessage.IsSinglePart);
         Assert.Equal("svc:prices", topicMessage.ServiceName);
         Assert.Equal("prices", topicMessage.Topic);
-        Assert.Equal("route-b", topicMessage.RoutingId?.ToString());
+        Assert.Equal(CoreTestSupport.RoutingIdUtf8("route-b").ToHex(),
+            topicMessage.RoutingId?.ToString());
         Assert.Throws<ZlinkRecvException>(() =>
             topicMessage.SinglePartOrThrow());
     }
@@ -63,6 +67,7 @@ public sealed class test_domain_objects
         Assert.True(actor.IsUnchecked);
         Assert.Equal(0UL, actor.Generation);
         Assert.Equal("actor-a", actor.ActorId);
-        Assert.Equal("node-a", actor.NodeRid.ToString());
+        Assert.Equal(CoreTestSupport.RoutingIdUtf8("node-a").ToHex(),
+            actor.NodeRid.ToString());
     }
 }

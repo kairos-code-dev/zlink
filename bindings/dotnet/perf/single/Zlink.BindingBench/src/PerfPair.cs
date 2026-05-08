@@ -87,7 +87,7 @@ internal static class PerfPair
             var events = new PollEvent[1];
             var recvBuffer = new byte[payload.Length];
             long lastRecvTicks = Stopwatch.GetTimestamp();
-            poller.Add(receiver, PollEvents.PollIn);
+            poller.Add(receiver, PollEventFlags.PollIn);
 
             try
             {

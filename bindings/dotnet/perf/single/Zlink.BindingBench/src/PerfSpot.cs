@@ -54,16 +54,8 @@ internal static class PerfSpot
                 PerfEnv.ReadPositive("PERF_SINGLE_HWM", 1000));
             int rcvHwm = PerfEnv.ReadPositive("PERF_SINGLE_RCVHWM",
                 PerfEnv.ReadPositive("PERF_SINGLE_HWM", 1000));
-            int sndTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200);
-            int rcvTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
-
-            pubNode.PublisherOptions.SendHighWaterMark = sndHwm;
-            pubNode.PublisherOptions.SendTimeout =
-                TimeSpan.FromMilliseconds(sndTimeo);
-            pubNode.PublisherOptions.NoDrop = true;
-            subNode.SubscriberOptions.ReceiveHighWaterMark = rcvHwm;
-            subNode.SubscriberOptions.ReceiveTimeout =
-                TimeSpan.FromMilliseconds(rcvTimeo);
+            pubNode.PubSubHighWaterMark = sndHwm;
+            subNode.PubSubHighWaterMark = rcvHwm;
             pubNode.SetRoutingId(PubNodeRoutingId);
             subNode.SetRoutingId(SubNodeRoutingId);
             spotPub.SetRoutingId(PubSpotRoutingId);
@@ -76,7 +68,7 @@ internal static class PerfSpot
             string registryRouter = EndpointFor(transport,
                 "spot-registry-router");
             registry.Bind(registryPub, registryRouter);
-            registry.SetBroadcastInterval(50);
+            registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
             pubDiscovery.ConnectRegistry(registryRouter);
             subDiscovery.ConnectRegistry(registryRouter);
 
@@ -95,8 +87,8 @@ internal static class PerfSpot
             Array.Fill(activePayload, (byte)'a');
 
             var dispatchState = new SpotDispatchState(size, latencySampleCap);
-            spotSub.OnDispatchEvent((currentSpot, info) =>
-                OnSpotDispatchEvent(currentSpot, info, dispatchState));
+            spotSub.OnDispatchEvent(info =>
+                OnSpotDispatchEvent(spotSub, info, dispatchState));
 
             if (!WaitForSubscriptionReady(spotPub, dispatchState, probePayload,
                     size))

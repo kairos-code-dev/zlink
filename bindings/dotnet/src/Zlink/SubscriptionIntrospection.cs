@@ -8,7 +8,7 @@ namespace Systems.Zlink;
 
 internal static class SubscriptionIntrospection
 {
-    internal static unsafe SubscriptionInfo At(IntPtr handle, int index)
+    internal static unsafe SubscriptionEntry? At(IntPtr handle, int index)
     {
         if (index < 0)
             throw new ArgumentOutOfRangeException(nameof(index));
@@ -17,15 +17,29 @@ internal static class SubscriptionIntrospection
         int rc = NativeMethods.zlink_subscription_at(handle, (nuint)index,
             IntPtr.Zero, ref length, out int isPattern);
         if (rc != 0 && length == 0)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        {
+            ZlinkConfigException error = ZlinkException.CreateConfigException(
+                NativeMethods.zlink_errno());
+            if (error.Result == ZlinkConfigException.ErrorCode.NotFound)
+                return null;
+            throw error;
+        }
 
         byte[] buffer = new byte[checked((int)length)];
         if (buffer.Length == 0)
         {
             rc = NativeMethods.zlink_subscription_at(handle, (nuint)index,
                 IntPtr.Zero, ref length, out isPattern);
-            ZlinkException.ThrowConfigIfError(rc);
-            return new SubscriptionInfo(string.Empty, isPattern != 0);
+            try
+            {
+                ZlinkException.ThrowConfigIfError(rc);
+            }
+            catch (ZlinkConfigException error)
+                when (error.Result == ZlinkConfigException.ErrorCode.NotFound)
+            {
+                return null;
+            }
+            return new SubscriptionEntry(string.Empty, isPattern != 0);
         }
 
         fixed (byte* ptr = buffer)
@@ -33,8 +47,16 @@ internal static class SubscriptionIntrospection
             rc = NativeMethods.zlink_subscription_at(handle, (nuint)index,
                 (IntPtr)ptr, ref length, out isPattern);
         }
-        ZlinkException.ThrowConfigIfError(rc);
-        return new SubscriptionInfo(
+        try
+        {
+            ZlinkException.ThrowConfigIfError(rc);
+        }
+        catch (ZlinkConfigException error)
+            when (error.Result == ZlinkConfigException.ErrorCode.NotFound)
+        {
+            return null;
+        }
+        return new SubscriptionEntry(
             Encoding.UTF8.GetString(buffer, 0, checked((int)length)),
             isPattern != 0);
     }

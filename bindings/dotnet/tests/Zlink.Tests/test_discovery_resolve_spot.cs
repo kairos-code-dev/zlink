@@ -32,7 +32,7 @@ public sealed class test_discovery_resolve_spot
                 "dotnet-resolve-node");
 
             registry.Bind(registryPub, registryRouter);
-            registry.SetBroadcastInterval(50);
+            registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
             Assert.False(discovery.SpotOwnerSyncEnabled);
             discovery.SpotOwnerSyncEnabled = true;
             discovery.ConnectRegistry(registryRouter);

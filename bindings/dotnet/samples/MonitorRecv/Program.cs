@@ -10,9 +10,9 @@ using var client = new PairSocket(ctx);
 string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
 using var serverMonitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 using var clientMonitor = client.MonitorOpen(SocketEvent.ConnectionReady);
-if (serverMonitor.Recv(true) != null)
+if (serverMonitor.Recv(RecvFlags.DontWait) != null)
     throw new InvalidOperationException("monitor sample expected empty server Recv(true)");
-if (clientMonitor.Recv(true) != null)
+if (clientMonitor.Recv(RecvFlags.DontWait) != null)
     throw new InvalidOperationException("monitor sample expected empty client Recv(true)");
 server.Bind(endpoint);
 client.Connect(endpoint);
@@ -24,9 +24,9 @@ if (serverEvent.Event != MonitorEventType.ConnectionReady
 {
     throw new InvalidOperationException("monitor sample expected ConnectionReady events");
 }
-if (serverMonitor.Recv(true) != null)
+if (serverMonitor.Recv(RecvFlags.DontWait) != null)
     throw new InvalidOperationException("monitor sample expected empty server Recv(true)");
-if (clientMonitor.Recv(true) != null)
+if (clientMonitor.Recv(RecvFlags.DontWait) != null)
     throw new InvalidOperationException("monitor sample expected empty client Recv(true)");
 
 Console.WriteLine("[monitor/recv] recv: \"connection-ready\" -> Recv(true): empty");

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
@@ -80,6 +81,33 @@ internal static class CoreTestSupport
         return RoutingId.FromBytes(Encoding.UTF8.GetBytes(value));
     }
 
+    internal static byte[] BuildStreamPacket(ReadOnlySpan<byte> body,
+        ReadOnlySpan<byte> header = default)
+    {
+        if (header.Length > ushort.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(nameof(header),
+                "Stream packet header is too large.");
+        }
+
+        byte[] frame = new byte[6 + header.Length + body.Length];
+        BinaryPrimitives.WriteUInt16BigEndian(frame.AsSpan(0, 2),
+            (ushort)header.Length);
+        BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(2, 4),
+            (uint)body.Length);
+        header.CopyTo(frame.AsSpan(6, header.Length));
+        body.CopyTo(frame.AsSpan(6 + header.Length, body.Length));
+        return frame;
+    }
+
+    internal static void SendStreamPacket(NetworkStream stream,
+        ReadOnlySpan<byte> body, ReadOnlySpan<byte> header = default)
+    {
+        byte[] frame = BuildStreamPacket(body, header);
+        stream.Write(frame);
+        stream.Flush();
+    }
+
     internal static string NewEndpoint(string transport, string prefix)
     {
         if (transport == "inproc")
@@ -100,13 +128,13 @@ internal static class CoreTestSupport
         if (transport == "tcp" || transport == "inproc")
             return true;
         if (transport == "ipc")
-            return Runtime.Has("ipc");
+            return Zlink.Has("ipc");
         if (transport == "ws")
-            return Runtime.Has("ws");
+            return Zlink.Has("ws");
         if (transport == "wss")
-            return Runtime.Has("wss");
+            return Zlink.Has("wss");
         if (transport == "tls")
-            return Runtime.Has("tls");
+            return Zlink.Has("tls");
         return false;
     }
 
@@ -417,7 +445,10 @@ internal static class CoreTestSupport
                     : Encoding.UTF8.GetString(
                         received.Parts[received.Parts.Count - 1].AsReadOnlySpan())
                         .Trim('\0');
-                return (received.RoutingId?.ToString() ?? string.Empty, payload);
+                string routingId = received.RoutingId.HasValue
+                    ? Encoding.UTF8.GetString(received.RoutingId.Value.ToBytes())
+                    : string.Empty;
+                return (routingId, payload);
             }
             finally
             {

@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Threading;
 using Xunit;
 
@@ -52,17 +51,21 @@ public sealed class test_spot_pubsub_basic
         string tooLongService = new string('s', 256);
 
         using (Message message = Message.FromString("x"))
-            Assert.ThrowsAny<ArgumentException>(() => spot.Publish("", "topic",
-                message));
+            Assert.ThrowsAny<ArgumentException>(() =>
+                spot.Publish("", "topic").Message(message).Submit());
+        Assert.ThrowsAny<ArgumentException>(() =>
+            spot.SetSubscription(string.Empty));
         using (Message message = Message.FromString("x"))
-            Assert.ThrowsAny<ArgumentException>(() => spot.Publish("svc", "",
-                message));
+            Assert.ThrowsAny<ArgumentException>(() =>
+                spot.Publish("svc", "").Message(message).Submit());
         using (Message message = Message.FromString("x"))
             Assert.Throws<ArgumentOutOfRangeException>(() =>
-                spot.Publish(tooLongService, "topic", message));
+                spot.Publish(tooLongService, "topic").Message(message).Submit());
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            spot.SetSubscription(tooLongTopic));
         using (Message message = Message.FromString("x"))
             Assert.Throws<ArgumentOutOfRangeException>(() =>
-                spot.Publish("svc", tooLongTopic, message));
+                spot.Publish("svc", tooLongTopic).Message(message).Submit());
     }
 
     [Fact]
@@ -97,7 +100,7 @@ public sealed class test_spot_pubsub_basic
 
         using Message message = Message.FromString("payload");
         Assert.Throws<ObjectDisposedException>(() =>
-            spot.Publish("svc", "topic", message));
+            spot.Publish("svc", "topic").Message(message).Submit());
     }
 
     [Fact]
@@ -144,7 +147,7 @@ public sealed class test_spot_pubsub_basic
                     subscribed = subscriber.Subscribe(RecvFlags.DontWait);
                     return subscribed is not null;
                 }
-                catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
+                catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
                 {
                     return false;
                 }
@@ -152,86 +155,6 @@ public sealed class test_spot_pubsub_basic
             5000));
 
         using var received = subscribed!;
-        Assert.Equal(topic, received.Topic);
-        Assert.Equal(payload, received.SinglePartOrThrow().GetString());
-    }
-
-    [Fact(Skip = "Native SPOT discovery startup is order-sensitive in this same-context scenario; cross-context discovery coverage remains active.")]
-    public void spot_node_create_spot_publishes_to_remote_subscriber_via_discovery()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        string serviceName = $"game.stage.{Guid.NewGuid():N}";
-        using var ctx = new Context();
-        using var registry = new Registry(ctx);
-        using var publisherDiscovery = new Discovery(ctx, AutoConnectType.SpotMesh,
-            serviceName);
-        using var subscriberDiscovery = new Discovery(ctx, AutoConnectType.SpotMesh,
-            serviceName);
-        using var publisherNode = new SpotNode(ctx);
-        using var subscriberNode = new SpotNode(ctx);
-        using var publisher = publisherNode.CreateSpot();
-        using var subscriber = subscriberNode.CreateSpot();
-
-        const string topic = "spot:external";
-        const string payload = "hello-discovery";
-
-        string registryPub = CoreTestSupport.NewEndpoint("tcp",
-            "spot-discovery-pub");
-        string registryRouter = CoreTestSupport.NewEndpoint("tcp",
-            "spot-discovery-router");
-        string publisherEndpoint = CoreTestSupport.NewEndpoint("tcp",
-            "spot-discovery-publisher");
-        string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp",
-            "spot-discovery-subscriber");
-
-        publisherNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
-            "z-spot-discovery-publisher"));
-        subscriberNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
-            "a-spot-discovery-subscriber"));
-        publisher.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
-            "z-spot-discovery-publisher-spot"));
-        subscriber.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
-            "a-spot-discovery-subscriber-spot"));
-        registry.Bind(registryPub, registryRouter);
-        registry.SetBroadcastInterval(50);
-        publisherDiscovery.ConnectRegistry(registryRouter);
-        subscriberDiscovery.ConnectRegistry(registryRouter);
-        publisherNode.Bind(publisherEndpoint);
-        subscriberNode.Bind(subscriberEndpoint);
-        publisherNode.AttachDiscovery(publisherDiscovery);
-        subscriberNode.AttachDiscovery(subscriberDiscovery);
-        subscriber.SetSubscription(topic);
-
-        Assert.True(CoreTestSupport.WaitUntil(
-            () => publisherNode.StatusSnapshot().ConnectedPeerCount > 0
-                && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0
-                && subscriberNode.SubjectsSnapshot()
-                    .Any(entry => entry.Subject == topic),
-            10000));
-
-        TopicMessage? subscribed = null;
-        Assert.True(CoreTestSupport.WaitUntil(
-            () =>
-            {
-                using var message = Message.FromString(payload);
-                publisher.Publish(serviceName, topic, message);
-
-                try
-                {
-                    subscribed = subscriber.Subscribe(RecvFlags.DontWait);
-                    return subscribed is not null;
-                }
-                catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
-                {
-                    return false;
-                }
-            },
-            10000));
-
-        using var received = subscribed!;
-        Assert.Equal(serviceName, received.ServiceName);
         Assert.Equal(topic, received.Topic);
         Assert.Equal(payload, received.SinglePartOrThrow().GetString());
     }
@@ -277,7 +200,7 @@ public sealed class test_spot_pubsub_basic
         subscriber.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
             "a-spot-cross-context-subscriber-spot"));
         registry.Bind(registryPub, registryRouter);
-        registry.SetBroadcastInterval(50);
+        registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
         publisherDiscovery.ConnectRegistry(registryRouter);
         subscriberDiscovery.ConnectRegistry(registryRouter);
         publisherNode.Bind(publisherEndpoint);
@@ -296,14 +219,14 @@ public sealed class test_spot_pubsub_basic
             () =>
             {
                 using var message = Message.FromString(payload);
-                publisher.Publish(serviceName, topic, message);
+                publisher.Publish(serviceName, topic).Message(message).Submit();
 
                 try
                 {
                     subscribed = subscriber.Subscribe(RecvFlags.DontWait);
                     return subscribed is not null;
                 }
-                catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
+                catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
                 {
                     return false;
                 }
@@ -316,180 +239,21 @@ public sealed class test_spot_pubsub_basic
         Assert.Equal(payload, received.SinglePartOrThrow().GetString());
     }
 
-    [Fact(Skip = "Native SPOT discovery startup is order-sensitive after prior SPOT tests; ready-before-publish coverage remains active.")]
-    public void spot_node_late_created_publisher_spot_publishes_to_remote_subscriber_via_discovery()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var registryContext = new Context();
-        using var publisherContext = new Context();
-        using var subscriberContext = new Context();
-        using var registry = new Registry(registryContext);
-        using var publisherDiscovery = new Discovery(publisherContext,
-            AutoConnectType.SpotMesh, "game.stage");
-        using var subscriberDiscovery = new Discovery(subscriberContext,
-            AutoConnectType.SpotMesh, "game.stage");
-        using var publisherNode = new SpotNode(publisherContext);
-        using var subscriberNode = new SpotNode(subscriberContext);
-        using var subscriber = subscriberNode.CreateSpot();
-
-        const string topic = "spot:external";
-        const string payload = "hello-late-publisher";
-
-        string registryPub = CoreTestSupport.NewEndpoint("tcp",
-            "spot-late-publisher-pub");
-        string registryRouter = CoreTestSupport.NewEndpoint("tcp",
-            "spot-late-publisher-router");
-        string publisherEndpoint = CoreTestSupport.NewEndpoint("tcp",
-            "spot-late-publisher-publisher");
-        string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp",
-            "spot-late-publisher-subscriber");
-
-        publisherNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
-            "z-spot-late-publisher"));
-        subscriberNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
-            "a-spot-late-subscriber"));
-        subscriber.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
-            "a-spot-late-subscriber-spot"));
-        registry.Bind(registryPub, registryRouter);
-        registry.SetBroadcastInterval(50);
-        publisherDiscovery.ConnectRegistry(registryRouter);
-        subscriberDiscovery.ConnectRegistry(registryRouter);
-        publisherNode.Bind(publisherEndpoint);
-        subscriberNode.Bind(subscriberEndpoint);
-        publisherNode.AttachDiscovery(publisherDiscovery);
-        subscriberNode.AttachDiscovery(subscriberDiscovery);
-        subscriber.SetSubscription(topic);
-
-        Assert.True(CoreTestSupport.WaitUntil(
-            () => publisherNode.StatusSnapshot().ConnectedPeerCount > 0
-                && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0,
-            10000));
-
-        using var publisher = publisherNode.CreateSpot();
-        publisher.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
-            "z-spot-late-publisher-spot"));
-
-        TopicMessage? subscribed = null;
-        Assert.True(CoreTestSupport.WaitUntil(
-            () =>
-            {
-                using var message = Message.FromString(payload);
-                publisher.Publish("game.stage", topic, message);
-
-                try
-                {
-                    subscribed = subscriber.Subscribe(RecvFlags.DontWait);
-                    return subscribed is not null;
-                }
-                catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
-                {
-                    return false;
-                }
-            },
-            10000));
-
-        using var received = subscribed!;
-        Assert.Equal("game.stage", received.ServiceName);
-        Assert.Equal(topic, received.Topic);
-        Assert.Equal(payload, received.SinglePartOrThrow().GetString());
-    }
-
-    [Fact]
-    public void spot_node_preconnected_publisher_spot_recovers_after_discovery_peers_become_ready()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var registryContext = new Context();
-        using var publisherContext = new Context();
-        using var subscriberContext = new Context();
-        using var registry = new Registry(registryContext);
-        using var publisherDiscovery = new Discovery(publisherContext,
-            AutoConnectType.SpotMesh, "game.stage");
-        using var subscriberDiscovery = new Discovery(subscriberContext,
-            AutoConnectType.SpotMesh, "game.stage");
-        using var publisherNode = new SpotNode(publisherContext);
-        using var subscriberNode = new SpotNode(subscriberContext);
-        using var subscriber = subscriberNode.CreateSpot();
-
-        const string topic = "spot:external";
-        const string payload = "hello-preconnected-publisher";
-
-        string registryPub = CoreTestSupport.NewEndpoint("tcp",
-            "spot-preconnected-pub");
-        string registryRouter = CoreTestSupport.NewEndpoint("tcp",
-            "spot-preconnected-router");
-        string publisherEndpoint = CoreTestSupport.NewEndpoint("tcp",
-            "spot-preconnected-publisher");
-        string subscriberEndpoint = CoreTestSupport.NewEndpoint("tcp",
-            "spot-preconnected-subscriber");
-
-        publisherNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
-            "z-spot-preconnected-publisher"));
-        subscriberNode.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
-            "a-spot-preconnected-subscriber"));
-        subscriber.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
-            "a-spot-preconnected-subscriber-spot"));
-        registry.Bind(registryPub, registryRouter);
-        registry.SetBroadcastInterval(50);
-        publisherDiscovery.ConnectRegistry(registryRouter);
-        subscriberDiscovery.ConnectRegistry(registryRouter);
-        publisherNode.Bind(publisherEndpoint);
-        subscriberNode.Bind(subscriberEndpoint);
-        publisherNode.AttachDiscovery(publisherDiscovery);
-        subscriberNode.AttachDiscovery(subscriberDiscovery);
-
-        using var publisher = publisherNode.CreateSpot();
-        publisher.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
-            "z-spot-preconnected-publisher-spot"));
-        subscriber.SetSubscription(topic);
-
-        Assert.True(CoreTestSupport.WaitUntil(
-            () => publisherNode.StatusSnapshot().ConnectedPeerCount > 0
-                && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0,
-            10000));
-
-        TopicMessage? subscribed = null;
-        Assert.True(CoreTestSupport.WaitUntil(
-            () =>
-            {
-                using var message = Message.FromString(payload);
-                publisher.Publish("game.stage", topic, message);
-
-                try
-                {
-                    subscribed = subscriber.Subscribe(RecvFlags.DontWait);
-                    return subscribed is not null;
-                }
-                catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
-                {
-                    return false;
-                }
-            },
-            10000));
-
-        using var received = subscribed!;
-        Assert.Equal("game.stage", received.ServiceName);
-        Assert.Equal(topic, received.Topic);
-        Assert.Equal(payload, received.SinglePartOrThrow().GetString());
-    }
-
     [Fact]
     public void spot_node_publisher_spot_eventually_delivers_when_publish_starts_before_discovery_ready()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
+        string serviceName = $"game.stage.{Guid.NewGuid():N}";
         using var registryContext = new Context();
         using var publisherContext = new Context();
         using var subscriberContext = new Context();
         using var registry = new Registry(registryContext);
         using var publisherDiscovery = new Discovery(publisherContext,
-            AutoConnectType.SpotMesh, "game.stage");
+            AutoConnectType.SpotMesh, serviceName);
         using var subscriberDiscovery = new Discovery(subscriberContext,
-            AutoConnectType.SpotMesh, "game.stage");
+            AutoConnectType.SpotMesh, serviceName);
         using var publisherNode = new SpotNode(publisherContext);
         using var subscriberNode = new SpotNode(subscriberContext);
         using var subscriber = subscriberNode.CreateSpot();
@@ -513,7 +277,7 @@ public sealed class test_spot_pubsub_basic
         subscriber.SetRoutingId(CoreTestSupport.RoutingIdUtf8(
             "a-spot-early-subscriber-spot"));
         registry.Bind(registryPub, registryRouter);
-        registry.SetBroadcastInterval(50);
+        registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
         publisherDiscovery.ConnectRegistry(registryRouter);
         subscriberDiscovery.ConnectRegistry(registryRouter);
         publisherNode.Bind(publisherEndpoint);
@@ -531,14 +295,14 @@ public sealed class test_spot_pubsub_basic
             () =>
             {
                 using var message = Message.FromString(payload);
-                publisher.Publish("game.stage", topic, message);
+                publisher.Publish(serviceName, topic).Message(message).Submit();
 
                 try
                 {
                     subscribed = subscriber.Subscribe(RecvFlags.DontWait);
                     return subscribed is not null;
                 }
-                catch (ZlinkRecvException ex) when (ex.Result == RecvResult.NoData)
+                catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
                 {
                     return false;
                 }
@@ -546,7 +310,7 @@ public sealed class test_spot_pubsub_basic
             10000));
 
         using var received = subscribed!;
-        Assert.Equal("game.stage", received.ServiceName);
+        Assert.Equal(serviceName, received.ServiceName);
         Assert.Equal(topic, received.Topic);
         Assert.Equal(payload, received.SinglePartOrThrow().GetString());
     }

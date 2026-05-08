@@ -23,7 +23,7 @@ internal static class PerfMultiPubSubServer
         ApplyMultiSocketOptions(server, options);
         ConfigureTlsServerIfNeeded(server, options.Transport);
         server.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
-        server.PubOptions.NoDrop = options.PubSubXpubNoDrop > 0;
+        server.Options.NoDrop = options.PubSubXpubNoDrop > 0;
 
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 

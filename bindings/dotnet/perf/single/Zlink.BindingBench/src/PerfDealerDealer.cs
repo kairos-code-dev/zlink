@@ -131,7 +131,7 @@ internal static class PerfDealerDealer
             using var poller = new Poller();
             var events = new PollEvent[1];
             long lastRecvTicks = Stopwatch.GetTimestamp();
-            poller.Add(receiver, PollEvents.PollIn);
+            poller.Add(receiver, PollEventFlags.PollIn);
 
             try
             {

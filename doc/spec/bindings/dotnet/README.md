@@ -135,9 +135,11 @@ core and never truncates user input.
   peer-connect APIs must fit in 255 UTF-8 bytes and must not contain NUL.
 - SPOT `serviceName` values must fit in 255 UTF-8 bytes and must not contain
   NUL.
-- Topic and subscription filter strings must not contain NUL. Their length is
-  left to core because the native API accepts C strings rather than a fixed
-  struct field.
+- Raw topic and subscription filter strings must fit in `0..255` UTF-8 bytes
+  and must not contain NUL. Empty raw topics and filters remain valid because
+  raw PUB/SUB uses the empty filter to mean "match all".
+- SPOT topic and subscription filter strings must fit in `1..255` UTF-8 bytes
+  and must not contain NUL.
 - `TimeSpan` values converted to native milliseconds or nanoseconds must be in
   range. Overflow, negative values where core does not accept them, and lossy
   truncation raise .NET argument exceptions before the native call.

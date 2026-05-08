@@ -53,19 +53,48 @@ public sealed class Registry : IDisposable, IAsyncDisposable
         ZlinkException.ThrowConfigIfError(rc);
     }
 
-    public void SetHeartbeat(uint intervalMs, uint timeoutMs)
+    public void SetHeartbeat(TimeSpan interval, TimeSpan timeout)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_set_heartbeat(_handle,
-            intervalMs, timeoutMs);
+            EncodeMilliseconds(interval, nameof(interval)),
+            EncodeMilliseconds(timeout, nameof(timeout)));
         ZlinkException.ThrowConfigIfError(rc);
     }
 
-    public void SetBroadcastInterval(uint intervalMs)
+    public void SetBroadcastInterval(TimeSpan interval)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_registry_set_broadcast_interval(_handle,
-            intervalMs);
+            EncodeMilliseconds(interval, nameof(interval)));
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    public void SetTlsServer(string certPath, string keyPath,
+        bool requireClientCert = false)
+    {
+        if (certPath == null)
+            throw new ArgumentNullException(nameof(certPath));
+        if (keyPath == null)
+            throw new ArgumentNullException(nameof(keyPath));
+        EnsureNotDisposed();
+
+        int rc = NativeMethods.zlink_set_tls_server(_handle, certPath, keyPath,
+            requireClientCert ? 1 : 0);
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    public void SetTlsClient(string caCertPath, string hostname,
+        bool trustSystem = false)
+    {
+        if (caCertPath == null)
+            throw new ArgumentNullException(nameof(caCertPath));
+        if (hostname == null)
+            throw new ArgumentNullException(nameof(hostname));
+        EnsureNotDisposed();
+
+        int rc = NativeMethods.zlink_set_tls_client(_handle, caCertPath,
+            hostname, trustSystem ? 1 : 0);
         ZlinkException.ThrowConfigIfError(rc);
     }
 
@@ -251,6 +280,17 @@ public sealed class Registry : IDisposable, IAsyncDisposable
             throw new ObjectDisposedException(nameof(Registry));
     }
 
+    private static uint EncodeMilliseconds(TimeSpan value, string paramName)
+    {
+        double millis = value.TotalMilliseconds;
+        if (double.IsNaN(millis) || double.IsInfinity(millis)
+            || millis < 0 || millis > uint.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(paramName);
+        }
+        return (uint)Math.Ceiling(millis);
+    }
+
     private RegistryServiceSummaryEntry[] ReadSummaryEntries(IntPtr filterPtr)
     {
         nuint count = 0;
@@ -312,7 +352,7 @@ public sealed class Registry : IDisposable, IAsyncDisposable
                         entries, ref actual)
                     : NativeMethods.zlink_registry_topology_query(_handle,
                         filterPtr, entries, ref actual);
-                if (rc != 0 && IsRetryableSnapshotSizeRace(
+                if (rc != 0 && RegistryReadSupport.IsRetryableSizeRace(
                     NativeMethods.zlink_errno()))
                     continue;
                 ZlinkException.ThrowConfigIfError(rc);
@@ -337,9 +377,6 @@ public sealed class Registry : IDisposable, IAsyncDisposable
 
         throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
-
-    private static bool IsRetryableSnapshotSizeRace(int errno)
-        => errno == 105 || errno == 55;
 
     private static unsafe void WriteFixedString(string value, byte* destination,
         int capacity)

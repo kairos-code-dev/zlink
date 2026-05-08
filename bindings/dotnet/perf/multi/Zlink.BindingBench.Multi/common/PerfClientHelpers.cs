@@ -6,8 +6,8 @@ using Systems.Zlink;
 
 internal static partial class PerfRunner
 {
-    internal const PollEvents SocketPollIn = PollEvents.PollIn;
-    internal const PollEvents SocketPollOut = PollEvents.PollOut;
+    internal const PollEventFlags SocketPollIn = PollEventFlags.PollIn;
+    internal const PollEventFlags SocketPollOut = PollEventFlags.PollOut;
 
     internal static bool IsSupportedTransport(string transport)
     {
@@ -106,17 +106,17 @@ internal static partial class PerfRunner
     internal static int PollSocketReadReady(PollManager pollManager,
         IReadOnlyList<SocketBase> sockets, int timeoutMs)
     {
-        return pollManager.PollSockets(sockets, PollEvents.PollIn, timeoutMs);
+        return pollManager.PollSockets(sockets, PollEventFlags.PollIn, timeoutMs);
     }
 
     internal static int PollSocketWriteReady(PollManager pollManager,
         IReadOnlyList<SocketBase> sockets, int timeoutMs)
     {
-        return pollManager.PollSockets(sockets, PollEvents.PollOut, timeoutMs);
+        return pollManager.PollSockets(sockets, PollEventFlags.PollOut, timeoutMs);
     }
 
     internal static int PollSocketEvents(PollManager pollManager,
-        IReadOnlyList<SocketBase> sockets, IReadOnlyList<PollEvents> eventMasks,
+        IReadOnlyList<SocketBase> sockets, IReadOnlyList<PollEventFlags> eventMasks,
         int timeoutMs)
     {
         return pollManager.PollSockets(sockets, eventMasks, timeoutMs);
@@ -144,7 +144,7 @@ internal static partial class PerfRunner
         {
             try
             {
-                MonitorEvent? evt = monitor.Recv(true);
+                MonitorEvent? evt = monitor.Recv(RecvFlags.DontWait);
                 if (evt == null)
                     return readyCount;
                 if (IsMonitorReady(evt.Event))

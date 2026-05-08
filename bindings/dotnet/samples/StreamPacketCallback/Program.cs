@@ -1,5 +1,4 @@
 using System.Threading;
-using System.Net.Sockets;
 using SampleCommon;
 using Systems.Zlink;
 
@@ -15,24 +14,21 @@ stream.Bind(endpoint);
 
 using var signal = new ManualResetEventSlim(false);
 string? callbackPayload = null;
-StreamPacketHandler handler = (string routingId, Message payload) =>
+StreamPacketHandler handler = (routingId, header, body) =>
 {
-    using (payload)
-        callbackPayload = payload.GetString();
-    using var reply = Message.FromString("hello-stream");
-    stream.Send(routingId, reply);
+    using (header)
+    using (body)
+    {
+        callbackPayload = body.GetString();
+    }
     signal.Set();
-    return 0;
 };
 stream.OnPacket(handler);
 
 using var client = SampleSupport.ConnectRawClient(port);
 SampleSupport.WaitMonitorEvent(monitor, 5000, SocketEvent.Accepted);
-NetworkStream network = client.GetStream();
-SampleSupport.SendAll(network, "hello-stream"u8);
-string echoed = System.Text.Encoding.UTF8.GetString(
-    SampleSupport.ReceiveExact(network, "hello-stream".Length));
+SampleSupport.SendStreamPacket(client.GetStream(), "hello-stream"u8);
 SampleSupport.WaitOrThrow(() => signal.IsSet, 2000,
     "stream packet callback timeout");
 Console.WriteLine(
-    $"[stream/packet-callback] send: \"hello-stream\" -> recv: \"{echoed}\"");
+    $"[stream/packet-callback] recv: \"{callbackPayload}\"");

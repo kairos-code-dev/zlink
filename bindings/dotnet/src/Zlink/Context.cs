@@ -27,7 +27,8 @@ public sealed class Context : IDisposable, IAsyncDisposable
         EnsureNotDisposed();
         EnumValidation.EnsureContextOption(option, nameof(option));
         int rc = NativeMethods.zlink_ctx_set(_handle, (int)option, value);
-        ZlinkException.ThrowIfError(rc);
+        if (rc != 0)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
     internal int GetOption(ContextOption option)

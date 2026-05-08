@@ -1,8 +1,6 @@
 using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -42,69 +40,6 @@ public sealed class test_stream_socket
             read += n;
         }
         return buffer;
-    }
-
-    private static byte[] BuildLen32BeFrame(ReadOnlySpan<byte> payload)
-    {
-        byte[] frame = new byte[4 + payload.Length];
-        BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(0, 4),
-            (uint)payload.Length);
-        payload.CopyTo(frame.AsSpan(4));
-        return frame;
-    }
-
-    private static byte[] ReceiveLen32BeFrame(NetworkStream stream)
-    {
-        byte[] header = ReceiveExact(stream, 4);
-        int len = checked((int)BinaryPrimitives.ReadUInt32BigEndian(header));
-        return len == 0 ? Array.Empty<byte>() : ReceiveExact(stream, len);
-    }
-
-    private static string StreamRoutingIdToPublicString(uint routingId)
-    {
-        return $"hex:{routingId:X8}";
-    }
-
-    private static void SendLen32Be(StreamSocket stream, string routingId,
-        Message message)
-    {
-        using Message framed = Message.FromBytes(
-            BuildLen32BeFrame(message.AsReadOnlySpan()));
-        stream.Send(routingId, framed);
-    }
-
-    private static void AttachLen32Be(StreamSocket stream,
-        Func<string, Message[], int> handler)
-    {
-        var accumulators = new Dictionary<string, Len32BeAccumulator>(
-            StringComparer.Ordinal);
-        stream.OnPacket((routingId, _, payload) =>
-        {
-            string routingIdText = routingId.ToString();
-            Message[] frames = Array.Empty<Message>();
-            try
-            {
-                if (!accumulators.TryGetValue(routingIdText,
-                    out Len32BeAccumulator? state))
-                {
-                    state = new Len32BeAccumulator();
-                    accumulators.Add(routingIdText, state);
-                }
-
-                frames = state.AppendAndDrain(payload.AsReadOnlySpan());
-                payload.Dispose();
-                if (frames.Length == 0)
-                    return;
-                handler(routingIdText, frames);
-            }
-            catch
-            {
-                foreach (Message frame in frames)
-                    frame.Dispose();
-                payload.Dispose();
-                throw;
-            }
-        });
     }
 
     private static bool TryDrainOneMultipart(StreamSocket streamSocket)
@@ -149,124 +84,6 @@ public sealed class test_stream_socket
         throw new FileNotFoundException($"{relativePath} not found.");
     }
 
-    private sealed class Len32BeAccumulator
-    {
-        private byte[] _buffer = Array.Empty<byte>();
-        private int _count;
-
-        public Message[] AppendAndDrain(ReadOnlySpan<byte> payload)
-        {
-            if (!payload.IsEmpty)
-            {
-                EnsureCapacity(_count + payload.Length);
-                payload.CopyTo(_buffer.AsSpan(_count));
-                _count += payload.Length;
-            }
-
-            int frameCount = CountReadyFrames();
-            if (frameCount == 0)
-                return Array.Empty<Message>();
-
-            Message[] frames = new Message[frameCount];
-            int produced = 0;
-            int offset = 0;
-            while (_count - offset >= sizeof(uint))
-            {
-                int frameSize = checked((int)BinaryPrimitives.ReadUInt32BigEndian(
-                    _buffer.AsSpan(offset, sizeof(uint))));
-                int totalSize = sizeof(uint) + frameSize;
-                if (_count - offset < totalSize)
-                    break;
-
-                frames[produced++] = Message.FromBytes(
-                    _buffer.AsSpan(offset + sizeof(uint), frameSize));
-                offset += totalSize;
-            }
-
-            if (offset > 0)
-            {
-                Buffer.BlockCopy(_buffer, offset, _buffer, 0, _count - offset);
-                _count -= offset;
-            }
-
-            return frames;
-        }
-
-        private int CountReadyFrames()
-        {
-            int count = 0;
-            int offset = 0;
-            while (_count - offset >= sizeof(uint))
-            {
-                int frameSize = checked((int)BinaryPrimitives.ReadUInt32BigEndian(
-                    _buffer.AsSpan(offset, sizeof(uint))));
-                int totalSize = sizeof(uint) + frameSize;
-                if (_count - offset < totalSize)
-                    break;
-
-                count++;
-                offset += totalSize;
-            }
-
-            return count;
-        }
-
-        private void EnsureCapacity(int required)
-        {
-            if (_buffer.Length >= required)
-                return;
-
-            int nextSize = _buffer.Length == 0 ? 256 : _buffer.Length;
-            while (nextSize < required)
-                nextSize *= 2;
-            Array.Resize(ref _buffer, nextSize);
-        }
-    }
-
-    private static void RunLen32BeEchoCase(byte[] payload, int? splitPoint)
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
-        string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len32-case");
-        int port = CoreTestSupport.ExtractPort(endpoint);
-        stream.Bind(endpoint);
-
-        int packets = 0;
-        int callbacks = 0;
-        AttachLen32Be(stream, (rid, messages) =>
-        {
-            Interlocked.Increment(ref callbacks);
-            foreach (Message message in messages)
-            {
-                Interlocked.Increment(ref packets);
-                SendLen32Be(stream, rid, message);
-            }
-            return 0;
-        });
-
-        using var client = ConnectRawClient(port);
-        NetworkStream ns = client.GetStream();
-        byte[] frame = BuildLen32BeFrame(payload);
-        if (splitPoint is { } split && split > 0 && split < frame.Length)
-        {
-            SendAll(ns, frame.AsSpan(0, split));
-            SendAll(ns, frame.AsSpan(split));
-        }
-        else
-        {
-            SendAll(ns, frame);
-        }
-
-        Assert.Equal(payload, ReceiveLen32BeFrame(ns));
-        Assert.True(CoreTestSupport.WaitUntil(() => Volatile.Read(ref packets) >= 1,
-            3000));
-        Assert.True(Volatile.Read(ref callbacks) >= 1);
-        stream.DetachStream();
-    }
-
     [Fact]
     public void stream_callback_lifecycle_contract()
     {
@@ -276,26 +93,36 @@ public sealed class test_stream_socket
         using var ctx = new Context();
         using var stream = new StreamSocket(ctx);
 
-        stream.OnPacket((StreamPacketHandler)((_, _, body) =>
+        stream.OnPacket((StreamPacketHandler)((_, header, body) =>
         {
+            header.Dispose();
             body.Dispose();
         }));
         ZlinkHandlerException ex1 = Assert.Throws<ZlinkHandlerException>(() =>
-            stream.OnPacket((StreamPacketHandler)((_, _, body) =>
+            stream.OnPacket((StreamPacketHandler)((_, header, body) =>
             {
+                header.Dispose();
                 body.Dispose();
             })));
-        Assert.Equal(HandlerResult.Busy, ex1.Result);
+        Assert.Equal(ZlinkHandlerException.ErrorCode.Busy, ex1.Result);
         ZlinkHandlerException ex2 = Assert.Throws<ZlinkHandlerException>(() =>
-            AttachLen32Be(stream, (_, _) => 0));
-        Assert.Equal(HandlerResult.Busy, ex2.Result);
+            stream.OnPacket((StreamPacketHandler)((_, header, body) =>
+            {
+                header.Dispose();
+                body.Dispose();
+            })));
+        Assert.Equal(ZlinkHandlerException.ErrorCode.Busy, ex2.Result);
         stream.DetachStream();
 
-        AttachLen32Be(stream, (_, _) => 0);
+        stream.OnPacket((StreamPacketHandler)((_, header, body) =>
+        {
+            header.Dispose();
+            body.Dispose();
+        }));
         stream.DetachStream();
     }
 
-    [Fact(Skip = "Raw STREAM callback behavior is no longer part of the public .NET contract.")]
+    [Fact]
     public void stream_callback_exception_reports_unhandled_event()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -316,14 +143,16 @@ public sealed class test_stream_socket
         Runtime.UnhandledCallbackException += OnUnhandled;
         try
         {
-            stream.OnPacket((StreamPacketHandler)((_, _, payload) =>
+            stream.OnPacket((StreamPacketHandler)((_, header, payload) =>
             {
+                header.Dispose();
                 payload.Dispose();
                 throw new InvalidOperationException("stream-callback-fail");
             }));
 
             using var client = ConnectRawClient(port);
-            SendAll(client.GetStream(), "stream-callback-fail"u8);
+            SendAll(client.GetStream(),
+                CoreTestSupport.BuildStreamPacket("stream-callback-fail"u8));
 
             Assert.True(CoreTestSupport.WaitUntil(() => observed != null, 3000));
             Assert.IsType<InvalidOperationException>(observed);
@@ -356,7 +185,7 @@ public sealed class test_stream_socket
         using var ctx = new Context();
         using var stream = new StreamSocket(ctx);
 
-        stream.StreamOptions.Notify = true;
+        stream.Options.Notify = true;
         stream.OnPacket((StreamPacketHandler)((_, _, body) =>
         {
             body.Dispose();
@@ -376,7 +205,7 @@ public sealed class test_stream_socket
         Assert.False(HasPublicRoutedSend(typeof(DealerSocket)));
     }
 
-    [Fact(Skip = "Raw STREAM callback behavior is no longer part of the public .NET contract.")]
+    [Fact]
     public void stream_callback_echo_raw()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -391,8 +220,9 @@ public sealed class test_stream_socket
 
         int matched = 0;
         byte[] expected = "stream-callback-raw"u8.ToArray();
-        stream.OnPacket((StreamPacketHandler)((rid, _, payload) =>
+        stream.OnPacket((StreamPacketHandler)((rid, header, payload) =>
         {
+            header.Dispose();
             if (payload.AsReadOnlySpan().SequenceEqual(expected))
                 Interlocked.Increment(ref matched);
             stream.Send(rid, payload);
@@ -400,7 +230,7 @@ public sealed class test_stream_socket
 
         using var client = ConnectRawClient(port);
         NetworkStream ns = client.GetStream();
-        SendAll(ns, expected);
+        SendAll(ns, CoreTestSupport.BuildStreamPacket(expected));
 
         byte[] echoed = ReceiveExact(ns, expected.Length);
         Assert.Equal(expected, echoed);
@@ -410,7 +240,7 @@ public sealed class test_stream_socket
         stream.DetachStream();
     }
 
-    [Fact(Skip = "Raw STREAM callback behavior is no longer part of the public .NET contract.")]
+    [Fact]
     public void stream_callback_raw_transfers_message_ownership()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -425,8 +255,9 @@ public sealed class test_stream_socket
         using var receivedSignal = new ManualResetEventSlim(false);
         Message? owned = null;
         byte[] expected = "stream-raw-owned-payload"u8.ToArray();
-        stream.OnPacket((StreamPacketHandler)((_, _, payload) =>
+        stream.OnPacket((StreamPacketHandler)((_, header, payload) =>
         {
+            header.Dispose();
             ReadOnlySpan<byte> bytes = payload.AsReadOnlySpan();
             if (bytes.Length == 1 && (bytes[0] == 0x00 || bytes[0] == 0x01))
             {
@@ -440,7 +271,7 @@ public sealed class test_stream_socket
 
         using var client = ConnectRawClient(port);
         NetworkStream ns = client.GetStream();
-        SendAll(ns, expected);
+        SendAll(ns, CoreTestSupport.BuildStreamPacket(expected));
 
         Assert.True(receivedSignal.Wait(3000));
         Assert.NotNull(owned);
@@ -454,96 +285,7 @@ public sealed class test_stream_socket
         stream.DetachStream();
     }
 
-    [Fact(Skip = "Len32Be STREAM callback helper depends on the removed public raw callback contract.")]
-    public void stream_callback_echo_len32be()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
-
-        string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len32-cb");
-        int port = CoreTestSupport.ExtractPort(endpoint);
-        stream.Bind(endpoint);
-
-        int matched = 0;
-        byte[] payload = "stream-callback-len32be"u8.ToArray();
-        AttachLen32Be(stream, (rid, messages) =>
-        {
-            foreach (Message message in messages)
-            {
-                if (message.AsReadOnlySpan().SequenceEqual(payload))
-                    Interlocked.Increment(ref matched);
-                SendLen32Be(stream, rid, message);
-            }
-            return 0;
-        });
-
-        using var client = ConnectRawClient(port);
-        NetworkStream ns = client.GetStream();
-        byte[] frame = BuildLen32BeFrame(payload);
-        SendAll(ns, frame.AsSpan(0, 2));
-        SendAll(ns, frame.AsSpan(2));
-
-        byte[] echoed = ReceiveLen32BeFrame(ns);
-        Assert.Equal(payload, echoed);
-        Assert.True(CoreTestSupport.WaitUntil(() => Volatile.Read(ref matched) >= 1,
-            3000));
-
-        stream.DetachStream();
-    }
-
-    [Fact(Skip = "Len32Be STREAM callback helper depends on the removed public raw callback contract.")]
-    public void stream_callback_len32be_transfers_message_ownership()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
-        string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len-owned");
-        int port = CoreTestSupport.ExtractPort(endpoint);
-        stream.Bind(endpoint);
-
-        using var receivedSignal = new ManualResetEventSlim(false);
-        Message? owned = null;
-        byte[] payload = "stream-len32be-owned-payload"u8.ToArray();
-        AttachLen32Be(stream, (_, messages) =>
-        {
-            for (int i = 0; i < messages.Length; i++)
-            {
-                Message message = messages[i];
-                if (!receivedSignal.IsSet)
-                {
-                    owned = message;
-                    receivedSignal.Set();
-                }
-                else
-                {
-                    message.Dispose();
-                }
-            }
-            return 0;
-        });
-
-        using var client = ConnectRawClient(port);
-        NetworkStream ns = client.GetStream();
-        SendAll(ns, BuildLen32BeFrame(payload));
-
-        Assert.True(receivedSignal.Wait(3000));
-        Assert.NotNull(owned);
-        Assert.True(owned!.AsReadOnlySpan().SequenceEqual(payload));
-        owned.Dispose();
-        Assert.Throws<ObjectDisposedException>(() =>
-        {
-            _ = owned.Size;
-        });
-
-        stream.DetachStream();
-    }
-
-    [Fact(Skip = "Raw STREAM callback behavior is no longer part of the public .NET contract.")]
+    [Fact]
     public void stream_callback_echo_single_zero_byte()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -558,8 +300,9 @@ public sealed class test_stream_socket
 
         int matched = 0;
         byte[] payload = { 0x00 };
-        stream.OnPacket((StreamPacketHandler)((rid, _, msg) =>
+        stream.OnPacket((StreamPacketHandler)((rid, header, msg) =>
         {
+            header.Dispose();
             ReadOnlySpan<byte> payload = msg.AsReadOnlySpan();
             if (payload.Length == 1 && payload[0] == 0)
                 Interlocked.Increment(ref matched);
@@ -568,162 +311,12 @@ public sealed class test_stream_socket
 
         using var client = ConnectRawClient(port);
         NetworkStream ns = client.GetStream();
-        SendAll(ns, payload);
+        SendAll(ns, CoreTestSupport.BuildStreamPacket(payload));
         byte[] echoed = ReceiveExact(ns, 1);
         Assert.Equal(payload, echoed);
         Assert.True(CoreTestSupport.WaitUntil(() => Volatile.Read(ref matched) >= 1,
             3000));
 
-        stream.DetachStream();
-    }
-
-    [Fact(Skip = "Len32Be STREAM callback helper depends on the removed public raw callback contract.")]
-    public void stream_len32be_single_frame()
-    {
-        RunLen32BeEchoCase("len32be-single-frame"u8.ToArray(), splitPoint: null);
-    }
-
-    [Fact(Skip = "Len32Be STREAM callback helper depends on the removed public raw callback contract.")]
-    public void stream_len32be_header_split()
-    {
-        byte[] payload = "len32be-header-split"u8.ToArray();
-        RunLen32BeEchoCase(payload, splitPoint: 2);
-    }
-
-    [Fact(Skip = "Len32Be STREAM callback helper depends on the removed public raw callback contract.")]
-    public void stream_len32be_body_split()
-    {
-        byte[] payload = "len32be-body-split-payload"u8.ToArray();
-        RunLen32BeEchoCase(payload, splitPoint: 9);
-    }
-
-    [Fact(Skip = "Len32Be STREAM callback helper depends on the removed public raw callback contract.")]
-    public void stream_len32be_multi_frame_single_read()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
-        string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len32-multi");
-        int port = CoreTestSupport.ExtractPort(endpoint);
-        stream.Bind(endpoint);
-
-        var expected = new[]
-        {
-            "len32be-multi-1"u8.ToArray(),
-            "len32be-multi-2"u8.ToArray(),
-            "len32be-multi-3"u8.ToArray()
-        };
-
-        int packets = 0;
-        int callbacks = 0;
-        AttachLen32Be(stream, (rid, messages) =>
-        {
-            Interlocked.Increment(ref callbacks);
-            foreach (Message message in messages)
-            {
-                Interlocked.Increment(ref packets);
-                SendLen32Be(stream, rid, message);
-            }
-            return 0;
-        });
-
-        using var client = ConnectRawClient(port);
-        NetworkStream ns = client.GetStream();
-        byte[] merged = expected.SelectMany(p => BuildLen32BeFrame(p)).ToArray();
-        SendAll(ns, merged);
-
-        foreach (byte[] framePayload in expected)
-            Assert.Equal(framePayload, ReceiveLen32BeFrame(ns));
-
-        Assert.True(CoreTestSupport.WaitUntil(() => Volatile.Read(ref packets) >= 3,
-            3000));
-        Assert.True(Volatile.Read(ref callbacks) >= 1);
-        stream.DetachStream();
-    }
-
-    [Fact(Skip = "Len32Be STREAM callback helper depends on the removed public raw callback contract.")]
-    public void stream_len32be_callback_lifecycle_contract()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
-        string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len32-life");
-        int port = CoreTestSupport.ExtractPort(endpoint);
-        stream.Bind(endpoint);
-
-        int callbacks = 0;
-        AttachLen32Be(stream, (rid, messages) =>
-        {
-            Interlocked.Increment(ref callbacks);
-            foreach (Message message in messages)
-                SendLen32Be(stream, rid, message);
-            return 0;
-        });
-
-        using var client = ConnectRawClient(port);
-        NetworkStream ns = client.GetStream();
-        byte[] p1 = "len32be-life-a"u8.ToArray();
-        byte[] p2 = "len32be-life-b"u8.ToArray();
-
-        SendAll(ns, BuildLen32BeFrame(p1));
-        Assert.Equal(p1, ReceiveLen32BeFrame(ns));
-
-        SendAll(ns, BuildLen32BeFrame(p2));
-        Assert.Equal(p2, ReceiveLen32BeFrame(ns));
-
-        Assert.True(CoreTestSupport.WaitUntil(() => Volatile.Read(ref callbacks) >= 2,
-            3000));
-        stream.DetachStream();
-    }
-
-    [Fact(Skip = "Len32Be STREAM callback helper depends on the removed public raw callback contract.")]
-    public void stream_len32be_batch_callback_single_dispatch()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
-        string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len32-batch");
-        int port = CoreTestSupport.ExtractPort(endpoint);
-        stream.Bind(endpoint);
-
-        var expected = new[]
-        {
-            "len32be-batch-1"u8.ToArray(),
-            "len32be-batch-2"u8.ToArray(),
-            "len32be-batch-3"u8.ToArray()
-        };
-
-        int callbackCount = 0;
-        int packetCount = 0;
-        AttachLen32Be(stream, (rid, parts) =>
-        {
-            Interlocked.Increment(ref callbackCount);
-            for (int i = 0; i < parts.Length; i++)
-            {
-                Interlocked.Increment(ref packetCount);
-                SendLen32Be(stream, rid, parts[i]);
-            }
-            return 0;
-        });
-
-        using var client = ConnectRawClient(port);
-        NetworkStream ns = client.GetStream();
-        byte[] merged = expected.SelectMany(p => BuildLen32BeFrame(p)).ToArray();
-        SendAll(ns, merged);
-
-        foreach (byte[] framePayload in expected)
-            Assert.Equal(framePayload, ReceiveLen32BeFrame(ns));
-
-        Assert.True(CoreTestSupport.WaitUntil(() => Volatile.Read(ref packetCount) >= 3,
-            3000));
-        Assert.True(CoreTestSupport.WaitUntil(() => Volatile.Read(ref callbackCount) == 1,
-            3000));
         stream.DetachStream();
     }
 
@@ -845,7 +438,7 @@ public sealed class test_stream_socket
         }
     }
 
-    [Fact(Skip = "Raw STREAM callback behavior is no longer part of the public .NET contract.")]
+    [Fact]
     public async Task stream_raw_multiclient_load_integrity()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -857,8 +450,9 @@ public sealed class test_stream_socket
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
 
-        stream.OnPacket((StreamPacketHandler)((rid, _, payload) =>
+        stream.OnPacket((StreamPacketHandler)((rid, header, payload) =>
         {
+            header.Dispose();
             stream.Send(rid, payload);
         }));
 
@@ -881,60 +475,11 @@ public sealed class test_stream_socket
                     for (int j = 8; j < payload.Length; j++)
                         payload[j] = (byte)(clientId + m + j);
 
-                    byte[] frame = BuildLen32BeFrame(payload);
+                    byte[] frame = CoreTestSupport.BuildStreamPacket(payload);
                     int split = 1 + ((clientId + m) % (frame.Length - 1));
                     SendAll(ns, frame.AsSpan(0, split));
                     SendAll(ns, frame.AsSpan(split));
-                    byte[] echoed = ReceiveExact(ns, frame.Length);
-                    Assert.Equal(frame, echoed);
-                }
-            });
-        }
-
-        await Task.WhenAll(clients);
-        stream.DetachStream();
-    }
-
-    [Fact(Skip = "Len32Be STREAM callback helper depends on the removed public raw callback contract.")]
-    public async Task stream_len32be_multiclient_load_integrity()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
-        string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-len-load");
-        int port = CoreTestSupport.ExtractPort(endpoint);
-        stream.Bind(endpoint);
-
-        AttachLen32Be(stream, (rid, messages) =>
-        {
-            foreach (Message message in messages)
-                SendLen32Be(stream, rid, message);
-            return 0;
-        });
-
-        const int clientCount = 10;
-        const int messagesPerClient = 18;
-        Task[] clients = new Task[clientCount];
-        for (int i = 0; i < clientCount; i++)
-        {
-            int clientId = i;
-            clients[i] = Task.Run(() =>
-            {
-                using var client = ConnectRawClient(port);
-                NetworkStream ns = client.GetStream();
-                for (int m = 0; m < messagesPerClient; m++)
-                {
-                    byte[] payload = new byte[96];
-                    BinaryPrimitives.WriteInt32BigEndian(payload.AsSpan(0, 4),
-                        clientId);
-                    BinaryPrimitives.WriteInt32BigEndian(payload.AsSpan(4, 4), m);
-                    for (int j = 8; j < payload.Length; j++)
-                        payload[j] = (byte)(clientId + m + j);
-
-                    SendAll(ns, BuildLen32BeFrame(payload));
-                    byte[] echoed = ReceiveLen32BeFrame(ns);
+                    byte[] echoed = ReceiveExact(ns, payload.Length);
                     Assert.Equal(payload, echoed);
                 }
             });

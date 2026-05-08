@@ -39,7 +39,7 @@ public sealed class test_xpub_verbose
         Thread.Sleep(30);
         Assert.True(CoreTestSupport.ExpectNoSubscriptionEvent(xpub, 150));
 
-        xpub.XPubOptions.Verbose = true;
+        xpub.Options.Verbose = true;
         sub.SetSubscription("A");
         Assert.Equal(TopicA,
             CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
@@ -90,7 +90,7 @@ public sealed class test_xpub_verbose
                 out bool subscribedB0, 2000));
         Assert.True(subscribedB0);
 
-        xpub.XPubOptions.Verbose = true;
+        xpub.Options.Verbose = true;
         sub1.SetSubscription("A");
         Assert.Equal(TopicA,
             CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
@@ -147,7 +147,7 @@ public sealed class test_xpub_verbose
         Assert.False(subscribedA1);
         Assert.True(CoreTestSupport.ExpectNoSubscriptionEvent(xpub, 100));
 
-        xpub.XPubOptions.Verboser = true;
+        xpub.Options.Verboser = true;
         sub.SetSubscription("A");
         Assert.Equal(TopicA,
             CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,
@@ -196,7 +196,7 @@ public sealed class test_xpub_verbose
         Assert.False(subscribedA1);
         Assert.True(CoreTestSupport.ExpectNoSubscriptionEvent(xpub, 100));
 
-        xpub.XPubOptions.Verboser = true;
+        xpub.Options.Verboser = true;
         sub0.SetSubscription("A");
         Assert.Equal(TopicA,
             CoreTestSupport.ReceiveSubscriptionEventWithTimeout(xpub,

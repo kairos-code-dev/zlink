@@ -5,12 +5,12 @@ namespace Systems.Zlink;
 
 public sealed class PubSocket : PublisherSocketBase
 {
-    public PubSocketOptions PubOptions { get; }
+    public new PubSocketOptions Options { get; }
 
     public PubSocket(Context context)
         : base(context, SocketType.Pub)
     {
-        PubOptions = new PubSocketOptions(this);
+        Options = new PubSocketOptions(this);
     }
 
     public void AttachDiscovery(Discovery discovery)

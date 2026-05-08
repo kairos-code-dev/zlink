@@ -17,13 +17,13 @@ public sealed class test_actor_contract
         using var ctx = new Context();
         using var node = new SpotNode(ctx);
         using var spot = node.CreateSpot();
-        using var actor = node.Actor($"actor-{Guid.NewGuid():N}");
+        using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
         using var stream = new StreamSocket(ctx);
         RoutingId sessionRid = CoreTestSupport.RoutingIdUtf8("actor-session");
         stream.BindActor(node, sessionRid, actor.Ref, TimeSpan.FromSeconds(2));
         using Message joinMessage = Message.FromString("join:hello");
 
-        Task<IReadOnlyList<Message>> joinTask = actor.JoinAsync(spot,
+        Task<IReadOnlyList<Message>> joinTask = actor.Join(spot,
             joinMessage, TimeSpan.FromSeconds(2));
 
         ActorJoinRequest? request = null;
@@ -41,7 +41,7 @@ public sealed class test_actor_contract
         Assert.Equal(actor.Ref.ActorId, request.Info.TargetActor.ActorId);
 
         using Message reply = Message.FromString("join:accepted");
-        spot.ReplyActorJoin(request.Info, accepted: true, reply);
+        spot.ReplyActorJoin(request, accepted: true, reply);
 
         IReadOnlyList<Message> replies =
             await joinTask.WaitAsync(TimeSpan.FromSeconds(5));

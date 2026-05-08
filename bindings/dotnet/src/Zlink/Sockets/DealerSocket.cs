@@ -17,12 +17,12 @@ public sealed class DealerSocket : MessageSocketBase
     private static readonly IntPtr RequestReplyHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(RequestReplyHandler);
 
-    public DealerSocketOptions DealerOptions { get; }
+    public new DealerSocketOptions Options { get; }
 
     public DealerSocket(Context context)
         : base(context, SocketType.Dealer)
     {
-        DealerOptions = new DealerSocketOptions(this);
+        Options = new DealerSocketOptions(this);
     }
 
     public void SetRoutingId(RoutingId routingId)
@@ -50,15 +50,15 @@ public sealed class DealerSocket : MessageSocketBase
         return GetChannelNameCore();
     }
 
-    public Task<IReadOnlyList<Message>> RequestAsync(Message part,
+    public Task<IReadOnlyList<Message>> Request(Message part,
         CancellationToken ct = default)
-        => RequestAsync(new[] { part }, ct);
+        => Request(new[] { part }, ct);
 
-    public Task<IReadOnlyList<Message>> RequestAsync(Message part,
+    public Task<IReadOnlyList<Message>> Request(Message part,
         TimeSpan timeout, CancellationToken ct = default)
-        => RequestAsync(new[] { part }, timeout, ct);
+        => Request(new[] { part }, timeout, ct);
 
-    public async Task<IReadOnlyList<Message>> RequestAsync(
+    public async Task<IReadOnlyList<Message>> Request(
         IReadOnlyList<Message> parts, CancellationToken ct = default)
     {
         Received received = await RequestAsyncCore(parts, DefaultRequestTimeout, ct)
@@ -66,7 +66,7 @@ public sealed class DealerSocket : MessageSocketBase
         return received.Parts;
     }
 
-    public async Task<IReadOnlyList<Message>> RequestAsync(
+    public async Task<IReadOnlyList<Message>> Request(
         IReadOnlyList<Message> parts, TimeSpan timeout,
         CancellationToken ct = default)
     {
@@ -76,23 +76,13 @@ public sealed class DealerSocket : MessageSocketBase
     }
 
     public bool Request(Message part,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan? timeout = null)
-        => Request(part, callback, SendFlags.None, timeout);
-
-    public bool Request(IReadOnlyList<Message> parts,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        TimeSpan? timeout = null)
-        => Request(parts, callback, SendFlags.None, timeout);
-
-    public bool Request(Message part,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        SendFlags flags, TimeSpan? timeout = null)
+        RequestCallback callback,
+        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
         => Request(new[] { part }, callback, flags, timeout);
 
     public bool Request(IReadOnlyList<Message> parts,
-        Action<RequestResult, IReadOnlyList<Message>> callback,
-        SendFlags flags, TimeSpan? timeout = null)
+        RequestCallback callback,
+        SendFlags flags = SendFlags.None, TimeSpan? timeout = null)
     {
         try
         {
@@ -194,13 +184,11 @@ public sealed class DealerSocket : MessageSocketBase
 
     private static uint NormalizeRequestTimeout(TimeSpan timeout)
     {
-        TimeSpan effective = timeout <= TimeSpan.Zero ? DefaultRequestTimeout : timeout;
-        double millis = effective.TotalMilliseconds;
-        if (millis <= 1)
-            return 1;
-        if (millis >= uint.MaxValue)
-            return uint.MaxValue;
-        return (uint)millis;
+        TimeSpan effective = timeout == TimeSpan.Zero
+            ? DefaultRequestTimeout
+            : timeout;
+        return BoundaryValidation.EncodeTimeoutMilliseconds(effective,
+            nameof(timeout));
     }
 
     private static void OnRequestReply(int result, IntPtr parts, nuint partCount,

@@ -101,6 +101,8 @@ void run_timeout_loop ()
 
                 task = next->second;
                 g_timeout_schedule.erase (next);
+                task->registered = false;
+                task->schedule_it = schedule_map_t::iterator ();
                 break;
             }
         }
@@ -112,8 +114,6 @@ void run_timeout_loop ()
         void *userdata = NULL;
         {
             std::lock_guard<std::mutex> lock (task->mutex);
-            task->registered = false;
-            task->schedule_it = schedule_map_t::iterator ();
             if (!task->canceled && !task->completed) {
                 task->firing = true;
                 handler = task->handler;

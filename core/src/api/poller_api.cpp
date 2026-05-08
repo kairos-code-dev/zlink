@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include <new>
+#include <unordered_map>
 #include <vector>
 
 #include "api/close_result_internal.hpp"
@@ -475,6 +476,13 @@ int zlink_poll (zlink_pollitem_t *items_,
     }
 
     zlink::socket_poller_t poller;
+    const bool use_event_index = nitems_ > 8;
+    std::unordered_map<void *, int> socket_item_indices;
+    std::unordered_map<zlink_fd_t, int> fd_item_indices;
+    if (use_event_index) {
+        socket_item_indices.reserve (static_cast<size_t> (nitems_));
+        fd_item_indices.reserve (static_cast<size_t> (nitems_));
+    }
     for (int i = 0; i < nitems_; ++i) {
         items_[i].revents = 0;
         if (items_[i].socket) {
@@ -496,10 +504,14 @@ int zlink_poll (zlink_pollitem_t *items_,
                     *error_out_ = zlink::config_result_internal::from_errno (errno);
                 return -1;
             }
+            if (use_event_index)
+                socket_item_indices[handle.socket] = i;
         } else if (poller.add_fd (items_[i].fd, NULL, items_[i].events) != 0) {
             if (error_out_)
                 *error_out_ = zlink::config_result_internal::from_errno (errno);
             return -1;
+        } else if (use_event_index) {
+            fd_item_indices[items_[i].fd] = i;
         }
     }
 
@@ -518,12 +530,24 @@ int zlink_poll (zlink_pollitem_t *items_,
     }
 
     for (int i = 0; i < rc; ++i) {
-        for (int j = 0; j < nitems_; ++j) {
-            if ((items_[j].socket && items_[j].socket == events[i].socket)
-                || (!items_[j].socket && items_[j].fd == events[i].fd)) {
-                items_[j].revents = events[i].events;
-                break;
+        if (!use_event_index) {
+            for (int j = 0; j < nitems_; ++j) {
+                if ((items_[j].socket && items_[j].socket == events[i].socket)
+                    || (!items_[j].socket && items_[j].fd == events[i].fd)) {
+                    items_[j].revents = events[i].events;
+                    break;
+                }
             }
+        } else if (events[i].socket) {
+            const std::unordered_map<void *, int>::const_iterator it =
+              socket_item_indices.find (events[i].socket);
+            if (it != socket_item_indices.end ())
+                items_[it->second].revents = events[i].events;
+        } else {
+            const std::unordered_map<zlink_fd_t, int>::const_iterator it =
+              fd_item_indices.find (events[i].fd);
+            if (it != fd_item_indices.end ())
+                items_[it->second].revents = events[i].events;
         }
     }
     if (error_out_)

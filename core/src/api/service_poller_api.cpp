@@ -195,7 +195,8 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
 
         if (!is_pub && resolved.kind == zlink::service_handle_spot) {
             std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
-              state = zlink::spot_reqrep_internal::try_find_spot_state (socket_);
+              state =
+                zlink::spot_reqrep_internal::find_or_create_spot_state (socket_);
             if (state) {
                 if (zlink::spot_reqrep_internal::ensure_spot_recv_ready (state)
                     != 0) {

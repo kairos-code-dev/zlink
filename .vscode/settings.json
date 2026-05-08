@@ -10,7 +10,8 @@
         "ZLINK_CPP_BUILD_TESTS": "ON",
         "ZLINK_CPP_BUILD_BENCHMARKS": "ON"
     },
-    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
     "C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
     "C_Cpp.default.compilerPath": "/usr/bin/g++",
     "C_Cpp.default.browse.path": [
@@ -21,6 +22,7 @@
         "${workspaceFolder}/core/perf/single/common",
         "${workspaceFolder}/core/perf/multi/common",
         "${workspaceFolder}/core/perf/common/streamclient",
+        "${workspaceFolder}/bindings/c/include",
         "${workspaceFolder}/bindings/cpp/include",
         "${workspaceFolder}/bindings/cpp/perf",
         "${workspaceFolder}/bindings/node/native/src",
@@ -28,12 +30,24 @@
         "${workspaceFolder}/core/deps/vcpkg/installed/x64-linux/include"
     ],
     "C_Cpp.default.browse.limitSymbolsToIncludedHeaders": false,
+
+    "rust-analyzer.linkedProjects": [
+        "${workspaceFolder}/bindings/rust/Cargo.toml"
+    ],
+    "rust-analyzer.cargo.features": "all",
+
+    "dotnet.defaultSolution": "${workspaceFolder}/bindings/dotnet/Zlink.sln",
+
+    "typescript.tsdk": "${workspaceFolder}/bindings/node/node_modules/typescript/lib",
+    "typescript.enablePromptUseWorkspaceTsdk": true,
+
     "python.analysis.extraPaths": [
         "${workspaceFolder}/bindings/python/src"
     ],
     "python.autoComplete.extraPaths": [
         "${workspaceFolder}/bindings/python/src"
     ],
+
     "java.import.gradle.java.home": "/usr/lib/jvm/temurin-22-jdk-amd64",
     "java.import.gradle.wrapper.enabled": true,
     "java.jdt.ls.java.home": "/usr/lib/jvm/temurin-22-jdk-amd64",
@@ -48,6 +62,13 @@
         "bindings/java/src/main/java",
         "bindings/java/src/test/java"
     ],
+    "java.configuration.updateBuildConfiguration": "interactive",
+
+    "files.associations": {
+        "*.ipp": "cpp",
+        "*.tpp": "cpp"
+    },
+
     "files.watcherExclude": {
         "**/.git/**": true,
         "**/core/build/**": true,
@@ -60,7 +81,9 @@
         "**/bindings/java/src/main/resources/native/**": true,
         "**/bindings/python/src/zlink/native/**": true,
         "**/bindings/python/src/zlink.egg-info/**": true,
-        "**/bindings/python/tests/__pycache__/**": true
+        "**/bindings/python/tests/__pycache__/**": true,
+        "**/bindings/rust/target/**": true,
+        "**/bindings/go/tmp/**": true
     },
     "search.exclude": {
         "**/core/build": true,
@@ -72,11 +95,8 @@
         "**/bindings/cpp/native": true,
         "**/bindings/java/src/main/resources/native": true,
         "**/bindings/python/src/zlink/native": true,
-        "**/bindings/python/src/zlink.egg-info": true
-    },
-    "files.associations": {
-        "*.ipp": "cpp",
-        "*.tpp": "cpp"
-    },
-    "java.configuration.updateBuildConfiguration": "interactive"
+        "**/bindings/python/src/zlink.egg-info": true,
+        "**/bindings/rust/target": true,
+        "**/bindings/go/tmp": true
+    }
 }

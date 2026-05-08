@@ -244,7 +244,17 @@ class DealerSocket(
         )
 
     async def request(self, payload, *, timeout=0):
-        return await self._request_async(payload, timeout=timeout)
+        loop = asyncio.get_running_loop()
+        pending = _PendingRequest(loop=loop)
+        handle = id(pending)
+        self._pending_requests[handle] = pending
+        try:
+            self._start_request(payload, 0, timeout, handle)
+        except Exception:
+            self._pending_requests.pop(handle, None)
+            raise
+        self._request_progress.ensure_running()
+        return await pending.future
 
     def request_callback(self, payload, callback, *, flags=0, timeout=0):
         return self._request_callback(payload, callback, flags=flags, timeout=timeout)
@@ -252,22 +262,6 @@ class DealerSocket(
     def close(self):
         self._cancel_pending_requests(RequestResult.TERMINATED)
         super().close()
-
-    def _request_async(self, payload, *, timeout=0):
-        async def _run():
-            loop = asyncio.get_running_loop()
-            pending = _PendingRequest(loop=loop)
-            handle = id(pending)
-            self._pending_requests[handle] = pending
-            try:
-                self._start_request(payload, 0, timeout, handle)
-            except Exception:
-                self._pending_requests.pop(handle, None)
-                raise
-            self._request_progress.ensure_running()
-            return await pending.future
-
-        return _run()
 
     def _request_callback(self, payload, callback, *, flags=0, timeout=0):
         pending = _PendingRequest(callback=callback)
@@ -356,7 +350,17 @@ class RouterSocket(
         return RouterSocketOptions(self)
 
     async def request(self, peer_rid, payload, *, timeout=0):
-        return await self._request_async(peer_rid, payload, timeout=timeout)
+        loop = asyncio.get_running_loop()
+        pending = _PendingRequest(loop=loop)
+        handle = id(pending)
+        self._pending_requests[handle] = pending
+        try:
+            self._start_request(peer_rid, payload, 0, timeout, handle)
+        except Exception:
+            self._pending_requests.pop(handle, None)
+            raise
+        self._request_progress.ensure_running()
+        return await pending.future
 
     def request_callback(self, peer_rid, payload, callback, *, flags=0, timeout=0):
         return self._request_callback(peer_rid, payload, callback, flags=flags, timeout=timeout)
@@ -491,22 +495,6 @@ class RouterSocket(
             self.reply(routing_id, request_seq, payload, flags=flags)
             return
         self.reply_to_spot(routing_id, spot_rid, request_seq, payload, flags=flags)
-
-    def _request_async(self, routing_id, payload, *, flags=0, timeout=0):
-        async def _run():
-            loop = asyncio.get_running_loop()
-            pending = _PendingRequest(loop=loop)
-            handle = id(pending)
-            self._pending_requests[handle] = pending
-            try:
-                self._start_request(routing_id, payload, flags, timeout, handle)
-            except Exception:
-                self._pending_requests.pop(handle, None)
-                raise
-            self._request_progress.ensure_running()
-            return await pending.future
-
-        return _run()
 
     def _request_callback(self, routing_id, payload, callback, *, flags=0, timeout=0):
         pending = _PendingRequest(callback=callback)

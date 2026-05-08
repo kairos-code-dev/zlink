@@ -158,7 +158,7 @@ func OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*Socket
 
 func (m *SocketMonitor) Recv(flags RecvFlags) (*MonitorEvent, error) {
 	var raw C.zlink_socket_monitor_event_t
-	if err := recvErrorFromResult(C.zlink_socket_monitor_recv(m.handle, &raw, C.int(flags))); err != nil {
+	if err := recvErrorFromResult(C.zlink_socket_monitor_recv(m.handle, &raw, C.zlink_recv_flags_t(flags))); err != nil {
 		return nil, err
 	}
 	return monitorEventFromC(raw), nil

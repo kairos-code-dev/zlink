@@ -91,7 +91,7 @@ func main() {
 		samplecommon.Must(fmt.Errorf("timed out waiting for actor payload"))
 	}
 	samplecommon.Must(gatewayNode.LeaveActor(actorRef, playSpotRID, time.Second))
-	samplecommon.Must(gatewayNode.DestroyActor(actorRef, time.Second))
+	samplecommon.Must(gatewayNode.DestroyRemoteActor(actorRef, time.Second))
 }
 
 func mustRID(rid zlink.RoutingID, err error) zlink.RoutingID {

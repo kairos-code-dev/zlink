@@ -315,8 +315,8 @@ func TestSurfaceActorCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "CreateRemoteActor") {
 		t.Fatalf("SpotNode should expose CreateRemoteActor")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "DestroyActor") {
-		t.Fatalf("SpotNode should expose DestroyActor")
+	if !hasMethod((*zlink.SpotNode)(nil), "DestroyRemoteActor") {
+		t.Fatalf("SpotNode should expose DestroyRemoteActor")
 	}
 	if !hasMethod((*zlink.SpotNode)(nil), "OnActorAdmission") {
 		t.Fatalf("SpotNode should expose OnActorAdmission")

@@ -28,9 +28,6 @@ inline const char *resolve_multi_named_env_value(const char *name_)
     if (!name_ || !*name_)
         return NULL;
 
-    if (std::strcmp(name_, "PERF_LATENCY_SAMPLE_CAP") == 0)
-        return resolve_multi_env_value("PERF_MULTI_LATENCY_SAMPLE_CAP",
-                                       "PERF_LATENCY_SAMPLE_CAP");
     if (std::strcmp(name_, "PERF_CLIENTS") == 0)
         return resolve_multi_env_value("PERF_MULTI_CLIENTS", "PERF_CLIENTS");
     if (std::strcmp(name_, "PERF_SNDHWM") == 0)

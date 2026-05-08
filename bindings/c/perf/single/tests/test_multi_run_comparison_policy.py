@@ -116,6 +116,30 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             [],
         )
 
+    def test_default_full_matrix_allows_explicit_default_overrides(self):
+        old_env = os.environ.copy()
+        try:
+            os.environ["PERF_TRANSPORTS"] = "tcp,tls,ws,wss"
+            os.environ["PERF_MSG_SIZES"] = "64,256,1024,65536,131072,262144"
+            os.environ["PERF_STREAM_MSG_SIZES"] = "64,256,1024,65536"
+            patterns = [pattern for _, pattern in RC.MULTI_COMPARISONS]
+            self.assertTrue(
+                RC.is_default_full_matrix(
+                    {"pattern_request": "ALL"},
+                    patterns,
+                )
+            )
+            os.environ["PERF_TRANSPORTS"] = "tcp,tls"
+            self.assertFalse(
+                RC.is_default_full_matrix(
+                    {"pattern_request": "ALL"},
+                    patterns,
+                )
+            )
+        finally:
+            os.environ.clear()
+            os.environ.update(old_env)
+
     def test_multi_connect_concurrency_header_uses_multi_env_name(self):
         old_allow_multi = RC.ALLOW_MULTI
         old_env = os.environ.copy()
@@ -289,14 +313,13 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             os.environ.clear()
             os.environ.update(old_env)
 
-    def test_multi_size_case_retries_once_before_failing(self):
+    def test_multi_size_case_does_not_retry_before_failing(self):
         old_allow_multi = RC.ALLOW_MULTI
         old_split = RC.run_sizes_test_split
         old_env = os.environ.copy()
         calls = []
         try:
             RC.ALLOW_MULTI = True
-            os.environ["PERF_MULTI_SIZE_RETRIES"] = "1"
             os.environ["PERF_MULTI_SPOT_CLEAN_LATENCY"] = "0"
 
             def fake_split(server_name, client_name, lib_name, transport, sizes,
@@ -331,12 +354,9 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                 "SPOT",
             )
 
-            self.assertEqual(outcome["status"], "success")
-            self.assertEqual(calls, [65536, 65536])
-            self.assertEqual(
-                outcome["parsed"],
-                {"tcp|65536|throughput": 1.0},
-            )
+            self.assertEqual(outcome["status"], "fail")
+            self.assertEqual(outcome["reason"], "client_ready_size_65536")
+            self.assertEqual(calls, [65536])
         finally:
             RC.ALLOW_MULTI = old_allow_multi
             RC.run_sizes_test_split = old_split

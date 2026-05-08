@@ -158,7 +158,11 @@ class RunComparisonPolicyTests(unittest.TestCase):
 
     def test_direction_and_throughput_unit_are_one_way(self):
         self.assertEqual(RC.pattern_direction_label("PAIR"), "one-way")
+        self.assertEqual(RC.pattern_direction_label("SPOT_REQREP"), "echo")
         self.assertTrue(RC.format_throughput("PAIR", 1234.0).endswith("Kmsg/s"))
+        self.assertTrue(
+            RC.format_throughput("SPOT_REQREP", 1234.0).endswith("Kops/s")
+        )
 
     def test_default_message_sizes_follow_policy_matrix(self):
         self.assertEqual(
@@ -174,6 +178,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
         with EnvPatch(remove=["PERF_TRANSPORTS"]):
             pair_transports = RC.select_transports("PAIR")
             stream_transports = RC.select_transports("SPOT")
+            reqrep_transports = RC.select_transports("SPOT_REQREP")
 
         self.assertEqual(pair_transports[:5], ["tcp", "tls", "ws", "wss", "inproc"])
         if RC.IS_WINDOWS:
@@ -181,6 +186,25 @@ class RunComparisonPolicyTests(unittest.TestCase):
         else:
             self.assertIn("ipc", pair_transports)
         self.assertEqual(stream_transports, ["tcp", "tls", "ws", "wss"])
+        self.assertEqual(reqrep_transports, ["tcp", "tls", "ws", "wss"])
+
+    def test_default_full_matrix_allows_explicit_default_overrides(self):
+        args = type("Args", (), {"pattern": "ALL"})()
+        default_sizes = ",".join(str(size) for size in RC.DEFAULT_MSG_SIZES_STANDARD)
+        default_transports = ",".join(RC.DEFAULT_SOCKET_TRANSPORTS)
+        with EnvPatch(
+            updates={
+                "PERF_MSG_SIZES": default_sizes,
+                "PERF_TRANSPORTS": default_transports,
+            },
+            remove=["PERF_FULL_MATRIX"],
+        ):
+            self.assertTrue(RC.is_default_full_matrix(args, RC.DEFAULT_PATTERNS))
+        with EnvPatch(
+            updates={"PERF_TRANSPORTS": "tcp,tls,ws,wss"},
+            remove=["PERF_MSG_SIZES", "PERF_FULL_MATRIX"],
+        ):
+            self.assertFalse(RC.is_default_full_matrix(args, RC.DEFAULT_PATTERNS))
 
     def test_auto_hwm_detail_lines_are_rendered(self):
         spot_tcp_line = (
@@ -227,7 +251,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
         self.assertIn("| pair", output)
         self.assertNotIn("| mesh-pub", output)
 
-    def test_run_single_test_retries_timeout_once(self):
+    def test_run_single_test_does_not_retry_timeout(self):
         old_run_command_with_metrics = RC.run_command_with_metrics
         old_get_env_for_lib = RC.get_env_for_lib
         old_build_bench_cmd = RC.build_bench_cmd
@@ -262,7 +286,6 @@ class RunComparisonPolicyTests(unittest.TestCase):
             RC.run_command_with_metrics = fake_run_command_with_metrics
             RC.get_env_for_lib = lambda _path: {}
             RC.build_bench_cmd = lambda binary_path, args, pin_cpu: [binary_path] + list(args)
-            os.environ["PERF_SINGLE_TIMEOUT_RETRIES"] = "1"
 
             outcome = RC.run_single_test(
                 build_dir="/tmp/build",
@@ -276,13 +299,9 @@ class RunComparisonPolicyTests(unittest.TestCase):
                 pin_cpu=False,
             )
 
-            self.assertEqual(outcome.status, "success")
-            self.assertEqual(len(calls), 2)
-            self.assertEqual(outcome.throughput, 1.0)
-            self.assertEqual(outcome.bandwidth, 2.0)
-            self.assertEqual(outcome.latency, 3.0)
-            self.assertEqual(outcome.latency_p95, 4.0)
-            self.assertEqual(outcome.latency_p99, 5.0)
+            self.assertEqual(outcome.status, "fail")
+            self.assertEqual(outcome.reason, "timeout")
+            self.assertEqual(len(calls), 1)
         finally:
             RC.run_command_with_metrics = old_run_command_with_metrics
             RC.get_env_for_lib = old_get_env_for_lib
@@ -290,7 +309,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
             os.environ.clear()
             os.environ.update(old_env)
 
-    def test_run_single_test_retries_non_zero_exit_once(self):
+    def test_run_single_test_does_not_retry_non_zero_exit(self):
         old_run_command_with_metrics = RC.run_command_with_metrics
         old_get_env_for_lib = RC.get_env_for_lib
         old_build_bench_cmd = RC.build_bench_cmd
@@ -325,7 +344,6 @@ class RunComparisonPolicyTests(unittest.TestCase):
             RC.run_command_with_metrics = fake_run_command_with_metrics
             RC.get_env_for_lib = lambda _path: {}
             RC.build_bench_cmd = lambda binary_path, args, pin_cpu: [binary_path] + list(args)
-            os.environ["PERF_SINGLE_FAILURE_RETRIES"] = "1"
 
             outcome = RC.run_single_test(
                 build_dir="/tmp/build",
@@ -339,13 +357,9 @@ class RunComparisonPolicyTests(unittest.TestCase):
                 pin_cpu=False,
             )
 
-            self.assertEqual(outcome.status, "success")
-            self.assertEqual(len(calls), 2)
-            self.assertEqual(outcome.throughput, 1.0)
-            self.assertEqual(outcome.bandwidth, 2.0)
-            self.assertEqual(outcome.latency, 3.0)
-            self.assertEqual(outcome.latency_p95, 4.0)
-            self.assertEqual(outcome.latency_p99, 5.0)
+            self.assertEqual(outcome.status, "fail")
+            self.assertEqual(outcome.reason, "non_zero_exit_1")
+            self.assertEqual(len(calls), 1)
         finally:
             RC.run_command_with_metrics = old_run_command_with_metrics
             RC.get_env_for_lib = old_get_env_for_lib
@@ -378,6 +392,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
         self.assertEqual(RC.resolve_binary_name("PAIR"), "perf_pair")
         self.assertEqual(RC.resolve_binary_name("PUBSUB"), "perf_pubsub")
         self.assertEqual(RC.resolve_binary_name("SPOT"), "perf_spot")
+        self.assertEqual(RC.resolve_binary_name("SPOT_REQREP"), "perf_spot_reqrep")
 
     def test_single_runner_executes_each_size_case_separately(self):
         old_run_single_test = RC.run_single_test

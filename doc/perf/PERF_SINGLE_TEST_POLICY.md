@@ -42,15 +42,18 @@
 
 ### 1.1 I/O 모델 (recv only)
 
-- 수신 경로는 **recv 모델**(poller `POLLIN` readiness 감지 + 비동기 `recv`
-  drain) 만 허용한다. callback 수신 경로는 single 에서 사용하지 않는다.
+- 측정 집계가 걸리는 수신 경로는 **recv 모델**(poller `POLLIN` readiness 감지 +
+  비동기 `recv` drain) 을 기본으로 한다. callback으로 측정 data delivery를
+  직접 집계하는 경로는 single 에서 사용하지 않는다.
 - `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
-  `ROUTER_ROUTER`, `SPOT`, `SPOT_REQREP` 전부 수신 경로에 이 recv 모델만
-  쓴다. `SPOT_REQREP` 은 echo 패턴이라 requester/replier 양쪽이 send 도
-  수행하지만, 수신 경로는 여전히 recv 모델로 고정한다.
-- 단, `SPOT` / `SPOT_REQREP` 은 direct message callback을 쓰지 않고,
-  `dispatch_event` callback 안에서 recv drain 하는 방식으로 수신을 활성화한다.
-  즉 callback은 data delivery가 아니라 recv drain activation signal이다.
+  `ROUTER_ROUTER`, `SPOT` 은 이 recv 모델로 active payload를 집계한다.
+  `SPOT_REQREP` 은 echo 패턴이라 requester/replier 양쪽이 send 도 수행하지만,
+  성능 집계 anchor는 requester의 public poller completion 경로로 고정한다.
+- `SPOT` 은 direct message callback을 쓰지 않고, local probe 이후
+  `zlink_spot_subscribe()` recv drain 으로 active payload를 집계한다.
+- `SPOT_REQREP` 은 direct reply callback을 측정 data delivery로 쓰지 않는다.
+  requester 는 public `zlink_poller_wait()` 경로로 request completion을 진행하고,
+  replier 는 public spot handler에서 request를 받은 즉시 같은 payload로 reply 한다.
 
 #### 프로세스/스레드 모델
 
@@ -59,13 +62,14 @@ single은 **단일 프로세스** 안에서 sender와 receiver를 구동한다.
 echo(request/reply) 측정 surface를 사용한다.
 
 **raw one-way 패턴** (PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER):
-```
-┌─ process ────────────────────────────┐
-│  sender thread      recv thread      │
-│  blocking send ──►  poller POLLIN    │
-│  (연속)             recv drain       │
-│                     metric 집계      │
-└──────────────────────────────────────┘
+```text
++--------------------------------------+
+| process                              |
+| sender thread     recv thread        |
+| blocking send --> poller POLLIN      |
+| continuous        recv drain         |
+|                   metric collect     |
++--------------------------------------+
 ```
 - sender thread: blocking send 연속 수행. HWM 도달 시 자연 backpressure.
 - recv thread: recv 루프 안에서 throughput/latency 집계를 수행한다.
@@ -73,35 +77,36 @@ echo(request/reply) 측정 surface를 사용한다.
   동일 의미로 유지해야 한다.
 
 **SPOT one-way 패턴**:
-```
-┌─ process ────────────────────────────┐
-│  sender thread      recv thread      │
-│  publish loop ───►  dispatch_event   │
-│                     recv drain       │
-│                     metric 집계      │
-└──────────────────────────────────────┘
+```text
++--------------------------------------+
+| process                              |
+| sender thread     recv thread        |
+| publish loop ---> spot subscribe     |
+|                   recv drain         |
+|                   metric collect     |
++--------------------------------------+
 ```
 - sender thread는 ready barrier 통과 후 metric header가 포함된 payload를 연속 publish한다.
-- recv thread는 `dispatch_event` callback이 오면 recv drain 하고, local probe
-  barrier를 닫은 뒤 active payload만 집계한다.
+- recv thread는 local probe barrier를 닫은 뒤 `zlink_spot_subscribe()` recv
+  drain 으로 active payload만 집계한다.
 
 **SPOT_REQREP echo 패턴**:
-```
-┌─ process ────────────────────────────┐
-│  requester thread   replier thread   │
-│  send request ───►  dispatch_event   │
-│                     recv request     │
-│  dispatch_event  ◄── send reply      │
-│  recv reply                          │
-│  metric 집계                         │
-└──────────────────────────────────────┘
+```text
++--------------------------------------+
+| process                              |
+| requester         replier            |
+| send request ---> spot handler       |
+| poller wait  <--- send reply         |
+| reply complete    immediate echo     |
+| metric collect                       |
++--------------------------------------+
 ```
 - request/reply 는 SpotNode mesh 의 routed 경로
   `spot(requester) -> spot_node -> spot_node -> spot(replier)` 를 경유한다.
 - 동일 프로세스 안에서 requester 와 replier 를 구동한다. replier 는 recv 즉시
   metric header 를 유지한 payload 로 reply 를 돌려보낸다.
-- 이때 spot 계열 수신 활성화는 direct message callback이 아니라
-  `dispatch_event` callback 안의 recv drain 으로 처리한다.
+- requester reply completion 은 public poller 경로로 진행한다. replier 의
+  spot handler 는 request payload를 echo 하기 위한 public 수신 경로로만 사용한다.
 - throughput/latency 집계 anchor 는 echo 패턴 규칙을 따르며, throughput 은
   requester 측 reply 수신 수로, latency 는 RTT 기반으로 집계한다.
 
@@ -114,6 +119,10 @@ echo(request/reply) 측정 surface를 사용한다.
   active 결과 집계는 본 문서가 정의한 active 유효 메시지 조건을 계속 따른다.
 - idle drain은 single recv one-way 공통 계약이다. 특정 패턴이나 특정 binding만
   더 길거나 다른 의미의 종료 drain을 두면 안 된다.
+- `SPOT_REQREP` 은 echo 패턴이므로 one-way idle drain을 수행하지 않는다. 다만
+  active deadline 직전에 보낸 request가 아직 pending이면, requester는 bounded
+  timeout 동안 public poller completion을 진행해 상태를 정리한다. 이때 deadline
+  이후 도착한 reply는 active 집계에 포함하지 않는다.
 
 ### 1.2 실행 계약 불변식
 
@@ -226,7 +235,11 @@ status   = (expected == actual) ? "complete" : "partial"
 | complete | `expected == actual` |
 | partial | `expected != actual` |
 
-- single 정책에는 baseline 저장/비교 모드가 없다.
+- C single perf에서 전체 기본 full matrix가 `complete`로 끝난 경우에는 같은
+  결과 파일을 `bindings/c/perf/baseline/`에도 저장하여 다음 회귀 비교 기준으로
+  사용한다. partial, smoke, 특정 패턴/transport/size만 실행한 결과는 baseline
+  갱신 대상이 아니다. 단, 사용자가 transport/size를 명시했더라도 그 값이 suite
+  기본 full matrix와 정확히 같으면 full matrix로 본다.
 - partial이어도 결과 파일은 저장한다.
 
 ### 3.2 UNSUPPORTED 판정 (single 엔진 특성)
@@ -254,7 +267,6 @@ status   = (expected == actual) ? "complete" : "partial"
 5. Completion (`status`, `expected_result_lines`, `actual_result_lines`)
 
 - `Effective Options`에는 `lang`과 `suite` 항목이 반드시 포함되어야 한다.
-- `tmp/`, `baseline/` 디렉터리는 single 정책에서 사용하지 않는다.
 - single 엔진은 최대 파일 수를 100으로 하드코딩한다 (`PERF_RESULTS_MAX_FILES` 미참조).
 
 ---
@@ -366,8 +378,10 @@ request/reply probe barrier 로 판정한다. perf는 추가 precondition
   header 가 찍힌 probe request 를 routed 경로로 보내고, replier 의 reply 가
   requester 에 도착하면 ready 를 닫는다.
 - single SPOT / single SPOT_REQREP 은 direct message callback mode를 두지
-  않는다. recv 측 payload 처리는 `dispatch_event` callback 안의 recv drain으로
-  수행해야 한다.
+  않는다. single SPOT 은 `zlink_spot_subscribe()` recv drain 으로 payload를
+  확인하고, single SPOT_REQREP requester 는 public poller 경로로 reply
+  completion을 진행한다. replier 의 spot handler 는 request payload를 즉시 echo
+  reply 하기 위한 public 수신 경로로만 사용한다.
 
 #### 패턴 방향 분류
 
@@ -376,7 +390,7 @@ request/reply probe barrier 로 판정한다. perf는 추가 precondition
 | one-way (단방향) | PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, SPOT | `msg/s` |
 | echo (왕복) | SPOT_REQREP | `ops/s` |
 
-> **구현 참고**: `core/perf/single/run_comparison.py`는 기존 one-way
+> **구현 참고**: single runner는 기존 one-way
 > single 패턴을 **one-way 방향**, **Kmsg/s** 단위로 출력한다. bandwidth도
 > 방향과 무관하게 `throughput × size / 1,000,000`으로 계산한다
 > (direction_factor를 적용하지 않는다). `SPOT_REQREP` 은 echo 패턴이므로
@@ -425,7 +439,6 @@ request/reply probe barrier 로 판정한다. perf는 추가 precondition
 | `PERF_SINGLE_PUBSUB_RCVTIMEO_MS` | PUBSUB 수신 타임아웃(ms) | `PERF_SINGLE_RCVTIMEO_MS` |
 | `PERF_SINGLE_PUBSUB_READY_SETTLE_MS` | PUBSUB post-ready settle(ms) | 1000 |
 | `PERF_SINGLE_SPOT_READY_SETTLE_MS` | SPOT / SPOT_REQREP post-ready settle(ms) | 1000 |
-| `PERF_SINGLE_LATENCY_SAMPLE_CAP` | 레이턴시 샘플 최대 수 | 200000 |
 | `PERF_SINGLE_PUBSUB_XPUB_NODROP` | PUBSUB의 `ZLINK_XPUB_NODROP` 기본값 | (바이너리별) |
 
 - backpressure 검증은 `core/tests/integration`로 분리한다. one-way 통합 범위는

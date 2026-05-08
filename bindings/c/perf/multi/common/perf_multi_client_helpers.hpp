@@ -493,7 +493,7 @@ inline bool metric_header_matches (const perf_multi_metric::header_t &header,
 {
     if (header.magic != perf_multi_metric::k_magic)
         return false;
-    if (header.phase != static_cast<uint32_t> (expected_phase))
+    if (header.phase != static_cast<uint8_t> (expected_phase))
         return false;
     if (header.msg_size != static_cast<uint32_t> (expected_msg_size))
         return false;
@@ -698,7 +698,8 @@ inline bool drain_socket_non_blocking (
                 && g_debug_one_way_logs.fetch_add(1, std::memory_order_acq_rel)
                      < 12) {
                 std::cerr << "[perf-multi-one-way] header mismatch run="
-                          << header.run_id << " phase=" << header.phase
+                          << header.run_id << " phase="
+                          << static_cast<unsigned int>(header.phase)
                           << " size=" << header.msg_size << " expected_run="
                           << expected_run_id << " expected_phase="
                           << static_cast<unsigned int>(expected_phase)

@@ -106,13 +106,15 @@
   메커니즘(TSFN, GIL, mutex 등)은 언어별 런타임에 의존하므로 일관된 비교
   기준이 불가능하다.
 - 다만 아래 두 예외는 perf 정책 surface에 포함한다.
-  - `SPOT`: direct message callback이 아니라 `dispatch_event` callback이 recv
-    drain의 activation signal로 동작한다.
+  - `multi SPOT`의 dispatch event와 `single SPOT`의 `zlink_spot_subscribe()`
+    recv drain: direct message callback이 아니라 public recv activation/drain
+    경로로 동작한다.
   - `STREAM`: raw callback은 제외하지만 `packet handler`는 `STREAM`의 canonical
     packet receive surface로 본다.
 - 즉 perf는 "callback이면 전부 제외"가 아니라, data-plane direct callback을
-  제외하고 `SPOT dispatch_event + recv drain`, `STREAM packet handler`만
-  예외적으로 허용한다.
+  제외하고 SPOT 의 public recv drain 경로와 `STREAM packet handler`만
+  예외적으로 허용한다. `SPOT_REQREP` requester reply completion은 public poller
+  경로로 진행한다.
 
 ### 1.1.1 Metric Header Wire Format
 
@@ -207,11 +209,10 @@ total: 29 bytes (고정)
   sender 가 metric header가 찍힌 probe payload 를 publish 하고, recv
   쪽에서 첫 유효 수신을 확인하면 ready 로 판정한다.
 - single SPOT 수신은 direct message callback으로 처리하지 않는다.
-  `dispatch_event` callback이 오면 그 안에서 recv drain 하여 유효 payload를
-  확인해야 한다.
+  `zlink_spot_subscribe()` recv drain 으로 유효 payload를 확인해야 한다.
 - single SPOT_REQREP 은 별도 서비스 이벤트 스트림 대신 routed request/reply probe 를
   사용한다. requester 가 metric header가 찍힌 probe request 를 보내고
-  replier 의 reply 를 수신하면 ready 로 판정한다.
+  replier 의 reply 를 public poller completion 경로로 수신하면 ready 로 판정한다.
 - multi SPOT / multi SPOT_REQREP barrier 의 `READY` 는 `connect_peer()` 직후
   즉시 보내지 않는다. local benchmark network 정책으로, 각 client spot 이
   control link ready 와 local connect setup 을 끝낸 뒤 stabilization
@@ -307,13 +308,16 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`�
   계산값을 사용한다. 기본 경로에서 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF`
   를 숫자로 직접 고정하지 않는다.
 - multi benchmark는 메시지 크기별로 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를
-  현재 테스트 메시지 크기와 같은 값으로 설정한다. 일반 패턴의 perf 출력은
-  결과 행 뒤에 runtime snapshot에서 실제 수집한 `Auto-HWM detail` 표를 붙이고,
-  `Size(B)`, `MsgUnit(B)`, `Scope`, `ScopeCount`를 적용 HWM과 함께 보여야
-  한다. SPOT 계열은 `zlink_spot_node_internal_sockets_snapshot()` 결과 중
-  `auto_hwm_visible == 1`인 row만 기본 출력에 사용한다. `Auto-HWM spotnode`
-  표는 node 소유 socket을, `Auto-HWM spot` 표는 spot 소유 socket을 보여준다.
-  꺼진 SpotNode mode의 socket은 생성되지 않으므로 perf 출력에도 나오지 않는다.
+  현재 테스트 메시지 크기와 같은 값으로 설정한다. C perf runner는 일반
+  패턴의 결과 행 뒤에 runtime snapshot에서 실제 수집한 `Auto-HWM detail`
+  표를 붙이고, `Size(B)`, `MsgUnit(B)`, `Scope`, `ScopeCount`를 적용 HWM과
+  함께 보여야 한다. SPOT 계열은
+  `zlink_spot_node_internal_sockets_snapshot()` 결과 중 `auto_hwm_visible == 1`인
+  row만 기본 출력에 사용한다. `Auto-HWM spotnode` 표는 node 소유 socket을,
+  `Auto-HWM spot handles` 표는 spot 소유 socket을 보여준다. 꺼진 SpotNode
+  mode의 socket은 생성되지 않으므로 perf 출력에도 나오지 않는다. C 외
+  바인딩은 RESULT 계약을 우선하고, Auto-HWM 세부 설정 출력은 필수 surface로
+  요구하지 않는다.
 - SPOT per-spot scope는 spot 수로 role budget을 나눈다. 큰 payload와 높은
   client 수를 함께 쓰면 HWM이 목표 동시성보다 작아질 수 있으므로, 100-client
   `MULTI_SPOT_SENDSEND` 64 KiB 검증에는 2048 MiB tier를 추가로 확인한다.
@@ -443,8 +447,9 @@ perf/                                       # bindings/<lang>/perf/
 
 - 모든 벤치마크 소스 파일은 **`perf_`** 접두어를 사용한다 (PascalCase 언어는 `Perf` 접두어).
 - 기본 패턴: `perf_<pattern>` — 각 언어의 명명 컨벤션을 적용한다.
-- perf는 recv 모델만 사용하므로 별도 모델 구분용 파일명이나 pattern 이름을
-  추가하지 않는다.
+- perf의 공식 측정 surface는 recv 중심 모델이므로 별도 모델 구분용 파일명이나
+  pattern 이름을 추가하지 않는다. request/reply echo를 위한 handler 또는
+  completion callback은 측정 data delivery surface로 분리하지 않는다.
 - **예외**: 공통 유틸리티 헤더는 `perf_` 접두어 없이 명명할 수 있다 (예: `bench_common.hpp`, `perf_common.hpp`).
 - 상세 파일명 규칙은 개별 정책 문서를 참조한다:
   - Single: [PERF_SINGLE_TEST_POLICY.md § 10.1](PERF_SINGLE_TEST_POLICY.md)
@@ -753,6 +758,11 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 - 파일명 형식: `perf_<lang>_<suite>_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt`
 - 완료 판정 기준: `expected == actual` (throughput + bandwidth + latency + latency_p95 + latency_p99 RESULT line 기준, 조합당 5줄).
+- C perf에서 전체 기본 full matrix가 `complete`로 끝난 경우에는 같은 결과
+  파일을 `bindings/c/perf/baseline/`에도 저장하여 다음 회귀 비교 기준으로
+  사용한다. partial, smoke, 특정 패턴/transport/size만 실행한 결과는 baseline
+  갱신 대상이 아니다. 단, 사용자가 transport/size를 명시했더라도 그 값이 suite
+  기본 full matrix와 정확히 같으면 full matrix로 본다.
 
 ---
 

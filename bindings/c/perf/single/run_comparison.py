@@ -8,6 +8,7 @@ import datetime
 import os
 import platform
 import re
+import shutil
 import statistics
 import subprocess
 import sys
@@ -31,6 +32,7 @@ DEFAULT_PATTERNS = [
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "SPOT",
+    "SPOT_REQREP",
 ]
 
 PATTERN_TO_BINARY = {
@@ -40,6 +42,7 @@ PATTERN_TO_BINARY = {
     "DEALER_ROUTER": "perf_dealer_router",
     "ROUTER_ROUTER": "perf_router_router",
     "SPOT": "perf_spot",
+    "SPOT_REQREP": "perf_spot_reqrep",
 }
 
 SINGLE_RECV_MODE = "recv"
@@ -53,6 +56,7 @@ DEFAULT_STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 DEFAULT_SPOT_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 STREAM_TRANSPORT_PATTERNS = {
     "SPOT",
+    "SPOT_REQREP",
 }
 STREAM_SIZE_PATTERNS = set()
 
@@ -385,6 +389,39 @@ def single_result_dir(results_root: str) -> str:
     return os.path.join(results_root, "single", "report")
 
 
+def parse_raw_csv_list(value: str, cast_fn=str) -> List:
+    items = []
+    for part in (value or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            items.append(cast_fn(part))
+        except ValueError:
+            return []
+    return items
+
+
+def is_default_full_matrix(args: argparse.Namespace, patterns: List[str]) -> bool:
+    if args.pattern.upper() != "ALL" and os.getenv("PERF_FULL_MATRIX", "") != "1":
+        return False
+    env_transports = env_get("PERF_TRANSPORTS").strip()
+    if env_transports and parse_raw_csv_list(env_transports) != DEFAULT_SOCKET_TRANSPORTS:
+        return False
+    env_msg_sizes = env_get("PERF_MSG_SIZES").strip()
+    if env_msg_sizes and parse_raw_csv_list(env_msg_sizes, int) != DEFAULT_MSG_SIZES_STANDARD:
+        return False
+    return list(patterns) == DEFAULT_PATTERNS
+
+
+def copy_successful_full_run_to_baseline(result_file: str) -> str:
+    baseline_dir = os.path.join(PERF_DIR, "baseline")
+    os.makedirs(baseline_dir, exist_ok=True)
+    baseline_file = os.path.join(baseline_dir, os.path.basename(result_file))
+    shutil.copy2(result_file, baseline_file)
+    return baseline_file
+
+
 def enforce_file_retention(
     directory: str,
     max_files: int = DEFAULT_MAX_RESULT_FILES,
@@ -674,14 +711,19 @@ def single_table_separator_line() -> str:
     )
 
 
-def single_table_row_line(size: int, status: str, record: Optional[ComboRecord] = None) -> str:
+def single_table_row_line(
+    size: int,
+    status: str,
+    record: Optional[ComboRecord] = None,
+    pattern: str = "",
+) -> str:
     if status == "success" and record is not None:
         _, lat_p95, lat_p99 = resolve_latency_triplet(
             record.latency,
             record.latency_p95,
             record.latency_p99,
         )
-        tp_s = format_throughput("", record.throughput)
+        tp_s = format_throughput(pattern, record.throughput)
         bw_s = format_bandwidth(record.bandwidth)
         lat_s = format_latency_ms(record.latency)
         lat95_s = format_latency_ms(lat_p95 if lat_p95 is not None else 0.0)
@@ -721,109 +763,94 @@ def run_single_test(
     binary_path = os.path.join(build_dir, binary_name + EXE_SUFFIX)
     env = get_env_for_lib(current_lib_dir)
     cmd = build_bench_cmd(binary_path, [lib_name, transport, str(size)], pin_cpu)
-    timeout_retry_limit = max(0, parse_env_int("PERF_SINGLE_TIMEOUT_RETRIES", 1))
-    failure_retry_limit = max(0, parse_env_int("PERF_SINGLE_FAILURE_RETRIES", 1))
-    last_outcome = RunOutcome(status="fail", reason="no_data")
+    try:
+        sampled = run_command_with_metrics(cmd, env, timeout_sec)
+    except Exception as exc:  # pragma: no cover - defensive
+        return RunOutcome(status="fail", reason=f"exception:{exc}")
 
-    for attempt in range(timeout_retry_limit + 1):
-        try:
-            sampled = run_command_with_metrics(cmd, env, timeout_sec)
-        except Exception as exc:  # pragma: no cover - defensive
-            return RunOutcome(status="fail", reason=f"exception:{exc}")
+    stdout = str(sampled.get("stdout") or "")
+    stderr = str(sampled.get("stderr") or "")
 
-        stdout = str(sampled.get("stdout") or "")
-        stderr = str(sampled.get("stderr") or "")
-
-        metrics: Dict[str, float] = {}
-        warnings: List[str] = []
-        auto_hwm_details: List[Dict[str, str]] = []
-        for line in stdout.splitlines():
-            auto_hwm_detail = parse_auto_hwm_detail_line(line)
-            if auto_hwm_detail:
-                auto_hwm_details.append(auto_hwm_detail)
-                continue
-            parsed, warning = parse_metric_from_result_line(
-                line, lib_name, pattern, transport, size
+    metrics: Dict[str, float] = {}
+    warnings: List[str] = []
+    auto_hwm_details: List[Dict[str, str]] = []
+    for line in stdout.splitlines():
+        auto_hwm_detail = parse_auto_hwm_detail_line(line)
+        if auto_hwm_detail:
+            auto_hwm_details.append(auto_hwm_detail)
+            continue
+        parsed, warning = parse_metric_from_result_line(
+            line, lib_name, pattern, transport, size
+        )
+        if warning:
+            warnings.append(warning)
+        if not parsed:
+            continue
+        metric, value = parsed
+        if metric in metrics:
+            warnings.append(
+                "duplicate RESULT metric detected; keeping last value: "
+                f"{pattern} {transport} {size}B {metric}"
             )
-            if warning:
-                warnings.append(warning)
-            if not parsed:
-                continue
-            metric, value = parsed
-            if metric in metrics:
-                warnings.append(
-                    "duplicate RESULT metric detected; keeping last value: "
-                    f"{pattern} {transport} {size}B {metric}"
-                )
-            metrics[metric] = value
+        metrics[metric] = value
 
-        if sampled.get("timed_out"):
-            last_outcome = RunOutcome(
-                status="fail",
-                reason="timeout",
-                warnings=warnings or None,
-                stderr=stderr,
-            )
-            if attempt < timeout_retry_limit:
-                time.sleep(1.0)
-                continue
-            return last_outcome
-
-        special = detect_special_status(stdout, lib_name, pattern, transport)
-        return_code = int(sampled.get("returncode") or 0)
-        if return_code != 0:
-            last_outcome = RunOutcome(
-                status="fail",
-                reason=f"non_zero_exit_{return_code}",
-                warnings=warnings or None,
-                stderr=stderr,
-            )
-            if attempt < failure_retry_limit:
-                time.sleep(1.0)
-                continue
-            return last_outcome
-
-        if "throughput" in metrics and "bandwidth" in metrics and "latency" in metrics:
-            latency_mean, latency_p95, latency_p99 = resolve_latency_triplet(
-                metrics.get("latency"),
-                metrics.get(LATENCY_P95_METRIC),
-                metrics.get(LATENCY_P99_METRIC),
-            )
-            return RunOutcome(
-                status="success",
-                throughput=metrics["throughput"],
-                bandwidth=metrics["bandwidth"],
-                latency=latency_mean if latency_mean is not None else metrics["latency"],
-                latency_p95=latency_p95 if latency_p95 is not None else metrics["latency"],
-                latency_p99=latency_p99 if latency_p99 is not None else metrics["latency"],
-                warnings=warnings or None,
-                stderr=stderr,
-                auto_hwm_details=auto_hwm_details or None,
-            )
-
-        if special == "unsupported" and not metrics:
-            return RunOutcome(
-                status="unsupported",
-                reason="unsupported",
-                warnings=warnings or None,
-                stderr=stderr,
-            )
-        if special == "skip" and not metrics:
-            return RunOutcome(
-                status="skip",
-                reason="skip",
-                warnings=warnings or None,
-                stderr=stderr,
-            )
-
+    if sampled.get("timed_out"):
         return RunOutcome(
             status="fail",
-            reason="no_data",
+            reason="timeout",
             warnings=warnings or None,
             stderr=stderr,
         )
 
-    return last_outcome
+    special = detect_special_status(stdout, lib_name, pattern, transport)
+    return_code = int(sampled.get("returncode") or 0)
+    if return_code != 0:
+        return RunOutcome(
+            status="fail",
+            reason=f"non_zero_exit_{return_code}",
+            warnings=warnings or None,
+            stderr=stderr,
+        )
+
+    if "throughput" in metrics and "bandwidth" in metrics and "latency" in metrics:
+        latency_mean, latency_p95, latency_p99 = resolve_latency_triplet(
+            metrics.get("latency"),
+            metrics.get(LATENCY_P95_METRIC),
+            metrics.get(LATENCY_P99_METRIC),
+        )
+        return RunOutcome(
+            status="success",
+            throughput=metrics["throughput"],
+            bandwidth=metrics["bandwidth"],
+            latency=latency_mean if latency_mean is not None else metrics["latency"],
+            latency_p95=latency_p95 if latency_p95 is not None else metrics["latency"],
+            latency_p99=latency_p99 if latency_p99 is not None else metrics["latency"],
+            warnings=warnings or None,
+            stderr=stderr,
+            auto_hwm_details=auto_hwm_details or None,
+        )
+
+    if special == "unsupported" and not metrics:
+        return RunOutcome(
+            status="unsupported",
+            reason="unsupported",
+            warnings=warnings or None,
+            stderr=stderr,
+        )
+    if special == "skip" and not metrics:
+        return RunOutcome(
+            status="skip",
+            reason="skip",
+            warnings=warnings or None,
+            stderr=stderr,
+        )
+
+    return RunOutcome(
+        status="fail",
+        reason="no_data",
+        warnings=warnings or None,
+        stderr=stderr,
+    )
 
 
 def parse_pattern_arg(pattern_arg: str) -> List[str]:
@@ -876,11 +903,15 @@ def collect_missing_build_targets(
     return targets
 
 
-def pattern_direction_label(_pattern: str) -> str:
+def pattern_direction_label(pattern: str) -> str:
+    if pattern == "SPOT_REQREP":
+        return "echo"
     return "one-way"
 
 
-def format_throughput(_pattern: str, throughput_per_sec: float) -> str:
+def format_throughput(pattern: str, throughput_per_sec: float) -> str:
+    if pattern == "SPOT_REQREP":
+        return f"{throughput_per_sec/1e3:6.2f} Kops/s"
     return f"{throughput_per_sec/1e3:6.2f} Kmsg/s"
 
 
@@ -1252,6 +1283,7 @@ def main() -> int:
                                 latency_p95=outcome.latency_p95,
                                 latency_p99=outcome.latency_p99,
                             ),
+                            pattern,
                         )
                         line = f"{row_indent}{row}"
                         print(line)
@@ -1261,7 +1293,9 @@ def main() -> int:
                     if outcome.status == "unsupported":
                         transport_unsupported = True
                         for remain_size in sizes[size_idx:]:
-                            row = single_table_row_line(remain_size, "unsupported", None)
+                            row = single_table_row_line(
+                                remain_size, "unsupported", None, pattern
+                            )
                             line = f"{row_indent}{row}"
                             print(line)
                             table_lines.append(line)
@@ -1276,7 +1310,9 @@ def main() -> int:
                             row_record = skip_record if remain_size == size else None
                             if row_record is not None:
                                 failed_records[remain_size] = row_record
-                            row = single_table_row_line(remain_size, "fail", row_record)
+                            row = single_table_row_line(
+                                remain_size, "fail", row_record, pattern
+                            )
                             line = f"{row_indent}{row}"
                             print(line)
                             table_lines.append(line)
@@ -1287,7 +1323,7 @@ def main() -> int:
                     all_failures.append((pattern, transport, size, reason))
                     failed_record = ComboRecord(status="fail")
                     failed_records[size] = failed_record
-                    row = single_table_row_line(size, "fail", failed_record)
+                    row = single_table_row_line(size, "fail", failed_record, pattern)
                     line = f"{row_indent}{row}"
                     print(line)
                     table_lines.append(line)
@@ -1350,11 +1386,11 @@ def main() -> int:
                 for size in sizes:
                     record = combo_results.get((pattern, transport, size))
                     if record and record.status == "success":
-                        row = single_table_row_line(size, "success", record)
+                        row = single_table_row_line(size, "success", record, pattern)
                     elif record and record.status == "unsupported":
-                        row = single_table_row_line(size, "unsupported", None)
+                        row = single_table_row_line(size, "unsupported", None, pattern)
                     else:
-                        row = single_table_row_line(size, "fail", record)
+                        row = single_table_row_line(size, "fail", record, pattern)
                     line = f"        {row}"
                     print(line)
                     table_lines.append(line)
@@ -1406,6 +1442,9 @@ def main() -> int:
     completion_status = (
         "complete" if expected_result_lines == actual_result_lines else "partial"
     )
+    should_update_baseline = completion_status == "complete" and is_default_full_matrix(
+        args, patterns
+    )
 
     print_effective_options("result", effective_options)
     if any(record.status == "success" for record in combo_results.values()):
@@ -1427,6 +1466,9 @@ def main() -> int:
     sys.stdout = orig_stdout
     sys.stderr = orig_stderr
     result_log_fh.close()
+    if should_update_baseline:
+        baseline_file = copy_successful_full_run_to_baseline(result_file)
+        print(f"Updated baseline file: {baseline_file}")
     if completion_status != "complete":
         return 1
     return 0

@@ -13,16 +13,6 @@
 #include <thread>
 #include <vector>
 
-inline size_t resolve_latency_sample_cap()
-{
-    const int cap = resolve_multi_int_env_with_fallback(
-      "PERF_MULTI_LATENCY_SAMPLE_CAP",
-      "PERF_LATENCY_SAMPLE_CAP",
-      200000,
-      1);
-    return cap > 0 ? static_cast<size_t>(cap) : static_cast<size_t>(200000);
-}
-
 struct bench_latency_stats_t {
     bench_latency_stats_t() : mean_ns(0.0), p95_ns(0.0), p99_ns(0.0) {}
     union {
@@ -41,14 +31,10 @@ struct bench_latency_stats_t {
 
 class bench_latency_sampler_t {
 public:
-    explicit bench_latency_sampler_t(
-      size_t sample_cap_ = resolve_latency_sample_cap()) :
-      _sample_cap(sample_cap_ > 0 ? sample_cap_ : 1),
+    bench_latency_sampler_t() :
       _count(0),
-      _sum_ns(0.0),
-      _rng_state(0x9e3779b97f4a7c15ULL)
+      _sum_ns(0.0)
     {
-        _samples.reserve(_sample_cap);
     }
 
     void add(double latency_ns_)
@@ -56,22 +42,13 @@ public:
         const double sample = latency_ns_ >= 0.0 ? latency_ns_ : 0.0;
         ++_count;
         _sum_ns += sample;
-
-        if (_samples.size() < _sample_cap) {
-            _samples.push_back(sample);
-            return;
-        }
-
-        const unsigned long long slot = next_rand_u64() % _count;
-        if (slot < static_cast<unsigned long long>(_sample_cap))
-            _samples[static_cast<size_t>(slot)] = sample;
+        _samples.push_back(sample);
     }
 
     void reset()
     {
         _count = 0;
         _sum_ns = 0.0;
-        _rng_state = 0x9e3779b97f4a7c15ULL;
         _samples.clear();
     }
 
@@ -82,16 +59,8 @@ public:
 
         _count += other_._count;
         _sum_ns += other_._sum_ns;
-        for (size_t i = 0; i < other_._samples.size(); ++i) {
-            if (_samples.size() < _sample_cap) {
-                _samples.push_back(other_._samples[i]);
-                continue;
-            }
-
-            const unsigned long long slot = next_rand_u64() % _count;
-            if (slot < static_cast<unsigned long long>(_sample_cap))
-                _samples[static_cast<size_t>(slot)] = other_._samples[i];
-        }
+        _samples.insert(
+          _samples.end(), other_._samples.begin(), other_._samples.end());
     }
 
     unsigned long long count() const { return _count; }
@@ -141,22 +110,8 @@ private:
         return sorted_[lo] + (sorted_[hi] - sorted_[lo]) * frac;
     }
 
-    unsigned long long next_rand_u64()
-    {
-        if (_rng_state == 0)
-            _rng_state = 0x9e3779b97f4a7c15ULL;
-        unsigned long long x = _rng_state;
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        _rng_state = x;
-        return x;
-    }
-
-    size_t _sample_cap;
     unsigned long long _count;
     double _sum_ns;
-    unsigned long long _rng_state;
     std::vector<double> _samples;
 };
 

@@ -124,13 +124,6 @@ inline int resolve_single_duration_seconds()
     return parse_positive_env("PERF_SINGLE_DURATION_SECONDS", 5);
 }
 
-inline size_t resolve_single_latency_sample_cap()
-{
-    const int cap =
-      parse_positive_env("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200000);
-    return cap > 0 ? static_cast<size_t>(cap) : static_cast<size_t>(200000);
-}
-
 inline int bench_io_threads()
 {
     return parse_positive_env("PERF_IO_THREADS", 1);

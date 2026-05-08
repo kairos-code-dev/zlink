@@ -123,7 +123,8 @@ inline recv_result_t receive_one_message (
                   << " expected_phase="
                   << static_cast<unsigned int> (expected_phase)
                   << " got_magic=" << header.magic << " got_run="
-                  << header.run_id << " got_phase=" << header.phase
+                  << header.run_id << " got_phase="
+                  << static_cast<unsigned int> (header.phase)
                   << " got_size=" << header.msg_size << std::endl;
     }
     if (matched && count_message && message_count)

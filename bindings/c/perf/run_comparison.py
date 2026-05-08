@@ -8,6 +8,7 @@ import os
 import platform
 import queue
 import re
+import shutil
 import statistics
 import subprocess
 import sys
@@ -63,10 +64,7 @@ ECHO_PATTERNS = {
     "STREAM",
 }
 SINGLE_ECHO_PATTERNS = {
-    "PAIR",
-    "DEALER_DEALER",
-    "DEALER_ROUTER",
-    "ROUTER_ROUTER",
+    "SPOT_REQREP",
 }
 ALLOW_MULTI = os.environ.get("PERF_ALLOW_MULTI", "0") == "1"
 SINGLE_COMPARISONS = [
@@ -76,6 +74,7 @@ SINGLE_COMPARISONS = [
     ("perf_dealer_router", "DEALER_ROUTER"),
     ("perf_router_router", "ROUTER_ROUTER"),
     ("perf_spot", "SPOT"),
+    ("perf_spot_reqrep", "SPOT_REQREP"),
 ]
 MULTI_COMPARISONS = [
     ("comp_src_dealer_dealer_client", "DEALER_DEALER"),
@@ -123,7 +122,6 @@ MULTI_ENV_ALIAS_MAP = {
     "PERF_TRANSPORT_TRANSITION_MS": "PERF_MULTI_TRANSPORT_TRANSITION_MS",
     "PERF_PATTERN_TRANSITION_MS": "PERF_MULTI_PATTERN_TRANSITION_MS",
     "PERF_SERVICE_CLIENTS": "PERF_MULTI_SERVICE_CLIENTS",
-    "PERF_LATENCY_SAMPLE_CAP": "PERF_MULTI_LATENCY_SAMPLE_CAP",
     "PERF_SNDHWM": "PERF_MULTI_SNDHWM",
     "PERF_RCVHWM": "PERF_MULTI_RCVHWM",
     "PERF_SNDBUF": "PERF_MULTI_SNDBUF",
@@ -609,8 +607,9 @@ NON_SERVICE_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 if not IS_WINDOWS:
     NON_SERVICE_TRANSPORTS.append("ipc")
 
-# SPOT control-plane patterns currently support tcp/tls only.
-SPOT_TRANSPORTS = ["tcp", "tls"]
+# SPOT control-plane patterns are official perf targets on every network
+# transport used by the multi suite.
+SPOT_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 
 # STREAM socket uses different transports (raw TCP/TLS/WS/WSS)
 STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
@@ -2935,7 +2934,6 @@ def run_sizes_test(
         "reason": "",
         "warnings": [],
     }
-    size_retry_limit = max(0, parse_env_int("PERF_MULTI_SIZE_RETRIES", 1))
     for size_index, size in enumerate(size_list):
         normalized_pattern = normalize_multi_pattern_name(pattern_name)
         isolated = None
@@ -2944,41 +2942,36 @@ def run_sizes_test(
                 size_start_callback(transport, size)
             except Exception:
                 pass
-        for attempt in range(size_retry_limit + 1):
-            isolated = run_one_size_case(size)
-            if (
-                isolated.get("status") == "success"
-                and normalized_pattern == "SPOT"
-                and os.environ.get("PERF_MULTI_SPOT_CLEAN_LATENCY", "1") != "0"
-            ):
-                latency_only = run_one_size_case_with_env(
-                    size, {"PERF_MULTI_SPOT_LATENCY_ONLY": "1"}
+        isolated = run_one_size_case(size)
+        if (
+            isolated.get("status") == "success"
+            and normalized_pattern == "SPOT"
+            and os.environ.get("PERF_MULTI_SPOT_CLEAN_LATENCY", "1") != "0"
+        ):
+            latency_only = run_one_size_case_with_env(
+                size, {"PERF_MULTI_SPOT_LATENCY_ONLY": "1"}
+            )
+            isolated.setdefault("warnings", [])
+            isolated["warnings"].extend(latency_only.get("warnings", []))
+            if latency_only.get("status") == "success":
+                latency_keys = (
+                    f"{transport}|{size}|latency",
+                    f"{transport}|{size}|{LATENCY_P95_METRIC}",
+                    f"{transport}|{size}|{LATENCY_P99_METRIC}",
                 )
-                isolated.setdefault("warnings", [])
-                isolated["warnings"].extend(latency_only.get("warnings", []))
-                if latency_only.get("status") == "success":
-                    latency_keys = (
-                        f"{transport}|{size}|latency",
-                        f"{transport}|{size}|{LATENCY_P95_METRIC}",
-                        f"{transport}|{size}|{LATENCY_P99_METRIC}",
-                    )
-                    for latency_key in latency_keys:
-                        if latency_key in latency_only.get("parsed", {}):
-                            isolated["parsed"][latency_key] = latency_only["parsed"][
-                                latency_key
-                            ]
-                else:
-                    reason = (latency_only.get("reason", "") or "").strip()
-                    isolated["warnings"].append(
-                        "spot clean latency pass failed"
-                        + (f": {reason}" if reason else "")
-                    )
-            merged["warnings"].extend(isolated.get("warnings", []))
-            merged["parsed"].update(isolated.get("parsed", {}))
-            if isolated.get("status") == "success":
-                break
-            if attempt < size_retry_limit:
-                time.sleep(1.0)
+                for latency_key in latency_keys:
+                    if latency_key in latency_only.get("parsed", {}):
+                        isolated["parsed"][latency_key] = latency_only["parsed"][
+                            latency_key
+                        ]
+            else:
+                reason = (latency_only.get("reason", "") or "").strip()
+                isolated["warnings"].append(
+                    "spot clean latency pass failed"
+                    + (f": {reason}" if reason else "")
+                )
+        merged["warnings"].extend(isolated.get("warnings", []))
+        merged["parsed"].update(isolated.get("parsed", {}))
 
         if isolated.get("status") != "success":
             merged["status"] = isolated.get("status", "fail")
@@ -4133,6 +4126,43 @@ def resolve_results_dirs(results_root):
     }
 
 
+def parse_raw_csv_list(value, cast_fn=str):
+    items = []
+    for part in (value or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            items.append(cast_fn(part))
+        except ValueError:
+            return []
+    return items
+
+
+def is_default_full_matrix(args, selected_patterns):
+    if args["pattern_request"].upper() != "ALL" and os.getenv("PERF_FULL_MATRIX", "") != "1":
+        return False
+    env_transports = os.environ.get("PERF_TRANSPORTS", "").strip()
+    if env_transports and parse_raw_csv_list(env_transports) != ["tcp", "tls", "ws", "wss"]:
+        return False
+    env_msg_sizes = os.environ.get("PERF_MSG_SIZES", "").strip()
+    if env_msg_sizes and parse_raw_csv_list(env_msg_sizes, int) != [64, 256, 1024, 65536, 131072, 262144]:
+        return False
+    env_stream_msg_sizes = os.environ.get("PERF_STREAM_MSG_SIZES", "").strip()
+    if env_stream_msg_sizes and parse_raw_csv_list(env_stream_msg_sizes, int) != [64, 256, 1024, 65536]:
+        return False
+    expected_patterns = [pattern for _, pattern in MULTI_COMPARISONS]
+    return list(selected_patterns) == expected_patterns
+
+
+def copy_successful_full_run_to_baseline(result_file):
+    baseline_dir = os.path.join(SCRIPT_DIR, "baseline")
+    os.makedirs(baseline_dir, exist_ok=True)
+    baseline_file = os.path.join(baseline_dir, os.path.basename(result_file))
+    shutil.copy2(result_file, baseline_file)
+    return baseline_file
+
+
 def resolve_results_max_files():
     raw = os.environ.get("PERF_RESULTS_MAX_FILES", "").strip()
     if not raw:
@@ -4687,6 +4717,9 @@ def main():
         emit_result_lines(current_results)
 
     run_status = "complete" if expected_result_lines == actual_result_lines else "partial"
+    should_update_baseline = run_status == "complete" and is_default_full_matrix(
+        args, selected_patterns
+    )
     preserve_result_file = bool(args["results_tag"] or args["result_file"])
     if not preserve_result_file:
         max_files = resolve_results_max_files()
@@ -4695,16 +4728,14 @@ def main():
             max_files,
             exclude_names=[os.path.basename(result_file)],
         )
-    print(f"\nSaved result file: {result_file} (status={run_status})")
-
-    print("\n## Status Summary")
+    print("\n## Completion")
     print(f"- success: {status_counts['success']}")
     print(f"- unsupported: {status_counts['unsupported']}")
     print(f"- skip: {status_counts['skip']}")
     print(f"- fail: {status_counts['fail']}")
-    print(f"- expected result lines: {expected_result_lines}")
-    print(f"- actual result lines: {actual_result_lines}")
     print(f"- status: {run_status}")
+    print(f"- expected_result_lines: {expected_result_lines}")
+    print(f"- actual_result_lines: {actual_result_lines}")
 
     if all_skips:
         print("\n## Skips")
@@ -4720,9 +4751,14 @@ def main():
                 f"{tr} {sz}B: {reason}"
             )
 
+    print(f"\nSaved result file: {result_file} (status={run_status})")
+
     sys.stdout = orig_stdout
     sys.stderr = orig_stderr
     result_log_fh.close()
+    if should_update_baseline:
+        baseline_file = copy_successful_full_run_to_baseline(result_file)
+        print(f"Updated baseline file: {baseline_file}")
     if run_status != "complete":
         raise SystemExit(1)
     raise SystemExit(0)

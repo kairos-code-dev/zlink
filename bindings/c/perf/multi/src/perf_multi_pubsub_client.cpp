@@ -76,7 +76,7 @@ int recv_one_pubsub_message (void *socket,
             std::cerr << "[multi-pubsub-client] header mismatch decoded="
                       << decoded << " magic=" << header.magic
                       << " run=" << header.run_id
-                      << " phase=" << header.phase
+                      << " phase=" << static_cast<unsigned int> (header.phase)
                       << " size=" << header.msg_size
                       << " expected_size=" << expected_msg_size << std::endl;
         }
@@ -200,7 +200,7 @@ bool run_recv_duration (const std::vector<void *> &sockets,
 
                 progressed = true;
                 if (header.phase
-                    != static_cast<uint32_t> (perf_multi_metric::phase_active)) {
+                    != static_cast<uint8_t> (perf_multi_metric::phase_active)) {
                     continue;
                 }
 

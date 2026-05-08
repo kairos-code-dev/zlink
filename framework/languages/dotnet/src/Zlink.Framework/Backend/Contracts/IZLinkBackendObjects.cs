@@ -142,8 +142,6 @@ internal interface IZLinkBackendSubscriberSocket : IZLinkBackendConnectableSocke
 
 internal interface IZLinkBackendStreamSocket : IZLinkBackendSocket
 {
-    void OnRawPacket(Func<string, Message, int> handler);
-
     void OnFramedPacket(Action<string, Message, Message> handler);
 
     bool Send(

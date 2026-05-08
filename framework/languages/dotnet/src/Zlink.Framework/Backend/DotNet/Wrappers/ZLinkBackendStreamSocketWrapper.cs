@@ -12,12 +12,7 @@ internal sealed class ZLinkBackendStreamSocketWrapper(StreamSocket nativeSocket)
 
     public void SetChannelName(string channelName)
     {
-        ZLinkBackendNativeAccess.SetNativeChannelName(nativeSocket, channelName);
-    }
-
-    public void OnRawPacket(Func<string, Message, int> handler)
-    {
-        ZLinkBackendNativeAccess.OnNativeStreamRawPacket(nativeSocket, handler.Invoke);
+        nativeSocket.SetChannelName(channelName);
     }
 
     public void OnFramedPacket(Action<string, Message, Message> handler)
@@ -46,7 +41,7 @@ internal sealed class ZLinkBackendStreamSocketWrapper(StreamSocket nativeSocket)
 
     public void DisconnectPeer(RoutingId routingId)
     {
-        ZLinkBackendNativeAccess.DisconnectNativeStreamPeer(nativeSocket, routingId);
+        nativeSocket.DisconnectRid(routingId);
     }
 
     public void BindActor(

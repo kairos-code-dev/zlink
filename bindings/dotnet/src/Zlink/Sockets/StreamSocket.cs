@@ -77,7 +77,7 @@ public sealed class StreamSocket : RoutedMessageSocketBase
         Kernel.SendBorrowedSingle(routingId, payload, (int)flags);
     }
 
-    internal void DisconnectRid(RoutingId peerRid)
+    public void DisconnectRid(RoutingId peerRid)
     {
         Kernel.DisconnectRid(peerRid);
     }

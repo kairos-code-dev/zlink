@@ -103,6 +103,31 @@
 
 ---
 
+## 바인딩 사용 규칙 (.NET 프레임워크)
+
+`framework/languages/dotnet/` 코드가 `bindings/dotnet/` 라이브러리를 사용할 때는
+반드시 공개(public) API만 호출해야 한다.
+
+### 금지 사항
+
+- `System.Reflection` 으로 `internal` / `private` 멤버에 접근하는 것은 금지한다.
+  - `GetMethod`, `GetField`, `GetProperty` 에 `NonPublic` 플래그를 사용하는 것도 금지한다.
+  - `MethodInfo.Invoke`, `FieldInfo.GetValue` 등을 통한 내부 멤버 호출도 금지한다.
+- 바인딩 어셈블리의 `InternalsVisibleTo` 를 임의로 추가해서 접근권을 우회하는 것도 금지한다.
+
+### 필요한 기능이 바인딩에 없을 때
+
+- 바인딩 라이브러리에 필요한 `public` API 가 없으면, 바인딩에 해당 API 를 추가한다.
+- 프레임워크 안에서 임시로 리플렉션 우회 코드를 작성하지 않는다.
+- 바인딩 API 추가 후 프레임워크에서 공개 API 를 직접 호출하는 방식으로 연결한다.
+
+### 이유
+
+리플렉션으로 내부 멤버에 접근하면 바인딩 라이브러리가 내부 구현을 바꿀 때 프레임워크가 조용히
+런타임 오류를 낸다. 컴파일 타임에 오류를 잡을 수 없어 유지보수 위험이 크다.
+
+---
+
 ## Benchmark Build Rules
 
 `bindings/c/perf` 를 기준으로 성능을 볼 때는 빌드 산출물 경로를 혼동하면 안 된다.

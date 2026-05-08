@@ -84,7 +84,7 @@ public abstract class SocketBase : IDisposable, IAsyncDisposable, IZlinkSocket
         return System.Text.Encoding.UTF8.GetString(buffer, 0, checked((int)length));
     }
 
-    internal void SetChannelName(string channelName)
+    public void SetChannelName(string channelName)
     {
         SetChannelNameCore(channelName);
     }

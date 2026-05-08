@@ -124,10 +124,11 @@ handler on the `SpotNode`. The handler runs synchronously for every
 zlink_actor_admission_result_t my_admission(
   void *node_,
   const char *actor_id_,
-  const zlink_msg_t *message_,
+  const zlink_msg_t *parts_,
+  size_t part_count_,
   void *userdata_)
 {
-    /* inspect actor_id and optional payload message */
+    /* inspect actor_id and optional payload parts */
     if (/* reject condition */)
         return ZLINK_ACTOR_ADMISSION_REJECT;
     return ZLINK_ACTOR_ADMISSION_ACCEPT;
@@ -143,7 +144,7 @@ remote create requests are accepted by default).
 
 To move an Actor into a user Spot, send a join request with
 `zlink_spot_node_actor_join_spot()`. The target Spot receives an
-`ACTOR_JOIN_READABLE` dispatch event, reads the request message with
+`ACTOR_JOIN_READABLE` dispatch event, reads the request payload with
 `zlink_spot_actor_join_recv()`, and sends an accept or reject reply with
 `zlink_spot_actor_join_reply()`.
 
@@ -152,7 +153,7 @@ To move an Actor into a user Spot, send a join request with
 zlink_spot_node_actor_join_spot(
   node, &actor_ref,
   &dest_node_rid, &dest_spot_rid,
-  &payload_msg,       /* join state payload — NULL for empty payload */
+  &payload_msg, 1,    /* join state payload parts */
   my_join_handler,    /* completion callback */
   userdata,
   0, 3000);           /* flags, timeout_ms */
@@ -160,13 +161,14 @@ zlink_spot_node_actor_join_spot(
 /* inside target Spot dispatch callback */
 case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE: {
     zlink_actor_join_info_t info;
-    zlink_msg_t msg;
-    while (zlink_spot_actor_join_recv(spot_, &info, &msg, ZLINK_DONTWAIT)
-           == ZLINK_RECV_OK) {
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    while (zlink_spot_actor_join_recv(spot_, &info, &parts, &part_count,
+                                      ZLINK_DONTWAIT) == ZLINK_RECV_OK) {
         /* info.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE means remote join */
         int accept = /* inspect payload */;
-        zlink_spot_actor_join_reply(spot_, &info, accept, NULL);
-        zlink_msg_close(&msg);
+        zlink_spot_actor_join_reply(spot_, &info, accept, NULL, 0);
+        zlink_multipart_close(parts, part_count);
     }
     break;
 }

@@ -459,6 +459,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
             message.Copy().MoveTo(ref nativeMessage);
             int rc = NativeMethods.zlink_spot_node_create_remote_actor(_handle,
                 ref nodeRid, actorId, ref nativeMessage,
+                1,
                 out ZlinkActorCreateResult result,
                 ActorInterop.NormalizeTimeout(timeout));
             submitted = true;
@@ -567,7 +568,7 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
 
             int rc = NativeMethods.zlink_spot_node_actor_join_spot(_handle,
                 ref nativeActor, ref nativeNodeRid, ref nativeSpotRid,
-                ref nativeMessage, ActorInterop.ReplyHandlerPtr,
+                ref nativeMessage, 1, ActorInterop.ReplyHandlerPtr,
                 GCHandle.ToIntPtr(handle), (int)flags, timeoutMs);
             nativeMessage = default;
             if (rc != 0)
@@ -1170,12 +1171,14 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     }
 
     private ActorAdmissionResult OnNativeActorAdmission(IntPtr node,
-        string actorId, IntPtr message, IntPtr userData)
+        string actorId, IntPtr parts, nuint partCount, IntPtr userData)
     {
         ActorAdmissionHandler? handler = _actorAdmissionHandler;
         if (handler == null)
             return ActorAdmissionResult.Reject;
-        Message managedMessage = ActorInterop.CopyMessageFromPointer(message);
+        Message managedMessage = partCount > 0
+            ? ActorInterop.CopyMessageFromPointer(parts)
+            : new Message();
         try
         {
             return handler(actorId, managedMessage);
@@ -1996,9 +1999,11 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     public ActorJoinRequest? RecvActorJoin(RecvFlags flags = RecvFlags.None)
     {
         EnsureNotDisposed();
-        ZlinkMsg nativeMessage = default;
+        IntPtr parts = IntPtr.Zero;
+        nuint partCount = 0;
         int rc = NativeMethods.zlink_spot_actor_join_recv(_handle,
-            out ZlinkActorJoinInfo nativeInfo, ref nativeMessage, (int)flags);
+            out ZlinkActorJoinInfo nativeInfo, out parts, out partCount,
+            (int)flags);
         if (rc != 0)
         {
             int errno = NativeMethods.zlink_errno();
@@ -2009,7 +2014,9 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
 
         ActorJoinInfo info = ActorInterop.FromNative(ref nativeInfo);
-        Message message = Message.MoveFromNative(ref nativeMessage);
+        Message[] messages = Message.FromNativeVector(parts, partCount);
+        NativeMethods.zlink_multipart_close(parts, partCount);
+        Message message = messages.Length > 0 ? messages[0] : new Message();
         return new ActorJoinRequest(info, message);
     }
 
@@ -2036,7 +2043,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         {
             message.Copy().MoveTo(ref nativeMessage);
             int rc = NativeMethods.zlink_spot_actor_join_reply(_handle,
-                ref nativeInfo, accepted ? 1u : 0u, ref nativeMessage);
+                ref nativeInfo, accepted ? 1u : 0u, ref nativeMessage, 1);
             submitted = true;
             if (rc != 0)
                 throw ZlinkException.CreateSubmitException(

@@ -482,10 +482,32 @@ func (r *Registry) SetTLSClient(caCertPath string, hostname string, trustSystem 
 }
 
 func (r *Registry) SetId(registryID uint32) error {
+	return r.SetOption(RegistryOptionID, registryID)
+}
+
+type RegistryOption uint32
+
+const (
+	RegistryOptionID                  RegistryOption = RegistryOption(C.ZLINK_REGISTRY_OPT_ID)
+	RegistryOptionHeartbeatIntervalMS RegistryOption = RegistryOption(C.ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS)
+	RegistryOptionHeartbeatTimeoutMS  RegistryOption = RegistryOption(C.ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS)
+	RegistryOptionBroadcastIntervalMS RegistryOption = RegistryOption(C.ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS)
+)
+
+func (r *Registry) SetOption(option RegistryOption, value uint32) error {
 	if r == nil || r.closed {
 		return stateError("registry is closed")
 	}
-	return checkRC(C.zlink_registry_set_id(r.raw(), C.uint32_t(registryID)))
+	return checkRC(C.zlink_registry_set(r.raw(), C.zlink_registry_option_t(option), C.uint32_t(value)))
+}
+
+func (r *Registry) GetOption(option RegistryOption) (uint32, error) {
+	if r == nil || r.closed {
+		return 0, stateError("registry is closed")
+	}
+	var result C.zlink_config_result_t
+	value := C.zlink_registry_get(r.raw(), C.zlink_registry_option_t(option), &result)
+	return uint32(value), checkRC(C.int(result))
 }
 
 func (r *Registry) AddPeer(peerPubEndpoint string) error {
@@ -495,17 +517,14 @@ func (r *Registry) AddPeer(peerPubEndpoint string) error {
 }
 
 func (r *Registry) SetHeartbeat(intervalMS uint32, timeoutMS uint32) error {
-	if r == nil || r.closed {
-		return stateError("registry is closed")
+	if err := r.SetOption(RegistryOptionHeartbeatIntervalMS, intervalMS); err != nil {
+		return err
 	}
-	return checkRC(C.zlink_registry_set_heartbeat(r.raw(), C.uint32_t(intervalMS), C.uint32_t(timeoutMS)))
+	return r.SetOption(RegistryOptionHeartbeatTimeoutMS, timeoutMS)
 }
 
 func (r *Registry) SetBroadcastInterval(intervalMS uint32) error {
-	if r == nil || r.closed {
-		return stateError("registry is closed")
-	}
-	return checkRC(C.zlink_registry_set_broadcast_interval(r.raw(), C.uint32_t(intervalMS)))
+	return r.SetOption(RegistryOptionBroadcastIntervalMS, intervalMS)
 }
 
 func (r *Registry) StatusSnapshot() (*RegistryStatus, error) {

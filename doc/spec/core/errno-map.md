@@ -181,6 +181,11 @@ and checked-reference leave return the same enum directly.
 | Actor lifecycle request | `zlink_spot_node_create_remote_actor`, `zlink_spot_node_actor_destroy`, `zlink_spot_node_actor_leave_spot`, `zlink_spot_node_actor_close_bound_session` |
 | Stream Actor request | `zlink_stream_bind_actor`, `zlink_stream_unbind_actor` |
 
+Actor create accepts multipart payload. A payload shape where `parts_` is NULL
+and `part_count_` is greater than `0`, or where `parts_` is not NULL and
+`part_count_` is `0`, maps to `ZLINK_REQUEST_INVALID_ARGUMENT` with `EINVAL`.
+An invalid payload frame maps to the same public result with `EFAULT`.
+
 ---
 
 ## zlink_recv_result_t
@@ -224,6 +229,11 @@ typedef enum zlink_recv_result_t
 | Subscription event | `zlink_xpub_recv_part` |
 | Socket monitor recv | `zlink_socket_monitor_recv` |
 | Timer recv | `zlink_timer_recv` |
+
+`zlink_spot_actor_join_recv()` returns a borrowed multipart view through
+`parts_out_` and `part_count_out_`. NULL output pointers map to
+`ZLINK_RECV_INVALID_HANDLE` with `EINVAL`; an invalid Spot handle maps to the
+same public result with `EFAULT`.
 
 ---
 
@@ -425,7 +435,7 @@ typedef enum zlink_config_result_t
 | Subscription | `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at` |
 | Service attach | `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery`, `zlink_spot_node_attach_channel_dealer`, `zlink_spot_node_attach_channel_dealer_manual`, `zlink_spot_node_attach_pub_ingress` |
 | SpotNode lifecycle/lookup | `zlink_spot_node_entry_spot`, `zlink_spot_node_spot_lookup`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup`, `zlink_remote_actor_get_ref` |
-| Registry config | `zlink_registry_set_id`, `zlink_registry_add_peer`, `zlink_registry_set_heartbeat`, `zlink_registry_set_broadcast_interval` |
+| Registry config | `zlink_registry_set_id`, `zlink_registry_add_peer`, `zlink_registry_set`, `zlink_registry_get` |
 | Discovery config | `zlink_discovery_connect_registry`, `zlink_discovery_resolve_spot`, `zlink_discovery_resolve_actor`, `zlink_discovery_set_value`, `zlink_discovery_get_value`, `zlink_discovery_member_peers` |
 | Snapshot/query | `zlink_spot_node_status_snapshot`, `zlink_spot_node_peers_snapshot`, `zlink_spot_node_peers_query`, `zlink_spot_node_subjects_snapshot`, `zlink_spot_node_internal_sockets_snapshot`, `zlink_spot_node_spots_snapshot`, `zlink_spot_node_actors_snapshot`, `zlink_spot_actors_snapshot`, `zlink_registry_status_snapshot`, `zlink_registry_service_summary_snapshot`, `zlink_registry_member_peers`, `zlink_registry_topology_snapshot`, `zlink_registry_topology_query`, `zlink_registry_query_snapshot`, `zlink_monitor_snapshot` |
 | Poller config | `zlink_poller_add`, `zlink_poller_modify`, `zlink_poller_remove`, `zlink_poller_add_fd`, `zlink_poller_add_timer`, `zlink_poller_modify_fd`, `zlink_poller_remove_fd`, `zlink_poller_remove_timer` |
@@ -435,6 +445,12 @@ typedef enum zlink_config_result_t
 `zlink_poll`, `zlink_poller_size`, `zlink_poller_wait`, and
 `zlink_poller_wait_all` remain plain `int` APIs with `error_out_`. They do
 not directly return `zlink_config_result_t`.
+
+`zlink_registry_set()` returns `NOT_SUPPORTED` for an unknown
+`zlink_registry_option_t`, `INVALID_ARGUMENT` when the scalar value is `0`,
+and `INVALID_HANDLE` for a NULL or invalid Registry handle. `zlink_registry_get()`
+returns the option value on success. On failure it returns `0`; when
+`error_out_` is not NULL it also stores the normalized `zlink_config_result_t`.
 
 ---
 
@@ -576,6 +592,10 @@ destination peer's remote weight cache shows `0`.
 
 SPOT replies answer in-flight requests, so admission is not re-evaluated
 for them. None of the SPOT reply functions return `NOT_ADMITTED`.
+Actor join submit and join reply use the same multipart payload shape as Actor
+create. A mismatched `parts_`/`part_count_` pair maps to
+`ZLINK_SUBMIT_INVALID_ARGUMENT` with `EINVAL`; an invalid payload frame maps to
+the same public result with `EFAULT`.
 
 ---
 

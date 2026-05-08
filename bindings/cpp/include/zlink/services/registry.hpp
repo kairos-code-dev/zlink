@@ -84,9 +84,23 @@ class registry_t
 
     void set_id (uint32_t registry_id_)
     {
+        set (ZLINK_REGISTRY_OPT_ID, registry_id_);
+    }
+
+    void set (zlink_registry_option_t option_, uint32_t value_)
+    {
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_registry_set_id (_registry, registry_id_)));
+            zlink_registry_set (_registry, option_, value_)));
+    }
+
+    uint32_t get (zlink_registry_option_t option_) const
+    {
+        zlink_config_result_t err = ZLINK_CONFIG_OK;
+        const uint32_t value = zlink_registry_get (_registry, option_, &err);
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (err));
+        return value;
     }
 
     void add_peer (const std::string &peer_pub_endpoint_)
@@ -99,10 +113,8 @@ class registry_t
 
     void set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_)
     {
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_registry_set_heartbeat (
-              _registry, interval_ms_, timeout_ms_)));
+        set (ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS, interval_ms_);
+        set (ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS, timeout_ms_);
     }
 
     void set_heartbeat (std::chrono::milliseconds interval_,
@@ -114,9 +126,7 @@ class registry_t
 
     void set_broadcast_interval (uint32_t interval_ms_)
     {
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_registry_set_broadcast_interval (_registry, interval_ms_)));
+        set (ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS, interval_ms_);
     }
 
     void set_broadcast_interval (std::chrono::milliseconds interval_)

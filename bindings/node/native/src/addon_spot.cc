@@ -2403,13 +2403,11 @@ napi_value spot_actor_join_recv(napi_env env, napi_callback_info info)
     if (argc >= 2)
         napi_get_value_int32(env, argv[1], &flags);
     zlink_actor_join_info_t join_info;
-    zlink_msg_t message;
-    if (zlink_msg_init(&message) != 0)
-        return throw_last_error(env, "spotActorJoinRecv failed");
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
     int rc = zlink_spot_actor_join_recv(
-      spot, &join_info, &message, static_cast<zlink_recv_flags_t>(flags));
+      spot, &join_info, &parts, &part_count, static_cast<zlink_recv_flags_t>(flags));
     if (rc != ZLINK_RECV_OK) {
-        zlink_msg_close(&message);
         if ((flags & ZLINK_RECV_FLAGS_DONTWAIT) && zlink_errno() == EAGAIN) {
             napi_value none;
             napi_get_null(env, &none);
@@ -2421,9 +2419,27 @@ napi_value spot_actor_join_recv(napi_env env, napi_callback_info info)
     napi_create_object(env, &out);
     napi_set_named_property(env, out, "info",
                             create_actor_join_info_value(env, join_info));
-    napi_set_named_property(env, out, "message",
-                            create_message_snapshot_value(env, NULL, &message));
-    zlink_msg_close(&message);
+    napi_value parts_array;
+    napi_create_array_with_length(env, part_count, &parts_array);
+    for (size_t i = 0; i < part_count; ++i) {
+        napi_value part = create_message_snapshot_value(env, NULL, &parts[i]);
+        napi_set_element(env, parts_array, static_cast<uint32_t>(i), part);
+    }
+    napi_set_named_property(env, out, "parts", parts_array);
+    napi_value message;
+    if (part_count > 0) {
+        message = create_message_snapshot_value(env, NULL, &parts[0]);
+    } else {
+        zlink_msg_t empty;
+        if (zlink_msg_init(&empty) != 0) {
+            zlink_multipart_close(parts, part_count);
+            return throw_last_error(env, "spotActorJoinRecv failed");
+        }
+        message = create_message_snapshot_value(env, NULL, &empty);
+        zlink_msg_close(&empty);
+    }
+    napi_set_named_property(env, out, "message", message);
+    zlink_multipart_close(parts, part_count);
     return out;
 }
 
@@ -2442,13 +2458,12 @@ napi_value spot_actor_join_reply(napi_env env, napi_callback_info info)
     std::vector<zlink_msg_t> parts;
     if (!build_msg_vector(env, argv[3], &parts))
         return NULL;
-    if (parts.size() != 1) {
-        close_msg_vector(parts);
-        napi_throw_range_error(env, NULL, "actor join reply message must be single part");
-        return NULL;
-    }
     int rc = zlink_spot_actor_join_reply(
-      spot, &join_info, accepted ? 1u : 0u, &parts[0]);
+      spot,
+      &join_info,
+      accepted ? 1u : 0u,
+      parts.empty() ? NULL : parts.data(),
+      parts.size());
     if (rc != ZLINK_SUBMIT_OK) {
         close_msg_vector(parts);
         return throw_last_error(env, "spotActorJoinReply failed");
@@ -3301,7 +3316,8 @@ napi_value spot_node_actors_snapshot(napi_env env, napi_callback_info info)
 static zlink_actor_admission_result_t actor_admission_callback(
   void *node_,
   const char *actor_id_,
-  const zlink_msg_t *message_,
+  const zlink_msg_t *parts_,
+  size_t part_count_,
   void *userdata_)
 {
     (void) node_;
@@ -3312,11 +3328,14 @@ static zlink_actor_admission_result_t actor_admission_callback(
 
     actor_admission_request_t request;
     request.actor_id = actor_id_ ? actor_id_ : "";
-    const unsigned char *data = static_cast<const unsigned char *>(
-      zlink_msg_data(const_cast<zlink_msg_t *>(message_)));
-    const size_t size = zlink_msg_size(message_);
-    if (data && size > 0)
-        request.message.assign(data, data + size);
+    if (parts_ && part_count_ > 0) {
+        const zlink_msg_t *message_ = &parts_[0];
+        const unsigned char *data = static_cast<const unsigned char *>(
+          zlink_msg_data(const_cast<zlink_msg_t *>(message_)));
+        const size_t size = zlink_msg_size(message_);
+        if (data && size > 0)
+            request.message.assign(data, data + size);
+    }
 
     if (napi_call_threadsafe_function(state->tsfn,
                                       &request,
@@ -3461,16 +3480,16 @@ napi_value spot_node_create_remote_actor(napi_env env, napi_callback_info info)
     std::vector<zlink_msg_t> parts;
     if (!build_msg_vector(env, argv[3], &parts))
         return NULL;
-    if (parts.size() != 1) {
-        close_msg_vector(parts);
-        napi_throw_range_error(env, NULL, "create remote actor message must be single part");
-        return NULL;
-    }
     int32_t timeout_ms = 0;
     napi_get_value_int32(env, argv[4], &timeout_ms);
     zlink_actor_create_result_t result;
     int rc = zlink_spot_node_create_remote_actor(
-      node, &target, actor_id.c_str(), &parts[0], &result,
+      node,
+      &target,
+      actor_id.c_str(),
+      parts.empty() ? NULL : parts.data(),
+      parts.size(),
+      &result,
       static_cast<uint32_t>(timeout_ms));
     if (rc != ZLINK_REQUEST_OK) {
         close_msg_vector(parts);
@@ -3546,11 +3565,6 @@ napi_value spot_node_actor_join_spot(napi_env env, napi_callback_info info)
     std::vector<zlink_msg_t> parts;
     if (!build_msg_vector(env, argv[4], &parts))
         return NULL;
-    if (parts.size() != 1) {
-        close_msg_vector(parts);
-        napi_throw_range_error(env, NULL, "actor join message must be single part");
-        return NULL;
-    }
     napi_valuetype handler_type = napi_undefined;
     napi_typeof(env, argv[5], &handler_type);
     if (handler_type != napi_function) {
@@ -3572,7 +3586,8 @@ napi_value spot_node_actor_join_spot(napi_env env, napi_callback_info info)
       &ref,
       &node_rid,
       &spot_rid,
-      &parts[0],
+      parts.empty() ? NULL : parts.data(),
+      parts.size(),
       request_reply_callback_trampoline,
       state,
       static_cast<zlink_send_flags_t>(flags),

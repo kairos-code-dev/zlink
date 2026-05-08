@@ -32,6 +32,8 @@ class registry_t
 
     int bind (const char *pub_endpoint_, const char *router_endpoint_);
     int set_id (uint32_t registry_id_);
+    int set_option (zlink_registry_option_t option_, uint32_t value_);
+    int get_option (zlink_registry_option_t option_, uint32_t *value_out_);
     int add_peer (const char *peer_pub_endpoint_);
     int set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_);
     int set_broadcast_interval (uint32_t interval_ms_);

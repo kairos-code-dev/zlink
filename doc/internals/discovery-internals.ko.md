@@ -97,6 +97,20 @@ sequenceDiagram
     Note over Disc: bootstrap 완료
 ```
 
+Registry의 주기 값은 option state에 저장된다. 공개 API
+`zlink_registry_set()`은 `ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS`,
+`ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS`,
+`ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS` 값을 Registry 내부 설정에 반영한다.
+Registry는 bootstrap reply를 만들 때 heartbeat interval 값을 읽어 Discovery에
+전달한다. Discovery는 이 값을 저장하고 control task의 heartbeat 송신 주기로
+사용한다.
+
+Registry runtime tick은 같은 option state에서 heartbeat timeout과 broadcast
+interval을 읽는다. Timeout 값은 provider 만료 판단에 쓰이고, broadcast interval은
+SERVICE_LIST publish 주기를 제한한다. 이렇게 공개 설정 API와 runtime 동작 사이의
+변환 지점을 Registry 내부에 가두어 Discovery와 attachment가 scalar 설정 세부
+형식을 알 필요가 없게 한다.
+
 ## 5. 서비스 등록 흐름
 
 ```mermaid

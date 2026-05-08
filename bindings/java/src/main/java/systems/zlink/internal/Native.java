@@ -590,11 +590,13 @@ public final class Native {
     private static final MethodHandle MH_SPOT_ACTOR_JOIN_RECV = downcall(
       "zlink_spot_actor_join_recv",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_ACTOR_JOIN_REPLY = downcall(
       "zlink_spot_actor_join_reply",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_SPOT_ACTORS_SNAPSHOT = downcall(
       "zlink_spot_actors_snapshot",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -605,14 +607,15 @@ public final class Native {
     private static final MethodHandle MH_REG_BIND = downcall("zlink_registry_bind",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_SET_ID = downcall("zlink_registry_set_id",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_REG_SET = downcall("zlink_registry_set",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_REG_GET = downcall("zlink_registry_get",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_REG_ADD_PEER = downcall("zlink_registry_add_peer",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_SET_HB = downcall("zlink_registry_set_heartbeat",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_REG_SET_BCAST = downcall("zlink_registry_set_broadcast_interval",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_REG_DESTROY = downcall("zlink_registry_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_REG_STATUS_SNAPSHOT = downcall(
@@ -801,7 +804,8 @@ public final class Native {
             "zlink_spot_node_create_remote_actor",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_NODE_ACTOR_ADMISSION_HANDLER = downcall(
             "zlink_spot_node_actor_admission_handler",
@@ -812,7 +816,8 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_NODE_ACTOR_LEAVE_SPOT = downcall(
@@ -2690,11 +2695,21 @@ public final class Native {
         }
     }
 
-    public static int registrySetId(MemorySegment reg, int id) {
+    public static int registrySetOption(MemorySegment reg, int option, int value) {
         try {
-            return (int) MH_REG_SET_ID.invokeExact(reg, id);
+            return (int) MH_REG_SET.invokeExact(reg, option, value);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_set_id failed", t);
+            throw new RuntimeException("zlink_registry_set failed", t);
+        }
+    }
+
+    public static int registryGetOption(MemorySegment reg, int option,
+                                        MemorySegment valueOut,
+                                        MemorySegment errorOut) {
+        try {
+            return (int) MH_REG_GET.invokeExact(reg, option, valueOut, errorOut);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_registry_get failed", t);
         }
     }
 
@@ -2703,22 +2718,6 @@ public final class Native {
             return (int) MH_REG_ADD_PEER.invokeExact(reg, peer);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_registry_add_peer failed", t);
-        }
-    }
-
-    public static int registrySetHeartbeat(MemorySegment reg, int interval, int timeout) {
-        try {
-            return (int) MH_REG_SET_HB.invokeExact(reg, interval, timeout);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_set_heartbeat failed", t);
-        }
-    }
-
-    public static int registrySetBroadcastInterval(MemorySegment reg, int interval) {
-        try {
-            return (int) MH_REG_SET_BCAST.invokeExact(reg, interval);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_registry_set_broadcast_interval failed", t);
         }
     }
 
@@ -3207,12 +3206,13 @@ public final class Native {
     public static int spotNodeCreateRemoteActor(MemorySegment node,
                                                 MemorySegment targetNodeRid,
                                                 MemorySegment actorId,
-                                                MemorySegment message,
+                                                MemorySegment parts,
+                                                long partCount,
                                                 MemorySegment out,
                                                 int timeoutMs) {
         try {
             return (int) MH_SPOT_NODE_CREATE_REMOTE_ACTOR.invokeExact(node,
-              targetNodeRid, actorId, message, out, timeoutMs);
+              targetNodeRid, actorId, parts, partCount, out, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException(
               "zlink_spot_node_create_remote_actor failed", t);
@@ -3235,14 +3235,15 @@ public final class Native {
                                             MemorySegment actor,
                                             MemorySegment destNodeRid,
                                             MemorySegment destSpotRid,
-                                            MemorySegment message,
+                                            MemorySegment parts,
+                                            long partCount,
                                             MemorySegment handler,
                                             MemorySegment userdata,
                                             int flags,
                                             int timeoutMs) {
         try {
             return (int) MH_SPOT_NODE_ACTOR_JOIN_SPOT.invokeExact(node, actor,
-              destNodeRid, destSpotRid, message, handler, userdata, flags,
+              destNodeRid, destSpotRid, parts, partCount, handler, userdata, flags,
               timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException(
@@ -3714,11 +3715,12 @@ public final class Native {
 
     public static int spotActorJoinRecv(MemorySegment spot,
                                         MemorySegment infoOut,
-                                        MemorySegment messageOut,
+                                        MemorySegment partsOut,
+                                        MemorySegment partCountOut,
                                         int flags) {
         try {
             return (int) MH_SPOT_ACTOR_JOIN_RECV.invokeExact(spot, infoOut,
-              messageOut, flags);
+              partsOut, partCountOut, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_actor_join_recv failed", t);
         }
@@ -3727,10 +3729,11 @@ public final class Native {
     public static int spotActorJoinReply(MemorySegment spot,
                                          MemorySegment info,
                                          int accepted,
-                                         MemorySegment message) {
+                                         MemorySegment parts,
+                                         long partCount) {
         try {
             return (int) MH_SPOT_ACTOR_JOIN_REPLY.invokeExact(spot, info,
-              accepted, message);
+              accepted, parts, partCount);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_actor_join_reply failed", t);
         }

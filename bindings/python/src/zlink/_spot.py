@@ -137,6 +137,7 @@ _ACTOR_ADMISSION_HANDLER = ctypes.CFUNCTYPE(
     ctypes.c_void_p,
     ctypes.c_char_p,
     ctypes.POINTER(ZlinkMsg),
+    ctypes.c_size_t,
     ctypes.c_void_p,
 )
 
@@ -707,9 +708,7 @@ class Actor:
         if not isinstance(spot, Spot):
             raise TypeError("spot must be Spot")
         native_parts = spot._native_parts_from_payload(payload)
-        if len(native_parts) != 1:
-            _close_native_parts(native_parts)
-            raise ValueError("actor join payload must be a single message")
+        native_array = _prepare_native_parts(native_parts)
         pending = _PendingRequest(callback=callback)
         handle = id(pending)
         spot._request_pending[handle] = pending
@@ -723,7 +722,8 @@ class Actor:
             ctypes.byref(native_actor),
             ctypes.byref(native_node),
             ctypes.byref(native_spot),
-            ctypes.byref(native_parts[0]),
+            native_array if native_parts else None,
+            len(native_parts),
             reply_handler,
             ctypes.c_void_p(handle),
             int(flags),
@@ -763,7 +763,7 @@ class Actor:
         native_parts = _clone_payload(payload)
         if len(native_parts) != 1:
             _close_native_parts(native_parts)
-            raise ValueError("payload must be a single message")
+            raise ValueError("payload must contain one frame")
         native_actor = _actor_ref_to_native(self.ref())
         rc = lib().zlink_spot_node_actor_send_bound_session_msg(
             self._node._handle,
@@ -1132,15 +1132,14 @@ class SpotNode:
     def create_remote_actor(self, target_node_rid, actor_id, payload, *, timeout=0):
         native_node = _copy_routing_id(target_node_rid)
         native_parts = _clone_payload(payload)
-        if len(native_parts) != 1:
-            _close_native_parts(native_parts)
-            raise ValueError("remote actor create payload must be a single message")
+        native_array = _prepare_native_parts(native_parts)
         result = ZlinkActorCreateResult()
         rc = lib().zlink_spot_node_create_remote_actor(
             self._handle,
             ctypes.byref(native_node),
             _actor_id_bytes(actor_id),
-            ctypes.byref(native_parts[0]),
+            native_array if native_parts else None,
+            len(native_parts),
             ctypes.byref(result),
             _timeout_to_ms(timeout),
         )
@@ -1164,12 +1163,14 @@ class SpotNode:
         if handler is None:
             raise ValueError("handler must not be None")
 
-        def _callback(_node, actor_id, message_ptr, _):
+        def _callback(_node, actor_id, parts_ptr, part_count, _):
             try:
                 actor_text = ctypes.cast(actor_id, ctypes.c_char_p).value.decode()
-                message = Message.copy_from(_msg_to_bytes(message_ptr.contents))
+                messages = _make_message_list(parts_ptr, part_count)
+                message = messages[0] if messages else Message()
                 result = handler(actor_text, message)
-                message.close()
+                for owned in messages:
+                    owned.close()
                 return int(result)
             except Exception:
                 _report_unhandled_callback_exception(handler)
@@ -1207,9 +1208,7 @@ class SpotNode:
         native_node = _copy_routing_id(dest_node_rid)
         native_spot = _copy_routing_id(dest_spot_rid)
         native_parts = _clone_payload(payload)
-        if len(native_parts) != 1:
-            _close_native_parts(native_parts)
-            raise ValueError("actor join payload must be a single message")
+        native_array = _prepare_native_parts(native_parts)
         pending = _PendingRequest(callback=callback)
         handle = id(pending)
         self._actor_request_pending[handle] = pending
@@ -1218,7 +1217,8 @@ class SpotNode:
             ctypes.byref(native_actor),
             ctypes.byref(native_node),
             ctypes.byref(native_spot),
-            ctypes.byref(native_parts[0]),
+            native_array if native_parts else None,
+            len(native_parts),
             self._ensure_actor_reply_handler(),
             ctypes.c_void_p(handle),
             int(flags),
@@ -2473,11 +2473,13 @@ class Spot:
 
     def recv_actor_join(self, *, flags=0):
         info = ZlinkActorJoinInfo()
-        message = ZlinkMsg()
+        parts = ctypes.POINTER(ZlinkMsg)()
+        part_count = ctypes.c_size_t()
         rc = lib().zlink_spot_actor_join_recv(
             self._handle,
             ctypes.byref(info),
-            ctypes.byref(message),
+            ctypes.byref(parts),
+            ctypes.byref(part_count),
             int(flags),
         )
         if rc != 0:
@@ -2487,6 +2489,11 @@ class Spot:
                 if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
                     return None
                 raise
+        messages = _make_message_list(parts, part_count.value)
+        lib().zlink_multipart_close(parts, part_count.value)
+        message = messages[0] if messages else Message()
+        for extra in messages[1:]:
+            extra.close()
         return ActorJoinRequest(
             info=ActorJoinInfo(
                 source_actor=_actor_ref_from_native(info.source_actor),
@@ -2498,7 +2505,7 @@ class Spot:
                 join_epoch=int(info.join_epoch),
                 flags=int(info.flags),
             ),
-            message=_message_from_native(message),
+            message=message,
             _native=info,
         )
 
@@ -2506,14 +2513,13 @@ class Spot:
         if not isinstance(request, ActorJoinRequest):
             raise TypeError("request must be ActorJoinRequest")
         native_parts = _clone_payload(payload)
-        if len(native_parts) != 1:
-            _close_native_parts(native_parts)
-            raise ValueError("actor join reply payload must be a single message")
+        native_array = _prepare_native_parts(native_parts)
         rc = lib().zlink_spot_actor_join_reply(
             self._handle,
             ctypes.byref(request._native),
             1 if accepted else 0,
-            ctypes.byref(native_parts[0]),
+            native_array if native_parts else None,
+            len(native_parts),
         )
         if rc != 0:
             _close_native_parts(native_parts)

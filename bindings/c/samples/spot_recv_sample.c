@@ -26,9 +26,17 @@ int main (void)
     zlink_msg_t *parts = NULL;
     size_t count = 0;
     char topic[256];
-    size_t topic_len = sizeof (topic);
-    rc = zlink_subscribe (spot, &rid, &parts, &count,
-                          topic, &topic_len, 0);
+    size_t topic_len = 0;
+    int attempts = 500;
+    do {
+        topic_len = sizeof (topic);
+        rc = zlink_subscribe (spot, &rid, &parts, &count,
+                              topic, &topic_len, ZLINK_DONTWAIT);
+        if (rc == ZLINK_RECV_OK)
+            break;
+        assert (rc == ZLINK_RECV_NO_DATA);
+        sample_pause_ms (10);
+    } while (--attempts > 0);
     assert (rc == 0);
     assert (strcmp (topic, k_spot_topic) == 0);
     assert (count == 1);

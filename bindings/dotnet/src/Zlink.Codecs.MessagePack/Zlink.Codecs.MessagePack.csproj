@@ -6,7 +6,7 @@
     <AssemblyName>Systems.Zlink.Codecs.MessagePack</AssemblyName>
     <PackageId>Systems.Zlink.Codecs.MessagePack</PackageId>
     <RootNamespace>Systems.Zlink.Codecs.MessagePack</RootNamespace>
-    <Version>5.3.4</Version>
+    <Version>6.0.0</Version>
     <Description>MessagePack codec extension for Systems.Zlink</Description>
   </PropertyGroup>
   <ItemGroup>

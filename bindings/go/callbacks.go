@@ -528,9 +528,9 @@ func goZlinkSpotDispatchEventTrampoline(_ unsafe.Pointer, info *C.zlink_spot_dis
 }
 
 //export goZlinkActorAdmissionTrampoline
-func goZlinkActorAdmissionTrampoline(_ unsafe.Pointer, actorID *C.char, message *C.zlink_msg_t, userdata C.uintptr_t) C.zlink_actor_admission_result_t {
+func goZlinkActorAdmissionTrampoline(_ unsafe.Pointer, actorID *C.char, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) C.zlink_actor_admission_result_t {
 	value, ok := safeHandleValue(userdata)
-	if !ok || actorID == nil || message == nil {
+	if !ok || actorID == nil || (parts == nil && partCount != 0) {
 		return C.ZLINK_ACTOR_ADMISSION_REJECT
 	}
 	state, ok := value.(*actorAdmissionCallbackState)
@@ -541,9 +541,11 @@ func goZlinkActorAdmissionTrampoline(_ unsafe.Pointer, actorID *C.char, message 
 	if err := configErrorFromResult(C.zlink_msg_init(&copied.msg)); err != nil {
 		return C.ZLINK_ACTOR_ADMISSION_REJECT
 	}
-	if err := configErrorFromResult(C.zlink_msg_copy(&copied.msg, message)); err != nil {
-		_ = copied.Close()
-		return C.ZLINK_ACTOR_ADMISSION_REJECT
+	if partCount > 0 {
+		if err := configErrorFromResult(C.zlink_msg_copy(&copied.msg, parts)); err != nil {
+			_ = copied.Close()
+			return C.ZLINK_ACTOR_ADMISSION_REJECT
+		}
 	}
 	defer copied.Close()
 	result := state.handler(C.GoString(actorID), copied)

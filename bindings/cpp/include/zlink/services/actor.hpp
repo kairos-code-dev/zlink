@@ -86,7 +86,7 @@ class actor_t
           zlink_spot_node_actor_join_spot (
             zlink::detail::native_handle (*_node), zlink::detail::actor_ref_native (_ref),
             zlink::detail::routing_id_native (dest_node_rid),
-            zlink::detail::routing_id_native (dest_spot_rid), &native,
+            zlink::detail::routing_id_native (dest_spot_rid), &native, 1,
             &detail::request_callback_trampoline, state,
             ZLINK_SEND_FLAGS_NONE,
             static_cast<uint32_t> (timeout_.count ())));
@@ -117,7 +117,7 @@ class actor_t
           zlink_spot_node_actor_join_spot (
             zlink::detail::native_handle (*_node), zlink::detail::actor_ref_native (_ref),
             zlink::detail::routing_id_native (dest_node_rid),
-            zlink::detail::routing_id_native (dest_spot_rid), &native,
+            zlink::detail::routing_id_native (dest_spot_rid), &native, 1,
             &detail::request_callback_trampoline, state,
             static_cast<zlink_send_flags_t> (flags_),
             static_cast<uint32_t> (timeout_.count ())));

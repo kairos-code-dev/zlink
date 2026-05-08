@@ -113,7 +113,7 @@ public final class Actor implements AutoCloseable {
               ActorInterop.actorRefToNative(arena, ref),
               ActorInterop.nativeRoutingId(arena, node.routingId()),
               ActorInterop.nativeRoutingId(arena, spot.routingId()), nativeMsg,
-              ActorRequestCallbacks.REPLY_CALLBACK,
+              1L, ActorRequestCallbacks.REPLY_CALLBACK,
               MemorySegment.ofAddress(pending.id()), flags.value(),
               timeoutMillis(timeout));
             if (rc != 0) {

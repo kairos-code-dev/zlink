@@ -54,14 +54,70 @@ int registry_t::bind (const char *pub_endpoint_, const char *router_endpoint_)
 
 int registry_t::set_id (uint32_t registry_id_)
 {
+    return set_option (ZLINK_REGISTRY_OPT_ID, registry_id_);
+}
+
+int registry_t::set_option (zlink_registry_option_t option_, uint32_t value_)
+{
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
+    if (value_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
     scoped_lock_t lock (_sync);
-    _coordination_state.registry_id = registry_id_;
-    _coordination_state.registry_id_set = true;
-    _coordination_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
-    return 0;
+    switch (option_) {
+        case ZLINK_REGISTRY_OPT_ID:
+            _coordination_state.registry_id = value_;
+            _coordination_state.registry_id_set = true;
+            _coordination_state.summary_last_changed_ms =
+              zlink::clock_t ().now_ms ();
+            return 0;
+        case ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS:
+            _coordination_state.heartbeat_interval_ms = value_;
+            return 0;
+        case ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS:
+            _coordination_state.heartbeat_timeout_ms = value_;
+            return 0;
+        case ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS:
+            _coordination_state.broadcast_interval_ms = value_;
+            return 0;
+        default:
+            errno = ENOTSUP;
+            return -1;
+    }
+}
+
+int registry_t::get_option (zlink_registry_option_t option_, uint32_t *value_out_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+    if (!value_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    switch (option_) {
+        case ZLINK_REGISTRY_OPT_ID:
+            *value_out_ = _coordination_state.registry_id;
+            return 0;
+        case ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS:
+            *value_out_ = _coordination_state.heartbeat_interval_ms;
+            return 0;
+        case ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS:
+            *value_out_ = _coordination_state.heartbeat_timeout_ms;
+            return 0;
+        case ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS:
+            *value_out_ = _coordination_state.broadcast_interval_ms;
+            return 0;
+        default:
+            errno = ENOTSUP;
+            return -1;
+    }
 }
 
 int registry_t::add_peer (const char *peer_pub_endpoint_)
@@ -100,16 +156,8 @@ int registry_t::set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_)
 
 int registry_t::set_broadcast_interval (uint32_t interval_ms_)
 {
-    service_public_api_scope_t admission (_public_api);
-    if (!admission.acquired ())
-        return -1;
-    if (interval_ms_ == 0) {
-        errno = EINVAL;
-        return -1;
-    }
-    scoped_lock_t lock (_sync);
-    _coordination_state.broadcast_interval_ms = interval_ms_;
-    return 0;
+    return set_option (ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS,
+                       interval_ms_);
 }
 
 int registry_t::set_socket_option (int socket_role_,

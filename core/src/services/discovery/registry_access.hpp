@@ -20,6 +20,12 @@ struct registry_access_t
                      const char *pub_endpoint_,
                      const char *router_endpoint_);
     static int set_id (registry_t *registry_, uint32_t registry_id_);
+    static int set_option (registry_t *registry_,
+                           zlink_registry_option_t option_,
+                           uint32_t value_);
+    static int get_option (registry_t *registry_,
+                           zlink_registry_option_t option_,
+                           uint32_t *value_out_);
     static int add_peer (registry_t *registry_, const char *peer_pub_endpoint_);
     static int set_heartbeat (registry_t *registry_,
                               uint32_t interval_ms_,

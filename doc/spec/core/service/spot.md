@@ -851,7 +851,8 @@ zlink_request_result_t zlink_spot_node_create_remote_actor(
   void *node,
   const zlink_routing_id_t *target_node_rid,
   const char *actor_id,
-  zlink_msg_t *message,
+  zlink_msg_t *parts,
+  size_t part_count,
   zlink_actor_create_result_t *out,
   uint32_t timeout_ms);
 
@@ -873,7 +874,7 @@ zlink_handler_result_t zlink_spot_node_actor_admission_handler(
   admission is decided by a subsequent `join` request, not by create-or-get.
 - `timeout_ms == 0` is a nonblocking request. If the call cannot complete
   immediately, it fails with a timeout or busy-class result.
-- On successful submit, `message` ownership transfers to the library. Ownership
+- On successful submit, all `parts` ownership transfers to the library. Ownership
   stays with the caller on validation or submit failure.
 - Remote Actors are destroyed through the ref-based
   `zlink_spot_node_actor_destroy()` API. An unreachable target node or a checked
@@ -887,7 +888,8 @@ zlink_submit_result_t zlink_spot_node_actor_join_spot(
   const zlink_actor_ref_t *actor,
   const zlink_routing_id_t *dest_node_rid,
   const zlink_routing_id_t *dest_spot_rid,
-  zlink_msg_t *message,
+  zlink_msg_t *parts,
+  size_t part_count,
   zlink_reply_handler_fn handler,
   void *userdata,
   zlink_send_flags_t flags,
@@ -896,14 +898,16 @@ zlink_submit_result_t zlink_spot_node_actor_join_spot(
 zlink_recv_result_t zlink_spot_actor_join_recv(
   void *spot,
   zlink_actor_join_info_t *info_out,
-  zlink_msg_t *message_out,
+  zlink_msg_t **parts_out,
+  size_t *part_count_out,
   zlink_recv_flags_t flags);
 
 zlink_submit_result_t zlink_spot_actor_join_reply(
   void *spot,
   const zlink_actor_join_info_t *info,
   uint32_t accepted,
-  zlink_msg_t *message);
+  zlink_msg_t *parts,
+  size_t part_count);
 ```
 
 `join` moves an Actor from its current Spot to the target Spot. On accept, the
@@ -932,7 +936,7 @@ Actor's current Spot changes to the target.
   returns immediately on failure is controlled by `ZLINK_DONTWAIT` in `flags`.
 - On successful submit, `message` ownership transfers to the library. On local
   validation or pre-submit failure, ownership stays with the caller.
-- A join request carries a single `zlink_msg_t` payload. The target Spot reads
+- A join request carries a multipart payload as `zlink_msg_t` parts. The target Spot reads
   this payload to decide accept or reject.
 
 `zlink_spot_actor_join_recv()` contracts:

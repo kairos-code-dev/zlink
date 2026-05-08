@@ -1523,7 +1523,7 @@ export class PubSocketOptions extends CommonSocketOptions {
   welcomeMessage(): Message { return Message.from(this._welcomeMessage); }
   setWelcomeMessage(message: MessageLike): void {
     const payload = normalizeMessageLikePayload(message);
-    if (Array.isArray(payload)) throw new TypeError('welcome message must be a single message');
+    if (Array.isArray(payload)) throw new TypeError('welcome payload must contain one frame');
     const data = Buffer.isBuffer(payload) ? payload : payload.data;
     this._socket.setSockOptRaw(SocketOption.XPUB_WELCOME_MSG, data);
     this._welcomeMessage = Buffer.from(data);

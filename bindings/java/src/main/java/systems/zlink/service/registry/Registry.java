@@ -22,6 +22,11 @@ import java.util.Objects;
  * model.
  */
 public final class Registry implements AutoCloseable {
+    public static final int OPTION_ID = 0x3801;
+    public static final int OPTION_HEARTBEAT_INTERVAL_MS = 0x3802;
+    public static final int OPTION_HEARTBEAT_TIMEOUT_MS = 0x3803;
+    public static final int OPTION_BROADCAST_INTERVAL_MS = 0x3804;
+
     private MemorySegment handle;
 
     /** Creates a registry handle owned by the supplied context. */
@@ -44,9 +49,30 @@ public final class Registry implements AutoCloseable {
 
     /** Sets the registry numeric id. */
     public void setId(int id) {
-        int rc = Native.registrySetId(handle, id);
+        int rc = setOptionRaw(OPTION_ID, id);
         if (rc != 0)
-            throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_set_id");
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_set");
+    }
+
+    /** Sets one typed registry option. */
+    public void setOption(int option, int value) {
+        int rc = setOptionRaw(option, value);
+        if (rc != 0)
+            throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_set");
+    }
+
+    /** Reads one typed registry option. */
+    public int getOption(int option) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment valueOut = arena.allocate(ValueLayout.JAVA_INT);
+            MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
+            int value = Native.registryGetOption(handle, option, valueOut,
+              errorOut);
+            int err = errorOut.get(ValueLayout.JAVA_INT, 0);
+            if (err != 0)
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_get");
+            return value;
+        }
     }
 
     /** Adds one peer registry PUB endpoint. */
@@ -63,19 +89,18 @@ public final class Registry implements AutoCloseable {
     public void setHeartbeat(Duration interval, Duration timeout) {
         int intervalMs = toIntMillis(interval, "interval");
         int timeoutMs = toIntMillis(timeout, "timeout");
-        int rc = Native.registrySetHeartbeat(handle, intervalMs, timeoutMs);
-        if (rc != 0)
-            throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_set_heartbeat");
+        setOption(OPTION_HEARTBEAT_INTERVAL_MS, intervalMs);
+        setOption(OPTION_HEARTBEAT_TIMEOUT_MS, timeoutMs);
     }
 
     /** Configures the topology broadcast interval. */
     public void setBroadcastInterval(Duration interval) {
         int intervalMs = toIntMillis(interval, "interval");
-        int rc = Native.registrySetBroadcastInterval(handle, intervalMs);
-        if (rc != 0) {
-            throw InternalAccess.zlinkExceptionFromLastError(
-              "zlink_registry_set_broadcast_interval");
-        }
+        setOption(OPTION_BROADCAST_INTERVAL_MS, intervalMs);
+    }
+
+    private int setOptionRaw(int option, int value) {
+        return Native.registrySetOption(handle, option, value);
     }
 
     /** Configures server TLS credentials for the registry endpoints. */

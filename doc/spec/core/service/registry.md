@@ -13,6 +13,40 @@
 - Registry topology is intended for global summary only. For detailed local
   state transitions, compare successive snapshot/query results.
 
+## Configuration Options
+
+Registry scalar configuration uses typed options:
+
+```c
+zlink_config_result_t zlink_registry_set(
+  void *registry,
+  zlink_registry_option_t option,
+  uint32_t value);
+
+uint32_t zlink_registry_get(
+  void *registry,
+  zlink_registry_option_t option,
+  zlink_config_result_t *error_out);
+```
+
+Defined options:
+
+| Option | Value meaning |
+|--------|---------------|
+| `ZLINK_REGISTRY_OPT_ID` | Registry numeric id. |
+| `ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS` | Heartbeat interval in milliseconds. |
+| `ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS` | Heartbeat timeout in milliseconds. |
+| `ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS` | Topology broadcast interval in milliseconds. |
+
+- `registry == NULL` fails with `ZLINK_CONFIG_INVALID_HANDLE`; `errno` is
+  `EFAULT`.
+- Unknown options fail with `ZLINK_CONFIG_NOT_SUPPORTED`; `errno` is `ENOTSUP`.
+- `error_out == NULL` in `zlink_registry_get()` is allowed. In that case the
+  caller receives only the returned value, and failure is observable as `0`
+  plus the thread-local errno.
+- The named scalar setters remain compatibility wrappers over this option
+  state. New API surfaces should use the option functions.
+
 The Registry is the central service directory for the zlink service layer. It
 accepts service registration, deregistration, and heartbeat requests from
 SPOT Nodes and socket family services, and periodically broadcasts the

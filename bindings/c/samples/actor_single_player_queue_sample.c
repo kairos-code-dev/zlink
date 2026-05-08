@@ -38,7 +38,7 @@ int main (void)
     zlink_msg_t join_first;
     make_message (&join_first, "join-first");
     assert (zlink_spot_node_actor_join_spot (
-              node, &actor, &node_rid, &first_spot_rid, &join_first,
+              node, &actor, &node_rid, &first_spot_rid, &join_first, 1,
               actor_sample_join_reply, &first_capture, ZLINK_DONTWAIT, 1000)
             == ZLINK_SUBMIT_OK);
     assert (callback_signal_wait (&first_capture.join_signal, 2000));
@@ -70,7 +70,7 @@ int main (void)
     zlink_msg_t join_second;
     make_message (&join_second, "join-second");
     assert (zlink_spot_node_actor_join_spot (
-              node, &actor, &node_rid, &second_spot_rid, &join_second,
+              node, &actor, &node_rid, &second_spot_rid, &join_second, 1,
               actor_sample_join_reply, &second_capture, ZLINK_DONTWAIT, 1000)
             == ZLINK_SUBMIT_OK);
     assert (callback_signal_wait (&second_capture.join_signal, 2000));

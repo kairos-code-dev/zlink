@@ -1,6 +1,6 @@
 [package]
 name = "zlink-codec-protobuf"
-version = "5.3.4"
+version = "6.0.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Protobuf codec extension for the zlink Rust bindings"
@@ -9,7 +9,7 @@ homepage = "https://zlink.systems/"
 
 [dependencies]
 prost = "0.13"
-zlink = { version = "5.3.4", path = "../.." }
+zlink = { version = "6.0.0", path = "../.." }
 
 [dev-dependencies]
 prost = { version = "0.13", features = ["derive"] }

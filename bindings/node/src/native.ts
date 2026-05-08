@@ -40,9 +40,9 @@ function loadNative(): NativeBinding | null {
       const addonDir = path.join(packageRoot, 'build', 'Release');
       const coreDir = path.join(packageRoot, '..', '..', 'core', 'build', 'lib');
       const coreAltDir = path.join(packageRoot, '..', 'build_cpp', 'lib');
-      const addonLib = path.join(addonDir, 'libzlink.so.5');
-      const coreLib = path.join(coreDir, 'libzlink.so.5');
-      const coreAltLib = path.join(coreAltDir, 'libzlink.so.5');
+      const addonLib = path.join(addonDir, 'libzlink.so.6');
+      const coreLib = path.join(coreDir, 'libzlink.so.6');
+      const coreAltLib = path.join(coreAltDir, 'libzlink.so.6');
       refreshAddonRuntimeLink(addonLib, [coreLib, coreAltLib]);
       const existing = (process.env.LD_LIBRARY_PATH || '').split(':').filter(Boolean);
       for (const entry of [coreDir, coreAltDir, addonDir]) {

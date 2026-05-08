@@ -107,7 +107,7 @@ int main(void)
 - `zlink_socket_monitor_open()`
 - `zlink_send_ready_handler()`
 - `zlink_set_option()`
-- `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
+- `zlink_registry_add_peer()` / `zlink_registry_set()`
 - 조회/스냅샷 함수
 
 **전송과 설정을 자유롭게 섞을 수 있습니다.** 예를 들어, 한 스레드가

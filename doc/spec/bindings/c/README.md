@@ -430,3 +430,9 @@ It also exposes `ZLINK_OPT_RID_DUPLICATE_POLICY`,
 `ZLINK_RID_DUPLICATE_REJECT`, `ZLINK_RID_DUPLICATE_HANDOVER`,
 `ZLINK_CONNECT_NOT_FOUND`, `ZLINK_CONNECT_CONFLICT`, and
 `ZLINK_CONNECT_BUSY`.
+
+## Core API Surface 6.0.0 Alignment
+
+Actor create and join payloads use aggregate multipart payloads. Public binding APIs accept a message collection for remote actor create, actor join, actor join receive, and actor join reply. A single-message convenience path may remain, but it must call the multipart path internally so empty payload and one empty message stay distinguishable. Admission handlers receive a borrowed payload view that is valid only during the callback.
+
+Registry scalar configuration uses the registry option surface as the canonical API. Bindings expose typed options for registry id, heartbeat interval, heartbeat timeout, and broadcast interval. Existing named setters may remain as compatibility aliases and must delegate to the option API.

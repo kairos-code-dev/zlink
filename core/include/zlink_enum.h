@@ -189,6 +189,14 @@ typedef enum zlink_spot_option_t
     ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS = 0x3701
 } zlink_spot_option_t;
 
+typedef enum zlink_registry_option_t
+{
+    ZLINK_REGISTRY_OPT_ID = 0x3801,
+    ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS = 0x3802,
+    ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS = 0x3803,
+    ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS = 0x3804
+} zlink_registry_option_t;
+
 typedef enum zlink_disconnect_reason_t
 {
     ZLINK_DISCONNECT_REASON_UNKNOWN = 0,

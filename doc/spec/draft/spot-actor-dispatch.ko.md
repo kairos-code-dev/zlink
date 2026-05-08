@@ -875,15 +875,15 @@ core 주소 조회만 맡는다.
 remote Actor가 없으면 만들고, 이미 있으면 기존 Actor ref를 반환하는 요청 API를
 둔다. 이 API는 remote ref 생성과 다르다. target `SpotNode`에 control request를
 보내고, target node의 Actor table과 admission handler를 거친다.
-remote create 요청에는 단일 `zlink_msg_t` message를 실을 수 있다. core는 이
-message를 해석하지 않고 target node의 admission handler로 전달한다.
+remote create 요청에는 `zlink_msg_t` part 배열로 이루어진 multipart payload를 실을 수 있다. core는 이 payload를 해석하지 않고 target node의 admission handler로 borrowed view로 전달한다.
 
 ```c
 ZLINK_EXPORT zlink_request_result_t zlink_spot_node_create_remote_actor(
   void *node_,
   const zlink_routing_id_t *target_node_rid_,
   const char *actor_id_,
-  zlink_msg_t *message_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
   zlink_actor_create_result_t *out_,
   uint32_t timeout_ms_);
 ```
@@ -896,14 +896,14 @@ target node는 아래 순서로 처리한다.
    handler는 호출하지 않는다.
 3. target node에는 없지만 다른 `SpotNode`에 같은 `actor_id_`의 Actor가 있더라도
    remote create는 실패하지 않는다. 이 동작은 Actor 이동 준비를 위해 필요하다.
-4. Actor가 없으면 admission handler를 호출하고 `message_` 내용을 전달한다.
+4. Actor가 없으면 admission handler를 호출하고 `parts_`와 `part_count_` 내용을 전달한다.
 5. admission handler가 허용하면 target node가 core Actor slot을 만들고
    `out_->status = ZLINK_ACTOR_CREATE_CREATED`로 반환한다.
 6. admission handler가 거부하면 request 실패로 반환한다.
 
 caller 쪽 계약은 아래와 같다.
 
-- `node_ == NULL`, `target_node_rid_ == NULL`, `actor_id_ == NULL`, `message_ == NULL`,
+- `node_ == NULL`, `target_node_rid_ == NULL`, `actor_id_ == NULL`, `parts_ == NULL && part_count_ > 0`, `parts_ != NULL && part_count_ == 0`,
   또는 `out_ == NULL`이면 `ZLINK_REQUEST_INVALID_ARGUMENT` 계열 결과로 실패한다.
 - `actor_id_`가 비어 있거나 `ZLINK_ACTOR_ID_MAX - 1` byte를 넘으면
   `ZLINK_REQUEST_INVALID_ARGUMENT` 계열 결과로 실패한다.
@@ -928,14 +928,14 @@ instance, DI scope 같은 것은 core가 만들지 않는다. binding이나 fram
 기능 위에 상위 객체 생명주기를 붙일 수는 있지만, core public 계약은 Actor slot과
 Actor ref까지로 제한한다.
 
-`message_`는 Actor 종류, 인증 정보, 초기 상태, placement 판단 근거 같은
-application payload를 담기 위한 값이다. core는 message 내용을 해석하지 않는다.
-비어 있는 요청을 보내고 싶으면 빈 `zlink_msg_t`를 넘긴다. request가 target node에
-submit되면 `message_` 소유권은 라이브러리로 이전된다. local validation이나 submit
-전 실패가 발생하면 소유권은 호출자에게 남는다.
+`parts_`와 `part_count_`는 Actor 종류, 인증 정보, 초기 상태, placement 판단 근거
+같은 application payload를 담기 위한 값이다. core는 payload 내용을 해석하지 않는다.
+비어 있는 요청은 `parts_ == NULL && part_count_ == 0`으로 보낸다. request가 target
+node에 submit되면 `parts_` 소유권은 라이브러리로 이전된다. local validation이나
+submit 전 실패가 발생하면 소유권은 호출자에게 남는다.
 timeout 실패는 이미 submit된 request의 completion 실패이므로, submit 이후
-소유권이 이전된 `message_`는 caller에게 돌아오지 않는다. 재시도할 때는 새
-`zlink_msg_t`를 만들어 넘겨야 한다.
+소유권이 이전된 `parts_`는 caller에게 돌아오지 않는다. 재시도할 때는 새
+payload parts를 만들어 넘겨야 한다.
 
 ### Admission handler
 
@@ -952,7 +952,8 @@ typedef enum zlink_actor_admission_result_t
 typedef zlink_actor_admission_result_t (*zlink_actor_admission_handler_fn)(
   void *node_,
   const char *actor_id_,
-  const zlink_msg_t *message_,
+  const zlink_msg_t *parts_,
+  size_t part_count_,
   void *userdata_);
 
 ZLINK_EXPORT zlink_handler_result_t zlink_spot_node_actor_admission_handler(
@@ -969,8 +970,8 @@ ZLINK_EXPORT zlink_handler_result_t zlink_spot_node_actor_admission_handler(
 - handler가 설치되지 않은 node에서 remote create 요청을 받으면 기본 정책으로
   거부한다.
 - handler는 Actor가 없을 때만 호출된다.
-- `message_`는 borrowed view이다. handler는 내용을 읽을 수 있지만 close하거나
-  저장하면 안 된다.
+- `parts_`는 borrowed view이다. handler는 내용을 읽을 수 있지만 close하거나
+  저장하면 안 된다. view lifetime은 handler 호출 동안만 유효하다.
 - handler가 `ACCEPT`를 반환하면 core가 local Actor slot을 만든다.
 - handler가 `REJECT`를 반환하면 create 요청은 `ZLINK_REQUEST_REJECTED` 계열
   실패로 끝난다.
@@ -1028,9 +1029,9 @@ queue에 이미 들어간 Actor handle이 무효화되는 상황을 공개 계�
 ## Actor와 Spot join request
 
 Actor join은 즉시 attach 함수가 아니라 `Spot`으로 보내는 join request로 처리한다.
-join request는 단일 `zlink_msg_t` message를 실을 수 있고, target `Spot`의 dispatch
-event context에서 직렬화되어 처리된다. core는 join message를 해석하지 않는다.
-application은 이 message 안에 입장 판단에 필요한 room option, auth token, initial
+join request는 `zlink_msg_t` part 배열로 이루어진 multipart payload를 실을 수 있고, target `Spot`의 dispatch
+event context에서 직렬화되어 처리된다. core는 join payload를 해석하지 않는다.
+application은 이 payload 안에 입장 판단에 필요한 room option, auth token, initial
 state 같은 값을 담을 수 있다.
 
 local 또는 remote Actor ref를 target `Spot`에 보내는 API는 하나만 둔다.
@@ -1044,7 +1045,8 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_join_spot(
   const zlink_actor_ref_t *actor_,
   const zlink_routing_id_t *dest_node_rid_,
   const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *message_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
   zlink_reply_handler_fn handler_,
   void *userdata_,
   zlink_send_flags_t flags_,
@@ -1057,27 +1059,30 @@ target `Spot`은 dispatch event에서 join request를 읽는다.
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_actor_join_recv(
   void *spot_,
   zlink_actor_join_info_t *info_out_,
-  zlink_msg_t *message_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
   zlink_recv_flags_t flags_);
 ```
 
 join message를 읽은 뒤 application은 join reply를 호출한다.
 `accepted_`가 `0`이 아니면 Actor가 `Spot`에 join된다. `accepted_ == 0`이면 Actor를
 join하지 않고 caller의 request handler에 실패 결과를 전달한다. 두 경우 모두 caller로
-단일 reply message를 전달할 수 있다.
+multipart reply payload를 전달할 수 있다.
 
 ```c
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply(
   void *spot_,
   const zlink_actor_join_info_t *info_,
   uint32_t accepted_,
-  zlink_msg_t *message_);
+  zlink_msg_t *parts_,
+  size_t part_count_);
 ```
 
 계약은 아래와 같다.
 
 - `zlink_spot_node_actor_join_spot()`에서 `node_ == NULL`, `actor_ == NULL`,
-  `dest_node_rid_ == NULL`, `dest_spot_rid_ == NULL`, `message_ == NULL`, 또는
+  `dest_node_rid_ == NULL`, `dest_spot_rid_ == NULL`,
+  `parts_ == NULL && part_count_ > 0`, `parts_ != NULL && part_count_ == 0`, 또는
   `handler_ == NULL`이면 `ZLINK_SUBMIT_INVALID_ARGUMENT` 계열 결과로 실패한다.
 - `zlink_spot_node_actor_join_spot()`에서 `actor_`의 `actor_id`가 비어 있거나
   `ZLINK_ACTOR_ID_MAX - 1` byte를 넘으면
@@ -1098,7 +1103,7 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply(
   `ZLINK_SUBMIT_NOT_CONNECTED` 계열 결과로 실패한다.
 - `dest_spot_rid_`가 `dest_node_rid_`의 target node에 없으면 join request는
   `ZLINK_REQUEST_NOT_FOUND` 계열 실패로 끝난다.
-- 비어 있는 join request를 보내고 싶으면 빈 `zlink_msg_t`를 넘긴다.
+- 비어 있는 join request는 `parts_ == NULL && part_count_ == 0`으로 보낸다.
 - source Actor owner node에 Actor가 없으면 join request는 `ZLINK_REQUEST_NOT_FOUND` 계열
   실패로 끝난다.
 - `actor_->generation == 0`이면 source Actor owner node의 현재 같은 `actor_id` Actor를
@@ -1156,26 +1161,26 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply(
   넘겨야 한다.
 - `zlink_spot_actor_join_reply()` 호출 뒤 `zlink_actor_join_info_t.request`는 무효가
   된다.
-- join submit이 성공하면 request `message_` 소유권은 라이브러리로 이전된다.
-- join submit이 local validation이나 submit 전에 실패하면 request `message_`
+- join submit이 성공하면 request `parts_` 소유권은 라이브러리로 이전된다.
+- join submit이 local validation이나 submit 전에 실패하면 request `parts_`
   소유권은 호출자에게 남는다.
 - `zlink_spot_actor_join_recv()`에서 `spot_ == NULL`, `info_out_ == NULL`, 또는
-  `message_out_ == NULL`이면 `EINVAL`이다.
-- `zlink_spot_actor_join_recv()`가 성공하면 `message_out_` 소유권은 호출자에게
-  이전된다. 호출자는 message를 정확히 한 번 close하거나 소비해야 한다.
+  `parts_out_ == NULL`, 또는 `part_count_out_ == NULL`이면 `EINVAL`이다.
+- `zlink_spot_actor_join_recv()`가 성공하면 `parts_out_` payload 소유권은 호출자에게
+  이전된다. 호출자는 payload를 `zlink_multipart_close()`로 닫거나 각 part를 정확히 한 번 소비해야 한다.
 - `ZLINK_DONTWAIT`에서 읽을 join request가 없으면 `ZLINK_RECV_NO_DATA`를 반환한다.
 - `accepted_`가 `0`이 아니면 accept, `0`이면 reject로 처리한다.
 - `accepted_`는 C API 표면에서 다른 boolean 성격 필드와 맞추기 위해 `uint32_t`로
   둔다. 의미는 `0` 또는 non-zero만 본다.
 - `zlink_spot_actor_join_reply()`에서 `spot_ == NULL`, `info_ == NULL`,
-  `info_->request == NULL`, 또는 `message_ == NULL`이면
+  `info_->request == NULL`, `parts_ == NULL && part_count_ > 0`, 또는 `parts_ != NULL && part_count_ == 0`이면
   `ZLINK_SUBMIT_INVALID_ARGUMENT` 계열 결과로 실패한다.
-- reply payload가 필요 없으면 빈 `zlink_msg_t`를 넘긴다.
-- `zlink_spot_actor_join_reply()`가 성공하면 reply `message_` 소유권은 라이브러리로
+- reply payload가 필요 없으면 `parts_ == NULL && part_count_ == 0`으로 호출한다.
+- `zlink_spot_actor_join_reply()`가 성공하면 reply `parts_` 소유권은 라이브러리로
   이전된다.
 - `zlink_spot_actor_join_reply()`가 local validation이나 submit 전에 실패하면
-  reply `message_` 소유권은 호출자에게 남는다.
-- join request handler는 join result와 reply message를 함께 받는다.
+  reply `parts_` 소유권은 호출자에게 남는다.
+- join request handler는 join result와 reply payload를 함께 받는다.
 - timeout이 지나면 caller의 join request handler는 timeout 결과를 받는다.
 - join request timeout 뒤 Actor current Spot은 호출 전 상태를 유지한다. timeout 뒤
   target node에서 join이 늦게 accept되어 상태가 바뀌는 동작은 공개 계약으로 만들지
@@ -1637,31 +1642,29 @@ static void on_spot_dispatch(
 
         for (;;) {
             zlink_actor_join_info_t join_info;
-            zlink_msg_t message;
+            zlink_msg_t *parts = NULL;
+            size_t part_count = 0;
 
             zlink_recv_result_t rc = zlink_spot_actor_join_recv(
               join_spot,
               &join_info,
-              &message,
+              &parts,
+              &part_count,
               ZLINK_DONTWAIT);
 
             if (rc != ZLINK_RECV_OK)
                 break;
 
-            /* application reads join message and decides admission here */
+            /* application reads join payload and decides admission here */
             uint32_t accepted = 1;
-            zlink_msg_close(&message);
+            zlink_multipart_close(parts, part_count);
 
-            zlink_msg_t reply;
-            zlink_msg_init(&reply);
             zlink_submit_result_t reply_rc = zlink_spot_actor_join_reply(
               join_spot,
               &join_info,
               accepted,
-              &reply);
-
-            if (reply_rc != ZLINK_SUBMIT_OK)
-                zlink_msg_close(&reply);
+              NULL,
+              0);
         }
 
         return;
@@ -1759,7 +1762,7 @@ retry하거나 STREAM session disconnect/shutdown cleanup으로 해당 relay를 
 
 ## Actor client send 사용 예
 
-raw stream callback을 쓰는 응용은 Actor에서 client로 단일 message를 보낸다.
+raw stream callback을 쓰는 응용은 Actor에서 client로 하나의 message를 보낸다.
 
 ```c
 static void send_raw_to_client(void *actor, zlink_msg_t *message)
@@ -2134,7 +2137,7 @@ Actor row의 `last_changed_ms`는 Actor 생성 이후 이 snapshot row의 진단
 |----|------|-----------|
 | ACT-REMOTE-01 | remote create 신규 Actor | `zlink_spot_node_create_remote_actor()`가 `CREATED`를 반환한다 |
 | ACT-REMOTE-02 | remote create 기존 Actor | 같은 id 재요청은 `EXISTING`을 반환하고 admission handler를 다시 호출하지 않는다 |
-| ACT-REMOTE-03 | create message 전달 | admission handler가 `zlink_spot_node_create_remote_actor()`의 단일 message를 읽을 수 있다 |
+| ACT-REMOTE-03 | create message 전달 | admission handler가 `zlink_spot_node_create_remote_actor()`의 하나의 message를 읽을 수 있다 |
 | ACT-REMOTE-04 | admission accept | handler가 accept하면 target node에 Actor slot이 생긴다 |
 | ACT-REMOTE-05 | admission reject | handler가 reject하면 request 실패로 caller에게 전달된다 |
 | ACT-REMOTE-06 | admission 없음 | handler가 없는 target node의 remote create는 `ZLINK_REQUEST_REJECTED` 계열 결과로 실패한다 |
@@ -2157,7 +2160,7 @@ Actor row의 `last_changed_ms`는 Actor 생성 이후 이 snapshot row의 진단
 |----|------|-----------|
 | ACT-JOIN-01 | join request readable event | `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE`이 발생한다 |
 | ACT-JOIN-02 | join request subject | event `subject`가 join target `Spot` handle이다 |
-| ACT-JOIN-03 | join message recv | `zlink_spot_actor_join_recv()`가 단일 `zlink_msg_t` join message를 반환한다 |
+| ACT-JOIN-03 | join message recv | `zlink_spot_actor_join_recv()`가 multipart join payload를 반환한다 |
 | ACT-JOIN-04 | opaque request handle | `zlink_actor_join_info_t.request`를 `zlink_spot_actor_join_reply()`에 넘길 수 있다 |
 | ACT-JOIN-05 | join accept reply | `accepted_ != 0`이면 Actor가 target `Spot`에 join되고 caller가 reply message를 받는다 |
 | ACT-JOIN-06 | join reject reply | `accepted_ == 0`이면 Actor는 join되지 않고 caller가 reject result와 reply message를 받는다 |
@@ -2220,7 +2223,7 @@ Actor row의 `last_changed_ms`는 Actor 생성 이후 이 snapshot row의 진단
 | ACT-QUEUE-05 | nonblocking drain | dispatch callback 안 `ZLINK_DONTWAIT` drain이 `ZLINK_RECV_NO_DATA`에서 멈춘다 |
 | ACT-QUEUE-06 | relay backpressure | 기존 relay 경로의 transport HWM 또는 nonblocking send admission에서 `ZLINK_SUBMIT_BACKPRESSURED` 계열 결과를 반환한다 |
 | ACT-QUEUE-07 | target Actor 없음 | remote target Actor가 없을 때 target node에서 메시지를 버리고 sender의 완료된 send 결과는 바뀌지 않는다 |
-| ACT-QUEUE-08 | actor raw send | `zlink_actor_send_bound_session_msg()`가 bound STREAM session으로 단일 message를 전송한다 |
+| ACT-QUEUE-08 | actor raw send | `zlink_actor_send_bound_session_msg()`가 bound STREAM session으로 하나의 message를 전송한다 |
 | ACT-QUEUE-09 | actor packet send | `zlink_actor_send_bound_session_packet()`가 bound STREAM session으로 header/body packet을 전송한다 |
 | ACT-QUEUE-10 | actor send unbound | Actor에 bound session이 없으면 actor-to-session send가 `ZLINK_SUBMIT_NOT_FOUND` 계열 결과로 실패한다 |
 | ACT-QUEUE-11 | packet send ownership | packet send 실패 시 header/body 소유권이 모두 호출자에게 남고 부분 성공이 없다 |

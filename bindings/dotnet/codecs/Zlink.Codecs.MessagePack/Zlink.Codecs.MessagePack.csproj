@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
-    <Version>5.3.4</Version>
+    <Version>6.0.0</Version>
     <AssemblyName>Systems.Zlink.Codecs.MessagePack</AssemblyName>
     <PackageId>Systems.Zlink.Codecs.MessagePack</PackageId>
     <RootNamespace>Systems.Zlink.Codecs.MessagePack</RootNamespace>

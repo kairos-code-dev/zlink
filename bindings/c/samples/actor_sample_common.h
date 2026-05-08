@@ -103,16 +103,15 @@ static void actor_sample_dispatch (void *spot,
     assert (capture != NULL);
     if (info->event == ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE) {
         zlink_actor_join_info_t join_info;
-        zlink_msg_t request;
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
         assert (zlink_spot_actor_join_recv (
-                  info->subject, &join_info, &request, ZLINK_DONTWAIT)
+                  info->subject, &join_info, &parts, &part_count, ZLINK_DONTWAIT)
                 == ZLINK_RECV_OK);
-        zlink_msg_close (&request);
-        zlink_msg_t reply;
-        assert (zlink_msg_init (&reply) == ZLINK_CONFIG_OK);
+        zlink_multipart_close (parts, part_count);
         assert (zlink_spot_actor_join_reply (
                   info->subject, &join_info, capture->accept_join ? 1u : 0u,
-                  &reply)
+                  NULL, 0)
                 == ZLINK_SUBMIT_OK);
         return;
     }
@@ -150,16 +149,15 @@ static void actor_sample_join_only_dispatch (
     if (info->event != ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE)
         return;
     zlink_actor_join_info_t join_info;
-    zlink_msg_t request;
-    assert (zlink_spot_actor_join_recv (info->subject, &join_info, &request,
-                                        ZLINK_DONTWAIT)
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    assert (zlink_spot_actor_join_recv (info->subject, &join_info, &parts,
+                                        &part_count, ZLINK_DONTWAIT)
             == ZLINK_RECV_OK);
-    zlink_msg_close (&request);
-    zlink_msg_t reply;
-    assert (zlink_msg_init (&reply) == ZLINK_CONFIG_OK);
+    zlink_multipart_close (parts, part_count);
     assert (zlink_spot_actor_join_reply (spot, &join_info,
                                          capture->accept_join ? 1u : 0u,
-                                         &reply)
+                                         NULL, 0)
             == ZLINK_SUBMIT_OK);
 }
 

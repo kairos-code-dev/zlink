@@ -37,10 +37,22 @@ public sealed class Registry : IDisposable, IAsyncDisposable
     }
 
     public void SetId(uint registryId)
+        => SetOption(RegistryOption.Id, registryId);
+
+    public void SetOption(RegistryOption option, uint value)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_registry_set_id(_handle, registryId);
+        int rc = NativeMethods.zlink_registry_set(_handle, (int)option, value);
         ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    public uint GetOption(RegistryOption option)
+    {
+        EnsureNotDisposed();
+        uint value = NativeMethods.zlink_registry_get(_handle, (int)option,
+            out int error);
+        ZlinkException.ThrowConfigIfError(error);
+        return value;
     }
 
     public void AddPeer(string peerPubEndpoint)
@@ -55,19 +67,16 @@ public sealed class Registry : IDisposable, IAsyncDisposable
 
     public void SetHeartbeat(TimeSpan interval, TimeSpan timeout)
     {
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_registry_set_heartbeat(_handle,
-            EncodeMilliseconds(interval, nameof(interval)),
+        SetOption(RegistryOption.HeartbeatIntervalMs,
+            EncodeMilliseconds(interval, nameof(interval)));
+        SetOption(RegistryOption.HeartbeatTimeoutMs,
             EncodeMilliseconds(timeout, nameof(timeout)));
-        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public void SetBroadcastInterval(TimeSpan interval)
     {
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_registry_set_broadcast_interval(_handle,
+        SetOption(RegistryOption.BroadcastIntervalMs,
             EncodeMilliseconds(interval, nameof(interval)));
-        ZlinkException.ThrowConfigIfError(rc);
     }
 
     public void SetTlsServer(string certPath, string keyPath,

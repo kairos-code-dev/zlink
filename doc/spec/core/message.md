@@ -283,7 +283,7 @@ inspects it, another thread may have already changed the count via copy or
 close. This makes the function suitable for diagnostics and assertions but
 not for control decisions.
 
-A single `zlink_msg_t` instance must not be accessed concurrently from
+A one `zlink_msg_t` instance must not be accessed concurrently from
 multiple threads. Concurrent access requires separate `zlink_msg_t` handles
 created via `zlink_msg_copy()`.
 

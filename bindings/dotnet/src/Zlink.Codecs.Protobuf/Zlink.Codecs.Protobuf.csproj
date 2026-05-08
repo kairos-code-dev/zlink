@@ -7,7 +7,7 @@
     <AssemblyName>Systems.Zlink.Codecs.Protobuf</AssemblyName>
     <PackageId>Systems.Zlink.Codecs.Protobuf</PackageId>
     <RootNamespace>Systems.Zlink.Codecs.Protobuf</RootNamespace>
-    <Version>5.3.4</Version>
+    <Version>6.0.0</Version>
     <Description>Protobuf codec extension for Systems.Zlink</Description>
   </PropertyGroup>
   <ItemGroup>

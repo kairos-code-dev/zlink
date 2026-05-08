@@ -831,11 +831,13 @@ public final class Spot implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment infoOut = arena.allocate(
               NativeLayouts.ACTOR_JOIN_INFO_LAYOUT);
-            Message message = new Message();
+            MemorySegment partsOut = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment partCountOut = arena.allocate(ValueLayout.JAVA_LONG);
+            Message message = null;
             boolean success = false;
             try {
-                int rc = Native.spotActorJoinRecv(handle, infoOut,
-                  InternalAccess.messageNativeHandle(message), flags.value());
+                int rc = Native.spotActorJoinRecv(handle, infoOut, partsOut,
+                  partCountOut, flags.value());
                 if (rc != 0) {
                     if (flags == RecvFlags.DONT_WAIT
                         && rc == RecvResult.NO_DATA.value()) {
@@ -843,7 +845,16 @@ public final class Spot implements AutoCloseable {
                     }
                     throw new RecvException(RecvResult.fromValue(rc));
                 }
-                InternalAccess.messageFinishReceive(message, false);
+                MemorySegment parts = partsOut.get(ValueLayout.ADDRESS, 0);
+                long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
+                Message[] messages = partCount > 0
+                  ? InternalAccess.messageFromOwnedMsgVector(parts, partCount)
+                  : new Message[] { new Message() };
+                NativeMsg.multipartClose(parts, partCount);
+                message = messages[0];
+                for (int i = 1; i < messages.length; i++) {
+                    messages[i].close();
+                }
                 success = true;
                 return new ActorJoinRequest(readActorJoinInfo(infoOut),
                   message);
@@ -872,7 +883,7 @@ public final class Spot implements AutoCloseable {
             writeActorJoinInfo(nativeInfo, request.info());
             InternalAccess.messageCopyTo(message, nativeMsg);
             int rc = Native.spotActorJoinReply(handle, nativeInfo,
-              accepted ? 1 : 0, nativeMsg);
+              accepted ? 1 : 0, nativeMsg, 1L);
             if (rc != 0) {
                 NativeMsg.msgClose(nativeMsg);
                 throw new SubmitException(SubmitResult.fromValue(rc));

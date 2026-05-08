@@ -56,7 +56,22 @@ impl Registry {
     }
 
     pub fn set_id(&self, id: u32) -> Result<(), ConfigError> {
-        check_config_rc(unsafe { ffi::zlink_registry_set_id(self.handle, id) })
+        self.set_option(ffi::ZLINK_REGISTRY_OPT_ID, id)
+    }
+
+    pub fn set_option(
+        &self,
+        option: ffi::zlink_registry_option_t,
+        value: u32,
+    ) -> Result<(), ConfigError> {
+        check_config_rc(unsafe { ffi::zlink_registry_set(self.handle, option, value) })
+    }
+
+    pub fn get_option(&self, option: ffi::zlink_registry_option_t) -> Result<u32, ConfigError> {
+        let mut error = 0;
+        let value = unsafe { ffi::zlink_registry_get(self.handle, option, &mut error) };
+        check_config_rc(error)?;
+        Ok(value)
     }
 
     pub fn add_peer(&self, peer_pub_endpoint: &str) -> Result<(), ConnectError> {
@@ -67,15 +82,12 @@ impl Registry {
     }
 
     pub fn set_heartbeat(&self, interval_ms: u32, timeout_ms: u32) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_registry_set_heartbeat(self.handle, interval_ms, timeout_ms)
-        })
+        self.set_option(ffi::ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS, interval_ms)?;
+        self.set_option(ffi::ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS, timeout_ms)
     }
 
     pub fn set_broadcast_interval(&self, interval_ms: u32) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_registry_set_broadcast_interval(self.handle, interval_ms)
-        })
+        self.set_option(ffi::ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS, interval_ms)
     }
 
     pub fn set_tls_server(
@@ -1501,21 +1513,23 @@ impl SpotNode {
                 err.internal_errno(),
             )
         })?;
-        let mut native = take_message_raw(&mut message);
+        let native = take_message_raw(&mut message);
+        let mut native_parts = [native];
         let mut out = MaybeUninit::<ffi::zlink_actor_create_result_t>::zeroed();
         let result = unsafe {
             ffi::zlink_spot_node_create_remote_actor(
                 self.handle,
                 target_node_rid.as_raw(),
                 c_actor_id.as_ptr(),
-                &mut native,
+                native_parts.as_mut_ptr(),
+                native_parts.len(),
                 out.as_mut_ptr(),
                 timeout_to_timeout_ms(timeout),
             )
         };
         if request_result_from_raw(result) != crate::error::RequestResult::Ok {
             unsafe {
-                ffi::zlink_msg_close(&mut native);
+                ffi::zlink_msg_close(&mut native_parts[0]);
             }
             check_request_result(result)?;
         }
@@ -1570,7 +1584,8 @@ impl SpotNode {
         let raw_actor = actor
             .to_raw()
             .map_err(crate::error::submit_error_from_config)?;
-        let mut native = take_message_raw(&mut message);
+        let native = take_message_raw(&mut message);
+        let mut native_parts = [native];
         let state_ptr = Box::into_raw(Box::new(SpotReplyCallbackState {
             callback: Some(Box::new(callback)),
             _progress: None,
@@ -1581,7 +1596,8 @@ impl SpotNode {
                 &raw_actor,
                 dest_node_rid.as_raw(),
                 dest_spot_rid.as_raw(),
-                &mut native,
+                native_parts.as_mut_ptr(),
+                native_parts.len(),
                 Some(spot_reply_callback),
                 state_ptr.cast(),
                 flags.bits(),
@@ -1590,7 +1606,7 @@ impl SpotNode {
         };
         if rc != 0 {
             unsafe {
-                ffi::zlink_msg_close(&mut native);
+                ffi::zlink_msg_close(&mut native_parts[0]);
             }
             unsafe {
                 drop(Box::from_raw(state_ptr));
@@ -1864,7 +1880,8 @@ impl Actor {
         let dest_spot_rid = spot
             .routing_id()
             .map_err(crate::error::submit_error_from_config)?;
-        let mut native = take_message_raw(&mut message);
+        let native = take_message_raw(&mut message);
+        let mut native_parts = [native];
         let state_ptr = Box::into_raw(Box::new(SpotReplyCallbackState {
             callback: Some(Box::new(callback)),
             _progress: Some(RequestProgressGuard::attach_spot(spot.handle)),
@@ -1875,7 +1892,8 @@ impl Actor {
                 &raw_actor,
                 dest_node_rid.as_raw(),
                 dest_spot_rid.as_raw(),
-                &mut native,
+                native_parts.as_mut_ptr(),
+                native_parts.len(),
                 Some(spot_reply_callback),
                 state_ptr.cast(),
                 flags.bits(),
@@ -1884,7 +1902,7 @@ impl Actor {
         };
         if rc != 0 {
             unsafe {
-                ffi::zlink_msg_close(&mut native);
+                ffi::zlink_msg_close(&mut native_parts[0]);
             }
             unsafe {
                 drop(Box::from_raw(state_ptr));
@@ -2670,12 +2688,14 @@ impl Spot {
         flags: RecvFlags,
     ) -> Result<Option<ActorJoinRequest>, RecvError> {
         let mut raw_info = MaybeUninit::<ffi::zlink_actor_join_info_t>::zeroed();
-        let mut raw_message = MaybeUninit::<ffi::zlink_msg_t>::uninit();
+        let mut parts: *mut ffi::zlink_msg_t = ptr::null_mut();
+        let mut part_count: usize = 0;
         let rc = unsafe {
             ffi::zlink_spot_actor_join_recv(
                 self.handle,
                 raw_info.as_mut_ptr(),
-                raw_message.as_mut_ptr(),
+                &mut parts,
+                &mut part_count,
                 flags.bits(),
             )
         };
@@ -2686,7 +2706,14 @@ impl Spot {
             return Err(check_recv_rc(rc).unwrap_err());
         }
         let info = ActorJoinInfo::from_raw(unsafe { raw_info.assume_init() });
-        let message = unsafe { Message::from_raw(raw_message.assume_init()) };
+        let mut messages = take_parts(parts, part_count);
+        unsafe {
+            ffi::zlink_multipart_close(parts, part_count);
+        }
+        let message = messages
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| Message::new().expect("empty zlink message init failed"));
         Ok(Some(ActorJoinRequest { info, message }))
     }
 
@@ -2701,18 +2728,20 @@ impl Spot {
         accepted: bool,
         mut message: Message,
     ) -> Result<(), SubmitError> {
-        let mut native = take_message_raw(&mut message);
+        let native = take_message_raw(&mut message);
+        let mut native_parts = [native];
         let rc = unsafe {
             ffi::zlink_spot_actor_join_reply(
                 self.handle,
                 &request.info.raw,
                 if accepted { 1 } else { 0 },
-                &mut native,
+                native_parts.as_mut_ptr(),
+                native_parts.len(),
             )
         };
         if rc != 0 {
             unsafe {
-                ffi::zlink_msg_close(&mut native);
+                ffi::zlink_msg_close(&mut native_parts[0]);
             }
         }
         check_submit_rc(rc)
@@ -3311,18 +3340,24 @@ unsafe extern "C" fn actor_admission_trampoline<
 >(
     _node: *mut c_void,
     actor_id: *const c_char,
-    message: *const ffi::zlink_msg_t,
+    parts: *const ffi::zlink_msg_t,
+    part_count: usize,
     userdata: *mut c_void,
 ) -> ffi::zlink_actor_admission_result_t {
-    if actor_id.is_null() || message.is_null() {
+    if actor_id.is_null() || (parts.is_null() && part_count != 0) {
         return ActorAdmissionResult::Reject.to_raw();
     }
     let handler = unsafe { &*(userdata as *const F) };
     let actor_id = unsafe { CStr::from_ptr(actor_id) }.to_string_lossy();
     let copied = unsafe {
         let mut dest = MaybeUninit::<ffi::zlink_msg_t>::uninit();
-        ffi::zlink_msg_init(dest.as_mut_ptr());
-        if ffi::zlink_msg_copy(dest.as_mut_ptr(), message as *mut ffi::zlink_msg_t) != 0 {
+        if ffi::zlink_msg_init(dest.as_mut_ptr()) != 0 {
+            return ActorAdmissionResult::Reject.to_raw();
+        }
+        if part_count > 0
+            && ffi::zlink_msg_copy(dest.as_mut_ptr(), parts as *mut ffi::zlink_msg_t) != 0
+        {
+            ffi::zlink_msg_close(dest.as_mut_ptr());
             return ActorAdmissionResult::Reject.to_raw();
         }
         Message::from_raw(dest.assume_init())

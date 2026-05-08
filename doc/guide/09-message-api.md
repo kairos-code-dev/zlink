@@ -358,7 +358,7 @@ The internal reference count is managed with atomic operations.
 Copying and closing different `zlink_msg_t` handles that share the same
 underlying storage from different threads is safe. `zlink_msg_refcnt()`
 returns a point-in-time snapshot, so use it for diagnostics and assertions.
-Do not access a single `zlink_msg_t` instance concurrently from multiple
+Do not access a one `zlink_msg_t` instance concurrently from multiple
 threads.
 
 ```c

@@ -6,7 +6,7 @@
     <AssemblyName>Systems.Zlink.Codecs.Json</AssemblyName>
     <PackageId>Systems.Zlink.Codecs.Json</PackageId>
     <RootNamespace>Systems.Zlink.Codecs.Json</RootNamespace>
-    <Version>5.3.4</Version>
+    <Version>6.0.0</Version>
     <Description>JSON codec extension for Systems.Zlink</Description>
   </PropertyGroup>
   <ItemGroup>

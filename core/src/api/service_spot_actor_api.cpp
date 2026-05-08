@@ -16,9 +16,11 @@
 #include "api/handler_result_internal.hpp"
 #include "services/discovery/discovery_access.hpp"
 #include "services/spot/spot_handle.hpp"
+#include "services/spot/spot_message_parts_internal.hpp"
 #include "services/spot/spot_node.hpp"
 #include "services/spot/spot_node_access.hpp"
 #include "services/spot/spot_subject_access.hpp"
+#include "core/recv_tls_view.hpp"
 #include "protocol/wire.hpp"
 #include "utils/clock.hpp"
 
@@ -128,14 +130,10 @@ struct queued_join_request_t
         handler (NULL),
         userdata (NULL),
         replied (false),
-        owns_message (false),
-        owns_reply (false),
         join_epoch (0),
         pending_target (NULL),
         indexed (false)
     {
-        memset (&message, 0, sizeof (message));
-        memset (&reply, 0, sizeof (reply));
         memset (&target_node_rid, 0, sizeof (target_node_rid));
         memset (&source_spot_rid, 0, sizeof (source_spot_rid));
         memset (&target_actor_ref, 0, sizeof (target_actor_ref));
@@ -143,10 +141,8 @@ struct queued_join_request_t
 
     ~queued_join_request_t ()
     {
-        if (owns_message)
-            (void) zlink_msg_close (&message);
-        if (owns_reply)
-            (void) zlink_msg_close (&reply);
+        zlink::spot_clear_msg_parts (&message_parts);
+        zlink::spot_clear_msg_parts (&reply_parts);
     }
 
     actor_handle_t *actor;
@@ -160,12 +156,10 @@ struct queued_join_request_t
     zlink_reply_handler_fn handler;
     void *userdata;
     bool replied;
-    bool owns_message;
-    bool owns_reply;
     uint64_t join_epoch;
     actor_handle_t *pending_target;
-    zlink_msg_t message;
-    zlink_msg_t reply;
+    zlink::spot_owned_msg_parts_t message_parts;
+    zlink::spot_owned_msg_parts_t reply_parts;
     std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
     bool indexed;
 };
@@ -259,6 +253,10 @@ bool known_node_locked (zlink::spot_node_t *node_);
 std::set<actor_handle_t *> &actor_handles_locked (zlink::spot_node_t *node_);
 std::map<std::string, actor_handle_t *> &actors_by_id_locked (
   zlink::spot_node_t *node_);
+bool valid_multipart_payload (zlink_msg_t *parts_, size_t part_count_);
+void consume_multipart_payload (zlink_msg_t *parts_, size_t part_count_);
+zlink_submit_result_t adopt_multipart_payload (
+  zlink::spot_owned_msg_parts_t *out_, zlink_msg_t *parts_, size_t part_count_);
 
 bool same_logical_spot (const spot_handle_t *lhs_, const spot_handle_t *rhs_)
 {
@@ -701,20 +699,28 @@ void complete_join_request (queued_join_request_t *request_,
     if (!request_ || !request_->handler)
         return;
 
-    if (request_->owns_reply) {
-        request_->handler (result_, &request_->reply, 1, request_->userdata);
-        request_->owns_reply = false;
+    if (!request_->reply_parts.empty ()) {
+        std::vector<zlink_msg_t> reply_parts;
+        if (zlink::spot_move_msg_parts (&request_->reply_parts, &reply_parts)
+            != 0) {
+            request_->handler (ZLINK_REQUEST_INTERNAL_ERROR, NULL, 0,
+                               request_->userdata);
+            return;
+        }
+        request_->handler (
+          result_, reply_parts.empty () ? NULL : &reply_parts[0],
+          reply_parts.size (), request_->userdata);
     } else {
         request_->handler (result_, NULL, 0, request_->userdata);
     }
 }
 
 zlink_submit_result_t complete_immediate_join_result (
-  zlink_msg_t *message_, zlink_reply_handler_fn handler_, void *userdata_,
+  zlink_msg_t *parts_, size_t part_count_, zlink_reply_handler_fn handler_,
+  void *userdata_,
   zlink_request_result_t result_)
 {
-    (void) zlink_msg_close (message_);
-    (void) zlink_msg_init (message_);
+    consume_multipart_payload (parts_, part_count_);
     handler_ (result_, NULL, 0, userdata_);
     return ZLINK_SUBMIT_OK;
 }
@@ -744,10 +750,10 @@ void cleanup_idempotent_join_completion (void *userdata_)
 }
 
 zlink_submit_result_t complete_idempotent_join_async (
-  zlink_msg_t *message_, zlink_reply_handler_fn handler_, void *userdata_)
+  zlink_msg_t *parts_, size_t part_count_, zlink_reply_handler_fn handler_,
+  void *userdata_)
 {
-    (void) zlink_msg_close (message_);
-    (void) zlink_msg_init (message_);
+    consume_multipart_payload (parts_, part_count_);
     idempotent_join_completion_t *completion =
       new (std::nothrow) idempotent_join_completion_t;
     if (!completion) {
@@ -851,10 +857,7 @@ void retire_join_request_locked (queued_join_request_t *request_)
           remove_actor_locked (request_->pending_target, false);
         request_->pending_target = NULL;
     }
-    if (request_->owns_message) {
-        (void) zlink_msg_close (&request_->message);
-        request_->owns_message = false;
-    }
+    zlink::spot_clear_msg_parts (&request_->message_parts);
     request_->replied = true;
 }
 
@@ -1013,6 +1016,53 @@ zlink_submit_result_t copy_msg_to_temp (zlink_msg_t *src_, zlink_msg_t *dst_)
         (void) zlink_msg_close (dst_);
         errno = err;
         return errno_to_submit_result (err);
+    }
+    return ZLINK_SUBMIT_OK;
+}
+
+bool valid_multipart_payload (zlink_msg_t *parts_, size_t part_count_)
+{
+    if (!parts_ && part_count_ == 0)
+        return true;
+    if (!parts_ || part_count_ == 0) {
+        errno = EINVAL;
+        return false;
+    }
+    for (size_t i = 0; i < part_count_; ++i) {
+        if (!zlink::spot_msg_frame_valid (parts_[i])) {
+            errno = EFAULT;
+            return false;
+        }
+    }
+    return true;
+}
+
+void consume_multipart_payload (zlink_msg_t *parts_, size_t part_count_)
+{
+    if (!parts_)
+        return;
+    for (size_t i = 0; i < part_count_; ++i) {
+        (void) zlink_msg_close (&parts_[i]);
+        (void) zlink_msg_init (&parts_[i]);
+    }
+}
+
+zlink_submit_result_t adopt_multipart_payload (
+  zlink::spot_owned_msg_parts_t *out_, zlink_msg_t *parts_, size_t part_count_)
+{
+    if (!out_ || !valid_multipart_payload (parts_, part_count_))
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+
+    zlink::spot_clear_msg_parts (out_);
+    for (size_t i = 0; i < part_count_; ++i) {
+        out_->push_back (zlink_msg_t ());
+        zlink::spot_init_msg_frame (&out_->back ());
+        if (zlink_msg_adopt (&out_->back (), &parts_[i]) != ZLINK_CONFIG_OK) {
+            const int err = errno;
+            zlink::spot_clear_msg_parts (out_);
+            errno = err;
+            return errno_to_submit_result (err);
+        }
     }
     return ZLINK_SUBMIT_OK;
 }
@@ -1422,7 +1472,8 @@ extern "C" zlink_request_result_t zlink_spot_node_create_remote_actor (
   void *node_,
   const zlink_routing_id_t *target_node_rid_,
   const char *actor_id_,
-  zlink_msg_t *message_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
   zlink_actor_create_result_t *out_,
   uint32_t timeout_ms_)
 {
@@ -1435,6 +1486,8 @@ extern "C" zlink_request_result_t zlink_spot_node_create_remote_actor (
         errno = EINVAL;
         return ZLINK_REQUEST_INVALID_ARGUMENT;
     }
+    if (!valid_multipart_payload (parts_, part_count_))
+        return ZLINK_REQUEST_INVALID_ARGUMENT;
     if (!is_registered_spot_node_handle (node_)) {
         errno = EFAULT;
         return ZLINK_REQUEST_INVALID_ARGUMENT;
@@ -1458,10 +1511,7 @@ extern "C" zlink_request_result_t zlink_spot_node_create_remote_actor (
     if (it != actors.end ()) {
         out_->status = ZLINK_ACTOR_CREATE_EXISTING;
         fill_ref (it->second, &out_->actor);
-        if (message_) {
-            (void) zlink_msg_close (message_);
-            (void) zlink_msg_init (message_);
-        }
+        consume_multipart_payload (parts_, part_count_);
         return ZLINK_REQUEST_OK;
     }
 
@@ -1471,14 +1521,12 @@ extern "C" zlink_request_result_t zlink_spot_node_create_remote_actor (
     if (admission.handler) {
         actor_admission_handler_scope_t handler_scope;
         admission_result =
-          admission.handler (target, actor_id_, message_, admission.userdata);
+          admission.handler (target, actor_id_, parts_, part_count_,
+                             admission.userdata);
     }
     if (!admission.handler
         || admission_result != ZLINK_ACTOR_ADMISSION_ACCEPT) {
-        if (message_) {
-            (void) zlink_msg_close (message_);
-            (void) zlink_msg_init (message_);
-        }
+        consume_multipart_payload (parts_, part_count_);
         errno = EACCES;
         return ZLINK_REQUEST_REJECTED;
     }
@@ -1490,10 +1538,7 @@ extern "C" zlink_request_result_t zlink_spot_node_create_remote_actor (
 
     out_->status = ZLINK_ACTOR_CREATE_CREATED;
     fill_ref (actor, &out_->actor);
-    if (message_) {
-        (void) zlink_msg_close (message_);
-        (void) zlink_msg_init (message_);
-    }
+    consume_multipart_payload (parts_, part_count_);
     return ZLINK_REQUEST_OK;
 }
 
@@ -1564,7 +1609,8 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_join_spot (
   const zlink_actor_ref_t *actor_ref_,
   const zlink_routing_id_t *dest_node_rid_,
   const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *message_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
   zlink_reply_handler_fn handler_,
   void *userdata_,
   zlink_send_flags_t flags_,
@@ -1575,13 +1621,15 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_join_spot (
         return ZLINK_SUBMIT_NOT_SUPPORTED;
     }
     if (!node_ || !actor_ref_ || !dest_node_rid_ || !dest_spot_rid_
-        || !message_ || !handler_ || !valid_actor_id (actor_ref_->actor_id)
+        || !handler_ || !valid_actor_id (actor_ref_->actor_id)
         || !valid_routing_id (&actor_ref_->node_rid)
         || !valid_routing_id (dest_node_rid_)
         || !valid_routing_id (dest_spot_rid_)) {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
+    if (!valid_multipart_payload (parts_, part_count_))
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
     if (!is_registered_spot_node_handle (node_)) {
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
@@ -1622,13 +1670,13 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_join_spot (
                    && actor->joined_spot_state
                    && same_routing_id (actor_current_spot_rid_locked (actor),
                                        *dest_spot_rid_)) {
-            return complete_idempotent_join_async (message_, handler_,
-                                                   userdata_);
+            return complete_idempotent_join_async (parts_, part_count_,
+                                                   handler_, userdata_);
         }
     }
     if (immediate_result != ZLINK_REQUEST_OK)
-        return complete_immediate_join_result (message_, handler_, userdata_,
-                                               immediate_result);
+        return complete_immediate_join_result (parts_, part_count_, handler_,
+                                               userdata_, immediate_result);
 
     {
         std::lock_guard<std::timed_mutex> lock (actor_runtime().mutex);
@@ -1709,15 +1757,16 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_join_spot (
             request->join_epoch = actor_runtime().next_join_epoch++;
             if (actor_runtime().next_join_epoch == 0)
                 actor_runtime().next_join_epoch = 1;
-            if (zlink_msg_adopt (&request->message, message_)
-                != ZLINK_CONFIG_OK) {
+            const zlink_submit_result_t adopt_rc =
+              adopt_multipart_payload (&request->message_parts, parts_,
+                                       part_count_);
+            if (adopt_rc != ZLINK_SUBMIT_OK) {
                 if (request->pending_target)
                     std::unique_ptr<actor_handle_t> pending =
                       remove_actor_locked (request->pending_target, false);
                 delete request;
-                return ZLINK_SUBMIT_INTERNAL_ERROR;
+                return adopt_rc;
             }
-            request->owns_message = true;
             index_join_request_locked (request);
             actor_runtime().join_queues[join_queue_key (request->spot_state)].push_back (
               request);
@@ -1725,8 +1774,8 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_join_spot (
     }
 
     if (immediate_result != ZLINK_REQUEST_OK)
-        return complete_immediate_join_result (message_, handler_, userdata_,
-                                               immediate_result);
+        return complete_immediate_join_result (parts_, part_count_, handler_,
+                                               userdata_, immediate_result);
 
     schedule_join_timeout (request, timeout_ms_);
     zlink_spot_notify_dispatch_info (
@@ -1787,10 +1836,11 @@ extern "C" zlink_request_result_t zlink_spot_node_actor_leave_spot (
 extern "C" zlink_recv_result_t zlink_spot_actor_join_recv (
   void *spot_,
   zlink_actor_join_info_t *info_out_,
-  zlink_msg_t *message_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
   zlink_recv_flags_t flags_)
 {
-    if (!spot_ || !info_out_ || !message_out_) {
+    if (!spot_ || !info_out_ || !parts_out_ || !part_count_out_) {
         errno = EINVAL;
         return ZLINK_RECV_INVALID_HANDLE;
     }
@@ -1811,6 +1861,21 @@ extern "C" zlink_recv_result_t zlink_spot_actor_join_recv (
         return ZLINK_RECV_NO_DATA;
     }
     queued_join_request_t *request = queue.front ();
+    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
+        return ZLINK_RECV_INTERNAL_ERROR;
+    for (zlink::spot_owned_msg_parts_t::iterator it =
+           request->message_parts.begin ();
+         it != request->message_parts.end (); ++it) {
+        if (zlink::recv_tls_view::push (&(*it)) != 0) {
+            zlink::recv_tls_view::abort ();
+            return ZLINK_RECV_INTERNAL_ERROR;
+        }
+    }
+    if (zlink::recv_tls_view::commit (parts_out_, part_count_out_) != 0) {
+        zlink::recv_tls_view::abort ();
+        return ZLINK_RECV_INTERNAL_ERROR;
+    }
+    zlink::spot_clear_msg_parts (&request->message_parts);
     queue.pop_front ();
     request->spot = spot;
     memset (info_out_, 0, sizeof (*info_out_));
@@ -1825,9 +1890,6 @@ extern "C" zlink_recv_result_t zlink_spot_actor_join_recv (
     info_out_->join_epoch = request->join_epoch;
     info_out_->request = request;
     info_out_->flags = request->remote ? ZLINK_ACTOR_JOIN_INFO_REMOTE : 0u;
-    if (zlink_msg_adopt (message_out_, &request->message) != ZLINK_CONFIG_OK)
-        return ZLINK_RECV_INTERNAL_ERROR;
-    request->owns_message = false;
     return ZLINK_RECV_OK;
 }
 
@@ -1835,7 +1897,8 @@ extern "C" zlink_submit_result_t zlink_spot_actor_join_reply (
   void *spot_,
   const zlink_actor_join_info_t *info_,
   uint32_t accepted_,
-  zlink_msg_t *message_)
+  zlink_msg_t *parts_,
+  size_t part_count_)
 {
     if (!spot_) {
         errno = EFAULT;
@@ -1858,6 +1921,8 @@ extern "C" zlink_submit_result_t zlink_spot_actor_join_reply (
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
+    if (!valid_multipart_payload (parts_, part_count_))
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
     queued_join_request_t *request =
       static_cast<queued_join_request_t *> (info_->request);
     actor_handle_t *readable_actor = NULL;
@@ -1877,10 +1942,10 @@ extern "C" zlink_submit_result_t zlink_spot_actor_join_reply (
             errno = ESTALE;
             return ZLINK_SUBMIT_INVALID_STATE;
         }
-        if (message_) {
-            if (zlink_msg_adopt (&request->reply, message_) != ZLINK_CONFIG_OK)
-                return ZLINK_SUBMIT_INTERNAL_ERROR;
-            request->owns_reply = true;
+        const zlink_submit_result_t adopt_rc =
+          adopt_multipart_payload (&request->reply_parts, parts_, part_count_);
+        if (adopt_rc != ZLINK_SUBMIT_OK) {
+            return adopt_rc;
         }
         request->replied = true;
         if (accepted_) {

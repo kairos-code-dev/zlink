@@ -56,7 +56,8 @@ public final class SpotNode implements AutoCloseable {
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_ACTOR_ADMISSION =
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+        ValueLayout.ADDRESS);
     private final Object lifecycleLock = new Object();
     private final Set<Spot> liveSpots =
       Collections.newSetFromMap(new IdentityHashMap<>());
@@ -389,7 +390,7 @@ public final class SpotNode implements AutoCloseable {
               NativeLayouts.ACTOR_CREATE_RESULT_LAYOUT);
             int rc = Native.spotNodeCreateRemoteActor(handle,
               ActorInterop.nativeRoutingId(arena, targetNodeRid),
-              NativeHelpers.toCString(arena, actorId), nativeMsg, out,
+              NativeHelpers.toCString(arena, actorId), nativeMsg, 1L, out,
               timeoutMillis(timeout));
             if (rc != 0) {
                 NativeMsg.msgClose(nativeMsg);
@@ -431,7 +432,8 @@ public final class SpotNode implements AutoCloseable {
             stub = LINKER.upcallStub(MethodHandles.lookup().findVirtual(
               SpotNode.class, "handleActorAdmission",
               MethodType.methodType(int.class, MemorySegment.class,
-                MemorySegment.class, MemorySegment.class, MemorySegment.class))
+                MemorySegment.class, MemorySegment.class, long.class,
+                MemorySegment.class))
               .bindTo(this), FD_ACTOR_ADMISSION, arena);
         } catch (ReflectiveOperationException ex) {
             arena.close();
@@ -546,7 +548,7 @@ public final class SpotNode implements AutoCloseable {
               ActorInterop.actorRefToNative(arena, actor),
               ActorInterop.nativeRoutingId(arena, destNodeRid),
               ActorInterop.nativeRoutingId(arena, destSpotRid),
-              nativeMsg, ActorRequestCallbacks.REPLY_CALLBACK,
+              nativeMsg, 1L, ActorRequestCallbacks.REPLY_CALLBACK,
               MemorySegment.ofAddress(pending.id()), flags.value(),
               timeoutMillis(timeout));
             if (rc != 0) {
@@ -983,7 +985,8 @@ public final class SpotNode implements AutoCloseable {
     @SuppressWarnings("unused")
     private int handleActorAdmission(MemorySegment node,
                                      MemorySegment actorId,
-                                     MemorySegment message,
+                                     MemorySegment parts,
+                                     long partCount,
                                      MemorySegment userdata) {
         ActorAdmissionHandler handler = actorAdmissionHandler;
         if (handler == null) {
@@ -991,11 +994,17 @@ public final class SpotNode implements AutoCloseable {
               ActorAdmissionResult.REJECT);
         }
         try {
-            int size = Math.toIntExact(NativeMsg.msgSize(message));
-            byte[] bytes = new byte[size];
-            if (size > 0) {
-                MemorySegment.copy(NativeMsg.msgData(message).reinterpret(size),
-                  0, MemorySegment.ofArray(bytes), 0, size);
+            byte[] bytes = new byte[0];
+            if (partCount > 0) {
+                MemorySegment message = parts.reinterpret(
+                    NativeLayouts.MSG_LAYOUT.byteSize() * partCount)
+                  .asSlice(0, NativeLayouts.MSG_LAYOUT.byteSize());
+                int size = Math.toIntExact(NativeMsg.msgSize(message));
+                bytes = new byte[size];
+                if (size > 0) {
+                    MemorySegment.copy(NativeMsg.msgData(message).reinterpret(size),
+                      0, MemorySegment.ofArray(bytes), 0, size);
+                }
             }
             try (Message copied = Message.copyOf(bytes)) {
                 return handler.onActorAdmission(

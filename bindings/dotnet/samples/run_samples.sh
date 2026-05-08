@@ -17,11 +17,11 @@ sync_native_dirs() {
 
   while IFS= read -r native_dir; do
     rm -f "${native_dir}/libzlink.so" \
-      "${native_dir}/libzlink.so.5" \
+      "${native_dir}/libzlink.so.6" \
       "${native_dir}/libzlink.so."*
     cp -f "$CORE_LIB" "${native_dir}/libzlink.so.${CORE_VERSION}"
-    ln -sfn "libzlink.so.${CORE_VERSION}" "${native_dir}/libzlink.so.5"
-    ln -sfn libzlink.so.5 "${native_dir}/libzlink.so"
+    ln -sfn "libzlink.so.${CORE_VERSION}" "${native_dir}/libzlink.so.6"
+    ln -sfn libzlink.so.6 "${native_dir}/libzlink.so"
   done < <(find "$search_root" -type d -path '*linux-x64/native')
 }
 

@@ -109,7 +109,7 @@ Includes:
 - `zlink_socket_monitor_open()`
 - `zlink_send_ready_handler()`
 - `zlink_set_option()`
-- `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
+- `zlink_registry_add_peer()` / `zlink_registry_set()`
 - Query/snapshot functions
 
 **You can mix sending and configuration freely.** For example, one thread

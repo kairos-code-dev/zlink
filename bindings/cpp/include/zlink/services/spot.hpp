@@ -853,7 +853,7 @@ class spot_node_t
         const request_result_t rc = static_cast<request_result_t> (
           zlink_spot_node_create_remote_actor (
             _node, zlink::detail::routing_id_native (target_node_rid_), actor_id_.c_str (),
-            &native_message, &native_result,
+            &native_message, 1, &native_result,
             static_cast<uint32_t> (timeout_.count ())));
         if (rc != request_result_t::ok) {
             message_.init ();
@@ -899,7 +899,7 @@ class spot_node_t
         const submit_result_t rc = static_cast<submit_result_t> (
           zlink_spot_node_actor_join_spot (
             _node, zlink::detail::actor_ref_native (actor_), zlink::detail::routing_id_native (dest_node_rid_),
-            zlink::detail::routing_id_native (dest_spot_rid_), &native,
+            zlink::detail::routing_id_native (dest_spot_rid_), &native, 1,
             &detail::request_callback_trampoline, state,
             static_cast<zlink_send_flags_t> (flags_),
             static_cast<uint32_t> (timeout_.count ())));
@@ -1038,7 +1038,8 @@ class spot_node_t
     static zlink_actor_admission_result_t
     actor_admission_trampoline (void *,
                                 const char *actor_id_,
-                                const zlink_msg_t *message_,
+                                const zlink_msg_t *parts_,
+                                size_t part_count_,
                                 void *userdata_)
     {
         spot_node_t *self = static_cast<spot_node_t *> (userdata_);
@@ -1046,10 +1047,10 @@ class spot_node_t
             return ZLINK_ACTOR_ADMISSION_REJECT;
 
         message_t message;
-        if (message_) {
+        if (parts_ && part_count_ > 0) {
             zlink_msg_t *dest = zlink::detail::native_handle (message);
             if (zlink_msg_copy (
-                  dest, const_cast<zlink_msg_t *> (message_)) != 0) {
+                  dest, const_cast<zlink_msg_t *> (&parts_[0])) != 0) {
                 return ZLINK_ACTOR_ADMISSION_REJECT;
             }
         }
@@ -2575,21 +2576,24 @@ class spot_t
     {
         zlink_actor_join_info_t native_info;
         std::memset (&native_info, 0, sizeof (native_info));
-        zlink_msg_t native_message;
-        std::memset (&native_message, 0, sizeof (native_message));
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
         const recv_result_t rc = static_cast<recv_result_t> (
           zlink_spot_actor_join_recv (
-            _spot, &native_info, &native_message,
+            _spot, &native_info, &parts, &part_count,
             static_cast<zlink_recv_flags_t> (flags_)));
         if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
             return std::nullopt;
         if (rc != recv_result_t::ok)
             throw recv_error_t (rc, zlink_errno ());
         message_t message;
-        if (zlink_msg_move (zlink::detail::native_handle (message), &native_message) != 0) {
-            (void) zlink_msg_close (&native_message);
-            throw last_error ();
+        if (part_count > 0) {
+            if (zlink_msg_move (zlink::detail::native_handle (message), &parts[0]) != 0) {
+                zlink_multipart_close (parts, part_count);
+                throw last_error ();
+            }
         }
+        zlink_multipart_close (parts, part_count);
         return std::optional<actor_join_request_t> (
           actor_join_request_t (actor_join_info_t (native_info),
                                 std::move (message)));
@@ -2604,7 +2608,7 @@ class spot_t
         zlink::detail::move_to_native (message_, &native_message);
         const submit_result_t rc = static_cast<submit_result_t> (
           zlink_spot_actor_join_reply (
-            _spot, &native_info, accepted_ ? 1u : 0u, &native_message));
+            _spot, &native_info, accepted_ ? 1u : 0u, &native_message, 1));
         if (rc != submit_result_t::ok) {
             message_.init ();
             (void) zlink_msg_move (zlink::detail::native_handle (message_), &native_message);

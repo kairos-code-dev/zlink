@@ -8,15 +8,15 @@ package zlink
 #include <string.h>
 #include "zlink.h"
 
-extern zlink_actor_admission_result_t goZlinkActorAdmissionTrampoline(void *node_, const char *actor_id_, const zlink_msg_t *message_, uintptr_t userdata_);
+extern zlink_actor_admission_result_t goZlinkActorAdmissionTrampoline(void *node_, const char *actor_id_, const zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 
 static inline int zlink_spot_node_actor_admission_handler_go(void *node, uintptr_t userdata) {
     return zlink_spot_node_actor_admission_handler(node, (zlink_actor_admission_handler_fn)goZlinkActorAdmissionTrampoline, (void *)userdata);
 }
 
-static inline int zlink_spot_node_actor_join_spot_go(void *node, const zlink_actor_ref_t *actor, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *message, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
-    return zlink_spot_node_actor_join_spot(node, actor, dest_node_rid, dest_spot_rid, message, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
+static inline int zlink_spot_node_actor_join_spot_go(void *node, const zlink_actor_ref_t *actor, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_spot_node_actor_join_spot(node, actor, dest_node_rid, dest_spot_rid, parts, part_count, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, timeout_ms);
 }
 */
 import "C"
@@ -179,7 +179,7 @@ func (n *SpotNode) CreateRemoteActor(targetNodeRID RoutingID, actorID string, me
 			return ActorCreateResult{}, err
 		}
 		var raw C.zlink_actor_create_result_t
-		rc := C.zlink_spot_node_create_remote_actor(handle, &node, actorIDC, prepared.ptr(), &raw, C.uint32_t(requestTimeoutMillis(timeout)))
+		rc := C.zlink_spot_node_create_remote_actor(handle, &node, actorIDC, prepared.ptr(), prepared.count(), &raw, C.uint32_t(requestTimeoutMillis(timeout)))
 		if err := requestErrorFromResult(rc); err != nil {
 			_ = prepared.restore()
 			return ActorCreateResult{}, err
@@ -245,7 +245,7 @@ func (n *SpotNode) JoinActor(actor ActorRef, destNodeRID RoutingID, destSpotRID 
 	rawSpot := destSpotRID.toC()
 	rawNode := destNodeRID.toC()
 	if err := submitActorJoin(message, nil, func(part *C.zlink_msg_t, cb cgo.Handle) error {
-		return submitErrorFromResult(C.zlink_spot_node_actor_join_spot_go(handle, &rawActor, &rawNode, &rawSpot, part, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(cb)))
+		return submitErrorFromResult(C.zlink_spot_node_actor_join_spot_go(handle, &rawActor, &rawNode, &rawSpot, part, 1, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(cb)))
 	}, callback); err != nil {
 		var submitErr *SubmitError
 		if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
@@ -325,7 +325,7 @@ func (a *Actor) Join(spot *Spot, message *Message, callback RequestReplyCallback
 	rawNode := destNode.toC()
 	rawSpot := destSpot.toC()
 	if err := submitActorJoin(message, spot.raw(), func(part *C.zlink_msg_t, cb cgo.Handle) error {
-		return submitErrorFromResult(C.zlink_spot_node_actor_join_spot_go(node, &rawActor, &rawNode, &rawSpot, part, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(cb)))
+		return submitErrorFromResult(C.zlink_spot_node_actor_join_spot_go(node, &rawActor, &rawNode, &rawSpot, part, 1, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(cb)))
 	}, callback); err != nil {
 		var submitErr *SubmitError
 		if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
@@ -423,24 +423,24 @@ func (s *Spot) RecvActorJoin(flags RecvFlags) (*ActorJoinRequest, error) {
 		return nil, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	var rawInfo C.zlink_actor_join_info_t
-	var rawMsg C.zlink_msg_t
-	if err := configErrorFromResult(C.zlink_msg_init(&rawMsg)); err != nil {
-		return nil, err
-	}
-	if err := recvErrorFromResult(C.zlink_spot_actor_join_recv(s.raw(), &rawInfo, &rawMsg, C.zlink_recv_flags_t(flags))); err != nil {
-		_ = configErrorFromResult(C.zlink_msg_close(&rawMsg))
+	var parts *C.zlink_msg_t
+	var partCount C.size_t
+	if err := recvErrorFromResult(C.zlink_spot_actor_join_recv(s.raw(), &rawInfo, &parts, &partCount, C.zlink_recv_flags_t(flags))); err != nil {
 		return nil, err
 	}
 	msg := &Message{}
 	if err := configErrorFromResult(C.zlink_msg_init(&msg.msg)); err != nil {
-		_ = configErrorFromResult(C.zlink_msg_close(&rawMsg))
+		C.zlink_multipart_close(parts, partCount)
 		return nil, err
 	}
-	if err := configErrorFromResult(C.zlink_msg_move(&msg.msg, &rawMsg)); err != nil {
-		_ = msg.Close()
-		_ = configErrorFromResult(C.zlink_msg_close(&rawMsg))
-		return nil, err
+	if partCount > 0 {
+		if err := configErrorFromResult(C.zlink_msg_move(&msg.msg, parts)); err != nil {
+			_ = msg.Close()
+			C.zlink_multipart_close(parts, partCount)
+			return nil, err
+		}
 	}
+	C.zlink_multipart_close(parts, partCount)
 	info := actorJoinInfoFromC(rawInfo)
 	return &ActorJoinRequest{Info: *info, Message: msg}, nil
 }
@@ -463,7 +463,7 @@ func (s *Spot) ReplyActorJoin(request *ActorJoinRequest, result ActorAdmissionRe
 	if result == ActorAdmissionAccept {
 		accept = 1
 	}
-	submitErr := submitErrorFromResult(C.zlink_spot_actor_join_reply(s.raw(), &request.Info.raw, accept, prepared.ptr()))
+	submitErr := submitErrorFromResult(C.zlink_spot_actor_join_reply(s.raw(), &request.Info.raw, accept, prepared.ptr(), prepared.count()))
 	if submitErr != nil {
 		_ = prepared.restore()
 		var se *SubmitError

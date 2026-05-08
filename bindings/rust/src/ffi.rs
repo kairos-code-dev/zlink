@@ -27,6 +27,12 @@ pub struct zlink_routing_id_t {
 
 pub const ZLINK_ACTOR_ID_MAX: usize = 256;
 
+pub type zlink_registry_option_t = u32;
+pub const ZLINK_REGISTRY_OPT_ID: zlink_registry_option_t = 0x3801;
+pub const ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS: zlink_registry_option_t = 0x3802;
+pub const ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS: zlink_registry_option_t = 0x3803;
+pub const ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS: zlink_registry_option_t = 0x3804;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct zlink_actor_ref_t {
@@ -517,7 +523,8 @@ pub type zlink_stream_packet_handler_fn = unsafe extern "C" fn(
 pub type zlink_actor_admission_handler_fn = unsafe extern "C" fn(
     node: *mut c_void,
     actor_id: *const c_char,
-    message: *const zlink_msg_t,
+    parts: *const zlink_msg_t,
+    part_count: usize,
     userdata: *mut c_void,
 ) -> zlink_actor_admission_result_t;
 
@@ -1217,17 +1224,20 @@ unsafe extern "C" {
         pub_endpoint: *const c_char,
         router_endpoint: *const c_char,
     ) -> c_int;
-    pub fn zlink_registry_set_id(registry: *mut c_void, id: u32) -> c_int;
+    pub fn zlink_registry_set(
+        registry: *mut c_void,
+        option: zlink_registry_option_t,
+        value: u32,
+    ) -> c_int;
+    pub fn zlink_registry_get(
+        registry: *mut c_void,
+        option: zlink_registry_option_t,
+        error_out: *mut c_int,
+    ) -> u32;
     pub fn zlink_registry_add_peer(
         registry: *mut c_void,
         peer_pub_endpoint: *const c_char,
     ) -> c_int;
-    pub fn zlink_registry_set_heartbeat(
-        registry: *mut c_void,
-        interval_ms: u32,
-        timeout_ms: u32,
-    ) -> c_int;
-    pub fn zlink_registry_set_broadcast_interval(registry: *mut c_void, interval_ms: u32) -> c_int;
     pub fn zlink_registry_destroy(registry_p: *mut *mut c_void) -> c_int;
 
     // -- Discovery ---------------------------------------------------------
@@ -1278,7 +1288,8 @@ unsafe extern "C" {
         node: *mut c_void,
         target_node_rid: *const zlink_routing_id_t,
         actor_id: *const c_char,
-        message: *mut zlink_msg_t,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
         out: *mut zlink_actor_create_result_t,
         timeout_ms: u32,
     ) -> zlink_request_result_t;
@@ -1297,7 +1308,8 @@ unsafe extern "C" {
         actor: *const zlink_actor_ref_t,
         dest_node_rid: *const zlink_routing_id_t,
         dest_spot_rid: *const zlink_routing_id_t,
-        message: *mut zlink_msg_t,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
         handler: Option<zlink_reply_handler_fn>,
         userdata: *mut c_void,
         flags: zlink_send_flags_t,
@@ -1306,14 +1318,16 @@ unsafe extern "C" {
     pub fn zlink_spot_actor_join_recv(
         spot: *mut c_void,
         info_out: *mut zlink_actor_join_info_t,
-        message_out: *mut zlink_msg_t,
+        parts_out: *mut *mut zlink_msg_t,
+        part_count_out: *mut usize,
         flags: zlink_recv_flags_t,
     ) -> c_int;
     pub fn zlink_spot_actor_join_reply(
         spot: *mut c_void,
         info: *const zlink_actor_join_info_t,
         accepted: u32,
-        message: *mut zlink_msg_t,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
     ) -> c_int;
     pub fn zlink_spot_node_actor_leave_spot(
         node: *mut c_void,

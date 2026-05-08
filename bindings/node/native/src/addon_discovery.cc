@@ -277,7 +277,7 @@ napi_value registry_set_id(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &reg);
     uint32_t id = 0;
     napi_get_value_uint32(env, argv[1], &id);
-    int rc = zlink_registry_set_id(reg, id);
+    int rc = zlink_registry_set(reg, ZLINK_REGISTRY_OPT_ID, id);
     if (rc != 0)
         return throw_last_error(env, "registry_set_id failed");
     napi_value ok;
@@ -312,7 +312,11 @@ napi_value registry_set_heartbeat(napi_env env, napi_callback_info info)
     uint32_t timeout = 0;
     napi_get_value_uint32(env, argv[1], &interval);
     napi_get_value_uint32(env, argv[2], &timeout);
-    int rc = zlink_registry_set_heartbeat(reg, interval, timeout);
+    int rc = zlink_registry_set(
+      reg, ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS, interval);
+    if (rc == 0)
+        rc = zlink_registry_set(
+          reg, ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS, timeout);
     if (rc != 0)
         return throw_last_error(env, "registry_set_heartbeat failed");
     napi_value ok;
@@ -329,7 +333,8 @@ napi_value registry_set_broadcast(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &reg);
     uint32_t interval = 0;
     napi_get_value_uint32(env, argv[1], &interval);
-    int rc = zlink_registry_set_broadcast_interval(reg, interval);
+    int rc = zlink_registry_set(
+      reg, ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS, interval);
     if (rc != 0)
         return throw_last_error(env, "registry_set_broadcast_interval failed");
     napi_value ok;

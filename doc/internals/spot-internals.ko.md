@@ -836,6 +836,11 @@ handler에 `ACTOR_JOIN_READABLE` readiness를 올린다. subject는 target Spot 
 | `g_retired_join_requests` | `set<queued_join_request_t*>` | completion frame 전달 확인 뒤 cleanup 대기 join |
 | `g_actor_protocol_drop_count` | `uint64_t` | protocol 오류(stale ref, unknown actor id 등)로 drop된 relay frame 누적 카운터. relay 손실 진단에 활용 |
 
+`queued_join_request_t`는 request와 reply payload를 owned multipart parts로
+저장한다. `zlink_spot_actor_join_recv()`는 호출자에게 thread-local parts view를
+보여 주고, `zlink_spot_actor_join_reply()`는 completion callback이 실행되기 전에
+reply parts를 request record 안으로 이동한다.
+
 **초기화**: 이 전역들은 정적 저장 기간(static storage duration)을 가지므로 프로그램
 시작 시 기본 초기화된다. 별도의 init 호출은 없다. 첫 `SpotNode` 생성 시
 `g_nodes_by_rid`에 첫 항목이 추가되는데, 모든 쓰기와 경합 가능한 읽기에서 mutex를

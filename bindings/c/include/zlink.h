@@ -4,9 +4,9 @@
 #define __ZLINK_H_INCLUDED__
 
 /*  Version macros for compile-time API version detection                     */
-#define ZLINK_VERSION_MAJOR 5
-#define ZLINK_VERSION_MINOR 3
-#define ZLINK_VERSION_PATCH 9
+#define ZLINK_VERSION_MAJOR 6
+#define ZLINK_VERSION_MINOR 0
+#define ZLINK_VERSION_PATCH 0
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -422,7 +422,8 @@ typedef void (*zlink_reply_handler_fn) (
 typedef zlink_actor_admission_result_t (*zlink_actor_admission_handler_fn) (
   void *node_,
   const char *actor_id_,
-  const zlink_msg_t *message_,
+  const zlink_msg_t *parts_,
+  size_t part_count_,
   void *userdata_);
 
 typedef void (*zlink_subscribe_handler_fn) (
@@ -1106,6 +1107,16 @@ ZLINK_EXPORT zlink_bind_result_t zlink_registry_bind (void *registry,
 /** @brief Set the registry unique ID (used for cluster configuration). */
 ZLINK_EXPORT zlink_config_result_t zlink_registry_set_id (void *registry, uint32_t registry_id);
 
+ZLINK_EXPORT zlink_config_result_t zlink_registry_set (
+  void *registry,
+  zlink_registry_option_t option,
+  uint32_t value);
+
+ZLINK_EXPORT uint32_t zlink_registry_get (
+  void *registry,
+  zlink_registry_option_t option,
+  zlink_config_result_t *error_out);
+
 /** @brief Add a peer registry PUB endpoint (for cluster synchronization). */
 ZLINK_EXPORT zlink_config_result_t zlink_registry_add_peer (void *registry,
                                       const char *peer_pub_endpoint);
@@ -1274,7 +1285,8 @@ ZLINK_EXPORT zlink_request_result_t zlink_spot_node_create_remote_actor (
   void *node_,
   const zlink_routing_id_t *target_node_rid_,
   const char *actor_id_,
-  zlink_msg_t *message_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
   zlink_actor_create_result_t *out_,
   uint32_t timeout_ms_);
 
@@ -1293,7 +1305,8 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_join_spot (
   const zlink_actor_ref_t *actor_,
   const zlink_routing_id_t *dest_node_rid_,
   const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *message_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
   zlink_reply_handler_fn handler_,
   void *userdata_,
   zlink_send_flags_t flags_,
@@ -1302,14 +1315,16 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_join_spot (
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_actor_join_recv (
   void *spot_,
   zlink_actor_join_info_t *info_out_,
-  zlink_msg_t *message_out_,
+  zlink_msg_t **parts_out_,
+  size_t *part_count_out_,
   zlink_recv_flags_t flags_);
 
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply (
   void *spot_,
   const zlink_actor_join_info_t *info_,
   uint32_t accepted_,
-  zlink_msg_t *message_);
+  zlink_msg_t *parts_,
+  size_t part_count_);
 
 ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_leave_spot (
   void *node_,

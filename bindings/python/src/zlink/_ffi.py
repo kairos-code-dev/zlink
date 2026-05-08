@@ -862,6 +862,16 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_registry_set",
+            [ctypes.c_void_p, ctypes.c_int, ctypes.c_uint32],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_registry_get",
+            [ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_int)],
+            ctypes.c_uint32,
+        )
+        self._require(
             "zlink_registry_add_peer",
             [ctypes.c_void_p, ctypes.c_char_p],
             ctypes.c_int,
@@ -988,6 +998,7 @@ class _Lib:
                 ctypes.POINTER(ZlinkRoutingId),
                 ctypes.c_char_p,
                 ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
                 ctypes.POINTER(ZlinkActorCreateResult),
                 ctypes.c_uint32,
             ],
@@ -1011,6 +1022,7 @@ class _Lib:
                 ctypes.POINTER(ZlinkRoutingId),
                 ctypes.POINTER(ZlinkRoutingId),
                 ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
                 ctypes.c_void_p,
                 ctypes.c_void_p,
                 ctypes.c_uint32,
@@ -1023,7 +1035,8 @@ class _Lib:
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkActorJoinInfo),
-                ctypes.POINTER(ZlinkMsg),
+                ctypes.POINTER(ctypes.POINTER(ZlinkMsg)),
+                ctypes.POINTER(ctypes.c_size_t),
                 ctypes.c_uint32,
             ],
             ctypes.c_int,
@@ -1035,6 +1048,7 @@ class _Lib:
                 ctypes.POINTER(ZlinkActorJoinInfo),
                 ctypes.c_uint32,
                 ctypes.POINTER(ZlinkMsg),
+                ctypes.c_size_t,
             ],
             ctypes.c_int,
         )

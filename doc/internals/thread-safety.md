@@ -61,7 +61,7 @@ enqueued messages drain before teardown completes (drain-then-close).
 - `zlink_spot_node_attach_discovery()`
 - `zlink_*_monitor_open()`
 - `zlink_send_ready_handler()`
-- `zlink_registry_add_peer()` / `zlink_registry_set_heartbeat()`
+- `zlink_registry_add_peer()` / `zlink_registry_set()``
 - Heavy queries: `zlink_registry_topology_query()`, snapshot functions
 
 **Correctness-first serialization:**

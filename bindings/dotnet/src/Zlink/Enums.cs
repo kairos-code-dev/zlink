@@ -405,6 +405,14 @@ internal enum RegistrySocketRole
     PeerSub = 3
 }
 
+public enum RegistryOption
+{
+    Id = 0x3801,
+    HeartbeatIntervalMs = 0x3802,
+    HeartbeatTimeoutMs = 0x3803,
+    BroadcastIntervalMs = 0x3804
+}
+
 internal enum SpotNodeSocketRole
 {
     Node = 0,

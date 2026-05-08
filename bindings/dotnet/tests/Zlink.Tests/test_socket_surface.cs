@@ -422,6 +422,7 @@ public sealed class test_socket_surface
             typeof(Received).FullName!,
             typeof(RecvFlags).FullName!,
             typeof(Registry).FullName!,
+            typeof(RegistryOption).FullName!,
             typeof(RegistryQueryClient).FullName!,
             typeof(RegistryServiceSummaryEntry).FullName!,
             typeof(RegistryServiceSummaryFilter).FullName!,

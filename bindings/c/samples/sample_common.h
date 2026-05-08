@@ -254,8 +254,16 @@ static inline int wait_for_subscription_event (void *subject_,
 
 static inline void sample_pause_ms (int timeout_ms_)
 {
+#ifndef _WIN32
+    struct timespec req;
+    req.tv_sec = timeout_ms_ / 1000;
+    req.tv_nsec = (long) (timeout_ms_ % 1000) * 1000000L;
+    while (nanosleep (&req, &req) != 0) {
+    }
+#else
     zlink_pollitem_t item = {NULL, 0, 0, 0};
     (void) zlink_poll (&item, 0, timeout_ms_, NULL);
+#endif
 }
 
 /* ---- Discovery / readiness helpers -------------------------------------- */

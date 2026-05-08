@@ -4,12 +4,14 @@
 
 static zlink_actor_admission_result_t accept_actor (void *node,
                                                    const char *actor_id,
-                                                   const zlink_msg_t *message,
+                                                   const zlink_msg_t *parts,
+                                                   size_t part_count,
                                                    void *userdata)
 {
     (void) node;
     (void) actor_id;
-    (void) message;
+    (void) parts;
+    (void) part_count;
     (void) userdata;
     return ZLINK_ACTOR_ADMISSION_ACCEPT;
 }
@@ -44,7 +46,7 @@ int main (void)
     zlink_actor_create_result_t create_result;
     assert (zlink_spot_node_create_remote_actor (
               gateway_node, &play_node_rid, "play-session-actor",
-              &create_message, &create_result, 1000)
+              &create_message, 1, &create_result, 1000)
             == ZLINK_REQUEST_OK);
     assert (create_result.status == ZLINK_ACTOR_CREATE_CREATED);
 
@@ -62,7 +64,7 @@ int main (void)
     make_message (&join, "join-play");
     assert (zlink_spot_node_actor_join_spot (
               gateway_node, &create_result.actor, &play_node_rid,
-              &play_spot_rid, &join, actor_sample_join_reply, &capture,
+              &play_spot_rid, &join, 1, actor_sample_join_reply, &capture,
               ZLINK_DONTWAIT, 1000)
             == ZLINK_SUBMIT_OK);
     assert (callback_signal_wait (&capture.join_signal, 2000));

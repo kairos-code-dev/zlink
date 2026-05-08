@@ -846,6 +846,11 @@ are protected by `g_actor_mutex`** unless noted otherwise.
 | `g_retired_join_requests` | `set<queued_join_request_t*>` | joins awaiting cleanup after completion frame delivery |
 | `g_actor_protocol_drop_count` | `uint64_t` | cumulative count of relay frames dropped due to protocol errors (stale ref, unknown actor id, etc.); useful for diagnosing relay loss |
 
+`queued_join_request_t` stores request and reply payloads as owned multipart
+parts. `zlink_spot_actor_join_recv()` exposes a thread-local parts view to the
+caller, and `zlink_spot_actor_join_reply()` moves the reply parts back into the
+request record before the completion callback runs.
+
 **Initialization**: these globals are default-initialized at program startup
 (static storage duration). There is no separate init call. The first
 `zlink_ctx_new()` call indirectly populates `g_nodes_by_rid` when the first

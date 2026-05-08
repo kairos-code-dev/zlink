@@ -145,8 +145,12 @@ inline int push (zlink_msg_t *src_)
 
     storage_t &tls = storage ();
     if (tls.count >= tls.parts.size ()) {
-        errno = EMSGSIZE;
-        return -1;
+        const size_t old_size = tls.parts.size ();
+        const size_t new_size = old_size == 0 ? 1 : old_size * 2;
+        tls.parts.resize (new_size);
+        tls.occupied.resize (new_size, 0);
+        for (size_t i = old_size; i < new_size; ++i)
+            (void) zlink_msg_init (&tls.parts[i]);
     }
 
     if (zlink_msg_move (&tls.parts[tls.count], src_) != 0)

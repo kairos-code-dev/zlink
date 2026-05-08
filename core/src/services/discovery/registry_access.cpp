@@ -48,6 +48,20 @@ int registry_access_t::set_id (registry_t *registry_, uint32_t registry_id_)
     return registry_ ? registry_->set_id (registry_id_) : -1;
 }
 
+int registry_access_t::set_option (registry_t *registry_,
+                                   zlink_registry_option_t option_,
+                                   uint32_t value_)
+{
+    return registry_ ? registry_->set_option (option_, value_) : -1;
+}
+
+int registry_access_t::get_option (registry_t *registry_,
+                                   zlink_registry_option_t option_,
+                                   uint32_t *value_out_)
+{
+    return registry_ ? registry_->get_option (option_, value_out_) : -1;
+}
+
 int registry_access_t::add_peer (registry_t *registry_,
                                  const char *peer_pub_endpoint_)
 {

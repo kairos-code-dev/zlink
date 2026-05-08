@@ -218,10 +218,11 @@ zlink_registry_add_peer(registry, "tcp://registry2:5550");
 zlink_registry_add_peer(registry, "tcp://registry3:5550");
 
 /* Heartbeat configuration (optional, must be called before bind) */
-zlink_registry_set_heartbeat(registry, 5000, 15000);
+zlink_registry_set(registry, ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS, 5000);
+    zlink_registry_set(registry, ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS, 15000);
 
 /* Broadcast interval (optional, default 30 seconds) */
-zlink_registry_set_broadcast_interval(registry, 30000);
+zlink_registry_set(registry, ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS, 30000);
 
 /* Bind and start
    First arg:  PUB endpoint — broadcasts service list (Discovery SUB subscribes)

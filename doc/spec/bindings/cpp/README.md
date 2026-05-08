@@ -1110,7 +1110,7 @@ option surface.
 
 ### message_t
 
-RAII wrapper for a single message frame. Owns the payload buffer.
+RAII wrapper for one message frame. Owns the payload buffer.
 
 ```cpp
 class message_t {
@@ -3220,3 +3220,9 @@ types except `stream_socket_t`, and `disconnect_peer_rid(routing_id_t)` on
 SpotNode. They map the duplicate policy option and the connect result values
 `not_found`, `conflict`, and `busy` to the same contract as the C core. Spot
 facades do not expose a peer-rid disconnect method.
+
+## Core API Surface 6.0.0 Alignment
+
+Actor create and join payloads use aggregate multipart payloads. Public binding APIs accept a message collection for remote actor create, actor join, actor join receive, and actor join reply. A single-message convenience path may remain, but it must call the multipart path internally so empty payload and one empty message stay distinguishable. Admission handlers receive a borrowed payload view that is valid only during the callback.
+
+Registry scalar configuration uses the registry option surface as the canonical API. Bindings expose typed options for registry id, heartbeat interval, heartbeat timeout, and broadcast interval. Existing named setters may remain as compatibility aliases and must delegate to the option API.

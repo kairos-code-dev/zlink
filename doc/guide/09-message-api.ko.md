@@ -522,7 +522,7 @@ Refcounted storage가 아니면 1을 반환한다.
 내부 reference count는 atomic 연산으로 관리된다. `zlink_msg_copy()`로
 만든 별도 handle을 서로 다른 스레드에서 copy/close하는 것은 안전하다.
 `zlink_msg_refcnt()` 반환값은 시점 스냅샷이므로 진단/assertion 용도로 쓴다.
-단일 `zlink_msg_t` 인스턴스를 여러 스레드에서 동시에 접근하면 안 된다.
+하나의 `zlink_msg_t` 인스턴스를 여러 스레드에서 동시에 접근하면 안 된다.
 
 | 상황 | `refcnt` 반환값 |
 |------|-----------------|

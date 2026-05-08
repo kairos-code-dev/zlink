@@ -119,10 +119,11 @@ if (rc == ZLINK_CONFIG_OK) {
 zlink_actor_admission_result_t my_admission(
   void *node_,
   const char *actor_id_,
-  const zlink_msg_t *message_,
+  const zlink_msg_t *parts_,
+  size_t part_count_,
   void *userdata_)
 {
-    /* actor_id와 선택적 payload message를 검사 */
+    /* actor_id와 선택적 payload parts를 검사 */
     if (/* 거부 조건 */)
         return ZLINK_ACTOR_ADMISSION_REJECT;
     return ZLINK_ACTOR_ADMISSION_ACCEPT;
@@ -137,7 +138,7 @@ zlink_spot_node_actor_admission_handler(node, my_admission, userdata);
 
 Actor를 사용자 Spot으로 보내려면 `zlink_spot_node_actor_join_spot()`으로 참가 요청을
 전송한다. 대상 Spot은 `ACTOR_JOIN_READABLE` 디스패치 이벤트를 받고,
-`zlink_spot_actor_join_recv()`로 요청 메시지를 읽은 뒤 `zlink_spot_actor_join_reply()`로
+`zlink_spot_actor_join_recv()`로 요청 payload를 읽은 뒤 `zlink_spot_actor_join_reply()`로
 수락 또는 거부를 전달한다.
 
 ```c
@@ -145,7 +146,7 @@ Actor를 사용자 Spot으로 보내려면 `zlink_spot_node_actor_join_spot()`�
 zlink_spot_node_actor_join_spot(
   node, &actor_ref,
   &dest_node_rid, &dest_spot_rid,
-  &payload_msg,       /* join state payload — NULL이면 빈 payload */
+  &payload_msg, 1,    /* join state payload parts */
   my_join_handler,    /* completion callback */
   userdata,
   0, 3000);           /* flags, timeout_ms */
@@ -153,13 +154,14 @@ zlink_spot_node_actor_join_spot(
 /* target Spot dispatch callback에서 */
 case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE: {
     zlink_actor_join_info_t info;
-    zlink_msg_t msg;
-    while (zlink_spot_actor_join_recv(spot_, &info, &msg, ZLINK_DONTWAIT)
-           == ZLINK_RECV_OK) {
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    while (zlink_spot_actor_join_recv(spot_, &info, &parts, &part_count,
+                                      ZLINK_DONTWAIT) == ZLINK_RECV_OK) {
         /* info.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE 이면 remote join */
         int accept = /* payload 검사 결과 */;
-        zlink_spot_actor_join_reply(spot_, &info, accept, NULL);
-        zlink_msg_close(&msg);
+        zlink_spot_actor_join_reply(spot_, &info, accept, NULL, 0);
+        zlink_multipart_close(parts, part_count);
     }
     break;
 }

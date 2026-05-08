@@ -14,6 +14,40 @@
 - Registry topology는 전체 요약을 볼 때 사용합니다. 개별 서비스의 자세한 상태
   변화는 각 서비스의 monitor API를 사용합니다.
 
+## 설정 옵션
+
+Registry의 숫자 설정은 typed option API로 지정합니다.
+
+```c
+zlink_config_result_t zlink_registry_set(
+  void *registry,
+  zlink_registry_option_t option,
+  uint32_t value);
+
+uint32_t zlink_registry_get(
+  void *registry,
+  zlink_registry_option_t option,
+  zlink_config_result_t *error_out);
+```
+
+정의된 option은 아래와 같습니다.
+
+| Option | 값의 의미 |
+|--------|-----------|
+| `ZLINK_REGISTRY_OPT_ID` | Registry 숫자 id |
+| `ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS` | heartbeat interval, 밀리초 단위 |
+| `ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS` | heartbeat timeout, 밀리초 단위 |
+| `ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS` | topology broadcast interval, 밀리초 단위 |
+
+- `registry == NULL`이면 `ZLINK_CONFIG_INVALID_HANDLE`로 실패하고 `errno`는
+  `EFAULT`가 됩니다.
+- 알 수 없는 option은 `ZLINK_CONFIG_NOT_SUPPORTED`로 실패하고 `errno`는
+  `ENOTSUP`가 됩니다.
+- `zlink_registry_get()`에서 `error_out == NULL`은 허용됩니다. 이 경우 호출자는
+  반환값만 받고, 실패는 반환값 `0`과 thread-local errno로 확인합니다.
+- 기존 이름별 숫자 setter는 같은 option 상태를 바꾸는 compatibility wrapper로
+  남습니다. 새 API 표면에서는 option 함수를 사용합니다.
+
 레지스트리는 zlink 서비스 계층의 중앙 서비스 디렉터리입니다. SPOT 노드 및
 socket family 서비스로부터 서비스 등록, 등록 해제, 하트비트 요청을 수신하고,
 집계된 서비스 목록을 연결된 모든 Discovery 인스턴스에 주기적으로

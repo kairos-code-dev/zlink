@@ -293,7 +293,7 @@ count를 atomic으로 증가시키고, `zlink_msg_close()`는 atomic으로 감�
 copy/close로 이미 값을 변경했을 수 있습니다. 따라서 이 함수는 진단이나
 assertion 용도에 적합하며, 제어 판단에는 적합하지 않습니다.
 
-단일 `zlink_msg_t` 인스턴스를 여러 스레드에서 동시에 접근하면 안 됩니다.
+하나의 `zlink_msg_t` 인스턴스를 여러 스레드에서 동시에 접근하면 안 됩니다.
 동시 접근이 필요하면 `zlink_msg_copy()`로 별도 handle을 만들어야 합니다.
 
 **반환값:** 현재 storage reference count. internal reference counting 대상이

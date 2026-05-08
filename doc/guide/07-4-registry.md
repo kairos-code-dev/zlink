@@ -68,21 +68,22 @@ All configuration APIs must be called **before** `zlink_registry_bind()`.
 ```c
 /* interval_ms: how often services send heartbeats (default 5000 ms)
    timeout_ms:  when to expire silent services   (default 15000 ms) */
-zlink_registry_set_heartbeat(registry, 5000, 15000);
+zlink_registry_set(registry, ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS, 5000);
+    zlink_registry_set(registry, ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS, 15000);
 ```
 
 ### 3.2 Broadcast Interval
 
 ```c
 /* How often the full SERVICE_LIST is published on PUB (default 30000 ms) */
-zlink_registry_set_broadcast_interval(registry, 30000);
+zlink_registry_set(registry, ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS, 30000);
 ```
 
 ### 3.3 Cluster ID
 
 ```c
 /* Assign a unique ID for cluster synchronization (must be unique per node) */
-zlink_registry_set_id(registry, 1);
+zlink_registry_set(registry, ZLINK_REGISTRY_OPT_ID, 1);
 ```
 
 ### 3.4 TLS Configuration
@@ -187,7 +188,7 @@ Each Registry node needs a unique ID and the PUB endpoints of its peers:
 ```c
 /* Node 1 */
 void *reg1 = zlink_registry_new(ctx);
-zlink_registry_set_id(reg1, 1);
+zlink_registry_set(reg1, ZLINK_REGISTRY_OPT_ID, 1);
 zlink_registry_add_peer(reg1, "tcp://registry2:5550");
 zlink_registry_add_peer(reg1, "tcp://registry3:5550");
 /* PUB: service list broadcast, ROUTER: registration/heartbeat/queries */
@@ -224,27 +225,30 @@ void *ctx = zlink_ctx_new();
 
 /* === Node 1 === */
 void *reg1 = zlink_registry_new(ctx);
-zlink_registry_set_id(reg1, 1);
+zlink_registry_set(reg1, ZLINK_REGISTRY_OPT_ID, 1);
 zlink_registry_add_peer(reg1, "tcp://registry2:5550");
 zlink_registry_add_peer(reg1, "tcp://registry3:5550");
-zlink_registry_set_heartbeat(reg1, 5000, 15000);
+zlink_registry_set(reg1, ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS, 5000);
+    zlink_registry_set(reg1, ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS, 15000);
 /* PUB: service list broadcast, ROUTER: registration/heartbeat/queries */
 zlink_registry_bind(reg1, "tcp://*:5550", "tcp://*:5551");
 
 /* === Node 2 === */
 void *reg2 = zlink_registry_new(ctx);
-zlink_registry_set_id(reg2, 2);
+zlink_registry_set(reg2, ZLINK_REGISTRY_OPT_ID, 2);
 zlink_registry_add_peer(reg2, "tcp://registry1:5550");
 zlink_registry_add_peer(reg2, "tcp://registry3:5550");
-zlink_registry_set_heartbeat(reg2, 5000, 15000);
+zlink_registry_set(reg2, ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS, 5000);
+    zlink_registry_set(reg2, ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS, 15000);
 zlink_registry_bind(reg2, "tcp://*:5550", "tcp://*:5551");
 
 /* === Node 3 === */
 void *reg3 = zlink_registry_new(ctx);
-zlink_registry_set_id(reg3, 3);
+zlink_registry_set(reg3, ZLINK_REGISTRY_OPT_ID, 3);
 zlink_registry_add_peer(reg3, "tcp://registry1:5550");
 zlink_registry_add_peer(reg3, "tcp://registry2:5550");
-zlink_registry_set_heartbeat(reg3, 5000, 15000);
+zlink_registry_set(reg3, ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS, 5000);
+    zlink_registry_set(reg3, ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS, 15000);
 zlink_registry_bind(reg3, "tcp://*:5550", "tcp://*:5551");
 
 /* Discovery connects to multiple Registries (HA — a single one suffices for service visibility) */

@@ -715,7 +715,8 @@ zlink_request_result_t zlink_spot_node_create_remote_actor(
   void *node,
   const zlink_routing_id_t *target_node_rid,
   const char *actor_id,
-  zlink_msg_t *message,
+  zlink_msg_t *parts,
+  size_t part_count,
   zlink_actor_create_result_t *out,
   uint32_t timeout_ms);
 
@@ -735,7 +736,7 @@ zlink_handler_result_t zlink_spot_node_actor_admission_handler(
   승인은 create-or-get 호출이 아니라 이후 `join` 요청이 결정한다.
 - `timeout_ms == 0`은 nonblocking request다. 즉시 완료할 수 없으면 timeout 또는
   busy 계열 결과로 실패한다.
-- submit 성공 시 `message` 소유권은 라이브러리로 이전된다. validation 실패나
+- submit 성공 시 `parts` 전체 소유권은 라이브러리로 이전된다. validation 실패나
   submit 전 실패에서는 호출자에게 남는다.
 - remote Actor destroy도 `zlink_spot_node_actor_destroy()`로 ref 기반 요청을 보낸다.
   target node에 도달할 수 없거나 checked ref generation이 맞지 않으면 Actor slot을
@@ -749,7 +750,8 @@ zlink_submit_result_t zlink_spot_node_actor_join_spot(
   const zlink_actor_ref_t *actor,
   const zlink_routing_id_t *dest_node_rid,
   const zlink_routing_id_t *dest_spot_rid,
-  zlink_msg_t *message,
+  zlink_msg_t *parts,
+  size_t part_count,
   zlink_reply_handler_fn handler,
   void *userdata,
   zlink_send_flags_t flags,
@@ -758,14 +760,16 @@ zlink_submit_result_t zlink_spot_node_actor_join_spot(
 zlink_recv_result_t zlink_spot_actor_join_recv(
   void *spot,
   zlink_actor_join_info_t *info_out,
-  zlink_msg_t *message_out,
+  zlink_msg_t **parts_out,
+  size_t *part_count_out,
   zlink_recv_flags_t flags);
 
 zlink_submit_result_t zlink_spot_actor_join_reply(
   void *spot,
   const zlink_actor_join_info_t *info,
   uint32_t accepted,
-  zlink_msg_t *message);
+  zlink_msg_t *parts,
+  size_t part_count);
 ```
 
 `join`은 Actor를 현재 Spot에서 target Spot으로 이동하는 요청이다. `join`이 성공하면
@@ -791,7 +795,7 @@ Actor의 current Spot이 target으로 바뀐다.
   결정한다.
 - submit 성공 시 `message` 소유권은 라이브러리로 이전된다. local validation 또는
   submit 전 실패가 발생하면 소유권은 caller에게 남는다.
-- join request는 단일 `zlink_msg_t` payload를 싣는다. target Spot은 이 payload를 읽고
+- join request는 `zlink_msg_t` part 배열로 이루어진 multipart payload를 싣는다. target Spot은 이 payload를 읽고
   accept 또는 reject를 결정한다.
 
 `zlink_spot_actor_join_recv()` 계약:

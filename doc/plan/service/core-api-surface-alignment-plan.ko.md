@@ -105,11 +105,11 @@ named setter symbol은 compatibility wrapper로 유지한다.
 
 | 구분 | 항목 | 변경 전 | 변경 후 | 처리 |
 |------|------|---------|---------|------|
-| 함수 | `zlink_spot_node_create_remote_actor()` | 단일 `zlink_msg_t *message` | `zlink_msg_t *parts, size_t part_count` | 시그니처 변경 |
-| typedef | `zlink_actor_admission_handler_fn` | 단일 `const zlink_msg_t *message` | `const zlink_msg_t *parts, size_t part_count` | 시그니처 변경 |
-| 함수 | `zlink_spot_node_actor_join_spot()` | 단일 `zlink_msg_t *message` | `zlink_msg_t *parts, size_t part_count` | 시그니처 변경 |
-| 함수 | `zlink_spot_actor_join_recv()` | `zlink_msg_t *message_out` | `zlink_msg_t **parts_out, size_t *part_count_out` | 시그니처 변경 |
-| 함수 | `zlink_spot_actor_join_reply()` | 단일 `zlink_msg_t *message` | `zlink_msg_t *parts, size_t part_count` | 시그니처 변경 |
+| 함수 | `zlink_spot_node_create_remote_actor()` | one-part payload pointer | `zlink_msg_t *parts, size_t part_count` | 시그니처 변경 |
+| typedef | `zlink_actor_admission_handler_fn` | one-part borrowed payload pointer | `const zlink_msg_t *parts, size_t part_count` | 시그니처 변경 |
+| 함수 | `zlink_spot_node_actor_join_spot()` | one-part payload pointer | `zlink_msg_t *parts, size_t part_count` | 시그니처 변경 |
+| 함수 | `zlink_spot_actor_join_recv()` | one-part output pointer | `zlink_msg_t **parts_out, size_t *part_count_out` | 시그니처 변경 |
+| 함수 | `zlink_spot_actor_join_reply()` | one-part payload pointer | `zlink_msg_t *parts, size_t part_count` | 시그니처 변경 |
 | enum type | `zlink_registry_option_t` | 없음 | 새 enum type | 추가 |
 | enum value | `ZLINK_REGISTRY_OPT_ID` | 없음 | registry id scalar option | 추가 |
 | enum value | `ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS` | 없음 | heartbeat interval option | 추가 |

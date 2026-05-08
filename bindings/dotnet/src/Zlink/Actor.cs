@@ -152,7 +152,7 @@ public sealed class Actor : IDisposable, IAsyncDisposable
                 spot.RoutingId.ToByteArray());
             int rc = NativeMethods.zlink_spot_node_actor_join_spot(_node.Handle,
                 ref nativeActor, ref destNodeRid, ref destSpotRid,
-                ref nativePart, ActorInterop.ReplyHandlerPtr,
+                ref nativePart, 1, ActorInterop.ReplyHandlerPtr,
                 GCHandle.ToIntPtr(handle),
                 (int)flags, timeoutMs);
             nativePart = default;

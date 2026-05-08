@@ -13,7 +13,7 @@ if [[ -f "${CORE_LIB}" ]]; then
     "${ROOT_DIR}/build/resources/main/native/linux-x86_64"; do
     if [[ -d "${native_dir}" ]]; then
       cp -f "${CORE_LIB}" "${native_dir}/libzlink.so"
-      ln -sfn libzlink.so "${native_dir}/libzlink.so.5"
+      ln -sfn libzlink.so "${native_dir}/libzlink.so.6"
     fi
   done
 fi

@@ -35,7 +35,7 @@ int main (void)
     zlink_msg_t join;
     make_message (&join, "enter-room");
     assert (zlink_spot_node_actor_join_spot (
-              node, &actor, &node_rid, &spot_rid, &join,
+              node, &actor, &node_rid, &spot_rid, &join, 1,
               actor_sample_join_reply, &capture, ZLINK_DONTWAIT, 1000)
             == ZLINK_SUBMIT_OK);
     assert (callback_signal_wait (&capture.join_signal, 2000));

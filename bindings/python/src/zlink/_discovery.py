@@ -218,12 +218,31 @@ class Registry:
         if rc != 0:
             _raise_result_error(BindError, BindResult, rc, lib().zlink_errno())
 
-    def set_id(self, registry_id: int):
-        rc = lib().zlink_registry_set_id(
-            self._handle, _validated_uint32(registry_id, field="registry_id")
+    REGISTRY_OPT_ID = 0x3801
+    REGISTRY_OPT_HEARTBEAT_INTERVAL_MS = 0x3802
+    REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS = 0x3803
+    REGISTRY_OPT_BROADCAST_INTERVAL_MS = 0x3804
+
+    def set_option(self, option: int, value: int):
+        rc = lib().zlink_registry_set(
+            self._handle,
+            int(option),
+            _validated_uint32(value, field="value"),
         )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
+    def get_option(self, option: int) -> int:
+        error = ctypes.c_int()
+        value = lib().zlink_registry_get(self._handle, int(option), ctypes.byref(error))
+        if error.value != 0:
+            _raise_result_error(
+                ConfigError, ConfigResult, error.value, lib().zlink_errno()
+            )
+        return int(value)
+
+    def set_id(self, registry_id: int):
+        self.set_option(self.REGISTRY_OPT_ID, registry_id)
 
     def add_peer(self, peer_pub_endpoint: str):
         rc = lib().zlink_registry_add_peer(
@@ -263,20 +282,20 @@ class Registry:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def set_heartbeat(self, interval_ms: int, timeout_ms: int):
-        rc = lib().zlink_registry_set_heartbeat(
-            self._handle,
+        self.set_option(
+            self.REGISTRY_OPT_HEARTBEAT_INTERVAL_MS,
             _validated_uint32(interval_ms, field="interval_ms"),
+        )
+        self.set_option(
+            self.REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS,
             _validated_uint32(timeout_ms, field="timeout_ms"),
         )
-        if rc != 0:
-            _raise_last_error()
 
     def set_broadcast_interval(self, interval_ms: int):
-        rc = lib().zlink_registry_set_broadcast_interval(
-            self._handle, _validated_uint32(interval_ms, field="interval_ms")
+        self.set_option(
+            self.REGISTRY_OPT_BROADCAST_INTERVAL_MS,
+            _validated_uint32(interval_ms, field="interval_ms"),
         )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def status_snapshot(self):
         native = ZlinkRegistryStatus()

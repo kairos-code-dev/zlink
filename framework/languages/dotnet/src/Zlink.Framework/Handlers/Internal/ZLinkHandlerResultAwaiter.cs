@@ -22,16 +22,15 @@ internal static class ZLinkHandlerResultAwaiter
         var resultType = result.GetType();
         if (resultType.IsGenericType && resultType.GetGenericTypeDefinition() == typeof(Task<>))
         {
-            var task = (Task)result;
-            await task.ConfigureAwait(false);
-            return resultType.GetProperty("Result")!.GetValue(result);
+            await ((Task)result).ConfigureAwait(false);
+            return ((dynamic)result).Result;
         }
 
         if (resultType.IsGenericType && resultType.GetGenericTypeDefinition() == typeof(ValueTask<>))
         {
-            var asTask = (Task)resultType.GetMethod("AsTask")!.Invoke(result, null)!;
+            var asTask = (Task)((dynamic)result).AsTask();
             await asTask.ConfigureAwait(false);
-            return asTask.GetType().GetProperty("Result")!.GetValue(asTask);
+            return ((dynamic)asTask).Result;
         }
 
         return result;

@@ -3,7 +3,7 @@ package messagepack_test
 import (
 	"testing"
 
-	zlinkmsgpack "zlink/codec/messagepack"
+	zlinkmsgpack "zlink.systems/zlink/codec/messagepack"
 )
 
 type person struct {

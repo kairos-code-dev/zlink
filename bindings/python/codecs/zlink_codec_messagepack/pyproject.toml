@@ -7,7 +7,7 @@ name = "zlink-codec-messagepack"
 version = "5.3.4"
 description = "MessagePack codec helpers for zlink Python bindings"
 license = { text = "MPL-2.0" }
-authors = [{ name = "ulalax" }]
+authors = [{ name = "Zlink Systems" }]
 requires-python = ">=3.9"
 dependencies = [
     "zlink>=5.3.4",
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ulala-x/zlink"
+Homepage = "https://zlink.systems/"
 Repository = "https://github.com/ulala-x/zlink"
 
 [tool.setuptools]

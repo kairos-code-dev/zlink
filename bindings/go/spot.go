@@ -92,12 +92,12 @@ const (
 type SpotNodeOption int
 
 const (
-	SpotNodeOptionRouterHWMProfile    SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE)
-	SpotNodeOptionRouterHWM           SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM)
-	SpotNodeOptionPubSubHWMProfile    SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE)
-	SpotNodeOptionPubSubHWM           SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM)
-	SpotNodeOptionDispatchWorkersMin  SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN)
-	SpotNodeOptionDispatchWorkersMax  SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX)
+	SpotNodeOptionRouterHWMProfile   SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE)
+	SpotNodeOptionRouterHWM          SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM)
+	SpotNodeOptionPubSubHWMProfile   SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE)
+	SpotNodeOptionPubSubHWM          SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM)
+	SpotNodeOptionDispatchWorkersMin SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN)
+	SpotNodeOptionDispatchWorkersMax SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX)
 )
 
 type SpotNodeOptions struct {
@@ -655,11 +655,11 @@ type ReplySubmitOp interface {
 // --- sendBuilder ---
 
 type sendBuilder struct {
-	spot     *Spot
-	msg      *Message
-	flags    SendFlags
+	spot      *Spot
+	msg       *Message
+	flags     SendFlags
 	submitted bool
-	submit   func(msg *Message, flags SendFlags) error
+	submit    func(msg *Message, flags SendFlags) error
 }
 
 func newSendBuilder(spot *Spot, submit func(msg *Message, flags SendFlags) error) SendOp {

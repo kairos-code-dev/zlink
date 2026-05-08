@@ -1,4 +1,4 @@
-module zlink
+module zlink.systems/zlink
 
 go 1.22
 

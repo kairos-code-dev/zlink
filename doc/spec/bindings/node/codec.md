@@ -3,14 +3,14 @@
 # Node Codec Extension Specification
 
 This document defines the public contract for Node/TypeScript codec extension
-packages. The root `@ulalax/zlink` package does not expose these entrypoints,
-so applications opt in to codec dependencies explicitly.
+packages. The root `@zlink-systems/zlink` package does not expose these
+entrypoints, so applications opt in to codec dependencies explicitly.
 
 ## Packages
 
-- `@ulalax/zlink-codec-protobuf`
-- `@ulalax/zlink-codec-json`
-- `@ulalax/zlink-codec-messagepack`
+- `@zlink-systems/zlink-codec-protobuf`
+- `@zlink-systems/zlink-codec-json`
+- `@zlink-systems/zlink-codec-messagepack`
 
 JSON codec baseline: built-in `JSON.parse` / `JSON.stringify`. Typed
 validation may be layered on top through a schema/parser object.
@@ -22,7 +22,7 @@ must not be merged into the root package entrypoint.
 ## Protobuf
 
 ```typescript
-declare module "@ulalax/zlink-codec-protobuf" {
+declare module "@zlink-systems/zlink-codec-protobuf" {
     export interface ProtobufType<T> {
         encode(
             message: T,
@@ -34,10 +34,10 @@ declare module "@ulalax/zlink-codec-protobuf" {
     export function encode<T>(
         value: T,
         type: ProtobufType<T>,
-    ): import("@ulalax/zlink").Message;
+    ): import("@zlink-systems/zlink").Message;
 
     export function decode<T>(
-        message: import("@ulalax/zlink").Message,
+        message: import("@zlink-systems/zlink").Message,
         type: ProtobufType<T>,
     ): T;
 }
@@ -46,10 +46,10 @@ declare module "@ulalax/zlink-codec-protobuf" {
 ## JSON
 
 ```typescript
-declare module "@ulalax/zlink-codec-json" {
-    export function encode<T>(value: T): import("@ulalax/zlink").Message;
+declare module "@zlink-systems/zlink-codec-json" {
+    export function encode<T>(value: T): import("@zlink-systems/zlink").Message;
     export function decode<T>(
-        message: import("@ulalax/zlink").Message,
+        message: import("@zlink-systems/zlink").Message,
     ): T;
 }
 ```
@@ -57,10 +57,10 @@ declare module "@ulalax/zlink-codec-json" {
 ## MessagePack
 
 ```typescript
-declare module "@ulalax/zlink-codec-messagepack" {
-    export function encode<T>(value: T): import("@ulalax/zlink").Message;
+declare module "@zlink-systems/zlink-codec-messagepack" {
+    export function encode<T>(value: T): import("@zlink-systems/zlink").Message;
     export function decode<T>(
-        message: import("@ulalax/zlink").Message,
+        message: import("@zlink-systems/zlink").Message,
     ): T;
 }
 ```

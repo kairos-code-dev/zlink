@@ -1,8 +1,8 @@
 package main
 
 import (
-	"zlink"
-	"zlink/perf/internal/perfcommon"
+	"zlink.systems/zlink"
+	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 
 func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {

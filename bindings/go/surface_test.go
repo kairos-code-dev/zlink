@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"zlink"
+	"zlink.systems/zlink"
 )
 
 var (

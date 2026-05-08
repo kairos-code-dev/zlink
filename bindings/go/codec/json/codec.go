@@ -4,10 +4,10 @@ import (
 	stdjson "encoding/json"
 	"errors"
 
-	"zlink"
+	"zlink.systems/zlink"
 )
 
-var errNilMessage = errors.New("zlink/codec/json: nil message")
+var errNilMessage = errors.New("zlink.systems/zlink/codec/json: nil message")
 
 // Decode unmarshals a zlink message into a Go value.
 func Decode[T any](msg *zlink.Message) (T, error) {

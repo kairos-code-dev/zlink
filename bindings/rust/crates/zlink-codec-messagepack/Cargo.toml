@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.85"
 description = "MessagePack codec extension for the zlink Rust bindings"
 license = "MPL-2.0"
+homepage = "https://zlink.systems/"
 
 [dependencies]
 rmp-serde = "1"

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"zlink"
+	"zlink.systems/zlink"
 )
 
 func TestRuntimeVersionIsAvailable(t *testing.T) {

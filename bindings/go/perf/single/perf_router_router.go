@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
-	"zlink"
-	"zlink/perf/internal/perfcommon"
+	"zlink.systems/zlink"
+	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 
 func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {

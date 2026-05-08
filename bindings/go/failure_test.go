@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"zlink"
+	"zlink.systems/zlink"
 )
 
 func TestSendDontWaitReturnsBackpressureWhenNoRoute(t *testing.T) {

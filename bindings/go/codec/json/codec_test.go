@@ -3,7 +3,7 @@ package json_test
 import (
 	"testing"
 
-	zlinkjson "zlink/codec/json"
+	zlinkjson "zlink.systems/zlink/codec/json"
 )
 
 type person struct {

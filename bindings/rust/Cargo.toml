@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.85"
 description = "Rust bindings for the zlink messaging library"
 license = "MPL-2.0"
+homepage = "https://zlink.systems/"
 
 [lib]
 name = "zlink"

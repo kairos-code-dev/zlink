@@ -1,6 +1,7 @@
 # zlink Go Binding API Reference
 
-The Go binding is implemented in the `zlink` module under `bindings/go`.
+The Go binding is implemented in the `zlink.systems/zlink` module under
+`bindings/go`.
 Documentation is generated directly from source comments and exported symbols.
 
 ## Generate

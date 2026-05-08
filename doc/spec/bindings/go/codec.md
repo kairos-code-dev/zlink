@@ -3,17 +3,18 @@
 # Go Codec Extension Specification
 
 This document defines the public contract for Go codec extension modules. The
-root `zlink` package does not expose these entrypoints, so applications opt in
-to codec dependencies explicitly.
+root `zlink.systems/zlink` package does not expose these entrypoints, so
+applications opt in to codec dependencies explicitly.
 
 ## Packages
 
-- `zlink/codec/proto`
-- `zlink/codec/json`
-- `zlink/codec/messagepack`
+- `zlink.systems/zlink/codec/proto`
+- `zlink.systems/zlink/codec/json`
+- `zlink.systems/zlink/codec/messagepack`
 
-These are separate public packages layered on top of the core `zlink` package.
-They must not be folded into the root package as required dependencies.
+These are separate public packages layered on top of the core
+`zlink.systems/zlink` package. They must not be folded into the root package as
+required dependencies.
 
 JSON codec baseline: `encoding/json`.
 MessagePack codec baseline: `vmihailenco/msgpack/v5`.

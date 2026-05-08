@@ -5,7 +5,7 @@ const require = createRequire(import.meta.url);
 
 function loadRealMessageClass() {
   const attempts = [
-    ["@ulalax/zlink", () => require("@ulalax/zlink").Message],
+    ["@zlink-systems/zlink", () => require("@zlink-systems/zlink").Message],
     ["../../dist/message.js", () => require("../../dist/message.js").Message],
   ];
   const errors = [];

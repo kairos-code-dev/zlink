@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"zlink"
+	"zlink.systems/zlink"
 )
 
 func TestPairSendRecvRoundTrip(t *testing.T) {

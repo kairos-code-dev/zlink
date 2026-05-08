@@ -1,15 +1,16 @@
 {
-  "name": "@ulalax/zlink-codec-messagepack",
+  "name": "@zlink-systems/zlink-codec-messagepack",
   "version": "5.3.4",
-  "description": "MessagePack codec extension for @ulalax/zlink",
+  "description": "MessagePack codec extension for @zlink-systems/zlink",
   "license": "MPL-2.0",
+  "homepage": "https://zlink.systems/",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc"
   },
   "peerDependencies": {
-    "@ulalax/zlink": ">=5.3.4",
+    "@zlink-systems/zlink": ">=5.3.4",
     "@msgpack/msgpack": ">=3.0.0"
   },
   "devDependencies": {

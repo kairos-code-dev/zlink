@@ -4,7 +4,7 @@ import (
 	"flag"
 	"time"
 
-	"zlink/perf/internal/perfcommon"
+	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 
 type benchmarkConfig struct {

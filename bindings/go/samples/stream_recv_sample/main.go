@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"zlink"
-	"zlink/samples/internal/samplecommon"
+	"zlink.systems/zlink"
+	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 
 func main() {

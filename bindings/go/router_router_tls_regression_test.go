@@ -2,9 +2,9 @@ package zlink_test
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
 	"runtime"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"

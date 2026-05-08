@@ -1,9 +1,9 @@
 package proto_test
 
 import (
-	"testing"
-	zlinkproto "zlink/codec/proto"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+	"testing"
+	zlinkproto "zlink.systems/zlink/codec/proto"
 )
 
 func TestProtoRoundtrip(t *testing.T) {

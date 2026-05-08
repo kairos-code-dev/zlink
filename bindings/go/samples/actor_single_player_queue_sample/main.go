@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"time"
-	"zlink"
-	"zlink/samples/internal/samplecommon"
+	"zlink.systems/zlink"
+	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 
 func main() {

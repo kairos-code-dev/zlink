@@ -844,7 +844,7 @@ N-API boundary is not copied again before it becomes a `Message`.
 
 Codec adapters are separate public extension packages layered on top of the
 core package. Their contract lives in
-[Node Codec Extension Specification](codec.md). The root `@ulalax/zlink`
+[Node Codec Extension Specification](codec.md). The root `@zlink-systems/zlink`
 entrypoint does not expose codec entrypoints or require codec dependencies.
 
 ### RoutingId

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"zlink/perf/internal/perfcommon"
+	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 
 func waitForMultiSpotReady(subs []multiSpotSubscriber) {

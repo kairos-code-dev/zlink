@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"zlink"
+	"zlink.systems/zlink"
 )
 
 func TestRoutingIDBoundary(t *testing.T) {

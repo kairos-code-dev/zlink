@@ -6,13 +6,13 @@ import (
 
 	pbproto "google.golang.org/protobuf/proto"
 
-	"zlink"
+	"zlink.systems/zlink"
 )
 
 var (
-	errNilMessage        = errors.New("zlink/codec/proto: nil message")
-	errNilValue          = errors.New("zlink/codec/proto: nil value")
-	errInvalidDecodeType = errors.New("zlink/codec/proto: Decode type must be a concrete protobuf message pointer")
+	errNilMessage        = errors.New("zlink.systems/zlink/codec/proto: nil message")
+	errNilValue          = errors.New("zlink.systems/zlink/codec/proto: nil value")
+	errInvalidDecodeType = errors.New("zlink.systems/zlink/codec/proto: Decode type must be a concrete protobuf message pointer")
 )
 
 // Decode unmarshals a zlink message into a concrete protobuf message pointer.

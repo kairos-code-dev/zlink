@@ -45,19 +45,19 @@ const (
 type RequestResult int
 
 const (
-	RequestOK            RequestResult = 0
-	RequestTimedOut      RequestResult = 101
-	RequestNotFound      RequestResult = 102
-	RequestTerminated    RequestResult = 103
-	RequestProtocolError RequestResult = 104
-	RequestInternalError RequestResult = 105
-	RequestRejected      RequestResult = 106
-	RequestConflict      RequestResult = 107
-	RequestBusy          RequestResult = 108
-	RequestNotConnected     RequestResult = 109
-	RequestInvalidArgument  RequestResult = 110
-	RequestInvalidState     RequestResult = 111
-	RequestNotSupported  RequestResult = 112
+	RequestOK              RequestResult = 0
+	RequestTimedOut        RequestResult = 101
+	RequestNotFound        RequestResult = 102
+	RequestTerminated      RequestResult = 103
+	RequestProtocolError   RequestResult = 104
+	RequestInternalError   RequestResult = 105
+	RequestRejected        RequestResult = 106
+	RequestConflict        RequestResult = 107
+	RequestBusy            RequestResult = 108
+	RequestNotConnected    RequestResult = 109
+	RequestInvalidArgument RequestResult = 110
+	RequestInvalidState    RequestResult = 111
+	RequestNotSupported    RequestResult = 112
 )
 
 type RecvResult int

@@ -1453,7 +1453,7 @@ func (s *XSubSocket) TopicsCount() (int, error) {
 }
 
 type StreamSocket struct {
-	core         *routedSocket
+	core          *routedSocket
 	boundSessions sync.Map // RoutingID.Hex() -> actorID string
 }
 

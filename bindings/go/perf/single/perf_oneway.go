@@ -5,8 +5,8 @@ import (
 	"os"
 	"time"
 
-	"zlink"
-	"zlink/perf/internal/perfcommon"
+	"zlink.systems/zlink"
+	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 
 type recvSocket interface {

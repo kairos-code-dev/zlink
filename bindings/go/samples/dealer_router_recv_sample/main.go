@@ -3,8 +3,8 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"zlink"
-	"zlink/samples/internal/samplecommon"
+	"zlink.systems/zlink"
+	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 
 func main() {

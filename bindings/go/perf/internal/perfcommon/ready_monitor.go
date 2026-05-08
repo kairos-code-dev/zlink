@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"zlink"
+	"zlink.systems/zlink"
 )
 
 func waitMonitorReady(

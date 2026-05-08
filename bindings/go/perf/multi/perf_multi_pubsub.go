@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"zlink"
-	"zlink/perf/internal/perfcommon"
+	"zlink.systems/zlink"
+	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 
 func runMultiPubSub(cfg multiConfig) perfcommon.Result {

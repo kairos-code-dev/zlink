@@ -3,8 +3,8 @@ package main
 import (
 	"time"
 
-	"zlink"
-	"zlink/perf/internal/perfcommon"
+	"zlink.systems/zlink"
+	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 
 func runPubSub(cfg benchmarkConfig) perfcommon.Result {

@@ -1,7 +1,7 @@
-module zlink/codec/json
+module zlink.systems/zlink/codec/json
 
 go 1.22
 
-require zlink v0.0.0
+require zlink.systems/zlink v0.0.0
 
-replace zlink => ../..
+replace zlink.systems/zlink => ../..

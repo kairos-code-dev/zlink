@@ -5,10 +5,10 @@ import (
 
 	"github.com/vmihailenco/msgpack/v5"
 
-	"zlink"
+	"zlink.systems/zlink"
 )
 
-var errNilMessage = errors.New("zlink/codec/messagepack: nil message")
+var errNilMessage = errors.New("zlink.systems/zlink/codec/messagepack: nil message")
 
 // Decode unmarshals a MessagePack payload from a zlink message.
 func Decode[T any](msg *zlink.Message) (T, error) {

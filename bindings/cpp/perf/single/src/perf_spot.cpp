@@ -422,18 +422,20 @@ bool run_pattern_spot (const std::string &transport,
         registry.set_broadcast_interval (50);
         pub_discovery.connect_registry (registry_router_endpoint);
         sub_discovery.connect_registry (registry_router_endpoint);
-        const int pubsub_hwm =
-          perf::single::resolve_single_socket_hwm (true);
-        const int router_hwm =
-          perf::single::resolve_single_socket_hwm (false);
-        pub_node.pubsub_admission_hwm (
-          zlink::message_count_t::value (pubsub_hwm));
-        sub_node.pubsub_admission_hwm (
-          zlink::message_count_t::value (pubsub_hwm));
-        pub_node.router_admission_hwm (
-          zlink::message_count_t::value (router_hwm));
-        sub_node.router_admission_hwm (
-          zlink::message_count_t::value (router_hwm));
+        if (perf::single::single_manual_socket_overrides_enabled ()) {
+            const int pubsub_hwm =
+              perf::single::resolve_single_socket_hwm (true);
+            const int router_hwm =
+              perf::single::resolve_single_socket_hwm (false);
+            pub_node.pubsub_admission_hwm (
+              zlink::message_count_t::value (pubsub_hwm));
+            sub_node.pubsub_admission_hwm (
+              zlink::message_count_t::value (pubsub_hwm));
+            pub_node.router_admission_hwm (
+              zlink::message_count_t::value (router_hwm));
+            sub_node.router_admission_hwm (
+              zlink::message_count_t::value (router_hwm));
+        }
         pub_node.bind (publisher_endpoint);
         sub_node.bind (subscriber_endpoint);
         pub_node.attach_discovery (pub_discovery);

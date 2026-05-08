@@ -1,585 +1,170 @@
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [Monitoring](./cpp-monitoring.ko.md) | [Registry](./cpp-registry.ko.md)
+[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [Monitoring](./cpp-monitoring.ko.md) | [Registry](./cpp-registry.ko.md)
 
-# Draft -- ZLink Framework C++ Interface Catalog
+# Draft -- ZLink Framework C++ Interface Alignment
 
 > 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `C++` host/runtime이 노출할 공용 타입과 registration
-> 표면을 한 곳에 모은 기준 문서다.
+> 현재 공개 계약이 아니며, 기존 `C++` adapter interface catalog를 standalone
+> framework 정책에 맞춰 정렬하기 위한 문서다.
+> 전체 public interface 설계의 기준은
+> [Framework 인터페이스](./cpp-framework-interfaces.ko.md)다.
 
-## 0. 공통 정책 반영
+## 1. 역할
 
-이 문서는 [Framework Adapter 정책](../../policy/README.ko.md)과
-[doc/spec/bindings/README.md](/home/hep7/project/kairos/zlink/doc/spec/bindings/README.md)의
-규칙을 그대로 따른다. 따라서 `C++` 문서에서는 아래를 기본으로 본다.
+이 문서는 예전 `C++` adapter 초안에서 사용하던 낮은 수준의 handler class와 client
+surface를 새 framework 정책으로 옮길 때 지켜야 할 기준을 정리한다.
 
-- 메서드는 `snake_case`, 타입은 `_t` 접미사를 쓴다.
-- 개념 이름은 공통 정책과 맞춘다. 예를 들어 `send`, `request`, `publish`,
-  `send_to`, `request_to`, `send_channel`, `request_channel` 같은 action 이름을
-  유지한다.
-- send/publish는 기본 async submit으로 설명한다. backpressure는 별도 public
-  no-wait 옵션이 아니라 framework 내부의 nonblocking send, pending queue,
-  ready notification으로 처리한다.
-- 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
-  설명한다.
+새 `C++` framework의 canonical 표면은 아래 문서에 둔다.
 
-## 1. Host 와 Context
+- [C++ 정책](./cpp-framework-policy.ko.md)
+- [Framework 인터페이스](./cpp-framework-interfaces.ko.md)
 
-```cpp
-namespace zlink::framework {
+따라서 이 문서는 별도의 API 계약을 추가하지 않는다. 기존 문서나 샘플에 남아 있던
+낡은 이름을 어떤 새 표면으로 맞출지 설명하는 정렬 문서로만 사용한다.
 
-struct send_options_t {
-    std::optional<std::string> packet_name;
-};
+## 2. 정렬 기준
 
-struct request_options_t {
-    std::optional<std::string> packet_name;
-    std::optional<std::chrono::milliseconds> timeout;
-};
+기존 초안의 표면은 아래 기준으로 바꾼다.
 
-struct routed_peer_entry_t {
-    std::string target_rid;
-    std::string endpoint;
-};
+| 기존 초안 표현 | 새 framework 기준 |
+|----------------|-------------------|
+| `app_t` builder chain 직접 조립 | `app_t::create()` 후 `services()`, `handlers()`, `use_zlink()`로 구성 |
+| raw request/send/event handler class | `handler_registry_t`의 typed member function 등록 |
+| channel client 직접 주입 | `message_bus_t`, `request_client_t`, `publisher_t` DI 주입 |
+| event publisher 전용 타입 | `publisher_t::publish(channel, topic, event)` |
+| channel 전체 연결 설정 | capability builder의 `bind`, `connect`, `use_discovery` |
+| spot 전용 publisher client | `spot_context_t` 또는 `publisher_t`의 channel/topic 표면 |
 
-struct discovery_config_t {
-    std::vector<std::string> registry_endpoints;
-};
+handler owner는 service collection에 등록된 타입이어야 한다. 등록되지 않은 owner를
+framework가 암묵적으로 생성하지 않는다. 이 규칙은 handler lifecycle과 shutdown 중
+resolve 금지 같은 host 정책을 한곳에서 닫기 위해 필요하다.
 
-struct client_capability_options_t {
-    std::vector<std::string> manual_connections;
-};
+## 3. Handler 등록 기준
 
-struct subscriber_capability_options_t {
-    std::vector<std::string> manual_connections;
-};
-
-struct spot_router_capability_options_t {
-    std::vector<routed_peer_entry_t> manual_connections;
-};
-
-struct spot_pubsub_capability_options_t {
-    std::vector<std::string> manual_connections;
-};
-
-struct spot_channel_client_capability_options_t {
-    std::vector<std::string> manual_connections;
-};
-
-struct spot_publisher_client_capability_options_t {
-    std::vector<std::string> manual_connections;
-};
-
-struct spot_factory_entry_t {
-    std::string spot_name;
-    std::string spot_type_name;
-};
-
-struct spot_node_options_t {
-    std::optional<std::string> bind;
-    std::optional<spot_router_capability_options_t> router;
-    std::optional<spot_pubsub_capability_options_t> pub_sub;
-    std::map<std::string, spot_channel_client_capability_options_t> channel_clients;
-    std::map<std::string, spot_publisher_client_capability_options_t> spot_publishers;
-    std::vector<spot_factory_entry_t> spot_factories;
-};
-
-struct handler_context_t {
-    std::optional<std::string> channel_name;
-    std::optional<std::string> packet_name;
-    std::optional<std::string> content_type;
-    std::optional<std::string> correlation_id;
-};
-
-} // namespace zlink::framework
-```
-
-## 2. Handler
+일반 사용자는 raw `message_t` handler class를 상속하지 않고, typed payload와 member
+function pointer를 등록한다.
 
 ```cpp
-namespace zlink::framework {
+app.services()
+  .add_transient<order_handler_t>();
 
-class request_handler_t {
-public:
-    virtual ~request_handler_t() = default;
-    virtual message_t handle(
-      const message_t &request,
-      const request_context_t &context) = 0;
-};
+app.handlers()
+  .subscribe<order_created_t, order_handler_t>(
+    "orders",
+    "orders.created",
+    &order_handler_t::on_created);
 
-class send_handler_t {
-public:
-    virtual ~send_handler_t() = default;
-    virtual void handle(
-      const message_t &message,
-      const send_context_t &context) = 0;
-};
-
-class event_handler_t {
-public:
-    virtual ~event_handler_t() = default;
-    virtual void handle(
-      const message_t &event,
-      const event_context_t &context) = 0;
-};
-
-enum class stream_session_error_t {
-    internal = 0,
-    transport_error,
-    handshake_failed
-};
-
-struct stream_error_t {
-    stream_session_error_t error;
-    int internal_errno;
-};
-
-class stream_t {
-public:
-    virtual ~stream_t() = default;
-    virtual std::string session_id() const = 0;
-    virtual std::optional<routing_id_t> routing_id() const = 0;
-    virtual std::future<void> write(
-      const message_t &payload,
-      send_flags_t flags = send_flags_t::none) = 0;
-    virtual std::future<void> write_packet(
-      const message_t &header,
-      const message_t &body,
-      send_flags_t flags = send_flags_t::none) = 0;
-};
-
-class packet_stream_session_t {
-public:
-    virtual ~packet_stream_session_t() = default;
-    virtual void on_connected(stream_t &stream) = 0;
-    virtual void on_disconnected(stream_t &stream) = 0;
-    virtual void on_error(stream_t &stream, const stream_error_t &error) = 0;
-    virtual void on_packet(
-      stream_t &stream,
-      const message_t &header,
-      const message_t &body) = 0;
-};
-
-class raw_stream_session_t {
-public:
-    virtual ~raw_stream_session_t() = default;
-    virtual void on_connected(stream_t &stream) = 0;
-    virtual void on_disconnected(stream_t &stream) = 0;
-    virtual void on_error(stream_t &stream, const stream_error_t &error) = 0;
-    virtual void on_raw(stream_t &stream, const message_t &payload) = 0;
-};
-
-enum class socket_event_kind_t {
-    connected = 0,
-    connection_ready,
-    disconnected,
-    handshake_failed,
-    peer_admission_changed,
-    closed,
-    internal
-};
-
-struct socket_event_t {
-    std::string source_name;
-    socket_event_kind_t event;
-};
-
-enum class discovery_event_kind_t {
-    service_up = 0,
-    service_down,
-    providers_changed,
-    peer_admission_changed,
-    error,
-    closed,
-    internal
-};
-
-struct discovery_event_t {
-    std::string source_name;
-    discovery_event_kind_t event;
-};
-
-enum class registry_event_kind_t {
-    status_changed = 0,
-    topology_changed,
-    service_summary_changed
-};
-
-struct registry_event_t {
-    std::string source_name;
-    registry_event_kind_t event;
-};
-
-enum class spot_event_kind_t {
-    status_changed = 0,
-    peers_changed,
-    subjects_changed
-};
-
-struct spot_event_t {
-    std::string source_name;
-    spot_event_kind_t event;
-};
-
-class monitoring_options_t {
-public:
-    virtual ~monitoring_options_t() = default;
-    virtual void add_socket_events(
-      std::string_view source_name,
-      std::uint32_t events) = 0;
-    virtual void add_discovery_events(
-      std::string_view source_name) = 0;
-    virtual void add_registry_events(
-      std::string_view source_name,
-      std::chrono::milliseconds interval) = 0;
-    virtual void add_spot_events(
-      std::string_view source_name,
-      std::chrono::milliseconds interval) = 0;
-};
-
-template <typename TEvent>
-class runtime_event_handler_t {
-public:
-    virtual ~runtime_event_handler_t() = default;
-    virtual void handle(const TEvent &event) = 0;
-};
-
-} // namespace zlink::framework
+app.handlers()
+  .request<get_order_status_t, order_status_reply_t, order_handler_t>(
+    "orders",
+    "orders.status",
+    &order_handler_t::get_status);
 ```
 
-## 3. Client
+raw payload가 필요한 경우에만 `send_raw(...)` 같은 고급 extension을 사용한다. STREAM은
+MVP에서 framework Header 기반 packet 방식만 지원하므로 raw stream session은 공개
+표면에 두지 않는다. 일반 샘플은 typed handler registry를 먼저 보여 준다.
+
+## 4. Messaging 주입 기준
+
+handler나 service가 outbound messaging을 해야 하면 framework가 기본 등록한 messaging
+service를 DI로 받는다.
 
 ```cpp
-namespace zlink::framework {
-
-class client_t {
+class order_service_t final {
 public:
-    virtual ~client_t() = default;
+    explicit order_service_t(zlink::framework::request_client_t &client)
+      : client_(client)
+    {
+    }
 
-    virtual std::future<void> send(
-      std::string_view channel_name,
-      const message_t &message,
-      const send_options_t &options = {}) = 0;
+    std::future<order_status_reply_t> get_status(order_status_query_t query)
+    {
+        return client_.request<order_status_reply_t>("orders", query);
+    }
 
-    virtual std::future<message_t> request(
-      std::string_view channel_name,
-      const message_t &request,
-      const request_options_t &options = {}) = 0;
+private:
+    zlink::framework::request_client_t &client_;
 };
-
-class spot_client_t {
-public:
-    virtual ~spot_client_t() = default;
-
-    virtual std::future<void> send_channel(
-      std::string_view channel_name,
-      const message_t &message,
-      const send_options_t &options = {}) = 0;
-
-    virtual std::future<message_t> request_channel(
-      std::string_view channel_name,
-      const message_t &request,
-      const request_options_t &options = {}) = 0;
-
-    virtual std::future<void> send_to(
-      routing_id_t target_rid,
-      routing_id_t spot_rid,
-      const message_t &message,
-      const send_options_t &options = {}) = 0;
-
-    virtual std::future<message_t> request_to(
-      routing_id_t target_rid,
-      routing_id_t spot_rid,
-      const message_t &request,
-      const request_options_t &options = {}) = 0;
-
-    virtual std::future<void> publish(
-      std::string_view topic,
-      const message_t &message,
-      const send_options_t &options = {}) = 0;
-};
-
-class spot_publisher_client_t {
-public:
-    virtual ~spot_publisher_client_t() = default;
-
-    virtual std::future<void> publish(
-      std::string_view channel_name,
-      std::string_view topic,
-      const message_t &message,
-      const send_options_t &options = {}) = 0;
-};
-
-class event_publisher_t {
-public:
-    virtual ~event_publisher_t() = default;
-
-    virtual std::future<void> publish(
-      std::string_view channel_name,
-      std::string_view topic,
-      const message_t &message,
-      const send_options_t &options = {}) = 0;
-};
-
-struct spot_create_result_t {
-    routing_id_t spot_rid;
-    std::string spot_name;
-    bool created;
-};
-
-struct spot_info_t {
-    routing_id_t spot_rid;
-    std::string spot_name;
-};
-
-class spot_manager_t {
-public:
-    virtual ~spot_manager_t() = default;
-
-    virtual spot_create_result_t create(std::string_view spot_name) = 0;
-    virtual spot_create_result_t create(
-      std::string_view spot_name,
-      routing_id_t spot_rid) = 0;
-    virtual std::optional<spot_info_t> get(routing_id_t spot_rid) const = 0;
-    virtual std::vector<spot_info_t> list() const = 0;
-    virtual bool remove(routing_id_t spot_rid) = 0;
-};
-
-class timer_t {
-public:
-    virtual ~timer_t() = default;
-    virtual bool is_disposed() const = 0;
-    virtual void cancel() = 0;
-};
-
-class spot_t {
-public:
-    virtual ~spot_t() = default;
-    virtual routing_id_t spot_rid() const = 0;
-    virtual std::unique_ptr<timer_t> add_timer(
-      std::string name,
-      std::chrono::milliseconds period,
-      std::string handler_type_name) = 0;
-};
-
-} // namespace zlink::framework
 ```
 
-packet key 해석 규칙은 아래 순서를 기본으로 본다.
-
-1. `options.packet_name`
-2. payload registration metadata
-3. payload 타입 이름
-
-## 4. Host
+event publish는 channel name과 topic을 함께 받는다.
 
 ```cpp
-namespace zlink::framework {
-
-class manual_peer_list_builder_t {
-public:
-    virtual ~manual_peer_list_builder_t() = default;
-    virtual void connect(std::string endpoint) = 0;
-};
-
-class manual_router_peer_list_builder_t {
-public:
-    virtual ~manual_router_peer_list_builder_t() = default;
-    virtual void connect(std::string endpoint) = 0;
-};
-
-class client_capability_builder_t {
-public:
-    virtual ~client_capability_builder_t() = default;
-    virtual void use_manual_connections(
-      std::function<void(manual_peer_list_builder_t &)> configure) = 0;
-};
-
-class subscriber_capability_builder_t {
-public:
-    virtual ~subscriber_capability_builder_t() = default;
-    virtual void use_manual_connections(
-      std::function<void(std::vector<std::string> &)> configure) = 0;
-};
-
-class spot_router_capability_builder_t {
-public:
-    virtual ~spot_router_capability_builder_t() = default;
-    virtual void use_manual_connections(
-      std::function<void(manual_router_peer_list_builder_t &)> configure) = 0;
-};
-
-class spot_pubsub_capability_builder_t {
-public:
-    virtual ~spot_pubsub_capability_builder_t() = default;
-    virtual void use_manual_connections(
-      std::function<void(manual_peer_list_builder_t &)> configure) = 0;
-};
-
-class spot_channel_client_capability_builder_t {
-public:
-    virtual ~spot_channel_client_capability_builder_t() = default;
-    virtual void use_manual_connections(
-      std::function<void(manual_peer_list_builder_t &)> configure) = 0;
-};
-
-class spot_publisher_client_capability_builder_t {
-public:
-    virtual ~spot_publisher_client_capability_builder_t() = default;
-    virtual void use_manual_connections(
-      std::function<void(manual_peer_list_builder_t &)> configure) = 0;
-};
-
-class spot_node_builder_t {
-public:
-    virtual ~spot_node_builder_t() = default;
-    virtual void bind(std::string endpoint) = 0;
-    virtual void enable_router() = 0;
-    virtual void enable_router(
-      std::function<void(spot_router_capability_builder_t &)> configure) = 0;
-    virtual void enable_pub_sub() = 0;
-    virtual void enable_pub_sub(
-      std::function<void(spot_pubsub_capability_builder_t &)> configure) = 0;
-    virtual void attach_channel_client(std::string channel_name) = 0;
-    virtual void attach_channel_client(
-      std::string channel_name,
-      std::function<void(spot_channel_client_capability_builder_t &)> configure) = 0;
-    virtual void attach_spot_publisher_client(std::string channel_name) = 0;
-    virtual void attach_spot_publisher_client(
-      std::string channel_name,
-      std::function<void(spot_publisher_client_capability_builder_t &)> configure) = 0;
-    virtual void add_spot_factory(
-      std::string spot_name,
-      std::string spot_type_name) = 0;
-};
-
-class channel_builder_t {
-public:
-    virtual ~channel_builder_t() = default;
-    virtual void enable_server() = 0;
-    virtual void enable_client() = 0;
-    virtual void enable_client(
-      std::function<void(client_capability_builder_t &)> configure) = 0;
-    virtual void enable_publisher() = 0;
-    virtual void enable_subscriber() = 0;
-    virtual void enable_subscriber(
-      std::function<void(subscriber_capability_builder_t &)> configure) = 0;
-};
-
-class app_t {
-public:
-    static app_t build();
-
-    app_t &add_channel(
-      std::string channel_name,
-      std::function<void(channel_builder_t &)> configure);
-    app_t &use_discovery(discovery_config_t config);
-    app_t &use_spot_discovery(
-      std::string channel_name,
-      discovery_config_t config);
-    app_t &add_spot_node(
-      std::string spot_node_name,
-      std::function<void(spot_node_builder_t &)> configure);
-    app_t &add_request_handler(std::string packet_name, request_handler_t &handler);
-    app_t &add_send_handler(std::string packet_name, send_handler_t &handler);
-    app_t &run();
-};
-
-} // namespace zlink::framework
+publisher.publish(
+  "orders",
+  "orders.created",
+  event,
+  zlink::framework::send_options_t{
+    .packet_name = "orders.created",
+  });
 ```
+
+## 5. Host 구성 기준
+
+runtime 구성은 `use_zlink(...)` 하나로 들어간다. channel 연결 설정은 channel 전체가
+아니라 capability builder에 둔다.
 
 ```cpp
-namespace zlink::framework {
-
-class channel_client_connections_t {
-public:
-    virtual ~channel_client_connections_t() = default;
-    virtual void connect(std::string endpoint) = 0;
-    virtual void disconnect(std::string_view endpoint) = 0;
-    virtual std::vector<std::string> list_connections() const = 0;
-};
-
-class channel_subscriber_connections_t {
-public:
-    virtual ~channel_subscriber_connections_t() = default;
-    virtual void connect(std::string endpoint) = 0;
-    virtual void disconnect(std::string_view endpoint) = 0;
-    virtual std::vector<std::string> list_connections() const = 0;
-};
-
-class channel_connection_manager_t {
-public:
-    virtual ~channel_connection_manager_t() = default;
-    virtual channel_client_connections_t &get_client(std::string_view channel_name) = 0;
-    virtual channel_subscriber_connections_t &get_subscriber(std::string_view channel_name) = 0;
-};
-
-class spot_router_connections_t {
-public:
-    virtual ~spot_router_connections_t() = default;
-    virtual void connect(std::string endpoint) = 0;
-    virtual void disconnect(std::string_view endpoint) = 0;
-    virtual std::vector<std::string> list_connections() const = 0;
-};
-
-class spot_pubsub_connections_t {
-public:
-    virtual ~spot_pubsub_connections_t() = default;
-    virtual void connect(std::string endpoint) = 0;
-    virtual void disconnect(std::string_view endpoint) = 0;
-    virtual std::vector<std::string> list_connections() const = 0;
-};
-
-class spot_channel_client_connections_t {
-public:
-    virtual ~spot_channel_client_connections_t() = default;
-    virtual void connect(std::string endpoint) = 0;
-    virtual void disconnect(std::string_view endpoint) = 0;
-    virtual std::vector<std::string> list_connections() const = 0;
-};
-
-class spot_publisher_client_connections_t {
-public:
-    virtual ~spot_publisher_client_connections_t() = default;
-    virtual void connect(std::string endpoint) = 0;
-    virtual void disconnect(std::string_view endpoint) = 0;
-    virtual std::vector<std::string> list_connections() const = 0;
-};
-
-class spot_connection_manager_t {
-public:
-    virtual ~spot_connection_manager_t() = default;
-    virtual spot_router_connections_t &get_router(std::string_view spot_node_name) = 0;
-    virtual spot_pubsub_connections_t &get_pub_sub(std::string_view spot_node_name) = 0;
-    virtual spot_channel_client_connections_t &get_channel_client(
-      std::string_view spot_node_name,
-      std::string_view channel_name) = 0;
-    virtual spot_publisher_client_connections_t &get_spot_publisher_client(
-      std::string_view spot_node_name,
-      std::string_view channel_name) = 0;
-};
-
-} // namespace zlink::framework
+app.use_zlink([](auto &zlink) {
+    zlink.node("order-node")
+      .discovery([](auto &discovery) {
+          discovery.connect_registry("tcp://registry:5551");
+      })
+      .channel("orders", [](auto &channel) {
+          channel.enable_server([](auto &server) {
+              server.bind("tcp://0.0.0.0:7001");
+          });
+          channel.enable_client([](auto &client) {
+              client.use_discovery();
+          });
+          channel.enable_publisher([](auto &publisher) {
+              publisher.bind("tcp://0.0.0.0:7002");
+          });
+          channel.enable_subscriber([](auto &subscriber) {
+              subscriber.use_discovery();
+          });
+      });
+});
 ```
 
-위 builder 타입들이 `cpp-channel-messaging.ko.md`와
-`channel-messaging-samples.ko.md`, `cpp-spot.ko.md`, `spot-samples.ko.md`에서 쓰는
-`add_channel(...)`, `channel.enable_client(...)`,
-`client.use_manual_connections(...)`, `add_spot_node(...)`의 기준 표면이다.
+수동 연결은 capability 안에서 endpoint 기준으로 설정한다. 같은 capability 안에서
+수동 연결과 Discovery 연결을 섞지 않는다.
 
-일반 channel client manual 연결은 endpoint 집합만 다루고, `SPOT` router manual
-연결도 같은 방식으로 endpoint 집합만 등록한다. 이 초안에서는 `connect(...)`
-호출 시 remote router id를 따로 받지 않는다. `spot_manager_t`는 등록된
-`spot_name`으로 factory를 고르고, `get(...)`와 `list()`는 runtime이 들고 있는
-`spot_rid -> spot_name` 매핑을 다시 보는 용도다.
+## 6. SPOT 기준
 
-## 5. 중요한 규칙
+`SPOT`은 binding의 `zlink::service::spot_node_t`와 `zlink::service::spot_t`를
+framework builder와 `spot_context_t`로 감싸서 제공한다.
 
+```cpp
+app.use_zlink([](auto &zlink) {
+    zlink.node("stage-node")
+      .channel("game.stage", [](auto &channel) {
+          channel.enable_publisher();
+          channel.enable_subscriber([](auto &subscriber) {
+              subscriber.use_discovery();
+          });
+      })
+      .spot_node("stage-spot-node", [](auto &spot_node) {
+          spot_node.bind("tcp://0.0.0.0:9000");
+          spot_node.use_discovery("game.stage");
+          spot_node.attach_channel_client("profile");
+          spot_node.attach_publisher("game.stage");
+          spot_node.add_spot<stage_spot_t>("stage");
+      });
+});
+```
+
+직접 `routing_id_t`를 받는 API는 spot-to-spot send/request 경로에 제한한다. 일반
+application handler와 publisher는 channel name과 topic을 먼저 사용한다.
+
+## 7. 중요한 규칙
+
+- `C++` framework 문서는 공통 framework 정책과 C++ binding public spec을 함께 따른다.
+- 구현 전 설계는 이 디렉토리의 draft 문서에만 둔다.
+- public surface는 native socket, poller, callback userdata를 직접 노출하지 않는다.
 - 같은 capability는 자동 연결과 수동 연결 중 하나만 선택한다.
-- 수동 연결은 `channel + capability` 단위로 관리한다.
-- manual capability는 startup 등록뿐 아니라 런타임 `connect`, `disconnect`,
-  `list_connections`도 지원해야 한다.
-- 일반 channel messaging의 handler dispatch는 local `ROUTER(server)` ingress 기준이다.
-- outbound `DEALER(client)` 수신은 reply correlation 경로로 본다.
+- 일반 channel messaging의 handler dispatch는 local server capability ingress 기준이다.
+- outbound client capability의 receive path는 reply correlation 경로로 본다.
 - `ROUTER -> DEALER` 임의 push는 channel messaging 공용 계약에 넣지 않는다.

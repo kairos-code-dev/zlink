@@ -33,7 +33,7 @@
   한다.
 - `stream`은 일반 request handler와 다른 전용 handler 그룹으로 분리할 수
   있어야 한다.
-- `stream`은 packet/raw session 두 축을 우선 지원하고, recv loop는
+- `stream`은 framework Header 기반 packet session만 우선 지원하고, recv loop는
   기본 application 표면에 올리지 않는다.
 - `stream` callback은 write와 peer 식별을 함께 가진 stream 객체를 받고,
   session error는 error kind enum과 native detail을 함께 가진 구조화된 값으로
@@ -218,6 +218,48 @@ request도 reply를 기다리는 async 호출로 설명한다. 다만 request pa
 [../bindings/dotnet/aspnet-core-spot.ko.md](../bindings/dotnet/aspnet-core-spot.ko.md)
 같은 binding 문서를 기준으로 본다.
 
+#### 3.3.1 Actor lifecycle — zlink 라이브러리 위임
+
+zlink 라이브러리에 native Actor API가 추가됨에 따라, framework는 actor lifecycle를
+자체 구현 대신 라이브러리의 native API로 위임한다. 이 정책의 핵심은 아래와 같다.
+
+##### Actor 생성 및 입장 흐름
+
+1. `SpotNode.EntrySpot()` — framework가 입장 수신용 `Spot`을 얻는다.
+2. `Spot.RecvActorJoin(RecvFlags)` — actor join request를 수신한다.
+3. framework가 join 요청 메시지를 ZMP 포맷으로 해석해 등록된 actor join handler를 호출한다.
+4. `Spot.ReplyActorJoin(request, accepted, replyMessage)` — join 결과를 응답한다.
+
+##### Actor 생성 (SpotNode 측)
+
+- `SpotNode.CreateActor(string actorId)` — actor node에서 actor를 생성한다.
+- `Actor.Join(Spot spot, Message request, TimeSpan timeout, CancellationToken)` — actor가 특정 spot에 join을 요청한다.
+- `Actor.Leave(Spot spot, TimeSpan timeout)` — actor가 spot에서 나간다.
+
+##### Actor 메시지 수신
+
+zlink 라이브러리의 `SpotDispatchEvent` 중 두 가지가 actor lifecycle과 관련된다.
+
+| 이벤트 | 값 | 의미 |
+| ------ | -- | ---- |
+| `ActorJoinReadable` | 6 | 새 actor join 요청이 도착했음 |
+| `ActorReadable` | 5 | join된 actor의 STREAM 메시지가 도착했음 |
+
+framework는 이 두 이벤트를 아래와 같이 처리한다.
+
+- `ActorJoinReadable` → `Spot.RecvActorJoin(DontWait)` 루프로 모든 요청을 drain한 뒤 application join handler를 호출하고 `ReplyActorJoin`으로 결과를 반환한다. join handler에는 join 요청의 `TargetActor`(해당 spot에 이미 등록된 로컬 actor)와 요청 메시지를 전달한다.
+- `ActorReadable` → 백엔드가 미리 drain한 `ActorPart` 목록을 받아 STREAM 메시지 단위로 묶어서 actor dispatch를 수행한다. 각 메시지는 header part (More=true) + body part (More=false) 구조다.
+
+`OnDispatchEvent` 핸들러는 spot 초기화 시 항상 등록한다. 패킷 handler나 actor join handler가 없는 spot도 런타임에 actor가 join될 수 있으므로 `ActorReadable` 이벤트를 받을 준비가 되어 있어야 한다.
+
+##### 실행 문맥 보장
+
+두 이벤트 모두 spot serial executor를 통해 직렬화된 실행 문맥 안에서 처리되므로, actor join handler와 actor packet handler 사이에 동시성 경합이 없다.
+
+##### framework가 직접 관리하지 않는 것
+
+framework는 `Actor` 객체 자체의 네트워크 수명이 아니라, application actor 객체의 lifecycle과 dispatch routing만 관리한다. native `Actor`의 send/recv 루프는 라이브러리가 담당하며, framework는 dispatch event를 통해 통보를 받는다.
+
 ## 4. Spring Boot 방향
 
 ### 4.1 기대하는 표면
@@ -353,8 +395,8 @@ dispatch loop를 framework가 직접 관리하는 것이다.
   범용 application scheduler까지 표준 표면으로 끌어올리지는 않는다.
 - pub/sub은 일반 `PUB/SUB` event 모델을 먼저 설명하고, `SPOT` event는 별도 상위
   모델로 분리한다.
-- `STREAM` 정책 설명은 packet/raw session과 session lifecycle 축으로 충분하다고
-  본다.
+- `STREAM` 정책 설명은 framework Header 기반 packet session과 session lifecycle
+  축으로 충분하다고 본다.
 - scatter-gather 같은 aggregate helper는 adapter 기본 기능이 아니라 별도 확장
   계층으로 둔다.
 - context에는 routing, timeout, trace 같은 공통 metadata만 올리고, workflow 엔진

@@ -10,8 +10,8 @@
 
 ## 1. 목적
 
-`STREAM`은 packet session과 raw session의 큰 방향만 잡아 두면 구현 단계에서 다시
-흔들리기 쉽다. 이 문서는 serializer, write, lifecycle 기준을 미리 닫아서
+`STREAM`은 framework Header 기반 packet session 범위를 먼저 닫지 않으면 구현 단계에서
+다시 흔들리기 쉽다. 이 문서는 serializer, write, lifecycle 기준을 미리 닫아서
 registration surface와 테스트 기준이 바뀌지 않게 만드는 데 목적이 있다.
 
 현재 기준에서 먼저 고정한 축은 아래 세 가지다.

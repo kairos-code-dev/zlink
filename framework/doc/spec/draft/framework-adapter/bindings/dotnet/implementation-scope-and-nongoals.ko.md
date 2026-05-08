@@ -26,7 +26,7 @@
 - `AddSpotNode(...)`, `UseSpotDiscovery(...)`
 - `IZLinkSpotManager`, `IZLinkSpotClient`, `IZLinkSpotPublisherClient`
 - spot packet/subscribe/timer registration
-- `AddStreamNode(...)`와 packet/raw session 한 종류 등록
+- `AddStreamNode(...)`와 framework Header 기반 packet session 등록
 - `AddZLinkRegistry(...)`, `IZLinkRegistryQuery`, `IZLinkRegistryQueryClient`
 - `AddZLinkMonitoring(...)`과 socket/registry/spot source
 - `.NET DI`와 hosted service lifecycle 통합

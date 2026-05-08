@@ -27,8 +27,9 @@ inline void print_result (const std::string &lib_type,
     const double latency_ms = latency / 1000000.0;
     const double latency_p95_ms = latency_p95 / 1000000.0;
     const double latency_p99_ms = latency_p99 / 1000000.0;
+    const double direction_factor = pattern == "SPOT_REQREP" ? 2.0 : 1.0;
     const double bandwidth_mb_s =
-      (throughput * static_cast<double> (size)) / 1000000.0;
+      (throughput * static_cast<double> (size) * direction_factor) / 1000000.0;
 
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
               << "," << size << ",throughput," << std::fixed

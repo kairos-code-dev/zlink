@@ -19,13 +19,12 @@ struct latency_sampler_stats_t
 class latency_sampler_t
 {
   public:
-    explicit latency_sampler_t (size_t cap = 200000)
-        : _cap (cap > 0 ? cap : 1),
-          _count (0),
-          _sum (0.0),
-          _rng (0x9e3779b97f4a7c15ULL)
+    explicit latency_sampler_t (size_t reserve_hint = 200000)
+        : _count (0),
+          _sum (0.0)
     {
-        _samples.reserve (_cap);
+        if (reserve_hint > 0)
+            _samples.reserve (reserve_hint);
     }
 
     void add (double latency_ns)
@@ -33,15 +32,7 @@ class latency_sampler_t
         const double sample = latency_ns >= 0.0 ? latency_ns : 0.0;
         ++_count;
         _sum += sample;
-
-        if (_samples.size () < _cap) {
-            _samples.push_back (sample);
-            return;
-        }
-
-        const unsigned long long slot = next_rand () % _count;
-        if (slot < static_cast<unsigned long long> (_cap))
-            _samples[static_cast<size_t> (slot)] = sample;
+        _samples.push_back (sample);
     }
 
     void merge_from (const latency_sampler_t &other)
@@ -50,21 +41,9 @@ class latency_sampler_t
             return;
 
         _sum += other._sum;
-        const unsigned long long merged_count = _count + other._count;
-        unsigned long long seen = _count;
-        for (size_t i = 0; i < other._samples.size (); ++i) {
-            ++seen;
-            const double sample = other._samples[i];
-            if (_samples.size () < _cap) {
-                _samples.push_back (sample);
-                continue;
-            }
-
-            const unsigned long long slot = next_rand () % seen;
-            if (slot < static_cast<unsigned long long> (_cap))
-                _samples[static_cast<size_t> (slot)] = sample;
-        }
-        _count = merged_count;
+        _count += other._count;
+        _samples.insert (
+          _samples.end (), other._samples.begin (), other._samples.end ());
     }
 
     unsigned long long count () const
@@ -112,22 +91,8 @@ class latency_sampler_t
         return values[lo] + (values[hi] - values[lo]) * frac;
     }
 
-    unsigned long long next_rand ()
-    {
-        if (_rng == 0)
-            _rng = 0x9e3779b97f4a7c15ULL;
-        unsigned long long x = _rng;
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        _rng = x;
-        return x;
-    }
-
-    size_t _cap;
     unsigned long long _count;
     double _sum;
-    unsigned long long _rng;
     std::vector<double> _samples;
 };
 

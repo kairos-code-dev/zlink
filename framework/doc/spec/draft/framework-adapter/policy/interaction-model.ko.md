@@ -95,8 +95,8 @@
   session 모델이 필요하다.
 - stream callback은 별도 recv context보다, write와 peer metadata를 함께 가진
   stream 객체를 인자로 받는 편이 더 자연스럽다.
-- packet path와 raw path는 나눌 수 있지만, 둘 다 session lifecycle 위에서
-  설명하는 편이 더 자연스럽다.
+- framework 표면은 Header 기반 packet path만 먼저 지원한다. raw byte dispatch는
+  MVP 범위에 넣지 않는다.
 - session error는 application handler 예외가 아니라, monitor에서 관찰 가능한
   transport 오류를 session 단위로 다시 올리는 축으로 제한하는 편이 맞다.
 - 이 session error는 raw monitor event를 그대로 노출하기보다, error kind enum과

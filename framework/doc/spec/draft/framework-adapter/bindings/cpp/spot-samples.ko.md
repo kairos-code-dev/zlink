@@ -1,6 +1,6 @@
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [SPOT](./cpp-spot.ko.md)
+[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [SPOT](./cpp-spot.ko.md)
 
 # Draft -- ZLink Framework C++ SPOT Samples
 
@@ -10,111 +10,95 @@
 ## 1. 등록과 `spot_name`
 
 ```cpp
-auto app = app_t::build()
-  .use_spot_discovery("game.stage", discovery_config_t{
-      .registry_endpoints = {"tcp://registry1:5551"},
-  })
-  .add_spot_node("stage-node", [](auto &spot) {
-      spot.bind("tcp://0.0.0.0:9000");
-      spot.enable_router();
-      spot.enable_pub_sub();
-      spot.attach_channel_client("profile");
-      spot.attach_spot_publisher_client("game.stage");
-      spot.add_spot_factory("stage", "stage_spot_t");
-      spot.add_spot_factory("room", "room_spot_t");
-  });
+auto app = zlink::framework::app_t::create();
+
+app.use_zlink([](auto &zlink) {
+    zlink.node("stage-node")
+      .discovery([](auto &discovery) {
+          discovery.connect_registry("tcp://registry1:5551");
+      })
+      .channel("game.stage", [](auto &channel) {
+          channel.enable_publisher();
+          channel.enable_subscriber([](auto &subscriber) {
+              subscriber.use_discovery();
+          });
+      })
+      .channel("profile", [](auto &channel) {
+          channel.enable_client([](auto &client) {
+              client.use_discovery();
+          });
+      })
+      .spot_node("stage-spot-node", [](auto &spot_node) {
+          spot_node.bind("tcp://0.0.0.0:9000");
+          spot_node.use_discovery("game.stage");
+          spot_node.attach_channel_client("profile");
+          spot_node.attach_publisher("game.stage");
+          spot_node.add_spot<stage_spot_t>("stage");
+          spot_node.add_spot<room_spot_t>("room");
+      });
+});
 ```
 
-## 2. manager로 생성과 조회
+## 2. spot 객체와 publish
 
 ```cpp
-class stage_bootstrap_t {
+class stage_spot_t final {
 public:
-    explicit stage_bootstrap_t(spot_manager_t &spot_manager)
-      : spot_manager_(spot_manager) {}
-
-    void warmup()
+    explicit stage_spot_t(zlink::framework::spot_context_t &context)
+      : context_(context)
     {
-        auto created = spot_manager_.create("stage");
-        auto info = spot_manager_.get(created.spot_rid);
-        auto all = spot_manager_.list();
     }
-
-private:
-    spot_manager_t &spot_manager_;
-};
-```
-
-## 3. spot 객체와 timer
-
-```cpp
-class stage_spot_t final : public spot_t {
-public:
-    explicit stage_spot_t(routing_id_t spot_rid)
-      : spot_rid_(spot_rid) {}
-
-    routing_id_t spot_rid() const override
-    {
-        return spot_rid_;
-    }
-
-    std::unique_ptr<timer_t> add_timer(
-      std::string name,
-      std::chrono::milliseconds period,
-      std::string handler_type_name) override;
 
     void initialize()
     {
-        heartbeat_ = add_timer(
-          "heartbeat",
-          std::chrono::seconds(1),
-          "stage_heartbeat_handler_t");
+        context_.on_send_ready([](auto &ready) {
+            ready.resume_pending();
+        });
+    }
+
+    void update_state(const stage_state_updated_t &event)
+    {
+        context_.publish("stage.state.updated", event);
     }
 
 private:
-    routing_id_t spot_rid_;
-    std::unique_ptr<timer_t> heartbeat_;
+    zlink::framework::spot_context_t &context_;
 };
 ```
 
-## 4. request, subscription, channel 호출
+## 3. spot-to-spot request
 
 ```cpp
-class stage_request_handler_t final : public spot_request_handler_t {
+class room_spot_t final {
 public:
-    explicit stage_request_handler_t(spot_client_t &spot_client)
-      : spot_client_(spot_client) {}
-
-    message_t handle(
-      const message_t &request,
-      const spot_request_context_t &context) override
+    explicit room_spot_t(zlink::framework::spot_context_t &context)
+      : context_(context)
     {
-        auto profile = spot_client_.request_channel("profile", request);
-        return build_stage_reply(context.self().spot_rid(), profile);
+    }
+
+    std::future<profile_reply_t> load_profile(
+      zlink::routing_id_t node_rid,
+      zlink::routing_id_t profile_spot_rid,
+      profile_query_t query)
+    {
+        return context_.request_to<profile_reply_t>(
+          node_rid,
+          profile_spot_rid,
+          query);
     }
 
 private:
-    spot_client_t &spot_client_;
-};
-
-class stage_subscription_handler_t final : public spot_subscription_handler_t {
-public:
-    void handle(
-      const message_t &event,
-      const spot_subscription_context_t &context) override
-    {
-    }
+    zlink::framework::spot_context_t &context_;
 };
 ```
 
-다른 channel 호출은 `spot_client.request_channel("profile", ...)` 같은 표면으로
-설명하는 편이 맞다.
+직접 `routing_id_t`를 받는 API는 spot-to-spot 경로에 제한한다.
 
-## 5. 외부 노드에서 `SPOT` publish
+## 4. 외부 노드에서 event publish
 
 ```cpp
-spot_publisher_client.publish(
+publisher.publish(
   "game.stage",
   "stage.state.updated",
-  build_stage_state_updated()).get();
+  build_stage_state_updated());
 ```

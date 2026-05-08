@@ -293,12 +293,12 @@ public static class MessageExtensions
 
 ## 4. header session 샘플
 
-아래 샘플은 framing이나 decode 이전 raw payload를 직접 보고 싶은 경우다.
+아래 샘플은 framework가 decode한 Header와 body를 그대로 처리하는 경우다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddStreamNode("client.raw", stream =>
+    options.AddStreamNode("client.stream", stream =>
     {
         stream.Bind("tcp://0.0.0.0:9200");
         stream.AddHeaderSession<ClientHeaderSession>();
@@ -354,7 +354,7 @@ public sealed class ClientHeaderSession : IZLinkSession
   - body는 `msgId`를 보고 각 packet 타입으로 parse
 
 현재 구현의 stream session 표면은 header/body packet 처리에 맞춘다.
-raw chunk를 직접 다루는 표면은 별도 초안으로 분리해서 검토한다.
+raw chunk를 직접 다루는 표면은 MVP 범위에 넣지 않는다.
 
 ## 6. recv 방식은 왜 샘플에 없는가
 

@@ -175,7 +175,7 @@ action 이름을 유지해야 한다. 예를 들면 아래처럼 맞춘다.
 | channel messaging 샘플 문서 | 등록부터 handler, client 호출까지 한 번에 보이는 샘플을 둔다. |
 | `SPOT` 주제 문서 | 해당 언어에서 `SPOT`을 지원하면 lifecycle, publish/subscribe, channel attach를 설명한다. |
 | `SPOT` 샘플 문서 | room/stage/zone 같은 실제 흐름을 코드로 보여 준다. |
-| `STREAM` 주제 문서 | packet/raw session과 open item을 분리해서 설명한다. |
+| `STREAM` 주제 문서 | framework Header 기반 packet session과 open item을 분리해서 설명한다. |
 | `STREAM` 샘플 문서 | 등록과 handler 코드를 한 번에 보여 준다. |
 | Monitoring 주제 문서 | socket/discovery/registry/spot runtime event와 등록 모델을 설명한다. |
 | Registry 주제 문서 | embedded/standalone, query surface, topology 조회를 설명한다. |

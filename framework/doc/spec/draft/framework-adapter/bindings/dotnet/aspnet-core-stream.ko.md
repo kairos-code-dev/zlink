@@ -14,12 +14,9 @@
 ## 1. 목표
 
 `STREAM`은 일반 request-response와 성격이 다르다.
-연결 수명, peer 식별, packet framing, raw payload 처리 같은 요소가 더 중요할 수
-있다. 이 문서의 목표는 `.NET` framework 표면에서 `STREAM`을 아래 두 session
-방식으로 정리하는 것이다.
-
-- packet session
-- raw session
+연결 수명, peer 식별, packet framing, session lifecycle 같은 요소가 더 중요하다.
+이 문서의 목표는 `.NET` framework 표면에서 `STREAM`을 framework Header 기반 packet
+session 방식으로 정리하는 것이다.
 
 현재 초안에서는 application이 직접 `recv` loop를 돌리는 방식은 지원 대상으로 보지
 않는다. framework가 수신 dispatch를 맡고, 사용자는 handler를 구현하는 쪽을
@@ -30,8 +27,7 @@
 `STREAM`은 일반 channel messaging handler와 같은 감각으로 억지로 맞추지 않는다.
 특히 아래 원칙을 둔다.
 
-- raw payload chunk를 직접 다루고 재조립까지 application이 맡고 싶으면 raw session을 쓴다.
-- C API가 잘라 준 `header/body` packet 단위를 처리하고 싶으면 packet session을 쓴다.
+- framework가 decode한 `ZlinkStreamHeader`와 `Message body` packet 단위를 처리한다.
 - `playhouse`처럼 header는 고정 메타데이터이고, body는 `header.MsgId`를 보고 각 packet 타입으로 decode하는 방식을 자연스러운 기본 모델로 본다.
 - 이 decode helper는 `playhouse/extensions`처럼 transport 본체에 넣기보다,
   `Message` 위에 얹는 serializer extension 계층으로 두는 쪽을 기본으로 본다.
@@ -41,8 +37,9 @@
 - `OnErrorAsync(...)`는 application 예외가 아니라, monitor에서 관찰 가능한
   transport 오류를 session 단위로 다시 올리는 축으로 제한한다.
 
-즉 현재 방향은 "packet session + raw session" 두 축 위에 session lifecycle을 같이
-올리는 쪽이다.
+즉 현재 방향은 framework Header 기반 packet session 위에 session lifecycle을 같이
+올리는 쪽이다. raw chunk 직접 처리와 사용자 정의 Header framing은 MVP 범위에 넣지
+않는다.
 
 ## 3. 인터페이스 초안
 
@@ -163,9 +160,9 @@ public interface IZLinkSessionContext :
   각 packet 타입으로 decode한다.
 - 이 decode 과정은 가능하면 `Message.AsReadOnlySpan()`이나 그 위에 얹는 helper를
   사용해서 추가 복사를 피하는 쪽을 기본으로 본다.
-- 두 방식 모두 `IZLinkStream`의 `SessionId`, `RoutingId`, `LocalAddr`,
-  `RemoteAddr`로 peer와 connection metadata를 읽는다.
-- 둘 다 framework dispatch 경로 위에 올라가고, application은 직접 recv loop를
+- `IZLinkStream`의 `SessionId`, `RoutingId`, `LocalAddr`, `RemoteAddr`로 peer와
+  connection metadata를 읽는다.
+- session은 framework dispatch 경로 위에 올라가고, application은 직접 recv loop를
   만들지 않는다.
 - session callback은 native/socket callback 안에서 직접 호출하지 않는다.
   framework는 callback을 managed task로 넘긴 뒤 `OnConnectedAsync(...)`,
@@ -200,11 +197,11 @@ builder.Services.AddZLinkFramework(options =>
 
 이 등록 모델에서 중요한 점은 아래와 같다.
 
-- packet session, zlink stream header session, raw session을 분리해서 붙인다.
-- 한 `stream node`에는 세 session 종류 중 한 종류만 둔다.
+- framework Header 기반 packet session만 붙인다.
+- 한 `stream node`에는 stream session을 하나만 둔다.
 - 같은 node에 stream session을 둘 이상 함께 두지 않는다.
 - recv callback이나 recv loop를 application이 직접 노출받지 않는다.
-- 어떤 session이 packet path인지 raw path인지 등록 시점에 분명히 보인다.
+- 등록 시점에 이 node가 framework Header 기반 packet path임이 분명히 보인다.
 
 ## 5. serializer 계층
 
@@ -243,7 +240,7 @@ recv 방식은 low-level binding에서는 유효할 수 있다.
 
 - framework가 dispatch, DI, filter, logging을 일관되게 묶기 어렵다.
 - application이 직접 loop와 cancellation, backpressure를 떠안게 된다.
-- packet session과 raw session을 함께 설명하기가 어려워진다.
+- framework Header 기반 packet dispatch를 일관되게 설명하기가 어려워진다.
 
 따라서 현재 초안은 recv 기반 사용을 막자는 뜻이 아니라, **framework의 기본
 application 표면으로는 올리지 않는다**는 뜻이다.

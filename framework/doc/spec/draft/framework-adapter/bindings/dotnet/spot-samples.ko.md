@@ -1370,9 +1370,8 @@ public sealed record SampleAuthenticationResult(
 즉 room은 actor만 붙잡고, session handler는 room 밖에서 인증과 재연결을 처리한다.
 이 구조로 보면 "같은 account의 actor는 유지하고 stream만 교체"하는 reconnect 정책이
 설명하기 쉽다.
-이 샘플 코드는 packet session 기준이지만, raw session도 같은 모델로 읽는다.
-즉 raw session은 자기 protocol 규칙으로 chunk를 재조립한 뒤 `header/body`를 만들고,
-framework 내부 dispatch 경로로 같은 `Spot` 문맥에 올린 뒤, 최종 actor 로직은
+이 샘플 코드는 framework Header 기반 packet session 기준이다. framework는 decode한
+`header/body`를 내부 dispatch 경로로 같은 `Spot` 문맥에 올린 뒤, 최종 actor 로직은
 등록된 actor packet handler가 처리한다.
 또한 room timer는 room에 join된 actor만 본다. 즉 인증은 끝났지만 아직
 `SampleJoinRoomRequest`를 보내지 않은 연결은 `SampleSpot` 바깥의 stream 수명으로

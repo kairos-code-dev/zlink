@@ -386,13 +386,18 @@ public enum SpotDispatchEvent
 {
     SubscribeReadable    = 1,
     RoutedReadable       = 2,
-    ChannelReplyReadable = 3
+    TimerReadable        = 3,
+    ChannelReplyReadable = 4,
+    ActorReadable        = 5,
+    ActorJoinReadable    = 6,
 }
 
 public enum SpotDispatchSubjectKind
 {
     Spot          = 1,
-    ChannelDealer = 2
+    Timer         = 2,
+    ChannelDealer = 3,
+    Actor         = 4,
 }
 ```
 
@@ -475,8 +480,8 @@ join이 끝난 session/actor가 **같은 spot execution context**에서 처리�
 
 ### 4.4 stream session
 
-stream은 packet path와 raw path를 나눌 수 있지만, 둘 다 session lifecycle 위에서
-설명하는 방향을 기본으로 본다. 즉 `STREAM` application 표면은 별도
+stream은 framework Header 기반 packet path를 session lifecycle 위에서 설명하는 방향을
+기본으로 본다. 즉 `STREAM` application 표면은 별도
 `ZLinkStreamContext`보다 `IZLinkStream` 객체를 중심으로 본다.
 
 ```csharp
@@ -695,7 +700,7 @@ session callback 실행 계약은 아래와 같이 고정한다.
 
 이 초안에서도 recv loop를 application 표면으로 직접 노출하지 않는다.
 즉 사용자가 `Recv(...)`로 직접 drain loop를 돌리는 모델보다, framework가 dispatch를
-맡고 application은 packet session 또는 raw session을 구현하는 모델을 기본으로 본다.
+맡고 application은 Header 기반 packet session을 구현하는 모델을 기본으로 본다.
 
 또한 stream 핫패스에서는 `Message.ToArray()` 같은 추가 복사를 기본 사용법으로 두면
 안 된다. `Message.AsReadOnlySpan()` 같은 현재 표면이나, 그 위에 얹는
@@ -711,6 +716,29 @@ actor dispatch 표면인 `IZLinkSessionContext`, 그리고 actor stream 연결/�
 `IZLinkSessionActorAttachmentContext`를 기준으로 설명한다. `stage-wrapper-on-spot.ko.md`는
 이 계약 위에서 room/stage wrapper를 어떻게 조직하는지 보여 주는 상위 모델 문서로
 읽는다.
+
+##### zlink native Actor API 위임
+
+zlink 라이브러리가 native Actor API를 제공함에 따라 framework는 actor lifecycle
+관리를 해당 API로 위임한다.
+
+- `SpotNode.CreateActor(string actorId)` — actor node에서 application actor에 대응하는 native actor를 생성한다.
+- `SpotNode.EntrySpot()` → `Spot` — actor join 요청을 받는 입장 spot을 얻는다.
+- `Spot.RecvActorJoin(RecvFlags)` → `ActorJoinRequest?` — join 요청을 수신한다.
+- `Spot.ReplyActorJoin(request, accepted, message)` — join 수락/거부 결과를 응답한다.
+- `Actor.Join(spot, request, timeout, ct)` — actor가 특정 spot에 join을 요청한다.
+- `Actor.Leave(spot, timeout)` — actor가 spot에서 나간다.
+- `Actor.RecvPart(flags)` — STREAM 메시지 part를 수신한다.
+
+framework의 `SpotActivation`은 `SpotDispatchEvent.ActorJoinReadable`와
+`SpotDispatchEvent.ActorReadable` 이벤트를 수신해 각각 join drain과 STREAM
+dispatch를 처리한다. 두 경로 모두 spot serial executor 안에서 직렬화된다.
+`OnDispatchEvent` 핸들러는 spot 초기화 시 항상 등록하며, 이는 패킷/join handler가
+없는 spot도 런타임에 actor가 join될 때 `ActorReadable` 이벤트를 수신하기 위함이다.
+
+`ActorJoinReadable` 처리 시 framework는 join 요청의 `TargetActor`(해당 spot에 이미
+등록된 로컬 actor)를 spot actor membership에서 조회하고, actor join handler를 호출한다.
+`TargetActor`를 찾지 못하면 join 요청을 거부한다.
 
 actor packet 실행 계약은 아래와 같이 둔다.
 
@@ -1690,9 +1718,9 @@ public interface IZLinkFrameworkOptions
 - `EnableSubscriber(...)`
   - 일반 channel event subscribe capability를 연다.
 - `AddStreamNode(...)`
-  - packet session 또는 raw session을 받을 STREAM node를 등록한다.
-  - 한 node에는 packet session 또는 raw session 중 한 종류만 등록할 수 있다.
-  - 두 종류를 같은 node에 함께 등록하는 것은 허용하지 않는다.
+  - framework Header 기반 packet session을 받을 STREAM node를 등록한다.
+  - 한 node에는 stream session을 하나만 등록할 수 있다.
+  - 같은 node에 session을 둘 이상 함께 등록하는 것은 허용하지 않는다.
 
 중요한 규칙은 아래와 같다.
 
@@ -2380,7 +2408,7 @@ public sealed class ZLinkStreamRawAttribute : Attribute
 }
 ```
 
-stream은 packet session과 raw session 두 축으로 본다.
+stream은 framework Header 기반 packet session 한 축으로 본다.
 recv 방식은 현재 초안 범위에서 제외하고, session lifecycle은 `OnConnectedAsync`,
 `OnDisconnectedAsync`, `OnErrorAsync`로 올린다.
 

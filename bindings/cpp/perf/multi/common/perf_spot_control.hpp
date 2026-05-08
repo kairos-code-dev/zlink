@@ -1,6 +1,7 @@
 #ifndef PERF_SPOT_CONTROL_HPP
 #define PERF_SPOT_CONTROL_HPP
 
+#include "perf_common_multi.hpp"
 #include "perf_spot_handshake.hpp"
 #include "perf_tls.hpp"
 #include "../../common/perf_socket_compat.hpp"
@@ -22,6 +23,9 @@ inline bool apply_spot_node_admission_hwm (SpotNode &node_,
                                            int pubsub_hwm_,
                                            int router_hwm_)
 {
+    if (!manual_socket_overrides_enabled ())
+        return true;
+
     const int pubsub = pubsub_hwm_ > 0 ? pubsub_hwm_ : 1;
     const int router = router_hwm_ > 0 ? router_hwm_ : 1;
     try {

@@ -88,6 +88,7 @@ class ctx_guard_t
     ctx_guard_t () : _ctx ()
     {
         zlink::context_options_t options = _ctx.options ();
+        (void) options.auto_hwm_enabled (true);
         const int io_threads = bench_io_threads ();
         if (io_threads > 0)
             (void) options.io_threads (
@@ -142,6 +143,8 @@ inline void apply_benchmark_hwm (perf_socket_t &socket,
                                  int sndhwm,
                                  int rcvhwm)
 {
+    if (!manual_socket_overrides_enabled ())
+        return;
     const int snd_value = sndhwm > 0 ? sndhwm : 1;
     const int rcv_value = rcvhwm > 0 ? rcvhwm : 1;
     (void) socket.set_option (zlink::compat::options::socket_options::sndhwm, snd_value);
@@ -163,7 +166,8 @@ inline void apply_benchmark_socket_options (perf_socket_t &socket,
                                             const multi_bench_settings_t &settings,
                                             const std::string &transport)
 {
-    // Bench sockets use explicit HWM + timeout/linger to keep run behavior stable.
+    // Manual HWM is a debug-only override; the default benchmark surface uses
+    // context auto-HWM.
     apply_benchmark_hwm (socket, settings.sndhwm, settings.rcvhwm);
     apply_debug_timeouts (socket, transport);
 }

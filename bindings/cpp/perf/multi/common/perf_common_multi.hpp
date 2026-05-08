@@ -40,13 +40,17 @@ inline int parse_positive_env (const char *name, int default_value)
     errno = 0;
     char *end = NULL;
     const long parsed = std::strtol (value, &end, 10);
-    if (errno != 0 || end == value)
+    if (errno != 0 || end == value || parsed <= 0)
         return default_value;
     if (parsed > INT_MAX)
         return INT_MAX;
-    if (parsed < INT_MIN)
-        return INT_MIN;
     return static_cast<int> (parsed);
+}
+
+inline bool manual_socket_overrides_enabled ()
+{
+    return parse_positive_env ("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) > 0
+           || parse_positive_env ("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) > 0;
 }
 
 inline bool is_stream_pattern (const char *pattern)
@@ -90,11 +94,17 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
 
     multi_bench_settings_t out;
     out.clients = static_cast<size_t> (clients);
-    out.hwm = std::max (1, parse_positive_env ("PERF_MULTI_HWM", default_hwm));
-    out.sndhwm = std::max (
-      1, parse_positive_env ("PERF_MULTI_SNDHWM", out.hwm));
-    out.rcvhwm = std::max (
-      1, parse_positive_env ("PERF_MULTI_RCVHWM", out.hwm));
+    if (manual_socket_overrides_enabled ()) {
+        out.hwm = std::max (1, parse_positive_env ("PERF_MULTI_HWM", default_hwm));
+        out.sndhwm = std::max (
+          1, parse_positive_env ("PERF_MULTI_SNDHWM", out.hwm));
+        out.rcvhwm = std::max (
+          1, parse_positive_env ("PERF_MULTI_RCVHWM", out.hwm));
+    } else {
+        out.hwm = -1;
+        out.sndhwm = -1;
+        out.rcvhwm = -1;
+    }
     out.duration_seconds = std::max (
       1, parse_positive_env ("PERF_MULTI_DURATION_SECONDS", 5));
     out.client_poll_timeout_ms = 0;

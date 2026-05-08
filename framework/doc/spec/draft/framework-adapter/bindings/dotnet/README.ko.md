@@ -111,7 +111,7 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 |------|------------|
 | [aspnet-core-channel-messaging.ko.md](./aspnet-core-channel-messaging.ko.md) | channel 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, lifecycle, middleware/filter |
 | [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish/subscribe, discovery |
-| [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, packet/raw session, monitor 기반 lifecycle, recv 비지원 방향 |
+| [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, framework Header 기반 packet session, monitor 기반 lifecycle, recv 비지원 방향 |
 | [streaming-client.ko.md](./streaming-client.ko.md) | `.NET` / Unity Stream Connector, TCP/TLS/WS/WSS transport, header/body packet 송수신 |
 | [unity-stream-connector.ko.md](./unity-stream-connector.ko.md) | Unity package, `MonoBehaviour` wrapper, main thread callback dispatch, lifecycle |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | STREAM serializer, write, monitor-event mapping의 결정 기준 |
@@ -141,7 +141,7 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 |------|------------|
 | [channel-messaging-samples.ko.md](./channel-messaging-samples.ko.md) | channel 등록, handler, HTTP handler, outbound client를 한 번에 보는 샘플 |
 | [spot-samples.ko.md](./spot-samples.ko.md) | room, stage, zone 기준 SPOT 등록, handler, channel send/request, publish를 한 번에 보는 샘플 |
-| [stream-samples.ko.md](./stream-samples.ko.md) | STREAM packet/raw/header session과 등록 코드를 한 번에 보는 샘플 |
+| [stream-samples.ko.md](./stream-samples.ko.md) | STREAM framework Header 기반 packet session과 등록 코드를 한 번에 보는 샘플 |
 | [tictactoe-game-sample.ko.md](./tictactoe-game-sample.ko.md) | TicTacToe direct 샘플과 session actor dispatch 샘플의 contract 방향 |
 | [tictactoe-game-sample.ko.md](./tictactoe-game-sample.ko.md) | API 서버, Play 서버, STREAM connector, SPOT actor를 함께 쓰는 틱택토 게임 샘플 초안 |
 

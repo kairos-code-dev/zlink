@@ -1,6 +1,6 @@
 [스펙 목차](../../../README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [channel](./cpp-channel-messaging.ko.md)
+[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md)
 
 # Draft -- ZLink Framework C++ Channel Messaging Samples
 
@@ -10,71 +10,104 @@
 ## 1. Host 와 handler
 
 ```cpp
-class user_handler_t final : public zlink::framework::request_handler_t {
+class user_handler_t final {
 public:
-    explicit user_handler_t(zlink::framework::client_t &client)
-      : client_(client) {}
-
-    message_t handle(
-      const message_t &request,
-      const request_context_t &context) override
+    explicit user_handler_t(zlink::framework::request_client_t &client)
+      : client_(client)
     {
-        auto account = client_.request("account", request);
+    }
+
+    get_user_reply_t get_user(const get_user_request_t &request)
+    {
+        auto account = client_
+          .request<account_reply_t>("account", account_query_t{
+              .account_id = request.account_id,
+          })
+          .get();
+
         return build_user_reply(account);
     }
 
 private:
-    zlink::framework::client_t &client_;
+    zlink::framework::request_client_t &client_;
 };
 
-auto app = app_t::build()
-  .add_channel("api", [](auto &channel) {
-      channel.enable_server();
-  })
-  .add_channel("account", [](auto &channel) {
-      channel.enable_client();
-  })
-  .use_discovery(...)
-  .add_request_handler("GetUserRequest", user_handler);
+auto app = zlink::framework::app_t::create();
+
+app.services()
+  .add_factory<user_handler_t>([](auto &services) {
+      return std::make_unique<user_handler_t>(
+        services.template get_required<zlink::framework::request_client_t>());
+  });
+
+app.use_zlink([](auto &zlink) {
+    zlink.node("api-node")
+      .discovery([](auto &discovery) {
+          discovery.connect_registry("tcp://registry:5551");
+      })
+      .channel("api", [](auto &channel) {
+          channel.enable_server([](auto &server) {
+              server.bind("tcp://0.0.0.0:7100");
+          });
+      })
+      .channel("account", [](auto &channel) {
+          channel.enable_client([](auto &client) {
+              client.use_discovery();
+          });
+      });
+});
+
+app.handlers()
+  .request<get_user_request_t, get_user_reply_t, user_handler_t>(
+    "api",
+    "GetUserRequest",
+    &user_handler_t::get_user);
 ```
 
 ## 2. Outbound-only
 
 ```cpp
-auto app = app_t::build()
-  .add_channel("profile", [](auto &channel) {
-      channel.enable_client();
-  })
-  .use_discovery(...);
-```
+auto app = zlink::framework::app_t::create();
 
-이 경우 local `ROUTER(server)`는 열지 않는다.
-
-## 3. 수동 연결과 런타임 제어
-
-```cpp
-app.add_channel("profile", [](auto &channel) {
-  channel.enable_client([](auto &client) {
-    client.use_manual_connections({
-      "tcp://10.0.10.15:7101",
-    });
-  });
+app.use_zlink([](auto &zlink) {
+    zlink.node("profile-client")
+      .discovery([](auto &discovery) {
+          discovery.connect_registry("tcp://registry:5551");
+      })
+      .channel("profile", [](auto &channel) {
+          channel.enable_client([](auto &client) {
+              client.use_discovery();
+          });
+      });
 });
 ```
 
+이 경우 local server capability는 열지 않는다.
+
+## 3. 수동 연결
+
 ```cpp
-auto &profile_client = connection_manager.get_client("profile");
-profile_client.connect("tcp://10.0.10.17:7101");
+app.use_zlink([](auto &zlink) {
+    zlink.node("profile-client")
+      .channel("profile", [](auto &channel) {
+          channel.enable_client([](auto &client) {
+              client.connect("tcp://10.0.10.15:7101");
+              client.connect("tcp://10.0.10.17:7101");
+          });
+      });
+});
 ```
+
+수동 연결과 Discovery 연결은 같은 capability 안에서 섞지 않는다.
 
 ## 4. 일반 event publish
 
 ```cpp
-event_publisher.publish(
+publisher.publish(
   "profile",
   "profile.cache-refreshed",
   build_profile_cache_refreshed(account_id),
-  send_options_t{
+  zlink::framework::send_options_t{
     .packet_name = "profile.cache-refreshed",
-  }).get();
+  });
 ```

@@ -84,6 +84,12 @@ int resolve_single_socket_hwm (bool send_)
                  : parse_positive_env ("PERF_SINGLE_RCVHWM", base_hwm);
 }
 
+bool single_manual_socket_overrides_enabled ()
+{
+    return parse_positive_env ("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) > 0
+           || parse_positive_env ("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) > 0;
+}
+
 bool bench_debug_enabled ()
 {
     static const bool enabled = std::getenv ("PERF_DEBUG") != NULL;
@@ -93,6 +99,7 @@ bool bench_debug_enabled ()
 void apply_ctx_options (zlink::context_t &ctx_)
 {
     zlink::context_options_t options = ctx_.options ();
+    (void) options.auto_hwm_enabled (true);
     const int io_threads = parse_positive_env ("PERF_IO_THREADS", 0);
     if (io_threads > 0)
         (void) options.io_threads (zlink::io_thread_count_t::value (io_threads));
@@ -117,6 +124,8 @@ bool set_sockopt_int (perf_socket_t &socket_,
 
 void apply_single_hwm (perf_socket_t &socket_)
 {
+    if (!single_manual_socket_overrides_enabled ())
+        return;
     const int sndhwm = resolve_single_socket_hwm (true);
     const int rcvhwm = resolve_single_socket_hwm (false);
     (void) set_sockopt_int (

@@ -84,7 +84,7 @@ handler가 작은 router가 된다.
 
 session server 쪽 relay code는 인증, actor 생성, api lookup, play relay,
 client reply 보존을 함께 다룬다. 특히 request를 relay할 때는 원본 request
-sequence가 유지되어야 하므로 raw stream dispatch 경로를 알아야 한다.
+sequence가 유지되어야 하므로 framework Header packet dispatch 경로를 알아야 한다.
 
 actor를 언제 만들지, 어떤 actor type을 쓸지, local actor를 만들지 remote actor를
 만들지는 application 정책이다. 반면 request sequence 보존, relay envelope 조립,
@@ -367,7 +367,7 @@ snapshot을 함께 보존한다. 기본 정책은 deny다. application metadata�
 
 반대로 아래 값은 typed actor handler에 노출하지 않는다.
 
-- raw stream header 전체
+- framework Header 전체
 - stream session id
 - peer endpoint
 - source session node `RoutingId`

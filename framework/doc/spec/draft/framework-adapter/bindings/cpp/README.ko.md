@@ -1,6 +1,6 @@
 [스펙 목차](../../../README.ko.md)
 
-[Framework Adapter 정책](../../policy/README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./cpp-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [STREAM open items](./stream-open-items.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Monitoring](./cpp-monitoring.ko.md) | [Registry](./cpp-registry.ko.md)
+[Framework Adapter 정책](../../policy/README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./cpp-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [STREAM open items](./stream-open-items.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Monitoring](./cpp-monitoring.ko.md) | [Registry](./cpp-registry.ko.md)
 
 # Draft -- ZLink Framework For C++
 
@@ -13,6 +13,16 @@
 이 문서는 `C++` 바인딩 위에 올라가는 `ZLink Framework`의 `C++` 방향을 정리한다.
 `C++`는 기존 대표 웹 프레임워크 위 adapter보다, zlink framework가 host/runtime
 역할 일부를 직접 제공하는 standalone 형태로 설명하는 편이 맞다.
+
+이 디렉토리의 문서는 `framework/doc/spec` 아래의 공통 framework 정책을 상위 기준으로
+따른다. 언어별 스펙은 공통 정책을 반드시 반영해야 하며, `C++` 문서는 그 공통 의미를
+`C++` 언어 특성에 맞게 구체화한다.
+
+`C++`에는 `.NET`, `Java`, `Node.js`처럼 기준으로 삼을 메이저 애플리케이션
+프레임워크가 없으므로, [C++ 정책](./cpp-framework-policy.ko.md)은 app, host, DI,
+runtime, handler registry 같은 기반 프레임워크 설계 내용을 다른 언어 문서보다 더
+많이 담는다. 이 내용은 공통 정책을 대체하지 않고, 공통 정책에서 다루지 않은
+`C++` standalone framework 세부 스펙을 채우기 위한 것이다.
 
 ## 1.1 공통 정책 적용
 
@@ -44,7 +54,9 @@ host/runtime 표면으로만 구체화한다.
 
 | 문서 | 역할 |
 |------|------|
-| [handler-interfaces.ko.md](./handler-interfaces.ko.md) | `C++` host/runtime이 노출할 공용 타입, registry, options 기준 문서 |
+| [cpp-framework-policy.ko.md](./cpp-framework-policy.ko.md) | `C++` standalone host/runtime의 제품 포지셔닝, 권장 모듈 구조, 라이브러리 정책, MVP 우선순위 |
+| [cpp-framework-interfaces.ko.md](./cpp-framework-interfaces.ko.md) | C++ binding public API를 기반으로 한 framework public interface 설계 |
+| [handler-interfaces.ko.md](./handler-interfaces.ko.md) | 기존 `C++` adapter 세부 인터페이스 초안. standalone framework 정책에 맞춰 정렬해야 할 대상 |
 
 ### 2.2 주제 문서
 
@@ -52,7 +64,7 @@ host/runtime 표면으로만 구체화한다.
 |------|------------|
 | [cpp-channel-messaging.ko.md](./cpp-channel-messaging.ko.md) | app host, channel 등록, dispatch loop, outbound client |
 | [cpp-spot.ko.md](./cpp-spot.ko.md) | `SPOT` runtime, publish/subscribe, spot-to-spot |
-| [cpp-stream.ko.md](./cpp-stream.ko.md) | stream packet/raw session과 poll loop 통합 |
+| [cpp-stream.ko.md](./cpp-stream.ko.md) | framework Header 기반 packet stream과 poll loop 통합 |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | stream 미결 항목 |
 | [cpp-monitoring.ko.md](./cpp-monitoring.ko.md) | runtime monitoring 등록, typed event, 운영 샘플 |
 | [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) | stage 같은 상위 모델을 `SPOT` 위에 감쌀 때의 조건 |
@@ -64,7 +76,7 @@ host/runtime 표면으로만 구체화한다.
 |------|------------|
 | [channel-messaging-samples.ko.md](./channel-messaging-samples.ko.md) | host bootstrap, handler registry, outbound client 샘플 |
 | [spot-samples.ko.md](./spot-samples.ko.md) | `SPOT` request/subscribe/publish 샘플 |
-| [stream-samples.ko.md](./stream-samples.ko.md) | stream packet/raw session 샘플 |
+| [stream-samples.ko.md](./stream-samples.ko.md) | framework Header 기반 packet stream 샘플 |
 
 ## 3. 핵심 방향
 

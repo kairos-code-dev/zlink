@@ -12,6 +12,7 @@ import systems.zlink.SubSocket;
 import systems.zlink.TopicMessage;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.List;
@@ -41,11 +42,17 @@ final class PerfMultiPubSub {
                     pub.publish(TOPIC, active, SendFlags.DONT_WAIT);
                 }
             }
-            long cooldownEnd = System.nanoTime() + Duration.ofSeconds(2).toNanos();
-            while (System.nanoTime() < cooldownEnd) {
-                try (Message cooldown = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                    pub.publish(TOPIC, cooldown, SendFlags.DONT_WAIT);
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end with one
+            // wire-level stop token published on the same topic. PUB is
+            // best-effort (DONT_WAIT) so a brief retry burst guards against
+            // transient backpressure on slow subscribers.
+            long stopBurstEnd = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+            int sent = 0;
+            while (sent < 3 && System.nanoTime() < stopBurstEnd) {
+                try (Message stop = PerfStopToken.newMessage()) {
+                    if (pub.publish(TOPIC, stop, SendFlags.DONT_WAIT)) {
+                        sent++;
+                    }
                 }
                 sleepMillis(1);
             }
@@ -74,21 +81,23 @@ final class PerfMultiPubSub {
                     go.countDown();
                 }
                 PerfUtil.await(go, "pubsub start", Duration.ofSeconds(10));
-                long finishDeadline = System.nanoTime()
-                    + Duration.ofSeconds(config.durationSeconds() + 3L).toNanos();
+                // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait (-1);
+                // exit on wire-level stop token.
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(sub), PollEventFlag.POLLIN)) {
-                    while (System.nanoTime() < finishDeadline) {
-                        int timeoutMs = Math.max(1, (int) Math.min(Integer.MAX_VALUE,
-                            Duration.ofNanos(
-                                Math.max(1L, finishDeadline - System.nanoTime())).toMillis()));
-                        if (pollSet.poll(timeoutMs) <= 0
-                            || !pollSet.isReady(0, PollEventFlag.POLLIN)) {
+                    while (true) {
+                        pollSet.poll(-1);
+                        if (!pollSet.isReady(0, PollEventFlag.POLLIN)) {
                             continue;
                         }
+                        boolean stop = false;
                         while (true) {
                             try (TopicMessage received = sub.subscribe(RecvFlags.DONT_WAIT)) {
                                 if (received == null) {
+                                    break;
+                                }
+                                if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
+                                    stop = true;
                                     break;
                                 }
                                 PerfUtil.Header header = PerfUtil.decodeHeader(
@@ -96,13 +105,13 @@ final class PerfMultiPubSub {
                                 if (header == null) {
                                     continue;
                                 }
-                                if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                                    return;
-                                }
                                 if (header.phase() == PerfUtil.PHASE_ACTIVE) {
                                     metrics.recordNanos(header.latencyNanos());
                                 }
                             }
+                        }
+                        if (stop) {
+                            return;
                         }
                     }
                 }

@@ -14,6 +14,7 @@ import systems.zlink.SubmitResult;
 import systems.zlink.ZlinkException;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.util.ArrayList;
 import java.time.Duration;
@@ -38,46 +39,38 @@ final class PerfMultiDealerDealer {
             PerfUtil.applyAutoHwmMsgUnit(server, config.size());
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-            long finishDeadline = System.nanoTime()
-                + Duration.ofSeconds(config.durationSeconds() + 20L).toNanos();
-            boolean idleDrain = false;
-            int idleDrainTimeoutMs = Math.max(1, config.recvTimeoutMs());
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait (-1); server
+            // exits on the first wire-level stop token (any later in-flight
+            // messages are drained inline before the exit).
             while (true) {
-                if (!idleDrain && System.nanoTime() >= finishDeadline) {
-                    throw new IllegalStateException("dealer/dealer server cooldown timed out");
-                }
-                long remainingNs = Math.max(1L, finishDeadline - System.nanoTime());
                 pollSet.setEvents(0, PollEventFlag.POLLIN);
-                int timeoutMs = idleDrain
-                    ? idleDrainTimeoutMs
-                    : Math.max(1, (int) Math.min(Integer.MAX_VALUE,
-                        Duration.ofNanos(remainingNs).toMillis()));
-                if (pollSet.poll(timeoutMs) <= 0
-                    || !pollSet.isReady(0, PollEventFlag.POLLIN)) {
-                    if (idleDrain) {
-                        return metrics.finishMulti(config);
-                    }
+                pollSet.poll(-1);
+                if (!pollSet.isReady(0, PollEventFlag.POLLIN)) {
                     continue;
                 }
+                boolean stop = false;
                 while (true) {
                     systems.zlink.Received received = PerfUtil.recvNoWait(server);
                     if (received == null) {
                         break;
                     }
                     try (received) {
+                        if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
+                            stop = true;
+                            continue;
+                        }
                         PerfUtil.Header header = PerfUtil.decodeHeader(
                             received.firstPart(), config.size());
                         if (header == null) {
-                            continue;
-                        }
-                        if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                            idleDrain = true;
                             continue;
                         }
                         if (header.phase() == PerfUtil.PHASE_ACTIVE) {
                             metrics.recordNanos(header.latencyNanos());
                         }
                     }
+                }
+                if (stop) {
+                    return metrics.finishMulti(config);
                 }
             }
         }
@@ -143,24 +136,22 @@ final class PerfMultiDealerDealer {
                     if (progress || !hasPending) {
                         continue;
                     }
-                    long remainingNs = Math.max(1L, activeEnd - System.nanoTime());
-                    int baseTimeoutMs = config.clientPollTimeoutMs() > 0
-                        ? config.clientPollTimeoutMs() : 100;
-                    int pollTimeoutMs = (int) Math.max(1L, Math.min(baseTimeoutMs,
-                        Duration.ofNanos(remainingNs).toMillis()));
-                    pollWritable(pollSet, pending, pollTimeoutMs);
+                    // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait for
+                    // POLLOUT readiness; no timer-based fallback.
+                    pollWritable(pollSet, pending, -1);
                 }
             }
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end with one
+            // wire-level stop token from a single client. The blocking send
+            // waits for POLLOUT readiness via the poller (-1).
             DealerSocket cooldownClient = clients.get(0);
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                      List.of((systems.zlink.Socket) cooldownClient),
                      PollEventFlag.POLLOUT)) {
                 pollSet.setEvents(0);
-                long cooldownDeadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
-                while (System.nanoTime() < cooldownDeadline) {
-                    try (Message cooldown = PerfUtil.payload(config.size(),
-                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                        if (cooldownClient.send(cooldown, SendFlags.DONT_WAIT)) {
+                while (true) {
+                    try (Message stop = PerfStopToken.newMessage()) {
+                        if (cooldownClient.send(stop, SendFlags.DONT_WAIT)) {
                             return PerfUtil.Result.silent(config);
                         }
                     } catch (SubmitException ex) {
@@ -172,13 +163,10 @@ final class PerfMultiDealerDealer {
                             throw ex;
                         }
                     }
-                    long remainingNs = Math.max(1L, cooldownDeadline - System.nanoTime());
                     pollSet.setEvents(0, PollEventFlag.POLLOUT);
-                    pollSet.poll(Math.max(1, (int) Math.min(Integer.MAX_VALUE,
-                        Duration.ofNanos(remainingNs).toMillis())));
+                    pollSet.poll(-1);
                 }
             }
-            throw new IllegalStateException("dealer/dealer cooldown send timed out");
         } finally {
             for (MonitorSocket monitor : monitors) {
                 try {

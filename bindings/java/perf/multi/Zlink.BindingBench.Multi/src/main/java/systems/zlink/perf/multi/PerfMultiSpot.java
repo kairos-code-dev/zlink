@@ -9,6 +9,7 @@ import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
 import systems.zlink.TopicMessage;
 import systems.zlink.perf.PerfControl;
+import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import systems.zlink.service.discovery.Discovery;
 import systems.zlink.service.registry.Registry;
@@ -59,14 +60,18 @@ final class PerfMultiSpot {
                         .submit();
                 }
             }
-            long cooldownEnd = System.nanoTime() + Duration.ofSeconds(2).toNanos();
-            while (System.nanoTime() < cooldownEnd) {
-                try (Message cooldown = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end with one
+            // wire-level stop token. Brief retry burst guards against transient
+            // best-effort backpressure on the per-spot publish path.
+            long stopBurstEnd = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+            int sent = 0;
+            while (sent < 3 && System.nanoTime() < stopBurstEnd) {
+                try (Message stop = PerfStopToken.newMessage()) {
                     publisher.publish(TOPIC)
-                        .message(cooldown)
+                        .message(stop)
                         .flags(SendFlags.DONT_WAIT)
                         .submit();
+                    sent++;
                 }
                 sleepQuietly(1);
             }
@@ -190,12 +195,15 @@ final class PerfMultiSpot {
             return PerfUtil.PHASE_UNKNOWN;
         }
         Message payload = received.firstPart();
+        // PERF_MULTI_TEST_POLICY § 1.3.1: per-spot stop token signals phase end.
+        // Reuse the COOLDOWN return code so the existing per-spot bookkeeping
+        // (cooldownSeen[]) stays unchanged.
+        if (PerfStopToken.isStopTokenMessage(payload)) {
+            return PerfUtil.PHASE_COOLDOWN;
+        }
         PerfUtil.Header header = PerfUtil.decodeHeader(payload, expectedSize);
         if (header == null) {
             return PerfUtil.PHASE_UNKNOWN;
-        }
-        if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-            return PerfUtil.PHASE_COOLDOWN;
         }
         if (header.phase() == PerfUtil.PHASE_ACTIVE) {
             if (System.nanoTime() <= activeEnd) {

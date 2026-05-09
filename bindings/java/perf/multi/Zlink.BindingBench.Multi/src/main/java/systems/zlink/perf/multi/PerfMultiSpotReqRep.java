@@ -13,6 +13,7 @@ import systems.zlink.RouterSocket;
 import systems.zlink.RoutingId;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import systems.zlink.service.spot.Spot;
 import systems.zlink.service.spot.SpotNode;
@@ -48,8 +49,11 @@ final class PerfMultiSpotReqRep {
             responder.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
 
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait (-1); the
+            // stdin STOP watcher remains as a runner-orchestrated kill switch,
+            // and the wire-level stop token (one per client) marks phase end.
             while (!stopRequested.get()) {
-                if (pollSet.poll(20) <= 0
+                if (pollSet.poll(-1) <= 0
                     || !pollSet.isReady(0, PollEventFlag.POLLIN)) {
                     continue;
                 }
@@ -66,16 +70,12 @@ final class PerfMultiSpotReqRep {
                     }
 
                     try (received) {
-                        PerfUtil.Header header = PerfUtil.decodeHeader(
-                            received.firstPart(), config.size());
-                        if (header == null) {
-                            continue;
-                        }
+                        boolean isStop = PerfStopToken.isStopTokenMessage(
+                            received.firstPart());
                         try (Message reply = received.firstPart().move()) {
                             received.reply(reply);
                         }
-                        if (header.phase() == PerfUtil.PHASE_COOLDOWN
-                            && ++cooldownSeen >= config.clients()) {
+                        if (isStop && ++cooldownSeen >= config.clients()) {
                             stopRequested.set(true);
                         }
                     }
@@ -178,10 +178,16 @@ final class PerfMultiSpotReqRep {
                             }
                         }
                     }
-                    try (Message cooldown = PerfUtil.payload(config.size(),
-                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                        requestReply(slot.requester, cooldown, config.size(),
-                            Duration.ofSeconds(2));
+                    // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end with one
+                    // wire-level stop token per requester. The responder echoes
+                    // it back and counts it toward the client quorum.
+                    try (Message stop = PerfStopToken.newMessage()) {
+                        slot.requester.requestChannel(CHANNEL_NAME)
+                            .message(stop)
+                            .timeout(Duration.ofSeconds(2))
+                            .submitAsync()
+                            .get(2, TimeUnit.SECONDS)
+                            .forEach(Message::close);
                     }
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);

@@ -11,6 +11,7 @@ import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -47,6 +48,9 @@ final class PerfMultiRouterRouter {
             Deque<PendingReply> pendingReplies = new ArrayDeque<>();
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 List.of(server), PollEventFlag.POLLIN)) {
+                // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait (-1);
+                // server exits after observing one wire-level stop token per
+                // expected client.
                 while (stops < config.clients()) {
                     pollSet.setEvents(0, PollEventFlag.POLLIN);
                     pollSet.poll(-1);
@@ -57,13 +61,13 @@ final class PerfMultiRouterRouter {
                             break;
                         }
                         try (received) {
+                            if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
+                                stops++;
+                                continue;
+                            }
                             PerfUtil.Header header = PerfUtil.decodeHeader(
                                 received.firstPart(), config.size());
                             if (header == null) {
-                                continue;
-                            }
-                            if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                                stops++;
                                 continue;
                             }
                             RoutingId rid = received.routingId().orElseThrow();
@@ -128,8 +132,9 @@ final class PerfMultiRouterRouter {
                             }
                         }
                     }
-                    try (Message stop = PerfUtil.payload(config.size(),
-                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+                    // PERF_MULTI_TEST_POLICY § 1.3.1: phase end is signaled
+                    // via a wire-level stop token (one per client).
+                    try (Message stop = PerfStopToken.newMessage()) {
                         sendUntilSent(client, pollSet, stop,
                             System.nanoTime() + Duration.ofSeconds(5).toNanos());
                     }
@@ -149,20 +154,19 @@ final class PerfMultiRouterRouter {
             if (System.nanoTime() >= deadlineNs) {
                 throw new IllegalStateException("router/router send timed out");
             }
-            long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait for POLLOUT.
+            // The application-level deadline above bounds total retry duration.
             pollSet.setEvents(0, PollEventFlag.POLLOUT);
-            pollSet.poll(Math.max(1, (int) Math.min(Integer.MAX_VALUE,
-                Duration.ofNanos(remainingNs).toMillis())));
+            pollSet.poll(-1);
         }
     }
 
     private static boolean awaitReadable(PerfSocketPollSet pollSet, long deadlineNs) {
+        // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait for POLLIN.
         while (System.nanoTime() < deadlineNs) {
             try {
-                long remainingNs = Math.max(1L, deadlineNs - System.nanoTime());
                 pollSet.setEvents(0, PollEventFlag.POLLIN);
-                if (pollSet.poll(Math.max(1, (int) Math.min(Integer.MAX_VALUE,
-                    Duration.ofNanos(remainingNs).toMillis()))) > 0) {
+                if (pollSet.poll(-1) > 0) {
                     return true;
                 }
             } catch (systems.zlink.ZlinkException ex) {

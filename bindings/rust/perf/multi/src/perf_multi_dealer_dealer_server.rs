@@ -73,24 +73,38 @@ fn main() {
             common::encode_header(&mut buf, common::PHASE_ACTIVE, args.msg_size as u32, seq);
             let msg = Message::copy_from(&buf).expect("msg");
             match server.send_with_flags(msg, SendFlags::DONT_WAIT) {
-                Ok(()) => {
+                Ok(true) => {
                     seq += 1;
                     continue;
                 }
-                Err(err) if err.code == SubmitResult::Backpressured => {
+                Ok(false) => {
                     pending = true;
                 }
-                Err(err) if err.code == SubmitResult::NotConnected => {}
+                Err(err) if err.code() == SubmitResult::Backpressured => {
+                    pending = true;
+                }
+                Err(err) if err.code() == SubmitResult::NotConnected => {}
                 Err(err) => panic!("send failed: {err}"),
             }
         }
 
-        match poller.wait(25) {
+        // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no timer cap.
+        match poller.wait(-1) {
             Ok(Some(event)) if event.is_writable() => {
                 pending = false;
             }
             Ok(Some(_)) | Ok(None) => {}
             Err(err) => panic!("poller wait failed: {err}"),
+        }
+    }
+
+    // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via wire-level stop
+    // token (blocking send, deadline ignored). Receiver exits on token arrival.
+    for _ in 0..100 {
+        let token = Message::copy_from(common::STOP_TOKEN).expect("stop token");
+        match server.send(token) {
+            Ok(()) => break,
+            Err(_) => std::thread::sleep(Duration::from_millis(1)),
         }
     }
 }

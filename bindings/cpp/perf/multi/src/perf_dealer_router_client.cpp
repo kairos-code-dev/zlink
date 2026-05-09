@@ -152,23 +152,9 @@ class dealer_router_client_bench_t
         }
     }
 
-    long compute_wait_ms (const std::chrono::steady_clock::time_point &deadline) const
-    {
-        const auto now = std::chrono::steady_clock::now ();
-        if (now >= deadline)
-            return 1;
-
-        long wait_ms =
-          _settings.client_poll_timeout_ms > 0 ? _settings.client_poll_timeout_ms : 10;
-        const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
-                                 deadline - now)
-                                 .count ();
-        if (remain_ms < wait_ms)
-            wait_ms = remain_ms;
-        if (wait_ms < 1)
-            wait_ms = 1;
-        return wait_ms;
-    }
+    // PERF_MULTI_TEST_POLICY § 1.3.1: pollers wait with timeout=-1
+    // (signal-driven). The outer loops keep enforcing the wall-time
+    // deadline via steady_clock checks.
 
     bool set_pollout (socket_state_t &state, bool enabled)
     {
@@ -291,7 +277,7 @@ class dealer_router_client_bench_t
 
         while (std::chrono::steady_clock::now () < deadline) {
             _poll_events =
-              _poller.wait_all (0, std::chrono::milliseconds (compute_wait_ms (deadline)));
+              _poller.wait_all (0, std::chrono::milliseconds (-1));
             if (_poll_events.empty ())
                 continue;
 

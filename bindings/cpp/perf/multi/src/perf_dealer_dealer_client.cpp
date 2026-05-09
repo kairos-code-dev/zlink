@@ -322,20 +322,11 @@ class dealer_dealer_client_bench_t
             if (progress || !has_pending)
                 continue;
 
-            long wait_ms = _settings.client_poll_timeout_ms > 0
-                             ? _settings.client_poll_timeout_ms
-                             : 100;
-            const long remain_ms =
-              std::chrono::duration_cast<std::chrono::milliseconds> (
-                deadline - std::chrono::steady_clock::now ())
-                .count ();
-            if (remain_ms < wait_ms)
-                wait_ms = remain_ms;
-            if (wait_ms < 1)
-                wait_ms = 1;
-
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no
+            // timer cap. Outer loop bounds total wall-time via the
+            // steady_clock deadline check above.
             _poll_events =
-                  _poller.wait_all (0, std::chrono::milliseconds (wait_ms));
+                  _poller.wait_all (0, std::chrono::milliseconds (-1));
             if (_poll_events.empty ())
                 continue;
 

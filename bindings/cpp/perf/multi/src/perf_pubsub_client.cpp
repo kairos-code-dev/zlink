@@ -171,18 +171,11 @@ class pubsub_client_bench_t
         const auto deadline = std::chrono::steady_clock::now () + duration;
 
         while (std::chrono::steady_clock::now () < deadline) {
-            const auto now = std::chrono::steady_clock::now ();
-            long wait_ms = 100;
-            const long remain_ms =
-              std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now)
-                .count ();
-            if (remain_ms < wait_ms)
-                wait_ms = remain_ms;
-            if (wait_ms < 1)
-                wait_ms = 1;
-
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no
+            // timer cap. Outer loop bounds wall-time via the
+            // steady_clock deadline check.
             _poll_events =
-              _poller.wait_all (0, std::chrono::milliseconds (wait_ms));
+              _poller.wait_all (0, std::chrono::milliseconds (-1));
         const int poll_rc = static_cast<int> (_poll_events.size ());
             if (poll_rc < 0) {
                 if (errno == EINTR || errno == EAGAIN)

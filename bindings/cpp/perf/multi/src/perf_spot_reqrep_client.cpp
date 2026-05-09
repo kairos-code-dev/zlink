@@ -103,7 +103,16 @@ class spot_reqrep_client_bench_t
         _resource_probe_start = perf::multi::start_resource_probe ();
         perf::multi::bench_latency_stats_t latency;
         unsigned long long active_count = 0;
-        if (!run_active_phase (&active_count, &latency))
+        const bool active_ok =
+          run_active_phase (&active_count, &latency);
+
+        // PERF_MULTI_TEST_POLICY § 1.3.1: send a wire-level stop token
+        // through every dealer so the responder's signal-driven poller
+        // (timeout=-1) wakes up promptly instead of waiting for stdin
+        // STOP / SIGTERM after the active phase ends.
+        send_stop_tokens ();
+
+        if (!active_ok)
             return false;
 
         _resource_metrics =
@@ -273,6 +282,38 @@ class spot_reqrep_client_bench_t
             latency_->add (latency_ns);
         }
         return true;
+    }
+
+    void send_stop_tokens ()
+    {
+        // Bounded retry through transient backpressure; one stop token
+        // per dealer is enough to wake the server's poller and let it
+        // exit cleanly via is_stop_token_message.
+        const char *stop = perf::multi::k_stop_token;
+        const size_t stop_size = std::strlen (stop);
+        for (size_t i = 0; i < _slots.size (); ++i) {
+            if (!_slots[i].dealer)
+                continue;
+            for (int retry = 0; retry < 100; ++retry) {
+                zlink::message_t msg = zlink::message_t::from_bytes (
+                  stop, stop_size);
+                if (!msg.valid ())
+                    break;
+                try {
+                    if (_slots[i].dealer->send (msg) == 0)
+                        break;
+                }
+                catch (const zlink::zlink_error_t &) {
+                    break;
+                }
+                if (errno != EAGAIN && errno != EWOULDBLOCK
+                    && errno != ETIMEDOUT && errno != EINTR) {
+                    break;
+                }
+                std::this_thread::sleep_for (
+                  std::chrono::milliseconds (1));
+            }
+        }
     }
 
     bool run_active_phase (unsigned long long *count_out_,

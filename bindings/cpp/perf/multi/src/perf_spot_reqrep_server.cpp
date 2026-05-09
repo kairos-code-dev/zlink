@@ -172,11 +172,17 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
 
         for (;;) {
             try {
-                std::optional<zlink::received_t> received =
-                  responder.recv (ZLINK_DONTWAIT);
-                if (!received.has_value ())
+                zlink::received_t received;
+                const int rc = responder.recv (
+                  received, zlink::recv_flags_t::dontwait);
+                if (rc != 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK)
+                        break;
+                    failed = true;
+                    stop_requested.store (true, std::memory_order_release);
                     break;
-                if (!reply_with_payload (*received)) {
+                }
+                if (!reply_with_payload (received)) {
                     failed = true;
                     stop_requested.store (true, std::memory_order_release);
                     break;

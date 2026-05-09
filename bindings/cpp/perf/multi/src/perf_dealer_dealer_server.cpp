@@ -128,15 +128,20 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
         }
 
         for (;;) {
-            const std::optional<zlink::received_t> received =
-              server.recv (zlink::recv_flags_t::dontwait);
-            if (!received)
-                break;
-            if (received->routing_id () || !received->is_single_part ()) {
+            zlink::received_t received;
+            const int rc = server.recv (
+              received, zlink::recv_flags_t::dontwait);
+            if (rc != 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK)
+                    break;
                 failed = true;
                 break;
             }
-            const zlink::message_t &inbound = received->parts ()[0];
+            if (received.routing_id () || !received.is_single_part ()) {
+                failed = true;
+                break;
+            }
+            const zlink::message_t &inbound = received.parts ()[0];
 
             if (perf::multi::is_stop_token (
                   inbound.data (), inbound.size ())) {

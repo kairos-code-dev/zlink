@@ -31,7 +31,7 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    jvmArgs("--enable-native-access=ALL-UNNAMED", "-server", "-XX:TieredStopAtLevel=1")
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "-server", "-XX:TieredStopAtLevel=4", "-Xms512m", "-Xmx2g")
 }
 
 application {
@@ -40,14 +40,14 @@ application {
     applicationDefaultJvmArgs = listOf(
         "--enable-native-access=ALL-UNNAMED",
         "-server",
-        "-XX:TieredStopAtLevel=1",
+        "-XX:TieredStopAtLevel=4",
     )
 }
 
 tasks.withType<JavaExec>().configureEach {
-    jvmArgs("--enable-native-access=ALL-UNNAMED", "-server", "-XX:TieredStopAtLevel=1")
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "-server", "-XX:TieredStopAtLevel=4", "-Xms512m", "-Xmx2g")
 }
 
 tasks.named<JavaExec>("run") {
-    jvmArgs("--enable-native-access=ALL-UNNAMED", "-server", "-XX:TieredStopAtLevel=1")
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "-server", "-XX:TieredStopAtLevel=4", "-Xms512m", "-Xmx2g")
 }

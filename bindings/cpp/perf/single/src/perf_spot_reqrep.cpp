@@ -226,15 +226,20 @@ bool run_pattern_spot_reqrep (const std::string &transport,
 
             for (;;) {
                 try {
-                    std::optional<zlink::received_t> received =
-                      responder.recv (ZLINK_DONTWAIT);
-                    if (!received.has_value ())
-                        break;
+                    zlink::received_t received;
+                    const int rc = responder.recv (
+                      received, zlink::recv_flags_t::dontwait);
+                    if (rc != 0) {
+                        if (errno == EAGAIN || errno == EWOULDBLOCK)
+                            break;
+                        responder_ok.store (false, std::memory_order_release);
+                        return;
+                    }
 
-                    if (received->parts ().size () == 1
-                        && received->parts ()[0].size ()
+                    if (received.parts ().size () == 1
+                        && received.parts ()[0].size ()
                              == std::strlen (k_stop_token)
-                        && std::memcmp (received->parts ()[0].data (),
+                        && std::memcmp (received.parts ()[0].data (),
                                         k_stop_token,
                                         std::strlen (k_stop_token))
                              == 0) {
@@ -242,7 +247,7 @@ bool run_pattern_spot_reqrep (const std::string &transport,
                         break;
                     }
 
-                    if (!reply_with_payload (*received)) {
+                    if (!reply_with_payload (received)) {
                         responder_ok.store (false, std::memory_order_release);
                         return;
                     }

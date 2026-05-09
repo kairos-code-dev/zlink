@@ -20,7 +20,7 @@ final class PerfMetricHeader {
         if (message.readIntLe(4) != PerfMeasurement.runId()) {
             return null;
         }
-        int phase = message.data()[8] & 0xFF;
+        int phase = message.readIntLe(8) & 0xFF;
         if (phase != PerfUtil.PHASE_WARMUP
             && phase != PerfUtil.PHASE_ACTIVE
             && phase != PerfUtil.PHASE_COOLDOWN) {

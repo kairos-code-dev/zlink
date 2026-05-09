@@ -31,9 +31,21 @@ public final class Native {
             ThreadLocal.withInitial(MultipartReceiveScratch::new);
 
     private static final class MultipartReceiveScratch {
+        private final MemorySegment nodeRidPtrOut;
+        private final MemorySegment spotRidPtrOut;
+        private final MemorySegment seqOut;
+        private final MemorySegment hasMoreOut;
         private MemorySegment parts = MemorySegment.NULL;
         private long partCount;
         private final MultipartReceive result = new MultipartReceive();
+
+        MultipartReceiveScratch() {
+            Arena auto = Arena.ofAuto();
+            nodeRidPtrOut = auto.allocate(ValueLayout.ADDRESS);
+            spotRidPtrOut = auto.allocate(ValueLayout.ADDRESS);
+            seqOut = auto.allocate(ValueLayout.JAVA_LONG);
+            hasMoreOut = auto.allocate(ValueLayout.JAVA_INT);
+        }
 
         private void reset() {
             parts = MemorySegment.NULL;
@@ -41,13 +53,15 @@ public final class Native {
         }
 
         private MemorySegment allocateParts(long newPartCount) {
-            reset();
             if (newPartCount <= 0) {
+                reset();
                 return MemorySegment.NULL;
             }
-            parts = Arena.ofAuto().allocate(
-                NativeLayouts.MSG_LAYOUT.byteSize() * newPartCount,
-                NativeLayouts.MSG_LAYOUT.byteAlignment());
+            long needed = NativeLayouts.MSG_LAYOUT.byteSize() * newPartCount;
+            if (parts == MemorySegment.NULL || parts.byteSize() < needed) {
+                parts = Arena.ofAuto().allocate(needed,
+                    NativeLayouts.MSG_LAYOUT.byteAlignment());
+            }
             partCount = newPartCount;
             return parts;
         }
@@ -63,6 +77,14 @@ public final class Native {
     private static MethodHandle downcall(String name, FunctionDescriptor fd) {
         return LOOKUP.find(name)
           .map(symbol -> LINKER.downcallHandle(symbol, fd))
+          .orElseGet(() -> missingDowncall(name, fd));
+    }
+
+    private static MethodHandle downcallCritical(String name,
+                                                 FunctionDescriptor fd) {
+        return LOOKUP.find(name)
+          .map(symbol -> LINKER.downcallHandle(symbol, fd,
+              Linker.Option.critical(false)))
           .orElseGet(() -> missingDowncall(name, fd));
     }
 
@@ -382,7 +404,7 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MONITOR_CLOSE = downcall("zlink_monitor_close",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_ERRNO = downcall("zlink_errno",
+    private static final MethodHandle MH_ERRNO = downcallCritical("zlink_errno",
             FunctionDescriptor.of(ValueLayout.JAVA_INT));
     private static final MethodHandle MH_STRERROR = downcall("zlink_strerror",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
@@ -2199,58 +2221,67 @@ public final class Native {
             }
             MultipartReceiveScratch scratch = MULTIPART_RECEIVE_SCRATCH.get();
             scratch.reset();
+            MemorySegment nodeRidPtrOut = scratch.nodeRidPtrOut;
+            MemorySegment spotRidPtrOut = scratch.spotRidPtrOut;
+            MemorySegment seqOut = scratch.seqOut;
+            MemorySegment hasMoreOut = scratch.hasMoreOut;
             while (true) {
-                List<Message> receivedParts = new ArrayList<>();
-                try (Arena arena = Arena.ofConfined()) {
-                    MemorySegment nodeRidPtrOut = arena.allocate(
-                        ValueLayout.ADDRESS);
-                    MemorySegment spotRidPtrOut = arena.allocate(
-                        ValueLayout.ADDRESS);
-                    MemorySegment seqOut = arena.allocate(
-                        ValueLayout.JAVA_LONG);
-                    MemorySegment hasMoreOut = arena.allocate(
-                        ValueLayout.JAVA_INT);
-                    while (true) {
-                        Message part = new Message();
-                        boolean success = false;
-                        try {
-                            int rc = routerRecvPart(router, nodeRidPtrOut,
-                                spotRidPtrOut, seqOut,
-                                InternalAccess.messageNativeHandle(part),
-                                hasMoreOut, flags);
-                            if (rc != 0) {
+                List<Message> receivedParts = null;
+                while (true) {
+                    Message part = new Message();
+                    boolean success = false;
+                    try {
+                        int rc = routerRecvPart(router, nodeRidPtrOut,
+                            spotRidPtrOut, seqOut,
+                            InternalAccess.messageNativeHandle(part),
+                            hasMoreOut, flags);
+                        if (rc != 0) {
+                            if (receivedParts != null) {
                                 Message.closeAll(receivedParts);
-                                if (errno() == ERRNO_EINTR) {
-                                    break;
-                                }
-                                return rc;
                             }
-                            success = true;
-                            if (receivedParts.isEmpty()) {
-                                sourceNodeRidOut.set(ValueLayout.ADDRESS, 0,
-                                    nodeRidPtrOut.get(ValueLayout.ADDRESS, 0));
-                                sourceSpotRidOut.set(ValueLayout.ADDRESS, 0,
-                                    spotRidPtrOut.get(ValueLayout.ADDRESS, 0));
-                                requestSeqOut.set(ValueLayout.JAVA_LONG, 0,
-                                    seqOut.get(ValueLayout.JAVA_LONG, 0));
+                            if (errno() == ERRNO_EINTR) {
+                                break;
                             }
-                            InternalAccess.messageFinishReceive(part,
-                                hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
-                            receivedParts.add(part);
-                            if (!InternalAccess.messageMore(part)) {
-                                MemorySegment parts = materializeParts(scratch,
-                                    receivedParts);
-                                partsOut.set(ValueLayout.ADDRESS, 0, parts);
-                                partCountOut.set(ValueLayout.JAVA_LONG, 0,
-                                    scratch.partCount);
-                                return 0;
-                            }
-                        } finally {
-                            if (!success) {
-                                try {
-                                    part.close();
-                                } catch (RuntimeException ignored) {
-                                }
+                            return rc;
+                        }
+                        success = true;
+                        if (receivedParts == null) {
+                            sourceNodeRidOut.set(ValueLayout.ADDRESS, 0,
+                                nodeRidPtrOut.get(ValueLayout.ADDRESS, 0));
+                            sourceSpotRidOut.set(ValueLayout.ADDRESS, 0,
+                                spotRidPtrOut.get(ValueLayout.ADDRESS, 0));
+                            requestSeqOut.set(ValueLayout.JAVA_LONG, 0,
+                                seqOut.get(ValueLayout.JAVA_LONG, 0));
+                        }
+                        InternalAccess.messageFinishReceive(part,
+                            hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
+                        boolean partHasMore = InternalAccess.messageMore(part);
+                        if (!partHasMore && receivedParts == null) {
+                            MemorySegment parts = scratch.allocateParts(1);
+                            InternalAccess.messageMoveTo(part, nthPart(parts, 0));
+                            part.close();
+                            partsOut.set(ValueLayout.ADDRESS, 0, parts);
+                            partCountOut.set(ValueLayout.JAVA_LONG, 0,
+                                scratch.partCount);
+                            return 0;
+                        }
+                        if (receivedParts == null) {
+                            receivedParts = new ArrayList<>();
+                        }
+                        receivedParts.add(part);
+                        if (!partHasMore) {
+                            MemorySegment parts = materializeParts(scratch,
+                                receivedParts);
+                            partsOut.set(ValueLayout.ADDRESS, 0, parts);
+                            partCountOut.set(ValueLayout.JAVA_LONG, 0,
+                                scratch.partCount);
+                            return 0;
+                        }
+                    } finally {
+                        if (!success) {
+                            try {
+                                part.close();
+                            } catch (RuntimeException ignored) {
                             }
                         }
                     }

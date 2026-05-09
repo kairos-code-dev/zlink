@@ -30,7 +30,8 @@ template<typename SocketT> class has_receive_t
   private:
     template<typename T>
     static auto test (int)
-      -> decltype (std::declval<T &> ().recv (),
+      -> decltype (std::declval<T &> ().recv (
+                      std::declval<zlink::received_t &> ()),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -209,10 +210,10 @@ void test_pair_send_recv_single_part ()
     zlink::message_t outbound = zlink_cpp_contract::make_message ("ping");
     right.send (outbound);
 
-    const std::optional<zlink::received_t> inbound = left.recv ();
-    assert (inbound.has_value ());
-    assert (inbound->parts ().size () == 1);
-    assert (inbound->parts ()[0].to_string () == "ping");
+    zlink::received_t inbound;
+    assert (left.recv (inbound) == 0);
+    assert (inbound.parts ().size () == 1);
+    assert (inbound.parts ()[0].to_string () == "ping");
 }
 
 void test_pair_send_recv_multipart ()
@@ -239,11 +240,11 @@ void test_pair_send_recv_multipart ()
     outbound.push_back (zlink_cpp_contract::make_message ("two"));
     right.send (outbound);
 
-    const std::optional<zlink::received_t> inbound = left.recv ();
-    assert (inbound.has_value ());
-    assert (inbound->parts ().size () == 2);
-    assert (inbound->parts ()[0].to_string () == "one");
-    assert (inbound->parts ()[1].to_string () == "two");
+    zlink::received_t inbound;
+    assert (left.recv (inbound) == 0);
+    assert (inbound.parts ().size () == 2);
+    assert (inbound.parts ()[0].to_string () == "one");
+    assert (inbound.parts ()[1].to_string () == "two");
 }
 
 void test_pair_ipc_large_message_shutdown ()
@@ -271,10 +272,10 @@ void test_pair_ipc_large_message_shutdown ()
     std::memset (outbound.data (), 0x5a, payload_size);
     right.send (outbound);
 
-    const std::optional<zlink::received_t> inbound = left.recv ();
-    assert (inbound.has_value ());
-    assert (inbound->parts ().size () == 1);
-    assert (inbound->parts ()[0].size () == payload_size);
+    zlink::received_t inbound;
+    assert (left.recv (inbound) == 0);
+    assert (inbound.parts ().size () == 1);
+    assert (inbound.parts ()[0].size () == payload_size);
 }
 
 void test_common_auto_hwm_msg_unit_option_contract ()

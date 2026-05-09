@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cerrno>
 #include <cstring>
+#include <deque>
 #include <iomanip>
 #include <iostream>
 #include <string>
@@ -58,70 +59,248 @@ struct relay_server_config_t
     const char *server_routing_id;
 };
 
-inline bool relay_router_once (void *server,
-                               zlink_socket_type_t socket_type,
-                               int hwm_value,
-                               const std::string &transport,
-                               size_t *active_msg_size)
+// Owned snapshot of one routed reply that has not been sent yet because the
+// socket reported EAGAIN. Holds an immutable copy of the routing id (the
+// pointer returned by zlink_router_recv is to zlink internal storage and may
+// be invalidated by subsequent recv calls) and the moved-out message parts.
+struct pending_reply_t
 {
-    const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
-    uint64_t request_seq = 0;
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    const zlink_recv_result_t rc =
-      ::zlink_router_recv (
-        server,
-        &source_rid,
-        &source_spot_rid,
-        &request_seq,
-        &parts,
-        &part_count,
-        static_cast<zlink_recv_flags_t> (0));
-    if (rc != ZLINK_RECV_OK) {
-        const int err = zlink_errno ();
-        return err == EAGAIN || err == EINTR;
+    zlink_routing_id_t rid;
+    std::vector<zlink_msg_t> parts;
+
+    pending_reply_t () : rid (), parts () {}
+
+    pending_reply_t (pending_reply_t &&other) noexcept :
+        rid (other.rid),
+        parts (std::move (other.parts))
+    {
+        std::memset (&other.rid, 0, sizeof (other.rid));
     }
 
-    if (!source_rid || source_rid->size == 0
-        || (source_spot_rid && source_spot_rid->size != 0)
-        || request_seq != 0 || part_count == 0 || !parts) {
-        zlink_multipart_close (parts, part_count);
-        errno = EPROTO;
+    pending_reply_t &operator= (pending_reply_t &&other) noexcept
+    {
+        if (this != &other) {
+            release_parts ();
+            rid = other.rid;
+            parts = std::move (other.parts);
+            std::memset (&other.rid, 0, sizeof (other.rid));
+        }
+        return *this;
+    }
+
+    pending_reply_t (const pending_reply_t &) = delete;
+    pending_reply_t &operator= (const pending_reply_t &) = delete;
+
+    ~pending_reply_t () { release_parts (); }
+
+    void release_parts ()
+    {
+        if (!parts.empty ()) {
+            zlink_multipart_close (parts.data (), parts.size ());
+            parts.clear ();
+        }
+    }
+};
+
+inline bool capture_pending_reply (const zlink_routing_id_t *source_rid,
+                                   zlink_msg_t *parts,
+                                   size_t part_count,
+                                   pending_reply_t *out)
+{
+    if (!source_rid || !parts || part_count == 0 || !out)
+        return false;
+
+    out->rid = *source_rid;
+    out->parts.resize (part_count);
+    for (size_t i = 0; i < part_count; ++i) {
+        if (zlink_msg_init (&out->parts[i]) != 0) {
+            // Roll back any successfully initialized slots and the still-owned
+            // recv parts that we have not yet moved into our queue.
+            for (size_t j = 0; j < i; ++j)
+                zlink_msg_close (&out->parts[j]);
+            zlink_multipart_close (parts, part_count);
+            out->parts.clear ();
+            return false;
+        }
+    }
+    for (size_t i = 0; i < part_count; ++i) {
+        if (zlink_msg_move (&out->parts[i], &parts[i]) != 0) {
+            // Close any messages we already moved into out; close untouched
+            // recv parts as well.
+            for (size_t j = 0; j < part_count; ++j)
+                zlink_msg_close (&out->parts[j]);
+            for (size_t j = i; j < part_count; ++j)
+                zlink_msg_close (&parts[j]);
+            out->parts.clear ();
+            return false;
+        }
+    }
+    return true;
+}
+
+inline bool try_send_reply_now (void *server,
+                                const zlink_routing_id_t *source_rid,
+                                zlink_msg_t *parts,
+                                size_t part_count,
+                                bool *would_block)
+{
+    if (would_block)
+        *would_block = false;
+
+    const zlink_submit_result_t send_rc = ::zlink_send_rid (
+      server,
+      source_rid,
+      parts,
+      part_count,
+      static_cast<zlink_send_flags_t> (ZLINK_SEND_FLAGS_DONTWAIT));
+    if (send_rc == ZLINK_SUBMIT_OK)
+        return true;
+
+    const int err = zlink_errno ();
+    if (err == EAGAIN || err == EINTR || err == EHOSTUNREACH
+        || err == ENOTCONN) {
+        if (would_block)
+            *would_block = true;
         return false;
     }
-    if (bench_debug_enabled ()
-        && g_debug_relay_logs.fetch_add (1, std::memory_order_acq_rel) < 12) {
-        std::cerr << "[perf-multi-relay] echo request size="
-                  << (part_count > 0 && parts ? zlink_msg_size (&parts[0]) : 0)
-                  << " rid_size=" << static_cast<int> (source_rid->size)
-                  << " rid=" << format_rid_debug (source_rid)
-                  << " part_count=" << part_count
+
+    if (bench_debug_enabled ()) {
+        std::cerr << "[perf-multi-relay] reply send failed err=" << err
                   << std::endl;
     }
+    return false;
+}
 
-    const size_t msg_size =
-      part_count > 0 && parts ? zlink_msg_size (&parts[0]) : 0;
-    if (active_msg_size && msg_size > 0 && *active_msg_size != msg_size) {
-        apply_benchmark_auto_hwm_msg_unit (server, socket_type, msg_size);
-        apply_benchmark_hwm (server, hwm_value);
-        *active_msg_size = msg_size;
-        perf_print_auto_hwm_snapshot (
-          server, false, "server", transport, true, msg_size, socket_type);
-    }
-
-    const zlink_submit_result_t send_rc =
-      ::zlink_send_rid (
-        server, source_rid, parts, part_count,
-        static_cast<zlink_send_flags_t> (0));
-    if (send_rc != ZLINK_SUBMIT_OK) {
-        if (bench_debug_enabled ()) {
-            std::cerr << "[perf-multi-relay] reply send failed err="
-                      << zlink_errno () << std::endl;
+inline bool flush_pending_replies (void *server,
+                                   std::deque<pending_reply_t> *pending)
+{
+    if (!pending)
+        return true;
+    while (!pending->empty ()) {
+        pending_reply_t &front = pending->front ();
+        bool would_block = false;
+        const bool ok = try_send_reply_now (
+          server,
+          &front.rid,
+          front.parts.data (),
+          front.parts.size (),
+          &would_block);
+        if (ok) {
+            // zlink_send_rid consumed the parts on success; clear the vector
+            // without closing them again so the destructor is a no-op.
+            front.parts.clear ();
+            pending->pop_front ();
+            continue;
         }
+        if (would_block)
+            return true;
         return false;
     }
     return true;
+}
+
+inline bool drain_recv_and_relay (void *server,
+                                  zlink_socket_type_t socket_type,
+                                  int hwm_value,
+                                  const std::string &transport,
+                                  size_t *active_msg_size,
+                                  std::deque<pending_reply_t> *pending,
+                                  bool *recv_drained)
+{
+    if (recv_drained)
+        *recv_drained = false;
+
+    while (true) {
+        if (perf_stop_requested ().load (std::memory_order_acquire))
+            return true;
+
+        const zlink_routing_id_t *source_rid = NULL;
+        const zlink_routing_id_t *source_spot_rid = NULL;
+        uint64_t request_seq = 0;
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        const zlink_recv_result_t rc = ::zlink_router_recv (
+          server,
+          &source_rid,
+          &source_spot_rid,
+          &request_seq,
+          &parts,
+          &part_count,
+          static_cast<zlink_recv_flags_t> (ZLINK_RECV_FLAGS_DONTWAIT));
+        if (rc != ZLINK_RECV_OK) {
+            const int err = zlink_errno ();
+            if (err == EAGAIN || err == EWOULDBLOCK || err == EINTR) {
+                if (recv_drained)
+                    *recv_drained = true;
+                return true;
+            }
+            if (bench_debug_enabled ()) {
+                std::cerr << "[perf-multi-relay] recv failed err=" << err
+                          << std::endl;
+            }
+            return false;
+        }
+
+        if (!source_rid || source_rid->size == 0
+            || (source_spot_rid && source_spot_rid->size != 0)
+            || request_seq != 0 || part_count == 0 || !parts) {
+            zlink_multipart_close (parts, part_count);
+            errno = EPROTO;
+            return false;
+        }
+        if (bench_debug_enabled ()
+            && g_debug_relay_logs.fetch_add (1, std::memory_order_acq_rel)
+                 < 12) {
+            std::cerr << "[perf-multi-relay] echo request size="
+                      << (part_count > 0 && parts ? zlink_msg_size (&parts[0])
+                                                  : 0)
+                      << " rid_size=" << static_cast<int> (source_rid->size)
+                      << " rid=" << format_rid_debug (source_rid)
+                      << " part_count=" << part_count << std::endl;
+        }
+
+        const size_t msg_size =
+          part_count > 0 && parts ? zlink_msg_size (&parts[0]) : 0;
+        if (active_msg_size && msg_size > 0 && *active_msg_size != msg_size) {
+            apply_benchmark_auto_hwm_msg_unit (server, socket_type, msg_size);
+            apply_benchmark_hwm (server, hwm_value);
+            *active_msg_size = msg_size;
+            perf_print_auto_hwm_snapshot (
+              server, false, "server", transport, true, msg_size, socket_type);
+        }
+
+        // While we still have backlog, push everything onto the queue to keep
+        // ordering. Otherwise try to send immediately.
+        bool would_block = false;
+        if (pending && pending->empty ()
+            && try_send_reply_now (server,
+                                   source_rid,
+                                   parts,
+                                   part_count,
+                                   &would_block)) {
+            continue;
+        }
+        if (!would_block && pending && !pending->empty ()) {
+            // Already pending; do not even attempt and keep ordering.
+        } else if (!would_block) {
+            // try_send_reply_now returned false but did not block: that means
+            // a real error path (logged inside) — propagate.
+            zlink_multipart_close (parts, part_count);
+            return false;
+        }
+
+        if (!pending) {
+            zlink_multipart_close (parts, part_count);
+            errno = ENOSPC;
+            return false;
+        }
+        pending->emplace_back ();
+        if (!capture_pending_reply (source_rid, parts, part_count,
+                                    &pending->back ())) {
+            pending->pop_back ();
+            return false;
+        }
+    }
 }
 
 inline bool run_server_loop (const relay_server_config_t &config,
@@ -130,18 +309,48 @@ inline bool run_server_loop (const relay_server_config_t &config,
                              const std::string &lib_name,
                              const std::string &transport)
 {
+    (void) lib_name;
     if (!server)
         return false;
 
     size_t active_msg_size = 0;
+    std::deque<pending_reply_t> pending;
+
     while (!perf_stop_requested ().load (std::memory_order_acquire)) {
-        if (!relay_router_once (
-              server,
-              config.socket_type,
-              hwm_value,
-              transport,
-              &active_msg_size))
+        zlink_pollitem_t item;
+        item.socket = server;
+        item.fd = 0;
+        item.events = ZLINK_POLLIN;
+        if (!pending.empty ())
+            item.events |= ZLINK_POLLOUT;
+        item.revents = 0;
+        const int poll_rc = perf_socket_poll (&item, 1, -1);
+        if (poll_rc < 0) {
+            if (zlink_errno () == EINTR)
+                continue;
+            if (bench_debug_enabled ()) {
+                std::cerr << "[perf-multi-relay] poll failed err="
+                          << zlink_errno () << std::endl;
+            }
             return false;
+        }
+        if (perf_stop_requested ().load (std::memory_order_acquire))
+            break;
+        if ((item.revents & ZLINK_POLLOUT) != 0) {
+            if (!flush_pending_replies (server, &pending))
+                return false;
+        }
+        if ((item.revents & ZLINK_POLLIN) != 0) {
+            bool recv_drained = false;
+            if (!drain_recv_and_relay (server,
+                                       config.socket_type,
+                                       hwm_value,
+                                       transport,
+                                       &active_msg_size,
+                                       &pending,
+                                       &recv_drained))
+                return false;
+        }
     }
 
     return true;

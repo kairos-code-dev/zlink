@@ -1,0 +1,470 @@
+# C++ binding 성능 개선 라운드 로그
+
+관련 계획 문서: [bindings-library-performance-improvement-plan.ko.md](../bindings-library-performance-improvement-plan.ko.md)
+
+### 2026-05-08 C++ round 1
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/single/report/perf_c_single_linux_20260508_185841_baseline_20260508.txt`
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260508_190543_baseline_20260508.txt`
+- 대상 언어 결과:
+  - `bindings/cpp/perf/results/single/report/perf_cpp_single_linux_20260508_191249_baseline_20260508.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_191944_baseline_20260508.txt`
+  - 재측정: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_192859_cpp_round1_spot_reqrep.txt`
+- 목표 미달 조합:
+  - `MULTI_SPOT_REQREP` 64B throughput이 C 기준의 약 1.5%였다.
+  - `MULTI_SPOT`은 `UNSUPPORTED`로 출력됐고, C++ runner는 `MULTI_SPOT_SENDSEND`를 실행하지 않았다.
+  - `MULTI_PUBSUB`, `MULTI_STREAM`, raw multi echo 계열도 64B에서 목표 미달이다.
+- 선택한 병목 가설:
+  - C++ `async_result_t::wait_for(0)`가 내부 request progress를 돌리지 않아, perf client가 request를 slot별로 병렬 진행하지 못하고 `get()`에서 직렬화된다.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/async_result.hpp`
+  - `bindings/cpp/perf/multi/src/perf_spot_reqrep_client.cpp`
+- 추가/수정한 회귀 테스트:
+  - `bindings/cpp/tests/contract/test_cpp_contract_request_reply.cpp`
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target test_cpp_contract_request_reply`
+  - `ctest --test-dir bindings/cpp/build -R '^test_cpp_contract_request_reply$' --output-on-failure`
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_spot_reqrep_client cpp_comp_src_spot_reqrep_server`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern SPOT_REQREP --msg-sizes 64 --runs 1 --results-tag cpp_round1_spot_reqrep`
+- 결과:
+  - 추가한 회귀 테스트는 수정 전 실패했고 수정 후 통과했다.
+  - `MULTI_SPOT_REQREP` 64B throughput은 tcp 기준 약 `0.84 Kops/s`에서 `121.31 Kops/s`로 개선되어 C 기준 `58.54 Kops/s`를 넘었다.
+- 다음 판단:
+  - 64B 기준에서 가장 큰 남은 throughput 손실인 `MULTI_PUBSUB`를 다음 병목으로 분석한다.
+  - `MULTI_SPOT` `UNSUPPORTED`와 `MULTI_SPOT_SENDSEND` 미실행은 C++ 완료 전 반드시 해소한다.
+
+### 2026-05-08 C++ round 2
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260508_190543_baseline_20260508.txt`
+- 대상 언어 결과:
+  - 이전: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_191944_baseline_20260508.txt`
+  - 재측정: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_193739_cpp_round4_pubsub_pollout.txt`
+- 목표 미달 조합:
+  - `MULTI_PUBSUB` 64B throughput이 C 기준의 약 7.5%였다.
+- 선택한 병목 가설:
+  - C++ PUB server가 EAGAIN 뒤 POLLOUT을 최대 100ms 기다려 active send loop가 과하게 쉬었다.
+  - PUBSUB client hot path도 `topic_message_t` 생성과 payload 재복사를 수행하고 있었다.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/perf/common/perf_socket_compat.hpp`
+  - `bindings/cpp/perf/multi/src/perf_pubsub_client.cpp`
+  - `bindings/cpp/perf/multi/src/perf_pubsub_server.cpp`
+- 추가/수정한 회귀 테스트:
+  - 없음. perf 정책 hot path 수정이며 public C++ API 계약은 바꾸지 않았다.
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_pubsub_client cpp_comp_src_pubsub_server`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern PUBSUB --msg-sizes 64 --runs 1 --results-tag cpp_round4_pubsub_pollout`
+- 결과:
+  - `MULTI_PUBSUB` 64B throughput은 tcp 기준 약 `253.44 Kmsg/s`에서 `3886.31 Kmsg/s`로 개선되어 C 기준 `3392.85 Kmsg/s`를 넘었다.
+- 다음 판단:
+  - 남은 큰 손실은 `MULTI_STREAM`, raw multi echo 계열, single latency 계열, `MULTI_SPOT`/`MULTI_SPOT_SENDSEND` 지원 공백이다.
+
+### 2026-05-08 C++ round 3
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260508_190543_baseline_20260508.txt`
+- 대상 언어 결과:
+  - 이전: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_193839_cpp_after_round2_64.txt`
+  - 재측정: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_215738_cpp_spot_core_runtime_tcp.txt`
+  - 재측정: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_220706_cpp_spot_tls_pollout.txt`
+- 목표 미달 조합:
+  - `MULTI_SPOT`은 C++ perf runtime이 `bindings/cpp/native/...`의 오래된 runtime을 사용해 symbol lookup 오류로 실패했다.
+  - runtime 수정 뒤 `MULTI_SPOT,tls,64`가 C 기준의 약 1.5%였다.
+- 선택한 병목 가설:
+  - C++ perf runner의 `.runtime/*/lib`가 `core/build/lib`가 아니라 stale native runtime을 가리켰다.
+  - C++ SPOT server는 `EAGAIN` 뒤 blocking publish로 fallback하고, 실패하면 단순 idle wait를 수행해 tls active send loop가 멈췄다.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/perf/prepare_cpp_runtime.py`
+  - `bindings/cpp/perf/multi/src/perf_spot_server.cpp`
+- 추가/수정한 회귀 테스트:
+  - 없음. stale runtime 선택과 SPOT server send wait는 perf 측정 버그다.
+- 실행한 검증 명령:
+  - `python3 -m py_compile bindings/cpp/perf/prepare_cpp_runtime.py`
+  - `bindings/cpp/perf/prepare_cpp_runtime.py --suite multi`
+  - `bindings/cpp/perf/prepare_cpp_runtime.py --suite single`
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_spot_server`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern SPOT --msg-sizes 64 --runs 1 --transports tcp --results-tag cpp_spot_core_runtime_tcp`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern SPOT --msg-sizes 64 --runs 1 --transports tls --results-tag cpp_spot_tls_pollout`
+- 결과:
+  - `.runtime/{single,multi}/lib`는 `core/build/lib`를 가리키며, core source가 runtime보다 최신이면 실패한다.
+  - `MULTI_SPOT,tcp,64`는 정상 complete가 되었고 `673.99 Kmsg/s`로 C 기준을 넘었다.
+  - `MULTI_SPOT,tls,64`는 `5.12 Kmsg/s`에서 `600.42 Kmsg/s`로 개선되어 C 기준 `348.06 Kmsg/s`를 넘었다.
+- 다음 판단:
+  - C++ 64B multi 재측정에서 `MULTI_SPOT_SENDSEND` 누락, `MULTI_STREAM`, raw echo, `MULTI_DEALER_DEALER`이 남은 주요 미달 조합이다.
+
+### 2026-05-08 C++ round 4
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260508_190543_baseline_20260508.txt`
+- 대상 언어 결과:
+  - 전체 재측정: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_215811_cpp_after_runtime_fix_64.txt`
+  - raw echo 재측정: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_221152_cpp_routed_recv_fastpath_64.txt`
+  - raw echo 재측정: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_221327_cpp_echo_external_all_64.txt`
+  - 배제한 STREAM 가설: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_221817_cpp_stream_raw_packet_tcp.txt`
+- 목표 미달 조합:
+  - `MULTI_SPOT_SENDSEND` 64B 결과가 없다.
+  - `MULTI_STREAM` 64B throughput ratio가 약 0.41-0.44다.
+  - raw echo 계열 64B throughput ratio가 약 0.43-0.62다.
+  - `MULTI_DEALER_DEALER` 64B throughput ratio가 약 0.43-0.66이다.
+- 선택한 병목 가설:
+  - routed single-part receive가 `received_t`와 `std::vector<message_t>`를 만들기 때문에 raw echo hot path 비용이 크다.
+  - echo client가 tcp 외 transport에서 매 요청 payload를 복사한다.
+  - STREAM server의 packet callback 재조립 복사가 병목일 수 있다.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/base_socket.hpp`
+  - `bindings/cpp/include/zlink/message_socket.hpp`
+  - `bindings/cpp/include/zlink/socket_types.hpp`
+  - `bindings/cpp/perf/common/perf_socket_compat.hpp`
+  - `bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp`
+  - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+  - `bindings/cpp/perf/multi/src/perf_dealer_router_server.cpp`
+- 추가/수정한 회귀 테스트:
+  - `bindings/cpp/tests/contract/test_cpp_contract_socket.cpp`
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target test_cpp_contract_socket`
+  - `ctest --test-dir bindings/cpp/build -R '^test_cpp_contract_socket$' --output-on-failure`
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_dealer_router_server cpp_comp_src_router_router_server cpp_comp_src_dealer_router_client cpp_comp_src_router_router_client`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 64 --runs 1 --results-tag cpp_routed_recv_fastpath_64`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 64 --runs 1 --results-tag cpp_echo_external_all_64`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern STREAM --msg-sizes 64 --runs 1 --transports tcp --results-tag cpp_stream_raw_packet_tcp`
+- 결과:
+  - routed single-part recv 계약 테스트는 수정 전 실패했고 수정 후 통과했다.
+  - raw echo throughput 개선은 작았다. `MULTI_ROUTER_ROUTER,tcp,64`는 약 `228.76 Kops/s`에서 `258.68 Kops/s`까지 올랐지만 C 기준 `399.96 Kops/s`에는 미달이다.
+  - STREAM raw packet echo 가설은 tcp smoke가 `partial`로 실패해 되돌렸다.
+- 다음 판단:
+  - 다음 자동 작업은 `MULTI_SPOT_SENDSEND`를 C++ public SPOT API로 추가해 matrix 누락을 먼저 제거한 뒤, raw echo/STREAM의 남은 구조적 비용을 다시 분석한다.
+
+### 2026-05-08 C++ round 5
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260508_190543_baseline_20260508.txt`
+- 대상 언어 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_223125_cpp_spot_sendsend_initial_64.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_223215_cpp_spot_sendsend_initial_non_tcp_64.txt`
+- 목표 미달 조합:
+  - `MULTI_SPOT_SENDSEND` 64B 결과가 없어 C++ matrix가 정책 조합을 모두 측정하지 못했다.
+  - C++ `spot_t::recv_routed()`가 `spot_recv_impl` 미정의 심볼을 참조해, public routed receive API를 사용하는 바이너리가 링크되지 않았다.
+- 선택한 병목 가설:
+  - C++ perf runner가 `SPOT_SENDSEND` 서버/클라이언트 바이너리와 pattern metadata를 등록하지 않았다.
+  - `spot_t::recv_routed()`는 core 공개 C API인 `zlink_spot_recv_part`를 직접 조립해야 하는데 존재하지 않는 내부 helper를 호출하고 있었다.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/services/spot.hpp`
+  - `bindings/cpp/perf/CMakeLists.txt`
+  - `bindings/cpp/perf/prepare_cpp_runtime.py`
+  - `bindings/cpp/perf/run_binding_multi.sh`
+  - `bindings/cpp/perf/run_comparison.py`
+  - `bindings/cpp/perf/multi/src/perf_spot_sendsend_server.cpp`
+  - `bindings/cpp/perf/multi/src/perf_spot_sendsend_client.cpp`
+- 추가/수정한 회귀 테스트:
+  - `bindings/cpp/tests/contract/test_cpp_contract_socket.cpp`
+- 실행한 검증 명령:
+  - `python3 -m py_compile bindings/cpp/perf/run_comparison.py bindings/cpp/perf/prepare_cpp_runtime.py`
+  - `cmake --build bindings/cpp/build --target test_cpp_contract_socket cpp_comp_src_spot_sendsend_server cpp_comp_src_spot_sendsend_client`
+  - `ctest --test-dir bindings/cpp/build -R '^test_cpp_contract_socket$' --output-on-failure`
+  - `bindings/cpp/perf/prepare_cpp_runtime.py --suite multi`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern SPOT_SENDSEND --msg-sizes 64 --runs 1 --transports tcp --results-tag cpp_spot_sendsend_initial_64`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern SPOT_SENDSEND --msg-sizes 64 --runs 1 --transports tls,ws,wss --results-tag cpp_spot_sendsend_initial_non_tcp_64`
+- 결과:
+  - `spot_t::recv_routed()` 링크 회귀 테스트는 수정 후 통과했다.
+  - `MULTI_SPOT_SENDSEND` 64B throughput은 tcp `270.48 Kops/s`, tls `252.50 Kops/s`, ws `236.29 Kops/s`, wss `252.57 Kops/s`로 모두 C 기준 90%를 넘었다.
+- 다음 판단:
+  - `MULTI_SPOT_SENDSEND` 누락은 해소됐다.
+  - 다음 미달군은 `MULTI_DEALER_DEALER`, raw echo 계열, `MULTI_STREAM`이다.
+
+### 2026-05-08 C++ round 6
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260508_190543_baseline_20260508.txt`
+- 대상 언어 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_223722_cpp_dealer_single_recv_64.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_223823_cpp_single_recv_echo_64.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_224204_cpp_poller_into_echo_tcp_64.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_224309_cpp_dealer_dealer_burst_send_tcp_64.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260508_224340_cpp_dealer_dealer_server_drain_tcp_64.txt`
+- 목표 미달 조합:
+  - `MULTI_DEALER_DEALER,tcp,64`는 C 기준 `3571.29 Kmsg/s` 대비 약 `1934.82 Kmsg/s`로 미달이다.
+  - `MULTI_DEALER_ROUTER,tcp,64`는 C 기준 `419.43 Kops/s` 대비 약 `263.33 Kops/s`로 미달이다.
+  - `MULTI_ROUTER_ROUTER,tcp,64`는 C 기준 `399.96 Kops/s` 대비 약 `257.37 Kops/s`로 미달이다.
+- 선택한 병목 가설:
+  - `PAIR`/`DEALER` 수신이 `received_t`와 `std::vector<message_t>`를 생성해 hot path 비용이 컸다.
+  - `poller_t::wait_all()`이 매 호출마다 결과 vector를 새로 만들어 client hot path에 불필요한 allocation을 넣었다.
+  - `MULTI_DEALER_DEALER` C++ client/server active window가 C runner와 다르게 drain/submit 루프를 구성했다.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/message_socket.hpp`
+  - `bindings/cpp/include/zlink/socket_types.hpp`
+  - `bindings/cpp/include/zlink/poller.hpp`
+  - `bindings/cpp/perf/common/perf_socket_compat.hpp`
+  - `bindings/cpp/perf/multi/src/perf_dealer_dealer_client.cpp`
+  - `bindings/cpp/perf/multi/src/perf_dealer_dealer_server.cpp`
+  - `bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp`
+  - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+- 추가/수정한 회귀 테스트:
+  - `bindings/cpp/tests/contract/test_cpp_contract_socket.cpp`
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target test_cpp_contract_socket cpp_comp_src_dealer_dealer_client cpp_comp_src_dealer_router_client cpp_comp_src_router_router_client`
+  - `ctest --test-dir bindings/cpp/build -R '^test_cpp_contract_socket$' --output-on-failure`
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_dealer_dealer_server cpp_comp_src_dealer_dealer_client`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern DEALER_DEALER --msg-sizes 64 --runs 1 --results-tag cpp_dealer_single_recv_64`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 64 --runs 1 --results-tag cpp_single_recv_echo_64`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 64 --runs 1 --transports tcp --results-tag cpp_poller_into_echo_tcp_64`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern DEALER_DEALER --msg-sizes 64 --runs 1 --transports tcp --results-tag cpp_dealer_dealer_burst_send_tcp_64`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern DEALER_DEALER --msg-sizes 64 --runs 1 --transports tcp --results-tag cpp_dealer_dealer_server_drain_tcp_64`
+- 결과:
+  - `PAIR`/`DEALER` single-part recv 계약 테스트는 통과했다.
+  - `poller_t::wait_all(events_out, ...)` 재사용 overload 빌드는 통과했다.
+  - `MULTI_DEALER_DEALER` tcp 64B, raw echo tcp 64B 개선은 목표에 충분하지 않았다.
+- 다음 판단:
+  - 남은 C++ 미달은 단순 수신 allocation보다 `perf::socket_t` compat dispatch, routing id 복사, C++ poller/tag 처리, 또는 서버 hot path 구조 비용이 더 큰 것으로 보고 raw echo/one-way 서버 hot path를 계속 분석한다.
+
+### 2026-05-09 C++ round 7
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260508_235750_c_dealer_current_check_tcp64.txt`
+- 대상 언어 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_000249_cpp_dealer_final_probe_tcp64.txt`
+- 목표 미달 조합:
+  - `MULTI_DEALER_DEALER,tcp,64`는 이번 라운드에서 통과했다.
+  - C++ 완료 전 남은 미달군은 `MULTI_STREAM,tcp,64`, `MULTI_DEALER_ROUTER,tcp,64`, `MULTI_ROUTER_ROUTER,tcp,64`이다.
+- 선택한 병목 가설:
+  - `DEALER_DEALER` client가 `lat_out == NULL`이어도 active send latency sampler를 매 전송마다 갱신했다.
+  - C++ server receive hot path가 public C++ wrapper의 `message_t`/exception 경로와 `poller_t` event 객체를 거쳤다.
+  - server latency sampler가 active 구간 중 재할당을 반복했다.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/base_socket.hpp`
+  - `bindings/cpp/include/zlink/message_socket.hpp`
+  - `bindings/cpp/include/zlink/poller.hpp`
+  - `bindings/cpp/include/zlink/socket_types.hpp`
+  - `bindings/cpp/perf/multi/src/perf_dealer_dealer_client.cpp`
+  - `bindings/cpp/perf/multi/src/perf_dealer_dealer_server.cpp`
+- 추가/수정한 회귀 테스트:
+  - `bindings/cpp/tests/contract/test_cpp_contract_socket.cpp`
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target test_cpp_contract_socket cpp_comp_src_dealer_dealer_client cpp_comp_src_dealer_dealer_server`
+  - `ctest --test-dir bindings/cpp/build -R '^test_cpp_contract_socket$' --output-on-failure`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern DEALER_DEALER --msg-sizes 64 --runs 1 --transports tcp --results-tag c_dealer_current_check_tcp64`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern DEALER_DEALER --msg-sizes 64 --runs 1 --transports tcp --results-tag cpp_dealer_final_probe_tcp64`
+- 결과:
+  - `MULTI_DEALER_DEALER,tcp,64` C 기준은 `3889.199 Kmsg/s`이다.
+  - C++ 결과는 `3520.739 Kmsg/s`로 throughput ratio가 약 `0.905`이며 C++ 목표 `0.90`을 넘었다.
+  - latency p99도 C `53.606 ms` 대비 C++ `0.357 ms`라 악화 조건에 해당하지 않는다.
+- 다음 판단:
+  - `MULTI_DEALER_DEALER,tcp,64`는 통과로 고정한다.
+  - 다음 자동 작업은 C++ `MULTI_STREAM,tcp,64`를 같은 pattern/transport/size 기준으로 다시 분석하고, 목표 미달이면 public C++ API 또는 binding hot path를 수정한다.
+
+### 2026-05-09 C++ round 8
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260509_005316_c_stream64_round_next.txt`
+- 대상 언어 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_005328_cpp_stream64_round_next.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_011329_cpp_stream64_after_msgunit_audit.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_012106_cpp_stream64_msg_move_struct.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_012228_cpp_stream64_stream_send_restore_adopt.txt`
+- 목표 미달 조합:
+  - `MULTI_STREAM,tcp,64`는 C `394.836 Kops/s` 대비 C++ 최고 `153.705 Kops/s`로 ratio가 약 `0.389`라 목표 `0.90`에 미달한다.
+- 선택한 병목 가설:
+  - C++ STREAM server의 `message_t` adopt/move/restore 경로가 callback hot path에서 불필요한 `zlink_msg_init`/`zlink_msg_move`/`zlink_msg_close`를 반복했다.
+  - C++ multi perf가 일부 pattern에서 size별 `AUTO_HWM_MSG_UNIT_BYTES`를 설정하지 않거나 recalc를 누락해 C 기준과 socket sizing 조건이 달라질 수 있었다.
+  - runner 표시가 auto-HWM 기본값을 숫자 HWM처럼 보여 실제 설정 해석을 흐렸다.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/message.hpp`
+  - `bindings/cpp/include/zlink/services/spot.hpp`
+  - `bindings/cpp/include/zlink/socket_types.hpp`
+  - `bindings/cpp/perf/common/perf_socket_compat.hpp`
+  - `bindings/cpp/perf/multi/common/perf_common.hpp`
+  - `bindings/cpp/perf/multi/common/perf_spot_control.hpp`
+  - `bindings/cpp/perf/multi/src/perf_pubsub_client.cpp`
+  - `bindings/cpp/perf/multi/src/perf_pubsub_server.cpp`
+  - `bindings/cpp/perf/multi/src/perf_spot_client.cpp`
+  - `bindings/cpp/perf/multi/src/perf_spot_server.cpp`
+  - `bindings/cpp/perf/multi/src/perf_spot_reqrep_client.cpp`
+  - `bindings/cpp/perf/multi/src/perf_spot_reqrep_server.cpp`
+  - `bindings/cpp/perf/multi/src/perf_spot_sendsend_client.cpp`
+  - `bindings/cpp/perf/multi/src/perf_spot_sendsend_server.cpp`
+  - `bindings/cpp/perf/multi/src/perf_stream_server.cpp`
+  - `bindings/cpp/perf/run_binding_multi.sh`
+  - `bindings/cpp/perf/run_comparison.py`
+  - `doc/spec/bindings/README.md`
+  - `doc/spec/bindings/cpp/README.md`
+- 추가/수정한 회귀 테스트:
+  - `bindings/cpp/tests/contract/test_cpp_contract_message.cpp`
+  - `bindings/cpp/tests/contract/test_cpp_contract_service.cpp`
+  - `bindings/cpp/tests/contract/test_cpp_contract_socket.cpp`
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target test_cpp_contract_message test_cpp_contract_socket cpp_comp_src_stream_server`
+  - `ctest --test-dir bindings/cpp/build -R '^(test_cpp_contract_message|test_cpp_contract_socket)$' --output-on-failure`
+  - `cmake --build bindings/cpp/build --target test_cpp_contract_service cpp_comp_src_spot_client cpp_comp_src_spot_server cpp_comp_src_spot_sendsend_server cpp_comp_src_spot_sendsend_client cpp_comp_src_spot_reqrep_server cpp_comp_src_spot_reqrep_client cpp_comp_src_pubsub_server cpp_comp_src_pubsub_client`
+  - `ctest --test-dir bindings/cpp/build -R '^test_cpp_contract_service$' --output-on-failure`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern STREAM --msg-sizes 64 --transports tcp --runs 1 --results-tag cpp_stream64_after_msgunit_audit`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern STREAM --msg-sizes 64 --transports tcp --runs 1 --results-tag cpp_stream64_msg_move_struct`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern STREAM --msg-sizes 64 --transports tcp --runs 1 --results-tag cpp_stream64_stream_send_restore_adopt`
+- 결과:
+  - `AUTO_HWM_MSG_UNIT_BYTES` 정책은 `doc/perf/PERF_MULTI_TEST_POLICY.md`와 `doc/perf/PERF_POLICY.md`에 이미 명시되어 있었다.
+  - C++ multi perf는 일반 socket과 SPOT node/handle 경로에서 현재 size를 MsgUnit으로 설정하고 context auto-HWM을 recalc하도록 보정했다.
+  - `message_t` move를 wrapper 내부 소유권 이전으로 줄였지만 STREAM throughput은 `153.705 Kops/s` 수준으로 목표 미달이 계속된다.
+- 다음 판단:
+  - C++ 완료 전 `MULTI_STREAM,tcp,64`를 계속 분석한다.
+  - 다음 자동 작업은 C++ `stream_socket_t::on_packet` callback dispatch와 `message_t` native adopt 비용, 그리고 STREAM server pending/EAGAIN 빈도를 분리해 병목을 좁힌다.
+
+### 2026-05-09 C++ round 9
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260509_005316_c_stream64_round_next.txt`
+- 대상 언어 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_012912_cpp_stream64_adopt_no_close.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_013105_cpp_stream64_ctx_align.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_013146_cpp_stream64_recalc_after_bind.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_013640_cpp_stream64_msgunit_option_fix.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_013850_cpp_stream64_rid_direct.txt`
+- 목표 미달 조합:
+  - `MULTI_STREAM,tcp,64`는 C `394.836 Kops/s` 대비 C++ 최고 `153.579 Kops/s`로 ratio가 약 `0.389`라 목표 `0.90`에 미달한다.
+- 선택한 병목 가설:
+  - C++ common socket option의 `AUTO_HWM_MSG_UNIT_BYTES` setter가 C 계약의 `int` 크기와 다르게 `int64_t`로 호출해 MsgUnit 설정 실패 또는 ready 전 `EINVAL`을 만들 수 있었다.
+  - C perf의 context 기본과 C++ perf context 기본을 맞추기 위해 C++ multi context에 `BLOCKY=0`과 balanced auto-HWM profile을 명시 적용했다.
+  - STREAM server는 bind 이후에도 auto-HWM을 다시 계산해야 socket 역할이 반영될 수 있다고 보고 재계산을 추가했다.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/types.hpp`
+  - `bindings/cpp/include/zlink/types_impl.hpp`
+  - `bindings/cpp/include/zlink/message.hpp`
+  - `bindings/cpp/include/zlink/socket_types.hpp`
+  - `bindings/cpp/perf/multi/common/perf_common.hpp`
+  - `bindings/cpp/perf/multi/src/perf_stream_server.cpp`
+- 추가/수정한 회귀 테스트:
+  - `bindings/cpp/tests/contract/test_cpp_contract_socket.cpp`
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target test_cpp_contract_socket cpp_comp_src_stream_server`
+  - `ctest --test-dir bindings/cpp/build -R '^test_cpp_contract_socket$' --output-on-failure`
+  - `bindings/cpp/perf/run_binding_multi.sh --pattern STREAM --msg-sizes 64 --transports tcp --runs 1 --results-tag cpp_stream64_msgunit_option_fix`
+  - `bindings/cpp/perf/run_binding_multi.sh --pattern STREAM --msg-sizes 64 --transports tcp --runs 1 --results-tag cpp_stream64_rid_direct`
+  - `bindings/cpp/perf/run_binding_multi.sh --pattern STREAM --msg-sizes 64 --transports tcp --runs 1 --results-tag cpp_stream64_timeout_align`
+- 결과:
+  - `auto_hwm_msg_unit_bytes(64)` common socket option 계약 테스트를 추가했고 통과했다.
+  - MsgUnit setter 타입 버그와 context 기본값 차이는 고쳤지만 STREAM throughput은 `148~153 Kops/s` 범위에 머물러 목표 미달이다.
+  - STREAM 전용 timeout 적용도 C 서버와 맞췄지만 결과는 `150.716 Kops/s`로 목표 미달이다.
+  - `zlink_msg_t` opaque storage를 binding에서 직접 복사하는 가설은 server partial을 만들어 즉시 배제하고 `zlink_msg_adopt` 경로로 되돌렸다.
+- 다음 판단:
+  - C++ 완료 전 `MULTI_STREAM,tcp,64`를 계속 분석한다.
+  - 다음 자동 작업은 public C++ API를 유지한 상태에서 `stream_socket_t::send` nonblocking hot path와 callback dispatch 비용을 더 줄일 수 있는지 확인한다.
+
+### 2026-05-09 C++ round 10
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260509_005316_c_stream64_round_next.txt`
+- 대상 언어 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_014820_cpp_stream64_diag_queue_debug.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_015152_cpp_stream64_diag_hwm.txt`
+- 목표 미달 조합:
+  - `MULTI_STREAM,tcp,64`는 C `394.836 Kops/s` 대비 C++ `156~158 Kops/s` 범위로 ratio가 약 `0.40`이라 목표 `0.90`에 미달한다.
+- 선택한 병목 가설:
+  - C++ STREAM 저하는 HWM, socket buffer, context profile, pending queue 문제가 아니라 callback/send hot path 자체의 per-message 비용일 가능성이 높다.
+  - C 기준은 packet callback에서 native `zlink_msg_t *`와 `zlink_routing_id_t *`를 그대로 처리하지만, C++ 기준은 public `stream_socket_t::on_packet`에서 `routing_id_t`, `message_t` RAII wrapper, `std::function` 호출, `stream_socket_t::send` wrapper를 매 packet마다 거친다.
+- 변경한 라이브러리 파일:
+  - 없음. 진단용 출력은 측정 후 제거했다.
+- 추가/수정한 회귀 테스트:
+  - 없음.
+- 실행한 검증 명령:
+  - `cmake --build core/build`
+  - `PERF_DEBUG_TRANSITIONS=1 bindings/cpp/perf/run_binding_multi.sh --pattern STREAM --msg-sizes 64 --transports tcp --runs 1 --results-tag cpp_stream64_diag_queue_debug`
+  - `PERF_DEBUG_TRANSITIONS=1 bindings/cpp/perf/run_binding_multi.sh --pattern STREAM --msg-sizes 64 --transports tcp --runs 1 --results-tag cpp_stream64_diag_hwm`
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_stream_server test_cpp_contract_socket`
+  - `ctest --test-dir bindings/cpp/build -R '^test_cpp_contract_socket$' --output-on-failure`
+- 결과:
+  - C++ STREAM server 진단에서 `recv=797494`, `sent=797494`, `eagain=0`, `enqueued=0`, `pending_end=0`, `pending_max=0`으로 확인했다. 즉 pending queue와 backpressure는 원인이 아니다.
+  - C++ monitor snapshot은 `enabled=1`, `profile=2`, `role=7`, `unit_budget=65536`, `msg_unit=64`, `slots=1024`, `sndhwm=128`, `rcvhwm=128`, `sndbuf=262144`, `rcvbuf=262144`였다. C 기준 Auto-HWM detail과 같은 적용값이다.
+  - 진단 후 임시 출력은 제거했고 C++ STREAM server 빌드와 socket contract 테스트가 통과했다.
+- 다음 판단:
+  - 다음 자동 작업은 perf가 아닌 C++ binding library 내부에서 public API를 유지하면서 `stream_socket_t::on_packet` callback trampoline, `routing_id_t` 복사, `message_t` adopt/move, `stream_socket_t::send` single-part nonblocking 경로를 순서대로 줄이는 것이다.
+
+### 2026-05-09 C++ round 11
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/single/report/perf_c_single_linux_20260509_095059_c_single_spot_wss1024_after_core_publish_fastpath_check.txt`
+- 대상 언어 결과:
+  - `bindings/cpp/perf/results/single/report/perf_cpp_single_linux_20260509_094936_cpp_single_spot_wss1024_after_topic_string_reuse.txt`
+  - `bindings/cpp/perf/results/single/report/perf_cpp_single_linux_20260509_095249_cpp_single_spot_wss1024_after_subscribe_single_part_fastpath.txt`
+  - `bindings/cpp/perf/results/single/report/perf_cpp_single_linux_20260509_100542_cpp_single_spot_wss1024_after_publish_validation_fastpath.txt`
+  - `bindings/cpp/perf/results/single/report/perf_cpp_single_linux_20260509_100634_cpp_single_spot_wss1024_after_skip_topic_compare.txt`
+  - `bindings/cpp/perf/results/single/report/perf_cpp_single_linux_20260509_100713_cpp_single_spot_wss1024_after_send_ready_wait.txt`
+- 목표 미달 조합:
+  - `SPOT,wss,1024`는 C `59.737 Kmsg/s` 대비 C++ 최고 안정 측정이 `40~42 Kmsg/s` 범위라 throughput ratio가 약 `0.68~0.70`으로 목표 `0.90`에 미달한다.
+  - latency triplet도 C 기준보다 크게 나빠져 별도 병목으로 남았다.
+- 선택한 병목 가설:
+  - C++ SPOT single은 policy에 맞지 않게 dispatch callback과 discovery bootstrap을 사용하던 구조를 public `spot_t::publish()` / `spot_t::subscribe()` active loop와 direct peer topology로 맞췄다.
+  - C 기준 `zlink_publish()`는 SPOT 단일 메시지를 직접 publish하지만, C++ public builder는 `zlink_spot_publish_part(..., ZLINK_PART_FINAL)`를 통해 staged part helper를 거쳐 단일 메시지에도 불필요한 상태 조회와 vector 경로가 있었다.
+  - C++ `topic_message_t`가 단일 payload도 항상 vector로 보관해 수신 hot path allocation을 만든다고 보고 단일 메시지 내부 저장 경로를 추가했다.
+  - send-ready event wait, poller wait, topic 비교 제거는 개선되지 않아 유지하지 않는다.
+- 변경한 라이브러리 파일:
+  - `core/src/api/service_spot_api.cpp`
+  - `core/tests/unittest/unittest_service_mode_policy.cpp`
+  - `bindings/cpp/include/zlink/services/spot.hpp`
+  - `bindings/cpp/include/zlink/types.hpp`
+  - `bindings/cpp/include/zlink/types_impl.hpp`
+  - `bindings/cpp/perf/single/src/perf_spot.cpp`
+- 추가/수정한 회귀 테스트:
+  - `core/tests/unittest/unittest_service_mode_policy.cpp`
+- 실행한 검증 명령:
+  - `cmake --build core/build`
+  - `ctest --test-dir core/build -R unittest_service_mode_policy --output-on-failure`
+  - `cmake --build bindings/cpp/build --target cpp_perf_spot`
+  - `ctest --test-dir bindings/cpp/build -R "test_cpp_contract_service|test_cpp_contract_socket" --output-on-failure`
+  - `bindings/c/perf/run_benchmarks.sh --pattern SPOT --transports wss --msg-sizes 1024 --duration 5 --results-tag c_single_spot_wss1024_after_core_publish_fastpath_check`
+  - `bindings/cpp/perf/run_benchmarks.sh --reuse-build --pattern SPOT --transports wss --msg-sizes 1024 --duration 5 --results-tag cpp_single_spot_wss1024_after_publish_validation_fastpath`
+- 결과:
+  - core public `zlink_spot_publish_part(..., ZLINK_PART_FINAL)`에 단일 메시지 fast path를 추가했고 회귀 테스트가 통과했다.
+  - C++ SPOT perf는 public binding API만 사용하도록 active loop를 수정했다.
+  - `SPOT,tcp,256`은 `439.267 Kmsg/s`로 개선됐지만, `SPOT,wss,1024`는 아직 목표 미달이다.
+- 다음 판단:
+  - C++ 완료 전 `SPOT,wss,1024`를 계속 분석한다.
+  - 다음 자동 작업은 C++ `spot_t::subscribe()` public 반환 객체 생성 비용과 SPOT WSS data-plane backlog를 분리해서, sleep이나 inflight 제한 없이 receiver 처리량을 올릴 수 있는 라이브러리 내부 개선을 찾는다.
+
+### 2026-05-09 C++ round 12
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/single/report/perf_c_single_linux_20260509_142426_c_single_spot_wss1024_cpp_compare_current.txt`
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260509_144726_c_multi_router_router_tcp64_cpp_compare_current.txt`
+- 대상 언어 결과:
+  - `bindings/cpp/perf/results/single/report/perf_cpp_single_linux_20260509_142347_cpp_single_spot_wss1024_post_full_rerun.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_144638_cpp_multi_spot_tcp_tls64_after_spot_msgunit_remove.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_144711_cpp_multi_spot_sendsend_tls262144_after_spot_msgunit_remove.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260509_150950_cpp_multi_router_router_tcp64_after_skip_reply_rid_compare.txt`
+- 목표 미달 조합:
+  - `SPOT,wss,1024` targeted throughput은 C `78.786 Kmsg/s` 대비 C++ `77.286 Kmsg/s`로 목표를 넘었다.
+  - `MULTI_ROUTER_ROUTER,tcp,64`는 C `438.977 Kops/s` 대비 C++ 최고 `277.478 Kops/s`로 ratio가 약 `0.632`라 C++ 목표 `0.90`에 미달한다.
+- 선택한 병목 가설:
+  - SPOT perf가 SPOT node/handle에 MsgUnit을 적용하던 경로는 정책과 맞지 않아 제거했다. raw socket 경로의 MsgUnit은 유지했다.
+  - C++ `poller_t::wait_all()`의 등록형 poller 경로가 C 기준의 `zlink_pollitem_t` 경로보다 무거워 socket/fd 전용 빠른 경로를 추가했다.
+  - router-router client의 reply routing id 재복사와 비교는 C 기준 hot path에 없어서 제거했다.
+  - `recv_router_received()`를 `zlink_router_recv_part` 기반으로 바꾸는 실험은 throughput을 낮춰 되돌렸다.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/poller.hpp`
+  - `bindings/cpp/include/zlink/socket_types.hpp`
+  - `bindings/cpp/include/zlink/types.hpp`
+  - `bindings/cpp/include/zlink/types_impl.hpp`
+  - `bindings/cpp/include/zlink/services/spot.hpp`
+- 변경한 perf 파일:
+  - `bindings/cpp/perf/multi/common/perf_common.hpp`
+  - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+  - `bindings/cpp/perf/multi/src/perf_router_router_server.cpp`
+  - `bindings/cpp/perf/multi/src/perf_spot_client.cpp`
+  - `bindings/cpp/perf/multi/src/perf_spot_server.cpp`
+  - `bindings/cpp/perf/multi/src/perf_spot_sendsend_client.cpp`
+  - `bindings/cpp/perf/multi/src/perf_spot_sendsend_server.cpp`
+  - `bindings/cpp/perf/single/src/perf_spot.cpp`
+  - `bindings/cpp/perf/single/src/perf_spot_reqrep.cpp`
+- 추가/수정한 회귀 테스트:
+  - 별도 신규 테스트는 추가하지 않았다. public API 계약 변경 없이 내부 hot path와 perf 정책 정렬만 수행했다.
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target cpp_perf_spot cpp_perf_spot_reqrep`
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_spot_server cpp_comp_src_spot_client cpp_comp_src_spot_sendsend_server cpp_comp_src_spot_sendsend_client`
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_router_router_server cpp_comp_src_router_router_client`
+  - `bindings/cpp/perf/run_benchmarks.sh --reuse-build --pattern SPOT --transports wss --msg-sizes 1024 --duration 5 --results-tag cpp_single_spot_wss1024_post_full_rerun`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern MULTI_SPOT --transports tcp,tls --msg-sizes 64 --duration 5 --results-tag cpp_multi_spot_tcp_tls64_after_spot_msgunit_remove`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern MULTI_SPOT_SENDSEND --transports tls --msg-sizes 262144 --duration 5 --results-tag cpp_multi_spot_sendsend_tls262144_after_spot_msgunit_remove`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern MULTI_ROUTER_ROUTER --transports tcp --msg-sizes 64 --duration 5 --results-tag cpp_multi_router_router_tcp64_after_skip_reply_rid_compare`
+- 결과:
+  - C++ SPOT targeted fail/crash 조합은 complete로 회복했다.
+  - C++ `MULTI_ROUTER_ROUTER,tcp,64`는 개선됐지만 목표 미달이다.
+- 다음 판단:
+  - public API 우회 없이 남은 router-router 차이를 닫기 어렵다. 별도 public API 추가나 perf의 C API 직접 호출은 금지되어 있으므로 미달 상태를 유지하고 다음 언어 확인으로 넘어간다.
+

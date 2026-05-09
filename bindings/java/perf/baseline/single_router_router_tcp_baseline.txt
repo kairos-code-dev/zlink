@@ -1,0 +1,85 @@
+## Effective Options (start)
+- lang: java
+- suite: single
+- runs: 1
+- patterns: ROUTER_ROUTER
+- transports: tcp
+- msg_sizes: 64,256,1024,65536,131072,262144
+- pin_cpu: off
+- io_threads: default(binding)
+- hwm: default(binding)
+- send_hwm: default(binding)
+- recv_hwm: default(binding)
+- send_timeout_ms: 200
+- recv_timeout_ms: 200
+- duration_seconds: 5
+- results_tag: java_baseline_rr
+
+===============================================================================
+
+## PATTERN: ROUTER_ROUTER
+
+### Transport: tcp
+| Size | Throughput | Bandwidth | Lat.Mean(ms) | Lat.P95(ms) | Lat.P99(ms) |
+|------|------------|-----------|--------------|-------------|-------------|
+| 64B | 1591.22 Kmsg/s | 203.68 MB/s | 5.546 ms | 6.918 ms | 8.373 ms |
+| 256B | 1692.40 Kmsg/s | 866.51 MB/s | 1.429 ms | 2.421 ms | 2.756 ms |
+| 1024B | 1204.25 Kmsg/s | 2466.29 MB/s | 0.587 ms | 0.904 ms | 1.196 ms |
+| 65536B | 90.20 Kmsg/s | 11822.69 MB/s | 7.387 ms | 9.049 ms | 9.613 ms |
+| 131072B | 50.45 Kmsg/s | 13225.74 MB/s | 12.947 ms | 15.652 ms | 16.355 ms |
+| 262144B | 27.60 Kmsg/s | 14470.35 MB/s | 23.442 ms | 28.365 ms | 29.320 ms |
+
+RESULT,java,ROUTER_ROUTER,tcp,64,throughput,1591221.000
+RESULT,java,ROUTER_ROUTER,tcp,64,bandwidth,203.676
+RESULT,java,ROUTER_ROUTER,tcp,64,latency,5.546
+RESULT,java,ROUTER_ROUTER,tcp,64,latency_p95,6.918
+RESULT,java,ROUTER_ROUTER,tcp,64,latency_p99,8.373
+RESULT,java,ROUTER_ROUTER,tcp,256,throughput,1692400.000
+RESULT,java,ROUTER_ROUTER,tcp,256,bandwidth,866.509
+RESULT,java,ROUTER_ROUTER,tcp,256,latency,1.429
+RESULT,java,ROUTER_ROUTER,tcp,256,latency_p95,2.421
+RESULT,java,ROUTER_ROUTER,tcp,256,latency_p99,2.756
+RESULT,java,ROUTER_ROUTER,tcp,1024,throughput,1204245.200
+RESULT,java,ROUTER_ROUTER,tcp,1024,bandwidth,2466.294
+RESULT,java,ROUTER_ROUTER,tcp,1024,latency,0.587
+RESULT,java,ROUTER_ROUTER,tcp,1024,latency_p95,0.904
+RESULT,java,ROUTER_ROUTER,tcp,1024,latency_p99,1.196
+RESULT,java,ROUTER_ROUTER,tcp,65536,throughput,90200.000
+RESULT,java,ROUTER_ROUTER,tcp,65536,bandwidth,11822.694
+RESULT,java,ROUTER_ROUTER,tcp,65536,latency,7.387
+RESULT,java,ROUTER_ROUTER,tcp,65536,latency_p95,9.049
+RESULT,java,ROUTER_ROUTER,tcp,65536,latency_p99,9.613
+RESULT,java,ROUTER_ROUTER,tcp,131072,throughput,50452.200
+RESULT,java,ROUTER_ROUTER,tcp,131072,bandwidth,13225.742
+RESULT,java,ROUTER_ROUTER,tcp,131072,latency,12.947
+RESULT,java,ROUTER_ROUTER,tcp,131072,latency_p95,15.652
+RESULT,java,ROUTER_ROUTER,tcp,131072,latency_p99,16.355
+RESULT,java,ROUTER_ROUTER,tcp,262144,throughput,27600.000
+RESULT,java,ROUTER_ROUTER,tcp,262144,bandwidth,14470.349
+RESULT,java,ROUTER_ROUTER,tcp,262144,latency,23.442
+RESULT,java,ROUTER_ROUTER,tcp,262144,latency_p95,28.365
+RESULT,java,ROUTER_ROUTER,tcp,262144,latency_p99,29.320
+
+## Effective Options (result)
+- lang: java
+- suite: single
+- runs: 1
+- patterns: ROUTER_ROUTER
+- transports: tcp
+- msg_sizes: 64,256,1024,65536,131072,262144
+- pin_cpu: off
+- io_threads: default(binding)
+- hwm: default(binding)
+- send_hwm: default(binding)
+- recv_hwm: default(binding)
+- send_timeout_ms: 200
+- recv_timeout_ms: 200
+- duration_seconds: 5
+- results_tag: java_baseline_rr
+
+## Completion
+- status: complete
+- expected_result_lines: 30
+- actual_result_lines: 30
+
+## Failures

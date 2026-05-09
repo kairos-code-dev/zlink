@@ -26,14 +26,14 @@ int main ()
     requester_node.attach_channel_dealer_manual (channel_name, requester_dealer);
 
     std::thread responder ([&responder_router] {
-        std::optional<zlink::received_t> received = responder_router.recv ();
-        assert (received.has_value ());
-        assert (received->parts ().size () == 1);
-        assert (received->request_seq ().has_value ());
-        assert (received->parts ()[0].to_string () == "spot-ping");
+        zlink::received_t received;
+        assert (responder_router.recv (received) == 0);
+        assert (received.parts ().size () == 1);
+        assert (received.request_seq ().has_value ());
+        assert (received.parts ()[0].to_string () == "spot-ping");
         zlink::message_t reply = detail::make_message ("spot-pong");
-        received->reply (reply);
-        received->close ();
+        received.reply (reply);
+        received.close ();
     });
 
     std::vector<zlink::message_t> request_parts;

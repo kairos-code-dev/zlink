@@ -48,16 +48,8 @@ final class PerfMultiRouterRouter {
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 List.of(server), PollEventFlag.POLLIN)) {
                 while (stops < config.clients()) {
-                    if (pendingReplies.isEmpty()) {
-                        pollSet.setEvents(0, PollEventFlag.POLLIN);
-                    } else {
-                        pollSet.setEvents(0, PollEventFlag.POLLIN,
-                            PollEventFlag.POLLOUT);
-                    }
+                    pollSet.setEvents(0, PollEventFlag.POLLIN);
                     pollSet.poll(-1);
-                    if (pollSet.isReady(0, PollEventFlag.POLLOUT)) {
-                        flushPending(server, pendingReplies);
-                    }
                     while (true) {
                         systems.zlink.Received received =
                             PerfUtil.recvNoWait(server);
@@ -74,19 +66,8 @@ final class PerfMultiRouterRouter {
                                 stops++;
                                 continue;
                             }
-                            Message reply = received.firstPart().move();
-                            PendingReply pending = new PendingReply(
-                                received.routingId().orElseThrow(), reply);
-                            if (!pendingReplies.isEmpty()) {
-                                pendingReplies.addLast(pending);
-                                continue;
-                            }
-                            if (!server.send(pending.routingId(), pending.payload(),
-                                SendFlags.DONT_WAIT)) {
-                                pendingReplies.addLast(pending);
-                                continue;
-                            }
-                            pending.close();
+                            RoutingId rid = received.routingId().orElseThrow();
+                            server.send(rid, received.firstPart());
                         }
                     }
                 }

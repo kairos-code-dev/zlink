@@ -713,7 +713,15 @@ int zlink_poller_wait (void *poller_,
                       zlink::config_result_internal::from_errno (errno);
                 return -1;
             }
-            continue;
+            // The caller's request_progress callback has now run inside
+            // drain_hidden_completion_registration. Return to give the
+            // caller a chance to act on the completion (e.g. submit the
+            // next request) instead of looping back into wait() until
+            // timeout. Reporting 0 events keeps the public contract
+            // (event_ untouched on no-event return).
+            if (error_out_)
+                *error_out_ = ZLINK_CONFIG_OK;
+            return 0;
         }
 
         if (fill_public_poller_event_from_registration (registration,

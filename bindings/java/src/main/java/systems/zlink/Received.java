@@ -21,13 +21,36 @@ import java.util.function.BiConsumer;
  * underlying part array. Closing the aggregate closes every owned part.
  */
 public final class Received implements AutoCloseable {
+    private static final ThreadLocal<ArrayList<ArrayList<Message>>>
+        PARTS_POOL = ThreadLocal.withInitial(ArrayList::new);
+    private static final int PARTS_POOL_CAPACITY = 16;
+
+    private static ArrayList<Message> acquirePartsList(int initialCapacity) {
+        ArrayList<ArrayList<Message>> pool = PARTS_POOL.get();
+        int n = pool.size();
+        if (n > 0) {
+            ArrayList<Message> list = pool.remove(n - 1);
+            return list;
+        }
+        return new ArrayList<>(Math.max(1, initialCapacity));
+    }
+
+    private static void releasePartsList(ArrayList<Message> list) {
+        if (list == null) return;
+        list.clear();
+        ArrayList<ArrayList<Message>> pool = PARTS_POOL.get();
+        if (pool.size() < PARTS_POOL_CAPACITY) {
+            pool.add(list);
+        }
+    }
+
     private final long requestSequence;
     private final boolean hasRequestSequence;
     private final BiConsumer<List<Message>, SendFlags> replySender;
     private final byte[] routingIdBytes;
     private final byte[] spotRidBytes;
     private final Runnable onTerminalState;
-    private final ArrayList<Message> realizedParts;
+    private ArrayList<Message> realizedParts;
     private ReceivedPartCursor cursor;
     private RoutingId routingId;
     private RoutingId spotRid;
@@ -74,7 +97,7 @@ public final class Received implements AutoCloseable {
         Message[] ownedParts = Objects.requireNonNull(parts, "parts");
         Message[] safeParts = trustedParts ? ownedParts
             : Arrays.copyOf(ownedParts, ownedParts.length);
-        this.realizedParts = new ArrayList<>(safeParts.length);
+        this.realizedParts = acquirePartsList(safeParts.length);
         Collections.addAll(this.realizedParts, safeParts);
         this.cursor = null;
     }
@@ -103,7 +126,7 @@ public final class Received implements AutoCloseable {
         Message[] ownedParts = Objects.requireNonNull(parts, "parts");
         Message[] safeParts = trustedParts ? ownedParts
             : Arrays.copyOf(ownedParts, ownedParts.length);
-        this.realizedParts = new ArrayList<>(safeParts.length);
+        this.realizedParts = acquirePartsList(safeParts.length);
         Collections.addAll(this.realizedParts, safeParts);
         this.cursor = null;
     }
@@ -127,7 +150,7 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.onTerminalState = onTerminalState;
-        this.realizedParts = new ArrayList<>(1);
+        this.realizedParts = acquirePartsList(1);
         this.realizedParts.add(Objects.requireNonNull(singlePart, "singlePart"));
         this.cursor = null;
     }
@@ -151,7 +174,7 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.onTerminalState = onTerminalState;
-        this.realizedParts = new ArrayList<>(1);
+        this.realizedParts = acquirePartsList(1);
         this.realizedParts.add(Objects.requireNonNull(singlePart, "singlePart"));
         this.cursor = null;
     }
@@ -169,7 +192,7 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.onTerminalState = onTerminalState;
-        this.realizedParts = new ArrayList<>(4);
+        this.realizedParts = acquirePartsList(4);
         this.realizedParts.add(Objects.requireNonNull(firstPart, "firstPart"));
         this.cursor = cursor;
     }
@@ -187,7 +210,7 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.onTerminalState = onTerminalState;
-        this.realizedParts = new ArrayList<>(4);
+        this.realizedParts = acquirePartsList(4);
         this.realizedParts.add(Objects.requireNonNull(firstPart, "firstPart"));
         this.cursor = cursor;
     }
@@ -297,18 +320,34 @@ public final class Received implements AutoCloseable {
     @Override
     public void close() {
         ReceivedPartCursor pendingCursor;
-        List<Message> toClose;
+        Message singleToClose = null;
+        List<Message> toClose = null;
+        ArrayList<Message> partsToRelease = null;
         synchronized (this) {
             if (closed)
                 return;
             closed = true;
             pendingCursor = cursor;
             cursor = null;
-            toClose = new ArrayList<>(realizedParts);
-            realizedParts.clear();
+            int n = realizedParts.size();
+            if (n == 1) {
+                singleToClose = realizedParts.get(0);
+            } else if (n > 1) {
+                toClose = new ArrayList<>(realizedParts);
+            }
+            partsToRelease = realizedParts;
+            realizedParts = null;
             partsView = Collections.emptyList();
         }
-        Message.closeAll(toClose);
+        if (singleToClose != null) {
+            try {
+                singleToClose.close();
+            } catch (RuntimeException ignored) {
+            }
+        } else if (toClose != null) {
+            Message.closeAll(toClose);
+        }
+        releasePartsList(partsToRelease);
         closeCursorQuietly(pendingCursor);
         markTerminal();
     }
@@ -353,16 +392,19 @@ public final class Received implements AutoCloseable {
     List<Message> takeParts() {
         ReceivedPartCursor pendingCursor;
         ArrayList<Message> detached;
+        ArrayList<Message> partsToRelease;
         synchronized (this) {
             ensureOpen();
             materializeAllLocked();
             detached = new ArrayList<>(realizedParts);
-            realizedParts.clear();
+            partsToRelease = realizedParts;
+            realizedParts = null;
             partsView = Collections.emptyList();
             pendingCursor = cursor;
             cursor = null;
             closed = true;
         }
+        releasePartsList(partsToRelease);
         closeCursorQuietly(pendingCursor);
         markTerminal();
         return Collections.unmodifiableList(detached);

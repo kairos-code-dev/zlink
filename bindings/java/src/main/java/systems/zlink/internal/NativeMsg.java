@@ -30,6 +30,14 @@ public final class NativeMsg {
           .orElseGet(() -> missingDowncall(name, fd));
     }
 
+    private static MethodHandle downcallCritical(String name,
+                                                 FunctionDescriptor fd) {
+        return LOOKUP.find(name)
+          .map(symbol -> LINKER.downcallHandle(symbol, fd,
+              Linker.Option.critical(false)))
+          .orElseGet(() -> missingDowncall(name, fd));
+    }
+
     private static MethodHandle downcallAny(String[] names, FunctionDescriptor fd) {
         for (String name : names) {
             if (LOOKUP.find(name).isPresent()) {
@@ -60,26 +68,26 @@ public final class NativeMsg {
           methodType.parameterArray());
     }
 
-    private static final MethodHandle MH_MSG_INIT = downcall("zlink_msg_init",
+    private static final MethodHandle MH_MSG_INIT = downcallCritical("zlink_msg_init",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_INIT_SIZE = downcall("zlink_msg_init_size",
+    private static final MethodHandle MH_MSG_INIT_SIZE = downcallCritical("zlink_msg_init_size",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_MSG_INIT_DATA = downcall("zlink_msg_init_data",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_CLOSE = downcall("zlink_msg_close",
+    private static final MethodHandle MH_MSG_CLOSE = downcallCritical("zlink_msg_close",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_MOVE = downcall("zlink_msg_move",
+    private static final MethodHandle MH_MSG_MOVE = downcallCritical("zlink_msg_move",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_COPY = downcall("zlink_msg_copy",
+    private static final MethodHandle MH_MSG_COPY = downcallCritical("zlink_msg_copy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_DATA = downcall("zlink_msg_data",
+    private static final MethodHandle MH_MSG_DATA = downcallCritical("zlink_msg_data",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_DATA_ADDR = downcall(
+    private static final MethodHandle MH_MSG_DATA_ADDR = downcallCritical(
             "zlink_java_msg_data_addr",
             FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_SIZE = downcall("zlink_msg_size",
+    private static final MethodHandle MH_MSG_SIZE = downcallCritical("zlink_msg_size",
             FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_REFCNT = downcall("zlink_msg_refcnt",
+    private static final MethodHandle MH_MSG_REFCNT = downcallCritical("zlink_msg_refcnt",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSG_GETS = downcall("zlink_msg_gets",

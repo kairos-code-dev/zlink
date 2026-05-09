@@ -461,12 +461,15 @@ the concrete socket classes and the capability-specific methods listed below.
 Nonblocking data-plane helpers follow this rule:
 
 - `send(...)` and `publish(...)` return `false` only for temporary
-  backpressure when `ZLINK_DONTWAIT` is used.
+  backpressure when `send_flags_t::dontwait` is used.
 - Blocking submit returns `true` on success. Route-not-ready and other submit
   failures still throw `submit_error_t`.
-- `recv(...)` and `subscribe(...)` return `std::nullopt` when
-  `ZLINK_DONTWAIT` finds no message and still throw `recv_error_t`
-  for real recv failures.
+- `recv(received_t& out, recv_flags_t flags)` follows a unified
+  `0 / -1 + errno` contract: returns `0` on success, `-1` on failure with
+  `errno` set (EAGAIN/EWOULDBLOCK on dontwait without data; EBUSY when the
+  socket is in callback mode; etc.). `recv` does not throw — callers branch
+  on errno. Subscriptions stay on `subscribe(...)` which still returns
+  `std::nullopt` on dontwait without data.
 
 ```cpp
 // Available on all socket types
@@ -509,16 +512,17 @@ class pair_socket_t {
 
     // --- send ---
     /// @throws submit_error_t
-    bool send(message_t& part, int flags = 0);
+    bool send(message_t& part, send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    bool send(std::vector<message_t>& parts, int flags = 0);
+    bool send(std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
 
     // --- receive ---
-    /// @throws recv_error_t
-    std::optional<received_t> recv(int flags = 0);
-    /// Returns false when flags contains ZLINK_DONTWAIT and no message is ready.
-    /// @throws recv_error_t
-    bool recv(message_t& part, int flags = 0);
+    /// Receive one message into a caller-provided received_t.
+    /// Returns 0 on success, -1 on error (errno set).
+    /// EAGAIN/EWOULDBLOCK on dontwait with no data.
+    /// The caller may keep a long-lived received_t across calls so that
+    /// the parts vector / routing-id storage is reused without reallocation.
+    int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);
     /// @throws handler_error_t
     template<class Handler>
     void on_send_ready(Handler&& handler);
@@ -595,16 +599,14 @@ class dealer_socket_t {
 
     // --- send ---
     /// @throws submit_error_t
-    bool send(message_t& part, int flags = 0);
+    bool send(message_t& part, send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
-    bool send(std::vector<message_t>& parts, int flags = 0);
+    bool send(std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
 
     // --- receive ---
-    /// @throws recv_error_t
-    std::optional<received_t> recv(int flags = 0);
-    /// Returns false when flags contains ZLINK_DONTWAIT and no message is ready.
-    /// @throws recv_error_t
-    bool recv(message_t& part, int flags = 0);
+    /// Returns 0 on success, -1 on error (errno set).
+    /// EAGAIN/EWOULDBLOCK on dontwait with no data.
+    int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);
     /// @throws handler_error_t
     template<class Handler>
     void on_send_ready(Handler&& handler);
@@ -666,23 +668,22 @@ class router_socket_t {
     /// @throws submit_error_t
     bool send(const routing_id_t& target_rid,
               message_t& part,
-              int flags = 0);
+              send_flags_t flags = send_flags_t::none);
     /// @throws submit_error_t
     bool send(const routing_id_t& target_rid,
               std::vector<message_t>& parts,
-              int flags = 0);
+              send_flags_t flags = send_flags_t::none);
 
     // --- receive (unified routed surface) ---
     // One recv surface covers regular ROUTER traffic and spot-origin routed
     // traffic. Empty received_t::spot_rid() means regular ROUTER traffic.
     // A populated spot_rid() means reply_to_spot must be used.
-    /// @throws recv_error_t
-    std::optional<received_t> recv(int flags = 0);
-    /// Returns false when flags contains ZLINK_DONTWAIT and no message is ready.
-    /// @throws recv_error_t
-    bool recv(std::optional<routing_id_t>& source_rid,
-              message_t& part,
-              int flags = 0);
+    /// Returns 0 on success, -1 on error (errno set).
+    /// EAGAIN/EWOULDBLOCK on dontwait with no data.
+    /// On success, received_t carries source routing id, optional spot routing id,
+    /// optional request_seq, and an internally bound reply_fn for
+    /// received_t::reply(...).
+    int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);
     /// @throws handler_error_t
     template<class Handler>
     void on_send_ready(Handler&& handler);
@@ -869,14 +870,10 @@ class stream_socket_t {
               int flags = 0);
 
     // --- receive (two mutually-exclusive modes) ---
-    /// (1) raw recv. Returns a multipart received_t.
-    /// @throws recv_error_t
-    std::optional<received_t> recv(int flags = 0);
-    /// Returns false when flags contains ZLINK_DONTWAIT and no packet is ready.
-    /// @throws recv_error_t
-    bool recv(std::optional<routing_id_t>& source_rid,
-              message_t& part,
-              int flags = 0);
+    /// (1) raw recv. Returns 0 on success, -1 on error (errno set).
+    /// EAGAIN/EWOULDBLOCK on dontwait with no data, EBUSY when the socket
+    /// is in packet-callback mode.
+    int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);
     /// (2) framed packet callback (zlink_stream_packet_handler). Wire frame
     /// is big-endian u16 header_size + u32 body_size + header + body.
     /// Handler receives the source routing_id, a header message_t, and a

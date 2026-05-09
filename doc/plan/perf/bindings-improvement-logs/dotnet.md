@@ -1,0 +1,177 @@
+# .NET binding 성능 개선 라운드 로그
+
+관련 계획 문서: [bindings-library-performance-improvement-plan.ko.md](../bindings-library-performance-improvement-plan.ko.md)
+
+### 2026-05-09 .NET round 1
+
+- 전환 사유:
+  - C++은 완료 전 상태지만, 운영자가 "일단 C++은 여기까지 하고 dotnet으로 넘어가"라고 지시했다. 이 라운드는 그 지시에 따라 .NET으로 전환한 기록이다.
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/single/report/perf_c_single_linux_20260509_112638_c_single_routed64_tcp_dotnet_current_compare.txt`
+- 대상 언어 결과:
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_105729_dotnet_single_spot_reqrep64_after_progress_yield.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_111412_dotnet_single_routed64_after_received_single_fastpath.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_112452_dotnet_single_routed64_tcp_after_message_no_finalizer_probe.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_112621_dotnet_single_routed64_tcp_after_latency_cap_4m.txt`
+- 목표 미달 조합:
+  - `DEALER_ROUTER,tcp,64`는 최신 C `2076.775 Kmsg/s` 대비 .NET 최고 `1442.046 Kmsg/s`로 ratio가 약 `0.694`라 .NET 목표 `0.85`에 미달한다.
+  - `ROUTER_ROUTER,tcp,64`는 최신 C `2275.605 Kmsg/s` 대비 .NET 최고 `1478.765 Kmsg/s`로 ratio가 약 `0.650`이라 .NET 목표 `0.85`에 미달한다.
+- 선택한 병목 가설:
+  - .NET SPOT_REQREP 저하는 request progress pump의 `Task.Delay(1)`가 request/reply active loop를 millisecond 단위로 제한한 것이 원인이었다.
+  - .NET raw routed 저하는 C와 다른 receiver thread + poller + nonblocking recv 구조, 단일 part receive 객체 allocation, message helper P/Invoke, `Message` finalizer allocation 비용이 누적된 것으로 보인다.
+  - routing id를 native struct snapshot으로 지연 변환하는 가설은 255-byte struct 복사 비용 때문에 개선되지 않아 추가 검토가 필요하다.
+  - latency sample cap을 무제한으로 바꾸는 가설은 초기 capacity 과다 할당으로 process failure를 만들어 배제하고, 기본 cap은 `4_000_000`으로 조정했다.
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/RequestProgressPump.cs`
+  - `bindings/dotnet/src/Zlink/Message.cs`
+  - `bindings/dotnet/src/Zlink/Received.cs`
+  - `bindings/dotnet/src/Zlink/MultipartMessageCollection.cs`
+  - `bindings/dotnet/src/Zlink/Sockets/Internal/SocketKernel.cs`
+  - `bindings/dotnet/src/Zlink/Native/NativeMethods.Core.cs`
+- 변경한 perf 파일:
+  - `bindings/dotnet/perf/common/Zlink.BindingBench.Common/PerfShared.cs`
+  - `bindings/dotnet/perf/common/Zlink.BindingBench.Common/PerfSocketIo.cs`
+  - `bindings/dotnet/perf/single/Zlink.BindingBench/common/PerfCommon.cs`
+  - `bindings/dotnet/perf/single/Zlink.BindingBench/src/PerfDealerRouter.cs`
+  - `bindings/dotnet/perf/single/Zlink.BindingBench/src/PerfRouterRouter.cs`
+  - `bindings/dotnet/perf/single/Zlink.BindingBench/src/PerfPair.cs`
+  - `bindings/dotnet/perf/single/Zlink.BindingBench/src/PerfDealerDealer.cs`
+  - `bindings/dotnet/perf/single/Zlink.BindingBench/src/PerfPubSub.cs`
+  - `bindings/dotnet/perf/single/Zlink.BindingBench/src/PerfSpot.cs`
+  - `bindings/dotnet/perf/single/run_benchmarks.sh`
+- 추가/수정한 회귀 테스트:
+  - 별도 신규 테스트는 아직 추가하지 않았다. raw socket/message 기존 테스트를 회귀 확인에 사용했다.
+- 실행한 검증 명령:
+  - `cmake --build core/build`
+  - `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release`
+  - `dotnet build bindings/dotnet/perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj -c Release`
+  - `ZLINK_LIBRARY_PATH=/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.6.0.0 dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~test_pair_tcp|FullyQualifiedName~test_router_multiple_dealers|FullyQualifiedName~test_pubsub|FullyQualifiedName~test_message|FullyQualifiedName~test_socket_surface'`
+  - `bindings/c/perf/run_benchmarks.sh --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 64 --duration 5 --results-tag c_single_routed64_tcp_dotnet_current_compare`
+  - `bindings/dotnet/perf/run_benchmarks.sh --reuse-build --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 64 --duration 5 --results-tag dotnet_single_routed64_tcp_after_latency_cap_4m`
+- 결과:
+  - SPOT_REQREP 64B는 `5.7~6.8 Kops/s`로 C 기준 대비 목표를 넘었다.
+  - routed 64B는 초기 약 `0.43~0.48` ratio에서 약 `0.65~0.69`까지 올랐지만 목표 `0.85`에는 미달한다.
+  - raw socket/message smoke는 통과했다.
+  - 전체 .NET 테스트는 기존 SPOT/actor serviceName 계약 변경 잔여 실패가 있어 raw 회귀 테스트와 분리했다.
+- 다음 판단:
+  - .NET 완료 전 `DEALER_ROUTER,tcp,64`와 `ROUTER_ROUTER,tcp,64`를 계속 분석한다.
+  - 다음 자동 작업은 `Message` finalizer 제거를 유지할 수 있는지 수명 계약을 검토하고, 불가하면 finalizer 비용을 피하는 안전한 소유권 구조를 설계한다. 동시에 routed receive의 routing id snapshot 변경은 되돌리거나 더 작은 copy 경로로 바꿔 수치 영향을 재확인한다.
+
+### 2026-05-09 .NET round 2
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/single/report/perf_c_single_linux_20260509_112638_c_single_routed64_tcp_dotnet_current_compare.txt`
+  - `bindings/c/perf/results/single/report/perf_c_single_linux_20260509_121525_c_single_routed64_inproc_dotnet_compare.txt`
+- 대상 언어 결과:
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_120940_dotnet_single_routed64_tcp_resume_baseline.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_121220_dotnet_single_routed64_tcp_after_routing_snapshot_inline.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_121540_dotnet_single_routed64_inproc_compare.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_121729_dotnet_single_routed64_tcp_after_message_dispose_suppress_removed.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_122435_dotnet_single_routed64_tcp_after_native_dispose_fastpath.txt`
+- 목표 미달 조합:
+  - `DEALER_ROUTER,tcp,64`는 C `2076.775 Kmsg/s` 대비 이번 라운드 최고 `1396.838 Kmsg/s` 수준으로 ratio가 약 `0.67`이라 .NET 목표 `0.85`에 미달한다.
+  - `ROUTER_ROUTER,tcp,64`는 C `2275.605 Kmsg/s` 대비 이번 라운드 최고 `1448.243 Kmsg/s` 수준으로 ratio가 약 `0.64`라 .NET 목표 `0.85`에 미달한다.
+  - `inproc`에서도 C 대비 .NET ratio가 약 `0.65~0.70`이라 transport보다 public `Send`/`Recv` wrapper와 `Message`/`Received` 객체 비용 쪽 병목이 더 크다.
+- 선택한 병목 가설:
+  - CPU sample에서 active 시간은 `SocketKernel.SendSingleCore`와 `SocketKernel.ReceiveRouterParts`에 거의 반반 걸렸다. metric 출력이나 정렬 비용은 주 병목이 아니었다.
+  - `RoutingIdSnapshot`을 32B inline snapshot으로 바꿨지만 목표 조합 개선은 미미했다.
+  - `Received.Dispose()`의 원자 연산 제거, `Message.Dispose()`의 불필요한 `GC.SuppressFinalize()` 제거, receive native-owned dispose fast path는 모두 소폭 개선에 그쳤다.
+  - blocking send/recv에 `SuppressGCTransition`을 붙이는 실험은 실행 실패를 만들었고, 블로킹 호출 안전성도 맞지 않아 배제했다.
+  - .NET single runner가 실제 실패를 `UNSUPPORTED`로 숨길 수 있는 예외 기반 추정을 제거했다.
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/Message.cs`
+  - `bindings/dotnet/src/Zlink/Received.cs`
+  - `bindings/dotnet/src/Zlink/RoutingId.cs`
+  - `bindings/dotnet/src/Zlink/RoutingIdCodec.cs`
+  - `bindings/dotnet/src/Zlink/RoutingIdSnapshot.cs`
+  - `bindings/dotnet/src/Zlink/Native/NativeTypes.cs`
+  - `bindings/dotnet/src/Zlink/Sockets/MessageSocketBase.cs`
+  - `bindings/dotnet/src/Zlink/Sockets/RoutedMessageSocketBase.cs`
+  - `bindings/dotnet/src/Zlink/Sockets/Internal/SocketKernel.cs`
+- 변경한 perf 파일:
+  - `bindings/dotnet/perf/common/Zlink.BindingBench.Common/PerfShared.cs`
+  - `bindings/dotnet/perf/single/Zlink.BindingBench/src/PerfDealerRouter.cs`
+  - `bindings/dotnet/perf/single/Zlink.BindingBench/src/PerfRouterRouter.cs`
+  - `bindings/dotnet/perf/single/run_benchmarks.sh`
+- 추가/수정한 회귀 테스트:
+  - 별도 신규 테스트는 아직 추가하지 않았다. raw socket/message 기존 테스트를 회귀 확인에 사용했다.
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release`
+  - `dotnet build bindings/dotnet/perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj -c Release`
+  - `ZLINK_LIBRARY_PATH=/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.6.0.0 dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~test_pair_tcp|FullyQualifiedName~test_router_multiple_dealers|FullyQualifiedName~test_pubsub|FullyQualifiedName~test_message|FullyQualifiedName~test_socket_surface'`
+- 결과:
+  - raw socket/message 회귀 테스트 48개는 통과했다.
+  - routed 64B 목표 조합은 아직 목표 미달이다.
+- 다음 판단:
+  - 다음 자동 작업은 `Message` 생성과 native part 초기화/copy 비용을 더 직접적으로 분해한다.
+  - public API 우회 없이 `Message(ReadOnlySpan<byte>)`, `SocketKernel.SendSingleCore`, `ReceiveRouterParts`, `Message.AsReadOnlySpan`, `Received.Dispose` 각각의 비용을 C perf의 대응 구간과 비교하고, 실제 library 내부에서 줄일 수 있는 복사와 객체 수명 비용부터 계속 줄인다.
+
+### 2026-05-09 .NET round 3
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/single/report/perf_c_single_linux_20260509_112638_c_single_routed64_tcp_dotnet_current_compare.txt`
+- 대상 언어 결과:
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_123246_dotnet_single_routed64_tcp_after_received_snapshot_unify.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_123526_dotnet_single_routed64_tcp_after_received_metadata_split.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_124020_dotnet_single_routed64_tcp_after_routingid_native_cache.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_125459_dotnet_single_routed64_tcp_after_send_notready_false.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_125518_dotnet_single_rr64_tcp_confirm_send_notready_false.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_130501_dotnet_single_rr64_tcp_after_send_success_no_dispose.txt`
+- 목표 미달 조합:
+  - `DEALER_ROUTER,tcp,64`는 C `2076.775 Kmsg/s` 대비 .NET 최고 `1815.450 Kmsg/s`로 ratio가 약 `0.874`이며 .NET 목표 `0.85`를 넘었다.
+  - `ROUTER_ROUTER,tcp,64`는 C `2275.605 Kmsg/s` 대비 .NET 최고 `1901.423 Kmsg/s`로 ratio가 약 `0.835`라 .NET 목표 `0.85`에 아직 미달한다.
+- 선택한 병목 가설:
+  - `ROUTER_ROUTER`의 남은 차이는 routed send에서 `RoutingId`를 native `zlink_routing_id_t`로 전달하는 비용과 receive 객체 생성 비용이 합쳐진 것으로 보인다.
+  - `Send()`가 backpressure와 not-ready 결과를 예외로 바꾸면 C perf의 `EAGAIN`/`ENOTCONN` 처리보다 비용이 커진다. bool public API 결과를 사용해 false로 돌려주는 경로가 throughput을 가장 크게 올렸다.
+  - Router-to-router 양방향 handshake를 C와 맞추는 실험, managed payload borrowed-send 생성자, routing id unmanaged pointer 전달, 8B routing snapshot, `Received` payload union, `Received` routing id box는 목표 조합을 개선하지 않아 배제했다.
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/Message.cs`
+  - `bindings/dotnet/src/Zlink/Received.cs`
+  - `bindings/dotnet/src/Zlink/RoutingId.cs`
+  - `bindings/dotnet/src/Zlink/Sockets/MessageSocketBase.cs`
+  - `bindings/dotnet/src/Zlink/Sockets/RoutedMessageSocketBase.cs`
+  - `bindings/dotnet/src/Zlink/Sockets/Internal/SocketKernel.cs`
+- 변경한 perf 파일:
+  - `bindings/dotnet/perf/common/Zlink.BindingBench.Common/PerfShared.cs`
+  - `bindings/dotnet/perf/common/Zlink.BindingBench.Common/PerfSocketIo.cs`
+  - `bindings/dotnet/perf/single/Zlink.BindingBench/src/PerfDealerRouter.cs`
+  - `bindings/dotnet/perf/single/Zlink.BindingBench/src/PerfRouterRouter.cs`
+- 추가/수정한 회귀 테스트:
+  - 별도 신규 테스트는 추가하지 않았다. public `Send()`의 false 반환 경로는 기존 raw socket/message 테스트와 targeted perf로 확인했다.
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj -c Release`
+  - `ZLINK_LIBRARY_PATH=/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.6.0.0 dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~test_pair_tcp|FullyQualifiedName~test_router_multiple_dealers|FullyQualifiedName~test_pubsub|FullyQualifiedName~test_message|FullyQualifiedName~test_socket_surface'`
+  - `bindings/dotnet/perf/run_benchmarks.sh --reuse-build --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 64 --duration 5 --results-tag dotnet_single_routed64_tcp_after_send_notready_false`
+  - `bindings/dotnet/perf/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64 --duration 5 --results-tag dotnet_single_rr64_tcp_confirm_send_notready_false`
+- 결과:
+  - raw socket/message 회귀 테스트 48개는 통과했다.
+  - `DEALER_ROUTER,tcp,64`는 목표를 넘었지만, `.NET` 완료 조건은 `ROUTER_ROUTER,tcp,64`가 남아 있어 아직 만족하지 못했다.
+- 다음 판단:
+  - 다음 자동 작업은 `ROUTER_ROUTER,tcp,64`만 계속 대상으로 삼고, routed send의 `RoutingId` native 전달 비용과 receive object allocation을 더 분해한다.
+  - `ROUTER_ROUTER,tcp,64`가 C 기준 85%를 넘기 전에는 Java로 넘어가지 않는다.
+
+### 2026-05-09 .NET round 4
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/single/report/perf_c_single_linux_20260509_151036_c_single_rr64_dotnet_compare_current.txt`
+- 대상 언어 결과:
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_151025_dotnet_single_rr64_tcp_current_after_cpp.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_151049_dotnet_single_rr64_tcp_confirm_current.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260509_151237_dotnet_single_rr64_tcp_confirm_current_2.txt`
+- 목표 미달 조합:
+  - `ROUTER_ROUTER,tcp,64`는 C `2259.763 Kmsg/s` 대비 .NET 최고 `1864.689 Kmsg/s`로 ratio가 약 `0.825`라 .NET 목표 `0.85`에 미달한다.
+- 선택한 병목 가설:
+  - 남은 차이는 public `Message` 생성, routed send, `Received`/`Message` 수신 객체 생성 비용이다.
+  - borrowed/internal send 경로를 perf에서 직접 쓰면 public API 측정 목적을 깨기 때문에 사용하지 않았다.
+- 변경한 파일:
+  - 없음.
+- 실행한 검증 명령:
+  - `bindings/dotnet/perf/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64 --duration 5 --results-tag dotnet_single_rr64_tcp_current_after_cpp`
+  - `bindings/c/perf/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64 --duration 5 --results-tag c_single_rr64_dotnet_compare_current`
+  - `bindings/dotnet/perf/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64 --duration 5 --results-tag dotnet_single_rr64_tcp_confirm_current`
+  - `bindings/dotnet/perf/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64 --duration 5 --results-tag dotnet_single_rr64_tcp_confirm_current_2`
+- 결과:
+  - .NET은 아직 완료 조건을 만족하지 못했다.
+- 다음 판단:
+  - public API 우회 없이 남은 3% 내외의 차이를 닫으려면 `Message`/`Received` 객체 수명 구조 개선이 필요하다.
+

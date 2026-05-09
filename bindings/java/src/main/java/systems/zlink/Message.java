@@ -919,15 +919,46 @@ public final class Message implements AutoCloseable {
         if (arena != null && arena.scope().isAlive()) {
             arena.close();
         } else if (ownedMsgSlotAddress != 0L) {
-            UNSAFE.freeMemory(ownedMsgSlotAddress);
+            releaseOwnedMsgSlot(ownedMsgSlotAddress);
         }
         closed = true;
     }
 
+    private static final ThreadLocal<MsgSlotPool> MSG_SLOT_POOL =
+        ThreadLocal.withInitial(MsgSlotPool::new);
+
+    private static final class MsgSlotPool {
+        private static final int CAPACITY = 32;
+        private final long[] slots = new long[CAPACITY];
+        private int count;
+
+        long acquire() {
+            if (count > 0) {
+                count--;
+                long slot = slots[count];
+                slots[count] = 0L;
+                return slot;
+            }
+            long address = UNSAFE.allocateMemory(MSG_LAYOUT_SIZE);
+            UNSAFE.setMemory(address, MSG_LAYOUT_SIZE, (byte) 0);
+            return address;
+        }
+
+        void release(long slot) {
+            if (count < CAPACITY) {
+                slots[count++] = slot;
+            } else {
+                UNSAFE.freeMemory(slot);
+            }
+        }
+    }
+
     private static long allocateOwnedMsgSlot() {
-        long address = UNSAFE.allocateMemory(MSG_LAYOUT_SIZE);
-        UNSAFE.setMemory(address, MSG_LAYOUT_SIZE, (byte) 0);
-        return address;
+        return MSG_SLOT_POOL.get().acquire();
+    }
+
+    private static void releaseOwnedMsgSlot(long slot) {
+        MSG_SLOT_POOL.get().release(slot);
     }
 
     private static void validateRange(int total, int offset, int length, String name) {

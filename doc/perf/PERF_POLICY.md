@@ -92,7 +92,7 @@
   구현으로 보지 않는다.
 - managed runtime 바인딩(Java, .NET 등)은 size마다 프로세스를 재시작하므로,
   런타임 옵션으로 시작 비용을 최소화해야 한다.
-  - Java: `-server`, `-XX:TieredStopAtLevel=1` 등
+  - Java: `-server`, `-XX:TieredStopAtLevel=4`(C2 fully tiered) 등. 5초 이상 측정 윈도우에서는 C1 한정(`=1`)이 hot path JIT 최적화를 막아 routed 패턴 64B 같은 wrapper-bound 조합에서 큰 ratio 손실을 만들었기 때문에 fully tiered를 권장한다. 짧은 startup만 필요한 임베디드/배포용 옵션은 별도이다.
   - .NET: ReadyToRun (R2R), `DOTNET_TieredCompilation=0` 등
 - backpressure 검증은 기본 perf surface가 아니라 `core/tests/integration`
   으로 분리한다. one-way backpressure 통합 범위는 `DEALER_DEALER`,

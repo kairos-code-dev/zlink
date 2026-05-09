@@ -369,10 +369,10 @@ inline int recv_envelope (void *socket_,
         const int rc = socket_reqrep_internal::recv_router_message_direct (
           handle, &source_rid, &source_spot_rid, &request_seq, &parts_native,
           &part_count, static_cast<int> (flags_));
-        if (recv_result_from_rc (rc) != ZLINK_RECV_OK)
-            return recv_result_from_rc (rc);
+        if (rc != 0)
+            return -1;
         if (assign_parts_from_native (parts_native, part_count, envelope_.parts) != 0)
-            return rc;
+            return -1;
 
         if (source_rid && source_rid->size > 0)
             envelope_.source_rid = zlink::detail::native_routing_id (*source_rid);
@@ -391,11 +391,11 @@ inline int recv_envelope (void *socket_,
             const int rc = zlink_socket_recv_internal (
               socket_, &source_rid, &parts_native, &part_count,
               static_cast<zlink_send_flags_t> (flags_));
-            if (recv_result_from_rc (rc) != ZLINK_RECV_OK)
-                return recv_result_from_rc (rc);
+            if (rc != 0)
+                return -1;
             if (assign_parts_from_native (parts_native, part_count, envelope_.parts)
                 != 0)
-                return rc;
+                return -1;
             if (source_rid.size > 0)
                 envelope_.source_rid = zlink::detail::native_routing_id (source_rid);
         } else {
@@ -408,7 +408,7 @@ inline int recv_envelope (void *socket_,
               },
               envelope_.parts);
             if (rc != 0)
-                return rc;
+                return -1;
 
             if (source_rid && source_rid->size > 0)
                 envelope_.source_rid = zlink::detail::native_routing_id (*source_rid);
@@ -743,33 +743,23 @@ class base_socket_t : public socket_handle_t
             return -1;
         }
 
-        zlink_msg_t native_part;
-        detail::move_to_native(part_, &native_part);
-        if (part_.valid ())
-            return -1;
-
-        const int rc =
-          zlink_send_part (handle (), &native_part, ZLINK_DONTWAIT, ZLINK_PART_FINAL);
+        // Direct send: pass the wrapper's native msg handle straight to
+        // zlink. On success zlink takes ownership of the data; we only
+        // drop the wrapper's valid flag. On failure zlink leaves the msg
+        // untouched, so no rollback is needed and the caller can retry.
+        const int rc = zlink_send_part (
+          handle (), detail::native_handle (part_),
+          ZLINK_DONTWAIT, ZLINK_PART_FINAL);
         if (rc == 0) {
+            detail::mark_sent (part_);
             result_ = send_result_t::sent;
             return 0;
         }
 
         const int err = errno;
         if (detail::classify_nonblocking_send_errno (err, result_)) {
-            if (result_ != send_result_t::sent) {
-                part_.init ();
-                if (part_.valid ())
-                    (void) zlink_msg_move (detail::native_handle(part_), &native_part);
-                (void) zlink_msg_close (&native_part);
-            }
             return 0;
         }
-
-        part_.init ();
-        if (part_.valid ())
-            (void) zlink_msg_move (detail::native_handle(part_), &native_part);
-        (void) zlink_msg_close (&native_part);
         errno = err;
         return -1;
     }
@@ -815,34 +805,24 @@ class base_socket_t : public socket_handle_t
             return -1;
         }
 
-        zlink_msg_t native_part;
-        detail::move_to_native(part_, &native_part);
-        if (part_.valid ())
-            return -1;
-
+        // Direct send: pass the wrapper's native msg handle straight to
+        // zlink. On success zlink takes ownership of the data; we only
+        // drop the wrapper's valid flag. On failure zlink leaves the msg
+        // untouched, so no rollback is needed and the caller can retry.
         const int rc = zlink_send_part_rid (
-          handle (), zlink::detail::routing_id_native (target_rid_), &native_part,
+          handle (), zlink::detail::routing_id_native (target_rid_),
+          detail::native_handle (part_),
           ZLINK_DONTWAIT, ZLINK_PART_FINAL);
         if (rc == 0) {
+            detail::mark_sent (part_);
             result_ = send_result_t::sent;
             return 0;
         }
 
         const int err = errno;
         if (detail::classify_nonblocking_send_errno (err, result_)) {
-            if (result_ != send_result_t::sent) {
-                part_.init ();
-                if (part_.valid ())
-                    (void) zlink_msg_move (detail::native_handle(part_), &native_part);
-                (void) zlink_msg_close (&native_part);
-            }
             return 0;
         }
-
-        part_.init ();
-        if (part_.valid ())
-            (void) zlink_msg_move (detail::native_handle(part_), &native_part);
-        (void) zlink_msg_close (&native_part);
         errno = err;
         return -1;
     }

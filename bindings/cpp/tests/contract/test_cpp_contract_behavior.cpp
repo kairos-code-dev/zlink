@@ -99,9 +99,10 @@ void test_pair_recv_nonblocking_returns_empty_without_data ()
 {
     zlink::context_t ctx;
     zlink::pair_socket_t socket (ctx);
-    const std::optional<zlink::received_t> received =
-      socket.recv (ZLINK_DONTWAIT);
-    assert (!received.has_value ());
+    zlink::received_t received;
+    const int rc = socket.recv (received, zlink::recv_flags_t::dontwait);
+    assert (rc == -1);
+    assert (errno == EAGAIN || errno == EWOULDBLOCK);
 }
 
 void test_sub_subscribe_nonblocking_returns_empty_without_data ()
@@ -167,14 +168,17 @@ void test_publish_throws_on_general_error ()
     expect_runtime_error ([&] { socket.publish ("topic:error", outbound); });
 }
 
-void test_stream_receive_throws_in_packet_callback_mode ()
+void test_stream_receive_returns_busy_in_packet_callback_mode ()
 {
     zlink::context_t ctx;
     zlink::stream_socket_t socket (ctx);
 
     socket.on_packet ([] (const zlink::routing_id_t &, zlink::message_t,
                           zlink::message_t) {});
-    expect_runtime_error ([&] { (void) socket.recv (); });
+    zlink::received_t received;
+    const int rc = socket.recv (received);
+    assert (rc == -1);
+    assert (errno == EBUSY);
 }
 
 void test_socket_monitor_receive_returns_empty_without_event ()
@@ -236,7 +240,7 @@ int main ()
     test_router_send_throws_for_closed_socket ();
     test_send_throws_on_general_error ();
     test_publish_throws_on_general_error ();
-    test_stream_receive_throws_in_packet_callback_mode ();
+    test_stream_receive_returns_busy_in_packet_callback_mode ();
     test_socket_monitor_receive_returns_empty_without_event ();
     test_routing_id_accepts_maximum_size ();
     test_routing_id_rejects_oversize_input ();

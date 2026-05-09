@@ -962,19 +962,7 @@ class socket_t
                                    received_t &received_out_,
                                    recv_flags_t flags_)
     {
-        try {
-            std::optional<received_t> maybe_received = socket_.recv (flags_);
-            if (!maybe_received.has_value ()) {
-                errno = EAGAIN;
-                return -1;
-            }
-            received_out_ = std::move (*maybe_received);
-            return 0;
-        }
-        catch (const recv_error_t &err) {
-            errno = err.internal_errno ();
-            return -1;
-        }
+        return socket_.recv (received_out_, flags_);
     }
 
     template<typename SocketLike>

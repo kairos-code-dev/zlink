@@ -42,13 +42,7 @@ int recv_pair_payload (zlink::pair_socket_t &socket_,
                        zlink::recv_flags_t flags_)
 {
     try {
-        std::optional<zlink::received_t> maybe_received = socket_.recv (flags_);
-        if (!maybe_received.has_value ()) {
-            errno = EAGAIN;
-            return -1;
-        }
-        received_ = std::move (*maybe_received);
-        return 0;
+        return socket_.recv (received_, flags_);
     }
     catch (const zlink::recv_error_t &err) {
         errno = err.internal_errno ();

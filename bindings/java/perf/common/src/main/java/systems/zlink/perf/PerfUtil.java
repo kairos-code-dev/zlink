@@ -257,19 +257,43 @@ public final class PerfUtil {
     }
 
     public static systems.zlink.Received recvNoWait(PairSocket socket) {
-        return tryRecv(() -> socket.recv(RecvFlags.DONT_WAIT));
+        try {
+            return socket.recv(RecvFlags.DONT_WAIT);
+        } catch (RecvException ex) {
+            return recvExceptionToNull(ex);
+        }
     }
 
     public static systems.zlink.Received recvNoWait(DealerSocket socket) {
-        return tryRecv(() -> socket.recv(RecvFlags.DONT_WAIT));
+        try {
+            return socket.recv(RecvFlags.DONT_WAIT);
+        } catch (RecvException ex) {
+            return recvExceptionToNull(ex);
+        }
     }
 
     public static systems.zlink.Received recvNoWait(RouterSocket socket) {
-        return tryRecv(() -> socket.recv(RecvFlags.DONT_WAIT));
+        try {
+            return socket.recv(RecvFlags.DONT_WAIT);
+        } catch (RecvException ex) {
+            return recvExceptionToNull(ex);
+        }
     }
 
     public static systems.zlink.Received recvNoWait(StreamSocket socket) {
-        return tryRecv(() -> socket.recv(RecvFlags.DONT_WAIT));
+        try {
+            return socket.recv(RecvFlags.DONT_WAIT);
+        } catch (RecvException ex) {
+            return recvExceptionToNull(ex);
+        }
+    }
+
+    private static systems.zlink.Received recvExceptionToNull(RecvException ex) {
+        if (ex.getResult() == RecvResult.NO_DATA
+            || ex.getResult() == RecvResult.BUSY) {
+            return null;
+        }
+        throw ex;
     }
 
     public static Optional<TopicMessage> subscribeNoWait(SubSocket socket) {

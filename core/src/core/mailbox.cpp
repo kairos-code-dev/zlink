@@ -18,6 +18,7 @@ zlink::mailbox_t::mailbox_t ()
     _handler_arg = NULL;
     _pre_post = NULL;
     _scheduled.store (false, std::memory_order_release);
+    _fd_observer_present.store (false, std::memory_order_release);
 }
 
 zlink::mailbox_t::~mailbox_t ()
@@ -31,6 +32,11 @@ zlink::mailbox_t::~mailbox_t ()
     _sync.unlock ();
 }
 
+void zlink::mailbox_t::mark_fd_observer_present ()
+{
+    _fd_observer_present.store (true, std::memory_order_release);
+}
+
 zlink::fd_t zlink::mailbox_t::get_fd () const
 {
     return _signaler.get_fd ();
@@ -41,7 +47,14 @@ void zlink::mailbox_t::send (const command_t &cmd_)
     _sync.lock ();
     _cpipe.write (cmd_, false);
     const bool ok = _cpipe.flush ();
-    if (!ok) {
+    // Lazy signaler optimization: when ok==true the receiver thread is
+    // assumed to still be draining via recv() and a signal is unnecessary.
+    // That assumption breaks when an external observer is polling the
+    // signaler's fd (ZLINK_INTERNAL_OPT_FD). In that case signal() must
+    // always run so the fd becomes readable immediately.
+    const bool force_signal =
+      _fd_observer_present.load (std::memory_order_acquire);
+    if (!ok || force_signal) {
         // Signal all registered signalers for ZLINK_INTERNAL_OPT_FD support
         for (std::vector<signaler_t *>::iterator it = _signalers.begin (),
                                                  end = _signalers.end ();
@@ -51,7 +64,7 @@ void zlink::mailbox_t::send (const command_t &cmd_)
     }
     _sync.unlock ();
 
-    if (!ok) {
+    if (!ok || force_signal) {
         signal ();
         schedule_if_needed ();
     }

@@ -178,8 +178,14 @@ int zlink::socket_base_t::getsockopt (int option_,
     }
 
     if (option_ == ZLINK_INTERNAL_OPT_FD) {
-        rc = do_getsockopt<fd_t> (
-          optval_, optvallen_, static_cast<mailbox_t *> (_mailbox)->get_fd ());
+        mailbox_t *mb = static_cast<mailbox_t *> (_mailbox);
+        // Once an external observer obtains the signaler's fd, the mailbox
+        // must wake the signaler on every send so that the observer's
+        // poll/epoll wakes immediately. Without this the lazy signaler
+        // optimization can leave the fd unsignaled when the receiver is
+        // assumed active, causing fd-based pollers to wait until timeout.
+        mb->mark_fd_observer_present ();
+        rc = do_getsockopt<fd_t> (optval_, optvallen_, mb->get_fd ());
         return rc;
     }
 

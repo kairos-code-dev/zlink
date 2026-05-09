@@ -44,28 +44,28 @@ int main ()
 
     zlink::message_t warmup = detail::make_message ("warmup");
     dealer_socket.send (warmup);
-    std::optional<zlink::received_t> warmup_received = router_socket.recv ();
-    assert (warmup_received.has_value ());
-    assert (warmup_received->parts ().size () == 1);
-    assert (warmup_received->parts ()[0].to_string () == "warmup");
-    warmup_received->close ();
+    zlink::received_t warmup_received;
+    assert (router_socket.recv (warmup_received) == 0);
+    assert (warmup_received.parts ().size () == 1);
+    assert (warmup_received.parts ()[0].to_string () == "warmup");
+    warmup_received.close ();
 
     std::future<void> request_done = std::async (
       std::launch::async, [&router_socket, &routing_id] () {
-          std::optional<zlink::received_t> received = router_socket.recv ();
-          assert (received.has_value ());
-          assert (received->routing_id ().has_value ());
-          assert (received->routing_id ()->to_string ()
+          zlink::received_t received;
+          assert (router_socket.recv (received) == 0);
+          assert (received.routing_id ().has_value ());
+          assert (received.routing_id ()->to_string ()
                   == routing_id.to_string ());
-          assert (received->parts ().size () == 1);
-          assert (received->parts ()[0].to_string ()
+          assert (received.parts ().size () == 1);
+          assert (received.parts ()[0].to_string ()
                   == detail::k_dealer_router_request);
-          assert (received->request_seq ().has_value ());
-          assert (*received->request_seq () != 0u);
+          assert (received.request_seq ().has_value ());
+          assert (*received.request_seq () != 0u);
           zlink::message_t reply =
             detail::make_message (detail::k_dealer_router_reply);
-          received->reply (reply);
-          received->close ();
+          received.reply (reply);
+          received.close ();
       });
 
     zlink::message_t request =

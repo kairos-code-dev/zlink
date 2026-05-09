@@ -25,6 +25,11 @@ inline const zlink_msg_t *native_handle (const message_t &message_) noexcept;
 inline void adopt_native_message (message_t &message_, zlink_msg_t *src_);
 inline void move_to_native (message_t &message_, zlink_msg_t *dest_);
 inline void copy_to_native (const message_t &message_, zlink_msg_t *dest_);
+// Mark the message as transferred after a successful zlink_send_part*
+// or other zero-copy ownership-transfer call. The native msg is now
+// owned by the socket queue; the wrapper only needs to drop its valid
+// flag so the destructor does not call zlink_msg_close on dangling state.
+inline void mark_sent (message_t &message_) noexcept;
 } // namespace detail
 
 /**
@@ -281,6 +286,7 @@ class message_t
                                         zlink_msg_t *dest_);
     friend void detail::copy_to_native (const message_t &message_,
                                         zlink_msg_t *dest_);
+    friend void detail::mark_sent (message_t &message_) noexcept;
 
     const char *get_property (const std::string &property_) const
     {
@@ -414,6 +420,15 @@ inline void move_to_native (message_t &message_, zlink_msg_t *dest_)
 inline void copy_to_native (const message_t &message_, zlink_msg_t *dest_)
 {
     message_.copy_to (dest_);
+}
+
+inline void mark_sent (message_t &message_) noexcept
+{
+    // After zlink_send_* succeeds, the native msg state is empty (zlink
+    // moved its data into the socket queue). The wrapper just needs to
+    // drop its valid flag so the destructor will not invoke zlink_msg_close
+    // on a moved-from native handle.
+    message_._valid = false;
 }
 } // namespace detail
 

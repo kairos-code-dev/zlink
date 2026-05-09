@@ -1443,6 +1443,12 @@ class received_t
     void reply (std::vector<message_t> &parts, send_flags_t flags) const;
     void close ();
 
+    void set_reply_fn (
+      std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_)
+    {
+        _reply_fn = std::move (reply_fn_);
+    }
+
   private:
     void materialize_parts () const;
 

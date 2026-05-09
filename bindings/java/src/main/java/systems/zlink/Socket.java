@@ -2,6 +2,7 @@
 
 package systems.zlink;
 
+import systems.zlink.internal.InternalAccess;
 import systems.zlink.internal.Native;
 import systems.zlink.internal.NativeHelpers;
 import systems.zlink.internal.NativeLayouts;
@@ -114,6 +115,7 @@ public abstract class Socket implements AutoCloseable {
             NativeLayouts.MSG_LAYOUT);
         private final MemorySegment nativeRoutingId = arena.allocate(
             NativeLayouts.ROUTING_ID_LAYOUT);
+        private byte[] cachedRoutingIdBytes;
     }
 
     Socket(Context ctx, SocketType type) {
@@ -325,10 +327,20 @@ public abstract class Socket implements AutoCloseable {
             if (rc == 0)
                 return;
             int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
+            if (isTransientBlockingSendErrno(errno))
                 continue;
             throwPartSubmitFailure("zlink_send_part_rid");
         }
+    }
+
+    private static boolean isTransientBlockingSendErrno(int errno) {
+        return errno == ERRNO_EINTR
+            || errno == ERRNO_EAGAIN
+            || errno == ERRNO_EWOULDBLOCK_WIN
+            || errno == ERRNO_ENOTCONN
+            || errno == ERRNO_ENOTCONN_WIN
+            || errno == ERRNO_EHOSTUNREACH
+            || errno == ERRNO_EHOSTUNREACH_WIN;
     }
 
     boolean send(List<Message> parts) {
@@ -1244,7 +1256,7 @@ public abstract class Socket implements AutoCloseable {
             if (rc == 0)
                 return;
             int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
+            if (isTransientBlockingSendErrno(errno))
                 continue;
             throwPartSubmitFailure("zlink_send_part");
         }
@@ -1283,26 +1295,19 @@ public abstract class Socket implements AutoCloseable {
 
     private int sendPartOnce(Message message, RoutingId routingId, int flags,
                              int partFlag) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-            MemorySegment nativeRoutingId = routingId == null
-                ? MemorySegment.NULL
-                : nativeRoutingId(arena, routingId);
-            Object anchor = message.transferTo(nativeMsg);
-            try {
-                int rc = nativeRoutingId.address() == 0
-                    ? Native.sendPart(handle, nativeMsg, flags, partFlag)
-                    : Native.sendPartRid(handle, nativeRoutingId, nativeMsg,
-                        flags, partFlag);
-                if (rc != 0) {
-                    message.restoreFromNative(nativeMsg, false, anchor);
-                }
-                return rc;
-            } catch (RuntimeException ex) {
-                message.restoreFromNative(nativeMsg, false, anchor);
-                throw ex;
-            }
+        SendScratch scratch = sendScratch.get();
+        MemorySegment messageHandle = InternalAccess.messageNativeHandle(message);
+        MemorySegment nativeRoutingId = routingId == null
+            ? MemorySegment.NULL
+            : nativeRoutingId(scratch, routingId);
+        int rc = nativeRoutingId.address() == 0
+            ? Native.sendPart(handle, messageHandle, flags, partFlag)
+            : Native.sendPartRid(handle, nativeRoutingId, messageHandle,
+                flags, partFlag);
+        if (rc == 0) {
+            message.markTransferred();
         }
+        return rc;
     }
 
     private int publishPartOnce(String topicId, Message message, int flags,
@@ -1653,6 +1658,10 @@ public abstract class Socket implements AutoCloseable {
                                                  RoutingId routingId) {
         byte[] value = routingId.trustedBytes();
         MemorySegment nativeRid = scratch.nativeRoutingId;
+        if (scratch.cachedRoutingIdBytes == value) {
+            return nativeRid;
+        }
+        scratch.cachedRoutingIdBytes = value;
         nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
             (byte) value.length);
         if (value.length > 0) {

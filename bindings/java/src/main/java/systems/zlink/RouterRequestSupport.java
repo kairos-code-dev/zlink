@@ -2,6 +2,7 @@
 
 package systems.zlink;
 
+import systems.zlink.internal.InternalAccess;
 import systems.zlink.internal.Native;
 import systems.zlink.internal.NativeLayouts;
 import systems.zlink.internal.NativeMsg;
@@ -43,6 +44,37 @@ final class RouterRequestSupport implements AutoCloseable {
     private boolean handlerRegistered;
     private volatile boolean closed;
     private final ThreadLocal<Received> activeLazyReceive = new ThreadLocal<>();
+    private final Runnable lazyCompletionRunnable = () -> {
+        Received active = activeLazyReceive.get();
+        if (active != null) {
+            activeLazyReceive.remove();
+        }
+    };
+    private static final ThreadLocal<RecvOutScratch> RECV_OUT_SCRATCH =
+        ThreadLocal.withInitial(RecvOutScratch::new);
+
+    private static final class RecvOutScratch {
+        final MemorySegment sourceNodeRidOut;
+        final MemorySegment sourceSpotRidOut;
+        final MemorySegment requestSeqOut;
+        final MemorySegment partsOut;
+        final MemorySegment partCountOut;
+        final MemorySegment hasMoreOut;
+        long lastNodeRidPtr;
+        byte[] lastNodeRidBytes;
+        long lastSpotRidPtr;
+        byte[] lastSpotRidBytes;
+
+        RecvOutScratch() {
+            Arena auto = Arena.ofAuto();
+            sourceNodeRidOut = auto.allocate(ValueLayout.ADDRESS);
+            sourceSpotRidOut = auto.allocate(ValueLayout.ADDRESS);
+            requestSeqOut = auto.allocate(ValueLayout.JAVA_LONG);
+            partsOut = auto.allocate(ValueLayout.ADDRESS);
+            partCountOut = auto.allocate(ValueLayout.JAVA_LONG);
+            hasMoreOut = auto.allocate(ValueLayout.JAVA_INT);
+        }
+    }
 
     RouterRequestSupport(RouterSocket socket) {
         this(socket, true);
@@ -267,14 +299,7 @@ final class RouterRequestSupport implements AutoCloseable {
             throw new IllegalStateException(
                 "socket is in callback mode; direct recv is not allowed");
         }
-        try {
-            return recvDirectOnce(RecvFlags.DONT_WAIT);
-        } catch (RecvException ex) {
-            if (ex.getResult() == RecvResult.NO_DATA) {
-                return null;
-            }
-            throw ex;
-        }
+        return recvDirectOnceOrNull(RecvFlags.DONT_WAIT);
     }
 
     Optional<Received> recvNoWait() {
@@ -443,56 +468,128 @@ final class RouterRequestSupport implements AutoCloseable {
         return recvDirectOnce(flags);
     }
 
+    Received recvDirectOnceOrNull(RecvFlags flags) {
+        Received active = activeLazyReceive.get();
+        if (active != null) {
+            active.forceMaterialize();
+            activeLazyReceive.remove();
+        }
+        return recvDirectOnceImpl(flags, true);
+    }
+
     private Received recvDirectOnce(RecvFlags flags) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment sourceNodeRidOut = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment sourceSpotRidOut = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment requestSeqOut = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment partsOut = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment partCountOut = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.routerRecv(socket.handle(), sourceNodeRidOut,
-                sourceSpotRidOut, requestSeqOut, partsOut, partCountOut,
-                flags.value());
-            if (rc != 0) {
-                throw new RecvException(RecvResult.fromValue(rc),
-                    Native.errno());
+        return recvDirectOnceImpl(flags, false);
+    }
+
+    private Received recvDirectOnceImpl(RecvFlags flags, boolean nullOnNoData) {
+        RecvOutScratch scratch = RECV_OUT_SCRATCH.get();
+        MemorySegment sourceNodeRidOut = scratch.sourceNodeRidOut;
+        MemorySegment sourceSpotRidOut = scratch.sourceSpotRidOut;
+        MemorySegment requestSeqOut = scratch.requestSeqOut;
+        MemorySegment hasMoreOut = scratch.hasMoreOut;
+        Message firstPart = new Message();
+        boolean firstPartConsumed = false;
+        try {
+            int rc;
+            while (true) {
+                rc = Native.routerRecvPart(socket.handle(), sourceNodeRidOut,
+                    sourceSpotRidOut, requestSeqOut,
+                    InternalAccess.messageNativeHandle(firstPart), hasMoreOut,
+                    flags.value());
+                if (rc == 0) break;
+                int errno = Native.errno();
+                if (errno == 4) continue;
+                RecvResult result = RecvResult.fromValue(rc);
+                if (nullOnNoData && (result == RecvResult.NO_DATA
+                    || result == RecvResult.BUSY)) {
+                    return null;
+                }
+                throw new RecvException(result, errno);
+            }
+            boolean hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+            InternalAccess.messageFinishReceive(firstPart, hasMore);
+            long requestSequence = requestSeqOut.get(ValueLayout.JAVA_LONG, 0);
+
+            if (!hasMore) {
+                firstPartConsumed = true;
+                if (requestSequence == 0L) {
+                    byte[] nodeRidBytes = readRoutingIdBytesOut(sourceNodeRidOut);
+                    byte[] spotRidBytes = readRoutingIdBytesOut(sourceSpotRidOut);
+                    return new Received(nodeRidBytes, spotRidBytes, firstPart,
+                        0L, false, null, lazyCompletionRunnable);
+                }
+                RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
+                RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
+                return new Received(nodeRid, spotRid, firstPart,
+                    requestSequence, true,
+                    (replyParts, sendFlags) -> {
+                        if (spotRid != null) {
+                            socket.replyToSpot(nodeRid, spotRid, requestSequence,
+                                replyParts, sendFlags);
+                        } else {
+                            reply(nodeRid, requestSequence, replyParts, sendFlags);
+                        }
+                    }, lazyCompletionRunnable);
             }
 
-            AggregateRouterReceiveCursor cursor =
-                new AggregateRouterReceiveCursor(
-                    partsOut.get(ValueLayout.ADDRESS, 0),
-                    partCountOut.get(ValueLayout.JAVA_LONG, 0));
-            Message firstPart = cursor.nextPartOrNull();
-            if (firstPart == null) {
-                throw new RecvException(RecvResult.NO_DATA);
+            java.util.ArrayList<Message> parts = new java.util.ArrayList<>();
+            parts.add(firstPart);
+            while (hasMore) {
+                Message next = new Message();
+                boolean nextOk = false;
+                try {
+                    int rc2 = Native.routerRecvPart(socket.handle(),
+                        sourceNodeRidOut, sourceSpotRidOut, requestSeqOut,
+                        InternalAccess.messageNativeHandle(next), hasMoreOut,
+                        flags.value());
+                    if (rc2 != 0) {
+                        if (Native.errno() == 4) continue;
+                        throw new RecvException(RecvResult.fromValue(rc2),
+                            Native.errno());
+                    }
+                    hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                    InternalAccess.messageFinishReceive(next, hasMore);
+                    parts.add(next);
+                    nextOk = true;
+                } finally {
+                    if (!nextOk) {
+                        try { next.close(); } catch (RuntimeException ignored) {}
+                    }
+                }
             }
-
-            boolean hasMore = firstPart.more();
+            firstPartConsumed = true;
+            Message[] partsArray = parts.toArray(new Message[0]);
+            if (requestSequence == 0L) {
+                byte[] nodeRidBytes = readRoutingIdBytesOut(sourceNodeRidOut);
+                byte[] spotRidBytes = readRoutingIdBytesOut(sourceSpotRidOut);
+                return new Received(nodeRidBytes, spotRidBytes, partsArray,
+                    true, 0L, false, null, lazyCompletionRunnable);
+            }
             RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
             RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
-            long requestSequence = requestSeqOut.get(ValueLayout.JAVA_LONG, 0);
-            ReceivedPartCursor remainingCursor = hasMore ? cursor : null;
-            return registerLazyReceive(new Received(nodeRid, spotRid,
-                firstPart, remainingCursor, requestSequence,
-                requestSequence != 0L, requestSequence == 0L ? null
-                : (replyParts, sendFlags) -> {
+            final long capturedSeq = requestSequence;
+            return new Received(nodeRid, spotRid, partsArray, true,
+                capturedSeq, true,
+                (replyParts, sendFlags) -> {
                     if (spotRid != null) {
-                        socket.replyToSpot(nodeRid, spotRid, requestSequence,
+                        socket.replyToSpot(nodeRid, spotRid, capturedSeq,
                             replyParts, sendFlags);
                     } else {
-                        reply(nodeRid, requestSequence, replyParts, sendFlags);
+                        reply(nodeRid, capturedSeq, replyParts, sendFlags);
                     }
-                }, lazyCompletion()), hasMore);
+                }, lazyCompletionRunnable);
+        } finally {
+            if (!firstPartConsumed) {
+                try {
+                    firstPart.close();
+                } catch (RuntimeException ignored) {
+                }
+            }
         }
     }
 
     private Runnable lazyCompletion() {
-        return () -> {
-            Received active = activeLazyReceive.get();
-            if (active != null) {
-                activeLazyReceive.remove();
-            }
-        };
+        return lazyCompletionRunnable;
     }
 
     private Received registerLazyReceive(Received received, boolean hasMore) {
@@ -757,6 +854,64 @@ final class RouterRequestSupport implements AutoCloseable {
                 NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
         }
         return readRoutingId(nativeRid);
+    }
+
+    private static byte[] readRoutingIdBytesOut(MemorySegment nativeRidOut) {
+        MemorySegment nativeRid = nativeRidOut.get(ValueLayout.ADDRESS, 0);
+        if (nativeRid.address() == 0) {
+            return null;
+        }
+        nativeRid = nativeRid.reinterpret(
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
+        int size = nativeRid.get(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
+        if (size == 0) {
+            return null;
+        }
+        byte[] value = new byte[size];
+        MemorySegment.copy(nativeRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
+            MemorySegment.ofArray(value), 0, size);
+        return value;
+    }
+
+    private static byte[] readRoutingIdBytesCached(RecvOutScratch scratch,
+                                                   MemorySegment nativeRidOut,
+                                                   boolean spot) {
+        long ptr = nativeRidOut.get(ValueLayout.ADDRESS, 0).address();
+        if (ptr == 0L) {
+            return null;
+        }
+        long lastPtr = spot ? scratch.lastSpotRidPtr : scratch.lastNodeRidPtr;
+        byte[] lastBytes = spot ? scratch.lastSpotRidBytes
+            : scratch.lastNodeRidBytes;
+        if (ptr == lastPtr && lastBytes != null) {
+            return lastBytes;
+        }
+        MemorySegment nativeRid = MemorySegment.ofAddress(ptr).reinterpret(
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
+        int size = nativeRid.get(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
+        if (size == 0) {
+            if (spot) {
+                scratch.lastSpotRidPtr = ptr;
+                scratch.lastSpotRidBytes = null;
+            } else {
+                scratch.lastNodeRidPtr = ptr;
+                scratch.lastNodeRidBytes = null;
+            }
+            return null;
+        }
+        byte[] value = new byte[size];
+        MemorySegment.copy(nativeRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
+            MemorySegment.ofArray(value), 0, size);
+        if (spot) {
+            scratch.lastSpotRidPtr = ptr;
+            scratch.lastSpotRidBytes = value;
+        } else {
+            scratch.lastNodeRidPtr = ptr;
+            scratch.lastNodeRidBytes = value;
+        }
+        return value;
     }
 
     private static RoutingId readRoutingId(MemorySegment nativeRid) {

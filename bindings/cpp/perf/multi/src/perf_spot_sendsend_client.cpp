@@ -243,8 +243,12 @@ bool run_active_window (std::vector<client_slot_t> &slots,
         }
 
         if (has_waiting) {
-            std::vector<zlink::poll_event_t> events =
-              poller.wait_all (slots.size (), std::chrono::milliseconds (1));
+            // Use the perf-policy poll timeout (100 ms). Core fires the
+            // hidden completion drain on signal arrival, so the call returns
+            // promptly when a reply lands and only falls back to the timeout
+            // for safety.
+            std::vector<zlink::poll_event_t> events = poller.wait_all (
+              slots.size (), std::chrono::milliseconds (100));
             (void) events;
         }
     }

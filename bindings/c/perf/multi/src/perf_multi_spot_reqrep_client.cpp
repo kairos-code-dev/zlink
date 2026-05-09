@@ -1019,7 +1019,7 @@ bool run_active_window(spot_reqrep_client_state_t *state,
           state->poller,
           state->events.empty() ? NULL : &state->events[0],
           static_cast<int>(state->events.size()),
-          100,
+          -1,
           NULL);
         if (event_count < 0) {
             if (zlink_errno() == EINTR)

@@ -658,8 +658,11 @@ bool create_spot_slots(ctx_guard_t &ctx,
     }
 
     for (size_t i = 0; i < state->slots.size(); ++i) {
+        // Register POLLIN|POLLOUT so the poller wakes both on incoming
+        // routed messages and on send-readiness recovery (backpressure).
         if (zlink_poller_add(
-              state->poller, state->slots[i].socket, &state->slots[i], ZLINK_POLLIN)
+              state->poller, state->slots[i].socket, &state->slots[i],
+              static_cast<short>(ZLINK_POLLIN | ZLINK_POLLOUT))
             != 0) {
             if (bench_debug_enabled())
                 std::cerr << "[multi-spot-reqrep-client] poller add failed slot="
@@ -1028,7 +1031,7 @@ bool run_active_window(spot_reqrep_client_state_t *state,
           state->poller,
           state->events.empty() ? NULL : &state->events[0],
           static_cast<int>(state->events.size()),
-          has_waiting_reply ? 0 : 1,
+          -1,
           NULL);
         if (event_count < 0) {
             if (zlink_errno() == EINTR)

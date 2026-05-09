@@ -433,6 +433,193 @@ void test_spot_poller_wait_all_returns_promptly_after_reply ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
+
+// Regression: spot->spot routed send must wake a poller that waits with a
+// large timeout. Reproduces the SPOT_SENDSEND throughput cap observed when
+// the perf client's poller_wait_all timeout was raised to -1 / 100 ms — the
+// client hangs because the receiving spot's routed_recv signal does not
+// fire on the poller's hidden completion / fd registration.
+void test_spot_poller_wait_all_returns_promptly_after_spot_to_spot_send ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx, NULL);
+    void *sender_spot = zlink_spot_new (node);
+    void *receiver_spot = zlink_spot_new (node);
+    void *poller = zlink_poller_new ();
+    int user_tag = 91;
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (sender_spot);
+    TEST_ASSERT_NOT_NULL (receiver_spot);
+    TEST_ASSERT_NOT_NULL (poller);
+
+    set_routing_id_text (node, "sendsend-spot-node");
+    set_routing_id_text (sender_spot, "sendsend-spot-sender");
+    set_routing_id_text (receiver_spot, "sendsend-spot-receiver");
+
+    const zlink_routing_id_t node_rid = get_routing_id_value (node);
+    const zlink_routing_id_t receiver_spot_rid =
+      get_routing_id_value (receiver_spot);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, receiver_spot, &user_tag, ZLINK_POLLIN));
+
+    zlink_msg_t part;
+    init_string_part (&part, "sendsend-payload");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_send_spot_part (
+      sender_spot, &node_rid, &receiver_spot_rid, &part,
+      ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
+
+    // Allow the dispatcher to enqueue the routed message. The receiver's
+    // routed_recv_queue should now be readable.
+    std::this_thread::sleep_for (std::chrono::milliseconds (20));
+
+    zlink_poller_event_t events[4];
+    const auto wait_start = std::chrono::steady_clock::now ();
+    const int rc = zlink_poller_wait_all (
+      poller, events, static_cast<int> (sizeof (events) / sizeof (events[0])),
+      5000, NULL);
+    const auto wait_elapsed =
+      std::chrono::steady_clock::now () - wait_start;
+    const long long elapsed_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds> (wait_elapsed)
+        .count ();
+
+    TEST_ASSERT_TRUE (rc >= 1);
+    TEST_ASSERT_TRUE (elapsed_ms < 500);
+    TEST_ASSERT_EQUAL_PTR (receiver_spot, events[0].socket);
+
+    const zlink_routing_id_t *src_node_rid = NULL;
+    const zlink_routing_id_t *src_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_recv (receiver_spot, &src_node_rid, &src_spot_rid,
+                       &request_seq, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_STRING (
+      "sendsend-payload",
+      part_count > 0 ? msg_to_string (&parts[0]).c_str () : "");
+    zlink_multipart_close (parts, part_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, receiver_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&receiver_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sender_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+// Regression: a spot socket must be addable to a poller with
+// (ZLINK_POLLIN | ZLINK_POLLOUT) so that bi-directional workloads
+// (e.g. SPOT_SENDSEND) can wait on either send-readiness (backpressure
+// recovery) or recv-readiness (incoming routed message) in one call.
+// Previously zlink_service_poller_add_internal validated POLLIN xor
+// POLLOUT only and rejected the combined mask with EINVAL, forcing
+// callers to use a short polling fallback (1ms timeout) instead of an
+// indefinite signal-driven wait.
+void test_spot_poller_accepts_pollin_or_pollout_combined ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx, NULL);
+    void *sender_spot = zlink_spot_new (node);
+    void *receiver_spot = zlink_spot_new (node);
+    void *poller = zlink_poller_new ();
+    int user_tag = 92;
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (sender_spot);
+    TEST_ASSERT_NOT_NULL (receiver_spot);
+    TEST_ASSERT_NOT_NULL (poller);
+
+    set_routing_id_text (node, "ssbi-spot-node");
+    set_routing_id_text (sender_spot, "ssbi-spot-sender");
+    set_routing_id_text (receiver_spot, "ssbi-spot-receiver");
+
+    const zlink_routing_id_t node_rid = get_routing_id_value (node);
+    const zlink_routing_id_t receiver_spot_rid =
+      get_routing_id_value (receiver_spot);
+
+    // The combined POLLIN|POLLOUT registration must succeed. Previously
+    // failed with EINVAL.
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (
+      poller, receiver_spot, &user_tag,
+      static_cast<short> (ZLINK_POLLIN | ZLINK_POLLOUT)));
+
+    // POLLOUT half: the spot is initially writable, so a wait_all with a
+    // generous timeout must return immediately with a POLLOUT event.
+    {
+        zlink_poller_event_t events[4];
+        const auto wait_start = std::chrono::steady_clock::now ();
+        const int rc = zlink_poller_wait_all (
+          poller, events,
+          static_cast<int> (sizeof (events) / sizeof (events[0])), 5000, NULL);
+        const long long elapsed_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            std::chrono::steady_clock::now () - wait_start)
+            .count ();
+        TEST_ASSERT_TRUE (rc >= 1);
+        TEST_ASSERT_TRUE (elapsed_ms < 500);
+        bool saw_pollout = false;
+        for (int i = 0; i < rc; ++i) {
+            if (events[i].socket == receiver_spot
+                && (events[i].events & ZLINK_POLLOUT) != 0) {
+                saw_pollout = true;
+                break;
+            }
+        }
+        TEST_ASSERT_TRUE (saw_pollout);
+    }
+
+    // POLLIN half: a routed send from the peer spot must wake wait_all
+    // promptly and surface a POLLIN event for the receiver_spot.
+    zlink_msg_t part;
+    init_string_part (&part, "ssbi-payload");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_send_spot_part (
+      sender_spot, &node_rid, &receiver_spot_rid, &part,
+      ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
+    std::this_thread::sleep_for (std::chrono::milliseconds (20));
+
+    {
+        zlink_poller_event_t events[4];
+        const auto wait_start = std::chrono::steady_clock::now ();
+        const int rc = zlink_poller_wait_all (
+          poller, events,
+          static_cast<int> (sizeof (events) / sizeof (events[0])), 5000, NULL);
+        const long long elapsed_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            std::chrono::steady_clock::now () - wait_start)
+            .count ();
+        TEST_ASSERT_TRUE (rc >= 1);
+        TEST_ASSERT_TRUE (elapsed_ms < 500);
+        bool saw_pollin = false;
+        for (int i = 0; i < rc; ++i) {
+            if (events[i].socket == receiver_spot
+                && (events[i].events & ZLINK_POLLIN) != 0) {
+                saw_pollin = true;
+                break;
+            }
+        }
+        TEST_ASSERT_TRUE (saw_pollin);
+    }
+
+    const zlink_routing_id_t *src_node_rid = NULL;
+    const zlink_routing_id_t *src_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_recv (receiver_spot, &src_node_rid, &src_spot_rid,
+                       &request_seq, &parts, &part_count, ZLINK_DONTWAIT));
+    zlink_multipart_close (parts, part_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, receiver_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&receiver_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sender_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
 }
 
 SETUP_TEARDOWN_TESTCONTEXT
@@ -446,5 +633,7 @@ int main (void)
     RUN_TEST (test_spot_poller_wait_reports_original_spot_for_routed_recv);
     RUN_TEST (test_spot_poller_progresses_spot_request_reply_completion);
     RUN_TEST (test_spot_poller_wait_all_returns_promptly_after_reply);
+    RUN_TEST (test_spot_poller_wait_all_returns_promptly_after_spot_to_spot_send);
+    RUN_TEST (test_spot_poller_accepts_pollin_or_pollout_combined);
     return UNITY_END ();
 }

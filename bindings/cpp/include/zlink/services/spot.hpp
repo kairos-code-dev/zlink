@@ -2153,14 +2153,7 @@ class spot_t
 
         if (!has_more) {
             message_t part;
-            if (zlink_msg_move (
-                  zlink::detail::native_handle (part), &first_part)
-                != 0) {
-                const int err = errno;
-                (void) zlink_msg_close (&first_part);
-                errno = err;
-                return -1;
-            }
+            zlink::detail::adopt_native_message (part, &first_part);
             message_out_ = topic_message_t (
               source, std::move (topic), std::move (part));
         } else {

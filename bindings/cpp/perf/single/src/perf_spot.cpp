@@ -27,14 +27,6 @@
 namespace {
 
 const std::string k_topic = "bench";
-const size_t k_max_spot_msg_unit = 4096;
-
-size_t spot_auto_hwm_msg_unit (size_t msg_size_)
-{
-    if (msg_size_ == 0)
-        return k_max_spot_msg_unit;
-    return std::min (msg_size_, k_max_spot_msg_unit);
-}
 
 zlink::routing_id_t routing_id_from_ascii (const char *value_)
 {
@@ -308,16 +300,6 @@ bool run_pattern_spot (const std::string &transport,
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
         return false;
     }
-    const size_t spot_msg_unit = spot_auto_hwm_msg_unit (msg_size);
-    if (!perf::single::apply_single_auto_hwm_msg_unit (pub_node, spot_msg_unit)
-        || !perf::single::apply_single_auto_hwm_msg_unit (sub_node, spot_msg_unit)
-        || !perf::single::apply_single_auto_hwm_msg_unit (pub_spot, spot_msg_unit)
-        || !perf::single::apply_single_auto_hwm_msg_unit (sub_spot, spot_msg_unit)
-        || !perf::single::recalculate_single_auto_hwm (ctx)) {
-        perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
-        return false;
-    }
-
     try {
         pub_node.set_routing_id (
           routing_id_from_ascii ("z-cpp-perf-spot-publisher"));

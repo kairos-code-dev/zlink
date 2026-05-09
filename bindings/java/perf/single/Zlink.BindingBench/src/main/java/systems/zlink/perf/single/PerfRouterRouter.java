@@ -32,7 +32,7 @@ final class PerfRouterRouter {
         AtomicBoolean probePending = new AtomicBoolean(true);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-        boolean sharedContext = "inproc".equals(config.transport());
+        boolean sharedContext = true;
         Context receiverCtx = PerfUtil.newContext(config);
         Context senderCtx = sharedContext ? receiverCtx : PerfUtil.newContext(config);
         try (RouterSocket receiver = new RouterSocket(receiverCtx);
@@ -44,6 +44,9 @@ final class PerfRouterRouter {
             PerfUtil.applyMonitorOptions(senderMonitor, config);
             PerfUtil.applySocketOptions(receiver, config);
             PerfUtil.applySocketOptions(sender, config);
+            PerfUtil.applyAutoHwmMsgUnit(receiver, config.size());
+            PerfUtil.applyAutoHwmMsgUnit(sender, config.size());
+            PerfUtil.recalculateAutoHwm(receiverCtx);
             PerfUtil.configureServerTls(receiver, config.transport());
             PerfUtil.configureClientTls(sender, config.transport());
             receiver.setRoutingId(ROUTER1);

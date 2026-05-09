@@ -272,8 +272,6 @@ bool run_client (const std::string &lib_name,
       perf::multi::resolve_multi_bench_settings ();
     const std::vector<size_t> msg_sizes =
       perf::multi::resolve_case_msg_sizes (fallback_size);
-    const size_t max_msg_size =
-      perf::multi::max_case_msg_size (msg_sizes, fallback_size);
     perf::multi::ctx_guard_t ctx;
     zlink::service::spot_node_t control_node (ctx.ctx ());
     zlink::service::spot_node_t data_node (ctx.ctx ());
@@ -281,10 +279,6 @@ bool run_client (const std::string &lib_name,
         return false;
     if (!perf::multi::configure_spot_control_tls (control_node, transport)
         || !perf::multi::configure_spot_client_tls (data_node, transport)
-        || !perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-          control_node, max_msg_size)
-        || !perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-          data_node, max_msg_size)
         || !perf::multi::apply_spot_node_admission_hwm (
           control_node, settings.sndhwm, settings.rcvhwm)
         || !perf::multi::apply_spot_node_admission_hwm (
@@ -309,9 +303,6 @@ bool run_client (const std::string &lib_name,
           new zlink::service::spot_t (data_node.create_spot ()));
         if (!slots[i].spot || !slots[i].spot->valid ())
             return false;
-        if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-              *slots[i].spot, max_msg_size))
-            return false;
         const std::string rid = std::string ("SPOT-SENDSEND-")
                                 + std::to_string (i);
         slots[i].spot->set_routing_id (zlink::routing_id_t (
@@ -328,13 +319,6 @@ bool run_client (const std::string &lib_name,
                 std::max (1000, settings.connect_ready_timeout_ms * 6));
     for (size_t i = 0; i < msg_sizes.size (); ++i) {
         const size_t msg_size = msg_sizes[i];
-        for (size_t slot_index = 0; slot_index < slots.size (); ++slot_index) {
-            if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-                  *slots[slot_index].spot, msg_size))
-                return false;
-        }
-        if (!perf::multi::recalculate_auto_hwm (ctx))
-            return false;
         std::cout << "CLIENT_READY," << msg_size << std::endl;
         if (!wait_for_start (msg_size, start_timeout_ms)) {
             rc = 1;

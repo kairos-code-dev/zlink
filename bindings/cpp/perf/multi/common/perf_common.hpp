@@ -34,6 +34,133 @@ typedef ::perf::socket_t perf_socket_t;
 
 static const char *k_stop_token = "__zlink_perf_stop__";
 
+template<typename SocketLike, typename T>
+inline auto set_common_socket_option_impl (
+  SocketLike &socket,
+  zlink::compat::options::socket_option_key_t<T> key,
+  const T &value,
+  int) -> decltype (socket.set_option (key, value), int ())
+{
+    return socket.set_option (key, value);
+}
+
+template<typename SocketLike, typename T>
+inline int set_common_socket_option_impl (
+  SocketLike &socket,
+  zlink::compat::options::socket_option_key_t<T> key,
+  const T &value,
+  long)
+{
+    try {
+        switch (key.option) {
+        case zlink::compat::options::socket_option::sndhwm:
+            socket.options ().send_hwm (zlink::message_count_t::value (value));
+            return 0;
+        case zlink::compat::options::socket_option::rcvhwm:
+            socket.options ().recv_hwm (zlink::message_count_t::value (value));
+            return 0;
+        case zlink::compat::options::socket_option::sndtimeo:
+            socket.options ().send_timeout (std::chrono::milliseconds (value));
+            return 0;
+        case zlink::compat::options::socket_option::rcvtimeo:
+            socket.options ().recv_timeout (std::chrono::milliseconds (value));
+            return 0;
+        case zlink::compat::options::socket_option::linger:
+            socket.options ().linger (std::chrono::milliseconds (value));
+            return 0;
+        default:
+            errno = EOPNOTSUPP;
+            return -1;
+        }
+    }
+    catch (const zlink::config_error_t &err) {
+        errno = err.internal_errno ();
+        return -1;
+    }
+}
+
+template<typename SocketLike, typename T>
+inline int set_common_socket_option (
+  SocketLike &socket,
+  zlink::compat::options::socket_option_key_t<T> key,
+  const T &value)
+{
+    return set_common_socket_option_impl (socket, key, value, 0);
+}
+
+template<typename SocketLike, typename T>
+inline auto get_common_socket_option_impl (
+  SocketLike &socket,
+  zlink::compat::options::socket_option_key_t<T> key,
+  T &value,
+  int) -> decltype (socket.get_option (key, &value), int ())
+{
+    return socket.get_option (key, &value);
+}
+
+template<typename SocketLike, typename T>
+inline int get_common_socket_option_impl (
+  SocketLike &socket,
+  zlink::compat::options::socket_option_key_t<T> key,
+  T &value,
+  long)
+{
+    (void) socket;
+    (void) key;
+    (void) value;
+    errno = EOPNOTSUPP;
+    return -1;
+}
+
+template<typename SocketLike>
+inline auto get_common_socket_option_string_impl (
+  SocketLike &socket,
+  zlink::compat::options::socket_option_key_t<std::string> key,
+  std::string &value,
+  int) -> decltype (socket.get_option (key, value), int ())
+{
+    return socket.get_option (key, value);
+}
+
+template<typename SocketLike>
+inline int get_common_socket_option_string_impl (
+  SocketLike &socket,
+  zlink::compat::options::socket_option_key_t<std::string> key,
+  std::string &value,
+  long)
+{
+    try {
+        if (key.option == zlink::compat::options::socket_option::last_endpoint) {
+            value = socket.options ().last_endpoint ();
+            return 0;
+        }
+    }
+    catch (const zlink::config_error_t &err) {
+        errno = err.internal_errno ();
+        return -1;
+    }
+    errno = EOPNOTSUPP;
+    return -1;
+}
+
+template<typename SocketLike, typename T>
+inline int get_common_socket_option (
+  SocketLike &socket,
+  zlink::compat::options::socket_option_key_t<T> key,
+  T &value)
+{
+    return get_common_socket_option_impl (socket, key, value, 0);
+}
+
+template<typename SocketLike>
+inline int get_common_socket_option (
+  SocketLike &socket,
+  zlink::compat::options::socket_option_key_t<std::string> key,
+  std::string &value)
+{
+    return get_common_socket_option_string_impl (socket, key, value, 0);
+}
+
 inline bool is_supported_transport (const std::string &transport)
 {
     return transport == "tcp" || transport == "tls" || transport == "ws"
@@ -208,7 +335,8 @@ struct server_queue_stats_t
 typedef ::perf::latency_sampler_stats_t bench_latency_stats_t;
 typedef ::perf::latency_sampler_t bench_latency_sampler_t;
 
-inline void apply_benchmark_hwm (perf_socket_t &socket,
+template<typename SocketLike>
+inline void apply_benchmark_hwm (SocketLike &socket,
                                  int sndhwm,
                                  int rcvhwm)
 {
@@ -216,19 +344,25 @@ inline void apply_benchmark_hwm (perf_socket_t &socket,
         return;
     const int snd_value = sndhwm > 0 ? sndhwm : 1;
     const int rcv_value = rcvhwm > 0 ? rcvhwm : 1;
-    (void) socket.set_option (zlink::compat::options::socket_options::sndhwm, snd_value);
-    (void) socket.set_option (zlink::compat::options::socket_options::rcvhwm, rcv_value);
+    (void) set_common_socket_option (
+      socket, zlink::compat::options::socket_options::sndhwm, snd_value);
+    (void) set_common_socket_option (
+      socket, zlink::compat::options::socket_options::rcvhwm, rcv_value);
 }
 
-inline void apply_debug_timeouts (perf_socket_t &socket,
+template<typename SocketLike>
+inline void apply_debug_timeouts (SocketLike &socket,
                                   const std::string &)
 {
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
-    (void) socket.set_option (zlink::compat::options::socket_options::sndtimeo,
-                              settings.sndtimeo_ms);
-    (void) socket.set_option (zlink::compat::options::socket_options::rcvtimeo,
-                              settings.rcvtimeo_ms);
-    (void) socket.set_option (zlink::compat::options::socket_options::linger, 0);
+    (void) set_common_socket_option (
+      socket, zlink::compat::options::socket_options::sndtimeo,
+      settings.sndtimeo_ms);
+    (void) set_common_socket_option (
+      socket, zlink::compat::options::socket_options::rcvtimeo,
+      settings.rcvtimeo_ms);
+    (void) set_common_socket_option (
+      socket, zlink::compat::options::socket_options::linger, 0);
 }
 
 inline bool apply_benchmark_auto_hwm_msg_unit (perf_socket_t &socket,
@@ -249,10 +383,19 @@ inline auto apply_benchmark_auto_hwm_msg_unit_typed_impl (
 }
 
 template<typename SubjectT>
+inline auto apply_benchmark_auto_hwm_msg_unit_typed_impl (
+  SubjectT &subject,
+  zlink::byte_size_t value,
+  long) -> decltype (subject.options ().auto_hwm_msg_unit_bytes (value), void ())
+{
+    subject.options ().auto_hwm_msg_unit_bytes (value);
+}
+
+template<typename SubjectT>
 inline void apply_benchmark_auto_hwm_msg_unit_typed_impl (
   SubjectT &,
   zlink::byte_size_t,
-  long)
+  ...)
 {
 }
 
@@ -286,7 +429,8 @@ inline bool recalculate_auto_hwm (ctx_guard_t &ctx)
     }
 }
 
-inline void apply_benchmark_socket_options (perf_socket_t &socket,
+template<typename SocketLike>
+inline void apply_benchmark_socket_options (SocketLike &socket,
                                             const multi_bench_settings_t &settings,
                                             const std::string &transport)
 {
@@ -296,7 +440,8 @@ inline void apply_benchmark_socket_options (perf_socket_t &socket,
     apply_debug_timeouts (socket, transport);
 }
 
-inline bool open_socket_monitor (perf_socket_t &socket,
+template<typename SocketLike>
+inline bool open_socket_monitor (SocketLike &socket,
                                  zlink::monitor_event events,
                                  connect_monitor_t &out)
 {
@@ -308,7 +453,8 @@ inline bool open_socket_monitor (perf_socket_t &socket,
     return true;
 }
 
-inline bool open_connect_monitor (perf_socket_t &socket, connect_monitor_t &out)
+template<typename SocketLike>
+inline bool open_connect_monitor (SocketLike &socket, connect_monitor_t &out)
 {
     return open_socket_monitor (
       socket, zlink::monitor_event::connection_ready, out);
@@ -523,7 +669,8 @@ inline std::string normalize_endpoint_host (const std::string &endpoint)
     return out;
 }
 
-inline std::string bind_and_resolve_endpoint (perf_socket_t &socket,
+template<typename SocketLike>
+inline std::string bind_and_resolve_endpoint (SocketLike &socket,
                                               const std::string &transport,
                                               const std::string &id,
                                               int fixed_port)
@@ -540,7 +687,9 @@ inline std::string bind_and_resolve_endpoint (perf_socket_t &socket,
         return endpoint;
 
     std::string last;
-    if (socket.get_option (zlink::compat::options::socket_options::last_endpoint, last) != 0)
+    if (get_common_socket_option (
+          socket, zlink::compat::options::socket_options::last_endpoint, last)
+        != 0)
         return std::string ();
 
     return normalize_endpoint_host (last);

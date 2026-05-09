@@ -1392,7 +1392,23 @@ class received_t
         : _routing_id (std::move (routing_id_)),
           _spot_rid (std::move (spot_rid_)),
           _request_seq (std::move (request_seq_)),
+          _single_part (),
           _parts (std::move (parts_)),
+          _reply_fn (std::move (reply_fn_))
+    {
+    }
+
+    received_t (std::optional<routing_id_t> routing_id_,
+                std::optional<routing_id_t> spot_rid_,
+                std::optional<uint64_t> request_seq_,
+                message_t part_,
+                std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_ =
+                  std::function<void(std::vector<message_t> &, send_flags_t)> ())
+        : _routing_id (std::move (routing_id_)),
+          _spot_rid (std::move (spot_rid_)),
+          _request_seq (std::move (request_seq_)),
+          _single_part (std::move (part_)),
+          _parts (),
           _reply_fn (std::move (reply_fn_))
     {
     }
@@ -1412,10 +1428,13 @@ class received_t
         return _request_seq;
     }
 
-    const std::vector<message_t> &parts () const noexcept { return _parts; }
-    std::vector<message_t> &parts () noexcept { return _parts; }
+    const std::vector<message_t> &parts () const;
+    std::vector<message_t> &parts ();
 
-    bool is_single_part () const noexcept { return _parts.size () == 1u; }
+    bool is_single_part () const noexcept
+    {
+        return _single_part.has_value () || _parts.size () == 1u;
+    }
     message_t &first_part ();
     message_t single_part_or_throw ();
     void reply (message_t &part) const;
@@ -1425,10 +1444,13 @@ class received_t
     void close ();
 
   private:
+    void materialize_parts () const;
+
     std::optional<routing_id_t> _routing_id;
     std::optional<routing_id_t> _spot_rid;
     std::optional<uint64_t> _request_seq;
-    std::vector<message_t> _parts;
+    mutable std::optional<message_t> _single_part;
+    mutable std::vector<message_t> _parts;
     std::function<void(std::vector<message_t> &, send_flags_t)> _reply_fn;
 };
 

@@ -465,9 +465,6 @@ class spot_client_bench_t
             return false;
         if (!perf::multi::configure_spot_control_tls (*_control_node, _transport))
             return false;
-        if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-              *_control_node, _max_msg_size))
-            return false;
 
         const int control_timeout_ms =
           std::max (1000, _settings.connect_ready_timeout_ms);
@@ -496,11 +493,6 @@ class spot_client_bench_t
             || !_control_sub->valid ()) {
             return false;
         }
-        if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-              *_control_pub, _max_msg_size)
-            || !perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-              *_control_sub, _max_msg_size))
-            return false;
 
         _control_pub->request_timeout (
           std::chrono::milliseconds (control_timeout_ms));
@@ -523,9 +515,6 @@ class spot_client_bench_t
             return false;
         if (!perf::multi::configure_spot_client_tls (*_data_node, _transport))
             return false;
-        if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-              *_data_node, _max_msg_size))
-            return false;
         if (!perf::multi::apply_spot_node_admission_hwm (
               *_data_node, _settings.sndhwm, _settings.rcvhwm))
             return false;
@@ -544,9 +533,6 @@ class spot_client_bench_t
                 debug_log ("slot spot create failed");
                 return false;
             }
-            if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-                  *slot->spot, _max_msg_size))
-                return false;
             slot->spot->request_timeout (
               std::chrono::milliseconds (_settings.rcvtimeo_ms));
             slot->spot->set_subscription (k_topic);

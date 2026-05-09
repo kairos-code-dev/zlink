@@ -175,10 +175,6 @@ inline received_t recv_router_received (void *router_handle_,
           &parts_native, &part_count, static_cast<int> (flags_))));
     if (rc != recv_result_t::ok)
         throw recv_error_t (rc, zlink_errno ());
-    std::vector<message_t> parts;
-    if (detail::assign_parts_from_native (parts_native, part_count, parts) != 0)
-        throw last_error ();
-
     std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn;
     if (source_node_rid && source_node_rid->size > 0 && request_seq != 0u) {
         const routing_id_t reply_node_rid =
@@ -239,15 +235,41 @@ inline received_t recv_router_received (void *router_handle_,
             };
         }
     }
-    return received_t (
+    std::optional<routing_id_t> routing_id =
       (source_node_rid && source_node_rid->size > 0)
         ? std::optional<routing_id_t> (zlink::detail::native_routing_id (*source_node_rid))
-        : std::nullopt,
+        : std::nullopt;
+    std::optional<routing_id_t> spot_rid =
       (source_spot_rid && source_spot_rid->size > 0)
         ? std::optional<routing_id_t> (zlink::detail::native_routing_id (*source_spot_rid))
-        : std::nullopt,
-      request_seq != 0u ? std::optional<uint64_t> (request_seq) : std::nullopt,
-      std::move (parts), std::move (reply_fn));
+        : std::nullopt;
+    std::optional<uint64_t> maybe_request_seq =
+      request_seq != 0u ? std::optional<uint64_t> (request_seq) : std::nullopt;
+
+    if (part_count == 1u && parts_native) {
+        message_t part;
+        if (zlink_msg_move (detail::native_handle (part), &parts_native[0]) != 0) {
+            detail::close_message_array (parts_native, part_count);
+            throw last_error ();
+        }
+        detail::close_message_array (parts_native, part_count);
+        return received_t (
+          std::move (routing_id),
+          std::move (spot_rid),
+          maybe_request_seq,
+          std::move (part),
+          std::move (reply_fn));
+    }
+
+    std::vector<message_t> parts;
+    if (detail::assign_parts_from_native (parts_native, part_count, parts) != 0)
+        throw last_error ();
+    return received_t (
+      std::move (routing_id),
+      std::move (spot_rid),
+      maybe_request_seq,
+      std::move (parts),
+      std::move (reply_fn));
 }
 
 } // namespace detail

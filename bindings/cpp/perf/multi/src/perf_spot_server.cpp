@@ -409,8 +409,6 @@ bool perf_spot_server (const std::string &lib_name,
       perf::multi::resolve_multi_bench_settings ();
     const std::vector<size_t> msg_sizes =
       perf::multi::resolve_case_msg_sizes (msg_size_);
-    const size_t max_msg_size =
-      perf::multi::max_case_msg_size (msg_sizes, msg_size_);
 
     perf::multi::ctx_guard_t ctx;
     zlink::service::spot_node_t node (ctx.ctx ());
@@ -427,10 +425,6 @@ bool perf_spot_server (const std::string &lib_name,
         return false;
     if (!perf::multi::configure_spot_control_tls (control_node, transport_))
         return false;
-    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (node, max_msg_size)
-        || !perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-          control_node, max_msg_size))
-        return false;
 
     const int control_hwm =
       std::max (1024, static_cast<int> (settings.clients * 8));
@@ -443,8 +437,6 @@ bool perf_spot_server (const std::string &lib_name,
     zlink::service::spot_t spot = node.create_spot ();
     if (!spot.valid ())
         return false;
-    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (spot, max_msg_size))
-        return false;
     zlink::poller_t send_poller;
     try {
         send_poller.add (spot, zlink::poll_event_flag_t::pollout);
@@ -455,11 +447,6 @@ bool perf_spot_server (const std::string &lib_name,
     zlink::service::spot_t control_pub = control_node.create_spot ();
     zlink::service::spot_t control_sub = control_node.create_spot ();
     if (!control_pub.valid () || !control_sub.valid ())
-        return false;
-    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-          control_pub, max_msg_size)
-        || !perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
-          control_sub, max_msg_size))
         return false;
     if (!perf::multi::recalculate_auto_hwm (ctx))
         return false;

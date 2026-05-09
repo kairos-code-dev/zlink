@@ -43,7 +43,8 @@ class poller_t
     poller_t (poller_t &&other) noexcept
         : _poller (other._poller),
           _items (std::move (other._items)),
-          _native_events (std::move (other._native_events))
+          _native_events (std::move (other._native_events)),
+          _poll_items (std::move (other._poll_items))
     {
         other._poller = NULL;
     }
@@ -57,6 +58,7 @@ class poller_t
         _poller = other._poller;
         _items = std::move (other._items);
         _native_events = std::move (other._native_events);
+        _poll_items = std::move (other._poll_items);
         other._poller = NULL;
         return *this;
     }
@@ -299,6 +301,7 @@ class poller_t
         if (!_poller) {
             delete_items ();
             _native_events.clear ();
+            _poll_items.clear ();
             return;
         }
 
@@ -309,6 +312,7 @@ class poller_t
         _poller = NULL;
         delete_items ();
         _native_events.clear ();
+        _poll_items.clear ();
     }
 
   private:
@@ -331,6 +335,9 @@ class poller_t
           max_events_ > 0
             ? std::min (max_events_, static_cast<size_t> (registered))
             : static_cast<size_t> (registered);
+        if (can_wait_all_with_poll_items ())
+            return wait_all_poll_items_impl (capacity, timeout_);
+
         _native_events.resize (capacity);
         error = ZLINK_CONFIG_OK;
         const int rc = zlink_poller_wait_all (
@@ -355,10 +362,59 @@ class poller_t
         return events_;
     }
 
+    bool can_wait_all_with_poll_items () const noexcept
+    {
+        for (size_t i = 0; i < _items.size (); ++i) {
+            if (_items[i]->source_kind == poll_source_kind_t::timer)
+                return false;
+        }
+        return true;
+    }
+
+    std::vector<poll_event_t> wait_all_poll_items_impl (size_t capacity_,
+                                                        long timeout_)
+    {
+        _poll_items.resize (_items.size ());
+        for (size_t i = 0; i < _items.size (); ++i) {
+            _poll_items[i].socket = _items[i]->socket_handle;
+            _poll_items[i].fd = _items[i]->fd;
+            _poll_items[i].events = static_cast<short> (_items[i]->events);
+            _poll_items[i].revents = 0;
+        }
+
+        const int rc = zlink_poll (
+          _poll_items.empty () ? NULL : &_poll_items[0],
+          static_cast<int> (_poll_items.size ()),
+          timeout_,
+          NULL);
+        if (rc <= 0) {
+            if (rc == 0)
+                return std::vector<poll_event_t> ();
+            const int err = zlink_errno ();
+            if (err == EINTR || err == EAGAIN) {
+                errno = err;
+                return std::vector<poll_event_t> ();
+            }
+            throw recv_error_t (recv_result_t::invalid_handle, err);
+        }
+
+        std::vector<poll_event_t> events_;
+        events_.reserve (std::min (capacity_, static_cast<size_t> (rc)));
+        for (size_t i = 0; i < _poll_items.size () && events_.size () < capacity_;
+             ++i) {
+            if (_poll_items[i].revents == 0)
+                continue;
+            events_.push_back (
+              make_event (*_items[i], _poll_items[i].revents));
+        }
+        return events_;
+    }
+
     void destroy_noexcept () noexcept
     {
         delete_items ();
         _native_events.clear ();
+        _poll_items.clear ();
 
         if (!_poller)
             return;
@@ -430,6 +486,21 @@ class poller_t
         return event;
     }
 
+    poll_event_t make_event (const item_t &item_, short revents_) const
+      noexcept
+    {
+        poll_event_t event;
+        if (item_.source_kind == poll_source_kind_t::fd)
+            event.fd = item_.fd;
+        else
+            event.fd = std::nullopt;
+        event.timer = NULL;
+        event.tag = item_.tag;
+        event.events = item_.events;
+        event.revents = static_cast<poll_event_flag_t> (revents_);
+        return event;
+    }
+
     static poll_source_kind_t
     to_source_kind (zlink_poller_source_kind_t source_kind_) noexcept
     {
@@ -454,6 +525,7 @@ class poller_t
     void *_poller;
     std::vector<item_t *> _items;
     std::vector<zlink_poller_event_t> _native_events;
+    std::vector<zlink_pollitem_t> _poll_items;
 };
 
 } // namespace zlink

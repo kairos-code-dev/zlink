@@ -784,7 +784,29 @@ inline message_t &received_t::first_part ()
 {
     if (!is_single_part ())
         throw detail::invalid_single_part_error ();
+    if (_single_part.has_value ())
+        return *_single_part;
     return _parts.front ();
+}
+
+inline void received_t::materialize_parts () const
+{
+    if (!_single_part.has_value ())
+        return;
+    _parts.push_back (std::move (*_single_part));
+    _single_part.reset ();
+}
+
+inline const std::vector<message_t> &received_t::parts () const
+{
+    materialize_parts ();
+    return _parts;
+}
+
+inline std::vector<message_t> &received_t::parts ()
+{
+    materialize_parts ();
+    return _parts;
 }
 
 inline message_t topic_message_t::single_part_or_throw ()
@@ -829,6 +851,8 @@ inline message_t received_t::single_part_or_throw ()
 {
     if (!is_single_part ())
         throw detail::invalid_single_part_error ();
+    if (_single_part.has_value ())
+        return *_single_part;
     return _parts.front ();
 }
 
@@ -860,11 +884,19 @@ inline void received_t::reply (std::vector<message_t> &parts, send_flags_t flags
 
 inline void received_t::close ()
 {
+    if (_single_part.has_value ()) {
+        _single_part->close ();
+        _single_part.reset ();
+    }
     detail::close_parts (_parts);
 }
 
 inline void topic_message_t::close ()
 {
+    if (_single_part.has_value ()) {
+        _single_part->close ();
+        _single_part.reset ();
+    }
     detail::close_parts (_parts);
 }
 

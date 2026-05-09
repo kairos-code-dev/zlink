@@ -5,9 +5,7 @@
 #include "../common/perf_common.hpp"
 #include "../common/perf_entry.hpp"
 
-#include <any>
 #include <cerrno>
-#include <chrono>
 #include <cstring>
 #include <vector>
 
@@ -53,68 +51,6 @@ bool take_router_payload (std::vector<zlink::message_t> &parts,
     return false;
 }
 
-struct reply_state_t
-{
-    bool pending;
-    zlink::routing_id_t client_id;
-    zlink::message_t payload;
-
-    reply_state_t ()
-        : pending (false),
-          client_id (routing_id_from_ascii ("x")),
-          payload ()
-    {
-    }
-};
-
-long compute_wait_ms (const std::chrono::steady_clock::time_point &deadline)
-{
-    long wait_ms = 100;
-    const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
-                             deadline - std::chrono::steady_clock::now ())
-                             .count ();
-    if (remain_ms < wait_ms)
-        wait_ms = remain_ms;
-    if (wait_ms < 1)
-        wait_ms = 1;
-    return wait_ms;
-}
-
-bool try_send_reply (::perf::socket_t &sock,
-                     zlink::poller_t &poller,
-                     reply_state_t &reply)
-{
-    if (!reply.pending)
-        return true;
-
-    const int payload_sent =
-      sock.send (reply.client_id, reply.payload, ZLINK_DONTWAIT);
-    if (payload_sent != 0) {
-        if (payload_sent < 0 && errno == EAGAIN) {
-            try {
-                sock.poller_modify (
-                  poller, zlink::poll_event_flag_t::pollin | zlink::poll_event_flag_t::pollout);
-                return true;
-            }
-            catch (const zlink::zlink_error_t &) {
-                return false;
-            }
-        }
-        return false;
-    }
-
-    reply.pending = false;
-    reply.client_id = routing_id_from_ascii ("x");
-    reply.payload = zlink::message_t ();
-    try {
-        sock.poller_modify (poller, zlink::poll_event_flag_t::pollin);
-        return true;
-    }
-    catch (const zlink::zlink_error_t &) {
-        return false;
-    }
-}
-
 } // namespace
 
 bool perf_router_router_server (const std::string &lib_name,
@@ -134,26 +70,28 @@ bool perf_router_router_server (const std::string &lib_name,
       perf::multi::resolve_multi_bench_settings ();
 
     perf::multi::ctx_guard_t ctx;
-    perf::multi::socket_guard_t server (ctx, zlink::socket_type::router);
-    if (!server.valid ())
-        return false;
+    zlink::router_socket_t server (ctx.ctx ());
 
     if (perf_debug_enabled ()) {
         int type = 0;
-        if (server.sock ().get_option (zlink::compat::options::socket_options::type, &type) == 0)
+        if (perf::multi::get_common_socket_option (
+              server, zlink::compat::options::socket_options::type, type)
+            == 0)
             debug_log ("socket type=" + std::to_string (type));
         else
             debug_log ("socket type read failed errno=" + std::to_string (errno));
     }
 
-    (void) server.sock ().set_routing_id (std::string ("SERVER"));
+    server.set_routing_id (routing_id_from_ascii ("SERVER"));
     perf::multi::apply_benchmark_socket_options (
-      server.sock (), settings, transport);
-    if (!perf::multi::setup_tls_server (server.sock (), transport))
+      server, settings, transport);
+    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (server, msg_size))
+        return false;
+    if (!perf::multi::setup_tls_server (server, transport))
         return false;
 
     const std::string endpoint = perf::multi::bind_and_resolve_endpoint (
-      server.sock (), transport, "cpp_multi_router_router", settings.server_bind_port);
+      server, transport, "cpp_multi_router_router", settings.server_bind_port);
     if (endpoint.empty ())
         return false;
 
@@ -161,115 +99,62 @@ bool perf_router_router_server (const std::string &lib_name,
       perf::multi::start_resource_probe ();
     perf::multi::print_ready (endpoint);
 
-    const int active_seconds = settings.duration_seconds > 0 ? settings.duration_seconds : 1;
-    const int deadline_seconds = active_seconds + 2;
-
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::seconds (deadline_seconds);
-
-    zlink::poller_t poller;
-    server.sock ().poller_add (
-      poller, zlink::poll_event_flag_t::pollin, &server.sock ());
-    std::vector<zlink::poll_event_t> events;
-    events.reserve (1);
-    reply_state_t reply;
-
     bool stop_requested = false;
     bool failed = false;
-    while (!stop_requested && std::chrono::steady_clock::now () < deadline) {
-        events = poller.wait_all (
-          0,
-          std::chrono::milliseconds (compute_wait_ms (deadline)));
-        const int poll_rc = static_cast<int> (events.size ());
-        if (poll_rc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
+    while (!stop_requested) {
+        std::optional<zlink::received_t> maybe_received;
+        try {
+            maybe_received = server.recv ();
+        }
+        catch (const zlink::recv_error_t &err) {
+            if (err.internal_errno () == EINTR)
+                continue;
+            debug_log ("receive failed errno="
+                       + std::to_string (err.internal_errno ()));
+            failed = true;
+            break;
+        }
+        if (!maybe_received.has_value ())
+            continue;
+
+        zlink::message_t payload;
+        if (maybe_received->is_single_part ())
+            payload = std::move (maybe_received->first_part ());
+        else if (!take_router_payload (maybe_received->parts (), payload)) {
+            const int err = errno;
+            if (err == EPROTO)
                 continue;
             failed = true;
             break;
         }
-        if (poll_rc == 0)
+
+        if (perf::multi::is_stop_token (payload.data (), payload.size ())) {
+            stop_requested = true;
+            break;
+        }
+        if (payload.size () == 0)
             continue;
 
-        for (size_t i = 0; i < events.size () && !stop_requested; ++i) {
-            ::perf::socket_t *sock = NULL;
-            if (::perf::socket_t *const *tag =
-                  std::any_cast<::perf::socket_t *> (&events[i].tag)) {
-                sock = *tag;
+        const std::optional<zlink::routing_id_t> &client_rid =
+          maybe_received->routing_id ();
+        if (!client_rid.has_value ()) {
+            debug_log ("missing client routing id");
+            failed = true;
+            break;
+        }
+
+        try {
+            if (!server.send (*client_rid, payload)) {
+                debug_log ("send blocked");
+                failed = true;
+                break;
             }
-            if (!sock)
-                continue;
-
-            if ((static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollout))
-                && reply.pending) {
-                if (!try_send_reply (*sock, poller, reply)) {
-                    stop_requested = true;
-                    failed = true;
-                    break;
-                }
-                if (reply.pending)
-                    continue;
-            }
-
-            if (!(static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))) {
-                continue;
-            }
-
-            for (;;) {
-                if (reply.pending)
-                    break;
-
-                zlink::received_t received;
-                if (sock->receive (received, ZLINK_DONTWAIT)
-                    < 0) {
-                    const int err = errno;
-                    if (err == EAGAIN)
-                        break;
-                    if (err == EINTR)
-                        continue;
-                    debug_log ("receive failed errno=" + std::to_string (err));
-                    stop_requested = true;
-                    failed = true;
-                    break;
-                }
-
-                zlink::message_t payload;
-                if (!take_router_payload (received.parts (), payload)) {
-                    const int err = errno;
-                    if (err == EPROTO)
-                        continue;
-                    stop_requested = true;
-                    failed = true;
-                    break;
-                }
-
-                if (perf::multi::is_stop_token (payload.data (), payload.size ())) {
-                    stop_requested = true;
-                    break;
-                }
-                if (payload.size () == 0)
-                    continue;
-
-                const std::optional<zlink::routing_id_t> &client_rid =
-                  received.routing_id ();
-                if (!client_rid.has_value ()) {
-                    debug_log ("missing client routing id");
-                    stop_requested = true;
-                    failed = true;
-                    break;
-                }
-
-                reply.pending = true;
-                reply.client_id = *client_rid;
-                reply.payload = std::move (payload);
-                if (!try_send_reply (*sock, poller, reply)) {
-                    debug_log ("try_send_reply failed errno=" + std::to_string (errno));
-                    stop_requested = true;
-                    failed = true;
-                    break;
-                }
-                if (reply.pending)
-                    break;
-            }
+        }
+        catch (const zlink::submit_error_t &err) {
+            debug_log ("send failed errno="
+                       + std::to_string (err.internal_errno ()));
+            failed = true;
+            break;
         }
     }
 

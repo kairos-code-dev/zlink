@@ -36,14 +36,8 @@ fn main() {
         .common_options()
         .set_recv_hwm(common::resolve_single_recv_hwm())
         .expect("dealer rcvhwm");
-    dealer
-        .common_options()
-        .set_recv_timeout(common::resolve_single_recv_timeout())
-        .expect("dealer rcvtimeo");
-    router
-        .common_options()
-        .set_recv_timeout(common::resolve_single_recv_timeout())
-        .expect("router rcvtimeo");
+    // PERF_SINGLE_TEST_POLICY § 1.4: receiver blocks on `recv()` until the
+    // wire-level stop token arrives, so no recv timeout is needed.
 
     if matches!(config.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
@@ -96,31 +90,8 @@ fn main() {
 
     let collector = common::MetricCollector::new();
     let stats = collector.shared();
-    let drain_router = |collect_active| {
-        let mut saw_message = false;
-        loop {
-            match router.recv_with_flags(RecvFlags::DONT_WAIT) {
-                Ok(Some(received)) => {
-                    let data = common::message_payload(received.parts());
-                    if collect_active {
-                        common::handle_recv(data, config.size, &stats);
-                    }
-                    saw_message = true;
-                }
-                Ok(None) => break,
-                Err(_) => break,
-            }
-        }
-        saw_message
-    };
     let active = Duration::from_secs(config.duration_seconds);
-    let idle_drain = Duration::from_millis(common::resolve_single_idle_drain_ms());
     let active_deadline = std::time::Instant::now() + active;
-    let hard_deadline = active_deadline + idle_drain + ready_timeout;
-    let poller = Poller::new().expect("poller");
-    poller.add_socket(&router, POLLIN).expect("poller add");
-    let done = common::CompletionSignal::new();
-    let sender_done = done.clone();
     let send_thread = std::thread::spawn(move || {
         common::send_loop(active_deadline, config.size, common::PHASE_ACTIVE, |msg| {
             match dealer.try_send(msg) {
@@ -129,16 +100,21 @@ fn main() {
                 Err(err) => panic!("active send: {err}"),
             }
         });
-        sender_done.signal_done();
+        common::send_stop_token(|msg| dealer.send(msg).map_err(Into::into));
     });
-    common::run_single_recv_loop(
-        &poller,
-        active_deadline,
-        hard_deadline,
-        done,
-        idle_drain,
-        drain_router,
-    );
+
+    loop {
+        match router.recv() {
+            Ok(received) => {
+                let data = common::message_payload(received.parts());
+                if common::is_stop_token(data) {
+                    break;
+                }
+                common::handle_recv(data, config.size, &stats);
+            }
+            Err(err) => panic!("dealer-router router recv failed: {err}"),
+        }
+    }
     send_thread.join().expect("sender thread");
 
     let result = collector.finish();

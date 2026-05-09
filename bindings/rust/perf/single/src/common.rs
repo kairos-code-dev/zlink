@@ -5,15 +5,11 @@
 use std::fs;
 use std::io;
 use std::path::Path;
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
-    mpsc,
-};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use zlink::{
-    Context, DealerSocket, Message, PairSocket, Poller, PubSocket, RouterSocket, SocketMonitor,
+    Context, DealerSocket, Message, PairSocket, PubSocket, RouterSocket, SocketMonitor,
     SubSocket, ZlinkError,
 };
 
@@ -25,6 +21,15 @@ use zlink::{
 //   [9..13]  msg_size   u32 LE
 //   [13..21] seq        u64 LE
 //   [21..29] sent_ts_ns i64 LE  (nanoseconds since epoch)
+
+// Wire-level stop token used by sender threads to signal phase end to a
+// receiver waiting on a poller. PERF_SINGLE_TEST_POLICY § 1.4 mandates this
+// pattern instead of `AtomicBool sender_done` + short polling.
+pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";
+
+pub fn is_stop_token(data: &[u8]) -> bool {
+    data == STOP_TOKEN
+}
 
 pub const HEADER_SIZE: usize = 29;
 pub const MAGIC: u32 = 0x5A4C_4E4B; // "ZLNK"
@@ -425,41 +430,6 @@ pub fn print_result(
     print_phase_result(&key, &phase);
 }
 
-pub fn run_single_recv_loop<F>(
-    _poller: &Poller,
-    active_deadline: Instant,
-    hard_deadline: Instant,
-    done: CompletionSignal,
-    idle_drain: Duration,
-    mut drain: F,
-) where
-    F: FnMut(bool) -> bool,
-{
-    let mut idle_since: Option<Instant> = None;
-    loop {
-        let now = Instant::now();
-        if now >= hard_deadline {
-            break;
-        }
-
-        if drain(now < active_deadline) {
-            idle_since = None;
-        } else {
-            std::thread::sleep(Duration::from_millis(1));
-        }
-
-        if done.is_done() {
-            idle_since.get_or_insert_with(Instant::now);
-            if idle_since
-                .map(|since| since.elapsed() >= idle_drain)
-                .unwrap_or(false)
-            {
-                break;
-            }
-        }
-    }
-}
-
 pub struct MetricCollector {
     stats: Arc<Mutex<LatencyStats>>,
 }
@@ -480,33 +450,31 @@ impl MetricCollector {
     }
 }
 
-#[derive(Clone)]
-pub struct CompletionSignal {
-    state: Arc<AtomicBool>,
-}
-
-impl CompletionSignal {
-    pub fn new() -> Self {
-        Self {
-            state: Arc::new(AtomicBool::new(false)),
-        }
-    }
-
-    pub fn signal_done(&self) {
-        self.state.store(true, Ordering::Release);
-    }
-
-    pub fn is_done(&self) -> bool {
-        self.state.load(Ordering::Acquire)
-    }
-}
-
 /// Record active-phase latency if the payload matches the expected run.
 pub fn handle_recv(data: &[u8], expected_size: usize, stats: &std::sync::Mutex<LatencyStats>) {
     if is_valid_active_message(data, expected_size) {
         let sent_ts_ns = decode_sent_ts_ns(data);
         let latency_ns = (now_ns() as i64).saturating_sub(sent_ts_ns).max(0) as u64;
         stats.lock().unwrap().record_ns(latency_ns);
+    }
+}
+
+/// Send the stop token once via the supplied closure with bounded retry to
+/// ride through transient backpressure / not-connected races.
+///
+/// The closure performs a blocking send and returns `Ok(())` on success.
+/// PERF_SINGLE_TEST_POLICY § 1.4 mandates this wire-level shutdown signal in
+/// lieu of `AtomicBool sender_done` + short polling.
+pub fn send_stop_token<F>(mut send_fn: F)
+where
+    F: FnMut(Message) -> Result<(), ZlinkError>,
+{
+    for _ in 0..100 {
+        let token = Message::copy_from(STOP_TOKEN).expect("stop token msg");
+        if send_fn(token).is_ok() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(1));
     }
 }
 

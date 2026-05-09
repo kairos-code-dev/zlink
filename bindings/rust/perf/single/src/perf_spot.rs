@@ -191,6 +191,9 @@ fn main() {
     let collector = common::MetricCollector::new();
     let stats = collector.shared();
     let active_deadline = Instant::now() + Duration::from_secs(config.duration_seconds);
+    // PERF_SINGLE_TEST_POLICY § 1.4: sender publishes wire-level stop token
+    // at phase end (blocking, bounded retry); receiver loops on blocking
+    // `subscribe()` and exits when the stop token arrives.
     let publisher_thread = thread::spawn({
         let send_gap = spot_send_gap();
         move || {
@@ -224,34 +227,30 @@ fn main() {
                 thread::sleep(send_gap);
             }
 
-            common::encode_header(
-                &mut payload,
-                common::PHASE_COOLDOWN,
-                config.size as u32,
-                seq,
-            );
-            let _ = publisher
-                .publish(TOPIC)
-                .message(Message::copy_from(&payload).expect("cooldown message"))
-                .flags(SendFlags::DONT_WAIT)
-                .submit();
+            common::send_stop_token(|msg| {
+                publisher
+                    .publish(TOPIC)
+                    .message(msg)
+                    .submit()
+                    .map(|_| ())
+                    .map_err(Into::into)
+            });
         }
     });
 
-    while Instant::now() < active_deadline {
-        if !drain_spot_readable(&subscriber, &config, Some(&stats), true) {
-            thread::sleep(Duration::from_millis(1));
+    loop {
+        match subscriber.subscribe() {
+            Ok(received) => {
+                let data = common::message_payload(received.parts());
+                if common::is_stop_token(data) {
+                    break;
+                }
+                common::handle_recv(data, config.size, &stats);
+            }
+            Err(err) => panic!("spot subscriber recv failed: {err}"),
         }
     }
     publisher_thread.join().expect("publisher thread");
-
-    let idle_deadline = Instant::now()
-        + Duration::from_millis(common::resolve_single_idle_drain_ms());
-    while Instant::now() < idle_deadline {
-        if !drain_spot_readable(&subscriber, &config, None, false) {
-            thread::sleep(Duration::from_millis(1));
-        }
-    }
 
     let result = collector.finish();
     common::print_result(

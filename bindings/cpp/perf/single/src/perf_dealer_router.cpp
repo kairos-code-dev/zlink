@@ -90,7 +90,6 @@ bool run_pattern_dealer_router (const std::string &transport,
     std::atomic<unsigned long long> sent_count (0);
     std::atomic<unsigned long long> received_count (0);
     std::atomic<bool> sender_ok (true);
-    std::atomic<bool> sender_done (false);
     perf::single::latency_stats_builder_t latency_builder (
       perf::single::resolve_single_latency_sample_cap ());
     const auto active_deadline =
@@ -122,24 +121,44 @@ bool run_pattern_dealer_router (const std::string &transport,
             }
             sent_count.fetch_add (1, std::memory_order_release);
         }
-        sender_done.store (true, std::memory_order_release);
+        // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
+        // stop token. Blocking send retries through transient backpressure
+        // so the receiver always observes the terminator.
+        zlink::message_t stop_msg = zlink::message_t::from_bytes (
+          perf::single::k_stop_token,
+          std::strlen (perf::single::k_stop_token));
+        for (int retry = 0; retry < 100 && stop_msg.valid (); ++retry) {
+            try {
+                if (dealer.sock ().send (stop_msg, 0) == 0)
+                    break;
+            }
+            catch (const zlink::zlink_error_t &) {
+                break;
+            }
+            if (errno != EAGAIN && errno != EWOULDBLOCK
+                && errno != ETIMEDOUT && errno != EINTR) {
+                break;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
     });
 
     zlink::poller_t poller;
     router.sock ().poller_add (poller, zlink::poll_event_flag_t::pollin);
-    while (!sender_done.load (std::memory_order_acquire)) {
+    bool stop_received = false;
+    while (!stop_received) {
+        // PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait, no timer cap.
         std::optional<zlink::poll_event_t> event =
-          poller.wait (std::chrono::milliseconds (5));
-        const int poll_rc = event ? 1 : 0;
-        if (poll_rc < 0) {
+          poller.wait (std::chrono::milliseconds (-1));
+        if (!event) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
             sender_ok.store (false, std::memory_order_release);
             break;
         }
-        if (poll_rc == 0
-            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))
-                 == 0) {
+        if ((static_cast<short> (event->revents)
+             & static_cast<short> (zlink::poll_event_flag_t::pollin))
+            == 0) {
             continue;
         }
 
@@ -151,6 +170,15 @@ bool run_pattern_dealer_router (const std::string &transport,
                     if (errno == EAGAIN || errno == EINTR)
                         break;
                     sender_ok.store (false, std::memory_order_release);
+                    break;
+                }
+                // routing-id is on received.routing_id(); parts() carries
+                // only the body frames, so a one-frame stop token arrives
+                // as a single-part message.
+                if (received.parts ().size () == 1
+                    && perf::single::is_stop_token_message (
+                         received.parts ()[0])) {
+                    stop_received = true;
                     break;
                 }
                 if (std::chrono::steady_clock::now () < active_deadline) {
@@ -182,44 +210,9 @@ bool run_pattern_dealer_router (const std::string &transport,
     }
 
     sender_thread.join ();
-    const auto drain_deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (recv_timeout * 2);
-    while (received_count.load (std::memory_order_acquire)
-             < sent_count.load (std::memory_order_acquire)
-           && std::chrono::steady_clock::now () < drain_deadline) {
-        try {
-            zlink::received_t received;
-            if (router.sock ().receive (received, ZLINK_DONTWAIT)
-                != 0) {
-                if (errno == EAGAIN || errno == EINTR)
-                    break;
-                sender_ok.store (false, std::memory_order_release);
-                break;
-            }
-            if (std::chrono::steady_clock::now () < active_deadline) {
-                (void) record_router_payload (
-                  received,
-                  run_id,
-                  msg_size,
-                  payload_size,
-                  received_count,
-                  latency_builder);
-            }
-        }
-        catch (const zlink::recv_error_t &err) {
-            if (err.result () == zlink::recv_result_t::no_data
-                || err.result () == zlink::recv_result_t::busy) {
-                break;
-            }
-            if (perf_debug_enabled ())
-                std::cerr << "dealer_router: drain failed result="
-                          << static_cast<int> (err.result ())
-                          << " errno=" << err.internal_errno () << std::endl;
-            sender_ok.store (false, std::memory_order_release);
-            break;
-        }
-    }
+    // Stop token is the last in-flight message, so any earlier payloads
+    // have already been recorded above. No bounded drain loop needed.
+    (void) recv_timeout;
 
     const unsigned long long received =
       received_count.load (std::memory_order_acquire);

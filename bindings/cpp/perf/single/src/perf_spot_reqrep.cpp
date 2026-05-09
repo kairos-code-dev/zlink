@@ -23,7 +23,6 @@
 namespace {
 
 const char *const k_channel = "bench";
-const char *const k_stop_token = "__zlink_perf_stop__";
 
 unsigned current_process_id ()
 {
@@ -196,7 +195,6 @@ bool run_pattern_spot_reqrep (const std::string &transport,
         return false;
     }
 
-    std::atomic<bool> stop_requested (false);
     std::atomic<bool> responder_ok (true);
     std::thread responder_thread ([&]() {
         zlink::poller_t poller;
@@ -208,19 +206,21 @@ bool run_pattern_spot_reqrep (const std::string &transport,
             return;
         }
 
-        while (!stop_requested.load (std::memory_order_acquire)) {
+        bool stop_received = false;
+        while (!stop_received) {
+            // PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait, no
+            // timer cap.
             std::optional<zlink::poll_event_t> event =
-              poller.wait (std::chrono::milliseconds (10));
-        const int poll_rc = event ? 1 : 0;
-            if (poll_rc < 0) {
+              poller.wait (std::chrono::milliseconds (-1));
+            if (!event) {
                 if (errno == EINTR || errno == EAGAIN)
                     continue;
                 responder_ok.store (false, std::memory_order_release);
                 return;
             }
-            if (poll_rc == 0
-                || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))
-                     == 0) {
+            if ((static_cast<short> (event->revents)
+                 & static_cast<short> (zlink::poll_event_flag_t::pollin))
+                == 0) {
                 continue;
             }
 
@@ -237,13 +237,9 @@ bool run_pattern_spot_reqrep (const std::string &transport,
                     }
 
                     if (received.parts ().size () == 1
-                        && received.parts ()[0].size ()
-                             == std::strlen (k_stop_token)
-                        && std::memcmp (received.parts ()[0].data (),
-                                        k_stop_token,
-                                        std::strlen (k_stop_token))
-                             == 0) {
-                        stop_requested.store (true, std::memory_order_release);
+                        && perf::single::is_stop_token_message (
+                             received.parts ()[0])) {
+                        stop_received = true;
                         break;
                     }
 
@@ -268,10 +264,33 @@ bool run_pattern_spot_reqrep (const std::string &transport,
         }
     });
 
+    // Helper: send the wire-level stop token through the dealer so the
+    // responder wakes from its blocking poller and exits.
+    // PERF_SINGLE_TEST_POLICY § 1.4.
+    auto send_stop_token = [&]() {
+        zlink::message_t stop_msg = zlink::message_t::from_bytes (
+          perf::single::k_stop_token,
+          std::strlen (perf::single::k_stop_token));
+        for (int retry = 0; retry < 100 && stop_msg.valid (); ++retry) {
+            try {
+                if (requester_dealer.send (stop_msg) == 0)
+                    return;
+            }
+            catch (const zlink::zlink_error_t &) {
+                return;
+            }
+            if (errno != EAGAIN && errno != EWOULDBLOCK
+                && errno != ETIMEDOUT && errno != EINTR) {
+                return;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
+    };
+
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
     if (!warmup_probe (requester, payload_size, msg_size)) {
-        stop_requested.store (true, std::memory_order_release);
+        send_stop_token ();
         responder_thread.join ();
         if (perf_debug_enabled ())
             std::cerr << "spot_reqrep: warmup probe failed" << std::endl;
@@ -346,7 +365,7 @@ bool run_pattern_spot_reqrep (const std::string &transport,
         }
     }
 
-    stop_requested.store (true, std::memory_order_release);
+    send_stop_token ();
     responder_thread.join ();
 
     if (!responder_ok.load (std::memory_order_acquire) || active_count == 0

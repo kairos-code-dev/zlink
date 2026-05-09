@@ -136,7 +136,6 @@ bool run_pattern_pubsub (const std::string &transport,
     std::atomic<unsigned long long> sent_count (0);
     std::atomic<unsigned long long> received_count (0);
     std::atomic<bool> sender_ok (true);
-    std::atomic<bool> sender_done (false);
     perf::single::latency_stats_builder_t latency_builder (
       perf::single::resolve_single_latency_sample_cap ());
     const auto active_deadline =
@@ -163,7 +162,22 @@ bool run_pattern_pubsub (const std::string &transport,
             }
             sent_count.fetch_add (1, std::memory_order_relaxed);
         }
-        sender_done.store (true, std::memory_order_release);
+        // PERF_SINGLE_TEST_POLICY § 1.4: publish wire-level stop token
+        // under k_topic so the subscriber observes the terminator and
+        // exits its blocking subscribe loop. Bounded retry through
+        // transient backpressure.
+        for (int retry = 0; retry < 100; ++retry) {
+            if (send_pubsub_payload (&publisher,
+                                     perf::single::k_stop_token,
+                                     std::strlen (perf::single::k_stop_token))) {
+                break;
+            }
+            if (errno != EAGAIN && errno != EWOULDBLOCK
+                && errno != ETIMEDOUT && errno != EINTR) {
+                break;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
     });
 
     auto record_if_active = [&] (const zlink::topic_message_t &message_) {
@@ -177,7 +191,15 @@ bool run_pattern_pubsub (const std::string &transport,
                                           latency_builder);
     };
 
-    while (!sender_done.load (std::memory_order_acquire)) {
+    auto is_stop_message = [] (const zlink::topic_message_t &message_) {
+        return message_.parts ().size () == 1
+               && perf::single::is_stop_token_message (message_.parts ()[0]);
+    };
+
+    bool stop_received = false;
+    while (!stop_received) {
+        // PERF_SINGLE_TEST_POLICY § 1.4: blocking subscribe wakes when
+        // the stop token arrives on the wire.
         std::optional<zlink::topic_message_t> message;
         try {
             message = subscriber.subscribe ();
@@ -192,6 +214,11 @@ bool run_pattern_pubsub (const std::string &transport,
         }
         if (!message.has_value ())
             continue;
+
+        if (is_stop_message (*message)) {
+            stop_received = true;
+            break;
+        }
 
         if (!record_if_active (*message)) {
             sender_ok.store (false, std::memory_order_release);
@@ -213,6 +240,11 @@ bool run_pattern_pubsub (const std::string &transport,
             if (!message.has_value ())
                 break;
 
+            if (is_stop_message (*message)) {
+                stop_received = true;
+                break;
+            }
+
             if (!record_if_active (*message)) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
@@ -221,22 +253,9 @@ bool run_pattern_pubsub (const std::string &transport,
     }
 
     sender_thread.join ();
-    const auto drain_deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (recv_timeout * 2);
-    while (received_count.load (std::memory_order_acquire)
-             < sent_count.load (std::memory_order_acquire)
-           && std::chrono::steady_clock::now () < drain_deadline) {
-        std::optional<zlink::topic_message_t> message =
-          subscriber.subscribe (ZLINK_DONTWAIT);
-        if (!message.has_value ())
-            break;
-
-        if (!record_if_active (*message)) {
-            sender_ok.store (false, std::memory_order_release);
-            break;
-        }
-    }
+    // Stop token is the last in-flight message, so any earlier payloads
+    // have already been recorded above. No bounded drain loop needed.
+    (void) recv_timeout;
 
     const unsigned long long received =
       received_count.load (std::memory_order_acquire);

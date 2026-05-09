@@ -117,6 +117,34 @@ bool send_spot_payload (zlink::service::spot_t &spot_,
     }
 }
 
+// Blocking variant used to publish the wire-level stop token at phase
+// end (PERF_SINGLE_TEST_POLICY § 1.4). Returns true on successful
+// submit, false on transient backpressure (caller retries) or fatal
+// error.
+bool send_spot_stop_token (zlink::service::spot_t &spot_)
+{
+    zlink::message_t part = zlink::message_t::from_bytes (
+      perf::single::k_stop_token,
+      std::strlen (perf::single::k_stop_token));
+    if (!part.valid ())
+        return false;
+
+    try {
+        return spot_.publish (k_topic).message (part).submit ();
+    }
+    catch (const zlink::submit_error_t &err) {
+        if (err.result () == zlink::submit_result_t::backpressured
+            || err.result () == zlink::submit_result_t::not_connected
+            || err.result () == zlink::submit_result_t::not_found) {
+            return false;
+        }
+        return false;
+    }
+    catch (const std::exception &) {
+        return false;
+    }
+}
+
 bool stamp_and_publish (zlink::service::spot_t &spot_,
                         std::vector<char> &payload_,
                         uint32_t run_id_,
@@ -158,15 +186,23 @@ int recv_spot_header_flags (zlink::service::spot_t &subscriber_,
                             size_t payload_size_,
                             zlink::recv_flags_t flags_,
                             perf_single_metric::header_t *header_out_,
-                            bool *header_ok_out_)
+                            bool *header_ok_out_,
+                            bool *stop_out_ = NULL)
 {
     if (header_ok_out_)
         *header_ok_out_ = false;
+    if (stop_out_)
+        *stop_out_ = false;
     try {
         std::optional<zlink::topic_message_t> message =
           subscriber_.subscribe (flags_);
         if (!message.has_value ())
             return 0;
+        if (stop_out_ && message->parts ().size () == 1
+            && perf::single::is_stop_token_message (message->parts ()[0])) {
+            *stop_out_ = true;
+            return 1;
+        }
         bool header_ok =
           decode_spot_header (*message, payload_size_, header_out_);
         if (header_ok_out_)
@@ -360,22 +396,22 @@ bool run_pattern_spot (const std::string &transport,
     const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();
 
     std::atomic<bool> sender_ok (true);
-    std::atomic<bool> sender_done (false);
     std::atomic<unsigned long long> received (0);
     perf::single::latency_stats_builder_t latency_builder (
       perf::single::resolve_single_latency_sample_cap ());
     const auto active_deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
-    const auto drain_idle_limit =
-      std::chrono::milliseconds (recv_timeout > 0 ? recv_timeout : 200);
-    const auto drain_deadline = active_deadline + drain_idle_limit;
+    (void) recv_timeout;
 
     std::thread receiver_thread ([&]() {
-        auto last_recv_at = std::chrono::steady_clock::now ();
+        // PERF_SINGLE_TEST_POLICY § 1.4: receiver exits on wire-level
+        // stop token instead of sender_done + drain timer. spot_t does
+        // not expose a poller-compatible socket handle, so the receive
+        // loop uses DONTWAIT + yield (same idiom dotnet/java/node use
+        // for SPOT in this binding family).
         auto collect_header =
           [&] (const perf_single_metric::header_t &header_,
                bool header_ok_) {
-              last_recv_at = std::chrono::steady_clock::now ();
               if (header_ok_ && header_matches_active_run (state, header_)
                   && std::chrono::steady_clock::now () < active_deadline) {
                   received.fetch_add (1, std::memory_order_relaxed);
@@ -387,40 +423,20 @@ bool run_pattern_spot (const std::string &transport,
               }
           };
         while (true) {
-            const bool done = sender_done.load (std::memory_order_acquire);
-            if (done && std::chrono::steady_clock::now () >= drain_deadline)
-                break;
-
             perf_single_metric::header_t header = {};
             bool header_ok = false;
+            bool stop = false;
             const int recv_rc = recv_spot_header_flags (
-              sub_spot, payload_size, ZLINK_DONTWAIT, &header, &header_ok);
+              sub_spot, payload_size, ZLINK_DONTWAIT, &header,
+              &header_ok, &stop);
             if (recv_rc > 0) {
-                collect_header (header, header_ok);
-
-                for (;;) {
-                    perf_single_metric::header_t burst_header = {};
-                    bool burst_header_ok = false;
-                    const int burst_rc = recv_spot_header_flags (
-                      sub_spot, payload_size, ZLINK_DONTWAIT, &burst_header,
-                      &burst_header_ok);
-                    if (burst_rc > 0) {
-                        collect_header (burst_header, burst_header_ok);
-                        continue;
-                    }
-                    if (burst_rc == 0)
-                        break;
-                    sender_ok.store (false, std::memory_order_release);
+                if (stop)
                     return;
-                }
+                collect_header (header, header_ok);
                 continue;
             }
 
             if (recv_rc == 0) {
-                if (done
-                    && std::chrono::steady_clock::now () - last_recv_at
-                         >= drain_idle_limit)
-                    break;
                 std::this_thread::yield ();
                 continue;
             }
@@ -448,7 +464,15 @@ bool run_pattern_spot (const std::string &transport,
                 continue;
             ++seq;
         }
-        sender_done.store (true, std::memory_order_release);
+        // PERF_SINGLE_TEST_POLICY § 1.4: publish wire-level stop token
+        // under k_topic so the subscriber wakes out of blocking
+        // subscribe and exits. Bounded retry through transient
+        // backpressure.
+        for (int retry = 0; retry < 100; ++retry) {
+            if (send_spot_stop_token (pub_spot))
+                break;
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
     });
 
     sender_thread.join ();

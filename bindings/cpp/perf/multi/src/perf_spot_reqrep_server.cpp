@@ -155,8 +155,12 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
 
     bool failed = false;
     while (!stop_requested.load (std::memory_order_acquire)) {
+        // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no timer
+        // cap. Client requests arrive continuously during the active
+        // phase; on shutdown the runner closes the stdin "STOP" pipe
+        // and the underlying socket disconnects wake the poller.
         std::optional<zlink::poll_event_t> event =
-          poller.wait (std::chrono::milliseconds (20));
+          poller.wait (std::chrono::milliseconds (-1));
         const int poll_rc = event ? 1 : 0;
         if (poll_rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
@@ -179,6 +183,17 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
                     if (errno == EAGAIN || errno == EWOULDBLOCK)
                         break;
                     failed = true;
+                    stop_requested.store (true, std::memory_order_release);
+                    break;
+                }
+                // PERF_MULTI_TEST_POLICY § 1.3.1: client sends a wire-
+                // level stop token at phase end so the responder exits
+                // immediately instead of waiting for stdin STOP and
+                // potential SIGTERM from the runner.
+                if (received.parts ().size () == 1
+                    && perf::multi::is_stop_token (
+                         received.parts ()[0].data (),
+                         received.parts ()[0].size ())) {
                     stop_requested.store (true, std::memory_order_release);
                     break;
                 }

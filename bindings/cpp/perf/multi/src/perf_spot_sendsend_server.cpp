@@ -213,8 +213,11 @@ bool run_server (const std::string &lib_name,
                                 std::max (1, settings.duration_seconds));
         while (!g_stop.load (std::memory_order_acquire)
                && std::chrono::steady_clock::now () < deadline) {
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no
+            // timer cap. Outer while-loop bounds wall-time via the
+            // steady_clock deadline check.
             std::optional<zlink::poll_event_t> event =
-              poller.wait (std::chrono::milliseconds (2));
+              poller.wait (std::chrono::milliseconds (-1));
             if (!event.has_value ())
                 continue;
             for (;;) {

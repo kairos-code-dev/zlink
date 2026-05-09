@@ -620,6 +620,117 @@ void test_spot_poller_accepts_pollin_or_pollout_combined ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
+
+// Regression marker: sustained spot request/reply round trips must wake
+// zlink_poller_wait on every reply, not just the first. The single C
+// binding's perf_spot_reqrep benchmark observed wakeup misses on the
+// second and subsequent replies when poller_wait was called with a long
+// timeout, forcing the benchmark to fall back to a 1 ms polling cadence
+// (PERF_SINGLE_TEST_POLICY § 1.4 mandates -1 / signal-driven wait).
+//
+// This test exercises the same SpotNode + spot_request_spot path used by
+// bindings/c/perf/single/src/perf_spot_reqrep.cpp and asserts that 16
+// consecutive replies all return from poller_wait within 500 ms. When
+// the wakeup miss is fixed, this test completes in well under a second;
+// while the bug remains, it stalls on the second poller_wait and trips
+// the per-call timeout. Marked TEST_IGNORE_MESSAGE so the suite still
+// passes in CI; flip on the assertion when the core fix lands and re-
+// enable the -1 wait in perf_spot_reqrep.cpp.
+void test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop ()
+{
+    TEST_IGNORE_MESSAGE (
+      "Pending core fix: spot completion-signal-fd misses wakeups for "
+      "sustained reqrep traffic; see perf_spot_reqrep.cpp poll_client_progress "
+      "TODO(core).");
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx, NULL);
+    void *client_spot = zlink_spot_new (node);
+    void *server_spot = zlink_spot_new (node);
+    void *poller = zlink_poller_new ();
+    int user_tag = 73;
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (client_spot);
+    TEST_ASSERT_NOT_NULL (server_spot);
+    TEST_ASSERT_NOT_NULL (poller);
+
+    set_routing_id_text (node, "sustained-reqrep-node");
+    set_routing_id_text (client_spot, "sustained-reqrep-client");
+    set_routing_id_text (server_spot, "sustained-reqrep-server");
+
+    const zlink_routing_id_t node_rid = get_routing_id_value (node);
+    const zlink_routing_id_t server_spot_rid =
+      get_routing_id_value (server_spot);
+
+    // Prime the client spot's request-reply state so poller_add wires up
+    // the completion signal fd registration.
+    {
+        const zlink_routing_id_t *prime_node_rid = NULL;
+        const zlink_routing_id_t *prime_spot_rid = NULL;
+        uint64_t prime_seq = 0;
+        zlink_msg_t *prime_parts = NULL;
+        size_t prime_part_count = 0;
+        TEST_ASSERT_EQUAL (
+          ZLINK_RECV_NO_DATA,
+          zlink_spot_recv (client_spot, &prime_node_rid, &prime_spot_rid,
+                           &prime_seq, &prime_parts, &prime_part_count,
+                           ZLINK_RECV_FLAGS_DONTWAIT));
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, client_spot, &user_tag, ZLINK_POLLIN));
+    spot_request_probe_t request_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_handler (
+      server_spot, &capture_spot_request_for_reply, &request_probe));
+
+    const int kRoundTrips = 16;
+    for (int i = 0; i < kRoundTrips; ++i) {
+        spot_reply_probe_t reply_probe;
+        request_probe.invoked.store (false, std::memory_order_release);
+
+        zlink_msg_t request_part;
+        init_string_part (&request_part, "sustained-request");
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_spot_part (
+          client_spot, &node_rid, &server_spot_rid, &request_part,
+          &capture_spot_reply, &reply_probe, ZLINK_SEND_FLAGS_NONE,
+          ZLINK_PART_FINAL, 5000));
+
+        TEST_ASSERT_TRUE (wait_for_spot_request (&request_probe, 1000));
+
+        zlink_msg_t reply_part;
+        init_string_part (&reply_part, "sustained-reply");
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_reply_spot_part (
+          server_spot, &request_probe.source_node_rid,
+          &request_probe.source_spot_rid, request_probe.request_seq,
+          &reply_part, ZLINK_PART_FINAL));
+
+        zlink_poller_event_t event;
+        const auto wait_start = std::chrono::steady_clock::now ();
+        const int rc =
+          zlink_poller_wait (poller, &event, 5000, NULL);
+        const auto wait_elapsed =
+          std::chrono::steady_clock::now () - wait_start;
+        const long long elapsed_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (wait_elapsed)
+            .count ();
+
+        TEST_ASSERT_TRUE (rc >= 0);
+        // Wakeup should arrive well within 500 ms; under the bug the
+        // wait stalls on iterations 2+ until the 5000 ms outer timeout.
+        TEST_ASSERT_TRUE (elapsed_ms < 500);
+        TEST_ASSERT_TRUE (reply_probe.invoked);
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, reply_probe.result);
+        TEST_ASSERT_EQUAL_STRING ("sustained-reply",
+                                  reply_probe.payload.c_str ());
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, client_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&server_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&client_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
 }
 
 SETUP_TEARDOWN_TESTCONTEXT
@@ -635,5 +746,7 @@ int main (void)
     RUN_TEST (test_spot_poller_wait_all_returns_promptly_after_reply);
     RUN_TEST (test_spot_poller_wait_all_returns_promptly_after_spot_to_spot_send);
     RUN_TEST (test_spot_poller_accepts_pollin_or_pollout_combined);
+    RUN_TEST (
+      test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop);
     return UNITY_END ();
 }

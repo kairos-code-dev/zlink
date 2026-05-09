@@ -349,11 +349,24 @@ zlink_submit_result_t submit_request (void *client_spot_,
     return rc;
 }
 
+// PERF_SINGLE_TEST_POLICY § 1.4: poller wait timeout is supplied by the
+// caller and used directly (no implicit floor at 1 ms).
+//
+// TODO(core): the policy mandates `-1` (pure signal-driven) for client
+// poller waits. The SPOT_REQREP completion-signal-fd registered by
+// zlink_poller_add wakes poller_wait for the first round trip but does
+// not reliably wake on subsequent replies under sustained traffic in
+// this binding (cross-node TCP). The cpp/dotnet/java perf bindings use
+// a synchronous submit_async().get() pattern that bypasses this poller
+// path entirely. Until the core wakeup miss is fixed, callers in this
+// benchmark pass a small bounded value (1-10 ms) so the request/reply
+// loop progresses. See core/tests/integration/test_spot_poller.cpp
+// (test_spot_poller_wait_all_returns_promptly_after_reply for the
+// single-round-trip baseline).
 bool poll_client_progress (void *poller_, int timeout_ms_)
 {
     zlink_poller_event_t event;
-    const int rc = zlink_poller_wait (
-      poller_, &event, timeout_ms_ > 0 ? timeout_ms_ : 1, NULL);
+    const int rc = zlink_poller_wait (poller_, &event, timeout_ms_, NULL);
     if (rc >= 0)
         return true;
     return zlink_errno () == EINTR;
@@ -389,6 +402,12 @@ bool wait_for_ready_barrier (void *client_spot_,
         }
         if (state_->warmup_seen.load (std::memory_order_acquire))
             return true;
+        // PERF_SINGLE_TEST_POLICY § 1.4 target: signal-driven (-1) wait.
+        // Pending core fix: SPOT_REQREP completion-signal-fd registered
+        // by zlink_poller_add does not wake poller_wait reliably under
+        // sustained traffic in this binding. Bounded to 10 ms here so
+        // the warmup probe loop progresses; tracked alongside the active
+        // loop polling timer (see run_active_window).
         if (!poll_client_progress (client_poller_, 10))
             return false;
     }
@@ -442,10 +461,25 @@ bool run_active_window (void *client_spot_,
                 return false;
             }
         }
+        // PERF_SINGLE_TEST_POLICY § 1.4 target: signal-driven (-1) wait.
+        // Pending core fix: zlink_poller_wait does not reliably wake on
+        // every reply for SPOT_REQREP under sustained traffic in this
+        // C binding (the cpp/dotnet/java perf bindings use a synchronous
+        // submit_async().get() and bypass the poller wakeup path).
+        // Tracking via core/tests/integration/test_spot_poller.cpp.
+        // Until the core wakeup-miss is fixed, retain the original 1 ms
+        // poll cadence so the request/reply loop continues to make
+        // progress (the helper now consumes timeout_ms_ directly per
+        // mandate; the value is not silently floored to 1 anymore).
         if (!poll_client_progress (client_poller_, 1))
             return false;
     }
 
+    // Bounded post-deadline drain: requester drains any in-flight reply
+    // it sent right before the deadline. PERF_SINGLE_TEST_POLICY § 1.4
+    // requires a bounded timeout here (echo pattern, no idle drain).
+    // The wait is bounded by the drain deadline; the helper now consumes
+    // timeout_ms_ directly so callers control the cadence.
     const auto drain_deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::milliseconds (resolve_single_recv_timeout_ms ());

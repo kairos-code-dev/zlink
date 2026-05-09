@@ -110,6 +110,29 @@ multi 패턴의 client/server poller wait 호출은 모두 **`-1` (signal-driven
 지원하므로 한 번의 wait 으로 send-readiness 와 recv-readiness 둘 다
 포착된다.
 
+#### Shutdown / phase 종료 신호 — wire-level stop token
+
+receiver 또는 server thread 가 sender / phase 종료를 감지해야 하는 경우
+**별도의 fd / signal helper 를 사용하지 않는다**. 대신 sender 가 phase
+종료 시 wire 위로 stop token (`__zlink_perf_stop__`) 메시지를 한 번
+송신하고, receiver 는 `-1` poller wait 으로 대기하다가 token 도착 시
+종료한다.
+
+| 항목 | 규칙 |
+|------|------|
+| stop token literal | `__zlink_perf_stop__` (multi/single 공통, `k_stop_token`) |
+| sender 측 | active phase 종료 후 stop token 한 번 blocking send (deadline 무시) |
+| receiver 측 | `-1` poller wait → recv → `is_stop_token(...)` 검사 → 종료 |
+| atomic flag + 짧은 polling 패턴 | **금지**. 동일 process 내 thread 간 종료 동기화도 wire stop token 으로 통일 |
+
+이 패턴의 장점:
+- 별도 fd / eventfd / pipe / cancellation token 불필요 → cross-platform
+  분기 없음
+- 모든 binding 이 동일한 idiom 으로 구현 가능
+- 기존 multi server 의 stop token 처리와 일치 (`is_stop_token` 헬퍼 그대로 활용)
+- in-flight 메시지가 stop token 보다 먼저 도착하므로 자연스러운 drain
+  순서 보장
+
 > 회귀 가드: `core/tests/integration/test_spot_poller.cpp` 의
 > `test_spot_poller_wait_all_returns_promptly_after_*` 와
 > `test_spot_poller_accepts_pollin_or_pollout_combined` 참조.

@@ -150,6 +150,29 @@ echo(request/reply) 측정 surface를 사용한다.
 
 > 공통 금지 단계(`quiescent` 등)는 [PERF_POLICY.md § 1.1](PERF_POLICY.md) 참조.
 
+### 1.4 Poller wait timeout 및 shutdown 신호
+
+single 패턴은 같은 process 안에서 sender thread + receiver(main) thread
+조합으로 구성되는 경우가 많다. receiver 가 sender 의 phase 종료를
+감지하는 방법은 multi 와 동일한 **wire-level stop token** 패턴을 사용한다.
+
+| 항목 | 규칙 |
+|------|------|
+| receiver poller wait timeout | **`-1`** (signal-driven wait) |
+| sender 가 active phase 종료 후 | **stop token (`__zlink_perf_stop__`) 한 번 blocking send** (deadline 무시) |
+| receiver | `-1` poller wait → recv → `is_stop_token(...)` 검사 → 종료 |
+| `std::atomic<bool> sender_done` + 짧은 polling (1–10 ms) | **금지**. 기존 코드는 wire-level stop token 패턴으로 마이그레이션한다 |
+
+이 규칙의 의도는 multi 측 정책 ([PERF_MULTI_TEST_POLICY § 1.3.1](PERF_MULTI_TEST_POLICY.md))
+과 동일한 idiom을 single 에도 적용하여 cross-platform / cross-binding
+shutdown 패턴을 wire 레벨로 통일하는 것이다. 별도 fd / eventfd / pipe /
+cancellation token / signal helper 를 도입하지 않는다.
+
+drain 의 자연스러운 처리:
+- sender 가 stop token 보내기 직전까지의 in-flight 메시지는 wire 위에서
+  먼저 도달하므로 receiver 가 차례대로 record 한 뒤 마지막으로 stop token
+  을 만난다. 별도 deadline 기반 drain loop 없이 phase 종료가 처리된다.
+
 ---
 
 ## 2. Phase 규칙

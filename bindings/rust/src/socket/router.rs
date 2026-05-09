@@ -22,7 +22,6 @@ use crate::options::{CommonSocketOptions, RouterSocketOptions};
 use crate::request_progress::RequestProgressGuard;
 use crate::service::request_result_from_raw;
 
-const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 type RequestCallback = Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>;
 type SpotReplyCallback = Box<dyn FnOnce(Result<Vec<Message>, crate::error::RequestError>) + Send>;
 
@@ -74,8 +73,9 @@ impl RouterSocket {
     }
 
     pub fn recv(&self) -> Result<Received, RecvError> {
-        self.recv_with_flags(RecvFlags::NONE)
-            .and_then(|opt| opt.ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN)))
+        self.recv_with_flags(RecvFlags::NONE).and_then(|opt| {
+            opt.ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))
+        })
     }
 
     pub fn try_recv(&self) -> Result<Option<Received>, RecvError> {
@@ -115,7 +115,7 @@ impl RouterSocket {
             router_blocking_request_callback,
             state_ptr.cast(),
             SendFlags::NONE,
-            timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT),
+            timeout.unwrap_or(Duration::ZERO),
         );
         if let Err(err) = submit_result {
             unsafe {
@@ -168,7 +168,7 @@ impl RouterSocket {
             native_parts,
             _progress: RequestProgressGuard::attach_socket(self.inner.handle),
         });
-        let timeout_ms = timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT));
+        let timeout_ms = timeout_to_ms(timeout.unwrap_or(Duration::ZERO));
         let userdata = (&mut *state as *mut CallbackRouterRequestState).cast();
         let rc = submit_part_sequence(
             state.native_parts.as_mut_slice(),
@@ -462,6 +462,32 @@ impl RouterSocket {
         })
     }
 
+    pub(crate) fn request_timeout(&self) -> Result<Duration, ConfigError> {
+        let mut value: i32 = 0;
+        let mut len = std::mem::size_of::<i32>();
+        check_config_rc(unsafe {
+            ffi::zlink_get_router_option(
+                self.inner.handle,
+                ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS,
+                &mut value as *mut i32 as *mut c_void,
+                &mut len,
+            )
+        })?;
+        Ok(Duration::from_millis(value as u64))
+    }
+
+    pub(crate) fn set_request_timeout(&self, value: Duration) -> Result<(), ConfigError> {
+        let millis = timeout_to_ms(value).min(i32::MAX as u32) as i32;
+        check_config_rc(unsafe {
+            ffi::zlink_set_router_option(
+                self.inner.handle,
+                ffi::zlink_router_option_t::ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS,
+                &millis as *const i32 as *const c_void,
+                std::mem::size_of::<i32>(),
+            )
+        })
+    }
+
     fn request_callback_with_flags<F>(
         &self,
         peer_rid: &RoutingId,
@@ -484,7 +510,7 @@ impl RouterSocket {
             native_parts,
             _progress: RequestProgressGuard::attach_socket(self.inner.handle),
         });
-        let timeout_ms = timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT));
+        let timeout_ms = timeout_to_ms(timeout.unwrap_or(Duration::ZERO));
         let userdata = (&mut *state as *mut CallbackRouterRequestState).cast();
         let rc = submit_part_sequence(
             state.native_parts.as_mut_slice(),

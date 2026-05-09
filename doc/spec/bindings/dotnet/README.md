@@ -89,15 +89,14 @@ stay focused on signatures.
   for the node's SPOT topic plane. It is not the implementation path for
   `Spot.Publish(...)`.
 - `Spot` exposes data-plane operation builders:
-  `Publish(serviceName, topic)` enters the SPOT topic plane,
+  `Publish(topic)` enters the SPOT topic plane,
   `SendChannel(...)` and `RequestChannel(...)` use attached channel
   `DEALER` handles, and `SendToSpot(...)` uses routed SPOT delivery.
 - `Spot.Publish(...)` does not expose or select a raw `PUB` socket. Core
   admits the publish into the `SpotNode` topic data-plane; the binding keeps
   the native part-by-part substrate internal.
-- `Spot.Subscribe(...)` returns a service-aware `TopicMessage`.
-  `TopicMessage.ServiceName` is populated for SPOT subscribe results and is
-  `null` for raw `SUB` / `XSUB`.
+- `Spot.Subscribe(...)` returns a `TopicMessage`.
+  `TopicMessage` exposes topic, parts, and optional routing id.
 - `Spot` does not expose `OnSubscribe(...)`. Topic readiness is reported
   through `OnDispatchEvent(...)`, then callers drain with `Subscribe(...)`,
   routed recv, or timer recv as appropriate.
@@ -133,7 +132,7 @@ core and never truncates user input.
   NUL.
 - Endpoint strings passed to `Bind`, `Connect`, `Disconnect`, registry, and
   peer-connect APIs must fit in 255 UTF-8 bytes and must not contain NUL.
-- SPOT `serviceName` values must fit in 255 UTF-8 bytes and must not contain
+- SPOT `channelName` values must fit in 255 UTF-8 bytes and must not contain
   NUL.
 - Raw topic and subscription filter strings must fit in `0..255` UTF-8 bytes
   and must not contain NUL. Empty raw topics and filters remain valid because
@@ -1263,7 +1262,6 @@ Implements `IDisposable`.
 public sealed class TopicMessage : IDisposable
 {
     RoutingId? RoutingId { get; }            // null when transport carries no source id
-    string? ServiceName { get; }             // Spot subscribe only; null for raw SUB / XSUB
     string Topic { get; }                    // UTF-8
     IReadOnlyList<Message> Parts { get; }
     bool IsSinglePart { get; }
@@ -1294,7 +1292,6 @@ subscription event recv. Pure value object (no lifecycle). Defined as a record.
 ```csharp
 public sealed record SubscriptionEvent(
     RoutingId? RoutingId,                    // null when transport carries no source id
-    string? ServiceName,                     // Spot subscription event only; null for XPub
     string Topic,                            // UTF-8
     bool Subscribed);                        // true=subscribe, false=unsubscribe
 ```
@@ -1868,7 +1865,7 @@ not part of the public contract.
 
 ### Spot
 
-Spot messaging endpoint. Provides service-aware pub/sub and routed messaging.
+Spot messaging endpoint. Provides SPOT topic pub/sub and routed messaging.
 Implements `IDisposable` and `IAsyncDisposable`. Public callers create it only
 through a `SpotNode` factory.
 
@@ -1890,7 +1887,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     RoutingId RoutingId { get; }
 
     // --- SPOT topic publish / channel-aware send / request builders ---
-    SendOperation Publish(string serviceName, string topic);
+    SendOperation Publish(string topic);
     SendOperation SendChannel(string channelName);
     RequestOperation RequestChannel(string channelName);
 
@@ -2000,10 +1997,10 @@ public interface ReplySubmitOperation
 }
 ```
 
-`Spot.Publish(serviceName, topic)` starts the managed SPOT topic publish
-operation. The `serviceName` parameter is the core topic-plane namespace name;
-it is not a channel dealer name and does not cause .NET to select a raw `PUB`
-socket. The binding keeps native part-loop sequencing internal while core
+`Spot.Publish(topic)` starts the managed SPOT topic publish
+operation. It does not take a channel name because the `Spot` handle is already
+bound to its owning `SpotNode` topic plane. The binding keeps native
+part-loop sequencing internal while core
 admits the publish into the owning `SpotNode` topic data-plane. Temporary
 admission backpressure is reported through the same `SendFlags.DontWait`
 contract as other send-like methods.
@@ -2101,7 +2098,7 @@ Spot node status snapshot.
 
 ```csharp
 public sealed record SpotNodeStatus(
-    string ServiceName,
+    string ChannelName,
     string LocalEndpoint,
     RoutingId? NodeRoutingId,
     SpotNodeState State,
@@ -2162,7 +2159,7 @@ Spot node peer entry.
 
 ```csharp
 public sealed record SpotNodePeerEntry(
-    string ServiceName,
+    string ChannelName,
     string LocalEndpoint,
     string PeerEndpoint,
     SpotPeerSource Source,

@@ -47,6 +47,20 @@ internal sealed class MultipartMessageCollection : IReadOnlyList<Message>, IDisp
         return new MultipartMessageCollection(new[] { message });
     }
 
+    internal static MultipartMessageCollection FromNativeSingle(ref ZlinkMsg nativePart)
+    {
+        Message message = Message.AdoptNative(ref nativePart);
+        try
+        {
+            return FromSingle(message);
+        }
+        catch
+        {
+            message.Dispose();
+            throw;
+        }
+    }
+
     internal static MultipartMessageCollection FromNativeParts(ZlinkMsg[] nativeParts)
     {
         return new MultipartMessageCollection(nativeParts ?? Array.Empty<ZlinkMsg>());

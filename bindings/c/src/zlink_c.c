@@ -194,12 +194,11 @@ static zlink_recv_result_t zlink_c_recv_more_spot_subscribe (
   zlink_part_flag_t *has_more_out_)
 {
     const zlink_routing_id_t *dummy_rid_ = NULL;
-    size_t service_name_len_ = 0;
     size_t topic_id_len_ = 0;
 
     return zlink_spot_subscribe_part (
-      socket_, &dummy_rid_, NULL, 0, &service_name_len_, NULL, 0,
-      &topic_id_len_, part_out_, has_more_out_, ZLINK_RECV_FLAGS_DONTWAIT);
+      socket_, &dummy_rid_, NULL, 0, &topic_id_len_, part_out_,
+      has_more_out_, ZLINK_RECV_FLAGS_DONTWAIT);
 }
 
 static zlink_recv_result_t zlink_c_recv_more_spot (
@@ -663,14 +662,13 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_send_channel (
 
 ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_publish (
   void *spot_,
-  const char *service_name_,
   const char *topic_id_,
   zlink_msg_t *parts_,
   size_t part_count_,
   zlink_send_flags_t flags_)
 {
     ZLINK_C_SEND_LOOP (zlink_spot_publish_part (
-      spot_, service_name_, topic_id_, &parts_[i], flags_, part_flag_));
+      spot_, topic_id_, &parts_[i], flags_, part_flag_));
 }
 
 ZLINK_C_EXPORT zlink_recv_result_t zlink_spot_subscribe (
@@ -678,14 +676,11 @@ ZLINK_C_EXPORT zlink_recv_result_t zlink_spot_subscribe (
   zlink_routing_id_t *source_rid_out_,
   zlink_msg_t **parts_out_,
   size_t *part_count_out_,
-  char *service_name_out_,
-  size_t *service_name_len_out_,
   char *topic_id_out_,
   size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_)
 {
     const zlink_routing_id_t *source_rid_ptr_ = NULL;
-    size_t service_name_capacity_ = 0;
     size_t topic_id_capacity_ = 0;
     zlink_msg_t first_;
     zlink_part_flag_t has_more_ = ZLINK_PART_FINAL;
@@ -694,18 +689,16 @@ ZLINK_C_EXPORT zlink_recv_result_t zlink_spot_subscribe (
 
     if (rc_ != ZLINK_RECV_OK)
         return rc_;
-    if (!service_name_len_out_ || !topic_id_len_out_) {
+    if (!topic_id_len_out_) {
         errno = EFAULT;
         return ZLINK_RECV_INTERNAL_ERROR;
     }
 
-    service_name_capacity_ = *service_name_len_out_;
     topic_id_capacity_ = *topic_id_len_out_;
     zlink_c_copy_routing_id (source_rid_out_, NULL);
     zlink_msg_init (&first_);
     rc_ = zlink_spot_subscribe_part (
-      spot_, &source_rid_ptr_, service_name_out_, service_name_capacity_,
-      service_name_len_out_, topic_id_out_, topic_id_capacity_,
+      spot_, &source_rid_ptr_, topic_id_out_, topic_id_capacity_,
       topic_id_len_out_, &first_, &has_more_, flags_);
     if (rc_ != ZLINK_RECV_OK)
         return rc_;
@@ -720,22 +713,17 @@ ZLINK_C_EXPORT zlink_recv_result_t zlink_spot_subscription_event (
   void *spot_,
   zlink_routing_id_t *source_rid_out_,
   int *subscribed_out_,
-  char *service_name_out_,
-  size_t *service_name_len_out_,
   char *topic_id_out_,
   size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_)
 {
     (void) spot_;
-    (void) service_name_out_;
     (void) topic_id_out_;
     (void) flags_;
 
     zlink_c_copy_routing_id (source_rid_out_, NULL);
     if (subscribed_out_)
         *subscribed_out_ = 0;
-    if (service_name_len_out_)
-        *service_name_len_out_ = 0;
     if (topic_id_len_out_)
         *topic_id_len_out_ = 0;
 

@@ -7,7 +7,7 @@ import systems.zlink.internal.NativeHelpers;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
-public record SpotNodePeerEntry(String serviceName, String localEndpoint,
+public record SpotNodePeerEntry(String channelName, String localEndpoint,
                                 String peerEndpoint, SpotPeerSource source,
                                 SpotPeerState state, int weight,
                                 long connectedSinceMs, long lastChangedMs) {

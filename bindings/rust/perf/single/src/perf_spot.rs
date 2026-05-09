@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use zlink::*;
 
-const SERVICE_NAME_PREFIX: &str = "perf-spot-svc";
+const CHANNEL_NAME_PREFIX: &str = "perf-spot-svc";
 const TOPIC: &str = "bench.topic";
 
 fn drain_spot_readable(
@@ -42,14 +42,14 @@ fn wait_for_spot_ready(
     publisher: &Spot,
     subscriber: &Spot,
     config: &common::PerfConfig,
-    service_name: &str,
+    channel_name: &str,
 ) {
     let deadline = Instant::now() + common::resolve_single_ready_timeout();
     let mut probe = vec![0u8; common::HEADER_SIZE];
     common::encode_header(&mut probe, common::PHASE_WARMUP, config.size as u32, 0);
     while Instant::now() < deadline {
         match publisher
-            .publish(service_name, TOPIC)
+            .publish(TOPIC)
             .message(Message::copy_from(&probe).expect("probe message"))
             .submit()
         {
@@ -71,14 +71,14 @@ fn wait_for_spot_ready(
     panic!("single SPOT ready probe timed out");
 }
 
-fn wait_for_registry_entries(query: &RegistryQueryClient, service_name: &str) {
+fn wait_for_registry_entries(query: &RegistryQueryClient, channel_name: &str) {
     let deadline = Instant::now() + common::resolve_single_ready_timeout();
     while Instant::now() < deadline {
         match query.snapshot(None) {
             Ok(entries)
                 if entries
                     .iter()
-                    .filter(|entry| entry.channel_name == service_name)
+                    .filter(|entry| entry.channel_name == channel_name)
                     .count()
                     >= 2 =>
             {
@@ -102,8 +102,8 @@ fn spot_send_gap() -> Duration {
 
 fn main() {
     let config = common::PerfConfig::from_env_and_args();
-    let service_name = format!(
-        "{SERVICE_NAME_PREFIX}-{}-{}",
+    let channel_name = format!(
+        "{CHANNEL_NAME_PREFIX}-{}-{}",
         std::process::id(),
         common::now_ns()
     );
@@ -133,10 +133,10 @@ fn main() {
     let ctx = common::perf_context();
     let registry = Registry::new(&ctx).expect("registry");
     let publisher_discovery =
-        Discovery::new(&ctx, AutoConnectType::SpotMesh, &service_name)
+        Discovery::new(&ctx, AutoConnectType::SpotMesh, &channel_name)
             .expect("publisher discovery");
     let subscriber_discovery =
-        Discovery::new(&ctx, AutoConnectType::SpotMesh, &service_name)
+        Discovery::new(&ctx, AutoConnectType::SpotMesh, &channel_name)
             .expect("subscriber discovery");
     let query = RegistryQueryClient::new(&ctx).expect("query client");
     let publisher_node = SpotNode::new(&ctx).expect("publisher node");
@@ -184,8 +184,8 @@ fn main() {
         .set_subscription("bench.")
         .expect("set subscription");
 
-    wait_for_registry_entries(&query, &service_name);
-    wait_for_spot_ready(&publisher, &subscriber, &config, &service_name);
+    wait_for_registry_entries(&query, &channel_name);
+    wait_for_spot_ready(&publisher, &subscriber, &config, &channel_name);
     thread::sleep(common::resolve_single_spot_ready_settle());
 
     let collector = common::MetricCollector::new();
@@ -204,7 +204,7 @@ fn main() {
                     seq,
                 );
                 match publisher
-                    .publish(&service_name, TOPIC)
+                    .publish(TOPIC)
                     .message(Message::copy_from(&payload).expect("active message"))
                     .flags(SendFlags::DONT_WAIT)
                     .submit()
@@ -231,7 +231,7 @@ fn main() {
                 seq,
             );
             let _ = publisher
-                .publish(&service_name, TOPIC)
+                .publish(TOPIC)
                 .message(Message::copy_from(&payload).expect("cooldown message"))
                 .flags(SendFlags::DONT_WAIT)
                 .submit();

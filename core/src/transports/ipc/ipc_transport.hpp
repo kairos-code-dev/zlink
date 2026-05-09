@@ -51,7 +51,7 @@ class ipc_transport_t ZLINK_FINAL : public i_asio_transport
     const char *name () const ZLINK_OVERRIDE { return "ipc_transport"; }
 
   private:
-    std::unique_ptr<boost::asio::local::stream_protocol::socket> _socket;
+    std::shared_ptr<boost::asio::local::stream_protocol::socket> _socket;
 };
 
 }  // namespace zlink

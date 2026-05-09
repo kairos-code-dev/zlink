@@ -290,7 +290,7 @@ capability 표면이므로 이 절의 적용 대상이 아니다. 그 표면을 
 공통 흐름은 아래와 같다. 이름은 언어 관례에 맞게 변환한다.
 
 ```java
-spot.publish(serviceName, topic)
+spot.publish(topic)
     .message(message1)
     .message(message2)
     .flags(SendFlags.DONTWAIT)
@@ -340,10 +340,10 @@ canonical API로 더 늘리지 않는다.
   `attach_channel_dealer_manual(...)`,
   `attach_pub_ingress(...)`,
   `send_channel`, `send_to_spot`, `request_channel`,
-  channel-aware send/request operation builder 시작점과 service-aware
+  channel-aware send/request operation builder 시작점과 SPOT topic
   publish / subscribe 표면을 제공해야 한다.
-- service-aware SPOT subscribe 결과는 topic / parts 와 함께 반드시
-  `service_name` 을 노출해야 한다.
+- SPOT subscribe 결과는 topic / parts 를 노출한다. channel 이름은 메시지
+  결과 필드로 반복하지 않는다.
 - `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/channel-reply/timer/actor
   plane 의 canonical readable notification surface 이다.
 - Actor dispatch surface는 SPOT과 같은 service layer 공개 기능이다. 모든
@@ -364,6 +364,10 @@ canonical API로 더 늘리지 않는다.
   `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` 네 가지 admission option과
   `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN`,
   `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX` 두 가지 dispatch worker option이다.
+  C API의 공통 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 raw socket의 자동 HWM
+  메시지 단위 설정으로만 노출한다. SPOT node와 SPOT handle에는 이 공통 옵션을
+  설정할 수 없으며, 호출하면 `EINVAL`로 실패한다. 이 값은 메시지 크기 제한이
+  아니라 자동 HWM 예산을 슬롯 수로 바꿀 때 쓰는 계획 단위다.
   dispatch worker option은 `SpotNode` 소유 callback worker pool의 크기만
   조정하며, `ZLINK_IO_THREADS`나 data-plane thread 수를 뜻하지 않는다.
   `min`은 1 이상, `max`는 `min` 이상이어야 한다. 명시 설정이 없으면
@@ -842,7 +846,8 @@ SPOT routed 네이밍은 두 축을 함께 가져간다.
 - **channel-aware 경로**
   - `send_channel(channel_name) -> SendOp`
   - `request_channel(channel_name) -> RequestOp`
-  - `publish(service_name, topic) -> SendOp`
+- **SPOT topic 경로**
+  - `publish(topic) -> SendOp`
   - `reply_to_spot(dest_node_rid, dest_spot_rid, request_seq) -> ReplyOp`
   - `reply_to_router(peer_rid, request_seq) -> ReplyOp`
 - **direct routed request 경로**
@@ -857,7 +862,7 @@ surface에서는 같은 시작점에 `Message` / `List<Message>` / `flags` / `ti
 조합 오버로드를 추가하지 않는다.
 
 새 SPOT 바인딩 표면에서는 예전 `send_service` / `request_service` 대신
-`send_channel` / `request_channel` / `publish(service_name, ...)` 를 기본 경로로
+`send_channel` / `request_channel` / `publish(...)` 를 기본 경로로
 본다. 직접 주소 지정 경로는 코어가 제공하는 typed routed surface 로서 별도
 지원할 수 있다.
 
@@ -949,7 +954,7 @@ canonical 에 없는 메서드를 추가하거나(`__iter__`, `to_bytes_list` �
 
 #### `TopicMessage`
 
-raw `SUB` / `XSUB` 와 service-aware `Spot subscribe` 의 recv 결과다.
+raw `SUB` / `XSUB` 와 `Spot subscribe` 의 recv 결과다.
 raw pub/sub 는 C API `zlink_subscribe_part()` 를, Spot subscribe 는
 `zlink_spot_subscribe_part()` 를 바인딩 도메인 객체 하나로 감싼다. 바인딩
 public API는 part helper 호출 결과를 언어별 multipart 객체로 조립해서 돌려준다.
@@ -957,7 +962,6 @@ public API는 part helper 호출 결과를 언어별 multipart 객체로 조립�
 | 구성 | 타입 | 의미 |
 |------|------|------|
 | `routing_id` | `RoutingId?` (optional) | 송신자 routing id. transport 가 carry 안 하면 null/None/empty |
-| `service_name` | `string?` (optional) | Spot subscribe 에서만 설정되는 서비스명. raw `SUB` / `XSUB` 는 null/None/empty |
 | `topic` | **`string` (UTF-8)** | 매칭된 topic. **bytes 가 아니다.** |
 | `parts` | `List<Message>` / `Vec<Message>` | multipart payload |
 | `is_single_part()` | `bool` | `parts.size() == 1` |
@@ -968,8 +972,9 @@ public API는 part helper 호출 결과를 언어별 multipart 객체로 조립�
 규칙:
 - `Subscribed` 나 그와 유사한 subclass 를 만들지 않는다. `TopicMessage`
   하나만 노출한다.
-- Spot subscribe 결과는 `service_name + topic + parts` 를 함께 노출해야 한다.
-  `service_name` 을 버리거나 별도 부가 객체로 분리하면 안 된다.
+- Spot subscribe 결과는 `topic + parts` 를 함께 노출한다. channel 은
+  `Spot` handle 이 이미 묶인 `SpotNode` 쪽 상태이므로 메시지 결과 필드로
+  반복하지 않는다.
 - `topic` 은 UTF-8 `string` 이다. `bytes` / `byte[]` / `Vec<u8>` 으로
   노출하지 않는다 (내부적으로 raw bytes 로 왔더라도 공개 API 는 decode).
 - `RoutingId` 필드는 typed `RoutingId` 하나만 둔다. `RoutingId: string` +
@@ -1012,15 +1017,13 @@ XPub 이 받는 subscribe/unsubscribe 이벤트와 Spot subscription event recv 
 | 구성 | 타입 | 의미 |
 |------|------|------|
 | `routing_id` | `RoutingId?` | 구독자 routing id |
-| `service_name` | `string?` | Spot subscription event 에서만 설정되는 서비스명. XPub 는 null/None/empty |
 | `topic` | `string` (UTF-8) | 구독/해제 topic |
 | `subscribed` | `bool` | true=subscribe, false=unsubscribe |
 
 규칙:
 - value object 로만 노출한다 (메서드 없음, 필드만).
 - `close()` 등 lifecycle 없음 (값 타입).
-- Spot subscription event 결과는 `service_name + topic + subscribed` 를
-  함께 노출해야 한다.
+- Spot subscription event 결과는 `topic + subscribed` 를 노출한다.
 
 #### `RoutingId`
 
@@ -1580,7 +1583,7 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 
 | Capability | Spot |
 |---|---|
-| `publish(service_name, topic, ...)` | Y |
+| `publish(topic, ...)` | Y |
 | `subscribe` | Y |
 | `receiveSubscriptionEvent` | Y |
 | `setSubscription` / `unsetSubscription` | Y |
@@ -1595,7 +1598,7 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | `onSendReady` | Y |
 | `close` | Y |
 
-- Spot은 소켓 타입이 아니라 SpotNode 위에 올라가는 service-aware facade다.
+- Spot은 소켓 타입이 아니라 SpotNode 위에 올라가는 channel-aware facade다.
 - Spot routed receive 는 `recv_routed` 또는 동등한 typed recv surface 로
   노출할 수 있다.
 - Spot은 `bind`/`connect`를 갖지 않는다 (SpotNode가 담당).
@@ -1737,9 +1740,9 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | SpotNode | `spotsSnapshot` | node 소유 Spot 스냅샷 |
 | SpotNode | `actorsSnapshot` | node 소유 Actor 스냅샷 |
 | SpotNode | `close` | 노드 종료 |
-| Spot | `publish(service_name, topic, ...)` | 서비스 단위 토픽 발행 |
+| Spot | `publish(topic, ...)` | Spot topic 발행 |
 | Spot | `subscribe` | 토픽 구독 수신 |
-| Spot | `receiveSubscriptionEvent` | service-aware 구독 이벤트 수신 |
+| Spot | `receiveSubscriptionEvent` | topic 구독 이벤트 수신 |
 | Spot | `setSubscription` / `unsetSubscription` | 구독 필터 관리 |
 | Spot | `sendChannel` / `requestChannel` | channel 단위 routed 송신 / 요청 |
 | Spot | `onDispatchEvent` | topic/routed/channel reply/timer readable 알림 |
@@ -1843,7 +1846,7 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 
 ### Service Layer Sample Policy
 - Canonical Sample Set에 정의된 서비스 계열 샘플:
-  - `spot_recv_sample`: Spot service-aware subscribe / routed recv
+  - `spot_recv_sample`: Spot channel-aware subscribe / routed recv
   - `spot_callback_sample`: Spot dispatch event callback
   - `monitor_recv_sample`: monitor event 수신 (socket monitor 포함)
 - service/spot 계열이 없는 바인딩은 `spot_*` 샘플을 제외할 수 있다.
@@ -2127,26 +2130,24 @@ high-level request 완료는 첫 reply 1건으로 끝난다.
 
 SPOT public surface 는 두 이름 축을 분리한다. `sendChannel(...)` 과
 `requestChannel(...)` 은 channel-aware 직접 메시징 경로이고,
-`publish(service_name, topic, ...)` 는 service-aware pub/sub 경로다.
-`service_name` 은 channel 이름으로 해석하지 않는다. 직접 주소 지정 routed
-messaging 은 선택적으로 추가할 수 있는 보조 typed surface 다. request-reply 는
+`publish(topic, ...)` 는 `Spot` 자신이 속한 topic plane 에 발행한다.
+직접 주소 지정 routed messaging 은 선택적으로 추가할 수 있는 보조 typed surface 다. request-reply 는
 routed messaging 위에 얹어진다.
 
 #### Pub/Sub 메시징
 
-service-aware SPOT pub/sub 는 `service_name + topic` 기반 발행/구독 모델이다.
+SPOT pub/sub 는 `Spot` handle 이 속한 channel 과 `topic` 기반 발행/구독 모델이다.
+발행 호출자는 channel 이름을 별도 인자로 전달하지 않는다.
 
 ```c
 /* publish */
 zlink_submit_result_t zlink_spot_publish_part(void *spot,
-    const char *service_name, const char *topic_id, zlink_msg_t *part,
-    zlink_send_flags_t flags, zlink_part_flag_t part_flag);
+    const char *topic_id, zlink_msg_t *part, zlink_send_flags_t flags,
+    zlink_part_flag_t part_flag);
 
 /* subscribe receive */
 zlink_recv_result_t zlink_spot_subscribe_part(void *spot,
     const zlink_routing_id_t **source_rid_out,
-    char *service_name_buf, size_t service_name_capacity,
-    size_t *service_name_len_out,
     char *topic_id_buf, size_t topic_id_capacity,
     size_t *topic_id_len_out, zlink_msg_t *part_out,
     zlink_part_flag_t *has_more_out, zlink_recv_flags_t flags);
@@ -2161,11 +2162,12 @@ zlink_config_result_t zlink_unset_subscription(void *handle, const char *filter)
 - non-blocking publish 는 `zlink_spot_publish_part(..., ZLINK_DONTWAIT, ...)` 를 호출하고
   errno 를 `zlink_submit_result_t` 로 분류한다. 바인딩은 별도 `tryPublish` 나
   `publishNoWait` 를 두지 않는다.
-- `subscribe` 수신은 `service_name + topic + parts` 를 돌려주는 typed receive
-  surface 로 노출한다.
+- `subscribe` 수신은 `topic + parts` 를 돌려주는 typed receive surface 로
+  노출한다.
 - topic filter 설정은 typed subscription API 로 노출한다.
-- service-aware send/publish 의 실패는 `SubmitError` 로 승격된다.
-  - `NOT_FOUND`: 해당 `service_name` 또는 `channel_name` 에 attach 된 대상이 없음
+- channel-aware send/request 와 topic publish 의 실패는 `SubmitError` 로 승격된다.
+  - `NOT_FOUND`: channel-aware send/request 는 해당 `channel_name` 또는 attach 대상이 없음.
+    topic publish 는 발행 가능한 topic plane 대상이 없음.
   - `NOT_CONNECTED`: attachment 는 있으나 active/send-ready 경로가 없음
   - `BACKPRESSURED`: 경로는 있으나 HWM 도달
   - `NOT_ADMITTED`: 대상 peer 가 drain 상태라 신규 submit 거부
@@ -2274,11 +2276,11 @@ typed option/property로 이 두 값을 노출하고, raw option bag을 canonica
   subject socket에서 channel name metadata를 조회해 어느 channel reply를
   drain할지 구분한다.
 - `attach_pub_ingress()`는 일반 `PUB -> Spot` 입력 경로를 여는 전용 표면이다.
-- `Spot.publish(service_name, topic, ...)`는 `SpotNode` 자신의 topic publish
-  ingress queue로 들어가는 service-aware topic plane이다. 외부 channel 호출은
+- `Spot.publish(topic, ...)`는 `SpotNode` 자신의 topic publish
+  ingress queue로 들어가는 channel-aware topic plane이다. 외부 channel 호출은
   `send_channel()` / `request_channel()`과 attached `DEALER` 경로로 설명한다.
 - `connect_peer` / `disconnect_peer` 는 raw peer topology 전용 control
-  path 다. service-aware public surface 의 중심 API 로 설명하면 안 된다.
+  path 다. channel-aware public surface 의 중심 API 로 설명하면 안 된다.
 
 ### SPOT Event Dispatcher Policy
 
@@ -2801,7 +2803,7 @@ Repository placement and distribution units for codec extension modules:
   |------|--------------|----------------|
   | `RoutingId` | `data[255]` | 값 객체 생성 시 255바이트 초과 시 즉시 오류 반환 |
   | topic / filter | C 문자열 (null-terminated) | 바인딩은 embedded null 문자 포함 시 즉시 오류 반환. 길이 상한은 core가 처리하므로 바인딩에서 별도 길이 검증하지 않는다 |
-  | service_name | `char[256]` | 255바이트 초과 시 즉시 오류 반환 |
+  | channel_name | `char[256]` | 255바이트 초과 시 즉시 오류 반환 |
   | endpoint | `char[256]` | 255바이트 초과 시 즉시 오류 반환 |
   | metadata | `zlink_msg_t` (가변) | core가 처리, 바인딩은 null 검증만 |
 
@@ -3499,7 +3501,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 - offset/length bounds 검증
 - null 불가 인자 검증
 - enum 범위 밖 값 검증
-- `service_name` 255바이트 초과 즉시 오류 반환 (고정 크기 `char[256]`)
+- `channel_name` 255바이트 초과 즉시 오류 반환 (고정 크기 `char[256]`)
 - `endpoint` 255바이트 초과 즉시 오류 반환 (고정 크기 `char[256]`)
 - topic/filter에 embedded null 문자 포함 시 즉시 오류 반환
 

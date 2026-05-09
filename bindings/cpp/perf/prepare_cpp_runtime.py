@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import stat
-import platform
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 CPP_PERF_DIR = ROOT / "bindings" / "cpp" / "perf"
+CPP_NATIVE_DIR = ROOT / "bindings" / "cpp" / "native"
 RUNTIME_ROOT = CPP_PERF_DIR / ".runtime"
-CORE_BUILD = ROOT / "core" / "build"
 C_STREAM_CLIENT = ROOT / "bindings" / "c" / "build" / "perf" / "perf_stream_client"
-CPP_NATIVE_ROOT = ROOT / "bindings" / "cpp" / "native"
 
 SINGLE_MAP = {
     "perf_pair": CPP_PERF_DIR / "single" / "build" / "cpp_perf_pair",
@@ -27,6 +25,7 @@ MULTI_SERVER_MAP = {
     "comp_src_router_router_server": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_router_router_server",
     "comp_src_pubsub_server": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_pubsub_server",
     "comp_src_spot_server": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_spot_server",
+    "comp_src_spot_sendsend_server": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_spot_sendsend_server",
     "comp_src_spot_reqrep_server": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_spot_reqrep_server",
     "comp_src_stream_server": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_stream_server",
 }
@@ -37,27 +36,52 @@ MULTI_CLIENT_MAP = {
     "comp_src_router_router_client": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_router_router_client",
     "comp_src_pubsub_client": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_pubsub_client",
     "comp_src_spot_client": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_spot_client",
+    "comp_src_spot_sendsend_client": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_spot_sendsend_client",
     "comp_src_spot_reqrep_client": CPP_PERF_DIR / "multi" / "build" / "cpp_comp_src_spot_reqrep_client",
 }
 
 
 def native_runtime_dir() -> Path:
-    system = platform.system()
-    machine = platform.machine().lower()
-
-    if system == "Linux":
-        subdir = "linux-aarch64" if machine in {"aarch64", "arm64"} else "linux-x86_64"
-    elif system == "Darwin":
-        subdir = "darwin-aarch64" if machine in {"aarch64", "arm64"} else "darwin-x86_64"
-    elif system == "Windows":
-        subdir = "windows-aarch64" if machine in {"aarch64", "arm64"} else "windows-x86_64"
+    if sys_platform() == "linux":
+        candidates = ("linux-x86_64", "linux-x64")
+    elif sys_platform() == "darwin":
+        candidates = ("darwin-aarch64", "darwin-x86_64")
+    elif sys_platform() == "windows":
+        candidates = ("windows-x86_64", "windows-aarch64")
     else:
-        raise SystemExit(f"unsupported platform for cpp perf runtime: {system}/{machine}")
+        candidates = ()
 
-    runtime_dir = CPP_NATIVE_ROOT / subdir
-    if not runtime_dir.exists():
-        raise SystemExit(f"missing cpp native runtime directory: {runtime_dir}")
-    return runtime_dir
+    for name in candidates:
+        candidate = CPP_NATIVE_DIR / name
+        if (candidate / runtime_library_name()).exists():
+            return candidate
+    raise SystemExit(
+        "missing C++ native runtime under bindings/cpp/native for this platform"
+    )
+
+
+def sys_platform() -> str:
+    import platform
+
+    system = platform.system().lower()
+    if system.startswith("linux"):
+        return "linux"
+    if system.startswith("darwin"):
+        return "darwin"
+    if system.startswith("windows"):
+        return "windows"
+    return system
+
+
+def runtime_library_name() -> str:
+    platform_name = sys_platform()
+    if platform_name == "linux":
+        return "libzlink.so"
+    if platform_name == "darwin":
+        return "libzlink.dylib"
+    if platform_name == "windows":
+        return "zlink.dll"
+    return "libzlink.so"
 
 
 def reset_dir(path: Path) -> None:

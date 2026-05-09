@@ -7,10 +7,10 @@ const { configureTlsClient } = require('../common/perf_tls');
 const { runSpotBenchmark } = require('../single/perf_spot');
 const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, resolveMultiLatencySampleCap, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, resolveMultiLatencySampleCap, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
 const TOPIC = 'perf.topic';
 const CONTROL_TOPIC = 'perf.control';
-const SERVICE_NAME = 'perf.spot';
+const CHANNEL_NAME = 'perf.spot';
 const AUTO_CONNECT_SPOT_MESH = 5;
 const TRACE = process.env.PERF_MULTI_SPOT_TRACE === '1';
 function trace(message) {
@@ -53,7 +53,8 @@ function closeQuietly(resource) {
     try {
         resource?.close();
     }
-    catch {
+    catch (err) {
+        console.error(`[multi-spot-client] close failed: ${err}`);
     }
 }
 async function publishReady(controlPub, controlPubWaiter, msgSize, clients) {
@@ -102,6 +103,9 @@ async function main() {
     try {
         applySocketPolicy(controlPub);
         applySocketPolicy(controlSub);
+        applyAutoHwmMsgUnit(controlPub, options.msgSize);
+        applyAutoHwmMsgUnit(controlSub, options.msgSize);
+        ctx.recalculateAutoHwm();
         controlPub.bind(options.controlEndpoint);
         console.log(`CLIENT_CONTROL_ENDPOINT,${options.controlEndpoint}`);
         controlSub.setSubscription(CONTROL_TOPIC);
@@ -124,7 +128,7 @@ async function main() {
         }
         trace(`creating-slots count=${options.clients}`);
         sharedNode = new zlink.SpotNode(ctx);
-        sharedDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
+        sharedDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
         configureTlsClient(sharedNode, options.transport);
         sharedDiscovery.connectRegistry(options.endpoint);
         sharedNode.attachDiscovery(sharedDiscovery);

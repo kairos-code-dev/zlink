@@ -24,7 +24,7 @@ bool wait_for_start_signal (size_t msg_size)
 long compute_wait_ms (const perf::multi::multi_bench_settings_t &settings,
                       const std::chrono::steady_clock::time_point &deadline)
 {
-    long wait_ms = settings.client_poll_timeout_ms > 0 ? settings.client_poll_timeout_ms : 100;
+    long wait_ms = settings.client_poll_timeout_ms > 0 ? settings.client_poll_timeout_ms : 1;
     const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
                              deadline - std::chrono::steady_clock::now ())
                              .count ();
@@ -56,6 +56,7 @@ bool run_phase (::perf::socket_t &publisher,
         return true;
     }
 
+    try {
     bool pending = false;
     const auto deadline = std::chrono::steady_clock::now () + duration;
     while (std::chrono::steady_clock::now () < deadline) {
@@ -83,23 +84,13 @@ bool run_phase (::perf::socket_t &publisher,
           k_topic, payload_part, ZLINK_DONTWAIT);
         if (sent == 0) {
             pending = false;
-            try {
-                poller.modify (publisher, zlink::poll_event_flag_t::none);
-            }
-            catch (const zlink::zlink_error_t &) {
-                return false;
-            }
+            publisher.poller_modify (poller, zlink::poll_event_flag_t::none);
             continue;
         }
 
         if (errno == EAGAIN) {
             pending = true;
-            try {
-                poller.modify (publisher, zlink::poll_event_flag_t::pollout);
-            }
-            catch (const zlink::zlink_error_t &) {
-                return false;
-            }
+            publisher.poller_modify (poller, zlink::poll_event_flag_t::pollout);
         } else {
             return false;
         }
@@ -118,6 +109,10 @@ bool run_phase (::perf::socket_t &publisher,
     }
 
     return true;
+    }
+    catch (const zlink::zlink_error_t &) {
+        return false;
+    }
 }
 
 } // namespace
@@ -145,6 +140,10 @@ bool perf_pubsub_server (const std::string &lib_name,
 
     perf::multi::apply_benchmark_socket_options (
       publisher.sock (), settings, transport);
+    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (
+          publisher.sock (), msg_size)
+        || !perf::multi::recalculate_auto_hwm (ctx))
+        return false;
     if (!perf::multi::setup_tls_server (publisher.sock (), transport))
         return false;
 
@@ -170,8 +169,8 @@ bool perf_pubsub_server (const std::string &lib_name,
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
-    (void) poller.add (publisher.sock (), zlink::poll_event_flag_t::pollout);
-    (void) poller.modify (publisher.sock (), zlink::poll_event_flag_t::none);
+    publisher.sock ().poller_add (poller, zlink::poll_event_flag_t::pollout);
+    publisher.sock ().poller_modify (poller, zlink::poll_event_flag_t::none);
 
     if (!run_phase (publisher.sock (),
                     poller,

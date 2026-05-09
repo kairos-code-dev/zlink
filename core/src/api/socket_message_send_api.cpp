@@ -111,6 +111,17 @@ bool is_singlepart_fast_socket_type (int type_)
     return type_ == ZLINK_CORE_SOCKET_PAIR || type_ == ZLINK_CORE_SOCKET_DEALER;
 }
 
+bool send_sequence_is_open (void *handle_)
+{
+    std::shared_ptr<zlink::part_helper_internal::handle_state_t> state =
+      zlink::part_helper_internal::find_handle_state (handle_);
+    if (!state)
+        return false;
+
+    std::lock_guard<std::mutex> lock (state->mutex);
+    return state->send.active;
+}
+
 int send_socket_singlepart_fast (socket_handle_t handle_,
                                  zlink_msg_t *msg_,
                                  zlink_send_flags_t flags_)
@@ -642,6 +653,16 @@ zlink_submit_result_t zlink_send_part (void *s_,
         zlink::part_helper_internal::consume_send_part (part_);
         errno = ENOTSUP;
         return zlink::submit_result_internal::from_errno (errno);
+    }
+    if (part_flag_ == ZLINK_PART_FINAL
+        && is_singlepart_fast_socket_type (type)
+        && !send_sequence_is_open (s_)) {
+        const int rc = send_socket_singlepart_fast (
+          make_socket_handle (socket), part_, flags_);
+        const int saved_errno = errno;
+        zlink::part_helper_internal::consume_send_part (part_);
+        errno = saved_errno;
+        return zlink::submit_result_internal::from_rc (rc);
     }
 
     zlink::part_helper_internal::send_sequence_spec_t spec;

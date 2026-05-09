@@ -126,7 +126,7 @@ zlink::ip_resolver_options_t &zlink::ip_resolver_options_t::ipv6 (bool ipv6_)
 }
 
 //  If true we expect that the host will be followed by a colon and a port
-//  number or service name
+//  number or channel name
 zlink::ip_resolver_options_t &
 zlink::ip_resolver_options_t::expect_port (bool expect_)
 {
@@ -297,7 +297,7 @@ int zlink::ip_resolver_t::resolve (ip_addr_t *ip_addr_, const char *name_)
     }
 
     //  Store the port into the structure. We could get 'getaddrinfo' to do it
-    //  for us but since we don't resolve service names it's a bit overkill and
+    //  for us but since we don't resolve channel names it's a bit overkill and
     //  we'd still have to do it manually when the address is resolved by
     //  'resolve_nic_name'
     ip_addr_->set_port (port);

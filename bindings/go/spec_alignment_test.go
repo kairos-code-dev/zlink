@@ -95,9 +95,6 @@ func TestReceivedAndTopicConvenienceHelpersUseRecvError(t *testing.T) {
 			t.Fatalf("TopicMessage.SinglePartOrError() error type = %T, want *RecvError", err)
 		}
 	}
-	if topic.ServiceName() != "" || topic.HasServiceName() {
-		t.Fatalf("TopicMessage zero value should not report a service name")
-	}
 }
 
 func TestReceivedReplyHelpersCarryCanonicalMetadata(t *testing.T) {
@@ -293,9 +290,6 @@ func TestSubscriptionEventHasRoutingID(t *testing.T) {
 	if !event.Subscribed() {
 		t.Fatalf("Subscribed() = false, want true")
 	}
-	if event.HasServiceName() {
-		t.Fatalf("SubscriptionEvent zero service name should report false")
-	}
 }
 
 func TestExportedSpecShapeForSpotServiceBindingTypes(t *testing.T) {
@@ -309,8 +303,6 @@ func TestExportedSpecShapeForSpotServiceBindingTypes(t *testing.T) {
 		}
 	}
 
-	assertField("serviceName", reflect.TypeOf(TopicMessage{}), reflect.String)
-	assertField("serviceName", reflect.TypeOf(SubscriptionEvent{}), reflect.String)
 	assertField("Weight", reflect.TypeOf(SpotNodePeerEntry{}), reflect.Uint32)
 	assertField("Weight", reflect.TypeOf(MemberPeerEntry{}), reflect.Uint32)
 	assertField("AutoConnectType", reflect.TypeOf(MemberPeerEntry{}), reflect.Uint32)

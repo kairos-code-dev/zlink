@@ -17,12 +17,43 @@ bool perf_debug_enabled ()
 
 bool send_single_part (void *userdata_, const void *data_, size_t size_)
 {
-    ::perf::socket_t *socket = static_cast<::perf::socket_t *> (userdata_);
+    zlink::pair_socket_t *socket = static_cast<zlink::pair_socket_t *> (userdata_);
     if (!socket)
         return false;
 
     zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
-    return msg.valid () && socket->send (msg, 0) == 0;
+    if (!msg.valid ())
+        return false;
+    try {
+        if (!socket->send (msg, zlink::send_flags_t::dontwait)) {
+            errno = EAGAIN;
+            return false;
+        }
+        return true;
+    }
+    catch (const zlink::zlink_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
+}
+
+int recv_pair_payload (zlink::pair_socket_t &socket_,
+                       zlink::received_t &received_,
+                       zlink::recv_flags_t flags_)
+{
+    try {
+        std::optional<zlink::received_t> maybe_received = socket_.recv (flags_);
+        if (!maybe_received.has_value ()) {
+            errno = EAGAIN;
+            return -1;
+        }
+        received_ = std::move (*maybe_received);
+        return 0;
+    }
+    catch (const zlink::recv_error_t &err) {
+        errno = err.internal_errno ();
+        return -1;
+    }
 }
 
 bool record_pair_payload (const zlink::received_t &received,
@@ -81,19 +112,29 @@ bool run_pattern_pair (const std::string &transport,
         return false;
     }
 
-    perf::single::socket_guard_t bind_socket (ctx, zlink::socket_type::pair);
-    perf::single::socket_guard_t conn_socket (ctx, zlink::socket_type::pair);
+    zlink::pair_socket_t bind_socket (ctx.ctx ());
+    zlink::pair_socket_t conn_socket (ctx.ctx ());
     if (!bind_socket.valid () || !conn_socket.valid ()) {
         if (perf_debug_enabled ())
             std::cerr << "pair: invalid sockets" << std::endl;
         return false;
     }
 
-    (void) bind_socket.sock ().set_option (zlink::compat::options::socket_options::tcp_nodelay, 1);
-    (void) conn_socket.sock ().set_option (zlink::compat::options::socket_options::tcp_nodelay, 1);
+    bind_socket.options ().tcp_no_delay (true);
+    conn_socket.options ().tcp_no_delay (true);
+    if (!perf::single::apply_single_auto_hwm_msg_unit (
+          bind_socket, msg_size)
+        || !perf::single::apply_single_auto_hwm_msg_unit (
+          conn_socket, msg_size)
+        || !perf::single::recalculate_single_auto_hwm (ctx)) {
+        if (perf_debug_enabled ())
+            std::cerr << "pair: auto-hwm msg unit setup failed errno=" << errno
+                      << std::endl;
+        return false;
+    }
 
-    if (!perf::single::setup_connected_pair (bind_socket.sock (),
-                                             conn_socket.sock (),
+    if (!perf::single::setup_connected_pair (bind_socket,
+                                             conn_socket,
                                              transport,
                                              lib_name + "_pair")) {
         if (perf_debug_enabled ())
@@ -103,10 +144,11 @@ bool run_pattern_pair (const std::string &transport,
     }
 
     const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();
-    (void) bind_socket.sock ().set_option (
-      zlink::compat::options::socket_options::rcvtimeo, recv_timeout);
-    (void) conn_socket.sock ().set_option (
-      zlink::compat::options::socket_options::sndtimeo, perf::single::resolve_single_send_timeout_ms ());
+    bind_socket.options ().recv_timeout (
+      std::chrono::milliseconds (recv_timeout));
+    conn_socket.options ().send_timeout (
+      std::chrono::milliseconds (
+        perf::single::resolve_single_send_timeout_ms ()));
 
     const int duration_s = perf::single::resolve_single_duration_seconds ();
     std::vector<char> payload (
@@ -120,12 +162,73 @@ bool run_pattern_pair (const std::string &transport,
     std::atomic<bool> sender_done (false);
     perf::single::latency_stats_builder_t latency_builder (
       perf::single::resolve_single_latency_sample_cap ());
+    const auto active_deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
+
+    std::thread receiver_thread ([&]() {
+        auto last_recv_at = std::chrono::steady_clock::now ();
+        const auto drain_idle_limit =
+          std::chrono::milliseconds (recv_timeout > 0 ? recv_timeout : 200);
+        while (true) {
+            zlink::received_t received;
+            const int recv_rc =
+              recv_pair_payload (bind_socket, received, zlink::recv_flags_t::none);
+            if (recv_rc == 0) {
+                last_recv_at = std::chrono::steady_clock::now ();
+                if (std::chrono::steady_clock::now () < active_deadline
+                    && !record_pair_payload (received,
+                                             run_id,
+                                             msg_size,
+                                             payload_size,
+                                             received_count,
+                                             latency_builder)) {
+                    sender_ok.store (false, std::memory_order_release);
+                    return;
+                }
+
+                for (;;) {
+                    zlink::received_t burst_received;
+                    const int burst_rc =
+                      recv_pair_payload (
+                        bind_socket,
+                        burst_received,
+                        zlink::recv_flags_t::dontwait);
+                    if (burst_rc != 0) {
+                        if (errno == EAGAIN || errno == EINTR)
+                            break;
+                        sender_ok.store (false, std::memory_order_release);
+                        return;
+                    }
+                    last_recv_at = std::chrono::steady_clock::now ();
+                    if (std::chrono::steady_clock::now () < active_deadline
+                        && !record_pair_payload (burst_received,
+                                                 run_id,
+                                                 msg_size,
+                                                 payload_size,
+                                                 received_count,
+                                                 latency_builder)) {
+                        sender_ok.store (false, std::memory_order_release);
+                        return;
+                    }
+                }
+                continue;
+            }
+
+            if (errno != EAGAIN && errno != EINTR) {
+                sender_ok.store (false, std::memory_order_release);
+                return;
+            }
+            if (sender_done.load (std::memory_order_acquire)
+                && std::chrono::steady_clock::now () - last_recv_at
+                     >= drain_idle_limit) {
+                return;
+            }
+        }
+    });
 
     std::thread sender_thread ([&]() {
         uint64_t seq = 0;
-        const auto deadline =
-          std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
-        while (std::chrono::steady_clock::now () < deadline) {
+        while (std::chrono::steady_clock::now () < active_deadline) {
             if (!perf_single_metric::stamp_payload (payload.data (),
                                                     payload.size (),
                                                     run_id,
@@ -134,7 +237,11 @@ bool run_pattern_pair (const std::string &transport,
                                                     seq++,
                                                     perf_single_metric::now_ns ())
                 || !send_single_part (
-                  &conn_socket.sock (), payload.data (), payload.size ())) {
+                  &conn_socket, payload.data (), payload.size ())) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK
+                    || errno == ETIMEDOUT || errno == EINTR) {
+                    continue;
+                }
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
@@ -143,72 +250,8 @@ bool run_pattern_pair (const std::string &transport,
         sender_done.store (true, std::memory_order_release);
     });
 
-    zlink::poller_t poller;
-    poller.add (bind_socket.sock (), zlink::poll_event_flag_t::pollin);
-    while (!sender_done.load (std::memory_order_acquire)) {
-        std::optional<zlink::poll_event_t> event =
-          poller.wait (std::chrono::milliseconds (5));
-        const int poll_rc = event ? 1 : 0;
-        if (poll_rc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
-            sender_ok.store (false, std::memory_order_release);
-            break;
-        }
-        if (poll_rc == 0
-            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))
-                 == 0) {
-            continue;
-        }
-
-        for (;;) {
-            zlink::received_t received;
-            const int recv_rc =
-              bind_socket.sock ().receive (received, ZLINK_DONTWAIT);
-            if (recv_rc != 0) {
-                if (errno == EAGAIN || errno == EINTR)
-                    break;
-                sender_ok.store (false, std::memory_order_release);
-                break;
-            }
-            if (!record_pair_payload (received,
-                                      run_id,
-                                      msg_size,
-                                      payload_size,
-                                      received_count,
-                                      latency_builder)) {
-                sender_ok.store (false, std::memory_order_release);
-                break;
-            }
-        }
-    }
-
     sender_thread.join ();
-    const auto drain_deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (recv_timeout * 2);
-    while (received_count.load (std::memory_order_acquire)
-             < sent_count.load (std::memory_order_acquire)
-           && std::chrono::steady_clock::now () < drain_deadline) {
-        zlink::received_t received;
-        const int recv_rc =
-          bind_socket.sock ().receive (received, ZLINK_DONTWAIT);
-        if (recv_rc != 0) {
-            if (errno == EAGAIN || errno == EINTR)
-                break;
-            sender_ok.store (false, std::memory_order_release);
-            break;
-        }
-        if (!record_pair_payload (received,
-                                  run_id,
-                                  msg_size,
-                                  payload_size,
-                                  received_count,
-                                  latency_builder)) {
-            sender_ok.store (false, std::memory_order_release);
-            break;
-        }
-    }
+    receiver_thread.join ();
 
     const unsigned long long active_received =
       received_count.load (std::memory_order_acquire);

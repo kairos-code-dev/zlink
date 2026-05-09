@@ -11,25 +11,21 @@ public sealed class TopicMessage : IDisposable
     private readonly MultipartMessageCollection _parts;
     private int _closed;
 
-    internal TopicMessage(RoutingId? routingId, string? serviceName, string topic,
-        Message[] parts)
-        : this(routingId, serviceName, topic,
+    internal TopicMessage(RoutingId? routingId, string topic, Message[] parts)
+        : this(routingId, topic,
             MultipartMessageCollection.FromMessages(parts))
     {
     }
 
-    internal TopicMessage(RoutingId? routingId, string? serviceName, string topic,
+    internal TopicMessage(RoutingId? routingId, string topic,
         MultipartMessageCollection parts)
     {
         RoutingId = routingId;
-        ServiceName = serviceName;
         Topic = topic ?? string.Empty;
         _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
     }
 
     public RoutingId? RoutingId { get; }
-
-    public string? ServiceName { get; }
 
     public string Topic { get; }
 

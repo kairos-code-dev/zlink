@@ -891,7 +891,7 @@ function mapRegistryServiceSummaryEntry(entry: {
 }
 
 function mapSpotNodeStatus(entry: {
-  serviceName: string;
+  channelName: string;
   localEndpoint: string;
   nodeRoutingId?: Buffer | null;
   state: number;
@@ -909,7 +909,7 @@ function mapSpotNodeStatus(entry: {
     ? RoutingId.fromBytes(entry.nodeRoutingId)
     : fallbackRoutingId;
   return {
-    channelName: entry.serviceName,
+    channelName: entry.channelName,
     localEndpoint: entry.localEndpoint,
     nodeRoutingId,
     state: entry.state as SpotNodeStateValue,
@@ -926,7 +926,7 @@ function mapSpotNodeStatus(entry: {
 }
 
 function mapSpotNodePeerEntry(entry: {
-  serviceName: string;
+  channelName: string;
   localEndpoint: string;
   peerEndpoint: string;
   source: number;
@@ -936,7 +936,7 @@ function mapSpotNodePeerEntry(entry: {
   lastChangedMs: number | bigint;
 }): SpotNodePeerEntry {
   return {
-    channelName: entry.serviceName,
+    channelName: entry.channelName,
     localEndpoint: entry.localEndpoint,
     peerEndpoint: entry.peerEndpoint,
     source: entry.source as SpotPeerSourceValue,
@@ -1161,13 +1161,11 @@ function materializeTopicMessage(raw: {
   topic: string;
   parts: MessageSnapshot[];
   routingId?: Buffer | null;
-  serviceName?: string | null;
 }): TopicMessage {
   return TopicMessage.create(
     raw.topic,
     raw.parts.map((part) => Message.fromSnapshot(part)),
-    wrapRoutingId(raw.routingId ?? null),
-    raw.serviceName ?? null
+    wrapRoutingId(raw.routingId ?? null)
   );
 }
 
@@ -2334,7 +2332,11 @@ export class Actor extends NativeHandle {
         flags | 0
       );
     } catch (error) {
-      throw submitNativeError(error, flags, 'actor bound session send failed');
+      const submitError = submitNativeError(error, flags, 'actor bound session send failed');
+      if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
+        return false;
+      }
+      throw submitError;
     }
     return true;
   }
@@ -2488,7 +2490,11 @@ export class StreamSocket extends SocketBase {
         flags | 0
       );
     } catch (error) {
-      throw submitNativeError(error, flags, 'sendBoundActor failed');
+      const submitError = submitNativeError(error, flags, 'sendBoundActor failed');
+      if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
+        return false;
+      }
+      throw submitError;
     }
     return true;
   }
@@ -2987,7 +2993,7 @@ export class SpotNode extends NativeHandle {
   statusSnapshot(): SpotNodeStatus {
     const raw = configCall('spot node status snapshot failed', () =>
       requireNative().spotNodeStatusSnapshot(this._native) as {
-      serviceName: string;
+      channelName: string;
       localEndpoint: string;
       nodeRoutingId?: Buffer | null;
       state: number;
@@ -3230,14 +3236,13 @@ export class Spot extends NativeHandle {
       requireNative().spotSetOption(this._native, SpotOption.REQUEST_TIMEOUT_MS, buffer);
     });
   }
-  publish(serviceName: string, topic: string): SendOp {
-    return new SendOperation((parts, opFlags) => this.publishDirect(serviceName, topic, parts, opFlags));
+  publish(topic: string): SendOp {
+    return new SendOperation((parts, opFlags) => this.publishDirect(topic, parts, opFlags));
   }
-  private publishDirect(serviceName: string, topic: string, payloadParts: readonly MessageLike[], flags: SendFlags): boolean {
+  private publishDirect(topic: string, payloadParts: readonly MessageLike[], flags: SendFlags): boolean {
     try {
       requireNative().spotPublish(
         this._native,
-        validateCString(serviceName, 'serviceName', Number.MAX_SAFE_INTEGER),
         validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER),
         toMessageParts(payloadParts),
         flags | 0
@@ -3285,13 +3290,11 @@ export class Spot extends NativeHandle {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
         ? requireNative().spotSubscriptionEventNoWait(this._native) as {
             routingId?: Buffer | null;
-            serviceName?: string | null;
             topic: string;
             subscribed: boolean;
           } | null
         : requireNative().spotSubscriptionEvent(this._native, flags | 0) as {
             routingId?: Buffer | null;
-            serviceName?: string | null;
             topic: string;
             subscribed: boolean;
           } | null;
@@ -3301,8 +3304,7 @@ export class Spot extends NativeHandle {
     return raw ? SubscriptionEvent.create(
       raw.topic,
       raw.subscribed,
-      wrapRoutingId(raw.routingId ?? null),
-      raw.serviceName ?? null
+      wrapRoutingId(raw.routingId ?? null)
     ) : null;
   }
   onSendReady(handler: SpotSendReadyHandler): void {

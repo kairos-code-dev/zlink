@@ -9,7 +9,10 @@
 #include "error.hpp"
 
 #include <chrono>
+#include <memory>
 #include <string>
+#include <type_traits>
+#include <utility>
 
 namespace zlink
 {
@@ -292,14 +295,62 @@ class pair_socket_t : public message_socket_t
 
     std::optional<received_t> recv (recv_flags_t flags_ = recv_flags_t::none)
     {
-        received_t received;
-        const recv_result_t rc = static_cast<recv_result_t> (
-          base_socket_t::receive (received, flags_));
-        if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
+        zlink_msg_t native_part;
+        if (zlink_msg_init (&native_part) != 0)
+            throw last_error ();
+
+        const zlink_routing_id_t *source_rid = NULL;
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        const zlink_recv_result_t rc = zlink_recv_part (
+          handle (), &source_rid, &native_part, &has_more,
+          static_cast<zlink_recv_flags_t> (flags_));
+        if (rc == ZLINK_RECV_NO_DATA && flags_ == recv_flags_t::dontwait) {
+            (void) zlink_msg_close (&native_part);
             return std::nullopt;
-        if (rc != recv_result_t::ok)
-            throw recv_error_t (rc, zlink_errno ());
-        return std::optional<received_t> (std::move (received));
+        }
+        if (rc != ZLINK_RECV_OK) {
+            const int err = zlink_errno ();
+            (void) zlink_msg_close (&native_part);
+            throw recv_error_t (static_cast<recv_result_t> (rc), err);
+        }
+
+        std::vector<message_t> parts;
+        parts.reserve (1);
+        message_t part;
+        if (zlink_msg_move (detail::native_handle (part), &native_part) != 0) {
+            const int err = zlink_errno ();
+            (void) zlink_msg_close (&native_part);
+            throw recv_error_t (recv_result_t::internal_error, err);
+        }
+        (void) zlink_msg_close (&native_part);
+        parts.push_back (std::move (part));
+
+        if (has_more != ZLINK_PART_FINAL) {
+            std::vector<message_t> tail;
+            const int tail_rc = detail::collect_parts_from_recv (
+              [&] (zlink_msg_t *part_out_, zlink_part_flag_t *has_more_out_, bool) {
+                  return zlink_recv_part (
+                    handle (), &source_rid, part_out_, has_more_out_,
+                    static_cast<zlink_recv_flags_t> (flags_));
+              },
+              tail);
+            if (tail_rc != 0)
+                throw recv_error_t (static_cast<recv_result_t> (tail_rc),
+                                    zlink_errno ());
+            parts.reserve (parts.size () + tail.size ());
+            for (size_t i = 0; i < tail.size (); ++i)
+                parts.push_back (std::move (tail[i]));
+        }
+
+        return std::optional<received_t> (
+          received_t (
+            source_rid && source_rid->size > 0
+              ? std::optional<routing_id_t> (
+                  zlink::detail::native_routing_id (*source_rid))
+              : std::nullopt,
+            std::nullopt,
+            std::nullopt,
+            std::move (parts)));
     }
 
     void on_send_ready (std::function<void()> handler_)
@@ -359,14 +410,62 @@ class dealer_socket_t : public message_socket_t
 
     std::optional<received_t> recv (recv_flags_t flags_ = recv_flags_t::none)
     {
-        received_t received;
-        const recv_result_t rc = static_cast<recv_result_t> (
-          base_socket_t::receive (received, flags_));
-        if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
+        zlink_msg_t native_part;
+        if (zlink_msg_init (&native_part) != 0)
+            throw last_error ();
+
+        const zlink_routing_id_t *source_rid = NULL;
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        const zlink_recv_result_t rc = zlink_recv_part (
+          handle (), &source_rid, &native_part, &has_more,
+          static_cast<zlink_recv_flags_t> (flags_));
+        if (rc == ZLINK_RECV_NO_DATA && flags_ == recv_flags_t::dontwait) {
+            (void) zlink_msg_close (&native_part);
             return std::nullopt;
-        if (rc != recv_result_t::ok)
-            throw recv_error_t (rc, zlink_errno ());
-        return std::optional<received_t> (std::move (received));
+        }
+        if (rc != ZLINK_RECV_OK) {
+            const int err = zlink_errno ();
+            (void) zlink_msg_close (&native_part);
+            throw recv_error_t (static_cast<recv_result_t> (rc), err);
+        }
+
+        std::vector<message_t> parts;
+        parts.reserve (1);
+        message_t part;
+        if (zlink_msg_move (detail::native_handle (part), &native_part) != 0) {
+            const int err = zlink_errno ();
+            (void) zlink_msg_close (&native_part);
+            throw recv_error_t (recv_result_t::internal_error, err);
+        }
+        (void) zlink_msg_close (&native_part);
+        parts.push_back (std::move (part));
+
+        if (has_more != ZLINK_PART_FINAL) {
+            std::vector<message_t> tail;
+            const int tail_rc = detail::collect_parts_from_recv (
+              [&] (zlink_msg_t *part_out_, zlink_part_flag_t *has_more_out_, bool) {
+                  return zlink_recv_part (
+                    handle (), &source_rid, part_out_, has_more_out_,
+                    static_cast<zlink_recv_flags_t> (flags_));
+              },
+              tail);
+            if (tail_rc != 0)
+                throw recv_error_t (static_cast<recv_result_t> (tail_rc),
+                                    zlink_errno ());
+            parts.reserve (parts.size () + tail.size ());
+            for (size_t i = 0; i < tail.size (); ++i)
+                parts.push_back (std::move (tail[i]));
+        }
+
+        return std::optional<received_t> (
+          received_t (
+            source_rid && source_rid->size > 0
+              ? std::optional<routing_id_t> (
+                  zlink::detail::native_routing_id (*source_rid))
+              : std::nullopt,
+            std::nullopt,
+            std::nullopt,
+            std::move (parts)));
     }
 
     void on_send_ready (std::function<void()> handler_)
@@ -541,12 +640,32 @@ class router_socket_t : public routed_message_socket_t
                send_flags_t flags_ = send_flags_t::none)
     {
         if (flags_ == send_flags_t::dontwait) {
+            if (!part_.valid ())
+                throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+
+            zlink_msg_t native_part;
+            detail::move_to_native (part_, &native_part);
+
+            const int rc = zlink_send_part_rid (
+              handle (), zlink::detail::routing_id_native (target_rid_),
+              &native_part, ZLINK_DONTWAIT, ZLINK_PART_FINAL);
+            if (rc == 0)
+                return true;
+
+            const int err = zlink_errno ();
+            part_.init ();
+            if (part_.valid ())
+                (void) zlink_msg_move (detail::native_handle (part_), &native_part);
+            (void) zlink_msg_close (&native_part);
+
             send_result_t result = send_result_t::sent;
-            if (base_socket_t::send_no_wait_result (result, target_rid_, part_) != 0)
-                detail::throw_submit_error_from_errno (zlink_errno ());
-            if (result == send_result_t::not_ready)
-                throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
-            return result == send_result_t::sent;
+            if (detail::classify_nonblocking_send_errno (err, result)) {
+                if (result == send_result_t::backpressured)
+                    return false;
+                if (result == send_result_t::not_ready)
+                    throw submit_error_t (submit_result_t::not_connected, err);
+            }
+            throw submit_error_t (detail::submit_result_from_errno (err), err);
         }
         const submit_result_t rc = static_cast<submit_result_t> (
           base_socket_t::send (target_rid_, part_,
@@ -929,12 +1048,29 @@ class stream_socket_t : public routed_message_socket_t
                send_flags_t flags_ = send_flags_t::none)
     {
         if (flags_ == send_flags_t::dontwait) {
+            if (!part_.valid ())
+                throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+
+            zlink_msg_t native_part;
+            detail::move_to_native (part_, &native_part);
+
+            const int rc = zlink_send_part_rid (
+              handle (), zlink::detail::routing_id_native (target_rid_),
+              &native_part, ZLINK_DONTWAIT, ZLINK_PART_FINAL);
+            if (rc == 0)
+                return true;
+
+            const int err = zlink_errno ();
+            part_.adopt (&native_part);
+
             send_result_t result = send_result_t::sent;
-            if (base_socket_t::send_no_wait_result (result, target_rid_, part_) != 0)
-                detail::throw_submit_error_from_errno (zlink_errno ());
-            if (result == send_result_t::not_ready)
-                throw submit_error_t (submit_result_t::not_connected, zlink_errno ());
-            return result == send_result_t::sent;
+            if (detail::classify_nonblocking_send_errno (err, result)) {
+                if (result == send_result_t::backpressured)
+                    return false;
+                if (result == send_result_t::not_ready)
+                    throw submit_error_t (submit_result_t::not_connected, err);
+            }
+            throw submit_error_t (detail::submit_result_from_errno (err), err);
         }
         const submit_result_t rc = static_cast<submit_result_t> (
           base_socket_t::send (target_rid_, part_,
@@ -975,10 +1111,12 @@ class stream_socket_t : public routed_message_socket_t
         return std::optional<received_t> (std::move (received));
     }
 
-    void on_packet (
-      std::function<void(const routing_id_t &, message_t, message_t)> handler_)
+    template<class Handler>
+    void on_packet (Handler &&handler_)
     {
-        _packet_handler = std::move (handler_);
+        _packet_handler.reset (
+          new packet_handler_model_t<typename std::decay<Handler>::type> (
+            std::forward<Handler> (handler_)));
         if (base_socket_t::on_packet (
               &stream_socket_t::packet_trampoline, this)
             != 0)
@@ -1097,19 +1235,51 @@ class stream_socket_t : public routed_message_socket_t
         stream_socket_t *self = static_cast<stream_socket_t *> (userdata_);
         if (!self || !self->_packet_handler)
             return;
-        routing_id_t source = zlink::detail::unchecked_empty_routing_id ();
-        if (source_rid_ && source_rid_->size > 0)
-            source = zlink::detail::native_routing_id (*source_rid_);
-        message_t header;
-        message_t body;
-        (void) zlink_msg_move (detail::native_handle(header), header_);
-        (void) zlink_msg_move (detail::native_handle(body), body_);
-        self->_packet_handler (
+        const routing_id_t source =
+          (source_rid_ && source_rid_->size > 0)
+            ? zlink::detail::borrowed_routing_id (*source_rid_)
+            : zlink::detail::unchecked_empty_routing_id ();
+        message_t header {message_t::no_init_t ()};
+        message_t body {message_t::no_init_t ()};
+        header.adopt (header_);
+        body.adopt (body_);
+        self->_packet_handler->call (
           source, std::move (header), std::move (body));
     }
 
-    std::function<void(const routing_id_t &, message_t, message_t)>
-      _packet_handler;
+    struct packet_handler_base_t
+    {
+        virtual ~packet_handler_base_t () {}
+        virtual void call (const routing_id_t &source_,
+                           message_t &&header_,
+                           message_t &&body_) = 0;
+    };
+
+    template<class Handler>
+    struct packet_handler_model_t : packet_handler_base_t
+    {
+        explicit packet_handler_model_t (Handler &&handler_)
+            : handler (std::move (handler_))
+        {
+        }
+
+        explicit packet_handler_model_t (const Handler &handler_)
+            : handler (handler_)
+        {
+        }
+
+        void call (const routing_id_t &source_,
+                   message_t &&header_,
+                   message_t &&body_) override
+        {
+            handler (
+              source_, std::move (header_), std::move (body_));
+        }
+
+        Handler handler;
+    };
+
+    std::unique_ptr<packet_handler_base_t> _packet_handler;
     using routed_message_socket_t::recv;
     using routed_message_socket_t::send;
     using base_socket_t::connect;

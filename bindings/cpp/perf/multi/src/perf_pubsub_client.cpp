@@ -58,7 +58,6 @@ class pubsub_client_bench_t
           _sockets (),
           _poller (),
           _poll_events (),
-          _recv_buffer (std::max<size_t> (msg_size, perf_metric::header_size ())),
           _phase_cfg (),
           _result (),
           _failure_stage ("init")
@@ -131,6 +130,9 @@ class pubsub_client_bench_t
 
             (void) sock.set_subscription (std::string (k_topic));
             perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
+            if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (
+                  sock, _msg_size))
+                return false;
             if (!perf::multi::setup_tls_client (sock, _transport))
                 return false;
             try {
@@ -140,10 +142,10 @@ class pubsub_client_bench_t
             }
 
             _sockets.push_back (&sock);
-            (void) _poller.add (
-              sock, zlink::poll_event_flag_t::pollin,
-              &sock);
+            sock.poller_add (_poller, zlink::poll_event_flag_t::pollin, &sock);
         }
+        if (!perf::multi::recalculate_auto_hwm (_ctx))
+            return false;
         return !_sockets.empty ();
     }
 
@@ -199,9 +201,9 @@ class pubsub_client_bench_t
                     continue;
 
                 for (;;) {
-                    zlink::topic_message_t subscribed;
+                    zlink::topic_message_t received;
                     const int recv_rc =
-                      sock->subscribe (subscribed, ZLINK_DONTWAIT);
+                      sock->subscribe (received, ZLINK_DONTWAIT);
                     if (recv_rc != 0) {
                         const int err = errno;
                         if (err == EAGAIN)
@@ -211,20 +213,12 @@ class pubsub_client_bench_t
                         return false;
                     }
 
-                    if (subscribed.topic () != k_topic
-                        || subscribed.parts ().empty ()) {
+                    if (received.topic () != k_topic || received.parts ().empty ()) {
                         continue;
                     }
 
-                    const size_t recv_size = subscribed.parts ()[0].size ();
-                    if (recv_size > _recv_buffer.size ()) {
-                        continue;
-                    }
-                    if (recv_size > 0) {
-                        std::memcpy (_recv_buffer.data (),
-                                     subscribed.parts ()[0].data (),
-                                     recv_size);
-                    }
+                    const zlink::message_t &part = received.parts ()[0];
+                    const size_t recv_size = part.size ();
 
                     if (!active_phase) {
                         ++count;
@@ -233,7 +227,7 @@ class pubsub_client_bench_t
 
                     perf_metric::header_t header;
                     if (!perf_metric::decode_payload_header (
-                          _recv_buffer.data (),
+                          part.data (),
                           recv_size,
                           &header)) {
                         continue;
@@ -297,7 +291,6 @@ class pubsub_client_bench_t
     std::vector<::perf::socket_t *> _sockets;
     zlink::poller_t _poller;
     std::vector<zlink::poll_event_t> _poll_events;
-    std::vector<char> _recv_buffer;
 
     phase_config_t _phase_cfg;
     bench_result_t _result;

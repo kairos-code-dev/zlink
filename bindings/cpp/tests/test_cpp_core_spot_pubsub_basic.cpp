@@ -57,9 +57,9 @@ static void test_spot_peer_pubsub ()
             continue;
         }
 
-        const std::string service_name_a = "spot-peer";
+        const std::string channel_name_a = "spot-peer";
         zlink::service::discovery_t discovery_a (
-          ctx, zlink::auto_connect_type::spot_mesh, service_name_a);
+          ctx, zlink::auto_connect_type::spot_mesh, channel_name_a);
         assert (discovery_a.valid ());
         node_a.attach_discovery (discovery_a);
 
@@ -75,14 +75,12 @@ static void test_spot_peer_pubsub ()
 
         std::vector<zlink::message_t> parts;
         parts.push_back (make_msg ("pong", 4));
-        spot_a.publish (service_name_a, "peer:topic")
+        spot_a.publish ("peer:topic")
           .message (parts[0])
           .submit ();
 
         zlink::topic_message_t received;
         assert (recv_spot_with_timeout (spot_b, received, 4000));
-        assert (received.service_name ());
-        assert (*received.service_name () == service_name_a);
         assert (received.topic () == "peer:topic");
         assert (received.parts ().size () == 1);
         assert (received.parts ()[0].size () == 4);
@@ -100,9 +98,9 @@ static void test_spot_multipart_peer_pubsub ()
     node_a.bind (endpoint.c_str ());
     node_b.connect_peer (endpoint.c_str ());
 
-    const std::string service_name_a = "spot-multipart";
+    const std::string channel_name_a = "spot-multipart";
     zlink::service::discovery_t discovery_a (
-      ctx, zlink::auto_connect_type::spot_mesh, service_name_a);
+      ctx, zlink::auto_connect_type::spot_mesh, channel_name_a);
     assert (discovery_a.valid ());
     node_a.attach_discovery (discovery_a);
 
@@ -117,15 +115,13 @@ static void test_spot_multipart_peer_pubsub ()
     std::vector<zlink::message_t> parts;
     parts.push_back (make_msg ("one", 3));
     parts.push_back (make_msg ("two", 3));
-    spot_a.publish (service_name_a, "mp:topic")
+    spot_a.publish ("mp:topic")
       .message (parts[0])
       .message (parts[1])
       .submit ();
 
     zlink::topic_message_t received;
     assert (recv_spot_with_timeout (spot_b, received, 2000));
-    assert (received.service_name ());
-    assert (*received.service_name () == service_name_a);
     assert (received.topic () == "mp:topic");
     assert (received.parts ().size () == 2);
     assert (std::memcmp (received.parts ()[0].data (), "one", 3) == 0);

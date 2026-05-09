@@ -2,6 +2,7 @@
 
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using Systems.Zlink.Sockets.Internal;
 
 namespace Systems.Zlink;
@@ -19,15 +20,20 @@ public abstract class MessageSocketBase : ConnectableSocketBase
     {
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Send(Message message, SendFlags flags = SendFlags.None)
     {
         if ((flags & SendFlags.DontWait) != 0)
-            return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(message));
+        {
+            return SocketKernel.TrySendOrThrow(
+                Kernel.SendMessageResultUnchecked(message, (int)flags));
+        }
 
-        Kernel.Send(message, flags);
+        Kernel.SendMessageUnchecked(message, flags);
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         if ((flags & SendFlags.DontWait) != 0)
@@ -52,16 +58,17 @@ public abstract class MessageSocketBase : ConnectableSocketBase
         Kernel.RecvHandler(handler);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Received? Recv(RecvFlags flags = RecvFlags.None)
     {
         return (flags & RecvFlags.DontWait) != 0
-            ? Kernel.RecvNoWait()
-            : Kernel.Recv(flags);
+            ? Kernel.RecvMessageNoWaitUnchecked()
+            : Kernel.RecvMessageUnchecked(flags);
     }
 
     internal Received? RecvNoWait()
     {
-        return Kernel.RecvNoWait();
+        return Kernel.RecvMessageNoWaitUnchecked();
     }
 
     public void OnSendReady(Action handler)

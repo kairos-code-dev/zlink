@@ -3,9 +3,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../..');
-const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, summarizeMetrics } = require('../common/perf_metrics');
+const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { applyContextPolicy, applySocketPolicy, drainRecvSocket, resolveMultiLatencySampleCap } = require('./perf_multi_runtime');
+const { applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, drainRecvSocket, resolveMultiLatencySampleCap } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -20,8 +20,10 @@ async function main() {
             applySocketPolicy(sub);
             sub.setSubscription('perf.topic');
             sub.connect(options.endpoint);
+            applyAutoHwmMsgUnit(sub, options.msgSize);
             subs.push(sub);
         }
+        ctx.recalculateAutoHwm();
         const recvTasks = subs.map((sub) => drainRecvSocket(sub, (received) => {
             if (!collector) {
                 return;
@@ -41,15 +43,22 @@ async function main() {
                     activeStopNs,
                     sampleCap: resolveMultiLatencySampleCap()
                 });
-                while (currentEpochNs() < activeStopNs) {
-                    await sleepImmediate();
-                }
+                await new Promise((resolve) => {
+                    const remainMs = Number((activeStopNs - currentEpochNs()) / 1000000n);
+                    if (remainMs > 0) {
+                        setTimeout(resolve, remainMs);
+                    }
+                    else {
+                        resolve();
+                    }
+                });
                 stop = true;
                 for (const sub of subs) {
                     try {
                         sub.close();
                     }
-                    catch {
+                    catch (err) {
+                        console.error(`[perf] close failed: ${err}`);
                     }
                 }
                 break;

@@ -58,8 +58,17 @@ int perf_idle_wait_ms (long timeout_ms_)
 #endif
 }
 
-bool wait_for_spot_send_progress (bool send_enabled_)
+bool wait_for_spot_send_progress (zlink::poller_t *poller_, bool send_enabled_)
 {
+    if (send_enabled_ && poller_) {
+        try {
+            (void) poller_->wait (std::chrono::milliseconds (2));
+            return true;
+        }
+        catch (const zlink::zlink_error_t &) {
+            return false;
+        }
+    }
     return perf_idle_wait_ms (send_enabled_ ? 2 : 1) >= 0;
 }
 
@@ -69,7 +78,7 @@ bool wait_for_spot_control_progress ()
 }
 
 bool recv_raw_control_payload (zlink::service::spot_t &spot_,
-                               const char *service_name_,
+                               const char *channel_name_,
                                std::string *payload_out_,
                                bool *received_out_)
 {
@@ -86,7 +95,7 @@ bool recv_raw_control_payload (zlink::service::spot_t &spot_,
 
         if (received_out_)
             *received_out_ = true;
-        (void) service_name_;
+        (void) channel_name_;
         if (payload_out_ && received->topic () == k_control_topic
             && !received->parts ().empty ()) {
             const zlink::message_t &part = received->parts ()[0];
@@ -95,8 +104,8 @@ bool recv_raw_control_payload (zlink::service::spot_t &spot_,
         }
         return true;
     }
-    catch (const zlink::recv_error_t &) {
-        const int err = zlink_errno () != 0 ? zlink_errno () : errno;
+    catch (const zlink::recv_error_t &ex) {
+        const int err = ex.internal_errno () != 0 ? ex.internal_errno () : errno;
         if (err == EAGAIN || err == EINTR || err == EWOULDBLOCK
             || err == ETIMEDOUT) {
             return true;
@@ -107,11 +116,11 @@ bool recv_raw_control_payload (zlink::service::spot_t &spot_,
 }
 
 bool publish_raw_control_payload (zlink::service::spot_t &spot_,
-                                  const char *service_name_,
+                                  const char *channel_name_,
                                   const std::string &payload_,
                                   int timeout_ms_)
 {
-    (void) service_name_;
+    (void) channel_name_;
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (
                             std::max (1, timeout_ms_));
@@ -123,12 +132,13 @@ bool publish_raw_control_payload (zlink::service::spot_t &spot_,
             std::memcpy (part.data (), payload_.data (), payload_.size ());
 
         try {
-            if (spot_.publish (service_name_, k_control_topic)
+            if (spot_.publish (k_control_topic)
                   .message (part)
                   .submit ())
                 return true;
         }
-        catch (const zlink::submit_error_t &) {
+        catch (const zlink::submit_error_t &err) {
+            errno = err.internal_errno ();
         }
         const int saved_errno = errno;
         if (!part.valid ())
@@ -219,34 +229,34 @@ bool parse_ready_count_command (const std::string &line_,
 }
 
 bool publish_control_message (zlink::service::spot_t &spot_,
-                              const std::string &service_name_,
+                              const std::string &channel_name_,
                               const std::string &payload_,
                               int timeout_ms_)
 {
-    (void) service_name_;
+    (void) channel_name_;
     return publish_raw_control_payload (
-      spot_, service_name_.c_str (), payload_, timeout_ms_);
+      spot_, channel_name_.c_str (), payload_, timeout_ms_);
 }
 
 bool publish_control_start (zlink::service::spot_t &spot_,
-                            const std::string &service_name_,
+                            const std::string &channel_name_,
                             size_t msg_size_,
                             int timeout_ms_)
 {
     return publish_control_message (
       spot_,
-      service_name_,
+      channel_name_,
       perf::multi::make_start_command (msg_size_),
       timeout_ms_);
 }
 
 bool wait_for_ready_counts (zlink::service::spot_t &spot_,
-                            const std::string &service_name_,
+                            const std::string &channel_name_,
                             size_t msg_size_,
                             size_t expected_ready_count_,
                             int timeout_ms_)
 {
-    (void) service_name_;
+    (void) channel_name_;
     if (msg_size_ == 0 || expected_ready_count_ == 0) {
         errno = EINVAL;
         return false;
@@ -260,7 +270,7 @@ bool wait_for_ready_counts (zlink::service::spot_t &spot_,
         bool received = false;
         std::string payload;
         if (!recv_raw_control_payload (
-              spot_, service_name_.c_str (), &payload, &received))
+              spot_, channel_name_.c_str (), &payload, &received))
             return false;
         if (received && !payload.empty ()) {
             debug_log ("control recv payload=" + payload);
@@ -282,7 +292,8 @@ bool wait_for_ready_counts (zlink::service::spot_t &spot_,
 }
 
 bool run_phase (zlink::service::spot_t &spot_,
-                const std::string &service_name_,
+                zlink::poller_t *send_poller_,
+                const std::string &channel_name_,
                 size_t msg_size_,
                 uint64_t &seq_,
                 perf_metric::phase_t phase_,
@@ -299,9 +310,12 @@ bool run_phase (zlink::service::spot_t &spot_,
         errno = EINVAL;
         return false;
     }
+    unsigned long long publish_ok_count = 0;
+    unsigned long long publish_blocked_count = 0;
+    unsigned long long publish_wait_count = 0;
 
     while (std::chrono::steady_clock::now () < deadline) {
-        (void) service_name_;
+        (void) channel_name_;
         const auto publish_once =
           [&](zlink::send_flags_t flags_, int *saved_errno_out_) -> int {
               if (!saved_errno_out_) {
@@ -329,7 +343,7 @@ bool run_phase (zlink::service::spot_t &spot_,
               }
 
               try {
-                  const bool ok = spot_.publish (service_name_, k_topic)
+                  const bool ok = spot_.publish (k_topic)
                     .message (part)
                     .flags (static_cast<int> (flags_))
                     .submit ();
@@ -343,11 +357,10 @@ bool run_phase (zlink::service::spot_t &spot_,
           };
 
         int saved_errno = 0;
-        int rc = publish_once (ZLINK_DONTWAIT, &saved_errno);
-        if (rc != 0 && saved_errno == EAGAIN)
-            rc = publish_once (0, &saved_errno);
+        const int rc = publish_once (ZLINK_DONTWAIT, &saved_errno);
 
         if (rc == 0) {
+            ++publish_ok_count;
             ++seq_;
             continue;
         }
@@ -357,8 +370,18 @@ bool run_phase (zlink::service::spot_t &spot_,
             errno = saved_errno != 0 ? saved_errno : EFAULT;
             return false;
         }
-        if (!wait_for_spot_send_progress (true))
+        ++publish_blocked_count;
+        ++publish_wait_count;
+        if (!wait_for_spot_send_progress (send_poller_, true))
             return false;
+    }
+
+    if (std::getenv ("PERF_DEBUG_TRANSITIONS") != NULL) {
+        std::cerr << "[multi-spot-server] phase done size=" << msg_size_
+                  << " phase=" << static_cast<int> (phase_)
+                  << " ok=" << publish_ok_count
+                  << " blocked=" << publish_blocked_count
+                  << " wait=" << publish_wait_count << std::endl;
     }
 
     return true;
@@ -384,6 +407,10 @@ bool perf_spot_server (const std::string &lib_name,
 
     const perf::multi::multi_bench_settings_t settings =
       perf::multi::resolve_multi_bench_settings ();
+    const std::vector<size_t> msg_sizes =
+      perf::multi::resolve_case_msg_sizes (msg_size_);
+    const size_t max_msg_size =
+      perf::multi::max_case_msg_size (msg_sizes, msg_size_);
 
     perf::multi::ctx_guard_t ctx;
     zlink::service::spot_node_t node (ctx.ctx ());
@@ -394,11 +421,15 @@ bool perf_spot_server (const std::string &lib_name,
     if (!control_node.valid ())
         return false;
 
-    const std::string spot_service_name = "spot-bench";
-    const std::string control_service_name = "spot-control";
+    const std::string spot_channel_name = "spot-bench";
+    const std::string control_channel_name = "spot-control";
     if (!perf::multi::configure_spot_server_tls (node, transport_))
         return false;
     if (!perf::multi::configure_spot_control_tls (control_node, transport_))
+        return false;
+    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (node, max_msg_size)
+        || !perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
+          control_node, max_msg_size))
         return false;
 
     const int control_hwm =
@@ -412,9 +443,25 @@ bool perf_spot_server (const std::string &lib_name,
     zlink::service::spot_t spot = node.create_spot ();
     if (!spot.valid ())
         return false;
+    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (spot, max_msg_size))
+        return false;
+    zlink::poller_t send_poller;
+    try {
+        send_poller.add (spot, zlink::poll_event_flag_t::pollout);
+    }
+    catch (const zlink::zlink_error_t &) {
+        return false;
+    }
     zlink::service::spot_t control_pub = control_node.create_spot ();
     zlink::service::spot_t control_sub = control_node.create_spot ();
     if (!control_pub.valid () || !control_sub.valid ())
+        return false;
+    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
+          control_pub, max_msg_size)
+        || !perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
+          control_sub, max_msg_size))
+        return false;
+    if (!perf::multi::recalculate_auto_hwm (ctx))
         return false;
 
     const int base_port = settings.server_bind_port > 0
@@ -434,8 +481,6 @@ bool perf_spot_server (const std::string &lib_name,
     control_pub.request_timeout (std::chrono::milliseconds (control_timeout_ms));
     control_sub.request_timeout (std::chrono::milliseconds (control_timeout_ms));
     control_sub.set_subscription (k_control_topic);
-
-    const std::vector<size_t> msg_sizes (1, msg_size_);
 
     perf::multi::print_ready (endpoint);
     std::cout << "CONTROL_READY," << control_endpoint << std::endl;
@@ -467,7 +512,7 @@ bool perf_spot_server (const std::string &lib_name,
                         + std::to_string(settings.clients));
               return wait_for_ready_counts(
                 control_sub,
-                control_service_name,
+                control_channel_name,
                 current_size,
                 std::max<size_t>(1, settings.clients),
                 barrier_timeout_ms);
@@ -476,7 +521,7 @@ bool perf_spot_server (const std::string &lib_name,
               const int barrier_timeout_ms =
                 resolve_spot_barrier_timeout_ms(settings, transport_);
               return publish_control_start(control_pub,
-                                           control_service_name,
+                                           control_channel_name,
                                            current_size,
                                            barrier_timeout_ms);
           },
@@ -486,7 +531,8 @@ bool perf_spot_server (const std::string &lib_name,
               const bench_multi_cpu_sample_t resource_probe_start =
                 perf::multi::start_resource_probe();
               const bool ok = run_phase(spot,
-                                        spot_service_name,
+                                        &send_poller,
+                                        spot_channel_name,
                                         current_size,
                                         seq,
                                         phase,

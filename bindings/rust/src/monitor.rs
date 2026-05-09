@@ -266,14 +266,20 @@ impl SocketMonitor {
     /// Blocking receive of a monitor event.
     pub fn recv(&self) -> Result<MonitorEvent, RecvError> {
         self.recv_with_flags(crate::flags::RecvFlags::NONE)
-            .and_then(|opt| opt.ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN)))
+            .and_then(|opt| {
+                opt.ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))
+            })
     }
 
     /// Non-blocking receive of a monitor event. Returns `Ok(None)` when no event is available.
-    pub fn recv_with_flags(&self, flags: crate::flags::RecvFlags) -> Result<Option<MonitorEvent>, RecvError> {
+    pub fn recv_with_flags(
+        &self,
+        flags: crate::flags::RecvFlags,
+    ) -> Result<Option<MonitorEvent>, RecvError> {
         use crate::error::RecvResult;
         let mut raw = MaybeUninit::<ffi::zlink_socket_monitor_event_t>::uninit();
-        let rc = unsafe { ffi::zlink_socket_monitor_recv(self.handle, raw.as_mut_ptr(), flags.bits()) };
+        let rc =
+            unsafe { ffi::zlink_socket_monitor_recv(self.handle, raw.as_mut_ptr(), flags.bits()) };
         if rc == RecvResult::NoData as i32 {
             return Ok(None);
         }

@@ -315,7 +315,8 @@ impl Timer {
     /// Receive a timer fire count. Returns `Ok(None)` when no data is available (EAGAIN).
     pub fn recv(&self) -> Result<Option<u64>, RecvError> {
         let mut count = 0u64;
-        let rc = unsafe { ffi::zlink_timer_recv(self.handle, &mut count, ffi::ZLINK_DONTWAIT as i32) };
+        let rc =
+            unsafe { ffi::zlink_timer_recv(self.handle, &mut count, ffi::ZLINK_DONTWAIT as i32) };
         if rc != 0 {
             let errno = crate::error::last_errno();
             if errno == libc::EAGAIN {

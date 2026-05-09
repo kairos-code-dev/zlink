@@ -81,11 +81,20 @@ func TestSocketSpecificOptions(t *testing.T) {
 	if got, err := router.RoutingID(); err != nil || !got.Equal(rid) {
 		t.Fatalf("RoutingID() = (%v, %v), want (%v, nil)", got, err, rid)
 	}
+	if err := router.SetRequestTimeout(123 * time.Millisecond); err != nil {
+		t.Fatalf("SetRequestTimeout() error = %v", err)
+	}
+	if got, err := router.RequestTimeout(); err != nil || got != 123*time.Millisecond {
+		t.Fatalf("RequestTimeout() = (%v, %v), want (123ms, nil)", got, err)
+	}
 
 	dealer, _ := ctx.DealerSocket()
 	defer dealer.Close()
 	if err := dealer.SetProbe(true); err != nil {
 		t.Fatalf("Dealer.SetProbe() error = %v", err)
+	}
+	if err := dealer.SetRequestTimeout(123 * time.Millisecond); err != nil {
+		t.Fatalf("Dealer.SetRequestTimeout() error = %v", err)
 	}
 
 	xpub, _ := ctx.XPubSocket()
@@ -101,6 +110,18 @@ func TestSocketSpecificOptions(t *testing.T) {
 	}
 	if err := xpub.SetNoDrop(true); err != nil {
 		t.Fatalf("XPub.SetNoDrop() error = %v", err)
+	}
+	pubOpts := xpub.PubOptions()
+	if err := pubOpts.SetManualLastValue(true); err != nil {
+		t.Fatalf("PubOptions.SetManualLastValue() error = %v", err)
+	}
+	welcome, err := zlink.NewMessage([]byte("welcome"))
+	if err != nil {
+		t.Fatalf("NewMessage() error = %v", err)
+	}
+	defer welcome.Close()
+	if err := pubOpts.SetWelcomeMessage(welcome); err != nil {
+		t.Fatalf("PubOptions.SetWelcomeMessage() error = %v", err)
 	}
 
 	stream, _ := ctx.StreamSocket()

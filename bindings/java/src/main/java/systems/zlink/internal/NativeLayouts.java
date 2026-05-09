@@ -143,7 +143,7 @@ public final class NativeLayouts {
             ValueLayout.JAVA_INT.withName("error_code"),
             ValueLayout.JAVA_INT.withName("value"),
             ValueLayout.JAVA_INT.withName("detail_flags"),
-            MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
+            MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("channel_name"),
             MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("endpoint"),
             ROUTING_ID_LAYOUT.withName("routing_id"),
             MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("subject"),
@@ -166,9 +166,9 @@ public final class NativeLayouts {
     public static final long SERVICE_EVENT_DETAIL_FLAGS_OFFSET =
             SERVICE_EVENT_LAYOUT.byteOffset(
                     PathElement.groupElement("detail_flags"));
-    public static final long SERVICE_EVENT_SERVICE_NAME_OFFSET =
+    public static final long SERVICE_EVENT_CHANNEL_NAME_OFFSET =
             SERVICE_EVENT_LAYOUT.byteOffset(
-                    PathElement.groupElement("service_name"));
+                    PathElement.groupElement("channel_name"));
     public static final long SERVICE_EVENT_ENDPOINT_OFFSET =
             SERVICE_EVENT_LAYOUT.byteOffset(
                     PathElement.groupElement("endpoint"));
@@ -296,7 +296,7 @@ public final class NativeLayouts {
 
     public static final MemoryLayout SPOT_NODE_STATUS_LAYOUT =
             MemoryLayout.structLayout(
-                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
+                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("channel_name"),
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("local_endpoint"),
                     ROUTING_ID_LAYOUT.withName("node_routing_id"),
                     ValueLayout.JAVA_INT.withName("state"),
@@ -313,7 +313,7 @@ public final class NativeLayouts {
 
     public static final MemoryLayout SPOT_NODE_PEER_ENTRY_LAYOUT =
             MemoryLayout.structLayout(
-                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
+                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("channel_name"),
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("local_endpoint"),
                     MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("peer_endpoint"),
                     ValueLayout.JAVA_INT.withName("source"),
@@ -325,7 +325,7 @@ public final class NativeLayouts {
 
     public static final MemoryLayout SPOT_SERVICE_ATTACHMENT_STATS_LAYOUT =
             MemoryLayout.structLayout(
-                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
+                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("channel_name"),
                     ValueLayout.JAVA_INT.withName("router_count"),
                     ValueLayout.JAVA_INT.withName("pub_count"),
                     ValueLayout.JAVA_INT.withName("sub_count"),
@@ -335,7 +335,7 @@ public final class NativeLayouts {
 
     public static final MemoryLayout SPOT_SERVICE_MONITOR_EVENT_LAYOUT =
             MemoryLayout.structLayout(
-                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("service_name"),
+                    MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("channel_name"),
                     ValueLayout.JAVA_INT.withName("role"),
                     MONITOR_EVENT_LAYOUT.withName("event"));
 

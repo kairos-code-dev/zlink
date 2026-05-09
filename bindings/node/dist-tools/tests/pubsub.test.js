@@ -8,7 +8,7 @@ const { once } = require('node:events');
 const path = require('node:path');
 const zlink = require('../..');
 const SPOT_PEER_SOURCE_MANUAL = 1;
-const SPOT_SERVICE_NAME = 'pubsub-spot-service';
+const SPOT_CHANNEL_NAME = 'pubsub-spot-service';
 async function reservePort() {
     const server = net.createServer();
     server.listen(0, '127.0.0.1');
@@ -52,7 +52,7 @@ test.skip('remote spot peer delivery works over tcp direct peer connect', async 
         while (Date.now() < deadline) {
             if (serverNode.statusSnapshot().connectedPeerCount > 0
                 && clientNode.statusSnapshot().connectedPeerCount > 0) {
-                serverSpot.publish(SPOT_SERVICE_NAME, topic).message('payload').submit();
+                serverSpot.publish(topic).message('payload').submit();
             }
             let received = null;
             try {
@@ -65,7 +65,6 @@ test.skip('remote spot peer delivery works over tcp direct peer connect', async 
             }
             if (received) {
                 assert.equal(received.topic, topic);
-                assert.equal(received.serviceName, SPOT_SERVICE_NAME);
                 assert.deepEqual(received.parts.map((part) => part.data().toString()), ['payload']);
                 return;
             }
@@ -262,7 +261,6 @@ test('sub sockets receive TopicMessage domain objects and non-blocking receive r
     pub.publish('topic', 'payload');
     const received = sub.subscribe();
     assert.equal(received.topic, 'topic');
-    assert.equal(received.serviceName, null);
     assert.ok(received.routingId === null || received.routingId instanceof zlink.RoutingId);
     assert.deepEqual(received.parts.map((part) => part.data().toString()), ['payload']);
     sub.close();

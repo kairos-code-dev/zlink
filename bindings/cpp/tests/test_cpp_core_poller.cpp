@@ -40,15 +40,17 @@ void test_poller_modify_switches_event_mask ()
 
     poller.modify (receiver, zlink::poll_event_flag_t::pollin);
 
-    event = poller.wait (std::chrono::milliseconds (1000));
-    assert (event.has_value ());
+    std::vector<zlink::poll_event_t> events;
+    events.reserve (1);
+    poller.wait_all (events, 0, std::chrono::milliseconds (1000));
+    assert (events.size () == 1);
     zlink::pair_socket_t **second_tag =
-      std::any_cast<zlink::pair_socket_t *> (&event->tag);
+      std::any_cast<zlink::pair_socket_t *> (&events[0].tag);
     assert (second_tag && *second_tag == &receiver);
-    assert ((static_cast<short> (event->revents)
+    assert ((static_cast<short> (events[0].revents)
              & static_cast<short> (zlink::poll_event_flag_t::pollin))
             != 0);
-    assert ((static_cast<short> (event->revents)
+    assert ((static_cast<short> (events[0].revents)
              & static_cast<short> (zlink::poll_event_flag_t::pollout))
             == 0);
 

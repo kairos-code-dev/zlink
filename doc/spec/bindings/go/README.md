@@ -67,10 +67,9 @@ stay focused on signatures.
   `AttachPubIngress(...)`.
 - `Spot` must expose channel-aware data-plane operation builders:
   `SendChannel(...)`, `SendToSpot(...)`, `RequestChannel(...)`, and
-  `Publish(serviceName, topic)`.
-- `Spot.Subscribe(...)` returns a service-aware `TopicMessage`.
-  `TopicMessage` therefore needs `ServiceName *string` or equivalent optional
-  field, populated for SPOT subscribe results and empty for raw `SUB` / `XSUB`.
+  `Publish(topic)`.
+- `Spot.Subscribe(...)` returns a `TopicMessage`.
+  `TopicMessage` exposes topic, parts, and optional routing id.
 - `Spot` must not expose `OnSubscribe(...)`. Use `OnDispatchEvent(...)` plus
   `Subscribe(...)` / routed recv / timer recv.
 - `SpotDispatchEventSubscribeReadable` and
@@ -256,11 +255,63 @@ const (
 )
 
 type CommonSocketOptions struct { /* typed facade over common socket options */ }
+type PubSocketOptions struct { /* typed facade over publisher options */ }
 
+func (o *PubSocketOptions) SetNoDrop(value bool) error
+func (o *PubSocketOptions) NoDrop() (bool, error)
+func (o *PubSocketOptions) SetVerbose(value bool) error
+func (o *PubSocketOptions) Verbose() (bool, error)
+func (o *PubSocketOptions) SetVerboser(value bool) error
+func (o *PubSocketOptions) Verboser() (bool, error)
+func (o *PubSocketOptions) SetManual(value bool) error
+func (o *PubSocketOptions) Manual() (bool, error)
+func (o *PubSocketOptions) TopicsCount() (int, error)
+func (o *PubSocketOptions) SetManualLastValue(value bool) error
+func (o *PubSocketOptions) ManualLastValue() (bool, error)
+func (o *PubSocketOptions) SetWelcomeMessage(message *Message) error
+func (o *PubSocketOptions) WelcomeMessage() (*Message, error)
+func (o *PubSocketOptions) ApproveSubscribe(routingID RoutingID) error
+func (o *PubSocketOptions) RejectSubscribe(routingID RoutingID) error
+
+func (o *CommonSocketOptions) SetLinger(value time.Duration) error
+func (o *CommonSocketOptions) Linger() (time.Duration, error)
+func (o *CommonSocketOptions) SetSendHWM(value int) error
+func (o *CommonSocketOptions) SendHWM() (int, error)
+func (o *CommonSocketOptions) SetRecvHWM(value int) error
+func (o *CommonSocketOptions) RecvHWM() (int, error)
+func (o *CommonSocketOptions) SetSendTimeout(value time.Duration) error
+func (o *CommonSocketOptions) SendTimeout() (time.Duration, error)
+func (o *CommonSocketOptions) SetRecvTimeout(value time.Duration) error
+func (o *CommonSocketOptions) RecvTimeout() (time.Duration, error)
+func (o *CommonSocketOptions) SetImmediate(value bool) error
+func (o *CommonSocketOptions) Immediate() (bool, error)
 func (o *CommonSocketOptions) SetRIDDuplicatePolicy(value RIDDuplicatePolicy) error
 func (o *CommonSocketOptions) RIDDuplicatePolicy() (RIDDuplicatePolicy, error)
 func (o *CommonSocketOptions) SetAutoHwmMsgUnitBytes(value int) error
 func (o *CommonSocketOptions) AutoHwmMsgUnitBytes() (int, error)
+func (o *CommonSocketOptions) SetConnectTimeout(value time.Duration) error
+func (o *CommonSocketOptions) ConnectTimeout() (time.Duration, error)
+func (o *CommonSocketOptions) SetIPv6(value bool) error
+func (o *CommonSocketOptions) IPv6() (bool, error)
+func (o *CommonSocketOptions) SetTCPNoDelay(value bool) error
+func (o *CommonSocketOptions) TCPNoDelay() (bool, error)
+func (o *CommonSocketOptions) SetTCPKeepalive(value bool) error
+func (o *CommonSocketOptions) TCPKeepalive() (bool, error)
+func (o *CommonSocketOptions) SetHeartbeatInterval(value time.Duration) error
+func (o *CommonSocketOptions) HeartbeatInterval() (time.Duration, error)
+func (o *CommonSocketOptions) SetHeartbeatTTL(value time.Duration) error
+func (o *CommonSocketOptions) HeartbeatTTL() (time.Duration, error)
+func (o *CommonSocketOptions) SetHeartbeatTimeout(value time.Duration) error
+func (o *CommonSocketOptions) HeartbeatTimeout() (time.Duration, error)
+func (o *CommonSocketOptions) SetMaxMsgSize(value int64) error
+func (o *CommonSocketOptions) MaxMsgSize() (int64, error)
+func (o *CommonSocketOptions) SetBacklog(value int) error
+func (o *CommonSocketOptions) Backlog() (int, error)
+func (o *CommonSocketOptions) SetReconnectInterval(value time.Duration) error
+func (o *CommonSocketOptions) ReconnectInterval() (time.Duration, error)
+func (o *CommonSocketOptions) SetReconnectIntervalMax(value time.Duration) error
+func (o *CommonSocketOptions) ReconnectIntervalMax() (time.Duration, error)
+func (o *CommonSocketOptions) LastEndpoint() (string, error)
 
 func (s *PairSocket) CommonOptions() *CommonSocketOptions
 func (s *PubSocket) CommonOptions() *CommonSocketOptions
@@ -336,6 +387,13 @@ func (s *PubSocket) SetVerboser(value bool) error
 func (s *PubSocket) Verboser() (bool, error)
 func (s *PubSocket) SetManual(value bool) error
 func (s *PubSocket) Manual() (bool, error)
+func (s *PubSocket) SetManualLastValue(value bool) error
+func (s *PubSocket) ManualLastValue() (bool, error)
+func (s *PubSocket) SetWelcomeMessage(message *Message) error
+func (s *PubSocket) WelcomeMessage() (*Message, error)
+func (s *PubSocket) ApproveSubscribe(routingID RoutingID) error
+func (s *PubSocket) RejectSubscribe(routingID RoutingID) error
+func (s *PubSocket) PubOptions() *PubSocketOptions
 // AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
 func (s *PubSocket) AttachDiscovery(discovery *Discovery) error
 // Close closes the socket. Returns *CloseError on failure.
@@ -386,6 +444,7 @@ func (s *DealerSocket) DisconnectRID(rid RoutingID) error
 func (s *DealerSocket) SetRoutingID(id RoutingID) error
 func (s *DealerSocket) RoutingID() (RoutingID, error)
 func (s *DealerSocket) SetProbe(value bool) error
+func (s *DealerSocket) SetRequestTimeout(value time.Duration) error
 func (s *DealerSocket) SetWeight(value int) error
 func (s *DealerSocket) Weight() (int, error)
 // ChannelName metadata is a fixed logical tag used by attached channel dealers.
@@ -436,6 +495,8 @@ func (s *RouterSocket) SetMandatory(value bool) error
 func (s *RouterSocket) SetHandover(value bool) error
 func (s *RouterSocket) SetProbe(value bool) error
 func (s *RouterSocket) SetConnectRoutingID(id RoutingID) error
+func (s *RouterSocket) SetRequestTimeout(value time.Duration) error
+func (s *RouterSocket) RequestTimeout() (time.Duration, error)
 func (s *RouterSocket) SetWeight(value int) error
 func (s *RouterSocket) Weight() (int, error)
 // SendTo submits parts to a specific peer. Returns (false, nil) only for temporary backpressure.
@@ -516,6 +577,13 @@ func (s *XPubSocket) SetVerboser(value bool) error
 func (s *XPubSocket) Verboser() (bool, error)
 func (s *XPubSocket) SetManual(value bool) error
 func (s *XPubSocket) Manual() (bool, error)
+func (s *XPubSocket) SetManualLastValue(value bool) error
+func (s *XPubSocket) ManualLastValue() (bool, error)
+func (s *XPubSocket) SetWelcomeMessage(message *Message) error
+func (s *XPubSocket) WelcomeMessage() (*Message, error)
+func (s *XPubSocket) ApproveSubscribe(routingID RoutingID) error
+func (s *XPubSocket) RejectSubscribe(routingID RoutingID) error
+func (s *XPubSocket) PubOptions() *PubSocketOptions
 // Close closes the socket. Returns *CloseError on failure.
 func (s *XPubSocket) Close() error
 ```
@@ -706,10 +774,6 @@ Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
 // not carry a source id (check with HasRoutingID).
 func (t *TopicMessage) RoutingID() RoutingID
 func (t *TopicMessage) HasRoutingID() bool
-// ServiceName returns the service name for Spot subscribe results.
-// Empty when the message comes from raw SUB / XSUB (check with HasServiceName).
-func (t *TopicMessage) ServiceName() string
-func (t *TopicMessage) HasServiceName() bool
 // Topic is the matched topic (UTF-8).
 func (t *TopicMessage) Topic() string
 func (t *TopicMessage) Parts() []*Message
@@ -733,10 +797,6 @@ result. Value struct (no lifecycle).
 // does not carry a source id (check with HasRoutingID).
 func (s SubscriptionEvent) RoutingID() RoutingID
 func (s SubscriptionEvent) HasRoutingID() bool
-// ServiceName returns the service name for Spot subscription events.
-// Empty when the event comes from XPub (check with HasServiceName).
-func (s SubscriptionEvent) ServiceName() string
-func (s SubscriptionEvent) HasServiceName() bool
 // Topic is the subscribed/unsubscribed topic (UTF-8).
 func (s SubscriptionEvent) Topic() string
 // Subscribed is true for subscribe, false for unsubscribe.
@@ -1326,7 +1386,7 @@ type ReplySubmitOp interface {
 
 // Spot is a pub/sub facade owned by SpotNode. Public Spot handles come from
 // SpotNode.Spot(), SpotNode.EntrySpot(), or SpotNode.SpotLookup(...).
-func (s *Spot) Publish(serviceName, topic string) SendOp
+func (s *Spot) Publish(topic string) SendOp
 func (s *Spot) SendChannel(channelName string) SendOp
 func (s *Spot) RequestChannel(channelName string) RequestOp
 // Subscription filter mutation returns *ConfigError on failure.
@@ -1334,7 +1394,7 @@ func (s *Spot) SetSubscription(filter string) error
 func (s *Spot) UnsetSubscription(filter string) error
 // Subscribe receives the next topic message. Returns *RecvError on failure.
 func (s *Spot) Subscribe(flags RecvFlags) (*TopicMessage, error)
-// ReceiveSubscriptionEvent receives the next service-aware subscription event.
+// ReceiveSubscriptionEvent receives the next subscription event.
 // Returns *RecvError on failure.
 func (s *Spot) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error)
 // RecvActorJoin receives the next actor join request. Returns *RecvError on failure.

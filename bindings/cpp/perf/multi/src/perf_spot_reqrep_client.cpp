@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
@@ -56,7 +57,8 @@ void debug_log (const std::string &message_)
 
 template<typename SocketLike>
 void apply_socket_options (SocketLike &socket_,
-                           const perf::multi::multi_bench_settings_t &settings_)
+                           const perf::multi::multi_bench_settings_t &settings_,
+                           size_t msg_size_)
 {
     zlink::common_socket_options_t options = socket_.options ();
     if (perf::multi::manual_socket_overrides_enabled ()) {
@@ -68,6 +70,8 @@ void apply_socket_options (SocketLike &socket_,
     options.send_timeout (std::chrono::milliseconds (settings_.sndtimeo_ms));
     options.recv_timeout (std::chrono::milliseconds (settings_.rcvtimeo_ms));
     options.linger (std::chrono::milliseconds (0));
+    options.auto_hwm_msg_unit_bytes (
+      zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)));
 }
 
 class spot_reqrep_client_bench_t
@@ -134,7 +138,7 @@ class spot_reqrep_client_bench_t
             if (!slot.node->valid () || !slot.spot->valid () || !slot.dealer->valid ())
                 return false;
 
-            apply_socket_options (*slot.dealer, _settings);
+            apply_socket_options (*slot.dealer, _settings, _msg_size);
             if (!perf::setup_tls_client (*slot.dealer, _transport))
                 return false;
             zlink::monitor_handle_t monitor = zlink::monitor_handle_t::open (
@@ -153,6 +157,8 @@ class spot_reqrep_client_bench_t
             slot.payload.assign (payload_size, k_payload_fill);
             _slots.push_back (std::move (slot));
         }
+        if (!perf::multi::recalculate_auto_hwm (_ctx))
+            return false;
 
         std::vector<perf::multi::connect_monitor_t> monitors;
         monitors.reserve (_slots.size ());
@@ -183,6 +189,9 @@ class spot_reqrep_client_bench_t
 
     bool submit_request (client_slot_t &slot_, perf_metric::phase_t phase_)
     {
+        if (slot_.pending.has_value ())
+            return true;
+
         if (!perf_metric::stamp_payload (slot_.payload.data (),
                                          slot_.payload.size (),
                                          1U,
@@ -213,12 +222,17 @@ class spot_reqrep_client_bench_t
         }
     }
 
-    bool handle_ready_reply (client_slot_t &slot_,
+    bool try_complete_reply (client_slot_t &slot_,
                              unsigned long long *count_out_,
                              perf::multi::bench_latency_sampler_t *latency_)
     {
         if (!slot_.pending.has_value ())
             return true;
+
+        if (slot_.pending->wait_for (std::chrono::milliseconds (0))
+            != std::future_status::ready) {
+            return true;
+        }
 
         std::vector<zlink::message_t> reply_parts;
         try {
@@ -273,14 +287,20 @@ class spot_reqrep_client_bench_t
                               + std::chrono::seconds (
                                 std::max (1, _settings.duration_seconds));
 
+        for (size_t i = 0; i < _slots.size (); ++i) {
+            if (!submit_request (_slots[i], perf_metric::phase_active))
+                return false;
+        }
+
         while (std::chrono::steady_clock::now () < deadline) {
             for (size_t i = 0; i < _slots.size (); ++i) {
-                if (std::chrono::steady_clock::now () >= deadline)
-                    break;
                 client_slot_t &slot = _slots[i];
-                if (!submit_request (slot, perf_metric::phase_active))
+                if (!try_complete_reply (slot, &count, &latency))
                     return false;
-                if (!handle_ready_reply (slot, &count, &latency))
+                if (std::chrono::steady_clock::now () >= deadline)
+                    continue;
+                if (!slot.pending.has_value ()
+                    && !submit_request (slot, perf_metric::phase_active))
                     return false;
             }
         }
@@ -320,9 +340,12 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
 
     const perf::multi::multi_bench_settings_t settings =
       perf::multi::resolve_multi_bench_settings ();
-    spot_reqrep_client_bench_t bench (
-      transport, lib_name, msg_size, endpoint, settings);
-    return bench.run ();
+    spot_reqrep_client_bench_t *bench =
+      new spot_reqrep_client_bench_t (
+        transport, lib_name, msg_size, endpoint, settings);
+    if (!bench)
+        return false;
+    return bench->run ();
 }
 
 int main (int argc, char **argv)
@@ -345,5 +368,8 @@ int main (int argc, char **argv)
         return 1;
     }
 
-    return perf_spot_reqrep_client (lib_name, transport, size, endpoint) ? 0 : 1;
+    const bool ok = perf_spot_reqrep_client (lib_name, transport, size, endpoint);
+    std::cout.flush ();
+    std::cerr.flush ();
+    std::_Exit (ok ? 0 : 1);
 }

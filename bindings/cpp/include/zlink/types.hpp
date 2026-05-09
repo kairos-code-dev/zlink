@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cerrno>
+#include <climits>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -400,6 +401,7 @@ template<typename T> struct stream_option_key_t
 namespace detail
 {
 inline routing_id_t native_routing_id (const zlink_routing_id_t &native_);
+inline routing_id_t borrowed_routing_id (const zlink_routing_id_t &native_) noexcept;
 inline routing_id_t unchecked_empty_routing_id () noexcept;
 inline zlink_routing_id_t *routing_id_native (routing_id_t &routing_id_) noexcept;
 inline const zlink_routing_id_t *
@@ -878,10 +880,37 @@ enum class config_result_t : int
 class routing_id_t
 {
   public:
-    routing_id_t (const uint8_t *bytes_, size_t size_) : _native ()
+    routing_id_t (const uint8_t *bytes_, size_t size_) : _native (), _view (NULL)
     {
         std::memset (&_native, 0, sizeof (_native));
         assign (bytes_, size_);
+    }
+
+    routing_id_t (const routing_id_t &other_) : _native (other_.native_ref ()), _view (NULL)
+    {
+    }
+
+    routing_id_t &operator= (const routing_id_t &other_)
+    {
+        if (this == &other_)
+            return *this;
+        _native = other_.native_ref ();
+        _view = NULL;
+        return *this;
+    }
+
+    routing_id_t (routing_id_t &&other_) noexcept
+        : _native (other_.native_ref ()), _view (NULL)
+    {
+    }
+
+    routing_id_t &operator= (routing_id_t &&other_) noexcept
+    {
+        if (this == &other_)
+            return *this;
+        _native = other_.native_ref ();
+        _view = NULL;
+        return *this;
     }
 
     static routing_id_t from_bytes (const uint8_t *bytes_, size_t size_)
@@ -915,13 +944,14 @@ class routing_id_t
         return from_bytes (bytes);
     }
 
-    const uint8_t *data () const noexcept { return _native.data; }
-    size_t size () const noexcept { return _native.size; }
+    const uint8_t *data () const noexcept { return native_ref ().data; }
+    size_t size () const noexcept { return native_ref ().size; }
 
     std::vector<uint8_t> to_bytes () const
     {
         return std::vector<uint8_t> (
-          _native.data, _native.data + static_cast<size_t> (_native.size));
+          native_ref ().data,
+          native_ref ().data + static_cast<size_t> (native_ref ().size));
     }
 
     std::string to_string () const
@@ -935,7 +965,7 @@ class routing_id_t
         std::string hex;
         hex.resize (size () * 2u);
         for (size_t i = 0; i < size (); ++i) {
-            const uint8_t byte = _native.data[i];
+            const uint8_t byte = native_ref ().data[i];
             hex[(i * 2u)] = digits[(byte >> 4u) & 0x0fu];
             hex[(i * 2u) + 1u] = digits[byte & 0x0fu];
         }
@@ -945,9 +975,11 @@ class routing_id_t
     friend bool operator== (const routing_id_t &a_,
                             const routing_id_t &b_) noexcept
     {
-        return a_._native.size == b_._native.size
+        const zlink_routing_id_t &a = a_.native_ref ();
+        const zlink_routing_id_t &b = b_.native_ref ();
+        return a.size == b.size
                && std::memcmp (
-                    a_._native.data, b_._native.data, a_._native.size)
+                    a.data, b.data, a.size)
                     == 0;
     }
 
@@ -958,12 +990,22 @@ class routing_id_t
     }
 
   private:
-    routing_id_t () noexcept : _native ()
+    routing_id_t () noexcept : _native (), _view (NULL)
     {
         std::memset (&_native, 0, sizeof (_native));
     }
 
-    explicit routing_id_t (const zlink_routing_id_t &native_) : _native (native_) {}
+    explicit routing_id_t (const zlink_routing_id_t &native_) : _native (native_), _view (NULL) {}
+
+    struct borrowed_t
+    {
+    };
+
+    routing_id_t (borrowed_t, const zlink_routing_id_t &native_) noexcept
+        : _native (), _view (&native_)
+    {
+        std::memset (&_native, 0, sizeof (_native));
+    }
 
     void assign (const uint8_t *bytes_, size_t size_)
     {
@@ -976,12 +1018,28 @@ class routing_id_t
               "routing id bytes must not be null for non-empty input");
 
         std::memset (&_native, 0, sizeof (_native));
+        _view = NULL;
         _native.size = static_cast<uint8_t> (size_);
         if (size_ > 0)
             std::memcpy (_native.data, bytes_, size_);
     }
 
+    const zlink_routing_id_t &native_ref () const noexcept
+    {
+        return _view ? *_view : _native;
+    }
+
+    zlink_routing_id_t *mutable_native () noexcept
+    {
+        if (_view) {
+            _native = *_view;
+            _view = NULL;
+        }
+        return &_native;
+    }
+
     zlink_routing_id_t _native;
+    const zlink_routing_id_t *_view;
 
     static int hex_nibble (char value_) noexcept
     {
@@ -996,6 +1054,8 @@ class routing_id_t
 
     friend inline routing_id_t
     detail::native_routing_id (const zlink_routing_id_t &native_);
+    friend inline routing_id_t
+    detail::borrowed_routing_id (const zlink_routing_id_t &native_) noexcept;
     friend inline routing_id_t detail::unchecked_empty_routing_id () noexcept;
     friend inline zlink_routing_id_t *
     detail::routing_id_native (routing_id_t &) noexcept;
@@ -1013,6 +1073,11 @@ inline routing_id_t native_routing_id (const zlink_routing_id_t &native_)
     return routing_id_t (native_);
 }
 
+inline routing_id_t borrowed_routing_id (const zlink_routing_id_t &native_) noexcept
+{
+    return routing_id_t (routing_id_t::borrowed_t (), native_);
+}
+
 inline routing_id_t unchecked_empty_routing_id () noexcept
 {
     return routing_id_t ();
@@ -1027,18 +1092,18 @@ inline zlink_routing_id_t empty_routing_id () noexcept
 
 inline zlink_routing_id_t *routing_id_native (routing_id_t &routing_id_) noexcept
 {
-    return &routing_id_._native;
+    return routing_id_.mutable_native ();
 }
 
 inline const zlink_routing_id_t *
 routing_id_native (const routing_id_t &routing_id_) noexcept
 {
-    return &routing_id_._native;
+    return &routing_id_.native_ref ();
 }
 
 inline bool routing_id_empty (const routing_id_t &routing_id_) noexcept
 {
-    return routing_id_._native.size == 0;
+    return routing_id_.native_ref ().size == 0;
 }
 
 } // namespace detail
@@ -1375,18 +1440,7 @@ class topic_message_t
     topic_message_t (std::optional<routing_id_t> routing_id_,
                      std::string topic_,
                      std::vector<message_t> parts_)
-        : topic_message_t (
-            std::move (routing_id_), std::nullopt, std::move (topic_),
-            std::move (parts_))
-    {
-    }
-
-    topic_message_t (std::optional<routing_id_t> routing_id_,
-                     std::optional<std::string> service_name_,
-                     std::string topic_,
-                     std::vector<message_t> parts_)
         : _routing_id (std::move (routing_id_)),
-          _service_name (std::move (service_name_)),
           _topic (std::move (topic_)),
           _parts (std::move (parts_))
     {
@@ -1397,37 +1451,46 @@ class topic_message_t
         return _routing_id;
     }
 
-    const std::optional<std::string> &service_name () const noexcept
-    {
-        return _service_name;
-    }
-
     const std::string &topic () const noexcept { return _topic; }
-    const std::vector<message_t> &parts () const noexcept { return _parts; }
-    std::vector<message_t> &parts () noexcept { return _parts; }
+    const std::vector<message_t> &parts () const;
+    std::vector<message_t> &parts ();
 
-    bool is_single_part () const noexcept { return _parts.size () == 1u; }
+    bool is_single_part () const noexcept
+    {
+        return _single_part.has_value () || _parts.size () == 1u;
+    }
     message_t &first_part ();
     message_t single_part_or_throw ();
     void close ();
 
   private:
+    topic_message_t (std::optional<routing_id_t> routing_id_,
+                     std::string topic_,
+                     message_t part_)
+        : _routing_id (std::move (routing_id_)),
+          _topic (std::move (topic_)),
+          _single_part (std::move (part_)),
+          _parts ()
+    {
+    }
+
+    void materialize_parts () const;
+
     std::optional<routing_id_t> _routing_id;
-    std::optional<std::string> _service_name;
     std::string _topic;
-    std::vector<message_t> _parts;
+    mutable std::optional<message_t> _single_part;
+    mutable std::vector<message_t> _parts;
+    friend class service::spot_t;
 };
 
 struct subscription_event_t
 {
     subscription_event_t ()
-        : routing_id (std::nullopt), service_name (std::nullopt), topic (),
-          subscribed (false)
+        : routing_id (std::nullopt), topic (), subscribed (false)
     {
     }
 
     std::optional<routing_id_t> routing_id;
-    std::optional<std::string> service_name;
     std::string topic;
     bool subscribed;
 };
@@ -1963,7 +2026,7 @@ class spot_node_status_t
 {
   public:
     spot_node_status_t ()
-        : service_name_ (), local_endpoint_ (), node_routing_id_ (std::nullopt),
+        : channel_name_ (), local_endpoint_ (), node_routing_id_ (std::nullopt),
           state_ (spot_node_state::idle), configured_peer_count_ (0),
           active_peer_count_ (0), connected_peer_count_ (0), subject_count_ (0),
           ready_subject_count_ (0), disconnected_sub_target_count_ (0),
@@ -1973,7 +2036,7 @@ class spot_node_status_t
     }
 
     explicit spot_node_status_t (const zlink_spot_node_status_t &status_)
-        : service_name_ (fixed_string_to_string (status_.service_name)),
+        : channel_name_ (fixed_string_to_string (status_.channel_name)),
           local_endpoint_ (fixed_string_to_string (status_.local_endpoint)),
           node_routing_id_ (status_.node_routing_id.size > 0
                              ? std::optional<routing_id_t> (
@@ -1993,7 +2056,7 @@ class spot_node_status_t
     {
     }
 
-    const std::string &service_name () const noexcept { return service_name_; }
+    const std::string &channel_name () const noexcept { return channel_name_; }
 
     const std::string &local_endpoint () const noexcept { return local_endpoint_; }
 
@@ -2041,7 +2104,7 @@ class spot_node_status_t
     }
 
   private:
-    std::string service_name_;
+    std::string channel_name_;
     std::string local_endpoint_;
     std::optional<routing_id_t> node_routing_id_;
     spot_node_state state_;
@@ -2235,7 +2298,7 @@ class spot_node_peer_entry_t
 {
   public:
     spot_node_peer_entry_t ()
-        : service_name_ (), local_endpoint_ (), peer_endpoint_ (),
+        : channel_name_ (), local_endpoint_ (), peer_endpoint_ (),
           source_ (spot_peer_source::manual), state_ (spot_peer_state::configured),
           weight_ (0), connected_since_ms_ (0),
           last_changed_ms_ (0)
@@ -2243,7 +2306,7 @@ class spot_node_peer_entry_t
     }
 
     explicit spot_node_peer_entry_t (const zlink_spot_node_peer_entry_t &entry_)
-        : service_name_ (fixed_string_to_string (entry_.service_name)),
+        : channel_name_ (fixed_string_to_string (entry_.channel_name)),
           local_endpoint_ (fixed_string_to_string (entry_.local_endpoint)),
           peer_endpoint_ (fixed_string_to_string (entry_.peer_endpoint)),
           source_ (static_cast<spot_peer_source> (entry_.source)),
@@ -2254,7 +2317,7 @@ class spot_node_peer_entry_t
     {
     }
 
-    const std::string &service_name () const noexcept { return service_name_; }
+    const std::string &channel_name () const noexcept { return channel_name_; }
 
     const std::string &local_endpoint () const noexcept { return local_endpoint_; }
 
@@ -2278,7 +2341,7 @@ class spot_node_peer_entry_t
     }
 
   private:
-    std::string service_name_;
+    std::string channel_name_;
     std::string local_endpoint_;
     std::string peer_endpoint_;
     spot_peer_source source_;
@@ -2632,7 +2695,7 @@ enum class spot_service_attachment_role_t
 
 struct spot_service_attachment_stats_t
 {
-    std::string service_name;
+    std::string channel_name;
     uint32_t router_count = 0;
     uint32_t pub_count = 0;
     uint32_t sub_count = 0;

@@ -46,9 +46,9 @@ static std::string spot_rid_key_local (const zlink_routing_id_t &rid_)
     return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
 }
 
-static bool valid_service_name_local (const char *service_name_)
+static bool valid_channel_name_local (const char *channel_name_)
 {
-    return service_name_ && service_name_[0] != '\0';
+    return channel_name_ && channel_name_[0] != '\0';
 }
 
 static bool valid_attached_socket_type_local (socket_base_t *socket_,
@@ -433,7 +433,7 @@ int spot_node_t::unregister_registered ()
 }
 
 int spot_node_t::validate_socket_service_discovery_attach_locked (
-  const std::string &service_name_, discovery_t *discovery_) const
+  const std::string &channel_name_, discovery_t *discovery_) const
 {
     for (std::map<std::string, discovery_t *>::const_iterator it =
            _service_attachment_state.discoveries.begin ();
@@ -443,7 +443,7 @@ int spot_node_t::validate_socket_service_discovery_attach_locked (
             return -1;
         }
     }
-    if (_service_attachment_state.discoveries.count (service_name_) != 0) {
+    if (_service_attachment_state.discoveries.count (channel_name_) != 0) {
         errno = EBUSY;
         return -1;
     }
@@ -453,12 +453,12 @@ int spot_node_t::validate_socket_service_discovery_attach_locked (
 void spot_node_t::register_attachment_monitor_locked (
   socket_base_t *owner_socket_,
   void *monitor_handle_,
-  const std::string &service_name_)
+  const std::string &channel_name_)
 {
     attachment_monitor_handle_t monitor_entry;
     monitor_entry.handle = monitor_handle_;
     monitor_entry.owner_socket = owner_socket_;
-    monitor_entry.service_name = service_name_;
+    monitor_entry.channel_name = channel_name_;
     _service_attachment_state.monitors.push_back (monitor_entry);
 }
 
@@ -642,7 +642,7 @@ int spot_node_t::attach_channel_dealer_manual (const char *channel_name_,
     if (!admission.acquired ())
         return -1;
 
-    if (!valid_service_name_local (channel_name_)
+    if (!valid_channel_name_local (channel_name_)
         || !valid_attached_socket_type_local (dealer_, ZLINK_CORE_SOCKET_DEALER)) {
         errno = EINVAL;
         return -1;
@@ -990,8 +990,7 @@ int spot_copy_publish_parts_to_block_local (
 }
 }
 
-int spot_node_t::fanout_local_publish (const char *service_name_,
-                                       const zlink_routing_id_t *source_rid_,
+int spot_node_t::fanout_local_publish (const zlink_routing_id_t *source_rid_,
                                        const char *topic_id_,
                                        zlink_msg_t *parts_,
                                        size_t part_count_)
@@ -1045,7 +1044,6 @@ int spot_node_t::fanout_local_publish (const char *service_name_,
     memset (&block->source_rid, 0, sizeof (block->source_rid));
     if (source_rid_)
         block->source_rid = *source_rid_;
-    block->service_name = service_name_ ? service_name_ : "";
     block->topic_id = topic;
     if (spot_copy_publish_parts_to_block_local (parts_, part_count_,
                                                 &block->parts)
@@ -1139,18 +1137,18 @@ int spot_node_t::update_spot_routing_id (spot_handle_t *spot_,
     return 0;
 }
 
-void spot_node_t::on_service_update (const std::string &service_name_)
+void spot_node_t::on_service_update (const std::string &channel_name_)
 {
     bool should_wake = false;
     {
         scoped_lock_t lock (_sync);
-        if (_service_attachment_state.discoveries.count (service_name_) != 0) {
-            queue_service_discovery_refresh_locked (service_name_);
+        if (_service_attachment_state.discoveries.count (channel_name_) != 0) {
+            queue_service_discovery_refresh_locked (channel_name_);
             _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
             should_wake = true;
         }
-        if (!_discovery_state.discovery_service.empty () && service_name_ == _discovery_state.discovery_service) {
-            _discovery_state.pending_service_updates.insert (service_name_);
+        if (!_discovery_state.discovery_service.empty () && channel_name_ == _discovery_state.discovery_service) {
+            _discovery_state.pending_service_updates.insert (channel_name_);
             _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
             should_wake = true;
         }
@@ -1406,9 +1404,9 @@ void spot_node_t::dispatch_logical_send_ready_handler (
 }
 
 void spot_node_t::queue_service_discovery_refresh_locked (
-  const std::string &service_name_)
+  const std::string &channel_name_)
 {
-    if (!service_name_.empty ())
-        _service_attachment_state.pending_refresh_services.insert (service_name_);
+    if (!channel_name_.empty ())
+        _service_attachment_state.pending_refresh_services.insert (channel_name_);
 }
 }

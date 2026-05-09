@@ -12,7 +12,7 @@ type multiSpotSubscriber struct {
 	spot *zlink.Spot
 }
 
-const multiSpotServiceName = "perf-spot-svc"
+const multiSpotChannelName = "perf-spot-svc"
 const multiSpotTopic = "bench.topic"
 const multiSpotMaxDrainPerSpot = 1024
 
@@ -30,7 +30,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	publisherNode, err := ctx.SpotNode()
 	perfcommon.Must(err)
 	defer publisherNode.Close()
-	publisherDiscovery, err := ctx.Discovery(zlink.AutoConnectSpotMesh, multiSpotServiceName)
+	publisherDiscovery, err := ctx.Discovery(zlink.AutoConnectSpotMesh, multiSpotChannelName)
 	perfcommon.Must(err)
 	defer publisherDiscovery.Close()
 	perfcommon.ApplyMultiSpotNodeAdmission(publisherNode, cfg.pattern)
@@ -58,7 +58,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	defer subscriberNode.Close()
 	perfcommon.ApplyMultiSpotNodeAdmission(subscriberNode, cfg.pattern)
 	perfcommon.Must(perfcommon.ConfigureTLSClient(subscriberNode, cfg.transport))
-	subscriberDiscovery, err := ctx.Discovery(zlink.AutoConnectSpotMesh, multiSpotServiceName)
+	subscriberDiscovery, err := ctx.Discovery(zlink.AutoConnectSpotMesh, multiSpotChannelName)
 	perfcommon.Must(err)
 	defer subscriberDiscovery.Close()
 	perfcommon.Must(subscriberDiscovery.ConnectRegistry(registryRouterEndpoint))
@@ -81,7 +81,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	subscriberEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sub")
 	perfcommon.Must(subscriberNode.AttachDiscovery(subscriberDiscovery))
 	perfcommon.Must(subscriberNode.Bind(subscriberEndpoint))
-	waitForMultiSpotRegistryEntries(query, multiSpotServiceName)
+	waitForMultiSpotRegistryEntries(query, multiSpotChannelName)
 	defer func() {
 		for _, poller := range pollers {
 			_ = poller.Close()
@@ -120,7 +120,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampWindowPayload(payload, window.ActiveAt)
-		_, err := publisher.Publish(multiSpotServiceName, multiSpotTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		_, err := publisher.Publish(multiSpotTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -130,7 +130,7 @@ func runMultiSpot(cfg multiConfig) perfcommon.Result {
 	}
 	perfcommon.StampCooldownPayload(payload)
 	for {
-		_, err := publisher.Publish(multiSpotServiceName, multiSpotTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		_, err := publisher.Publish(multiSpotTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		if err == nil {
 			break
 		}
@@ -167,14 +167,14 @@ func wrapMultiSpotError(step string, index int, err error) error {
 	return fmt.Errorf("multi spot setup %s[%d]: %w", step, index, err)
 }
 
-func waitForMultiSpotRegistryEntries(query *zlink.RegistryQueryClient, serviceName string) {
+func waitForMultiSpotRegistryEntries(query *zlink.RegistryQueryClient, channelName string) {
 	deadline := time.Now().Add(perfcommon.MultiReadyTimeout())
 	for time.Now().Before(deadline) {
 		entries, err := query.Snapshot(nil)
 		if err == nil {
 			count := 0
 			for _, entry := range entries {
-				if entry.ChannelName == serviceName {
+				if entry.ChannelName == channelName {
 					count++
 				}
 			}

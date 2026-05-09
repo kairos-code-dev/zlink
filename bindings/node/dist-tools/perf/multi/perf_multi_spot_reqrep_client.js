@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('../../..');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, resolveMultiLatencySampleCap, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, resolveMultiLatencySampleCap, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'perf.control';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii'));
@@ -42,7 +42,8 @@ function closeQuietly(resource) {
     try {
         resource?.close();
     }
-    catch {
+    catch (err) {
+        console.error(`[multi-spot-reqrep-client] close failed: ${err}`);
     }
 }
 async function requestSpotReply(router, payload, timeoutMs) {
@@ -72,7 +73,8 @@ async function waitForProbeReady(routers, payloads, runId, msgSize) {
                     ready.add(i);
                 }
             }
-            catch {
+            catch (err) {
+                console.error(`[multi-spot-reqrep-client] probe failed: ${err}`);
             }
         }
         if (ready.size < routers.length) {
@@ -103,6 +105,9 @@ async function main() {
     try {
         applySocketPolicy(controlPub);
         applySocketPolicy(controlSub);
+        applyAutoHwmMsgUnit(controlPub, options.msgSize);
+        applyAutoHwmMsgUnit(controlSub, options.msgSize);
+        ctx.recalculateAutoHwm();
         controlPub.bind(options.controlEndpoint);
         console.log(`CLIENT_CONTROL_ENDPOINT,${options.controlEndpoint}`);
         controlSub.setSubscription(CONTROL_TOPIC);

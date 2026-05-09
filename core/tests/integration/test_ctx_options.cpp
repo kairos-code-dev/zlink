@@ -440,6 +440,49 @@ void test_socket_option_auto_hwm_stream_default_msg_unit ()
     test_context_socket_close (stream);
 }
 
+void test_auto_hwm_msg_unit_rejects_spot_service_handles ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
+
+    const int value = 64;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_set_option (spot, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value,
+                        sizeof (value)));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_set_option (node, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value,
+                        sizeof (value)));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    int actual = 0;
+    size_t actual_size = sizeof (actual);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_get_option (spot, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &actual,
+                        &actual_size));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    actual = 0;
+    actual_size = sizeof (actual);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_get_option (node, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &actual,
+                        &actual_size));
+    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+}
+
 void test_socket_option_auto_hwm_buffer_options_do_not_change_snapshot_contract ()
 {
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
@@ -492,6 +535,7 @@ int main (void)
     RUN_TEST (test_ctx_option_auto_hwm_enabled_applies_profile);
     RUN_TEST (test_socket_option_auto_hwm_msg_unit_round_trip);
     RUN_TEST (test_socket_option_auto_hwm_stream_default_msg_unit);
+    RUN_TEST (test_auto_hwm_msg_unit_rejects_spot_service_handles);
     RUN_TEST (test_socket_option_auto_hwm_buffer_options_do_not_change_snapshot_contract);
     RUN_TEST (test_ctx_option_invalid);
     return UNITY_END ();

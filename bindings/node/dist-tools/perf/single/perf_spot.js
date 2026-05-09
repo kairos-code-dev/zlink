@@ -9,11 +9,11 @@ const zlink = require('../../..');
 const perf_metrics_1 = require("../common/perf_metrics");
 const perf_single_common_1 = require("./perf_single_common");
 const AUTO_CONNECT_SPOT_MESH = 5;
-const SERVICE_NAME = 'perf.spot';
+const CHANNEL_NAME = 'perf.spot';
 const TOPIC = 'perf.topic';
 function trySpotPublish(spot, payload) {
     try {
-        return spot.publish(SERVICE_NAME, TOPIC)
+        return spot.publish(TOPIC)
             .message(payload)
             .flags(zlink.SendFlags.DontWait)
             .submit();
@@ -74,8 +74,8 @@ async function runSpotBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     (0, perf_single_common_1.applyContextPolicy)(ctx);
     const registry = new zlink.Registry(ctx);
-    const publisherDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
-    const subscriberDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
+    const publisherDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
+    const subscriberDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
     const publisherNode = new zlink.SpotNode(ctx);
     const subscriberNode = new zlink.SpotNode(ctx);
     let publisher = null;

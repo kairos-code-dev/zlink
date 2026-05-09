@@ -92,7 +92,7 @@ class CallbackSendTests(unittest.TestCase):
             while not done.is_set():
                 if time.monotonic() >= deadline:
                     self.fail("callback timed out")
-                spot.publish(CHANNEL_NAME, TOPIC).message(b"ping").submit()
+                spot.publish(TOPIC).message(b"ping").submit()
                 done.wait(0.05)
             self.assertEqual(len(callback_error), 1, f"callback raised: {callback_error}")
             self.assertIsInstance(callback_error[0], zlink.ZlinkError)

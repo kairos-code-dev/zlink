@@ -392,11 +392,14 @@ transport socket HWM 양쪽에 적용된다.
 | `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE` | routed admission | balanced auto-HWM profile |
 | `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | routed admission 숫자 override | 양수 값, `0`은 auto-HWM 복귀 |
 
-숫자 override가 없으면 SpotNode data-path socket은 공통 auto-HWM planner를
-사용한다. balanced profile은 일반 routed socket과 같은 수열을 만든다. 1024 B
-이하의 작은 메시지는 HWM `1024`, 64 KiB 메시지는 HWM `16`, 128 KiB 메시지는
-HWM `8`, 256 KiB 메시지는 HWM `4`를 사용한다. peer control socket은 이
-admission 묶음에 포함되지 않으며 control-plane HWM을 유지한다.
+숫자 override가 없으면 SpotNode admission HWM은 profile별 메시지 수 기준을
+사용한다. 기준값은 COMPACT `64`, LOW_LATENCY `128`, BALANCED `256`,
+THROUGHPUT `512`다. SPOT service handle에는 raw socket용
+`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 설정하지 않으므로 기본 SPOT 경로는
+non-STREAM 기본 메시지 단위 `4096` byte로 계산된다. 따라서 balanced 기본값은
+`256`이며, 작은 payload가 많다는 이유만으로 `1024`로 올라가지 않는다.
+peer control socket은 이 admission 묶음에 포함되지 않으며 control-plane HWM을
+유지한다.
 
 relay socket(`fanout`, `mesh-pub` SNDHWM = 0)과 delivery socket은 HWM `0`을
 사용한다. 이렇게 해야 SPOT 내부의 숨은 per-peer 또는 per-target 큐 제한이 메시지
@@ -406,7 +409,8 @@ SPOT publish 큐 계획은 fanout이 커져도 per-connection admission HWM을 �
 않는다.
 
 perf `Auto-HWM spotnode` 상세 표에서는 `mesh-pub`와 `mesh-xsub` 및 `external-router`
-에만 admission HWM이 보인다. `pub-ingress-tx`, `ingress-sub`, `internal-router`,
+에만 admission HWM이 보인다. 기본 balanced 경로에서는 `MsgUnit(B)=4096`과
+HWM `256`이 정상이다. `pub-ingress-tx`, `ingress-sub`, `internal-router`,
 `internal-router-tx` row는 존재하지 않는다.
 
 ## 7. Control plane

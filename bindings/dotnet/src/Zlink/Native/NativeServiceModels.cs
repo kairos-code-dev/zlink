@@ -43,7 +43,7 @@ internal struct ZlinkMonitorSnapshot
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct ZlinkSpotNodeStatus
 {
-    public fixed byte ServiceName[256];
+    public fixed byte ChannelName[256];
     public fixed byte LocalEndpoint[256];
     public ZlinkRoutingId NodeRoutingId;
     public int State;
@@ -61,7 +61,7 @@ internal unsafe struct ZlinkSpotNodeStatus
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct ZlinkSpotNodePeerEntry
 {
-    public fixed byte ServiceName[256];
+    public fixed byte ChannelName[256];
     public fixed byte LocalEndpoint[256];
     public fixed byte PeerEndpoint[256];
     public int Source;
@@ -272,7 +272,7 @@ internal unsafe struct ZlinkRegistryTopologyFilter
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct ZlinkSpotServiceAttachmentStats
 {
-    public fixed byte ServiceName[256];
+    public fixed byte ChannelName[256];
     public uint RouterCount;
     public uint PubCount;
     public uint SubCount;

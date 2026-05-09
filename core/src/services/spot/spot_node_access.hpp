@@ -59,17 +59,15 @@ struct spot_node_access_t
     static int status_snapshot (spot_node_t *node_,
                                 zlink_spot_node_status_t *out_);
     static bool has_active_peers (spot_node_t *node_);
-    static std::string summary_service_name (spot_node_t *node_);
+    static std::string summary_channel_name (spot_node_t *node_);
     static socket_base_t *select_service_router (spot_node_t *node_,
-                                                 const std::string &service_name_);
+                                                 const std::string &channel_name_);
     static socket_base_t *service_pub_socket (spot_node_t *node_,
-                                              const std::string &service_name_);
+                                              const std::string &channel_name_);
     static int service_subscribe_recv (spot_node_t *node_,
                                        zlink_routing_id_t *source_rid_out_,
                                        zlink_msg_t **parts_out_,
                                        size_t *part_count_out_,
-                                       char *service_name_out_,
-                                       size_t *service_name_len_out_,
                                        char *topic_id_out_,
                                        size_t *topic_id_len_out_,
                                        zlink_recv_flags_t flags_);
@@ -77,8 +75,6 @@ struct spot_node_access_t
       spot_node_t *node_,
       zlink_routing_id_t *source_rid_out_,
       int *subscribed_out_,
-      char *service_name_out_,
-      size_t *service_name_len_out_,
       char *topic_id_out_,
       size_t *topic_id_len_out_,
       zlink_recv_flags_t flags_);

@@ -326,11 +326,14 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`�
   benchmark socket은 역할별 예외 없이 같은 context budget 아래에서 core
   계산값을 사용한다. 기본 경로에서 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF`
   를 숫자로 직접 고정하지 않는다.
-- multi benchmark는 메시지 크기별로 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를
-  현재 테스트 메시지 크기와 같은 값으로 설정한다. C perf runner는 일반
-  패턴의 결과 행 뒤에 runtime snapshot에서 실제 수집한 `Auto-HWM detail`
-  표를 붙이고, `Size(B)`, `MsgUnit(B)`, `Scope`, `ScopeCount`를 적용 HWM과
-  함께 보여야 한다. SPOT 계열은
+- raw socket benchmark는 메시지 크기별로 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를
+  현재 테스트 메시지 크기와 같은 값으로 설정할 수 있다. 이 옵션은 raw socket
+  자동 HWM의 메시지 단위 설정이며, SPOT node 또는 SPOT handle에는 설정하지
+  않는다. SPOT 서비스 핸들에 이 공통 옵션을 설정하려는 코드는 정책 위반이고,
+  C API에서는 `EINVAL` 실패로 처리된다. C perf runner는 일반 패턴의 결과 행
+  뒤에 runtime snapshot에서 실제 수집한 `Auto-HWM detail` 표를 붙이고,
+  `Size(B)`, `MsgUnit(B)`, `Scope`, `ScopeCount`를 적용 HWM과 함께 보여야 한다.
+  SPOT 계열은
   `zlink_spot_node_internal_sockets_snapshot()` 결과 중 `auto_hwm_visible == 1`인
   row만 기본 출력에 사용한다. `Auto-HWM spotnode` 표는 node 소유 socket을,
   `Auto-HWM spot handles` 표는 spot 소유 socket을 보여준다. 꺼진 SpotNode
@@ -1167,7 +1170,7 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `PERF_DEBUG` | 디버그 로그 | unset |
-| `PERF_IO_THREADS` | context I/O threads | 0 |
+| `PERF_IO_THREADS` | context I/O threads. single 기본값은 모든 패턴에서 1이며, SPOT 계열 예외를 두지 않는다. multi 기본값은 multi 정책을 따른다. | suite별 기본값 |
 | `PERF_MSG_SIZES` | 테스트 size 목록 (러너가 size별 케이스로 분할 실행). single/multi 기본값은 `64,256,1024,65536,131072,262144` 이고, multi STREAM 기본값은 `64,256,1024,65536` | suite/패턴별 기본값 |
 | `PERF_TRANSPORTS` | 테스트 transport 목록 | suite/패턴별 기본값 |
 | `PERF_TASKSET` | CPU pinning (`1`로 활성화, Linux: taskset, Windows: processor affinity) | 0 |

@@ -29,14 +29,14 @@ void tearDown ()
 namespace
 {
 bool wait_for_spot_node_provider_weight_local (void *registry_,
-                                               const char *service_name_,
+                                               const char *channel_name_,
                                                uint32_t expected_weight_,
                                                int timeout_ms_)
 {
     return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_member_peer_entry_t entries[8];
         size_t count = 8;
-        if (zlink_registry_member_peers (registry_, service_name_, entries,
+        if (zlink_registry_member_peers (registry_, channel_name_, entries,
                                          &count)
             == ZLINK_CONFIG_OK) {
             for (size_t j = 0; j < count; ++j) {

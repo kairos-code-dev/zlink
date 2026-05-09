@@ -106,9 +106,6 @@ func (r *dealerRequestSupport) startRequest(flags SendFlags, timeout time.Durati
 }
 
 func startDealerRequest(socket *DealerSocket, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
-	if timeout <= 0 {
-		timeout = defaultRequestTimeout
-	}
 	cloned, err := cloneParts(parts)
 	if err != nil {
 		return nil, err
@@ -201,9 +198,6 @@ func (r *routerRequestSupport) startRequest(routingID RoutingID, flags SendFlags
 }
 
 func startRouterRequest(socket *RouterSocket, routingID RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
-	if timeout <= 0 {
-		timeout = defaultRequestTimeout
-	}
 	cloned, err := cloneParts(parts)
 	if err != nil {
 		return nil, err
@@ -280,11 +274,14 @@ func startRequestProgress(state *replyCallbackState, step func()) {
 
 func requestTimeoutMillis(timeout time.Duration) uint32 {
 	if timeout <= 0 {
-		timeout = defaultRequestTimeout
+		return 0
 	}
 	ms := timeout / time.Millisecond
 	if ms == 0 {
-		ms = 1
+		return 1
+	}
+	if ms > time.Duration(^uint32(0)) {
+		return ^uint32(0)
 	}
 	return uint32(ms)
 }

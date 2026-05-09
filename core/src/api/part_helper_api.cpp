@@ -554,7 +554,7 @@ int zlink::part_helper_internal::prepare_recv_step (
         state->recv.return_source_rid_as_null = true;
         state->recv.return_source_spot_rid_as_null = true;
         state->recv.request_seq = 0;
-        state->recv.service_name.clear ();
+        state->recv.channel_name.clear ();
         state->recv.topic_id.clear ();
         memset (&state->recv.source_node_rid, 0, sizeof (state->recv.source_node_rid));
         memset (&state->recv.source_spot_rid, 0, sizeof (state->recv.source_spot_rid));

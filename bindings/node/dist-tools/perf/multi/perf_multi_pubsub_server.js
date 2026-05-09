@@ -3,9 +3,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../..');
-const { createPayload, createRunId, sleepImmediate, stampPayload } = require('../common/perf_metrics');
+const { createPayload, createRunId, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, trySocketPublish } = require('./perf_multi_runtime');
+const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, resolveClientPollTimeoutMs, trySocketPublish } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -19,6 +19,8 @@ async function main() {
             noDrop: Number(process.env.PERF_MULTI_PUBSUB_XPUB_NODROP ?? 1) !== 0
         });
         pub.bind(options.endpoint);
+        applyAutoHwmMsgUnit(pub, options.msgSize);
+        ctx.recalculateAutoHwm();
         poller.add(pub, pollEvents(POLLOUT));
         console.log(`READY,${options.endpoint}`);
         rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -29,6 +31,7 @@ async function main() {
                 }
                 continue;
             }
+            const clientPollTimeoutMs = resolveClientPollTimeoutMs();
             const runId = createRunId(1);
             const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
             let seq = 1n;
@@ -42,9 +45,11 @@ async function main() {
                     }
                     pending = true;
                 }
-                const ready = poller.wait(25);
+                const nowNs = process.hrtime.bigint();
+                const remainMs = Number((activeStopNs - nowNs) / 1000000n);
+                const waitMs = Math.max(1, Math.min(clientPollTimeoutMs, remainMs));
+                const ready = poller.wait(waitMs);
                 if (!ready || !pollEventHas(ready, POLLOUT)) {
-                    await sleepImmediate();
                     continue;
                 }
                 pending = false;
@@ -56,9 +61,9 @@ async function main() {
                     cooldownPending = false;
                     continue;
                 }
-                const ready = poller.wait(25);
-                if (!ready || !pollEventHas(ready, POLLOUT)) {
-                    await sleepImmediate();
+                const ready = poller.wait(clientPollTimeoutMs);
+                if (ready && pollEventHas(ready, POLLOUT)) {
+                    // will retry publish on next iteration
                 }
             }
             break;

@@ -3,7 +3,7 @@
 const zlink = require('../..');
 
 const TOPIC = 'spot:child';
-const SERVICE_NAME = 'spot-child-service';
+const CHANNEL_NAME = 'spot-child-service';
 
 function parseArgs(argv) {
   const options = { bindEndpoint: '', peerEndpoint: '' };
@@ -41,9 +41,6 @@ async function main() {
         }
       }
       if (received) {
-        if (received.serviceName !== SERVICE_NAME) {
-          throw new Error(`unexpected service name: ${received.serviceName}`);
-        }
         console.log(`RECEIVED,${received.topic},${received.parts[0].data().toString()}`);
         return;
       }

@@ -69,21 +69,22 @@ internal sealed class SpotSendOperation : SendOperation, SendSubmitOperation
 {
     private readonly Spot _spot;
     private readonly SpotOperationKind _kind;
-    private readonly string? _serviceName;
+    private readonly string? _channelName;
     private readonly string? _topicOrChannel;
     private readonly RoutingId _destNodeRid;
     private readonly RoutingId _destSpotRid;
-    private readonly List<Message> _parts = new();
+    private Message? _singlePart;
+    private List<Message>? _parts;
     private SendFlags _flags;
     private bool _submitted;
 
     internal SpotSendOperation(Spot spot, SpotOperationKind kind,
-        string? serviceName = null, string? topicOrChannel = null,
+        string? channelName = null, string? topicOrChannel = null,
         RoutingId destNodeRid = default, RoutingId destSpotRid = default)
     {
         _spot = spot;
         _kind = kind;
-        _serviceName = serviceName;
+        _channelName = channelName;
         _topicOrChannel = topicOrChannel;
         _destNodeRid = destNodeRid;
         _destSpotRid = destSpotRid;
@@ -94,7 +95,19 @@ internal sealed class SpotSendOperation : SendOperation, SendSubmitOperation
         EnsureNotSubmitted();
         if (message == null)
             throw new ArgumentNullException(nameof(message));
-        _parts.Add(message);
+        if (_parts != null)
+        {
+            _parts.Add(message);
+        }
+        else if (_singlePart == null)
+        {
+            _singlePart = message;
+        }
+        else
+        {
+            _parts = new List<Message> { _singlePart, message };
+            _singlePart = null;
+        }
         return this;
     }
 
@@ -111,12 +124,17 @@ internal sealed class SpotSendOperation : SendOperation, SendSubmitOperation
         _submitted = true;
         return _kind switch
         {
-            SpotOperationKind.Publish => _spot.Publish(_serviceName!,
-                _topicOrChannel!, _parts, _flags),
-            SpotOperationKind.SendChannel => _spot.SendChannel(_topicOrChannel!,
-                _parts, _flags),
-            SpotOperationKind.SendToSpot => _spot.SendToSpot(_destNodeRid,
-                _destSpotRid, _parts, _flags),
+            SpotOperationKind.Publish => _singlePart != null
+                ? _spot.Publish(_topicOrChannel!, _singlePart, _flags)
+                : _spot.Publish(_topicOrChannel!, _parts!, _flags),
+            SpotOperationKind.SendChannel => _singlePart != null
+                ? _spot.SendChannel(_topicOrChannel!, _singlePart, _flags)
+                : _spot.SendChannel(_topicOrChannel!, _parts!, _flags),
+            SpotOperationKind.SendToSpot => _singlePart != null
+                ? _spot.SendToSpot(_destNodeRid, _destSpotRid, _singlePart,
+                    _flags)
+                : _spot.SendToSpot(_destNodeRid, _destSpotRid, _parts!,
+                    _flags),
             _ => throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState)
         };
@@ -125,7 +143,7 @@ internal sealed class SpotSendOperation : SendOperation, SendSubmitOperation
     private void EnsureReadyToSubmit()
     {
         EnsureNotSubmitted();
-        if (_parts.Count == 0)
+        if (_singlePart == null && (_parts == null || _parts.Count == 0))
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidArgument);
     }

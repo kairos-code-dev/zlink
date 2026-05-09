@@ -78,7 +78,7 @@ class discovery_service_state_t
     int remove_observer (discovery_observer_t *observer_);
     bool has_inflight_observer_callbacks () const;
     void begin_observer_notification (
-      const std::string &service_name_,
+      const std::string &channel_name_,
       const std::set<std::string> &services_,
       std::vector<discovery_observer_t *> *observers_out_);
     void finish_observer_notification (size_t observer_count_);

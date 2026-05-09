@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Systems.Zlink.Native;
 
@@ -16,11 +17,13 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     private static Dictionary<RouteCacheKey, List<RouteCacheEntry>>? t_ownedCache;
     private readonly byte[]? _bytes;
     private readonly int _hash;
+    private readonly NativeRoutingIdBox? _native;
 
     private RoutingId(byte[] bytes, bool takeOwnership)
     {
         _bytes = takeOwnership ? bytes : bytes.ToArray();
         _hash = ComputeHash(_bytes);
+        _native = new NativeRoutingIdBox(_bytes);
     }
 
     public static RoutingId FromBytes(ReadOnlySpan<byte> bytes)
@@ -145,9 +148,19 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal byte[] AsByteArrayUnsafe()
     {
         return _bytes ?? Array.Empty<byte>();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ZlinkRoutingId ToNative()
+    {
+        NativeRoutingIdBox? native = _native;
+        if (native != null)
+            return native.Value;
+        return NativeHelpers.WriteRoutingId(ToBytes());
     }
 
     private static int ComputeHash(ReadOnlySpan<byte> bytes)
@@ -270,5 +283,15 @@ public readonly struct RoutingId : IEquatable<RoutingId>
 
         internal byte[] Bytes { get; }
         internal RoutingId RoutingId { get; }
+    }
+
+    private sealed class NativeRoutingIdBox
+    {
+        internal NativeRoutingIdBox(ReadOnlySpan<byte> bytes)
+        {
+            Value = NativeHelpers.WriteRoutingId(bytes);
+        }
+
+        internal readonly ZlinkRoutingId Value;
     }
 }

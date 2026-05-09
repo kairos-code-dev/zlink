@@ -42,7 +42,6 @@ bool wait_until_equal (const std::atomic<int> &value_,
 bool recv_spot_with_timeout (zlink::service::spot_t &spot_,
                              std::vector<zlink::message_t> &parts_,
                              std::string &topic_,
-                             std::string &service_name_,
                              int timeout_ms_)
 {
     const auto deadline =
@@ -53,8 +52,6 @@ bool recv_spot_with_timeout (zlink::service::spot_t &spot_,
               spot_.subscribe (zlink::recv_flags_t::dontwait);
             parts_ = message.parts ();
             topic_ = message.topic ();
-            service_name_ =
-              message.service_name () ? *message.service_name () : std::string ();
             return true;
         }
         catch (const zlink::recv_error_t &err) {
@@ -79,9 +76,9 @@ void test_spot_publish_external_buffer_delivery ()
     pub_node.bind (endpoint.c_str ());
     sub_node.connect_peer (endpoint.c_str ());
 
-    const std::string service_name = "zero-copy";
+    const std::string channel_name = "zero-copy";
     zlink::service::discovery_t pub_discovery (
-      ctx, zlink::auto_connect_type::spot_mesh, service_name);
+      ctx, zlink::auto_connect_type::spot_mesh, channel_name);
     assert (pub_discovery.valid ());
     pub_node.attach_discovery (pub_discovery);
 
@@ -97,16 +94,13 @@ void test_spot_publish_external_buffer_delivery ()
       zlink::advanced::external_message_t::adopt (payload, 4, &counting_free_fn,
                                        &free_count);
     assert (part.valid ());
-    pub_spot.publish (service_name, "zero:topic").message (part).submit ();
+    pub_spot.publish ("zero:topic").message (part).submit ();
     assert (!part.valid ());
 
     std::vector<zlink::message_t> recv_parts;
     std::string topic;
-    std::string service_name_received;
     assert (
-      recv_spot_with_timeout (sub_spot, recv_parts, topic,
-                              service_name_received, 2000));
-    assert (service_name_received == service_name);
+      recv_spot_with_timeout (sub_spot, recv_parts, topic, 2000));
     assert (topic == "zero:topic");
     assert (recv_parts.size () == 1);
     assert (recv_parts[0].size () == 4);
@@ -130,7 +124,7 @@ void test_spot_publish_external_buffer_failure_keeps_buffer_alive ()
         assert (part.valid ());
         bool threw = false;
         try {
-            spot.publish (std::string (), "zero:topic").message (part).submit ();
+            spot.publish (std::string ()).message (part).submit ();
         }
         catch (const zlink::submit_error_t &) {
             threw = true;

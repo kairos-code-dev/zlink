@@ -50,7 +50,7 @@ public class CallbackModeContractTest {
       throws Exception {
         TestSupport.assumeNative();
 
-        String serviceName = "spot-callback-service";
+        String channelName = "spot-callback-service";
         CountDownLatch delivered = new CountDownLatch(1);
         AtomicReference<SpotDispatchEvent> eventRef = new AtomicReference<>();
         AtomicReference<Thread> callbackThread = new AtomicReference<>();
@@ -59,7 +59,7 @@ public class CallbackModeContractTest {
         try (Context ctx = new Context();
              Registry registry = new Registry(ctx);
              Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH,
-                 serviceName);
+                 channelName);
              SpotNode publisherNode = new SpotNode(ctx);
              SpotNode subscriberNode = new SpotNode(ctx);
              Spot publisher = publisherNode.createSpot();
@@ -87,7 +87,7 @@ public class CallbackModeContractTest {
             });
 
             try (Message part = Message.copyOfUtf8("payload")) {
-                publisher.publish(serviceName, "alpha").message(part).submit();
+                publisher.publish("alpha").message(part).submit();
             }
 
             assertTrue(delivered.await(TestSupport.DEFAULT_TIMEOUT_MS,

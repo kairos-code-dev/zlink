@@ -52,9 +52,75 @@ inline zlink::message_t message_from_external_buffer (std::vector<char> &buffer,
       size);
 }
 
+inline std::vector<size_t> resolve_case_msg_sizes (size_t fallback_size)
+{
+    std::vector<size_t> sizes;
+    const char *env = std::getenv ("PERF_MSG_SIZES");
+    if (env && *env) {
+        const char *cursor = env;
+        while (*cursor) {
+            char *end = NULL;
+            errno = 0;
+            const unsigned long parsed = std::strtoul (cursor, &end, 10);
+            if (errno == 0 && end != cursor && parsed > 0)
+                sizes.push_back (static_cast<size_t> (parsed));
+            if (!end || *end == '\0')
+                break;
+            cursor = *end == ',' ? end + 1 : end;
+        }
+    }
+
+    if (sizes.empty ())
+        sizes.push_back (fallback_size > 0 ? fallback_size : 64);
+    return sizes;
+}
+
+inline size_t max_case_msg_size (const std::vector<size_t> &sizes,
+                                 size_t fallback_size)
+{
+    size_t max_size = fallback_size > 0 ? fallback_size : 64;
+    for (size_t size : sizes) {
+        if (size > max_size)
+            max_size = size;
+    }
+    return max_size;
+}
+
 inline int bench_io_threads ()
 {
     return parse_positive_env ("PERF_IO_THREADS", 0);
+}
+
+inline int bench_ctx_blocky ()
+{
+    const char *value = std::getenv ("PERF_CTX_BLOCKY");
+    if (!value || !*value)
+        return 0;
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol (value, &end, 10);
+    if (errno != 0 || end == value)
+        return 0;
+    return parsed != 0 ? 1 : 0;
+}
+
+inline zlink::auto_hwm_profile bench_ctx_auto_hwm_profile ()
+{
+    const char *value = std::getenv ("PERF_CTX_AUTO_HWM_PROFILE");
+    if (!value || !*value)
+        value = std::getenv ("PERF_AUTO_HWM_PROFILE");
+    if (!value || !*value)
+        return zlink::auto_hwm_profile::balanced;
+
+    if (std::strcmp (value, "compact") == 0)
+        return zlink::auto_hwm_profile::compact;
+    if (std::strcmp (value, "low_latency") == 0
+        || std::strcmp (value, "low-latency") == 0)
+        return zlink::auto_hwm_profile::low_latency;
+    if (std::strcmp (value, "throughput") == 0)
+        return zlink::auto_hwm_profile::throughput;
+    return zlink::auto_hwm_profile::balanced;
 }
 
 inline int bench_max_sockets ()
@@ -88,7 +154,6 @@ class ctx_guard_t
     ctx_guard_t () : _ctx ()
     {
         zlink::context_options_t options = _ctx.options ();
-        (void) options.auto_hwm_enabled (true);
         const int io_threads = bench_io_threads ();
         if (io_threads > 0)
             (void) options.io_threads (
@@ -98,6 +163,10 @@ class ctx_guard_t
         if (max_sockets > 0)
             (void) options.max_sockets (
               zlink::socket_count_t::value (max_sockets));
+
+        (void) options.blocky (bench_ctx_blocky () != 0);
+        (void) options.auto_hwm_enabled (true);
+        (void) options.auto_hwm_profile (bench_ctx_auto_hwm_profile ());
 
     }
 
@@ -162,6 +231,61 @@ inline void apply_debug_timeouts (perf_socket_t &socket,
     (void) socket.set_option (zlink::compat::options::socket_options::linger, 0);
 }
 
+inline bool apply_benchmark_auto_hwm_msg_unit (perf_socket_t &socket,
+                                               size_t msg_size)
+{
+    if (msg_size == 0)
+        return true;
+    return socket.set_auto_hwm_msg_unit_bytes (msg_size) == 0;
+}
+
+template<typename SubjectT>
+inline auto apply_benchmark_auto_hwm_msg_unit_typed_impl (
+  SubjectT &subject,
+  zlink::byte_size_t value,
+  int) -> decltype (subject.auto_hwm_msg_unit_bytes (value), void ())
+{
+    subject.auto_hwm_msg_unit_bytes (value);
+}
+
+template<typename SubjectT>
+inline void apply_benchmark_auto_hwm_msg_unit_typed_impl (
+  SubjectT &,
+  zlink::byte_size_t,
+  long)
+{
+}
+
+template<typename SubjectT>
+inline bool apply_benchmark_auto_hwm_msg_unit_typed (SubjectT &subject,
+                                                    size_t msg_size)
+{
+    if (msg_size == 0)
+        return true;
+    try {
+        apply_benchmark_auto_hwm_msg_unit_typed_impl (
+          subject,
+          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size)), 0);
+        return true;
+    }
+    catch (const zlink::config_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
+}
+
+inline bool recalculate_auto_hwm (ctx_guard_t &ctx)
+{
+    try {
+        ctx.ctx ().recalculate_auto_hwm ();
+        return true;
+    }
+    catch (const zlink::config_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
+}
+
 inline void apply_benchmark_socket_options (perf_socket_t &socket,
                                             const multi_bench_settings_t &settings,
                                             const std::string &transport)
@@ -176,8 +300,7 @@ inline bool open_socket_monitor (perf_socket_t &socket,
                                  zlink::monitor_event events,
                                  connect_monitor_t &out)
 {
-    zlink::monitor_handle_t monitor (
-      zlink::monitor_handle_t::open (socket, events));
+    zlink::monitor_handle_t monitor (socket.monitor_handle (events));
     if (!monitor.valid ())
         return false;
 

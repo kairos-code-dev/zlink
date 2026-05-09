@@ -862,7 +862,11 @@ def build_single_option_items(
 
     unique_transports = sorted(set(transports))
     unique_sizes = sorted(set(sizes))
-    base_hwm = parse_env_int("PERF_SINGLE_HWM", 1000)
+    manual_socket_overrides = (
+        os.environ.get("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES") == "1"
+        or os.environ.get("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES") == "1"
+    )
+    base_hwm = parse_env_int("PERF_SINGLE_HWM", 0)
     sndhwm = parse_env_int("PERF_SINGLE_SNDHWM", base_hwm)
     rcvhwm = parse_env_int("PERF_SINGLE_RCVHWM", base_hwm)
     sndtimeo_ms = parse_env_int("PERF_SINGLE_SNDTIMEO_MS", 200)
@@ -873,9 +877,11 @@ def build_single_option_items(
         ("duration_seconds", str(parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5))),
         ("timeout_seconds", str(timeout_sec)),
         ("io_threads", str(io_threads)),
-        ("hwm", str(base_hwm)),
-        ("sndhwm", str(sndhwm)),
-        ("rcvhwm", str(rcvhwm)),
+        ("hwm", str(base_hwm) if manual_socket_overrides and base_hwm > 0 else "auto-hwm"),
+        ("sndhwm", str(sndhwm) if manual_socket_overrides and sndhwm > 0 else "auto-hwm"),
+        ("rcvhwm", str(rcvhwm) if manual_socket_overrides and rcvhwm > 0 else "auto-hwm"),
+        ("ctx_auto_hwm_enable", os.environ.get("PERF_CTX_AUTO_HWM_ENABLE") or "core-default"),
+        ("ctx_auto_hwm_profile", os.environ.get("PERF_CTX_AUTO_HWM_PROFILE") or "balanced"),
         ("sndtimeo_ms", str(sndtimeo_ms)),
         ("rcvtimeo_ms", str(rcvtimeo_ms)),
         ("patterns", ",".join(patterns)),

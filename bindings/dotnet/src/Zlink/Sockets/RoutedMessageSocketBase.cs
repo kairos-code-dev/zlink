@@ -2,6 +2,7 @@
 
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using Systems.Zlink.Sockets.Internal;
 
 namespace Systems.Zlink;
@@ -19,6 +20,7 @@ public abstract class RoutedMessageSocketBase : SocketBase
     {
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool Send(string routingId, Message message,
         SendFlags flags = SendFlags.None)
     {
@@ -32,19 +34,22 @@ public abstract class RoutedMessageSocketBase : SocketBase
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Send(RoutingId routingId, Message message,
         SendFlags flags = SendFlags.None)
     {
         if ((flags & SendFlags.DontWait) != 0)
         {
-            return SocketKernel.TrySendOrThrow(Kernel.SendNoWaitResult(routingId,
-                message));
+            return SocketKernel.TrySendOrThrow(
+                Kernel.SendRoutedMessageResultUnchecked(routingId, message,
+                    (int)flags));
         }
 
-        Kernel.Send(routingId, message, flags);
+        Kernel.SendRoutedMessageUnchecked(routingId, message, flags);
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool Send(string routingId, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
@@ -58,6 +63,7 @@ public abstract class RoutedMessageSocketBase : SocketBase
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Send(RoutingId routingId, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
@@ -96,16 +102,17 @@ public abstract class RoutedMessageSocketBase : SocketBase
         Kernel.RecvHandler(handler);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Received? Recv(RecvFlags flags = RecvFlags.None)
     {
         return (flags & RecvFlags.DontWait) != 0
-            ? Kernel.ReceiveRoutedNoWait()
-            : Kernel.ReceiveRouted(flags);
+            ? Kernel.ReceiveRoutedNoWaitUnchecked()
+            : Kernel.ReceiveRoutedUnchecked(flags);
     }
 
     internal Received? RecvNoWait()
     {
-        return Kernel.ReceiveRoutedNoWait();
+        return Kernel.ReceiveRoutedNoWaitUnchecked();
     }
 
     public void OnSendReady(Action handler)

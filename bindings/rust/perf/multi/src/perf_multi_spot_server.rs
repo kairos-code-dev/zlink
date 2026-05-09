@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use zlink::*;
 
-const SERVICE_NAME: &str = "perf-spot-svc";
+const CHANNEL_NAME: &str = "perf-spot-svc";
 const TOPIC: &str = "bench.topic";
 
 fn env_u64(name: &str, default: u64) -> u64 {
@@ -111,7 +111,7 @@ fn main() {
 
     let ctx = common::perf_server_context();
     let registry = Registry::new(&ctx).expect("registry");
-    let discovery = Discovery::new(&ctx, AutoConnectType::SpotMesh, SERVICE_NAME).expect("discovery");
+    let discovery = Discovery::new(&ctx, AutoConnectType::SpotMesh, CHANNEL_NAME).expect("discovery");
     let node = SpotNode::new(&ctx).expect("spot node");
     node.set_routing_id(&RoutingId::from_bytes(b"z-rust-multi-spot-server"))
         .expect("server node rid");
@@ -192,7 +192,7 @@ fn main() {
     let ready_deadline = Instant::now() + ready_timeout;
     while Instant::now() < ready_deadline && ready_count < settings.clients {
         match spot.publish_with_flags(
-            SERVICE_NAME,
+            CHANNEL_NAME,
             TOPIC,
             Message::copy_from(&warmup).expect("warmup message"),
             SendFlags::DONT_WAIT,
@@ -256,7 +256,7 @@ fn main() {
         common::encode_header(&mut buf, common::PHASE_ACTIVE, args.msg_size as u32, seq);
         seq += 1;
         spot.publish(
-            SERVICE_NAME,
+            CHANNEL_NAME,
             TOPIC,
             Message::copy_from(&buf).expect("publish msg"),
         )
@@ -264,7 +264,7 @@ fn main() {
     }
     common::encode_header(&mut buf, common::PHASE_COOLDOWN, args.msg_size as u32, seq);
     let _ = spot.publish(
-        SERVICE_NAME,
+        CHANNEL_NAME,
         TOPIC,
         Message::copy_from(&buf).expect("cooldown msg"),
     );

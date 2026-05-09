@@ -317,22 +317,19 @@ export class Received {
 
 export class TopicMessage extends MultipartEnvelope {
   readonly routingId: RoutingId | null;
-  readonly serviceName: string | null;
   readonly topic: string;
 
   private constructor(
     token: symbol,
     topic: string,
     parts: readonly Message[],
-    routingId: RoutingId | null = null,
-    serviceName: string | null = null
+    routingId: RoutingId | null = null
   ) {
     if (token !== DOMAIN_CREATE_TOKEN) {
       throw new TypeError('TopicMessage values are created by subscribe operations');
     }
     super(parts);
     this.routingId = routingId;
-    this.serviceName = serviceName;
     this.topic = topic;
   }
 
@@ -340,16 +337,14 @@ export class TopicMessage extends MultipartEnvelope {
   static create(
     topic: string,
     parts: readonly Message[],
-    routingId: RoutingId | null = null,
-    serviceName: string | null = null
+    routingId: RoutingId | null = null
   ): TopicMessage {
-    return new TopicMessage(DOMAIN_CREATE_TOKEN, topic, parts, routingId, serviceName);
+    return new TopicMessage(DOMAIN_CREATE_TOKEN, topic, parts, routingId);
   }
 }
 
 export class SubscriptionEvent {
   readonly routingId: RoutingId | null;
-  readonly serviceName: string | null;
   readonly topic: string;
   readonly subscribed: boolean;
 
@@ -357,14 +352,12 @@ export class SubscriptionEvent {
     token: symbol,
     topic: string,
     subscribed: boolean,
-    routingId: RoutingId | null = null,
-    serviceName: string | null = null
+    routingId: RoutingId | null = null
   ) {
     if (token !== DOMAIN_CREATE_TOKEN) {
       throw new TypeError('SubscriptionEvent values are created by subscription event operations');
     }
     this.routingId = routingId;
-    this.serviceName = serviceName;
     this.topic = topic;
     this.subscribed = subscribed === true;
   }
@@ -373,10 +366,9 @@ export class SubscriptionEvent {
   static create(
     topic: string,
     subscribed: boolean,
-    routingId: RoutingId | null = null,
-    serviceName: string | null = null
+    routingId: RoutingId | null = null
   ): SubscriptionEvent {
-    return new SubscriptionEvent(DOMAIN_CREATE_TOKEN, topic, subscribed, routingId, serviceName);
+    return new SubscriptionEvent(DOMAIN_CREATE_TOKEN, topic, subscribed, routingId);
   }
 }
 

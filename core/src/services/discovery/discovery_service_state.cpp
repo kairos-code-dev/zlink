@@ -96,14 +96,14 @@ bool discovery_service_state_t::has_inflight_observer_callbacks () const
 }
 
 void discovery_service_state_t::begin_observer_notification (
-  const std::string &service_name_,
+  const std::string &channel_name_,
   const std::set<std::string> &services_,
   std::vector<discovery_observer_t *> *observers_out_)
 {
     if (!observers_out_)
         return;
     observers_out_->clear ();
-    if (services_.find (service_name_) == services_.end () || _observers.empty ())
+    if (services_.find (channel_name_) == services_.end () || _observers.empty ())
         return;
     observers_out_->assign (_observers.begin (), _observers.end ());
     _observer_callbacks_inflight += observers_out_->size ();
@@ -218,10 +218,10 @@ void discovery_service_state_t::apply_provider_snapshot (
     change_out_->changed = true;
     change_out_->event.service_kind = ZLINK_SERVICE_KIND_DISCOVERY;
     change_out_->event.detail_flags =
-      ZLINK_EVENT_DETAIL_SERVICE_NAME | ZLINK_EVENT_DETAIL_SUBJECT_RID;
+      ZLINK_EVENT_DETAIL_CHANNEL_NAME | ZLINK_EVENT_DETAIL_SUBJECT_RID;
     change_out_->event.routing_id = routing_id_;
-    copy_fixed_c_string_from_cstr (change_out_->event.service_name,
-                                   sizeof (change_out_->event.service_name),
+    copy_fixed_c_string_from_cstr (change_out_->event.channel_name,
+                                   sizeof (change_out_->event.channel_name),
                                    channel_name_.c_str ());
     change_out_->event.value = static_cast<uint32_t> (_providers.size ());
     if (!had_providers)

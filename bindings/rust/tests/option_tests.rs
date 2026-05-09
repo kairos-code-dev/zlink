@@ -78,8 +78,13 @@ fn router_option_mandatory() {
 fn common_option_rid_duplicate_policy() {
     let ctx = Context::new().unwrap();
     let sock = ctx.router_socket().unwrap();
-    sock.common_options().set_rid_duplicate_policy(RidDuplicatePolicy::Handover).unwrap();
-    assert_eq!(sock.common_options().rid_duplicate_policy().unwrap(), RidDuplicatePolicy::Handover);
+    sock.common_options()
+        .set_rid_duplicate_policy(RidDuplicatePolicy::Handover)
+        .unwrap();
+    assert_eq!(
+        sock.common_options().rid_duplicate_policy().unwrap(),
+        RidDuplicatePolicy::Handover
+    );
 }
 
 #[test]

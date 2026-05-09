@@ -231,21 +231,14 @@ impl Received {
 
 pub struct TopicMessage {
     pub routing_id: Option<RoutingId>,
-    pub service_name: Option<String>,
     pub topic: String,
     pub parts: Vec<Message>,
 }
 
 impl TopicMessage {
-    pub(crate) fn new(
-        routing_id: Option<RoutingId>,
-        service_name: Option<String>,
-        topic: String,
-        parts: Vec<Message>,
-    ) -> Self {
+    pub(crate) fn new(routing_id: Option<RoutingId>, topic: String, parts: Vec<Message>) -> Self {
         Self {
             routing_id,
-            service_name,
             topic,
             parts,
         }
@@ -292,21 +285,14 @@ impl TopicMessage {
 
 pub struct SubscriptionEvent {
     pub routing_id: Option<RoutingId>,
-    pub service_name: Option<String>,
     pub topic: String,
     pub subscribed: bool,
 }
 
 impl SubscriptionEvent {
-    pub(crate) fn new(
-        routing_id: Option<RoutingId>,
-        service_name: Option<String>,
-        subscribed: bool,
-        topic: String,
-    ) -> Self {
+    pub(crate) fn new(routing_id: Option<RoutingId>, subscribed: bool, topic: String) -> Self {
         Self {
             routing_id,
-            service_name,
             topic,
             subscribed,
         }

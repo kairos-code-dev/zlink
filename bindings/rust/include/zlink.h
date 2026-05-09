@@ -749,7 +749,6 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_channel_part (
 /* ========== Helper substrate layer (*_part) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_publish_part (
   void *spot_,
-  const char *service_name_,
   const char *topic_id_,
   zlink_msg_t *part_,
   zlink_send_flags_t flags_,
@@ -759,9 +758,6 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_publish_part (
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscribe_part (
   void *spot_,
   const zlink_routing_id_t **source_rid_out_,
-  char *service_name_buf_,
-  size_t service_name_capacity_,
-  size_t *service_name_len_out_,
   char *topic_id_buf_,
   size_t topic_id_capacity_,
   size_t *topic_id_len_out_,
@@ -773,9 +769,6 @@ ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscription_event_recv (
   void *spot_,
   const zlink_routing_id_t **source_rid_out_,
   int *subscribed_out_,
-  char *service_name_buf_,
-  size_t service_name_capacity_,
-  size_t *service_name_len_out_,
   char *topic_id_buf_,
   size_t topic_id_capacity_,
   size_t *topic_id_len_out_,
@@ -1403,7 +1396,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_pub_ingress (
 
 typedef struct zlink_spot_node_status_t
 {
-    char service_name[256];
+    char channel_name[256];
     char local_endpoint[256];
     zlink_routing_id_t node_routing_id;
     zlink_spot_node_state_t state;
@@ -1420,7 +1413,7 @@ typedef struct zlink_spot_node_status_t
 
 typedef struct zlink_spot_node_peer_entry_t
 {
-    char service_name[256];
+    char channel_name[256];
     char local_endpoint[256];
     char peer_endpoint[256];
     zlink_spot_peer_source_t source;

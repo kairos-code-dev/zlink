@@ -2,9 +2,9 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../..');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWait, resolveMultiLatencySampleCap, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWait, resolveClientPollTimeoutMs, resolveMultiLatencySampleCap, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -26,8 +26,10 @@ async function main() {
         }
         for (let i = 0; i < dealers.length; i += 1) {
             await waitForConnectionReady(dealers[i], () => dealers[i].connect(options.endpoint));
+            applyAutoHwmMsgUnit(dealers[i], options.msgSize);
             poller.add(dealers[i], pollEvents(POLLIN | POLLOUT), i);
         }
+        ctx.recalculateAutoHwm();
         const runId = createRunId(1);
         const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
@@ -39,6 +41,7 @@ async function main() {
             roundTrip: true,
             sampleCap: resolveMultiLatencySampleCap()
         });
+        const clientPollTimeoutMs = resolveClientPollTimeoutMs();
         let seq = 1n;
         const drainReply = (index) => {
             let progressed = false;
@@ -74,9 +77,11 @@ async function main() {
             if (progressed) {
                 continue;
             }
-            const ready = poller.waitAll(poller.size, 25);
+            const nowNs = currentEpochNs();
+            const remainMs = Number((activeStopNs - nowNs) / 1000000n);
+            const waitMs = Math.max(1, Math.min(clientPollTimeoutMs, remainMs));
+            const ready = poller.waitAll(poller.size, waitMs);
             if (ready.length === 0) {
-                await sleepImmediate();
                 continue;
             }
             for (const event of ready) {

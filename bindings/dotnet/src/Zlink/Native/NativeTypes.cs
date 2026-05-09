@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Systems.Zlink.Native;
@@ -97,6 +98,7 @@ internal static class NativeHelpers
         return data;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe ZlinkRoutingId WriteRoutingId(ReadOnlySpan<byte> routingId)
     {
         if (routingId.Length <= 0 || routingId.Length > 255)

@@ -252,7 +252,7 @@ bool wait_for_topology_desired_total_local (
 
 void init_socket_topology_filter_local (
   zlink_registry_topology_filter_t *filter_,
-  const char *service_name_,
+  const char *channel_name_,
   zlink_service_role_t service_role_,
   const zlink_routing_id_t *routing_id_)
 {
@@ -260,7 +260,7 @@ void init_socket_topology_filter_local (
     filter_->service_kind = ZLINK_SERVICE_KIND_SOCKET;
     filter_->service_role = service_role_;
     filter_->source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
-    strncpy (filter_->channel_name, service_name_,
+    strncpy (filter_->channel_name, channel_name_,
              sizeof (filter_->channel_name) - 1);
     if (routing_id_)
         filter_->routing_id = *routing_id_;

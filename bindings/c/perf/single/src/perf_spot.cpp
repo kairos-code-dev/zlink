@@ -59,14 +59,6 @@ int resolve_spot_subscription_ready_timeout_ms (const std::string &transport_)
                                connect_timeout_ms);
 }
 
-size_t spot_auto_hwm_msg_unit (size_t msg_size_)
-{
-    static const size_t k_max_spot_msg_unit = 4096;
-    if (msg_size_ == 0)
-        return k_max_spot_msg_unit;
-    return std::min (msg_size_, k_max_spot_msg_unit);
-}
-
 bool topic_matches (const char *topic_, size_t topic_len_)
 {
     if (!topic_)
@@ -201,13 +193,10 @@ int recv_spot_header_flags (void *subscriber_,
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    char service_name[256];
-    size_t service_name_len = sizeof (service_name);
     char topic[256];
     size_t topic_len = sizeof (topic);
     const int rc = zlink_spot_subscribe (
-      subscriber_, NULL, &parts, &part_count, service_name, &service_name_len,
-      topic, &topic_len,
+      subscriber_, NULL, &parts, &part_count, topic, &topic_len,
       static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0) {
         const int err = zlink_errno ();
@@ -225,15 +214,6 @@ int recv_spot_header_flags (void *subscriber_,
     zlink_multipart_close (parts, part_count);
     std::free (parts);
     return 1;
-}
-
-void apply_spot_node_auto_hwm_msg_unit (void *publisher_node_,
-                                        void *subscriber_node_,
-                                        size_t msg_size_)
-{
-    const size_t msg_unit = spot_auto_hwm_msg_unit (msg_size_);
-    apply_single_auto_hwm_msg_unit (publisher_node_, msg_unit);
-    apply_single_auto_hwm_msg_unit (subscriber_node_, msg_unit);
 }
 
 bool publish_metric_payload (void *publisher_,
@@ -630,9 +610,6 @@ int run_case (const std::string &lib_name_,
         print_fail ();
         return 1;
     }
-
-    apply_spot_node_auto_hwm_msg_unit (
-      publisher_node, subscriber_node, msg_size_);
 
     const int base_port = 25000 + (current_process_id () % 32) * 512;
     publisher = zlink_spot_new (publisher_node);

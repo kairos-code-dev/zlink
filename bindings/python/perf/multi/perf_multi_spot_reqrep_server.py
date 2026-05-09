@@ -14,7 +14,7 @@ from perf_multi_common import (
 )
 
 
-SERVICE_NAME = "spot-svc"
+CHANNEL_NAME = "spot-svc"
 SERVER_NODE_RID = b"SPOT-REQREP-SERVER-NODE"
 SERVER_SPOT_RID = b"SPOT-REQREP-SERVER-SPOT"
 

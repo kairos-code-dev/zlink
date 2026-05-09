@@ -237,9 +237,9 @@ public final class Spot implements AutoCloseable {
         options.requestTimeout(value);
     }
 
-    public SendOp publish(String serviceName, String topicId) {
+    public SendOp publish(String topicId) {
         return new SendBuilder((parts, flags) ->
-            publish(serviceName, topicId, parts, flags));
+            publish(topicId, parts, flags));
     }
 
     public SendOp sendChannel(String channelName) {
@@ -289,17 +289,16 @@ public final class Spot implements AutoCloseable {
             replyToRouter(peerRid, requestSeq, parts, flags));
     }
 
-    /** Publishes one payload part through a service-aware Spot attachment. */
-    boolean publish(String serviceName, String topicId, Message part) {
+    /** Publishes one payload part through the owning Spot topic plane. */
+    boolean publish(String topicId, Message part) {
         Objects.requireNonNull(part, "part");
-        return publish(serviceName, topicId, part, SendFlags.NONE);
+        return publish(topicId, part, SendFlags.NONE);
     }
 
-    boolean publish(String serviceName, String topicId, Message part,
-                        SendFlags flags) {
+    boolean publish(String topicId, Message part, SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
         try {
-            return publishInternal(serviceName, topicId, part,
+            return publishInternal(topicId, part,
               flags == SendFlags.DONT_WAIT);
         } catch (SubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
@@ -310,17 +309,15 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    /** Publishes a multipart payload through a service-aware Spot attachment. */
-    boolean publish(String serviceName, String topicId,
-                        List<Message> parts) {
-        return publish(serviceName, topicId, parts, SendFlags.NONE);
+    /** Publishes a multipart payload through the owning Spot topic plane. */
+    boolean publish(String topicId, List<Message> parts) {
+        return publish(topicId, parts, SendFlags.NONE);
     }
 
-    boolean publish(String serviceName, String topicId,
-                        List<Message> parts, SendFlags flags) {
+    boolean publish(String topicId, List<Message> parts, SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
         try {
-            return publishInternal(serviceName, topicId, parts,
+            return publishInternal(topicId, parts,
               flags == SendFlags.DONT_WAIT);
         } catch (SubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
@@ -511,8 +508,8 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    private boolean publishInternal(String serviceName, String topicId,
-                                 Message part, boolean nonBlocking) {
+    private boolean publishInternal(String topicId, Message part,
+                                 boolean nonBlocking) {
         Objects.requireNonNull(topicId, "topicId");
         Objects.requireNonNull(part, "part");
         if (!nonBlocking && InternalAccess.inCallback()) {
@@ -520,7 +517,7 @@ public final class Spot implements AutoCloseable {
                 "blocking publish is not supported from callback context; use SendFlags.DONT_WAIT");
         }
         while (true) {
-            int rc = spotPublishPartOnce(serviceName, topicId, part,
+            int rc = spotPublishPartOnce(topicId, part,
                 nonBlocking ? SEND_DONTWAIT : 0, Native.PART_FINAL);
             if (rc == 0)
                 return true;
@@ -531,8 +528,8 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    private boolean publishInternal(String serviceName, String topicId,
-                                 List<Message> parts, boolean nonBlocking) {
+    private boolean publishInternal(String topicId, List<Message> parts,
+                                 boolean nonBlocking) {
         validateMessages(parts, "parts");
         if (!nonBlocking && InternalAccess.inCallback()) {
             throw new IllegalStateException(
@@ -542,7 +539,7 @@ public final class Spot implements AutoCloseable {
             int partFlag = i + 1 < parts.size()
                 ? Native.PART_MORE : Native.PART_FINAL;
             while (true) {
-                int rc = spotPublishPartOnce(serviceName, topicId,
+                int rc = spotPublishPartOnce(topicId,
                     Objects.requireNonNull(parts.get(i), "parts[" + i + "]"),
                     nonBlocking ? SEND_DONTWAIT : 0, partFlag);
                 if (rc == 0)
@@ -1416,9 +1413,6 @@ public final class Spot implements AutoCloseable {
         while (true) {
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment ridOut = arena.allocate(ValueLayout.ADDRESS);
-                MemorySegment serviceOut = arena.allocate(TOPIC_CAPACITY);
-                MemorySegment serviceLenOut = arena.allocate(ValueLayout.JAVA_LONG);
-                serviceLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
                 MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
                 MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
                 topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
@@ -1426,15 +1420,13 @@ public final class Spot implements AutoCloseable {
                 Message[] parts = new Message[4];
                 int partCount = 0;
                 RoutingId routingId = null;
-                String serviceName = "";
                 String topicId = "";
                 while (true) {
                     Message part = new Message();
                     boolean success = false;
                     try {
                         int rc = Native.spotSubscribePart(handle, ridOut,
-                          serviceOut, TOPIC_CAPACITY, serviceLenOut, topicOut,
-                          TOPIC_CAPACITY, topicLenOut,
+                          topicOut, TOPIC_CAPACITY, topicLenOut,
                           InternalAccess.messageNativeHandle(part),
                           hasMoreOut, nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
                         if (rc == 0) {
@@ -1444,9 +1436,6 @@ public final class Spot implements AutoCloseable {
                             if (partCount == 0) {
                                 routingId = readRoutingIdPtr(
                                   ridOut.get(ValueLayout.ADDRESS, 0));
-                                serviceName = decodeTopic(serviceOut,
-                                  normalizeTopicLength(serviceOut, TOPIC_CAPACITY,
-                                    serviceLenOut.get(ValueLayout.JAVA_LONG, 0)));
                                 int topicLength = normalizeTopicLength(topicOut,
                                   TOPIC_CAPACITY,
                                   topicLenOut.get(ValueLayout.JAVA_LONG, 0));
@@ -1460,7 +1449,6 @@ public final class Spot implements AutoCloseable {
                             if (!InternalAccess.messageMore(part)) {
                                 return Optional.of(InternalAccess.topicMessage(
                                   routingId,
-                                  serviceName.isEmpty() ? null : serviceName,
                                   topicId,
                                   partCount == parts.length ? parts
                                     : java.util.Arrays.copyOf(parts, partCount)));
@@ -1516,8 +1504,7 @@ public final class Spot implements AutoCloseable {
                     String topicId = decodeTopic(topicOut, topicLength);
                     return Optional.of(new SubscriptionEvent(
                       Optional.ofNullable(readRoutingId(rid)),
-                      Optional.empty(), topicId,
-                      subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
+                      topicId, subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
                 }
                 RecvResult result;
                 try {
@@ -1606,17 +1593,15 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    private int spotPublishPartOnce(String serviceName, String topicId,
-                                    Message part, int flags, int partFlag) {
+    private int spotPublishPartOnce(String topicId, Message part, int flags,
+                                    int partFlag) {
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment service = NativeHelpers.toCString(arena,
-              requireServiceName(serviceName));
             MemorySegment topic = topicCString(topicId);
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
             Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
             try {
-                int rc = Native.spotPublishPart(handle, service, topic,
-                  nativeMsg, flags, partFlag);
+                int rc = Native.spotPublishPart(handle, topic, nativeMsg, flags,
+                  partFlag);
                 if (rc != 0) {
                     InternalAccess.messageRestoreFromNative(part, nativeMsg,
                         false, anchor);
@@ -1634,7 +1619,7 @@ public final class Spot implements AutoCloseable {
                                         int flags, int partFlag) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment service = NativeHelpers.toCString(arena,
-              requireServiceName(channelName));
+              requireChannelName(channelName));
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
             Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
             try {
@@ -1685,7 +1670,7 @@ public final class Spot implements AutoCloseable {
                                            int timeoutMs) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment service = NativeHelpers.toCString(arena,
-              requireServiceName(channelName));
+              requireChannelName(channelName));
             MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
             InternalAccess.messageCopyTo(part, nativeMsg);
             return Native.spotRequestChannelPart(handle, service,
@@ -1730,12 +1715,12 @@ public final class Spot implements AutoCloseable {
         return RequestResult.PROTOCOL_ERROR;
     }
 
-    private static String requireServiceName(String serviceName) {
-        Objects.requireNonNull(serviceName, "serviceName");
-        if (serviceName.isEmpty()) {
-            throw new IllegalArgumentException("serviceName must not be empty");
+    private static String requireChannelName(String channelName) {
+        Objects.requireNonNull(channelName, "channelName");
+        if (channelName.isEmpty()) {
+            throw new IllegalArgumentException("channelName must not be empty");
         }
-        return serviceName;
+        return channelName;
     }
 
     private static void closeSnapshot(CallbackSubscribeData snapshot) {

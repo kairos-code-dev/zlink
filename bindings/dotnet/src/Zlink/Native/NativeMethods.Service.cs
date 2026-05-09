@@ -348,22 +348,18 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_publish_part(IntPtr spot,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId, ref ZlinkMsg part,
         int flags, ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_subscribe_part(IntPtr spot,
-        out IntPtr sourceRoutingId, byte[] serviceNameBuffer,
-        nuint serviceNameCapacity, out nuint serviceNameLenOut,
-        byte[] topicIdBuffer, nuint topicIdCapacity, out nuint topicIdLenOut,
+        out IntPtr sourceRoutingId, byte[] topicIdBuffer,
+        nuint topicIdCapacity, out nuint topicIdLenOut,
         ref ZlinkMsg part, out int hasMore, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_subscription_event_recv(IntPtr spot,
-        out IntPtr sourceRoutingId, out int subscribed,
-        byte[] serviceNameBuffer, nuint serviceNameCapacity,
-        out nuint serviceNameLenOut, byte[] topicIdBuffer,
+        out IntPtr sourceRoutingId, out int subscribed, byte[] topicIdBuffer,
         nuint topicIdCapacity, out nuint topicIdLenOut, int flags);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]

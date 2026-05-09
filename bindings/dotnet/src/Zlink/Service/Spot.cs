@@ -227,6 +227,16 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
         set => Options.PubSubHighWaterMark = value;
     }
 
+    public bool PublisherNoDrop
+    {
+        set => PublisherOptions.NoDrop = value;
+    }
+
+    public TimeSpan? PublisherSendTimeout
+    {
+        set => PublisherOptions.SendTimeout = value;
+    }
+
     public int DispatchWorkersMin
     {
         get => GetAdmissionOption(SpotNodeOption.DispatchWorkersMin);
@@ -1328,9 +1338,9 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         set => Options.RequestTimeout = value;
     }
 
-    public SendOperation Publish(string serviceName, string topic)
-        => new SpotSendOperation(this, SpotOperationKind.Publish, serviceName,
-            topic);
+    public SendOperation Publish(string topic)
+        => new SpotSendOperation(this, SpotOperationKind.Publish,
+            topicOrChannel: topic);
 
     public SendOperation SendChannel(string channelName)
         => new SpotSendOperation(this, SpotOperationKind.SendChannel,
@@ -1363,41 +1373,37 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         => new SpotReplyOperation(this, SpotOperationKind.ReplyToRouter,
             peerRid: peerRid, requestSeq: requestSeq);
 
-    internal bool Publish(string serviceName, string topic, Message message,
+    internal bool Publish(string topic, Message message,
         SendFlags flags = SendFlags.None)
     {
-        ValidateServiceName(serviceName, nameof(serviceName));
         ValidateTopicId(topic, nameof(topic));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         EnsureNotDisposed();
         if ((flags & SendFlags.DontWait) != 0)
         {
-            return SocketKernel.TrySendOrThrow(PublishNoWaitResult(serviceName,
-                topic, message));
+            return SocketKernel.TrySendOrThrow(PublishNoWaitResult(topic,
+                message));
         }
 
-        PublishSingleCore(serviceName, topic, message, (int)flags);
+        PublishSingleCore(topic, message, (int)flags);
         return true;
     }
 
-    internal SendResult PublishNoWaitResult(string serviceName, string topic,
-        Message message)
+    internal SendResult PublishNoWaitResult(string topic, Message message)
     {
-        ValidateServiceName(serviceName, nameof(serviceName));
         ValidateTopicId(topic, nameof(topic));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         EnsureNotDisposed();
-        return PublishNoWaitSingleCore(serviceName, topic, message);
+        return PublishNoWaitSingleCore(topic, message);
     }
 
-    internal bool Publish(string serviceName, string topic,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+    internal bool Publish(string topic, IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
-        ValidateServiceName(serviceName, nameof(serviceName));
         ValidateTopicId(topic, nameof(topic));
         EnsureNotDisposed();
         if (parts.Count == 0)
@@ -1405,61 +1411,55 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 
         if ((flags & SendFlags.DontWait) != 0)
         {
-            return SocketKernel.TrySendOrThrow(PublishNoWaitResult(serviceName,
-                topic, parts));
+            return SocketKernel.TrySendOrThrow(PublishNoWaitResult(topic,
+                parts));
         }
 
         if (parts is Message[] array)
         {
-            PublishPartsWithFlags(serviceName, topic, array, (int)flags,
-                nameof(parts));
+            PublishPartsWithFlags(topic, array, (int)flags, nameof(parts));
             return true;
         }
 
         if (parts is List<Message> list)
         {
-            PublishPartsWithFlags(serviceName, topic, list, (int)flags,
-                nameof(parts));
+            PublishPartsWithFlags(topic, list, (int)flags, nameof(parts));
             return true;
         }
 
         Message[] copied = new Message[parts.Count];
         for (int i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
-        PublishPartsWithFlags(serviceName, topic, copied, (int)flags,
-            nameof(parts));
+        PublishPartsWithFlags(topic, copied, (int)flags, nameof(parts));
         return true;
     }
 
-    internal SendResult PublishNoWaitResult(string serviceName, string topic,
+    internal SendResult PublishNoWaitResult(string topic,
         IReadOnlyList<Message> parts)
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
-        ValidateServiceName(serviceName, nameof(serviceName));
         ValidateTopicId(topic, nameof(topic));
         EnsureNotDisposed();
         if (parts.Count == 0)
             throw new ArgumentException("Parts must not be empty.", nameof(parts));
 
         if (parts is Message[] array)
-            return PublishNoWaitParts(serviceName, topic, array,
-                nameof(parts));
+            return PublishNoWaitParts(topic, array, nameof(parts));
 
         if (parts is List<Message> list)
-            return PublishNoWaitParts(serviceName, topic,
-                list, nameof(parts));
+            return PublishNoWaitParts(topic, list, nameof(parts));
 
         Message[] copied = new Message[parts.Count];
         for (int i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
-        return PublishNoWaitParts(serviceName, topic, copied, nameof(parts));
+        return PublishNoWaitParts(topic, copied, nameof(parts));
     }
 
     internal bool SendChannel(string channelName, Message message,
         SendFlags flags = SendFlags.None)
     {
-        ValidateServiceName(channelName, nameof(channelName));
+        ValidateChannelName(channelName, nameof(channelName));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         EnsureNotDisposed();
@@ -1482,7 +1482,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
-        ValidateServiceName(channelName, nameof(channelName));
+        ValidateChannelName(channelName, nameof(channelName));
         EnsureNotDisposed();
         EnsureParts(parts, nameof(parts));
 
@@ -1520,7 +1520,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     internal async Task<IReadOnlyList<Message>> RequestChannelAsync(string channelName,
         Message message, TimeSpan timeout = default, CancellationToken ct = default)
     {
-        ValidateServiceName(channelName, nameof(channelName));
+        ValidateChannelName(channelName, nameof(channelName));
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         Received received = await RequestChannelAsyncInternal(channelName,
@@ -1532,7 +1532,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         IReadOnlyList<Message> parts, TimeSpan timeout = default,
         CancellationToken ct = default)
     {
-        ValidateServiceName(channelName, nameof(channelName));
+        ValidateChannelName(channelName, nameof(channelName));
         Received received = await RequestChannelAsyncInternal(channelName,
             parts, timeout, ct).ConfigureAwait(false);
         return received.Parts;
@@ -1558,7 +1558,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         Action<RequestResult, IReadOnlyList<Message>> callback,
         SendFlags flags, TimeSpan? timeout = null)
     {
-        ValidateServiceName(channelName, nameof(channelName));
+        ValidateChannelName(channelName, nameof(channelName));
         try
         {
             RequestReplySupport.AttachResultCallback(
@@ -1589,44 +1589,39 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    internal void PublishRawSingle(string serviceName, string topic,
-        ReadOnlySpan<byte> payload, int flags)
+    internal void PublishRawSingle(string topic, ReadOnlySpan<byte> payload,
+        int flags)
     {
-        ValidateServiceName(serviceName, nameof(serviceName));
         ValidateTopicId(topic, nameof(topic));
         EnsureNotDisposed();
-        PublishRawSingleCore(serviceName, topic, payload, flags);
+        PublishRawSingleCore(topic, payload, flags);
     }
 
-    internal SendResult PublishRawSingleNoWait(string serviceName, string topic,
+    internal SendResult PublishRawSingleNoWait(string topic,
         ReadOnlySpan<byte> payload)
     {
-        ValidateServiceName(serviceName, nameof(serviceName));
         ValidateTopicId(topic, nameof(topic));
         EnsureNotDisposed();
-        return PublishRawSingleNoWaitCore(serviceName, topic, payload);
+        return PublishRawSingleNoWaitCore(topic, payload);
     }
 
-    internal void PublishBorrowedSingle(string serviceName, string topic,
-        byte[] payload, int flags)
+    internal void PublishBorrowedSingle(string topic, byte[] payload, int flags)
     {
-        ValidateServiceName(serviceName, nameof(serviceName));
         ValidateTopicId(topic, nameof(topic));
         if (payload == null)
             throw new ArgumentNullException(nameof(payload));
         EnsureNotDisposed();
-        PublishBorrowedSingleCore(serviceName, topic, payload, flags);
+        PublishBorrowedSingleCore(topic, payload, flags);
     }
 
-    internal SendResult PublishBorrowedSingleNoWait(string serviceName, string topic,
+    internal SendResult PublishBorrowedSingleNoWait(string topic,
         byte[] payload)
     {
-        ValidateServiceName(serviceName, nameof(serviceName));
         ValidateTopicId(topic, nameof(topic));
         if (payload == null)
             throw new ArgumentNullException(nameof(payload));
         EnsureNotDisposed();
-        return PublishBorrowedSingleNoWaitCore(serviceName, topic, payload);
+        return PublishBorrowedSingleNoWaitCore(topic, payload);
     }
 
     public void SetSubscription(string topicOrPattern)
@@ -2183,8 +2178,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         _node.UnregisterSpot(this);
     }
 
-    private unsafe void PublishCore(string serviceName, string topic,
-        ReadOnlySpan<Message> parts, int flags, string paramName)
+    private unsafe void PublishCore(string topic, ReadOnlySpan<Message> parts,
+        int flags, string paramName)
     {
         ZlinkMsg[]? rented = null;
         Span<ZlinkMsg> nativeParts = parts.Length <= StackPublishPartLimit
@@ -2214,7 +2209,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             for (int i = 0; i < built; i++)
             {
                 int rc = NativeMethods.zlink_spot_publish_part(_handle,
-                    serviceName, topic, ref nativeParts[i], (int)flags,
+                    topic, ref nativeParts[i], (int)flags,
                     i + 1 < built
                         ? NativeMethods.ZlinkPartFlag.More
                         : NativeMethods.ZlinkPartFlag.Final);
@@ -2237,16 +2232,16 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    private unsafe void PublishSingleCore(string serviceName, string topic,
-        Message message, int flags)
+    private unsafe void PublishSingleCore(string topic, Message message,
+        int flags)
     {
         ZlinkMsg nativePart = default;
         bool submitted = false;
         try
         {
             message.MoveTo(ref nativePart);
-            int rc = NativeMethods.zlink_spot_publish_part(_handle, serviceName,
-                topic, ref nativePart, (int)flags,
+            int rc = NativeMethods.zlink_spot_publish_part(_handle, topic,
+                ref nativePart, (int)flags,
                 NativeMethods.ZlinkPartFlag.Final);
             submitted = true;
             if (rc != 0)
@@ -2627,82 +2622,77 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             allowEmpty: false);
     }
 
-    private static void ValidateServiceName(string value, string paramName)
+    private static void ValidateChannelName(string value, string paramName)
     {
         BoundaryValidation.ValidateFixedUtf8(value, paramName);
     }
 
-    private void PublishPartsWithFlags(string serviceName, string topic,
-        IReadOnlyList<Message> parts, int flags, string paramName)
+    private void PublishPartsWithFlags(string topic, IReadOnlyList<Message> parts,
+        int flags, string paramName)
     {
         if (parts is Message[] array)
         {
-            PublishCore(serviceName, topic, array.AsSpan(), flags, paramName);
+            PublishCore(topic, array.AsSpan(), flags, paramName);
             return;
         }
 
         if (parts is List<Message> list)
         {
-            PublishCore(serviceName, topic, CollectionsMarshal.AsSpan(list),
-                flags, paramName);
+            PublishCore(topic, CollectionsMarshal.AsSpan(list), flags,
+                paramName);
             return;
         }
 
         Message[] copied = new Message[parts.Count];
         for (int i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
-        PublishCore(serviceName, topic, copied.AsSpan(), flags, paramName);
+        PublishCore(topic, copied.AsSpan(), flags, paramName);
     }
 
-    private SendResult PublishNoWaitParts(string serviceName, string topic,
+    private SendResult PublishNoWaitParts(string topic,
         IReadOnlyList<Message> parts, string paramName)
     {
         if (parts is Message[] array)
-            return PublishNoWaitCore(serviceName, topic, array.AsSpan(), paramName);
+            return PublishNoWaitCore(topic, array.AsSpan(), paramName);
 
         if (parts is List<Message> list)
-            return PublishNoWaitCore(serviceName, topic,
-                CollectionsMarshal.AsSpan(list), paramName);
+            return PublishNoWaitCore(topic, CollectionsMarshal.AsSpan(list),
+                paramName);
 
         Message[] copied = new Message[parts.Count];
         for (int i = 0; i < copied.Length; i++)
             copied[i] = parts[i];
-        return PublishNoWaitCore(serviceName, topic, copied.AsSpan(), paramName);
+        return PublishNoWaitCore(topic, copied.AsSpan(), paramName);
     }
 
     private unsafe TopicMessage SubscribeCore(int flags)
     {
-        byte[] serviceBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         try
         {
             MultipartMessageCollection parts = ReceiveSpotSubscribedParts(flags,
-                serviceBuffer, topicBuffer, out byte[]? routingIdBytes,
-                out string serviceName, out string topic)
+                topicBuffer, out byte[]? routingIdBytes, out string topic)
                 ?? throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
             RoutingId? routingId = routingIdBytes == null
                 ? null
                 : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
             if (parts.Count == 0)
                 throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
-            return new TopicMessage(routingId, serviceName, topic, parts);
+            return new TopicMessage(routingId, topic, parts);
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(serviceBuffer);
             ArrayPool<byte>.Shared.Return(topicBuffer);
         }
     }
 
     private unsafe SubscriptionEvent ReceiveSubscriptionEventCore(int flags)
     {
-        byte[] serviceBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         try
         {
             int rc = NativeMethods.zlink_spot_subscription_event_recv(_handle,
-                out IntPtr sourceRoutingId, out int subscribedInt, serviceBuffer,
-                (nuint)serviceBuffer.Length, out nuint serviceLength, topicBuffer,
+                out IntPtr sourceRoutingId, out int subscribedInt, topicBuffer,
                 (nuint)topicBuffer.Length, out nuint topicLength, flags);
             if (rc != 0)
             {
@@ -2714,19 +2704,16 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             RoutingId? routingId = routingIdBytes == null
                 ? null
                 : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
-            string serviceName = DecodeBuffer(serviceBuffer, serviceLength);
             string topic = DecodeBuffer(topicBuffer, topicLength);
-            return new SubscriptionEvent(routingId, serviceName, topic,
-                subscribedInt != 0);
+            return new SubscriptionEvent(routingId, topic, subscribedInt != 0);
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(serviceBuffer);
             ArrayPool<byte>.Shared.Return(topicBuffer);
         }
     }
 
-    private unsafe SendResult PublishNoWaitCore(string serviceName, string topic,
+    private unsafe SendResult PublishNoWaitCore(string topic,
         ReadOnlySpan<Message> parts, string paramName)
     {
         ZlinkMsg[]? rented = null;
@@ -2757,7 +2744,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             for (int i = 0; i < built; i++)
             {
                 int rc = NativeMethods.zlink_spot_publish_part(_handle,
-                    serviceName, topic, ref nativeParts[i], DontWaitFlag,
+                    topic, ref nativeParts[i], DontWaitFlag,
                     i + 1 < built
                         ? NativeMethods.ZlinkPartFlag.More
                         : NativeMethods.ZlinkPartFlag.Final);
@@ -2788,16 +2775,16 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    private unsafe SendResult PublishNoWaitSingleCore(string serviceName,
-        string topic, Message message)
+    private unsafe SendResult PublishNoWaitSingleCore(string topic,
+        Message message)
     {
         ZlinkMsg nativePart = default;
         bool submitted = false;
         try
         {
             message.MoveTo(ref nativePart);
-            int rc = NativeMethods.zlink_spot_publish_part(_handle, serviceName,
-                topic, ref nativePart, DontWaitFlag,
+            int rc = NativeMethods.zlink_spot_publish_part(_handle, topic,
+                ref nativePart, DontWaitFlag,
                 NativeMethods.ZlinkPartFlag.Final);
             submitted = true;
             if (rc == 0)
@@ -2817,7 +2804,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    private unsafe void PublishRawSingleCore(string serviceName, string topic,
+    private unsafe void PublishRawSingleCore(string topic,
         ReadOnlySpan<byte> payload, int flags)
     {
         ZlinkMsg nativePart = default;
@@ -2837,8 +2824,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 payload.CopyTo(new Span<byte>((void*)dataPtr, payload.Length));
             }
 
-            int rc = NativeMethods.zlink_spot_publish_part(_handle, serviceName,
-                topic, ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
+            int rc = NativeMethods.zlink_spot_publish_part(_handle, topic,
+                ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
             initialized = false;
             if (rc != 0)
                 throw ZlinkException.CreateSubmitException(
@@ -2852,8 +2839,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    private unsafe SendResult PublishRawSingleNoWaitCore(string serviceName,
-        string topic,
+    private unsafe SendResult PublishRawSingleNoWaitCore(string topic,
         ReadOnlySpan<byte> payload)
     {
         ZlinkMsg nativePart = default;
@@ -2873,8 +2859,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 payload.CopyTo(new Span<byte>((void*)dataPtr, payload.Length));
             }
 
-            int rc = NativeMethods.zlink_spot_publish_part(_handle, serviceName,
-                topic, ref nativePart, DontWaitFlag,
+            int rc = NativeMethods.zlink_spot_publish_part(_handle, topic,
+                ref nativePart, DontWaitFlag,
                 NativeMethods.ZlinkPartFlag.Final);
             initialized = false;
             if (rc == 0)
@@ -2894,8 +2880,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    private unsafe void PublishBorrowedSingleCore(string serviceName,
-        string topic, byte[] payload, int flags)
+    private unsafe void PublishBorrowedSingleCore(string topic, byte[] payload,
+        int flags)
     {
         ZlinkMsg nativePart = default;
         bool initialized = false;
@@ -2910,8 +2896,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             initialized = true;
             handle = default;
 
-            int rc = NativeMethods.zlink_spot_publish_part(_handle, serviceName,
-                topic, ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
+            int rc = NativeMethods.zlink_spot_publish_part(_handle, topic,
+                ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
             initialized = false;
             if (rc != 0)
                 throw ZlinkException.CreateSubmitException(
@@ -2927,8 +2913,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    private unsafe SendResult PublishBorrowedSingleNoWaitCore(string serviceName,
-        string topic, byte[] payload)
+    private unsafe SendResult PublishBorrowedSingleNoWaitCore(string topic,
+        byte[] payload)
     {
         ZlinkMsg nativePart = default;
         bool initialized = false;
@@ -2943,8 +2929,8 @@ public sealed class Spot : IDisposable, IAsyncDisposable
             initialized = true;
             handle = default;
 
-            int rc = NativeMethods.zlink_spot_publish_part(_handle, serviceName,
-                topic, ref nativePart, DontWaitFlag,
+            int rc = NativeMethods.zlink_spot_publish_part(_handle, topic,
+                ref nativePart, DontWaitFlag,
                 NativeMethods.ZlinkPartFlag.Final);
             initialized = false;
             if (rc == 0)
@@ -2969,12 +2955,10 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     private unsafe int ReceiveRawSubscribedFrameCore(Span<byte> destination,
         int flags, out byte[][] pendingFrames)
     {
-        byte[] serviceBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         try
         {
-            List<byte[]> frames = ReceiveSpotSubscribedFrames(flags, serviceBuffer,
-                topicBuffer);
+            List<byte[]> frames = ReceiveSpotSubscribedFrames(flags, topicBuffer);
             if (frames.Count == 0)
                 throw ZlinkException.CreateRecvException((int)ErrorCode.EAgain);
             return CopyFirstFrameAndCollectPending(frames, destination,
@@ -2982,7 +2966,6 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(serviceBuffer);
             ArrayPool<byte>.Shared.Return(topicBuffer);
         }
     }
@@ -3035,14 +3018,13 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         }
     }
 
-    private unsafe MultipartMessageCollection? ReceiveSpotSubscribedParts(int flags,
-        byte[] serviceBuffer, byte[] topicBuffer, out byte[]? routingIdBytes,
-        out string serviceName, out string topic)
+    private unsafe MultipartMessageCollection? ReceiveSpotSubscribedParts(
+        int flags, byte[] topicBuffer, out byte[]? routingIdBytes,
+        out string topic)
     {
         ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
         int nativePartCount = 0;
         routingIdBytes = null;
-        serviceName = string.Empty;
         topic = string.Empty;
         try
         {
@@ -3055,10 +3037,9 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                         NativeMethods.zlink_errno());
                 bool initialized = true;
                 int rc = NativeMethods.zlink_spot_subscribe_part(_handle,
-                    out IntPtr sourceRoutingId, serviceBuffer,
-                    (nuint)serviceBuffer.Length, out nuint serviceLength,
-                    topicBuffer, (nuint)topicBuffer.Length, out nuint topicLength,
-                    ref part, out int hasMore, flags);
+                    out IntPtr sourceRoutingId, topicBuffer,
+                    (nuint)topicBuffer.Length, out nuint topicLength, ref part,
+                    out int hasMore, flags);
                 if (rc != 0)
                 {
                     if (initialized)
@@ -3071,7 +3052,6 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                 if (nativePartCount == 0)
                 {
                     routingIdBytes = CopyRoutingIdBytes(sourceRoutingId);
-                    serviceName = DecodeBuffer(serviceBuffer, serviceLength);
                     topic = DecodeBuffer(topicBuffer, topicLength);
                 }
                 AppendNativePart(ref nativeParts, ref nativePartCount, ref part);
@@ -3090,7 +3070,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     }
 
     private unsafe List<byte[]> ReceiveSpotSubscribedFrames(int flags,
-        byte[] serviceBuffer, byte[] topicBuffer)
+        byte[] topicBuffer)
     {
         List<byte[]> frames = new();
         while (true)
@@ -3102,8 +3082,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                     NativeMethods.zlink_errno());
             bool initialized = true;
             int rc = NativeMethods.zlink_spot_subscribe_part(_handle,
-                out _, serviceBuffer, (nuint)serviceBuffer.Length, out _,
-                topicBuffer, (nuint)topicBuffer.Length, out _, ref part,
+                out _, topicBuffer, (nuint)topicBuffer.Length, out _, ref part,
                 out int hasMore, flags);
             if (rc != 0)
             {

@@ -270,6 +270,30 @@ int zlink::xpub_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_)
                                    (int) _subscriptions.num_prefixes ());
     }
 
+    if (option_ == ZLINK_INTERNAL_OPT_XPUB_VERBOSE)
+        return do_getsockopt<int> (optval_, optvallen_,
+                                   _verbose_subs ? 1 : 0);
+
+    if (option_ == ZLINK_INTERNAL_OPT_XPUB_VERBOSER)
+        return do_getsockopt<int> (
+          optval_, optvallen_,
+          (_verbose_subs && _verbose_unsubs) ? 1 : 0);
+
+    if (option_ == ZLINK_INTERNAL_OPT_XPUB_MANUAL)
+        return do_getsockopt<int> (optval_, optvallen_, _manual ? 1 : 0);
+
+    if (option_ == ZLINK_INTERNAL_OPT_XPUB_MANUAL_LAST_VALUE)
+        return do_getsockopt<int> (
+          optval_, optvallen_, (_manual && _send_last_pipe) ? 1 : 0);
+
+    if (option_ == ZLINK_INTERNAL_OPT_XPUB_NODROP)
+        return do_getsockopt<int> (optval_, optvallen_, _lossy ? 0 : 1);
+
+    if (option_ == ZLINK_INTERNAL_OPT_XPUB_WELCOME_MSG) {
+        return do_getsockopt (optval_, optvallen_, _welcome_msg.data (),
+                              _welcome_msg.size ());
+    }
+
     // room for future options here
 
     errno = EINVAL;

@@ -7,7 +7,6 @@
 
 #include <cerrno>
 #include <cstring>
-#include <deque>
 
 namespace {
 
@@ -15,56 +14,6 @@ zlink::routing_id_t routing_id_from_ascii (const char *value_)
 {
     return zlink::routing_id_t::from_bytes (
       reinterpret_cast<const uint8_t *> (value_), std::strlen (value_));
-}
-
-struct pending_reply_t
-{
-    pending_reply_t () : client_id (routing_id_from_ascii ("x")), payload () {}
-
-    zlink::routing_id_t client_id;
-    zlink::message_t payload;
-};
-
-enum send_status_t
-{
-    send_status_sent = 0,
-    send_status_blocked = 1,
-    send_status_failed = 2
-};
-
-send_status_t try_send_reply (::perf::socket_t &sock, pending_reply_t &reply)
-{
-    zlink::send_result_t send_result = zlink::send_result_t::sent;
-    const int rc =
-      sock.send_no_wait_result (send_result, reply.client_id, reply.payload);
-    if (rc != 0)
-        return send_status_failed;
-    if (send_result == zlink::send_result_t::sent)
-        return send_status_sent;
-    if (send_result == zlink::send_result_t::backpressured
-        || send_result == zlink::send_result_t::not_ready) {
-        return send_status_blocked;
-    }
-    errno = EIO;
-    return send_status_failed;
-}
-
-bool flush_pending_replies (::perf::socket_t &sock,
-                            std::deque<pending_reply_t> &pending_replies)
-{
-    while (!pending_replies.empty ()) {
-        pending_reply_t &reply = pending_replies.front ();
-        const send_status_t status = try_send_reply (sock, reply);
-        if (status == send_status_sent) {
-            pending_replies.pop_front ();
-            continue;
-        }
-        if (status == send_status_blocked)
-            return true;
-        return false;
-    }
-
-    return true;
 }
 
 } // namespace
@@ -104,107 +53,32 @@ bool perf_dealer_router_server (const std::string &lib_name,
       perf::multi::start_resource_probe ();
     perf::multi::print_ready (endpoint);
 
-    zlink::poller_t poller;
-    try {
-        poller.add (server.sock (), zlink::poll_event_flag_t::pollin);
-    }
-    catch (const zlink::zlink_error_t &) {
-        return false;
-    }
-
-    std::vector<zlink::poll_event_t> events;
-    events.reserve (1);
-    std::deque<pending_reply_t> pending_replies;
     bool stop_requested = false;
     bool failed = false;
     while (!stop_requested) {
-        const zlink::poll_event_flag_t wait_events =
-          pending_replies.empty ()
-            ? zlink::poll_event_flag_t::pollin
-            : (zlink::poll_event_flag_t::pollin | zlink::poll_event_flag_t::pollout);
-        try {
-            poller.modify (server.sock (), wait_events);
-        }
-        catch (const zlink::zlink_error_t &) {
-            failed = true;
-            break;
-        }
-
-        events = poller.wait_all (0, std::chrono::milliseconds (50));
-        const int poll_rc = static_cast<int> (events.size ());
-        if (poll_rc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
+        zlink::routing_id_t source_rid = routing_id_from_ascii ("x");
+        zlink::message_t part;
+        const int recv_rc = server.sock ().recv (source_rid, part);
+        if (recv_rc < 0) {
+            const int err = errno;
+            if (err == EINTR)
                 continue;
             failed = true;
             break;
         }
-        if (poll_rc == 0)
+
+        if (perf::multi::is_stop_token (part.data (), part.size ())) {
+            stop_requested = true;
             continue;
+        }
 
-        for (size_t i = 0; i < events.size () && !stop_requested; ++i) {
-            if ((static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollout))
-                != 0
-                && !flush_pending_replies (server.sock (), pending_replies)) {
-                failed = true;
-                break;
-            }
-
-            if ((static_cast<short> (events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))
-                == 0) {
+        const int send_rc = server.sock ().send (source_rid, part);
+        if (send_rc != 0) {
+            const int err = errno;
+            if (err == EINTR)
                 continue;
-            }
-
-            for (;;) {
-                zlink::routing_id_t source_rid = routing_id_from_ascii ("x");
-                zlink::message_t part;
-                const int recv_rc = server.sock ().recv (
-                  source_rid, part, ZLINK_DONTWAIT);
-                if (recv_rc < 0) {
-                    const int err = errno;
-                    if (err == EINTR)
-                        continue;
-                    if (err == EAGAIN)
-                        break;
-                    failed = true;
-                    stop_requested = true;
-                    break;
-                }
-
-                if (perf::multi::is_stop_token (part.data (), part.size ())) {
-                    stop_requested = true;
-                    break;
-                }
-
-                pending_reply_t reply;
-                reply.client_id = source_rid;
-                if (!part.valid ()) {
-                    reply.payload = zlink::message_t (0);
-                    if (!reply.payload.valid ()) {
-                        failed = true;
-                        stop_requested = true;
-                        break;
-                    }
-                } else {
-                    reply.payload = std::move (part);
-                }
-
-                if (!pending_replies.empty ()) {
-                    pending_replies.push_back (std::move (reply));
-                    continue;
-                }
-
-                const send_status_t status =
-                  try_send_reply (server.sock (), reply);
-                if (status == send_status_sent)
-                    continue;
-                if (status == send_status_blocked) {
-                    pending_replies.push_back (std::move (reply));
-                    continue;
-                }
-                failed = true;
-                stop_requested = true;
-                break;
-            }
+            failed = true;
+            break;
         }
     }
 

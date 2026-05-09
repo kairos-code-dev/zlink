@@ -66,6 +66,12 @@ bool run_pattern_dealer_router (const std::string &transport,
     }
 
     (void) dealer.sock ().set_routing_id (std::string ("CLIENT"));
+    if (!perf::single::apply_single_auto_hwm_msg_unit (router.sock (), msg_size)
+        || !perf::single::apply_single_auto_hwm_msg_unit (
+          dealer.sock (), msg_size)
+        || !perf::single::recalculate_single_auto_hwm (ctx)) {
+        return false;
+    }
     if (!perf::single::setup_connected_pair (router.sock (),
                                              dealer.sock (),
                                              transport,
@@ -87,12 +93,12 @@ bool run_pattern_dealer_router (const std::string &transport,
     std::atomic<bool> sender_done (false);
     perf::single::latency_stats_builder_t latency_builder (
       perf::single::resolve_single_latency_sample_cap ());
+    const auto active_deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
 
     std::thread sender_thread ([&]() {
         uint64_t seq = 1;
-        const auto deadline =
-          std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
-        while (std::chrono::steady_clock::now () < deadline) {
+        while (std::chrono::steady_clock::now () < active_deadline) {
             if (!perf_single_metric::stamp_payload (payload.data (),
                                                     payload.size (),
                                                     run_id,
@@ -120,7 +126,7 @@ bool run_pattern_dealer_router (const std::string &transport,
     });
 
     zlink::poller_t poller;
-    poller.add (router.sock (), zlink::poll_event_flag_t::pollin);
+    router.sock ().poller_add (poller, zlink::poll_event_flag_t::pollin);
     while (!sender_done.load (std::memory_order_acquire)) {
         std::optional<zlink::poll_event_t> event =
           poller.wait (std::chrono::milliseconds (5));
@@ -147,13 +153,15 @@ bool run_pattern_dealer_router (const std::string &transport,
                     sender_ok.store (false, std::memory_order_release);
                     break;
                 }
-                (void) record_router_payload (
-                  received,
-                  run_id,
-                  msg_size,
-                  payload_size,
-                  received_count,
-                  latency_builder);
+                if (std::chrono::steady_clock::now () < active_deadline) {
+                    (void) record_router_payload (
+                      received,
+                      run_id,
+                      msg_size,
+                      payload_size,
+                      received_count,
+                      latency_builder);
+                }
             }
             catch (const zlink::recv_error_t &err) {
                 if (err.result () == zlink::recv_result_t::no_data
@@ -189,13 +197,15 @@ bool run_pattern_dealer_router (const std::string &transport,
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
-            (void) record_router_payload (
-              received,
-              run_id,
-              msg_size,
-              payload_size,
-              received_count,
-              latency_builder);
+            if (std::chrono::steady_clock::now () < active_deadline) {
+                (void) record_router_payload (
+                  received,
+                  run_id,
+                  msg_size,
+                  payload_size,
+                  received_count,
+                  latency_builder);
+            }
         }
         catch (const zlink::recv_error_t &err) {
             if (err.result () == zlink::recv_result_t::no_data

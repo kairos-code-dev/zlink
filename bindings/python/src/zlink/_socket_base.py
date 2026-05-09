@@ -113,6 +113,11 @@ def _int32_bytes(value):
     return ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native))
 
 
+def _int64_bytes(value):
+    native = ctypes.c_int64(int(value))
+    return ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native))
+
+
 def _bool_bytes(value):
     return _int32_bytes(1 if value else 0)
 
@@ -191,6 +196,12 @@ def _read_int32(raw):
     if len(raw) != ctypes.sizeof(ctypes.c_int32):
         raise ValueError("native option payload size mismatch")
     return ctypes.c_int32.from_buffer_copy(raw).value
+
+
+def _read_int64(raw):
+    if len(raw) != ctypes.sizeof(ctypes.c_int64):
+        raise ValueError("native option payload size mismatch")
+    return ctypes.c_int64.from_buffer_copy(raw).value
 
 
 class CommonSocketOptions:
@@ -317,11 +328,19 @@ class CommonSocketOptions:
 
     @property
     def max_msg_size(self):
-        return self._socket._get_common_int_option(SocketOption.MAXMSGSIZE)
+        return _read_int64(self._socket._get_raw_option(
+            lib().zlink_get_option,
+            SocketOption.MAXMSGSIZE,
+            ctypes.sizeof(ctypes.c_int64),
+        ))
 
     @max_msg_size.setter
     def max_msg_size(self, value):
-        self._socket._set_common_int_option(SocketOption.MAXMSGSIZE, value)
+        self._socket._set_raw_option(
+            lib().zlink_set_option,
+            SocketOption.MAXMSGSIZE,
+            _int64_bytes(value),
+        )
 
     @property
     def auto_hwm_msg_unit_bytes(self):
@@ -362,6 +381,7 @@ class CommonSocketOptions:
 
 class DealerSocketOptions:
     _PROBE = 0x3201
+    _REQUEST_TIMEOUT_MS = 0x3202
     _WEIGHT = 0x3203
     _DEFAULT_WEIGHT = 100
 
@@ -386,6 +406,15 @@ class DealerSocketOptions:
     def weight(self, value):
         self._socket._set_dealer_option(self._WEIGHT, _int32_bytes(value))
         self._socket._dealer_weight_option = int(value)
+
+    @property
+    def request_timeout_ms(self):
+        return int(getattr(self._socket, "_dealer_request_timeout_ms", 5000))
+
+    @request_timeout_ms.setter
+    def request_timeout_ms(self, value):
+        self._socket._set_dealer_option(self._REQUEST_TIMEOUT_MS, _int32_bytes(value))
+        self._socket._dealer_request_timeout_ms = int(value)
 
 
 class StreamSocketOptions:

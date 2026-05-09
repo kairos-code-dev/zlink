@@ -132,7 +132,7 @@ struct spot_node_attachment_monitor_handle_t
 
     void *handle;
     socket_base_t *owner_socket;
-    std::string service_name;
+    std::string channel_name;
 };
 
 struct spot_node_service_discovery_topology_t
@@ -283,7 +283,7 @@ struct spot_node_service_attachment_state_t
 {
     struct service_sub_cache_entry_t
     {
-        std::string service_name;
+        std::string channel_name;
         socket_base_t *socket;
     };
 

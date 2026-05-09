@@ -268,6 +268,10 @@ status   = (expected == actual) ? "complete" : "partial"
 
 - `Effective Options`에는 `lang`과 `suite` 항목이 반드시 포함되어야 한다.
 - single 엔진은 최대 파일 수를 100으로 하드코딩한다 (`PERF_RESULTS_MAX_FILES` 미참조).
+- single SPOT / SPOT_REQREP은 SPOT node 또는 SPOT handle에
+  `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 설정하지 않는다. 이 옵션은 raw socket의
+  자동 HWM 메시지 단위 설정이며, SPOT 서비스 핸들에 적용하려는 코드는 정책
+  위반이다. C API에서는 해당 호출이 `EINVAL`로 실패한다.
 
 ---
 
@@ -416,6 +420,11 @@ request/reply probe barrier 로 판정한다. perf는 추가 precondition
 > `PERF_TRANSPORTS`, `PERF_TASKSET`, `PERF_FAIL_FAST`,
 > `PERF_DISABLE_RESOURCE_METRICS`, `PERF_MAX_SOCKETS`)는
 > [PERF_POLICY.md § 8](PERF_POLICY.md) 참조.
+
+single perf의 기본 `PERF_IO_THREADS`는 모든 언어와 모든 패턴에서 `1`이다.
+`SPOT`/`SPOT_REQREP`도 예외를 두지 않는다. `--io-threads` 또는
+`PERF_IO_THREADS`를 명시한 실행은 기준 비교가 아니라 의도적인 진단 실행으로
+기록해야 한다.
 
 ### 7.1 phase/timeout
 

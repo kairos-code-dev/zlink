@@ -32,7 +32,6 @@ struct spot_request_reply_state_t;
 struct spot_logical_pubsub_message_t
 {
     zlink_routing_id_t source_rid;
-    std::string service_name;
     std::string topic_id;
     std::vector<std::string> parts;
 };

@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class DiscoveryRegistrySample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
-        String serviceName = "sample";
+        String channelName = "sample";
         String registryPub = SampleSupport.tcpEndpoint();
         String registryRouter = SampleSupport.tcpEndpoint();
         String serviceEndpoint = SampleSupport.tcpEndpoint();
@@ -25,7 +25,7 @@ public final class DiscoveryRegistrySample {
         PubSocket provider = null;
         try {
             registry = new Registry(ctx);
-            providerDiscovery = new Discovery(ctx, AutoConnectType.FANOUT, serviceName);
+            providerDiscovery = new Discovery(ctx, AutoConnectType.FANOUT, channelName);
             query = new RegistryQueryClient(ctx);
             provider = new PubSocket(ctx);
             registry.bind(registryPub, registryRouter);
@@ -53,7 +53,7 @@ public final class DiscoveryRegistrySample {
                         () -> {
                             try {
                                 return queryView.snapshot().stream().anyMatch(
-                                    entry -> serviceName.equals(
+                                    entry -> channelName.equals(
                                         entry.channelName()));
                             } catch (ConfigException transientNotReady) {
                                 return false;

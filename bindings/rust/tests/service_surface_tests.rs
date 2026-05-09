@@ -55,11 +55,11 @@ fn spot_callback_surfaces_exist() {
         .unwrap();
     let _ = spot.routing_id().unwrap();
     let _ = spot
-        .publish("svc-surface", "topic")
+        .publish("topic")
         .message(Message::copy_from(b"payload").unwrap())
         .submit();
     let _ = spot
-        .publish("svc-surface", "topic")
+        .publish("topic")
         .message(Message::copy_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit();

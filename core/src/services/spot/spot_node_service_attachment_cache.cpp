@@ -53,7 +53,7 @@ void spot_node_t::rebuild_service_attachment_caches_locked ()
 
         if (it->second.has_manual_pubsub ()) {
             service_attachment_state_t::service_sub_cache_entry_t entry;
-            entry.service_name = it->first;
+            entry.channel_name = it->first;
             entry.socket = it->second.manual.sub;
             sub_cache->push_back (entry);
             readable_sub_cache->push_back (it->second.manual.sub);
@@ -62,7 +62,7 @@ void spot_node_t::rebuild_service_attachment_caches_locked ()
         }
         if (it->second.has_auto_pubsub ()) {
             service_attachment_state_t::service_sub_cache_entry_t entry;
-            entry.service_name = it->first;
+            entry.channel_name = it->first;
             entry.socket = it->second.discovered.sub;
             sub_cache->push_back (entry);
             readable_sub_cache->push_back (it->second.discovered.sub);
@@ -114,10 +114,10 @@ bool spot_node_t::detach_discovered_service_locked (
          it != _service_attachment_state.discoveries.end (); ++it) {
         if (it->second != discovery_)
             continue;
-        const std::string service_name = it->first;
+        const std::string channel_name = it->first;
 
         std::map<std::string, service_attachment_t>::iterator attach_it =
-          _service_attachment_state.attachments.find (service_name);
+          _service_attachment_state.attachments.find (channel_name);
         if (attach_it != _service_attachment_state.attachments.end ()) {
             for (std::map<std::string, socket_base_t *>::iterator rit =
                    attach_it->second.discovered.routers.begin ();
@@ -152,7 +152,7 @@ bool spot_node_t::detach_discovered_service_locked (
 
         remove_attachment_monitors_by_owner_locked (*sockets_to_close_out_);
         _service_attachment_state.discoveries.erase (it);
-        _service_attachment_state.pending_refresh_services.erase (service_name);
+        _service_attachment_state.pending_refresh_services.erase (channel_name);
         rebuild_service_attachment_caches_locked ();
         spot_shutdown_logf_local (
           false, "step=detach_discovered_service node=%p sockets=%zu",

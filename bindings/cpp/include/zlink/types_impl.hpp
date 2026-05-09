@@ -456,7 +456,7 @@ inline void common_socket_options_t::max_message_size (byte_size_t value)
 inline byte_size_t common_socket_options_t::auto_hwm_msg_unit_bytes () const
 {
     return byte_size_t::bytes (
-      detail::get_common_option_value<int64_t> (
+      detail::get_common_option_value<int> (
         _handle, compat::options::socket_option::auto_hwm_msg_unit_bytes));
 }
 
@@ -465,9 +465,12 @@ inline void common_socket_options_t::auto_hwm_msg_unit_bytes (
 {
     if (value.bytes () < 0)
         throw config_error_t (config_result_t::invalid_argument, EINVAL);
-    detail::set_common_option_value<int64_t> (
+    if (value.bytes () > INT_MAX)
+        throw config_error_t (config_result_t::invalid_argument, EINVAL);
+    const int native_value = static_cast<int> (value.bytes ());
+    detail::set_common_option_value<int> (
       _handle, compat::options::socket_option::auto_hwm_msg_unit_bytes,
-      value.bytes ());
+      native_value);
 }
 
 inline socket_backlog_t common_socket_options_t::backlog () const
@@ -788,6 +791,8 @@ inline message_t topic_message_t::single_part_or_throw ()
 {
     if (!is_single_part ())
         throw detail::invalid_single_part_error ();
+    if (_single_part.has_value ())
+        return *_single_part;
     return _parts.front ();
 }
 
@@ -795,7 +800,29 @@ inline message_t &topic_message_t::first_part ()
 {
     if (!is_single_part ())
         throw detail::invalid_single_part_error ();
+    if (_single_part.has_value ())
+        return *_single_part;
     return _parts.front ();
+}
+
+inline void topic_message_t::materialize_parts () const
+{
+    if (!_single_part.has_value ())
+        return;
+    _parts.push_back (std::move (*_single_part));
+    _single_part.reset ();
+}
+
+inline const std::vector<message_t> &topic_message_t::parts () const
+{
+    materialize_parts ();
+    return _parts;
+}
+
+inline std::vector<message_t> &topic_message_t::parts ()
+{
+    materialize_parts ();
+    return _parts;
 }
 
 inline message_t received_t::single_part_or_throw ()

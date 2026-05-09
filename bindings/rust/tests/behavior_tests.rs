@@ -100,7 +100,6 @@ fn pub_sub_roundtrip() {
 
     let topic_msg = sub_sock.subscribe().unwrap();
     assert_eq!(topic_msg.topic(), "market.price");
-    assert!(topic_msg.service_name.is_none());
     assert_eq!(topic_msg.parts()[0].as_bytes(), b"price=42.5");
 }
 

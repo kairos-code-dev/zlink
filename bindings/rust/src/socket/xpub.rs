@@ -6,9 +6,10 @@ use crate::domain::SubscriptionEvent;
 use crate::error::{ConfigError, HandlerError, RecvError, SubmitError, check_config_rc};
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
-use crate::message::IntoMultipart;
+use crate::message::{IntoMultipart, Message, RoutingId};
 use crate::options::{CommonSocketOptions, PubSocketOptions};
 
+use super::pub_socket::{get_pub_bool, get_pub_int, get_pub_message, set_pub_bytes};
 use super::{SocketInner, impl_base_socket, impl_connect, impl_recv_options, impl_send_options};
 
 /// XPUB socket – extended publish with subscription event access.
@@ -96,6 +97,59 @@ impl XPubSocket {
             self.inner.handle,
             ffi::zlink_pub_option_t::ZLINK_PUB_OPT_MANUAL,
             enabled,
+        )
+    }
+
+    pub(crate) fn manual_last_value(&self) -> Result<bool, ConfigError> {
+        get_pub_bool(
+            self.inner.handle,
+            ffi::zlink_pub_option_t::ZLINK_PUB_OPT_MANUAL_LAST_VALUE,
+        )
+    }
+
+    pub(crate) fn set_manual_last_value(&self, enabled: bool) -> Result<(), ConfigError> {
+        set_pub_bool(
+            self.inner.handle,
+            ffi::zlink_pub_option_t::ZLINK_PUB_OPT_MANUAL_LAST_VALUE,
+            enabled,
+        )
+    }
+
+    pub(crate) fn welcome_message(&self) -> Result<Message, ConfigError> {
+        get_pub_message(
+            self.inner.handle,
+            ffi::zlink_pub_option_t::ZLINK_PUB_OPT_WELCOME_MSG,
+        )
+    }
+
+    pub(crate) fn set_welcome_message(&self, message: &Message) -> Result<(), ConfigError> {
+        set_pub_bytes(
+            self.inner.handle,
+            ffi::zlink_pub_option_t::ZLINK_PUB_OPT_WELCOME_MSG,
+            message.as_bytes(),
+        )
+    }
+
+    pub(crate) fn approve_subscribe(&self, routing_id: &RoutingId) -> Result<(), ConfigError> {
+        set_pub_bytes(
+            self.inner.handle,
+            ffi::zlink_pub_option_t::ZLINK_PUB_OPT_APPROVE_SUBSCRIBE,
+            routing_id.data(),
+        )
+    }
+
+    pub(crate) fn reject_subscribe(&self, routing_id: &RoutingId) -> Result<(), ConfigError> {
+        set_pub_bytes(
+            self.inner.handle,
+            ffi::zlink_pub_option_t::ZLINK_PUB_OPT_REJECT_SUBSCRIBE,
+            routing_id.data(),
+        )
+    }
+
+    pub(crate) fn topics_count(&self) -> Result<i32, ConfigError> {
+        get_pub_int(
+            self.inner.handle,
+            ffi::zlink_pub_option_t::ZLINK_PUB_OPT_TOPICS_COUNT,
         )
     }
 }

@@ -547,7 +547,7 @@ void test_spot_node_attach_discovery_rejects_duplicate_discovery ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_publish_service_name_matches_attached_discovery ()
+void test_spot_publish_uses_bound_spot_topic ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -569,8 +569,7 @@ void test_spot_publish_service_name_matches_attached_discovery ()
 
     TEST_ASSERT_EQUAL_INT (
       ZLINK_SUBMIT_OK,
-      zlink_spot_publish (spot, "spot-svc", "bench", &part, 1,
-                          ZLINK_SEND_FLAGS_NONE));
+      zlink_spot_publish (spot, "bench", &part, 1, ZLINK_SEND_FLAGS_NONE));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
@@ -578,7 +577,7 @@ void test_spot_publish_service_name_matches_attached_discovery ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_publish_service_name_rejects_mismatch ()
+void test_spot_publish_part_final_keeps_single_message_contract ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -594,14 +593,21 @@ void test_spot_publish_service_name_rejects_mismatch ()
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
 
-    zlink_msg_t part;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
-    memcpy (zlink_msg_data (&part), "ping", 4);
-
+    zlink_msg_t first;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&first, 4));
+    memcpy (zlink_msg_data (&first), "ping", 4);
     TEST_ASSERT_EQUAL_INT (
       ZLINK_SUBMIT_OK,
-      zlink_spot_publish (spot, "other-svc", "bench", &part, 1,
-                          ZLINK_SEND_FLAGS_NONE));
+      zlink_spot_publish_part (
+        spot, "bench", &first, ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
+
+    zlink_msg_t second;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&second, 4));
+    memcpy (zlink_msg_data (&second), "pong", 4);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_spot_publish_part (
+        spot, "bench", &second, ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
@@ -1152,8 +1158,8 @@ int main (void)
     RUN_TEST (test_spot_node_discovery_attach_allows_multiple_spot_facades);
     RUN_TEST (test_spot_node_attach_discovery_allows_preexisting_multiple_facades);
     RUN_TEST (test_spot_node_attach_discovery_rejects_duplicate_discovery);
-    RUN_TEST (test_spot_publish_service_name_matches_attached_discovery);
-    RUN_TEST (test_spot_publish_service_name_rejects_mismatch);
+    RUN_TEST (test_spot_publish_uses_bound_spot_topic);
+    RUN_TEST (test_spot_publish_part_final_keeps_single_message_contract);
     RUN_TEST (test_spot_node_manual_service_attachment_allows_multiple_spot_facades);
     RUN_TEST (test_spot_service_send_and_request_fail_for_missing_service);
     RUN_TEST (test_spot_send_channel_rejects_inactive_dealer_attachment);

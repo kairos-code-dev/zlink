@@ -35,6 +35,21 @@ inline std::string unique_inproc (const char *base_)
     return std::string ("inproc://") + unique_name (base_);
 }
 
+inline std::string unique_ipc (const char *base_)
+{
+    static unsigned counter = 0;
+    const unsigned pid =
+#if defined(ZLINK_HAVE_WINDOWS)
+      static_cast<unsigned> (_getpid ());
+#else
+      static_cast<unsigned> (getpid ());
+#endif
+    std::ostringstream stream;
+    stream << "ipc:///tmp/" << (base_ ? base_ : "cpp-contract") << "-"
+           << pid << "-" << ++counter << ".ipc";
+    return stream.str ();
+}
+
 inline std::string unique_tcp (const char *base_)
 {
     static unsigned counter = 0;

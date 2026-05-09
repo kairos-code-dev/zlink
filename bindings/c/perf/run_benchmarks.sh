@@ -79,7 +79,6 @@ BUILD_MODE="incremental"
 BUILD_MODE_EXPLICIT=0
 PIN_CPU=0
 PERF_IO_THREADS="${PERF_IO_THREADS:-}"
-PERF_IO_THREADS_DEFAULTED=0
 PERF_MSG_SIZES="${PERF_MSG_SIZES:-}"
 PERF_TRANSPORTS="${PERF_TRANSPORTS:-}"
 SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
@@ -130,7 +129,6 @@ Options:
   --recv-timeout-ms N         Alias of --rcvtimeo.
   --pin-cpu                   Pin CPU core during benchmark runs (Linux taskset).
   --io-threads N              Set PERF_IO_THREADS for benchmark binaries.
-                              SPOT defaults to 4 when this is not set.
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
   --transports LIST           Comma-separated transports.
   --auto-hwm-profile NAME     Set auto-HWM profile: compact, low_latency, balanced, throughput (default: balanced).
@@ -405,14 +403,6 @@ for p in "${PATTERN_LIST[@]}"; do
       exit 1
       ;;
   esac
-done
-
-for p in "${PATTERN_LIST[@]}"; do
-  if [[ "${p}" == "SPOT" && -z "${PERF_IO_THREADS}" ]]; then
-    PERF_IO_THREADS=4
-    PERF_IO_THREADS_DEFAULTED=1
-    break
-  fi
 done
 
 resolve_single_build_targets() {
@@ -787,11 +777,7 @@ DISPLAY_RCVBUF="${SINGLE_RCVBUF}"
 DISPLAY_SNDTIMEO_MS="${SINGLE_SNDTIMEO_MS}"
 DISPLAY_RCVTIMEO_MS="${SINGLE_RCVTIMEO_MS}"
 DEFAULT_IO_THREADS_LABEL="default(binary=1)"
-if [[ "${PERF_IO_THREADS_DEFAULTED}" -eq 1 ]]; then
-  EFFECTIVE_IO_THREADS="${PERF_IO_THREADS} (spot default)"
-else
-  EFFECTIVE_IO_THREADS="$(value_or_default "${PERF_IO_THREADS}" "${DEFAULT_IO_THREADS_LABEL}")"
-fi
+EFFECTIVE_IO_THREADS="$(value_or_default "${PERF_IO_THREADS}" "${DEFAULT_IO_THREADS_LABEL}")"
 
 echo
 echo "## Effective Options (runner)"

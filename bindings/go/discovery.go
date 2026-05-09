@@ -957,7 +957,7 @@ func mustCopyFixedCString(ptr unsafe.Pointer, size int, value string) {
 
 func spotNodeStatusFromC(raw C.zlink_spot_node_status_t) *SpotNodeStatus {
 	return &SpotNodeStatus{
-		ChannelName:                   C.GoString(&raw.service_name[0]),
+		ChannelName:                   C.GoString(&raw.channel_name[0]),
 		LocalEndpoint:                 C.GoString(&raw.local_endpoint[0]),
 		NodeRoutingID:                 routingIDFromC(raw.node_routing_id),
 		State:                         SpotNodeState(raw.state),
@@ -975,7 +975,7 @@ func spotNodeStatusFromC(raw C.zlink_spot_node_status_t) *SpotNodeStatus {
 
 func spotNodePeerEntryFromC(raw C.zlink_spot_node_peer_entry_t) SpotNodePeerEntry {
 	return SpotNodePeerEntry{
-		ChannelName:      C.GoString(&raw.service_name[0]),
+		ChannelName:      C.GoString(&raw.channel_name[0]),
 		LocalEndpoint:    C.GoString(&raw.local_endpoint[0]),
 		PeerEndpoint:     C.GoString(&raw.peer_endpoint[0]),
 		Source:           SpotPeerSource(raw.source),
@@ -1147,10 +1147,6 @@ func validateFixedCString(name string, value string) error {
 
 func validateEndpointString(value string) error {
 	return validateFixedCString("endpoint", value)
-}
-
-func validateServiceName(value string) error {
-	return validateFixedCString("service_name", value)
 }
 
 func validateChannelName(value string) error {

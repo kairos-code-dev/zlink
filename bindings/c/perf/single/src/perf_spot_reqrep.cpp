@@ -39,14 +39,6 @@ std::string bind_node (void *node_, const std::string &transport_, int base_port
       node_, transport_, base_port_, 64, &perf_bind_spot_node_endpoint);
 }
 
-size_t spot_auto_hwm_msg_unit (size_t msg_size_)
-{
-    static const size_t k_max_spot_msg_unit = 4096;
-    if (msg_size_ == 0)
-        return k_max_spot_msg_unit;
-    return std::min (msg_size_, k_max_spot_msg_unit);
-}
-
 int resolve_reqrep_ready_timeout_ms (const std::string &transport_)
 {
     const int transport_default_ms =
@@ -545,10 +537,6 @@ int run_case (const std::string &lib_name_,
           &client_poller, &server_spot, &client_spot, &server_node, &client_node);
         return 1;
     }
-
-    const size_t msg_unit = spot_auto_hwm_msg_unit (msg_size_);
-    apply_single_auto_hwm_msg_unit (server_node, msg_unit);
-    apply_single_auto_hwm_msg_unit (client_node, msg_unit);
 
     server_spot = zlink_spot_new (server_node);
     client_spot = zlink_spot_new (client_node);

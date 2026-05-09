@@ -80,11 +80,10 @@ with these rules, the API listing must be corrected to match this section.
   `attach_pub_ingress(...)`, and `attach_discovery(...)`.
 - `service::spot_t` must expose channel-aware data-plane operation builders:
   `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
-  `publish(const std::string& service_name, const std::string& topic)`.
+  `publish(const std::string& topic)`.
 - `service::spot_t::subscribe(...)`, raw `SUB`, and raw `XSUB` return
-  `topic_message_t`. The shared `topic_message_t` shape includes optional
-  `service_name`; SPOT subscribe sets it, and raw topic sockets return
-  `std::nullopt`.
+  `topic_message_t`. The shared `topic_message_t` shape includes topic, parts,
+  and optional routing id.
 - `service::spot_t` must not expose `on_subscribe(...)`. SPOT topic readable
   notifications come from `on_dispatch_event(...)`, then callers drain with
   `subscribe(...)` / `recv_routed(...)` / timer recv.
@@ -110,6 +109,9 @@ with these rules, the API listing must be corrected to match this section.
 - SPOT admission HWM defaults follow the core header. Router and pubsub
   admission profile/numeric options are exposed; relay and delivery HWM stay
   `0` and are not public C++ options.
+- `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` is a raw socket option. C++ must not expose
+  it as a SPOT node or SPOT handle option; attempts to set it through a SPOT
+  service handle fail with `EINVAL`.
 - SPOT node dispatch worker options map to
   `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN` and
   `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX`. They configure only the
@@ -514,6 +516,9 @@ class pair_socket_t {
     // --- receive ---
     /// @throws recv_error_t
     std::optional<received_t> recv(int flags = 0);
+    /// Returns false when flags contains ZLINK_DONTWAIT and no message is ready.
+    /// @throws recv_error_t
+    bool recv(message_t& part, int flags = 0);
     /// @throws handler_error_t
     template<class Handler>
     void on_send_ready(Handler&& handler);
@@ -597,6 +602,9 @@ class dealer_socket_t {
     // --- receive ---
     /// @throws recv_error_t
     std::optional<received_t> recv(int flags = 0);
+    /// Returns false when flags contains ZLINK_DONTWAIT and no message is ready.
+    /// @throws recv_error_t
+    bool recv(message_t& part, int flags = 0);
     /// @throws handler_error_t
     template<class Handler>
     void on_send_ready(Handler&& handler);
@@ -670,6 +678,11 @@ class router_socket_t {
     // A populated spot_rid() means reply_to_spot must be used.
     /// @throws recv_error_t
     std::optional<received_t> recv(int flags = 0);
+    /// Returns false when flags contains ZLINK_DONTWAIT and no message is ready.
+    /// @throws recv_error_t
+    bool recv(std::optional<routing_id_t>& source_rid,
+              message_t& part,
+              int flags = 0);
     /// @throws handler_error_t
     template<class Handler>
     void on_send_ready(Handler&& handler);
@@ -859,6 +872,11 @@ class stream_socket_t {
     /// (1) raw recv. Returns a multipart received_t.
     /// @throws recv_error_t
     std::optional<received_t> recv(int flags = 0);
+    /// Returns false when flags contains ZLINK_DONTWAIT and no packet is ready.
+    /// @throws recv_error_t
+    bool recv(std::optional<routing_id_t>& source_rid,
+              message_t& part,
+              int flags = 0);
     /// (2) framed packet callback (zlink_stream_packet_handler). Wire frame
     /// is big-endian u16 header_size + u32 body_size + header + body.
     /// Handler receives the source routing_id, a header message_t, and a
@@ -1435,8 +1453,7 @@ exists. The binding injects that reference when it creates `received_t` from
 ### topic_message_t
 
 Topic-aware recv result used by raw SUB / XSUB paths and SPOT subscribe.
-SPOT subscribe sets `service_name`; raw topic sockets return `std::nullopt`
-for that field. The value owns `message_t` parts, and `close()` releases them.
+The value owns `message_t` parts, and `close()` releases them.
 
 ```cpp
 class topic_message_t {
@@ -1444,15 +1461,9 @@ public:
     topic_message_t(std::optional<routing_id_t> routing_id,
                     std::string topic,
                     std::vector<message_t> parts);
-    topic_message_t(std::optional<routing_id_t> routing_id,
-                    std::optional<std::string> service_name,
-                    std::string topic,
-                    std::vector<message_t> parts);
 
     // nullopt if transport carries no source id
     const std::optional<routing_id_t>& routing_id() const noexcept;
-    // Set for SPOT subscribe results; nullopt for raw SUB/XSUB.
-    const std::optional<std::string>& service_name() const noexcept;
     const std::string& topic() const noexcept;                       // UTF-8
     const std::vector<message_t>& parts() const noexcept;
     std::vector<message_t>& parts() noexcept;
@@ -1471,8 +1482,7 @@ public:
 ### subscription_event_t
 
 Reports a subscribe/unsubscribe event from xpub sockets and Spot
-subscription event recv. SPOT subscription events set `service_name`; XPub
-events use `std::nullopt`. Plain value struct — no methods, no lifecycle.
+subscription event recv. Plain value struct — no methods, no lifecycle.
 
 ```cpp
 struct subscription_entry_t {
@@ -1482,7 +1492,6 @@ struct subscription_entry_t {
 
 struct subscription_event_t {
     std::optional<routing_id_t> routing_id;  // nullopt if transport carries no subscriber id
-    std::optional<std::string> service_name;
     std::string topic;                        // UTF-8
     bool subscribed;                          // true = subscribe, false = unsubscribe
 };
@@ -2257,7 +2266,7 @@ Status snapshot returned by `spot_node_t::status_snapshot()`.
 ```cpp
 class spot_node_status_t {
 public:
-    const std::string& service_name() const noexcept;
+    const std::string& channel_name() const noexcept;
     const std::string& local_endpoint() const noexcept;
     const std::optional<routing_id_t>& node_routing_id() const noexcept;
     spot_node_state_t state() const noexcept;
@@ -2334,7 +2343,7 @@ Peer entry returned by `spot_node_t::peers_snapshot(...)` and
 ```cpp
 class spot_node_peer_entry_t {
 public:
-    const std::string& service_name() const noexcept;
+    const std::string& channel_name() const noexcept;
     const std::string& local_endpoint() const noexcept;
     const std::string& peer_endpoint() const noexcept;
     spot_peer_source_t source() const noexcept;
@@ -2760,9 +2769,8 @@ class spot_t {
     /// @throws config_error_t
     std::chrono::milliseconds request_timeout() const;
 
-    // --- channel-aware publish / send / request operation builders ---
-    send_op_t publish(const std::string& service_name,
-                      const std::string& topic);
+    // --- SPOT topic publish / channel-aware send / request operation builders ---
+    send_op_t publish(const std::string& topic);
     send_op_t send_channel(const std::string& channel_name);
     request_op_t request_channel(const std::string& channel_name);
 

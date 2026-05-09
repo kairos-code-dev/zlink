@@ -17,7 +17,7 @@ def main():
                         sub_spot.set_subscription(b"room:lobby")
                         deadline = time.monotonic() + 5.0
                         while time.monotonic() < deadline:
-                            pub_spot.publish("example", "room:lobby").message(b"hello-spot").submit()
+                            pub_spot.publish("room:lobby").message(b"hello-spot").submit()
                             try:
                                 received = sub_spot.subscribe(
                                     flags=zlink.RecvFlags.DONT_WAIT

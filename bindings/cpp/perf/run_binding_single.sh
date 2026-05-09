@@ -89,6 +89,7 @@ SINGLE_SNDBUF="${PERF_SINGLE_SNDBUF:-${PERF_SNDBUF:-}}"
 SINGLE_RCVBUF="${PERF_SINGLE_RCVBUF:-${PERF_RCVBUF:-}}"
 SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
+CTX_AUTO_HWM_PROFILE="${PERF_CTX_AUTO_HWM_PROFILE:-balanced}"
 PERF_COMPARISON_SCRIPT="${ROOT_DIR}/bindings/cpp/perf/single/run_comparison.py"
 
 usage() {
@@ -108,11 +109,12 @@ Options:
   --results-tag NAME          Optional tag in saved result filename.
   --runs N                    Iterations per pattern/transport/size (default: 1).
   --duration N                Override single duration seconds (default: 5).
-  --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
-  --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
-  --recv-hwm N                Override PERF_SINGLE_RCVHWM (fallback: --hwm).
-  --sndbuf SIZE               Override PERF_SINGLE_SNDBUF (e.g. 64b, 1k, 64k).
-  --rcvbuf SIZE               Override PERF_SINGLE_RCVBUF (e.g. 64b, 1k, 64k).
+  --hwm N                     Debug-only PERF_SINGLE_HWM override.
+                              Requires PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1.
+  --send-hwm N                Debug-only PERF_SINGLE_SNDHWM override.
+  --recv-hwm N                Debug-only PERF_SINGLE_RCVHWM override.
+  --sndbuf SIZE               Debug-only PERF_SINGLE_SNDBUF override (e.g. 64b, 1k, 64k).
+  --rcvbuf SIZE               Debug-only PERF_SINGLE_RCVBUF override (e.g. 64b, 1k, 64k).
   --sndtimeo N                Override PERF_SINGLE_SNDTIMEO_MS (default: 200).
   --rcvtimeo N                Override PERF_SINGLE_RCVTIMEO_MS (default: 200).
   --send-timeout-ms N         Alias of --sndtimeo.
@@ -121,6 +123,7 @@ Options:
   --io-threads N              Set PERF_IO_THREADS for benchmark binaries.
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
   --transports LIST           Comma-separated transports.
+  --auto-hwm-profile NAME     Set auto-HWM profile: compact, low_latency, balanced, throughput (default: balanced).
 
 Notes:
   - result is saved under results/single/report/ as
@@ -223,6 +226,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --transports)
       PERF_TRANSPORTS="${2:-}"
+      shift
+      ;;
+    --auto-hwm-profile)
+      CTX_AUTO_HWM_PROFILE="${2:-}"
       shift
       ;;
     -h|--help)
@@ -328,6 +335,14 @@ if [[ -n "${SINGLE_RCVTIMEO_MS}" && ( ! "${SINGLE_RCVTIMEO_MS}" =~ ^[0-9]+$ || "
   echo "rcvtimeo must be a positive integer." >&2
   exit 1
 fi
+case "${CTX_AUTO_HWM_PROFILE}" in
+  compact|low_latency|low-latency|balanced|throughput)
+    ;;
+  *)
+    echo "auto-hwm-profile must be compact, low_latency, balanced, or throughput." >&2
+    exit 1
+    ;;
+esac
 
 if [[ "${RUNS_EXPLICIT}" -eq 0 ]]; then
   RUNS=1
@@ -534,6 +549,7 @@ fi
 if [[ -n "${SINGLE_RCVTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVTIMEO_MS="${SINGLE_RCVTIMEO_MS}")
 fi
+RUN_ENV+=(PERF_CTX_AUTO_HWM_PROFILE="${CTX_AUTO_HWM_PROFILE}")
 if [[ "${BUILD_MODE}" == "reuse" ]]; then
   RUN_ENV+=(PERF_NO_AUTOBUILD=1)
 fi
@@ -582,11 +598,13 @@ print_effective_option "runs" "${RUNS}"
 print_effective_option "lang" "cpp"
 print_effective_option "suite" "${RESULT_SUITE}"
 print_effective_option "duration_seconds" "${DISPLAY_DURATION_SECONDS}"
-print_effective_option "hwm" "$(value_or_default "${DISPLAY_HWM}" "default(binary)")"
-print_effective_option "send_hwm" "$(value_or_default "${DISPLAY_SEND_HWM}" "default(binary)")"
-print_effective_option "recv_hwm" "$(value_or_default "${DISPLAY_RECV_HWM}" "default(binary)")"
-print_effective_option "sndbuf" "$(value_or_default "${DISPLAY_SNDBUF}" "default(os)")"
-print_effective_option "rcvbuf" "$(value_or_default "${DISPLAY_RCVBUF}" "default(os)")"
+print_effective_option "hwm" "$(value_or_default "${DISPLAY_HWM}" "auto-hwm")"
+print_effective_option "send_hwm" "$(value_or_default "${DISPLAY_SEND_HWM}" "auto-hwm")"
+print_effective_option "recv_hwm" "$(value_or_default "${DISPLAY_RECV_HWM}" "auto-hwm")"
+print_effective_option "sndbuf" "$(value_or_default "${DISPLAY_SNDBUF}" "auto-hwm")"
+print_effective_option "rcvbuf" "$(value_or_default "${DISPLAY_RCVBUF}" "auto-hwm")"
+print_effective_option "ctx_auto_hwm_enable" "core-default"
+print_effective_option "ctx_auto_hwm_profile" "${CTX_AUTO_HWM_PROFILE}"
 print_effective_option "sndtimeo_ms" "${DISPLAY_SNDTIMEO_MS}"
 print_effective_option "rcvtimeo_ms" "${DISPLAY_RCVTIMEO_MS}"
 print_effective_option "pin_cpu" "${PIN_CPU}"

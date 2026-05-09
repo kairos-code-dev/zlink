@@ -229,7 +229,7 @@ public sealed record MemberPeerEntry(
 }
 
 public sealed record SpotNodeStatus(
-    string ServiceName,
+    string ChannelName,
     string LocalEndpoint,
     RoutingId? NodeRoutingId,
     SpotNodeState State,
@@ -245,11 +245,11 @@ public sealed record SpotNodeStatus(
 {
     internal static unsafe SpotNodeStatus FromNative(ref ZlinkSpotNodeStatus native)
     {
-        fixed (byte* serviceName = native.ServiceName)
+        fixed (byte* channelName = native.ChannelName)
         fixed (byte* endpoint = native.LocalEndpoint)
         {
             return new SpotNodeStatus(
-                NativeHelpers.ReadFixedString(serviceName, 256),
+                NativeHelpers.ReadFixedString(channelName, 256),
                 NativeHelpers.ReadFixedString(endpoint, 256),
                 RoutingIdCodec.ToRoutingId(
                     NativeHelpers.ReadRoutingId(ref native.NodeRoutingId)),
@@ -264,7 +264,7 @@ public sealed record SpotNodeStatus(
 }
 
 public sealed record SpotNodePeerEntry(
-    string ServiceName,
+    string ChannelName,
     string LocalEndpoint,
     string PeerEndpoint,
     SpotPeerSource Source,
@@ -276,12 +276,12 @@ public sealed record SpotNodePeerEntry(
     internal static unsafe SpotNodePeerEntry FromNative(
         ref ZlinkSpotNodePeerEntry native)
     {
-        fixed (byte* serviceName = native.ServiceName)
+        fixed (byte* channelName = native.ChannelName)
         fixed (byte* local = native.LocalEndpoint)
         fixed (byte* peer = native.PeerEndpoint)
         {
             return new SpotNodePeerEntry(
-                NativeHelpers.ReadFixedString(serviceName, 256),
+                NativeHelpers.ReadFixedString(channelName, 256),
                 NativeHelpers.ReadFixedString(local, 256),
                 NativeHelpers.ReadFixedString(peer, 256),
                 (SpotPeerSource)native.Source, (SpotPeerState)native.State,
@@ -292,7 +292,7 @@ public sealed record SpotNodePeerEntry(
 }
 
 internal sealed record SpotServiceAttachmentStats(
-    string ServiceName,
+    string ChannelName,
     uint RouterCount,
     uint PubCount,
     uint SubCount,
@@ -303,10 +303,10 @@ internal sealed record SpotServiceAttachmentStats(
     internal static unsafe SpotServiceAttachmentStats FromNative(
         ref ZlinkSpotServiceAttachmentStats native)
     {
-        fixed (byte* serviceName = native.ServiceName)
+        fixed (byte* channelName = native.ChannelName)
         {
             return new SpotServiceAttachmentStats(
-                NativeHelpers.ReadFixedString(serviceName, 256),
+                NativeHelpers.ReadFixedString(channelName, 256),
                 native.RouterCount, native.PubCount, native.SubCount,
                 native.AutoRouterCount, native.AutoPubCount,
                 native.AutoSubCount);

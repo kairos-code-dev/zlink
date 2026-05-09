@@ -173,10 +173,9 @@ stay focused on signatures.
   `attachPubIngress(PubSocket pub)`.
 - `Spot` must expose channel-aware data-plane operation builders:
   `sendChannel(...)`, `sendToSpot(...)`, `requestChannel(...)`, and
-  `publish(String serviceName, String topic)`.
-- `Spot.subscribe(...)` returns a service-aware `TopicMessage`.
-  `TopicMessage` therefore needs `serviceName()` populated for SPOT subscribe
-  results and empty for raw `SUB` / `XSUB`.
+  `publish(String topic)`.
+- `Spot.subscribe(...)` returns a `TopicMessage`.
+  `TopicMessage` exposes topic, parts, and optional routing id.
 - `Spot` must not expose `onSubscribe(...)`.
 - `SpotDispatchEvent.SUBSCRIBE_READABLE` and `.ROUTED_READABLE` are readiness
   notifications, not one-event-per-message delivery counters. Binding docs and
@@ -822,15 +821,15 @@ public final class StreamSocket extends Socket {
     void unbindActor(SpotNode node, RoutingId sessionRid,
                      String actorId);                                // @throws RequestException
     boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
-                           String actorId, Message part);            // @throws SubmitException
+                           String actorId, Message part);            // @throws SubmitException; false only on temporary backpressure
     boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
                            String actorId, Message part,
-                           SendFlags flags);                         // @throws SubmitException
+                           SendFlags flags);                         // @throws SubmitException; false only on temporary backpressure
     boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
-                           String actorId, List<Message> parts);      // @throws SubmitException
+                           String actorId, List<Message> parts);      // @throws SubmitException; false only on temporary backpressure
     boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
                            String actorId, List<Message> parts,
-                           SendFlags flags);                         // @throws SubmitException
+                           SendFlags flags);                         // @throws SubmitException; false only on temporary backpressure
 
     StreamSocketOptions options();
 }
@@ -961,7 +960,7 @@ exceptions such as `IllegalArgumentException`, `IndexOutOfBoundsException`, or
 - Actor ids must be non-empty UTF-8 strings, must not contain NUL, and must be
   at most 255 bytes.
 - Endpoint strings passed to bind/connect-style APIs must be at most 255 bytes.
-- `serviceName` values passed to SPOT service-aware APIs must be at most
+- `channelName` values passed to SPOT channel-aware APIs must be at most
   255 bytes.
 - Topic and subscription filter strings must not contain NUL. Their length
   limit is left to core.
@@ -1582,7 +1581,6 @@ Implements `AutoCloseable`.
 ```java
 public final class TopicMessage implements AutoCloseable {
     Optional<RoutingId> routingId();
-    Optional<String> serviceName();          // empty for raw SUB / XSUB
     String topic();                          // UTF-8
     List<Message> parts();
     boolean isSinglePart();
@@ -1606,7 +1604,6 @@ subscription event recv. Immutable value object; no lifecycle methods.
 
 ```java
 public record SubscriptionEvent(Optional<RoutingId> routingId,
-                                Optional<String> serviceName,
                                 String topic,           // UTF-8
                                 boolean subscribed) {}
 ```
@@ -1901,7 +1898,7 @@ caller chooses a narrower node mode.
 
 ### Spot
 
-Spot messaging endpoint. Provides service-aware pub/sub and routed messaging.
+Spot messaging endpoint. Provides SPOT topic pub/sub and routed messaging.
 Implements `AutoCloseable`. Public instances are created by `SpotNode`.
 
 ```java
@@ -1913,8 +1910,8 @@ public final class Spot implements AutoCloseable {
     Duration requestTimeout();                                      // @throws ConfigException
     void requestTimeout(Duration value);                            // @throws ConfigException
 
-    // --- channel-aware publish / send / request operation builders ---
-    SendOp publish(String serviceName, String topicId);
+    // --- SPOT topic publish / channel-aware send / request operation builders ---
+    SendOp publish(String topicId);
     SendOp sendChannel(String channelName);
     SendOp sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
     RequestOp requestChannel(String channelName);
@@ -2064,9 +2061,9 @@ public final class Actor implements AutoCloseable {
     void leave(Spot spot, Duration timeout);                         // @throws RequestException
     ActorPart recvPart();                                            // @throws RecvException
     @Nullable ActorPart recvPart(RecvFlags flags);                   // @throws RecvException
-    boolean sendBoundSession(Message message);                       // @throws SubmitException
+    boolean sendBoundSession(Message message);                       // @throws SubmitException; false only on temporary backpressure
     boolean sendBoundSession(Message message,
-                             SendFlags flags);                       // @throws SubmitException
+                             SendFlags flags);                       // @throws SubmitException; false only on temporary backpressure
     void closeBoundSession();                                        // @throws RequestException
     void closeBoundSession(Duration timeout);                        // @throws RequestException
     void close();                                                    // @throws RequestException
@@ -2188,7 +2185,7 @@ public record RegistryTopologyEntry(AutoConnectType autoConnectType,
 Spot node status snapshot returned by `SpotNode.statusSnapshot`.
 
 ```java
-public record SpotNodeStatus(String serviceName,
+public record SpotNodeStatus(String channelName,
                              String localEndpoint,
                              RoutingId nodeRoutingId,
                              SpotNodeState state,
@@ -2283,7 +2280,7 @@ Spot node peer entry value object. Returned by
 `SpotNode.peersSnapshot` / `peersQuery`.
 
 ```java
-public record SpotNodePeerEntry(String serviceName,
+public record SpotNodePeerEntry(String channelName,
                                 String localEndpoint,
                                 String peerEndpoint,
                                 SpotPeerSource source,

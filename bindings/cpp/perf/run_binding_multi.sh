@@ -8,7 +8,7 @@ OFFICIAL_BUILD_DIR="${ROOT_DIR}/bindings/cpp/build"
 NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
 MAKE_BIN="$(command -v gmake || command -v make)"
 PERF_COMPARISON_SCRIPT="${ROOT_DIR}/bindings/cpp/perf/multi/run_comparison.py"
-PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,STREAM"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_SENDSEND,SPOT_REQREP,STREAM"
 TRANSPORTS="tcp,tls,ws,wss"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
 
@@ -204,7 +204,7 @@ Usage: bindings/cpp/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,STREAM
+  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_SENDSEND,SPOT_REQREP,STREAM
 By default, this wrapper runs current zlink only.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
 
@@ -229,11 +229,12 @@ Options:
   --transports LIST      Comma-separated transports.
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override number of client sockets per pattern (default: 100, stream=10000).
-  --hwm N                Override PERF_MULTI_HWM (default: 1000).
-  --send-hwm N           Override PERF_MULTI_SNDHWM (fallback: --hwm).
-  --recv-hwm N           Override PERF_MULTI_RCVHWM (fallback: --hwm).
-  --sndbuf SIZE          Override PERF_MULTI_SNDBUF (e.g. 64b, 1k, 64k).
-  --rcvbuf SIZE          Override PERF_MULTI_RCVBUF (e.g. 64b, 1k, 64k).
+  --hwm N                Debug-only override PERF_MULTI_HWM.
+                         Requires PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1.
+  --send-hwm N           Debug-only override PERF_MULTI_SNDHWM (fallback: --hwm).
+  --recv-hwm N           Debug-only override PERF_MULTI_RCVHWM (fallback: --hwm).
+  --sndbuf SIZE          Debug-only override PERF_MULTI_SNDBUF (e.g. 64b, 1k, 64k).
+  --rcvbuf SIZE          Debug-only override PERF_MULTI_RCVBUF (e.g. 64b, 1k, 64k).
   --sndtimeo N           Override PERF_MULTI_SNDTIMEO_MS (default: 200).
   --rcvtimeo N           Override PERF_MULTI_RCVTIMEO_MS (default: 200).
   --send-timeout-ms N    Alias of --sndtimeo.
@@ -821,6 +822,8 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       cpp_comp_src_pubsub_client \
       cpp_comp_src_spot_server \
       cpp_comp_src_spot_client \
+      cpp_comp_src_spot_sendsend_server \
+      cpp_comp_src_spot_sendsend_client \
       cpp_comp_src_spot_reqrep_server \
       cpp_comp_src_spot_reqrep_client \
       cpp_comp_src_stream_server
@@ -844,6 +847,8 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       cpp_comp_src_pubsub_client \
       cpp_comp_src_spot_server \
       cpp_comp_src_spot_client \
+      cpp_comp_src_spot_sendsend_server \
+      cpp_comp_src_spot_sendsend_client \
       cpp_comp_src_spot_reqrep_server \
       cpp_comp_src_spot_reqrep_client \
       cpp_comp_src_stream_server

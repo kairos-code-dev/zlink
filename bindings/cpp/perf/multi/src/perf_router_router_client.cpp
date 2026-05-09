@@ -150,6 +150,7 @@ class router_router_client_bench_t
   private:
     bool setup_sockets ()
     {
+        try {
         for (size_t i = 0; i < _settings.clients; ++i) {
             _holders.emplace_back (
               new perf::multi::socket_guard_t (_ctx, zlink::socket_type::router));
@@ -166,13 +167,7 @@ class router_router_client_bench_t
             _monitors.push_back (perf::multi::connect_monitor_t ());
             if (!perf::multi::open_connect_monitor (sock, _monitors.back ()))
                 return false;
-            try {
-                sock.connect (_endpoint);
-            } catch (const zlink::zlink_error_t &) {
-                debug_log ("connect failed endpoint=" + _endpoint
-                           + " errno=" + std::to_string (errno));
-                return false;
-            }
+            sock.connect (_endpoint);
 
             socket_state_t state;
             state.sock = &sock;
@@ -181,9 +176,7 @@ class router_router_client_bench_t
             slot.payload_size =
               std::max<size_t> (_msg_size, perf_metric::header_size ());
             slot.request_buffer.assign (slot.payload_size, k_payload_fill);
-            (void) _poller.add (
-              sock, zlink::poll_event_flag_t::pollin,
-              &slot);
+            sock.poller_add (_poller, zlink::poll_event_flag_t::pollin, &slot);
         }
 
         const bool ready = perf::multi::wait_all_connect_ready (
@@ -197,6 +190,12 @@ class router_router_client_bench_t
         }
 
         return !_socket_states.empty ();
+        }
+        catch (const zlink::zlink_error_t &) {
+            debug_log ("connect failed endpoint=" + _endpoint
+                       + " errno=" + std::to_string (errno));
+            return false;
+        }
     }
 
     bool validate_routes_once ()
@@ -204,6 +203,7 @@ class router_router_client_bench_t
         if (_socket_states.empty ())
             return false;
 
+        try {
         std::vector<bool> validated (_socket_states.size (), false);
         size_t remaining = validated.size ();
         const auto deadline =
@@ -222,16 +222,9 @@ class router_router_client_bench_t
         }
 
         while (remaining > 0 && std::chrono::steady_clock::now () < deadline) {
-            _poll_events = _poller.wait_all (
-              0,
-              std::chrono::milliseconds (compute_wait_ms (deadline)));
-            const int poll_rc = static_cast<int> (_poll_events.size ());
-            if (poll_rc < 0) {
-                if (errno == EINTR || errno == EAGAIN)
-                    continue;
-                return false;
-            }
-            if (poll_rc == 0)
+            _poll_events =
+              _poller.wait_all (0, std::chrono::milliseconds (compute_wait_ms (deadline)));
+            if (_poll_events.empty ())
                 continue;
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
@@ -300,6 +293,10 @@ class router_router_client_bench_t
         }
 
         return remaining == 0;
+        }
+        catch (const zlink::zlink_error_t &) {
+            return false;
+        }
     }
 
     long compute_wait_ms (const std::chrono::steady_clock::time_point &deadline) const
@@ -331,13 +328,13 @@ class router_router_client_bench_t
           enabled ? (zlink::poll_event_flag_t::pollin | zlink::poll_event_flag_t::pollout)
                   : zlink::poll_event_flag_t::pollin;
         try {
-            _poller.modify (*state.sock, events);
+            state.sock->poller_modify (_poller, events);
+            state.pollout_enabled = enabled;
+            return true;
         }
         catch (const zlink::zlink_error_t &) {
             return false;
         }
-        state.pollout_enabled = enabled;
-        return true;
     }
 
     bool try_send_request (socket_state_t &state, perf_metric::phase_t phase)
@@ -357,8 +354,11 @@ class router_router_client_bench_t
         }
 
         zlink::message_t request =
-          perf::multi::message_from_external_buffer (
-            state.request_buffer, state.request_buffer.size ());
+          zlink::advanced::external_message_t::adopt (
+            state.request_buffer.empty () ? NULL : state.request_buffer.data (),
+            state.request_buffer.size (),
+            NULL,
+            NULL);
         if (!request.valid ()) {
             return false;
         }
@@ -432,6 +432,7 @@ class router_router_client_bench_t
         if (_socket_states.empty ())
             return false;
 
+        try {
         perf::multi::bench_latency_sampler_t latency;
         unsigned long long count = 0;
         const auto deadline = std::chrono::steady_clock::now ()
@@ -446,16 +447,9 @@ class router_router_client_bench_t
         }
 
         while (std::chrono::steady_clock::now () < deadline) {
-            _poll_events = _poller.wait_all (
-              0,
-              std::chrono::milliseconds (compute_wait_ms (deadline)));
-            const int poll_rc = static_cast<int> (_poll_events.size ());
-            if (poll_rc < 0) {
-                if (errno == EINTR || errno == EAGAIN)
-                    continue;
-                return false;
-            }
-            if (poll_rc == 0)
+            _poll_events =
+              _poller.wait_all (0, std::chrono::milliseconds (compute_wait_ms (deadline)));
+            if (_poll_events.empty ())
                 continue;
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
@@ -534,6 +528,10 @@ class router_router_client_bench_t
         if (lat_out)
             *lat_out = latency.snapshot ();
         return true;
+        }
+        catch (const zlink::zlink_error_t &) {
+            return false;
+        }
     }
 
     void send_stop_token_once ()

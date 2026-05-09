@@ -280,10 +280,9 @@ func (r *Received) Close() error {
 }
 
 type TopicMessage struct {
-	routingID   RoutingID
-	serviceName string
-	topic       string
-	parts       []*Message
+	routingID RoutingID
+	topic     string
+	parts     []*Message
 }
 
 func (t *TopicMessage) RoutingID() RoutingID {
@@ -295,17 +294,6 @@ func (t *TopicMessage) RoutingID() RoutingID {
 
 func (t *TopicMessage) HasRoutingID() bool {
 	return t != nil && t.routingID.Size() > 0
-}
-
-func (t *TopicMessage) ServiceName() string {
-	if t == nil {
-		return ""
-	}
-	return t.serviceName
-}
-
-func (t *TopicMessage) HasServiceName() bool {
-	return t != nil && t.serviceName != ""
 }
 
 func (t *TopicMessage) Topic() string {
@@ -360,10 +348,9 @@ func (t *TopicMessage) Close() error {
 }
 
 type SubscriptionEvent struct {
-	routingID   RoutingID
-	serviceName string
-	subscribed  bool
-	topic       string
+	routingID  RoutingID
+	subscribed bool
+	topic      string
 }
 
 func (s SubscriptionEvent) RoutingID() RoutingID {
@@ -372,14 +359,6 @@ func (s SubscriptionEvent) RoutingID() RoutingID {
 
 func (s SubscriptionEvent) HasRoutingID() bool {
 	return s.routingID.Size() > 0
-}
-
-func (s SubscriptionEvent) ServiceName() string {
-	return s.serviceName
-}
-
-func (s SubscriptionEvent) HasServiceName() bool {
-	return s.serviceName != ""
 }
 
 func (s SubscriptionEvent) Subscribed() bool {

@@ -517,11 +517,10 @@ inline zlink_recv_result_t collect_more_spot_subscribe_part (
     return collect_more_recv_part_impl (
       [spot_, flags_] (zlink_msg_t *part_, zlink_part_flag_t *more_) {
           const zlink_routing_id_t *source_rid = NULL;
-          size_t service_name_len = 0;
           size_t topic_id_len = 0;
           return zlink_spot_subscribe_part (
-            spot_, &source_rid, NULL, 0, &service_name_len, NULL, 0,
-            &topic_id_len, part_, more_, flags_);
+            spot_, &source_rid, NULL, 0, &topic_id_len, part_, more_,
+            flags_);
       });
 }
 
@@ -809,7 +808,6 @@ inline zlink_submit_result_t zlink_spot_send_channel (void *spot_,
 }
 
 inline zlink_submit_result_t zlink_spot_publish (void *spot_,
-                                                  const char *service_name_,
                                                   const char *topic_id_,
                                                   zlink_msg_t *parts_,
                                                   size_t part_count_,
@@ -823,8 +821,7 @@ inline zlink_submit_result_t zlink_spot_publish (void *spot_,
         const zlink_part_flag_t f =
           i + 1 < part_count_ ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
         const zlink_submit_result_t rc =
-          zlink_spot_publish_part (spot_, service_name_, topic_id_, &parts_[i],
-                                   flags_, f);
+          zlink_spot_publish_part (spot_, topic_id_, &parts_[i], flags_, f);
         if (rc != ZLINK_SUBMIT_OK) {
             for (size_t j = i + 1; j < part_count_; ++j)
                 zlink_msg_close (&parts_[j]);
@@ -868,22 +865,19 @@ inline zlink_recv_result_t zlink_spot_subscribe (
   zlink_routing_id_t *source_rid_out_,
   zlink_msg_t **parts_out_,
   size_t *part_count_out_,
-  char *service_name_out_,
-  size_t *service_name_len_out_,
   char *topic_id_out_,
   size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_)
 {
     testutil_agg::tl_recv_buf.clear ();
     const zlink_routing_id_t *rid_ptr = NULL;
-    const size_t svc_cap = service_name_len_out_ ? *service_name_len_out_ : 0;
     const size_t topic_cap = topic_id_len_out_ ? *topic_id_len_out_ : 0;
     zlink_msg_t first;
     zlink_msg_init (&first);
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     const zlink_recv_result_t rc = zlink_spot_subscribe_part (
-      spot_, &rid_ptr, service_name_out_, svc_cap, service_name_len_out_,
-      topic_id_out_, topic_cap, topic_id_len_out_, &first, &has_more, flags_);
+      spot_, &rid_ptr, topic_id_out_, topic_cap, topic_id_len_out_, &first,
+      &has_more, flags_);
     if (rc != ZLINK_RECV_OK) {
         zlink_msg_close (&first);
         return rc;

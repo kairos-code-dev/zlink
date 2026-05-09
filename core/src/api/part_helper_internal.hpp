@@ -97,7 +97,7 @@ struct recv_sequence_state_t
     zlink_routing_id_t source_node_rid;
     zlink_routing_id_t source_spot_rid;
     uint64_t request_seq;
-    std::string service_name;
+    std::string channel_name;
     std::string topic_id;
     std::vector<zlink_msg_t> buffered_parts;
     size_t next_part_index;

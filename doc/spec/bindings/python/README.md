@@ -70,10 +70,9 @@ stay focused on signatures.
   `attach_pub_ingress(...)`.
 - `Spot` must expose channel-aware data-plane operation builders:
   `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
-  `publish(service_name, topic)`.
-- `Spot.subscribe(...)` returns a service-aware `TopicMessage`. `TopicMessage`
-  therefore needs `service_name: str | None`, populated for SPOT subscribe
-  results and `None` for raw `SUB` / `XSUB`.
+  `publish(topic)`.
+- `Spot.subscribe(...)` returns a `TopicMessage`. `TopicMessage` exposes topic,
+  parts, and optional routing id.
 - `Spot` must not expose `on_subscribe(...)`. Use
   `on_dispatch_event(...)` plus `subscribe(...)` / `recv_routed(...)` /
   timer recv.
@@ -510,7 +509,7 @@ class StreamSocket:
                      actor_id: str, *, timeout: int = 0) -> None: ...            # Raises: RequestError
     def send_bound_actor(self, node: SpotNode, session_rid: RoutingId,
                          actor_id: str, payload: Message | bytes | list,
-                         *, flags: int = 0) -> bool: ...                        # Raises: SubmitError
+                         *, flags: int = 0) -> bool: ...                        # Raises: SubmitError except temporary backpressure
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -553,6 +552,50 @@ class CommonSocketOptions:
     def immediate(self) -> bool: ...
     @immediate.setter
     def immediate(self, value: bool) -> None: ...
+    @property
+    def connect_timeout_ms(self) -> int: ...
+    @connect_timeout_ms.setter
+    def connect_timeout_ms(self, value: int) -> None: ...
+    @property
+    def ipv6(self) -> bool: ...
+    @ipv6.setter
+    def ipv6(self, value: bool) -> None: ...
+    @property
+    def tcp_no_delay(self) -> bool: ...
+    @tcp_no_delay.setter
+    def tcp_no_delay(self, value: bool) -> None: ...
+    @property
+    def tcp_keepalive(self) -> int: ...
+    @tcp_keepalive.setter
+    def tcp_keepalive(self, value: int) -> None: ...
+    @property
+    def heartbeat_interval_ms(self) -> int: ...
+    @heartbeat_interval_ms.setter
+    def heartbeat_interval_ms(self, value: int) -> None: ...
+    @property
+    def heartbeat_ttl_ms(self) -> int: ...
+    @heartbeat_ttl_ms.setter
+    def heartbeat_ttl_ms(self, value: int) -> None: ...
+    @property
+    def heartbeat_timeout_ms(self) -> int: ...
+    @heartbeat_timeout_ms.setter
+    def heartbeat_timeout_ms(self, value: int) -> None: ...
+    @property
+    def max_msg_size(self) -> int: ...
+    @max_msg_size.setter
+    def max_msg_size(self, value: int) -> None: ...
+    @property
+    def backlog(self) -> int: ...
+    @backlog.setter
+    def backlog(self, value: int) -> None: ...
+    @property
+    def reconnect_interval_ms(self) -> int: ...
+    @reconnect_interval_ms.setter
+    def reconnect_interval_ms(self, value: int) -> None: ...
+    @property
+    def reconnect_interval_max_ms(self) -> int: ...
+    @reconnect_interval_max_ms.setter
+    def reconnect_interval_max_ms(self, value: int) -> None: ...
 
 class DealerSocketOptions:
     @property
@@ -563,6 +606,10 @@ class DealerSocketOptions:
     def weight(self) -> int: ...
     @weight.setter
     def weight(self, value: int) -> None: ...
+    @property
+    def request_timeout_ms(self) -> int: ...
+    @request_timeout_ms.setter
+    def request_timeout_ms(self, value: int) -> None: ...
 
 class RouterSocketOptions:
     @property
@@ -585,6 +632,10 @@ class RouterSocketOptions:
     def weight(self) -> int: ...
     @weight.setter
     def weight(self, value: int) -> None: ...
+    @property
+    def request_timeout_ms(self) -> int: ...
+    @request_timeout_ms.setter
+    def request_timeout_ms(self, value: int) -> None: ...
 
 class PubSocketOptions:
     @property
@@ -603,6 +654,18 @@ class PubSocketOptions:
     def no_drop(self) -> bool: ...
     @no_drop.setter
     def no_drop(self, value: bool) -> None: ...
+    @property
+    def manual_last_value(self) -> bool: ...
+    @manual_last_value.setter
+    def manual_last_value(self, value: bool) -> None: ...
+    @property
+    def welcome_message(self) -> Message: ...
+    @welcome_message.setter
+    def welcome_message(self, value: Message | bytes) -> None: ...
+    @property
+    def topics_count(self) -> int: ...   # read-only
+    def approve_subscribe(self, routing_id: RoutingId | bytes) -> None: ...
+    def reject_subscribe(self, routing_id: RoutingId | bytes) -> None: ...
 
 class SubSocketOptions:
     @property
@@ -738,7 +801,6 @@ class Received:
 ```python
 class TopicMessage:
     routing_id: RoutingId | None             # None when transport carries no source id
-    service_name: str | None                 # Spot subscribe only; None for raw SUB / XSUB
     topic: str                               # UTF-8
     parts: tuple[Message, ...]
 
@@ -759,7 +821,6 @@ Fields only — no `close()` / lifecycle methods.
 ```python
 class SubscriptionEvent:
     routing_id: RoutingId | None    # subscriber routing id; None if transport carries none
-    service_name: str | None        # Spot subscription event only; None for XPub
     topic: str                       # UTF-8 topic string (NOT bytes)
     subscribed: bool                 # True = subscribe, False = unsubscribe
 ```
@@ -1342,7 +1403,7 @@ class Actor:
     def leave(self, spot: Spot) -> None: ...                                    # Raises: ConfigError
     def recv_part(self, *, flags: int = 0) -> ActorPart | None: ...             # Raises: RecvError
     def send_bound_session(self, payload: Message | bytes,
-                           *, flags: int = 0) -> bool: ...                     # Raises: SubmitError
+                           *, flags: int = 0) -> bool: ...                     # Raises: SubmitError except temporary backpressure
     def close_bound_session(self, *, timeout: int = 0) -> None: ...             # Raises: RequestError
     def close(self, *, timeout: int = 0) -> None: ...                           # Raises: RequestError
 ```
@@ -1391,7 +1452,7 @@ class Spot:
     @property
     def routing_id(self) -> RoutingId: ...                                       # Raises: ConfigError
 
-    def publish(self, service_name: str, topic: str) -> SendOp: ...
+    def publish(self, topic: str) -> SendOp: ...
     def send_channel(self, channel_name: str) -> SendOp: ...
     def send_to_spot(self, dest_node_rid: RoutingId,
                      dest_spot_rid: RoutingId) -> SendOp: ...

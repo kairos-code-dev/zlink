@@ -50,13 +50,13 @@ static std::string last_endpoint_from_receiver (void *receiver_)
 }
 
 static bool wait_for_provider (zlink::service::discovery_t &discovery_,
-                               const char *service_name_,
+                               const char *channel_name_,
                                int timeout_ms_)
 {
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (timeout_ms_);
     while (std::chrono::steady_clock::now () < deadline) {
-        if (discovery_.receiver_count (service_name_) > 0)
+        if (discovery_.receiver_count (channel_name_) > 0)
             return true;
         sleep_ms (25);
     }
@@ -64,13 +64,13 @@ static bool wait_for_provider (zlink::service::discovery_t &discovery_,
 }
 
 static bool wait_for_provider_removal (zlink::service::discovery_t &discovery_,
-                                       const char *service_name_,
+                                       const char *channel_name_,
                                        int timeout_ms_)
 {
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (timeout_ms_);
     while (std::chrono::steady_clock::now () < deadline) {
-        if (discovery_.receiver_count (service_name_) == 0)
+        if (discovery_.receiver_count (channel_name_) == 0)
             return true;
         sleep_ms (25);
     }
@@ -116,7 +116,7 @@ static void test_discovery_provider_registration ()
     size_t provider_count = 4;
     assert (discovery.get_receivers ("test-svc", providers, &provider_count) == 0);
     assert (provider_count == 1);
-    assert (std::strcmp (providers[0].service_name, "test-svc") == 0);
+    assert (std::strcmp (providers[0].channel_name, "test-svc") == 0);
     assert (std::strcmp (providers[0].endpoint, advertise_ep.c_str ()) == 0);
     assert (providers[0].weight == 1);
     assert (providers[0].routing_id.size > 0);
@@ -164,7 +164,7 @@ static void test_discovery_service_filtering ()
     size_t count = 4;
     assert (discovery.get_receivers ("svc-A", providers, &count) == 0);
     assert (count == 1);
-    assert (std::strcmp (providers[0].service_name, "svc-A") == 0);
+    assert (std::strcmp (providers[0].channel_name, "svc-A") == 0);
     assert (std::strcmp (providers[0].endpoint, advertise_a.c_str ()) == 0);
     assert (providers[0].weight == 10);
 
@@ -174,7 +174,7 @@ static void test_discovery_service_filtering ()
     count = 4;
     assert (discovery.get_receivers ("svc-B", providers, &count) == 0);
     assert (count == 1);
-    assert (std::strcmp (providers[0].service_name, "svc-B") == 0);
+    assert (std::strcmp (providers[0].channel_name, "svc-B") == 0);
     assert (std::strcmp (providers[0].endpoint, advertise_b.c_str ()) == 0);
     assert (providers[0].weight == 20);
 

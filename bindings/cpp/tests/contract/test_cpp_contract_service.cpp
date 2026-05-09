@@ -52,13 +52,12 @@ template<typename SpotT> class has_try_publish_t
     static const bool value = decltype (test<SpotT> (0))::value;
 };
 
-template<typename SpotT> class has_service_publish_t
+template<typename SpotT> class has_spot_publish_t
 {
   private:
     template<typename T>
     static auto test (int)
       -> decltype (std::declval<T &> ().publish (
-                      std::declval<const std::string &> (),
                       std::declval<const std::string &> ()),
                     std::true_type ());
 
@@ -320,16 +319,32 @@ template<typename T> class has_spot_node_hwm_options_t
     static const bool value = decltype (test<T> (0))::value;
 };
 
+template<typename T> class has_auto_hwm_msg_unit_setter_t
+{
+  private:
+    template<typename U>
+    static auto test (int)
+      -> decltype (
+        std::declval<U &> ().auto_hwm_msg_unit_bytes (
+          zlink::byte_size_t::bytes (64)),
+        std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<T> (0))::value;
+};
+
 static_assert (has_subscribe_result_t<zlink::service::spot_t>::value,
                "spot_t must expose subscribe receive");
 static_assert (!has_try_subscribe_result_t<zlink::service::spot_t>::value,
                "spot_t must not expose subscribe_no_wait");
 static_assert (!has_try_publish_t<zlink::service::spot_t>::value,
                "spot_t must not expose publish_no_wait_result");
-static_assert (has_service_publish_t<zlink::service::spot_t>::value,
-               "spot_t must expose service-aware publish");
+static_assert (has_spot_publish_t<zlink::service::spot_t>::value,
+               "spot_t must expose topic publish");
 static_assert (!has_topic_publish_t<zlink::service::spot_t>::value,
-               "spot_t must not expose topic-only publish");
+               "spot_t must not expose direct message publish");
 static_assert (has_receive_subscription_event_t<zlink::service::spot_t>::value,
                "spot_t must expose receive_subscription_event");
 static_assert (!has_filter_subscribe_alias_t<zlink::service::spot_t>::value,
@@ -371,6 +386,12 @@ static_assert (has_routing_id_getter_t<zlink::service::spot_node_t>::value,
                "spot_node_t must expose routing_id()");
 static_assert (has_spot_node_hwm_options_t<zlink::service::spot_node_t>::value,
                "spot_node_t must expose typed admission HWM options");
+static_assert (
+  !has_auto_hwm_msg_unit_setter_t<zlink::service::spot_node_t>::value,
+  "spot_node_t must not expose auto-HWM message unit setter");
+static_assert (
+  !has_auto_hwm_msg_unit_setter_t<zlink::service::spot_t>::value,
+  "spot_t must not expose auto-HWM message unit setter");
 void test_registry_query_and_discovery_metadata ()
 {
     zlink::context_t ctx;
@@ -452,7 +473,7 @@ void test_unified_spot_self_delivery_recv_contract ()
 {
     zlink::context_t ctx;
     zlink::service::spot_node_t node (ctx);
-    const std::string service_name = "spot-self";
+    const std::string channel_name = "spot-self";
     zlink::service::registry_t registry (ctx);
     const std::string registry_pub =
       zlink_cpp_contract::unique_tcp ("spot-self-reg-pub");
@@ -460,7 +481,7 @@ void test_unified_spot_self_delivery_recv_contract ()
       zlink_cpp_contract::unique_tcp ("spot-self-reg-router");
     registry.bind (registry_pub, registry_router);
     zlink::service::discovery_t discovery (
-      ctx, zlink::auto_connect_type::spot_mesh, service_name);
+      ctx, zlink::auto_connect_type::spot_mesh, channel_name);
     assert (discovery.valid ());
     discovery.connect_registry (registry_router);
     node.attach_discovery (discovery);
@@ -480,7 +501,7 @@ void test_unified_spot_self_delivery_recv_contract ()
     assert (spot.routing_id ().to_bytes ()
             == std::vector<uint8_t> ({'s', 'p', 'o', 't', '-', 's', 'e',
                                       'l', 'f', '-', 'r', 'i', 'd'}));
-    spot.publish (service_name, "topic:service-self").message (outbound).submit ();
+    spot.publish ("topic:service-self").message (outbound).submit ();
 
     std::optional<zlink::topic_message_t> inbound;
     const std::chrono::steady_clock::time_point deadline =
@@ -492,8 +513,6 @@ void test_unified_spot_self_delivery_recv_contract ()
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
     assert (inbound.has_value ());
-    assert (inbound->service_name ());
-    assert (*inbound->service_name () == service_name);
     assert (inbound->topic () == "topic:service-self");
     assert (inbound->parts ().size () == 1);
     assert (inbound->parts ()[0].to_string () == "service-self");

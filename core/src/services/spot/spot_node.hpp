@@ -77,8 +77,7 @@ class spot_node_t : public discovery_observer_t
       const zlink_routing_id_t *spot_rid_);
     void snapshot_spot_states (
       std::vector<std::shared_ptr<spot_logical_state_t> > *out_) const;
-    int fanout_local_publish (const char *service_name_,
-                              const zlink_routing_id_t *source_rid_,
+    int fanout_local_publish (const zlink_routing_id_t *source_rid_,
                               const char *topic_id_,
                               zlink_msg_t *parts_,
                               size_t part_count_);
@@ -123,7 +122,7 @@ class spot_node_t : public discovery_observer_t
     int destroy ();
 
     // discovery_observer_t
-    void on_service_update (const std::string &service_name_) ZLINK_OVERRIDE;
+    void on_service_update (const std::string &channel_name_) ZLINK_OVERRIDE;
     void on_discovery_shutdown_requested (discovery_t *discovery_)
       ZLINK_OVERRIDE;
     void on_discovery_destroyed (discovery_t *discovery_) ZLINK_OVERRIDE;
@@ -160,20 +159,16 @@ class spot_node_t : public discovery_observer_t
     bool external_route_id_for_peer_endpoint (
       const std::string &peer_endpoint_, std::string *out_) const;
     bool peer_has_positive_weight (const zlink_routing_id_t *peer_rid_) const;
-    socket_base_t *select_service_router (const std::string &service_name_);
-    socket_base_t *service_pub_socket (const std::string &service_name_) const;
+    socket_base_t *select_service_router (const std::string &channel_name_);
+    socket_base_t *service_pub_socket (const std::string &channel_name_) const;
     int service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
                                 zlink_msg_t **parts_out_,
                                 size_t *part_count_out_,
-                                char *service_name_out_,
-                                size_t *service_name_len_out_,
                                 char *topic_id_out_,
                                 size_t *topic_id_len_out_,
                                 zlink_recv_flags_t flags_);
     int service_subscription_event_recv (zlink_routing_id_t *source_rid_out_,
                                          int *subscribed_out_,
-                                         char *service_name_out_,
-                                         size_t *service_name_len_out_,
                                          char *topic_id_out_,
                                          size_t *topic_id_len_out_,
                                          zlink_recv_flags_t flags_);
@@ -210,7 +205,7 @@ class spot_node_t : public discovery_observer_t
     void notify_subscription_forwarded (const std::string &raw_filter_);
     void mark_subject_changed (const std::string &subject_,
                                uint32_t subject_kind_);
-    std::string summary_service_name () const;
+    std::string summary_channel_name () const;
     void snapshot_active_peer_endpoints (std::set<std::string> *out_) const;
     void snapshot_tls_client_config (std::string *ca_out_,
                                      std::string *host_out_,
@@ -304,21 +299,21 @@ class spot_node_t : public discovery_observer_t
     void refresh_service_discovery_attachments ();
     void snapshot_service_discovery_topology (
       discovery_t *discovery_,
-      const std::string &service_name_,
+      const std::string &channel_name_,
       std::vector<provider_info_t> *provider_scratch_,
       service_discovery_topology_t *out_) const;
     service_discovery_socket_plan_t plan_service_discovery_sockets_locked (
-      const std::string &service_name_,
+      const std::string &channel_name_,
       const service_discovery_topology_t &topology_);
     void install_service_discovery_sockets (
-      const std::string &service_name_,
+      const std::string &channel_name_,
       const service_discovery_socket_plan_t &plan_,
       const std::set<std::string> &current_filters_);
     void sync_service_discovery_topology (
-      const std::string &service_name_,
+      const std::string &channel_name_,
       const service_discovery_topology_t &topology_);
     void replay_pending_service_discovery_filters (
-      const std::string &service_name_,
+      const std::string &channel_name_,
       const std::set<std::string> &current_filters_);
     void notify_service_subscribe_readable ();
     int validate_destroyable_handles_locked () const;
@@ -333,15 +328,15 @@ class spot_node_t : public discovery_observer_t
     void close_attachment_monitors (
       std::deque<attachment_monitor_handle_t> *monitors_);
     int validate_socket_service_discovery_attach_locked (
-      const std::string &service_name_, discovery_t *discovery_) const;
+      const std::string &channel_name_, discovery_t *discovery_) const;
     void register_attachment_monitor_locked (
       socket_base_t *owner_socket_,
       void *monitor_handle_,
-      const std::string &service_name_);
+      const std::string &channel_name_);
     void rebuild_service_attachment_caches_locked ();
     void reset_spot_discovery_state_locked ();
     void queue_service_discovery_refresh_locked (
-      const std::string &service_name_);
+      const std::string &channel_name_);
     void remove_attachment_monitors_by_owner_locked (
       const std::vector<socket_base_t *> &sockets_);
     bool detach_discovered_service_locked (

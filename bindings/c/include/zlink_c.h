@@ -136,7 +136,6 @@ ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_send_channel (
 
 ZLINK_C_EXPORT zlink_submit_result_t zlink_spot_publish (
   void *spot_,
-  const char *service_name_,
   const char *topic_id_,
   zlink_msg_t *parts_,
   size_t part_count_,
@@ -148,8 +147,6 @@ ZLINK_C_EXPORT zlink_recv_result_t zlink_spot_subscribe (
   zlink_routing_id_t *source_rid_out_,
   zlink_msg_t **parts_out_,
   size_t *part_count_out_,
-  char *service_name_out_,
-  size_t *service_name_len_out_,
   char *topic_id_out_,
   size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_);
@@ -158,8 +155,6 @@ ZLINK_C_EXPORT zlink_recv_result_t zlink_spot_subscription_event (
   void *spot_,
   zlink_routing_id_t *source_rid_out_,
   int *subscribed_out_,
-  char *service_name_out_,
-  size_t *service_name_len_out_,
   char *topic_id_out_,
   size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_);

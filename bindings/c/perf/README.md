@@ -38,23 +38,19 @@ is a shortcut that sets both send and receive socket buffers to the same value;
 different value.
 
 Multi benchmarks set `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` from the current
-message size before each run:
+message size before each run for raw benchmark sockets:
 
 | Socket family | Message unit used by perf |
 |---------------|---------------------------|
-| all multi perf sockets | `msg_size` |
+| raw multi perf sockets | `msg_size` |
 
-Single SPOT sets the SpotNode data-path message unit to
-`min(msg_size, 4096)`. This gives small messages the same deeper auto-HWM queue
-as the other single benchmarks while keeping large one-way SPOT probes from
-starting with an overly shallow queue.
+SPOT node and SPOT handle paths do not set this common socket option. The C API
+treats `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` as a raw socket option, so SPOT perf
+uses the core's SPOT defaults instead of writing a per-handle message unit.
 
-Single SPOT also defaults `PERF_IO_THREADS` to `4` when the user does not pass
-`--io-threads` or set `PERF_IO_THREADS`. A SPOT transport run creates two
-SpotNodes, their data-plane sockets, and transport sockets in one process; with
-the generic single-binary default of one I/O thread, the benchmark measures I/O
-thread contention instead of SPOT throughput. Explicit `--io-threads` always
-wins when a run needs a different value.
+All single benchmarks use one context I/O thread by default. SPOT does not have
+a pattern-specific I/O thread default; pass `--io-threads` or set
+`PERF_IO_THREADS` only when intentionally running a non-baseline diagnostic.
 
 For non-SPOT patterns, the auto-HWM detail table is printed after the result
 rows. It uses the cached runtime snapshots and includes the applied HWM and
@@ -94,7 +90,8 @@ Profile guidance after the auto-HWM message-unit change:
 
 If calculated HWM values are too small for the target traffic shape, first
 select a larger profile. Use `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` only when the
-benchmark's effective message unit differs from the socket-type default.
+raw benchmark socket's effective message unit differs from the socket-type
+default.
 
 ## SPOT One-Way Latency
 

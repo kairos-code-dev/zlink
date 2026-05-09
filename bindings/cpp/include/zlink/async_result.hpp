@@ -61,8 +61,16 @@ template<typename T> class async_result_t
     ZLINK_CPP_NODISCARD std::future_status
     wait_for (const std::chrono::duration<Rep, Period> &timeout_) const
     {
-        if (!_state->progress || timeout_ <= timeout_.zero ())
+        if (!_state->progress)
             return _state->future.wait_for (timeout_);
+
+        if (timeout_ <= timeout_.zero ()) {
+            if (_state->future.wait_for (std::chrono::milliseconds (0))
+                == std::future_status::ready)
+                return std::future_status::ready;
+            pump_progress_once ();
+            return _state->future.wait_for (std::chrono::milliseconds (0));
+        }
 
         const std::chrono::steady_clock::time_point deadline =
           std::chrono::steady_clock::now ()

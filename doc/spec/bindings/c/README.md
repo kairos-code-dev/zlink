@@ -276,7 +276,7 @@ zlink_submit_result_t zlink_router_reply_spot_part(
   zlink_msg_t *part_, zlink_part_flag_t part_flag_);
 ```
 
-### SPOT Channels and Service Publish
+### SPOT Channels and Topic Publish
 
 ```c
 zlink_submit_result_t zlink_spot_send_channel_part(
@@ -284,8 +284,8 @@ zlink_submit_result_t zlink_spot_send_channel_part(
   zlink_send_flags_t flags_, zlink_part_flag_t part_flag_);
 
 zlink_submit_result_t zlink_spot_publish_part(
-  void *spot_, const char *service_name_, const char *topic_id_,
-  zlink_msg_t *part_, zlink_send_flags_t flags_,
+  void *spot_, const char *topic_id_, zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
   zlink_part_flag_t part_flag_);
 
 zlink_submit_result_t zlink_spot_request_channel_part(
@@ -365,18 +365,16 @@ Spot path; for ordinary dealer-originated traffic it is NULL.
 ```c
 zlink_recv_result_t zlink_spot_subscribe_part(
   void *spot_, const zlink_routing_id_t **source_rid_out_,
-  char *service_name_buf_, size_t service_name_capacity_,
-  size_t *service_name_len_out_, char *topic_id_buf_,
-  size_t topic_id_capacity_, size_t *topic_id_len_out_,
-  zlink_msg_t *part_out_, zlink_part_flag_t *has_more_out_,
+  char *topic_id_buf_, size_t topic_id_capacity_,
+  size_t *topic_id_len_out_, zlink_msg_t *part_out_,
+  zlink_part_flag_t *has_more_out_,
   zlink_recv_flags_t flags_);
 
 zlink_recv_result_t zlink_spot_subscription_event_recv(
   void *spot_, const zlink_routing_id_t **source_rid_out_,
-  int *subscribed_out_, char *service_name_buf_,
-  size_t service_name_capacity_, size_t *service_name_len_out_,
-  char *topic_id_buf_, size_t topic_id_capacity_,
-  size_t *topic_id_len_out_, zlink_recv_flags_t flags_);
+  int *subscribed_out_, char *topic_id_buf_,
+  size_t topic_id_capacity_, size_t *topic_id_len_out_,
+  zlink_recv_flags_t flags_);
 
 zlink_recv_result_t zlink_spot_recv_part(
   void *spot_, const zlink_routing_id_t **source_node_rid_out_,

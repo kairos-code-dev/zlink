@@ -60,7 +60,7 @@ typedef struct zlink_service_observation_event_t
     int32_t error_code;
     uint32_t value;
     zlink_service_event_detail_mask_t detail_flags;
-    char service_name[256];
+    char channel_name[256];
     char endpoint[256];
     zlink_routing_id_t routing_id;
     char subject[256];

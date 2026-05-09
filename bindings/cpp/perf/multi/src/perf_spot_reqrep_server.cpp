@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <optional>
@@ -25,7 +26,8 @@ bool is_supported_transport (const std::string &transport_)
 
 template<typename SocketLike>
 void apply_socket_options (SocketLike &socket_,
-                           const perf::multi::multi_bench_settings_t &settings_)
+                           const perf::multi::multi_bench_settings_t &settings_,
+                           size_t msg_size_)
 {
     zlink::common_socket_options_t options = socket_.options ();
     if (perf::multi::manual_socket_overrides_enabled ()) {
@@ -37,6 +39,8 @@ void apply_socket_options (SocketLike &socket_,
     options.send_timeout (std::chrono::milliseconds (settings_.sndtimeo_ms));
     options.recv_timeout (std::chrono::milliseconds (settings_.rcvtimeo_ms));
     options.linger (std::chrono::milliseconds (0));
+    options.auto_hwm_msg_unit_bytes (
+      zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)));
 }
 
 template<typename SocketLike>
@@ -112,13 +116,18 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
 
     const perf::multi::multi_bench_settings_t settings =
       perf::multi::resolve_multi_bench_settings ();
+    const std::vector<size_t> msg_sizes =
+      perf::multi::resolve_case_msg_sizes (msg_size);
+    const size_t max_msg_size =
+      perf::multi::max_case_msg_size (msg_sizes, msg_size);
 
     perf::multi::ctx_guard_t ctx;
     zlink::router_socket_t responder (ctx);
     if (!responder.valid ())
         return false;
 
-    apply_socket_options (responder, settings);
+    apply_socket_options (responder, settings, max_msg_size);
+    (void) perf::multi::recalculate_auto_hwm (ctx);
     if (!perf::setup_tls_server (responder, transport))
         return false;
 
@@ -220,5 +229,8 @@ int main (int argc, char **argv)
     if (size == 0)
         return 1;
 
-    return perf_spot_reqrep_server (lib_name, transport, size) ? 0 : 1;
+    const bool ok = perf_spot_reqrep_server (lib_name, transport, size);
+    std::cout.flush ();
+    std::cerr.flush ();
+    std::_Exit (ok ? 0 : 1);
 }

@@ -443,6 +443,44 @@ inline int recv_single_part (void *socket_,
                              recv_flags_t flags_,
                              message_t &part_)
 {
+    if (socket_uses_router_recv (socket_)) {
+        const zlink_routing_id_t *source_rid = NULL;
+        const zlink_routing_id_t *source_spot_rid = NULL;
+        uint64_t request_seq = 0;
+        zlink_msg_t *parts_native = NULL;
+        size_t part_count = 0;
+        const ::socket_handle_t handle = {
+          static_cast<socket_base_t *> (socket_)};
+        const int rc = recv_result_from_rc (
+          socket_reqrep_internal::recv_router_message_direct (
+            handle, &source_rid, &source_spot_rid, &request_seq,
+            &parts_native, &part_count, static_cast<int> (flags_)));
+        if (rc != ZLINK_RECV_OK)
+            return rc;
+
+        if (source_rid_out_) {
+            if (source_rid && source_rid->size > 0)
+                *source_rid_out_ = *source_rid;
+            else
+                std::memset (source_rid_out_, 0, sizeof (*source_rid_out_));
+        }
+
+        if ((source_spot_rid && source_spot_rid->size > 0) || request_seq != 0
+            || part_count != 1 || !parts_native) {
+            close_message_array (parts_native, part_count);
+            errno = part_count == 1 ? EPROTO : EMSGSIZE;
+            return -1;
+        }
+
+        if (zlink_msg_move (zlink::detail::native_handle (part_), &parts_native[0])
+            != 0) {
+            close_message_array (parts_native, part_count);
+            return -1;
+        }
+        close_message_array (parts_native, part_count);
+        return 0;
+    }
+
     recv_envelope_t envelope;
     const int rc = recv_envelope (socket_, flags_, envelope);
     if (rc != 0)
@@ -1038,16 +1076,48 @@ class base_socket_t : public socket_handle_t
     ZLINK_CPP_NODISCARD int
     subscribe (topic_message_t &message_, recv_flags_t flags_ = recv_flags_t::none)
     {
-        routing_id_t source_rid = zlink::detail::unchecked_empty_routing_id ();
+        char topic_buffer[256];
+        size_t topic_size = sizeof (topic_buffer);
+        const zlink_routing_id_t *source_rid = NULL;
         std::string topic;
         std::vector<message_t> parts;
-        const int rc = subscribe (source_rid, topic, parts, flags_);
-        if (rc != 0)
-            return rc;
+
+        for (;;) {
+            zlink_msg_t native_part;
+            zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+            if (zlink_msg_init (&native_part) != 0)
+                return -1;
+
+            topic_size = sizeof (topic_buffer);
+            const int rc = zlink_subscribe_part (
+              handle (), &source_rid, topic_buffer, sizeof (topic_buffer),
+              &topic_size, &native_part, &has_more,
+              static_cast<zlink_recv_flags_t> (flags_));
+            if (rc != ZLINK_RECV_OK) {
+                (void) zlink_msg_close (&native_part);
+                return static_cast<int> (rc);
+            }
+
+            if (parts.empty ())
+                topic.assign (topic_buffer, topic_size);
+
+            parts.emplace_back ();
+            if (zlink_msg_move (detail::native_handle (parts.back ()),
+                                &native_part)
+                != 0) {
+                (void) zlink_msg_close (&native_part);
+                return -1;
+            }
+            (void) zlink_msg_close (&native_part);
+
+            if (has_more == ZLINK_PART_FINAL)
+                break;
+        }
+
         message_ = topic_message_t (
-          zlink::detail::routing_id_empty (source_rid) ? std::nullopt
-                              : std::optional<routing_id_t> (source_rid),
-          std::nullopt,
+          source_rid && source_rid->size > 0
+            ? std::optional<routing_id_t> (zlink::detail::native_routing_id (*source_rid))
+            : std::nullopt,
           std::move (topic), std::move (parts));
         return 0;
     }
@@ -1092,7 +1162,6 @@ class base_socket_t : public socket_handle_t
                         recv_flags_t flags_ = recv_flags_t::none)
     {
         event_.routing_id = std::nullopt;
-        event_.service_name = std::nullopt;
         event_.topic.clear ();
         event_.subscribed = false;
         routing_id_t source_rid = zlink::detail::unchecked_empty_routing_id ();

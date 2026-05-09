@@ -31,7 +31,7 @@ class socket_discovery_attachment_t : public discovery_observer_t
     int on_public_close () const;
     void on_local_peer_weight_changed ();
 
-    void on_service_update (const std::string &service_name_) ZLINK_OVERRIDE;
+    void on_service_update (const std::string &channel_name_) ZLINK_OVERRIDE;
     void on_discovery_shutdown_requested (discovery_t *discovery_)
       ZLINK_OVERRIDE;
     void on_discovery_destroyed (discovery_t *discovery_) ZLINK_OVERRIDE;

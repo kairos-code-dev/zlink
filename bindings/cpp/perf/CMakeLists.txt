@@ -151,6 +151,8 @@ add_cpp_multi_server_bench(cpp_comp_src_pubsub_server
   "${PERF_ROOT_DIR}/multi/src/perf_pubsub_server.cpp")
 add_cpp_multi_server_bench(cpp_comp_src_spot_server
   "${PERF_ROOT_DIR}/multi/src/perf_spot_server.cpp")
+add_cpp_multi_server_bench(cpp_comp_src_spot_sendsend_server
+  "${PERF_ROOT_DIR}/multi/src/perf_spot_sendsend_server.cpp")
 add_cpp_multi_server_bench(cpp_comp_src_spot_reqrep_server
   "${PERF_ROOT_DIR}/multi/src/perf_spot_reqrep_server.cpp")
 add_cpp_multi_server_bench(cpp_comp_src_stream_server
@@ -168,5 +170,7 @@ add_cpp_multi_client_bench(cpp_comp_src_pubsub_client
   "${PERF_ROOT_DIR}/multi/src/perf_pubsub_client.cpp")
 add_cpp_multi_client_bench(cpp_comp_src_spot_client
   "${PERF_ROOT_DIR}/multi/src/perf_spot_client.cpp")
+add_cpp_multi_client_bench(cpp_comp_src_spot_sendsend_client
+  "${PERF_ROOT_DIR}/multi/src/perf_spot_sendsend_client.cpp")
 add_cpp_multi_client_bench(cpp_comp_src_spot_reqrep_client
   "${PERF_ROOT_DIR}/multi/src/perf_spot_reqrep_client.cpp")

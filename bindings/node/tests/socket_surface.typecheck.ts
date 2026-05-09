@@ -154,7 +154,7 @@ stream.unbindActor(spotNode, routingId, 'typed-actor');
 stream.sendBoundActor(spotNode, routingId, 'typed-actor', 'payload');
 spot.setRoutingId(routingId);
 spot.routingId;
-spot.publish('svc', 'topic').message('ok').submit();
+spot.publish('topic').message('ok').submit();
 spot.sendChannel('svc').message('ok').submit();
 spot.requestChannel('svc').message('ok').submitAsync();
 spot.setSubscription('topic');

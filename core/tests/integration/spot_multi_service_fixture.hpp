@@ -56,7 +56,7 @@ inline bool wait_for_service_summary_count_local (
 
 inline bool wait_for_service_attachment_shape_local (
   void *node_,
-  const char *service_name_,
+  const char *channel_name_,
   uint32_t auto_router_count_,
   uint32_t auto_pub_count_,
   uint32_t auto_sub_count_,
@@ -73,7 +73,7 @@ inline bool wait_for_service_attachment_shape_local (
                       != ZLINK_CONFIG_OK) {
                     continue;
                 }
-                if (strcmp (row.service_name, service_name_) != 0)
+                if (strcmp (row.channel_name, channel_name_) != 0)
                     continue;
                 if (row.auto_router_count == auto_router_count_
                     && row.auto_pub_count == auto_pub_count_
@@ -120,22 +120,17 @@ inline bool wait_for_spot_service_message_local (
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
         zlink_routing_id_t source_rid;
-        char service_name[64];
-        size_t service_name_len = sizeof (service_name);
         char topic[64];
         size_t topic_len = sizeof (topic);
         memset (&source_rid, 0, sizeof (source_rid));
         const zlink_recv_result_t rc = zlink_spot_subscribe (
-          spot_, &source_rid, &parts, &part_count, service_name,
-          &service_name_len, topic, &topic_len,
+          spot_, &source_rid, &parts, &part_count, topic, &topic_len,
           static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
         if (rc == ZLINK_RECV_OK) {
             const bool matched =
               part_count == 1
-              && service_name_len == strlen (expected_service_)
               && topic_len == strlen (expected_topic_)
               && zlink_msg_size (&parts[0]) == strlen (expected_payload_)
-              && memcmp (service_name, expected_service_, service_name_len) == 0
               && memcmp (topic, expected_topic_, topic_len) == 0
               && memcmp (zlink_msg_data (&parts[0]), expected_payload_,
                          strlen (expected_payload_))
@@ -196,7 +191,7 @@ inline bool try_recv_router_payload_local (void *router_,
 }
 
 inline bool wait_for_router_distribution_local (void *spot_,
-                                                const char *service_name_,
+                                                const char *channel_name_,
                                                 void *router_a_,
                                                 void *router_b_,
                                                 int timeout_ms_)
@@ -213,7 +208,7 @@ inline bool wait_for_router_distribution_local (void *spot_,
         TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, payload_size));
         memcpy (zlink_msg_data (&part), payload, payload_size);
         const zlink_submit_result_t submit_rc =
-          zlink_spot_send_channel (spot_, service_name_, &part, 1,
+          zlink_spot_send_channel (spot_, channel_name_, &part, 1,
                                    ZLINK_DONTWAIT);
         if (submit_rc != ZLINK_SUBMIT_OK)
             zlink_msg_close (&part);
@@ -229,7 +224,7 @@ inline bool wait_for_router_distribution_local (void *spot_,
 
 inline bool wait_for_router_set_distribution_local (
   void *spot_,
-  const char *service_name_,
+  const char *channel_name_,
   const std::vector<void *> &routers_,
   int timeout_ms_)
 {
@@ -247,7 +242,7 @@ inline bool wait_for_router_set_distribution_local (
         TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, payload_size));
         memcpy (zlink_msg_data (&part), payload, payload_size);
         const zlink_submit_result_t submit_rc =
-          zlink_spot_send_channel (spot_, service_name_, &part, 1,
+          zlink_spot_send_channel (spot_, channel_name_, &part, 1,
                                    ZLINK_DONTWAIT);
         if (submit_rc != ZLINK_SUBMIT_OK)
             zlink_msg_close (&part);

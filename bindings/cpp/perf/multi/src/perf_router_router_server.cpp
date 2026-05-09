@@ -92,8 +92,8 @@ bool try_send_reply (::perf::socket_t &sock,
     if (payload_sent != 0) {
         if (payload_sent < 0 && errno == EAGAIN) {
             try {
-                poller.modify (
-                  sock, zlink::poll_event_flag_t::pollin | zlink::poll_event_flag_t::pollout);
+                sock.poller_modify (
+                  poller, zlink::poll_event_flag_t::pollin | zlink::poll_event_flag_t::pollout);
                 return true;
             }
             catch (const zlink::zlink_error_t &) {
@@ -107,7 +107,7 @@ bool try_send_reply (::perf::socket_t &sock,
     reply.client_id = routing_id_from_ascii ("x");
     reply.payload = zlink::message_t ();
     try {
-        poller.modify (sock, zlink::poll_event_flag_t::pollin);
+        sock.poller_modify (poller, zlink::poll_event_flag_t::pollin);
         return true;
     }
     catch (const zlink::zlink_error_t &) {
@@ -168,9 +168,8 @@ bool perf_router_router_server (const std::string &lib_name,
                           + std::chrono::seconds (deadline_seconds);
 
     zlink::poller_t poller;
-    (void) poller.add (
-      server.sock (), zlink::poll_event_flag_t::pollin,
-      &server.sock ());
+    server.sock ().poller_add (
+      poller, zlink::poll_event_flag_t::pollin, &server.sock ());
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
     reply_state_t reply;

@@ -27,7 +27,7 @@ static const char *const k_dealer_router_reply = "pong";
 static const char *const k_stream_payload = "hello-stream";
 static const char *const k_pubsub_topic = "prices";
 static const char *const k_pubsub_payload = "101.25";
-static const char *const k_service_name = "sample";
+static const char *const k_channel_name = "sample";
 static const char *const k_spot_topic = "room:lobby";
 static const char *const k_spot_payload = "hello-spot";
 

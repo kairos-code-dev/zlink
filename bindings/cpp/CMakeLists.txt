@@ -7,6 +7,11 @@ get_filename_component(ZLINK_REPO_ROOT_DIR "${ZLINK_CPP_BINDINGS_DIR}/../.." ABS
 set(ZLINK_CORE_DIR "${ZLINK_REPO_ROOT_DIR}/core" CACHE PATH "Path to zlink core")
 set(ZLINK_CPP_CORE_BUILD_DIR "${ZLINK_REPO_ROOT_DIR}/core/build" CACHE PATH
     "Path to an existing zlink core build directory")
+option(
+  ZLINK_CPP_USE_CORE_BUILD_RUNTIME
+  "Prefer core/build runtime over the bundled C++ native runtime"
+  OFF
+)
 set(ZLINK_CPP_STANDALONE FALSE)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   set(ZLINK_CPP_STANDALONE TRUE)
@@ -90,6 +95,20 @@ function(zlink_cpp_ensure_core_target out_target_var out_runtime_dir_var)
     return()
   endif()
 
+  zlink_cpp_resolve_native_layout(_native_dir _native_lib)
+
+  if(NOT ZLINK_CPP_USE_CORE_BUILD_RUNTIME AND _native_lib AND EXISTS "${_native_lib}")
+    if(NOT TARGET zlink-native)
+      add_library(zlink-native SHARED IMPORTED GLOBAL)
+      set_target_properties(zlink-native PROPERTIES
+        IMPORTED_LOCATION "${_native_lib}"
+      )
+    endif()
+    set(${out_target_var} zlink-native PARENT_SCOPE)
+    set(${out_runtime_dir_var} "${_native_dir}" PARENT_SCOPE)
+    return()
+  endif()
+
   zlink_cpp_resolve_core_build_layout(_core_build_dir _core_build_lib)
   if(_core_build_lib)
     if(NOT TARGET zlink-core-build-runtime)
@@ -102,8 +121,6 @@ function(zlink_cpp_ensure_core_target out_target_var out_runtime_dir_var)
     set(${out_runtime_dir_var} "${_core_build_dir}" PARENT_SCOPE)
     return()
   endif()
-
-  zlink_cpp_resolve_native_layout(_native_dir _native_lib)
 
   if(_native_lib AND EXISTS "${_native_lib}")
     if(NOT TARGET zlink-native)
@@ -119,8 +136,8 @@ function(zlink_cpp_ensure_core_target out_target_var out_runtime_dir_var)
 
   message(FATAL_ERROR
     "No zlink core runtime found for this platform. "
-    "Expected an existing libzlink target, a core build under "
-    "${ZLINK_CPP_CORE_BUILD_DIR}, or ${_native_lib}.")
+    "Expected an existing libzlink target, bundled native runtime "
+    "${_native_lib}, or a core build under ${ZLINK_CPP_CORE_BUILD_DIR}.")
 endfunction()
 
 zlink_cpp_ensure_core_target(ZLINK_CPP_CORE_TARGET ZLINK_CPP_RUNTIME_DIR)

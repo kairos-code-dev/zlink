@@ -68,6 +68,60 @@ void test_request_dealer_router_roundtrip ()
     router_done.get ();
 }
 
+void test_request_wait_for_zero_pumps_progress ()
+{
+    zlink::context_t ctx;
+    zlink::dealer_socket_t dealer_socket (ctx);
+    zlink::router_socket_t router_socket (ctx);
+    zlink::monitor_handle_t router_monitor = router_socket.monitor_handle ();
+    zlink::monitor_handle_t dealer_monitor = dealer_socket.monitor_handle ();
+
+    const std::string endpoint =
+      zlink_cpp_contract::unique_inproc ("rr-cpp-wait-zero");
+    router_socket.bind (endpoint);
+    dealer_socket.connect (endpoint);
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      router_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      dealer_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+    std::this_thread::sleep_for (std::chrono::milliseconds (50));
+
+    zlink::message_t request = make_request_message ("request:wait-zero");
+    std::future<void> router_done = std::async (
+      std::launch::async, [&router_socket] () {
+          const std::optional<zlink::received_t> request = router_socket.recv ();
+          assert (request.has_value ());
+          assert (request->parts ().size () == 1);
+          assert (request->request_seq ().has_value ());
+
+          zlink::message_t reply = make_request_message ("reply:wait-zero");
+          request->reply (reply);
+      });
+
+    zlink::async_result_t<std::vector<zlink::message_t>> future =
+      dealer_socket.request (request, std::chrono::milliseconds (5000));
+
+    bool ready = false;
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (2);
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (future.wait_for (std::chrono::milliseconds (0))
+            == std::future_status::ready) {
+            ready = true;
+            break;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    assert (ready && "wait_for(0) must pump request progress");
+
+    const std::vector<zlink::message_t> reply = future.get ();
+    assert (reply.size () == 1);
+    assert (reply[0].to_string () == "reply:wait-zero");
+    router_done.get ();
+}
+
 void test_request_router_preserves_data_recv_surface ()
 {
     zlink::context_t ctx;
@@ -156,6 +210,7 @@ void test_received_reply_rejects_non_none_flags ()
 int main ()
 {
     test_request_dealer_router_roundtrip ();
+    test_request_wait_for_zero_pumps_progress ();
     test_request_router_preserves_data_recv_surface ();
     test_received_reply_rejects_non_none_flags ();
     std::quick_exit (0);

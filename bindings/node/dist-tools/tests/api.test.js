@@ -242,7 +242,7 @@ test('spot close leaves spot node alive and discovery close tears down attached 
     standaloneNode.close();
     ctx.close();
 });
-test('discovery requires a service name in the aligned api', () => {
+test('discovery requires a channel name in the aligned api', () => {
     const ctx = new zlink.Context();
     assert.throws(() => new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH), /channelName/);
     assert.throws(() => new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, ''), /channelName/);

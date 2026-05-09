@@ -202,10 +202,9 @@ final class InternalAccess {
     }
 
     public static TopicMessage topicMessage(RoutingId routingId,
-                                            String serviceName,
                                             String topicId,
                                             Message[] parts) {
-        return new TopicMessage(routingId, serviceName, topicId, parts);
+        return new TopicMessage(routingId, topicId, parts);
     }
 
     public static void receivedForceMaterialize(Received received) {

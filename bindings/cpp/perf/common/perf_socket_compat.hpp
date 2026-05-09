@@ -12,6 +12,7 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace zlink
 {
@@ -86,28 +87,6 @@ class socket_t
         });
     }
 
-    void *handle () noexcept
-    {
-        return visit ([] (auto &socket_) -> void * {
-            using socket_type_t = typename std::decay<decltype (socket_)>::type;
-            if constexpr (std::is_same<socket_type_t, std::monostate>::value)
-                return NULL;
-            else
-                return detail::native_handle (socket_);
-        });
-    }
-
-    const void *handle () const noexcept
-    {
-        return visit_const ([] (const auto &socket_) -> const void * {
-            using socket_type_t = typename std::decay<decltype (socket_)>::type;
-            if constexpr (std::is_same<socket_type_t, std::monostate>::value)
-                return NULL;
-            else
-                return detail::native_handle (socket_);
-        });
-    }
-
     int bind (const std::string &endpoint_)
     {
         return visit ([&] (auto &socket_) -> int {
@@ -149,6 +128,47 @@ class socket_t
             } else {
                 errno = EOPNOTSUPP;
                 return -1;
+            }
+        });
+    }
+
+    monitor_handle_t monitor_handle (
+      monitor_event events_ = monitor_event::all) const
+    {
+        return visit_const ([&] (const auto &socket_) -> monitor_handle_t {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, std::monostate>::value) {
+                throw config_error_t (config_result_t::invalid_handle, ENOTSOCK);
+            } else {
+                return socket_.monitor_handle (events_);
+            }
+        });
+    }
+
+    void poller_add (poller_t &poller_,
+                     poll_event_flag_t events_,
+                     std::any tag_ = {})
+    {
+        visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, std::monostate>::value) {
+                throw config_error_t (config_result_t::invalid_handle, ENOTSOCK);
+            } else {
+                poller_.add (socket_, events_, std::move (tag_));
+                return 0;
+            }
+        });
+    }
+
+    void poller_modify (poller_t &poller_, poll_event_flag_t events_)
+    {
+        visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, std::monostate>::value) {
+                throw config_error_t (config_result_t::invalid_handle, ENOTSOCK);
+            } else {
+                poller_.modify (socket_, events_);
+                return 0;
             }
         });
     }
@@ -267,34 +287,29 @@ class socket_t
 
     int set_routing_id (const void *data_, size_t size_)
     {
-        routing_id_t routing_id = zlink::detail::unchecked_empty_routing_id ();
-        if (routing_id_from_bytes (data_, size_, routing_id) != 0)
+        try {
+            routing_id_t routing_id = routing_id_t::from_bytes (
+              static_cast<const uint8_t *> (data_), size_);
+            return invoke_routing_id_set (routing_id);
+        }
+        catch (const std::invalid_argument &) {
+            errno = size_ > 255u ? EMSGSIZE : EINVAL;
             return -1;
-        return invoke_routing_id_set (routing_id);
+        }
     }
 
     int set_routing_id (const std::string &routing_id_)
     {
-        routing_id_t routing_id = zlink::detail::unchecked_empty_routing_id ();
-        if (routing_id_from_bytes (
-              routing_id_.data (), routing_id_.size (), routing_id) != 0)
+        try {
+            routing_id_t routing_id = routing_id_t::from_bytes (
+              reinterpret_cast<const uint8_t *> (routing_id_.data ()),
+              routing_id_.size ());
+            return invoke_routing_id_set (routing_id);
+        }
+        catch (const std::invalid_argument &) {
+            errno = routing_id_.size () > 255u ? EMSGSIZE : EINVAL;
             return -1;
-        return invoke_routing_id_set (routing_id);
-    }
-
-    int get_routing_id (routing_id_t &routing_id_) const
-    {
-        return invoke_routing_id_get (routing_id_);
-    }
-
-    int get_routing_id (std::string &routing_id_) const
-    {
-        routing_id_t routing_id = zlink::detail::unchecked_empty_routing_id ();
-        if (get_routing_id (routing_id) != 0)
-            return -1;
-        routing_id_.assign (
-          reinterpret_cast<const char *> (routing_id.data ()), routing_id.size ());
-        return 0;
+        }
     }
 
     int set_tls_server (const std::string &cert_,
@@ -321,7 +336,13 @@ class socket_t
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
             if constexpr (std::is_same<socket_type_t, pair_socket_t>::value
                           || std::is_same<socket_type_t, dealer_socket_t>::value) {
-                return bool_result_to_errno (socket_.send (part_, flags_));
+                try {
+                    return bool_result_to_errno (socket_.send (part_, flags_));
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
             } else {
                 errno = EOPNOTSUPP;
                 return -1;
@@ -337,20 +358,19 @@ class socket_t
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
             if constexpr (std::is_same<socket_type_t, router_socket_t>::value
                           || std::is_same<socket_type_t, stream_socket_t>::value) {
-                return bool_result_to_errno (
-                  socket_.send (routing_id_, part_, flags_));
+                try {
+                    return bool_result_to_errno (
+                      socket_.send (routing_id_, part_, flags_));
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
             } else {
                 errno = EOPNOTSUPP;
                 return -1;
             }
         });
-    }
-
-    int send (const zlink_routing_id_t &routing_id_,
-              message_t &part_,
-              int flags_ = 0)
-    {
-        return send (zlink::detail::native_routing_id (routing_id_), part_, flags_);
     }
 
     int publish (const std::string &topic_id_,
@@ -361,7 +381,14 @@ class socket_t
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
             if constexpr (std::is_same<socket_type_t, pub_socket_t>::value
                           || std::is_same<socket_type_t, xpub_socket_t>::value) {
-                return bool_result_to_errno (socket_.publish (topic_id_, part_, flags_));
+                try {
+                    return bool_result_to_errno (
+                      socket_.publish (topic_id_, part_, flags_));
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
             } else {
                 errno = EOPNOTSUPP;
                 return -1;
@@ -398,18 +425,6 @@ class socket_t
                 return -1;
             }
         });
-    }
-
-    int recv (zlink_routing_id_t &source_rid_out_,
-              message_t &part_,
-              int flags_ = 0)
-    {
-        routing_id_t routing_id = zlink::detail::unchecked_empty_routing_id ();
-        const int rc = recv (routing_id, part_, flags_);
-        if (rc != 0)
-            return rc;
-        source_rid_out_ = *zlink::detail::routing_id_native (routing_id);
-        return 0;
     }
 
     int receive (received_t &received_out_,
@@ -496,6 +511,28 @@ class socket_t
             } else {
                 errno = EOPNOTSUPP;
                 return -1;
+            }
+        });
+    }
+
+    int set_auto_hwm_msg_unit_bytes (size_t value_)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, std::monostate>::value) {
+                errno = ENOTSOCK;
+                return -1;
+            } else {
+                try {
+                    common_socket_options_t options = socket_.options ();
+                    options.auto_hwm_msg_unit_bytes (
+                      byte_size_t::bytes (static_cast<int64_t> (value_)));
+                    return 0;
+                }
+                catch (const zlink_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
             }
         });
     }
@@ -719,13 +756,15 @@ class socket_t
                         errno = EOPNOTSUPP;
                         return -1;
                     }
-                    routing_id_t routing_id =
-                      zlink::detail::unchecked_empty_routing_id ();
-                    if (routing_id_from_bytes (
-                          value_.data (), value_.size (), routing_id) != 0)
-                        return -1;
+                    routing_id_t routing_id = routing_id_t::from_bytes (
+                      reinterpret_cast<const uint8_t *> (value_.data ()),
+                      value_.size ());
                     socket_.options ().connect_routing_id (routing_id);
                     return 0;
+                }
+                catch (const std::invalid_argument &) {
+                    errno = value_.size () > 255u ? EMSGSIZE : EINVAL;
+                    return -1;
                 }
                 catch (const zlink_error_t &err) {
                     errno = err.internal_errno ();
@@ -918,28 +957,6 @@ class socket_t
         });
     }
 
-    int invoke_routing_id_get (routing_id_t &routing_id_) const
-    {
-        return visit_const ([&] (const auto &socket_) -> int {
-            using socket_type_t = typename std::decay<decltype (socket_)>::type;
-            if constexpr (std::is_same<socket_type_t, dealer_socket_t>::value
-                          || std::is_same<socket_type_t, router_socket_t>::value
-                          || std::is_same<socket_type_t, stream_socket_t>::value) {
-                try {
-                    const_cast<socket_type_t &> (socket_).get_routing_id (routing_id_);
-                    return 0;
-                }
-                catch (const zlink_error_t &err) {
-                    errno = err.internal_errno ();
-                    return -1;
-                }
-            } else {
-                errno = EOPNOTSUPP;
-                return -1;
-            }
-        });
-    }
-
     template<typename SocketLike>
     static int recv_received_impl (SocketLike &socket_,
                                    received_t &received_out_,
@@ -991,21 +1008,6 @@ class socket_t
             return 0;
         errno = EAGAIN;
         return -1;
-    }
-
-    static int routing_id_from_bytes (const void *data_,
-                                      size_t size_,
-                                      routing_id_t &routing_id_out_)
-    {
-        try {
-            routing_id_out_ = routing_id_t::from_bytes (
-              static_cast<const uint8_t *> (data_), size_);
-            return 0;
-        }
-        catch (const std::invalid_argument &) {
-            errno = size_ > 255u ? EMSGSIZE : EINVAL;
-            return -1;
-        }
     }
 
     socket_variant_t _socket;

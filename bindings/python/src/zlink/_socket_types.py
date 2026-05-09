@@ -79,6 +79,7 @@ from ._socket_base import (
     _StreamOptionSocket,
     _SubscriberOptionSocket,
     _SubscriberSocket,
+    _read_int32,
     _leave_callback,
 )
 
@@ -118,7 +119,12 @@ class PubSocketOptions:
     _VERBOSE = 0x3301
     _VERBOSER = 0x3302
     _MANUAL = 0x3303
+    _MANUAL_LAST_VALUE = 0x3304
     _NO_DROP = 0x3305
+    _WELCOME_MSG = 0x3306
+    _TOPICS_COUNT = 0x3307
+    _APPROVE_SUBSCRIBE = 0x3308
+    _REJECT_SUBSCRIBE = 0x3309
 
     def __init__(self, socket):
         self._socket = socket
@@ -155,12 +161,47 @@ class PubSocketOptions:
     def no_drop(self, enabled):
         self._socket._set_pub_bool_option(self._NO_DROP, enabled)
 
+    @property
+    def manual_last_value(self):
+        return self._socket._get_pub_bool_option(self._MANUAL_LAST_VALUE)
+
+    @manual_last_value.setter
+    def manual_last_value(self, enabled):
+        self._socket._set_pub_bool_option(self._MANUAL_LAST_VALUE, enabled)
+
+    @property
+    def welcome_message(self):
+        return Message.from_bytes(self._socket._get_pub_option(self._WELCOME_MSG))
+
+    @welcome_message.setter
+    def welcome_message(self, message):
+        if not isinstance(message, Message):
+            message = Message.from_bytes(message)
+        self._socket._set_pub_option(self._WELCOME_MSG, message.to_bytes())
+
+    @property
+    def topics_count(self):
+        return _read_int32(self._socket._get_pub_option(self._TOPICS_COUNT, 4))
+
+    def approve_subscribe(self, routing_id):
+        self._socket._set_pub_option(
+            self._APPROVE_SUBSCRIBE,
+            RoutingId(routing_id).to_bytes(),
+        )
+
+    def reject_subscribe(self, routing_id):
+        self._socket._set_pub_option(
+            self._REJECT_SUBSCRIBE,
+            RoutingId(routing_id).to_bytes(),
+        )
+
 
 class RouterSocketOptions:
     # RID_DUPLICATE_POLICY common option values (mirrors ZLINK_RID_DUPLICATE_*)
     _RID_DUPLICATE_POLICY_OPTION = 0x3033
     _RID_DUPLICATE_REJECT = 0
     _RID_DUPLICATE_HANDOVER = 1
+    _REQUEST_TIMEOUT_MS = 0x3105
 
     def __init__(self, socket):
         self._socket = socket
@@ -218,6 +259,14 @@ class RouterSocketOptions:
     @weight.setter
     def weight(self, value):
         self._socket._set_router_int_option(RouterOption.WEIGHT, value)
+
+    @property
+    def request_timeout_ms(self):
+        return self._socket._get_router_int_option(self._REQUEST_TIMEOUT_MS)
+
+    @request_timeout_ms.setter
+    def request_timeout_ms(self, value):
+        self._socket._set_router_int_option(self._REQUEST_TIMEOUT_MS, value)
 
 
 class PairSocket(_SendReadySocket, _EndpointSocket, _MessageSocket):
@@ -700,6 +749,8 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
             ),
         )
         if rc != 0:
+            if int(flags) & 1 and rc == int(SubmitResult.BACKPRESSURED):
+                return False
             _raise_result_error(SubmitError, SubmitResult, rc, err)
         return True
 
@@ -800,7 +851,6 @@ class XPubSocket(_SendReadySocket, _EndpointSocket, _PublisherOptionSocket, _Pub
             routing_id=_routing_id_bytes(routing_id.contents) if routing_id else None,
             topic=_decode_topic_text(topic_buf.raw[: topic_len.value]),
             subscribed=bool(subscribed.value),
-            service_name=None,
         )
 
     def receive_subscription_event(self, *, flags=0):

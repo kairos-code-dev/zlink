@@ -59,6 +59,127 @@ type CommonSocketOptions struct {
 	socket *connectionSocket
 }
 
+type PubSocketOptions struct {
+	socket *connectionSocket
+}
+
+func (o *PubSocketOptions) SetNoDrop(value bool) error {
+	return o.socket.setPubBoolOption(C.ZLINK_PUB_OPT_NODROP, value)
+}
+
+func (o *PubSocketOptions) NoDrop() (bool, error) {
+	return o.socket.getPubBoolOption(C.ZLINK_PUB_OPT_NODROP)
+}
+
+func (o *PubSocketOptions) SetVerbose(value bool) error {
+	return o.socket.setPubBoolOption(C.ZLINK_PUB_OPT_VERBOSE, value)
+}
+
+func (o *PubSocketOptions) Verbose() (bool, error) {
+	return o.socket.getPubBoolOption(C.ZLINK_PUB_OPT_VERBOSE)
+}
+
+func (o *PubSocketOptions) SetVerboser(value bool) error {
+	return o.socket.setPubBoolOption(C.ZLINK_PUB_OPT_VERBOSER, value)
+}
+
+func (o *PubSocketOptions) Verboser() (bool, error) {
+	return o.socket.getPubBoolOption(C.ZLINK_PUB_OPT_VERBOSER)
+}
+
+func (o *PubSocketOptions) SetManual(value bool) error {
+	return o.socket.setPubBoolOption(C.ZLINK_PUB_OPT_MANUAL, value)
+}
+
+func (o *PubSocketOptions) Manual() (bool, error) {
+	return o.socket.getPubBoolOption(C.ZLINK_PUB_OPT_MANUAL)
+}
+
+func (o *PubSocketOptions) TopicsCount() (int, error) {
+	return o.socket.getPubIntOption(C.ZLINK_PUB_OPT_TOPICS_COUNT)
+}
+
+func (o *PubSocketOptions) SetManualLastValue(value bool) error {
+	return o.socket.setPubBoolOption(C.ZLINK_PUB_OPT_MANUAL_LAST_VALUE, value)
+}
+
+func (o *PubSocketOptions) ManualLastValue() (bool, error) {
+	return o.socket.getPubBoolOption(C.ZLINK_PUB_OPT_MANUAL_LAST_VALUE)
+}
+
+func (o *PubSocketOptions) SetWelcomeMessage(message *Message) error {
+	if message == nil {
+		return o.socket.setPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, nil)
+	}
+	return o.socket.setPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, message.Data())
+}
+
+func (o *PubSocketOptions) WelcomeMessage() (*Message, error) {
+	data, err := o.socket.getPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, 256)
+	if err != nil {
+		return nil, err
+	}
+	return NewMessage(data)
+}
+
+func (o *PubSocketOptions) ApproveSubscribe(routingID RoutingID) error {
+	return o.socket.setPubRoutingIDOption(C.ZLINK_PUB_OPT_APPROVE_SUBSCRIBE, routingID)
+}
+
+func (o *PubSocketOptions) RejectSubscribe(routingID RoutingID) error {
+	return o.socket.setPubRoutingIDOption(C.ZLINK_PUB_OPT_REJECT_SUBSCRIBE, routingID)
+}
+
+func (o *CommonSocketOptions) SetLinger(value time.Duration) error {
+	return o.socket.setDurationOption(C.ZLINK_OPT_LINGER, value)
+}
+
+func (o *CommonSocketOptions) Linger() (time.Duration, error) {
+	return o.socket.getDurationOption(C.ZLINK_OPT_LINGER)
+}
+
+func (o *CommonSocketOptions) SetSendHWM(value int) error {
+	return o.socket.setIntOption(C.ZLINK_OPT_SNDHWM, int32(value))
+}
+
+func (o *CommonSocketOptions) SendHWM() (int, error) {
+	value, err := o.socket.getIntOption(C.ZLINK_OPT_SNDHWM)
+	return int(value), err
+}
+
+func (o *CommonSocketOptions) SetRecvHWM(value int) error {
+	return o.socket.setIntOption(C.ZLINK_OPT_RCVHWM, int32(value))
+}
+
+func (o *CommonSocketOptions) RecvHWM() (int, error) {
+	value, err := o.socket.getIntOption(C.ZLINK_OPT_RCVHWM)
+	return int(value), err
+}
+
+func (o *CommonSocketOptions) SetSendTimeout(value time.Duration) error {
+	return o.socket.setDurationOption(C.ZLINK_OPT_SNDTIMEO, value)
+}
+
+func (o *CommonSocketOptions) SendTimeout() (time.Duration, error) {
+	return o.socket.getDurationOption(C.ZLINK_OPT_SNDTIMEO)
+}
+
+func (o *CommonSocketOptions) SetRecvTimeout(value time.Duration) error {
+	return o.socket.setDurationOption(C.ZLINK_OPT_RCVTIMEO, value)
+}
+
+func (o *CommonSocketOptions) RecvTimeout() (time.Duration, error) {
+	return o.socket.getDurationOption(C.ZLINK_OPT_RCVTIMEO)
+}
+
+func (o *CommonSocketOptions) SetImmediate(value bool) error {
+	return o.socket.setBoolOption(C.ZLINK_OPT_IMMEDIATE, value)
+}
+
+func (o *CommonSocketOptions) Immediate() (bool, error) {
+	return o.socket.getBoolOption(C.ZLINK_OPT_IMMEDIATE)
+}
+
 func (o *CommonSocketOptions) SetRIDDuplicatePolicy(value RIDDuplicatePolicy) error {
 	return o.socket.setIntOption(C.ZLINK_OPT_RID_DUPLICATE_POLICY, int32(value))
 }
@@ -75,6 +196,99 @@ func (o *CommonSocketOptions) SetAutoHwmMsgUnitBytes(value int) error {
 func (o *CommonSocketOptions) AutoHwmMsgUnitBytes() (int, error) {
 	value, err := o.socket.getIntOption(C.ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES)
 	return int(value), err
+}
+
+func (o *CommonSocketOptions) SetConnectTimeout(value time.Duration) error {
+	return o.socket.setDurationOption(C.ZLINK_OPT_CONNECT_TIMEOUT, value)
+}
+
+func (o *CommonSocketOptions) ConnectTimeout() (time.Duration, error) {
+	return o.socket.getDurationOption(C.ZLINK_OPT_CONNECT_TIMEOUT)
+}
+
+func (o *CommonSocketOptions) SetIPv6(value bool) error {
+	return o.socket.setBoolOption(C.ZLINK_OPT_IPV6, value)
+}
+
+func (o *CommonSocketOptions) IPv6() (bool, error) {
+	return o.socket.getBoolOption(C.ZLINK_OPT_IPV6)
+}
+
+func (o *CommonSocketOptions) SetTCPNoDelay(value bool) error {
+	return o.socket.setBoolOption(C.ZLINK_OPT_TCP_NODELAY, value)
+}
+
+func (o *CommonSocketOptions) TCPNoDelay() (bool, error) {
+	return o.socket.getBoolOption(C.ZLINK_OPT_TCP_NODELAY)
+}
+
+func (o *CommonSocketOptions) SetTCPKeepalive(value bool) error {
+	return o.socket.setBoolOption(C.ZLINK_OPT_TCP_KEEPALIVE, value)
+}
+
+func (o *CommonSocketOptions) TCPKeepalive() (bool, error) {
+	return o.socket.getBoolOption(C.ZLINK_OPT_TCP_KEEPALIVE)
+}
+
+func (o *CommonSocketOptions) SetHeartbeatInterval(value time.Duration) error {
+	return o.socket.setDurationOption(C.ZLINK_OPT_HEARTBEAT_IVL, value)
+}
+
+func (o *CommonSocketOptions) HeartbeatInterval() (time.Duration, error) {
+	return o.socket.getDurationOption(C.ZLINK_OPT_HEARTBEAT_IVL)
+}
+
+func (o *CommonSocketOptions) SetHeartbeatTTL(value time.Duration) error {
+	return o.socket.setDurationOption(C.ZLINK_OPT_HEARTBEAT_TTL, value)
+}
+
+func (o *CommonSocketOptions) HeartbeatTTL() (time.Duration, error) {
+	return o.socket.getDurationOption(C.ZLINK_OPT_HEARTBEAT_TTL)
+}
+
+func (o *CommonSocketOptions) SetHeartbeatTimeout(value time.Duration) error {
+	return o.socket.setDurationOption(C.ZLINK_OPT_HEARTBEAT_TIMEOUT, value)
+}
+
+func (o *CommonSocketOptions) HeartbeatTimeout() (time.Duration, error) {
+	return o.socket.getDurationOption(C.ZLINK_OPT_HEARTBEAT_TIMEOUT)
+}
+
+func (o *CommonSocketOptions) SetMaxMsgSize(value int64) error {
+	return o.socket.setInt64Option(C.ZLINK_OPT_MAXMSGSIZE, value)
+}
+
+func (o *CommonSocketOptions) MaxMsgSize() (int64, error) {
+	return o.socket.getInt64Option(C.ZLINK_OPT_MAXMSGSIZE)
+}
+
+func (o *CommonSocketOptions) SetBacklog(value int) error {
+	return o.socket.setIntOption(C.ZLINK_OPT_BACKLOG, int32(value))
+}
+
+func (o *CommonSocketOptions) Backlog() (int, error) {
+	value, err := o.socket.getIntOption(C.ZLINK_OPT_BACKLOG)
+	return int(value), err
+}
+
+func (o *CommonSocketOptions) SetReconnectInterval(value time.Duration) error {
+	return o.socket.setDurationOption(C.ZLINK_OPT_RECONNECT_IVL, value)
+}
+
+func (o *CommonSocketOptions) ReconnectInterval() (time.Duration, error) {
+	return o.socket.getDurationOption(C.ZLINK_OPT_RECONNECT_IVL)
+}
+
+func (o *CommonSocketOptions) SetReconnectIntervalMax(value time.Duration) error {
+	return o.socket.setDurationOption(C.ZLINK_OPT_RECONNECT_IVL_MAX, value)
+}
+
+func (o *CommonSocketOptions) ReconnectIntervalMax() (time.Duration, error) {
+	return o.socket.getDurationOption(C.ZLINK_OPT_RECONNECT_IVL_MAX)
+}
+
+func (o *CommonSocketOptions) LastEndpoint() (string, error) {
+	return o.socket.LastEndpoint()
 }
 
 type recvCallback func(*Received)
@@ -183,6 +397,18 @@ func (s *socketCore) getIntOption(option C.zlink_option_t) (int32, error) {
 	return int32(value), err
 }
 
+func (s *socketCore) setInt64Option(option C.zlink_option_t, value int64) error {
+	raw := C.int64_t(value)
+	return s.setOption(option, unsafe.Pointer(&raw), C.size_t(unsafe.Sizeof(raw)))
+}
+
+func (s *socketCore) getInt64Option(option C.zlink_option_t) (int64, error) {
+	var value C.int64_t
+	size := C.size_t(unsafe.Sizeof(value))
+	err := configErrorFromResult(C.zlink_get_option(s.handle, option, unsafe.Pointer(&value), &size))
+	return int64(value), err
+}
+
 func (s *socketCore) setBoolOption(option C.zlink_option_t, value bool) error {
 	var raw C.int
 	if value {
@@ -227,6 +453,11 @@ func (s *socketCore) setOption(option C.zlink_option_t, ptr unsafe.Pointer, size
 
 func (s *socketCore) setDurationOption(option C.zlink_option_t, value time.Duration) error {
 	return setNativeDurationOption(s.handle, s.closed, "socket is closed", option, value)
+}
+
+func (s *socketCore) getDurationOption(option C.zlink_option_t) (time.Duration, error) {
+	value, err := s.getIntOption(option)
+	return time.Duration(value) * time.Millisecond, err
 }
 
 func (s *socketCore) withCString(value string, fn func(*C.char) error) error {
@@ -552,19 +783,15 @@ func recvTopicMessage(
 }
 
 func recvSpotTopicMessage(
-	call func(**C.zlink_routing_id_t, *C.char, *C.size_t, *C.char, *C.size_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
+	call func(**C.zlink_routing_id_t, *C.char, *C.size_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
 ) (*TopicMessage, error) {
 	var sourceRID *C.zlink_routing_id_t
-	serviceBuf := make([]byte, recvTopicBufferCap)
-	serviceLen := C.size_t(len(serviceBuf))
 	topicBuf := make([]byte, recvTopicBufferCap)
 	topicLen := C.size_t(len(topicBuf))
 	clonedParts, err := recvMultipart(func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t) error {
 		return call(
 			&sourceRID,
-			(*C.char)(unsafe.Pointer(&serviceBuf[0])),
-			&serviceLen,
 			(*C.char)(unsafe.Pointer(&topicBuf[0])),
 			&topicLen,
 			part,
@@ -576,10 +803,9 @@ func recvSpotTopicMessage(
 		return nil, err
 	}
 	return &TopicMessage{
-		routingID:   routingIDFromCPtr(sourceRID),
-		serviceName: string(serviceBuf[:int(serviceLen)]),
-		topic:       string(topicBuf[:int(topicLen)]),
-		parts:       clonedParts,
+		routingID: routingIDFromCPtr(sourceRID),
+		topic:     string(topicBuf[:int(topicLen)]),
+		parts:     clonedParts,
 	}, nil
 }
 
@@ -602,23 +828,20 @@ func recvSubscriptionEvent(
 }
 
 func recvSpotSubscriptionEvent(
-	call func(*C.zlink_routing_id_t, *C.int, *C.char, *C.size_t, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
+	call func(*C.zlink_routing_id_t, *C.int, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
 ) (*SubscriptionEvent, error) {
 	var rid C.zlink_routing_id_t
 	var subscribed C.int
-	serviceBuf := make([]byte, recvTopicBufferCap)
-	serviceLen := C.size_t(len(serviceBuf))
 	topicBuf := make([]byte, recvTopicBufferCap)
 	topicLen := C.size_t(len(topicBuf))
-	if err := call(&rid, &subscribed, (*C.char)(unsafe.Pointer(&serviceBuf[0])), &serviceLen, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, C.zlink_recv_flags_t(flags)); err != nil {
+	if err := call(&rid, &subscribed, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, C.zlink_recv_flags_t(flags)); err != nil {
 		return nil, err
 	}
 	return &SubscriptionEvent{
-		routingID:   routingIDFromC(rid),
-		serviceName: string(serviceBuf[:int(serviceLen)]),
-		subscribed:  subscribed != 0,
-		topic:       string(topicBuf[:int(topicLen)]),
+		routingID:  routingIDFromC(rid),
+		subscribed: subscribed != 0,
+		topic:      string(topicBuf[:int(topicLen)]),
 	}, nil
 }
 
@@ -738,6 +961,31 @@ func (s *connectionSocket) getPubIntOption(option C.zlink_pub_option_t) (int, er
 		return 0, err
 	}
 	return int(raw), nil
+}
+
+func (s *connectionSocket) setPubRoutingIDOption(option C.zlink_pub_option_t, id RoutingID) error {
+	raw := id.toC()
+	return configErrorFromResult(C.zlink_set_pub_option(s.raw(), option, routingIDPointer(&raw), C.size_t(raw.size)))
+}
+
+func (s *connectionSocket) setPubBytesOption(option C.zlink_pub_option_t, value []byte) error {
+	var ptr unsafe.Pointer
+	if len(value) > 0 {
+		ptr = unsafe.Pointer(&value[0])
+	}
+	return configErrorFromResult(C.zlink_set_pub_option(s.raw(), option, ptr, C.size_t(len(value))))
+}
+
+func (s *connectionSocket) getPubBytesOption(option C.zlink_pub_option_t, capHint int) ([]byte, error) {
+	if capHint <= 0 {
+		capHint = 256
+	}
+	buf := make([]byte, capHint)
+	size := C.size_t(len(buf))
+	if err := configErrorFromResult(C.zlink_get_pub_option(s.raw(), option, unsafe.Pointer(&buf[0]), &size)); err != nil {
+		return nil, err
+	}
+	return append([]byte(nil), buf[:int(size)]...), nil
 }
 
 func (s *connectionSocket) getSubIntOption(option C.zlink_sub_option_t) (int, error) {
@@ -1149,6 +1397,41 @@ func (s *PubSocket) Manual() (bool, error) {
 	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_MANUAL)
 }
 
+func (s *PubSocket) SetManualLastValue(value bool) error {
+	return s.connectionSocket.setPubBoolOption(C.ZLINK_PUB_OPT_MANUAL_LAST_VALUE, value)
+}
+
+func (s *PubSocket) ManualLastValue() (bool, error) {
+	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_MANUAL_LAST_VALUE)
+}
+
+func (s *PubSocket) SetWelcomeMessage(message *Message) error {
+	if message == nil {
+		return s.connectionSocket.setPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, nil)
+	}
+	return s.connectionSocket.setPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, message.Data())
+}
+
+func (s *PubSocket) WelcomeMessage() (*Message, error) {
+	data, err := s.connectionSocket.getPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, 256)
+	if err != nil {
+		return nil, err
+	}
+	return NewMessage(data)
+}
+
+func (s *PubSocket) ApproveSubscribe(routingID RoutingID) error {
+	return s.connectionSocket.setPubRoutingIDOption(C.ZLINK_PUB_OPT_APPROVE_SUBSCRIBE, routingID)
+}
+
+func (s *PubSocket) RejectSubscribe(routingID RoutingID) error {
+	return s.connectionSocket.setPubRoutingIDOption(C.ZLINK_PUB_OPT_REJECT_SUBSCRIBE, routingID)
+}
+
+func (s *PubSocket) PubOptions() *PubSocketOptions {
+	return &PubSocketOptions{socket: s.connectionSocket}
+}
+
 func (s *PubSocket) OnSendReady(handler func()) error {
 	return s.connectionSocket.setSendReady(handler)
 }
@@ -1242,6 +1525,15 @@ func (s *DealerSocket) Weight() (int, error) {
 	return int(raw), nil
 }
 
+func (s *DealerSocket) SetRequestTimeout(value time.Duration) error {
+	ms, err := durationToMillis(value)
+	if err != nil {
+		return err
+	}
+	raw := C.int(ms)
+	return configErrorFromResult(C.zlink_set_dealer_option(s.raw(), C.ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS, unsafe.Pointer(&raw), C.size_t(C.sizeof_int)))
+}
+
 func (s *DealerSocket) AttachDiscovery(discovery *Discovery) error {
 	if discovery == nil || discovery.closed {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
@@ -1324,6 +1616,24 @@ func (s *RouterSocket) Weight() (int, error) {
 		return 0, err
 	}
 	return int(raw), nil
+}
+
+func (s *RouterSocket) SetRequestTimeout(value time.Duration) error {
+	ms, err := durationToMillis(value)
+	if err != nil {
+		return err
+	}
+	raw := C.int(ms)
+	return configErrorFromResult(C.zlink_set_router_option(s.raw(), C.ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS, unsafe.Pointer(&raw), C.size_t(C.sizeof_int)))
+}
+
+func (s *RouterSocket) RequestTimeout() (time.Duration, error) {
+	var raw C.int
+	size := C.size_t(C.sizeof_int)
+	if err := configErrorFromResult(C.zlink_get_router_option(s.raw(), C.ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS, unsafe.Pointer(&raw), &size)); err != nil {
+		return 0, err
+	}
+	return time.Duration(raw) * time.Millisecond, nil
 }
 
 func (s *RouterSocket) SetHandover(value bool) error {
@@ -1424,6 +1734,41 @@ func (s *XPubSocket) SetManual(value bool) error {
 
 func (s *XPubSocket) Manual() (bool, error) {
 	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_MANUAL)
+}
+
+func (s *XPubSocket) SetManualLastValue(value bool) error {
+	return s.connectionSocket.setPubBoolOption(C.ZLINK_PUB_OPT_MANUAL_LAST_VALUE, value)
+}
+
+func (s *XPubSocket) ManualLastValue() (bool, error) {
+	return s.connectionSocket.getPubBoolOption(C.ZLINK_PUB_OPT_MANUAL_LAST_VALUE)
+}
+
+func (s *XPubSocket) SetWelcomeMessage(message *Message) error {
+	if message == nil {
+		return s.connectionSocket.setPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, nil)
+	}
+	return s.connectionSocket.setPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, message.Data())
+}
+
+func (s *XPubSocket) WelcomeMessage() (*Message, error) {
+	data, err := s.connectionSocket.getPubBytesOption(C.ZLINK_PUB_OPT_WELCOME_MSG, 256)
+	if err != nil {
+		return nil, err
+	}
+	return NewMessage(data)
+}
+
+func (s *XPubSocket) ApproveSubscribe(routingID RoutingID) error {
+	return s.connectionSocket.setPubRoutingIDOption(C.ZLINK_PUB_OPT_APPROVE_SUBSCRIBE, routingID)
+}
+
+func (s *XPubSocket) RejectSubscribe(routingID RoutingID) error {
+	return s.connectionSocket.setPubRoutingIDOption(C.ZLINK_PUB_OPT_REJECT_SUBSCRIBE, routingID)
+}
+
+func (s *XPubSocket) PubOptions() *PubSocketOptions {
+	return &PubSocketOptions{socket: s.connectionSocket}
 }
 
 func (s *XPubSocket) OnSendReady(handler func()) error {

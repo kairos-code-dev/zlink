@@ -8,7 +8,7 @@ import systems.zlink.internal.NativeHelpers;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
-public record SpotNodeStatus(String serviceName, String localEndpoint,
+public record SpotNodeStatus(String channelName, String localEndpoint,
                              RoutingId nodeRoutingId, SpotNodeState state,
                              int configuredPeerCount, int activePeerCount,
                              int connectedPeerCount, int subjectCount,

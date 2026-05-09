@@ -214,10 +214,10 @@ def publish_nonblocking(sock, topic, payload):
         raise
 
 
-def spot_publish_nonblocking(spot, service_name, topic, payload):
+def spot_publish_nonblocking(spot, channel_name, topic, payload):
     zlink_mod = _require_zlink()
     try:
-        op = spot.publish(service_name, topic).flags(zlink_mod.SendFlags.DONT_WAIT)
+        op = spot.publish(topic).flags(zlink_mod.SendFlags.DONT_WAIT)
         if isinstance(payload, (list, tuple)):
             op.messages(*payload)
         else:
@@ -242,9 +242,9 @@ def wait_for_command_line(stream, *, deadline):
             return text
 
 
-def attach_spot_service_pair(ctx, node, service_name):
+def attach_spot_service_pair(ctx, node, channel_name):
     dealer = _require_zlink().DealerSocket(ctx)
-    node.attach_channel_dealer_manual(service_name, dealer)
+    node.attach_channel_dealer_manual(channel_name, dealer)
     return dealer, None
 
 

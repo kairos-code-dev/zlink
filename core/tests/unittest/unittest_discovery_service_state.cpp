@@ -23,17 +23,17 @@ class counting_discovery_observer_t : public zlink::discovery_observer_t
   public:
     counting_discovery_observer_t () : update_count (0) {}
 
-    void on_service_update (const std::string &service_name_)
+    void on_service_update (const std::string &channel_name_)
     {
         ++update_count;
-        last_service = service_name_;
+        last_service = channel_name_;
     }
 
     int update_count;
     std::string last_service;
 };
 
-static zlink::provider_info_t make_provider (const char *service_name_,
+static zlink::provider_info_t make_provider (const char *channel_name_,
                                              const char *endpoint_,
                                              uint16_t service_role_,
                                              int64_t value_,
@@ -42,7 +42,7 @@ static zlink::provider_info_t make_provider (const char *service_name_,
 {
     zlink::provider_info_t provider;
     provider.auto_connect_type = ZLINK_AUTO_CONNECT_CLIENT_SERVER;
-    provider.channel_name = service_name_;
+    provider.channel_name = channel_name_;
     provider.endpoint = endpoint_;
     provider.service_role = service_role_;
     provider.value = value_;

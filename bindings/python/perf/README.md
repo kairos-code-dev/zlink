@@ -70,7 +70,7 @@ environment, the runner emits `UNSUPPORTED,current,...` for that case instead
 of failing the whole benchmark pass.
 
 SPOT measurements use the service-aware public surface:
-`publish(service_name, topic, ...)` on the sender and `subscribe()` on the
+`publish(topic, ...)` on the sender and `subscribe()` on the
 receiver. The Python perf helpers no longer attach an external pub/sub pair to
 `SpotNode`; they drive the benchmark through the `Spot` facade directly so the
 perf path follows the current public contract.

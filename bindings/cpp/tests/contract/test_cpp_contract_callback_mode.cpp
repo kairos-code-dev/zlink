@@ -77,7 +77,7 @@ int main ()
     while (std::chrono::steady_clock::now () < deadline) {
         zlink::message_t outbound =
           detail::make_message ("spot-callback");
-        spot.publish (detail::k_spot_service, "topic:alpha")
+        spot.publish ("topic:alpha")
           .message (outbound)
           .submit ();
         inbound = spot.subscribe (ZLINK_DONTWAIT);
@@ -86,8 +86,6 @@ int main ()
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
     assert (inbound.has_value ());
-    assert (inbound->service_name ());
-    assert (*inbound->service_name () == detail::k_spot_service);
     assert (inbound->topic () == "topic:alpha");
     assert (inbound->parts ().size () == 1);
     const std::string received = inbound->parts ()[0].to_string ();

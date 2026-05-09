@@ -133,13 +133,6 @@ inline bool apply_control_options(void *pub,
     const int linger_ms = 0;
     const int timeout_ms = std::max(1000, settings.connect_ready_timeout_ms);
     const int nodrop = 1;
-    const size_t max_msg_size = perf_current_benchmark_max_msg_size(64);
-
-    apply_benchmark_auto_hwm_msg_unit(
-      pub, ZLINK_SOCKET_DEALER, max_msg_size);
-    apply_benchmark_auto_hwm_msg_unit(
-      sub, ZLINK_SOCKET_DEALER, max_msg_size);
-
     if (zlink_set_option(pub, ZLINK_OPT_LINGER, &linger_ms,
                          sizeof(linger_ms))
           != ZLINK_CONFIG_OK
@@ -183,8 +176,6 @@ inline bool initialize_client_session(void *node,
     session->pub = NULL;
     session->sub = NULL;
     session->local_endpoint.clear();
-    apply_benchmark_auto_hwm_msg_unit(
-      node, ZLINK_SOCKET_DEALER, perf_current_benchmark_max_msg_size(64));
     if (!apply_benchmark_spot_node_hwm(node, settings.hwm, true, true)) {
         destroy_client_session(session);
         return false;
@@ -280,9 +271,6 @@ inline bool initialize_client_slot(ctx_guard_t &ctx,
         slot->node = NULL;
         return false;
     }
-    apply_benchmark_auto_hwm_msg_unit(
-      slot->node, ZLINK_SOCKET_DEALER,
-      perf_current_benchmark_max_msg_size(64));
     if (!apply_benchmark_spot_node_hwm(slot->node, settings.hwm, true, true)) {
         zlink_spot_node_destroy(&slot->node);
         slot->node = NULL;
@@ -387,11 +375,6 @@ inline bool initialize_server_session(ctx_guard_t &ctx,
         destroy_server_session(session);
         return false;
     }
-    const size_t max_msg_size = perf_current_benchmark_max_msg_size(64);
-    apply_benchmark_auto_hwm_msg_unit(
-      session->node, ZLINK_SOCKET_DEALER, max_msg_size);
-    apply_benchmark_auto_hwm_msg_unit(
-      session->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
     if (!apply_benchmark_spot_node_hwm(session->node, settings.hwm, true, true)
         || !apply_benchmark_spot_node_hwm(
           session->control_node, settings.hwm, true, true)) {
@@ -399,6 +382,7 @@ inline bool initialize_server_session(ctx_guard_t &ctx,
         return false;
     }
 
+    const size_t max_msg_size = perf_current_benchmark_max_msg_size(64);
     session->pub = perf_create_default_spot_handle(session->node);
     session->control_pub =
       perf_create_default_spot_handle(session->control_node);

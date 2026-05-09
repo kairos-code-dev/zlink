@@ -174,9 +174,9 @@ static void destroy_node_and_spot_handle (void **node_p_)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (node_p_));
 }
 
-static void *create_node (void *ctx_, const char *service_name_)
+static void *create_node (void *ctx_, const char *channel_name_)
 {
-    LIBZLINK_UNUSED (service_name_);
+    LIBZLINK_UNUSED (channel_name_);
     void *node = zlink_spot_node_new (ctx_, NULL);
     TEST_ASSERT_NOT_NULL (node);
     set_linger_zero (node);
@@ -226,8 +226,6 @@ static void assert_recv_text (void *spot_,
     zlink_routing_id_t source_rid;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    char service_name[64] = {0};
-    size_t service_name_len = sizeof (service_name);
     char topic[128] = {0};
     size_t topic_len = sizeof (topic);
     memset (&source_rid, 0, sizeof (source_rid));
@@ -235,8 +233,7 @@ static void assert_recv_text (void *spot_,
     TEST_ASSERT_EQUAL_INT (
       ZLINK_RECV_OK,
       zlink_spot_subscribe (
-        spot_, &source_rid, &parts, &part_count, service_name,
-        &service_name_len, topic, &topic_len,
+        spot_, &source_rid, &parts, &part_count, topic, &topic_len,
         static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT)));
     TEST_ASSERT_EQUAL_UINT (strlen (expected_topic_), topic_len);
     TEST_ASSERT_EQUAL_MEMORY (expected_topic_, topic, topic_len);
@@ -340,15 +337,12 @@ static void test_spot_callback_model_receive_regression ()
     zlink_routing_id_t source_rid;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    char service_name[64];
-    size_t service_name_len = sizeof (service_name);
     char topic[64];
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA,
                            zlink_spot_subscribe (
                              sub, &source_rid, &parts, &part_count,
-                             service_name, &service_name_len, topic,
-                             &topic_len,
+                             topic, &topic_len,
                              static_cast<zlink_recv_flags_t> (
                                ZLINK_DONTWAIT)));
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
@@ -473,15 +467,12 @@ static void test_queue_pub_local_fanout_shared_block ()
     zlink_routing_id_t source_rid;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    char service_name[64] = {0};
-    size_t service_name_len = sizeof (service_name);
     char topic[128] = {0};
     size_t topic_len = sizeof (topic);
     TEST_ASSERT_EQUAL_INT (
       ZLINK_RECV_OK,
       zlink_spot_subscribe (
-        sub_a, &source_rid, &parts, &part_count, service_name,
-        &service_name_len, topic, &topic_len,
+        sub_a, &source_rid, &parts, &part_count, topic, &topic_len,
         static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT)));
     TEST_ASSERT_EQUAL_UINT (1u, static_cast<unsigned int> (part_count));
     TEST_ASSERT_EQUAL_UINT (strlen ("payload"), zlink_msg_size (&parts[0]));
@@ -586,7 +577,7 @@ static void test_spot_node_snapshot_status_peers_subjects ()
     zlink_spot_node_status_t status;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_status_snapshot (sub_node, &status));
-    TEST_ASSERT_EQUAL_STRING ("", status.service_name);
+    TEST_ASSERT_EQUAL_STRING ("", status.channel_name);
     TEST_ASSERT_TRUE (status.configured_peer_count >= 1);
     TEST_ASSERT_TRUE (status.connected_peer_count >= 1
                       || status.active_peer_count >= 1);

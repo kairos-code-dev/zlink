@@ -10,6 +10,7 @@
 #include "discovery.hpp"
 
 #include <cerrno>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -27,8 +28,6 @@ zlink_recv_result_t spot_subscribe_impl (void *spot_,
                                          zlink_routing_id_t *source_rid_out_,
                                          zlink_msg_t **parts_out_,
                                          size_t *part_count_out_,
-                                         char *service_name_out_,
-                                         size_t *service_name_len_out_,
                                          char *topic_id_out_,
                                          size_t *topic_id_len_out_,
                                          zlink_recv_flags_t flags_);
@@ -43,13 +42,10 @@ zlink_recv_result_t spot_recv_impl (void *spot_,
 
 namespace zlink
 {
-extern "C" zlink_recv_result_t zlink_spot_subscription_event_part (
+extern "C" zlink_recv_result_t zlink_spot_subscription_event_recv (
   void *spot_,
   const zlink_routing_id_t **source_rid_out_,
   int *subscribed_out_,
-  char *service_name_buf_,
-  size_t service_name_capacity_,
-  size_t *service_name_len_out_,
   char *topic_id_buf_,
   size_t topic_id_capacity_,
   size_t *topic_id_len_out_,
@@ -1085,16 +1081,41 @@ struct spot_op_state_t
 {
     spot_t *spot = NULL;
     spot_op_kind_t kind = spot_op_kind_t::publish;
-    std::string service_name;
     std::string topic;
     std::string channel_name;
     std::optional<routing_id_t> first_rid;
     std::optional<routing_id_t> second_rid;
     uint64_t request_seq = 0;
+    std::optional<message_t> single_part;
     std::vector<message_t> parts;
     send_flags_t flags = send_flags_t::none;
     std::chrono::milliseconds timeout {};
 };
+
+inline bool has_send_parts (const spot_op_state_t &state_) noexcept
+{
+    return state_.single_part.has_value () || !state_.parts.empty ();
+}
+
+inline size_t send_part_count (const spot_op_state_t &state_) noexcept
+{
+    return state_.single_part.has_value () ? 1u : state_.parts.size ();
+}
+
+inline message_t &send_single_part (spot_op_state_t &state_) noexcept
+{
+    return state_.single_part.has_value () ? *state_.single_part
+                                           : state_.parts.front ();
+}
+
+inline void append_send_part (spot_op_state_t &state_, message_t &part_)
+{
+    if (state_.single_part.has_value ()) {
+        state_.parts.push_back (std::move (*state_.single_part));
+        state_.single_part.reset ();
+    }
+    state_.parts.push_back (std::move (part_));
+}
 } // namespace detail
 
 class send_ready_op_t
@@ -1105,7 +1126,7 @@ class send_ready_op_t
 
     send_ready_op_t &&message (message_t &part_) &&
     {
-        _state.parts.push_back (std::move (part_));
+        detail::append_send_part (_state, part_);
         return std::move (*this);
     }
 
@@ -1135,7 +1156,7 @@ class send_op_t
 
     send_ready_op_t message (message_t &part_) &&
     {
-        _state.parts.push_back (std::move (part_));
+        _state.single_part.emplace (std::move (part_));
         return send_ready_op_t (std::move (_state));
     }
 
@@ -1361,15 +1382,12 @@ class spot_t
         return std::chrono::milliseconds (value);
     }
 
-    send_op_t publish (const std::string &service_name_,
-                       const std::string &topic_)
+    send_op_t publish (const std::string &topic_)
     {
-        validate_service_name (service_name_);
         zlink::detail::validate_no_embedded_null (topic_, "topic");
         detail::spot_op_state_t state;
         state.spot = this;
         state.kind = detail::spot_op_kind_t::publish;
-        state.service_name = service_name_;
         state.topic = topic_;
         return send_op_t (std::move (state));
     }
@@ -1395,15 +1413,11 @@ class spot_t
     }
 
   private:
-    bool publish (const std::string &service_name_,
-                  const std::string &topic_,
+    bool publish (const std::string &topic_,
                   std::vector<message_t> &parts_,
                   send_flags_t flags_ = send_flags_t::none)
     {
-        validate_service_name (service_name_);
-        zlink::detail::validate_no_embedded_null (topic_, "topic");
-        const int rc = publish_impl (
-          service_name_.c_str (), topic_.c_str (), parts_, flags_);
+        const int rc = publish_impl (topic_.c_str (), parts_, flags_);
         if (rc != 0)
         {
             if (flags_ == send_flags_t::dontwait
@@ -1416,15 +1430,11 @@ class spot_t
         return true;
     }
 
-    bool publish (const std::string &service_name_,
-                  const std::string &topic_,
+    bool publish (const std::string &topic_,
                   message_t &part_,
                   send_flags_t flags_ = send_flags_t::none)
     {
-        validate_service_name (service_name_);
-        zlink::detail::validate_no_embedded_null (topic_, "topic");
-        const int rc = publish_impl (
-          service_name_.c_str (), topic_.c_str (), part_, flags_);
+        const int rc = publish_impl (topic_.c_str (), part_, flags_);
         if (rc != 0)
         {
             if (flags_ == send_flags_t::dontwait
@@ -1839,44 +1849,32 @@ class spot_t
   public:
     std::optional<topic_message_t> subscribe (recv_flags_t flags_ = recv_flags_t::none)
     {
-        std::vector<message_t> parts;
-        std::string service_name;
-        std::string topic;
-        routing_id_t source_rid = zlink::detail::unchecked_empty_routing_id ();
+        topic_message_t message;
         const recv_result_t rc = static_cast<recv_result_t> (subscribe_impl (
-          parts, service_name, topic, flags_, &source_rid));
+          message, flags_));
         if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
             return std::nullopt;
         if (rc != recv_result_t::ok)
             throw recv_error_t (rc, zlink_errno ());
-        return std::optional<topic_message_t> (topic_message_t (
-          zlink::detail::routing_id_empty (source_rid) ? std::nullopt
-                              : std::optional<routing_id_t> (source_rid),
-          service_name.empty () ? std::nullopt
-                                : std::optional<std::string> (service_name),
-          std::move (topic), std::move (parts)));
+        return std::optional<topic_message_t> (std::move (message));
     }
 
     std::optional<subscription_event_t>
     receive_subscription_event (recv_flags_t flags_ = recv_flags_t::none)
     {
         subscription_event_t event;
-        std::string service_name;
         std::string topic;
         routing_id_t source_rid = zlink::detail::unchecked_empty_routing_id ();
         bool subscribed = false;
         const recv_result_t rc = static_cast<recv_result_t> (
           subscription_event_impl (
-            source_rid, subscribed, service_name, topic, flags_));
+            source_rid, subscribed, topic, flags_));
         if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
             return std::nullopt;
         if (rc != recv_result_t::ok)
             throw recv_error_t (rc, zlink_errno ());
         if (!zlink::detail::routing_id_empty (source_rid))
             event.routing_id = source_rid;
-        event.service_name =
-          service_name.empty () ? std::nullopt
-                                : std::optional<std::string> (service_name);
         event.topic = std::move (topic);
         event.subscribed = subscribed;
         return std::optional<subscription_event_t> (std::move (event));
@@ -1962,14 +1960,8 @@ class spot_t
         }
     }
 
-    static void validate_service_name (const std::string &service_name_)
-    {
-        validate_channel_name (service_name_);
-    }
-
     ZLINK_CPP_NODISCARD int
-    publish_impl (const char *service_name_,
-                  const char *topic_,
+    publish_impl (const char *topic_,
                   std::vector<message_t> &parts_,
                   send_flags_t flags_)
     {
@@ -1992,7 +1984,7 @@ class spot_t
           native, failed_index,
           [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
               return zlink_spot_publish_part (
-                _spot, service_name_, topic_, part_out_,
+                _spot, topic_, part_out_,
                 static_cast<zlink_send_flags_t> (flags_), part_flag_);
           });
         if (rc != 0) {
@@ -2002,8 +1994,7 @@ class spot_t
     }
 
     ZLINK_CPP_NODISCARD int
-    publish_impl (const char *service_name_,
-                  const char *topic_,
+    publish_impl (const char *topic_,
                   message_t &part_,
                   send_flags_t flags_)
     {
@@ -2023,7 +2014,7 @@ class spot_t
             return -1;
 
         const int rc = zlink_spot_publish_part (
-          _spot, service_name_, topic_, &native,
+          _spot, topic_, &native,
           static_cast<zlink_send_flags_t> (flags_), ZLINK_PART_FINAL);
         if (rc != 0) {
             const int err = errno;
@@ -2117,58 +2108,104 @@ class spot_t
     }
 
     ZLINK_CPP_NODISCARD int
-    subscribe_impl (std::vector<message_t> &parts_,
-                    std::string &service_name_,
-                    std::string &topic_,
-                    recv_flags_t flags_ = recv_flags_t::none,
-                    routing_id_t *source_rid_out_ = NULL)
+    subscribe_impl (topic_message_t &message_out_,
+                    recv_flags_t flags_ = recv_flags_t::none)
     {
         if (!_spot) {
             errno = _last_error != 0 ? _last_error : EFAULT;
             return -1;
         }
 
-        char service_name_buffer[256];
         char topic_buffer[256];
-        size_t service_name_length = sizeof (service_name_buffer);
         size_t topic_length = sizeof (topic_buffer);
-        zlink_routing_id_t source_rid;
-        std::memset (&source_rid, 0, sizeof (source_rid));
-        zlink_msg_t *parts_native = NULL;
-        size_t part_count = 0;
+        const zlink_routing_id_t *source_rid = NULL;
 
-        const int rc = spot_subscribe_impl (
-          _spot, &source_rid, &parts_native, &part_count, service_name_buffer,
-          &service_name_length, topic_buffer, &topic_length,
-          static_cast<zlink_recv_flags_t> (flags_));
-        if (rc != ZLINK_RECV_OK)
-            return rc;
-        if (detail::assign_parts_from_native (parts_native, part_count, parts_) != 0)
+        zlink_msg_t first_part;
+        if (zlink_msg_init (&first_part) != 0)
             return -1;
 
-        if (source_rid_out_) {
-            if (source_rid.size > 0)
-                *source_rid_out_ = zlink::detail::native_routing_id (source_rid);
-            else
-                *source_rid_out_ = zlink::detail::unchecked_empty_routing_id ();
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        const zlink_routing_id_t *part_source_rid = NULL;
+        size_t part_topic_length = sizeof (topic_buffer);
+        const int first_rc = zlink_spot_subscribe_part (
+          _spot, &part_source_rid, topic_buffer, sizeof (topic_buffer),
+          &part_topic_length, &first_part, &has_more,
+          static_cast<zlink_recv_flags_t> (flags_));
+        if (first_rc != ZLINK_RECV_OK) {
+            const int err = errno;
+            (void) zlink_msg_close (&first_part);
+            errno = err;
+            return first_rc;
         }
 
-        const size_t service_name_size =
-          service_name_length < sizeof (service_name_buffer)
-            ? service_name_length
-            : sizeof (service_name_buffer) - 1u;
+        source_rid = part_source_rid;
+        topic_length = part_topic_length;
+
         const size_t topic_size =
           topic_length < sizeof (topic_buffer) ? topic_length
                                                : sizeof (topic_buffer) - 1u;
-        service_name_.assign (service_name_buffer, service_name_size);
-        topic_.assign (topic_buffer, topic_size);
+        std::string topic (topic_buffer, topic_size);
+        const std::optional<routing_id_t> source =
+          source_rid && source_rid->size > 0
+            ? std::optional<routing_id_t> (
+                zlink::detail::native_routing_id (*source_rid))
+            : std::nullopt;
+
+        if (!has_more) {
+            message_t part;
+            if (zlink_msg_move (
+                  zlink::detail::native_handle (part), &first_part)
+                != 0) {
+                const int err = errno;
+                (void) zlink_msg_close (&first_part);
+                errno = err;
+                return -1;
+            }
+            message_out_ = topic_message_t (
+              source, std::move (topic), std::move (part));
+        } else {
+            std::vector<zlink_msg_t> parts_native;
+            parts_native.push_back (first_part);
+
+            for (;;) {
+                parts_native.emplace_back ();
+                zlink_msg_t &native_part = parts_native.back ();
+                if (zlink_msg_init (&native_part) != 0) {
+                    parts_native.pop_back ();
+                    detail::close_native_parts (parts_native);
+                    return -1;
+                }
+
+                zlink_part_flag_t more = ZLINK_PART_FINAL;
+                size_t ignored_topic_length = 0u;
+                const int rc = zlink_spot_subscribe_part (
+                  _spot, &part_source_rid, NULL, 0u, &ignored_topic_length,
+                  &native_part, &more, ZLINK_RECV_FLAGS_DONTWAIT);
+                if (rc != ZLINK_RECV_OK) {
+                    const int err = errno;
+                    (void) zlink_msg_close (&native_part);
+                    parts_native.pop_back ();
+                    detail::close_native_parts (parts_native);
+                    errno = err;
+                    return rc;
+                }
+
+                if (!more)
+                    break;
+            }
+
+            std::vector<message_t> parts;
+            if (detail::assign_parts_from_native (parts_native, parts) != 0)
+                return -1;
+            message_out_ = topic_message_t (
+              source, std::move (topic), std::move (parts));
+        }
         return 0;
     }
 
     ZLINK_CPP_NODISCARD int
     subscription_event_impl (routing_id_t &source_rid_out_,
                              bool &subscribed_out_,
-                             std::string &service_name_,
                              std::string &topic_,
                              recv_flags_t flags_ = recv_flags_t::none)
     {
@@ -2177,16 +2214,13 @@ class spot_t
             return -1;
         }
 
-        char service_name_buffer[256];
         char topic_buffer[256];
-        size_t service_name_length = 0;
         size_t topic_length = 0;
         int subscribed = 0;
         const zlink_routing_id_t *source_rid = NULL;
-        const int rc = zlink_spot_subscription_event_part (
-          _spot, &source_rid, &subscribed, service_name_buffer,
-          sizeof (service_name_buffer), &service_name_length, topic_buffer,
-          sizeof (topic_buffer), &topic_length,
+        const int rc = zlink_spot_subscription_event_recv (
+          _spot, &source_rid, &subscribed, topic_buffer, sizeof (topic_buffer),
+          &topic_length,
           static_cast<zlink_recv_flags_t> (flags_));
         if (rc != 0)
             return rc;
@@ -2196,14 +2230,9 @@ class spot_t
         else
             source_rid_out_ = zlink::detail::unchecked_empty_routing_id ();
 
-        const size_t service_name_size =
-          service_name_length < sizeof (service_name_buffer)
-            ? service_name_length
-            : sizeof (service_name_buffer) - 1u;
         const size_t topic_size =
           topic_length < sizeof (topic_buffer) ? topic_length
                                                : sizeof (topic_buffer) - 1u;
-        service_name_.assign (service_name_buffer, service_name_size);
         topic_.assign (topic_buffer, topic_size);
         subscribed_out_ = subscribed != 0;
         return 0;
@@ -2211,7 +2240,6 @@ class spot_t
 
     ZLINK_CPP_NODISCARD int
     publish_no_wait_result_impl (send_result_t &result_out_,
-                      const char *service_name_,
                       const char *topic_,
                       std::vector<message_t> &parts_)
     {
@@ -2234,8 +2262,7 @@ class spot_t
           native, failed_index,
           [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
               return zlink_spot_publish_part (
-                _spot, service_name_, topic_, part_out_, ZLINK_DONTWAIT,
-                part_flag_);
+                _spot, topic_, part_out_, ZLINK_DONTWAIT, part_flag_);
           });
         if (rc == 0) {
             result_out_ = send_result_t::sent;
@@ -2256,7 +2283,6 @@ class spot_t
 
     ZLINK_CPP_NODISCARD int
     publish_no_wait_result_impl (send_result_t &result_out_,
-                      const char *service_name_,
                       const char *topic_,
                       message_t &part_)
     {
@@ -2276,8 +2302,7 @@ class spot_t
             return -1;
 
         const int rc = zlink_spot_publish_part (
-          _spot, service_name_, topic_, &native, ZLINK_DONTWAIT,
-          ZLINK_PART_FINAL);
+          _spot, topic_, &native, ZLINK_DONTWAIT, ZLINK_PART_FINAL);
         if (rc == 0) {
             result_out_ = send_result_t::sent;
             return 0;
@@ -2474,18 +2499,50 @@ class spot_t
         const zlink_routing_id_t *source_node_rid = NULL;
         const zlink_routing_id_t *source_spot_rid = NULL;
         uint64_t request_seq = 0;
-        zlink_msg_t *parts_native = NULL;
-        size_t part_count = 0;
-        const recv_result_t rc = static_cast<recv_result_t> (
-          spot_recv_impl (_spot, &source_node_rid, &source_spot_rid,
-                          &request_seq, &parts_native, &part_count,
-                          static_cast<zlink_recv_flags_t> (flags_)));
-        if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
-            return std::nullopt;
-        if (rc != recv_result_t::ok)
-            throw recv_error_t (rc, zlink_errno ());
+        std::vector<zlink_msg_t> parts_native;
+        for (;;) {
+            parts_native.emplace_back ();
+            zlink_msg_t &native_part = parts_native.back ();
+            if (zlink_msg_init (&native_part) != 0) {
+                parts_native.pop_back ();
+                detail::close_native_parts (parts_native);
+                throw last_error ();
+            }
+
+            const zlink_routing_id_t *part_source_node_rid = NULL;
+            const zlink_routing_id_t *part_source_spot_rid = NULL;
+            uint64_t part_request_seq = 0;
+            zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+            const recv_result_t rc = static_cast<recv_result_t> (
+              zlink_spot_recv_part (
+                _spot, &part_source_node_rid, &part_source_spot_rid,
+                &part_request_seq, &native_part, &has_more,
+                static_cast<zlink_recv_flags_t> (flags_)));
+            if (rc == recv_result_t::no_data
+                && flags_ == recv_flags_t::dontwait
+                && parts_native.size () == 1u) {
+                (void) zlink_msg_close (&native_part);
+                parts_native.pop_back ();
+                return std::nullopt;
+            }
+            if (rc != recv_result_t::ok) {
+                (void) zlink_msg_close (&native_part);
+                parts_native.pop_back ();
+                detail::close_native_parts (parts_native);
+                throw recv_error_t (rc, zlink_errno ());
+            }
+
+            if (parts_native.size () == 1u) {
+                source_node_rid = part_source_node_rid;
+                source_spot_rid = part_source_spot_rid;
+                request_seq = part_request_seq;
+            }
+            if (!has_more)
+                break;
+        }
+
         std::vector<message_t> parts;
-        if (detail::assign_parts_from_native (parts_native, part_count, parts) != 0)
+        if (detail::assign_parts_from_native (parts_native, parts) != 0)
             throw last_error ();
 
         std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn;
@@ -2667,30 +2724,30 @@ class spot_t
 
 inline bool send_ready_op_t::submit () &&
 {
-    if (!_state.spot || _state.parts.empty ())
+    if (!_state.spot || !detail::has_send_parts (_state))
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     switch (_state.kind) {
     case detail::spot_op_kind_t::publish:
-        return _state.parts.size () == 1u
+        return detail::send_part_count (_state) == 1u
           ? _state.spot->publish (
-              _state.service_name, _state.topic, _state.parts.front (),
-              _state.flags)
+              _state.topic, detail::send_single_part (_state), _state.flags)
           : _state.spot->publish (
-              _state.service_name, _state.topic, _state.parts, _state.flags);
+              _state.topic, _state.parts, _state.flags);
     case detail::spot_op_kind_t::send_channel:
-        return _state.parts.size () == 1u
+        return detail::send_part_count (_state) == 1u
           ? _state.spot->send_channel (
-              _state.channel_name, _state.parts.front (), _state.flags)
+              _state.channel_name, detail::send_single_part (_state),
+              _state.flags)
           : _state.spot->send_channel (
               _state.channel_name, _state.parts, _state.flags);
     case detail::spot_op_kind_t::send_to_spot:
         if (!_state.first_rid || !_state.second_rid)
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-        return _state.parts.size () == 1u
+        return detail::send_part_count (_state) == 1u
           ? _state.spot->send_to_spot (
               *_state.first_rid, *_state.second_rid,
-              std::move (_state.parts.front ()), _state.flags)
+              std::move (detail::send_single_part (_state)), _state.flags)
           : _state.spot->send_to_spot (
               *_state.first_rid, *_state.second_rid, _state.parts,
               _state.flags);

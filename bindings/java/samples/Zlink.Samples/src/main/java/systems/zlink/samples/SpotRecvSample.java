@@ -16,7 +16,7 @@ import java.time.Instant;
 public final class SpotRecvSample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
-        String serviceName = "sample";
+        String channelName = "sample";
         String topic = SampleSupport.SPOT_TOPIC;
         String published = topic + "/" + SampleSupport.SPOT_PAYLOAD;
         String registryPub = SampleSupport.tcpEndpoint();
@@ -27,9 +27,9 @@ public final class SpotRecvSample {
         try (Context ctx = new Context();
              Registry registry = new Registry(ctx);
              Discovery publisherDiscovery = new Discovery(ctx,
-                 AutoConnectType.SPOT_MESH, serviceName);
+                 AutoConnectType.SPOT_MESH, channelName);
              Discovery subscriberDiscovery = new Discovery(ctx,
-                 AutoConnectType.SPOT_MESH, serviceName);
+                 AutoConnectType.SPOT_MESH, channelName);
              SpotNode publisherNode = new SpotNode(ctx);
              SpotNode subscriberNode = new SpotNode(ctx);
              Spot publisher = publisherNode.createSpot();
@@ -57,17 +57,12 @@ public final class SpotRecvSample {
             Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
             while (Instant.now().isBefore(deadline)) {
                 try (Message payload = Message.copyOfUtf8(SampleSupport.SPOT_PAYLOAD)) {
-                    publisher.publish(serviceName, topic).message(payload).submit();
+                    publisher.publish(topic).message(payload).submit();
                 }
                 try (TopicMessage topicMessage = subscriber.subscribe(RecvFlags.DONT_WAIT)) {
                     if (topicMessage == null) {
                         Thread.onSpinWait();
                         continue;
-                    }
-                    if (!java.util.Optional.of(serviceName)
-                        .equals(topicMessage.serviceName())) {
-                        throw new IllegalStateException(
-                            "unexpected service: " + topicMessage.serviceName());
                     }
                     String value = topicMessage.topic() + "/"
                         + topicMessage.singlePartOrThrow().toUtf8String();
@@ -75,7 +70,7 @@ public final class SpotRecvSample {
                         throw new IllegalStateException(
                             "unexpected delivery: " + value);
                     }
-                    System.out.println("[spot/recv] service: \"" + serviceName
+                    System.out.println("[spot/recv] service: \"" + channelName
                         + "\" tick: 1 publish: \"" + published
                         + "\" -> recv: \"" + value + "\"");
                     return;

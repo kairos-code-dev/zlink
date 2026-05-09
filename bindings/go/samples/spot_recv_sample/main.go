@@ -36,7 +36,7 @@ func main() {
 	defer func() { samplecommon.MustStep("subscriber.Close", subscriber.Close()) }()
 
 	topic := "room:lobby"
-	serviceName := "sample"
+	channelName := "sample"
 	payload := "hello-spot"
 	publisherEndpoint := samplecommon.UniqueTCP("spot-recv-pub")
 	subscriberEndpoint := samplecommon.UniqueTCP("spot-recv-sub")
@@ -61,7 +61,7 @@ func main() {
 	var message *zlink.TopicMessage
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		_, pubErr := publisher.Publish(serviceName, topic).Message(samplecommon.Message(payload)).Submit(nil)
+		_, pubErr := publisher.Publish(topic).Message(samplecommon.Message(payload)).Submit(nil)
 		samplecommon.MustStep("publisher.Publish", pubErr)
 		received, err := subscriber.Subscribe(zlink.RecvFlagsDontWait)
 		if err != nil {
@@ -78,9 +78,9 @@ func main() {
 	defer func() { samplecommon.MustStep("message.Close", message.Close()) }()
 	part, err := message.SinglePartOrError()
 	samplecommon.MustStep("message.SinglePartOrError", err)
-	if message.ServiceName() != serviceName || message.Topic() != topic || !bytes.Equal(part.Data(), []byte(payload)) {
-		samplecommon.Must(fmt.Errorf("unexpected spot payload %q/%q/%q", message.ServiceName(), message.Topic(), string(part.Data())))
+	if message.Topic() != topic || !bytes.Equal(part.Data(), []byte(payload)) {
+		samplecommon.Must(fmt.Errorf("unexpected spot payload %q/%q", message.Topic(), string(part.Data())))
 	}
 
-	fmt.Printf("[spot/recv] service: %q tick: 1 publish: %q -> recv: %q\n", serviceName, topic+"/"+payload, message.Topic()+"/"+string(part.Data()))
+	fmt.Printf("[spot/recv] channel: %q tick: 1 publish: %q -> recv: %q\n", channelName, topic+"/"+payload, message.Topic()+"/"+string(part.Data()))
 }

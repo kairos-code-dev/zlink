@@ -110,8 +110,7 @@ final class TopicPlane {
                     ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
             return new SubscriptionEvent(java.util.Optional.ofNullable(
                 Socket.toRoutingId(Socket.decodeRoutingId(rid))),
-                java.util.Optional.empty(), filter,
-                subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0);
+                filter, subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0);
         }
     }
 
@@ -140,8 +139,7 @@ final class TopicPlane {
                     return Optional.of(new SubscriptionEvent(
                         java.util.Optional.ofNullable(
                           Socket.toRoutingId(Socket.decodeRoutingId(rid))),
-                        java.util.Optional.empty(), filter,
-                        subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
+                        filter, subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
                 }
             }
 
@@ -195,7 +193,7 @@ final class TopicPlane {
                             }
                             parts.add(part);
                             if (!part.more()) {
-                                return new TopicMessage(routingId, null, topicId,
+                                return new TopicMessage(routingId, topicId,
                                     parts.toArray(Message[]::new));
                             }
                             continue;

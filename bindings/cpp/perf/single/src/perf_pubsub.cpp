@@ -12,7 +12,7 @@
 
 namespace {
 
-const char *const k_topic = "bench";
+const std::string k_topic ("bench");
 
 bool perf_debug_enabled ()
 {
@@ -21,7 +21,7 @@ bool perf_debug_enabled ()
 
 bool send_pubsub_payload (void *userdata_, const void *data_, size_t size_)
 {
-    zlink::xpub_socket_t *publisher = static_cast<zlink::xpub_socket_t *> (userdata_);
+    zlink::pub_socket_t *publisher = static_cast<zlink::pub_socket_t *> (userdata_);
     if (!publisher)
         return false;
 
@@ -29,7 +29,10 @@ bool send_pubsub_payload (void *userdata_, const void *data_, size_t size_)
     if (!part.valid ())
         return false;
     try {
-        publisher->publish (k_topic, part);
+        if (!publisher->publish (k_topic, part, zlink::send_flags_t::dontwait)) {
+            errno = EAGAIN;
+            return false;
+        }
         return true;
     }
     catch (const zlink::zlink_error_t &) {
@@ -60,7 +63,7 @@ bool record_subscribed_payload (
         return true;
     }
 
-    received_count.fetch_add (1, std::memory_order_release);
+    received_count.fetch_add (1, std::memory_order_relaxed);
     const uint64_t now = perf_single_metric::now_ns ();
     latency_builder.add (
       now >= header.sent_ts_ns ? static_cast<double> (now - header.sent_ts_ns)
@@ -89,7 +92,7 @@ bool run_pattern_pubsub (const std::string &transport,
         return false;
     }
 
-    zlink::xpub_socket_t publisher (ctx.ctx ());
+    zlink::pub_socket_t publisher (ctx.ctx ());
     zlink::sub_socket_t subscriber (ctx.ctx ());
     if (!publisher.valid () || !subscriber.valid ()) {
         if (perf_debug_enabled ())
@@ -98,6 +101,15 @@ bool run_pattern_pubsub (const std::string &transport,
     }
 
     publisher.options ().no_drop (true);
+    (void) subscriber.set_subscription (std::string ());
+    if (!perf::single::apply_single_auto_hwm_msg_unit (publisher, msg_size)
+        || !perf::single::apply_single_auto_hwm_msg_unit (subscriber, msg_size)
+        || !perf::single::recalculate_single_auto_hwm (ctx)) {
+        if (perf_debug_enabled ())
+            std::cerr << "pubsub: auto-hwm msg unit setup failed errno=" << errno
+                      << std::endl;
+        return false;
+    }
 
     if (!perf::single::setup_connected_pair (publisher,
                                              subscriber,
@@ -111,7 +123,6 @@ bool run_pattern_pubsub (const std::string &transport,
 
     const int recv_timeout = perf::single::resolve_single_pubsub_recv_timeout_ms ();
     subscriber.options ().recv_timeout (std::chrono::milliseconds (recv_timeout));
-    (void) subscriber.set_subscription (std::string (k_topic));
 
     std::this_thread::sleep_for (std::chrono::milliseconds (
       perf::single::resolve_single_pubsub_ready_settle_ms ()));
@@ -128,12 +139,12 @@ bool run_pattern_pubsub (const std::string &transport,
     std::atomic<bool> sender_done (false);
     perf::single::latency_stats_builder_t latency_builder (
       perf::single::resolve_single_latency_sample_cap ());
+    const auto active_deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
 
     std::thread sender_thread ([&]() {
         uint64_t seq = 1;
-        const auto deadline =
-          std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
-        while (std::chrono::steady_clock::now () < deadline) {
+        while (std::chrono::steady_clock::now () < active_deadline) {
             if (!perf_single_metric::stamp_payload (payload.data (),
                                                     payload.size (),
                                                     run_id,
@@ -143,44 +154,66 @@ bool run_pattern_pubsub (const std::string &transport,
                                                     perf_single_metric::now_ns ())
                 || !send_pubsub_payload (
                   &publisher, payload.data (), payload.size ())) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK
+                    || errno == ETIMEDOUT || errno == EINTR) {
+                    continue;
+                }
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
-            sent_count.fetch_add (1, std::memory_order_release);
+            sent_count.fetch_add (1, std::memory_order_relaxed);
         }
         sender_done.store (true, std::memory_order_release);
     });
 
-    zlink::poller_t poller;
-    poller.add (subscriber, zlink::poll_event_flag_t::pollin);
+    auto record_if_active = [&] (const zlink::topic_message_t &message_) {
+        if (std::chrono::steady_clock::now () >= active_deadline)
+            return true;
+        return record_subscribed_payload (message_,
+                                          run_id,
+                                          msg_size,
+                                          payload_size,
+                                          received_count,
+                                          latency_builder);
+    };
+
     while (!sender_done.load (std::memory_order_acquire)) {
-        std::optional<zlink::poll_event_t> event =
-          poller.wait (std::chrono::milliseconds (5));
-        const int poll_rc = event ? 1 : 0;
-        if (poll_rc < 0) {
-            if (errno == EINTR || errno == EAGAIN)
+        std::optional<zlink::topic_message_t> message;
+        try {
+            message = subscriber.subscribe ();
+        }
+        catch (const zlink::recv_error_t &error) {
+            const int err = error.internal_errno ();
+            if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
+                || err == ETIMEDOUT)
                 continue;
             sender_ok.store (false, std::memory_order_release);
             break;
         }
-        if (poll_rc == 0
-            || (static_cast<short> (event->revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))
-                 == 0) {
+        if (!message.has_value ())
             continue;
+
+        if (!record_if_active (*message)) {
+            sender_ok.store (false, std::memory_order_release);
+            break;
         }
 
         for (;;) {
-            std::optional<zlink::topic_message_t> message =
-              subscriber.subscribe (ZLINK_DONTWAIT);
+            try {
+                message = subscriber.subscribe (ZLINK_DONTWAIT);
+            }
+            catch (const zlink::recv_error_t &error) {
+                const int err = error.internal_errno ();
+                if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
+                    || err == ETIMEDOUT)
+                    break;
+                sender_ok.store (false, std::memory_order_release);
+                break;
+            }
             if (!message.has_value ())
                 break;
 
-            if (!record_subscribed_payload (*message,
-                                           run_id,
-                                           msg_size,
-                                           payload_size,
-                                           received_count,
-                                           latency_builder)) {
+            if (!record_if_active (*message)) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
@@ -199,12 +232,7 @@ bool run_pattern_pubsub (const std::string &transport,
         if (!message.has_value ())
             break;
 
-        if (!record_subscribed_payload (*message,
-                                       run_id,
-                                       msg_size,
-                                       payload_size,
-                                       received_count,
-                                       latency_builder)) {
+        if (!record_if_active (*message)) {
             sender_ok.store (false, std::memory_order_release);
             break;
         }

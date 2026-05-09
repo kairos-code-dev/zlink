@@ -89,10 +89,9 @@ API lists can stay focused on signatures.
   `attachPubIngress(pub)`.
 - `Spot` must expose channel-aware data-plane operation builders:
   `sendChannel(...)`, `sendToSpot(...)`, `requestChannel(...)`, and
-  `publish(serviceName, topic)`.
-- `Spot.subscribe(...)` returns a service-aware `TopicMessage`.
-  `TopicMessage` therefore needs `serviceName: string | null`, populated for
-  SPOT subscribe results and `null` for raw `SUB` / `XSUB`.
+  `publish(topic)`.
+- `Spot.subscribe(...)` returns a `TopicMessage`.
+  `TopicMessage` exposes topic, parts, and optional routing id.
 - `Spot` must not expose `onSubscribe(...)`.
 - `SUBSCRIBE_READABLE` and `ROUTED_READABLE` are readiness notifications, not
   one-event-per-message delivery counters. Binding docs and samples must drain
@@ -722,11 +721,11 @@ class StreamSocket {
     /** @throws {RequestError} */
     unbindActor(node: SpotNode, sessionRid: RoutingId,
                 actorId: string, timeoutMs?: number): void;
-    /** @throws {SubmitError} */
+    /** @throws {SubmitError} on submit failure other than temporary backpressure. */
     sendBoundActor(node: SpotNode, sessionRid: RoutingId,
                    actorId: string, message: MessageLike,
                    flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
+    /** @throws {SubmitError} on submit failure other than temporary backpressure. */
     sendBoundActor(node: SpotNode, sessionRid: RoutingId,
                    actorId: string, parts: readonly MessageLike[],
                    flags?: SendFlags): boolean;
@@ -924,7 +923,6 @@ Topic-aware recv result used by SUB / XSUB / Spot subscribe paths.
 ```typescript
 class TopicMessage {
     readonly routingId: RoutingId | null;    // null when transport carries no source id
-    readonly serviceName: string | null;     // Spot subscribe only; null for raw SUB / XSUB
     readonly topic: string;                  // UTF-8
     readonly parts: Message[];
     isSinglePart(): boolean;
@@ -945,7 +943,6 @@ Value object emitted by `XPubSocket.receiveSubscriptionEvent` and
 ```typescript
 class SubscriptionEvent {
     readonly routingId: RoutingId | null;
-    readonly serviceName: string | null;
     readonly topic: string;                  // UTF-8
     readonly subscribed: boolean;            // true=subscribe, false=unsubscribe
 }
@@ -1604,7 +1601,7 @@ class Actor {
     leave(spot: Spot, timeoutMs?: number): void;
     /** @throws {RecvError} */
     recvPart(flags?: RecvFlags): ActorPart | null;
-    /** @throws {SubmitError} */
+    /** @throws {SubmitError} on submit failure other than temporary backpressure. */
     sendBoundSession(message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {RequestError} */
     closeBoundSession(timeoutMs?: number): void;
@@ -1626,7 +1623,7 @@ class Spot {
     // The SpotNode constructor path is internal. Public code obtains Spot
     // handles through SpotNode factories.
     requestTimeout: number;      // get / set (ms)
-    publish(serviceName: string, topic: string): SendOp;
+    publish(topic: string): SendOp;
     sendChannel(channelName: string): SendOp;
     requestChannel(channelName: string): RequestOp;
     /** @throws {ConfigError} */

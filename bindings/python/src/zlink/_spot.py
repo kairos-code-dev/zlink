@@ -577,24 +577,18 @@ class _RequestProgressPump:
 def _recv_spot_subscribed(handle, flags):
     routing_id = None
     native_parts = []
-    service_buf = ctypes.create_string_buffer(256)
     topic_buf = ctypes.create_string_buffer(256)
-    service_len = 0
     topic_len = 0
     recv_flags = int(flags)
     try:
         while True:
             routing_ptr = ctypes.POINTER(ZlinkRoutingId)()
-            current_service_len = ctypes.c_size_t(len(service_buf))
             current_topic_len = ctypes.c_size_t(len(topic_buf))
             native_part = ZlinkMsg()
             has_more = ctypes.c_int()
             rc = lib().zlink_spot_subscribe_part(
                 handle,
                 ctypes.byref(routing_ptr),
-                service_buf,
-                len(service_buf),
-                ctypes.byref(current_service_len),
                 topic_buf,
                 len(topic_buf),
                 ctypes.byref(current_topic_len),
@@ -607,7 +601,6 @@ def _recv_spot_subscribed(handle, flags):
             if not native_parts:
                 if routing_ptr:
                     routing_id = routing_ptr.contents
-                service_len = int(current_service_len.value)
                 topic_len = int(current_topic_len.value)
             native_parts.append(native_part)
             if has_more.value == ZLINK_PART_FINAL:
@@ -618,15 +611,11 @@ def _recv_spot_subscribed(handle, flags):
         raise
 
     owner = _ReceivedPartsOwner(_prepare_native_parts(native_parts), len(native_parts))
-    service_name = None
-    if service_len:
-        service_name = _decode_topic_text(service_buf.raw[:service_len])
     topic = _decode_topic_text(topic_buf.raw[:topic_len])
     return TopicMessage(
         topic,
         owner,
         _routing_id_bytes(routing_id) if routing_id is not None else None,
-        service_name=service_name,
     )
 
 
@@ -773,6 +762,8 @@ class Actor:
         )
         if rc != 0:
             _close_native_parts(native_parts)
+            if int(flags) & 1 and rc == int(SubmitResult.BACKPRESSURED):
+                return False
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
         return True
 
@@ -1358,7 +1349,7 @@ class SpotNode:
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return SpotNodeStatus(
-            channel_name=_decode_fixed(native.service_name),
+            channel_name=_decode_fixed(native.channel_name),
             local_endpoint=_decode_fixed(native.local_endpoint),
             node_routing_id=_routing_id_bytes(native.node_routing_id),
             state=SpotNodeState(int(native.state)),
@@ -1403,7 +1394,7 @@ class SpotNode:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return [
             SpotNodePeerEntry(
-                channel_name=_decode_fixed(entry.service_name),
+                channel_name=_decode_fixed(entry.channel_name),
                 local_endpoint=_decode_fixed(entry.local_endpoint),
                 peer_endpoint=_decode_fixed(entry.peer_endpoint),
                 source=SpotPeerSource(int(entry.source)),
@@ -1811,27 +1802,21 @@ class Spot:
             native_parts.append(native)
         return native_parts
 
-    def publish(self, service_name, topic):
+    def publish(self, topic):
         return SendOp(
             self,
-            lambda parts, flags: self._publish_submit(
-                service_name, topic, parts, flags
-            ),
+            lambda parts, flags: self._publish_submit(topic, parts, flags),
         )
 
-    def _publish_submit(self, service_name, topic, parts, flags=0):
+    def _publish_submit(self, topic, parts, flags=0):
         try:
             _ensure_not_in_callback("blocking publish")
-            service_bytes = _validated_c_string_value(
-                service_name, field="service_name", max_length=255
-            )
             topic_bytes = _validated_c_string_value(topic, field="topic", max_length=255)
             native_parts = self._native_parts_from_payload(parts)
             rc, err = _submit_parts(
                 native_parts,
                 lambda part_ptr, part_flag: lib().zlink_spot_publish_part(
                     self._handle,
-                    service_bytes,
                     topic_bytes,
                     part_ptr,
                     int(flags),

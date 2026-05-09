@@ -50,12 +50,14 @@ PATTERN_SUFFIX = {
     "ROUTER_ROUTER": "router_router",
     "PUBSUB": "pubsub",
     "SPOT": "spot",
+    "SPOT_SENDSEND": "spot_sendsend",
     "SPOT_REQREP": "spot_reqrep",
     "STREAM": "stream",
 }
 ECHO_PATTERNS = {
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
+    "SPOT_SENDSEND",
     "SPOT_REQREP",
     "STREAM",
 }
@@ -82,6 +84,7 @@ MULTI_COMPARISONS = [
     ("comp_src_router_router_client", "ROUTER_ROUTER"),
     ("comp_src_pubsub_client", "PUBSUB"),
     ("comp_src_spot_client", "SPOT"),
+    ("comp_src_spot_sendsend_client", "SPOT_SENDSEND"),
     ("comp_src_spot_reqrep_client", "SPOT_REQREP"),
     ("perf_stream_client", "STREAM"),
 ]
@@ -92,6 +95,7 @@ SUPPORTED_MULTI_RECV_MODES = {
     "ROUTER_ROUTER": ("recv",),
     "PUBSUB": ("recv",),
     "SPOT": ("recv",),
+    "SPOT_SENDSEND": ("recv",),
     "SPOT_REQREP": ("recv",),
     "STREAM": ("recv",),
 }
@@ -568,8 +572,8 @@ def is_pattern(pattern_name):
 
 
 def select_transports(pattern_name):
-    service_or_stream = pattern_name in STREAM_VARIANT_PATTERNS or pattern_name in ("SPOT", "SPOT_REQREP")
-    if pattern_name in ("SPOT", "SPOT_REQREP"):
+    service_or_stream = pattern_name in STREAM_VARIANT_PATTERNS or pattern_name in ("SPOT", "SPOT_SENDSEND", "SPOT_REQREP")
+    if pattern_name in ("SPOT", "SPOT_SENDSEND", "SPOT_REQREP"):
         base = STREAM_TRANSPORTS
     elif service_or_stream:
         base = STREAM_TRANSPORTS
@@ -628,6 +632,8 @@ MULTI_ENV_ALIAS_MAP = {
     "PERF_MULTI_HWM": "PERF_HWM",
     "PERF_MULTI_SNDHWM": "PERF_SNDHWM",
     "PERF_MULTI_RCVHWM": "PERF_RCVHWM",
+    "PERF_MULTI_SNDBUF": "PERF_SNDBUF",
+    "PERF_MULTI_RCVBUF": "PERF_RCVBUF",
     "PERF_MULTI_SNDTIMEO_MS": "PERF_SNDTIMEO_MS",
     "PERF_MULTI_RCVTIMEO_MS": "PERF_RCVTIMEO_MS",
 }
@@ -875,9 +881,7 @@ def pattern_default_clients(pattern_name, transport=None):
 
 
 def pattern_default_hwm(pattern_name):
-    if normalize_multi_pattern_name(pattern_name) in STREAM_VARIANT_PATTERNS:
-        return 10
-    return 100
+    return 0
 
 
 def pattern_default_io_threads(pattern_name):
@@ -1058,7 +1062,8 @@ def is_unsupported_output(text):
 
 
 def is_sandbox_blocked_transport(transport):
-    return (transport or "").strip().lower() in ("tcp", "tls", "ws", "wss")
+    (void_transport) = transport
+    return False
 
 
 def _pipe_reader(pipe, stream_name, out_queue):
@@ -1194,6 +1199,7 @@ def run_sizes_test_stream_shared(
     )
     bind_port = max(0, parse_env_int("PERF_SERVER_BIND_PORT", 0))
     expected_sizes = set(sizes)
+    fallback_size = sizes[0] if sizes else 64
 
     (
         env,
@@ -1212,7 +1218,10 @@ def run_sizes_test_stream_shared(
     set_env_pair(env, "PERF_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
     set_env_pair(env, "PERF_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
     set_env_pair(env, "PERF_SERVER_BIND_PORT", bind_port)
-    server_cmd = build_bench_cmd(server_binary_path, [lib_name, transport])
+    server_args = [lib_name, transport]
+    if normalize_multi_pattern_name(pattern_name) in ("SPOT", "SPOT_SENDSEND", "STREAM"):
+        server_args.append(str(fallback_size))
+    server_cmd = build_bench_cmd(server_binary_path, server_args)
     shared_client_args = [
         "--transport",
         transport,
@@ -1248,7 +1257,7 @@ def run_sizes_test_stream_shared(
     out_queue = queue.Queue()
     reader_threads = []
     debug_transitions = os.getenv("PERF_DEBUG_TRANSITIONS") is not None
-    use_control_plane = normalize_multi_pattern_name(pattern_name) == "SPOT"
+    use_control_plane = normalize_multi_pattern_name(pattern_name) in ("SPOT", "SPOT_SENDSEND")
     control_connected = [not use_control_plane]
     pending_ready_sizes = set()
     pending_phase_active_sizes = set()
@@ -1799,7 +1808,10 @@ def run_sizes_test_split(
     set_env_pair(env, "PERF_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
     set_env_pair(env, "PERF_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
     set_env_pair(env, "PERF_SERVER_BIND_PORT", bind_port)
-    server_cmd = build_bench_cmd(server_binary_path, [lib_name, transport])
+    server_args = [lib_name, transport]
+    if normalize_multi_pattern_name(pattern_name) in ("SPOT", "SPOT_SENDSEND"):
+        server_args.append(str(fallback_size))
+    server_cmd = build_bench_cmd(server_binary_path, server_args)
     client_cmd = build_bench_cmd(
         client_binary_path, [lib_name, transport, str(fallback_size)]
     )
@@ -1816,7 +1828,7 @@ def run_sizes_test_split(
     out_queue = queue.Queue()
     reader_threads = []
     debug_transitions = os.getenv("PERF_DEBUG_TRANSITIONS") is not None
-    use_control_plane = normalize_multi_pattern_name(pattern_name) == "SPOT"
+    use_control_plane = normalize_multi_pattern_name(pattern_name) in ("SPOT", "SPOT_SENDSEND")
     control_connected = [not use_control_plane]
     pending_ready_sizes = set()
     pending_phase_active_sizes = set()
@@ -3244,7 +3256,11 @@ def build_effective_option_items(args, selected_patterns):
     ]
 
     if only:
-        hwm_raw = _read_env_value("PERF_HWM") or ""
+        manual_socket_overrides = (
+            (_read_env_value("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES") or "")
+            or (_read_env_value("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES") or "")
+        ) == "1"
+        hwm_raw = (_read_env_value("PERF_HWM") or "") if manual_socket_overrides else ""
         default_hwm_values = set()
         for pattern in selected_patterns:
             default_hwm_values.add(pattern_default_hwm(pattern))
@@ -3252,11 +3268,11 @@ def build_effective_option_items(args, selected_patterns):
             base_hwm = max(1, parse_env_int("PERF_HWM", 100))
             hwm_display = str(base_hwm)
         elif not default_hwm_values:
-            base_hwm = 100
-            hwm_display = "100 (default)"
+            base_hwm = 0
+            hwm_display = "auto-hwm"
         elif len(default_hwm_values) == 1:
             base_hwm = next(iter(default_hwm_values))
-            hwm_display = f"{base_hwm} (default)"
+            hwm_display = "auto-hwm" if base_hwm == 0 else f"{base_hwm} (default)"
         else:
             base_hwm = max(default_hwm_values)
             hwm_display = (
@@ -3265,15 +3281,15 @@ def build_effective_option_items(args, selected_patterns):
                 + ")"
             )
 
-        sndhwm = parse_env_int("PERF_SNDHWM", base_hwm)
-        rcvhwm = parse_env_int("PERF_RCVHWM", base_hwm)
-        sndbuf = _read_env_value("PERF_SNDBUF") or ""
-        rcvbuf = _read_env_value("PERF_RCVBUF") or ""
-        sndhwm_display = str(sndhwm)
-        rcvhwm_display = str(rcvhwm)
-        if not (_read_env_value("PERF_SNDHWM") or ""):
+        sndhwm = parse_env_int("PERF_SNDHWM", base_hwm) if manual_socket_overrides else 0
+        rcvhwm = parse_env_int("PERF_RCVHWM", base_hwm) if manual_socket_overrides else 0
+        sndbuf = (_read_env_value("PERF_SNDBUF") or "") if manual_socket_overrides else ""
+        rcvbuf = (_read_env_value("PERF_RCVBUF") or "") if manual_socket_overrides else ""
+        sndhwm_display = str(sndhwm) if manual_socket_overrides else "auto-hwm"
+        rcvhwm_display = str(rcvhwm) if manual_socket_overrides else "auto-hwm"
+        if manual_socket_overrides and not (_read_env_value("PERF_SNDHWM") or ""):
             sndhwm_display = hwm_display
-        if not (_read_env_value("PERF_RCVHWM") or ""):
+        if manual_socket_overrides and not (_read_env_value("PERF_RCVHWM") or ""):
             rcvhwm_display = hwm_display
         timeout_override = parse_env_int("PERF_TIMEOUT_SECONDS", 0)
         service_clients = parse_env_int("PERF_SERVICE_CLIENTS", 0)
@@ -3378,8 +3394,10 @@ def build_effective_option_items(args, selected_patterns):
                 ("hwm", hwm_display),
                 ("sndhwm", sndhwm_display),
                 ("rcvhwm", rcvhwm_display),
-                ("sndbuf", sndbuf or "default(os)"),
-                ("rcvbuf", rcvbuf or "default(os)"),
+                ("sndbuf", sndbuf or "auto-hwm"),
+                ("rcvbuf", rcvbuf or "auto-hwm"),
+                ("ctx_auto_hwm_enable", "1"),
+                ("ctx_auto_hwm_profile", _read_env_value("PERF_AUTO_HWM_PROFILE") or "balanced"),
                 ("sndtimeo_ms", str(parse_env_int("PERF_SNDTIMEO_MS", 200))),
                 ("rcvtimeo_ms", str(parse_env_int("PERF_RCVTIMEO_MS", 200))),
                 ("connect_concurrency", connect_display),

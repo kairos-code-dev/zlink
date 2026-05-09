@@ -28,7 +28,7 @@ static void discovery_registry_client_thread (void *arg_)
     discovery_registry_sample_t *sample = (discovery_registry_sample_t *) arg_;
 
     sample->discovered =
-      wait_for_discovery_service (sample->client_discovery, k_service_name, 5000);
+      wait_for_discovery_service (sample->client_discovery, k_channel_name, 5000);
 }
 
 int main (void)
@@ -39,9 +39,9 @@ int main (void)
     void *ctx = zlink_ctx_new ();
     void *registry = zlink_registry_new (ctx);
     sample.provider_discovery =
-      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT, k_service_name);
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT, k_channel_name);
     sample.client_discovery =
-      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT, k_service_name);
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT, k_channel_name);
     sample.provider = zlink_socket (ctx, ZLINK_SOCKET_PUB);
     assert (ctx != NULL);
     assert (registry != NULL);
@@ -81,7 +81,7 @@ int main (void)
     assert (sample.discovered == 1);
 
     printf ("[discovery-registry] service: \"%s\" -> discovered\n",
-            k_service_name);
+            k_channel_name);
 
     zlink_close (sample.provider);
     zlink_discovery_destroy (&sample.client_discovery);

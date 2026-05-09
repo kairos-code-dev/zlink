@@ -181,7 +181,7 @@ public final class SpotNode implements AutoCloseable {
         Objects.requireNonNull(dealer, "dealer");
         try (Arena arena = Arena.ofConfined()) {
             int rc = Native.spotNodeAttachChannelDealerManual(handle,
-              NativeHelpers.toCString(arena, requireServiceName(channelName)),
+              NativeHelpers.toCString(arena, requireChannelName(channelName)),
               InternalAccess.socketHandle(dealer));
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
@@ -974,12 +974,12 @@ public final class SpotNode implements AutoCloseable {
         return (int) value;
     }
 
-    private static String requireServiceName(String serviceName) {
-        Objects.requireNonNull(serviceName, "serviceName");
-        if (serviceName.isEmpty()) {
-            throw new IllegalArgumentException("serviceName must not be empty");
+    private static String requireChannelName(String channelName) {
+        Objects.requireNonNull(channelName, "channelName");
+        if (channelName.isEmpty()) {
+            throw new IllegalArgumentException("channelName must not be empty");
         }
-        return serviceName;
+        return channelName;
     }
 
     @SuppressWarnings("unused")

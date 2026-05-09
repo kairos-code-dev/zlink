@@ -52,11 +52,18 @@ struct bench_result_t
 
 struct socket_state_t
 {
-    ::perf::socket_t *sock;
+    zlink::dealer_socket_t *sock;
+    std::vector<char> payload;
     bool pollout_enabled;
     bool pending;
 
-    socket_state_t () : sock (NULL), pollout_enabled (false), pending (false) {}
+    socket_state_t ()
+        : sock (NULL),
+          payload (),
+          pollout_enabled (false),
+          pending (false)
+    {
+    }
 };
 
 class dealer_dealer_client_bench_t
@@ -78,8 +85,6 @@ class dealer_dealer_client_bench_t
           _socket_states (),
           _poller (),
           _poll_events (),
-          _payload (std::max<size_t> (msg_size, perf_metric::header_size ()),
-                    k_payload_fill),
           _run_id (1U),
           _seq (1),
           _phase_cfg (),
@@ -97,6 +102,7 @@ class dealer_dealer_client_bench_t
     {
         if (!setup_sockets ())
             return false;
+        refresh_auto_hwm_msg_unit ();
 
         std::cout << "CLIENT_READY," << _msg_size << std::endl;
         if (!perf::multi::wait_for_start_from_stdin (_msg_size))
@@ -105,7 +111,7 @@ class dealer_dealer_client_bench_t
         if (!run_phase (perf_metric::phase_active,
                         std::chrono::seconds (_phase_cfg.active_seconds),
                         &_result.active_count,
-                        &_result.latency))
+                        NULL))
             return false;
 
         send_stop_token_once ();
@@ -115,34 +121,37 @@ class dealer_dealer_client_bench_t
   private:
     bool setup_sockets ()
     {
+        try {
         for (size_t i = 0; i < _settings.clients; ++i) {
             _holders.emplace_back (
-              new perf::multi::socket_guard_t (_ctx, zlink::socket_type::dealer));
-            ::perf::socket_t &sock = _holders.back ()->sock ();
-            if (!sock.handle ()) {
+              new zlink::dealer_socket_t (_ctx.ctx ()));
+            zlink::dealer_socket_t &sock = *_holders.back ();
+            if (!sock.valid ()) {
                 debug_log ("socket create failed");
                 return false;
             }
 
-            perf::multi::apply_benchmark_socket_options (sock, _settings, _transport);
+            apply_dealer_socket_options (sock);
             if (!perf::multi::setup_tls_client (sock, _transport)) {
                 debug_log ("setup tls failed");
                 return false;
             }
             _monitors.push_back (perf::multi::connect_monitor_t ());
-            if (!perf::multi::open_connect_monitor (sock, _monitors.back ())) {
+            zlink::monitor_handle_t monitor =
+              sock.monitor_handle (zlink::monitor_event::connection_ready);
+            if (!monitor.valid ()) {
                 debug_log ("open connect monitor failed");
                 return false;
             }
-            try {
-                sock.connect (_endpoint);
-            } catch (const zlink::zlink_error_t &) {
-                debug_log ("connect failed errno=" + std::to_string (errno));
-                return false;
-            }
+            _monitors.back ().monitor.reset (
+              new zlink::monitor_handle_t (std::move (monitor)));
+            sock.connect (_endpoint);
 
             socket_state_t state;
             state.sock = &sock;
+            const size_t payload_size =
+              std::max<size_t> (_msg_size, perf_metric::header_size ());
+            state.payload.assign (payload_size, k_payload_fill);
             _socket_states.push_back (state);
             (void) _poller.add (
               sock, zlink::poll_event_flag_t::pollout,
@@ -160,6 +169,21 @@ class dealer_dealer_client_bench_t
         }
 
         return !_socket_states.empty ();
+        }
+        catch (const zlink::zlink_error_t &) {
+            return false;
+        }
+    }
+
+    void refresh_auto_hwm_msg_unit ()
+    {
+        for (size_t i = 0; i < _holders.size (); ++i) {
+            if (!_holders[i].get () || !_holders[i]->valid ())
+                continue;
+            _holders[i]->options ().auto_hwm_msg_unit_bytes (
+              zlink::byte_size_t::bytes (static_cast<int64_t> (_msg_size)));
+        }
+        _ctx.ctx ().recalculate_auto_hwm ();
     }
 
     bool set_pollout (socket_state_t &state, bool enabled)
@@ -172,13 +196,13 @@ class dealer_dealer_client_bench_t
             _poller.modify (*state.sock,
                             enabled ? zlink::poll_event_flag_t::pollout
                                     : zlink::poll_event_flag_t::none);
+            state.pollout_enabled = enabled;
+            return true;
         }
         catch (const zlink::zlink_error_t &) {
             debug_log ("poller modify failed errno=" + std::to_string (errno));
             return false;
         }
-        state.pollout_enabled = enabled;
-        return true;
     }
 
     bool try_send_once (socket_state_t &state,
@@ -189,36 +213,48 @@ class dealer_dealer_client_bench_t
         if (!state.sock)
             return false;
 
+        const bool collect_latency =
+          lat_out && phase == perf_metric::phase_active;
+        const auto t0 = collect_latency ? std::chrono::steady_clock::now ()
+                                        : std::chrono::steady_clock::time_point ();
+        bool sent = false;
+        const size_t payload_size = state.payload.size ();
+        if (payload_size == 0) {
+            debug_log ("payload size empty");
+            return false;
+        }
+        zlink::message_t message (payload_size);
+        if (!message.valid ()) {
+            debug_log ("message create failed errno=" + std::to_string (errno));
+            return false;
+        }
+        char *const payload = static_cast<char *> (message.data ());
         const uint64_t sent_ts_ns = perf_metric::now_ns ();
-        if (!perf_metric::stamp_payload (_payload.data (),
-                                         _payload.size (),
+        if (!perf_metric::stamp_payload (payload,
+                                         payload_size,
                                          _run_id,
                                          phase,
                                          _msg_size,
-                                         _seq++,
+                                         _seq,
                                          sent_ts_ns)) {
             debug_log ("stamp payload failed");
             return false;
         }
-
-        const auto t0 = std::chrono::steady_clock::now ();
-        zlink::message_t request (_payload.size ());
-        if (!request.valid ()) {
-            debug_log ("request wrap failed");
+        try {
+            sent = state.sock->send (message, zlink::send_flags_t::dontwait);
+        }
+        catch (const zlink::submit_error_t &) {
+            debug_log ("send failed errno=" + std::to_string (errno));
             return false;
         }
-        if (!_payload.empty ())
-            std::memcpy (request.data (), &_payload[0], _payload.size ());
-
-        const int sent =
-          state.sock->send (request, ZLINK_DONTWAIT);
-        if (sent == 0) {
+        if (sent) {
+            ++_seq;
             state.pending = false;
-            if (!set_pollout (state, false))
+            if (state.pollout_enabled && !set_pollout (state, false))
                 return false;
             if (count)
                 ++(*count);
-            if (lat_out && phase == perf_metric::phase_active) {
+            if (collect_latency) {
                 const auto t1 = std::chrono::steady_clock::now ();
                 const double ns = static_cast<double> (
                   std::chrono::duration_cast<std::chrono::nanoseconds> (t1 - t0)
@@ -228,12 +264,11 @@ class dealer_dealer_client_bench_t
             return true;
         }
 
-        if (sent != 0 && errno == EAGAIN) {
+        if (!sent) {
             state.pending = true;
             return set_pollout (state, true);
         }
 
-        debug_log ("send failed errno=" + std::to_string (errno));
         return false;
     }
 
@@ -253,6 +288,7 @@ class dealer_dealer_client_bench_t
         if (_socket_states.empty ())
             return false;
 
+        try {
         perf::multi::bench_latency_sampler_t latency;
         unsigned long long count = 0;
         size_t index = 0;
@@ -265,9 +301,13 @@ class dealer_dealer_client_bench_t
                   _socket_states[(index + i) % _socket_states.size ()];
                 if (state.pending || !state.sock)
                     continue;
-                if (!try_send_once (state, phase, &count, &latency))
-                    return false;
-                progress = true;
+                while (!state.pending
+                       && std::chrono::steady_clock::now () < deadline) {
+                    if (!try_send_once (
+                          state, phase, &count, lat_out ? &latency : NULL))
+                        return false;
+                    progress = true;
+                }
             }
             ++index;
 
@@ -295,15 +335,8 @@ class dealer_dealer_client_bench_t
                 wait_ms = 1;
 
             _poll_events =
-              _poller.wait_all (0, std::chrono::milliseconds (wait_ms));
-        const int poll_rc = static_cast<int> (_poll_events.size ());
-            if (poll_rc < 0) {
-                if (errno == EINTR || errno == EAGAIN)
-                    continue;
-                debug_log ("poller wait failed errno=" + std::to_string (errno));
-                return false;
-            }
-            if (poll_rc == 0)
+                  _poller.wait_all (0, std::chrono::milliseconds (wait_ms));
+            if (_poll_events.empty ())
                 continue;
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
@@ -315,8 +348,12 @@ class dealer_dealer_client_bench_t
                     || !(static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollout))) {
                     continue;
                 }
-                if (!try_send_once (*state, phase, &count, &latency))
-                    return false;
+                do {
+                    if (!try_send_once (
+                          *state, phase, &count, lat_out ? &latency : NULL))
+                        return false;
+                } while (!state->pending
+                         && std::chrono::steady_clock::now () < deadline);
             }
         }
 
@@ -325,6 +362,10 @@ class dealer_dealer_client_bench_t
         if (lat_out)
             *lat_out = latency.snapshot ();
         return true;
+        }
+        catch (const zlink::zlink_error_t &) {
+            return false;
+        }
     }
 
     void send_stop_token_once ()
@@ -337,11 +378,25 @@ class dealer_dealer_client_bench_t
         zlink::message_t stop_part = zlink::message_t::from_bytes (stop, stop_len);
         if (!stop_part.valid ())
             return;
-        (void) _socket_states[0].sock->send (stop_part,
-                                             ZLINK_DONTWAIT);
+        (void) _socket_states[0].sock->send (
+          stop_part, zlink::send_flags_t::dontwait);
     }
 
   private:
+    void apply_dealer_socket_options (zlink::dealer_socket_t &socket)
+    {
+        zlink::dealer_socket_options_t options = socket.options ();
+        if (perf::multi::manual_socket_overrides_enabled ()) {
+            options.send_hwm (
+              zlink::message_count_t::value (_settings.sndhwm > 0 ? _settings.sndhwm : 1));
+            options.recv_hwm (
+              zlink::message_count_t::value (_settings.rcvhwm > 0 ? _settings.rcvhwm : 1));
+        }
+        options.send_timeout (std::chrono::milliseconds (_settings.sndtimeo_ms));
+        options.recv_timeout (std::chrono::milliseconds (_settings.rcvtimeo_ms));
+        options.linger (std::chrono::milliseconds (0));
+    }
+
     const std::string _transport;
     const std::string _lib_name;
     const size_t _msg_size;
@@ -349,13 +404,12 @@ class dealer_dealer_client_bench_t
     const perf::multi::multi_bench_settings_t _settings;
 
     perf::multi::ctx_guard_t _ctx;
-    std::vector<std::unique_ptr<perf::multi::socket_guard_t> > _holders;
+    std::vector<std::unique_ptr<zlink::dealer_socket_t> > _holders;
     std::vector<perf::multi::connect_monitor_t> _monitors;
     std::vector<socket_state_t> _socket_states;
     zlink::poller_t _poller;
     std::vector<zlink::poll_event_t> _poll_events;
 
-    std::vector<char> _payload;
     const uint32_t _run_id;
     uint64_t _seq;
 

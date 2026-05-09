@@ -213,7 +213,7 @@ int socket_discovery_attachment_t::on_public_close () const
 }
 
 void socket_discovery_attachment_t::on_service_update (
-  const std::string &service_name_)
+  const std::string &channel_name_)
 {
     discovery_t *discovery = NULL;
     uint16_t local_role = discovery_protocol::service_role_invalid;
@@ -221,7 +221,7 @@ void socket_discovery_attachment_t::on_service_update (
     bool shutdown_requested = false;
     {
         scoped_lock_t lock (_sync);
-        if (!_discovery || _discovery->channel_name () != service_name_)
+        if (!_discovery || _discovery->channel_name () != channel_name_)
             return;
         discovery = _discovery;
         local_role = _local_role;

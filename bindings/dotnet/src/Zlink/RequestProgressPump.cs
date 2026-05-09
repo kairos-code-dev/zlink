@@ -78,7 +78,7 @@ internal static class RequestProgressPump
                     {
                     }
 
-                    await Task.Delay(1).ConfigureAwait(false);
+                    await Task.Yield();
                 }
 
                 try

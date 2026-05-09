@@ -292,6 +292,7 @@ pub enum zlink_router_option_t {
     ZLINK_ROUTER_OPT_MANDATORY = 0x3101,
     ZLINK_ROUTER_OPT_PROBE = 0x3103,
     ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID = 0x3104,
+    ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS = 0x3105,
     ZLINK_ROUTER_OPT_WEIGHT = 0x3106,
 }
 
@@ -299,6 +300,7 @@ pub enum zlink_router_option_t {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum zlink_dealer_option_t {
     ZLINK_DEALER_OPT_PROBE = 0x3201,
+    ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS = 0x3202,
     ZLINK_DEALER_OPT_WEIGHT = 0x3203,
 }
 
@@ -492,7 +494,7 @@ pub enum zlink_spot_service_attachment_role_t {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct zlink_spot_service_attachment_stats_t {
-    pub service_name: [c_char; 256],
+    pub channel_name: [c_char; 256],
     pub router_count: u32,
     pub pub_count: u32,
     pub sub_count: u32,
@@ -663,7 +665,7 @@ pub enum zlink_spot_node_state_t {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct zlink_spot_node_status_t {
-    pub service_name: [c_char; 256],
+    pub channel_name: [c_char; 256],
     pub local_endpoint: [c_char; 256],
     pub node_routing_id: zlink_routing_id_t,
     pub state: zlink_spot_node_state_t,
@@ -697,7 +699,7 @@ pub enum zlink_spot_peer_state_t {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct zlink_spot_node_peer_entry_t {
-    pub service_name: [c_char; 256],
+    pub channel_name: [c_char; 256],
     pub local_endpoint: [c_char; 256],
     pub peer_endpoint: [c_char; 256],
     pub source: zlink_spot_peer_source_t,
@@ -1388,10 +1390,7 @@ unsafe extern "C" {
         value: *mut c_void,
         value_size: *mut usize,
     ) -> c_int;
-    pub fn zlink_spot_node_entry_spot(
-        node: *mut c_void,
-        spot_out: *mut *mut c_void,
-    ) -> c_int;
+    pub fn zlink_spot_node_entry_spot(node: *mut c_void, spot_out: *mut *mut c_void) -> c_int;
     pub fn zlink_spot_node_spot_lookup(
         node: *mut c_void,
         spot_rid: *const zlink_routing_id_t,
@@ -1459,7 +1458,6 @@ unsafe extern "C" {
     -> c_int;
     pub fn zlink_spot_publish_part(
         spot: *mut c_void,
-        service_name: *const c_char,
         topic_id: *const c_char,
         part: *mut zlink_msg_t,
         flags: zlink_send_flags_t,
@@ -1468,9 +1466,6 @@ unsafe extern "C" {
     pub fn zlink_spot_subscribe_part(
         spot: *mut c_void,
         source_rid_out: *mut *const zlink_routing_id_t,
-        service_name_out: *mut c_char,
-        service_name_capacity: usize,
-        service_name_len_out: *mut usize,
         topic_id_out: *mut c_char,
         topic_id_capacity: usize,
         topic_id_len_out: *mut usize,

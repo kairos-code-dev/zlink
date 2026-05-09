@@ -86,10 +86,9 @@ stay focused on signatures.
   `attach_pub_ingress(...)`.
 - `Spot` must expose channel-aware data-plane operation builders:
   `send_channel(...)`, `send_to_spot(...)`, `request_channel(...)`, and
-  `publish(service_name, topic)`.
-- `Spot::subscribe(...)` returns a service-aware `TopicMessage`.
-  `TopicMessage` therefore needs `service_name: Option<String>`, populated for
-  SPOT subscribe results and `None` for raw `SUB` / `XSUB`.
+  `publish(topic)`.
+- `Spot::subscribe(...)` returns a `TopicMessage`.
+  `TopicMessage` exposes topic, parts, and optional routing id.
 - `Spot` must not expose `on_subscribe(...)`. Use `on_dispatch_event(...)`
   plus `subscribe(...)` / routed recv / timer recv.
 - `SpotDispatchEvent::SubscribeReadable` and `::RoutedReadable` are readiness
@@ -732,22 +731,80 @@ pub enum RidDuplicatePolicy {
 }
 
 impl<'a, S> CommonSocketOptions<'a, S> {
+    pub fn linger(&self) -> Result<Duration, ConfigError>;
+    pub fn set_linger(&self, value: Duration) -> Result<(), ConfigError>;
+    pub fn send_hwm(&self) -> Result<i32, ConfigError>;
+    pub fn set_send_hwm(&self, value: i32) -> Result<(), ConfigError>;
+    pub fn recv_hwm(&self) -> Result<i32, ConfigError>;
+    pub fn set_recv_hwm(&self, value: i32) -> Result<(), ConfigError>;
+    pub fn send_timeout(&self) -> Result<Duration, ConfigError>;
+    pub fn set_send_timeout(&self, value: Duration) -> Result<(), ConfigError>;
+    pub fn recv_timeout(&self) -> Result<Duration, ConfigError>;
+    pub fn set_recv_timeout(&self, value: Duration) -> Result<(), ConfigError>;
+    pub fn immediate(&self) -> Result<bool, ConfigError>;
+    pub fn set_immediate(&self, value: bool) -> Result<(), ConfigError>;
     pub fn rid_duplicate_policy(&self) -> Result<RidDuplicatePolicy, ConfigError>;
     pub fn set_rid_duplicate_policy(&self, value: RidDuplicatePolicy)
         -> Result<(), ConfigError>;
     pub fn auto_hwm_msg_unit_bytes(&self) -> Result<i32, ConfigError>;
     pub fn set_auto_hwm_msg_unit_bytes(&self, value: i32)
         -> Result<(), ConfigError>;
+    pub fn connect_timeout(&self) -> Result<Duration, ConfigError>;
+    pub fn set_connect_timeout(&self, value: Duration) -> Result<(), ConfigError>;
+    pub fn ipv6(&self) -> Result<bool, ConfigError>;
+    pub fn set_ipv6(&self, value: bool) -> Result<(), ConfigError>;
+    pub fn tcp_nodelay(&self) -> Result<bool, ConfigError>;
+    pub fn set_tcp_nodelay(&self, value: bool) -> Result<(), ConfigError>;
+    pub fn tcp_keepalive(&self) -> Result<bool, ConfigError>;
+    pub fn set_tcp_keepalive(&self, value: bool) -> Result<(), ConfigError>;
+    pub fn heartbeat_interval(&self) -> Result<Duration, ConfigError>;
+    pub fn set_heartbeat_interval(&self, value: Duration)
+        -> Result<(), ConfigError>;
+    pub fn heartbeat_ttl(&self) -> Result<Duration, ConfigError>;
+    pub fn set_heartbeat_ttl(&self, value: Duration) -> Result<(), ConfigError>;
+    pub fn heartbeat_timeout(&self) -> Result<Duration, ConfigError>;
+    pub fn set_heartbeat_timeout(&self, value: Duration)
+        -> Result<(), ConfigError>;
+    pub fn max_msg_size(&self) -> Result<i64, ConfigError>;
+    pub fn set_max_msg_size(&self, value: i64) -> Result<(), ConfigError>;
+    pub fn backlog(&self) -> Result<i32, ConfigError>;
+    pub fn set_backlog(&self, value: i32) -> Result<(), ConfigError>;
+    pub fn reconnect_interval(&self) -> Result<Duration, ConfigError>;
+    pub fn set_reconnect_interval(&self, value: Duration)
+        -> Result<(), ConfigError>;
+    pub fn reconnect_interval_max(&self) -> Result<Duration, ConfigError>;
+    pub fn set_reconnect_interval_max(&self, value: Duration)
+        -> Result<(), ConfigError>;
 }
 
 impl<'a> DealerSocketOptions<'a> {
     pub fn weight(&self) -> Result<u32, ConfigError>;
     pub fn set_weight(&self, value: u32) -> Result<(), ConfigError>;
+    pub fn set_request_timeout(&self, value: Duration) -> Result<(), ConfigError>;
 }
 
 impl<'a> RouterSocketOptions<'a> {
     pub fn weight(&self) -> Result<u32, ConfigError>;
     pub fn set_weight(&self, value: u32) -> Result<(), ConfigError>;
+    pub fn request_timeout(&self) -> Result<Duration, ConfigError>;
+    pub fn set_request_timeout(&self, value: Duration) -> Result<(), ConfigError>;
+}
+
+impl<'a, S> PubSocketOptions<'a, S> {
+    pub fn set_verbose(&self, value: bool) -> Result<(), ConfigError>;
+    pub fn set_verboser(&self, value: bool) -> Result<(), ConfigError>;
+    pub fn set_nodrop(&self, value: bool) -> Result<(), ConfigError>;
+    pub fn set_manual(&self, value: bool) -> Result<(), ConfigError>;
+    pub fn manual_last_value(&self) -> Result<bool, ConfigError>;
+    pub fn set_manual_last_value(&self, value: bool) -> Result<(), ConfigError>;
+    pub fn welcome_message(&self) -> Result<Message, ConfigError>;
+    pub fn set_welcome_message(&self, message: &Message)
+        -> Result<(), ConfigError>;
+    pub fn approve_subscribe(&self, routing_id: &RoutingId)
+        -> Result<(), ConfigError>;
+    pub fn reject_subscribe(&self, routing_id: &RoutingId)
+        -> Result<(), ConfigError>;
+    pub fn topics_count(&self) -> Result<i32, ConfigError>;
 }
 ```
 
@@ -878,7 +935,6 @@ for deterministic cleanup.
 ```rust
 pub struct TopicMessage {
     pub routing_id: Option<RoutingId>,   // None when transport carries no source id
-    pub service_name: Option<String>,    // Spot subscribe only; None for raw SUB / XSUB
     pub topic: String,                   // UTF-8
     pub parts: Vec<Message>,
 }
@@ -904,7 +960,6 @@ lifecycle. `topic` is UTF-8 `String` (never raw bytes).
 ```rust
 pub struct SubscriptionEvent {
     pub routing_id: Option<RoutingId>,   // None when transport carries no source id
-    pub service_name: Option<String>,    // Spot subscription event only; None for XPub
     pub topic: String,                   // UTF-8 subscribe/unsubscribe topic
     pub subscribed: bool,                // true = subscribe, false = unsubscribe
 }
@@ -1723,7 +1778,7 @@ impl ReplyOp<Ready> {
 impl Spot {
     // Spot::new(&node) is internal. Public code obtains Spot handles through
     // SpotNode factories.
-    pub fn publish(&self, service_name: &str, topic: &str) -> SendOp<Empty>;
+    pub fn publish(&self, topic: &str) -> SendOp<Empty>;
     pub fn send_channel(&self, channel_name: &str) -> SendOp<Empty>;
     pub fn send_to_spot(&self, dest_node_rid: RoutingId,
         dest_spot_rid: RoutingId) -> SendOp<Empty>;

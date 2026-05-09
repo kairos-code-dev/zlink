@@ -23,7 +23,6 @@ use super::{
     prepare_send_parts, submit_part_sequence,
 };
 
-const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 type RequestCallback = Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>;
 
 struct BlockingRequestState {
@@ -102,7 +101,7 @@ impl DealerSocket {
             dealer_blocking_request_callback,
             state_ptr.cast(),
             SendFlags::NONE,
-            timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT),
+            timeout.unwrap_or(Duration::ZERO),
         );
         if let Err(err) = submit_result {
             unsafe {
@@ -150,7 +149,7 @@ impl DealerSocket {
             native_parts,
             _progress: RequestProgressGuard::attach_socket(self.inner.handle),
         });
-        let timeout_ms = timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT));
+        let timeout_ms = timeout_to_ms(timeout.unwrap_or(Duration::ZERO));
         let userdata = (&mut *state as *mut CallbackRequestState).cast();
         let rc = submit_part_sequence(
             state.native_parts.as_mut_slice(),
@@ -252,6 +251,18 @@ impl DealerSocket {
         Ok(())
     }
 
+    pub(crate) fn set_request_timeout(&self, value: Duration) -> Result<(), ConfigError> {
+        let millis = timeout_to_ms(value).min(i32::MAX as u32) as i32;
+        check_config_rc(unsafe {
+            ffi::zlink_set_dealer_option(
+                self.inner.handle,
+                ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS,
+                &millis as *const i32 as *const c_void,
+                std::mem::size_of::<i32>(),
+            )
+        })
+    }
+
     fn request_callback_with_flags<F>(
         &self,
         parts: &[&[u8]],
@@ -273,7 +284,7 @@ impl DealerSocket {
             native_parts,
             _progress: RequestProgressGuard::attach_socket(self.inner.handle),
         });
-        let timeout_ms = timeout_to_ms(timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT));
+        let timeout_ms = timeout_to_ms(timeout.unwrap_or(Duration::ZERO));
         let userdata = (&mut *state as *mut CallbackRequestState).cast();
         let rc = submit_part_sequence(
             state.native_parts.as_mut_slice(),

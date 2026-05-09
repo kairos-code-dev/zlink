@@ -30,7 +30,7 @@
 namespace {
 
 static const char *k_pattern = "MULTI_SPOT";
-static const char *k_service_name = "perf-spot";
+static const char *k_channel_name = "perf-spot";
 static const char *k_topic = "bench";
 static const size_t k_topic_len = sizeof("bench") - 1;
 static const char *k_control_ready_prefix = "CLIENT_CONTROL_ENDPOINT,";
@@ -716,15 +716,11 @@ bool recv_one_spot_message(spot_client_slot_t *slot, int flags, bool *received)
     size_t part_count = 0;
     char topic[256];
     size_t topic_len = sizeof(topic) - 1;
-    char service_name[256];
-    size_t service_name_len = sizeof(service_name) - 1;
     const int rc = zlink_spot_subscribe(
       slot->handle,
       NULL,
       &parts,
       &part_count,
-      service_name,
-      &service_name_len,
       topic,
       &topic_len,
       static_cast<zlink_recv_flags_t>(flags));
@@ -893,8 +889,6 @@ bool create_control_spot(ctx_guard_t &ctx,
             zlink_spot_node_destroy(&state->control_node);
         return false;
     }
-    apply_benchmark_auto_hwm_msg_unit(
-      state->control_node, ZLINK_SOCKET_DEALER, max_msg_size);
     if (!apply_benchmark_spot_node_hwm(
           state->control_node, settings.hwm, true, true)) {
         zlink_spot_node_destroy(&state->control_node);
@@ -996,8 +990,6 @@ bool create_spot_slots(ctx_guard_t &ctx,
                 zlink_spot_node_destroy(&state->data_node);
             return false;
         }
-        apply_benchmark_auto_hwm_msg_unit(
-          state->data_node, ZLINK_SOCKET_DEALER, max_msg_size);
         if (!apply_benchmark_spot_node_hwm(
               state->data_node, settings.hwm, true, true)) {
             g_last_spot_slot_failure =

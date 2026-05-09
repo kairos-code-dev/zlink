@@ -97,8 +97,7 @@ fn main() {
                 assert_eq!(payload, "hello-spot");
                 println!(
                     "[spot/recv] service: \"{SERVICE_NAME}\" tick: 1 publish: \"{TOPIC}/hello-spot\" -> recv: \"{}/{}\"",
-                    message.topic,
-                    payload
+                    message.topic, payload
                 );
                 return;
             }

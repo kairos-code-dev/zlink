@@ -11,6 +11,7 @@ namespace zlink
 {
 
 class message_t;
+class stream_socket_t;
 
 namespace advanced
 {
@@ -98,16 +99,9 @@ class message_t
         if (!other._valid)
             return;
 
-        if (zlink_msg_init (&_msg) != 0)
-            return;
-
-        if (zlink_msg_move (&_msg, &other._msg) == 0) {
-            _valid = true;
-            other._valid = false;
-            return;
-        }
-
-        zlink_msg_close (&_msg);
+        _msg = other._msg;
+        _valid = true;
+        other._valid = false;
     }
 
     message_t &operator= (message_t &&other) noexcept
@@ -119,16 +113,9 @@ class message_t
         if (!other._valid)
             return *this;
 
-        if (zlink_msg_init (&_msg) != 0)
-            return *this;
-
-        if (zlink_msg_move (&_msg, &other._msg) == 0) {
-            _valid = true;
-            other._valid = false;
-            return *this;
-        }
-
-        zlink_msg_close (&_msg);
+        _msg = other._msg;
+        _valid = true;
+        other._valid = false;
         return *this;
     }
 
@@ -277,7 +264,14 @@ class message_t
     }
 
   private:
+    struct no_init_t
+    {
+    };
+
+    explicit message_t (no_init_t) noexcept : _valid (false) {}
+
     friend class advanced::external_message_t;
+    friend class stream_socket_t;
     friend zlink_msg_t *detail::native_handle (message_t &message_) noexcept;
     friend const zlink_msg_t *
     detail::native_handle (const message_t &message_) noexcept;
@@ -301,7 +295,7 @@ class message_t
                    zlink_free_fn *ffn_ = NULL,
                    void *hint_ = NULL)
     {
-        message_t msg;
+        message_t msg {no_init_t ()};
         (void) msg.init (data_, size_, ffn_, hint_);
         return msg;
     }
@@ -339,15 +333,10 @@ class message_t
             return;
 
         close_noexcept ();
-        if (zlink_msg_init (&_msg) != 0)
+        _msg = *src_;
+        if (zlink_msg_init (src_) != 0)
             return;
-
-        if (zlink_msg_move (&_msg, src_) == 0) {
-            _valid = true;
-            return;
-        }
-
-        zlink_msg_close (&_msg);
+        _valid = true;
     }
 
     /**
@@ -359,15 +348,9 @@ class message_t
     {
         if (!dest_ || !_valid)
             return;
-        if (zlink_msg_init (dest_) != 0)
-            return;
 
-        if (zlink_msg_move (dest_, &_msg) == 0) {
-            _valid = false;
-            return;
-        }
-
-        zlink_msg_close (dest_);
+        *dest_ = _msg;
+        _valid = false;
     }
 
     /**

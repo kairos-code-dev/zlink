@@ -2,6 +2,8 @@
 
 #include "support.hpp"
 
+#include <climits>
+#include <cstring>
 #include <optional>
 #include <type_traits>
 
@@ -244,11 +246,65 @@ void test_pair_send_recv_multipart ()
     assert (inbound->parts ()[1].to_string () == "two");
 }
 
+void test_pair_ipc_large_message_shutdown ()
+{
+    zlink::context_t ctx;
+    zlink::pair_socket_t left (ctx);
+    zlink::pair_socket_t right (ctx);
+    zlink::monitor_handle_t left_monitor = left.monitor_handle ();
+    zlink::monitor_handle_t right_monitor = right.monitor_handle ();
+
+    const std::string endpoint =
+      zlink_cpp_contract::unique_ipc ("pair-large-shutdown");
+    left.bind (endpoint);
+    right.connect (endpoint);
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      left_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      right_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+
+    const size_t payload_size = 262144;
+    zlink::message_t outbound (payload_size);
+    assert (outbound.valid ());
+    std::memset (outbound.data (), 0x5a, payload_size);
+    right.send (outbound);
+
+    const std::optional<zlink::received_t> inbound = left.recv ();
+    assert (inbound.has_value ());
+    assert (inbound->parts ().size () == 1);
+    assert (inbound->parts ()[0].size () == payload_size);
+}
+
+void test_common_auto_hwm_msg_unit_option_contract ()
+{
+    zlink::context_t ctx;
+    zlink::stream_socket_t socket (ctx);
+    zlink::stream_socket_options_t options = socket.options ();
+
+    options.auto_hwm_msg_unit_bytes (zlink::byte_size_t::bytes (64));
+    assert (options.auto_hwm_msg_unit_bytes ().bytes () == 64);
+
+    bool rejected = false;
+    try {
+        options.auto_hwm_msg_unit_bytes (
+          zlink::byte_size_t::bytes (
+            static_cast<int64_t> (INT_MAX) + 1));
+    }
+    catch (const zlink::config_error_t &err) {
+        rejected = err.internal_errno () == EINVAL;
+    }
+    assert (rejected);
+}
+
 } // namespace
 
 int main ()
 {
+    test_common_auto_hwm_msg_unit_option_contract ();
     test_pair_send_recv_single_part ();
     test_pair_send_recv_multipart ();
+    test_pair_ipc_large_message_shutdown ();
     return 0;
 }

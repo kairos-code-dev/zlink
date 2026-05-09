@@ -537,15 +537,13 @@ public final class Native {
     private static final MethodHandle MH_SPOT_PUBLISH_PART = downcall(
       "zlink_spot_publish_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+        ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_SUBSCRIBE_PART = downcall(
       "zlink_spot_subscribe_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.JAVA_INT));
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_REQUEST_CHANNEL_PART = downcall(
       "zlink_spot_request_channel_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -3546,14 +3544,13 @@ public final class Native {
     }
 
     public static int spotPublishPart(MemorySegment spot,
-                                      MemorySegment serviceName,
                                       MemorySegment topicId,
                                       MemorySegment part,
                                       int flags,
                                       int partFlag) {
         try {
-            return (int) MH_SPOT_PUBLISH_PART.invokeExact(spot, serviceName,
-              topicId, part, flags, partFlag);
+            return (int) MH_SPOT_PUBLISH_PART.invokeExact(spot, topicId, part,
+              flags, partFlag);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_publish_part failed", t);
         }
@@ -3611,9 +3608,6 @@ public final class Native {
 
     public static int spotSubscribePart(MemorySegment spot,
                                         MemorySegment sourceRidOut,
-                                        MemorySegment serviceNameOut,
-                                        long serviceNameCapacity,
-                                        MemorySegment serviceNameLenOut,
                                         MemorySegment topicIdOut,
                                         long topicIdCapacity,
                                         MemorySegment topicIdLenOut,
@@ -3622,9 +3616,8 @@ public final class Native {
                                         int flags) {
         try {
             return (int) MH_SPOT_SUBSCRIBE_PART.invokeExact(spot,
-              sourceRidOut, serviceNameOut, serviceNameCapacity,
-              serviceNameLenOut, topicIdOut, topicIdCapacity, topicIdLenOut,
-              partOut, hasMoreOut, flags);
+              sourceRidOut, topicIdOut, topicIdCapacity, topicIdLenOut, partOut,
+              hasMoreOut, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_subscribe_part failed", t);
         }

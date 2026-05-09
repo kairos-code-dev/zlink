@@ -2,7 +2,7 @@
 
 package systems.zlink.service.spot;
 
-record SpotServiceAttachmentStats(String serviceName, int routerCount,
+record SpotServiceAttachmentStats(String channelName, int routerCount,
                                   int pubCount, int subCount,
                                   int autoRouterCount,
                                   int autoPubCount, int autoSubCount) {

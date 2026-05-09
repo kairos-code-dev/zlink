@@ -808,7 +808,6 @@ static int router_reply_spot_parts(void *router,
 }
 
 static int spot_publish_parts(void *spot,
-                              const char *service_name,
                               const char *topic,
                               zlink_msg_t *parts,
                               size_t part_count,
@@ -823,7 +822,7 @@ static int spot_publish_parts(void *spot,
         zlink_part_flag_t part_flag =
           (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
         int rc = zlink_spot_publish_part(
-          spot, service_name, topic, &parts[i], flags, part_flag);
+          spot, topic, &parts[i], flags, part_flag);
         if (rc != ZLINK_SUBMIT_OK) {
             for (size_t j = i + 1u; j < part_count; ++j)
                 zlink_msg_close(&parts[j]);
@@ -964,9 +963,6 @@ static int spot_request_router_parts(void *spot,
 
 static int spot_subscribe_recv_parts(void *spot,
                                      zlink_routing_id_t *source_rid,
-                                     char *service_name,
-                                     size_t service_name_capacity,
-                                     size_t *service_name_len,
                                      char *topic,
                                      size_t topic_capacity,
                                      size_t *topic_len,
@@ -986,9 +982,6 @@ static int spot_subscribe_recv_parts(void *spot,
     int rc = zlink_spot_subscribe_part(
       spot,
       &source_rid_ptr,
-      service_name,
-      service_name_capacity,
-      service_name_len,
       topic,
       topic_capacity,
       topic_len,
@@ -3069,7 +3062,7 @@ napi_value spot_node_status_snapshot(napi_env env, napi_callback_info info)
 
     napi_value obj;
     napi_create_object(env, &obj);
-    set_string_property(env, obj, "serviceName", status.service_name);
+    set_string_property(env, obj, "channelName", status.channel_name);
     set_string_property(env, obj, "localEndpoint", status.local_endpoint);
     napi_value rid = create_routing_id_value(env, status.node_routing_id);
     napi_set_named_property(env, obj, "nodeRoutingId", rid);
@@ -3113,7 +3106,7 @@ napi_value spot_node_peers_snapshot(napi_env env, napi_callback_info info)
     for (size_t i = 0; i < count; ++i) {
         napi_value obj;
         napi_create_object(env, &obj);
-        set_string_property(env, obj, "serviceName", entries[i].service_name);
+        set_string_property(env, obj, "channelName", entries[i].channel_name);
         set_string_property(env, obj, "localEndpoint", entries[i].local_endpoint);
         set_string_property(env, obj, "peerEndpoint", entries[i].peer_endpoint);
         set_uint32_property(env, obj, "source", static_cast<uint32_t>(entries[i].source));
@@ -3158,7 +3151,7 @@ napi_value spot_node_peers_query(napi_env env, napi_callback_info info)
     for (size_t i = 0; i < count; ++i) {
         napi_value obj;
         napi_create_object(env, &obj);
-        set_string_property(env, obj, "serviceName", entries[i].service_name);
+        set_string_property(env, obj, "channelName", entries[i].channel_name);
         set_string_property(env, obj, "localEndpoint", entries[i].local_endpoint);
         set_string_property(env, obj, "peerEndpoint", entries[i].peer_endpoint);
         set_uint32_property(env, obj, "source", static_cast<uint32_t>(entries[i].source));
@@ -3894,23 +3887,22 @@ napi_value spot_destroy(napi_env env, napi_callback_info info)
 
 napi_value spot_publish(napi_env env, napi_callback_info info)
 {
-    napi_value argv[5];
-    size_t argc = 5;
+    napi_value argv[4];
+    size_t argc = 4;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
-    std::string service_name = get_string(env, argv[1]);
-    std::string topic = get_string(env, argv[2]);
+    std::string topic = get_string(env, argv[1]);
     int32_t flags = 0;
-    napi_get_value_int32(env, argv[4], &flags);
+    napi_get_value_int32(env, argv[3], &flags);
 
     bool is_buffer = false;
-    napi_is_buffer(env, argv[3], &is_buffer);
+    napi_is_buffer(env, argv[2], &is_buffer);
     std::vector<zlink_msg_t> parts;
     if (is_buffer) {
         void *data = NULL;
         size_t len = 0;
-        if (napi_get_buffer_info(env, argv[3], &data, &len) != napi_ok) {
+        if (napi_get_buffer_info(env, argv[2], &data, &len) != napi_ok) {
             napi_throw_type_error(env, NULL, "payload must be Buffer");
             return NULL;
         }
@@ -3920,12 +3912,11 @@ napi_value spot_publish(napi_env env, napi_callback_info info)
         if (len > 0)
             memcpy(zlink_msg_data(&parts[0]), data, len);
     } else {
-        if (!build_msg_vector(env, argv[3], &parts))
+        if (!build_msg_vector(env, argv[2], &parts))
             return NULL;
     }
 
     int rc = spot_publish_parts(spot,
-                                service_name.c_str(),
                                 topic.c_str(),
                                 parts.data(),
                                 parts.size(),
@@ -3941,21 +3932,20 @@ napi_value spot_publish(napi_env env, napi_callback_info info)
 
 napi_value spot_try_publish(napi_env env, napi_callback_info info)
 {
-    napi_value argv[4];
-    size_t argc = 4;
+    napi_value argv[3];
+    size_t argc = 3;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
-    std::string service_name = get_string(env, argv[1]);
-    std::string topic = get_string(env, argv[2]);
+    std::string topic = get_string(env, argv[1]);
 
     bool is_buffer = false;
-    napi_is_buffer(env, argv[3], &is_buffer);
+    napi_is_buffer(env, argv[2], &is_buffer);
     std::vector<zlink_msg_t> parts;
     if (is_buffer) {
         void *data = NULL;
         size_t len = 0;
-        if (napi_get_buffer_info(env, argv[3], &data, &len) != napi_ok) {
+        if (napi_get_buffer_info(env, argv[2], &data, &len) != napi_ok) {
             napi_throw_type_error(env, NULL, "payload must be Buffer");
             return NULL;
         }
@@ -3965,12 +3955,12 @@ napi_value spot_try_publish(napi_env env, napi_callback_info info)
         if (len > 0)
             memcpy(zlink_msg_data(&parts[0]), data, len);
     } else {
-        if (!build_msg_vector(env, argv[3], &parts))
+        if (!build_msg_vector(env, argv[2], &parts))
             return NULL;
     }
 
     int rc = spot_publish_parts(
-      spot, service_name.c_str(), topic.c_str(), parts.data(), parts.size(),
+      spot, topic.c_str(), parts.data(), parts.size(),
       ZLINK_SEND_FLAGS_DONTWAIT);
     if (rc == ZLINK_SUBMIT_OK) {
         rc = ZLINK_SUBMIT_OK;
@@ -4292,20 +4282,15 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
     int32_t flags = 0;
     if (argc >= 2)
         napi_get_value_int32(env, argv[1], &flags);
-    std::vector<char> service_name(256, '\0');
     std::vector<char> topic(256, '\0');
     zlink_routing_id_t routing_id;
     std::vector<zlink_msg_t> parts;
-    size_t service_name_len = service_name.size();
     size_t topic_len = topic.size();
 
     for (;;) {
         memset(&routing_id, 0, sizeof(routing_id));
         int rc = spot_subscribe_recv_parts(spot,
                                            &routing_id,
-                                           service_name.data(),
-                                           service_name.size(),
-                                           &service_name_len,
                                            topic.data(),
                                            topic.size(),
                                            &topic_len,
@@ -4326,10 +4311,6 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
             napi_value topic_value;
             napi_create_string_utf8(env, topic.data(), topic_len, &topic_value);
             napi_set_named_property(env, obj, "topic", topic_value);
-            napi_value service_name_value;
-            napi_create_string_utf8(
-              env, service_name.data(), service_name_len, &service_name_value);
-            napi_set_named_property(env, obj, "serviceName", service_name_value);
             napi_set_named_property(env, obj, "parts", arr);
             napi_value rid = create_routing_id_value(env, routing_id);
             napi_set_named_property(env, obj, "routingId", rid);
@@ -4337,7 +4318,6 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
         }
         if (zlink_errno() != EMSGSIZE)
             return throw_last_error(env, "spot_recv failed");
-        service_name.assign(service_name_len > 0 ? service_name_len : 1, '\0');
         topic.assign(topic_len > 0 ? topic_len : 1, '\0');
     }
 }
@@ -4350,20 +4330,15 @@ napi_value spot_try_recv(napi_env env, napi_callback_info info)
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
 
-    std::vector<char> service_name(256, '\0');
     std::vector<char> topic(256, '\0');
     zlink_routing_id_t routing_id;
     std::vector<zlink_msg_t> parts;
-    size_t service_name_len = service_name.size();
     size_t topic_len = topic.size();
 
     for (;;) {
         memset(&routing_id, 0, sizeof(routing_id));
         int rc = spot_subscribe_recv_parts(spot,
                                            &routing_id,
-                                           service_name.data(),
-                                           service_name.size(),
-                                           &service_name_len,
                                            topic.data(),
                                            topic.size(),
                                            &topic_len,
@@ -4384,10 +4359,6 @@ napi_value spot_try_recv(napi_env env, napi_callback_info info)
             napi_value topic_value;
             napi_create_string_utf8(env, topic.data(), topic_len, &topic_value);
             napi_set_named_property(env, obj, "topic", topic_value);
-            napi_value service_name_value;
-            napi_create_string_utf8(
-              env, service_name.data(), service_name_len, &service_name_value);
-            napi_set_named_property(env, obj, "serviceName", service_name_value);
             napi_set_named_property(env, obj, "parts", arr);
             napi_value rid = create_routing_id_value(env, routing_id);
             napi_set_named_property(env, obj, "routingId", rid);
@@ -4401,7 +4372,6 @@ napi_value spot_try_recv(napi_env env, napi_callback_info info)
         }
         if (err != EMSGSIZE)
             return throw_last_error(env, "spot_try_recv failed");
-        service_name.assign(service_name_len > 0 ? service_name_len : 1, '\0');
         topic.assign(topic_len > 0 ? topic_len : 1, '\0');
     }
 }
@@ -4419,15 +4389,12 @@ napi_value spot_subscription_event(napi_env env, napi_callback_info info)
 
     zlink_routing_id_t routing_id;
     int subscribed = 0;
-    std::vector<char> service_name(256, '\0');
     std::vector<char> topic(256, '\0');
-    size_t service_name_len = service_name.size();
     size_t topic_len = topic.size();
     memset(&routing_id, 0, sizeof(routing_id));
     (void) spot;
     (void) flags;
     subscribed = 0;
-    service_name_len = 0;
     topic_len = 0;
     errno = ENOTSUP;
     int rc = ZLINK_RECV_NOT_SUPPORTED;
@@ -4438,7 +4405,6 @@ napi_value spot_subscription_event(napi_env env, napi_callback_info info)
     napi_create_object(env, &obj);
     napi_value routing_id_value = create_routing_id_value(env, routing_id);
     napi_set_named_property(env, obj, "routingId", routing_id_value);
-    set_string_property(env, obj, "serviceName", service_name.data());
     set_string_property(env, obj, "topic", topic.data());
     napi_value subscribed_value;
     napi_get_boolean(env, subscribed != 0, &subscribed_value);
@@ -4456,14 +4422,11 @@ napi_value spot_try_subscription_event(napi_env env, napi_callback_info info)
 
     zlink_routing_id_t routing_id;
     int subscribed = 0;
-    std::vector<char> service_name(256, '\0');
     std::vector<char> topic(256, '\0');
-    size_t service_name_len = service_name.size();
     size_t topic_len = topic.size();
     memset(&routing_id, 0, sizeof(routing_id));
     (void) spot;
     subscribed = 0;
-    service_name_len = 0;
     topic_len = 0;
     errno = ENOTSUP;
     int rc = ZLINK_RECV_NOT_SUPPORTED;
@@ -4480,7 +4443,6 @@ napi_value spot_try_subscription_event(napi_env env, napi_callback_info info)
     napi_create_object(env, &obj);
     napi_value routing_id_value = create_routing_id_value(env, routing_id);
     napi_set_named_property(env, obj, "routingId", routing_id_value);
-    set_string_property(env, obj, "serviceName", service_name.data());
     set_string_property(env, obj, "topic", topic.data());
     napi_value subscribed_value;
     napi_get_boolean(env, subscribed != 0, &subscribed_value);

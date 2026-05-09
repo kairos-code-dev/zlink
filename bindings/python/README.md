@@ -69,7 +69,7 @@ Examples of policy-enforced capability boundaries:
   `attach_channel_dealer`, `attach_channel_dealer_manual`, and
   `attach_pub_ingress` on top of discovery and topology management.
 - `Spot` is a service-aware pub/sub and routed facade on top of `SpotNode`;
-  it exposes `publish(service_name, topic, ...)`, `send_channel`,
+  it exposes `publish(channel_name, topic, ...)`, `send_channel`,
   `request_channel`, `subscribe`, `receive_subscription_event`,
   `set_subscription`, `unset_subscription`, `on_send_ready`,
   `reply_to_spot`, `reply_to_router`, `recv_routed`,
@@ -110,7 +110,7 @@ Service and topology helpers are also surfaced as domain objects:
 - `RegistryTopologyFilter`
 - `RegistryServiceSummaryFilter`
 
-`TopicMessage` and `SubscriptionEvent` carry `service_name` for service-aware
+`TopicMessage` and `SubscriptionEvent` carry `channel_name` for service-aware
 SPOT flows. Raw `SUB` / `XSUB` results leave that field empty.
 
 ## Boundary Rules
@@ -119,7 +119,7 @@ The Python binding fail-fast validates values before the native call when the
 policy requires it:
 
 - endpoint, topic, and subscription strings/bytes reject embedded NUL
-- fixed-size `service_name` and endpoint inputs fail fast above 255 bytes
+- fixed-size `channel_name` and endpoint inputs fail fast above 255 bytes
 - `RoutingId` enforces the native 255-byte maximum
 - typed integer options fail on signed/unsigned overflow instead of truncating
 - send/receive convenience does not change the multipart-only contract

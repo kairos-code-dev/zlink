@@ -916,13 +916,11 @@ func (s *Spot) SetNoDrop(value bool) error {
 	return setNativePubBoolOption(s.raw(), s.core.closed, "spot is closed", C.ZLINK_PUB_OPT_NODROP, value)
 }
 
-func (s *Spot) Publish(serviceName, topic string) SendOp {
+func (s *Spot) Publish(topic string) SendOp {
 	return newSendBuilder(s, func(msg *Message, flags SendFlags) error {
-		return s.core.withCString(serviceName, func(serviceC *C.char) error {
-			return s.core.withCString(topic, func(topicC *C.char) error {
-				return submitMultipartFromClones([]*Message{msg}, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-					return submitErrorFromResult(C.zlink_spot_publish_part(s.raw(), serviceC, topicC, part, C.zlink_send_flags_t(flags), partFlag))
-				})
+		return s.core.withCString(topic, func(topicC *C.char) error {
+			return submitMultipartFromClones([]*Message{msg}, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+				return submitErrorFromResult(C.zlink_spot_publish_part(s.raw(), topicC, part, C.zlink_send_flags_t(flags), partFlag))
 			})
 		})
 	})
@@ -1101,8 +1099,8 @@ func (s *Spot) UnsetSubscription(filter string) error {
 }
 
 func (s *Spot) Subscribe(flags RecvFlags) (*TopicMessage, error) {
-	return recvSpotTopicMessage(func(rid **C.zlink_routing_id_t, serviceName *C.char, serviceNameLen *C.size_t, topic *C.char, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
-		return recvErrorFromResult(C.zlink_spot_subscribe_part(s.raw(), rid, serviceName, C.size_t(recvTopicBufferCap), serviceNameLen, topic, C.size_t(recvTopicBufferCap), topicLen, part, hasMore, recvFlags))
+	return recvSpotTopicMessage(func(rid **C.zlink_routing_id_t, topic *C.char, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+		return recvErrorFromResult(C.zlink_spot_subscribe_part(s.raw(), rid, topic, C.size_t(recvTopicBufferCap), topicLen, part, hasMore, recvFlags))
 	}, flags)
 }
 

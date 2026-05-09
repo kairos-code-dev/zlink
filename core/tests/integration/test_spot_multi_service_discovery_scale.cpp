@@ -60,18 +60,18 @@ void test_spot_multi_service_discovery_scale_and_churn ()
     std::vector<void *> consumer_discoveries;
     std::vector<void *> provider_discoveries;
     std::vector<void *> routers;
-    std::vector<std::string> service_names;
+    std::vector<std::string> channel_names;
 
     for (int service_index = 0; service_index < 3; ++service_index) {
-        char service_name[32];
-        snprintf (service_name, sizeof (service_name), "spot-scale-%d",
+        char channel_name[32];
+        snprintf (channel_name, sizeof (channel_name), "spot-scale-%d",
                   service_index);
-        service_names.push_back (service_name);
+        channel_names.push_back (channel_name);
 
         void *consumer_discovery =
-          zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, service_name);
+          zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, channel_name);
         void *provider_discovery =
-          zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, service_name);
+          zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, channel_name);
         TEST_ASSERT_NOT_NULL (consumer_discovery);
         TEST_ASSERT_NOT_NULL (provider_discovery);
         TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
@@ -108,21 +108,21 @@ void test_spot_multi_service_discovery_scale_and_churn ()
         }
     }
 
-    for (size_t service_index = 0; service_index < service_names.size ();
+    for (size_t service_index = 0; service_index < channel_names.size ();
          ++service_index) {
         TEST_ASSERT_TRUE (wait_for_service_summary_count_local (
           consumer_discoveries[service_index], service_role_router, 4, 5000));
         TEST_ASSERT_TRUE (wait_for_service_attachment_shape_local (
-          node, service_names[service_index].c_str (), 4, 0, 0, 5000));
+          node, channel_names[service_index].c_str (), 4, 0, 0, 5000));
     }
 
-    for (size_t service_index = 0; service_index < service_names.size ();
+    for (size_t service_index = 0; service_index < channel_names.size ();
          ++service_index) {
         std::vector<void *> service_routers;
         for (size_t router_index = 0; router_index < 4; ++router_index)
             service_routers.push_back (routers[service_index * 4 + router_index]);
         TEST_ASSERT_TRUE (wait_for_router_set_distribution_local (
-          spot, service_names[service_index].c_str (), service_routers, 5000));
+          spot, channel_names[service_index].c_str (), service_routers, 5000));
     }
 
     for (int round = 0; round < 3; ++round) {
@@ -143,12 +143,12 @@ void test_spot_multi_service_discovery_scale_and_churn ()
                 static_cast<zlink::discovery_t *> (provider_discoveries[service_index]), router_endpoint, &resolved_endpoint, NULL,
                 service_role_router));
             TEST_ASSERT_TRUE (wait_for_service_attachment_shape_local (
-              node, service_names[service_index].c_str (), 5, 0, 0, 5000));
+              node, channel_names[service_index].c_str (), 5, 0, 0, 5000));
             TEST_ASSERT_SUCCESS_ERRNO (
               zlink::discovery_owned_service::unregister_endpoint (
                 static_cast<zlink::discovery_t *> (provider_discoveries[service_index]), resolved_endpoint.c_str (), service_role_router));
             TEST_ASSERT_TRUE (wait_for_service_attachment_shape_local (
-              node, service_names[service_index].c_str (), 4, 0, 0, 5000));
+              node, channel_names[service_index].c_str (), 4, 0, 0, 5000));
         }
     }
 

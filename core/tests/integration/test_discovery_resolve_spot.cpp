@@ -189,12 +189,12 @@ bool wait_for_resolve_spot_errno_local (void *discovery_,
 
 bool wait_for_spot_owner_topology_entry_local (
   void *registry_,
-  const char *service_name_,
+  const char *channel_name_,
   const zlink_routing_id_t *spot_rid_,
   const char *expected_endpoint_,
   int timeout_ms_)
 {
-    if (!registry_ || !service_name_ || !spot_rid_ || !expected_endpoint_)
+    if (!registry_ || !channel_name_ || !spot_rid_ || !expected_endpoint_)
         return false;
 
     zlink_registry_topology_filter_t filter;
@@ -202,7 +202,7 @@ bool wait_for_spot_owner_topology_entry_local (
     filter.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
     filter.service_role = ZLINK_SERVICE_ROLE_SPOT;
     filter.auto_connect_type = ZLINK_AUTO_CONNECT_SPOT_MESH;
-    strncpy (filter.channel_name, service_name_,
+    strncpy (filter.channel_name, channel_name_,
              sizeof (filter.channel_name) - 1);
     filter.routing_id = *spot_rid_;
 
@@ -224,11 +224,11 @@ bool wait_for_spot_owner_topology_entry_local (
 
 bool wait_for_no_spot_owner_topology_entry_local (
   void *registry_,
-  const char *service_name_,
+  const char *channel_name_,
   const zlink_routing_id_t *spot_rid_,
   int timeout_ms_)
 {
-    if (!registry_ || !service_name_ || !spot_rid_)
+    if (!registry_ || !channel_name_ || !spot_rid_)
         return false;
 
     zlink_registry_topology_filter_t filter;
@@ -236,7 +236,7 @@ bool wait_for_no_spot_owner_topology_entry_local (
     filter.service_kind = ZLINK_SERVICE_KIND_SPOT_PUB;
     filter.service_role = ZLINK_SERVICE_ROLE_SPOT;
     filter.auto_connect_type = ZLINK_AUTO_CONNECT_SPOT_MESH;
-    strncpy (filter.channel_name, service_name_,
+    strncpy (filter.channel_name, channel_name_,
              sizeof (filter.channel_name) - 1);
     filter.routing_id = *spot_rid_;
 
@@ -325,7 +325,7 @@ void test_discovery_resolve_spot_returns_owner_node_rid ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_discovery_resolve_spot_is_scoped_by_service_name ()
+void test_discovery_resolve_spot_is_scoped_by_channel_name ()
 {
     if (!zlink_has ("tcp")) {
         TEST_IGNORE_MESSAGE ("TCP not available");
@@ -636,7 +636,7 @@ int main ()
 
     UNITY_BEGIN ();
     RUN_TEST (test_discovery_resolve_spot_returns_owner_node_rid);
-    RUN_TEST (test_discovery_resolve_spot_is_scoped_by_service_name);
+    RUN_TEST (test_discovery_resolve_spot_is_scoped_by_channel_name);
     RUN_TEST (test_discovery_resolve_spot_returns_enoent_after_owner_unregister);
     RUN_TEST (test_discovery_resolve_spot_handover_switches_owner);
     RUN_TEST (test_discovery_resolve_spot_default_owner_sync_off);

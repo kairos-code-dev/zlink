@@ -167,10 +167,8 @@ static void spot_internal_receiver_fanout_handler (
     }
 
     const std::string topic (topic_ ? topic_ : "", topic_len_);
-    const std::string service_name =
-      spot_node_access_t::summary_service_name (node);
     (void) node->fanout_local_publish (
-      service_name.c_str (), source_rid_, topic.c_str (), parts_, part_count_);
+      source_rid_, topic.c_str (), parts_, part_count_);
     zlink_multipart_close (parts_, part_count_);
 }
 

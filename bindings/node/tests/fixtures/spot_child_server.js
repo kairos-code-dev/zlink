@@ -3,7 +3,7 @@
 const zlink = require('../..');
 
 const TOPIC = 'spot:child';
-const SERVICE_NAME = 'spot-child-service';
+const CHANNEL_NAME = 'spot-child-service';
 
 function parseArgs(argv) {
   const options = { bindEndpoint: '', peerEndpoint: '' };
@@ -32,7 +32,7 @@ async function main() {
     const deadline = Date.now() + 5000;
     let sent = 0;
     while (Date.now() < deadline) {
-      spot.publish(SERVICE_NAME, TOPIC).message(Buffer.from('payload')).submit();
+      spot.publish(TOPIC).message(Buffer.from('payload')).submit();
       sent += 1;
       if (sent === 1) {
         console.log('PUBLISHED');

@@ -116,7 +116,7 @@ public final class InternalAccess {
           long.class, boolean.class, BiConsumer.class, Runnable.class);
     private static final MethodHandle TOPIC_MESSAGE =
         staticMethod("topicMessage", TopicMessage.class, RoutingId.class,
-          String.class, String.class, Message[].class);
+          String.class, Message[].class);
     private static final MethodHandle RECEIVED_FORCE_MATERIALIZE =
         staticMethod("receivedForceMaterialize", void.class, Received.class);
     private static final MethodHandle RECEIVED_TAKE_PARTS =
@@ -429,12 +429,11 @@ public final class InternalAccess {
     }
 
     public static TopicMessage topicMessage(RoutingId routingId,
-                                            String serviceName,
                                             String topicId,
                                             Message[] parts) {
         try {
             return (TopicMessage) TOPIC_MESSAGE.invokeExact(routingId,
-              serviceName, topicId, parts);
+              topicId, parts);
         } catch (Throwable t) {
             throw unchecked(t);
         }

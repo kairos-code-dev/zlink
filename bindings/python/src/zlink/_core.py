@@ -946,11 +946,8 @@ class TopicMessage:
         owner,
         routing_id=None,
         request_seq=None,
-        *,
-        service_name=None,
     ):
         self.topic = topic
-        self.service_name = service_name
         self._owner = owner
         self.parts = tuple(
             ReceivedMessage._from_owner(owner, index)
@@ -1009,9 +1006,8 @@ class Subscribed(TopicMessage):
 
 
 class SubscriptionEvent:
-    def __init__(self, topic, subscribed, routing_id=None, service_name=None):
+    def __init__(self, topic, subscribed, routing_id=None):
         self.routing_id = routing_id
-        self.service_name = service_name
         self.topic = topic
         self.subscribed = subscribed
 

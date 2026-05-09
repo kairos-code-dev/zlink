@@ -5,9 +5,9 @@ const readline = require('node:readline');
 const zlink = require('../../..');
 const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, subscribeNoWait, trySocketPublish, waitForConnectionReady } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'perf.control';
-const SERVICE_NAME = 'perf.spot';
+const CHANNEL_NAME = 'perf.spot';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii'));
 const TRACE = process.env.PERF_MULTI_SPOT_REQREP_TRACE === '1';
@@ -31,7 +31,8 @@ function closeQuietly(resource) {
     try {
         resource?.close();
     }
-    catch {
+    catch (err) {
+        console.error(`[multi-spot-reqrep-server] close failed: ${err}`);
     }
 }
 async function main() {
@@ -74,6 +75,9 @@ async function main() {
         })();
         applySocketPolicy(controlPub);
         applySocketPolicy(controlSub);
+        applyAutoHwmMsgUnit(controlPub, options.msgSize);
+        applyAutoHwmMsgUnit(controlSub, options.msgSize);
+        ctx.recalculateAutoHwm();
         controlPub.bind(options.controlEndpoint);
         controlSub.setSubscription(CONTROL_TOPIC);
         console.log(`READY,${options.endpoint}`);

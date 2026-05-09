@@ -20,7 +20,6 @@ int main ()
     assert (topic_spot.valid ());
     assert (timer.valid ());
 
-    const std::string service_name = detail::k_spot_service;
     const std::string topic = detail::k_spot_topic;
     const std::string publish_payload = detail::k_spot_payload;
     const std::string registry_pub = detail::unique_tcp ("spot-recv-reg-pub");
@@ -35,7 +34,7 @@ int main ()
     topic_spot.set_subscription (topic);
 
     zlink::message_t published = detail::make_message (publish_payload);
-    topic_spot.publish (service_name, topic).message (published).submit ();
+    topic_spot.publish (topic).message (published).submit ();
     std::optional<zlink::topic_message_t> inbound;
     const std::chrono::steady_clock::time_point subscribe_deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (5);
@@ -46,8 +45,6 @@ int main ()
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
     assert (inbound.has_value ());
-    assert (inbound->service_name ());
-    assert (*inbound->service_name () == service_name);
     assert (inbound->topic () == topic);
     assert (inbound->parts ().size () == 1);
     assert (inbound->parts ()[0].to_string () == publish_payload);
@@ -63,11 +60,11 @@ int main ()
       static_cast<unsigned long long> (*fire_count));
 
     std::printf (
-      "[spot/recv] service: \"%s\" tick: 1 publish: \"%s/%s\" -> recv: \"%s/%s\"\n",
-      service_name.c_str (), topic.c_str (), publish_payload.c_str (),
+      "[spot/recv] channel: \"%s\" tick: 1 publish: \"%s/%s\" -> recv: \"%s/%s\"\n",
+      detail::k_spot_service, topic.c_str (), publish_payload.c_str (),
       topic.c_str (), publish_payload.c_str ());
     std::printf (
-      "[spot/recv] service: \"%s\" tick: 1 timer: \"%s\" -> next-round\n",
-      service_name.c_str (), timer_tick);
+      "[spot/recv] channel: \"%s\" tick: 1 timer: \"%s\" -> next-round\n",
+      detail::k_spot_service, timer_tick);
     return 0;
 }

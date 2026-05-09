@@ -84,6 +84,21 @@ int resolve_single_socket_hwm (bool send_)
                  : parse_positive_env ("PERF_SINGLE_RCVHWM", base_hwm);
 }
 
+zlink::auto_hwm_profile resolve_single_ctx_auto_hwm_profile ()
+{
+    const char *value = std::getenv ("PERF_CTX_AUTO_HWM_PROFILE");
+    if (!value || !*value)
+        return zlink::auto_hwm_profile::balanced;
+    if (std::strcmp (value, "compact") == 0)
+        return zlink::auto_hwm_profile::compact;
+    if (std::strcmp (value, "low_latency") == 0
+        || std::strcmp (value, "low-latency") == 0)
+        return zlink::auto_hwm_profile::low_latency;
+    if (std::strcmp (value, "throughput") == 0)
+        return zlink::auto_hwm_profile::throughput;
+    return zlink::auto_hwm_profile::balanced;
+}
+
 bool single_manual_socket_overrides_enabled ()
 {
     return parse_positive_env ("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) > 0
@@ -100,6 +115,7 @@ void apply_ctx_options (zlink::context_t &ctx_)
 {
     zlink::context_options_t options = ctx_.options ();
     (void) options.auto_hwm_enabled (true);
+    (void) options.auto_hwm_profile (resolve_single_ctx_auto_hwm_profile ());
     const int io_threads = parse_positive_env ("PERF_IO_THREADS", 0);
     if (io_threads > 0)
         (void) options.io_threads (zlink::io_thread_count_t::value (io_threads));
@@ -132,6 +148,25 @@ void apply_single_hwm (perf_socket_t &socket_)
       socket_, zlink::compat::options::socket_options::sndhwm, sndhwm, "sndhwm");
     (void) set_sockopt_int (
       socket_, zlink::compat::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
+}
+
+bool apply_single_auto_hwm_msg_unit (perf_socket_t &socket_, size_t msg_size_)
+{
+    if (msg_size_ == 0)
+        return true;
+    return socket_.set_auto_hwm_msg_unit_bytes (msg_size_) == 0;
+}
+
+bool recalculate_single_auto_hwm (ctx_guard_t &ctx_)
+{
+    try {
+        ctx_.ctx ().recalculate_auto_hwm ();
+        return true;
+    }
+    catch (const zlink::config_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
 }
 
 void apply_single_benchmark_socket_options (perf_socket_t &socket_,
@@ -274,10 +309,10 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
     apply_single_hwm (bind_socket_);
     apply_single_hwm (connect_socket_);
 
-    zlink::monitor_handle_t bind_monitor = zlink::monitor_handle_t::open (
-      bind_socket_, zlink::monitor_event::connection_ready);
-    zlink::monitor_handle_t connect_monitor = zlink::monitor_handle_t::open (
-      connect_socket_, zlink::monitor_event::connection_ready);
+    zlink::monitor_handle_t bind_monitor =
+      bind_socket_.monitor_handle (zlink::monitor_event::connection_ready);
+    zlink::monitor_handle_t connect_monitor =
+      connect_socket_.monitor_handle (zlink::monitor_event::connection_ready);
     if (!bind_monitor.valid () || !connect_monitor.valid ())
         return false;
 

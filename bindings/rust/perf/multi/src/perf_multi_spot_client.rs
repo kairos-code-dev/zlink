@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use zlink::*;
 
-const SERVICE_NAME: &str = "perf-spot-svc";
+const CHANNEL_NAME: &str = "perf-spot-svc";
 const TOPIC: &str = "bench.topic";
 
 fn env_u64(name: &str, default: u64) -> u64 {
@@ -128,7 +128,7 @@ fn main() {
         .expect("client spot rid");
         common::apply_multi_spot_node_admission(&node, &settings);
         let discovery =
-            Discovery::new(&ctx, AutoConnectType::SpotMesh, SERVICE_NAME).expect("discovery");
+            Discovery::new(&ctx, AutoConnectType::SpotMesh, CHANNEL_NAME).expect("discovery");
         discovery
             .connect_registry(registry_router_endpoint)
             .expect("discovery connect");

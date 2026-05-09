@@ -15,8 +15,49 @@
 #include <string>
 #include <thread>
 
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 namespace perf {
 namespace multi {
+
+template<typename SubjectT>
+inline auto apply_spot_auto_hwm_msg_unit_impl (
+  SubjectT &subject_,
+  zlink::byte_size_t value_,
+  int) -> decltype (subject_.auto_hwm_msg_unit_bytes (value_), void ())
+{
+    subject_.auto_hwm_msg_unit_bytes (value_);
+}
+
+template<typename SubjectT>
+inline void apply_spot_auto_hwm_msg_unit_impl (
+  SubjectT &,
+  zlink::byte_size_t,
+  long)
+{
+}
+
+template<typename SubjectT>
+inline bool apply_spot_auto_hwm_msg_unit (SubjectT &subject_,
+                                          size_t msg_size_)
+{
+    if (msg_size_ == 0)
+        return true;
+    try {
+        apply_spot_auto_hwm_msg_unit_impl (
+          subject_,
+          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)), 0);
+        return true;
+    }
+    catch (const zlink::config_error_t &err) {
+        errno = err.internal_errno ();
+        return false;
+    }
+}
 
 template<typename SpotNode>
 inline bool apply_spot_node_admission_hwm (SpotNode &node_,
@@ -90,12 +131,11 @@ inline void stop_control_connect_gate (control_connect_gate_t *gate_)
 template<typename SpotHandle>
 inline zlink::send_result_t
 try_publish_nowait (SpotHandle &spot_,
-                    const std::string &service_name_,
                     const std::string &topic_,
                     zlink::message_t &outbound)
 {
     try {
-        return spot_.publish (service_name_, topic_)
+        return spot_.publish (topic_)
             .message (outbound)
             .flags (ZLINK_DONTWAIT)
             .submit ()
@@ -190,6 +230,20 @@ inline std::string make_transport_endpoint (const std::string &transport_,
     if (transport_ == "tls")
         return std::string ("tls://127.0.0.1:") + suffix;
     return std::string ("tcp://127.0.0.1:") + suffix;
+}
+
+inline int bench_process_id ()
+{
+#if defined(_WIN32)
+    return _getpid ();
+#else
+    return getpid ();
+#endif
+}
+
+inline int bench_port_base (int base_)
+{
+    return base_ + (bench_process_id () % 1000) * 8;
 }
 
 inline std::string normalize_spot_endpoint_host (const std::string &endpoint_)
@@ -339,7 +393,7 @@ inline bool wait_for_control_connect (control_connect_gate_t *gate_,
 
 template<typename SpotHandle, typename WaitFn>
 inline bool publish_control_message (SpotHandle &spot_,
-                                     const std::string &service_name_,
+                                     const std::string &channel_name_,
                                      const std::string &topic_,
                                      const std::string &payload_,
                                      int timeout_ms_,
@@ -357,7 +411,7 @@ inline bool publish_control_message (SpotHandle &spot_,
         }
 
         const zlink::send_result_t result =
-          try_publish_nowait (spot_, service_name_, topic_, outbound);
+          try_publish_nowait (spot_, topic_, outbound);
         if (result == zlink::send_result_t::sent)
             return true;
         if (result != zlink::send_result_t::backpressured
@@ -375,7 +429,7 @@ inline bool publish_control_message (SpotHandle &spot_,
 
 template<typename SpotHandle, typename ParseFn, typename IdleFn>
 inline bool wait_for_ready_counts (SpotHandle &spot_,
-                                   const std::string &service_name_,
+                                   const std::string &channel_name_,
                                    const std::string &topic_,
                                    size_t msg_size_,
                                    size_t expected_ready_count_,
@@ -400,10 +454,6 @@ inline bool wait_for_ready_counts (SpotHandle &spot_,
         }
 
         const zlink::topic_message_t &received = *maybe_received;
-        if (!service_name_.empty ()
-            && (!received.service_name ()
-                || *received.service_name () != service_name_))
-            continue;
         if (received.topic () != topic_ || received.parts ().size () != 1)
             continue;
 
@@ -431,9 +481,10 @@ inline bool initialize_client_control_session (
   zlink::context_t &ctx_,
   const std::string &transport_,
   const std::string &remote_control_endpoint_,
-  const std::string &service_name_,
+  const std::string &channel_name_,
   const std::string &control_topic_,
   const multi_bench_settings_t &settings_,
+  size_t msg_size_,
   std::unique_ptr<SpotNode> *control_node_out_,
   std::unique_ptr<zlink::service::discovery_t> *control_discovery_out_,
   std::unique_ptr<SpotHandle> *control_spot_out_,
@@ -441,7 +492,7 @@ inline bool initialize_client_control_session (
 {
     if (!control_node_out_ || !control_discovery_out_ || !control_spot_out_
         || !local_control_endpoint_out_ || remote_control_endpoint_.empty ()
-        || control_topic_.empty () || service_name_.empty ()) {
+        || control_topic_.empty () || channel_name_.empty ()) {
         errno = EINVAL;
         return false;
     }
@@ -452,12 +503,14 @@ inline bool initialize_client_control_session (
 
     std::unique_ptr<zlink::service::discovery_t> control_discovery (
       new zlink::service::discovery_t (
-        ctx_, zlink::auto_connect_type::spot_mesh, service_name_));
+        ctx_, zlink::auto_connect_type::spot_mesh, channel_name_));
     if (!control_discovery->valid ())
         return false;
     control_node->attach_discovery (*control_discovery);
 
     if (!configure_spot_control_tls (*control_node, transport_))
+        return false;
+    if (!apply_spot_auto_hwm_msg_unit (*control_node, msg_size_))
         return false;
 
     const int base_port =
@@ -481,6 +534,8 @@ inline bool initialize_client_control_session (
       new SpotHandle (control_node->create_spot ()));
     if (!control_spot->valid ())
         return false;
+    if (!apply_spot_auto_hwm_msg_unit (*control_spot, msg_size_))
+        return false;
 
     control_spot->options ().send_timeout (
       std::chrono::milliseconds (settings_.sndtimeo_ms));
@@ -502,6 +557,7 @@ inline bool initialize_client_slot (
   const std::string &server_endpoint_,
   const char *topic_,
   const multi_bench_settings_t &settings_,
+  size_t msg_size_,
   SlotT *slot_)
 {
     if (!slot_ || !topic_ || !*topic_ || server_endpoint_.empty ()) {
@@ -516,9 +572,13 @@ inline bool initialize_client_slot (
     if (!apply_spot_node_admission_hwm (
           *slot_->node, settings_.sndhwm, settings_.rcvhwm))
         return false;
+    if (!apply_spot_auto_hwm_msg_unit (*slot_->node, msg_size_))
+        return false;
 
     slot_->spot.reset (new SpotHandle (slot_->node->create_spot ()));
     if (!slot_->spot->valid ())
+        return false;
+    if (!apply_spot_auto_hwm_msg_unit (*slot_->spot, msg_size_))
         return false;
 
     if (!configure_spot_client_tls (*slot_->node, transport_))

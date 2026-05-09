@@ -218,7 +218,7 @@ static int append_socket_snapshot_row (
 }
 }
 
-std::string spot_node_t::summary_service_name () const
+std::string spot_node_t::summary_channel_name () const
 {
     scoped_lock_t lock (_sync);
     if (!_discovery_state.discovery_service.empty ())
@@ -251,15 +251,15 @@ void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
         return;
 
     discovery_t *discovery = NULL;
-    std::string service_name;
+    std::string channel_name;
     std::string endpoint;
     {
         scoped_lock_t lock (_sync);
         discovery = _discovery_state.discovery;
-        service_name = _discovery_state.discovery_service;
+        channel_name = _discovery_state.discovery_service;
         endpoint = _discovery_state.advertise_endpoint.empty () ? _endpoint_state.bound_endpoint : _discovery_state.advertise_endpoint;
     }
-    if (!discovery || service_name.empty ())
+    if (!discovery || channel_name.empty ())
         return;
 
     zlink_routing_id_t rid;
@@ -275,7 +275,7 @@ void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
     entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
     copy_fixed_c_string_from_cstr (entry.channel_name,
                                    sizeof (entry.channel_name),
-                                   service_name.c_str ());
+                                   channel_name.c_str ());
     copy_fixed_c_string_from_cstr (entry.endpoint, sizeof (entry.endpoint),
                                    endpoint.c_str ());
     entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
@@ -295,13 +295,13 @@ void spot_node_t::submit_sub_summary (spot_sub_t *sub_,
         return;
 
     discovery_t *discovery = NULL;
-    std::string service_name;
+    std::string channel_name;
     {
         scoped_lock_t lock (_sync);
         discovery = _discovery_state.discovery;
-        service_name = _discovery_state.discovery_service;
+        channel_name = _discovery_state.discovery_service;
     }
-    if (!discovery || service_name.empty ())
+    if (!discovery || channel_name.empty ())
         return;
 
     zlink_routing_id_t rid;
@@ -317,7 +317,7 @@ void spot_node_t::submit_sub_summary (spot_sub_t *sub_,
     entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
     copy_fixed_c_string_from_cstr (entry.channel_name,
                                    sizeof (entry.channel_name),
-                                   service_name.c_str ());
+                                   channel_name.c_str ());
     entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
     entry.state = static_cast<zlink_topology_state_t> (state_);
     entry.desired_count = 1;
@@ -334,18 +334,18 @@ void spot_node_t::submit_spot_owner_summary_for_rid (
         return;
 
     discovery_t *discovery = NULL;
-    std::string service_name;
+    std::string channel_name;
     std::string endpoint;
     {
         scoped_lock_t lock (_sync);
         discovery = _discovery_state.discovery;
-        service_name = _discovery_state.discovery_service;
+        channel_name = _discovery_state.discovery_service;
         endpoint =
           _discovery_state.advertise_endpoint.empty ()
             ? _endpoint_state.bound_endpoint
             : _discovery_state.advertise_endpoint;
     }
-    if (!discovery || service_name.empty ())
+    if (!discovery || channel_name.empty ())
         return;
 
     zlink_registry_topology_entry_t entry;
@@ -357,7 +357,7 @@ void spot_node_t::submit_spot_owner_summary_for_rid (
     entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
     copy_fixed_c_string_from_cstr (entry.channel_name,
                                    sizeof (entry.channel_name),
-                                   service_name.c_str ());
+                                   channel_name.c_str ());
     copy_fixed_c_string_from_cstr (entry.endpoint, sizeof (entry.endpoint),
                                    endpoint.c_str ());
     entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
@@ -597,11 +597,11 @@ int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_) const
 
     memset (out_, 0, sizeof (*out_));
 
-    std::string service_name;
+    std::string channel_name;
     std::string local_endpoint;
     {
         scoped_lock_t lock (_sync);
-        service_name = _discovery_state.discovery_service;
+        channel_name = _discovery_state.discovery_service;
         local_endpoint =
           !_discovery_state.advertise_endpoint.empty () ? _discovery_state.advertise_endpoint : _endpoint_state.bound_endpoint;
         out_->configured_peer_count = unique_peer_count_local (
@@ -618,9 +618,9 @@ int spot_node_t::snapshot_status (zlink_spot_node_status_t *out_) const
         out_->last_changed_ms = _summary_state.summary_last_changed_ms;
     }
 
-    copy_fixed_c_string_from_bytes (out_->service_name,
-                                    sizeof (out_->service_name),
-                                    service_name.data (), service_name.size ());
+    copy_fixed_c_string_from_bytes (out_->channel_name,
+                                    sizeof (out_->channel_name),
+                                    channel_name.data (), channel_name.size ());
     copy_fixed_c_string_from_bytes (out_->local_endpoint,
                                     sizeof (out_->local_endpoint),
                                     local_endpoint.data (),
@@ -666,7 +666,7 @@ int spot_node_t::snapshot_peers (
     }
     out_->clear ();
 
-    std::string service_name;
+    std::string channel_name;
     std::string local_endpoint;
     std::set<std::string> manual;
     std::set<std::string> discovery;
@@ -676,7 +676,7 @@ int spot_node_t::snapshot_peers (
     std::map<std::string, uint32_t> weight_by_endpoint;
     {
         scoped_lock_t lock (_sync);
-        service_name = _discovery_state.discovery_service;
+        channel_name = _discovery_state.discovery_service;
         local_endpoint =
           !_discovery_state.advertise_endpoint.empty () ? _discovery_state.advertise_endpoint : _endpoint_state.bound_endpoint;
         manual = _peer_state.manual_endpoints;
@@ -692,10 +692,10 @@ int spot_node_t::snapshot_peers (
          it != manual.end (); ++it) {
         zlink_spot_node_peer_entry_t entry;
         memset (&entry, 0, sizeof (entry));
-        copy_fixed_c_string_from_bytes (entry.service_name,
-                                        sizeof (entry.service_name),
-                                        service_name.data (),
-                                        service_name.size ());
+        copy_fixed_c_string_from_bytes (entry.channel_name,
+                                        sizeof (entry.channel_name),
+                                        channel_name.data (),
+                                        channel_name.size ());
         copy_fixed_c_string_from_bytes (entry.local_endpoint,
                                         sizeof (entry.local_endpoint),
                                         local_endpoint.data (),
@@ -740,10 +740,10 @@ int spot_node_t::snapshot_peers (
 
         zlink_spot_node_peer_entry_t entry;
         memset (&entry, 0, sizeof (entry));
-        copy_fixed_c_string_from_bytes (entry.service_name,
-                                        sizeof (entry.service_name),
-                                        service_name.data (),
-                                        service_name.size ());
+        copy_fixed_c_string_from_bytes (entry.channel_name,
+                                        sizeof (entry.channel_name),
+                                        channel_name.data (),
+                                        channel_name.size ());
         copy_fixed_c_string_from_bytes (entry.local_endpoint,
                                         sizeof (entry.local_endpoint),
                                         local_endpoint.data (),

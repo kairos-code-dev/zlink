@@ -114,7 +114,7 @@ class ZlinkMonitorSnapshot(ctypes.Structure):
 
 class ZlinkSpotNodeStatus(ctypes.Structure):
     _fields_ = [
-        ("service_name", ctypes.c_char * 256),
+        ("channel_name", ctypes.c_char * 256),
         ("local_endpoint", ctypes.c_char * 256),
         ("node_routing_id", ZlinkRoutingId),
         ("state", ctypes.c_uint32),
@@ -132,7 +132,7 @@ class ZlinkSpotNodeStatus(ctypes.Structure):
 
 class ZlinkSpotNodePeerEntry(ctypes.Structure):
     _fields_ = [
-        ("service_name", ctypes.c_char * 256),
+        ("channel_name", ctypes.c_char * 256),
         ("local_endpoint", ctypes.c_char * 256),
         ("peer_endpoint", ctypes.c_char * 256),
         ("source", ctypes.c_uint32),
@@ -1293,7 +1293,6 @@ class _Lib:
             [
                 ctypes.c_void_p,
                 ctypes.c_char_p,
-                ctypes.c_char_p,
                 ctypes.POINTER(ZlinkMsg),
                 ctypes.c_uint32,
                 ctypes.c_int,
@@ -1305,9 +1304,6 @@ class _Lib:
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ctypes.POINTER(ZlinkRoutingId)),
-                ctypes.POINTER(ctypes.c_char),
-                ctypes.c_size_t,
-                ctypes.POINTER(ctypes.c_size_t),
                 ctypes.POINTER(ctypes.c_char),
                 ctypes.c_size_t,
                 ctypes.POINTER(ctypes.c_size_t),

@@ -157,6 +157,18 @@ bool run_pattern_spot_reqrep (const std::string &transport,
         return false;
     }
 
+    if (!perf::single::apply_single_auto_hwm_msg_unit (
+          requester_node, msg_size)
+        || !perf::single::apply_single_auto_hwm_msg_unit (
+          requester, msg_size)
+        || !perf::single::apply_single_auto_hwm_msg_unit (
+          responder, msg_size)
+        || !perf::single::apply_single_auto_hwm_msg_unit (
+          requester_dealer, msg_size)
+        || !perf::single::recalculate_single_auto_hwm (ctx)) {
+        return false;
+    }
+
     perf::single::apply_single_hwm (responder);
     perf::single::apply_single_hwm (requester_dealer);
 

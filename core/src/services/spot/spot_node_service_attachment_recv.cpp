@@ -48,14 +48,11 @@ static bool wait_for_service_socket_event_local (const T &items_,
 int spot_node_t::service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
                                          zlink_msg_t **parts_out_,
                                          size_t *part_count_out_,
-                                         char *service_name_out_,
-                                         size_t *service_name_len_out_,
                                          char *topic_id_out_,
                                          size_t *topic_id_len_out_,
                                          zlink_recv_flags_t flags_)
 {
-    if (!parts_out_ || !part_count_out_ || !topic_id_len_out_
-        || !service_name_len_out_) {
+    if (!parts_out_ || !part_count_out_ || !topic_id_len_out_) {
         errno = EFAULT;
         return -1;
     }
@@ -77,7 +74,6 @@ int spot_node_t::service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
             continue;
         }
 
-        size_t service_len = *service_name_len_out_;
         zlink_recv_result_t rc =
           recv_result_internal::from_rc (zlink_socket_subscribe_recv_internal (
             (*subs)[ready_index].socket, source_rid_out_, parts_out_,
@@ -92,20 +88,6 @@ int spot_node_t::service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
         }
         if (rc != ZLINK_RECV_OK)
             return -1;
-        if (!service_name_out_) {
-            *service_name_len_out_ = (*subs)[ready_index].service_name.size ();
-            return 0;
-        }
-        if (service_len < (*subs)[ready_index].service_name.size ()) {
-            *service_name_len_out_ = (*subs)[ready_index].service_name.size ();
-            errno = EMSGSIZE;
-            return -1;
-        }
-        if (!(*subs)[ready_index].service_name.empty ())
-            memcpy (service_name_out_,
-                    (*subs)[ready_index].service_name.data (),
-                    (*subs)[ready_index].service_name.size ());
-        *service_name_len_out_ = (*subs)[ready_index].service_name.size ();
         return 0;
     }
 }
@@ -113,13 +95,11 @@ int spot_node_t::service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
 int spot_node_t::service_subscription_event_recv (
   zlink_routing_id_t *source_rid_out_,
   int *subscribed_out_,
-  char *service_name_out_,
-  size_t *service_name_len_out_,
   char *topic_id_out_,
   size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_)
 {
-    if (!subscribed_out_ || !topic_id_len_out_ || !service_name_len_out_) {
+    if (!subscribed_out_ || !topic_id_len_out_) {
         errno = EFAULT;
         return -1;
     }
@@ -141,7 +121,6 @@ int spot_node_t::service_subscription_event_recv (
             continue;
         }
 
-        size_t service_len = *service_name_len_out_;
         zlink_recv_result_t rc =
           recv_result_internal::from_rc (zlink_socket_xpub_recv_internal (
             (*subs)[ready_index].socket, source_rid_out_, subscribed_out_,
@@ -156,20 +135,6 @@ int spot_node_t::service_subscription_event_recv (
         }
         if (rc != ZLINK_RECV_OK)
             return -1;
-        if (!service_name_out_) {
-            *service_name_len_out_ = (*subs)[ready_index].service_name.size ();
-            return 0;
-        }
-        if (service_len < (*subs)[ready_index].service_name.size ()) {
-            *service_name_len_out_ = (*subs)[ready_index].service_name.size ();
-            errno = EMSGSIZE;
-            return -1;
-        }
-        if (!(*subs)[ready_index].service_name.empty ())
-            memcpy (service_name_out_,
-                    (*subs)[ready_index].service_name.data (),
-                    (*subs)[ready_index].service_name.size ());
-        *service_name_len_out_ = (*subs)[ready_index].service_name.size ();
         return 0;
     }
 }

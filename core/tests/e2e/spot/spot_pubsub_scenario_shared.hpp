@@ -45,7 +45,7 @@ void queued_spot_handler (const zlink_routing_id_t *,
                           size_t part_count_,
                           void *);
 
-void *create_spot_node (void *ctx_, const char *service_name_);
+void *create_spot_node (void *ctx_, const char *channel_name_);
 void *create_spot_pub_handle (void *node_);
 void *create_spot_sub_handle (void *node_);
 int destroy_spot_node_with_handles (void **node_p_);

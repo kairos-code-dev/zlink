@@ -10,7 +10,7 @@ import systems.zlink.service.registry.AutoConnectType;
 public final class RegistryQuerySample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
-        String serviceName = "sample";
+        String channelName = "sample";
         String registryPub = SampleSupport.tcpEndpoint();
         String registryRouter = SampleSupport.tcpEndpoint();
         String serviceEndpoint = SampleSupport.tcpEndpoint();
@@ -21,7 +21,7 @@ public final class RegistryQuerySample {
         PubSocket provider = null;
         try {
             registry = new Registry(ctx);
-            discovery = new Discovery(ctx, AutoConnectType.FANOUT, serviceName);
+            discovery = new Discovery(ctx, AutoConnectType.FANOUT, channelName);
             query = new RegistryQueryClient(ctx);
             provider = new PubSocket(ctx);
             registry.bind(registryPub, registryRouter);
@@ -35,7 +35,7 @@ public final class RegistryQuerySample {
                 () -> {
                     try {
                         return finalQuery.snapshot().stream()
-                            .anyMatch(entry -> serviceName.equals(entry.channelName()));
+                            .anyMatch(entry -> channelName.equals(entry.channelName()));
                     } catch (RuntimeException ex) {
                         return false;
                     }

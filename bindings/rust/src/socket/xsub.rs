@@ -29,7 +29,10 @@ impl XSubSocket {
         self.inner.subscribe_recv()
     }
 
-    pub fn subscribe_with_flags(&self, flags: RecvFlags) -> Result<Option<TopicMessage>, RecvError> {
+    pub fn subscribe_with_flags(
+        &self,
+        flags: RecvFlags,
+    ) -> Result<Option<TopicMessage>, RecvError> {
         self.inner.subscribe_recv_with_flags(flags)
     }
 

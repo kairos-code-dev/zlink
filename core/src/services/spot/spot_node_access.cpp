@@ -249,25 +249,25 @@ bool spot_node_access_t::has_active_peers (spot_node_t *node_)
     return node_ && node_->has_active_peers ();
 }
 
-std::string spot_node_access_t::summary_service_name (spot_node_t *node_)
+std::string spot_node_access_t::summary_channel_name (spot_node_t *node_)
 {
     if (!node_)
         return std::string ();
-    return node_->summary_service_name ();
+    return node_->summary_channel_name ();
 }
 
 socket_base_t *spot_node_access_t::select_service_router (
   spot_node_t *node_,
-  const std::string &service_name_)
+  const std::string &channel_name_)
 {
-    return node_ ? node_->select_service_router (service_name_) : NULL;
+    return node_ ? node_->select_service_router (channel_name_) : NULL;
 }
 
 socket_base_t *spot_node_access_t::service_pub_socket (
   spot_node_t *node_,
-  const std::string &service_name_)
+  const std::string &channel_name_)
 {
-    return node_ ? node_->service_pub_socket (service_name_) : NULL;
+    return node_ ? node_->service_pub_socket (channel_name_) : NULL;
 }
 
 int spot_node_access_t::service_subscribe_recv (
@@ -275,17 +275,14 @@ int spot_node_access_t::service_subscribe_recv (
   zlink_routing_id_t *source_rid_out_,
   zlink_msg_t **parts_out_,
   size_t *part_count_out_,
-  char *service_name_out_,
-  size_t *service_name_len_out_,
   char *topic_id_out_,
   size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_)
 {
     return node_
              ? node_->service_subscribe_recv (
-                 source_rid_out_, parts_out_, part_count_out_, service_name_out_,
-                 service_name_len_out_, topic_id_out_, topic_id_len_out_,
-                 flags_)
+                 source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
+                 topic_id_len_out_, flags_)
              : -1;
 }
 
@@ -293,17 +290,14 @@ int spot_node_access_t::service_subscription_event_recv (
   spot_node_t *node_,
   zlink_routing_id_t *source_rid_out_,
   int *subscribed_out_,
-  char *service_name_out_,
-  size_t *service_name_len_out_,
   char *topic_id_out_,
   size_t *topic_id_len_out_,
   zlink_recv_flags_t flags_)
 {
     return node_
              ? node_->service_subscription_event_recv (
-                 source_rid_out_, subscribed_out_, service_name_out_,
-                 service_name_len_out_, topic_id_out_, topic_id_len_out_,
-                 flags_)
+                 source_rid_out_, subscribed_out_, topic_id_out_,
+                 topic_id_len_out_, flags_)
              : -1;
 }
 

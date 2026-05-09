@@ -9,11 +9,11 @@ import (
 	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 
-const singleSpotServiceName = "perf-spot-svc"
+const singleSpotChannelName = "perf-spot-svc"
 const singleSpotTopic = "bench.topic"
 
 func runSpot(cfg benchmarkConfig) perfcommon.Result {
-	serviceName := fmt.Sprintf("%s-%d-%d", singleSpotServiceName, os.Getpid(), time.Now().UnixNano())
+	channelName := fmt.Sprintf("%s-%d-%d", singleSpotChannelName, os.Getpid(), time.Now().UnixNano())
 	ctx, err := zlink.NewContext()
 	perfcommon.Must(err)
 	defer ctx.Close()
@@ -30,10 +30,10 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	subscriberNode, err := ctx.SpotNode()
 	perfcommon.Must(err)
 	defer subscriberNode.Close()
-	publisherDiscovery, err := ctx.Discovery(zlink.AutoConnectSpotMesh, serviceName)
+	publisherDiscovery, err := ctx.Discovery(zlink.AutoConnectSpotMesh, channelName)
 	perfcommon.Must(err)
 	defer publisherDiscovery.Close()
-	subscriberDiscovery, err := ctx.Discovery(zlink.AutoConnectSpotMesh, serviceName)
+	subscriberDiscovery, err := ctx.Discovery(zlink.AutoConnectSpotMesh, channelName)
 	perfcommon.Must(err)
 	defer subscriberDiscovery.Close()
 
@@ -68,8 +68,8 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	defer poller.Close()
 
 	stats := perfcommon.NewStats()
-	waitForSpotRegistryEntries(query, serviceName)
-	waitForSpotReady(publisher, subscriber, poller, cfg.msgSize, serviceName)
+	waitForSpotRegistryEntries(query, channelName)
+	waitForSpotReady(publisher, subscriber, poller, cfg.msgSize, channelName)
 	perfcommon.PostReadySettle(cfg.pattern)
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	sendDone := make(chan struct{})
@@ -78,7 +78,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 		payload := perfcommon.PreparePayload(cfg.msgSize)
 		for time.Now().Before(window.StopAt) {
 			perfcommon.StampWindowPayload(payload, window.ActiveAt)
-			_, err := publisher.Publish(serviceName, singleSpotTopic).Message(perfcommon.NewMessage(payload)).Submit(nil)
+			_, err := publisher.Publish(singleSpotTopic).Message(perfcommon.NewMessage(payload)).Submit(nil)
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					continue
@@ -88,7 +88,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 		}
 
 		perfcommon.StampCooldownPayload(payload)
-		_, coolErr := publisher.Publish(serviceName, singleSpotTopic).Message(perfcommon.NewMessage(payload)).Submit(nil)
+		_, coolErr := publisher.Publish(singleSpotTopic).Message(perfcommon.NewMessage(payload)).Submit(nil)
 		if coolErr != nil && !perfcommon.IsTransient(coolErr) {
 			perfcommon.Must(coolErr)
 		}
@@ -160,14 +160,14 @@ func drainSingleSpotReadable(
 	}
 }
 
-func waitForSpotRegistryEntries(query *zlink.RegistryQueryClient, serviceName string) {
+func waitForSpotRegistryEntries(query *zlink.RegistryQueryClient, channelName string) {
 	deadline := time.Now().Add(perfcommon.SingleReadyTimeout())
 	for time.Now().Before(deadline) {
 		entries, err := query.Snapshot(nil)
 		if err == nil {
 			count := 0
 			for _, entry := range entries {
-				if entry.ChannelName == serviceName {
+				if entry.ChannelName == channelName {
 					count++
 				}
 			}
@@ -185,13 +185,13 @@ func waitForSpotReady(
 	subscriber *zlink.Spot,
 	poller *zlink.Poller,
 	msgSize int,
-	serviceName string,
+	channelName string,
 ) {
 	payload := perfcommon.PreparePayload(perfcommon.MetricHeaderSize)
 	deadline := time.Now().Add(perfcommon.SingleReadyTimeout())
 	for time.Now().Before(deadline) {
 		perfcommon.StampProbePayload(payload)
-		_, probeErr := publisher.Publish(serviceName, singleSpotTopic).Message(perfcommon.NewMessage(payload)).Submit(nil)
+		_, probeErr := publisher.Publish(singleSpotTopic).Message(perfcommon.NewMessage(payload)).Submit(nil)
 		if probeErr != nil && !perfcommon.IsTransient(probeErr) {
 			perfcommon.Must(probeErr)
 		}

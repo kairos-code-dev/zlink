@@ -389,17 +389,21 @@ queue limits and transport socket HWM.
 | `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE` | routed admission | balanced auto-HWM profile |
 | `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | routed admission numeric override | positive value, `0` returns to auto-HWM |
 
-With no numeric override, SpotNode data-path sockets use the shared auto-HWM
-planner. Balanced profile: HWM `1024` for ≤1024 B messages, HWM `16` for 64 KiB,
-HWM `8` for 128 KiB, HWM `4` for 256 KiB. Peer control sockets stay outside this
-admission group.
+With no numeric override, SpotNode admission HWM uses the profile's message-count
+baseline: COMPACT `64`, LOW_LATENCY `128`, BALANCED `256`, THROUGHPUT `512`.
+SPOT service handles do not accept the raw-socket
+`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` option, so the default SPOT path is planned
+with the non-STREAM default message unit, `4096` bytes. The balanced default is
+therefore `256`; small payloads do not raise it to `1024` by themselves. Peer
+control sockets stay outside this admission group.
 
 Relay sockets (`fanout` SNDHWM 0, `mesh-pub` SNDHWM per auto-HWM) and delivery
 sockets use HWM `0`. This prevents hidden per-peer or per-target queue caps inside
 SPOT from deciding message loss or disconnect behavior.
 
 The perf `Auto-HWM spotnode` detail shows admission HWM on `mesh-pub`, `mesh-xsub`,
-and `external-router`. Rows for `pub-ingress-tx`, `ingress-sub`, `internal-router`,
+and `external-router`. In the default balanced path, `MsgUnit(B)=4096` and HWM
+`256` are expected. Rows for `pub-ingress-tx`, `ingress-sub`, `internal-router`,
 and `internal-router-tx` no longer exist.
 
 ## 7. Control Plane

@@ -39,7 +39,7 @@ struct peer_admission_key_hash_t
 static void append_peer_admission_events_local (
   const std::vector<provider_info_t> &before_,
   const std::vector<provider_info_t> &after_,
-  const std::string &service_name_,
+  const std::string &channel_name_,
   std::vector<zlink_service_observation_event_t> *events_out_)
 {
     if (!events_out_)
@@ -72,12 +72,12 @@ static void append_peer_admission_events_local (
         event.event_type = ZLINK_SERVICE_EVENT_INTERNAL_PEER_WEIGHT_CHANGED;
         event.value = static_cast<uint32_t> (provider.weight);
         event.detail_flags = static_cast<zlink_service_event_detail_mask_t> (
-          ZLINK_SERVICE_EVENT_DETAIL_SERVICE_NAME
+          ZLINK_SERVICE_EVENT_DETAIL_CHANNEL_NAME
           | ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT
           | ZLINK_SERVICE_EVENT_DETAIL_PEER_RID);
-        copy_fixed_c_string_from_cstr (event.service_name,
-                                       sizeof (event.service_name),
-                                       service_name_.c_str ());
+        copy_fixed_c_string_from_cstr (event.channel_name,
+                                       sizeof (event.channel_name),
+                                       channel_name_.c_str ());
         copy_fixed_c_string_from_cstr (event.endpoint,
                                        sizeof (event.endpoint),
                                        provider.endpoint.c_str ());
@@ -286,7 +286,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
     for (size_t i = 0; i < events.size (); ++i) {
         discovery_debugf ("service event type=%u name=%s value=%u",
                                 static_cast<unsigned int> (events[i].event_type),
-                                events[i].service_name,
+                                events[i].channel_name,
                                 static_cast<unsigned int> (events[i].value));
         uint16_t state = ZLINK_TOPOLOGY_STATE_DISCOVERED;
         if (events[i].event_type == ZLINK_DISCOVERY_SERVICE_UP
@@ -305,7 +305,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
               static_cast<zlink_auto_connect_type_t> (_auto_connect_type);
             copy_fixed_c_string_from_cstr (entry.channel_name,
                                            sizeof (entry.channel_name),
-                                           events[i].service_name);
+                                           events[i].channel_name);
             entry.source = ZLINK_TOPOLOGY_SOURCE_REGISTRY;
             entry.state = static_cast<zlink_topology_state_t> (state);
             entry.desired_count = 1;

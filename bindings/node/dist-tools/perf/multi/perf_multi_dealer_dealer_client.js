@@ -3,9 +3,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../..');
-const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, sleepImmediate, summarizeMetrics } = require('../common/perf_metrics');
+const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { applyContextPolicy, applySocketPolicy, drainRecvSocket, resolveMultiLatencySampleCap, waitForConnectionReady } = require('./perf_multi_runtime');
+const { applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, drainRecvSocket, resolveMultiLatencySampleCap, waitForConnectionReady } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -22,7 +22,9 @@ async function main() {
         }
         for (const dealer of dealers) {
             await waitForConnectionReady(dealer, () => dealer.connect(options.endpoint));
+            applyAutoHwmMsgUnit(dealer, options.msgSize);
         }
+        ctx.recalculateAutoHwm();
         const recvTasks = dealers.map((dealer) => drainRecvSocket(dealer, (received) => {
             if (!collector) {
                 return;
@@ -45,15 +47,25 @@ async function main() {
             activeStopNs,
             sampleCap: resolveMultiLatencySampleCap()
         });
-        while (currentEpochNs() < activeStopNs) {
-            await sleepImmediate();
-        }
+        // Wait for the measurement period to elapse. The recv tasks (drainRecvSocket)
+        // are concurrently draining incoming messages via the poller loop; no work
+        // is needed in this awaiting path beyond yielding until the deadline.
+        await new Promise((resolve) => {
+            const remainMs = Number((activeStopNs - currentEpochNs()) / 1000000n);
+            if (remainMs > 0) {
+                setTimeout(resolve, remainMs);
+            }
+            else {
+                resolve();
+            }
+        });
         stop = true;
         for (const dealer of dealers) {
             try {
                 dealer.close();
             }
-            catch {
+            catch (err) {
+                console.error(`[perf] close failed: ${err}`);
             }
         }
         await Promise.all(recvTasks);

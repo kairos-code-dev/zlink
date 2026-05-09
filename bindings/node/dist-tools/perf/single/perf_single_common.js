@@ -358,7 +358,8 @@ async function closeSenderWorker(worker) {
     try {
         worker.postMessage({ type: 'stop' });
     }
-    catch {
+    catch (err) {
+        console.error(`[perf] close failed: ${err}`);
     }
     const exited = await Promise.race([
         waitForExit.then(() => true),
@@ -368,7 +369,8 @@ async function closeSenderWorker(worker) {
         try {
             await worker.terminate();
         }
-        catch {
+        catch (err) {
+            console.error(`[perf] close failed: ${err}`);
         }
     }
 }

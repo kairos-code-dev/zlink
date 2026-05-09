@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Systems.Zlink.Native;
 
@@ -91,6 +92,7 @@ internal static class RoutingIdCodec
         return routingId.Length == 0 ? null : ToRoutingIdCached(routingId);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static byte[] FromRoutingId(RoutingId routingId)
     {
         return routingId.AsByteArrayUnsafe();

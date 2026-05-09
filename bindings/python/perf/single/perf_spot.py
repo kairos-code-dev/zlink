@@ -26,7 +26,7 @@ from perf_common import (
 )
 
 
-SERVICE_NAME = "spot-svc"
+CHANNEL_NAME = "spot-svc"
 TOPIC = "bench.topic"
 
 
@@ -44,10 +44,10 @@ def main(argv=None):
     with zlink.Context() as ctx:
         with zlink.Registry(ctx) as registry:
             with zlink.Discovery(
-                ctx, zlink.AutoConnectType.SPOT_MESH, SERVICE_NAME
+                ctx, zlink.AutoConnectType.SPOT_MESH, CHANNEL_NAME
             ) as publisher_discovery:
                 with zlink.Discovery(
-                    ctx, zlink.AutoConnectType.SPOT_MESH, SERVICE_NAME
+                    ctx, zlink.AutoConnectType.SPOT_MESH, CHANNEL_NAME
                 ) as subscriber_discovery:
                     with zlink.SpotNode(ctx) as publisher_node:
                         with zlink.SpotNode(ctx) as subscriber_node:
@@ -159,7 +159,7 @@ def main(argv=None):
                                         and time.monotonic() < ready_deadline
                                     ):
                                         publisher.publish(
-                                            SERVICE_NAME,
+                                            CHANNEL_NAME,
                                             TOPIC,
                                             [
                                                 stamp_payload(
@@ -180,7 +180,7 @@ def main(argv=None):
                                     active_deadline[0] = time.perf_counter() + args.duration
                                     while time.perf_counter() < active_deadline[0]:
                                         publisher.publish(
-                                            SERVICE_NAME,
+                                            CHANNEL_NAME,
                                             TOPIC,
                                             [
                                                 stamp_payload(
@@ -191,7 +191,7 @@ def main(argv=None):
                                             ],
                                         )
                                     publisher.publish(
-                                        SERVICE_NAME,
+                                        CHANNEL_NAME,
                                         TOPIC,
                                         [
                                             stamp_payload(

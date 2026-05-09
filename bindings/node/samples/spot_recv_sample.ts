@@ -8,7 +8,7 @@ const net = require('node:net');
 const zlink = require('../..');
 const AUTO_CONNECT_SPOT_MESH = 5;
 
-const SERVICE_NAME = 'sample';
+const CHANNEL_NAME = 'sample';
 
 async function reservePort() {
   const server = net.createServer();
@@ -22,8 +22,8 @@ async function reservePort() {
 async function main() {
   const ctx = new zlink.Context();
   const registry = new zlink.Registry(ctx);
-  const publisherDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
-  const subscriberDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
+  const publisherDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
+  const subscriberDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
   const publisherNode = new zlink.SpotNode(ctx);
   const subscriberNode = new zlink.SpotNode(ctx);
   let publisher = null;
@@ -49,7 +49,7 @@ async function main() {
     const deadline = Date.now() + 15000;
     let received = null;
     while (Date.now() < deadline) {
-      publisher.publish(SERVICE_NAME, topic).message(Buffer.from(sent)).submit();
+      publisher.publish(topic).message(Buffer.from(sent)).submit();
       try {
         received = subscriber.subscribe(zlink.RecvFlags.DontWait);
         if (received) {
@@ -70,11 +70,10 @@ async function main() {
       return;
     }
     try {
-      assert.equal(received.serviceName, SERVICE_NAME);
-      assert.equal(received.topic, topic);
+            assert.equal(received.topic, topic);
       const recv = received.parts[0].data().toString();
       assert.equal(recv, sent);
-      console.log(`[spot/recv] service: "${SERVICE_NAME}" tick: 1 publish: "${topic}/${sent}" -> recv: "${topic}/${recv}"`);
+      console.log(`[spot/recv] channel: "${CHANNEL_NAME}" tick: 1 publish: "${topic}/${sent}" -> recv: "${topic}/${recv}"`);
     } finally {
       received.close();
     }

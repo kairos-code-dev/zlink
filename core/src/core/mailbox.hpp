@@ -38,13 +38,6 @@ class mailbox_t ZLINK_FINAL : public i_mailbox
     void signal ();
     int recv (command_t *cmd_, int timeout_);
 
-    // Mark this mailbox as having an external fd-based observer (e.g. a
-    // poller that polls get_fd() directly). Once set, send() bypasses the
-    // lazy signaler optimization and always wakes the signaler so that
-    // external observers receive readable events immediately. Idempotent;
-    // safe to set repeatedly.
-    void mark_fd_observer_present ();
-
     bool valid () const;
 
     typedef void (*mailbox_handler_t) (void *arg_);
@@ -79,11 +72,6 @@ class mailbox_t ZLINK_FINAL : public i_mailbox
     //  Signaler to wake up a sleeping receiver.
     signaler_t _signaler;
     bool _active;
-
-    //  Set once an external observer obtains the signaler's fd via
-    //  ZLINK_INTERNAL_OPT_FD (e.g. for poll/epoll). When true, send()
-    //  always signals so external observers wake up immediately.
-    std::atomic<bool> _fd_observer_present;
 
     //  There's only one thread receiving from the mailbox, but there
     //  is arbitrary number of threads sending. Given that ypipe requires

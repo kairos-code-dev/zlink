@@ -333,6 +333,106 @@ void test_spot_poller_progresses_spot_request_reply_completion ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
+
+// Regression: when zlink_poller_wait_all observes a hidden completion
+// drain (a reply landing on a registered spot socket) but the matching
+// registration was added with user_data == NULL, the previous
+// implementation looped back into wait() until the user-supplied timeout
+// expired, capping throughput at 1 / poll_timeout per slot. Ensure that
+// wait_all returns promptly so callers can act on the just-fired
+// reply callback (e.g. flip waiting_reply=false and submit the next
+// request) within the same iteration.
+void test_spot_poller_wait_all_returns_promptly_after_reply ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx, NULL);
+    void *client_spot = zlink_spot_new (node);
+    void *server_spot = zlink_spot_new (node);
+    void *poller = zlink_poller_new ();
+    int user_tag = 73;
+    spot_reply_probe_t reply_probe;
+    spot_request_probe_t request_probe;
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (client_spot);
+    TEST_ASSERT_NOT_NULL (server_spot);
+    TEST_ASSERT_NOT_NULL (poller);
+
+    set_routing_id_text (node, "wakeup-spot-node");
+    set_routing_id_text (client_spot, "wakeup-spot-client");
+    set_routing_id_text (server_spot, "wakeup-spot-server");
+
+    const zlink_routing_id_t node_rid = get_routing_id_value (node);
+    const zlink_routing_id_t server_spot_rid = get_routing_id_value (server_spot);
+
+    // Prime the spot's request-reply state so that the poller wires up the
+    // hidden completion signal socket on add.
+    const zlink_routing_id_t *unused_source_node_rid = NULL;
+    const zlink_routing_id_t *unused_source_spot_rid = NULL;
+    uint64_t unused_request_seq = 0;
+    zlink_msg_t *unused_parts = NULL;
+    size_t unused_part_count = 0;
+    TEST_ASSERT_EQUAL (ZLINK_RECV_NO_DATA,
+                       zlink_spot_recv (client_spot, &unused_source_node_rid,
+                                        &unused_source_spot_rid,
+                                        &unused_request_seq, &unused_parts,
+                                        &unused_part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL (EAGAIN, zlink_errno ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (poller, client_spot, &user_tag, ZLINK_POLLIN));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_handler (
+      server_spot, &capture_spot_request_for_reply, &request_probe));
+
+    zlink_msg_t request_part;
+    init_string_part (&request_part, "wakeup-request");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_spot_part (
+      client_spot, &node_rid, &server_spot_rid, &request_part,
+      &capture_spot_reply, &reply_probe, ZLINK_SEND_FLAGS_NONE,
+      ZLINK_PART_FINAL, 5000));
+
+    TEST_ASSERT_TRUE (wait_for_spot_request (&request_probe, 1000));
+
+    zlink_msg_t reply_part;
+    init_string_part (&reply_part, "wakeup-reply");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_reply_spot_part (
+      server_spot, &request_probe.source_node_rid,
+      &request_probe.source_spot_rid, request_probe.request_seq, &reply_part,
+      ZLINK_PART_FINAL));
+
+    // Give the dispatcher a moment to enqueue the completion. The signal
+    // byte should now be on the inproc PAIR pipe, making the registered
+    // completion fd readable. wait_all must return promptly even though
+    // the registration's user_data is NULL.
+    std::this_thread::sleep_for (std::chrono::milliseconds (20));
+
+    zlink_poller_event_t events[4];
+    const auto wait_start = std::chrono::steady_clock::now ();
+    const int rc = zlink_poller_wait_all (
+      poller, events, static_cast<int> (sizeof (events) / sizeof (events[0])),
+      5000, NULL);
+    const auto wait_elapsed =
+      std::chrono::steady_clock::now () - wait_start;
+    const long long elapsed_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds> (wait_elapsed)
+        .count ();
+
+    TEST_ASSERT_TRUE (rc >= 0);
+    // Allow generous slack for slow CI; the regression caused this call to
+    // hit the full 5 s timeout. Anything under 500 ms proves the wakeup
+    // reached the caller.
+    TEST_ASSERT_TRUE (elapsed_ms < 500);
+    TEST_ASSERT_TRUE (reply_probe.invoked);
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, reply_probe.result);
+    TEST_ASSERT_EQUAL_STRING ("wakeup-reply", reply_probe.payload.c_str ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, client_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&server_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&client_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
 }
 
 SETUP_TEARDOWN_TESTCONTEXT
@@ -345,5 +445,6 @@ int main (void)
     RUN_TEST (test_spot_poller_wait_reports_original_spot_for_subscribe);
     RUN_TEST (test_spot_poller_wait_reports_original_spot_for_routed_recv);
     RUN_TEST (test_spot_poller_progresses_spot_request_reply_completion);
+    RUN_TEST (test_spot_poller_wait_all_returns_promptly_after_reply);
     return UNITY_END ();
 }

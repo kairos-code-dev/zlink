@@ -713,15 +713,7 @@ int zlink_poller_wait (void *poller_,
                       zlink::config_result_internal::from_errno (errno);
                 return -1;
             }
-            // The caller's request_progress callback has now run inside
-            // drain_hidden_completion_registration. Return to give the
-            // caller a chance to act on the completion (e.g. submit the
-            // next request) instead of looping back into wait() until
-            // timeout. Reporting 0 events keeps the public contract
-            // (event_ untouched on no-event return).
-            if (error_out_)
-                *error_out_ = ZLINK_CONFIG_OK;
-            return 0;
+            continue;
         }
 
         if (fill_public_poller_event_from_registration (registration,
@@ -782,6 +774,7 @@ int zlink_poller_wait_all (void *poller_,
         }
 
         int public_count = 0;
+        bool drained_any = false;
         for (int i = 0; i < rc; ++i) {
             const poller_registration_t *registration =
               find_registration_for_native (poller, poller->native_events[i]);
@@ -794,6 +787,8 @@ int zlink_poller_wait_all (void *poller_,
                           zlink::config_result_internal::from_errno (errno);
                     return -1;
                 }
+                if (drain_rc > 0)
+                    drained_any = true;
                 if (drain_rc > 0 && registration && registration->user_data) {
                     if (fill_hidden_completion_event (registration,
                                                       &events_[public_count])
@@ -824,6 +819,16 @@ int zlink_poller_wait_all (void *poller_,
             if (error_out_)
                 *error_out_ = ZLINK_CONFIG_OK;
             return public_count;
+        }
+        // Hidden completion drains fire user callbacks (e.g. reply handlers)
+        // that flip caller-visible state. Even when no public event is
+        // produced, the caller must be allowed to inspect that state and
+        // submit follow-up work. Looping back into wait() here would block
+        // until the next timeout, capping throughput at 1/timeout per slot.
+        if (drained_any) {
+            if (error_out_)
+                *error_out_ = ZLINK_CONFIG_OK;
+            return 0;
         }
     }
 }

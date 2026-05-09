@@ -200,11 +200,19 @@ int zlink::request_completion::drain (queue_state_t *state_,
         bool queue_empty = false;
         {
             std::lock_guard<std::mutex> lock (state_->mutex);
+            // Always consume the signal byte and clear signal_pending whenever
+            // we observe the queue here. Without this, a draining swap below
+            // leaves signal_pending=true even after the byte has been observed
+            // by the poller, so subsequent enqueue() calls take the
+            // !signal_pending == false branch and skip waking up the fd.
+            // Concretely: reply N+1, N+2, ... never raise the signaler until
+            // the next drain comes around through the poller's timeout, which
+            // caps throughput at 1 / poll_timeout per client.
+            if (state_->signal_pending) {
+                drain_signal_socket_nonblocking (state_->signal.rx);
+                state_->signal_pending = false;
+            }
             if (state_->pending.empty ()) {
-                if (state_->signal_pending) {
-                    drain_signal_socket_nonblocking (state_->signal.rx);
-                    state_->signal_pending = false;
-                }
                 queue_empty = true;
             } else {
                 batch.swap (state_->pending);

@@ -153,22 +153,27 @@ bool run_pattern_pair (const std::string &transport,
     std::atomic<unsigned long long> sent_count (0);
     std::atomic<unsigned long long> received_count (0);
     std::atomic<bool> sender_ok (true);
-    std::atomic<bool> sender_done (false);
     perf::single::latency_stats_builder_t latency_builder (
       perf::single::resolve_single_latency_sample_cap ());
     const auto active_deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
 
     std::thread receiver_thread ([&]() {
-        auto last_recv_at = std::chrono::steady_clock::now ();
-        const auto drain_idle_limit =
-          std::chrono::milliseconds (recv_timeout > 0 ? recv_timeout : 200);
+        // PERF_SINGLE_TEST_POLICY § 1.4: shutdown via wire-level stop
+        // token (see perf::single::is_stop_token_message). The socket
+        // recv_timeout still bounds individual recv calls but only
+        // serves to recover from EAGAIN/EINTR; phase end is purely
+        // signaled by the stop token arriving on the wire.
         while (true) {
             zlink::received_t received;
             const int recv_rc =
               recv_pair_payload (bind_socket, received, zlink::recv_flags_t::none);
             if (recv_rc == 0) {
-                last_recv_at = std::chrono::steady_clock::now ();
+                if (received.parts ().size () == 1
+                    && perf::single::is_stop_token_message (
+                         received.parts ()[0])) {
+                    return;
+                }
                 if (std::chrono::steady_clock::now () < active_deadline
                     && !record_pair_payload (received,
                                              run_id,
@@ -193,7 +198,11 @@ bool run_pattern_pair (const std::string &transport,
                         sender_ok.store (false, std::memory_order_release);
                         return;
                     }
-                    last_recv_at = std::chrono::steady_clock::now ();
+                    if (burst_received.parts ().size () == 1
+                        && perf::single::is_stop_token_message (
+                             burst_received.parts ()[0])) {
+                        return;
+                    }
                     if (std::chrono::steady_clock::now () < active_deadline
                         && !record_pair_payload (burst_received,
                                                  run_id,
@@ -212,11 +221,8 @@ bool run_pattern_pair (const std::string &transport,
                 sender_ok.store (false, std::memory_order_release);
                 return;
             }
-            if (sender_done.load (std::memory_order_acquire)
-                && std::chrono::steady_clock::now () - last_recv_at
-                     >= drain_idle_limit) {
-                return;
-            }
+            // socket recv_timeout fired with no data; stop token has not
+            // arrived yet — keep waiting.
         }
     });
 
@@ -241,7 +247,21 @@ bool run_pattern_pair (const std::string &transport,
             }
             sent_count.fetch_add (1, std::memory_order_release);
         }
-        sender_done.store (true, std::memory_order_release);
+        // PERF_SINGLE_TEST_POLICY § 1.4: send wire-level stop token to
+        // wake the receiver out of recv. Bounded retry through transient
+        // backpressure so the terminator always reaches the peer.
+        for (int retry = 0; retry < 100; ++retry) {
+            if (send_single_part (&conn_socket,
+                                  perf::single::k_stop_token,
+                                  std::strlen (perf::single::k_stop_token))) {
+                break;
+            }
+            if (errno != EAGAIN && errno != EWOULDBLOCK
+                && errno != ETIMEDOUT && errno != EINTR) {
+                break;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
     });
 
     sender_thread.join ();

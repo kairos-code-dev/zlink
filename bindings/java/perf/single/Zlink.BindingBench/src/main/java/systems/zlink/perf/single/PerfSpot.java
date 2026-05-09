@@ -6,6 +6,7 @@ import systems.zlink.Message;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
 import systems.zlink.TopicMessage;
+import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import systems.zlink.service.discovery.Discovery;
 import systems.zlink.service.registry.Registry;
@@ -81,22 +82,16 @@ final class PerfSpot {
                 drainSubscriber(subscriber, config, metrics, activeEnd, true);
             }
 
-            try (Message cooldown = PerfUtil.payload(config.size(),
-                     (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
+            // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
+            // stop token published on the same topic; the drain loop below
+            // exits as soon as the stop token is observed.
+            try (Message stop = PerfStopToken.newMessage()) {
                 publisher.publish(topic)
-                    .message(cooldown)
+                    .message(stop)
                     .flags(SendFlags.DONT_WAIT)
                     .submit();
             }
-
-            long idleDeadline = System.nanoTime()
-                + Math.max(1, config.recvTimeoutMs()) * 1_000_000L;
-            while (System.nanoTime() < idleDeadline) {
-                if (!drainSubscriber(subscriber, config, metrics, activeEnd,
-                        false)) {
-                    sleepQuietly(Duration.ofMillis(1), "spot idle drain interrupted");
-                }
-            }
+            drainUntilStopToken(subscriber, config, metrics, activeEnd);
 
             ctx.shutdown();
             return metrics.finishSingle(config);
@@ -136,6 +131,10 @@ final class PerfSpot {
                 return processed;
             }
             try (TopicMessage subscribed = maybe.orElseThrow()) {
+                if (PerfStopToken.isStopTokenMessage(subscribed.firstPart())) {
+                    processed = true;
+                    continue;
+                }
                 PerfUtil.Header header = PerfUtil.decodeHeader(
                     subscribed.firstPart(), config.size());
                 if (header == null) {
@@ -154,6 +153,50 @@ final class PerfSpot {
                 }
                 metrics.recordNanos(header.latencyNanos());
                 processed = true;
+            }
+        }
+    }
+
+    /**
+     * Drain until the wire-level stop token is observed. PERF_SINGLE_TEST_POLICY
+     * § 1.4 mandates that phase-end is signaled by the stop token, so this loop
+     * exits the moment the token arrives.
+     *
+     * <p>TODO(PERF_SINGLE_TEST_POLICY § 1.4): the Java SPOT subscribe API does
+     * not expose a signal-driven blocking wait, so this loop falls back to a
+     * non-blocking drain with a tiny yield while the stop token is in transit.
+     * A bounded outer deadline guards against a dropped stop token (SPOT
+     * publishes are best-effort DONT_WAIT). When the SPOT API gains a
+     * poller-style wait, replace the sleep with a {@code Duration.ofMillis(-1)}
+     * wait per the policy.
+     */
+    private static void drainUntilStopToken(Spot subscriber,
+                                            PerfUtil.Config config,
+                                            PerfUtil.Metrics metrics,
+                                            long activeEnd) {
+        long drainBudgetMs = Math.max(1, config.recvTimeoutMs()) * 50L;
+        long deadlineNs = System.nanoTime()
+            + Duration.ofMillis(drainBudgetMs).toNanos();
+        while (System.nanoTime() < deadlineNs) {
+            var maybe = PerfUtil.subscribeNoWait(subscriber);
+            if (maybe.isEmpty()) {
+                sleepQuietly(Duration.ofMillis(1),
+                    "spot stop-token drain interrupted");
+                continue;
+            }
+            try (TopicMessage subscribed = maybe.orElseThrow()) {
+                if (PerfStopToken.isStopTokenMessage(subscribed.firstPart())) {
+                    return;
+                }
+                PerfUtil.Header header = PerfUtil.decodeHeader(
+                    subscribed.firstPart(), config.size());
+                if (header == null) {
+                    continue;
+                }
+                if (header.phase() == PerfUtil.PHASE_ACTIVE
+                    && System.nanoTime() <= activeEnd) {
+                    metrics.recordNanos(header.latencyNanos());
+                }
             }
         }
     }

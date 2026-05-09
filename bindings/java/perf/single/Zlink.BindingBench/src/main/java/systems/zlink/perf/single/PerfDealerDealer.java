@@ -8,6 +8,7 @@ import systems.zlink.Message;
 import systems.zlink.MonitorEventType;
 import systems.zlink.PollEventFlag;
 import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.List;
@@ -44,17 +45,15 @@ final class PerfDealerDealer {
             PerfUtil.waitForMonitorEvent(receiverMonitor, READY_EVENT, 1,
                 readyTimeout, "dealer/dealer receiver ready");
 
+            // PERF_SINGLE_TEST_POLICY § 1.4: receiver waits with -1 (signal-driven)
+            // and exits on wire-level stop token instead of an atomic + short
+            // polling fallback.
             Thread receiverThread = new Thread(() -> {
-                boolean idleDrain = false;
-                int idleDrainTimeoutMs = Math.max(1, config.recvTimeoutMs());
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(receiver), PollEventFlag.POLLIN)) {
-                    while (finished.getCount() > 0L) {
-                        int rc = pollSet.poll(idleDrain ? idleDrainTimeoutMs : -1);
-                        if (idleDrain && rc == 0) {
-                            finished.countDown();
-                            return;
-                        }
+                    while (true) {
+                        pollSet.poll(-1);
+                        boolean stop = false;
                         while (true) {
                             systems.zlink.Received received =
                                 PerfUtil.recvNoWait(receiver);
@@ -62,19 +61,23 @@ final class PerfDealerDealer {
                                 break;
                             }
                             try (received) {
+                                if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
+                                    stop = true;
+                                    break;
+                                }
                                 PerfUtil.Header header = PerfUtil.decodeHeader(
                                     received.firstPart(), config.size());
                                 if (header == null) {
-                                    continue;
-                                }
-                                if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                                    idleDrain = true;
                                     continue;
                                 }
                                 if (header.phase() == PerfUtil.PHASE_ACTIVE) {
                                     metrics.recordNanos(header.latencyNanos());
                                 }
                             }
+                        }
+                        if (stop) {
+                            finished.countDown();
+                            return;
                         }
                     }
                 } catch (Throwable ex) {
@@ -95,9 +98,11 @@ final class PerfDealerDealer {
                             sender.send(active);
                         }
                     }
-                    try (Message cooldown = PerfUtil.payload(config.size(),
-                             (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                        sender.send(cooldown);
+                    // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with one
+                    // blocking stop-token send. Bounded backpressure retry is
+                    // handled by the blocking send semantics of the socket.
+                    try (Message stop = PerfStopToken.newMessage()) {
+                        sender.send(stop);
                     }
                 } catch (Throwable ex) {
                     failure.compareAndSet(null, ex);

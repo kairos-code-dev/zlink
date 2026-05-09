@@ -5,10 +5,10 @@ package systems.zlink.perf.single;
 import systems.zlink.Context;
 import systems.zlink.DealerSocket;
 import systems.zlink.Message;
-import systems.zlink.RecvException;
-import systems.zlink.RecvFlags;
-import systems.zlink.RecvResult;
+import systems.zlink.PollEventFlag;
 import systems.zlink.RouterSocket;
+import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import systems.zlink.service.spot.Spot;
 import systems.zlink.service.spot.SpotNode;
@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfSpotReqRep {
@@ -28,7 +27,6 @@ final class PerfSpotReqRep {
 
     static PerfUtil.Result run(PerfUtil.Config config) {
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-        AtomicBoolean stopRequested = new AtomicBoolean(false);
         AtomicReference<Throwable> responderFailure = new AtomicReference<>();
         String endpoint = normalizeSpotEndpoint(
             PerfUtil.endpoint(config.transport(), "single-spot-reqrep"),
@@ -48,7 +46,7 @@ final class PerfSpotReqRep {
             requesterDealer.connect(endpoint);
 
             Thread responderThread = new Thread(() -> runResponder(
-                responder, config.size(), stopRequested, responderFailure),
+                responder, config.size(), responderFailure),
                 "single-spot-reqrep-responder");
             responderThread.start();
 
@@ -71,12 +69,10 @@ final class PerfSpotReqRep {
                     }
                 }
             }
-            try (Message cooldown = PerfUtil.payload(config.size(),
-                     (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                requestReply(requester, cooldown, config.size(), Duration.ofSeconds(2));
-            }
-
-            stopRequested.set(true);
+            // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
+            // stop token. The responder echoes back the stop token, then
+            // observes the stop token in its inbound recv and exits.
+            stopResponder(requester, config.size());
             PerfUtil.join(responderThread, "spot reqrep responder",
                 Duration.ofSeconds(10));
             if (responderFailure.get() != null) {
@@ -90,37 +86,64 @@ final class PerfSpotReqRep {
 
     private static void runResponder(RouterSocket responder,
                                      int expectedSize,
-                                     AtomicBoolean stopRequested,
                                      AtomicReference<Throwable> responderFailure) {
-        try {
-            while (!stopRequested.get()) {
-                systems.zlink.Received received;
-                try {
-                    received = responder.recv(RecvFlags.DONT_WAIT);
-                } catch (RecvException ex) {
-                    if (ex.getResult() == RecvResult.NO_DATA) {
-                        Thread.sleep(1L);
-                        continue;
+        try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
+                List.of((systems.zlink.Socket) responder),
+                PollEventFlag.POLLIN)) {
+            // PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait; exit on
+            // wire-level stop token after echoing it.
+            while (true) {
+                pollSet.poll(-1);
+                boolean stop = false;
+                while (true) {
+                    systems.zlink.Received received = PerfUtil.recvNoWait(responder);
+                    if (received == null) {
+                        break;
                     }
-                    throw ex;
+                    try (received) {
+                        boolean isStop = PerfStopToken.isStopTokenMessage(
+                            received.firstPart());
+                        // Snapshot any non-stop frame as the echoed reply.
+                        // For the warmup probe and active payload the requester
+                        // expects exactly the bytes it sent.
+                        try (Message reply = received.firstPart().move()) {
+                            received.reply(reply);
+                        }
+                        if (isStop) {
+                            stop = true;
+                            break;
+                        }
+                    }
                 }
-                try (received) {
-                    PerfUtil.Header header = PerfUtil.decodeHeader(
-                        received.firstPart(), expectedSize);
-                    if (header == null) {
-                        continue;
-                    }
-                    try (Message reply = received.firstPart().move()) {
-                        received.reply(reply);
-                    }
-                    if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                        stopRequested.set(true);
-                    }
+                if (stop) {
+                    return;
                 }
             }
         } catch (Throwable ex) {
             responderFailure.compareAndSet(null, ex);
-            stopRequested.set(true);
+        }
+    }
+
+    private static void stopResponder(Spot requester, int size) {
+        // Send the stop token through the request/reply channel; the responder
+        // echoes it back and then exits.
+        try (Message stop = PerfStopToken.newMessage()) {
+            try {
+                requester.requestChannel(CHANNEL_NAME)
+                    .message(stop)
+                    .timeout(Duration.ofSeconds(2))
+                    .submitAsync()
+                    .get(2, TimeUnit.SECONDS)
+                    .forEach(Message::close);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("spot reqrep stop interrupted", ex);
+            } catch (ExecutionException ex) {
+                throw new IllegalStateException("spot reqrep stop failed",
+                    ex.getCause());
+            } catch (TimeoutException ex) {
+                throw new IllegalStateException("spot reqrep stop timed out", ex);
+            }
         }
     }
 

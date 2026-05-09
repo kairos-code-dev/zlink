@@ -11,11 +11,10 @@ import systems.zlink.RecvFlags;
 import systems.zlink.SubSocket;
 import systems.zlink.TopicMessage;
 import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfPubSub {
@@ -27,7 +26,6 @@ final class PerfPubSub {
 
     static PerfUtil.Result run(PerfUtil.Config config) {
         String endpoint = PerfUtil.endpoint(config.transport(), "single-pubsub");
-        AtomicBoolean idleDrain = new AtomicBoolean(false);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         boolean sharedContext = "inproc".equals(config.transport());
@@ -60,39 +58,37 @@ final class PerfPubSub {
             }
             settleAfterReady();
 
+            // PERF_SINGLE_TEST_POLICY § 1.4: receiver waits with -1 and exits
+            // on wire-level stop token published on TOPIC.
             Thread recvThread = new Thread(() -> {
-                long lastRecvNs = System.nanoTime();
-                long flushNs = Duration.ofMillis(Math.max(1, config.recvTimeoutMs())).toNanos();
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                     List.of(sub), PollEventFlag.POLLIN)) {
                     while (true) {
-                        int timeoutMs = idleDrain.get() ? Math.max(1, config.recvTimeoutMs()) : -1;
-                        int rc = pollSet.poll(timeoutMs);
-                        if (rc > 0 && pollSet.isReady(0, PollEventFlag.POLLIN)) {
-                            while (true) {
-                                try (TopicMessage received = sub.subscribe(RecvFlags.DONT_WAIT)) {
-                                    if (received == null) {
-                                        break;
-                                    }
-                                    PerfUtil.Header header = PerfUtil.decodeHeader(
-                                        received.firstPart(), config.size());
-                                    if (header == null) {
-                                        continue;
-                                    }
-                                    if (header.phase() == PerfUtil.PHASE_COOLDOWN) {
-                                        idleDrain.set(true);
-                                        lastRecvNs = System.nanoTime();
-                                        continue;
-                                    }
-                                    if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                                        metrics.recordNanos(header.latencyNanos());
-                                        lastRecvNs = System.nanoTime();
-                                    }
-                                }
-                            }
+                        pollSet.poll(-1);
+                        if (!pollSet.isReady(0, PollEventFlag.POLLIN)) {
                             continue;
                         }
-                        if (idleDrain.get() && System.nanoTime() - lastRecvNs >= flushNs) {
+                        boolean stop = false;
+                        while (true) {
+                            try (TopicMessage received = sub.subscribe(RecvFlags.DONT_WAIT)) {
+                                if (received == null) {
+                                    break;
+                                }
+                                if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
+                                    stop = true;
+                                    break;
+                                }
+                                PerfUtil.Header header = PerfUtil.decodeHeader(
+                                    received.firstPart(), config.size());
+                                if (header == null) {
+                                    continue;
+                                }
+                                if (header.phase() == PerfUtil.PHASE_ACTIVE) {
+                                    metrics.recordNanos(header.latencyNanos());
+                                }
+                            }
+                        }
+                        if (stop) {
                             return;
                         }
                     }
@@ -110,12 +106,10 @@ final class PerfPubSub {
                     pub.publish(TOPIC, active);
                 }
             }
-            int cooldownBursts = Math.max(3, 3);
-            for (int i = 0; i < cooldownBursts; i++) {
-                try (Message cooldown = PerfUtil.payload(config.size(),
-                         (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                    pub.publish(TOPIC, cooldown);
-                }
+            // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end with stop token
+            // published on the same topic so the subscriber's filter delivers it.
+            try (Message stop = PerfStopToken.newMessage()) {
+                pub.publish(TOPIC, stop);
             }
             PerfUtil.join(recvThread, "pubsub receiver",
                 Duration.ofSeconds(config.durationSeconds() + 10L));

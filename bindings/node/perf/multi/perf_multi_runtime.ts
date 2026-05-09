@@ -35,17 +35,31 @@ function integerEnv(name, fallback) {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
 }
 
+function manualSocketOverridesEnabled() {
+  return (
+    integerEnv('PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES', 0) > 0 ||
+    integerEnv('PERF_ALLOW_MANUAL_SOCKET_OVERRIDES', 0) > 0
+  );
+}
+
+function resolveClientPollTimeoutMs() {
+  const configured = integerEnv('PERF_CLIENT_POLL_TIMEOUT_MS', 100);
+  return configured > 0 ? configured : 100;
+}
+
 function applySocketPolicy(socket, options = {}) {
-  const hwm = integerEnv('PERF_MULTI_HWM', 1000);
-  const sendHwm = integerEnv('PERF_MULTI_SNDHWM', hwm);
-  const recvHwm = integerEnv('PERF_MULTI_RCVHWM', hwm);
   const sendTimeout = integerEnv('PERF_MULTI_SNDTIMEO_MS', 200);
   const recvTimeout = integerEnv('PERF_MULTI_RCVTIMEO_MS', 200);
   const linger = integerEnv('PERF_MULTI_LINGER_MS', 0);
 
   if (socket.options) {
-    socket.options.sendHwm = sendHwm;
-    socket.options.recvHwm = recvHwm;
+    if (manualSocketOverridesEnabled()) {
+      const hwm = integerEnv('PERF_MULTI_HWM', 1000);
+      const sendHwm = integerEnv('PERF_MULTI_SNDHWM', hwm);
+      const recvHwm = integerEnv('PERF_MULTI_RCVHWM', hwm);
+      socket.options.sendHwm = sendHwm;
+      socket.options.recvHwm = recvHwm;
+    }
     socket.options.sendTimeout = sendTimeout;
     socket.options.recvTimeout = options.recvTimeout ?? recvTimeout;
     socket.options.linger = linger;
@@ -56,12 +70,25 @@ function applySocketPolicy(socket, options = {}) {
 }
 
 function applySpotNodeAdmission(node) {
+  if (!manualSocketOverridesEnabled()) {
+    return;
+  }
   const hwm = integerEnv('PERF_MULTI_HWM', 1000);
   const sendHwm = integerEnv('PERF_MULTI_SNDHWM', hwm);
   const recvHwm = integerEnv('PERF_MULTI_RCVHWM', hwm);
-
   node.pubsubHwm = sendHwm;
   node.routerHwm = recvHwm;
+}
+
+function applyAutoHwmMsgUnit(socket, msgSize) {
+  if (msgSize <= 0 || !socket.options) {
+    return;
+  }
+  try {
+    socket.options.autoHwmMsgUnitBytes = msgSize;
+  } catch (err) {
+    // best effort — not all socket types expose this option
+  }
 }
 
 function resolveMultiIoThreads(role, pattern) {
@@ -92,12 +119,29 @@ function resolveMultiIoThreads(role, pattern) {
   return isStream ? 4 : 2;
 }
 
+function resolveAutoHwmProfile() {
+  const env = process.env.PERF_CTX_AUTO_HWM_PROFILE || process.env.PERF_AUTO_HWM_PROFILE || '';
+  if (env === 'compact') {
+    return zlink.AutoHwmProfile.Compact;
+  }
+  if (env === 'low_latency' || env === 'low-latency') {
+    return zlink.AutoHwmProfile.LowLatency;
+  }
+  if (env === 'throughput') {
+    return zlink.AutoHwmProfile.Throughput;
+  }
+  return zlink.AutoHwmProfile.Balanced;
+}
+
 function applyContextPolicy(ctx, role, pattern) {
   ctx.options.ioThreads = resolveMultiIoThreads(role, pattern);
   const maxSockets = integerEnv('PERF_MAX_SOCKETS', NaN);
   if (Number.isFinite(maxSockets) && maxSockets > 0) {
     ctx.options.maxSockets = maxSockets;
   }
+  ctx.options.blocky = integerEnv('PERF_CTX_BLOCKY', 0) !== 0;
+  ctx.options.autoHwmEnabled = true;
+  ctx.options.autoHwmProfile = resolveAutoHwmProfile();
 }
 
 function resolveMultiLatencySampleCap() {
@@ -212,7 +256,8 @@ function trySocketPublish(socket, topic, payload) {
   }
 }
 
-async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25) {
+async function drainRecvSocket(socket, onMessage, shouldStop) {
+  const clientPollTimeoutMs = resolveClientPollTimeoutMs();
   const poller = new zlink.Poller();
   poller.add(socket, pollEvents(POLLIN));
 
@@ -220,17 +265,15 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
     while (!shouldStop()) {
       let ready = null;
       try {
-        ready = poller.wait(pollTimeoutMs);
+        ready = poller.wait(clientPollTimeoutMs);
       } catch (error) {
         const text = String(error && error.message ? error.message : error);
         if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
-          await sleepImmediate();
           continue;
         }
         throw error;
       }
       if (!ready) {
-        await sleepImmediate();
         continue;
       }
       if (typeof socket.subscribe === 'function') {
@@ -256,7 +299,8 @@ async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25
   }
 }
 
-function createSocketEventWaiter(socket, events, pollTimeoutMs = 25) {
+function createSocketEventWaiter(socket, events) {
+  const clientPollTimeoutMs = resolveClientPollTimeoutMs();
   const poller = new zlink.Poller();
   poller.add(socket, pollEvents(events));
 
@@ -265,11 +309,10 @@ function createSocketEventWaiter(socket, events, pollTimeoutMs = 25) {
       while (true) {
         let ready = null;
         try {
-          ready = poller.wait(pollTimeoutMs);
+          ready = poller.wait(clientPollTimeoutMs);
         } catch (error) {
           const text = String(error && error.message ? error.message : error);
           if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
-            await sleepImmediate();
             continue;
           }
           throw error;
@@ -277,7 +320,6 @@ function createSocketEventWaiter(socket, events, pollTimeoutMs = 25) {
         if (ready && pollEventHas(ready, mask)) {
           return ready;
         }
-        await sleepImmediate();
       }
     },
     close() {
@@ -290,13 +332,16 @@ module.exports = {
   POLLIN,
   POLLOUT,
   applyContextPolicy,
+  applyAutoHwmMsgUnit,
   applySpotNodeAdmission,
   applySocketPolicy,
   createSocketEventWaiter,
   drainRecvSocket,
+  manualSocketOverridesEnabled,
   pollEvents,
   pollEventHas,
   recvNoWait,
+  resolveClientPollTimeoutMs,
   resolveMultiLatencySampleCap,
   subscribeNoWait,
   trySocketPublish,

@@ -17,6 +17,10 @@ public static class PerfShared
     public const uint PerfMetricMagic = 0x5A4C_4E4Bu;
     public const int PerfMetricHeaderSize = 29;
     private static int _nextPort = InitializePortSeed();
+    private static readonly long EpochBaseTimestamp = Stopwatch.GetTimestamp();
+    private static readonly ulong EpochBaseNs = (ulong)(DateTime.UtcNow.Ticks * 100L);
+    private static readonly double StopwatchTickNs =
+        1_000_000_000.0 / Stopwatch.Frequency;
 
     public static long TimestampNs()
     {
@@ -26,7 +30,14 @@ public static class PerfShared
 
     public static ulong EpochNs()
     {
-        return (ulong)(DateTime.UtcNow.Ticks * 100L);
+        return EpochNsFromTimestamp(Stopwatch.GetTimestamp());
+    }
+
+    public static ulong EpochNsFromTimestamp(long timestamp)
+    {
+        long deltaTicks = timestamp - EpochBaseTimestamp;
+        ulong deltaNs = (ulong)(deltaTicks * StopwatchTickNs);
+        return EpochBaseNs + deltaNs;
     }
 
     public static long DeadlineTicksFromMilliseconds(int milliseconds)
@@ -203,6 +214,7 @@ public static class PerfShared
             || errno == 57
             || errno == 61
             || errno == 65
+            || errno == 107
             || errno == 111
             || errno == 113
             || errno == 10051

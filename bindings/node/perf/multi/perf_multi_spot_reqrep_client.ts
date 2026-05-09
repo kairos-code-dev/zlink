@@ -23,6 +23,7 @@ const {
 const {
   POLLIN,
   POLLOUT,
+  applyAutoHwmMsgUnit,
   applySocketPolicy,
   applyContextPolicy,
   applySpotNodeAdmission,
@@ -148,6 +149,9 @@ async function main() {
   try {
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
+    applyAutoHwmMsgUnit(controlPub, options.msgSize);
+    applyAutoHwmMsgUnit(controlSub, options.msgSize);
+    ctx.recalculateAutoHwm();
     controlPub.bind(options.controlEndpoint);
     console.log(`CLIENT_CONTROL_ENDPOINT,${options.controlEndpoint}`);
     controlSub.setSubscription(CONTROL_TOPIC);

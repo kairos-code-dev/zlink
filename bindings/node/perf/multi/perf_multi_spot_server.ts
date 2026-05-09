@@ -8,13 +8,13 @@ const { configureTlsServer } = require('../common/perf_tls');
 const {
   createPayload,
   createRunId,
-  sleepImmediate,
   stampPayload
 } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
 const {
   POLLIN,
   POLLOUT,
+  applyAutoHwmMsgUnit,
   applyContextPolicy,
   applySocketPolicy,
   applySpotNodeAdmission,
@@ -98,8 +98,11 @@ async function main() {
     spot = node.createSpot();
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
+    applyAutoHwmMsgUnit(controlPub, options.msgSize);
+    applyAutoHwmMsgUnit(controlSub, options.msgSize);
     controlPub.bind(options.controlEndpoint);
     controlSub.setSubscription(CONTROL_TOPIC);
+    ctx.recalculateAutoHwm();
 
     console.log(`READY,${options.endpoint}`);
     console.log(`CONTROL_READY,${options.controlEndpoint}`);

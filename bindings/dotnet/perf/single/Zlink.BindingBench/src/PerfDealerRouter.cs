@@ -53,6 +53,9 @@ internal static class PerfDealerRouter
         using var sender = new DealerSocket(ctx);
         ApplySingleSocketOptions(receiver);
         ApplySingleSocketOptions(sender);
+        ApplySingleAutoHwmMsgUnit(receiver, size);
+        ApplySingleAutoHwmMsgUnit(sender, size);
+        RecalculateSingleAutoHwm(ctx);
         ConfigureTlsServerIfNeeded(receiver, transport);
         ConfigureTlsClientIfNeeded(sender, transport);
         MonitorSocket? receiverMonitor = null;
@@ -134,7 +137,8 @@ internal static class PerfDealerRouter
 
         try
         {
-            PerfSocketIo.Send(sender, probe, SendFlags.None);
+            if (PerfSocketIo.Send(sender, probe, SendFlags.None) == 0)
+                return false;
         }
         catch (ZlinkRecvException ex)
         {
@@ -188,110 +192,110 @@ internal static class PerfDealerRouter
 
         long received = 0;
         int senderDone = 0;
-        Exception? recvError = null;
+        long sentCount = 0;
+        Exception? sendError = null;
         var samples = new List<double>(Math.Max(0, latencyCap));
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
 
-        var recvThread = new Thread(() =>
+        void ProcessReceived(Received receivedMessage)
         {
-            using var poller = new Poller();
-            var events = new PollEvent[1];
-            long lastRecvTicks = Stopwatch.GetTimestamp();
-            poller.Add(receiver, PollEventFlags.PollIn);
+            if (!TryGetPayloadPart(receivedMessage, out Message payloadMessage))
+                return;
 
+            ReadOnlySpan<byte> body = payloadMessage.AsReadOnlySpan();
+            if (!TryDecodeExpectedSingleHeader(body, msgSize, ActivePhase,
+                    out var header, RunId))
+            {
+                return;
+            }
+
+            received++;
+            ulong nowNs = EpochNs();
+            if (nowNs >= header.SentTsNs)
+            {
+                double latencyNs = nowNs - header.SentTsNs;
+                ReservoirSample(samples, latencyNs, ref sampleSeen, latencyCap,
+                    ref rng);
+            }
+        }
+
+        var senderThread = new Thread(() =>
+        {
             try
             {
+                ulong seq = 1;
+                long localSentCount = 0;
                 while (true)
                 {
-                    bool done = Volatile.Read(ref senderDone) != 0;
-                    int timeoutMs = done ? Math.Max(1, recvTimeoutMs) : 50;
-                    if (!WaitForInput(poller, events, timeoutMs))
+                    long nowTicks = Stopwatch.GetTimestamp();
+                    if (nowTicks >= deadlineTicks)
+                        break;
+                    StampMetricHeader(payload.AsSpan(), RunId, ActivePhase,
+                        msgSize, seq, EpochNsFromTimestamp(nowTicks));
+                    seq++;
+                    try
                     {
-                        if (done && Stopwatch.GetTimestamp() - lastRecvTicks
-                            >= recvFlushTicks)
-                        {
-                            break;
-                        }
-
+                        if (PerfSocketIo.Send(sender, payload, SendFlags.None) == 0)
+                            continue;
+                    }
+                    catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                                    || IsWouldBlock(ex.InternalErrno))
+                    {
                         continue;
                     }
-
-                    while (TryReceive(receiver, out Received? receivedMessage))
-                    {
-                        using (receivedMessage)
-                        {
-                            if (!TryGetPayloadPart(receivedMessage,
-                                    out Message payloadMessage))
-                            {
-                                continue;
-                            }
-
-                            ReadOnlySpan<byte> body = payloadMessage.AsReadOnlySpan();
-                            long recvTicks = Stopwatch.GetTimestamp();
-                            if (!TryDecodeExpectedSingleHeader(body, msgSize,
-                                    ActivePhase, out var header, RunId))
-                            {
-                                continue;
-                            }
-
-                            if (recvTicks > deadlineTicks)
-                                continue;
-
-                            Interlocked.Increment(ref received);
-                            ulong nowNs = EpochNs();
-                            if (nowNs >= header.SentTsNs)
-                            {
-                                double latencyNs = nowNs - header.SentTsNs;
-                                ReservoirSample(samples, latencyNs,
-                                    ref sampleSeen, latencyCap, ref rng);
-                            }
-                            lastRecvTicks = Stopwatch.GetTimestamp();
-                        }
-                    }
+                    localSentCount++;
                 }
-            }
-            catch (Exception ex)
-            {
-                recvError = ex;
-                DebugLog($"single_dealer_router_error:recv_thread:{ex}");
-            }
-        });
-        recvThread.IsBackground = true;
-        recvThread.Start();
-
-        bool sendFailed = false;
-        ulong seq = 1;
-        while (Stopwatch.GetTimestamp() < deadlineTicks)
-        {
-            StampMetricHeader(payload.AsSpan(), RunId, ActivePhase, msgSize, seq,
-                EpochNs());
-            seq++;
-            try
-            {
-                PerfSocketIo.Send(sender, payload, SendFlags.None);
+                Volatile.Write(ref sentCount, localSentCount);
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
             {
-                continue;
+                sendError = ex;
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"[single-dealer-router] send failed: {ex.Message}");
-                sendFailed = true;
-                break;
+                sendError = ex;
+            }
+            finally
+            {
+                Volatile.Write(ref senderDone, 1);
+            }
+        });
+        senderThread.IsBackground = true;
+        senderThread.Start();
+
+        while (Volatile.Read(ref senderDone) == 0)
+        {
+            if (!TryReceiveBlocking(receiver, out Received? receivedMessage))
+                continue;
+            using (receivedMessage)
+            {
+                if (receivedMessage != null)
+                    ProcessReceived(receivedMessage);
             }
         }
 
-        Volatile.Write(ref senderDone, 1);
-        recvThread.Join();
+        senderThread.Join();
+
+        long drainDeadlineTicks = Stopwatch.GetTimestamp()
+            + Math.Max(1, recvFlushTicks * 2);
+        while (received < Volatile.Read(ref sentCount)
+            && Stopwatch.GetTimestamp() < drainDeadlineTicks
+            && TryReceive(receiver, out Received? receivedMessage))
+        {
+            using (receivedMessage)
+            {
+                if (receivedMessage != null)
+                    ProcessReceived(receivedMessage);
+            }
+        }
 
         latencySamples = samples;
         receivedOut = received;
-        if (sendFailed || recvError != null)
+        if (sendError != null)
         {
-            if (sendFailed)
-                DebugLog("single_dealer_router_error:send_failed");
+            DebugLog("single_dealer_router_error:send_failed");
             return false;
         }
 
@@ -307,6 +311,28 @@ internal static class PerfDealerRouter
             return receivedMessage != null;
         }
         catch (ZlinkRecvException ex)
+        {
+            receivedMessage = null;
+            return false;
+        }
+        catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                        || IsWouldBlock(ex.InternalErrno))
+        {
+            receivedMessage = null;
+            return false;
+        }
+    }
+
+    private static bool TryReceiveBlocking(RouterSocket receiver,
+        out Received? receivedMessage)
+    {
+        try
+        {
+            receivedMessage = receiver.Recv();
+            return receivedMessage != null;
+        }
+        catch (ZlinkRecvException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno))
         {
             receivedMessage = null;
             return false;

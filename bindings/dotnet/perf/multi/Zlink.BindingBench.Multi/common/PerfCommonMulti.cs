@@ -52,9 +52,39 @@ internal static partial class PerfRunner
         return options.ConnectReadyTimeoutMs;
     }
 
+    internal static int ResolveMultiClientPollTimeoutMs(PerfOptions options)
+    {
+        return Math.Max(1, options.ClientPollTimeoutMs);
+    }
+
+    internal static int CapPollTimeoutMs(int pollTimeoutMs, long deadlineTicks)
+    {
+        long nowTicks = Stopwatch.GetTimestamp();
+        if (nowTicks >= deadlineTicks)
+            return 1;
+
+        double remainingMs = (deadlineTicks - nowTicks) * 1000.0
+            / Stopwatch.Frequency;
+        int remaining = remainingMs >= int.MaxValue
+            ? int.MaxValue
+            : (int)Math.Ceiling(remainingMs);
+        return Math.Max(1, Math.Min(pollTimeoutMs, remaining));
+    }
+
     internal static int ResolveMultiSpotRouteWarmupMs()
     {
         return PerfEnv.ReadNonNegative("PERF_MULTI_SPOT_ROUTE_WARMUP_MS", 0);
+    }
+
+    internal static int ResolveMultiSpotControlStabilizeMs()
+    {
+        return PerfEnv.ReadNonNegative("PERF_MULTI_SPOT_CONTROL_STABILIZE_MS",
+            1000);
+    }
+
+    internal static int ResolveMultiSpotControlSettleMs()
+    {
+        return PerfEnv.ReadNonNegative("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25);
     }
 
     internal static string MultiEndpointFor(string transport, string name,
@@ -66,7 +96,7 @@ internal static partial class PerfRunner
         return EndpointFor(transport, name);
     }
 
-    internal static string MultiSpotServiceName(string registryEndpoint)
+    internal static string MultiSpotChannelName(string registryEndpoint)
     {
         var builder = new StringBuilder("bench-svc");
         foreach (char ch in registryEndpoint)
@@ -138,6 +168,27 @@ internal static partial class PerfRunner
             && payload.SequenceEqual(MultiStopToken);
     }
 
+    internal static bool ManualSocketOverridesEnabled()
+    {
+        return PerfEnv.ReadPositive("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) > 0
+            || PerfEnv.ReadPositive("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) > 0;
+    }
+
+    internal static AutoHwmProfile ResolveContextAutoHwmProfile()
+    {
+        string value = PerfEnv.ReadString("PERF_CTX_AUTO_HWM_PROFILE", string.Empty);
+        if (string.IsNullOrWhiteSpace(value))
+            value = PerfEnv.ReadString("PERF_AUTO_HWM_PROFILE", string.Empty);
+
+        return value switch
+        {
+            "compact" => AutoHwmProfile.Compact,
+            "low_latency" or "low-latency" => AutoHwmProfile.LowLatency,
+            "throughput" => AutoHwmProfile.Throughput,
+            _ => AutoHwmProfile.Balanced,
+        };
+    }
+
     internal static void ApplyMultiServerContextOptions(Context ctx,
         PerfOptions options)
     {
@@ -146,6 +197,10 @@ internal static partial class PerfRunner
 
         if (options.MaxSockets > 0)
             ctx.Options.MaxSockets = options.MaxSockets;
+
+        ctx.Options.Blocky = PerfEnv.ReadBool("PERF_CTX_BLOCKY", false);
+        ctx.Options.AutoHwmEnabled = true;
+        ctx.Options.AutoHwmProfile = ResolveContextAutoHwmProfile();
     }
 
     internal static void ApplyMultiClientContextOptions(Context ctx,
@@ -157,16 +212,43 @@ internal static partial class PerfRunner
     internal static void ApplyMultiSocketOptions(SocketBase socket,
         PerfOptions options)
     {
-        int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
-        int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
         int sndTimeo = ResolveMultiSndTimeoutMs(options);
         int rcvTimeo = ResolveMultiRcvTimeoutMs(options);
 
         socket.Options.Linger = TimeSpan.Zero;
-        socket.Options.SendHighWaterMark = sndHwm;
-        socket.Options.ReceiveHighWaterMark = rcvHwm;
+        if (ManualSocketOverridesEnabled())
+        {
+            int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
+            int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
+            socket.Options.SendHighWaterMark = Math.Max(1, sndHwm);
+            socket.Options.ReceiveHighWaterMark = Math.Max(1, rcvHwm);
+        }
         socket.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeo);
         socket.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeo);
+    }
+
+    internal static void ApplyAutoHwmMsgUnit(SocketBase socket, int msgSize)
+    {
+        if (msgSize <= 0)
+            return;
+        try
+        {
+            socket.Options.AutoHwmMessageUnitBytes = msgSize;
+        }
+        catch (ZlinkException)
+        {
+        }
+    }
+
+    internal static void RecalculateAutoHwm(Context ctx)
+    {
+        try
+        {
+            ctx.RecalculateAutoHwm();
+        }
+        catch (ZlinkException)
+        {
+        }
     }
 
     internal static int ResolveMultiLatencySampleCap(PerfOptions options)

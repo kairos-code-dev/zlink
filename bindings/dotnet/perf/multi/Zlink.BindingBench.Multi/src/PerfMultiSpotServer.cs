@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Threading;
 using Systems.Zlink;
 using static PerfRunner;
 
@@ -37,6 +36,8 @@ internal static class PerfMultiSpotServer
         using var controlNode = new SpotNode(ctx);
         ConfigureSpotNodeTlsIfNeeded(controlNode, config.Transport);
         controlNode.Bind(config.ControlEndpoint);
+
+        RecalculateAutoHwm(ctx);
 
         controlState.SetConnectControlCallback(peerEndpoint =>
         {
@@ -83,10 +84,13 @@ internal static class PerfMultiSpotServer
     private static void ConfigureSpotNodePublisher(SpotNode node,
         PerfOptions options, SpotServerConfig config)
     {
-        int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
-        int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
-        TrySetSpotOption(() => node.PubSubHighWaterMark = Math.Max(sndHwm,
-            rcvHwm));
+        if (ManualSocketOverridesEnabled())
+        {
+            int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
+            int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
+            TrySetSpotOption(() => node.PubSubHighWaterMark =
+                Math.Max(1, Math.Max(sndHwm, rcvHwm)));
+        }
         if (options.SpotXpubNoDrop > 0)
             TrySetSpotOption(() => node.PublisherNoDrop = true);
         TrySetSpotOption(() =>
@@ -103,7 +107,6 @@ internal static class PerfMultiSpotServer
 
         long activeDeadlineTicks = DeadlineTicksFromSeconds(config.DurationSeconds);
         bool sendPending = false;
-        long lastSendAttemptTicks = 0;
 
         while (!controlState.StopRequested
                && Stopwatch.GetTimestamp() < activeDeadlineTicks)
@@ -119,13 +122,6 @@ internal static class PerfMultiSpotServer
             else
             {
                 sendPending = true;
-                long now = Stopwatch.GetTimestamp();
-                if (now - lastSendAttemptTicks
-                    < Stopwatch.Frequency / 500)
-                {
-                    Thread.Sleep(2);
-                }
-                lastSendAttemptTicks = now;
             }
         }
 

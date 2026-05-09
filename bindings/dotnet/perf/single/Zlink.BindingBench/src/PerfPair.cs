@@ -23,6 +23,9 @@ internal static class PerfPair
         using var right = new PairSocket(ctx);
         ApplySingleSocketOptions(left);
         ApplySingleSocketOptions(right);
+        ApplySingleAutoHwmMsgUnit(left, size);
+        ApplySingleAutoHwmMsgUnit(right, size);
+        RecalculateSingleAutoHwm(ctx);
         ConfigureTlsServerIfNeeded(left, transport);
         ConfigureTlsClientIfNeeded(right, transport);
         using var leftMonitor = left.MonitorOpen(SocketEvent.ConnectionReady);

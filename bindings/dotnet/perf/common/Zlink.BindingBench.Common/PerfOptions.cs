@@ -13,6 +13,7 @@ public sealed record PerfOptions(
     string Transport,
     int Size,
     string Endpoint,
+    string ControlEndpoint,
     int DurationSeconds,
     int SndTimeoutMs,
     int RcvTimeoutMs,
@@ -29,7 +30,8 @@ public sealed record PerfOptions(
     int MultiRcvHwm,
     int ServerBindPort,
     int PubSubXpubNoDrop,
-    int SpotXpubNoDrop)
+    int SpotXpubNoDrop,
+    int ClientPollTimeoutMs)
 {
     public static bool TryParseSingleArgs(string[] args, out PerfOptions options)
     {
@@ -58,7 +60,8 @@ public sealed record PerfOptions(
                 return false;
 
             options = CreateMulti(PerfExecutionKind.MultiServer, pattern,
-                transport, NormalizeMessageSize(size), string.Empty);
+                transport, NormalizeMessageSize(size), string.Empty,
+                string.Empty);
             return true;
         }
 
@@ -75,8 +78,13 @@ public sealed record PerfOptions(
             if (string.IsNullOrWhiteSpace(endpoint))
                 return false;
 
+            string controlEndpoint = FindOption(args, "--control-endpoint",
+                string.Empty);
+            controlEndpoint = controlEndpoint?.Trim() ?? string.Empty;
+
             options = CreateMulti(PerfExecutionKind.MultiClient, pattern,
-                transport, NormalizeMessageSize(size), endpoint);
+                transport, NormalizeMessageSize(size), endpoint,
+                controlEndpoint);
             return true;
         }
 
@@ -91,6 +99,7 @@ public sealed record PerfOptions(
             pattern,
             transport,
             size,
+            string.Empty,
             string.Empty,
             PerfEnv.ReadPositive("PERF_SINGLE_DURATION_SECONDS", 5),
             PerfEnv.ReadNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200),
@@ -108,11 +117,13 @@ public sealed record PerfOptions(
             0,
             0,
             PerfEnv.ReadPositive("PERF_SINGLE_PUBSUB_XPUB_NODROP", 1),
-            0);
+            0,
+            100);
     }
 
     public static PerfOptions CreateMulti(PerfExecutionKind kind, string pattern,
-        string transport, int size, string endpoint)
+        string transport, int size, string endpoint,
+        string controlEndpoint = "")
     {
         int clients = ResolveMultiClients(pattern);
         return new PerfOptions(
@@ -121,6 +132,7 @@ public sealed record PerfOptions(
             transport,
             size,
             endpoint,
+            controlEndpoint,
             PerfEnv.ReadPositive("PERF_MULTI_DURATION_SECONDS", 5),
             PerfEnv.ReadPositive("PERF_MULTI_SNDTIMEO_MS", 200),
             PerfEnv.ReadPositive("PERF_MULTI_RCVTIMEO_MS", 200),
@@ -137,7 +149,8 @@ public sealed record PerfOptions(
             PerfEnv.ReadNonNegative("PERF_MULTI_RCVHWM", 0),
             PerfEnv.ReadNonNegative("PERF_MULTI_SERVER_BIND_PORT", 0),
             PerfEnv.ReadPositive("PERF_MULTI_PUBSUB_XPUB_NODROP", 1),
-            PerfEnv.ReadPositive("PERF_MULTI_SPOT_XPUB_NODROP", 1));
+            PerfEnv.ReadPositive("PERF_MULTI_SPOT_XPUB_NODROP", 1),
+            PerfEnv.ReadPositive("PERF_CLIENT_POLL_TIMEOUT_MS", 100));
     }
 
     public int ResolveSingleHwm(string specificName)

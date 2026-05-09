@@ -23,8 +23,10 @@ internal static class PerfMultiSpotReqRep
         try
         {
             ApplyMultiSocketOptions(responder, options);
+            ApplyAutoHwmMsgUnit(responder, size);
             ConfigureTlsServerIfNeeded(responder, options.Transport);
             responder.Bind(bindEndpoint);
+            RecalculateAutoHwm(ctx);
             WriteStdoutLine(
                 $"READY,{NormalizeClientEndpoint(bindEndpoint, options.Transport)}");
 
@@ -111,6 +113,7 @@ internal static class PerfMultiSpotReqRep
                 var dealer = new DealerSocket(ctx);
                 var requester = node.CreateSpot();
                 ApplyMultiSocketOptions(dealer, options);
+                ApplyAutoHwmMsgUnit(dealer, size);
                 ConfigureTlsClientIfNeeded(dealer, options.Transport);
                 dealer.SetRoutingId(RoutingId.FromBytes(
                     Encoding.ASCII.GetBytes($"SPOT-REQREP-{i}")));
@@ -118,6 +121,8 @@ internal static class PerfMultiSpotReqRep
                 dealer.Connect(endpoint);
                 slots.Add(new ClientSlot(node, dealer, requester, latencySampleCap));
             }
+
+            RecalculateAutoHwm(ctx);
 
             if (!WarmupClients(slots, size, readyTimeoutMs))
                 return 2;

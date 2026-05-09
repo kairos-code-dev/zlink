@@ -200,6 +200,10 @@ public final class Actor implements AutoCloseable {
               ActorInterop.actorRefToNative(arena, ref), nativeMsg, flags.value());
             if (rc != 0) {
                 NativeMsg.msgClose(nativeMsg);
+                if (flags == SendFlags.DONT_WAIT
+                    && SubmitResult.fromValue(rc) == SubmitResult.BACKPRESSURED) {
+                    return false;
+                }
                 throw new SubmitException(SubmitResult.fromValue(rc));
             }
             return true;

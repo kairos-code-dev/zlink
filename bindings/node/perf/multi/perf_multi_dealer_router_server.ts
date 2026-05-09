@@ -4,16 +4,17 @@
 
 const readline = require('node:readline');
 const zlink = require('../../..');
-const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
   POLLIN,
   POLLOUT,
+  applyAutoHwmMsgUnit,
   applyContextPolicy,
   applySocketPolicy,
   pollEvents,
   pollEventHas,
   recvNoWait,
+  resolveClientPollTimeoutMs,
   trySocketSend,
   waitForConnectionReadyCount
 } = require('./perf_multi_runtime');
@@ -31,6 +32,8 @@ async function main() {
   try {
     applySocketPolicy(router);
     router.bind(options.endpoint);
+    applyAutoHwmMsgUnit(router, options.msgSize);
+    ctx.recalculateAutoHwm();
     poller.add(router, pollEvents(POLLIN));
     const readyBarrier = waitForConnectionReadyCount(router, options.clients);
     console.log(`READY,${options.endpoint}`);
@@ -46,12 +49,12 @@ async function main() {
     })();
 
     await readyBarrier;
+    const clientPollTimeoutMs = resolveClientPollTimeoutMs();
 
     while (!stop) {
       poller.modify(router, pollEvents(pending.length > 0 ? (POLLIN | POLLOUT) : POLLIN));
-      const ready = poller.wait(25);
+      const ready = poller.wait(clientPollTimeoutMs);
       if (!ready) {
-        await sleepImmediate();
         continue;
       }
 

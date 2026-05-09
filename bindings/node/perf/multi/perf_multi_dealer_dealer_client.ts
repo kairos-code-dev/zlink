@@ -9,11 +9,11 @@ const {
   createRunId,
   decodeMetricHeader,
   currentEpochNs,
-  sleepImmediate,
   summarizeMetrics
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
+  applyAutoHwmMsgUnit,
   applyContextPolicy,
   applySocketPolicy,
   drainRecvSocket,
@@ -38,7 +38,9 @@ async function main() {
     }
     for (const dealer of dealers) {
       await waitForConnectionReady(dealer, () => dealer.connect(options.endpoint));
+      applyAutoHwmMsgUnit(dealer, options.msgSize);
     }
+    ctx.recalculateAutoHwm();
 
     const recvTasks = dealers.map((dealer) => drainRecvSocket(
       dealer,
@@ -71,9 +73,17 @@ async function main() {
       activeStopNs,
       sampleCap: resolveMultiLatencySampleCap()
     });
-    while (currentEpochNs() < activeStopNs) {
-      await sleepImmediate();
-    }
+    // Wait for the measurement period to elapse. The recv tasks (drainRecvSocket)
+    // are concurrently draining incoming messages via the poller loop; no work
+    // is needed in this awaiting path beyond yielding until the deadline.
+    await new Promise((resolve) => {
+      const remainMs = Number((activeStopNs - currentEpochNs()) / 1_000_000n);
+      if (remainMs > 0) {
+        setTimeout(resolve, remainMs);
+      } else {
+        resolve();
+      }
+    });
     stop = true;
     for (const dealer of dealers) {
       try {

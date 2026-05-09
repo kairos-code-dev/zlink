@@ -9,11 +9,11 @@ const {
   createRunId,
   decodeMetricHeader,
   currentEpochNs,
-  sleepImmediate,
   summarizeMetrics
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
+  applyAutoHwmMsgUnit,
   applyContextPolicy,
   applySocketPolicy,
   drainRecvSocket,
@@ -35,8 +35,10 @@ async function main() {
       applySocketPolicy(sub);
       sub.setSubscription('perf.topic');
       sub.connect(options.endpoint);
+      applyAutoHwmMsgUnit(sub, options.msgSize);
       subs.push(sub);
     }
+    ctx.recalculateAutoHwm();
 
     const recvTasks = subs.map((sub) => drainRecvSocket(
       sub,
@@ -65,9 +67,14 @@ async function main() {
           activeStopNs,
           sampleCap: resolveMultiLatencySampleCap()
         });
-        while (currentEpochNs() < activeStopNs) {
-          await sleepImmediate();
-        }
+        await new Promise((resolve) => {
+          const remainMs = Number((activeStopNs - currentEpochNs()) / 1_000_000n);
+          if (remainMs > 0) {
+            setTimeout(resolve, remainMs);
+          } else {
+            resolve();
+          }
+        });
         stop = true;
         for (const sub of subs) {
           try {

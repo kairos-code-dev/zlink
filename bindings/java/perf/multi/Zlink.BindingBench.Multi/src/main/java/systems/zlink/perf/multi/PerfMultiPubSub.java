@@ -28,6 +28,8 @@ final class PerfMultiPubSub {
         try (Context ctx = PerfUtil.newContext(config);
              PubSocket pub = new PubSocket(ctx)) {
             PerfUtil.applySocketOptions(pub, config);
+            PerfUtil.applyAutoHwmMsgUnit(pub, config.size());
+            PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.configureServerTls(pub, config.transport());
             pub.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
@@ -60,9 +62,11 @@ final class PerfMultiPubSub {
             try (Context ctx = PerfUtil.newContext(config);
                  SubSocket sub = new SubSocket(ctx)) {
                 PerfUtil.applySocketOptions(sub, config);
+                PerfUtil.applyAutoHwmMsgUnit(sub, config.size());
                 PerfUtil.configureClientTls(sub, config.transport());
                 sub.setSubscription(TOPIC);
                 sub.connect(config.endpoint());
+                PerfUtil.recalculateAutoHwm(ctx);
                 connected.countDown();
                 if (connected.getCount() == 0L) {
                     PerfControl.emitClientReady(config.size());

@@ -101,7 +101,7 @@ internal static partial class PerfRunner
     internal static int ResolveSingleLatencyCount(string pattern)
     {
         _ = pattern;
-        return PerfEnv.ReadPositive("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200000);
+        return PerfEnv.ReadPositive("PERF_SINGLE_LATENCY_SAMPLE_CAP", 4_000_000);
     }
 
     internal static int ResolveSinglePubSubReadySettleMs()
@@ -168,28 +168,63 @@ internal static partial class PerfRunner
 
     internal static void ApplySingleContextOptions(Context ctx)
     {
-        int ioThreads = PerfEnv.ReadNonNegative("PERF_IO_THREADS", 0);
+        int ioThreads = PerfEnv.ReadPositive("PERF_IO_THREADS", 1);
         if (ioThreads > 0)
             ctx.Options.IoThreads = ioThreads;
+
+        ctx.Options.AutoHwmEnabled =
+            PerfEnv.ReadNonNegative("PERF_CTX_AUTO_HWM_ENABLE", 1) != 0;
+        ctx.Options.AutoHwmProfile = ResolveContextAutoHwmProfile();
 
         int maxSockets = ResolveSingleMaxSockets();
         if (maxSockets > 0)
             ctx.Options.MaxSockets = maxSockets;
     }
 
+    internal static AutoHwmProfile ResolveContextAutoHwmProfile()
+    {
+        string value = PerfEnv.ReadString("PERF_CTX_AUTO_HWM_PROFILE", string.Empty);
+        if (string.IsNullOrWhiteSpace(value))
+            value = PerfEnv.ReadString("PERF_AUTO_HWM_PROFILE", string.Empty);
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "compact" => AutoHwmProfile.Compact,
+            "low_latency" or "low-latency" => AutoHwmProfile.LowLatency,
+            "throughput" => AutoHwmProfile.Throughput,
+            _ => AutoHwmProfile.Balanced,
+        };
+    }
+
     internal static void ApplySingleSocketOptions(SocketBase socket)
     {
-        int sndHwm = ResolveSingleHwmValue("PERF_SINGLE_SNDHWM");
-        int rcvHwm = ResolveSingleHwmValue("PERF_SINGLE_RCVHWM");
-
         int sndTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200);
         int rcvTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
+        bool allowManualOverrides =
+            PerfEnv.ReadNonNegative("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) != 0;
 
         socket.Options.Linger = TimeSpan.Zero;
-        socket.Options.SendHighWaterMark = sndHwm;
-        socket.Options.ReceiveHighWaterMark = rcvHwm;
         socket.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeo);
         socket.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeo);
+        if (allowManualOverrides)
+        {
+            int sndHwm = ResolveSingleHwmValue("PERF_SINGLE_SNDHWM");
+            int rcvHwm = ResolveSingleHwmValue("PERF_SINGLE_RCVHWM");
+            socket.Options.SendHighWaterMark = sndHwm;
+            socket.Options.ReceiveHighWaterMark = rcvHwm;
+        }
+    }
+
+    internal static void ApplySingleAutoHwmMsgUnit(SocketBase socket, int msgSize)
+    {
+        if (msgSize <= 0)
+            return;
+        socket.Options.AutoHwmMessageUnitBytes = msgSize;
+    }
+
+    internal static void RecalculateSingleAutoHwm(Context ctx)
+    {
+        ctx.RecalculateAutoHwm();
     }
 
 }

@@ -196,10 +196,12 @@ internal static partial class PerfRunner
         private readonly int _msgSize;
         private readonly bool _requirePhaseActive;
         private readonly ManualResetEventSlim _startSignal = new(false);
+        private readonly ManualResetEventSlim _controlConnectedSignal = new(false);
         private readonly Thread _readerThread;
         private int _startRequested;
         private int _phaseActiveRequested;
         private int _stopRequested;
+        private Action<string>? _connectControlCallback;
 
         internal RunnerControlState(int msgSize, bool requirePhaseActive = false)
         {
@@ -217,6 +219,11 @@ internal static partial class PerfRunner
 
         internal bool StopRequested => Volatile.Read(ref _stopRequested) != 0;
 
+        internal void SetConnectControlCallback(Action<string> callback)
+        {
+            _connectControlCallback = callback;
+        }
+
         internal bool WaitForStart(int timeoutMs)
         {
             if (_startSignal.IsSet)
@@ -227,15 +234,28 @@ internal static partial class PerfRunner
             return _startSignal.IsSet && !StopRequested;
         }
 
+        internal bool WaitForControlConnected(int timeoutMs)
+        {
+            if (_controlConnectedSignal.IsSet)
+                return true;
+
+            int boundedTimeoutMs = Math.Max(1, timeoutMs);
+            _controlConnectedSignal.Wait(boundedTimeoutMs);
+            return _controlConnectedSignal.IsSet && !StopRequested;
+        }
+
         public void Dispose()
         {
             _startSignal.Dispose();
+            _controlConnectedSignal.Dispose();
         }
 
         private void ReadLoop()
         {
             string expectedStart = $"START,{_msgSize}";
             string expectedPhaseActive = $"PHASE_ACTIVE,{_msgSize}";
+            const string connectControlPrefix = "CONNECT_CONTROL,";
+            const string controlConnectedPrefix = "CONTROL_CONNECTED,";
 
             while (true)
             {
@@ -244,6 +264,7 @@ internal static partial class PerfRunner
                 {
                     Volatile.Write(ref _stopRequested, 1);
                     _startSignal.Set();
+                    _controlConnectedSignal.Set();
                     return;
                 }
 
@@ -258,7 +279,24 @@ internal static partial class PerfRunner
                 {
                     Volatile.Write(ref _stopRequested, 1);
                     _startSignal.Set();
+                    _controlConnectedSignal.Set();
                     return;
+                }
+
+                if (command.StartsWith(connectControlPrefix,
+                        StringComparison.Ordinal))
+                {
+                    string ep = command.Substring(connectControlPrefix.Length)
+                        .Trim();
+                    _connectControlCallback?.Invoke(ep);
+                    continue;
+                }
+
+                if (command.StartsWith(controlConnectedPrefix,
+                        StringComparison.Ordinal))
+                {
+                    _controlConnectedSignal.Set();
+                    continue;
                 }
 
                 if (string.Equals(command, expectedStart,

@@ -52,7 +52,7 @@ final class PerfArgs {
         }
         return new PerfUtil.Config("single", pattern, transport, size, duration,
             "", 1, ioThreads, sendHwm, recvHwm, sendTimeoutMs, recvTimeoutMs,
-            monitorHwm, connectReadyTimeoutMs, 0);
+            monitorHwm, connectReadyTimeoutMs, 0, 100);
     }
 
     static PerfUtil.Config parseMultiArgs(String[] args) {
@@ -124,9 +124,11 @@ final class PerfArgs {
         if (!connectConcurrencySet || connectConcurrency <= 0) {
             connectConcurrency = clients >= 10_000 ? 1024 : 128;
         }
+        int clientPollTimeoutMs = intEnv("PERF_CLIENT_POLL_TIMEOUT_MS", 100);
         return new PerfUtil.Config("multi", pattern, transport, size, duration,
             endpoint, clients, ioThreads, sendHwm, recvHwm, sendTimeoutMs,
-            recvTimeoutMs, monitorHwm, connectReadyTimeoutMs, connectConcurrency);
+            recvTimeoutMs, monitorHwm, connectReadyTimeoutMs, connectConcurrency,
+            clientPollTimeoutMs);
     }
 
     private static int intEnv(String name, int fallback) {

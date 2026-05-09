@@ -15,7 +15,7 @@ internal static class PerfMultiRouterRouterClient
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
         int latencySampleCap = ResolveMultiLatencySampleCap(options);
         int clientCount = ResolveMultiClients(options);
-        const int pollTimeoutMs = 50;
+        int pollTimeoutMs = ResolveMultiClientPollTimeoutMs(options);
         string endpoint = options.Endpoint;
         ReadOnlySpan<byte> serverRoutingId = "SERVER"u8;
 
@@ -50,6 +50,10 @@ internal static class PerfMultiRouterRouterClient
             }
             DisposeAllQuietly(monitors);
             monitors.Clear();
+
+            for (int i = 0; i < clients.Count; i++)
+                ApplyAutoHwmMsgUnit(clients[i], size);
+            RecalculateAutoHwm(ctx);
 
             var slots = CreateSlots(activeClients, serverRoutingId, size);
             var result = RunMultiRouterRouterClientLoop(pollManager, slots,
@@ -113,8 +117,9 @@ internal static class PerfMultiRouterRouterClient
             TryScheduleIdleSends(slots, eventMasks, msgSize, runId, PerfPhase.Active,
                 ref seq, ref rrIndex);
 
+            int cappedPollMs = CapPollTimeoutMs(pollTimeoutMs, benchDeadlineTicks);
             if (PollSocketEvents(pollManager, sockets, eventMasks,
-                    pollTimeoutMs) <= 0)
+                    cappedPollMs) <= 0)
             {
                 for (int i = 0; i < slots.Length; i++)
                     HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,

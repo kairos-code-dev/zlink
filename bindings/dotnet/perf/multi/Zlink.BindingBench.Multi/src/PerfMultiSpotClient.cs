@@ -42,6 +42,8 @@ internal static class PerfMultiSpotClient
             options));
         node.AttachDiscovery(discovery);
 
+        RecalculateAutoHwm(ctx);
+
         var slots = new List<SpotClientSlot>(config.ClientCount);
         try
         {
@@ -238,8 +240,10 @@ internal static class PerfMultiSpotClient
     private static void ApplySpotSubscriberOptions(SpotNode node,
         PerfOptions options)
     {
+        if (!ManualSocketOverridesEnabled())
+            return;
         int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
-        TrySetSpotOption(() => node.PubSubHighWaterMark = rcvHwm);
+        TrySetSpotOption(() => node.PubSubHighWaterMark = Math.Max(1, rcvHwm));
     }
 
     private static bool ShouldIgnoreSpotOptionError(int errno)

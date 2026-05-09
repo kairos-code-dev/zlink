@@ -38,6 +38,8 @@ final class PerfMultiDealerRouter {
             PerfUtil.waitForMonitorEvent(monitor, READY_EVENT, config.clients(),
                 Duration.ofMillis(config.connectReadyTimeoutMs()),
                 "dealer/router server ready");
+            PerfUtil.applyAutoHwmMsgUnit(server, config.size());
+            PerfUtil.recalculateAutoHwm(ctx);
             int stops = 0;
             Deque<PendingReply> pendingReplies = new ArrayDeque<>();
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
@@ -105,6 +107,8 @@ final class PerfMultiDealerRouter {
                 PerfUtil.waitForMonitorEvent(monitor, READY_EVENT, 1,
                     Duration.ofMillis(config.connectReadyTimeoutMs()),
                     "dealer/router client ready");
+                PerfUtil.applyAutoHwmMsgUnit(client, config.size());
+                PerfUtil.recalculateAutoHwm(ctx);
                 connected.countDown();
                 if (connected.getCount() == 0L) {
                     metrics.startActiveWindow();

@@ -12,6 +12,7 @@ internal static class PerfMultiPubSubServer
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
         int clientCount = ResolveMultiClients(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
+        int pollTimeoutMs = ResolveMultiClientPollTimeoutMs(options);
         string endpoint = MultiEndpointFor(options.Transport, "multi-pubsub",
             options);
 
@@ -28,6 +29,8 @@ internal static class PerfMultiPubSubServer
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
         server.Bind(endpoint);
+        ApplyAutoHwmMsgUnit(server, size);
+        RecalculateAutoHwm(ctx);
         WriteStdoutLine($"READY,{endpoint}");
 
         if (!WaitConnectReadyCount(monitor, clientCount, readyTimeoutMs))
@@ -46,7 +49,7 @@ internal static class PerfMultiPubSubServer
         var pollSockets = new[] { server };
 
         if (!RunPublishPhase(pollManager, server, pollSockets, payload, runId,
-                size, ref seq, durationSeconds, controlState))
+                size, ref seq, durationSeconds, pollTimeoutMs, controlState))
         {
             return 2;
         }
@@ -70,7 +73,7 @@ internal static class PerfMultiPubSubServer
 
     private static bool RunPublishPhase(PollManager pollManager, PubSocket server,
         IReadOnlyList<SocketBase> pollSockets, byte[] payload, uint runId,
-        int size, ref ulong seq, int durationSeconds,
+        int size, ref ulong seq, int durationSeconds, int pollTimeoutMs,
         RunnerControlState controlState)
     {
         bool sendPending = false;
@@ -87,10 +90,8 @@ internal static class PerfMultiPubSubServer
             bool trySend = !sendPending;
             if (!trySend)
             {
-                int pollTimeoutMs = Math.Max(1,
-                    Math.Min(50, RemainingMilliseconds(deadlineTicks)));
-                if (PollSocketWriteReady(pollManager, pollSockets,
-                        pollTimeoutMs) > 0
+                int cappedMs = CapPollTimeoutMs(pollTimeoutMs, deadlineTicks);
+                if (PollSocketWriteReady(pollManager, pollSockets, cappedMs) > 0
                     && IsSocketWriteReady(pollManager, 0))
                 {
                     trySend = true;
@@ -115,30 +116,14 @@ internal static class PerfMultiPubSubServer
                 sendPending = true;
             }
 
-            int timeoutMs = Math.Min(50, RemainingMilliseconds(deadlineTicks));
-            if (timeoutMs <= 0)
-                continue;
-
+            int timeoutMs = CapPollTimeoutMs(pollTimeoutMs, deadlineTicks);
             if (sendPending)
             {
-                _ = PollSocketWriteReady(pollManager, pollSockets,
-                    Math.Max(1, timeoutMs));
+                _ = PollSocketWriteReady(pollManager, pollSockets, timeoutMs);
             }
         }
 
         return true;
     }
 
-    private static int RemainingMilliseconds(long deadlineTicks)
-    {
-        long nowTicks = Stopwatch.GetTimestamp();
-        if (deadlineTicks <= nowTicks)
-            return 0;
-
-        double remainingMs = (deadlineTicks - nowTicks) * 1000.0
-            / Stopwatch.Frequency;
-        if (remainingMs >= int.MaxValue)
-            return int.MaxValue;
-        return (int)Math.Ceiling(remainingMs);
-    }
 }

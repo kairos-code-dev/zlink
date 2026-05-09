@@ -7,16 +7,17 @@ const zlink = require('../../..');
 const {
   createPayload,
   createRunId,
-  sleepImmediate,
   stampPayload
 } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const {
   POLLOUT,
+  applyAutoHwmMsgUnit,
   applyContextPolicy,
   applySocketPolicy,
   pollEvents,
   pollEventHas,
+  resolveClientPollTimeoutMs,
   trySocketPublish
 } = require('./perf_multi_runtime');
 
@@ -34,6 +35,8 @@ async function main() {
       noDrop: Number(process.env.PERF_MULTI_PUBSUB_XPUB_NODROP ?? 1) !== 0
     });
     pub.bind(options.endpoint);
+    applyAutoHwmMsgUnit(pub, options.msgSize);
+    ctx.recalculateAutoHwm();
     poller.add(pub, pollEvents(POLLOUT));
     console.log(`READY,${options.endpoint}`);
 
@@ -46,6 +49,7 @@ async function main() {
         continue;
       }
 
+      const clientPollTimeoutMs = resolveClientPollTimeoutMs();
       const runId = createRunId(1);
       const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
       let seq = 1n;
@@ -60,9 +64,11 @@ async function main() {
           pending = true;
         }
 
-        const ready = poller.wait(25);
+        const nowNs = process.hrtime.bigint();
+        const remainMs = Number((activeStopNs - nowNs) / 1_000_000n);
+        const waitMs = Math.max(1, Math.min(clientPollTimeoutMs, remainMs));
+        const ready = poller.wait(waitMs);
         if (!ready || !pollEventHas(ready, POLLOUT)) {
-          await sleepImmediate();
           continue;
         }
         pending = false;
@@ -74,9 +80,9 @@ async function main() {
           cooldownPending = false;
           continue;
         }
-        const ready = poller.wait(25);
-        if (!ready || !pollEventHas(ready, POLLOUT)) {
-          await sleepImmediate();
+        const ready = poller.wait(clientPollTimeoutMs);
+        if (ready && pollEventHas(ready, POLLOUT)) {
+          // will retry publish on next iteration
         }
       }
       break;

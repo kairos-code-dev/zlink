@@ -14,7 +14,7 @@ internal static class PerfMultiPubSubClient
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
         int latencySampleCap = ResolveMultiLatencySampleCap(options);
         int clientCount = ResolveMultiClients(options);
-        const int pollTimeoutMs = 50;
+        int pollTimeoutMs = ResolveMultiClientPollTimeoutMs(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
         string endpoint = options.Endpoint;
 
@@ -50,6 +50,11 @@ internal static class PerfMultiPubSubClient
             }
             DisposeAllQuietly(monitors);
             monitors.Clear();
+
+            for (int i = 0; i < clients.Count; i++)
+                ApplyAutoHwmMsgUnit(clients[i], size);
+            RecalculateAutoHwm(ctx);
+
             WriteStdoutLine($"CLIENT_READY,{size}");
 
             if (!controlState.WaitForStart(readyTimeoutMs))
@@ -93,8 +98,9 @@ internal static class PerfMultiPubSubClient
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
         while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
         {
+            int cappedPollMs = CapPollTimeoutMs(pollTimeoutMs, benchDeadlineTicks);
             if (PollSocketReadReady(pollManager, activeClients,
-                    pollTimeoutMs) <= 0)
+                    cappedPollMs) <= 0)
             {
                 continue;
             }

@@ -5,12 +5,14 @@ package systems.zlink.perf.multi;
 import systems.zlink.Context;
 import systems.zlink.DealerSocket;
 import systems.zlink.Message;
+import systems.zlink.PollEventFlag;
 import systems.zlink.RecvException;
 import systems.zlink.RecvFlags;
 import systems.zlink.RecvResult;
 import systems.zlink.RouterSocket;
 import systems.zlink.RoutingId;
 import systems.zlink.perf.PerfControl;
+import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfUtil;
 import systems.zlink.service.spot.Spot;
 import systems.zlink.service.spot.SpotNode;
@@ -37,36 +39,45 @@ final class PerfMultiSpotReqRep {
         int cooldownSeen = 0;
         Thread watcher = startStopWatcher(stopRequested);
         try (Context ctx = PerfUtil.newContext(config);
-             RouterSocket responder = new RouterSocket(ctx)) {
+             RouterSocket responder = new RouterSocket(ctx);
+             PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
+                 List.of((systems.zlink.Socket) responder),
+                 PollEventFlag.POLLIN)) {
             PerfUtil.applySocketOptions(responder, config);
             PerfUtil.configureServerTls(responder, config.transport());
             responder.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
 
             while (!stopRequested.get()) {
-                systems.zlink.Received received;
-                try {
-                    received = responder.recv(RecvFlags.DONT_WAIT);
-                } catch (RecvException ex) {
-                    if (ex.getResult() == RecvResult.NO_DATA) {
-                        sleepQuietly(1);
-                        continue;
-                    }
-                    throw ex;
+                if (pollSet.poll(20) <= 0
+                    || !pollSet.isReady(0, PollEventFlag.POLLIN)) {
+                    continue;
                 }
+                for (;;) {
+                    systems.zlink.Received received;
+                    try {
+                        received = responder.recv(RecvFlags.DONT_WAIT);
+                    } catch (RecvException ex) {
+                        if (ex.getResult() == RecvResult.NO_DATA
+                            || ex.getResult() == RecvResult.BUSY) {
+                            break;
+                        }
+                        throw ex;
+                    }
 
-                try (received) {
-                    PerfUtil.Header header = PerfUtil.decodeHeader(
-                        received.firstPart(), config.size());
-                    if (header == null) {
-                        continue;
-                    }
-                    try (Message reply = received.firstPart().move()) {
-                        received.reply(reply);
-                    }
-                    if (header.phase() == PerfUtil.PHASE_COOLDOWN
-                        && ++cooldownSeen >= config.clients()) {
-                        stopRequested.set(true);
+                    try (received) {
+                        PerfUtil.Header header = PerfUtil.decodeHeader(
+                            received.firstPart(), config.size());
+                        if (header == null) {
+                            continue;
+                        }
+                        try (Message reply = received.firstPart().move()) {
+                            received.reply(reply);
+                        }
+                        if (header.phase() == PerfUtil.PHASE_COOLDOWN
+                            && ++cooldownSeen >= config.clients()) {
+                            stopRequested.set(true);
+                        }
                     }
                 }
             }

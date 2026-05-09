@@ -9,6 +9,7 @@ const { parseMultiArgs } = require('./perf_multi_common');
 const {
   POLLIN,
   POLLOUT,
+  applyAutoHwmMsgUnit,
   applyContextPolicy,
   applySocketPolicy,
   applySpotNodeAdmission,
@@ -94,6 +95,9 @@ async function main() {
 
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
+    applyAutoHwmMsgUnit(controlPub, options.msgSize);
+    applyAutoHwmMsgUnit(controlSub, options.msgSize);
+    ctx.recalculateAutoHwm();
     controlPub.bind(options.controlEndpoint);
     controlSub.setSubscription(CONTROL_TOPIC);
 

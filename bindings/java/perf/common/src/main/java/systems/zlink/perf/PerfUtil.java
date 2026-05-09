@@ -49,7 +49,8 @@ public final class PerfUtil {
         int recvTimeoutMs,
         int monitorHwm,
         int connectReadyTimeoutMs,
-        int connectConcurrency
+        int connectConcurrency,
+        int clientPollTimeoutMs
     ) {
     }
 
@@ -219,8 +220,20 @@ public final class PerfUtil {
         return PerfTransport.newContext(config);
     }
 
+    public static boolean manualSocketOverridesEnabled() {
+        return PerfTransport.manualSocketOverridesEnabled();
+    }
+
     public static void applySocketOptions(Socket socket, Config config) {
         PerfTransport.applySocketOptions(socket, config);
+    }
+
+    public static void applyAutoHwmMsgUnit(Socket socket, int msgSize) {
+        PerfTransport.applyAutoHwmMsgUnit(socket, msgSize);
+    }
+
+    public static void recalculateAutoHwm(Context ctx) {
+        PerfTransport.recalculateAutoHwm(ctx);
     }
 
     public static void applySpotOptions(SpotNode node, Config config) {

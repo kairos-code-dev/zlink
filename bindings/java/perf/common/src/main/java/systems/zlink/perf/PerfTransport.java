@@ -2,6 +2,7 @@
 
 package systems.zlink.perf;
 
+import systems.zlink.AutoHwmProfile;
 import systems.zlink.Context;
 import systems.zlink.MonitorEventType;
 import systems.zlink.MonitorSocket;
@@ -26,7 +27,35 @@ final class PerfTransport {
         if (config.ioThreads() > 0) {
             ctx.options().ioThreads(config.ioThreads());
         }
+        ctx.options().blocky(benchCtxBlocky());
+        ctx.options().autoHwmEnabled(true);
+        ctx.options().autoHwmProfile(benchCtxAutoHwmProfile());
         return ctx;
+    }
+
+    static boolean manualSocketOverridesEnabled() {
+        return PerfUtil.intEnv("PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) > 0
+            || PerfUtil.intEnv("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) > 0;
+    }
+
+    private static boolean benchCtxBlocky() {
+        return PerfUtil.intEnv("PERF_CTX_BLOCKY", 0) != 0;
+    }
+
+    private static AutoHwmProfile benchCtxAutoHwmProfile() {
+        String value = System.getenv("PERF_CTX_AUTO_HWM_PROFILE");
+        if (value == null || value.isBlank()) {
+            value = System.getenv("PERF_AUTO_HWM_PROFILE");
+        }
+        if (value == null || value.isBlank()) {
+            return AutoHwmProfile.BALANCED;
+        }
+        return switch (value.toLowerCase(java.util.Locale.ROOT)) {
+            case "compact" -> AutoHwmProfile.COMPACT;
+            case "low_latency", "low-latency" -> AutoHwmProfile.LOW_LATENCY;
+            case "throughput" -> AutoHwmProfile.THROUGHPUT;
+            default -> AutoHwmProfile.BALANCED;
+        };
     }
 
     static void configureServerTls(Socket socket, String transport) {
@@ -73,11 +102,20 @@ final class PerfTransport {
 
     static void applySocketOptions(Socket socket, PerfUtil.Config config) {
         PerfSocketOptions.linger(socket, Duration.ZERO);
-        if (config.sendHwm() > 0) {
-            PerfSocketOptions.sendHwm(socket, config.sendHwm());
-        }
-        if (config.recvHwm() > 0) {
-            PerfSocketOptions.recvHwm(socket, config.recvHwm());
+        if ("multi".equals(config.suite())) {
+            if (manualSocketOverridesEnabled()) {
+                int sndhwm = config.sendHwm() > 0 ? config.sendHwm() : 1;
+                int rcvhwm = config.recvHwm() > 0 ? config.recvHwm() : 1;
+                PerfSocketOptions.sendHwm(socket, sndhwm);
+                PerfSocketOptions.recvHwm(socket, rcvhwm);
+            }
+        } else {
+            if (config.sendHwm() > 0) {
+                PerfSocketOptions.sendHwm(socket, config.sendHwm());
+            }
+            if (config.recvHwm() > 0) {
+                PerfSocketOptions.recvHwm(socket, config.recvHwm());
+            }
         }
         if (config.sendTimeoutMs() >= 0) {
             PerfSocketOptions.sendTimeout(socket,
@@ -87,6 +125,17 @@ final class PerfTransport {
             PerfSocketOptions.recvTimeout(socket,
                 Duration.ofMillis(config.recvTimeoutMs()));
         }
+    }
+
+    static void applyAutoHwmMsgUnit(Socket socket, int msgSize) {
+        if (msgSize <= 0) {
+            return;
+        }
+        PerfSocketOptions.autoHwmMessageUnitBytes(socket, msgSize);
+    }
+
+    static void recalculateAutoHwm(Context ctx) {
+        ctx.recalculateAutoHwm();
     }
 
     static void applyMonitorOptions(MonitorSocket monitor, PerfUtil.Config config) {

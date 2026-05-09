@@ -5,13 +5,14 @@ using static PerfRunner;
 
 internal static class PerfMultiDealerRouterServer
 {
-    private const int PollTimeoutMs = 50;
 
     internal static int Run(PerfOptions options)
     {
+        int size = Math.Max(1, options.Size);
         int rcvTimeoutMs = ResolveMultiRcvTimeoutMs(options);
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
         int clientCount = ResolveMultiClients(options);
+        int pollTimeoutMs = ResolveMultiClientPollTimeoutMs(options);
         string endpoint = MultiEndpointFor(options.Transport,
             "multi-dealer-router", options);
 
@@ -30,6 +31,9 @@ internal static class PerfMultiDealerRouterServer
         if (!WaitConnectReadyCount(monitor, clientCount, readyTimeoutMs))
             return 2;
 
+        ApplyAutoHwmMsgUnit(server, size);
+        RecalculateAutoHwm(ctx);
+
         var sockets = new[] { (SocketBase)server };
         var eventMasks = new[] { SocketPollIn };
         var pendingReplies = new Queue<PendingReply>();
@@ -41,7 +45,7 @@ internal static class PerfMultiDealerRouterServer
                 ? SocketPollIn | SocketPollOut
                 : SocketPollIn;
             if (PollSocketEvents(pollManager, sockets, eventMasks,
-                    PollTimeoutMs) <= 0)
+                    pollTimeoutMs) <= 0)
             {
                 continue;
             }

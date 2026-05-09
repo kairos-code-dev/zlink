@@ -35,6 +35,8 @@ final class PerfMultiDealerDealer {
             server.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
             PerfControl.awaitStart(config.size(), "dealer/dealer server");
+            PerfUtil.applyAutoHwmMsgUnit(server, config.size());
+            PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
             long finishDeadline = System.nanoTime()
                 + Duration.ofSeconds(config.durationSeconds() + 20L).toNanos();
@@ -101,6 +103,10 @@ final class PerfMultiDealerDealer {
                 PerfUtil.waitForMonitorEvent(monitors.get(i), READY_EVENT, 1,
                     readyTimeout, "dealer/dealer client ready");
             }
+            for (DealerSocket client : clients) {
+                PerfUtil.applyAutoHwmMsgUnit(client, config.size());
+            }
+            PerfUtil.recalculateAutoHwm(ctx);
             PerfControl.emitClientReady(config.size());
             PerfControl.awaitStart(config.size(), "dealer/dealer client");
             List<systems.zlink.Socket> pollSockets = new ArrayList<>(clients.size());
@@ -138,8 +144,11 @@ final class PerfMultiDealerDealer {
                         continue;
                     }
                     long remainingNs = Math.max(1L, activeEnd - System.nanoTime());
-                    pollWritable(pollSet, pending, Math.max(1, (int) Math.min(Integer.MAX_VALUE,
-                        Duration.ofNanos(remainingNs).toMillis())));
+                    int baseTimeoutMs = config.clientPollTimeoutMs() > 0
+                        ? config.clientPollTimeoutMs() : 100;
+                    int pollTimeoutMs = (int) Math.max(1L, Math.min(baseTimeoutMs,
+                        Duration.ofNanos(remainingNs).toMillis()));
+                    pollWritable(pollSet, pending, pollTimeoutMs);
                 }
             }
             DealerSocket cooldownClient = clients.get(0);

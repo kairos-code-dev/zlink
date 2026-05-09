@@ -30,4 +30,8 @@ public final class PerfSocketOptions {
     public static void linger(Socket socket, Duration value) {
         socket.options().linger(value);
     }
+
+    public static void autoHwmMessageUnitBytes(Socket socket, int value) {
+        socket.options().autoHwmMessageUnitBytes(value);
+    }
 }

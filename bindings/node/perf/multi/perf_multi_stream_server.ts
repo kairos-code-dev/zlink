@@ -5,7 +5,11 @@
 const readline = require('node:readline');
 const zlink = require('../../..');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { applyContextPolicy, applySocketPolicy } = require('./perf_multi_runtime');
+const {
+  applyAutoHwmMsgUnit,
+  applyContextPolicy,
+  applySocketPolicy
+} = require('./perf_multi_runtime');
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
@@ -16,6 +20,8 @@ async function main() {
 
   try {
     applySocketPolicy(stream);
+    applyAutoHwmMsgUnit(stream, options.msgSize);
+    ctx.recalculateAutoHwm();
     stream.bind(options.endpoint);
     stream.onPacket((routingId, header, body) => {
       stream.send(routingId, body.data());

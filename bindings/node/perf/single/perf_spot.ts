@@ -19,12 +19,12 @@ import {
 } from './perf_single_common';
 
 const AUTO_CONNECT_SPOT_MESH = 5;
-const SERVICE_NAME = 'perf.spot';
+const CHANNEL_NAME = 'perf.spot';
 const TOPIC = 'perf.topic';
 
 function trySpotPublish(spot: any, payload: Buffer): boolean {
   try {
-    return spot.publish(SERVICE_NAME, TOPIC)
+    return spot.publish(TOPIC)
       .message(payload)
       .flags(zlink.SendFlags.DontWait)
       .submit();
@@ -88,8 +88,8 @@ async function runSpotBenchmark(msgSize: number, options: any) {
   const ctx = new zlink.Context();
   applyContextPolicy(ctx);
   const registry = new zlink.Registry(ctx);
-  const publisherDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
-  const subscriberDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, SERVICE_NAME);
+  const publisherDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
+  const subscriberDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
   const publisherNode = new zlink.SpotNode(ctx);
   const subscriberNode = new zlink.SpotNode(ctx);
   let publisher: any = null;

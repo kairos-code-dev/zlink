@@ -23,4 +23,12 @@ public static class PerfEnv
             ? parsed
             : fallback;
     }
+
+    public static bool ReadBool(string name, bool fallback)
+    {
+        string? raw = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(raw))
+            return fallback;
+        return int.TryParse(raw.Trim(), out int parsed) ? parsed != 0 : fallback;
+    }
 }

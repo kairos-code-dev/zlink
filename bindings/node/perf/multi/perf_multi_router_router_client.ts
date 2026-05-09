@@ -9,7 +9,6 @@ const {
   createRunId,
   decodeMetricHeader,
   currentEpochNs,
-  sleepImmediate,
   summarizeMetrics,
   stampPayload
 } = require('../common/perf_metrics');
@@ -17,11 +16,13 @@ const { parseMultiArgs } = require('./perf_multi_common');
 const {
   POLLIN,
   POLLOUT,
+  applyAutoHwmMsgUnit,
   applyContextPolicy,
   applySocketPolicy,
   pollEvents,
   pollEventHas,
   recvNoWait,
+  resolveClientPollTimeoutMs,
   resolveMultiLatencySampleCap,
   trySocketSend,
   waitForConnectionReady
@@ -54,8 +55,11 @@ async function main() {
     }
     for (let i = 0; i < routers.length; i += 1) {
       await waitForConnectionReady(routers[i], () => routers[i].connect(options.endpoint));
+      applyAutoHwmMsgUnit(routers[i], options.msgSize);
       poller.add(routers[i], pollEvents(POLLIN | POLLOUT), i);
     }
+    ctx.recalculateAutoHwm();
+    const clientPollTimeoutMs = resolveClientPollTimeoutMs();
     const runId = createRunId(1);
     const activeStartNs = currentEpochNs();
     const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
@@ -108,9 +112,11 @@ async function main() {
         continue;
       }
 
-      const ready = poller.waitAll(poller.size, 25);
+      const nowNs = currentEpochNs();
+      const remainMs = Number((activeStopNs - nowNs) / 1_000_000n);
+      const waitMs = Math.max(1, Math.min(clientPollTimeoutMs, remainMs));
+      const ready = poller.waitAll(poller.size, waitMs);
       if (ready.length === 0) {
-        await sleepImmediate();
         continue;
       }
       for (const event of ready) {

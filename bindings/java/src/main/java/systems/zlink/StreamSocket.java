@@ -139,6 +139,10 @@ public final class StreamSocket extends Socket {
               nativeMsg, flags.value(), Native.PART_FINAL);
             if (rc != 0) {
                 NativeMsg.msgClose(nativeMsg);
+                if (flags == SendFlags.DONT_WAIT
+                    && SubmitResult.fromValue(rc) == SubmitResult.BACKPRESSURED) {
+                    return false;
+                }
                 throw new SubmitException(SubmitResult.fromValue(rc));
             }
             return true;
@@ -182,6 +186,10 @@ public final class StreamSocket extends Socket {
                   flags.value(), more);
                 if (rc != 0) {
                     NativeMsg.msgClose(nativeMsg);
+                    if (flags == SendFlags.DONT_WAIT
+                        && SubmitResult.fromValue(rc) == SubmitResult.BACKPRESSURED) {
+                        return false;
+                    }
                     throw new SubmitException(SubmitResult.fromValue(rc));
                 }
             }

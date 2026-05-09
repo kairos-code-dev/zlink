@@ -48,6 +48,11 @@ internal static class PerfMultiDealerDealerClient
 
             DisposeAllQuietly(monitors);
             monitors.Clear();
+
+            for (int i = 0; i < clients.Count; i++)
+                ApplyAutoHwmMsgUnit(clients[i], size);
+            RecalculateAutoHwm(ctx);
+
             WriteStdoutLine($"CLIENT_READY,{size}");
 
             if (!controlState.WaitForStart(readyTimeoutMs))

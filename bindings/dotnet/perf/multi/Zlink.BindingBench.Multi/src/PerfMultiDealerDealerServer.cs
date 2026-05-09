@@ -6,8 +6,6 @@ using static PerfRunner;
 
 internal static class PerfMultiDealerDealerServer
 {
-    private const int SendPollTimeoutMs = 50;
-
     internal static int Run(PerfOptions options)
     {
         int size = Math.Max(1, options.Size);
@@ -15,6 +13,7 @@ internal static class PerfMultiDealerDealerServer
         int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
         int clientCount = ResolveMultiClients(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
+        int pollTimeoutMs = ResolveMultiClientPollTimeoutMs(options);
         string endpoint = MultiEndpointFor(options.Transport,
             "multi-dealer-dealer", options);
 
@@ -41,17 +40,20 @@ internal static class PerfMultiDealerDealerServer
             return controlState.StopRequested ? 0 : 2;
         }
 
+        ApplyAutoHwmMsgUnit(server, size);
+        RecalculateAutoHwm(ctx);
+
         var sockets = new[] { (SocketBase)server };
         var payload = new byte[Math.Max(size, PerfMetricHeaderSize)];
         Array.Fill(payload, (byte)'a');
 
         return RunPublishPhase(pollManager, server, sockets, payload, size,
-            durationSeconds, controlState) ? 0 : 2;
+            durationSeconds, pollTimeoutMs, controlState) ? 0 : 2;
     }
 
     private static bool RunPublishPhase(PollManager pollManager,
         DealerSocket server, IReadOnlyList<SocketBase> pollSockets,
-        byte[] payload, int msgSize, int durationSeconds,
+        byte[] payload, int msgSize, int durationSeconds, int pollTimeoutMs,
         RunnerControlState controlState)
     {
         const uint runId = 1;
@@ -70,10 +72,8 @@ internal static class PerfMultiDealerDealerServer
             bool trySend = !sendPending;
             if (!trySend)
             {
-                int pollTimeoutMs = Math.Min(SendPollTimeoutMs,
-                    RemainingMilliseconds(activeDeadlineTicks));
-                if (PollSocketWriteReady(pollManager, pollSockets,
-                        Math.Max(1, pollTimeoutMs)) > 0
+                int cappedMs = CapPollTimeoutMs(pollTimeoutMs, activeDeadlineTicks);
+                if (PollSocketWriteReady(pollManager, pollSockets, cappedMs) > 0
                     && IsSocketWriteReady(pollManager, 0))
                 {
                     trySend = true;
@@ -100,26 +100,11 @@ internal static class PerfMultiDealerDealerServer
                 sendPending = true;
             }
 
-            int timeoutMs = Math.Min(SendPollTimeoutMs,
-                RemainingMilliseconds(activeDeadlineTicks));
-            if (timeoutMs <= 0)
-                timeoutMs = 1;
+            int timeoutMs = CapPollTimeoutMs(pollTimeoutMs, activeDeadlineTicks);
             _ = PollSocketWriteReady(pollManager, pollSockets, timeoutMs);
         }
 
         return true;
     }
 
-    private static int RemainingMilliseconds(long deadlineTicks)
-    {
-        long nowTicks = Stopwatch.GetTimestamp();
-        if (deadlineTicks <= nowTicks)
-            return 0;
-
-        double remainingMs = (deadlineTicks - nowTicks) * 1000.0
-            / Stopwatch.Frequency;
-        if (remainingMs >= int.MaxValue)
-            return int.MaxValue;
-        return (int)Math.Ceiling(remainingMs);
-    }
 }

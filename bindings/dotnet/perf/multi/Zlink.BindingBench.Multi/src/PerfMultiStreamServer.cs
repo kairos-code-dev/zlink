@@ -34,11 +34,14 @@ internal static class PerfMultiStreamServer
         ApplyMultiServerContextOptions(ctx, options);
         using var server = new StreamSocket(ctx);
         ApplyMultiSocketOptions(server, options);
+        ApplyAutoHwmMsgUnit(server, options.Size);
+        RecalculateAutoHwm(ctx);
         ConfigureTlsServerIfNeeded(server, options.Transport);
         server.Options.SendTimeout = TimeSpan.FromMilliseconds(ioTimeoutMs);
         server.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(ioTimeoutMs);
         server.Options.TcpNoDelay = true;
         server.Bind(endpoint);
+        RecalculateAutoHwm(ctx);
         WriteStdoutLine($"READY,{endpoint}");
 
         var pending = new Queue<PendingStreamMessage>(pendingCapacity);

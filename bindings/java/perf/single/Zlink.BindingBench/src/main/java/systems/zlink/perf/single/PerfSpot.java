@@ -16,7 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 final class PerfSpot {
-    private static final String SERVICE_NAME = "perf.spot.service";
+    private static final String CHANNEL_NAME = "perf.spot.service";
 
     private PerfSpot() {
     }
@@ -37,7 +37,7 @@ final class PerfSpot {
         try (var ctx = PerfUtil.newContext(config);
              Registry registry = new Registry(ctx);
              Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH,
-                 SERVICE_NAME);
+                 CHANNEL_NAME);
              SpotNode publisherNode = new SpotNode(ctx);
              SpotNode subscriberNode = new SpotNode(ctx);
              Spot publisher = publisherNode.createSpot();
@@ -73,7 +73,7 @@ final class PerfSpot {
             while (System.nanoTime() < activeEnd) {
                 try (Message active = PerfUtil.payload(config.size(),
                          (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                    publisher.publish(SERVICE_NAME, topic)
+                    publisher.publish(topic)
                         .message(active)
                         .flags(SendFlags.DONT_WAIT)
                         .submit();
@@ -83,7 +83,7 @@ final class PerfSpot {
 
             try (Message cooldown = PerfUtil.payload(config.size(),
                      (byte) PerfUtil.PHASE_COOLDOWN, System.nanoTime())) {
-                publisher.publish(SERVICE_NAME, topic)
+                publisher.publish(topic)
                     .message(cooldown)
                     .flags(SendFlags.DONT_WAIT)
                     .submit();
@@ -110,7 +110,7 @@ final class PerfSpot {
         while (System.nanoTime() < deadline) {
             try (Message probe = PerfUtil.payload(config.size(),
                      (byte) PerfUtil.PHASE_WARMUP, System.nanoTime())) {
-                publisher.publish(SERVICE_NAME, topic)
+                publisher.publish(topic)
                     .message(probe)
                     .flags(SendFlags.DONT_WAIT)
                     .submit();

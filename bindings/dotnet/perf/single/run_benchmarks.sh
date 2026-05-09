@@ -237,19 +237,6 @@ for line in text.splitlines():
         print(needle)
         raise SystemExit(0)
 
-if transport in {"tcp", "tls", "ws", "wss", "ipc"}:
-    lowered = text.lower()
-    if ("permission denied" in lowered
-            or "operation not permitted" in lowered
-            or "zlinkbindexception" in lowered
-            or "zlinkconnectexception" in lowered
-            or "legacyzlinkexception" in lowered
-            or "socketexception" in lowered
-            or "errno 1" in lowered
-            or "errno 13" in lowered):
-        print(needle)
-        raise SystemExit(0)
-
 raise SystemExit(1)
 PY
 }
@@ -520,22 +507,22 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           PERF_CONFIGURATION="${CONFIGURATION}" \
           bash -lc "${PERF_BINARY@Q} ${pattern@Q} ${transport@Q} ${size@Q}" \
           > "${tmp_log}" 2>&1; then
-          if unsupported_line="$(extract_unsupported_line "${tmp_log}" "${pattern}" "${transport}" 2>/dev/null)"; then
+          if extracted="$(extract_required_results "${tmp_log}" "${pattern}" "${transport}" "${size}")"; then
+            while IFS= read -r result_line; do
+              [[ -n "${result_line}" ]] || continue
+              print_line "${result_line}"
+              printf '%s\n' "${result_line}" >> "${metrics_file}"
+              result_lines=$((result_lines + 1))
+            done <<< "${extracted}"
+          elif unsupported_line="$(extract_unsupported_line "${tmp_log}" "${pattern}" "${transport}" 2>/dev/null)"; then
             print_line "${unsupported_line}"
             expected_result_lines=$((expected_result_lines - 5))
             continue
-          fi
-          if ! extracted="$(extract_required_results "${tmp_log}" "${pattern}" "${transport}" "${size}")"; then
+          else
             record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "missing_required_result_lines"
             status=1
             continue
           fi
-          while IFS= read -r result_line; do
-            [[ -n "${result_line}" ]] || continue
-            print_line "${result_line}"
-            printf '%s\n' "${result_line}" >> "${metrics_file}"
-            result_lines=$((result_lines + 1))
-          done <<< "${extracted}"
         else
           if unsupported_line="$(extract_unsupported_line "${tmp_log}" "${pattern}" "${transport}" 2>/dev/null)"; then
             print_line "${unsupported_line}"

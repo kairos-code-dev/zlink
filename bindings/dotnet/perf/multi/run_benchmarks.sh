@@ -286,6 +286,73 @@ raise SystemExit(1)
 PY
 }
 
+wait_for_control_ready_endpoint() {
+  local log_path="$1"
+  python3 - "${log_path}" <<'PY'
+import pathlib
+import sys
+import time
+
+path = pathlib.Path(sys.argv[1])
+deadline = time.time() + 20.0
+while time.time() < deadline:
+    if path.exists():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for line in text.splitlines():
+            if line.startswith("CONTROL_READY,"):
+                print(line.split(",", 1)[1].strip())
+                raise SystemExit(0)
+            if "multi_server_error:" in line:
+                raise SystemExit(1)
+    time.sleep(0.05)
+raise SystemExit(1)
+PY
+}
+
+wait_for_client_control_endpoint() {
+  local log_path="$1"
+  python3 - "${log_path}" <<'PY'
+import pathlib
+import sys
+import time
+
+path = pathlib.Path(sys.argv[1])
+deadline = time.time() + 20.0
+while time.time() < deadline:
+    if path.exists():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for line in text.splitlines():
+            if line.startswith("CLIENT_CONTROL_ENDPOINT,"):
+                print(line.split(",", 1)[1].strip())
+                raise SystemExit(0)
+        if "multi_client_error:" in text:
+            raise SystemExit(1)
+    time.sleep(0.05)
+raise SystemExit(1)
+PY
+}
+
+wait_for_control_connected() {
+  local log_path="$1"
+  python3 - "${log_path}" <<'PY'
+import pathlib
+import sys
+import time
+
+path = pathlib.Path(sys.argv[1])
+deadline = time.time() + 20.0
+while time.time() < deadline:
+    if path.exists():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for line in text.splitlines():
+            if line.startswith("CONTROL_CONNECTED,"):
+                print(line.split(",", 1)[1].strip())
+                raise SystemExit(0)
+    time.sleep(0.05)
+raise SystemExit(1)
+PY
+}
+
 wait_for_result_line() {
   local log_path="$1"
   local needle="$2"
@@ -324,6 +391,12 @@ terminate_pid() {
   fi
   kill -9 "${pid}" 2>/dev/null || true
   wait "${pid}" 2>/dev/null || true
+}
+
+is_eaddrinuse_log() {
+  local log="${1:-}"
+  [[ -f "${log}" ]] || return 1
+  grep -qi "errno 98\|address already in use" "${log}" 2>/dev/null
 }
 
 extract_required_results() {
@@ -500,6 +573,8 @@ for raw_path in sys.argv[3:]:
             raise SystemExit(0)
     if transport in {"tcp", "tls", "ws", "wss", "ipc"}:
         lowered = text.lower()
+        if "errno 98" in lowered or "address already in use" in lowered:
+            raise SystemExit(1)
         if ("permission denied" in lowered
                 or "operation not permitted" in lowered
                 or "zlinkbindexception" in lowered
@@ -631,6 +706,8 @@ run_multi_process() {
   local endpoint="${3:-}"
   local control_fd="${4:-}"
   local background="${5:-0}"
+  shift 5
+  local extra_args=("$@")
   local shell_cmd="${PERF_BINARY@Q} --multi-${role} ${pattern@Q} ${transport@Q} ${size@Q}"
   local effective_ready_timeout="${READY_TIMEOUT_MS}"
   if [[ "${pattern}" == "MULTI_SPOT" || "${pattern}" == "MULTI_SPOT_REQREP" ]]; then
@@ -650,6 +727,11 @@ run_multi_process() {
   if [[ -n "${endpoint}" ]]; then
     shell_cmd+=" --endpoint ${endpoint@Q}"
   fi
+
+  local extra_arg
+  for extra_arg in "${extra_args[@]}"; do
+    shell_cmd+=" ${extra_arg@Q}"
+  done
 
   if [[ "${background}" == "1" ]]; then
     if [[ -n "${control_fd}" ]]; then
@@ -749,23 +831,37 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
         server_control_fd=''
         client_control_fd=''
         server_endpoint=''
-        if pattern_uses_control_pipe "${pattern}"; then
-          mkfifo "${server_control_fifo}"
-          exec {server_control_fd}<>"${server_control_fifo}"
-          rm -f "${server_control_fifo}"
-          run_multi_process "server" "${server_log}" "" "${server_control_fd}" 1
-        else
-          run_multi_process "server" "${server_log}" "" "" 1
-        fi
-        server_pid=$!
-
+        server_pid=0
         echo "RUN pattern=${pattern} transport=${transport} size=${size} clients=${pattern_clients} run=${run_index}"
+        server_started=0
+        for _srv_attempt in 1 2 3; do
+          [[ "${_srv_attempt}" -gt 1 ]] && sleep 2
+          rm -f "${server_log}"
+          if [[ -n "${server_control_fd}" ]]; then
+            exec {server_control_fd}>&-
+            server_control_fd=''
+          fi
+          if pattern_uses_control_pipe "${pattern}"; then
+            mkfifo "${server_control_fifo}"
+            exec {server_control_fd}<>"${server_control_fifo}"
+            rm -f "${server_control_fifo}"
+            run_multi_process "server" "${server_log}" "" "${server_control_fd}" 1
+          else
+            run_multi_process "server" "${server_log}" "" "" 1
+          fi
+          server_pid=$!
+          if server_endpoint="$(wait_for_ready_endpoint "${server_log}")"; then
+            server_started=1
+            break
+          fi
+          terminate_pid "${server_pid}"
+          is_eaddrinuse_log "${server_log}" || break
+        done
 
-        if ! server_endpoint="$(wait_for_ready_endpoint "${server_log}")"; then
+        if [[ "${server_started}" -ne 1 ]]; then
           if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${server_log}" 2>/dev/null)"; then
             print_line "${unsupported_line}"
             expected_result_lines=$((expected_result_lines - 5))
-            terminate_pid "${server_pid}"
             if [[ -n "${server_control_fd}" ]]; then
               exec {server_control_fd}>&-
             fi
@@ -774,7 +870,6 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           cat "${server_log}" >&2 || true
           echo "server did not become ready for ${pattern} ${transport} ${size}" >&2
           record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "server_ready_timeout"
-          terminate_pid "${server_pid}"
           if [[ -n "${server_control_fd}" ]]; then
             exec {server_control_fd}>&-
           fi
@@ -822,11 +917,64 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           fi
           exec {server_control_fd}>&-
         elif [[ "${pattern}" == "MULTI_SPOT" ]]; then
+          control_endpoint=''
+          if ! control_endpoint="$(wait_for_control_ready_endpoint "${server_log}")"; then
+            cat "${server_log}" >&2 || true
+            printf 'STOP\n' >&${server_control_fd} || true
+            terminate_pid "${server_pid}"
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "server_ready_timeout"
+            exec {server_control_fd}>&-
+            status=1
+            continue
+          fi
+
           mkfifo "${client_control_fifo}"
           exec {client_control_fd}<>"${client_control_fifo}"
           rm -f "${client_control_fifo}"
-          run_multi_process "client" "${client_log}" "${server_endpoint}" "${client_control_fd}" 1
+          run_multi_process "client" "${client_log}" "${server_endpoint}" "${client_control_fd}" 1 "--control-endpoint" "${control_endpoint}"
           client_pid=$!
+
+          client_ctrl_ep=''
+          if ! client_ctrl_ep="$(wait_for_client_control_endpoint "${client_log}")"; then
+            if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
+              print_line "${unsupported_line}"
+              expected_result_lines=$((expected_result_lines - 5))
+              terminate_pid "${client_pid}"
+              printf 'STOP\n' >&${server_control_fd} || true
+              terminate_pid "${server_pid}"
+              exec {server_control_fd}>&-
+              exec {client_control_fd}>&-
+              continue
+            fi
+            cat "${server_log}" >&2 || true
+            cat "${client_log}" >&2 || true
+            terminate_pid "${client_pid}"
+            printf 'STOP\n' >&${server_control_fd} || true
+            terminate_pid "${server_pid}"
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "client_control_timeout"
+            exec {server_control_fd}>&-
+            exec {client_control_fd}>&-
+            status=1
+            continue
+          fi
+
+          printf 'CONNECT_CONTROL,%s\n' "${client_ctrl_ep}" >&${server_control_fd}
+
+          connected_ep=''
+          if ! connected_ep="$(wait_for_control_connected "${server_log}")"; then
+            cat "${server_log}" >&2 || true
+            cat "${client_log}" >&2 || true
+            terminate_pid "${client_pid}"
+            printf 'STOP\n' >&${server_control_fd} || true
+            terminate_pid "${server_pid}"
+            record_failure "${pattern}" "${transport}" "${size}" "${run_index}" "control_connect_timeout"
+            exec {server_control_fd}>&-
+            exec {client_control_fd}>&-
+            status=1
+            continue
+          fi
+
+          printf 'CONTROL_CONNECTED,%s\n' "${connected_ep}" >&${client_control_fd}
 
           if ! wait_for_client_ready_line "${client_log}"; then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then

@@ -90,6 +90,30 @@
 
 - app thread가 poller event loop를 단일 스레드로 구동하므로 직렬화된다.
 
+### 1.3.1 Poller wait timeout 정책
+
+multi 패턴의 client/server poller wait 호출은 모두 **`-1` (signal-driven
+무한 wait)** 을 사용한다. core가 reply, send-ready, recv-ready 등 모든
+관련 신호에 대해 즉시 wakeup 을 보장하므로 timer 기반 timeout fallback
+이 불필요하다.
+
+| 항목 | 규칙 |
+|------|------|
+| client `zlink_poller_wait` / `zlink_poller_wait_all` timeout | **`-1`** (signal-driven wait) |
+| server poller wait timeout | **`-1`** (signal-driven wait) |
+| 짧은 timer 기반 fallback (1–25 ms) | 금지. 과거 wakeup 누락 우회용으로 사용됐으나 core fix 이후 사용 금지 |
+| 종료 / cooldown 용 별도 deadline 검사 | 별도 application clock 으로 처리하고 poller timeout 으로 대체하지 않음 |
+
+송수신 양방향 가능한 spot 워크로드(MULTI_SPOT_SENDSEND 등)는
+`zlink_poller_add` 호출 시 **`ZLINK_POLLIN | ZLINK_POLLOUT`** 으로
+등록한다. core 의 `zlink_service_poller_add_internal` 이 양방향 등록을
+지원하므로 한 번의 wait 으로 send-readiness 와 recv-readiness 둘 다
+포착된다.
+
+> 회귀 가드: `core/tests/integration/test_spot_poller.cpp` 의
+> `test_spot_poller_wait_all_returns_promptly_after_*` 와
+> `test_spot_poller_accepts_pollin_or_pollout_combined` 참조.
+
 ### 1.4 성능 참고
 
 - perf 환경(HWM 100, inflight 1/peer)에서 EAGAIN은 사실상 발생하지 않는다.

@@ -303,6 +303,23 @@ typedef bool (*phase_send_fn_t) (void *userdata_,
                                  const void *data_,
                                  size_t size_);
 
+// Wire-level stop token used by sender threads to signal phase end to a
+// receiver waiting on a poller. PERF_SINGLE_TEST_POLICY § 1.4 mandates
+// this pattern instead of `std::atomic<bool> sender_done` + short polling.
+static const char *const k_stop_token = "__zlink_perf_stop__";
+
+inline bool is_stop_token (const void *data_, size_t size_)
+{
+    const size_t token_size = std::strlen (k_stop_token);
+    return data_ != NULL && size_ == token_size
+           && std::memcmp (data_, k_stop_token, token_size) == 0;
+}
+
+inline bool is_stop_token_message (const zlink::message_t &msg_)
+{
+    return is_stop_token (msg_.data (), msg_.size ());
+}
+
 #include "perf_single_report.hpp"
 
 } // namespace single

@@ -51,6 +51,25 @@ inline long remaining_milliseconds (const steady_clock_t::time_point &deadline,
     return std::chrono::duration_cast<milliseconds_t> (deadline - now).count ();
 }
 
+// Wire-level stop token used by sender threads to signal phase end to a
+// receiver waiting on a poller. PERF_MULTI_TEST_POLICY § 1.3.1 mandates
+// this pattern instead of `std::atomic<bool> sender_done` + short polling.
+// Mirrors perf_multi (cpp) common/perf_common.hpp helpers.
+static const char *const k_stop_token = "__zlink_perf_stop__";
+
+inline bool is_stop_token(const void *data_, size_t size_)
+{
+    const size_t token_size = std::strlen(k_stop_token);
+    return data_ != NULL && size_ == token_size
+           && std::memcmp(data_, k_stop_token, token_size) == 0;
+}
+
+inline bool is_stop_token_message(const zlink_msg_t &msg_)
+{
+    return is_stop_token(zlink_msg_data(const_cast<zlink_msg_t *>(&msg_)),
+                         zlink_msg_size(const_cast<zlink_msg_t *>(&msg_)));
+}
+
 struct connect_monitor_state_t {
     connect_monitor_state_t() :
         connection_ready_count(0),

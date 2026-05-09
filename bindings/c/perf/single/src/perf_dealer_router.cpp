@@ -134,6 +134,10 @@ int recv_router_header_flags (void *router_,
     }
 
     const size_t actual_size = zlink_msg_size (&part);
+    if (is_stop_token (zlink_msg_data (&part), actual_size)) {
+        zlink_msg_close (&part);
+        return 2; // stop token
+    }
     const bool size_ok = actual_size == payload_size_;
     bool header_ok = false;
     if (size_ok && header_out_) {
@@ -153,6 +157,29 @@ int recv_router_header_flags (void *router_,
     if (header_ok_out_)
         *header_ok_out_ = header_ok;
     return 1;
+}
+
+// PERF_SINGLE_TEST_POLICY § 1.4: send wire-level stop token from dealer
+// to router so the receiver loop exits via is_stop_token. Bounded retry
+// through transient backpressure.
+bool send_dealer_stop_token (void *sender_)
+{
+    for (int retry = 0; retry < 100; ++retry) {
+        zlink_msg_t part;
+        if (zlink_msg_init_size (&part, std::strlen (k_stop_token)) != 0)
+            return false;
+        std::memcpy (zlink_msg_data (&part), k_stop_token,
+                     std::strlen (k_stop_token));
+        if (zlink_send (sender_, &part, 1, ZLINK_SEND_FLAGS_NONE) == 0)
+            return true;
+        const int err = zlink_errno ();
+        zlink_msg_close (&part);
+        if (err != EINTR && err != EAGAIN && err != EWOULDBLOCK
+            && err != ETIMEDOUT)
+            return false;
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    return false;
 }
 
 bool send_dealer_samples (void *sender_,
@@ -311,6 +338,8 @@ bool run_active_phase (void *sender_,
                        unsigned long long *received_out_,
                        latency_stats_t *latency_out_)
 {
+    (void) use_nonblocking_recv_;
+    (void) recv_timeout_ms_;
     if (!sender_ || !receiver_ || !payload_ || !state_ || !received_out_
         || !latency_out_) {
         return false;
@@ -321,109 +350,42 @@ bool run_active_phase (void *sender_,
 
     std::atomic<unsigned long long> sent_count (0);
     std::atomic<bool> sender_ok (true);
-    std::atomic<bool> sender_done (false);
     unsigned long long received = 0;
     latency_stats_builder_t latency_builder;
+    // PERF_SINGLE_TEST_POLICY § 1.4: sender thread emits active samples,
+    // then sends a wire-level stop token so the receiver loop terminates
+    // without consulting any atomic flag.
     std::thread sender_thread ([&]() {
-        sender_ok.store (
-          send_dealer_samples (
-            sender_, payload_, state_, duration_s_, &sent_count),
-          std::memory_order_release);
-        sender_done.store (true, std::memory_order_release);
+        const bool active_ok = send_dealer_samples (
+          sender_, payload_, state_, duration_s_, &sent_count);
+        const bool stop_ok = send_dealer_stop_token (sender_);
+        sender_ok.store (active_ok && stop_ok, std::memory_order_release);
     });
 
-    if (!use_nonblocking_recv_) {
-        while (!sender_done.load (std::memory_order_acquire)) {
-            perf_single_metric::header_t header;
-            bool header_ok = false;
-            const int recv_rc = recv_router_header_flags (
-              receiver_, state_->payload_size, 0, &header, &header_ok);
-            if (recv_rc > 0) {
-                if (header_ok && single_header_matches_run (*state_, header)) {
-                    ++received;
-                    latency_builder.add (single_latency_ns (header));
-                }
-                continue;
+    // Receiver: blocking recv, exit on stop-token receipt. Socket
+    // recv_timeout still bounds individual recv calls; phase end is
+    // signaled purely by the stop token arriving on the wire.
+    while (true) {
+        perf_single_metric::header_t header;
+        bool header_ok = false;
+        const int recv_rc = recv_router_header_flags (
+          receiver_, state_->payload_size, 0, &header, &header_ok);
+        if (recv_rc == 1) {
+            if (header_ok && single_header_matches_run (*state_, header)) {
+                ++received;
+                latency_builder.add (single_latency_ns (header));
             }
-            if (recv_rc == 0)
-                continue;
-            sender_ok.store (false, std::memory_order_release);
+            continue;
+        }
+        if (recv_rc == 0)
+            continue;
+        if (recv_rc == 2)
             break;
-        }
-    } else {
-        const auto active_deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::seconds (std::max (1, duration_s_));
-        const auto drain_idle_limit = std::chrono::milliseconds (
-          recv_timeout_ms_ > 0 ? recv_timeout_ms_ : 200);
-        auto last_recv_at = std::chrono::steady_clock::now ();
-        while (true) {
-            const bool done = sender_done.load (std::memory_order_acquire);
-            perf_single_metric::header_t header;
-            bool header_ok = false;
-            const int recv_rc = recv_router_header_flags (
-              receiver_, state_->payload_size, ZLINK_DONTWAIT, &header,
-              &header_ok);
-            if (recv_rc > 0) {
-                last_recv_at = std::chrono::steady_clock::now ();
-                if (header_ok && single_header_matches_run (*state_, header)) {
-                    if (std::chrono::steady_clock::now () < active_deadline) {
-                        ++received;
-                        latency_builder.add (single_latency_ns (header));
-                    }
-                }
-                continue;
-            }
-            if (recv_rc < 0) {
-                sender_ok.store (false, std::memory_order_release);
-                break;
-            }
-            if (done
-                && std::chrono::steady_clock::now () - last_recv_at
-                     >= drain_idle_limit) {
-                break;
-            }
-            const auto wait_deadline =
-              done
-                ? std::min (active_deadline + drain_idle_limit,
-                            std::chrono::steady_clock::now ()
-                              + drain_idle_limit)
-                : active_deadline;
-            if (!wait_socket_event_until (
-                  receiver_, ZLINK_POLLIN, wait_deadline)) {
-                if (done
-                    && std::chrono::steady_clock::now () >= active_deadline)
-                    break;
-                continue;
-            }
-        }
+        sender_ok.store (false, std::memory_order_release);
+        break;
     }
 
     sender_thread.join ();
-    if (!use_nonblocking_recv_) {
-        const auto drain_deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::milliseconds (std::max (1, recv_timeout_ms_) * 2);
-        while (received < sent_count.load (std::memory_order_acquire)
-               && std::chrono::steady_clock::now () < drain_deadline) {
-            perf_single_metric::header_t header;
-            bool header_ok = false;
-            const int recv_rc = recv_router_header_flags (
-              receiver_, state_->payload_size, ZLINK_DONTWAIT, &header,
-              &header_ok);
-            if (recv_rc > 0) {
-                if (header_ok && single_header_matches_run (*state_, header)) {
-                    ++received;
-                    latency_builder.add (single_latency_ns (header));
-                }
-                continue;
-            }
-            if (recv_rc == 0)
-                break;
-            sender_ok.store (false, std::memory_order_release);
-            break;
-        }
-    }
 
     if (!sender_ok.load (std::memory_order_acquire)) {
         if (bench_debug_enabled ()) {

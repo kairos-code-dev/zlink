@@ -93,6 +93,9 @@ void run_dealer_dealer (const std::string &transport,
                 header_out,
                 header_ok_out);
           },
+          [] (void *sender) {
+              return perf_single_one_way::send_stop_token_socket (sender);
+          },
           &received,
           &latency)) {
         print_fail ();

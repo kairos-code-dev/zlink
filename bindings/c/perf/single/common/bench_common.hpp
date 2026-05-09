@@ -115,6 +115,25 @@ inline long perf_aux_poll_wait_ms()
     return PERF_AUX_POLL_WAIT_MS;
 }
 
+// Wire-level stop token used by sender threads to signal phase end to a
+// receiver waiting on a poller. PERF_SINGLE_TEST_POLICY § 1.4 mandates
+// this pattern instead of `std::atomic<bool> sender_done` + short polling.
+// Mirrors perf_multi/common/perf_common.hpp and bindings/cpp's
+// perf_single_common.hpp helpers.
+static const char *const k_stop_token = "__zlink_perf_stop__";
+
+inline bool is_stop_token(const void *data_, size_t size_)
+{
+    const size_t token_size = std::strlen(k_stop_token);
+    return data_ != NULL && size_ == token_size
+           && std::memcmp(data_, k_stop_token, token_size) == 0;
+}
+
+inline size_t stop_token_size()
+{
+    return std::strlen(k_stop_token);
+}
+
 // --- Configuration ---
 static const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
 static const std::vector<std::string> TRANSPORTS = {"tcp", "inproc", "ipc"};

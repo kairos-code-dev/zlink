@@ -155,6 +155,10 @@ bool run_recv_duration (const std::vector<void *> &sockets,
         if (now >= active_deadline)
             break;
 
+        // Wait until either the deadline or a signal-driven wakeup fires.
+        // No short timer-based cap (PERF_MULTI_TEST_POLICY § 1.3.1):
+        // pubsub publish on the peer wakes the sub fd immediately, so a
+        // 5 ms cap was just an unnecessary throughput limiter.
         const int timeout_ms = static_cast<int> (
           std::chrono::duration_cast<std::chrono::milliseconds> (
             active_deadline - now)
@@ -162,7 +166,7 @@ bool run_recv_duration (const std::vector<void *> &sockets,
         const int poll_rc =
           zlink_poller_wait_all (poller, events.empty () ? NULL : &events[0],
                                  static_cast<int> (events.size ()),
-                                 timeout_ms > 5 ? 5 : std::max (1, timeout_ms),
+                                 timeout_ms <= 0 ? 0 : timeout_ms,
                                  NULL);
         if (poll_rc < 0) {
             const int err = zlink_errno ();

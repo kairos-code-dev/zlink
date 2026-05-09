@@ -74,7 +74,7 @@ int recv_pubsub_header_flags (void *subscriber_,
                               bool *header_ok_out_)
 {
     if (!subscriber_)
-        return -1;
+        return perf_single_one_way::recv_result_error;
 
     if (header_ok_out_)
         *header_ok_out_ = false;
@@ -85,7 +85,7 @@ int recv_pubsub_header_flags (void *subscriber_,
     char topic[256];
     size_t topic_len = sizeof (topic);
     if (zlink_msg_init (&part) != 0)
-        return -1;
+        return perf_single_one_way::recv_result_error;
     const int rc = zlink_subscribe_part (
       subscriber_, &source_rid, topic, sizeof (topic), &topic_len, &part,
       &has_more,
@@ -94,8 +94,8 @@ int recv_pubsub_header_flags (void *subscriber_,
         const int err = zlink_errno ();
         zlink_msg_close (&part);
         if (err == EAGAIN || err == EINTR)
-            return 0;
-        return -1;
+            return perf_single_one_way::recv_result_again;
+        return perf_single_one_way::recv_result_error;
     }
 
     const bool topic_ok =
@@ -109,10 +109,14 @@ int recv_pubsub_header_flags (void *subscriber_,
                       << std::endl;
         }
         zlink_msg_close (&part);
-        return -1;
+        return perf_single_one_way::recv_result_error;
     }
 
     const size_t actual_size = zlink_msg_size (&part);
+    if (is_stop_token (zlink_msg_data (&part), actual_size)) {
+        zlink_msg_close (&part);
+        return perf_single_one_way::recv_result_stop;
+    }
     const bool size_ok = actual_size == payload_size_;
     bool header_ok = false;
     if (size_ok && header_out_) {
@@ -126,12 +130,34 @@ int recv_pubsub_header_flags (void *subscriber_,
                       << actual_size << " expected=" << payload_size_
                       << std::endl;
         }
-        return -1;
+        return perf_single_one_way::recv_result_error;
     }
 
     if (header_ok_out_)
         *header_ok_out_ = header_ok;
-    return 1;
+    return perf_single_one_way::recv_result_payload;
+}
+
+// PERF_SINGLE_TEST_POLICY § 1.4: publish wire-level stop token on the
+// PUBSUB topic so the subscriber recv loop exits via is_stop_token.
+int send_pubsub_stop_token (void *publisher_)
+{
+    if (!publisher_)
+        return -1;
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, stop_token_size ()) != 0)
+        return -1;
+    std::memcpy (zlink_msg_data (&part), k_stop_token, stop_token_size ());
+    if (zlink_publish (publisher_, k_pubsub_topic, &part, 1,
+                       ZLINK_SEND_FLAGS_NONE)
+        == 0)
+        return 0;
+    const int err = zlink_errno ();
+    zlink_msg_close (&part);
+    if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
+        || err == ETIMEDOUT)
+        return 1;
+    return -1;
 }
 
 
@@ -223,6 +249,7 @@ void run_pubsub (const std::string &transport,
               return perf_single_one_way::send_step_fatal;
           },
           recv_pubsub_header_flags,
+          send_pubsub_stop_token,
           &received,
           &latency)) {
         print_fail ();

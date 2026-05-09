@@ -33,6 +33,17 @@ enum send_step_t
     send_step_fatal = 2
 };
 
+// Recv result codes for stop-token-aware recv functions.
+// PERF_SINGLE_TEST_POLICY § 1.4: receivers detect phase-end via the
+// wire-level stop token rather than an atomic flag.
+enum recv_result_t
+{
+    recv_result_error = -1,
+    recv_result_again = 0,
+    recv_result_payload = 1,
+    recv_result_stop = 2
+};
+
 inline int recv_single_part_header_flags (
   void *socket_,
   size_t expected_size_,
@@ -42,7 +53,7 @@ inline int recv_single_part_header_flags (
   bool *header_ok_out_)
 {
     if (!socket_)
-        return -1;
+        return recv_result_error;
 
     if (header_ok_out_)
         *header_ok_out_ = false;
@@ -51,7 +62,7 @@ inline int recv_single_part_header_flags (
     zlink_msg_t part;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     if (zlink_msg_init (&part) != 0)
-        return -1;
+        return recv_result_error;
     const int rc = zlink_recv_part (
       socket_,
       &source_rid,
@@ -62,8 +73,8 @@ inline int recv_single_part_header_flags (
         const int err = zlink_errno ();
         zlink_msg_close (&part);
         if (err == EAGAIN || err == EINTR)
-            return 0;
-        return -1;
+            return recv_result_again;
+        return recv_result_error;
     }
 
     if (source_rid || has_more != ZLINK_PART_FINAL) {
@@ -73,10 +84,14 @@ inline int recv_single_part_header_flags (
                       << static_cast<int> (has_more) << std::endl;
         }
         zlink_msg_close (&part);
-        return -1;
+        return recv_result_error;
     }
 
     const size_t actual_size = zlink_msg_size (&part);
+    if (is_stop_token (zlink_msg_data (&part), actual_size)) {
+        zlink_msg_close (&part);
+        return recv_result_stop;
+    }
     const bool size_ok = actual_size == expected_size_;
     bool header_ok = false;
     if (size_ok && header_out_) {
@@ -90,12 +105,12 @@ inline int recv_single_part_header_flags (
                       << "] unexpected payload size=" << actual_size
                       << " expected=" << expected_size_ << std::endl;
         }
-        return -1;
+        return recv_result_error;
     }
 
     if (header_ok_out_)
         *header_ok_out_ = header_ok;
-    return 1;
+    return recv_result_payload;
 }
 
 template <typename StateT>
@@ -180,7 +195,47 @@ inline bool send_active_samples (void *sender_,
     return true;
 }
 
-template <typename StateT, typename SendStepFn, typename RecvHeaderFn>
+// Send the wire-level stop token using a caller-supplied SendStopFn that
+// handles the pattern-specific transport (zlink_send / zlink_publish /
+// zlink_send_rid). PERF_SINGLE_TEST_POLICY § 1.4: bounded retry through
+// transient backpressure so the receiver always observes the terminator.
+template <typename SendStopFn>
+inline bool send_stop_token_with_retry (void *sender_, SendStopFn send_stop_fn_)
+{
+    for (int retry = 0; retry < 100; ++retry) {
+        const int rc = send_stop_fn_ (sender_);
+        if (rc == 0)
+            return true;
+        if (rc < 0)
+            return false;
+        // rc > 0 means transient (EAGAIN / EINTR / ETIMEDOUT)
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    return false;
+}
+
+// Generic stop-token send for raw socket patterns (PAIR / DEALER_DEALER).
+// Returns 0 on success, > 0 on transient backpressure, < 0 on fatal error.
+inline int send_stop_token_socket (void *sender_)
+{
+    if (!sender_)
+        return -1;
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, stop_token_size ()) != 0)
+        return -1;
+    std::memcpy (zlink_msg_data (&part), k_stop_token, stop_token_size ());
+    if (zlink_send (sender_, &part, 1, ZLINK_SEND_FLAGS_NONE) == 0)
+        return 0;
+    const int err = zlink_errno ();
+    zlink_msg_close (&part);
+    if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
+        || err == ETIMEDOUT)
+        return 1;
+    return -1;
+}
+
+template <typename StateT, typename SendStepFn, typename RecvHeaderFn,
+          typename SendStopFn>
 inline bool run_active_phase (void *sender_,
                               void *receiver_,
                               std::vector<char> *payload_,
@@ -190,6 +245,7 @@ inline bool run_active_phase (void *sender_,
                               const char *trace_label_,
                               SendStepFn send_step_fn_,
                               RecvHeaderFn recv_header_fn_,
+                              SendStopFn send_stop_fn_,
                               unsigned long long *received_out_,
                               latency_stats_t *latency_out_)
 {
@@ -204,25 +260,26 @@ inline bool run_active_phase (void *sender_,
     const auto deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::seconds (std::max (1, duration_s_));
-    const auto drain_idle_limit =
-      std::chrono::milliseconds (recv_timeout_ms_ > 0 ? recv_timeout_ms_ : 200);
 
     std::atomic<unsigned long long> sent_count (0);
     std::atomic<bool> sender_ok (true);
-    std::atomic<bool> sender_done (false);
     std::atomic<unsigned long long> received (0);
     latency_stats_builder_t latency_builder;
 
+    // PERF_SINGLE_TEST_POLICY § 1.4: receiver no longer checks an atomic
+    // sender_done flag; phase end is signaled purely by the stop token
+    // arriving on the wire.  The socket recv_timeout still bounds
+    // individual recv calls (lets recv return EAGAIN on idle so we keep
+    // cycling), but the loop only exits on stop-token receipt or error.
+    (void) recv_timeout_ms_;
+
     std::thread receiver_thread ([&] () {
-        auto last_recv_at = std::chrono::steady_clock::now ();
         while (true) {
-            const bool done = sender_done.load (std::memory_order_acquire);
             perf_single_metric::header_t header;
             bool header_ok = false;
             const int recv_rc = recv_header_fn_ (
               receiver_, state_->payload_size, 0, &header, &header_ok);
-            if (recv_rc > 0) {
-                last_recv_at = std::chrono::steady_clock::now ();
+            if (recv_rc == recv_result_payload) {
                 if (header_ok && single_header_matches_run (*state_, header)
                     && std::chrono::steady_clock::now () < deadline) {
                     received.fetch_add (1, std::memory_order_relaxed);
@@ -238,8 +295,7 @@ inline bool run_active_phase (void *sender_,
                       ZLINK_DONTWAIT,
                       &burst_header,
                       &burst_header_ok);
-                    if (burst_rc > 0) {
-                        last_recv_at = std::chrono::steady_clock::now ();
+                    if (burst_rc == recv_result_payload) {
                         if (burst_header_ok
                             && single_header_matches_run (
                               *state_, burst_header)
@@ -250,22 +306,20 @@ inline bool run_active_phase (void *sender_,
                         }
                         continue;
                     }
-                    if (burst_rc == 0)
+                    if (burst_rc == recv_result_again)
                         break;
+                    if (burst_rc == recv_result_stop)
+                        return;
                     sender_ok.store (false, std::memory_order_release);
                     return;
                 }
                 continue;
             }
 
-            if (recv_rc == 0) {
-                if (done
-                    && std::chrono::steady_clock::now () - last_recv_at
-                         >= drain_idle_limit) {
-                    break;
-                }
+            if (recv_rc == recv_result_again)
                 continue;
-            }
+            if (recv_rc == recv_result_stop)
+                return;
 
             sender_ok.store (false, std::memory_order_release);
             return;
@@ -273,11 +327,14 @@ inline bool run_active_phase (void *sender_,
     });
 
     std::thread sender_thread ([&] () {
-        sender_ok.store (
-          send_active_samples (
-            sender_, payload_, *state_, duration_s_, &sent_count, send_step_fn_),
-          std::memory_order_release);
-        sender_done.store (true, std::memory_order_release);
+        const bool active_ok = send_active_samples (
+          sender_, payload_, *state_, duration_s_, &sent_count, send_step_fn_);
+        // PERF_SINGLE_TEST_POLICY § 1.4: send wire-level stop token to
+        // wake the receiver out of recv. Bounded retry through transient
+        // backpressure so the terminator always reaches the peer.
+        const bool stop_ok =
+          send_stop_token_with_retry (sender_, send_stop_fn_);
+        sender_ok.store (active_ok && stop_ok, std::memory_order_release);
     });
 
     sender_thread.join ();

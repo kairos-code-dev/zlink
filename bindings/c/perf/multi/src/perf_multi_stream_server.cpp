@@ -22,7 +22,7 @@ namespace {
 #endif
 
 static const char *k_pattern = PERF_MULTI_STREAM_PATTERN_NAME;
-static const char k_stop_token[] = "__zlink_perf_stop__";
+// k_stop_token is provided by perf_common.hpp (wire-level shutdown token).
 
 static perf_multi_stream::session_t g_stream_session;
 

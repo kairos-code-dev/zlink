@@ -205,8 +205,16 @@ int recv_spot_header_flags (void *subscriber_,
         return -1;
     }
 
+    const bool topic_ok = topic_matches (topic, topic_len);
+    if (topic_ok && parts && part_count >= 1
+        && is_stop_token (zlink_msg_data (&parts[0]),
+                          zlink_msg_size (&parts[0]))) {
+        zlink_multipart_close (parts, part_count);
+        std::free (parts);
+        return 2; // stop token
+    }
     const bool header_ok =
-      topic_matches (topic, topic_len) && parts && part_count >= 1 && header_out_
+      topic_ok && parts && part_count >= 1 && header_out_
       && perf_single_metric::decode_payload_header (
         zlink_msg_data (&parts[0]), zlink_msg_size (&parts[0]), header_out_);
     if (header_ok_out_)
@@ -349,6 +357,34 @@ bool run_spot_post_ready_settle ()
     return settle_ms <= 0 || perf_socket_poll (NULL, 0, settle_ms) >= 0;
 }
 
+// PERF_SINGLE_TEST_POLICY § 1.4: publish wire-level stop token on the
+// SPOT topic so the subscriber recv loop exits via is_stop_token.
+// Bounded retry through transient backpressure.
+bool send_spot_stop_token (void *publisher_)
+{
+    if (!publisher_)
+        return false;
+    for (int retry = 0; retry < 100; ++retry) {
+        zlink_msg_t part;
+        if (zlink_msg_init_size (&part, std::strlen (k_stop_token)) != 0)
+            return false;
+        std::memcpy (zlink_msg_data (&part), k_stop_token,
+                     std::strlen (k_stop_token));
+        if (zlink_publish (publisher_, k_topic, &part, 1,
+                           ZLINK_SEND_FLAGS_NONE)
+            == 0)
+            return true;
+        const int err = zlink_errno ();
+        zlink_msg_close (&part);
+        if (err != EINTR && err != EAGAIN && err != EWOULDBLOCK
+            && err != ETIMEDOUT && err != ENOTCONN && err != EHOSTUNREACH
+            && err != ENETUNREACH)
+            return false;
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    return false;
+}
+
 bool send_spot_samples (void *publisher_,
                         std::vector<char> *payload_,
                         spot_recv_state_t *state_,
@@ -392,6 +428,7 @@ bool run_active_window (void *publisher_,
                         double *throughput_out_,
                         latency_stats_t *latency_out_)
 {
+    (void) recv_timeout_ms_;
     if (!publisher_ || !subscriber_ || !state_ || !throughput_out_
         || !latency_out_) {
         return false;
@@ -402,77 +439,42 @@ bool run_active_window (void *publisher_,
     std::vector<char> payload;
     std::atomic<unsigned long long> sent_count (0);
     std::atomic<bool> sender_ok (true);
-    std::atomic<bool> sender_done (false);
     std::atomic<unsigned long long> received (0);
     latency_stats_builder_t latency_builder;
     const auto deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::seconds (std::max (1, duration_s_));
-    const auto drain_idle_limit =
-      std::chrono::milliseconds (recv_timeout_ms_ > 0 ? recv_timeout_ms_ : 200);
-    const auto drain_deadline = deadline + drain_idle_limit;
 
+    // PERF_SINGLE_TEST_POLICY § 1.4: receiver no longer checks an atomic
+    // sender_done flag.  Phase end is signaled purely by the wire-level
+    // stop token published by the sender at end-of-active. The spot
+    // handle does not expose a poller-compatible socket handle for
+    // signal-driven recv, so the loop uses DONTWAIT + yield (same idiom
+    // as bindings/cpp/perf/single/src/perf_spot.cpp).
     std::thread receiver_thread ([&]() {
-        auto last_recv_at = std::chrono::steady_clock::now ();
         while (true) {
-            const bool done = sender_done.load (std::memory_order_acquire);
-            if (done && std::chrono::steady_clock::now () >= drain_deadline) {
-                if (bench_debug_enabled ())
-                    std::cerr << "[perf-spot] receiver drain deadline reached"
-                              << std::endl;
-                break;
-            }
             perf_single_metric::header_t header;
             bool header_ok = false;
-            const int recv_rc =
-              recv_spot_header_flags (
-                subscriber_, ZLINK_DONTWAIT, &header, &header_ok);
-            if (recv_rc > 0) {
-                last_recv_at = std::chrono::steady_clock::now ();
+            const int recv_rc = recv_spot_header_flags (
+              subscriber_, ZLINK_DONTWAIT, &header, &header_ok);
+            if (recv_rc == 1) {
                 if (header_ok && single_header_matches_run (*state_, header)
                     && std::chrono::steady_clock::now () < deadline) {
                     received.fetch_add (1, std::memory_order_relaxed);
                     latency_builder.add (single_latency_ns (header));
                 }
-
-                for (;;) {
-                    perf_single_metric::header_t burst_header;
-                    bool burst_header_ok = false;
-                    const int burst_rc = recv_spot_header_flags (
-                      subscriber_, ZLINK_DONTWAIT, &burst_header,
-                      &burst_header_ok);
-                    if (burst_rc > 0) {
-                        last_recv_at = std::chrono::steady_clock::now ();
-                        if (burst_header_ok
-                            && single_header_matches_run (*state_, burst_header)
-                            && std::chrono::steady_clock::now () < deadline) {
-                            received.fetch_add (1, std::memory_order_relaxed);
-                            latency_builder.add (
-                              single_latency_ns (burst_header));
-                        }
-                        continue;
-                    }
-                    if (burst_rc == 0)
-                        break;
-                    sender_ok.store (false, std::memory_order_release);
-                    return;
-                }
                 continue;
             }
-
             if (recv_rc == 0) {
-                if (done
-                    && std::chrono::steady_clock::now () - last_recv_at
-                         >= drain_idle_limit) {
-                    if (bench_debug_enabled ())
-                        std::cerr << "[perf-spot] receiver idle drain complete"
-                                  << std::endl;
-                    break;
-                }
-                (void) perf_socket_poll (NULL, 0, 1);
+                std::this_thread::yield ();
                 continue;
             }
-
+            if (recv_rc == 2) {
+                if (bench_debug_enabled ())
+                    std::cerr << "[perf-spot] receiver stop token observed"
+                              << std::endl;
+                return;
+            }
             sender_ok.store (false, std::memory_order_release);
             return;
         }
@@ -481,11 +483,10 @@ bool run_active_window (void *publisher_,
     std::thread sender_thread ([&]() {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] sender start" << std::endl;
-        sender_ok.store (
-          send_spot_samples (
-            publisher_, &payload, state_, duration_s_, &sent_count),
-          std::memory_order_release);
-        sender_done.store (true, std::memory_order_release);
+        const bool active_ok = send_spot_samples (
+          publisher_, &payload, state_, duration_s_, &sent_count);
+        const bool stop_ok = send_spot_stop_token (publisher_);
+        sender_ok.store (active_ok && stop_ok, std::memory_order_release);
         if (bench_debug_enabled ()) {
             std::cerr << "[perf-spot] sender done ok="
                       << (sender_ok.load (std::memory_order_acquire) ? 1 : 0)

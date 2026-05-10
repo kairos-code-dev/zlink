@@ -7,6 +7,7 @@ import {
   createPayload,
   createRunId,
   decodeMetricHeaderFromParts,
+  sleepImmediate,
   summarizeMetrics,
   stampPayload
 } from '../common/perf_metrics';
@@ -14,9 +15,12 @@ import {
   applyContextPolicy,
   applySpotNodeAdmission,
   parseSingleBinaryArgs,
-  resolveSingleIdleDrainMs,
   waitForPostReadySettle
 } from './perf_single_common';
+import {
+  STOP_TOKEN_BYTES,
+  isStopTokenParts
+} from '../perf_stop_token';
 
 const AUTO_CONNECT_SPOT_MESH = 5;
 const CHANNEL_NAME = 'perf.spot';
@@ -39,6 +43,18 @@ function trySpotPublish(spot: any, payload: Buffer): boolean {
       return false;
     }
     throw error;
+  }
+}
+
+async function publishStopToken(spot: any) {
+  // PERF_SINGLE_TEST_POLICY § 1.4: emit the wire-level stop token. Spot
+  // does not expose a POLLOUT poller wait, so we yield via setImmediate
+  // through any transient backpressure. Bounded retry to avoid hangs.
+  for (let retry = 0; retry < 100; retry += 1) {
+    if (trySpotPublish(spot, STOP_TOKEN_BYTES)) {
+      return;
+    }
+    await sleepImmediate();
   }
 }
 
@@ -80,9 +96,6 @@ async function reservePort(): Promise<number> {
   return port;
 }
 
-async function sleepMs(delayMs: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, Math.max(0, delayMs)));
-}
 
 async function runSpotBenchmark(msgSize: number, options: any) {
   const ctx = new zlink.Context();
@@ -123,12 +136,20 @@ async function runSpotBenchmark(msgSize: number, options: any) {
     const payload = createPayload(msgSize);
     let seq = 1n;
     let probeReady = false;
+    let stopReceived = false;
     const activeDeadline = { value: 0 };
     const latencySampleCap = Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000);
     const latenciesNs: number[] = [];
     let accepted = 0;
     const collectReadable = (countActive: boolean) => {
       return drainSpot(subscriber, (received) => {
+        // PERF_SINGLE_TEST_POLICY § 1.4: wire-level stop token terminates
+        // the receiver loop. Returning here lets the outer loop observe
+        // `stopReceived` without recording the sentinel as a payload.
+        if (isStopTokenParts(received.parts)) {
+          stopReceived = true;
+          return;
+        }
         const header = decodeMetricHeaderFromParts(received.parts);
         if (!header) {
           return;
@@ -170,7 +191,7 @@ async function runSpotBenchmark(msgSize: number, options: any) {
         seq += 1n;
       }
       collectReadable(false);
-      await sleepMs(25);
+      await sleepImmediate();
     }
     if (!probeReady) {
       throw new Error('spot ready probe timed out');
@@ -188,28 +209,19 @@ async function runSpotBenchmark(msgSize: number, options: any) {
       });
       if (trySpotPublish(publisher, payload)) {
         seq += 1n;
-      } else {
-        await sleepMs(1);
       }
       collectReadable(true);
-      await new Promise((resolve) => setImmediate(resolve));
+      await sleepImmediate();
     }
 
-    stampPayload(payload, {
-      phase: 2,
-      runId,
-      msgSize,
-      seq
-    });
-    trySpotPublish(publisher, payload);
-
-    const idleDeadline = Date.now() + Math.max(
-      resolveSingleIdleDrainMs(options),
-      Number(process.env.PERF_SINGLE_RCVTIMEO_MS ?? 200)
-    );
-    while (Date.now() < idleDeadline) {
+    // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire stop token
+    // and drain in-flight payloads until the receiver observes it. The
+    // legacy phase-2 cooldown message + timer-based idle drain are no
+    // longer needed — in-flight messages naturally precede the token.
+    await publishStopToken(publisher);
+    while (!stopReceived) {
       if (!collectReadable(false)) {
-        await sleepMs(1);
+        await sleepImmediate();
       }
     }
 

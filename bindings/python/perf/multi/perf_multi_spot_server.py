@@ -7,6 +7,7 @@ import time
 import zlink
 
 from perf_multi_common import (
+    STOP_TOKEN,
     TOPIC,
     apply_multi_spot_node_admission,
     benchmark_endpoint,
@@ -167,29 +168,29 @@ def main(argv=None):
         idle_deadline = active_deadline + float(
             os.environ.get("PERF_MULTI_SPOT_SERVER_IDLE_S", "2.0")
         )
-        cooldown_sent = False
-        while not stop.is_set():
-            now = time.perf_counter()
-            if now >= idle_deadline:
-                break
-            if now >= active_deadline and cooldown_sent:
-                stop.wait(0.01)
-                continue
-            while not stop.is_set():
-                phase = 1 if time.perf_counter() < active_deadline else 2
-                sent = spot_publish_nonblocking(
-                    data_spot,
-                    CHANNEL_NAME,
-                    TOPIC,
-                    [stamp_payload(payload, phase=phase, run_id=run_id)],
-                )
-                if not sent:
-                    break
-                if phase == 2:
-                    cooldown_sent = True
-                    break
-            if not cooldown_sent:
+        # PERF_MULTI_TEST_POLICY § 1.3.1: publish phase=1 until deadline,
+        # then keep emitting wire stop tokens periodically for the cooldown
+        # window. Spot publish is broadcast to all subscribed peers on the
+        # mesh, so a single token reaches every client; we publish multiple
+        # to absorb any HWM drops.
+        while not stop.is_set() and time.perf_counter() < active_deadline:
+            sent = spot_publish_nonblocking(
+                data_spot,
+                CHANNEL_NAME,
+                TOPIC,
+                [stamp_payload(payload, phase=1, run_id=run_id)],
+            )
+            if not sent:
+                # Producer backpressure backoff (not shutdown sync).
                 time.sleep(0.001)
+        while not stop.is_set() and time.perf_counter() < idle_deadline:
+            spot_publish_nonblocking(
+                data_spot,
+                CHANNEL_NAME,
+                TOPIC,
+                [STOP_TOKEN],
+            )
+            time.sleep(0.001)
         sys.stdout.flush()
         try:
             data_spot.close()

@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../..');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { applyContextPolicy, applySpotNodeAdmission, applySocketPolicy, benchmarkEndpoint, configureTlsClient, configureTlsServer, parseSingleBinaryArgs, resolveSingleLatencySampleCap, waitForPostReadySettle } = require('./perf_single_common');
+const { STOP_TOKEN_BYTES, isStopToken } = require('../perf_stop_token');
 const NODE_RID = zlink.RoutingId.fromBytes(Buffer.from('perf-spot-reqrep-node', 'ascii'));
 const SPOT_RID = zlink.RoutingId.fromBytes(Buffer.from('perf-spot-reqrep-spot', 'ascii'));
 const REQUESTER_RID = zlink.RoutingId.fromBytes(Buffer.from('perf-spot-reqrep-requester', 'ascii'));
@@ -78,7 +79,6 @@ async function runSpotReqRepBenchmark(msgSize, options) {
     applySpotNodeAdmission(replierNode, options);
     const replier = replierNode.createSpot();
     const endpoint = await benchmarkEndpoint(options.transport, `spot-reqrep-${msgSize}`);
-    let stopResponder = false;
     let responderLoop = null;
     try {
         applySocketPolicy(requester, options);
@@ -89,15 +89,24 @@ async function runSpotReqRepBenchmark(msgSize, options) {
         replier.setRoutingId(SPOT_RID);
         replierNode.bind(endpoint);
         requester.connect(endpoint);
+        // PERF_SINGLE_TEST_POLICY § 1.4: replier exits on the wire-level stop
+        // token instead of an `atomic stopResponder` + polling flag. The
+        // sentinel is still echoed so the requester observes it and unblocks
+        // its `requestToSpot` await; the replier returns immediately after.
         responderLoop = (async () => {
-            while (!stopResponder) {
+            while (true) {
                 const received = tryRecvRouted(replier);
                 if (!received) {
                     await sleepImmediate();
                     continue;
                 }
                 try {
+                    const isStop = received.parts.length === 1
+                        && isStopToken(received.parts[0].data());
                     received.reply(received.parts);
+                    if (isStop) {
+                        return;
+                    }
                 }
                 finally {
                     received.close();
@@ -129,19 +138,28 @@ async function runSpotReqRepBenchmark(msgSize, options) {
             seqRef.current += 1n;
             collector.record(await requestSpotReply(requester, payload, 2000), currentEpochNs());
         }
-        stampPayload(payload, {
-            phase: 2,
-            runId,
-            msgSize,
-            seq: seqRef.current
-        });
-        await requestSpotReply(requester, payload, 2000);
+        // PERF_SINGLE_TEST_POLICY § 1.4: send wire-level stop token. The
+        // replier echoes it (so this `requestToSpot` resolves) and then exits
+        // its loop. No `stopResponder` flag is needed.
+        await requester.requestToSpot(NODE_RID, SPOT_RID, STOP_TOKEN_BYTES, 2000);
+        if (responderLoop) {
+            await responderLoop;
+        }
         return collector.finish();
     }
     finally {
-        stopResponder = true;
         if (responderLoop) {
-            await responderLoop;
+            // Defensive: ensure the loop is awaited so we don't leak a pending
+            // promise if the active phase threw before the explicit await above.
+            try {
+                await Promise.race([
+                    responderLoop,
+                    new Promise((resolve) => setImmediate(resolve))
+                ]);
+            }
+            catch (err) {
+                // Surfaced via responderLoop rejection; ignore here.
+            }
         }
         replier.close();
         replierNode.close();

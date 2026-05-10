@@ -9,6 +9,12 @@ perf_dir_text = str(PERF_DIR)
 if perf_dir_text not in sys.path:
     sys.path.insert(0, perf_dir_text)
 
+from perf_stop_token import (
+    STOP_TOKEN,
+    is_stop_token,
+    is_stop_token_in_parts,
+)
+
 from perf_metrics import (
     HEADER_MAGIC,
     HEADER_SIZE,

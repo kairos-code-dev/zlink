@@ -17,7 +17,7 @@ const {
   applySocketPolicy,
   pollEvents,
   pollEventHas,
-  resolveClientPollTimeoutMs,
+  sendStopTokenWithRetry,
   trySocketPublish
 } = require('./perf_multi_runtime');
 
@@ -49,7 +49,6 @@ async function main() {
         continue;
       }
 
-      const clientPollTimeoutMs = resolveClientPollTimeoutMs();
       const runId = createRunId(1);
       const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
       let seq = 1n;
@@ -64,27 +63,19 @@ async function main() {
           pending = true;
         }
 
-        const nowNs = process.hrtime.bigint();
-        const remainMs = Number((activeStopNs - nowNs) / 1_000_000n);
-        const waitMs = Math.max(1, Math.min(clientPollTimeoutMs, remainMs));
-        const ready = poller.wait(waitMs);
+        // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven `-1` wait.
+        const ready = poller.wait(-1);
         if (!ready || !pollEventHas(ready, POLLOUT)) {
           continue;
         }
         pending = false;
-      }
-      let cooldownPending = true;
-      stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
-      while (cooldownPending) {
-        if (trySocketPublish(pub, 'perf.topic', payload)) {
-          cooldownPending = false;
-          continue;
-        }
-        const ready = poller.wait(clientPollTimeoutMs);
-        if (ready && pollEventHas(ready, POLLOUT)) {
-          // will retry publish on next iteration
+        if (process.hrtime.bigint() >= activeStopNs) {
+          break;
         }
       }
+      // PERF_MULTI_TEST_POLICY § 1.3.1: emit wire-level stop token at phase
+      // end so subscribers waiting on `wait(-1)` exit promptly.
+      await sendStopTokenWithRetry(pub, (bytes) => trySocketPublish(pub, 'perf.topic', bytes));
       break;
     }
   } finally {

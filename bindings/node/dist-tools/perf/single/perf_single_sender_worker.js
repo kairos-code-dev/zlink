@@ -5,6 +5,7 @@ const { parentPort, workerData } = require('node:worker_threads');
 const zlink = require('../../..');
 const { createPayload, stampPayload } = require('../common/perf_metrics');
 const { applyContextPolicy, applySocketPolicy, configureTlsClient, configureTlsServer, waitForConnectionReady, } = require('./perf_single_common');
+const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 const DEFAULT_TOPIC = 'perf.topic';
 function ensureParentPort() {
     if (!parentPort) {
@@ -48,6 +49,42 @@ async function handshakeRouterSender(port, sender, receiverRoutingId) {
         reply.close();
     }
 }
+function sendStopToken(kind, socket, receiverRoutingId, topic) {
+    // PERF_SINGLE_TEST_POLICY § 1.4: emit the wire-level stop token once at
+    // phase end. Use blocking send (no DontWait) so transient backpressure
+    // is absorbed by the socket; bound retries to avoid hanging if the peer
+    // has gone away. For pubsub the publisher is configured with
+    // `no_drop=true` (see `perf_pubsub.ts`), so the sentinel cannot be
+    // silently discarded by XPUB.
+    trace(`sendStopToken begin kind=${kind}`);
+    for (let retry = 0; retry < 100; retry += 1) {
+        try {
+            if (kind === 'pubsub') {
+                socket.publish(topic, STOP_TOKEN_BYTES);
+            }
+            else if (kind === 'router_router') {
+                socket.send(receiverRoutingId, STOP_TOKEN_BYTES);
+            }
+            else {
+                socket.send(STOP_TOKEN_BYTES);
+            }
+            trace(`sendStopToken sent kind=${kind} retry=${retry}`);
+            return;
+        }
+        catch (error) {
+            if (error instanceof zlink.SubmitError
+                && error.result === zlink.SubmitResult.Backpressured) {
+                continue;
+            }
+            const text = String(error && error.message ? error.message : error);
+            if ((error && error.code === 'EAGAIN')
+                || text.includes('Resource temporarily unavailable')) {
+                continue;
+            }
+            throw error;
+        }
+    }
+}
 function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, receiverRoutingId, topic) {
     const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(duration * 1_000_000_000));
     let seq = seqStart;
@@ -74,6 +111,7 @@ function sendLoop(kind, socket, payload, duration, runId, msgSize, seqStart, rec
     else {
         socket.send(payload);
     }
+    sendStopToken(kind, socket, receiverRoutingId, topic);
 }
 async function main() {
     const port = ensureParentPort();
@@ -135,6 +173,7 @@ async function main() {
         trace('waiting start');
         await waitForCommand(port, 'start');
         trace('start received');
+        trace(`sendLoop begin kind=${kind} duration=${duration} msgSize=${msgSize}`);
         sendLoop(kind, socket, payload, duration, runId, msgSize, 1n, receiverRoutingIdBytes
             ? zlink.RoutingId.fromBytes(Buffer.from(receiverRoutingIdBytes))
             : null, topic);

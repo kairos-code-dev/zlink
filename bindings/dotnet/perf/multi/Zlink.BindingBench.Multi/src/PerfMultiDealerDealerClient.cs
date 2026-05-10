@@ -91,18 +91,21 @@ internal static class PerfMultiDealerDealerClient
 
         long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
-        while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
-        {
-            int timeoutMs = RemainingMilliseconds(benchDeadlineTicks);
-            if (timeoutMs <= 0)
-                break;
 
-            if (PollSocketReadReady(pollManager, activeClients, timeoutMs) <= 0)
+        // PERF_MULTI_TEST_POLICY § 1.3.1: poller wait timeout is -1
+        // (signal-driven). The loop exits when a wire-level stop token
+        // arrives from the server.
+        var stoppedClients = new bool[activeClients.Count];
+        int stoppedCount = 0;
+        while (stoppedCount < activeClients.Count)
+        {
+            if (PollSocketReadReady(pollManager, activeClients,
+                    MultiClientPollTimeoutMs) <= 0)
                 continue;
 
             for (int i = 0; i < activeClients.Count; i++)
             {
-                if (!IsSocketReadReady(pollManager, i))
+                if (stoppedClients[i] || !IsSocketReadReady(pollManager, i))
                     continue;
 
                 while (true)
@@ -115,7 +118,11 @@ internal static class PerfMultiDealerDealerClient
                     ReadOnlySpan<byte> body = received.SinglePartOrThrow()
                         .AsReadOnlySpan();
                     if (IsStopTokenPayload(body))
-                        continue;
+                    {
+                        stoppedClients[i] = true;
+                        stoppedCount++;
+                        break;
+                    }
 
                     long recvTicks = Stopwatch.GetTimestamp();
                     if (recvTicks > benchDeadlineTicks)
@@ -156,18 +163,5 @@ internal static class PerfMultiDealerDealerClient
     private static Received? TryRecvNoWait(DealerSocket socket)
     {
         return socket.Recv(RecvFlags.DontWait);
-    }
-
-    private static int RemainingMilliseconds(long deadlineTicks)
-    {
-        long nowTicks = Stopwatch.GetTimestamp();
-        if (deadlineTicks <= nowTicks)
-            return 0;
-
-        double remainingMs = (deadlineTicks - nowTicks) * 1000.0
-            / Stopwatch.Frequency;
-        if (remainingMs >= int.MaxValue)
-            return int.MaxValue;
-        return (int)Math.Ceiling(remainingMs);
     }
 }

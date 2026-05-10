@@ -5,25 +5,20 @@
 const zlink = require('../../..');
 const {
   createMetricCollector,
-  createPayload,
   createRunId,
   decodeMetricHeaderFromParts,
   currentEpochNs,
-  sleepImmediate,
   summarizeMetrics,
-  stampPayload
 } = require('../common/perf_metrics');
 const {
   applyContextPolicy,
   applySocketPolicy,
   benchmarkEndpoint,
   closeSenderWorker,
-  configureTlsClient,
   configureTlsServer,
   drainRecvSocket,
   parseSingleBinaryArgs,
   resolveSingleLatencySampleCap,
-  resolveSingleIdleDrainMs,
   spawnSenderWorker,
   waitForWorkerDone,
   waitForWorkerError,
@@ -108,17 +103,14 @@ async function runRouterRouterBenchmark(msgSize, options) {
       activeStopNs,
       sampleCap: resolveSingleLatencySampleCap()
     });
-    const payload = createPayload(msgSize);
-    let seq = 1n;
-    let stop = false;
 
+    // PERF_SINGLE_TEST_POLICY § 1.4: receiver drains until wire stop token.
     const recvTask = drainRecvSocket(
       receiver,
       (received) => {
         const header = decodeMetricHeaderFromParts(received.parts);
         collector.record(header, currentEpochNs());
-      },
-      () => stop
+      }
     );
 
     trace('starting worker');
@@ -128,12 +120,6 @@ async function runRouterRouterBenchmark(msgSize, options) {
       workerError.then((message) => Promise.reject(new Error(message.message)))
     ]);
     trace('worker done');
-    const drainDeadlineNs = activeStopNs
-      + BigInt(resolveSingleIdleDrainMs(options)) * 1_000_000n;
-    while (currentEpochNs() < drainDeadlineNs) {
-      await sleepImmediate();
-    }
-    stop = true;
     await recvTask;
     trace('recv task done');
     return collector.finish();

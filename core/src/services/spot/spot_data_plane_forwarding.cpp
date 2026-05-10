@@ -566,7 +566,6 @@ int spot_data_plane_forwarder_t::forward_mesh_pub (
     }
 
     pump_socket_commands (state_->mesh_pub);
-    state_->mesh_pub->set_all_pipes_nodelay ();
     if (state_->remote_mesh.broadcast_pending_message_ids.empty ()
         && spot_publish_msg_parts (state_->mesh_pub, topic_, parts_) == 0) {
         return 0;
@@ -793,12 +792,35 @@ int spot_data_plane_forwarder_t::drain_pub_ingress_socket (
             || spot_control_protocol::is_reserved_subject (topic.data (),
                                                            topic.size ())) {
             spot_clear_msg_parts (&frames);
-        } else if (stage_message (state_, topic, frames, false, true,
-                                  runtime_->mesh_pub != NULL)
-                   != 0) {
-            spot_clear_msg_parts (&frames);
-            return -1;
         } else {
+            const bool need_local = !state_->local_fanout.targets.empty ();
+            const bool need_mesh = runtime_->mesh_pub != NULL;
+
+            if (need_local
+                && forward_local_fanout (runtime_, state_, topic, frames) != 0) {
+                if (errno != EAGAIN
+                    || stage_message (state_, topic, frames, false, true,
+                                      need_mesh)
+                         != 0) {
+                    spot_clear_msg_parts (&frames);
+                    return -1;
+                }
+                spot_clear_msg_parts (&frames);
+                break;
+            }
+
+            if (need_mesh && forward_mesh_pub (runtime_, state_, topic, frames)
+                               != 0) {
+                if (errno != EAGAIN
+                    || stage_message (state_, topic, frames, false, false, true)
+                         != 0) {
+                    spot_clear_msg_parts (&frames);
+                    return -1;
+                }
+                spot_clear_msg_parts (&frames);
+                break;
+            }
+
             spot_clear_msg_parts (&frames);
         }
 
@@ -992,7 +1014,6 @@ int spot_data_plane_forwarder_t::flush_mesh_pub_pending (
             }
 
             pump_socket_commands (state_->mesh_pub);
-            state_->mesh_pub->set_all_pipes_nodelay ();
             if (spot_publish_msg_parts (state_->mesh_pub, msg_it->second.topic,
                                         msg_it->second.parts)
                 != 0) {

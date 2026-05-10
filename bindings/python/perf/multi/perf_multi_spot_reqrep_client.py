@@ -158,12 +158,9 @@ def main(argv=None):
                 spot.set_routing_id(f"spot-req-client-spot-{index}".encode("ascii"))
                 spots.append(spot)
 
-            deadline = time.perf_counter() + ready_timeout_s
-            while time.perf_counter() < deadline:
-                if control_connected.is_set():
-                    break
-                control_connected.wait(0.01)
-            if not control_connected.is_set():
+            # Single blocking wait on control handshake (start gate, not
+            # shutdown synchronization).
+            if not control_connected.wait(timeout=ready_timeout_s):
                 raise RuntimeError("control connection handshake timeout")
 
             time.sleep(ready_settle_s)
@@ -192,14 +189,12 @@ def main(argv=None):
             print(f"CLIENT_READY,{args.msg_size}", flush=True)
 
             start_deadline = time.perf_counter() + ready_timeout_s
-            while time.perf_counter() < start_deadline:
-                if (
-                    runner_start.is_set()
-                    and started_event.is_set()
-                    and started_size[0] == args.msg_size
-                ):
-                    break
-                runner_start.wait(0.01)
+            # Wait for runner START + broadcast START barrier. Both are
+            # start gates, so a single blocking wait per event is enough.
+            remaining = max(0.0, start_deadline - time.perf_counter())
+            runner_start.wait(timeout=remaining)
+            remaining = max(0.0, start_deadline - time.perf_counter())
+            started_event.wait(timeout=remaining)
             if not (
                 runner_start.is_set()
                 and started_event.is_set()

@@ -73,40 +73,30 @@ internal static class PerfPair
         byte[] payload, int msgSize, int durationSeconds, int recvTimeoutMs,
         int latencyCap, out long receivedOut, out List<double> latencySamples)
     {
+        _ = recvTimeoutMs;
         long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
-        long recvFlushTicks = Math.Max(1,
-            (long)Math.Ceiling(recvTimeoutMs * Stopwatch.Frequency / 1000.0));
 
         long received = 0;
-        int senderDone = 0;
         Exception? recvError = null;
         var samples = new List<double>(Math.Max(0, latencyCap));
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
 
+        // PERF_SINGLE_TEST_POLICY § 1.4: receiver waits indefinitely
+        // (-1 = signal-driven) and exits when the wire-level stop token
+        // arrives. No `volatile bool senderDone` polling.
         var recvThread = new Thread(() =>
         {
             using var poller = new Poller();
             var events = new PollEvent[1];
-            var recvBuffer = new byte[payload.Length];
-            long lastRecvTicks = Stopwatch.GetTimestamp();
             poller.Add(receiver, PollEventFlags.PollIn);
 
             try
             {
                 while (true)
                 {
-                    bool done = Volatile.Read(ref senderDone) != 0;
-                    int timeoutMs = done ? Math.Max(1, recvTimeoutMs) : 50;
-                    if (!WaitForInput(poller, events, timeoutMs))
-                    {
-                        if (done && Stopwatch.GetTimestamp() - lastRecvTicks
-                            >= recvFlushTicks)
-                        {
-                            break;
-                        }
+                    if (!WaitForInput(poller, events, -1))
                         continue;
-                    }
 
                     while (true)
                     {
@@ -117,9 +107,11 @@ internal static class PerfPair
 
                         using (receivedMessage)
                         {
-                            lastRecvTicks = Stopwatch.GetTimestamp();
                             ReadOnlySpan<byte> body = receivedMessage.FirstPart()
                                 .AsReadOnlySpan();
+                            if (StopToken.IsStopToken(body))
+                                return;
+
                             long recvTicks = Stopwatch.GetTimestamp();
                             if (!TryDecodeExpectedSingleHeader(body, msgSize,
                                     ActivePhase, out var header, RunId))
@@ -173,7 +165,10 @@ internal static class PerfPair
             }
         }
 
-        Volatile.Write(ref senderDone, 1);
+        // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
+        // stop token. Bounded retry through transient backpressure so the
+        // receiver always observes the terminator.
+        SendStopTokenWithRetry(sender, "[single-pair]");
         recvThread.Join();
 
         latencySamples = samples;

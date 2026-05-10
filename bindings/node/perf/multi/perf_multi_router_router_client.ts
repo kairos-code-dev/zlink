@@ -22,8 +22,8 @@ const {
   pollEvents,
   pollEventHas,
   recvNoWait,
-  resolveClientPollTimeoutMs,
   resolveMultiLatencySampleCap,
+  sendStopTokenWithRetry,
   trySocketSend,
   waitForConnectionReady
 } = require('./perf_multi_runtime');
@@ -59,7 +59,6 @@ async function main() {
       poller.add(routers[i], pollEvents(POLLIN | POLLOUT), i);
     }
     ctx.recalculateAutoHwm();
-    const clientPollTimeoutMs = resolveClientPollTimeoutMs();
     const runId = createRunId(1);
     const activeStartNs = currentEpochNs();
     const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
@@ -112,10 +111,8 @@ async function main() {
         continue;
       }
 
-      const nowNs = currentEpochNs();
-      const remainMs = Number((activeStopNs - nowNs) / 1_000_000n);
-      const waitMs = Math.max(1, Math.min(clientPollTimeoutMs, remainMs));
-      const ready = poller.waitAll(poller.size, waitMs);
+      // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven `-1` wait.
+      const ready = poller.waitAll(poller.size, -1);
       if (ready.length === 0) {
         continue;
       }
@@ -132,6 +129,12 @@ async function main() {
         }
       }
     }
+
+    // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via wire stop token.
+    await sendStopTokenWithRetry(
+      routers[0],
+      (bytes) => trySocketSend(routers[0], SERVER_ROUTING_ID, bytes)
+    );
 
     const result = await collector.finish();
     for (const metricLine of summarizeMetrics(

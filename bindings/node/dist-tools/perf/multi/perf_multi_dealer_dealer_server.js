@@ -5,7 +5,7 @@ const readline = require('node:readline');
 const zlink = require('../../..');
 const { createPayload, createRunId, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, resolveClientPollTimeoutMs, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
+const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, sendStopTokenWithRetry, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -31,7 +31,6 @@ async function main() {
                 continue;
             }
             await readyBarrier;
-            const clientPollTimeoutMs = resolveClientPollTimeoutMs();
             const runId = createRunId(1);
             const activeStopNs = process.hrtime.bigint() + BigInt(Math.floor(options.duration * 1_000_000_000));
             let pending = false;
@@ -45,27 +44,23 @@ async function main() {
                     }
                     pending = true;
                 }
-                const nowNs = process.hrtime.bigint();
-                const remainMs = Number((activeStopNs - nowNs) / 1000000n);
-                const waitMs = Math.max(1, Math.min(clientPollTimeoutMs, remainMs));
-                const ready = poller.wait(waitMs);
+                // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. Once the
+                // duration deadline elapses we exit on the next loop iteration —
+                // we do not need a timer-based bound because POLLOUT readiness
+                // arrives quickly under the perf HWM/inflight regime.
+                const ready = poller.wait(-1);
                 if (!ready || !pollEventHas(ready, POLLOUT)) {
                     continue;
                 }
                 pending = false;
-            }
-            let cooldownPending = true;
-            stampPayload(payload, { phase: 2, runId, msgSize: options.msgSize, seq });
-            while (cooldownPending) {
-                if (trySocketSend(server, payload)) {
-                    cooldownPending = false;
-                    continue;
-                }
-                const ready = poller.wait(clientPollTimeoutMs);
-                if (ready && pollEventHas(ready, POLLOUT)) {
-                    // will retry send on next iteration
+                if (process.hrtime.bigint() >= activeStopNs) {
+                    break;
                 }
             }
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via the wire-level
+            // stop token (retries through transient backpressure with a poller
+            // POLLOUT wait — no 1-25 ms timer fallback).
+            await sendStopTokenWithRetry(server, (bytes) => trySocketSend(server, bytes));
             break;
         }
     }

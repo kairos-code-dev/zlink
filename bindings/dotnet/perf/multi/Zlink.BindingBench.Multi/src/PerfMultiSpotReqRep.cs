@@ -30,14 +30,21 @@ internal static class PerfMultiSpotReqRep
             WriteStdoutLine(
                 $"READY,{NormalizeClientEndpoint(bindEndpoint, options.Transport)}");
 
+            // PERF_MULTI_TEST_POLICY § 1.3.1: server exits when any
+            // requester emits the wire-level stop token (echoed back so
+            // the requester drains the matching reply via public
+            // poller). stdin STOP remains as a runner force-quit hatch
+            // and sets stopRequested so the next event-cycle exits.
             int stopRequested = 0;
+            int stopTokenSeen = 0;
             StartStopWatcher(() => Volatile.Write(ref stopRequested, 1));
             using var poller = new Poller();
             var events = new List<PollEvent>(1);
             poller.Add(responder, PollEventFlags.PollIn);
-            while (Volatile.Read(ref stopRequested) == 0)
+            while (Volatile.Read(ref stopRequested) == 0
+                   && Volatile.Read(ref stopTokenSeen) == 0)
             {
-                if (!WaitForEvents(poller, events, 10))
+                if (!WaitForEvents(poller, events, -1))
                     continue;
 
                 while (true)
@@ -49,8 +56,18 @@ internal static class PerfMultiSpotReqRep
                     RoutingId routingId = received.RoutingId
                         ?? throw new InvalidOperationException("missing routing id");
                     ulong requestSeq = received.RequestSeq ?? 0UL;
+                    ReadOnlySpan<byte> body =
+                        received.FirstPart().AsReadOnlySpan();
+                    bool isStop = StopToken.IsStopToken(body);
+
                     using Message reply = received.FirstPart().Move();
                     responder.Reply(routingId, requestSeq, reply);
+
+                    if (isStop)
+                    {
+                        Volatile.Write(ref stopTokenSeen, 1);
+                        break;
+                    }
                 }
             }
 
@@ -248,10 +265,25 @@ internal static class PerfMultiSpotReqRep
                             slot.RecordLatency((nowNs - reply.SentTsNs) / 2.0);
                     }
 
-                    using var cooldown = Message.FromBytes(CreatePayload(size,
-                        (uint)PerfPhase.Cooldown, seq));
-                    _ = RequestReply(slot.Requester, size, cooldown,
-                        TimeSpan.FromMilliseconds(Math.Max(1, readyTimeoutMs)));
+                    // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via
+                    // wire-level stop token. The server echoes the
+                    // request, so the requester also drains the reply.
+                    // Multiple concurrent clients race to send; the
+                    // first arrival shuts the server down, later ones
+                    // may legitimately time out — those are ignored.
+                    try
+                    {
+                        using var stopRequest = Message.FromBytes(StopToken.Bytes);
+                        _ = RequestReplyAllowStopToken(slot.Requester,
+                            stopRequest,
+                            TimeSpan.FromMilliseconds(
+                                Math.Max(1, readyTimeoutMs)));
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine(
+                            $"[multi-spot-reqrep] stop-token request failed: {ex.Message}");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -331,6 +363,26 @@ internal static class PerfMultiSpotReqRep
             }
 
             throw new InvalidOperationException("spot reqrep reply header invalid");
+        }
+        finally
+        {
+            for (int i = 0; i < replyParts.Count; i++)
+                replyParts[i].Dispose();
+        }
+    }
+
+    private static bool RequestReplyAllowStopToken(Spot requester,
+        Message payload, TimeSpan timeout)
+    {
+        IReadOnlyList<Message> replyParts = requester.RequestChannel(ChannelName)
+            .Message(payload)
+            .Timeout(timeout)
+            .SubmitAsync()
+            .GetAwaiter().GetResult();
+        try
+        {
+            return replyParts.Count > 0
+                && StopToken.IsStopToken(replyParts[0].AsReadOnlySpan());
         }
         finally
         {

@@ -7,6 +7,7 @@ import zlink
 
 from perf_common import (
     HEADER_MAGIC,
+    STOP_TOKEN,
     apply_single_spot_node_admission,
     benchmark_run_id,
     configure_single_tls_client,
@@ -14,6 +15,7 @@ from perf_common import (
     decode_header,
     extract_metric_payload,
     is_active_message,
+    is_stop_token,
     latency_ns_from_message,
     new_payload,
     parse_single_args,
@@ -72,6 +74,8 @@ def _wait_for_probe_reply(requester, node_rid, spot_rid, payload, args, run_id):
             )
         except RuntimeError as exc:
             last_error = exc
+            # Probe-ready is a start gate, not shutdown; PERF_SINGLE_TEST_POLICY
+            # § 1.4 forbids short polling for shutdown only.
             time.sleep(0.001)
             continue
         header = decode_header(reply_data)
@@ -94,7 +98,7 @@ def main(argv=None):
     run_id = benchmark_run_id()
     latencies_ns = []
     probe_ready = threading.Event()
-    stop_responder = threading.Event()
+    responder_done = threading.Event()
     probe_payload = new_payload(args.msg_size)
     active_payload = new_payload(args.msg_size)
 
@@ -123,19 +127,38 @@ def main(argv=None):
                         replier_node.connect_peer(requester_endpoint)
                         time.sleep(resolve_single_spot_ready_settle_s())
 
-                        def responder_loop():
-                            while not stop_responder.is_set():
-                                received = replier.recv_routed(
-                                    flags=zlink.RecvFlags.DONT_WAIT
-                                )
+                        def on_dispatch(current_spot, info):
+                            # PERF_SINGLE_TEST_POLICY § 1.4: dispatch
+                            # callback drains synchronously on each wakeup;
+                            # no polling, no sender_done flag.
+                            if info.event != zlink.SpotDispatchEvent.ROUTED_READABLE:
+                                return
+                            while True:
+                                try:
+                                    received = current_spot.recv_routed(
+                                        flags=zlink.RecvFlags.DONT_WAIT
+                                    )
+                                except zlink.RecvError as exc:
+                                    if exc.result == zlink.RecvResult.NO_DATA:
+                                        return
+                                    raise
                                 if received is None:
-                                    stop_responder.wait(0.001)
-                                    continue
+                                    return
                                 with received:
                                     parts = received.to_bytes_list()
                                     if not parts:
                                         continue
                                     data = parts[0]
+                                    if is_stop_token(data):
+                                        # Reply once so the requester's
+                                        # outstanding submit completes, then
+                                        # mark responder as done.
+                                        try:
+                                            received.reply([STOP_TOKEN])
+                                        except zlink.SubmitError:
+                                            pass
+                                        responder_done.set()
+                                        return
                                     header = decode_header(data)
                                     if (
                                         not probe_ready.is_set()
@@ -148,12 +171,7 @@ def main(argv=None):
                                         probe_ready.set()
                                     received.reply(parts)
 
-                        responder = threading.Thread(
-                            target=responder_loop,
-                            name="python-spot-reqrep-responder",
-                            daemon=True,
-                        )
-                        responder.start()
+                        replier.on_dispatch_event(on_dispatch)
 
                         try:
                             probe_message = [
@@ -221,8 +239,21 @@ def main(argv=None):
                                 "SPOT_REQREP", args.transport, args.msg_size, metrics
                             )
                         finally:
-                            stop_responder.set()
-                            responder.join(timeout=2.0)
+                            # PERF_SINGLE_TEST_POLICY § 1.4: signal phase end
+                            # via wire stop token. The responder dispatch
+                            # callback observes the token, replies once and
+                            # sets responder_done.
+                            try:
+                                _ = _request_spot_reply(
+                                    requester,
+                                    replier_node.routing_id,
+                                    replier.routing_id,
+                                    [STOP_TOKEN],
+                                    timeout_s=2.0,
+                                )
+                            except Exception:
+                                pass
+                            responder_done.wait(timeout=2.0)
                             requester_node.disconnect_peer(endpoint)
                             replier_node.disconnect_peer(requester_endpoint)
 

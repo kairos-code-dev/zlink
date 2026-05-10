@@ -6,6 +6,7 @@ import time
 import zlink
 
 from perf_multi_common import (
+    STOP_TOKEN,
     TOPIC,
     apply_multi_socket_options,
     benchmark_endpoint,
@@ -15,13 +16,6 @@ from perf_multi_common import (
     publish_nonblocking,
     stamp_payload,
 )
-
-
-def _stdin_stop(stop_event):
-    for line in sys.stdin:
-        if line.strip().upper() in {"STOP", "QUIT"}:
-            stop_event.set()
-            return
 
 
 def main(argv=None):
@@ -44,6 +38,7 @@ def main(argv=None):
             elif text in {"STOP", "QUIT"}:
                 stop_event.set()
                 return
+        stop_event.set()
 
     threading.Thread(target=read_commands, daemon=True).start()
 
@@ -52,28 +47,36 @@ def main(argv=None):
             apply_multi_socket_options(publisher)
             publisher.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
-            active_deadline = None
-            while not stop_event.is_set():
-                if not start_event.is_set():
-                    stop_event.wait(0.01)
-                    continue
-                if active_deadline is None:
-                    active_deadline = time.perf_counter() + active_duration_s
-                if time.perf_counter() >= active_deadline:
-                    stop_event.wait(0.01)
-                    continue
-                sent_any = False
-                while time.perf_counter() < active_deadline and not stop_event.is_set():
-                    sent = publish_nonblocking(
-                        publisher,
-                        TOPIC,
-                        stamp_payload(payload, phase=1, run_id=run_id),
-                    )
-                    if not sent:
-                        break
-                    sent_any = True
-                if not sent_any:
-                    stop_event.wait(0.001)
+            # Start gate (single blocking wait, not a polling cadence).
+            start_event.wait()
+            if stop_event.is_set():
+                return
+            active_deadline = time.perf_counter() + active_duration_s
+            while time.perf_counter() < active_deadline and not stop_event.is_set():
+                sent = publish_nonblocking(
+                    publisher,
+                    TOPIC,
+                    stamp_payload(payload, phase=1, run_id=run_id),
+                )
+                if not sent:
+                    # Brief backoff while subscribers drain. This is producer
+                    # backpressure, not shutdown synchronization, so the policy
+                    # ban on short polling for shutdown does not apply.
+                    time.sleep(0.001)
+            # PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end on the wire.
+            # PubSub drops messages at subscriber RCVHWM, so we keep publishing
+            # the stop token periodically until the runner sends STOP. This
+            # gives every subscriber a chance to receive the token after its
+            # queue drains.
+            cooldown_deadline = time.perf_counter() + 5.0
+            while not stop_event.is_set() and time.perf_counter() < cooldown_deadline:
+                if not publish_nonblocking(publisher, TOPIC, STOP_TOKEN):
+                    time.sleep(0.001)
+                else:
+                    time.sleep(0.001)
+            # Stay alive until runner sends STOP so the published stop token
+            # has time to flush to all subscribers (linger_ms == 0).
+            stop_event.wait()
 
 
 if __name__ == "__main__":

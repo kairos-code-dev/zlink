@@ -96,18 +96,23 @@ internal static class PerfMultiPubSubClient
 
         long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
-        while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
+
+        // PERF_MULTI_TEST_POLICY § 1.3.1: poller wait timeout is -1
+        // (signal-driven). The loop exits when each client has received
+        // a wire-level stop token from the publisher.
+        var stoppedClients = new bool[activeClients.Count];
+        int stoppedCount = 0;
+        while (stoppedCount < activeClients.Count)
         {
-            int cappedPollMs = CapPollTimeoutMs(pollTimeoutMs, benchDeadlineTicks);
             if (PollSocketReadReady(pollManager, activeClients,
-                    cappedPollMs) <= 0)
+                    pollTimeoutMs) <= 0)
             {
                 continue;
             }
 
             for (int i = 0; i < activeClients.Count; i++)
             {
-                if (!IsSocketReadReady(pollManager, i))
+                if (stoppedClients[i] || !IsSocketReadReady(pollManager, i))
                     continue;
 
                 while (true)
@@ -121,6 +126,13 @@ internal static class PerfMultiPubSubClient
                     {
                         ReadOnlySpan<byte> body = subscribed.FirstPart()
                             .AsReadOnlySpan();
+                        if (IsStopTokenPayload(body))
+                        {
+                            stoppedClients[i] = true;
+                            stoppedCount++;
+                            break;
+                        }
+
                         long recvTicks = Stopwatch.GetTimestamp();
                         if (recvTicks > benchDeadlineTicks)
                             continue;

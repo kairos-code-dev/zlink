@@ -22,7 +22,6 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 
 	stats := perfcommon.NewStats()
 	var window perfcommon.BenchmarkWindow
-	var recvStopAt time.Time
 
 	type dealerClient struct {
 		ctx    *zlink.Context
@@ -55,30 +54,58 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 		}
 	}()
 	window = perfcommon.NewBenchmarkWindow(cfg.duration)
-	recvStopAt = window.StopAt
 
+	// PERF_MULTI_TEST_POLICY § 1.3.1: server recv loop waits on the
+	// poller with -1 (signal-driven) and exits on the first stop token
+	// it observes. The cpp reference uses the same single-token
+	// shutdown so transient back-pressure on the per-client send path
+	// cannot wedge the server.
 	recvDone := make(chan struct{})
 	go func() {
 		defer close(recvDone)
-		for time.Now().Before(recvStopAt) {
-			received, err := server.Recv(zlink.RecvFlagsDontWait)
+		poller := perfcommon.NewSocketPoller(server, perfcommon.ZLinkPollIn)
+		defer poller.Close()
+
+		stopRequested := false
+		for !stopRequested {
+			event, err := poller.Wait(-1 * time.Millisecond)
 			if err != nil {
 				if perfcommon.IsTransient(err) {
 					continue
 				}
-				perfcommon.Must(fmt.Errorf("multi dealer/dealer server recv: %w", err))
+				perfcommon.Must(fmt.Errorf("multi dealer/dealer server poll: %w", err))
 			}
-			if received == nil {
+			if event == nil {
 				continue
 			}
-			part, err := received.SinglePartOrError()
-			if err == nil {
-				now := time.Now()
-				if sentAt, ok := perfcommon.SentAtFromMessage(part, cfg.msgSize); ok && now.After(window.ActiveAt) && now.Before(recvStopAt) {
-					stats.Add(sentAt)
-				}
+			if event.Events&perfcommon.ZLinkPollIn == 0 {
+				continue
 			}
-			perfcommon.Must(received.Close())
+			for {
+				received, err := server.Recv(zlink.RecvFlagsDontWait)
+				if err != nil {
+					if perfcommon.IsTransient(err) {
+						break
+					}
+					perfcommon.Must(fmt.Errorf("multi dealer/dealer server recv: %w", err))
+				}
+				if received == nil {
+					break
+				}
+				part, err := received.SinglePartOrError()
+				if err == nil {
+					if perfcommon.IsStopTokenMessage(part) {
+						stopRequested = true
+						_ = received.Close()
+						break
+					}
+					now := time.Now()
+					if sentAt, ok := perfcommon.SentAtFromMessage(part, cfg.msgSize); ok && now.After(window.ActiveAt) && now.Before(window.StopAt) {
+						stats.Add(sentAt)
+					}
+				}
+				perfcommon.Must(received.Close())
+			}
 		}
 	}()
 
@@ -103,6 +130,29 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 	}
 
 	wg.Wait()
+	// PERF_MULTI_TEST_POLICY § 1.3.1: emit the wire-level stop token
+	// once per benchmark, mirroring the cpp client. Server exits on
+	// first observed token so any single client surviving the active
+	// phase suffices.
+	if len(clients) > 0 {
+		sendMultiDealerStopToken(clients[0].socket)
+	}
 	<-recvDone
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
+}
+
+// sendMultiDealerStopToken pushes the wire-level stop token through the
+// dealer socket. Bounded retry through transient backpressure mirrors
+// the cpp / java / dotnet implementations.
+func sendMultiDealerStopToken(socket *zlink.DealerSocket) {
+	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
+		sent, err := socket.Send(zlink.SendFlagsNone, perfcommon.NewMessage(perfcommon.StopToken))
+		if err == nil && sent {
+			return
+		}
+		if err != nil && !perfcommon.IsTransient(err) {
+			return
+		}
+		time.Sleep(perfcommon.StopTokenSendBackoff)
+	}
 }

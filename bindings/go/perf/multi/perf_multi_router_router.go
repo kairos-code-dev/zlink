@@ -72,9 +72,8 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 		}
 	}()
 
-	stopServer := make(chan struct{})
 	serverDone := make(chan struct{})
-	go startMultiRouterRouterEchoServer(server, stopServer, serverDone)
+	go startMultiRouterRouterEchoServer(server, serverDone)
 	validateMultiRouterRoutes(serverID, clients, cfg.msgSize)
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 
@@ -88,7 +87,13 @@ func runMultiRouterRouter(cfg multiConfig) perfcommon.Result {
 	}
 
 	wg.Wait()
-	close(stopServer)
+	// PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via the
+	// wire-level stop token. The first stop token received by the
+	// server triggers shutdown; subsequent ones are ignored on the
+	// reply path.
+	if len(clients) > 0 {
+		sendMultiRouterStopToken(clients[0].socket, serverID)
+	}
 	<-serverDone
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
@@ -135,7 +140,16 @@ func runMultiRouterClient(
 			continue
 		}
 
-		event, err := poller.Wait(25 * time.Millisecond)
+		// PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. The
+		// remaining wall-time bounds the wait so a stalled echo loop
+		// at end-of-phase still releases the goroutine; under steady
+		// state the timeout is large and the wakeup comes from inbound
+		// readiness.
+		remaining := time.Until(window.StopAt)
+		if remaining <= 0 {
+			break
+		}
+		event, err := poller.Wait(remaining)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -201,32 +215,28 @@ func validateMultiRouterRoutes(serverID zlink.RoutingID, clients []multiRouterCl
 	}
 }
 
-func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, stop <-chan struct{}, done chan<- struct{}) {
+// startMultiRouterRouterEchoServer runs the echo loop until it receives
+// a wire-level stop token from any client. Closes done to notify the
+// main goroutine. PERF_MULTI_TEST_POLICY § 1.3.1: poller waits with -1
+// (signal-driven) and the loop exits on stop token, not on a stop
+// channel.
+func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, done chan<- struct{}) {
 	defer close(done)
 
 	poller := perfcommon.NewSocketPoller(server, perfcommon.ZLinkPollIn)
 	defer poller.Close()
 
 	pending := make([]pendingRouterReply, 0, 8)
-	stopping := false
+	stopRequested := false
 
-	for {
-		select {
-		case <-stop:
-			stopping = true
-		default:
-		}
-		if stopping {
-			return
-		}
-
+	for !stopRequested {
 		events := perfcommon.ZLinkPollIn
 		if len(pending) > 0 {
 			events |= perfcommon.ZLinkPollOut
 		}
 		perfcommon.Must(poller.ModifySocket(server, events))
 
-		event, err := poller.Wait(25 * time.Millisecond)
+		event, err := poller.Wait(-1 * time.Millisecond)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -267,6 +277,11 @@ func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, stop <-chan st
 
 			part, partErr := received.SinglePartOrError()
 			if partErr == nil {
+				if perfcommon.IsStopTokenMessage(part) {
+					stopRequested = true
+					_ = received.Close()
+					break
+				}
 				if len(pending) == 0 {
 					sent, sendErr := tryRouterSend(server, received.RoutingID(), part.Data())
 					if sendErr != nil {
@@ -288,11 +303,35 @@ func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, stop <-chan st
 	}
 }
 
+// startMultiRouterEchoServer returns a `done` channel closed when the
+// echo loop exits after observing a wire-level stop token. The legacy
+// callers expected a (stop, done) pair where `stop` was closed by the
+// caller to request shutdown; PERF_MULTI_TEST_POLICY § 1.3.1 routes
+// shutdown over the wire instead, so the returned `stop` channel is now
+// a no-op handle that never causes the loop to exit on its own — the
+// caller still receives ownership of the channel and may close it for
+// API symmetry.
 func startMultiRouterEchoServer(server *zlink.RouterSocket) (chan struct{}, chan struct{}) {
 	stop := make(chan struct{})
 	done := make(chan struct{})
-	go startMultiRouterRouterEchoServer(server, stop, done)
+	go startMultiRouterRouterEchoServer(server, done)
 	return stop, done
+}
+
+// sendMultiRouterStopToken pushes the wire-level stop token through the
+// supplied router socket addressed to the server. Bounded retry through
+// transient backpressure.
+func sendMultiRouterStopToken(socket *zlink.RouterSocket, serverID zlink.RoutingID) {
+	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
+		sent, err := socket.SendTo(serverID, zlink.SendFlagsNone, perfcommon.NewMessage(perfcommon.StopToken))
+		if err == nil && sent {
+			return
+		}
+		if err != nil && !perfcommon.IsTransient(err) {
+			return
+		}
+		time.Sleep(perfcommon.StopTokenSendBackoff)
+	}
 }
 
 func drainRouterReplies(

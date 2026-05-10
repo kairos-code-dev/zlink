@@ -14,6 +14,7 @@ from perf_multi_common import (
     benchmark_run_id,
     configure_multi_tls_client,
     decode_header,
+    is_stop_token,
     latency_ns_from_message,
     is_active_message,
     parse_client_args,
@@ -66,8 +67,8 @@ def main(argv=None):
     control_connected = threading.Event()
     started_event = threading.Event()
     started_size = [0]
-    cooldown_ready = threading.Event()
-    cooldown_seen = set()
+    stop_ready = threading.Event()
+    stop_seen = set()
     collect_active = [False]
     active_deadline = [0.0]
 
@@ -148,18 +149,19 @@ def main(argv=None):
                 data = parts[0]
                 if not data:
                     continue
+                # PERF_MULTI_TEST_POLICY § 1.3.1: exit on wire stop token.
+                if is_stop_token(data):
+                    with recv_lock:
+                        stop_seen.add(index)
+                        if len(stop_seen) >= len(clients):
+                            stop_ready.set()
+                    continue
                 header = decode_header(data)
                 if header is None:
                     continue
                 if header["run_id"] != run_id or header["msg_size"] != args.msg_size:
                     continue
                 if header["phase"] == 0:
-                    continue
-                if header["phase"] == 2:
-                    with recv_lock:
-                        cooldown_seen.add(index)
-                        if len(cooldown_seen) >= len(clients):
-                            cooldown_ready.set()
                     continue
                 if not collect_active[0]:
                     continue
@@ -188,12 +190,8 @@ def main(argv=None):
             clients.append((node, spot))
             _trace(f"create-slot-done index={index}")
 
-        deadline = time.perf_counter() + ready_timeout_s
-        while time.perf_counter() < deadline:
-            if control_connected.is_set():
-                break
-            control_connected.wait(WAIT_SLICE_S)
-        if not control_connected.is_set():
+        # Single blocking wait on control handshake (start gate).
+        if not control_connected.wait(timeout=ready_timeout_s):
             raise RuntimeError("control connection handshake timeout")
         _trace("control-connected")
 
@@ -204,27 +202,23 @@ def main(argv=None):
         print(f"CLIENT_READY,{args.msg_size}", flush=True)
         _trace("client-ready")
 
-        start_deadline = time.perf_counter() + ready_timeout_s
-        while time.perf_counter() < start_deadline:
-            if runner_start.is_set():
-                break
-            runner_start.wait(WAIT_SLICE_S)
-        if not runner_start.is_set():
+        # Single blocking wait on runner start (start gate).
+        if not runner_start.wait(timeout=ready_timeout_s):
             raise RuntimeError("spot start handshake timeout")
         _trace(f"start-handshake-done runner={runner_start.is_set()} broadcast={started_event.is_set()} size={started_size[0]}")
 
         active_deadline[0] = time.perf_counter() + args.duration
         collect_active[0] = True
-        idle_deadline = active_deadline[0] + IDLE_DRAIN_S
         _trace("dispatch-ready")
-        while time.perf_counter() < idle_deadline:
-            if cooldown_ready.is_set() and time.perf_counter() >= active_deadline[0]:
-                break
-            time.sleep(WAIT_SLICE_S)
+        # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. The dispatch
+        # callback will set stop_ready once every spot has observed a wire
+        # stop token. We bound the wait by the runner timeout but otherwise
+        # use a single blocking wait (no polling cadence).
+        stop_ready.wait(timeout=ready_timeout_s)
         collect_active[0] = False
         with recv_lock:
             received_count = nonlocal_received[0]
-        _trace(f"drain-complete count={received_count} cooldown={len(cooldown_seen)}")
+        _trace(f"drain-complete count={received_count} stop_seen={len(stop_seen)}")
 
         with recv_lock:
             if received_count <= 0:

@@ -22,11 +22,8 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 	perfcommon.ApplyMultiHWM(router, cfg.pattern)
 	perfcommon.ApplyMultiBenchmarkSocketOptions(router, cfg.transport)
 	endpoint := perfcommon.BindAndResolveEndpoint(router, cfg.transport, "perf-multi-dealer-router")
-	serverStop, serverDone := startMultiRouterEchoServer(router)
-	defer func() {
-		close(serverStop)
-		<-serverDone
-	}()
+	serverDone := make(chan struct{})
+	go startMultiRouterRouterEchoServer(router, serverDone)
 
 	stats := perfcommon.NewStats()
 	var window perfcommon.BenchmarkWindow
@@ -106,5 +103,12 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 	}
 
 	wg.Wait()
+	// PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via the
+	// wire-level stop token. The first stop token received by the
+	// server triggers shutdown.
+	if len(dealers) > 0 {
+		sendMultiDealerStopToken(dealers[0].socket)
+	}
+	<-serverDone
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }

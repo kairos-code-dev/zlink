@@ -6,11 +6,13 @@ import zlink
 
 from perf_common import (
     HEADER_MAGIC,
+    STOP_TOKEN,
     benchmark_run_id,
     apply_single_spot_node_admission,
     configure_single_tls_client,
     configure_single_tls_server,
     decode_header,
+    is_stop_token,
     latency_ns_from_message,
     is_active_message,
     new_payload,
@@ -19,7 +21,6 @@ from perf_common import (
     recv_nonblocking,
     resolve_single_connect_ready_timeout_ms,
     resolve_single_endpoint,
-    resolve_single_recv_timeout_ms,
     resolve_single_spot_ready_settle_s,
     result_metrics,
     stamp_payload,
@@ -30,16 +31,29 @@ CHANNEL_NAME = "spot-svc"
 TOPIC = "bench.topic"
 
 
+def _spot_publish_blocking(spot, topic, payload):
+    """Blocking spot publish that retries through transient backpressure."""
+
+    for _ in range(100):
+        try:
+            return spot.publish(topic).message(payload).submit()
+        except zlink.SubmitError as exc:
+            if exc.result != zlink.SubmitResult.BACKPRESSURED:
+                raise
+            time.sleep(0.001)
+    return False
+
+
 def main(argv=None):
     args = parse_single_args(argv or sys.argv[1:], pattern="spot")
     run_id = benchmark_run_id()
     latencies = []
     probe_ready = threading.Event()
+    stop_received = threading.Event()
     recv_lock = threading.Lock()
     active_deadline = [0.0]
     probe_payload = new_payload(args.msg_size)
     active_payload = new_payload(args.msg_size)
-    cooldown_payload = new_payload(args.msg_size)
 
     with zlink.Context() as ctx:
         with zlink.Registry(ctx) as registry:
@@ -124,6 +138,12 @@ def main(argv=None):
                                             if not parts:
                                                 continue
                                             data = parts[0]
+                                            # PERF_SINGLE_TEST_POLICY § 1.4:
+                                            # exit dispatch / collection on
+                                            # wire-level stop token.
+                                            if is_stop_token(data):
+                                                stop_received.set()
+                                                return
                                             header = decode_header(data)
                                             if (
                                                 not probe_ready.is_set()
@@ -158,17 +178,19 @@ def main(argv=None):
                                         not probe_ready.is_set()
                                         and time.monotonic() < ready_deadline
                                     ):
-                                        publisher.publish(
-                                            CHANNEL_NAME,
+                                        _spot_publish_blocking(
+                                            publisher,
                                             TOPIC,
-                                            [
-                                                stamp_payload(
-                                                    probe_payload,
-                                                    phase=0,
-                                                    run_id=run_id,
-                                                )
-                                            ],
+                                            stamp_payload(
+                                                probe_payload,
+                                                phase=0,
+                                                run_id=run_id,
+                                            ),
                                         )
+                                        # Probe-ready handshake remains an
+                                        # event wait (start gate, not shutdown
+                                        # synchronization) per
+                                        # PERF_SINGLE_TEST_POLICY § 1.4.
                                         probe_ready.wait(0.05)
                                     if not probe_ready.is_set():
                                         raise RuntimeError(
@@ -179,31 +201,27 @@ def main(argv=None):
 
                                     active_deadline[0] = time.perf_counter() + args.duration
                                     while time.perf_counter() < active_deadline[0]:
-                                        publisher.publish(
-                                            CHANNEL_NAME,
+                                        _spot_publish_blocking(
+                                            publisher,
                                             TOPIC,
-                                            [
-                                                stamp_payload(
-                                                    active_payload,
-                                                    phase=1,
-                                                    run_id=run_id,
-                                                )
-                                            ],
-                                        )
-                                    publisher.publish(
-                                        CHANNEL_NAME,
-                                        TOPIC,
-                                        [
                                             stamp_payload(
-                                                cooldown_payload,
-                                                phase=2,
+                                                active_payload,
+                                                phase=1,
                                                 run_id=run_id,
-                                            )
-                                        ],
+                                            ),
+                                        )
+                                    # PERF_SINGLE_TEST_POLICY § 1.4: signal
+                                    # phase end on the wire so dispatcher exits
+                                    # without a deadline-based drain.
+                                    _spot_publish_blocking(
+                                        publisher, TOPIC, STOP_TOKEN
                                     )
-                                    threading.Event().wait(
-                                        resolve_single_recv_timeout_ms() / 1000.0
-                                    )
+
+                                    # Wait indefinitely (signal-driven) for
+                                    # the dispatch callback to observe the
+                                    # stop token. Bounded by the outer single
+                                    # timeout; no short polling cadence.
+                                    stop_received.wait()
 
                                     with recv_lock:
                                         collected = list(latencies)

@@ -28,7 +28,6 @@ async function main() {
   const dealers = [];
   let rl = null;
   let collector = null;
-  let stop = false;
 
   try {
     for (let i = 0; i < options.clients; i += 1) {
@@ -42,6 +41,10 @@ async function main() {
     }
     ctx.recalculateAutoHwm();
 
+    // PERF_MULTI_TEST_POLICY § 1.3.1: each receiver drains until it sees
+    // the wire-level stop token emitted by the server when its duration
+    // elapses. No time-based `stop` flag is needed — phase end is observed
+    // on the wire.
     const recvTasks = dealers.map((dealer) => drainRecvSocket(
       dealer,
       (received) => {
@@ -52,8 +55,7 @@ async function main() {
           decodeMetricHeader(received.parts[0].data()),
           currentEpochNs()
         );
-      },
-      () => stop
+      }
     ));
 
     console.log(`CLIENT_READY,${options.msgSize}`);
@@ -73,26 +75,6 @@ async function main() {
       activeStopNs,
       sampleCap: resolveMultiLatencySampleCap()
     });
-    // Wait for the measurement period to elapse. The recv tasks (drainRecvSocket)
-    // are concurrently draining incoming messages via the poller loop; no work
-    // is needed in this awaiting path beyond yielding until the deadline.
-    await new Promise((resolve) => {
-      const remainMs = Number((activeStopNs - currentEpochNs()) / 1_000_000n);
-      if (remainMs > 0) {
-        setTimeout(resolve, remainMs);
-      } else {
-        resolve();
-      }
-    });
-    stop = true;
-    for (const dealer of dealers) {
-      try {
-        dealer.close();
-      } catch (err) {
-        console.error(`[perf] close failed: ${err}`);
-      }
-    }
-
     await Promise.all(recvTasks);
     const result = collector ? await collector.finish() : { latenciesNs: [] };
     for (const line of summarizeMetrics(

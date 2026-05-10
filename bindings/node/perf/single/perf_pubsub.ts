@@ -5,13 +5,10 @@
 const zlink = require('../../..');
 const {
   createMetricCollector,
-  createPayload,
   createRunId,
   decodeMetricHeaderFromParts,
   currentEpochNs,
-  sleepImmediate,
   summarizeMetrics,
-  stampPayload
 } = require('../common/perf_metrics');
 const {
   applyContextPolicy,
@@ -21,7 +18,6 @@ const {
   drainRecvSocket,
   parseSingleBinaryArgs,
   resolveSingleLatencySampleCap,
-  resolveSingleIdleDrainMs,
   spawnSenderWorker,
   waitForPostReadySettle,
   waitForConnectionReady,
@@ -64,7 +60,14 @@ async function runPubSubBenchmark(msgSize, options) {
       topic,
       options: {
         ...options,
-        noDrop: Number(process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP ?? 0) !== 0
+        // PERF_SINGLE_TEST_POLICY § 1.4 needs the wire-level stop token to
+        // be reliably delivered. Default the publisher to no_drop=true so
+        // the sentinel is not silently discarded by the XPUB drop policy
+        // (matches cpp `publisher.options().no_drop(true)` in
+        // `bindings/cpp/perf/single/src/perf_pubsub.cpp`).
+        noDrop: process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP === '0'
+          ? false
+          : true
       },
     });
     const workerError = waitForWorkerError(worker);
@@ -91,17 +94,14 @@ async function runPubSubBenchmark(msgSize, options) {
       activeStopNs,
       sampleCap: resolveSingleLatencySampleCap()
     });
-    const payload = createPayload(msgSize);
-    let seq = 1n;
-    let stop = false;
 
+    // PERF_SINGLE_TEST_POLICY § 1.4: receiver drains until wire stop token.
     const recvTask = drainRecvSocket(
       sub,
       (received) => {
         const header = decodeMetricHeaderFromParts(received.parts);
         collector.record(header, currentEpochNs());
-      },
-      () => stop
+      }
     );
 
     trace('starting worker');
@@ -111,19 +111,6 @@ async function runPubSubBenchmark(msgSize, options) {
       workerError.then((message) => Promise.reject(new Error(message.message)))
     ]);
     trace('worker done');
-    const drainDeadlineNs = activeStopNs
-      + BigInt(resolveSingleIdleDrainMs({
-        ...options,
-        recvTimeoutMs: Number(
-          process.env.PERF_SINGLE_PUBSUB_RCVTIMEO_MS
-          ?? process.env.PERF_SINGLE_RCVTIMEO_MS
-          ?? 200
-        )
-      })) * 1_000_000n;
-    while (currentEpochNs() < drainDeadlineNs) {
-      await sleepImmediate();
-    }
-    stop = true;
     await recvTask;
     trace('recv task done');
     return collector.finish();

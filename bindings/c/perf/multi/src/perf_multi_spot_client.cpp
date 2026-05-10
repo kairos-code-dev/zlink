@@ -19,6 +19,7 @@
 #include <new>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 #if defined(_WIN32)
@@ -62,6 +63,7 @@ struct spot_client_slot_t
     std::atomic<uint64_t> first_active_ns;
 };
 
+struct spot_recv_worker_t;
 struct spot_thread_metrics_t;
 
 struct spot_client_state_t
@@ -88,6 +90,7 @@ struct spot_client_state_t
         seen_msg_size(0),
         seen_phase(static_cast<int>(perf_multi_metric::phase_unknown)),
         start_gate(),
+        recv_workers_stop(false),
         metrics_epoch(1)
     {
     }
@@ -99,6 +102,7 @@ struct spot_client_state_t
     std::string control_endpoint;
     std::string server_control_endpoint;
     std::vector<spot_client_slot_t *> slots;
+    std::vector<spot_recv_worker_t *> recv_workers;
     std::mutex mutex;
     std::condition_variable cv;
     std::mutex metrics_mutex;
@@ -120,10 +124,20 @@ struct spot_client_state_t
     std::atomic<size_t> seen_msg_size;
     std::atomic<int> seen_phase;
     perf_multi_handshake::start_signal_state_t start_gate;
+    std::atomic<bool> recv_workers_stop;
     std::atomic<uint64_t> metrics_epoch;
 };
 
 spot_client_state_t *g_client_state = NULL;
+
+struct spot_recv_worker_t
+{
+    spot_recv_worker_t() : state(NULL) {}
+
+    spot_client_state_t *state;
+    std::vector<spot_client_slot_t *> slots;
+    std::thread thread;
+};
 
 struct spot_thread_metrics_t
 {
@@ -148,7 +162,9 @@ struct spot_thread_metrics_t
     bench_latency_sampler_t probe_latency;
 };
 
-static thread_local spot_thread_metrics_t g_spot_thread_metrics;
+// Dispatch callbacks may run on runtime-owned threads. Keep the metrics object
+// off TLS storage so state->thread_metrics never points at a destroyed TLS value.
+static thread_local spot_thread_metrics_t *g_spot_thread_metrics = NULL;
 
 void fast_exit_process(int exit_code)
 {
@@ -186,23 +202,29 @@ spot_thread_metrics_t *bind_spot_thread_metrics(spot_client_state_t *state)
     if (!state)
         return NULL;
 
-    spot_thread_metrics_t &metrics = g_spot_thread_metrics;
-    if (!metrics.registered || metrics.owner != state) {
-        metrics.owner = state;
-        metrics.registered = true;
+    if (!g_spot_thread_metrics) {
+        g_spot_thread_metrics = new (std::nothrow) spot_thread_metrics_t();
+        if (!g_spot_thread_metrics)
+            return NULL;
+    }
+
+    spot_thread_metrics_t *metrics = g_spot_thread_metrics;
+    if (!metrics->registered || metrics->owner != state) {
+        metrics->owner = state;
+        metrics->registered = true;
         std::lock_guard<std::mutex> lock(state->metrics_mutex);
         if (std::find(state->thread_metrics.begin(),
                       state->thread_metrics.end(),
-                      &metrics)
+                      metrics)
             == state->thread_metrics.end()) {
-            state->thread_metrics.push_back(&metrics);
+            state->thread_metrics.push_back(metrics);
         }
     }
 
     const uint64_t epoch = state->metrics_epoch.load(std::memory_order_acquire);
-    if (metrics.epoch.load(std::memory_order_acquire) != epoch)
-        reset_spot_thread_metrics(&metrics, epoch);
-    return &metrics;
+    if (metrics->epoch.load(std::memory_order_acquire) != epoch)
+        reset_spot_thread_metrics(metrics, epoch);
+    return metrics;
 }
 
 void collect_spot_thread_metrics(spot_client_state_t *state,
@@ -294,14 +316,37 @@ int resolve_spot_post_phase_settle_ms(size_t msg_size)
                                  0);
 }
 
+unsigned int resolve_spot_latency_sample_stride()
+{
+    return static_cast<unsigned int>(
+      resolve_multi_int_env("PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE", 32, 1));
+}
+
 bool should_sample_spot_latency(unsigned long long sample_index)
 {
-    return sample_index > 0;
+    static const unsigned int stride = resolve_spot_latency_sample_stride();
+    return stride <= 1 || sample_index == 1
+           || (sample_index % static_cast<unsigned long long>(stride)) == 0;
 }
 
 bool should_sample_spot_probe_latency(unsigned long long sample_index)
 {
     return sample_index > 0;
+}
+
+size_t resolve_spot_recv_worker_count(size_t slot_count)
+{
+    if (slot_count == 0)
+        return 0;
+
+    const size_t configured = static_cast<size_t>(
+      resolve_multi_int_env("PERF_MULTI_SPOT_RECV_WORKERS", 0, 0));
+    if (configured > 0)
+        return std::min(slot_count, configured);
+
+    const size_t scaled =
+      std::max<size_t>(4, std::min<size_t>(128, (slot_count + 15) / 16));
+    return std::min(slot_count, scaled);
 }
 
 long remaining_wait_ms(const std::chrono::steady_clock::time_point &deadline)
@@ -471,6 +516,17 @@ void destroy_spot_slots(spot_client_state_t *state,
             continue;
         slot->stop.store(true, std::memory_order_release);
     }
+
+    state->recv_workers_stop.store(true, std::memory_order_release);
+    for (size_t i = 0; i < state->recv_workers.size(); ++i) {
+        spot_recv_worker_t *worker = state->recv_workers[i];
+        if (!worker)
+            continue;
+        if (worker->thread.joinable())
+            worker->thread.join();
+        delete worker;
+    }
+    state->recv_workers.clear();
 
     for (size_t i = 0; i < slots->size(); ++i) {
         spot_client_slot_t *slot = (*slots)[i];
@@ -768,6 +824,65 @@ bool drain_spot_client_slot(spot_client_slot_t *slot,
             break;
         if (progressed)
             *progressed = true;
+    }
+
+    return true;
+}
+
+void spot_client_recv_worker_loop(spot_recv_worker_t *worker)
+{
+    if (!worker || !worker->state)
+        return;
+
+    while (!worker->state->recv_workers_stop.load(std::memory_order_acquire)) {
+        bool progressed = false;
+        for (size_t i = 0; i < worker->slots.size(); ++i) {
+            spot_client_slot_t *slot = worker->slots[i];
+            if (!slot || slot->stop.load(std::memory_order_acquire))
+                continue;
+            if (!drain_spot_client_slot(slot, ZLINK_DONTWAIT, &progressed)) {
+                mark_fatal();
+                return;
+            }
+        }
+        if (!progressed)
+            (void) perf_socket_poll(NULL, 0, 1);
+    }
+}
+
+bool start_spot_recv_workers(spot_client_state_t *state)
+{
+    if (!state || state->slots.empty())
+        return false;
+
+    const size_t worker_count =
+      resolve_spot_recv_worker_count(state->slots.size());
+    if (worker_count == 0)
+        return false;
+
+    state->recv_workers_stop.store(false, std::memory_order_release);
+    state->recv_workers.reserve(worker_count);
+    for (size_t i = 0; i < worker_count; ++i) {
+        spot_recv_worker_t *worker = new (std::nothrow) spot_recv_worker_t();
+        if (!worker)
+            return false;
+        worker->state = state;
+        state->recv_workers.push_back(worker);
+    }
+
+    for (size_t i = 0; i < state->slots.size(); ++i) {
+        spot_client_slot_t *slot = state->slots[i];
+        spot_recv_worker_t *worker = state->recv_workers[i % worker_count];
+        if (!slot || !worker || !slot->handle)
+            return false;
+        worker->slots.push_back(slot);
+    }
+
+    for (size_t i = 0; i < state->recv_workers.size(); ++i) {
+        spot_recv_worker_t *worker = state->recv_workers[i];
+        if (!worker || worker->slots.empty())
+            continue;
+        worker->thread = std::thread(spot_client_recv_worker_loop, worker);
     }
 
     return true;
@@ -1072,7 +1187,7 @@ bool create_spot_slots(ctx_guard_t &ctx,
                   << perf_multi_metric::now_ns()
                   << " slots=" << slots_out->size() << std::endl;
     }
-    if (!install_spot_dispatch_handlers(state))
+    if (!start_spot_recv_workers(state))
         return false;
     return true;
 }

@@ -5,8 +5,9 @@ using Systems.Zlink;
 
 internal static partial class PerfRunner
 {
-    internal static readonly byte[] MultiStopToken =
-        System.Text.Encoding.ASCII.GetBytes("__zlink_perf_stop__");
+    // Wire-level stop token shared with single perf and other bindings.
+    // PERF_MULTI_TEST_POLICY § 1.3.1 / PERF_SINGLE_TEST_POLICY § 1.4.
+    internal static readonly byte[] MultiStopToken = StopToken.Bytes;
 
     internal const int MaxStreamFrameBytes = 16 * 1024 * 1024;
 
@@ -52,23 +53,16 @@ internal static partial class PerfRunner
         return options.ConnectReadyTimeoutMs;
     }
 
+    // PERF_MULTI_TEST_POLICY § 1.3.1: client/server poller wait timeouts
+    // are unconditionally -1 (signal-driven wait). Deadlines are tracked
+    // by application clock; phase end / shutdown is signaled either by
+    // stdin STOP (server) or wire-level stop token (client/receiver).
+    internal const int MultiClientPollTimeoutMs = -1;
+
     internal static int ResolveMultiClientPollTimeoutMs(PerfOptions options)
     {
-        return Math.Max(1, options.ClientPollTimeoutMs);
-    }
-
-    internal static int CapPollTimeoutMs(int pollTimeoutMs, long deadlineTicks)
-    {
-        long nowTicks = Stopwatch.GetTimestamp();
-        if (nowTicks >= deadlineTicks)
-            return 1;
-
-        double remainingMs = (deadlineTicks - nowTicks) * 1000.0
-            / Stopwatch.Frequency;
-        int remaining = remainingMs >= int.MaxValue
-            ? int.MaxValue
-            : (int)Math.Ceiling(remainingMs);
-        return Math.Max(1, Math.Min(pollTimeoutMs, remaining));
+        _ = options;
+        return MultiClientPollTimeoutMs;
     }
 
     internal static int ResolveMultiSpotRouteWarmupMs()
@@ -164,8 +158,7 @@ internal static partial class PerfRunner
 
     internal static bool IsStopTokenPayload(ReadOnlySpan<byte> payload)
     {
-        return payload.Length == MultiStopToken.Length
-            && payload.SequenceEqual(MultiStopToken);
+        return StopToken.IsStopToken(payload);
     }
 
     internal static bool ManualSocketOverridesEnabled()

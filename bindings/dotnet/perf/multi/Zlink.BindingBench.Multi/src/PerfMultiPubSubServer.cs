@@ -25,6 +25,9 @@ internal static class PerfMultiPubSubServer
         ConfigureTlsServerIfNeeded(server, options.Transport);
         server.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
         server.Options.NoDrop = options.PubSubXpubNoDrop > 0;
+        // Linger > 0 so wire-level stop tokens queued just before close
+        // reach subscribers (default Linger=0 would drop them).
+        server.Options.Linger = TimeSpan.FromSeconds(2);
 
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 
@@ -76,54 +79,64 @@ internal static class PerfMultiPubSubServer
         int size, ref ulong seq, int durationSeconds, int pollTimeoutMs,
         RunnerControlState controlState)
     {
-        bool sendPending = false;
-        bool cooldownSent = false;
+        _ = pollManager;
+        _ = pollSockets;
+        _ = pollTimeoutMs;
         long deadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
 
-        while (!controlState.StopRequested)
+        // PERF_MULTI_TEST_POLICY § 1.3.1: send Active payloads until the
+        // deadline, then signal phase end via wire-level stop token.
+        // Hot-spin DontWait sends — XPub no_drop=true may withhold POLLOUT
+        // when any subscriber is briefly slow, so a -1 POLLOUT wait could
+        // deadlock against the deadline check. The deadline is enforced
+        // by the application clock at the loop head (no poller timer
+        // fallback).
+        while (!controlState.StopRequested
+               && Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            bool inActivePhase = Stopwatch.GetTimestamp() < deadlineTicks;
-            if (!inActivePhase && cooldownSent)
-                return true;
-
-            bool trySend = !sendPending;
-            if (!trySend)
+            StampMetricHeader(payload.AsSpan(), runId, PerfPhase.Active,
+                size, seq, EpochNs());
+            if (PublishNoWait(server, payload.AsSpan()))
             {
-                int cappedMs = CapPollTimeoutMs(pollTimeoutMs, deadlineTicks);
-                if (PollSocketWriteReady(pollManager, pollSockets, cappedMs) > 0
-                    && IsSocketWriteReady(pollManager, 0))
-                {
-                    trySend = true;
-                }
+                seq++;
+                continue;
             }
 
-            if (trySend)
-            {
-                PerfPhase phase = inActivePhase
-                    ? PerfPhase.Active
-                    : PerfPhase.Cooldown;
-                StampMetricHeader(payload.AsSpan(), runId, phase, size, seq,
-                    EpochNs());
-                if (PublishNoWait(server, payload.AsSpan()))
-                {
-                    seq++;
-                    sendPending = false;
-                    if (phase == PerfPhase.Cooldown)
-                        cooldownSent = true;
-                    continue;
-                }
-                sendPending = true;
-            }
-
-            int timeoutMs = CapPollTimeoutMs(pollTimeoutMs, deadlineTicks);
-            if (sendPending)
-            {
-                _ = PollSocketWriteReady(pollManager, pollSockets, timeoutMs);
-            }
+            // EAGAIN with no_drop XPub: yield and retry without a
+            // poller timer wait.
+            System.Threading.Thread.Yield();
         }
 
+        if (!controlState.StopRequested)
+            TrySendStopToken(server);
+
         return true;
+    }
+
+    private static void TrySendStopToken(PubSocket server)
+    {
+        for (int retry = 0; retry < 100; retry++)
+        {
+            try
+            {
+                using Message stopMessage = Message.FromBytes(MultiStopToken);
+                if (server.Publish(string.Empty, stopMessage, SendFlags.DontWait))
+                    return;
+            }
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno))
+            {
+                System.Threading.Thread.Sleep(1);
+                continue;
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+
+            System.Threading.Thread.Sleep(1);
+        }
     }
 
 }

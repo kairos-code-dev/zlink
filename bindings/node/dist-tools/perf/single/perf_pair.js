@@ -2,8 +2,8 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../..');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
-const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsClient, configureTlsServer, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
+const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, summarizeMetrics, } = require('../common/perf_metrics');
+const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, configureTlsServer, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, spawnSenderWorker, waitForWorkerDone, waitForWorkerError, waitForMonitorConnectionReady, waitForWorkerMessage, } = require('./perf_single_common');
 async function runPairBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     applyContextPolicy(ctx);
@@ -41,22 +41,18 @@ async function runPairBenchmark(msgSize, options) {
             activeStopNs,
             sampleCap: resolveSingleLatencySampleCap()
         });
-        let stop = false;
+        // PERF_SINGLE_TEST_POLICY § 1.4: receiver drains until the wire stop
+        // token arrives. The deadline-based idle drain is no longer needed —
+        // in-flight messages naturally precede the stop token on the wire.
         const recvTask = drainRecvSocket(server, (received) => {
             const header = decodeMetricHeaderFromParts(received.parts);
             collector.record(header, currentEpochNs());
-        }, () => stop);
+        });
         worker.postMessage({ type: 'start' });
         await Promise.race([
             waitForWorkerDone(worker, options.duration),
             workerError.then((message) => Promise.reject(new Error(message.message)))
         ]);
-        const drainDeadlineNs = activeStopNs
-            + BigInt(resolveSingleIdleDrainMs(options)) * 1000000n;
-        while (currentEpochNs() < drainDeadlineNs) {
-            await sleepImmediate();
-        }
-        stop = true;
         await recvTask;
         return collector.finish();
     }

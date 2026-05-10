@@ -186,28 +186,29 @@ internal static class PerfDealerRouter
         byte[] payload, int msgSize, int durationSeconds, int recvTimeoutMs,
         int latencyCap, out long receivedOut, out List<double> latencySamples)
     {
+        _ = recvTimeoutMs;
         long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
-        long recvFlushTicks = Math.Max(1,
-            (long)Math.Ceiling(recvTimeoutMs * Stopwatch.Frequency / 1000.0));
 
         long received = 0;
-        int senderDone = 0;
-        long sentCount = 0;
         Exception? sendError = null;
         var samples = new List<double>(Math.Max(0, latencyCap));
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
+        bool stopReceived = false;
 
-        void ProcessReceived(Received receivedMessage)
+        bool ProcessReceived(Received receivedMessage)
         {
             if (!TryGetPayloadPart(receivedMessage, out Message payloadMessage))
-                return;
+                return false;
 
             ReadOnlySpan<byte> body = payloadMessage.AsReadOnlySpan();
+            if (StopToken.IsStopToken(body))
+                return true;
+
             if (!TryDecodeExpectedSingleHeader(body, msgSize, ActivePhase,
                     out var header, RunId))
             {
-                return;
+                return false;
             }
 
             received++;
@@ -218,14 +219,19 @@ internal static class PerfDealerRouter
                 ReservoirSample(samples, latencyNs, ref sampleSeen, latencyCap,
                     ref rng);
             }
+
+            return false;
         }
 
+        // PERF_SINGLE_TEST_POLICY § 1.4: sender no longer flips a
+        // `senderDone` flag. After the active deadline it sends the
+        // wire-level stop token; the receiver loop exits when it sees
+        // the token in the inbound stream.
         var senderThread = new Thread(() =>
         {
             try
             {
                 ulong seq = 1;
-                long localSentCount = 0;
                 while (true)
                 {
                     long nowTicks = Stopwatch.GetTimestamp();
@@ -244,9 +250,7 @@ internal static class PerfDealerRouter
                     {
                         continue;
                     }
-                    localSentCount++;
                 }
-                Volatile.Write(ref sentCount, localSentCount);
             }
             catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno))
             {
@@ -259,37 +263,29 @@ internal static class PerfDealerRouter
             }
             finally
             {
-                Volatile.Write(ref senderDone, 1);
+                // Always emit the stop token so the receiver loop exits
+                // even on send failures during the active phase.
+                SendStopTokenWithRetry(sender, "[single-dealer-router]");
             }
         });
         senderThread.IsBackground = true;
         senderThread.Start();
 
-        while (Volatile.Read(ref senderDone) == 0)
+        while (!stopReceived)
         {
             if (!TryReceiveBlocking(receiver, out Received? receivedMessage))
                 continue;
             using (receivedMessage)
             {
-                if (receivedMessage != null)
-                    ProcessReceived(receivedMessage);
+                if (receivedMessage != null
+                    && ProcessReceived(receivedMessage))
+                {
+                    stopReceived = true;
+                }
             }
         }
 
         senderThread.Join();
-
-        long drainDeadlineTicks = Stopwatch.GetTimestamp()
-            + Math.Max(1, recvFlushTicks * 2);
-        while (received < Volatile.Read(ref sentCount)
-            && Stopwatch.GetTimestamp() < drainDeadlineTicks
-            && TryReceive(receiver, out Received? receivedMessage))
-        {
-            using (receivedMessage)
-            {
-                if (receivedMessage != null)
-                    ProcessReceived(receivedMessage);
-            }
-        }
 
         latencySamples = samples;
         receivedOut = received;

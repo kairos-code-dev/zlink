@@ -56,14 +56,51 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 	}()
 	window = perfcommon.NewBenchmarkWindow(cfg.duration)
 
+	// PERF_MULTI_TEST_POLICY § 1.3.1: each subscriber gets its own
+	// poller. The drain goroutine waits with -1 timeout on the first
+	// poller as a wakeup anchor; under steady load every subscriber is
+	// fed by the same publisher so the publisher's send-side pacing
+	// guarantees that at least the anchor subscriber stays readable.
+	pollers := make([]*zlink.Poller, 0, len(subs))
+	for _, sub := range subs {
+		pollers = append(pollers, perfcommon.NewSocketPoller(sub, perfcommon.ZLinkPollIn))
+	}
+	defer func() {
+		for _, p := range pollers {
+			_ = p.Close()
+		}
+	}()
+
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	recvDone := make(chan struct{})
 	go func() {
 		defer close(recvDone)
-		for time.Now().Before(window.StopAt) {
-			if !drainMultiPubSubAvailable(subs, stats, cfg.msgSize, window.ActiveAt, window.StopAt) {
+		stopSeen := make([]bool, len(subs))
+		stopsRemaining := len(subs)
+		for stopsRemaining > 0 {
+			// Wait on subscriber 0 (anchor) with -1 timeout. The publisher
+			// pushes to every subscriber so the anchor fires on every
+			// active-phase send; the helper below drains every readable
+			// subscriber non-blocking.
+			event, err := pollers[0].Wait(-1 * time.Millisecond)
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					continue
+				}
+				perfcommon.Must(fmt.Errorf("multi pubsub poll: %w", err))
+			}
+			if event == nil {
 				continue
 			}
+			drainMultiPubSubAvailable(
+				subs,
+				stats,
+				cfg.msgSize,
+				window.ActiveAt,
+				window.StopAt,
+				stopSeen,
+				&stopsRemaining,
+			)
 		}
 	}()
 	for time.Now().Before(window.StopAt) {
@@ -92,7 +129,14 @@ func runMultiPubSub(cfg multiConfig) perfcommon.Result {
 			))
 		}
 	}
+	// PERF_MULTI_TEST_POLICY § 1.3.1: emit the wire-level stop token on
+	// the bench topic so every subscriber sees it as the last in-flight
+	// payload of the active stream.
+	fmt.Fprintln(os.Stderr, "[main] sending stop token at", time.Now().Sub(window.ActiveAt))
+	sendMultiPubSubStopToken(publisher)
+	fmt.Fprintln(os.Stderr, "[main] stop token sent at", time.Now().Sub(window.ActiveAt))
 	<-recvDone
+	fmt.Fprintln(os.Stderr, "[main] recvDone closed at", time.Now().Sub(window.ActiveAt))
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
 
@@ -102,9 +146,13 @@ func drainMultiPubSubAvailable(
 	msgSize int,
 	activeAt time.Time,
 	recvStopAt time.Time,
-) bool {
-	processed := false
+	stopSeen []bool,
+	stopsRemaining *int,
+) {
 	for index, socket := range subs {
+		if stopSeen[index] {
+			continue
+		}
 		for {
 			message, err := socket.Subscribe(zlink.RecvFlagsDontWait)
 			if err != nil {
@@ -116,9 +164,16 @@ func drainMultiPubSubAvailable(
 			if message == nil {
 				break
 			}
-			processed = true
 			part, err := message.SinglePartOrError()
 			if err == nil {
+				if perfcommon.IsStopTokenMessage(part) {
+					if !stopSeen[index] {
+						stopSeen[index] = true
+						*stopsRemaining--
+					}
+					_ = message.Close()
+					break
+				}
 				now := time.Now()
 				if sentAt, ok := perfcommon.SentAtFromMessage(part, msgSize); ok && now.After(activeAt) && now.Before(recvStopAt) {
 					stats.Add(sentAt)
@@ -127,5 +182,21 @@ func drainMultiPubSubAvailable(
 			_ = message.Close()
 		}
 	}
-	return processed
+}
+
+func sendMultiPubSubStopToken(publisher *zlink.XPubSocket) {
+	for retry := 0; retry < perfcommon.StopTokenSendRetries; retry++ {
+		sent, err := publisher.Publish(
+			"bench.topic",
+			zlink.SendFlagsDontWait,
+			perfcommon.NewMessage(perfcommon.StopToken),
+		)
+		if err == nil && sent {
+			return
+		}
+		if err != nil && !perfcommon.IsTransient(err) {
+			return
+		}
+		time.Sleep(perfcommon.StopTokenSendBackoff)
+	}
 }

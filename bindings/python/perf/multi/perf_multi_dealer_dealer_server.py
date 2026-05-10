@@ -6,6 +6,7 @@ import os
 import zlink
 
 from perf_multi_common import (
+    STOP_TOKEN,
     apply_multi_socket_options,
     benchmark_endpoint,
     benchmark_run_id,
@@ -57,12 +58,13 @@ def main(argv=None):
                         dealer,
                         zlink.PollEvent.POLLIN | zlink.PollEvent.POLLOUT,
                     )
+                    # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait.
                     while not start_event.is_set() and not stop_event.is_set():
-                        events = safe_poll(poller, 100)
+                        events = safe_poll(poller, -1)
                         if not events:
                             continue
                         for event in events:
-                            if not (event["events"] & int(zlink.PollEvent.POLLIN)):
+                            if not (int(event.events) & int(zlink.PollEvent.POLLIN)):
                                 continue
                             while primed_peers < args.clients:
                                 received = recv_nonblocking(dealer)
@@ -79,14 +81,20 @@ def main(argv=None):
                             timeout_ms=resolve_multi_connect_ready_timeout_ms(),
                         )
                     active_deadline = time.perf_counter() + active_duration_s
-                    cooldown_sent = False
+                    # Stop token must be delivered to every load-balanced
+                    # client peer. Dealer round-robin can over-/under-visit
+                    # individual peers when the stream is short, so we emit
+                    # several tokens per peer. Once a peer has exited, its
+                    # send queue stays full (HWM) and round-robin skips it,
+                    # so the remaining tokens converge onto live peers.
+                    stop_tokens_remaining = args.clients * 32
                     send_pending = True
                     while primed_peers < args.clients and not stop_event.is_set():
-                        events = safe_poll(poller, 100)
+                        events = safe_poll(poller, -1)
                         if not events:
                             continue
                         for event in events:
-                            if not (event["events"] & int(zlink.PollEvent.POLLIN)):
+                            if not (int(event.events) & int(zlink.PollEvent.POLLIN)):
                                 continue
                             while primed_peers < args.clients:
                                 received = recv_nonblocking(dealer)
@@ -97,29 +105,46 @@ def main(argv=None):
                     if stop_event.is_set():
                         return
                     while not stop_event.is_set():
-                        if time.perf_counter() >= active_deadline and cooldown_sent:
+                        now = time.perf_counter()
+                        if now >= active_deadline and stop_tokens_remaining == 0:
+                            # PERF_MULTI_TEST_POLICY § 1.3.1: stay alive
+                            # until the runner sends STOP so the wire-level
+                            # stop tokens have time to drain to every peer
+                            # (linger_ms == 0 would otherwise drop them).
+                            stop_event.wait()
                             break
                         if send_pending:
-                            phase = 1 if time.perf_counter() < active_deadline else 2
-                            if send_nonblocking(
-                                dealer,
-                                stamp_payload(payload, phase=phase, run_id=run_id),
-                            ):
-                                if phase == 2:
-                                    cooldown_sent = True
-                                    send_pending = False
+                            if now < active_deadline:
+                                ok = send_nonblocking(
+                                    dealer,
+                                    stamp_payload(payload, phase=1, run_id=run_id),
+                                )
+                            else:
+                                # PERF_MULTI_TEST_POLICY § 1.3.1: signal phase
+                                # end on the wire with the stop token. We send
+                                # one token per loop pass and then wait for
+                                # POLLOUT before the next, so the dealer's
+                                # round-robin advances to a different peer
+                                # each time and every client eventually
+                                # observes a stop token.
+                                ok = send_nonblocking(dealer, STOP_TOKEN)
+                                if ok:
+                                    stop_tokens_remaining -= 1
+                            if ok:
                                 continue
-                        events = safe_poll(poller, 100)
+                        # Wait for POLLOUT readiness (signal-driven).
+                        events = safe_poll(poller, -1)
                         if not events:
                             continue
                         for event in events:
-                            if event["events"] & int(zlink.PollEvent.POLLIN):
+                            ev = int(event.events)
+                            if ev & int(zlink.PollEvent.POLLIN):
                                 while True:
                                     received = recv_nonblocking(dealer)
                                     if received is None:
                                         break
                                     received.close()
-                            if event["events"] & int(zlink.PollEvent.POLLOUT):
+                            if ev & int(zlink.PollEvent.POLLOUT):
                                 send_pending = True
 
 

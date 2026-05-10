@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../..');
 const { MonitorEventType, RecvFlags, RecvResult } = zlink;
 const { sleepImmediate } = require('../common/perf_metrics');
+const { isStopTokenParts } = require('../perf_stop_token');
 const POLLIN = 1;
 const POLLOUT = 2;
 function pollEvents(mask) {
@@ -34,9 +35,21 @@ function manualSocketOverridesEnabled() {
     return (integerEnv('PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES', 0) > 0 ||
         integerEnv('PERF_ALLOW_MANUAL_SOCKET_OVERRIDES', 0) > 0);
 }
+// PERF_MULTI_TEST_POLICY § 1.3.1: client/server poller waits use `-1`
+// (signal-driven). Phase end is signaled on the wire via the stop token,
+// so the legacy timer-based fallback (default 100 ms) is no longer
+// needed. Negative values pass through directly so callers can opt into
+// the indefinite wait without sentinel handling.
 function resolveClientPollTimeoutMs() {
-    const configured = integerEnv('PERF_CLIENT_POLL_TIMEOUT_MS', 100);
-    return configured > 0 ? configured : 100;
+    const raw = process.env.PERF_CLIENT_POLL_TIMEOUT_MS;
+    if (raw === undefined || raw === '') {
+        return -1;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+        return -1;
+    }
+    return Math.trunc(parsed);
 }
 function applySocketPolicy(socket, options = {}) {
     const sendTimeout = integerEnv('PERF_MULTI_SNDTIMEO_MS', 200);
@@ -210,6 +223,21 @@ function trySocketSend(socket, ...args) {
         throw error;
     }
 }
+// PERF_MULTI_TEST_POLICY § 1.3.1: emit the wire-level stop token once at
+// phase end. Callers pass a closure that performs the actual send (e.g.
+// router.send(routingId, ...)). The active loop has already exited and
+// the socket's existing poller is no longer being driven, so we yield to
+// the event loop on transient backpressure rather than registering the
+// same socket with a second poller.
+async function sendStopTokenWithRetry(_socket, sendFn) {
+    const stopBytes = require('../perf_stop_token').STOP_TOKEN_BYTES;
+    for (let retry = 0; retry < 100; retry += 1) {
+        if (sendFn(stopBytes)) {
+            return;
+        }
+        await sleepImmediate();
+    }
+}
 function trySocketPublish(socket, topic, payload) {
     try {
         return socket.publish(topic, payload, zlink.SendFlags.DontWait);
@@ -225,15 +253,27 @@ function trySocketPublish(socket, topic, payload) {
         throw error;
     }
 }
+// PERF_MULTI_TEST_POLICY § 1.3.1: receivers wait with `-1` (signal-driven)
+// and exit on the wire-level stop token. The legacy `shouldStop()` flag is
+// kept as an optional belt-and-suspenders so callers can still bail out
+// (e.g. when a connection close races the sentinel), but it is no longer
+// the primary termination signal.
 async function drainRecvSocket(socket, onMessage, shouldStop) {
-    const clientPollTimeoutMs = resolveClientPollTimeoutMs();
     const poller = new zlink.Poller();
     poller.add(socket, pollEvents(POLLIN));
+    const useSubscribe = typeof socket.subscribe === 'function';
+    const checkStop = typeof shouldStop === 'function' ? shouldStop : () => false;
     try {
-        while (!shouldStop()) {
+        let stopReceived = false;
+        while (!stopReceived && !checkStop()) {
+            // Yield to the event loop before each blocking wait so queued
+            // postMessages, timers, and stdin events are delivered. The native
+            // `pollerWait(-1)` is synchronous and would otherwise starve the
+            // rest of the JS world.
+            await sleepImmediate();
             let ready = null;
             try {
-                ready = poller.wait(clientPollTimeoutMs);
+                ready = poller.wait(-1);
             }
             catch (error) {
                 const text = String(error && error.message ? error.message : error);
@@ -243,25 +283,20 @@ async function drainRecvSocket(socket, onMessage, shouldStop) {
                 throw error;
             }
             if (!ready) {
+                // `-1` should not normally produce a null event; treat as spurious
+                // wake-up and re-arm.
                 continue;
             }
-            if (typeof socket.subscribe === 'function') {
-                while (true) {
-                    const received = subscribeNoWait(socket);
-                    if (!received) {
-                        break;
-                    }
-                    onMessage(received);
+            while (true) {
+                const received = useSubscribe ? subscribeNoWait(socket) : recvNoWait(socket);
+                if (!received) {
+                    break;
                 }
-            }
-            else {
-                while (true) {
-                    const received = recvNoWait(socket);
-                    if (!received) {
-                        break;
-                    }
-                    onMessage(received);
+                if (isStopTokenParts(received.parts)) {
+                    stopReceived = true;
+                    break;
                 }
+                onMessage(received);
             }
         }
     }
@@ -270,15 +305,19 @@ async function drainRecvSocket(socket, onMessage, shouldStop) {
     }
 }
 function createSocketEventWaiter(socket, events) {
-    const clientPollTimeoutMs = resolveClientPollTimeoutMs();
     const poller = new zlink.Poller();
     poller.add(socket, pollEvents(events));
     return {
+        // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven `-1` wait. The core
+        // emits a wakeup on every relevant event, so timer fallbacks are not
+        // needed. The leading `sleepImmediate()` lets queued microtasks run
+        // before we descend into the synchronous N-API wait.
         async wait(mask = events) {
             while (true) {
+                await sleepImmediate();
                 let ready = null;
                 try {
-                    ready = poller.wait(clientPollTimeoutMs);
+                    ready = poller.wait(-1);
                 }
                 catch (error) {
                     const text = String(error && error.message ? error.message : error);
@@ -312,6 +351,7 @@ module.exports = {
     recvNoWait,
     resolveClientPollTimeoutMs,
     resolveMultiLatencySampleCap,
+    sendStopTokenWithRetry,
     subscribeNoWait,
     trySocketPublish,
     trySocketSend,

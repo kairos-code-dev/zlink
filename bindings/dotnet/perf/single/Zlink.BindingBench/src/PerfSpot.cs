@@ -136,37 +136,33 @@ internal static class PerfSpot
         int latencySampleCap, out long received,
         out List<double> latencySamples)
     {
+        _ = recvTimeoutMs;
         long activeDeadlineTicks = DeadlineTicksFromSeconds(
             Math.Max(1, durationSeconds));
-        long drainIdleTicks = Math.Max(1,
-            (long)Math.Ceiling(Math.Max(1, recvTimeoutMs)
-                * Stopwatch.Frequency / 1000.0));
-        long drainDeadlineTicks = activeDeadlineTicks + drainIdleTicks;
         var samples = new List<double>(Math.Max(0, latencySampleCap));
         long activeReceived = 0;
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
-        int senderDone = 0;
         int ok = 1;
 
+        // PERF_SINGLE_TEST_POLICY § 1.4: receiver exits on wire-level
+        // stop token instead of `senderDone` + drain timer.
         var receiverThread = new Thread(() =>
         {
-            long lastRecvTicks = Stopwatch.GetTimestamp();
             while (true)
             {
-                long nowTicks = Stopwatch.GetTimestamp();
-                bool done = Volatile.Read(ref senderDone) != 0;
-                if (done && nowTicks >= drainDeadlineTicks)
-                    break;
-
-                int recvRc = ReceiveSpotHeader(subscriber, msgSize,
-                    out var header, out bool headerOk);
+                int recvRc = ReceiveSpotPayload(subscriber, msgSize,
+                    out PerfMetricHeader header, out bool headerOk,
+                    out bool isStopToken);
                 if (recvRc > 0)
                 {
-                    lastRecvTicks = Stopwatch.GetTimestamp();
+                    if (isStopToken)
+                        return;
+
+                    long nowTicks = Stopwatch.GetTimestamp();
                     if (headerOk && IsExpectedSingleHeader(header, msgSize,
                             ActivePhase, RunId)
-                        && lastRecvTicks < activeDeadlineTicks)
+                        && nowTicks < activeDeadlineTicks)
                     {
                         activeReceived++;
                         ulong nowNs = EpochNs();
@@ -182,10 +178,6 @@ internal static class PerfSpot
 
                 if (recvRc == 0)
                 {
-                    if (done
-                        && Stopwatch.GetTimestamp() - lastRecvTicks
-                        >= drainIdleTicks)
-                        break;
                     Thread.Yield();
                     continue;
                 }
@@ -214,7 +206,9 @@ internal static class PerfSpot
                 seq++;
         }
 
-        Volatile.Write(ref senderDone, 1);
+        // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
+        // stop token published on the same topic.
+        PublishSpotStopTokenWithRetry(publisher, Topic, "[single-spot]");
         receiverThread.Join();
 
         received = activeReceived;
@@ -249,8 +243,16 @@ internal static class PerfSpot
     private static int ReceiveSpotHeader(Spot subscriber, int msgSize,
         out PerfMetricHeader header, out bool headerOk)
     {
+        return ReceiveSpotPayload(subscriber, msgSize, out header, out headerOk,
+            out _);
+    }
+
+    private static int ReceiveSpotPayload(Spot subscriber, int msgSize,
+        out PerfMetricHeader header, out bool headerOk, out bool isStopToken)
+    {
         header = default;
         headerOk = false;
+        isStopToken = false;
         TopicMessage? subscribed;
         try
         {
@@ -278,6 +280,11 @@ internal static class PerfSpot
 
             Message body = subscribed.FirstPart();
             ReadOnlySpan<byte> payload = body.AsReadOnlySpan();
+            if (StopToken.IsStopToken(payload))
+            {
+                isStopToken = true;
+                return 1;
+            }
             headerOk = TryDecodeMetricHeader(payload, out header)
                 && header.MsgSize == (uint)msgSize;
             return 1;

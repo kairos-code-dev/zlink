@@ -10,6 +10,7 @@ const zlink = require('../../..');
 const { MonitorEventType, RecvFlags, RecvResult } = zlink;
 const { MIN_MSG_SIZE, integerEnv, sleepImmediate } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer, } = require('../common/perf_tls');
+const { isStopTokenParts } = require('../perf_stop_token');
 const POLLIN = 1;
 function pollEvents(mask) {
     const events = [];
@@ -191,44 +192,59 @@ function resolveSingleIdleDrainMs(overrides = {}) {
     }
     return integerEnv('PERF_SINGLE_RCVTIMEO_MS', 200);
 }
-async function drainRecvSocket(socket, onMessage, shouldStop, pollTimeoutMs = 25) {
+// PERF_SINGLE_TEST_POLICY § 1.4: receiver waits with `-1` (signal-driven)
+// and exits on the wire-level stop token. The legacy `shouldStop()` flag
+// (and short `pollTimeoutMs`) are no longer used; phase end is signaled
+// purely by the sender emitting `STOP_TOKEN_BYTES` on the wire.
+//
+// Note: Node's `pollerWaitAll` is a synchronous N-API call that blocks the
+// JS event loop until a wakeup arrives. Callers spawn this drain as an
+// unawaited Promise, so we must yield to the event loop at least once
+// before the first blocking wait — otherwise queued worker postMessages
+// (e.g. the `start` command) cannot be delivered and the worker never
+// produces data, causing a deadlock.
+async function drainRecvSocket(socket, onMessage) {
     const poller = new zlink.Poller();
     poller.add(socket, pollEvents(POLLIN));
+    const useSubscribe = typeof socket.subscribe === 'function';
     try {
-        while (!shouldStop()) {
+        let stopReceived = false;
+        let iterCount = 0;
+        if (process.env.PERF_NODE_TRACE === '1') {
+            console.error(`[drainRecvSocket] entry`);
+        }
+        while (!stopReceived) {
+            iterCount += 1;
+            if (process.env.PERF_NODE_TRACE === '1' && (iterCount === 1 || iterCount % 50 === 0)) {
+                console.error(`[drainRecvSocket] iter=${iterCount}`);
+            }
+            await sleepImmediate();
             let ready = [];
             try {
-                ready = poller.waitAll(Math.max(1, poller.size), pollTimeoutMs);
+                ready = poller.waitAll(Math.max(1, poller.size), -1);
             }
             catch (error) {
                 const text = String(error && error.message ? error.message : error);
                 if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
-                    await sleepImmediate();
                     continue;
                 }
                 throw error;
             }
             if (ready.length === 0) {
-                await sleepImmediate();
+                // Spurious wake-ups are unexpected with `-1`, but treat them as
+                // benign and keep waiting.
                 continue;
             }
-            if (typeof socket.subscribe === 'function') {
-                while (true) {
-                    const received = subscribeNoWait(socket);
-                    if (!received) {
-                        break;
-                    }
-                    onMessage(received);
+            while (true) {
+                const received = useSubscribe ? subscribeNoWait(socket) : recvNoWait(socket);
+                if (!received) {
+                    break;
                 }
-            }
-            else {
-                while (true) {
-                    const received = recvNoWait(socket);
-                    if (!received) {
-                        break;
-                    }
-                    onMessage(received);
+                if (isStopTokenParts(received.parts)) {
+                    stopReceived = true;
+                    break;
                 }
+                onMessage(received);
             }
         }
     }

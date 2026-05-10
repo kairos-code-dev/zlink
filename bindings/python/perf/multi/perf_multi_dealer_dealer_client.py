@@ -1,5 +1,4 @@
 import sys
-import time
 from contextlib import ExitStack
 
 import zlink
@@ -8,6 +7,7 @@ from perf_multi_common import (
     apply_multi_socket_options,
     benchmark_run_id,
     configure_multi_tls_client,
+    is_stop_token_in_parts,
     latency_ns_from_message,
     is_active_message,
     new_payload,
@@ -56,24 +56,46 @@ def main(argv=None):
                 if command != f"START,{args.msg_size}":
                     raise SystemExit(f"unexpected command: {command}")
 
-                active_deadline = time.perf_counter() + args.duration
+                # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven receive loop.
+                # Each socket exits when its peer-side stop token arrives.
+                stopped = [False] * len(sockets)
                 with zlink.Poller() as poller:
                     for sock in sockets:
                         poller.add_socket(sock, zlink.PollEvent.POLLIN)
-                    while time.perf_counter() < active_deadline:
-                        events = safe_poll(poller, 100)
+                    while not all(stopped):
+                        events = safe_poll(poller, -1)
                         if not events:
                             continue
                         for event in events:
-                            if not (event["events"] & int(zlink.PollEvent.POLLIN)):
+                            current_sock = event.socket
+                            try:
+                                index = sockets.index(current_sock)
+                            except ValueError:
                                 continue
-                            current_sock = event["socket"]
+                            # Drain even after stop so a stopped socket is
+                            # removed from the poller's POLLIN set; this also
+                            # prevents the wakeup spinning when the peer keeps
+                            # sending more bytes after our stop token.
+                            if stopped[index]:
+                                # Remove from poller so we stop being woken.
+                                try:
+                                    poller.remove_socket(current_sock)
+                                except Exception:
+                                    pass
+                                continue
+                            saw_stop = False
                             while True:
                                 received = recv_nonblocking(current_sock)
                                 if received is None:
                                     break
                                 with received:
-                                    data = received.to_bytes_list()[0]
+                                    parts = received.to_bytes_list()
+                                if is_stop_token_in_parts(parts):
+                                    saw_stop = True
+                                    break
+                                if not parts:
+                                    continue
+                                data = parts[0]
                                 if not is_active_message(
                                     data,
                                     expected_msg_size=args.msg_size,
@@ -82,6 +104,12 @@ def main(argv=None):
                                     continue
                                 latencies.append(latency_ns_from_message(data))
                                 count += 1
+                            if saw_stop:
+                                stopped[index] = True
+                                try:
+                                    poller.remove_socket(current_sock)
+                                except Exception:
+                                    pass
                 if count <= 0:
                     raise RuntimeError(
                         "multi dealer-dealer benchmark did not receive any active message"

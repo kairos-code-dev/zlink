@@ -5,11 +5,13 @@ import time
 import zlink
 
 from perf_common import (
+    STOP_TOKEN,
     apply_single_socket_options,
     benchmark_run_id,
     configure_single_tls_client,
     configure_single_tls_server,
     extract_metric_payload,
+    is_stop_token_in_parts,
     latency_ns_from_message,
     is_active_message,
     new_payload,
@@ -19,11 +21,27 @@ from perf_common import (
     result_metrics,
     resolve_single_endpoint,
     resolve_single_connect_ready_timeout_ms,
-    resolve_single_recv_timeout_ms,
     safe_poll,
     stamp_payload,
     wait_monitor_event,
 )
+
+
+def _send_router_stop_token(router, dest_routing_id):
+    """PERF_SINGLE_TEST_POLICY § 1.4 wire-level shutdown signal.
+
+    Router-router uses ``send(routing_id, payload)``; the stop token is a
+    single payload frame addressed to the peer.
+    """
+
+    for _ in range(100):
+        try:
+            router.send(dest_routing_id, STOP_TOKEN)
+            return
+        except zlink.SubmitError as exc:
+            if exc.result != zlink.SubmitResult.BACKPRESSURED:
+                raise
+            time.sleep(0.001)
 
 
 def main(argv=None):
@@ -39,10 +57,7 @@ def main(argv=None):
                 b"SERVER",
                 stamp_payload(payload, phase=1, run_id=run_id),
             )
-        router.send(
-            b"SERVER",
-            stamp_payload(payload, phase=2, run_id=run_id),
-        )
+        _send_router_stop_token(router, b"SERVER")
 
     with zlink.Context() as ctx:
         with zlink.RouterSocket(ctx) as server:
@@ -67,29 +82,25 @@ def main(argv=None):
                     target=send_loop, args=(client,), daemon=True
                 )
                 sender.start()
-                active_deadline = time.perf_counter() + args.duration
-                idle_drain_deadline = active_deadline + (
-                    resolve_single_recv_timeout_ms() / 1000.0
-                )
                 with zlink.Poller() as poller:
                     poller.add_socket(server, zlink.PollEvent.POLLIN)
-                    while time.perf_counter() < idle_drain_deadline:
-                        timeout_ms = max(
-                            1,
-                            int((idle_drain_deadline - time.perf_counter()) * 1000),
-                        )
-                        events = safe_poll(poller, timeout_ms)
+                    stop_received = False
+                    # PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait.
+                    while not stop_received:
+                        events = safe_poll(poller, -1)
                         if not events:
-                            break
+                            continue
                         for _event in events:
                             while True:
                                 received = recv_nonblocking(server)
                                 if received is None:
                                     break
                                 with received:
-                                    data = extract_metric_payload(received.to_bytes_list())
-                                if time.perf_counter() > active_deadline:
-                                    continue
+                                    parts = received.to_bytes_list()
+                                if is_stop_token_in_parts(parts):
+                                    stop_received = True
+                                    break
+                                data = extract_metric_payload(parts)
                                 if not is_active_message(
                                     data,
                                     expected_msg_size=args.msg_size,
@@ -97,6 +108,8 @@ def main(argv=None):
                                 ):
                                     continue
                                 latencies.append(latency_ns_from_message(data))
+                            if stop_received:
+                                break
 
                 sender.join()
                 if not latencies:

@@ -153,12 +153,14 @@ def main(argv=None):
                     raise RuntimeError("spot reqrep server handshake timeout")
 
                 start_sender[0].sendall(f"START,{args.msg_size}\n".encode("utf-8"))
-                idle_deadline = time.perf_counter() + max(
+                idle_seconds = max(
                     1.0,
                     float(os.environ.get("PERF_MULTI_DURATION_SECONDS", "5")),
                 ) + float(os.environ.get("PERF_MULTI_SPOT_SERVER_IDLE_S", "2.0"))
-                while not stop.is_set() and time.perf_counter() < idle_deadline:
-                    stop.wait(0.05)
+                # PERF_MULTI_TEST_POLICY § 1.3.1: single blocking wait; the
+                # dispatch callback handles request/reply asynchronously and
+                # the runner ends this server via stdin STOP/EOF or SIGTERM.
+                stop.wait(idle_seconds)
 
 
 if __name__ == "__main__":

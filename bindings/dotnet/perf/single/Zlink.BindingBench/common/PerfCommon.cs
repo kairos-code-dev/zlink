@@ -153,6 +153,116 @@ internal static partial class PerfRunner
         }
     }
 
+    // PERF_SINGLE_TEST_POLICY § 1.4: send the wire-level stop token at
+    // end of phase with bounded backpressure retry, so the receiver
+    // (waiting on a -1 poller) always observes the terminator.
+    internal static void SendStopTokenWithRetry(SocketBase sender, string tag)
+    {
+        for (int retry = 0; retry < 100; retry++)
+        {
+            try
+            {
+                if (PerfSocketIo.Send(sender, StopToken.Bytes,
+                        SendFlags.None) > 0)
+                    return;
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno))
+            {
+                Thread.Sleep(1);
+                continue;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"{tag} stop-token send failed: {ex.Message}");
+                return;
+            }
+
+            Thread.Sleep(1);
+        }
+    }
+
+    internal static void SendRoutedStopTokenWithRetry(
+        RoutedMessageSocketBase sender, RoutingId routingId, string tag)
+    {
+        for (int retry = 0; retry < 100; retry++)
+        {
+            try
+            {
+                if (PerfSocketIo.Send(sender, routingId, StopToken.Bytes,
+                        SendFlags.None) > 0)
+                    return;
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno))
+            {
+                Thread.Sleep(1);
+                continue;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"{tag} stop-token send failed: {ex.Message}");
+                return;
+            }
+
+            Thread.Sleep(1);
+        }
+    }
+
+    internal static void PublishStopTokenWithRetry(
+        PublisherSocketBase sender, string topic, string tag)
+    {
+        for (int retry = 0; retry < 100; retry++)
+        {
+            try
+            {
+                if (PerfSocketIo.Publish(sender, topic, StopToken.Bytes,
+                        SendFlags.None) > 0)
+                    return;
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno))
+            {
+                Thread.Sleep(1);
+                continue;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"{tag} stop-token publish failed: {ex.Message}");
+                return;
+            }
+
+            Thread.Sleep(1);
+        }
+    }
+
+    internal static void PublishSpotStopTokenWithRetry(Spot spot, string topic,
+        string tag)
+    {
+        for (int retry = 0; retry < 100; retry++)
+        {
+            try
+            {
+                if (PerfSocketIo.Publish(spot, topic, StopToken.Bytes,
+                        SendFlags.None) > 0)
+                    return;
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
+                                            || IsWouldBlock(ex.InternalErrno))
+            {
+                Thread.Sleep(1);
+                continue;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"{tag} stop-token publish failed: {ex.Message}");
+                return;
+            }
+
+            Thread.Sleep(1);
+        }
+    }
+
     private static int ResolveSingleHwmValue(string specificName)
     {
         int hwm = PerfEnv.ReadPositive("PERF_SINGLE_HWM", 1000);

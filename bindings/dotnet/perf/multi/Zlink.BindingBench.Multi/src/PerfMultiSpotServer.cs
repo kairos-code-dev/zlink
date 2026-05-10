@@ -106,35 +106,33 @@ internal static class PerfMultiSpotServer
         Array.Fill(payload, (byte)'a');
 
         long activeDeadlineTicks = DeadlineTicksFromSeconds(config.DurationSeconds);
-        bool sendPending = false;
 
         while (!controlState.StopRequested
                && Stopwatch.GetTimestamp() < activeDeadlineTicks)
         {
             StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Active,
                 config.Size, seq, EpochNs());
-            bool sent = TryPublish(spotPub, config, payload, SendFlags.DontWait);
-            if (sent)
-            {
+            if (TryPublish(spotPub, config, payload, SendFlags.DontWait))
                 seq++;
-                sendPending = false;
-            }
-            else
-            {
-                sendPending = true;
-            }
         }
 
-        _ = sendPending;
-
-        for (int i = 0; i < 32 && !controlState.StopRequested; i++)
-        {
-            StampMetricHeader(payload.AsSpan(), RunId, PerfPhase.Cooldown,
-                config.Size, seq++, EpochNs());
-            TryPublish(spotPub, config, payload, SendFlags.None);
-        }
+        // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via wire-level
+        // stop token. Multiple retries cover transient publisher
+        // backpressure so every subscriber observes the terminator.
+        if (!controlState.StopRequested)
+            TryPublishStopToken(spotPub, config);
 
         return 0;
+    }
+
+    private static void TryPublishStopToken(Spot spotPub, SpotServerConfig config)
+    {
+        for (int retry = 0; retry < 100; retry++)
+        {
+            if (TryPublish(spotPub, config, MultiStopToken, SendFlags.DontWait))
+                return;
+            System.Threading.Thread.Sleep(1);
+        }
     }
 
     private static bool TryPublish(Spot spotPub, SpotServerConfig config,

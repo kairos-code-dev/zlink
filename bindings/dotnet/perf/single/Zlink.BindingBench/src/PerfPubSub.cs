@@ -80,40 +80,30 @@ internal static class PerfPubSub
         byte[] payload, int msgSize, int durationSeconds, int recvTimeoutMs,
         int latencyCap, out long receivedOut, out List<double> latencySamples)
     {
+        _ = recvTimeoutMs;
         long deadlineTicks = DeadlineTicksFromSeconds(durationSeconds);
-        long recvFlushTicks = Math.Max(1,
-            (long)Math.Ceiling(recvTimeoutMs * Stopwatch.Frequency / 1000.0));
 
         long received = 0;
-        int senderDone = 0;
         Exception? recvError = null;
         var samples = new List<double>(Math.Max(0, latencyCap));
         long sampleSeen = 0;
         uint rng = 0xA341316Cu;
 
+        // PERF_SINGLE_TEST_POLICY § 1.4: receiver waits indefinitely
+        // (-1 = signal-driven) and exits when the wire-level stop token
+        // arrives.
         var recvThread = new Thread(() =>
         {
             using var poller = new Poller();
             var events = new PollEvent[1];
-            long lastRecvTicks = Stopwatch.GetTimestamp();
             poller.Add(receiver, PollEventFlags.PollIn);
 
             try
             {
                 while (true)
                 {
-                    bool done = Volatile.Read(ref senderDone) != 0;
-                    int timeoutMs = done ? Math.Max(1, recvTimeoutMs) : 50;
-                    if (!WaitForInput(poller, events, timeoutMs))
-                    {
-                        if (done && Stopwatch.GetTimestamp() - lastRecvTicks
-                            >= recvFlushTicks)
-                        {
-                            break;
-                        }
-
+                    if (!WaitForInput(poller, events, -1))
                         continue;
-                    }
 
                     while (true)
                     {
@@ -134,6 +124,9 @@ internal static class PerfPubSub
                                 break;
                             Message body = maybe.FirstPart();
                             ReadOnlySpan<byte> payloadSpan = body.AsReadOnlySpan();
+                            if (StopToken.IsStopToken(payloadSpan))
+                                return;
+
                             long recvTicks = Stopwatch.GetTimestamp();
                             if (!TryDecodeExpectedSingleHeader(payloadSpan, msgSize,
                                     ActivePhase, out var header, RunId))
@@ -152,7 +145,6 @@ internal static class PerfPubSub
                                 ReservoirSample(samples, latencyNs, ref sampleSeen,
                                     latencyCap, ref rng);
                             }
-                            lastRecvTicks = Stopwatch.GetTimestamp();
                         }
                     }
                 }
@@ -188,7 +180,9 @@ internal static class PerfPubSub
             }
         }
 
-        Volatile.Write(ref senderDone, 1);
+        // PERF_SINGLE_TEST_POLICY § 1.4: send wire-level stop token to
+        // wake the subscriber out of recv.
+        PublishStopTokenWithRetry(sender, Topic, "[single-pubsub]");
         recvThread.Join();
 
         latencySamples = samples;

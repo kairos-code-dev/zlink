@@ -27,7 +27,6 @@ async function main() {
   const subs = [];
   let rl = null;
   let collector = null;
-  let stop = false;
 
   try {
     for (let i = 0; i < options.clients; i += 1) {
@@ -40,6 +39,8 @@ async function main() {
     }
     ctx.recalculateAutoHwm();
 
+    // PERF_MULTI_TEST_POLICY § 1.3.1: each subscriber drains until it sees
+    // the wire-level stop token emitted by the publisher at phase end.
     const recvTasks = subs.map((sub) => drainRecvSocket(
       sub,
       (received) => {
@@ -50,8 +51,7 @@ async function main() {
           decodeMetricHeader(received.parts[0].data()),
           currentEpochNs()
         );
-      },
-      () => stop
+      }
     ));
 
     console.log(`CLIENT_READY,${options.msgSize}`);
@@ -67,22 +67,6 @@ async function main() {
           activeStopNs,
           sampleCap: resolveMultiLatencySampleCap()
         });
-        await new Promise((resolve) => {
-          const remainMs = Number((activeStopNs - currentEpochNs()) / 1_000_000n);
-          if (remainMs > 0) {
-            setTimeout(resolve, remainMs);
-          } else {
-            resolve();
-          }
-        });
-        stop = true;
-        for (const sub of subs) {
-          try {
-            sub.close();
-          } catch (err) {
-            console.error(`[perf] close failed: ${err}`);
-          }
-        }
         break;
       }
     }

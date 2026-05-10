@@ -118,14 +118,12 @@ internal static class PerfMultiSpotClient
     {
         long activeDeadlineTicks = DeadlineTicksFromMilliseconds(
             config.DurationSeconds * 1000);
-        long cooldownDeadlineTicks = DeadlineTicksFromMilliseconds(
-            config.DurationSeconds * 1000 + config.ConnectReadyTimeoutMs);
         var workers = new List<Thread>(slots.Count);
         for (int i = 0; i < slots.Count; i++)
         {
             SpotClientSlot slot = slots[i];
             var worker = new Thread(() => ReceiveLoop(slot, config.Size,
-                activeDeadlineTicks, cooldownDeadlineTicks))
+                activeDeadlineTicks))
             {
                 IsBackground = true,
                 Name = $"multi-spot-client-{i}",
@@ -173,11 +171,13 @@ internal static class PerfMultiSpotClient
     }
 
     private static void ReceiveLoop(SpotClientSlot slot, int msgSize,
-        long activeDeadlineTicks, long cooldownDeadlineTicks)
+        long activeDeadlineTicks)
     {
         try
         {
-            while (Stopwatch.GetTimestamp() < cooldownDeadlineTicks)
+            // PERF_MULTI_TEST_POLICY § 1.3.1: receive until the
+            // wire-level stop token arrives.
+            while (true)
             {
                 using TopicMessage? subscribed = slot.Subscriber.Subscribe(
                     RecvFlags.DontWait);
@@ -188,6 +188,12 @@ internal static class PerfMultiSpotClient
 
                 ReadOnlySpan<byte> payload =
                     subscribed.SinglePartOrThrow().AsReadOnlySpan();
+                if (IsStopTokenPayload(payload))
+                {
+                    slot.State.CooldownSeen = 1;
+                    return;
+                }
+
                 if (!PerfShared.TryDecodeMetricHeader(payload,
                         out PerfMetricHeader header))
                 {
@@ -197,11 +203,6 @@ internal static class PerfMultiSpotClient
                     || header.MsgSize != (uint)msgSize)
                 {
                     continue;
-                }
-                if (header.Phase == (uint)PerfPhase.Cooldown)
-                {
-                    slot.State.CooldownSeen = 1;
-                    return;
                 }
                 if (header.Phase != (uint)PerfPhase.Active
                     || Stopwatch.GetTimestamp() > activeDeadlineTicks)

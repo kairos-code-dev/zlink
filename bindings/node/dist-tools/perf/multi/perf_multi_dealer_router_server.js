@@ -4,7 +4,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('../../..');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWait, resolveClientPollTimeoutMs, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
+const { isStopTokenParts } = require('../perf_stop_token');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWait, trySocketSend, waitForConnectionReadyCount } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -32,10 +33,13 @@ async function main() {
             }
         })();
         await readyBarrier;
-        const clientPollTimeoutMs = resolveClientPollTimeoutMs();
+        // PERF_MULTI_TEST_POLICY § 1.3.1: phase end is signaled by the wire
+        // stop token from the echo client. The legacy stdin-driven `stop` flag
+        // is preserved as a graceful-shutdown fallback for the orchestrator;
+        // signal-driven `-1` waits make timer-based polling unnecessary.
         while (!stop) {
             poller.modify(router, pollEvents(pending.length > 0 ? (POLLIN | POLLOUT) : POLLIN));
-            const ready = poller.wait(clientPollTimeoutMs);
+            const ready = poller.wait(-1);
             if (!ready) {
                 continue;
             }
@@ -46,6 +50,11 @@ async function main() {
                         break;
                     }
                     try {
+                        if (isStopTokenParts(received.parts)) {
+                            received.close();
+                            stop = true;
+                            break;
+                        }
                         if (!received.routingId) {
                             received.close();
                             continue;
@@ -60,6 +69,9 @@ async function main() {
                         received.close();
                         throw error;
                     }
+                }
+                if (stop) {
+                    break;
                 }
             }
             if (pollEventHas(ready, POLLOUT)) {

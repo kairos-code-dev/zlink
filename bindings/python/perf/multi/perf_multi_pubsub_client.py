@@ -1,5 +1,4 @@
 import sys
-import time
 
 import zlink
 
@@ -7,12 +6,14 @@ from perf_multi_common import (
     TOPIC,
     apply_multi_socket_options,
     benchmark_run_id,
+    is_stop_token_in_parts,
     latency_ns_from_message,
     is_active_message,
     parse_client_args,
     print_result_lines,
     recv_nonblocking,
     result_metrics,
+    safe_poll,
 )
 
 
@@ -44,28 +45,45 @@ def main(argv=None):
                     continue
                 raise SystemExit(f"unexpected command: {command}")
 
-            started = time.perf_counter()
-            deadline = started + args.duration
-            while time.perf_counter() < deadline:
-                progressed = False
-                for current_sock in sockets:
-                    while True:
-                        received = recv_nonblocking(current_sock, method="subscribe")
-                        if received is None:
-                            break
-                        with received:
-                            data = received.to_bytes_list()[0]
-                        progressed = True
-                        if not is_active_message(
-                            data,
-                            expected_msg_size=args.msg_size,
-                            run_id=run_id,
-                        ):
+            stopped = [False] * len(sockets)
+            with zlink.Poller() as poller:
+                for sock in sockets:
+                    poller.add_socket(sock, zlink.PollEvent.POLLIN)
+                # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. Each
+                # subscriber exits on the wire-level stop token.
+                while not all(stopped):
+                    events = safe_poll(poller, -1)
+                    if not events:
+                        continue
+                    for event in events:
+                        current_sock = event.socket
+                        try:
+                            index = sockets.index(current_sock)
+                        except ValueError:
                             continue
-                        latencies.append(latency_ns_from_message(data))
-                        count += 1
+                        if stopped[index]:
+                            continue
+                        while True:
+                            received = recv_nonblocking(current_sock, method="subscribe")
+                            if received is None:
+                                break
+                            with received:
+                                parts = received.to_bytes_list()
+                            if is_stop_token_in_parts(parts):
+                                stopped[index] = True
+                                break
+                            if not parts:
+                                continue
+                            data = parts[0]
+                            if not is_active_message(
+                                data,
+                                expected_msg_size=args.msg_size,
+                                run_id=run_id,
+                            ):
+                                continue
+                            latencies.append(latency_ns_from_message(data))
+                            count += 1
 
-            elapsed = time.perf_counter() - started
             if count <= 0:
                 raise RuntimeError(
                     "multi pubsub benchmark did not receive any active message"

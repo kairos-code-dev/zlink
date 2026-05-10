@@ -114,9 +114,12 @@ internal static class PerfMultiDealerRouterClient
             TryScheduleIdleSends(slots, eventMasks, msgSize, runId,
                 PerfPhase.Active, ref seq, ref rrIndex);
 
-            int cappedPollMs = CapPollTimeoutMs(pollTimeoutMs, benchDeadlineTicks);
+            // PERF_MULTI_TEST_POLICY § 1.3.1: poller wait is signal-driven
+            // (-1). The benchDeadlineTicks check at the top of the loop
+            // ends the active phase; the wire-level stop token sent
+            // afterwards instructs the server to wind down.
             if (PollSocketEvents(pollManager, sockets, eventMasks,
-                    cappedPollMs) <= 0)
+                    pollTimeoutMs) <= 0)
             {
                 for (int i = 0; i < slots.Length; i++)
                     HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,

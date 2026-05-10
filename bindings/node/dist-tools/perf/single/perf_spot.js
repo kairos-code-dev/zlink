@@ -8,6 +8,7 @@ const node_net_1 = __importDefault(require("node:net"));
 const zlink = require('../../..');
 const perf_metrics_1 = require("../common/perf_metrics");
 const perf_single_common_1 = require("./perf_single_common");
+const perf_stop_token_1 = require("../perf_stop_token");
 const AUTO_CONNECT_SPOT_MESH = 5;
 const CHANNEL_NAME = 'perf.spot';
 const TOPIC = 'perf.topic';
@@ -29,6 +30,17 @@ function trySpotPublish(spot, payload) {
             return false;
         }
         throw error;
+    }
+}
+async function publishStopToken(spot) {
+    // PERF_SINGLE_TEST_POLICY § 1.4: emit the wire-level stop token. Spot
+    // does not expose a POLLOUT poller wait, so we yield via setImmediate
+    // through any transient backpressure. Bounded retry to avoid hangs.
+    for (let retry = 0; retry < 100; retry += 1) {
+        if (trySpotPublish(spot, perf_stop_token_1.STOP_TOKEN_BYTES)) {
+            return;
+        }
+        await (0, perf_metrics_1.sleepImmediate)();
     }
 }
 function trySpotSubscribe(spot) {
@@ -67,9 +79,6 @@ async function reservePort() {
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve(undefined))));
     return port;
 }
-async function sleepMs(delayMs) {
-    await new Promise((resolve) => setTimeout(resolve, Math.max(0, delayMs)));
-}
 async function runSpotBenchmark(msgSize, options) {
     const ctx = new zlink.Context();
     (0, perf_single_common_1.applyContextPolicy)(ctx);
@@ -106,12 +115,20 @@ async function runSpotBenchmark(msgSize, options) {
         const payload = (0, perf_metrics_1.createPayload)(msgSize);
         let seq = 1n;
         let probeReady = false;
+        let stopReceived = false;
         const activeDeadline = { value: 0 };
         const latencySampleCap = Number(process.env.PERF_SINGLE_LATENCY_SAMPLE_CAP ?? 200000);
         const latenciesNs = [];
         let accepted = 0;
         const collectReadable = (countActive) => {
             return drainSpot(subscriber, (received) => {
+                // PERF_SINGLE_TEST_POLICY § 1.4: wire-level stop token terminates
+                // the receiver loop. Returning here lets the outer loop observe
+                // `stopReceived` without recording the sentinel as a payload.
+                if ((0, perf_stop_token_1.isStopTokenParts)(received.parts)) {
+                    stopReceived = true;
+                    return;
+                }
                 const header = (0, perf_metrics_1.decodeMetricHeaderFromParts)(received.parts);
                 if (!header) {
                     return;
@@ -152,7 +169,7 @@ async function runSpotBenchmark(msgSize, options) {
                 seq += 1n;
             }
             collectReadable(false);
-            await sleepMs(25);
+            await (0, perf_metrics_1.sleepImmediate)();
         }
         if (!probeReady) {
             throw new Error('spot ready probe timed out');
@@ -169,23 +186,17 @@ async function runSpotBenchmark(msgSize, options) {
             if (trySpotPublish(publisher, payload)) {
                 seq += 1n;
             }
-            else {
-                await sleepMs(1);
-            }
             collectReadable(true);
-            await new Promise((resolve) => setImmediate(resolve));
+            await (0, perf_metrics_1.sleepImmediate)();
         }
-        (0, perf_metrics_1.stampPayload)(payload, {
-            phase: 2,
-            runId,
-            msgSize,
-            seq
-        });
-        trySpotPublish(publisher, payload);
-        const idleDeadline = Date.now() + Math.max((0, perf_single_common_1.resolveSingleIdleDrainMs)(options), Number(process.env.PERF_SINGLE_RCVTIMEO_MS ?? 200));
-        while (Date.now() < idleDeadline) {
+        // PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire stop token
+        // and drain in-flight payloads until the receiver observes it. The
+        // legacy phase-2 cooldown message + timer-based idle drain are no
+        // longer needed — in-flight messages naturally precede the token.
+        await publishStopToken(publisher);
+        while (!stopReceived) {
             if (!collectReadable(false)) {
-                await sleepMs(1);
+                await (0, perf_metrics_1.sleepImmediate)();
             }
         }
         if (accepted <= 0) {

@@ -117,9 +117,9 @@ internal static class PerfMultiRouterRouterClient
             TryScheduleIdleSends(slots, eventMasks, msgSize, runId, PerfPhase.Active,
                 ref seq, ref rrIndex);
 
-            int cappedPollMs = CapPollTimeoutMs(pollTimeoutMs, benchDeadlineTicks);
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait.
             if (PollSocketEvents(pollManager, sockets, eventMasks,
-                    cappedPollMs) <= 0)
+                    pollTimeoutMs) <= 0)
             {
                 for (int i = 0; i < slots.Length; i++)
                     HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,

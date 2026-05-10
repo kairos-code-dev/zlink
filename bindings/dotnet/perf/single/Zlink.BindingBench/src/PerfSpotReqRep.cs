@@ -11,7 +11,6 @@ internal static class PerfSpotReqRep
     private const uint RunId = 1;
     private const uint WarmupPhase = 0;
     private const uint ActivePhase = 1;
-    private const uint CooldownPhase = 2;
 
     internal static int Run(string transport, int size)
     {
@@ -46,26 +45,28 @@ internal static class PerfSpotReqRep
             requesterDealer.Connect(connectEndpoint);
 
             Exception? responderFailure = null;
-            int stopRequested = 0;
+            // PERF_SINGLE_TEST_POLICY § 1.4: wire-level stop token signals
+            // the responder to exit its echo loop. The token is sent as
+            // the requester's final request so the requester also drains
+            // the matching reply via public poller completion.
             var responderThread = new Thread(() =>
             {
                 try
                 {
-                    while (Volatile.Read(ref stopRequested) == 0)
+                    while (true)
                     {
                         using Received received = responder.Recv();
                         RoutingId routingId = received.RoutingId
                             ?? throw new InvalidOperationException("missing routing id");
                         ulong requestSeq = received.RequestSeq ?? 0UL;
                         ReadOnlySpan<byte> body = received.FirstPart().AsReadOnlySpan();
-                        if (TryDecodeMetricHeader(body, out PerfMetricHeader header)
-                            && header.Phase == CooldownPhase)
-                        {
-                            Volatile.Write(ref stopRequested, 1);
-                        }
+                        bool isStop = StopToken.IsStopToken(body);
 
                         using Message reply = received.FirstPart().Move();
                         responder.Reply(routingId, requestSeq, reply);
+
+                        if (isStop)
+                            break;
                     }
                 }
                 catch (Exception ex)
@@ -106,9 +107,11 @@ internal static class PerfSpotReqRep
                 }
             }
 
-            using (var cooldown = Message.FromBytes(CreatePayload(size,
-                       CooldownPhase, seq)))
-                _ = RequestReply(requester, size, cooldown, TimeSpan.FromSeconds(2));
+            // Final request carries the wire-level stop token so the
+            // responder thread exits its loop after sending the reply.
+            using (var stopRequest = Message.FromBytes(StopToken.Bytes))
+                _ = RequestReplyAllowStopToken(requester, stopRequest,
+                    TimeSpan.FromSeconds(2));
 
             responderThread.Join();
             if (responderFailure != null)
@@ -183,6 +186,26 @@ internal static class PerfSpotReqRep
             }
 
             throw new InvalidOperationException("spot reqrep reply header invalid");
+        }
+        finally
+        {
+            for (int i = 0; i < replyParts.Count; i++)
+                replyParts[i].Dispose();
+        }
+    }
+
+    private static bool RequestReplyAllowStopToken(Spot requester,
+        Message payload, TimeSpan timeout)
+    {
+        IReadOnlyList<Message> replyParts = requester.RequestChannel(ChannelName)
+            .Message(payload)
+            .Timeout(timeout)
+            .SubmitAsync()
+            .GetAwaiter().GetResult();
+        try
+        {
+            return replyParts.Count > 0
+                && StopToken.IsStopToken(replyParts[0].AsReadOnlySpan());
         }
         finally
         {

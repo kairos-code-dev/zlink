@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../..');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWait, resolveClientPollTimeoutMs, resolveMultiLatencySampleCap, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, pollEvents, pollEventHas, recvNoWait, resolveMultiLatencySampleCap, sendStopTokenWithRetry, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -41,7 +41,6 @@ async function main() {
             roundTrip: true,
             sampleCap: resolveMultiLatencySampleCap()
         });
-        const clientPollTimeoutMs = resolveClientPollTimeoutMs();
         let seq = 1n;
         const drainReply = (index) => {
             let progressed = false;
@@ -77,10 +76,10 @@ async function main() {
             if (progressed) {
                 continue;
             }
-            const nowNs = currentEpochNs();
-            const remainMs = Number((activeStopNs - nowNs) / 1000000n);
-            const waitMs = Math.max(1, Math.min(clientPollTimeoutMs, remainMs));
-            const ready = poller.waitAll(poller.size, waitMs);
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven `-1` wait. The echo
+            // reply (POLLIN) or send-readiness (POLLOUT) wakeup arrives via core,
+            // so timer-bound polling is unnecessary.
+            const ready = poller.waitAll(poller.size, -1);
             if (ready.length === 0) {
                 continue;
             }
@@ -97,6 +96,10 @@ async function main() {
                 }
             }
         }
+        // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end to the echo server
+        // via the wire-level stop token. The server's recv loop exits on the
+        // first stop token observed.
+        await sendStopTokenWithRetry(dealers[0], (bytes) => trySocketSend(dealers[0], bytes));
         const result = await collector.finish();
         for (const metricLine of summarizeMetrics('MULTI_DEALER_ROUTER', options.transport, options.msgSize, result.latenciesNs, options.duration, 'current', result.accepted)) {
             console.log(metricLine);

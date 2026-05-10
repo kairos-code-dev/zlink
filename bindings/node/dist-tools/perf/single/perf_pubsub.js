@@ -2,8 +2,8 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('../../..');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
-const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, resolveSingleIdleDrainMs, spawnSenderWorker, waitForPostReadySettle, waitForConnectionReady, waitForWorkerDone, waitForWorkerError, waitForWorkerMessage, } = require('./perf_single_common');
+const { createMetricCollector, createRunId, decodeMetricHeaderFromParts, currentEpochNs, summarizeMetrics, } = require('../common/perf_metrics');
+const { applyContextPolicy, applySocketPolicy, benchmarkEndpoint, closeSenderWorker, drainRecvSocket, parseSingleBinaryArgs, resolveSingleLatencySampleCap, spawnSenderWorker, waitForPostReadySettle, waitForConnectionReady, waitForWorkerDone, waitForWorkerError, waitForWorkerMessage, } = require('./perf_single_common');
 function trace(message) {
     if (process.env.PERF_NODE_TRACE === '1') {
         console.error(`[pubsub] ${message}`);
@@ -34,7 +34,14 @@ async function runPubSubBenchmark(msgSize, options) {
             topic,
             options: {
                 ...options,
-                noDrop: Number(process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP ?? 0) !== 0
+                // PERF_SINGLE_TEST_POLICY § 1.4 needs the wire-level stop token to
+                // be reliably delivered. Default the publisher to no_drop=true so
+                // the sentinel is not silently discarded by the XPUB drop policy
+                // (matches cpp `publisher.options().no_drop(true)` in
+                // `bindings/cpp/perf/single/src/perf_pubsub.cpp`).
+                noDrop: process.env.PERF_SINGLE_PUBSUB_XPUB_NODROP === '0'
+                    ? false
+                    : true
             },
         });
         const workerError = waitForWorkerError(worker);
@@ -60,13 +67,11 @@ async function runPubSubBenchmark(msgSize, options) {
             activeStopNs,
             sampleCap: resolveSingleLatencySampleCap()
         });
-        const payload = createPayload(msgSize);
-        let seq = 1n;
-        let stop = false;
+        // PERF_SINGLE_TEST_POLICY § 1.4: receiver drains until wire stop token.
         const recvTask = drainRecvSocket(sub, (received) => {
             const header = decodeMetricHeaderFromParts(received.parts);
             collector.record(header, currentEpochNs());
-        }, () => stop);
+        });
         trace('starting worker');
         worker.postMessage({ type: 'start' });
         await Promise.race([
@@ -74,17 +79,6 @@ async function runPubSubBenchmark(msgSize, options) {
             workerError.then((message) => Promise.reject(new Error(message.message)))
         ]);
         trace('worker done');
-        const drainDeadlineNs = activeStopNs
-            + BigInt(resolveSingleIdleDrainMs({
-                ...options,
-                recvTimeoutMs: Number(process.env.PERF_SINGLE_PUBSUB_RCVTIMEO_MS
-                    ?? process.env.PERF_SINGLE_RCVTIMEO_MS
-                    ?? 200)
-            })) * 1000000n;
-        while (currentEpochNs() < drainDeadlineNs) {
-            await sleepImmediate();
-        }
-        stop = true;
         await recvTask;
         trace('recv task done');
         return collector.finish();

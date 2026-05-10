@@ -63,9 +63,7 @@ ECHO_PATTERNS = {
     "SPOT_SENDSEND",
     "STREAM",
 }
-SINGLE_ECHO_PATTERNS = {
-    "SPOT_REQREP",
-}
+SINGLE_ECHO_PATTERNS = set()
 ALLOW_MULTI = os.environ.get("PERF_ALLOW_MULTI", "0") == "1"
 SINGLE_COMPARISONS = [
     ("perf_pair", "PAIR"),
@@ -74,7 +72,6 @@ SINGLE_COMPARISONS = [
     ("perf_dealer_router", "DEALER_ROUTER"),
     ("perf_router_router", "ROUTER_ROUTER"),
     ("perf_spot", "SPOT"),
-    ("perf_spot_reqrep", "SPOT_REQREP"),
 ]
 MULTI_COMPARISONS = [
     ("comp_src_dealer_dealer_client", "DEALER_DEALER"),

@@ -158,11 +158,9 @@ class RunComparisonPolicyTests(unittest.TestCase):
 
     def test_direction_and_throughput_unit_are_one_way(self):
         self.assertEqual(RC.pattern_direction_label("PAIR"), "one-way")
-        self.assertEqual(RC.pattern_direction_label("SPOT_REQREP"), "echo")
+        self.assertEqual(RC.pattern_direction_label("SPOT"), "one-way")
         self.assertTrue(RC.format_throughput("PAIR", 1234.0).endswith("Kmsg/s"))
-        self.assertTrue(
-            RC.format_throughput("SPOT_REQREP", 1234.0).endswith("Kops/s")
-        )
+        self.assertTrue(RC.format_throughput("SPOT", 1234.0).endswith("Kmsg/s"))
 
     def test_default_message_sizes_follow_policy_matrix(self):
         self.assertEqual(
@@ -178,7 +176,6 @@ class RunComparisonPolicyTests(unittest.TestCase):
         with EnvPatch(remove=["PERF_TRANSPORTS"]):
             pair_transports = RC.select_transports("PAIR")
             stream_transports = RC.select_transports("SPOT")
-            reqrep_transports = RC.select_transports("SPOT_REQREP")
 
         self.assertEqual(pair_transports[:5], ["tcp", "tls", "ws", "wss", "inproc"])
         if RC.IS_WINDOWS:
@@ -186,7 +183,6 @@ class RunComparisonPolicyTests(unittest.TestCase):
         else:
             self.assertIn("ipc", pair_transports)
         self.assertEqual(stream_transports, ["tcp", "tls", "ws", "wss"])
-        self.assertEqual(reqrep_transports, ["tcp", "tls", "ws", "wss"])
 
     def test_default_full_matrix_allows_explicit_default_overrides(self):
         args = type("Args", (), {"pattern": "ALL"})()
@@ -392,7 +388,6 @@ class RunComparisonPolicyTests(unittest.TestCase):
         self.assertEqual(RC.resolve_binary_name("PAIR"), "perf_pair")
         self.assertEqual(RC.resolve_binary_name("PUBSUB"), "perf_pubsub")
         self.assertEqual(RC.resolve_binary_name("SPOT"), "perf_spot")
-        self.assertEqual(RC.resolve_binary_name("SPOT_REQREP"), "perf_spot_reqrep")
 
     def test_single_runner_executes_each_size_case_separately(self):
         old_run_single_test = RC.run_single_test

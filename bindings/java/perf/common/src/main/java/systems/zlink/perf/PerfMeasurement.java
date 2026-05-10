@@ -91,7 +91,6 @@ final class PerfMeasurement {
         return "DEALER_ROUTER".equals(pattern)
             || "ROUTER_ROUTER".equals(pattern)
             || "STREAM".equals(pattern)
-            || "SPOT_REQREP".equals(pattern)
             || "MULTI_SPOT_REQREP".equals(pattern);
     }
 

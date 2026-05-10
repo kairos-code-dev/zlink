@@ -16,7 +16,6 @@ SINGLE_MAP = {
     "perf_dealer_router": CPP_PERF_DIR / "single" / "build" / "cpp_perf_dealer_router",
     "perf_router_router": CPP_PERF_DIR / "single" / "build" / "cpp_perf_router_router",
     "perf_spot": CPP_PERF_DIR / "single" / "build" / "cpp_perf_spot",
-    "perf_spot_reqrep": CPP_PERF_DIR / "single" / "build" / "cpp_perf_spot_reqrep",
 }
 
 MULTI_SERVER_MAP = {

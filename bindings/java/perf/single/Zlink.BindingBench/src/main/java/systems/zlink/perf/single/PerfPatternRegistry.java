@@ -14,8 +14,7 @@ final class PerfPatternRegistry {
             "DEALER_DEALER", PerfDealerDealer::run,
             "DEALER_ROUTER", PerfDealerRouter::run,
             "ROUTER_ROUTER", PerfRouterRouter::run,
-            "SPOT", PerfSpot::run,
-            "SPOT_REQREP", PerfSpotReqRep::run
+            "SPOT", PerfSpot::run
         );
 
     private PerfPatternRegistry() {

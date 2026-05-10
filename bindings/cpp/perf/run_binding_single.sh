@@ -67,7 +67,7 @@ esac
 
 BUILD_DIR="${ROOT_DIR}/bindings/cpp/build"
 
-STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT,SPOT_REQREP"
+STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT"
 PATTERN="ALL"
 OUTPUT_FILE=""
 RESULTS_DIR="${CPP_PERF_DIR}/results"
@@ -457,7 +457,6 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
     cpp_perf_dealer_router
     cpp_perf_router_router
     cpp_perf_spot
-    cpp_perf_spot_reqrep
   )
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then
     cmake --build "${BUILD_DIR}" --config Release --target "${CPP_SINGLE_TARGETS[@]}"

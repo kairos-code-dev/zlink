@@ -292,7 +292,7 @@ func FinalizeResult(pattern string, msgSize int, result Result) Result {
 
 func isEchoPattern(pattern string) bool {
 	switch pattern {
-	case "SPOT_REQREP", "MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP":
+	case "MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP":
 		return true
 	default:
 		return false

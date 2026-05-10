@@ -124,7 +124,7 @@ function(add_cpp_multi_client_bench target_name src_path)
   configure_perf_target(${target_name} "multi")
 endfunction()
 
-# Single suite (8 binaries)
+# Single suite
 add_cpp_single_bench(cpp_perf_pair
   "${PERF_ROOT_DIR}/single/src/perf_pair.cpp")
 add_cpp_single_bench(cpp_perf_pubsub
@@ -137,8 +137,6 @@ add_cpp_single_bench(cpp_perf_router_router
   "${PERF_ROOT_DIR}/single/src/perf_router_router.cpp")
 add_cpp_single_bench(cpp_perf_spot
   "${PERF_ROOT_DIR}/single/src/perf_spot.cpp")
-add_cpp_single_bench(cpp_perf_spot_reqrep
-  "${PERF_ROOT_DIR}/single/src/perf_spot_reqrep.cpp")
 
 # Multi server suite (8 binaries)
 add_cpp_multi_server_bench(cpp_comp_src_dealer_dealer_server

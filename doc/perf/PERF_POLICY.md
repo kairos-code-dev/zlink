@@ -121,8 +121,8 @@
     packet receive surface로 본다.
 - 즉 perf는 "callback이면 전부 제외"가 아니라, data-plane direct callback을
   제외하고 SPOT 의 public recv drain 경로와 `STREAM packet handler`만
-  예외적으로 허용한다. `SPOT_REQREP` requester reply completion은 public poller
-  경로로 진행한다.
+  예외적으로 허용한다. `MULTI_SPOT_REQREP` requester reply completion은
+  public poller 경로로 진행한다.
 
 ### 1.1.1 Metric Header Wire Format
 
@@ -203,24 +203,19 @@ total: 29 bytes (고정)
   - SPOT:
     - single: local probe-based ready barrier
     - multi: explicit control handshake barrier
-  - SPOT_REQREP (routed request-reply over SpotNode mesh):
-    - single: routed request/reply probe-based ready barrier
-      (SpotNode mesh 구성 완료 후 routed probe 로 판정)
-    - multi: SPOT 과 동일한 control handshake barrier
+  - MULTI_SPOT_REQREP (multi suite 전용, routed request-reply over SpotNode mesh):
+    - SPOT 과 동일한 control handshake barrier
       (`CONNECTED`/`READY_COUNT`/`START`)
     - routed request/reply 경로는 barrier 통과 이후에만 시작한다.
 - raw perf ready gate는 expected client 수만큼 `CONNECTION_READY` 수신으로
   판정한다.
-- SPOT / SPOT_REQREP perf ready gate는 monitor event 나 snapshot 이 아니라
-  benchmark control protocol 로 판정한다.
+- SPOT / MULTI_SPOT_REQREP perf ready gate는 monitor event 나 snapshot 이
+  아니라 benchmark control protocol 로 판정한다.
 - single SPOT 은 별도 서비스 이벤트 스트림 대신 local pub/sub probe 를 사용한다.
   sender 가 metric header가 찍힌 probe payload 를 publish 하고, recv
   쪽에서 첫 유효 수신을 확인하면 ready 로 판정한다.
 - single SPOT 수신은 direct message callback으로 처리하지 않는다.
   `zlink_spot_subscribe()` recv drain 으로 유효 payload를 확인해야 한다.
-- single SPOT_REQREP 은 별도 서비스 이벤트 스트림 대신 routed request/reply probe 를
-  사용한다. requester 가 metric header가 찍힌 probe request 를 보내고
-  replier 의 reply 를 public poller completion 경로로 수신하면 ready 로 판정한다.
 - multi SPOT / multi SPOT_REQREP barrier 의 `READY` 는 `connect_peer()` 직후
   즉시 보내지 않는다. local benchmark network 정책으로, 각 client spot 이
   control link ready 와 local connect setup 을 끝낸 뒤 stabilization
@@ -236,8 +231,6 @@ total: 29 bytes (고정)
 - `wait_ready()` 같은 helper는 허용한다. 단:
   - raw pattern 에서는 `CONNECTION_READY` counting 만 수행해야 한다.
   - single SPOT 에서는 local probe-based ready barrier 만 수행해야 한다.
-  - single SPOT_REQREP 에서는 routed request/reply probe-based ready
-    barrier 만 수행해야 한다.
   - multi SPOT / multi SPOT_REQREP 에서는 control handshake
     (`CONNECTED`/`READY_COUNT`/`START`) barrier 만 수행해야 한다.
   - delivery-ready event, 별도 서비스 이벤트 스트림, snapshot polling 을 helper 뒤에
@@ -251,10 +244,10 @@ total: 29 bytes (고정)
       stabilization/control-settle 절차는 본 문서와 suite 정책에 명시된
       경우에 한해 허용한다. 이는 별도 public gate나 일반 ready phase로
       승격하지 않는다.
-    - 예외 2: `single PUBSUB`, `single SPOT`, `single SPOT_REQREP` 은 ready
-      gate 통과 직후 bounded post-ready settle을 반드시 수행한다. 이는
-      추가 ready gate가 아니라 패턴 전용의 고정 안정화 절차이며,
-      core/bindings 전체에 동일 의미로 적용해야 한다.
+    - 예외 2: `single PUBSUB`, `single SPOT` 은 ready gate 통과 직후
+      bounded post-ready settle을 반드시 수행한다. 이는 추가 ready gate가
+      아니라 패턴 전용의 고정 안정화 절차이며, core/bindings 전체에 동일
+      의미로 적용해야 한다.
   - monitor snapshot polling
   - ad-hoc retry loop
 - perf lifecycle에서 아래와 같은 **벤치 단계**를 새로 만들지 않는다.
@@ -263,9 +256,9 @@ total: 29 bytes (고정)
   - `settle`
     - 예외 1: `multi SPOT` / `multi SPOT_REQREP` barrier 내부 settle은 별도
       lifecycle phase가 아니라 control handshake의 내부 절차로만 허용한다.
-    - 예외 2: `single PUBSUB` / `single SPOT` / `single SPOT_REQREP`
-      post-ready settle은 ready를 대체하는 별도 phase가 아니라, 해당 패턴의
-      전달 준비를 정렬하기 위한 bounded 안정화 절차로만 허용한다.
+    - 예외 2: `single PUBSUB` / `single SPOT` post-ready settle은 ready를
+      대체하는 별도 phase가 아니라, 해당 패턴의 전달 준비를 정렬하기 위한
+      bounded 안정화 절차로만 허용한다.
   - `stable`
   - `quiet`
   - `quiescent`
@@ -283,8 +276,8 @@ total: 29 bytes (고정)
 - raw pattern 의 ready gate event 는
   [`doc/guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
   raw socket monitoring 절을 단일 기준으로 따른다.
-- SPOT 과 SPOT_REQREP 은 별도 서비스 이벤트 스트림을 사용하지 않으며, perf-ready 는
-  suite별 benchmark barrier protocol 로만 정의한다.
+- SPOT 과 MULTI_SPOT_REQREP 은 별도 서비스 이벤트 스트림을 사용하지 않으며,
+  perf-ready 는 suite별 benchmark barrier protocol 로만 정의한다.
 - monitor event rename:
   - raw socket ready event 는 `CONNECTION_READY` 이다.
 - routing 검증이 필요한 패턴(예: ROUTER)은 monitor-ready 이후
@@ -385,8 +378,8 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `core/perf`�
 - `PUBSUB`, `SPOT`
   - publisher/server는 one-way send다.
   - subscriber/client는 one-way recv다.
-- `SPOT_REQREP`, `MULTI_SPOT_REQREP`
-  - routed request-reply 패턴이다. 실제 흐름은
+- `MULTI_SPOT_REQREP`
+  - multi suite 전용 routed request-reply 패턴이다. 실제 흐름은
     `spot(requester) -> spot_node -> spot_node -> spot(replier)` 를 따르며,
     replier 가 생성한 reply 는 같은 경로를 역방향으로 되돌아와
     requester 가 수신한다.
@@ -765,7 +758,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | metric | 설명 | 필수 |
 |--------|------|------|
 | `throughput` | echo 패턴: 왕복 완료 수 (`ops/s`, 1 op = send + recv response 1회 완료), one-way 패턴: 단방향 수신 수 (`msg/s`) | MUST |
-| `bandwidth` | 네트워크 전송량 (MB/s) — echo 패턴(single `SPOT_REQREP` 포함, multi echo 전체): `throughput × size × 2 / 1,000,000`, one-way 패턴(single one-way + multi one-way): `throughput × size / 1,000,000` | MUST |
+| `bandwidth` | 네트워크 전송량 (MB/s) — echo 패턴(multi echo 전체): `throughput × size × 2 / 1,000,000`, one-way 패턴(single 전체 + multi one-way): `throughput × size / 1,000,000` | MUST |
 | `latency` | 레이턴시 (internal ns, external ms) | MUST |
 | `latency_p95` | 레이턴시 95th percentile (internal ns, external ms) | MUST |
 | `latency_p99` | 레이턴시 99th percentile (internal ns, external ms) | MUST |

@@ -418,7 +418,6 @@ def rows_by_case(rows, *, warn=None):
 
 def pattern_direction_label(pattern):
     if pattern in {
-        "SPOT_REQREP",
         "MULTI_DEALER_ROUTER",
         "MULTI_ROUTER_ROUTER",
         "MULTI_STREAM",

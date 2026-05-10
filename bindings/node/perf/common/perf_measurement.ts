@@ -134,8 +134,7 @@ function computeMetrics(
 }
 
 function isEchoPattern(pattern) {
-  return pattern === 'SPOT_REQREP'
-    || pattern === 'MULTI_DEALER_ROUTER'
+  return pattern === 'MULTI_DEALER_ROUTER'
     || pattern === 'MULTI_ROUTER_ROUTER'
     || pattern === 'MULTI_STREAM'
     || pattern === 'MULTI_SPOT_REQREP';

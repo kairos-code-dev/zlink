@@ -92,7 +92,7 @@ Options:
   -h, --help
 
 Notes:
-  - Supported single patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT,SPOT_REQREP
+  - Supported single patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT
 USAGE
 }
 
@@ -211,7 +211,7 @@ trap cleanup EXIT
 
 IFS=',' read -r -a SIZES <<< "${MSG_SIZES}"
 if [[ "${PATTERN}" == "ALL" ]]; then
-  PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER" "SPOT" "SPOT_REQREP")
+  PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER" "SPOT")
 else
   IFS=',' read -r -a PATTERNS <<< "${PATTERN}"
 fi
@@ -224,7 +224,7 @@ fi
 
 pattern_transports() {
   case "$1" in
-    SPOT|SPOT_REQREP) echo "tcp tls ws wss" ;;
+    SPOT) echo "tcp tls ws wss" ;;
     *)
       if [[ "${PLATFORM}" == "windows" ]]; then
         echo "tcp tls ws wss inproc"
@@ -346,7 +346,7 @@ if not all(key in metrics for key in required):
     print(f"      | {size}B | {'FAIL':>16} | {'FAIL':>10} | {'FAIL':>13} | {'FAIL':>13} | {'FAIL':>13} |")
     raise SystemExit(0)
 
-unit = "Kops/s" if pattern == "SPOT_REQREP" else "Kmsg/s"
+unit = "Kmsg/s"
 throughput = float(metrics["throughput"]) / 1000.0
 bandwidth = float(metrics["bandwidth"])
 latency = float(metrics["latency"])
@@ -380,7 +380,7 @@ import sys
 
 tmp_dir = sys.argv[1]
 metrics = ("throughput", "bandwidth", "latency", "latency_p95", "latency_p99")
-echo_patterns = {"SPOT_REQREP"}
+echo_patterns = set()
 rows = defaultdict(lambda: defaultdict(list))
 for entry in os.listdir(tmp_dir):
     if not entry.endswith(".log"):

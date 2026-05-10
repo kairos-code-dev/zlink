@@ -51,8 +51,6 @@ func main() {
 		result = runRouterRouter(cfg)
 	case "SPOT":
 		result = runSpot(cfg)
-	case "SPOT_REQREP":
-		result = runSpotReqRep(cfg)
 	default:
 		perfcommon.Must(
 			&unsupportedPatternError{pattern: cfg.pattern},

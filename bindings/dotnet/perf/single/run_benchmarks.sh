@@ -150,7 +150,7 @@ validate_uint() {
 normalize_pattern_csv() {
   local raw="${1:-}"
   if [[ "${raw}" == "ALL" ]]; then
-    printf '%s' "PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT,SPOT_REQREP"
+    printf '%s' "PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT"
     return
   fi
 
@@ -164,7 +164,6 @@ allowed = {
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "SPOT",
-    "SPOT_REQREP",
 }
 
 items = []
@@ -187,7 +186,7 @@ pattern_supports_transport() {
   local pattern="${1:-}"
   local transport="${2:-}"
   case "${pattern}" in
-    SPOT|SPOT_REQREP)
+    SPOT)
       [[ "${transport}" =~ ^(tcp|tls|ws|wss)$ ]]
       ;;
     *)
@@ -202,7 +201,7 @@ pattern_supports_transport() {
 
 default_transports_for_pattern() {
   local pattern="${1:-}"
-  if [[ "${pattern}" == "SPOT" || "${pattern}" == "SPOT_REQREP" ]]; then
+  if [[ "${pattern}" == "SPOT" ]]; then
     printf '%s' "tcp,tls,ws,wss"
     return
   fi
@@ -252,9 +251,6 @@ emit_markdown_table() {
   fi
 
   local pattern_kind="one-way"
-  if [[ "${pattern}" == "SPOT_REQREP" ]]; then
-    pattern_kind="echo"
-  fi
 
   print_line "## PATTERN: ${pattern} (${pattern_kind})"
   print_line "  > Benchmarking current for ${pattern}..."
@@ -272,7 +268,7 @@ required = [
     "latency_p95",
     "latency_p99",
 ]
-throughput_unit = "Kops/s" if pattern == "SPOT_REQREP" else "Kmsg/s"
+throughput_unit = "Kmsg/s"
 rows = OrderedDict()
 with open(sys.argv[1], encoding="utf-8") as handle:
     reader = csv.reader(handle)

@@ -25,12 +25,11 @@ const PATTERNS = {
   DEALER_DEALER: { script: 'perf_dealer_dealer.js' },
   DEALER_ROUTER: { script: 'perf_dealer_router.js' },
   ROUTER_ROUTER: { script: 'perf_router_router.js' },
-  SPOT: { script: 'perf_spot.js' },
-  SPOT_REQREP: { script: 'perf_spot_reqrep.js' }
+  SPOT: { script: 'perf_spot.js' }
 };
 
 function policyTransports(pattern) {
-  const raw = pattern === 'SPOT' || pattern === 'SPOT_REQREP'
+  const raw = pattern === 'SPOT'
     ? ['tcp', 'tls', 'ws', 'wss']
     : ['tcp', 'tls', 'ws', 'wss', 'inproc', 'ipc'];
   if (process.platform === 'win32') {
@@ -120,7 +119,7 @@ function formatFailureRow(msgSize, label = 'FAIL') {
 }
 
 function isPlatformSkip(pattern, transport) {
-  return process.platform === 'win32' && transport === 'ipc' && pattern !== 'SPOT' && pattern !== 'SPOT_REQREP';
+  return process.platform === 'win32' && transport === 'ipc' && pattern !== 'SPOT';
 }
 
 function isUnsupportedLines(lines) {

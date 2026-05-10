@@ -392,11 +392,8 @@ pub fn build_phase_result(size: usize, duration_s: u64, stats: &StatsResult) -> 
     }
 }
 
-fn bandwidth_multiplier(pattern: &str) -> f64 {
-    match pattern {
-        "SPOT_REQREP" => 2.0,
-        _ => 1.0,
-    }
+fn bandwidth_multiplier(_pattern: &str) -> f64 {
+    1.0
 }
 
 // -- RESULT output -----------------------------------------------------------

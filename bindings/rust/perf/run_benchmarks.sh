@@ -99,9 +99,6 @@ default_transports_for_pattern() {
         SPOT)
             printf '%s' "tcp,tls,ws,wss"
             ;;
-        SPOT_REQREP)
-            printf '%s' "tcp,tls,ws,wss"
-            ;;
         *)
             if [[ "${PLATFORM}" == "windows" ]]; then
                 printf '%s' "tcp,tls,ws,wss,inproc"
@@ -190,7 +187,7 @@ fi
 IFS=',' read -ra SIZE_LIST <<< "${MSG_SIZES}"
 
 if [[ "${PATTERN}" == "ALL" ]]; then
-    PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER" "SPOT" "SPOT_REQREP")
+    PATTERNS=("PAIR" "PUBSUB" "DEALER_DEALER" "DEALER_ROUTER" "ROUTER_ROUTER" "SPOT")
 else
     IFS=',' read -ra PATTERNS <<< "${PATTERN}"
 fi
@@ -213,7 +210,6 @@ for pat in "${PATTERNS[@]}"; do
         DEALER_ROUTER)   BIN="${SINGLE_DIR}/perf_dealer_router" ;;
         ROUTER_ROUTER)   BIN="${SINGLE_DIR}/perf_router_router" ;;
         SPOT)            BIN="${SINGLE_DIR}/perf_spot" ;;
-        SPOT_REQREP)     BIN="${SINGLE_DIR}/perf_spot_reqrep" ;;
         *)               continue ;;
     esac
     current_transports="${TRANSPORTS:-$(default_transports_for_pattern "${pat}")}"
@@ -373,7 +369,7 @@ emit("==========================================================================
 emit("")
 
 def pattern_direction(pattern):
-    return "echo" if pattern == "SPOT_REQREP" else "one-way"
+    return "one-way"
 
 def rate_unit(pattern):
     return "Kops/s" if pattern_direction(pattern) == "echo" else "Kmsg/s"

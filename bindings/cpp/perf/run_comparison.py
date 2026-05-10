@@ -76,7 +76,6 @@ SINGLE_COMPARISONS = [
     ("perf_dealer_router", "DEALER_ROUTER"),
     ("perf_router_router", "ROUTER_ROUTER"),
     ("perf_spot", "SPOT"),
-    ("perf_spot_reqrep", "SPOT_REQREP"),
 ]
 MULTI_COMPARISONS = [
     ("comp_src_dealer_dealer_client", "DEALER_DEALER"),

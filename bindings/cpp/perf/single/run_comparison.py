@@ -31,7 +31,6 @@ DEFAULT_PATTERNS = [
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "SPOT",
-    "SPOT_REQREP",
 ]
 
 PATTERN_TO_BINARY = {
@@ -41,7 +40,6 @@ PATTERN_TO_BINARY = {
     "DEALER_ROUTER": "perf_dealer_router",
     "ROUTER_ROUTER": "perf_router_router",
     "SPOT": "perf_spot",
-    "SPOT_REQREP": "perf_spot_reqrep",
 }
 
 SINGLE_RECV_MODE = "recv"
@@ -54,7 +52,6 @@ if not IS_WINDOWS:
 DEFAULT_STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 STREAM_TRANSPORT_PATTERNS = {
     "SPOT",
-    "SPOT_REQREP",
 }
 STREAM_SIZE_PATTERNS = set()
 

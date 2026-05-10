@@ -32,7 +32,6 @@ DEFAULT_PATTERNS = [
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "SPOT",
-    "SPOT_REQREP",
 ]
 
 PATTERN_TO_BINARY = {
@@ -42,7 +41,6 @@ PATTERN_TO_BINARY = {
     "DEALER_ROUTER": "perf_dealer_router",
     "ROUTER_ROUTER": "perf_router_router",
     "SPOT": "perf_spot",
-    "SPOT_REQREP": "perf_spot_reqrep",
 }
 
 SINGLE_RECV_MODE = "recv"
@@ -56,7 +54,6 @@ DEFAULT_STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 DEFAULT_SPOT_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 STREAM_TRANSPORT_PATTERNS = {
     "SPOT",
-    "SPOT_REQREP",
 }
 STREAM_SIZE_PATTERNS = set()
 
@@ -904,14 +901,10 @@ def collect_missing_build_targets(
 
 
 def pattern_direction_label(pattern: str) -> str:
-    if pattern == "SPOT_REQREP":
-        return "echo"
     return "one-way"
 
 
 def format_throughput(pattern: str, throughput_per_sec: float) -> str:
-    if pattern == "SPOT_REQREP":
-        return f"{throughput_per_sec/1e3:6.2f} Kops/s"
     return f"{throughput_per_sec/1e3:6.2f} Kmsg/s"
 
 

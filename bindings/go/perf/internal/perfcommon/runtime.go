@@ -71,7 +71,7 @@ func readySettleDuration(pattern string) time.Duration {
 	switch pattern {
 	case "PUBSUB":
 		return durationFromEnv("PERF_SINGLE_PUBSUB_READY_SETTLE_MS", time.Second)
-	case "SPOT", "SPOT_REQREP":
+	case "SPOT":
 		return durationFromEnv("PERF_SINGLE_SPOT_READY_SETTLE_MS", time.Second)
 	default:
 		return 0

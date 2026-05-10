@@ -98,7 +98,6 @@ if(EXISTS "${PERF_BINDINGS_C_INCLUDE_DIR}/zlink_c.h")
     add_current_bench_single(perf_dealer_router single/src/perf_dealer_router.cpp)
     add_current_bench_single(perf_router_router single/src/perf_router_router.cpp)
     add_current_bench_single(perf_spot single/src/perf_spot.cpp)
-    add_current_bench_single(perf_spot_reqrep single/src/perf_spot_reqrep.cpp)
 
     add_executable(
         perf_stream_client

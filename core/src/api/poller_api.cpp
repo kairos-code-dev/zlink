@@ -707,11 +707,24 @@ int zlink_poller_wait (void *poller_,
         const poller_registration_t *registration =
           find_registration_for_native (poller, native_event);
         if (is_hidden_completion_registration (registration)) {
-            if (drain_hidden_completion_registration (registration) < 0) {
+            const int drain_rc =
+              drain_hidden_completion_registration (registration);
+            if (drain_rc < 0) {
                 if (error_out_)
                     *error_out_ =
                       zlink::config_result_internal::from_errno (errno);
                 return -1;
+            }
+            // Mirror zlink_poller_wait_all: when a hidden completion drain
+            // fires user callbacks (e.g. reply handlers that flip caller-
+            // visible state), surface it to the caller so it can act on
+            // the just-fired completion and submit follow-up work. Looping
+            // back into wait() here would block until the next timeout,
+            // capping callback-driven throughput at 1 / timeout per slot.
+            if (drain_rc > 0) {
+                if (error_out_)
+                    *error_out_ = ZLINK_CONFIG_OK;
+                return 0;
             }
             continue;
         }

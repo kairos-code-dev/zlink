@@ -621,27 +621,16 @@ void test_spot_poller_accepts_pollin_or_pollout_combined ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-// Regression marker: sustained spot request/reply round trips must wake
-// zlink_poller_wait on every reply, not just the first. The single C
-// binding's perf_spot_reqrep benchmark observed wakeup misses on the
-// second and subsequent replies when poller_wait was called with a long
-// timeout, forcing the benchmark to fall back to a 1 ms polling cadence
-// (PERF_SINGLE_TEST_POLICY § 1.4 mandates -1 / signal-driven wait).
-//
-// This test exercises the same SpotNode + spot_request_spot path used by
-// bindings/c/perf/single/src/perf_spot_reqrep.cpp and asserts that 16
-// consecutive replies all return from poller_wait within 500 ms. When
-// the wakeup miss is fixed, this test completes in well under a second;
-// while the bug remains, it stalls on the second poller_wait and trips
-// the per-call timeout. Marked TEST_IGNORE_MESSAGE so the suite still
-// passes in CI; flip on the assertion when the core fix lands and re-
-// enable the -1 wait in perf_spot_reqrep.cpp.
+// Regression: sustained spot request/reply round trips must let
+// zlink_poller_wait return after every reply, not just the first. The
+// single-event variant previously looped back into wait() after firing
+// the hidden completion drain (no public event to surface), capping
+// callback-driven throughput at 1 / poll_timeout per slot. The fix
+// mirrors zlink_poller_wait_all and returns 0 once the drain fires
+// any user callback so the caller can act on the just-received reply
+// and submit follow-up work.
 void test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop ()
 {
-    TEST_IGNORE_MESSAGE (
-      "Pending core fix: spot completion-signal-fd misses wakeups for "
-      "sustained reqrep traffic; see perf_spot_reqrep.cpp poll_client_progress "
-      "TODO(core).");
     void *ctx = zlink_ctx_new ();
     void *node = zlink_spot_node_new (ctx, NULL);
     void *client_spot = zlink_spot_new (node);

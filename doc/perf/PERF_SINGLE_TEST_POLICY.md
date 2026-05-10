@@ -173,6 +173,17 @@ drain 의 자연스러운 처리:
   먼저 도달하므로 receiver 가 차례대로 record 한 뒤 마지막으로 stop token
   을 만난다. 별도 deadline 기반 drain loop 없이 phase 종료가 처리된다.
 
+SPOT one-way 예외:
+- SPOT one-way benchmark 는 active phase 에서 데이터 경로를 의도적으로 포화시킨다.
+  이때 active publisher 와 같은 원격 데이터 경로에 stop token 을 넣으면, stop
+  token 이 큰 backlog 뒤에 밀려 phase 종료가 실제 데이터 drain 시간에 묶인다.
+- 따라서 SPOT one-way 는 subscriber 와 같은 `SpotNode` 에 benchmark 전용
+  stop publisher 를 하나 두고, 같은 topic 에 stop token 을 보낸다. receiver 는
+  기존과 같이 `is_stop_token(...)` 으로 종료한다.
+- 이 예외는 별도 fd / eventfd / pipe / cancellation token 이 아니다. 종료 신호는
+  여전히 zlink 의 SPOT topic 메시지이며, active 데이터 경로의 backlog 와 phase
+  종료 신호만 분리한다.
+
 ---
 
 ## 2. Phase 규칙

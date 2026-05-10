@@ -258,7 +258,7 @@ bool publish_metric_payload (void *publisher_,
     if (zlink_msg_init_size (&part, payload_->size ()) != 0)
         return false;
     std::memcpy (zlink_msg_data (&part), payload_->data (), payload_->size ());
-    if (zlink_publish (
+    if (zlink_spot_publish (
           publisher_, k_topic, &part, 1, static_cast<zlink_send_flags_t> (flags_))
         != 0) {
         const int err = zlink_errno ();
@@ -370,8 +370,8 @@ bool send_spot_stop_token (void *publisher_)
             return false;
         std::memcpy (zlink_msg_data (&part), k_stop_token,
                      std::strlen (k_stop_token));
-        if (zlink_publish (publisher_, k_topic, &part, 1,
-                           ZLINK_SEND_FLAGS_NONE)
+        if (zlink_spot_publish (publisher_, k_topic, &part, 1,
+                                ZLINK_SEND_FLAGS_NONE)
             == 0)
             return true;
         const int err = zlink_errno ();
@@ -421,6 +421,7 @@ bool send_spot_samples (void *publisher_,
 }
 
 bool run_active_window (void *publisher_,
+                        void *stop_publisher_,
                         void *subscriber_,
                         spot_recv_state_t *state_,
                         int duration_s_,
@@ -429,8 +430,8 @@ bool run_active_window (void *publisher_,
                         latency_stats_t *latency_out_)
 {
     (void) recv_timeout_ms_;
-    if (!publisher_ || !subscriber_ || !state_ || !throughput_out_
-        || !latency_out_) {
+    if (!publisher_ || !stop_publisher_ || !subscriber_ || !state_
+        || !throughput_out_ || !latency_out_) {
         return false;
     }
 
@@ -485,7 +486,9 @@ bool run_active_window (void *publisher_,
             std::cerr << "[perf-spot] sender start" << std::endl;
         const bool active_ok = send_spot_samples (
           publisher_, &payload, state_, duration_s_, &sent_count);
-        const bool stop_ok = send_spot_stop_token (publisher_);
+        // Keep phase-end signaling on a SPOT message, but avoid queuing the
+        // terminator behind the saturated one-way data path.
+        const bool stop_ok = send_spot_stop_token (stop_publisher_);
         sender_ok.store (active_ok && stop_ok, std::memory_order_release);
         if (bench_debug_enabled ()) {
             std::cerr << "[perf-spot] sender done ok="
@@ -522,6 +525,7 @@ bool run_active_window (void *publisher_,
 }
 
 void cleanup_spot_case (void **subscriber_,
+                        void **stop_publisher_,
                         void **publisher_,
                         void **subscriber_discovery_,
                         void **publisher_discovery_,
@@ -531,6 +535,8 @@ void cleanup_spot_case (void **subscriber_,
 {
     if (subscriber_ && *subscriber_)
         zlink_spot_destroy (subscriber_);
+    if (stop_publisher_ && *stop_publisher_)
+        zlink_spot_destroy (stop_publisher_);
     if (publisher_ && *publisher_)
         zlink_spot_destroy (publisher_);
     if (subscriber_discovery_ && *subscriber_discovery_)
@@ -579,11 +585,13 @@ int run_case (const std::string &lib_name_,
     void *publisher_discovery = NULL;
     void *subscriber_discovery = NULL;
     void *publisher = NULL;
+    void *stop_publisher = NULL;
     void *subscriber = NULL;
     if (!publisher_node || !subscriber_node) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] object creation failed" << std::endl;
         cleanup_spot_case (&subscriber,
+                           &stop_publisher,
                            &publisher,
                            &subscriber_discovery,
                            &publisher_discovery,
@@ -602,6 +610,7 @@ int run_case (const std::string &lib_name_,
             std::cerr << "[perf-spot] tls setup failed err=" << zlink_errno ()
                       << std::endl;
         cleanup_spot_case (&subscriber,
+                           &stop_publisher,
                            &publisher,
                            &subscriber_discovery,
                            &publisher_discovery,
@@ -614,12 +623,16 @@ int run_case (const std::string &lib_name_,
 
     const int base_port = 25000 + (current_process_id () % 32) * 512;
     publisher = zlink_spot_new (publisher_node);
+    // The stop publisher lives on the subscriber node so the stop token is a
+    // SPOT topic message without depending on the active remote backlog.
+    stop_publisher = zlink_spot_new (subscriber_node);
     subscriber = zlink_spot_new (subscriber_node);
-    if (!publisher || !subscriber) {
+    if (!publisher || !stop_publisher || !subscriber) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] spot handle creation failed"
                       << std::endl;
         cleanup_spot_case (&subscriber,
+                           &stop_publisher,
                            &publisher,
                            &subscriber_discovery,
                            &publisher_discovery,
@@ -631,8 +644,10 @@ int run_case (const std::string &lib_name_,
     }
 
     apply_single_hwm (publisher);
+    apply_single_hwm (stop_publisher);
     apply_single_hwm (subscriber);
     apply_single_benchmark_socket_options (publisher, transport_);
+    apply_single_benchmark_socket_options (stop_publisher, transport_);
     apply_single_benchmark_socket_options (subscriber, transport_);
 
     if (zlink_set_subscription (subscriber, k_topic) != ZLINK_CONFIG_OK) {
@@ -640,6 +655,7 @@ int run_case (const std::string &lib_name_,
             std::cerr << "[perf-spot] set subscription failed err="
                       << zlink_errno () << std::endl;
         cleanup_spot_case (&subscriber,
+                           &stop_publisher,
                            &publisher,
                            &subscriber_discovery,
                            &publisher_discovery,
@@ -662,6 +678,7 @@ int run_case (const std::string &lib_name_,
                       << " err=" << zlink_errno () << std::endl;
         }
         cleanup_spot_case (&subscriber,
+                           &stop_publisher,
                            &publisher,
                            &subscriber_discovery,
                            &publisher_discovery,
@@ -685,6 +702,7 @@ int run_case (const std::string &lib_name_,
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] ready barrier failed" << std::endl;
         cleanup_spot_case (&subscriber,
+                           &stop_publisher,
                            &publisher,
                            &subscriber_discovery,
                            &publisher_discovery,
@@ -698,6 +716,7 @@ int run_case (const std::string &lib_name_,
         if (bench_debug_enabled ())
             std::cerr << "[perf-spot] post-ready settle failed" << std::endl;
         cleanup_spot_case (&subscriber,
+                           &stop_publisher,
                            &publisher,
                            &subscriber_discovery,
                            &publisher_discovery,
@@ -715,6 +734,7 @@ int run_case (const std::string &lib_name_,
     if (bench_debug_enabled ())
         std::cerr << "[perf-spot] active window start" << std::endl;
     const bool active_ok = run_active_window (publisher,
+                                              stop_publisher,
                                               subscriber,
                                               &state,
                                               std::max (

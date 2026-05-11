@@ -44,6 +44,9 @@ public final class RouterSocket extends Socket {
     public boolean recv(Received result, RecvFlags flags) {
         java.util.Objects.requireNonNull(result, "result");
         java.util.Objects.requireNonNull(flags, "flags");
+        if (flags == RecvFlags.DONT_WAIT) {
+            return routedRequests.recvInto(result, flags);
+        }
         Received fresh = routedRequests.recv(flags);
         if (fresh == null) return false;
         result.adoptFrom(fresh);

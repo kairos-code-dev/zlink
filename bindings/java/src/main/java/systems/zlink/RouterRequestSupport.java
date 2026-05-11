@@ -302,6 +302,26 @@ final class RouterRequestSupport implements AutoCloseable {
         return recvDirectOnceOrNull(RecvFlags.DONT_WAIT);
     }
 
+    /**
+     * Canonical caller-provided storage recv. Populates {@code target}
+     * directly when the routed recv yields a single-part non-request-seq
+     * message (the routed-echo hot path); for multipart or request-seq
+     * results falls through to the legacy allocate-and-adopt path so the
+     * surface keeps the same observable semantics across recv shapes.
+     * Returns {@code true} on data, {@code false} on EAGAIN with
+     * {@link RecvFlags#DONT_WAIT}.
+     */
+    boolean recvInto(Received target, RecvFlags flags) {
+        Objects.requireNonNull(target, "target");
+        Objects.requireNonNull(flags, "flags");
+        if (dataHandler != null) {
+            throw new IllegalStateException(
+                "socket is in callback mode; direct recv is not allowed");
+        }
+        boolean dontWait = (flags == RecvFlags.DONT_WAIT);
+        return recvDirectOnceIntoImpl(target, flags, dontWait);
+    }
+
     Optional<Received> recvNoWait() {
         return Optional.ofNullable(recvNoWaitOrNull());
     }
@@ -457,6 +477,149 @@ final class RouterRequestSupport implements AutoCloseable {
                 NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
         }
         return nativeRid;
+    }
+
+    /**
+     * Variant of {@link #recvDirectOnceImpl} that, when the result is a
+     * single-part non-request-seq routed message (no spot, no request
+     * sequence — the routed echo hot path), populates {@code target} in
+     * place via {@link Received#populateRoutedSinglePart}, avoiding the
+     * fresh {@link Received} allocation that the legacy path makes.
+     * Other paths fall back to the existing impl + {@link Received#adoptFrom}.
+     */
+    private boolean recvDirectOnceIntoImpl(Received target, RecvFlags flags,
+                                           boolean nullOnNoData) {
+        Received active = activeLazyReceive.get();
+        if (active != null) {
+            active.forceMaterialize();
+            activeLazyReceive.remove();
+        }
+
+        RecvOutScratch scratch = RECV_OUT_SCRATCH.get();
+        MemorySegment sourceNodeRidOut = scratch.sourceNodeRidOut;
+        MemorySegment sourceSpotRidOut = scratch.sourceSpotRidOut;
+        MemorySegment requestSeqOut = scratch.requestSeqOut;
+        MemorySegment hasMoreOut = scratch.hasMoreOut;
+        Message firstPart = new Message();
+        boolean firstPartConsumed = false;
+        try {
+            int rc;
+            while (true) {
+                rc = Native.routerRecvPart(socket.handle(), sourceNodeRidOut,
+                    sourceSpotRidOut, requestSeqOut,
+                    InternalAccess.messageNativeHandle(firstPart), hasMoreOut,
+                    flags.value());
+                if (rc == 0) break;
+                int errno = Native.errno();
+                if (errno == 4) continue;
+                RecvResult result = RecvResult.fromValue(rc);
+                if (nullOnNoData && (result == RecvResult.NO_DATA
+                    || result == RecvResult.BUSY)) {
+                    return false;
+                }
+                throw new RecvException(result, errno);
+            }
+            boolean hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+            InternalAccess.messageFinishReceive(firstPart, hasMore);
+            long requestSequence = requestSeqOut.get(ValueLayout.JAVA_LONG, 0);
+
+            if (!hasMore && requestSequence == 0L) {
+                // Routed echo hot path: populate caller storage in place.
+                byte[] nodeRidBytes = readRoutingIdBytesOut(sourceNodeRidOut);
+                byte[] spotRidBytes = readRoutingIdBytesOut(sourceSpotRidOut);
+                firstPartConsumed = true;
+                target.populateRoutedSinglePart(nodeRidBytes, spotRidBytes,
+                    firstPart, 0L, false, null, lazyCompletionRunnable);
+                return true;
+            }
+
+            // Cold path (multipart or request-seq): fall back to the legacy
+            // allocate-and-adopt implementation so surface semantics stay
+            // identical for non-echo routed recv shapes (request-reply,
+            // multipart envelopes).
+            firstPartConsumed = continueFallbackAdopt(target, firstPart, hasMore,
+                requestSequence, scratch, flags);
+            return true;
+        } finally {
+            if (!firstPartConsumed) {
+                try { firstPart.close(); } catch (RuntimeException ignored) {}
+            }
+        }
+    }
+
+    private boolean continueFallbackAdopt(Received target, Message firstPart,
+                                          boolean hasMore, long requestSequence,
+                                          RecvOutScratch scratch, RecvFlags flags) {
+        // Reconstruct a fresh Received via the existing constructors for the
+        // multipart / request-seq case, then adoptFrom into the target.
+        MemorySegment sourceNodeRidOut = scratch.sourceNodeRidOut;
+        MemorySegment sourceSpotRidOut = scratch.sourceSpotRidOut;
+        MemorySegment requestSeqOut = scratch.requestSeqOut;
+        MemorySegment hasMoreOut = scratch.hasMoreOut;
+        Received fresh;
+        if (!hasMore) {
+            RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
+            RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
+            fresh = new Received(nodeRid, spotRid, firstPart,
+                requestSequence, true,
+                (replyParts, sendFlags) -> {
+                    if (spotRid != null) {
+                        socket.replyToSpot(nodeRid, spotRid, requestSequence,
+                            replyParts, sendFlags);
+                    } else {
+                        reply(nodeRid, requestSequence, replyParts, sendFlags);
+                    }
+                }, lazyCompletionRunnable);
+        } else {
+            java.util.ArrayList<Message> parts = new java.util.ArrayList<>();
+            parts.add(firstPart);
+            boolean stillMore = true;
+            while (stillMore) {
+                Message next = new Message();
+                boolean nextOk = false;
+                try {
+                    int rc = Native.routerRecvPart(socket.handle(),
+                        sourceNodeRidOut, sourceSpotRidOut, requestSeqOut,
+                        InternalAccess.messageNativeHandle(next), hasMoreOut,
+                        flags.value());
+                    if (rc != 0) {
+                        if (Native.errno() == 4) continue;
+                        throw new RecvException(RecvResult.fromValue(rc),
+                            Native.errno());
+                    }
+                    stillMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                    InternalAccess.messageFinishReceive(next, stillMore);
+                    parts.add(next);
+                    nextOk = true;
+                } finally {
+                    if (!nextOk) {
+                        try { next.close(); } catch (RuntimeException ignored) {}
+                    }
+                }
+            }
+            Message[] partsArray = parts.toArray(new Message[0]);
+            if (requestSequence == 0L) {
+                byte[] nodeRidBytes = readRoutingIdBytesOut(sourceNodeRidOut);
+                byte[] spotRidBytes = readRoutingIdBytesOut(sourceSpotRidOut);
+                fresh = new Received(nodeRidBytes, spotRidBytes, partsArray,
+                    true, 0L, false, null, lazyCompletionRunnable);
+            } else {
+                RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
+                RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
+                fresh = new Received(nodeRid, spotRid, partsArray, true,
+                    requestSequence, true,
+                    (replyParts, sendFlags) -> {
+                        if (spotRid != null) {
+                            socket.replyToSpot(nodeRid, spotRid, requestSequence,
+                                replyParts, sendFlags);
+                        } else {
+                            reply(nodeRid, requestSequence, replyParts, sendFlags);
+                        }
+                    }, lazyCompletionRunnable);
+            }
+        }
+        target.adoptFrom(fresh);
+        return true;
     }
 
     private Received recvDirect(RecvFlags flags) {

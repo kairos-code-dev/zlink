@@ -84,6 +84,53 @@ public final class Received implements AutoCloseable {
     }
 
     /**
+     * Populate this Received in place with a single-part routed recv
+     * result. Avoids the intermediate {@link Received} allocation that
+     * the legacy {@code recv() -> Received} pattern incurs. Caller-side
+     * close + adoptFrom would otherwise dominate the GC profile of the
+     * canonical ref-out recv hot path.
+     */
+    void populateRoutedSinglePart(byte[] routingIdBytes,
+                                  byte[] spotRidBytes,
+                                  Message singlePart,
+                                  long requestSequence,
+                                  boolean hasRequestSequence,
+                                  BiConsumer<List<Message>, SendFlags> replySender,
+                                  Runnable onTerminalState) {
+        Objects.requireNonNull(singlePart, "singlePart");
+        synchronized (this) {
+            // Discard any prior owned state without recycling the parts list,
+            // so we can reuse it without reallocation.
+            if (realizedParts != null && !realizedParts.isEmpty()) {
+                for (int i = 0; i < realizedParts.size(); i++) {
+                    Message part = realizedParts.get(i);
+                    if (part != null) {
+                        try { part.close(); } catch (RuntimeException ignored) {}
+                    }
+                }
+                realizedParts.clear();
+            }
+            ReceivedPartCursor pendingCursor = cursor;
+            cursor = null;
+            this.closed = false;
+            this.routingId = null;
+            this.spotRid = null;
+            this.routingIdBytes = routingIdBytes;
+            this.spotRidBytes = spotRidBytes;
+            this.requestSequence = requestSequence;
+            this.hasRequestSequence = hasRequestSequence;
+            this.replySender = replySender;
+            this.onTerminalState = onTerminalState;
+            if (this.realizedParts == null) {
+                this.realizedParts = acquirePartsList(1);
+            }
+            this.realizedParts.add(singlePart);
+            this.partsView = null;
+            closeCursorQuietly(pendingCursor);
+        }
+    }
+
+    /**
      * Replace this Received's internal state with the contents of
      * {@code source}, transferring ownership of the parts and routing-id
      * storage. Closes any state currently held by {@code this} first. After

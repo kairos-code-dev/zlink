@@ -6,7 +6,9 @@ import systems.zlink.Context;
 import systems.zlink.Message;
 import systems.zlink.MonitorEventType;
 import systems.zlink.PollEventFlag;
+import systems.zlink.RecvException;
 import systems.zlink.RecvFlags;
+import systems.zlink.RecvResult;
 import systems.zlink.RouterSocket;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
@@ -48,6 +50,12 @@ final class PerfMultiRouterRouter {
             PerfUtil.recalculateAutoHwm(ctx);
             int stops = 0;
             Deque<PendingReply> pendingReplies = new ArrayDeque<>();
+            // Long-lived caller-provided Received reused across every recv on
+            // the server hot path. The binding refills its internal state in
+            // place via adoptFrom, avoiding the per-recv Received allocation
+            // that the legacy `recv() -> Received` path forced. Matches the
+            // C++/.NET canonical caller-provided storage pattern.
+            systems.zlink.Received receivedBuffer = new systems.zlink.Received();
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 List.of(server), PollEventFlag.POLLIN)) {
                 // PERF_MULTI_TEST_POLICY § 1.2 echo server: DONT_WAIT + per-socket
@@ -72,39 +80,49 @@ final class PerfMultiRouterRouter {
                         continue;
                     }
                     while (true) {
-                        systems.zlink.Received received =
-                            PerfUtil.recvNoWait(server);
-                        if (received == null) {
-                            break;
+                        boolean ok;
+                        try {
+                            ok = server.recv(receivedBuffer, RecvFlags.DONT_WAIT);
+                        } catch (RecvException ex) {
+                            if (ex.getResult() == RecvResult.NO_DATA
+                                || ex.getResult() == RecvResult.BUSY) {
+                                break;
+                            }
+                            throw ex;
                         }
-                        try (received) {
-                            if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
-                                stops++;
-                                continue;
-                            }
-                            PerfUtil.Header header = PerfUtil.decodeHeader(
-                                received.firstPart(), config.size());
-                            if (header == null) {
-                                continue;
-                            }
-                            RoutingId rid = received.routingId().orElseThrow();
-                            // Fast path: send directly when no pending backlog.
-                            if (pendingReplies.isEmpty()
-                                && server.send(rid, received.firstPart(),
-                                    SendFlags.DONT_WAIT)) {
-                                continue;
-                            }
-                            // Slow path: take ownership of the part to outlive
-                            // the Received scope and enqueue / send.
-                            Message ownedReply = received.firstPart().move();
-                            if (pendingReplies.isEmpty()
-                                && server.send(rid, ownedReply,
-                                    SendFlags.DONT_WAIT)) {
-                                ownedReply.close();
-                            } else {
-                                pendingReplies.addLast(
-                                    new PendingReply(rid, ownedReply));
-                            }
+                        if (!ok) break;
+
+                        if (PerfStopToken.isStopTokenMessage(
+                                receivedBuffer.firstPart())) {
+                            stops++;
+                            receivedBuffer.close();
+                            continue;
+                        }
+                        PerfUtil.Header header = PerfUtil.decodeHeader(
+                            receivedBuffer.firstPart(), config.size());
+                        if (header == null) {
+                            receivedBuffer.close();
+                            continue;
+                        }
+                        RoutingId rid = receivedBuffer.routingId().orElseThrow();
+                        // Fast path: send directly when no pending backlog.
+                        if (pendingReplies.isEmpty()
+                            && server.send(rid, receivedBuffer.firstPart(),
+                                SendFlags.DONT_WAIT)) {
+                            receivedBuffer.close();
+                            continue;
+                        }
+                        // Slow path: take ownership of the part to outlive
+                        // the Received scope and enqueue / send.
+                        Message ownedReply = receivedBuffer.firstPart().move();
+                        receivedBuffer.close();
+                        if (pendingReplies.isEmpty()
+                            && server.send(rid, ownedReply,
+                                SendFlags.DONT_WAIT)) {
+                            ownedReply.close();
+                        } else {
+                            pendingReplies.addLast(
+                                new PendingReply(rid, ownedReply));
                         }
                     }
                 }

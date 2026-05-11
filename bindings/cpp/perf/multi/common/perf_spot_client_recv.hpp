@@ -26,12 +26,22 @@ inline size_t resolve_spot_recv_worker_count (size_t slot_count_)
     if (slot_count_ == 0)
         return 0;
 
-    const unsigned int concurrency = std::thread::hardware_concurrency ();
-    return std::min<size_t> (
-      slot_count_,
-      static_cast<size_t> (std::max (
-        1,
-        static_cast<int> (concurrency > 0 ? concurrency : 1))));
+    if (const char *env = std::getenv ("PERF_MULTI_SPOT_RECV_WORKERS")) {
+        const long parsed = std::strtol (env, NULL, 10);
+        if (parsed > 0)
+            return std::min<size_t> (slot_count_,
+                                     static_cast<size_t> (parsed));
+    }
+
+    // Match the C reference's worker scaling (cpp.md round 19): one worker
+    // per ~16 slots, clamped to [4, 128]. The previous policy of one
+    // worker per hardware thread oversubscribed cores on machines with
+    // higher concurrency than peer-count and burned >3x more CPU than
+    // needed without improving throughput.
+    const size_t scaled =
+      std::max<size_t> (4u,
+                        std::min<size_t> (128u, (slot_count_ + 15u) / 16u));
+    return std::min<size_t> (slot_count_, scaled);
 }
 
 template<typename OwnerT>

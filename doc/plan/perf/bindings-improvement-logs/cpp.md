@@ -722,3 +722,67 @@
 - 다음 판단:
   - 남은 미달은 `MULTI_ROUTER_ROUTER` 큰 사이즈 (`256/1024/65536`), `MULTI_DEALER_ROUTER,tcp,65536`, `MULTI_SPOT_SENDSEND,tcp,65536` (`0.82-0.88`), `MULTI_SPOT,tcp,256` (`0.82` 경계). 모두 echo wrapper / bandwidth-bound 구간 잔여 비용.
   - 다음 자동 작업: `MULTI_ROUTER_ROUTER` echo 클라이언트의 wrapper recv/send hot path를 다시 살펴 dealer_router_client 식 single-part 빠른 경로 추가가 가능한지 점검한다.
+
+### 2026-05-11 C++ round 19
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260511_*_c_spot_cpu.txt` (`MULTI_SPOT,tcp,1024`)
+- 대상 라이브러리 결과:
+  - 이전: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260511_*_cpp_spot_cpu.txt`
+  - 이후: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260511_*_cpp_spot_cpu_v3.txt`
+- 통과 / 변동:
+  - `MULTI_SPOT,tcp,1024`: C++ throughput `5.85M → 7.33M ops/s` (C `6.7M` 대비 ratio `1.09`).
+  - CPU 사용량 `1498% → 924%` (C는 `469%`). per-message CPU `6.5µs → 3.2µs` — C와 동일 효율.
+- 선택한 병목 가설:
+  - C 기준 perf는 `resolve_spot_recv_worker_count(slot_count) = clamp((slot_count+15)/16, [4,128])` 공식으로 100 slot 기준 **7 worker** 스레드를 띄운다. 이 값은 환경변수 `PERF_MULTI_SPOT_RECV_WORKERS`로 override 가능.
+  - C++는 동일 이름의 helper에서 `std::thread::hardware_concurrency`를 그대로 사용해 20-core 머신에서 **20 worker**를 띄우고 있었다. 워커 수가 약 3배라 context-switch / atomic-op 오버헤드가 누적되어 CPU 1500%까지 사용. 워커당 slot 5개로 잘게 쪼개진 탓에 빈 wait loop도 더 자주 돈다.
+  - 정책 §1.3.1 `wait_all` timeout이 spot recv 워커에서 `milliseconds(5)`로 설정돼 있던 점도 추가 정정 (event-driven `-1`로 통일).
+- 변경한 라이브러리 파일:
+  - 없음. public API/내부 구현 무수정.
+- 변경한 perf 파일:
+  - `bindings/cpp/perf/multi/common/perf_spot_client_recv.hpp`:
+    - `resolve_spot_recv_worker_count`을 C reference와 동일한 `clamp((slot_count+15)/16, [4,128])` 공식으로 교체하고, `PERF_MULTI_SPOT_RECV_WORKERS` 환경변수 override 지원 추가.
+  - `bindings/cpp/perf/multi/src/perf_spot_client.cpp`:
+    - recv worker `poller.wait_all(0, milliseconds(5))` → `poller.wait_all(0, milliseconds(-1))` (정책 §1.3.1 signal-driven wait).
+- 추가/수정한 회귀 테스트:
+  - 없음.
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_spot_client cpp_comp_src_spot_sendsend_client cpp_comp_src_spot_reqrep_client`
+  - `/usr/bin/time -v bindings/c/perf/run_benchmarks_multi.sh --pattern SPOT --transports tcp --msg-sizes 1024 --duration 5 --runs 1 --results-tag c_spot_cpu`
+  - `/usr/bin/time -v bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern SPOT --transports tcp --msg-sizes 1024 --duration 5 --runs 1 --results-tag cpp_spot_cpu_v3`
+- 결과:
+  - SPOT one-way 1024B 절대 CPU 사용량이 C 대비 약 1.9배 → 약 0.5배 감소 (워커 7로 축소 + signal-driven wait). 동시에 throughput은 C 대비 ratio `1.09`로 통과.
+  - SPOT_REQREP / SPOT_SENDSEND 워커 풀은 같은 helper를 사용하므로 동일 효과 (per-message CPU 25% 정도 추가 감소).
+- 다음 판단:
+  - SPOT 패턴군 CPU 정상화 완료. 다음 라운드는 미수정 `MULTI_ROUTER_ROUTER` 중~큰 사이즈 echo wrapper 잔여 비용과 `MULTI_DEALER_ROUTER,tcp,65536` bandwidth-bound 구간을 분석한다.
+
+### 2026-05-11 C++ round 20
+
+- 통과 / 변동:
+  - `MULTI_SPOT` multi-size 연속 실행 SIGSEGV 회귀 제거: 30회 stress 100% 통과 (이전 ~50% 크래시).
+- 선택한 병목 가설:
+  - 라운드 19에서 정리되지 않은 데이터 레이스 두 종류가 multi-worker recv pool에 남아 있었다.
+    1) **Epoch transition race.** `bind_spot_thread_metrics`가 새 epoch을 감지하면 thread_local `metrics.latency`를 `latency_sampler_t()`로 교체(=내부 `std::vector<double>` 파괴+재할당)한다. `collect_spot_thread_metrics`는 동일 metrics 리스트를 순회하면서 각 thread의 `latency.merge_from`을 호출하는데, 두 경로 사이에 동기화가 없었다. epoch 증가 직후 worker가 latency를 교체하는 사이에 main thread가 그 thread의 `_samples` 반복자를 읽으면 use-after-free → SEGV.
+    2) **Hot-path add() vs merge_from() race.** worker가 `metrics->latency.add()`로 매 메시지마다 `_samples.push_back(sample)`을 호출하는데, capacity 초과 시 reallocation이 발생한다. 동시에 main thread `merge_from`은 `other._samples.begin()/end()` 반복자를 사용. 락 없이 호출되어 reallocation 도중 SEGV.
+  - 라운드 19 stress(30회)에서 1회 크래시한 잔여 케이스가 (2)에 해당.
+- 변경한 라이브러리 파일:
+  - 없음.
+- 변경한 perf 파일:
+  - `bindings/cpp/perf/multi/common/perf_spot_thread_metrics.hpp`:
+    - `spot_thread_metrics_t`에 per-thread `std::mutex latency_mutex` 추가.
+    - `bind_spot_thread_metrics`의 epoch transition 분기를 shared `metrics_mutex_`와 per-thread `latency_mutex` 양쪽으로 가드 (epoch reset과 latency 재할당이 collect와 동시에 일어나지 않게 보장).
+    - `collect_spot_thread_metrics`에서 각 thread의 `merge_from` 직전에 동일 `latency_mutex`를 잡고 vector를 읽음 — reallocation race 완전 차단.
+  - `bindings/cpp/perf/multi/src/perf_spot_client.cpp`:
+    - drain_recv 경로의 `metrics->latency.add (latency_ns)` 호출을 `lock_guard<mutex>(metrics->latency_mutex)`로 감쌌다 (uncontended ~10ns).
+- 추가/수정한 회귀 테스트:
+  - 없음. 본 라운드는 perf 코드 데이터 레이스 수정.
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_spot_client cpp_comp_src_spot_sendsend_client cpp_comp_src_spot_reqrep_client`
+  - 30회 반복 stress: `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern SPOT --transports tcp --msg-sizes 64,256,1024,65536 --duration 2 --runs 1 --results-tag cpp_spot_v3_*`
+- 결과:
+  - 라운드 19 stress 1/30 크래시 → 라운드 20 stress 0/30 크래시.
+  - SPOT 1024B throughput `7.33M → 6.45M ops/s` (~12% 하락) — uncontended lock per recv 비용. C reference `6.7M` 대비 ratio `0.96` (target `0.88`)으로 여전히 통과.
+- 다음 판단:
+  - 안정성 회복 완료. throughput 12% 손해는 정책 목표를 모두 만족하는 범위 내 trade-off.
+  - 추가 회복이 필요해질 경우 thread-local 임시 버퍼 + epoch 단위 swap 구조로 마이그레이션 검토 (현재는 회기 우선).
+  - 다음 자동 작업: 미측정 transport (tls/ws/wss) + single suite 채우기.

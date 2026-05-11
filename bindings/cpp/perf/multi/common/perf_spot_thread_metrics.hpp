@@ -22,7 +22,8 @@ struct spot_thread_metrics_t
           epoch (0),
           active_received (0),
           sample_index (0),
-          latency ()
+          latency (),
+          latency_mutex ()
     {
     }
 
@@ -32,6 +33,13 @@ struct spot_thread_metrics_t
     unsigned long long active_received;
     unsigned long long sample_index;
     latency_sampler_t latency;
+    // Per-thread latency mutex: the recv worker holds it briefly around
+    // each latency.add(); collect_spot_thread_metrics holds it briefly
+    // when reading the same thread's samples. This prevents the hot
+    // path from racing with collect_*'s merge_from() across the
+    // _samples vector reallocation boundary. Cost on the hot path is
+    // an uncontended lock per recv (~10ns).
+    std::mutex latency_mutex;
 };
 
 template<typename OwnerT>
@@ -46,9 +54,9 @@ inline spot_thread_metrics_t<OwnerT> *bind_spot_thread_metrics (
 
     static thread_local spot_thread_metrics_t<OwnerT> metrics;
     if (!metrics.registered || metrics.owner != owner_) {
+        std::lock_guard<std::mutex> lock (*metrics_mutex_);
         metrics.owner = owner_;
         metrics.registered = true;
-        std::lock_guard<std::mutex> lock (*metrics_mutex_);
         if (std::find (thread_metrics_->begin (),
                        thread_metrics_->end (),
                        &metrics)
@@ -59,6 +67,15 @@ inline spot_thread_metrics_t<OwnerT> *bind_spot_thread_metrics (
 
     const uint64_t epoch = metrics_epoch_->load (std::memory_order_acquire);
     if (metrics.epoch != epoch) {
+        // Reset under the metrics mutex + per-thread latency mutex so
+        // collect_spot_thread_metrics (which scans the thread_metrics list
+        // under the same shared mutex AND grabs the per-thread mutex while
+        // reading) is not concurrently iterating the old latency vector
+        // when this thread replaces it. Without these locks, a recv worker
+        // that crosses an epoch boundary destructs the old _samples vector
+        // while the main thread merge_from reads its iterators → SEGV.
+        std::lock_guard<std::mutex> lock (*metrics_mutex_);
+        std::lock_guard<std::mutex> latency_lock (metrics.latency_mutex);
         metrics.epoch = epoch;
         metrics.active_received = 0;
         metrics.sample_index = 0;
@@ -93,6 +110,10 @@ inline void collect_spot_thread_metrics (
             if (!metrics || metrics->owner != owner_ || metrics->epoch != epoch)
                 continue;
             active_received += metrics->active_received;
+            // Lock per-thread latency while reading its samples vector
+            // so a concurrent add() (in the worker hot path) cannot
+            // reallocate _samples under our iterators.
+            std::lock_guard<std::mutex> latency_lock (metrics->latency_mutex);
             merged_latency.merge_from (metrics->latency);
         }
     }

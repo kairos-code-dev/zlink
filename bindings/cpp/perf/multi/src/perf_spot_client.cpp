@@ -739,7 +739,13 @@ class spot_client_bench_t
                                         ? static_cast<double> (
                                             received_ts_ns - header.sent_ts_ns)
                                         : 0.0;
-            metrics->latency.add (latency_ns);
+            {
+                // Uncontended per-thread mutex; only collect_recv_thread_metrics
+                // ever contends it. Without this lock the vector reallocation
+                // inside add() races with merge_from() in collect → SEGV.
+                std::lock_guard<std::mutex> lock (metrics->latency_mutex);
+                metrics->latency.add (latency_ns);
+            }
 
             if (notify_phase)
                 _phase_cv.notify_all ();
@@ -781,8 +787,14 @@ class spot_client_bench_t
         spot_client_bench_t *bench = first_slot->owner;
 
         while (!bench->_recv_stop.load (std::memory_order_acquire)) {
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. Each
+            // worker owns its own poller registered with the slot spots,
+            // so it wakes promptly on incoming reply. _recv_stop and
+            // shutdown are handled by signaling those spots' wire path
+            // (stop tokens / peer close); the outer benchmark loop joins
+            // these threads via stop_recv_workers().
             worker_->events =
-              worker_->poller.wait_all (0, std::chrono::milliseconds (5));
+              worker_->poller.wait_all (0, std::chrono::milliseconds (-1));
         const int poll_rc = static_cast<int> (worker_->events.size ());
             if (poll_rc < 0) {
                 if (bench->_recv_stop.load (std::memory_order_acquire))

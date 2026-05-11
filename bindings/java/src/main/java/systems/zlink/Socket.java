@@ -1300,10 +1300,24 @@ public abstract class Socket implements AutoCloseable {
         MemorySegment nativeRoutingId = routingId == null
             ? MemorySegment.NULL
             : nativeRoutingId(scratch, routingId);
-        int rc = nativeRoutingId.address() == 0
-            ? Native.sendPart(handle, messageHandle, flags, partFlag)
-            : Native.sendPartRid(handle, nativeRoutingId, messageHandle,
-                flags, partFlag);
+        // DONT_WAIT is contractually non-blocking — use the critical FFM
+        // variant so the JVM elides GC safepoint transitions. Other flags
+        // (blocking send) keep the regular handle for safety.
+        boolean useCritical =
+            (flags & SendFlag.DONTWAIT.getValue()) != 0;
+        int rc;
+        if (nativeRoutingId.address() == 0) {
+            rc = useCritical
+                ? Native.sendPartNoWaitCritical(handle, messageHandle, flags,
+                    partFlag)
+                : Native.sendPart(handle, messageHandle, flags, partFlag);
+        } else {
+            rc = useCritical
+                ? Native.sendPartRidNoWaitCritical(handle, nativeRoutingId,
+                    messageHandle, flags, partFlag)
+                : Native.sendPartRid(handle, nativeRoutingId, messageHandle,
+                    flags, partFlag);
+        }
         if (rc == 0) {
             message.markTransferred();
         }

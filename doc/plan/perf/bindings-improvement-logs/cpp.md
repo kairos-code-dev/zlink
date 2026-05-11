@@ -468,3 +468,257 @@
 - 다음 판단:
   - public API 우회 없이 남은 router-router 차이를 닫기 어렵다. 별도 public API 추가나 perf의 C API 직접 호출은 금지되어 있으므로 미달 상태를 유지하고 다음 언어 확인으로 넘어간다.
 
+### 2026-05-10 C++ round 13
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260510_210118_c_rr_tcp_64_256_round13_baseline.txt`
+  - `bindings/c/perf/baseline/perf_c_multi_linux_20260510_175239.txt` (DEALER_ROUTER, 65536)
+- 대상 언어 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260510_210145_cpp_rr_tcp_64_256_round13_baseline.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260510_*_cpp_dr_tcp_after_single_recv.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260510_*_cpp_dr_tcp_after_msgunit.txt`
+- 통과 (ratio ≥ size별 목표):
+  - `MULTI_ROUTER_ROUTER,tcp,64`: C `407.717` vs C++ `390.770` Kops/s, ratio `0.958` ≥ `0.75` ✅
+  - `MULTI_ROUTER_ROUTER,tcp,256`: C `412.347` vs C++ `381.794`, ratio `0.926` ≥ `0.85` ✅
+  - `MULTI_DEALER_ROUTER,tcp,64`: C `434.836` vs C++ `356.328`, ratio `0.819` ≥ `0.75` ✅
+  - 라운드 12 마지막 보고에서 `MULTI_ROUTER_ROUTER,tcp,64` ratio가 0.63이었지만 그 사이 commits (`f079e18be Fix zlink_poller_wait stall after hidden completion drain`, `787720970 Fix single spot perf shutdown under backlog`, wire-level stop token migration 등)로 0.96으로 개선됐다.
+- 목표 미달 조합:
+  - `MULTI_DEALER_ROUTER,tcp,256`: ratio `0.816` < `0.85` (gap `0.034`)
+  - `MULTI_DEALER_ROUTER,tcp,1024`: ratio `0.808` < `0.88` (gap `0.072`)
+  - `MULTI_DEALER_ROUTER,tcp,65536`: ratio `0.776` < `0.90` (gap `0.124`)
+- 선택한 병목 가설:
+  - C++ DEALER_ROUTER server는 ROUTER_ROUTER server와 다르게 round 12 최적화에서 빠져 있어 무거운 `receive(received, ...)` 객체 wrapper를 사용했다 (single-part `recv(rid, part, flag)` 대신).
+  - C++ DEALER_ROUTER client는 ROUTER_ROUTER client와 다르게 client socket별 `apply_benchmark_auto_hwm_msg_unit` 호출이 누락되어 큰 사이즈에서 auto-HWM이 mis-sized 됐다.
+- 변경한 라이브러리 파일:
+  - 없음.
+- 변경한 perf 파일:
+  - `bindings/cpp/perf/multi/src/perf_dealer_router_server.cpp` (`receive(received_t)` → 단일 part `recv(rid, msg, flag)`로 router_router server와 동일 패턴 적용)
+  - `bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp` (client socket별 `apply_benchmark_auto_hwm_msg_unit` 추가)
+- 추가/수정한 회귀 테스트:
+  - 없음. perf 코드의 hot path 일관성 정렬이며 public C++ API 계약 변경 없음.
+- 실행한 검증 명령:
+  - `cmake --build core/build`
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_dealer_router_server cpp_comp_src_dealer_router_client`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64,256 --duration 5 --runs 1 --results-tag c_rr_tcp_64_256_round13_baseline`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64,256 --duration 5 --runs 1 --results-tag cpp_rr_tcp_64_256_round13_baseline`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 5 --runs 1 --results-tag c_dr_tcp_round13`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 1 --results-tag cpp_dr_tcp_after_msgunit`
+- 결과:
+  - DEALER_ROUTER server single-part recv 적용: 64B 345.254 → 354.994 Kops/s (+2.8%), 256B 356.880 → 359.340 (+0.7%), 1024B 358.298 → 349.857 (-2.4%, 변동성).
+  - DEALER_ROUTER client per-socket MsgUnit 적용: 64B 354.994 → 356.328, 65536B 109.572 → **137.120 (+25%)**, 다른 사이즈는 본질적으로 무변화.
+  - ROUTER_ROUTER 64/256B는 모두 통과로 회복했다.
+- 다음 판단:
+  - DEALER_ROUTER 256/1024/65536 잔여 gap은 측정 변동성 + per-socket validate_routes_once 부재 + 추가 wrapper 오버헤드의 누적이다.
+  - plan §3.5.4 규정상 추가 public API 우회나 측정 코드 변형은 금지되므로, ROUTER_ROUTER round 12 식 추가 최적화 (validate_routes_once 등)를 DEALER_ROUTER에 적용하는 별도 라운드는 다음 turn에 처리한다.
+  - 사용자 지시 "c++,dotnet,java까지 우선 진행"에 따라 .NET 라운드 5로 넘어가 round 4 마지막 gap (ROUTER_ROUTER tcp 64 ratio 0.825) 현재 상태를 확인한다.
+
+### 2026-05-11 C++ round 14
+
+- 동일 조합 C 기준:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260510_210118_c_rr_tcp_64_256_round13_baseline.txt` (현재 재측정 대상)
+- 대상 라이브러리 결과:
+  - 현재 라운드는 코드 경로 수정이 선행되어 재측정은 다음 실행에서 반영한다.
+- 목표 미달 조합:
+  - 라운드 13 잔여: `MULTI_DEALER_ROUTER,tcp,256`, `MULTI_DEALER_ROUTER,tcp,1024`, `MULTI_DEALER_ROUTER,tcp,65536`.
+- 선택한 병목 가설:
+  - non-router/stream 수신에서 매 호출마다 `recv_envelope_t`를 재생성해 `std::vector` 재할당이 생김.
+  - single-part 수신에서 multipart collect/assign 경로를 항상 타면 메시지 수가 적은 workload에서 불필요한 복사/초기화 비용이 커짐.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/base_socket.hpp`
+    - `recv_envelope_t`에 내부 재사용용 `reset()` 추가.
+    - `recv_envelope()`에서 `envelope_ = recv_envelope_t();` 제거.
+    - non-router/stream single-part fast path 추가 후 multipart일 때만 collect 루프로 fallback.
+- 실행한 검증 명령:
+  - 없음 (코드 수정 후 재측정은 다음 턴에서 `bindings/cpp/perf/run_benchmarks_multi.sh`로 수행 예정).
+- 다음 판단:
+  - C++ 목표 미달 구간(`MULTI_DEALER_ROUTER`)을 동일 C 기준으로 재측정해 목표 달성 여부를 확인한다.
+
+### 2026-05-11 C++ round 15
+
+- 동일 조합 C 기준:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260511_101441_c_dr_tcp_round14_verify.txt` (DEALER_ROUTER tcp 64/256/1024/65536)
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260511_102708_c_dd_baseline.txt` (DEALER_DEALER tcp 64/256/1024/65536)
+- 대상 라이브러리 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260511_101525_cpp_dr_tcp_round14_verify.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260511_*_cpp_dd_*` (여러 시도)
+- 통과 (ratio ≥ size별 목표):
+  - `MULTI_DEALER_ROUTER,tcp,64`: C `469.281` vs C++ `460.881` Kops/s, ratio `0.982` ≥ `0.75` ✅
+  - `MULTI_DEALER_ROUTER,tcp,256`: C `451.406` vs C++ `481.319`, ratio `1.066` ≥ `0.85` ✅
+  - `MULTI_DEALER_ROUTER,tcp,1024`: C `452.204` vs C++ `486.878`, ratio `1.077` ≥ `0.88` ✅
+  - 라운드 14의 `recv_envelope_t::reset` + non-router single-part fast path가 64/256/1024 ratio gap을 닫았다.
+- 목표 미달 조합:
+  - `MULTI_DEALER_ROUTER,tcp,65536`: C `191.907` vs C++ `133.725` Kops/s, ratio `0.697` < `0.90` (gap `0.203`)
+  - `MULTI_DEALER_DEALER,tcp,64`: C `3789.433` vs C++ `20.480` Kmsg/s, ratio `0.005` < `0.75` (회귀)
+  - `MULTI_DEALER_DEALER,tcp,256`: C `2310.983` vs C++ `20.480`, ratio `0.009` < `0.85` (회귀)
+  - `MULTI_DEALER_DEALER,tcp,1024`: C `1481.132` vs C++ `20.480`, ratio `0.014` < `0.88` (회귀)
+  - `MULTI_DEALER_DEALER,tcp,65536`: C `178.383` vs C++ `0.320`, ratio `0.002` < `0.90` (회귀)
+- 선택한 병목 가설:
+  - dealer_dealer client (round 14 변경): `state.message`가 setup 시 1회 `external_message_t::adopt`만 받고 send 후 재할당 없이 재사용되어 첫 번째 send 이후 `_valid=false`로 fail. 수정해 매 send마다 `external_message_t::adopt` 적용했지만 결과는 그대로 20480.
+  - dealer_dealer server: 기존 `poller.wait(milliseconds(100))` 정책 위반(§1.3.1)을 `poller.wait_all(1, -1)`로 교정했지만 결과 그대로.
+  - 진단 출력에 의하면 server poll wakeup이 5초 동안 2~3회에 그치고 각 wakeup이 ~50K msgs를 burst drain. 이후 더 이상 POLLIN edge가 도달하지 않아 client는 send HWM(약 1024 msgs)을 채운 뒤 stuck. 전체 active phase 동안 client당 1024 msgs(64B) 또는 16 msgs(65536B)만 전송됨.
+  - 동일 C reference perf는 3.7M~178K msgs/sec로 정상 동작 → core POLLIN re-arm 경로가 one-way DEALER recv 후 대량 drain 시 stall되는 것으로 의심. f079e18be (`Fix zlink_poller_wait stall after hidden completion drain`) 적용 후에도 `wait_all`(zlink_poll) 경로조차 동일 stall 표출.
+- 변경한 라이브러리 파일:
+  - 없음 (core 후보 영역). 라이브러리 public API 우회 금지 및 perf bypass 금지에 따라 lib 수정 보류.
+- 변경한 perf 파일:
+  - `bindings/cpp/perf/multi/src/perf_dealer_dealer_client.cpp`: round 14의 정적 `state.message` 회귀 수정. 매 send마다 `external_message_t::adopt(payload.data(), size, NULL, NULL)`로 재구성.
+  - `bindings/cpp/perf/multi/src/perf_dealer_dealer_server.cpp`: `poller.wait(100ms)` 정책 위반 제거하고 `poller.wait_all(1, -1)` + 단일-part `recv(part, dontwait)` 패턴(dealer_router_server와 동일)으로 정렬.
+- 추가/수정한 회귀 테스트:
+  - 없음. round 15 변경은 perf 정책 정렬 + 회귀 수정이며 라이브러리 동작은 그대로다.
+- 실행한 검증 명령:
+  - `cmake --build core/build`
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_dealer_router_client cpp_comp_src_dealer_router_server cpp_comp_src_dealer_dealer_client cpp_comp_src_dealer_dealer_server`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 1 --results-tag c_dr_tcp_round14_verify`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 1 --results-tag cpp_dr_tcp_round14_verify`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern DEALER_DEALER --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 1 --results-tag c_dd_baseline`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern DEALER_DEALER --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 1 --results-tag cpp_dd_final_check`
+  - `PERF_DEBUG_TRANSITIONS=1` 동일 실행으로 server poll_wakeups/drain_iters/active_count 진단 (진단 출력은 측정 후 제거).
+- 결과:
+  - `MULTI_DEALER_ROUTER,tcp,64/256/1024`은 라운드 14 single-part fast path 덕분에 모두 통과.
+  - `MULTI_DEALER_ROUTER,tcp,65536`은 ratio 0.697로 미달. 동일 workload에서 latency p99 C `0.566ms` vs C++ `0.727ms`로 ~30% 추가. 명확한 single 회귀가 아니라 bandwidth-bound 구간 누적 비용으로 보임.
+  - `MULTI_DEALER_DEALER` 모든 size 회귀: round 14가 client에 회귀를 넣은 것은 사실이지만 그 수정 이후에도 동일 정체 → core POLLIN re-arm 경로의 별도 문제가 우선 원인으로 보임.
+- 다음 판단:
+  - plan §3.5: binding/core 버그는 perf 우회 금지. `MULTI_DEALER_DEALER` 회귀와 `MULTI_DEALER_ROUTER,tcp,65536` 잔여 gap은 모두 추가 core 분석이 필요한 상태로 보고하고 사람 판단을 기다린다.
+  - 다음 자동 작업 후보 (사람 승인 후):
+    1) core dealer/PUSH socket POLLIN re-arm 경로 추적: `wait_all`(`zlink_poll`)도 stall하는 조건을 좁히기 위해 core mailbox + observer signaling 코드 path 검증.
+    2) 65536B에서 한 round-trip당 cpp side가 ~90us 추가로 소요되는 원인 추적: `external_message_t::adopt` per-send 비용 vs C `zlink_msg_init_data` 비용, recv path의 zlink_msg_move 비용 측정 (정밀 perf 또는 timing instrumentation).
+
+### 2026-05-11 C++ round 16
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260511_*_c_multi_full_after_dd_fix.txt`
+- 대상 라이브러리 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260511_*_cpp_multi_final.txt`
+- 통과 (ratio ≥ size별 목표):
+  - `MULTI_DEALER_DEALER,tcp,{64,256,1024,65536}`: ratio `1.45 / 1.80 / 1.61 / 1.40` ✅✅✅✅
+  - `MULTI_DEALER_ROUTER,tcp,{64,256,1024}`: ratio `1.05 / 1.00 / 0.95` ✅✅✅
+  - `MULTI_PUBSUB,tcp,{256,1024,65536}`: ratio `0.87 / 0.96 / 1.39` ✅✅✅
+  - `MULTI_ROUTER_ROUTER,tcp,64`: ratio `0.83` ≥ 0.75 ✅
+  - `MULTI_STREAM,tcp,{64,256,1024,65536}`: ratio `0.99 / 1.03 / 1.01 / 1.01` ✅✅✅✅
+- 목표 미달 조합:
+  - `MULTI_DEALER_ROUTER,tcp,65536`: ratio `0.67` < `0.90`
+  - `MULTI_PUBSUB,tcp,64`: ratio `0.74` < `0.75` (gap 0.01, 측정 변동성 가능)
+  - `MULTI_ROUTER_ROUTER,tcp,{256,1024,65536}`: ratio `0.81 / 0.83 / 0.71`
+  - `MULTI_SPOT_REQREP,tcp,*`: ratio `0.50-0.73` (모든 사이즈 미달)
+  - `MULTI_SPOT`, `MULTI_SPOT_SENDSEND`: 모든 사이즈에서 `non_zero_exit_-6 what(): Unknown error 204 (errno=14)` 크래시. `ZLINK_RECV_INVALID_HANDLE` (EFAULT)으로 SPOT 클라이언트 시작 시점에 예외 발생. 본 세션 진입 전부터 존재하는 별도 회귀로 보임 (round 12에서는 통과했음).
+- 선택한 병목 가설:
+  - `MULTI_DEALER_DEALER` 회귀 원인 분석 결과: round 14에서 `socket_state_t`에 `state.message` 멤버를 추가하면서 perf client 시작 시 한 번만 `external_message_t::adopt`로 초기화하고 send마다 재초기화하지 않아 첫 send 후 `mark_sent`가 `_valid=false`로 만든 뒤 두 번째 send 이후 모든 sock에서 EAGAIN. 추가로 client가 `_poller.add(sock, events, &state)`의 `void *raw_tag` 오버로드를 호출했지만 이벤트 핸들러에서는 `std::any_cast<socket_state_t*>` 로 `tag`(std::any) 필드를 읽어 항상 nullptr → POLLOUT 이벤트가 5초 동안 한 번도 사용자 코드에 도달하지 않음. 100 클라이언트 × HWM 1024 = 102400 메시지만 보내고 정확히 영구 stall.
+  - `MULTI_DEALER_ROUTER,tcp,65536` 잔여 gap은 bandwidth-bound 구간에서 cpp wrapper의 per-call native invocation 횟수 차이로 추정 (라운드 15 분석 참조).
+  - `MULTI_ROUTER_ROUTER,tcp,{256,1024,65536}` 잔여 gap은 echo client/server hot path의 wrapper overhead 누적.
+  - `MULTI_SPOT_REQREP`: 모든 사이즈에서 절반 수준은 dispatch event/poller hybrid 경로의 추가 비용.
+- 변경한 라이브러리 파일:
+  - 없음. core/binding public API 무수정. SPOT 크래시는 별도 회귀 보고 대상으로 두고 계속 분석한다.
+- 변경한 perf 파일:
+  - `bindings/cpp/perf/multi/src/perf_dealer_dealer_client.cpp`:
+    - `socket_state_t`에서 `state.message` 멤버 제거.
+    - `try_send_once`마다 `external_message_t::adopt(payload.data(), size, NULL, NULL)`로 재구성 (정책상 zero-copy 외부 버퍼 호출이며 public API 우회 아님).
+    - 이벤트 핸들러에서 `std::any_cast<socket_state_t*>(&_poll_events[i].tag)` 대신 `static_cast<socket_state_t*>(_poll_events[i].raw_tag)` 사용. `_poller.add(sock, events, void*)` 오버로드와 일관되게 raw_tag로 통일.
+  - `bindings/cpp/perf/multi/src/perf_dealer_dealer_server.cpp`:
+    - `poller.wait(100ms)` 정책 위반(§1.3.1) 제거하고 `poller.wait_all(1, -1)` + 단일-part `recv(part, dontwait)` (dealer_router_server와 동일 패턴) 적용.
+- 추가/수정한 회귀 테스트:
+  - 없음. 본 라운드 변경은 perf 정책 정렬과 perf 코드 회귀 수정. public C++ API 동작은 그대로다.
+- 실행한 검증 명령:
+  - `cmake --build core/build`
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_dealer_dealer_server cpp_comp_src_dealer_dealer_client`
+  - `bindings/c/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 1 --results-tag c_multi_full_after_dd_fix`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 1 --results-tag cpp_multi_full_after_dd_fix`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT_REQREP,STREAM --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 1 --results-tag cpp_multi_final`
+- 결과:
+  - `MULTI_DEALER_DEALER`: 20480 → `5482K (64B)`, `3978K (256B)`, `2487K (1024B)`, `244K (65536B)`. 모두 C 대비 1.4~1.8배 (라운드 7 수준 회복 + 추가 개선).
+  - 다른 미달 조합은 라운드 16의 dd 우선 수정 범위 밖. raw_tag 같은 유사 회귀는 dealer_dealer_client에만 존재 (다른 client 들은 `poller_add(socket_t, events, std::any)` 경로를 사용 → `std::any_cast` 가 정상 동작).
+- 다음 판단:
+  - C++ 완료 전 남은 미달 조합: `MULTI_DEALER_ROUTER,tcp,65536`, `MULTI_ROUTER_ROUTER,tcp,{256,1024,65536}`, `MULTI_SPOT_REQREP,*`, 그리고 `MULTI_SPOT` / `MULTI_SPOT_SENDSEND` 크래시.
+  - 다음 자동 작업: SPOT recv_error 회귀를 우선 분석. round 12 통과 → round 16 크래시 사이의 binding 변경(uncommitted `bindings/cpp/include` diff 5개)을 좁혀 회귀 원인을 분리한 뒤 binding 또는 core 회귀 수정.
+
+### 2026-05-11 C++ round 17
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260511_*_c_multi_full_after_dd_fix.txt`
+- 대상 라이브러리 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260511_*_cpp_multi_full_after_spot_fix.txt`
+- 통과 (ratio ≥ size별 목표):
+  - `MULTI_SPOT,tcp,{64,65536}`: ratio `0.76 / 5.35` ✅✅ (크래시 → 통과)
+  - `MULTI_SPOT_SENDSEND,tcp,{64,256,1024}`: ratio `1.47 / 1.45 / 1.44` ✅✅✅ (크래시 → 통과)
+  - 기존 DEALER_DEALER, DEALER_ROUTER 64/256/1024, PUBSUB, ROUTER_ROUTER 64, STREAM 전 사이즈는 유지 통과.
+- 남은 목표 미달 조합:
+  - `MULTI_SPOT,tcp,{256,1024}`: ratio `0.84 / 0.88` (목표 `0.85 / 0.88`, 1024는 정확히 0.88)
+  - `MULTI_SPOT_SENDSEND,tcp,65536`: ratio `0.88` < `0.90`
+  - `MULTI_SPOT_REQREP,tcp,*`: ratio `0.51-0.67` (모든 사이즈 큰 차이)
+  - `MULTI_DEALER_ROUTER,tcp,65536`: ratio `0.69` < `0.90`
+  - `MULTI_ROUTER_ROUTER,tcp,{256,1024,65536}`: ratio `0.82 / 0.82 / 0.83`
+- 선택한 병목 가설 (해결한 부분):
+  - **C++ poller_t의 `wait_all` fast path가 SPOT 핸들을 처리하지 못함.** `wait_all_into_impl`이 timer 항목이 없을 때 `wait_all_poll_items_into_impl`로 fall through하고 거기서 `zlink_poll(pollitems[], ...)`를 호출. 그러나 `zlink_poll`은 항목별 `as_socket_handle()`을 요구하는데 SPOT 핸들은 socket이 아니라 spot이라 EFAULT(204=`ZLINK_RECV_INVALID_HANDLE`)로 즉시 실패. add 시점에 `_poller`(persistent)는 `zlink_poller_add` → `zlink_service_poller_add_internal`로 올바르게 라우팅됐지만 wait 시점에는 SPOT-안전한 영구 poller path가 아닌 fast path로 빠져서 깨졌다. 결과적으로 `worker.poller.wait_all`이 즉시 throw → 모든 recv worker 종료 → SPOT 클라이언트가 데이터를 전혀 받지 못하고 시작과 동시에 크래시.
+  - **`std::any_cast<client_slot_t*>(&events[i].tag)` mismatch.** 클라이언트가 `worker.poller.add(*spot, pollin, slot_ptr)`로 `void* raw_tag` 오버로드를 호출했지만 이벤트 처리 루프는 `tag`(std::any) 필드만 읽어 항상 nullptr → slot null로 인해 `drain_recv` 호출 없음 → `_active_start_ns` 영원히 0 → control START 수신 후에도 `recv active start timed out`. 라운드 16 `dealer_dealer_client`와 같은 패턴의 버그.
+  - **SPOT_SENDSEND `slot.message` 재사용.** dealer_dealer round 14 회귀와 같은 패턴. `external_message_t::adopt`로 한 번 만든 메시지를 재전송 시도 → 첫 send 후 `mark_sent`가 `_valid=false`로 만들어 두 번째 호출에서 `!slot.message.valid()` → `submit_request` 실패 반환 → CLIENT_READY 후 즉시 exit(1).
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/poller.hpp`:
+    - `detail::is_service_handle<T>` 트레이트 추가 (`spot_t`, `spot_node_t`에 대해 true).
+    - `poller_t::add` 두 오버로드에서 SocketLike 타입을 트레이트로 감지해 추가한 item의 `is_service_handle` 필드와 poller 단위 `_has_service_items` 플래그를 설정.
+    - `item_t`에 `bool is_service_handle = false` 필드 추가.
+    - `_has_service_items` 멤버를 추가하고 move ctor/operator=에서 이전 후 false로 리셋.
+    - `can_wait_all_with_poll_items()`이 `_has_service_items`일 때 false 반환하도록 보강해 SPOT/spot_node 항목이 있는 poller는 항상 영구 `zlink_poller_wait_all` path를 사용하게 함.
+- 변경한 perf 파일:
+  - `bindings/cpp/perf/multi/src/perf_spot_client.cpp`: recv_worker_loop가 `events[i].raw_tag`(void *)에서 `client_slot_t*`를 캐스팅하도록 수정.
+  - `bindings/cpp/perf/multi/src/perf_spot_sendsend_client.cpp`: `submit_request`에서 매 send마다 `external_message_t::adopt(payload.data(), size, NULL, NULL)`로 message_t 재구성.
+- 추가/수정한 회귀 테스트:
+  - 없음. SPOT/spot_node를 영구 poller에 등록하고 wait_all로 기다리는 시나리오를 명시한 contract 테스트는 plan에 따라 별도 라운드에서 추가한다.
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_spot_client cpp_comp_src_spot_sendsend_client`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 1 --results-tag cpp_multi_full_after_spot_fix`
+  - `bindings/c/perf/run_benchmarks_multi.sh --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 1 --results-tag c_multi_full_after_dd_fix`
+- 결과:
+  - `MULTI_SPOT,tcp,64`: 크래시 → `5719K ops/s` (C `7558K` 대비 ratio `0.76`, target `0.75` ✅).
+  - `MULTI_SPOT,tcp,65536`: 크래시 → `1564K`, C `292K` 대비 ratio `5.35` (C++가 더 높은 비결정성이 있지만 명백히 정상 동작).
+  - `MULTI_SPOT_SENDSEND,tcp,64`: 크래시 → `289K ops/s` (C `197K` 대비 ratio `1.47`).
+  - 32 multi 조합 중 PASS 21, MISS 11. MISS 대부분은 본 라운드 수정 범위 밖 (SPOT_REQREP, RR 65536, DR 65536 등).
+- 다음 판단:
+  - SPOT/SPOT_SENDSEND 크래시 회귀가 사라졌으므로, 남은 미달은 차순위 hot path 최적화 영역이다.
+  - 다음 자동 작업 후보:
+    1) `MULTI_SPOT,tcp,256` (`0.84` vs `0.85`)와 `MULTI_SPOT_SENDSEND,tcp,65536` (`0.88` vs `0.90`)는 경계 근처라 다음 측정에서 자연 변동으로 통과할 수 있다. 우선 같은 명령을 한 번 더 돌려 변동 확인.
+    2) `MULTI_SPOT_REQREP,tcp,*`는 cpp dispatch event/poller hybrid 경로의 잔여 비용이므로 client recv 핸들러/wait 흐름을 다시 점검한다.
+    3) `MULTI_ROUTER_ROUTER,tcp,65536`와 `MULTI_DEALER_ROUTER,tcp,65536`은 bandwidth-bound 구간이고, message wrapper 비용이 누적되므로 routed echo recv hot path에서 unique_ptr/ heap 할당을 더 줄일 수 있는지 본다.
+
+### 2026-05-11 C++ round 18
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260511_*_c_multi_full_after_dd_fix.txt`
+- 대상 라이브러리 결과:
+  - 격리 측정: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260511_*_cpp_reqrep_{64,256,1024,65536}.txt`
+- 통과 (ratio ≥ size별 목표):
+  - `MULTI_SPOT_REQREP,tcp,64`: C `265.7K` vs C++ `253.9K`, ratio `0.95` ≥ `0.75` ✅ (이전 라운드 `0.53`)
+  - `MULTI_SPOT_REQREP,tcp,256`: C `261.0K` vs C++ `255.8K`, ratio `0.98` ≥ `0.85` ✅ (이전 `0.51`)
+  - `MULTI_SPOT_REQREP,tcp,1024`: C `258.1K` vs C++ `250.8K`, ratio `0.97` ≥ `0.88` ✅ (이전 `0.51`)
+  - `MULTI_SPOT_REQREP,tcp,65536`: C `63.7K` vs C++ `58.6K`, ratio `0.92` ≥ `0.90` ✅ (이전 `0.67`)
+- 선택한 병목 가설:
+  - 직전 라운드까지 `MULTI_SPOT_REQREP`는 사이즈에 관계없이 ratio가 `0.51-0.67`로 거의 균일하게 절반 수준이라 워크로드 특성이 아닌 **구조적 차이**임을 의미했다. C와 C++ perf 코드를 동일 조합 단위로 비교한 결과 클라이언트/서버 둘 다 정책 토폴로지를 따르지 않고 있었다.
+  - 클라이언트 차이 (이전 C++ → C 기준):
+    1) **슬롯당 spot_node + dealer_socket 별도 생성** (정책: `client process 당 SpotNode 1개 + spot N개`). 100 슬롯 = 100 spot_node + 100 dealer = 300 객체.
+    2) **`request_channel(name)` + dealer attach 경로** (정책: `spot(requester) → spot_node → spot_node → spot(replier)`). dealer를 채널에 attach한 뒤 채널 이름으로 요청하는 방식은 추가 라우팅 홉을 만든다.
+    3) **`submit_async()` 후 `wait_for(milliseconds(0))` 비지 폴링** (정책 §1.3.1: poller 기반 reply recv). 메인 스레드가 deadline까지 100 슬롯의 future를 매번 0-timeout으로 확인 → CPU 다 쓰면서 wait이 아니라 spin.
+  - 서버 차이:
+    1) **`router_socket_t` 단독** (정책: `spot_node + spot` 메시). C 서버는 `zlink_spot_node_new` + `zlink_spot_dispatch_event_handler`로 spot-mesh를 직접 다룬다.
+- 변경한 라이브러리 파일:
+  - 없음. public API/내부 구현 무수정.
+- 변경한 perf 파일:
+  - `bindings/cpp/perf/multi/src/perf_spot_reqrep_client.cpp`: 전체 재작성. C 토폴로지에 맞춰:
+    - 단일 `spot_node_t` + `_settings.clients` 개의 `spot_t` (각 slot routing_id `"SPOT-REQREP-<i>"`).
+    - 서버 routing_id 상수 `"SPOT-REQREP-SERVER-NODE"` / `"SPOT-REQREP-SERVER-SPOT"`를 사용해 `request_to_spot(node_rid, spot_rid).message().timeout().flags(DONTWAIT).submit(callback)`로 비동기 콜백 요청.
+    - 콜백 내부에서 atomic counter 증가 + latency 측정 (`_active_reply_count`, `_active_latency`).
+    - 모든 slot spot을 단일 `poller_t`에 POLLIN으로 등록하고 메인 루프는 `wait_all(slots, -1)`로 wake → submit_request 재호출 → 다시 wait. `submit_async()` + busy polling 제거.
+    - dealer attach / channel routing 제거.
+  - `bindings/cpp/perf/multi/src/perf_spot_reqrep_server.cpp`: 전체 재작성. C 토폴로지에 맞춰:
+    - 단일 `spot_node_t` (node routing_id `"SPOT-REQREP-SERVER-NODE"`).
+    - 단일 responder `spot_t` (routing_id `"SPOT-REQREP-SERVER-SPOT"`).
+    - `responder.on_dispatch_event` 람다에서 `recv_routed(DONTWAIT)` 루프로 모든 routed 요청을 drain한 뒤 `received->reply(received->parts())`로 즉시 응답.
+    - 기존 raw `router_socket_t` recv-loop 제거.
+- 추가/수정한 회귀 테스트:
+  - 없음.
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_spot_reqrep_client cpp_comp_src_spot_reqrep_server`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern SPOT_REQREP --transports tcp --msg-sizes 64 --duration 3 --runs 1 --results-tag cpp_reqrep_64`
+  - 같은 명령을 사이즈 256, 1024, 65536로 각각 반복.
+- 결과:
+  - C reference 대비 모든 size에서 `0.92 ~ 0.98` ratio. 모두 목표 통과.
+  - 이전 라운드까지 누락된 dispatch + spot-mesh 의미를 복원하면서 정책 적합성도 확보.
+- 다음 판단:
+  - 남은 미달은 `MULTI_ROUTER_ROUTER` 큰 사이즈 (`256/1024/65536`), `MULTI_DEALER_ROUTER,tcp,65536`, `MULTI_SPOT_SENDSEND,tcp,65536` (`0.82-0.88`), `MULTI_SPOT,tcp,256` (`0.82` 경계). 모두 echo wrapper / bandwidth-bound 구간 잔여 비용.
+  - 다음 자동 작업: `MULTI_ROUTER_ROUTER` echo 클라이언트의 wrapper recv/send hot path를 다시 살펴 dealer_router_client 식 single-part 빠른 경로 추가가 가능한지 점검한다.

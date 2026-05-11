@@ -531,6 +531,7 @@ CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-1}"
 CTX_AUTO_HWM_PROFILE="${PERF_MULTI_CTX_AUTO_HWM_PROFILE:-${PERF_CTX_AUTO_HWM_PROFILE:-balanced}}"
 DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
+OUTPUT_FILE=""
 EXPLICIT_PATTERNS=()
 SCRIPT_ARGS=()
 EFFECTIVE_DEFAULT_IO_THREADS="${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-}}"
@@ -648,12 +649,20 @@ while [[ $# -gt 0 ]]; do
       SCRIPT_ARGS+=( "$1" "$2" )
       shift 2
       ;;
-    --build-dir|--output)
+    --build-dir)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
       SCRIPT_ARGS+=( "$1" "$2" )
+      shift 2
+      ;;
+    --output)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      OUTPUT_FILE="${2}"
       shift 2
       ;;
     --io-threads)
@@ -1242,18 +1251,35 @@ if [[ -z "${PYTHON_BIN:-}" ]]; then
   fi
 fi
 
-if PERF_ALLOW_MULTI=1 \
-  PERF_SUPPRESS_TOTAL_TIME=1 \
-  env "${RUN_ENV[@]}" \
-  "${PYTHON_BIN[@]}" \
-  "${PERF_COMPARISON_SCRIPT}" \
-  "${PATTERN_CSV}" \
-  "${RUN_BASE_ARGS[@]}" \
-  "${SCRIPT_ARGS[@]}"; then
-  :
+RUN_CMD=(
+  "${PYTHON_BIN[@]}"
+  "${PERF_COMPARISON_SCRIPT}"
+  "${PATTERN_CSV}"
+  "${RUN_BASE_ARGS[@]}"
+  "${SCRIPT_ARGS[@]}"
+)
+
+if [[ -n "${OUTPUT_FILE}" ]]; then
+  mkdir -p "$(dirname "${OUTPUT_FILE}")"
+  if PERF_ALLOW_MULTI=1 \
+    PERF_SUPPRESS_TOTAL_TIME=1 \
+    env "${RUN_ENV[@]}" \
+    "${RUN_CMD[@]}" | tee "${OUTPUT_FILE}"; then
+    :
+  else
+    RUN_EXIT_CODE="${PIPESTATUS[0]}"
+    FAILED_PATTERNS+=("${PATTERN_CSV}")
+  fi
 else
-  RUN_EXIT_CODE=$?
-  FAILED_PATTERNS+=("${PATTERN_CSV}")
+  if PERF_ALLOW_MULTI=1 \
+    PERF_SUPPRESS_TOTAL_TIME=1 \
+    env "${RUN_ENV[@]}" \
+    "${RUN_CMD[@]}"; then
+    :
+  else
+    RUN_EXIT_CODE=$?
+    FAILED_PATTERNS+=("${PATTERN_CSV}")
+  fi
 fi
 
 if [[ "${#FAILED_PATTERNS[@]}" -gt 0 ]]; then

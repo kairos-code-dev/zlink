@@ -847,14 +847,45 @@ final class RouterRequestSupport implements AutoCloseable {
         return timeoutMs >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) timeoutMs;
     }
 
+    // Internal optimization for the existing recv() path: probes the
+    // RoutingId thread cache off inline (lo, hi, size) words before
+    // allocating a byte[]. On cache hit, the byte[] allocation in
+    // readRoutingId(...) is avoided. No public API change.
     private static RoutingId readRoutingIdOut(MemorySegment nativeRidOut) {
         MemorySegment nativeRid = nativeRidOut.get(ValueLayout.ADDRESS, 0);
-        if (nativeRid.address() != 0) {
-            nativeRid = nativeRid.reinterpret(
-                NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
+        if (nativeRid.address() == 0) {
+            return null;
+        }
+        nativeRid = nativeRid.reinterpret(
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
+        int size = nativeRid.get(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
+        if (size == 0) {
+            return null;
+        }
+        if (size <= 16) {
+            long lo = nativeRid.get(ValueLayout.JAVA_LONG_UNALIGNED,
+                NativeLayouts.ROUTING_ID_DATA_OFFSET);
+            long hi = size > 8
+                ? nativeRid.get(ValueLayout.JAVA_LONG_UNALIGNED,
+                    NativeLayouts.ROUTING_ID_DATA_OFFSET + 8)
+                : 0L;
+            int loBits = (size >= 8 ? 8 : size) * 8;
+            long loMask = loBits == 64 ? -1L : ((1L << loBits) - 1L);
+            lo &= loMask;
+            int hiBytes = size > 8 ? size - 8 : 0;
+            int hiBits = hiBytes * 8;
+            long hiMask = hiBits == 64 ? -1L
+                : (hiBits == 0 ? 0L : ((1L << hiBits) - 1L));
+            hi &= hiMask;
+            RoutingId cached = RoutingId.tryFromInlineCached(size, lo, hi);
+            if (cached != null) {
+                return cached;
+            }
         }
         return readRoutingId(nativeRid);
     }
+
 
     private static byte[] readRoutingIdBytesOut(MemorySegment nativeRidOut) {
         MemorySegment nativeRid = nativeRidOut.get(ValueLayout.ADDRESS, 0);

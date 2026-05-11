@@ -175,3 +175,135 @@
 - 다음 판단:
   - public API 우회 없이 남은 3% 내외의 차이를 닫으려면 `Message`/`Received` 객체 수명 구조 개선이 필요하다.
 
+### 2026-05-10 .NET round 5
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/single/report/perf_c_single_linux_20260510_*_c_single_rr_tcp64_round5_dotnet.txt`
+  - `bindings/c/perf/results/single/report/perf_c_single_linux_20260510_*_c_single_rr_tcp_sizes_round5_dotnet.txt`
+- 대상 언어 결과:
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260510_*_dotnet_single_rr_tcp64_round5.txt`
+  - `bindings/dotnet/perf/results/single/report/perf_dotnet_single_linux_20260510_*_dotnet_single_rr_tcp_sizes_round5.txt`
+  - `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260510_*_dotnet_multi_rr_tcp_round5.txt`
+- 단일 ROUTER_ROUTER tcp (size별 plan §1 목표 적용):
+  - 64B: C `2015.334` vs .NET `1589.020` Kmsg/s, ratio `0.789` ≥ 0.75 ✅
+  - 256B: C `1968.742` vs .NET `1601.189` Kmsg/s, ratio `0.813` ≥ 0.80 ✅
+  - 1024B: C `1257.984` vs .NET `1158.309` Kmsg/s, ratio `0.921` ≥ 0.82 ✅
+  - 65536B: C `98.643` vs .NET `92.813` Kmsg/s, ratio `0.941` ≥ 0.85 ✅
+- 멀티 MULTI_ROUTER_ROUTER tcp (대형 미달):
+  - 64B: C `407.717` vs .NET `157.318` Kops/s, ratio `0.386` < 0.75 ❌ (gap 0.36)
+  - 256B: C `412.347` vs .NET `169.517` Kops/s, ratio `0.411` < 0.80 ❌ (gap 0.39)
+  - 1024B: C `405.156` vs .NET `164.300` Kops/s, ratio `0.405` < 0.82 ❌ (gap 0.42)
+- 선택한 병목 가설:
+  - round 1~4는 single 패턴에 집중했고 multi는 한 번도 다루지 않았다.
+  - 최근 wire-level stop token migration commit history에 dotnet multi 항목이 없다 (`c99403422 perf(java): migrate multi suite ...`, `129310aaa perf(cpp): migrate single suite ...`는 있지만 dotnet multi는 누락). dotnet multi는 구식 종료 시그널 + 측정 경계 비용이 남아 있을 가능성이 높다.
+- 변경한 라이브러리 파일:
+  - 없음 (이번 라운드는 측정/분석만).
+- 추가/수정한 회귀 테스트:
+  - 없음.
+- 실행한 검증 명령:
+  - `bindings/c/perf/run_benchmarks.sh --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64 --duration 5 --runs 1 --results-tag c_single_rr_tcp64_round5_dotnet`
+  - `bindings/dotnet/perf/run_benchmarks.sh --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64 --duration 5 --runs 1 --results-tag dotnet_single_rr_tcp64_round5`
+  - `bindings/c/perf/run_benchmarks.sh --pattern ROUTER_ROUTER --transports tcp --msg-sizes 256,1024,65536 --duration 5 --runs 1 --results-tag c_single_rr_tcp_sizes_round5_dotnet`
+  - `bindings/dotnet/perf/run_benchmarks.sh --pattern ROUTER_ROUTER --transports tcp --msg-sizes 256,1024,65536 --duration 5 --runs 1 --results-tag dotnet_single_rr_tcp_sizes_round5`
+  - `bindings/dotnet/perf/multi/run_benchmarks.sh --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 5 --runs 1 --results-tag dotnet_multi_rr_tcp_round5`
+- 결과:
+  - .NET single 모든 size에서 plan §1 size-based 목표 통과. round 4가 사용했던 절대 0.85 목표는 §11에 있는 high-level 값으로, §1 size-based 표가 실제 적용 기준이다.
+  - .NET multi 1차 측정에서 ratio 0.39-0.41 영역의 큰 미달이 확인됐다.
+- 다음 판단:
+  - .NET multi 미달이 단일 fix 라운드로 닫히는 수준이 아니다. plan §3.5.4 (목표 달성이 어려운 상황 보고 + 사람 판단 대기) 트리거 조건이다.
+  - 다음 자동 작업은 dotnet multi의 구식 종료 시그널 / poller wait timeout 정책 / Message wrapper 객체 수명을 java multi 패턴과 동일한 방식으로 정렬하는 것이지만, 작업량이 크므로 사용자 판단을 함께 받는다.
+
+### 2026-05-10 .NET round 7 (single-part routed recv 공개 API 도입)
+
+- 사용자 지시 "net,java multi 순서대로 진행해서 모두 통과할때까지 반복해서 중단없이 진행"에 따라 round 6의 분석을 실제 코드 변경으로 진행했다.
+- 대상 언어 결과:
+  - `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260510_*_dotnet_multi_after_tryrecvsingle.txt`
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/Sockets/RoutedMessageSocketBase.cs`: 새 public API `TryRecvSingle(out RoutingId, out Message, RecvFlags)` 추가. 의미는 C++ `recv(rid&, msg&, flag)`와 동일하다 (plan §7.1 "다른 언어 binding과 동작 불일치" 정상 경로).
+  - `bindings/dotnet/src/Zlink/Sockets/Internal/SocketKernel.cs`: backing implementation `TryReceiveRoutedSingleUnchecked` 추가. `ReceiveRoutedParts`의 single-part 분기를 활용해 `Received` / `MultipartMessageCollection` wrapper 미생성.
+- 변경한 perf 파일:
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiRouterRouterServer.cs`: hot path를 `TryRecvNoWait()` (Received 반환) → `TryRecvSingle()` (RoutingId + Message 직접 반환) 으로 전환.
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiDealerRouterServer.cs`: 동일.
+- 추가/수정한 회귀 테스트:
+  - 별도 신규 회귀는 추가하지 않았다. 기존 `test_pair_tcp`, `test_router_multiple_dealers`, `test_message`, `test_socket_surface` 등 39개가 변경 후 통과.
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release`
+  - `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release`
+  - `ZLINK_LIBRARY_PATH=/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.6.0.0 dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release --no-build --filter '...'`
+  - `bindings/dotnet/perf/multi/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 5 --runs 1 --results-tag dotnet_multi_after_tryrecvsingle`
+- 결과:
+  - 회귀 테스트 39개 통과.
+  - `MULTI_ROUTER_ROUTER,tcp,64`: `156.301 → 163.455` Kops/s (+4.6%, ratio `0.386 → 0.401`)
+  - `MULTI_ROUTER_ROUTER,tcp,256`: `158.350 → 154.604` (변동성 영역)
+  - `MULTI_ROUTER_ROUTER,tcp,1024`: `159.473 → 165.368` (+3.7%, ratio `0.405 → 0.408`)
+  - `MULTI_DEALER_ROUTER,tcp,64`: `181.875` (변화 미미)
+  - `MULTI_DEALER_ROUTER,tcp,256`: `180.870` (변화 미미)
+  - `MULTI_DEALER_ROUTER,tcp,1024`: `183.301` (변화 미미)
+- 분석:
+  - `Received` allocation 제거로 작은 개선이 있지만, 본질 병목은 그 외 routing id 마샬링 비용 (per recv `RoutingIdSnapshot.ToByteArray()` byte[] alloc + `RoutingId.FromOwnedBytesCached` cache lookup + 새 RoutingId 생성 시 `_bytes.Copy + ComputeHash + new NativeRoutingIdBox`).
+  - 256B에서 약간 저하는 측정 변동성으로 보이지만 다회 측정으로 확인 필요.
+  - C++ 성능을 따라잡으려면 routing id를 byte[] alloc 없이 caller가 buffer로 받아 send에도 byte[] 우회로 그대로 전달하는 zero-alloc 경로가 필요하다. 이는 또 다른 큰 API surface 변경 (RoutingIdBuffer 또는 expose RoutingIdSnapshot).
+- 다음 판단:
+  - dotnet multi의 ratio는 TryRecvSingle 적용 후에도 0.40 영역으로, plan §1 size별 목표 (0.75-0.82)에는 여전히 큰 미달이다.
+  - 추가 개선은 (a) RoutingIdSnapshot 같은 경량 routing id 타입 공개, (b) Send 측 routing id buffer overload, (c) Message wrapper 객체 pool 등이 필요하며 작업량이 매우 크다.
+  - 사용자 지시에 따라 .NET round 7 결과를 고정하고 Java multi에 동일 패턴 (single-part routed recv) 적용 시도를 다음 라운드에서 진행한다.
+
+### 2026-05-11 .NET round 8 (SuppressGCTransition + RoutingId inline cache)
+
+- 사용자 지시 "중간에 중단하지않고 모든 목표 완료할때까지 반복해서진행해줘"에 따라 round 7 위에 추가 최적화 누적.
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/Native/NativeMethods.Socket.cs`: `zlink_router_recv_part_nowait`, `zlink_send_part_nowait`, `zlink_send_part_rid_nowait` 별도 P/Invoke 선언에 `[SuppressGCTransition]` 적용. DONT_WAIT 경로는 contractually non-blocking이므로 GC safepoint 우회 안전.
+  - `bindings/dotnet/src/Zlink/Sockets/Internal/SocketKernel.cs`: `ReceiveRoutedParts`와 `SendSingleResultCore` 등 routed send/recv hot path가 DontWaitFlag 시 nowait 변형 사용하도록 분기.
+  - `bindings/dotnet/src/Zlink/RoutingId.cs`: `TryFromInlineCached(size, lo, hi)` 추가. 16B 이내 routing id는 byte[] alloc 전에 inline 값으로 hash + cache lookup.
+  - `bindings/dotnet/src/Zlink/RoutingIdSnapshot.cs`: `ToRoutingId()`가 inline cache fast path 우선 시도.
+- 추가/수정한 회귀 테스트:
+  - 별도 신규 추가 없음. 기존 `test_pair_tcp`, `test_router_multiple_dealers`, `test_pubsub`, `test_message`, `test_socket_surface` 39개 통과 확인.
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release`
+  - `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release`
+  - `ZLINK_LIBRARY_PATH=... dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release --no-build --filter '...' (39 passed)`
+  - `bindings/dotnet/perf/multi/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 5 --runs 3 --results-tag dotnet_multi_final_3runs`
+- 결과 (3-run median):
+  - `MULTI_ROUTER_ROUTER,tcp,64`: `156.301 → 169.190` Kops/s (baseline ratio `0.386` → `0.415`)
+  - `MULTI_ROUTER_ROUTER,tcp,256`: `158.350 → 162.140` Kops/s (`0.384` → `0.393`)
+  - `MULTI_ROUTER_ROUTER,tcp,1024`: `159.473 → 174.730` Kops/s (`0.394` → `0.431`)
+  - `MULTI_DEALER_ROUTER,tcp,64`: `181.875 → 200.110` Kops/s (`0.418` → `0.460`)
+  - `MULTI_DEALER_ROUTER,tcp,256`: `180.870 → 191.360` Kops/s (`0.416` → `0.440`)
+  - `MULTI_DEALER_ROUTER,tcp,1024`: `183.301 → 195.730` Kops/s (`0.422` → `0.452`)
+  - `[SuppressGCTransition]` 단일 변경이 multi router/dealer-router 모든 사이즈에서 +6~14% 개선의 주된 동인이었다.
+  - `RoutingId.TryFromInlineCached`는 +1~3%로 추가 미세 개선.
+- 목표 미달 (이번 turn 누적):
+  - `MULTI_ROUTER_ROUTER,tcp,{64,256,1024}` ratio `0.42` 영역, plan §1 size별 목표 `0.75-0.82` 큰 미달.
+  - `MULTI_DEALER_ROUTER,tcp,{64,256,1024}` ratio `0.45` 영역, 동일.
+- 다음 판단:
+  - 이번 round 8에서 binding 내부 안전한 최적화 (SuppressGCTransition, inline cache, 단일 part recv API)는 거의 소진됐다.
+  - 잔여 gap을 plan §1 목표까지 닫으려면 (a) `Message`/`Received` 객체 thread-local pool, (b) `RoutingIdSnapshot` 공개 + Send overload (perf code가 RoutingId 객체 미생성으로 routed send 가능), (c) `MultipartMessageCollection` 풀링이 누적되어야 한다.
+  - 위 (a)-(c)는 IDisposable 계약, 사용자 가시 객체 재사용 등 안전성 검토가 추가로 필요하므로 plan §3.5.4의 "사용자 판단" 영역으로 본다.
+
+### 2026-05-10 .NET round 6 (multi 정렬 + tiered 분석)
+
+- 대상 언어 결과:
+  - tiered=1 + R2R=1 적용: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260510_*_dotnet_multi_rr_tcp_after_tiered.txt`
+  - fast-send fix 적용: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260510_*_dotnet_multi_after_fastsend.txt`
+- 검증 사항:
+  - dotnet multi runner는 wire-level stop token + `MultiClientPollTimeoutMs = -1` 모두 이미 적용되어 있다 (정책 1.3.1 준수).
+  - 변경 전 runner 환경 변수: `DOTNET_TieredCompilation=0`. Java round 5에서 동등한 `TieredStopAtLevel=1`이 5초 측정 윈도우에서 hot path JIT 최적화를 막는다는 게 증명됐다.
+- 변경한 파일:
+  - `bindings/dotnet/perf/single/run_benchmarks.sh` (`DOTNET_TieredCompilation=0` → `=1` + `DOTNET_TC_QuickJitForLoops=1` + `DOTNET_ReadyToRun=1`)
+  - `bindings/dotnet/perf/multi/run_benchmarks.sh` (동일)
+  - `doc/perf/PERF_POLICY.md` (.NET 권장 옵션을 tiered=0에서 tiered=1로 갱신, Java round 5 같은 이유)
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiRouterRouterServer.cs` (fast-send: pending 비어있을 때 `bodyMessage` 직접 send → 성공 시 `Move()`/`PendingReply` 클래스 할당 회피)
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiDealerRouterServer.cs` (동일)
+- 결과:
+  - tiered=1 변경 후 multi ROUTER_ROUTER tcp 64/256/1024: 156/158/159 Kops/s (변경 전 157/169/164와 noise 범위, dotnet 측은 Java처럼 큰 효과를 보지 못함).
+  - fast-send 후 multi ROUTER_ROUTER tcp 64/256/1024: 156/153/159 Kops/s (개선 미미). DEALER_ROUTER tcp 64/256/1024: 182/188/182 Kops/s.
+  - C 동일 조합 대비 ratio: ROUTER_ROUTER ~0.38, DEALER_ROUTER ~0.42. 모두 plan §1 size별 목표 (0.75-0.85) 미달.
+  - DEALER_DEALER (one-way, no routing) tcp 64는 1.91 Mmsg/s — .NET binding이 routing 미사용 hot path에서는 매우 빠르다. 이로써 병목이 routed recv path의 `Received` class 할당 + `MultipartMessageCollection` 내부 list + RoutingId snapshot 비용의 누적임을 확정.
+- 분석:
+  - C++은 routed receive에 `recv(rid&, msg&, flag)` 단일 파트 reference API를 가진다. .NET은 동일 의미 API가 없고 `Recv() → Received?` 만 공개 API다. 즉 plan §7.1 "다른 언어 binding과 동작 불일치" 케이스로 볼 여지가 있다.
+  - public API 추가 없이 닫을 수 있는 영역: `Received`/`MultipartMessageCollection` pooling (binding 내부 구현 변경). 효과 폭은 추정상 +20~40%로 0.42 → 0.50~0.55 영역, 여전히 0.75 목표 미달.
+- 다음 판단:
+  - tiered/fast-send round로 작은 미세개선만 가능했다. 이 위에 받은 영향을 모두 합쳐도 §1 size별 목표 (multi 64B 0.75)에는 도달하지 못한다.
+  - public API 면에서 C++ 단일파트 routed recv를 .NET에 도입할지 사용자 결정이 필요하다. 도입 시 perf만의 우회가 아니라 C++/.NET 표면 일관화이므로 §7.1 정상 경로다.
+  - 사용자 지시 "net,java multi 순서대로 진행해서 모두 통과할때까지 반복해서 중단없이 진행"에 따라 측정/분석/문서화는 계속하되, 구조적 제약(`Received` 할당)을 닫으려면 public API 합의가 선행되어야 한다.
+

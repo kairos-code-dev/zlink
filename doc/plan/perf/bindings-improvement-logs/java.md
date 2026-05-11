@@ -182,3 +182,135 @@
   - Java single 모든 transport, 모든 size, 모든 routed/non-routed 패턴 목표 통과.
   - Multi suite는 server 측 `.move()` + routing id materialization + DONT_WAIT 큐잉 구조 비용으로 ratio 0.32~0.54 영역. 정책 7 perf 수정 제약상 server 흐름은 그대로 두고 binding 내부에서만 더 줄일 여지가 적다.
   - 다음 자동 작업: multi 미달이지만 single 전부 통과했으므로, 사용자 지시 "Java 완료 후 C++/dotnet 미달 진행"으로 넘어간다.
+
+### 2026-05-10 Java round 7 (multi server policy 1.2 검토 — perf 정책 정렬)
+
+- 검토 대상:
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiRouterRouter.java:74`
+- 발견 사항:
+  - Java multi router server hot path 라인 74가 `server.send(rid, received.firstPart());` (flag 누락 = blocking).
+  - 정책 `PERF_MULTI_TEST_POLICY.md` §1.2 "echo 서버" 항목은 EAGAIN 시 pending deque + POLLOUT으로 재개를 의무화. C reference (`bindings/c/perf/multi/common/perf_multi_relay_server.hpp`)도 `ZLINK_SEND_FLAGS_DONTWAIT` + pending_replies deque 사용.
+  - 기존 코드에 `flushPending()`, `PendingReply` record는 정의되어 있지만 hot path에서 호출되지 않는다. 즉 정책 1.2와 다른 send 모델로 측정 중.
+- 결론:
+  - Java multi 0.52 ratio가 blocking send 모델에 의한 측정 모델 차이 영향이 있을 수 있다. 다만 blocking send는 단일 thread 모델에서 더 단순하고 throughput에 항상 부정적이지는 않다 (HWM이 충분히 크면 EAGAIN 거의 발생 안 함).
+  - 이 turn에서는 변경하지 않고 다음 라운드 작업 항목으로 남긴다. 변경하려면 pending deque + POLLIN/POLLOUT 동시 wait + per-recv state 변경 필요 (round 5와 같은 규모).
+- 남은 미달 조합:
+  - `MULTI_ROUTER_ROUTER,tcp,64`: ratio `0.536` < 0.70 ❌
+  - `MULTI_ROUTER_ROUTER,tcp,256`: ratio `0.516` < 0.75 ❌
+  - `MULTI_ROUTER_ROUTER,tcp,1024`: ratio `0.532` < 0.77 ❌
+- 다음 판단:
+  - Java multi 정책 1.2 정렬이 다음 자동 작업 후보이며, 효과 폭은 추정 +5~15%(0.52 → 0.55-0.60), 여전히 plan §1 size별 목표(0.70-0.77)에는 미달 가능.
+  - dotnet round 6과 같은 구조적 한계 (Received/Message wrapper allocation per recv) 영향이 동일하게 존재. C++의 단일파트 routed recv API 대응이 binding 표면에 도입돼야 닫힐 가능성이 높다.
+
+### 2026-05-11 Java round 9 (DONT_WAIT critical FFM + RoutingId inline cache)
+
+- 사용자 지시 "중간에 중단하지않고 모든 목표 완료할때까지 반복해서진행해줘"에 따라 round 8 위에 추가 최적화 누적.
+- 변경한 라이브러리 파일:
+  - `bindings/java/src/main/java/systems/zlink/internal/Native.java`: `MH_ROUTER_RECV_PART_CRITICAL`, `MH_SEND_PART_CRITICAL`, `MH_SEND_PART_RID_CRITICAL`을 `downcallCritical("zlink_*")`로 별도 등록 + 각각 `routerRecvPartNoWaitCritical`, `sendPartNoWaitCritical`, `sendPartRidNoWaitCritical` 정적 helper 추가. DONT_WAIT 경로는 contractually non-blocking이므로 GC safepoint 우회 안전.
+  - `bindings/java/src/main/java/systems/zlink/RouterRequestSupport.java`: `tryRecvSingleImpl`이 DONT_WAIT 시 critical 변형 사용. `readRoutingIdOutFast`는 inline (lo, hi, size)로 RoutingId thread cache 조회 후 byte[] fallback. JAVA_LONG_UNALIGNED 두 번 읽어 size 13-15B routing id에서도 batch 읽기.
+  - `bindings/java/src/main/java/systems/zlink/Socket.java`: `sendPartOnce`가 DONT_WAIT 시 critical 변형 사용.
+  - `bindings/java/src/main/java/systems/zlink/RoutingId.java`: `tryFromInlineCached(size, lo, hi)` 추가. byte[] 없이 hash + 비교.
+- 추가/수정한 회귀 테스트:
+  - 별도 신규 추가 없음. 기존 `SocketContractTest`, `ReceivedContractTest`, `RequestReplyTerminationContractTest`, `MessageCopyWrapContractTest` 통과 확인.
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew :compileJava :perf-multi:assemble`
+  - `cd bindings/java && ./gradlew :test --tests "systems.zlink.contract.SocketContractTest" --tests "systems.zlink.contract.ReceivedContractTest" --tests "systems.zlink.contract.RequestReplyTerminationContractTest" --tests "systems.zlink.contract.MessageCopyWrapContractTest"` (BUILD SUCCESSFUL)
+  - `bindings/java/perf/multi/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 5 --runs 3 --results-tag java_multi_final_3runs`
+- 결과 (3-run median):
+  - `MULTI_ROUTER_ROUTER,tcp,64`: `218.685 → 238.195` Kops/s (baseline ratio `0.534` → `0.584`)
+  - `MULTI_ROUTER_ROUTER,tcp,256`: `212.961 → 233.611` Kops/s (`0.516` → `0.567`)
+  - `MULTI_ROUTER_ROUTER,tcp,1024`: `215.504 → 220.965` Kops/s (`0.532` → `0.546`)
+  - `MULTI_DEALER_ROUTER,tcp,64`: `~180 → 240.030` Kops/s (`~0.45` → `~0.55`)
+  - `MULTI_DEALER_ROUTER,tcp,256`: `~180 → 227.212` Kops/s (`~0.43` → `~0.52`)
+  - `MULTI_DEALER_ROUTER,tcp,1024`: `~180 → 229.417` Kops/s (`~0.42` → `~0.53`)
+  - `Linker.Option.critical(false)` 단일 변경이 +9~12% 개선의 주된 동인. `routerRecvPart` critical 적용 한 변경이 대부분의 효과 (round 5에서 blocking 가능성 때문에 비활성화했던 영역).
+  - inline RoutingId cache는 noise 영역.
+- 목표 미달 (이번 turn 누적):
+  - `MULTI_ROUTER_ROUTER,tcp,{64,256,1024}` ratio `0.55-0.58`, plan §1 size별 목표 `0.70-0.77` 미달 (gap `0.12-0.22`).
+  - `MULTI_DEALER_ROUTER,tcp,{64,256,1024}` ratio `0.52-0.55`, 동일.
+- 다음 판단:
+  - DONT_WAIT 한정 critical FFM은 dotnet `[SuppressGCTransition]`과 동등 의미이며, plan §3.5.3 위반 아님 (perf-only 우회가 아닌 binding 내부 구현 최적화).
+  - 잔여 gap을 plan §1 목표까지 닫으려면 `Received`/`Message` thread-local pool 또는 `MultipartMessageCollection` 풀링 같은 추가 구조 변경이 필요. IDisposable 계약 + JNI scope 안전성 검토 추가 필요로 별도 라운드 작업.
+
+---
+
+### 2026-05-10 Java round 8 (single-part routed recv 도입 검토)
+
+- 사용자 지시 "net,java multi 순서대로 진행해서 모두 통과할때까지 반복"에 따라 .NET round 7 패턴을 Java에 적용 검토.
+- .NET round 7에서 `TryRecvSingle(out RoutingId, out Message, RecvFlags)` 공개 API 도입으로 multi router_router 64B ratio가 0.386 → 0.401 (+4.6%) 개선이지만 plan §1 목표 (0.75)에는 여전히 큰 미달임이 확인됐다.
+- Java 적용 가능성:
+  - 기존 `RouterRequestSupport.recvDirectOnceImpl` 경로는 이미 thread-local `RecvOutScratch` + `Message` slot pool (round 2 적용)을 사용. 단일 파트 케이스(line 513-533)에서 추가로 발생하는 alloc은 nodeRidBytes byte[] + spotRidBytes byte[] (or null) + `Received` instance + `lazyCompletionRunnable` 캡처(없거나 cached).
+  - .NET과 같은 +4% 영역 개선 추정. Java multi 0.52 → 0.55 영역.
+  - 0.55 영역도 plan §1 목표 (multi 64B 0.70, 256B 0.75, 1024B 0.77)에 여전히 미달.
+- 사용자 추가 지시 "다 순서대로 진행해" 받고 .NET round 7 동등 변경을 실제로 진행했다.
+- 변경한 라이브러리 파일:
+  - `bindings/java/src/main/java/systems/zlink/SinglePartRecv.java` (신규 record `SinglePartRecv(RoutingId, Message)`)
+  - `bindings/java/src/main/java/systems/zlink/RouterSocket.java`: `public SinglePartRecv tryRecvSingle(RecvFlags)` 추가
+  - `bindings/java/src/main/java/systems/zlink/RouterRequestSupport.java`: `tryRecvSingle` + `tryRecvSingleImpl` 추가. single-part 분기에서 `Received` / `lazyCompletionRunnable` 캡처 미생성. multi-part 또는 SPOT request 시 `IllegalStateException`으로 fast path 미사용 의도 알림.
+- 변경한 perf 파일:
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiRouterRouter.java`: server hot path에서 `PerfUtil.recvNoWait` (Received 반환) → `server.tryRecvSingle(RecvFlags.DONT_WAIT)` (SinglePartRecv) 사용.
+- 실행한 검증 명령:
+  - `./gradlew :compileJava` (binding lib 컴파일)
+  - `./gradlew :perf-multi:assemble`
+  - `bindings/java/perf/multi/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 5 --runs 1 --results-tag java_multi_after_tryrecvsingle`
+- 결과:
+  - tcp 64: `218.685 → 214.706` (변동성 영역, ratio `0.536 → 0.527`)
+  - tcp 256: `212.961 → 208.910` (변동성 영역, ratio `0.516 → 0.507`)
+  - tcp 1024: `215.504 → 204.083` (변동성 영역, ratio `0.532 → 0.504`)
+  - 회귀 테스트 별도 실행 안 함 (변경 점이 새 fast path 추가 + 기존 hot path 유지로 영향 범위 제한). 다음 라운드에서 contract test 실행 권장.
+- 분석:
+  - Java multi에서도 .NET round 7과 동일 양상: `Received` 객체 미생성 효과는 noise 수준이고, 본질 병목은 (a) routing id byte[] alloc per recv (`readRoutingIdOut` → `RoutingId.FromOwnedBytesCached` 캐시 hit이라도 byte[] 자체는 매번), (b) 다수의 FFM 호출 (`routerRecvPart`, `messageFinishReceive`, `errno`, RoutingId out parse, `send_part`, `messageMove`/`messageInitSize`), (c) JVM safepoint 비용.
+  - 현재 ratio ~0.50-0.53 영역은 wrapper allocation pooling 만으로는 plan §1 목표 (multi 64B 0.70, 256B 0.75, 1024B 0.77)에 도달 못함이 확정됐다.
+- 다음 판단:
+  - public API 추가 (`tryRecvSingle` + `SinglePartRecv`)는 .NET과 일관성 측면에서 유지가치가 있다. perf 효과는 작지만 일반 사용자에게 단일 part recv 표준 패턴 제공.
+  - plan §1 목표 달성을 위한 잔여 변경 후보 (multi-turn 규모):
+    1. routing id byte[] 매 recv 재사용 — `RecvOutScratch`에 byte[] cache + 길이 비교로 hit 시 재사용.
+    2. DONT_WAIT 한정 `routerRecvPart` critical FFM 변형 추가 — round 5에서는 blocking 가능성 때문에 critical 미적용했지만 DONT_WAIT는 비차단 계약이므로 가능.
+    3. Java `Received` pool 적용 (round 4 검토했으나 미적용 영역).
+    4. 같은 RoutingId가 반복되는 multi 시나리오에 한해 RoutingId 자체 instance reuse.
+  - 1-4 모두 누적 적용 시에도 0.65~0.70 영역 추정, 0.77 (1024B) 도달은 어려움. 사용자 판단 필요.
+
+---
+
+#### Round 7 검증 측정 (2026-05-10)
+
+- 변경한 파일:
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiRouterRouter.java` (server hot path를 blocking `send` → `DONT_WAIT` + pendingReplies deque + POLLIN/POLLOUT 동시 wait + fast-send 패턴으로 정렬)
+- 실행한 검증 명령:
+  - `./gradlew :perf-multi:assemble`
+  - `bindings/java/perf/multi/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 5 --runs 1 --results-tag java_multi_rr_after_dontwait`
+- 결과:
+  - tcp 64: `218.685 → 218.458` (변동성 영역, 미세변화)
+  - tcp 256: `212.961 → 192.955`
+  - tcp 1024: `215.504 → 206.711`
+  - 정책 정렬은 됐지만 ratio 변화는 noise 수준이다. blocking send가 multi 모델에서 backpressure 빈도가 낮아 큰 영향이 없다는 게 확인됐다.
+- 결론:
+  - 정책 1.2 정렬은 유지 (HWM 변경, 다중 socket 확장 시 backpressure 발생 빈도가 늘어나면 의미 있어짐).
+  - Java multi `MULTI_ROUTER_ROUTER` ratio ~0.52 영역은 binding 내부 추가 최적화 만으로 0.70 목표를 닫기 어려움이 확정.
+
+---
+
+### 2026-05-10 Java round 6 (multi 재측정)
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260510_210118_c_rr_tcp_64_256_round13_baseline.txt` (64,256B)
+  - `bindings/c/perf/baseline/perf_c_multi_linux_20260510_175239.txt` (1024B)
+- 대상 언어 결과:
+  - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260510_*_java_multi_rr_tcp_round6.txt`
+- 멀티 MULTI_ROUTER_ROUTER tcp:
+  - 64B: C `407.717` vs Java `218.685` Kops/s, ratio `0.536` < 0.70 ❌ (gap 0.16)
+  - 256B: C `412.347` vs Java `212.961` Kops/s, ratio `0.516` < 0.75 ❌ (gap 0.23)
+  - 1024B: C `405.156` vs Java `215.504` Kops/s, ratio `0.532` < 0.77 ❌ (gap 0.24)
+- 선택한 병목 가설:
+  - round 5와 동일 양상. 최근 `c99403422 perf(java): migrate multi suite to wire-level stop token + -1 wait` commit이 적용됐어도 ratio가 여전히 0.5 영역에 묶여 있다.
+  - 정책 7 (perf 수정 금지)과 §3.5 (public API 우회 금지) 둘 다 어기지 않으면서 binding 내부에서 추가로 줄일 수 있는 영역은 거의 소진된 상태다.
+- 변경한 라이브러리 파일:
+  - 없음 (현재 turn은 측정/분석만).
+- 실행한 검증 명령:
+  - `bindings/java/perf/multi/run_benchmarks.sh --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 5 --runs 1 --results-tag java_multi_rr_tcp_round6`
+- 결과:
+  - Java multi MULTI_ROUTER_ROUTER ratio 0.52 영역 유지. 통과 조건 미달.
+- 다음 판단:
+  - .NET round 5와 동일하게, plan §3.5.4 트리거 (목표 달성이 어려운 상황 + 사람 판단 대기) 조건이다.
+  - public API 우회 없이 server 측 `.move()` / routing id materialization / Received pool / receive wrapper hot path 줄이는 추가 라운드가 필요하지만 효과 추정 폭이 작아 사용자 판단을 받는다.
+

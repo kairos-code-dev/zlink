@@ -62,9 +62,12 @@ internal static class PerfMultiDealerRouterServer
             while (true)
             {
                 using Received? received = TryRecvNoWait(server);
-                if (received == null || received.Parts.Count == 0)
+                if (received == null)
                     break;
 
+                // Skip Parts.Count: it materializes a
+                // MultipartMessageCollection wrapper around the lazy
+                // single-part message (one heap alloc per recv).
                 Message bodyMessage = received.SinglePartOrThrow();
                 ReadOnlySpan<byte> body = bodyMessage.AsReadOnlySpan();
                 if (IsStopTokenPayload(body))
@@ -75,9 +78,16 @@ internal static class PerfMultiDealerRouterServer
 
                 if (received.RoutingId == null)
                     return 2;
+                RoutingId routingId = received.RoutingId.Value;
+
+                if (pendingReplies.Count == 0
+                    && server.Send(routingId, bodyMessage, SendFlags.DontWait))
+                {
+                    continue;
+                }
 
                 using Message reply = bodyMessage.Move();
-                if (!TryQueueReply(server, pendingReplies, received.RoutingId.Value,
+                if (!EnqueueReplyOrSend(server, pendingReplies, routingId,
                         reply))
                 {
                     return 2;
@@ -88,21 +98,19 @@ internal static class PerfMultiDealerRouterServer
         return 0;
     }
 
-    private static bool TryQueueReply(RouterSocket server,
+    private static bool EnqueueReplyOrSend(RouterSocket server,
         Queue<PendingReply> pendingReplies, RoutingId routingId, Message reply)
     {
-        var pending = new PendingReply(routingId, reply.Move());
         if (pendingReplies.Count == 0)
         {
-            if (server.Send(pending.RoutingId, pending.Message,
-                    SendFlags.DontWait))
+            if (server.Send(routingId, reply, SendFlags.DontWait))
             {
-                pending.Dispose();
+                reply.Dispose();
                 return true;
             }
         }
 
-        pendingReplies.Enqueue(pending);
+        pendingReplies.Enqueue(new PendingReply(routingId, reply));
         return true;
     }
 

@@ -52,6 +52,16 @@ internal static partial class NativeMethods
     internal static extern int zlink_send_part(IntPtr socket, ref ZlinkMsg part,
         int flags, ZlinkPartFlag partFlag);
 
+    // DONT_WAIT-only fast variant: same C function, different P/Invoke
+    // signature with [SuppressGCTransition]. Caller MUST guarantee the
+    // DONT_WAIT bit is set in flags so the underlying call is non-blocking
+    // (otherwise GC suspension is unsafe).
+    [DllImport(LibraryName, EntryPoint = "zlink_send_part",
+        CallingConvention = CallingConvention.Cdecl)]
+    [SuppressGCTransition]
+    internal static extern int zlink_send_part_nowait(IntPtr socket,
+        ref ZlinkMsg part, int flags, ZlinkPartFlag partFlag);
+
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_recv_part(IntPtr socket,
         out IntPtr sourceRoutingId, ref ZlinkMsg part, out int hasMore,
@@ -59,6 +69,15 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_recv_part(IntPtr router,
+        out IntPtr sourceNodeRoutingId, out IntPtr sourceSpotRoutingId,
+        out ulong requestSeq, ref ZlinkMsg part, out int hasMore,
+        int flags);
+
+    // DONT_WAIT-only fast variant.
+    [DllImport(LibraryName, EntryPoint = "zlink_router_recv_part",
+        CallingConvention = CallingConvention.Cdecl)]
+    [SuppressGCTransition]
+    internal static extern int zlink_router_recv_part_nowait(IntPtr router,
         out IntPtr sourceNodeRoutingId, out IntPtr sourceSpotRoutingId,
         out ulong requestSeq, ref ZlinkMsg part, out int hasMore,
         int flags);
@@ -88,6 +107,14 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_send_part_rid(IntPtr handle,
+        ref ZlinkRoutingId targetRoutingId, ref ZlinkMsg part, int flags,
+        ZlinkPartFlag partFlag);
+
+    // DONT_WAIT-only fast variant.
+    [DllImport(LibraryName, EntryPoint = "zlink_send_part_rid",
+        CallingConvention = CallingConvention.Cdecl)]
+    [SuppressGCTransition]
+    internal static extern int zlink_send_part_rid_nowait(IntPtr handle,
         ref ZlinkRoutingId targetRoutingId, ref ZlinkMsg part, int flags,
         ZlinkPartFlag partFlag);
 

@@ -17,17 +17,30 @@ namespace zlink
 namespace service
 {
 class spot_t;
+class spot_node_t;
 } // namespace service
 namespace detail
 {
 inline void *native_handle (service::spot_t &spot_) noexcept;
 inline const void *native_handle (const service::spot_t &spot_) noexcept;
+
+template<typename T>
+struct is_service_handle : std::false_type {};
+template<>
+struct is_service_handle<service::spot_t> : std::true_type {};
+template<>
+struct is_service_handle<const service::spot_t> : std::true_type {};
+template<>
+struct is_service_handle<service::spot_node_t> : std::true_type {};
+template<>
+struct is_service_handle<const service::spot_node_t> : std::true_type {};
 } // namespace detail
 
 struct poll_event_t
 {
     std::optional<zlink_fd_t> fd;
     timer_t *timer = NULL;
+    void *raw_tag = NULL;
     std::any tag;
     poll_event_flag_t events;
     poll_event_flag_t revents;
@@ -44,9 +57,11 @@ class poller_t
         : _poller (other._poller),
           _items (std::move (other._items)),
           _native_events (std::move (other._native_events)),
-          _poll_items (std::move (other._poll_items))
+          _poll_items (std::move (other._poll_items)),
+          _has_service_items (other._has_service_items)
     {
         other._poller = NULL;
+        other._has_service_items = false;
     }
 
     poller_t &operator= (poller_t &&other) noexcept
@@ -59,7 +74,9 @@ class poller_t
         _items = std::move (other._items);
         _native_events = std::move (other._native_events);
         _poll_items = std::move (other._poll_items);
+        _has_service_items = other._has_service_items;
         other._poller = NULL;
+        other._has_service_items = false;
         return *this;
     }
 
@@ -93,7 +110,10 @@ class poller_t
         item->timer_handle = NULL;
         item->timer = NULL;
         item->source_kind = poll_source_kind_t::socket;
+        item->is_service_handle =
+          detail::is_service_handle<typename std::remove_reference<SocketLike>::type>::value;
         item->events = events_;
+        item->raw_tag = NULL;
         item->tag = std::move (tag_);
 
         const config_result_t rc = static_cast<config_result_t> (
@@ -104,6 +124,42 @@ class poller_t
         detail::throw_if_failed<config_error_t> (rc);
 
         _items.push_back (item);
+        if (item->is_service_handle)
+            _has_service_items = true;
+    }
+
+    template<typename SocketLike>
+    void add (SocketLike &socket_, poll_event_flag_t events_, void *raw_tag_)
+    {
+        if (!_poller) {
+            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
+        }
+        if (find_socket (detail::native_handle (socket_)) >= 0) {
+            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+        }
+
+        item_t *item = new item_t ();
+        item->socket_handle = detail::native_handle (socket_);
+        item->fd = 0;
+        item->timer_handle = NULL;
+        item->timer = NULL;
+        item->source_kind = poll_source_kind_t::socket;
+        item->is_service_handle =
+          detail::is_service_handle<typename std::remove_reference<SocketLike>::type>::value;
+        item->events = events_;
+        item->raw_tag = raw_tag_;
+        item->tag = {};
+
+        const config_result_t rc = static_cast<config_result_t> (
+          zlink_poller_add (_poller, detail::native_handle (socket_), item,
+                            static_cast<short> (events_)));
+        if (rc != config_result_t::ok)
+            delete item;
+        detail::throw_if_failed<config_error_t> (rc);
+
+        _items.push_back (item);
+        if (item->is_service_handle)
+            _has_service_items = true;
     }
 
     void add_fd (zlink_fd_t fd_,
@@ -124,7 +180,36 @@ class poller_t
         item->timer = NULL;
         item->source_kind = poll_source_kind_t::fd;
         item->events = events_;
+        item->raw_tag = NULL;
         item->tag = std::move (tag_);
+
+        const config_result_t rc = static_cast<config_result_t> (
+          zlink_poller_add_fd (_poller, fd_, item, static_cast<short> (events_)));
+        if (rc != config_result_t::ok)
+            delete item;
+        detail::throw_if_failed<config_error_t> (rc);
+
+        _items.push_back (item);
+    }
+
+    void add_fd (zlink_fd_t fd_, poll_event_flag_t events_, void *raw_tag_)
+    {
+        if (!_poller) {
+            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
+        }
+        if (find_fd (fd_) >= 0) {
+            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+        }
+
+        item_t *item = new item_t ();
+        item->socket_handle = NULL;
+        item->fd = fd_;
+        item->timer_handle = NULL;
+        item->timer = NULL;
+        item->source_kind = poll_source_kind_t::fd;
+        item->events = events_;
+        item->raw_tag = raw_tag_;
+        item->tag = {};
 
         const config_result_t rc = static_cast<config_result_t> (
           zlink_poller_add_fd (_poller, fd_, item, static_cast<short> (events_)));
@@ -151,7 +236,36 @@ class poller_t
         item->timer = &timer_;
         item->source_kind = poll_source_kind_t::timer;
         item->events = poll_event_flag_t::pollin;
+        item->raw_tag = NULL;
         item->tag = std::move (tag_);
+
+        const config_result_t rc = static_cast<config_result_t> (
+          zlink_poller_add_timer (_poller, detail::native_handle (timer_), item));
+        if (rc != config_result_t::ok)
+            delete item;
+        detail::throw_if_failed<config_error_t> (rc);
+
+        _items.push_back (item);
+    }
+
+    void add (timer_t &timer_, void *raw_tag_)
+    {
+        if (!_poller) {
+            throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
+        }
+        if (find_timer (detail::native_handle (timer_)) >= 0) {
+            throw config_error_t (config_result_t::invalid_argument, zlink_errno ());
+        }
+
+        item_t *item = new item_t ();
+        item->socket_handle = NULL;
+        item->fd = 0;
+        item->timer_handle = detail::native_handle (timer_);
+        item->timer = &timer_;
+        item->source_kind = poll_source_kind_t::timer;
+        item->events = poll_event_flag_t::pollin;
+        item->raw_tag = raw_tag_;
+        item->tag = {};
 
         const config_result_t rc = static_cast<config_result_t> (
           zlink_poller_add_timer (_poller, detail::native_handle (timer_), item));
@@ -292,8 +406,20 @@ class poller_t
       size_t max_events_,
       std::optional<std::chrono::milliseconds> timeout_ = std::nullopt)
     {
-        return wait_all_impl (
-          max_events_, timeout_ ? static_cast<long> (timeout_->count ()) : -1L);
+        std::vector<poll_event_t> events;
+        wait_all_into_impl (
+          events, max_events_,
+          timeout_ ? static_cast<long> (timeout_->count ()) : -1L);
+        return events;
+    }
+
+    size_t wait_all_into (std::vector<poll_event_t> &events_,
+                          size_t max_events_ = 0,
+                          std::optional<std::chrono::milliseconds> timeout_ = std::nullopt)
+    {
+        return wait_all_into_impl (
+          events_, max_events_,
+          timeout_ ? static_cast<long> (timeout_->count ()) : -1L);
     }
 
     void destroy ()
@@ -316,7 +442,9 @@ class poller_t
     }
 
   private:
-    std::vector<poll_event_t> wait_all_impl (size_t max_events_, long timeout_)
+    size_t wait_all_into_impl (std::vector<poll_event_t> &events_,
+                               size_t max_events_,
+                               long timeout_)
     {
         if (!_poller) {
             throw recv_error_t (recv_result_t::invalid_handle, zlink_errno ());
@@ -328,7 +456,8 @@ class poller_t
             throw recv_error_t (recv_result_t::invalid_handle, zlink_errno ());
 
         if (registered == 0) {
-            return std::vector<poll_event_t> ();
+            events_.clear ();
+            return 0;
         }
 
         const size_t capacity =
@@ -336,7 +465,7 @@ class poller_t
             ? std::min (max_events_, static_cast<size_t> (registered))
             : static_cast<size_t> (registered);
         if (can_wait_all_with_poll_items ())
-            return wait_all_poll_items_impl (capacity, timeout_);
+            return wait_all_poll_items_into_impl (events_, capacity, timeout_);
 
         _native_events.resize (capacity);
         error = ZLINK_CONFIG_OK;
@@ -344,26 +473,32 @@ class poller_t
           _poller, &_native_events[0], static_cast<int> (capacity), timeout_, &error);
         if (rc <= 0) {
             if (rc == 0) {
-                return std::vector<poll_event_t> ();
+                events_.clear ();
+                return 0;
             }
             const int err = zlink_errno ();
             if (err == EINTR || err == EAGAIN) {
                 errno = err;
-                return std::vector<poll_event_t> ();
+                events_.clear ();
+                return 0;
             }
             throw recv_error_t (recv_result_t::invalid_handle, err);
         }
 
-        std::vector<poll_event_t> events_;
         events_.resize (static_cast<size_t> (rc));
-        for (int i = 0; i < rc; ++i)
+        for (int i = 0; i < rc; ++i) {
             events_[static_cast<size_t> (i)] =
               make_event (_native_events[static_cast<size_t> (i)]);
-        return events_;
+        }
+        return static_cast<size_t> (rc);
     }
 
     bool can_wait_all_with_poll_items () const noexcept
     {
+        // zlink_poll only resolves raw socket handles; SPOT and timer items
+        // must go through the persistent zlink_poller_wait_all path.
+        if (_has_service_items)
+            return false;
         for (size_t i = 0; i < _items.size (); ++i) {
             if (_items[i]->source_kind == poll_source_kind_t::timer)
                 return false;
@@ -371,8 +506,9 @@ class poller_t
         return true;
     }
 
-    std::vector<poll_event_t> wait_all_poll_items_impl (size_t capacity_,
-                                                        long timeout_)
+    size_t wait_all_poll_items_into_impl (std::vector<poll_event_t> &events_,
+                                          size_t capacity_,
+                                          long timeout_)
     {
         _poll_items.resize (_items.size ());
         for (size_t i = 0; i < _items.size (); ++i) {
@@ -388,18 +524,21 @@ class poller_t
           timeout_,
           NULL);
         if (rc <= 0) {
-            if (rc == 0)
-                return std::vector<poll_event_t> ();
+            if (rc == 0) {
+                events_.clear ();
+                return 0;
+            }
             const int err = zlink_errno ();
             if (err == EINTR || err == EAGAIN) {
                 errno = err;
-                return std::vector<poll_event_t> ();
+                events_.clear ();
+                return 0;
             }
             throw recv_error_t (recv_result_t::invalid_handle, err);
         }
 
-        std::vector<poll_event_t> events_;
-        events_.reserve (std::min (capacity_, static_cast<size_t> (rc)));
+        events_.clear ();
+        events_.reserve (capacity_);
         for (size_t i = 0; i < _poll_items.size () && events_.size () < capacity_;
              ++i) {
             if (_poll_items[i].revents == 0)
@@ -407,7 +546,7 @@ class poller_t
             events_.push_back (
               make_event (*_items[i], _poll_items[i].revents));
         }
-        return events_;
+        return events_.size ();
     }
 
     void destroy_noexcept () noexcept
@@ -431,7 +570,9 @@ class poller_t
         void *timer_handle;
         timer_t *timer;
         poll_source_kind_t source_kind;
+        bool is_service_handle = false;
         poll_event_flag_t events;
+        void *raw_tag;
         std::any tag;
     };
 
@@ -480,6 +621,7 @@ class poller_t
           item && item->source_kind == poll_source_kind_t::timer
             ? item->timer
             : NULL;
+        event.raw_tag = item ? item->raw_tag : NULL;
         event.tag = item ? item->tag : std::any ();
         event.events = item ? item->events : poll_event_flag_t::none;
         event.revents = static_cast<poll_event_flag_t> (native_event_.events);
@@ -495,6 +637,7 @@ class poller_t
         else
             event.fd = std::nullopt;
         event.timer = NULL;
+        event.raw_tag = item_.raw_tag;
         event.tag = item_.tag;
         event.events = item_.events;
         event.revents = static_cast<poll_event_flag_t> (revents_);
@@ -526,6 +669,7 @@ class poller_t
     std::vector<item_t *> _items;
     std::vector<zlink_poller_event_t> _native_events;
     std::vector<zlink_pollitem_t> _poll_items;
+    bool _has_service_items = false;
 };
 
 } // namespace zlink

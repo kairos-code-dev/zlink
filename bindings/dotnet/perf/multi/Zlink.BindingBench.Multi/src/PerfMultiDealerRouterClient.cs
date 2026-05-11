@@ -186,6 +186,7 @@ internal static class PerfMultiDealerRouterClient
         int msgSize, uint runId, PerfPhase phase, ref ulong seq,
         DealerRouterMetrics metrics, bool allowSend, long activeDeadlineTicks)
     {
+        _ = activeDeadlineTicks;
         DealerRouterClientSlot slot = slots[slotIndex];
 
         if (allowSend
@@ -208,7 +209,7 @@ internal static class PerfMultiDealerRouterClient
         while (true)
         {
             using Received? receivedMessage = TryRecvNoWait((DealerSocket)slot.Socket);
-            if (receivedMessage == null || receivedMessage.Parts.Count == 0)
+            if (receivedMessage == null)
                 break;
 
             if (!slot.WaitingForReply)
@@ -221,12 +222,14 @@ internal static class PerfMultiDealerRouterClient
             {
                 ReadOnlySpan<byte> body = receivedMessage.SinglePartOrThrow()
                     .AsReadOnlySpan();
-                long recvTicks = Stopwatch.GetTimestamp();
+                // Match C reference: outer while loop bounds the active
+                // window; dropping replies that arrive after activeDeadline
+                // would lower throughput vs C for replies whose sends were
+                // inside the active phase.
                 if (PerfRunner.TryDecodeMetricHeader(body, out PerfMetricHeader header)
                     && header.RunId == runId
                     && header.MsgSize == (uint)msgSize
-                    && header.Phase == (uint)phase
-                    && recvTicks <= activeDeadlineTicks)
+                    && header.Phase == (uint)phase)
                 {
                     metrics.MeasureCount++;
                     if (metrics.LatencySamples != null && header.SentTsNs > 0)

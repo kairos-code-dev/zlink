@@ -186,11 +186,25 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT));
+    // DONT_WAIT-only critical variant. zlink_send_part is non-blocking when
+    // called with DONT_WAIT, so the JVM can elide GC safepoint transitions.
+    private static final MethodHandle MH_SEND_PART_CRITICAL =
+            downcallCritical("zlink_send_part",
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                            ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                            ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SEND_PART_RID = downcall(
             "zlink_send_part_rid",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+    // DONT_WAIT-only critical variant for routed send.
+    private static final MethodHandle MH_SEND_PART_RID_CRITICAL =
+            downcallCritical("zlink_send_part_rid",
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                            ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                            ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                            ValueLayout.JAVA_INT));
     private static final MethodHandle MH_JAVA_SEND_U32 = downcall(
             "zlink_java_send_u32",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -514,6 +528,15 @@ public final class Native {
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    // DONT_WAIT-only critical variant. zlink_router_recv_part is non-blocking
+    // when called with DONT_WAIT flag, so the JVM can elide GC safepoint
+    // transition for this call. Caller must guarantee DONT_WAIT bit is set.
+    private static final MethodHandle MH_ROUTER_RECV_PART_CRITICAL =
+      downcallCritical(
+        "zlink_router_recv_part",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+          ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+          ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_JAVA_ROUTER_RECV = optionalDowncall(
       "zlink_java_router_recv_compat",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -1303,6 +1326,18 @@ public final class Native {
         }
     }
 
+    // DONT_WAIT-only critical variant. Caller MUST guarantee DONT_WAIT bit set.
+    public static int sendPartNoWaitCritical(MemorySegment socket,
+                                             MemorySegment part,
+                                             int flags, int partFlag) {
+        try {
+            return (int) MH_SEND_PART_CRITICAL.invokeExact(socket, part, flags,
+                partFlag);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_send_part (critical) failed", t);
+        }
+    }
+
     public static int sendMultipart(MemorySegment socket, MemorySegment routingId,
                                     MemorySegment parts, long partCount,
                                     int flags) {
@@ -1324,6 +1359,21 @@ public final class Native {
                 flags, partFlag);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_send_part_rid failed", t);
+        }
+    }
+
+    // DONT_WAIT-only critical variant for routed send.
+    public static int sendPartRidNoWaitCritical(MemorySegment socket,
+                                                MemorySegment routingId,
+                                                MemorySegment part,
+                                                int flags,
+                                                int partFlag) {
+        try {
+            return (int) MH_SEND_PART_RID_CRITICAL.invokeExact(socket,
+                routingId, part, flags, partFlag);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_send_part_rid (critical) failed",
+                t);
         }
     }
 
@@ -2305,6 +2355,24 @@ public final class Native {
                 hasMoreOut, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_router_recv_part failed", t);
+        }
+    }
+
+    // DONT_WAIT-only critical variant. Caller MUST guarantee the DONT_WAIT
+    // bit is set in flags so that the underlying call is non-blocking.
+    public static int routerRecvPartNoWaitCritical(MemorySegment router,
+                                                   MemorySegment sourceNodeRidOut,
+                                                   MemorySegment sourceSpotRidOut,
+                                                   MemorySegment requestSeqOut,
+                                                   MemorySegment partOut,
+                                                   MemorySegment hasMoreOut,
+                                                   int flags) {
+        try {
+            return (int) MH_ROUTER_RECV_PART_CRITICAL.invokeExact(router,
+                sourceNodeRidOut, sourceSpotRidOut, requestSeqOut, partOut,
+                hasMoreOut, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_router_recv_part (critical) failed", t);
         }
     }
 

@@ -136,6 +136,65 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         return FromOwnedBytesCached(bytes);
     }
 
+    // Fast cache lookup keyed by inline (lo, hi, size) values from
+    // RoutingIdSnapshot. Avoids the per-recv byte[] allocation when the
+    // routing id has already been seen on this thread (typical perf scenario
+    // where N peers send round-robin). Returns null for caller to fall back
+    // to the byte[] path on cache miss; caller materializes byte[] then.
+    internal static RoutingId? TryFromInlineCached(int size, ulong lo, ulong hi)
+    {
+        if (size <= 0 || size > 16)
+            return null;
+        // Hash the inline bytes the same way RouteCacheKey.Create would, but
+        // straight off the (lo, hi) words — avoids byte[] alloc.
+        const ulong offset = 14695981039346656037UL;
+        const ulong prime = 1099511628211UL;
+        ulong hash = offset;
+        for (int i = 0; i < size && i < 8; i++)
+        {
+            hash ^= (lo >> (i * 8)) & 0xFFUL;
+            hash *= prime;
+        }
+        for (int i = 8; i < size; i++)
+        {
+            hash ^= (hi >> ((i - 8) * 8)) & 0xFFUL;
+            hash *= prime;
+        }
+        RouteCacheKey key = RouteCacheKey.FromHash(size, hash);
+        Dictionary<RouteCacheKey, List<RouteCacheEntry>>? cache = t_ownedCache;
+        if (cache == null || !cache.TryGetValue(key,
+                out List<RouteCacheEntry>? entries))
+        {
+            return null;
+        }
+        for (int i = 0; i < entries.Count; i++)
+        {
+            byte[] entryBytes = entries[i].Bytes;
+            if (entryBytes.Length != size)
+                continue;
+            if (!InlineMatchesBytes(size, lo, hi, entryBytes))
+                continue;
+            return entries[i].RoutingId;
+        }
+        return null;
+    }
+
+    private static bool InlineMatchesBytes(int size, ulong lo, ulong hi,
+        byte[] entryBytes)
+    {
+        for (int i = 0; i < size && i < 8; i++)
+        {
+            if (entryBytes[i] != (byte)(lo >> (i * 8)))
+                return false;
+        }
+        for (int i = 8; i < size; i++)
+        {
+            if (entryBytes[i] != (byte)(hi >> ((i - 8) * 8)))
+                return false;
+        }
+        return true;
+    }
+
     internal static unsafe RoutingId? FromNative(ref ZlinkRoutingId routingId)
     {
         int size = routingId.Size;
@@ -161,6 +220,20 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         if (native != null)
             return native.Value;
         return NativeHelpers.WriteRoutingId(ToBytes());
+    }
+
+    // Returns a reference to the cached ZlinkRoutingId when available,
+    // avoiding the 256-byte struct copy that ToNative() does in the hot
+    // path of routed Send. Falls back to materializing into the caller-
+    // provided slot only when the box hasn't been built yet (rare).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ref ZlinkRoutingId ToNativeRef(ref ZlinkRoutingId fallback)
+    {
+        NativeRoutingIdBox? native = _native;
+        if (native != null)
+            return ref native.RefValue;
+        fallback = NativeHelpers.WriteRoutingId(ToBytes());
+        return ref fallback;
     }
 
     private static int ComputeHash(ReadOnlySpan<byte> bytes)
@@ -244,6 +317,11 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         private int Length { get; }
         private ulong Hash { get; }
 
+        internal static RouteCacheKey FromHash(int length, ulong hash)
+        {
+            return new RouteCacheKey(length, hash);
+        }
+
         internal static RouteCacheKey Create(ReadOnlySpan<byte> bytes)
         {
             const ulong offset = 14695981039346656037UL;
@@ -292,6 +370,16 @@ public readonly struct RoutingId : IEquatable<RoutingId>
             Value = NativeHelpers.WriteRoutingId(bytes);
         }
 
-        internal readonly ZlinkRoutingId Value;
+        // Mutable backing for the cached ZlinkRoutingId — written exactly
+        // once in the constructor. Exposing it via RefValue allows callers
+        // on the hot send path to take a ref instead of copying the
+        // 256-byte struct.
+        internal ZlinkRoutingId Value;
+
+        internal ref ZlinkRoutingId RefValue
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => ref Value;
+        }
     }
 }

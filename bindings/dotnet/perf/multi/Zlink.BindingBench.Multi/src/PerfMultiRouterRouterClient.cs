@@ -112,29 +112,51 @@ internal static class PerfMultiRouterRouterClient
         long benchStartTicks = Stopwatch.GetTimestamp();
         long benchDeadlineTicks = benchStartTicks
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
+        bool timing = Environment.GetEnvironmentVariable(
+            "PERF_DOTNET_TIMING") == "1";
+        long scheduleTicks = 0;
+        long pollTicks = 0;
+        long handleTicks = 0;
+        long passes = 0;
         while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
         {
+            long t0 = timing ? Stopwatch.GetTimestamp() : 0;
             TryScheduleIdleSends(slots, eventMasks, msgSize, runId, PerfPhase.Active,
                 ref seq, ref rrIndex);
+            long t1 = timing ? Stopwatch.GetTimestamp() : 0;
 
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait.
             if (PollSocketEvents(pollManager, sockets, eventMasks,
                     pollTimeoutMs) <= 0)
             {
+                long t2no = timing ? Stopwatch.GetTimestamp() : 0;
                 for (int i = 0; i < slots.Length; i++)
                     HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
                         runId, PerfPhase.Active, ref seq, metrics, allowSend: true,
                         activeDeadlineTicks: benchDeadlineTicks);
+                long t3no = timing ? Stopwatch.GetTimestamp() : 0;
+                if (timing) { scheduleTicks += t1 - t0; pollTicks += t2no - t1; handleTicks += t3no - t2no; passes++; }
                 continue;
             }
 
+            long t2 = timing ? Stopwatch.GetTimestamp() : 0;
             for (int i = 0; i < slots.Length; i++)
                 HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
                     runId, PerfPhase.Active, ref seq, metrics, allowSend: true,
                     activeDeadlineTicks: benchDeadlineTicks);
+            long t3 = timing ? Stopwatch.GetTimestamp() : 0;
+            if (timing) { scheduleTicks += t1 - t0; pollTicks += t2 - t1; handleTicks += t3 - t2; passes++; }
         }
 
         long benchEndTicks = Stopwatch.GetTimestamp();
+        if (timing && passes > 0)
+        {
+            double tickPerNs = 1_000_000_000.0 / Stopwatch.Frequency;
+            double cpuNs = (scheduleTicks + pollTicks + handleTicks) * tickPerNs;
+            double wallNs = (benchEndTicks - benchStartTicks) * tickPerNs;
+            Console.Error.WriteLine(
+                $"[dotnet-client-timing] passes={passes} per-pass ns: schedule={scheduleTicks * tickPerNs / passes:F0} poll={pollTicks * tickPerNs / passes:F0} handle={handleTicks * tickPerNs / passes:F0} total={(scheduleTicks + pollTicks + handleTicks) * tickPerNs / passes:F0} cpu%={cpuNs / wallNs * 100:F1}");
+        }
 
         double elapsedSeconds = (benchEndTicks - benchStartTicks)
             / (double)Stopwatch.Frequency;
@@ -186,6 +208,7 @@ internal static class PerfMultiRouterRouterClient
         int msgSize, uint runId, PerfPhase phase, ref ulong seq,
         RouterRouterMetrics metrics, bool allowSend, long activeDeadlineTicks)
     {
+        _ = activeDeadlineTicks;
         RouterRouterClientSlot slot = slots[slotIndex];
 
         if (IsSocketWriteReady(pollManager, slotIndex)
@@ -207,7 +230,7 @@ internal static class PerfMultiRouterRouterClient
         while (true)
         {
             using Received? receivedMessage = TryRecvNoWait((RouterSocket)slot.Socket);
-            if (receivedMessage == null || receivedMessage.Parts.Count == 0)
+            if (receivedMessage == null)
                 break;
 
             if (!slot.WaitingForReply)
@@ -218,12 +241,14 @@ internal static class PerfMultiRouterRouterClient
             {
                 ReadOnlySpan<byte> body = receivedMessage.SinglePartOrThrow()
                     .AsReadOnlySpan();
-                long recvTicks = Stopwatch.GetTimestamp();
+                // Match C reference: outer while loop bounds the active
+                // window; dropping replies that arrive after activeDeadline
+                // would lower throughput vs C for replies whose sends were
+                // inside the active phase.
                 if (PerfShared.TryDecodeMetricHeader(body, out PerfMetricHeader header)
                     && header.RunId == runId
                     && header.MsgSize == (uint)msgSize
-                    && header.Phase == (uint)phase
-                    && recvTicks <= activeDeadlineTicks)
+                    && header.Phase == (uint)phase)
                 {
                     metrics.MeasureCount++;
                     if (metrics.LatencySamples != null && header.SentTsNs > 0)

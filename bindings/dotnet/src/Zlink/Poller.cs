@@ -249,21 +249,27 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         return written == 0 ? null : destination[0];
     }
 
+    // Reusable scratch buffer for WaitAll. The returned IReadOnlyList shares
+    // this buffer (truncated to the written length); the caller must consume
+    // the result before the next WaitAll/Wait call on this poller. Eliminates
+    // the per-poll PollEvent[maxEvents] heap allocation that otherwise grows
+    // with the registered socket count (100 clients × thousands of polls per
+    // second is meaningful Gen 0 pressure).
+    private PollEvent[] _waitAllBuffer = Array.Empty<PollEvent>();
+
     public IReadOnlyList<PollEvent> WaitAll(int maxEvents, TimeSpan timeout)
     {
         if (maxEvents < 0)
             throw new ArgumentOutOfRangeException(nameof(maxEvents));
         if (maxEvents == 0)
             return Array.Empty<PollEvent>();
-        PollEvent[] destination = new PollEvent[maxEvents];
-        int written = Wait(destination, ToTimeoutMilliseconds(timeout),
-            out _);
+        if (_waitAllBuffer.Length < maxEvents)
+            _waitAllBuffer = new PollEvent[maxEvents];
+        int written = Wait(_waitAllBuffer.AsSpan(0, maxEvents),
+            ToTimeoutMilliseconds(timeout), out _);
         if (written == 0)
             return Array.Empty<PollEvent>();
-        if (written == destination.Length)
-            return destination;
-        Array.Resize(ref destination, written);
-        return destination;
+        return new ArraySegment<PollEvent>(_waitAllBuffer, 0, written);
     }
 
     internal int Wait(Span<PollEvent> destination, int timeoutMs,

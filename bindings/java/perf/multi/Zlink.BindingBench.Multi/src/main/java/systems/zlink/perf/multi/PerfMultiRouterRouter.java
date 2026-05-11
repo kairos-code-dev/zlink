@@ -6,6 +6,7 @@ import systems.zlink.Context;
 import systems.zlink.Message;
 import systems.zlink.MonitorEventType;
 import systems.zlink.PollEventFlag;
+import systems.zlink.RecvFlags;
 import systems.zlink.RouterSocket;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
@@ -16,9 +17,10 @@ import systems.zlink.perf.PerfUtil;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 
 final class PerfMultiRouterRouter {
     private static final MonitorEventType READY_EVENT =
@@ -48,12 +50,27 @@ final class PerfMultiRouterRouter {
             Deque<PendingReply> pendingReplies = new ArrayDeque<>();
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 List.of(server), PollEventFlag.POLLIN)) {
-                // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait (-1);
-                // server exits after observing one wire-level stop token per
-                // expected client.
+                // PERF_MULTI_TEST_POLICY § 1.2 echo server: DONT_WAIT + per-socket
+                // pending deque, drain POLLIN until EAGAIN, drain POLLOUT to flush
+                // pending. § 1.3.1: signal-driven wait (-1).
                 while (stops < config.clients()) {
-                    pollSet.setEvents(0, PollEventFlag.POLLIN);
+                    if (pendingReplies.isEmpty()) {
+                        pollSet.setEvents(0, PollEventFlag.POLLIN);
+                    } else {
+                        pollSet.setEvents(0,
+                            PollEventFlag.POLLIN, PollEventFlag.POLLOUT);
+                    }
                     pollSet.poll(-1);
+                    boolean writable =
+                        pollSet.isReady(0, PollEventFlag.POLLOUT);
+                    boolean readable =
+                        pollSet.isReady(0, PollEventFlag.POLLIN);
+                    if (writable) {
+                        flushPending(server, pendingReplies);
+                    }
+                    if (!readable) {
+                        continue;
+                    }
                     while (true) {
                         systems.zlink.Received received =
                             PerfUtil.recvNoWait(server);
@@ -71,7 +88,23 @@ final class PerfMultiRouterRouter {
                                 continue;
                             }
                             RoutingId rid = received.routingId().orElseThrow();
-                            server.send(rid, received.firstPart());
+                            // Fast path: send directly when no pending backlog.
+                            if (pendingReplies.isEmpty()
+                                && server.send(rid, received.firstPart(),
+                                    SendFlags.DONT_WAIT)) {
+                                continue;
+                            }
+                            // Slow path: take ownership of the part to outlive
+                            // the Received scope and enqueue / send.
+                            Message ownedReply = received.firstPart().move();
+                            if (pendingReplies.isEmpty()
+                                && server.send(rid, ownedReply,
+                                    SendFlags.DONT_WAIT)) {
+                                ownedReply.close();
+                            } else {
+                                pendingReplies.addLast(
+                                    new PendingReply(rid, ownedReply));
+                            }
                         }
                     }
                 }
@@ -80,102 +113,221 @@ final class PerfMultiRouterRouter {
         }
     }
 
+    // PERF_MULTI_TEST_POLICY §1.3 mandates a single app thread driving the
+    // poller event loop for all N client sockets, mirroring the C reference
+    // perf_multi_client_helpers.hpp::run_echo_window_round_robin. This
+    // single-thread + single-context + N-sockets model is the canonical
+    // multi-client measurement structure; the previous per-thread + per-
+    // context fan-out diverged from policy and inflated measurement noise
+    // (per-context I/O dispatcher overhead, synchronized metric collection).
     static PerfUtil.Result runClient(PerfUtil.Config config) {
-        CountDownLatch connected = new CountDownLatch(config.clients());
-        CountDownLatch go = new CountDownLatch(1);
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-        PerfMultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
-            Context ctx = PerfUtil.newContext(config);
-            try (RouterSocket client = new RouterSocket(ctx);
-                 var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY)) {
-                client.setRoutingId(RoutingId.fromBytes(
-                    ("PERF_CLIENT_" + index).getBytes(StandardCharsets.UTF_8)));
-                client.options().connectRoutingId(SERVER_ID);
-                PerfUtil.applyMonitorOptions(monitor, config);
-                PerfUtil.applySocketOptions(client, config);
-                PerfUtil.configureClientTls(client, config.transport());
-                client.connect(config.endpoint());
-                PerfUtil.waitForMonitorEvent(monitor, READY_EVENT, 1,
-                    Duration.ofMillis(config.connectReadyTimeoutMs()),
-                    "router/router client ready");
-                PerfUtil.applyAutoHwmMsgUnit(client, config.size());
-                PerfUtil.recalculateAutoHwm(ctx);
-                connected.countDown();
-                if (connected.getCount() == 0L) {
-                    metrics.startActiveWindow();
-                    go.countDown();
+        int clientCount = Math.max(1, config.clients());
+        int durationSeconds = Math.max(1, config.durationSeconds());
+
+        try (Context ctx = PerfUtil.newContext(config)) {
+            List<RouterSocket> clients = new ArrayList<>(clientCount);
+            List<systems.zlink.MonitorSocket> monitors =
+                new ArrayList<>(clientCount);
+            try {
+                for (int i = 0; i < clientCount; i++) {
+                    RouterSocket client = new RouterSocket(ctx);
+                    client.setRoutingId(RoutingId.fromBytes(
+                        ("PERF_CLIENT_" + i).getBytes(StandardCharsets.UTF_8)));
+                    client.options().connectRoutingId(SERVER_ID);
+                    var monitor = client.monitorOpen(
+                        MonitorEventType.CONNECTION_READY);
+                    PerfUtil.applyMonitorOptions(monitor, config);
+                    PerfUtil.applySocketOptions(client, config);
+                    PerfUtil.configureClientTls(client, config.transport());
+                    client.connect(config.endpoint());
+                    clients.add(client);
+                    monitors.add(monitor);
                 }
-                PerfUtil.await(go, "router/router start", Duration.ofSeconds(10));
-                try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                    List.of(client), PollEventFlag.POLLIN)) {
-                    long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
-                    while (System.nanoTime() < activeEnd) {
-                        try (Message request = PerfUtil.payload(config.size(),
-                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                            sendUntilSent(client, pollSet, request, activeEnd);
-                        }
-                        if (!awaitReadable(pollSet, activeEnd)) {
-                            break;
-                        }
-                        while (true) {
-                            systems.zlink.Received received =
-                                PerfUtil.recvNoWait(client);
-                            if (received == null) {
-                                break;
-                            }
-                            try (received) {
-                                PerfUtil.Header header = PerfUtil.decodeHeader(
-                                    received.firstPart(), config.size());
-                                if (header != null && header.phase() == PerfUtil.PHASE_ACTIVE) {
-                                    metrics.recordNanos(header.latencyNanos() / 2L);
-                                }
-                            }
-                        }
-                    }
-                    // PERF_MULTI_TEST_POLICY § 1.3.1: phase end is signaled
-                    // via a wire-level stop token (one per client).
-                    try (Message stop = PerfStopToken.newMessage()) {
-                        sendUntilSent(client, pollSet, stop,
-                            System.nanoTime() + Duration.ofSeconds(5).toNanos());
-                    }
+                for (int i = 0; i < clientCount; i++) {
+                    PerfUtil.waitForMonitorEvent(monitors.get(i), READY_EVENT, 1,
+                        Duration.ofMillis(config.connectReadyTimeoutMs()),
+                        "router/router client ready[" + i + "]");
+                }
+                for (int i = 0; i < clientCount; i++) {
+                    PerfUtil.applyAutoHwmMsgUnit(clients.get(i), config.size());
+                }
+                PerfUtil.recalculateAutoHwm(ctx);
+                for (int i = 0; i < clientCount; i++) {
+                    monitors.get(i).close();
+                }
+                monitors.clear();
+
+                runRouterRouterClientLoop(ctx, clients, config, durationSeconds,
+                    metrics);
+            } finally {
+                for (var monitor : monitors) {
+                    try { monitor.close(); } catch (RuntimeException ignored) {}
+                }
+                for (RouterSocket client : clients) {
+                    try { client.close(); } catch (RuntimeException ignored) {}
                 }
             }
-        }, "multi-rr-client-" + index), config.durationSeconds());
+        }
         return metrics.finishMulti(config);
     }
 
-    private static void sendUntilSent(RouterSocket client, PerfSocketPollSet pollSet,
-                                      Message part,
-                                      long deadlineNs) {
-        while (true) {
-            if (client.send(SERVER_ID, part, SendFlags.DONT_WAIT)) {
-                return;
+    // Single-thread round-robin: one PollSet over all client sockets, mirror
+    // of C perf_multi_client_helpers.hpp::run_echo_window_round_robin and
+    // .NET PerfMultiRouterRouterClient.RunMultiRouterRouterClientLoop.
+    private static void runRouterRouterClientLoop(Context ctx,
+                                                  List<RouterSocket> clients,
+                                                  PerfUtil.Config config,
+                                                  int durationSeconds,
+                                                  PerfUtil.Metrics metrics) {
+        int n = clients.size();
+        int msgSize = config.size();
+        int runId = PerfUtil.runId();
+        // Reusable per-slot send payload buffer. C reference reuses one
+        // payload buffer across the entire active phase (or per-socket when
+        // borrow_payload_per_socket=true). We use per-socket buffers so that
+        // an inflight=1 send isn't disturbed by the next slot's stamp.
+        byte[][] payloads = new byte[n][];
+        boolean[] waitingReply = new boolean[n];
+        boolean[] waitingWritable = new boolean[n];
+        for (int i = 0; i < n; i++) {
+            payloads[i] = new byte[Math.max(msgSize, PerfUtil.HEADER_SIZE)];
+            Arrays.fill(payloads[i], (byte) 'a');
+        }
+        List<systems.zlink.Socket> socketsAsBase = new ArrayList<>(n);
+        for (RouterSocket c : clients) {
+            socketsAsBase.add(c);
+        }
+        long seq = 1L;
+        int rrIndex = 0;
+        try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
+                socketsAsBase, PollEventFlag.POLLIN)) {
+            metrics.startActiveWindow();
+            long activeEnd = System.nanoTime()
+                + (long) durationSeconds * 1_000_000_000L;
+            while (System.nanoTime() < activeEnd) {
+                int startIndex = rrIndex;
+                for (int i = 0; i < n; i++) {
+                    int idx = (startIndex + i) % n;
+                    if (waitingReply[idx] || waitingWritable[idx]) continue;
+                    stampMetricHeader(payloads[idx], runId,
+                        (byte) PerfUtil.PHASE_ACTIVE, msgSize, seq++,
+                        System.nanoTime());
+                    if (trySendPayload(clients.get(idx), payloads[idx])) {
+                        waitingReply[idx] = true;
+                    } else {
+                        waitingWritable[idx] = true;
+                    }
+                    updatePollMask(pollSet, idx, waitingReply[idx],
+                        waitingWritable[idx]);
+                }
+                rrIndex = (startIndex + 1) % n;
+                pollSet.poll(-1);
+                for (int idx = 0; idx < n; idx++) {
+                    boolean writable =
+                        pollSet.isReady(idx, PollEventFlag.POLLOUT);
+                    if (writable && waitingWritable[idx] && !waitingReply[idx]) {
+                        if (trySendPayload(clients.get(idx), payloads[idx])) {
+                            waitingWritable[idx] = false;
+                            waitingReply[idx] = true;
+                            updatePollMask(pollSet, idx, true, false);
+                        }
+                    }
+                    boolean readable =
+                        pollSet.isReady(idx, PollEventFlag.POLLIN);
+                    if (!readable && !waitingReply[idx]) continue;
+                    drainReplies(clients.get(idx), idx, waitingReply,
+                        waitingWritable, msgSize, runId, metrics, pollSet);
+                }
             }
-            if (System.nanoTime() >= deadlineNs) {
-                throw new IllegalStateException("router/router send timed out");
+            // PERF_MULTI_TEST_POLICY §1.3.1 wire-level stop token: one per
+            // client. Best-effort send, do not block the runner past the
+            // result-line timeout.
+            for (int i = 0; i < n; i++) {
+                try (Message stop = PerfStopToken.newMessage()) {
+                    clients.get(i).send(SERVER_ID, stop, SendFlags.DONT_WAIT);
+                }
             }
-            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait for POLLOUT.
-            // The application-level deadline above bounds total retry duration.
-            pollSet.setEvents(0, PollEventFlag.POLLOUT);
-            pollSet.poll(-1);
+        }
+        // ctx auto-HWM was already applied at setup; reference kept for the
+        // compiler so the parameter isn't flagged unused.
+        if (ctx == null) {
+            throw new IllegalStateException("ctx must not be null");
         }
     }
 
-    private static boolean awaitReadable(PerfSocketPollSet pollSet, long deadlineNs) {
-        // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait for POLLIN.
-        while (System.nanoTime() < deadlineNs) {
-            try {
-                pollSet.setEvents(0, PollEventFlag.POLLIN);
-                if (pollSet.poll(-1) > 0) {
-                    return true;
+    private static void drainReplies(RouterSocket client, int idx,
+                                     boolean[] waitingReply,
+                                     boolean[] waitingWritable,
+                                     int msgSize, int runId,
+                                     PerfUtil.Metrics metrics,
+                                     PerfSocketPollSet pollSet) {
+        while (true) {
+            systems.zlink.Received received =
+                PerfUtil.recvNoWait(client);
+            if (received == null) break;
+            try (received) {
+                if (!waitingReply[idx]) continue;
+                waitingReply[idx] = false;
+                PerfUtil.Header header = PerfUtil.decodeHeader(received.firstPart(), msgSize);
+                if (header != null
+                    && header.phase() == PerfUtil.PHASE_ACTIVE) {
+                    metrics.recordNanos(header.latencyNanos() / 2L);
                 }
-            } catch (systems.zlink.ZlinkException ex) {
-                if (ex.getInternalErrno() != 11 && ex.getInternalErrno() != 4) {
-                    throw ex;
-                }
+                waitingWritable[idx] = false;
+                updatePollMask(pollSet, idx, false, false);
             }
         }
-        return false;
+    }
+
+    private static boolean trySendPayload(RouterSocket client, byte[] payload) {
+        try (Message message = Message.copyOf(payload)) {
+            return client.send(SERVER_ID, message, SendFlags.DONT_WAIT);
+        }
+    }
+
+    // Stamps the canonical 29-byte metric header (PERF_POLICY §1.1.1) at the
+    // start of an existing send buffer. Mirrors C reference
+    // stamp_metric_payload in perf_multi_metric_header.hpp.
+    private static final int METRIC_MAGIC = 0x5A4C4E4B; // "ZLNK"
+
+    private static void stampMetricHeader(byte[] buf, int runId, byte phase,
+                                          int msgSize, long seq, long sentTsNs) {
+        writeIntLe(buf, 0, METRIC_MAGIC);
+        writeIntLe(buf, 4, runId);
+        buf[8] = phase;
+        writeIntLe(buf, 9, msgSize);
+        writeLongLe(buf, 13, seq);
+        writeLongLe(buf, 21, sentTsNs);
+    }
+
+    private static void writeIntLe(byte[] buf, int offset, int value) {
+        buf[offset] = (byte) value;
+        buf[offset + 1] = (byte) (value >>> 8);
+        buf[offset + 2] = (byte) (value >>> 16);
+        buf[offset + 3] = (byte) (value >>> 24);
+    }
+
+    private static void writeLongLe(byte[] buf, int offset, long value) {
+        buf[offset] = (byte) value;
+        buf[offset + 1] = (byte) (value >>> 8);
+        buf[offset + 2] = (byte) (value >>> 16);
+        buf[offset + 3] = (byte) (value >>> 24);
+        buf[offset + 4] = (byte) (value >>> 32);
+        buf[offset + 5] = (byte) (value >>> 40);
+        buf[offset + 6] = (byte) (value >>> 48);
+        buf[offset + 7] = (byte) (value >>> 56);
+    }
+
+    private static void updatePollMask(PerfSocketPollSet pollSet, int idx,
+                                       boolean waitingReply,
+                                       boolean waitingWritable) {
+        if (waitingWritable && !waitingReply) {
+            pollSet.setEvents(idx, PollEventFlag.POLLIN,
+                PollEventFlag.POLLOUT);
+        } else {
+            pollSet.setEvents(idx, PollEventFlag.POLLIN);
+        }
     }
 
     private static void flushPending(RouterSocket server,

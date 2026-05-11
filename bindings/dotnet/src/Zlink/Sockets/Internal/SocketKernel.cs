@@ -400,7 +400,9 @@ internal sealed class SocketKernel : IDisposable
     {
         if (message == null)
             throw new ArgumentNullException(nameof(message));
-        ZlinkRoutingId nativeRoutingId = routingId.ToNative();
+        ZlinkRoutingId fallback = default;
+        ref ZlinkRoutingId nativeRoutingId =
+            ref routingId.ToNativeRef(ref fallback);
         if ((((int)flags) & DontWaitFlag) != 0)
         {
             SendResult result = SendSingleNoWaitResultCore(ref nativeRoutingId,
@@ -418,7 +420,12 @@ internal sealed class SocketKernel : IDisposable
     {
         if (message == null)
             throw new ArgumentNullException(nameof(message));
-        ZlinkRoutingId nativeRoutingId = routingId.ToNative();
+        // Take ref to the cached ZlinkRoutingId when available — avoids the
+        // 256-byte struct copy that ToNative() does in the routed send hot
+        // path (51 MB/s memcpy bandwidth at 200K msg/sec).
+        ZlinkRoutingId fallback = default;
+        ref ZlinkRoutingId nativeRoutingId =
+            ref routingId.ToNativeRef(ref fallback);
         return SendSingleResultCore(ref nativeRoutingId, message, flags);
     }
 
@@ -1664,7 +1671,11 @@ internal sealed class SocketKernel : IDisposable
                 routingIdBytes ??= CopyRoutingIdBytes(sourceRoutingId);
                 if (hasMore == 0 && nativePartCount == 0)
                 {
-                    singlePart = Message.AdoptNative(ref part);
+                    // Pool-aware adoption: in routed echo workloads the
+                    // Message wrapper lifetime is bounded by the caller's
+                    // using-scope. Recycling these instances eliminates a
+                    // per-message heap allocation and Gen 0 GC pressure.
+                    singlePart = Message.AdoptNativeFromPool(ref part);
                     return true;
                 }
 
@@ -1735,7 +1746,7 @@ internal sealed class SocketKernel : IDisposable
                     routingId = RoutingIdSnapshot.FromPointer(sourceNodeRid);
                 if (basicHasMore == 0 && nativePartCount == 0)
                 {
-                    singlePart = Message.AdoptNative(ref part);
+                    singlePart = Message.AdoptNativeFromPool(ref part);
                     return true;
                 }
 
@@ -1778,10 +1789,21 @@ internal sealed class SocketKernel : IDisposable
                     throw ZlinkException.CreateRecvException(
                         NativeMethods.zlink_errno());
                 bool initialized = true;
-                int rc = NativeMethods.zlink_router_recv_part(Handle,
-                    out IntPtr sourceNodeRid, out IntPtr sourceSpotRid,
-                    out ulong receivedRequestSeq, ref part, out int hasMore,
-                    flags);
+                // DONT_WAIT-only critical variant: the underlying C call is
+                // non-blocking, so [SuppressGCTransition] is safe.
+                IntPtr sourceNodeRid;
+                IntPtr sourceSpotRid;
+                ulong receivedRequestSeq;
+                int hasMore;
+                int rc = (flags & DontWaitFlag) != 0
+                    ? NativeMethods.zlink_router_recv_part_nowait(Handle,
+                        out sourceNodeRid, out sourceSpotRid,
+                        out receivedRequestSeq, ref part, out hasMore,
+                        flags)
+                    : NativeMethods.zlink_router_recv_part(Handle,
+                        out sourceNodeRid, out sourceSpotRid,
+                        out receivedRequestSeq, ref part, out hasMore,
+                        flags);
                 if (rc != 0)
                 {
                     if (initialized)
@@ -1804,7 +1826,11 @@ internal sealed class SocketKernel : IDisposable
                 }
                 if (hasMore == 0 && nativePartCount == 0)
                 {
-                    singlePart = Message.AdoptNative(ref part);
+                    // Pool-aware adoption: in routed echo workloads the
+                    // Message wrapper lifetime is bounded by the caller's
+                    // using-scope. Recycling these instances eliminates a
+                    // per-message heap allocation and Gen 0 GC pressure.
+                    singlePart = Message.AdoptNativeFromPool(ref part);
                     return true;
                 }
 
@@ -2786,8 +2812,8 @@ internal sealed class SocketKernel : IDisposable
                 payload.CopyTo(new Span<byte>((void*)dataPtr, payload.Length));
             }
 
-            int rc = NativeMethods.zlink_send_part(Handle, ref nativePart,
-                DontWaitFlag, NativeMethods.ZlinkPartFlag.Final);
+            int rc = NativeMethods.zlink_send_part_nowait(Handle,
+                ref nativePart, DontWaitFlag, NativeMethods.ZlinkPartFlag.Final);
             initialized = false;
             if (rc == 0)
                 return SendResult.Sent;
@@ -3328,8 +3354,12 @@ internal sealed class SocketKernel : IDisposable
             }
         }
 
-        int rc = NativeMethods.zlink_send_part_rid(Handle, ref routingId,
-            ref message.Handle, flags, NativeMethods.ZlinkPartFlag.Final);
+        // DONT_WAIT-only critical variant: contractually non-blocking.
+        int rc = (flags & DontWaitFlag) != 0
+            ? NativeMethods.zlink_send_part_rid_nowait(Handle, ref routingId,
+                ref message.Handle, flags, NativeMethods.ZlinkPartFlag.Final)
+            : NativeMethods.zlink_send_part_rid(Handle, ref routingId,
+                ref message.Handle, flags, NativeMethods.ZlinkPartFlag.Final);
         if (rc != 0)
             throw ZlinkException.CreateSubmitException(
                 NativeMethods.zlink_errno());
@@ -3356,8 +3386,11 @@ internal sealed class SocketKernel : IDisposable
             return sendResult;
         }
 
-        int rc = NativeMethods.zlink_send_part_rid(Handle, ref routingId,
-            ref message.Handle, flags, NativeMethods.ZlinkPartFlag.Final);
+        int rc = (flags & DontWaitFlag) != 0
+            ? NativeMethods.zlink_send_part_rid_nowait(Handle, ref routingId,
+                ref message.Handle, flags, NativeMethods.ZlinkPartFlag.Final)
+            : NativeMethods.zlink_send_part_rid(Handle, ref routingId,
+                ref message.Handle, flags, NativeMethods.ZlinkPartFlag.Final);
         if (rc == 0)
         {
             message.DetachAfterSend();
@@ -3522,8 +3555,9 @@ internal sealed class SocketKernel : IDisposable
             ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
 
-            int rc = NativeMethods.zlink_send_part_rid(Handle, ref routingId,
-                ref nativePart, DontWaitFlag, NativeMethods.ZlinkPartFlag.Final);
+            int rc = NativeMethods.zlink_send_part_rid_nowait(Handle,
+                ref routingId, ref nativePart, DontWaitFlag,
+                NativeMethods.ZlinkPartFlag.Final);
             initialized = false;
             if (rc == 0)
                 return SendResult.Sent;

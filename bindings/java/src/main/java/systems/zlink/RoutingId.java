@@ -52,6 +52,53 @@ public final class RoutingId {
         return created;
     }
 
+    // Inline-keyed cache lookup for the recv hot path. The caller already
+    // has the routing id bytes packed into (lo, hi, size); doing the hash and
+    // SequenceEqual against the cached entries directly off those words
+    // avoids the byte[] allocation that is otherwise discarded on cache hits.
+    // Returns null on miss; caller must fall back to allocating a byte[] and
+    // calling fromTrusted(byte[]).
+    static RoutingId tryFromInlineCached(int size, long lo, long hi) {
+        if (size <= 0 || size > 16) {
+            return null;
+        }
+        final long offset = 0xcbf29ce484222325L;
+        final long prime = 0x100000001b3L;
+        long hash = offset;
+        for (int i = 0; i < size && i < 8; i++) {
+            hash ^= ((lo >>> (i * 8)) & 0xFFL);
+            hash *= prime;
+        }
+        for (int i = 8; i < size; i++) {
+            hash ^= ((hi >>> ((i - 8) * 8)) & 0xFFL);
+            hash *= prime;
+        }
+        RouteCacheKey key = new RouteCacheKey(size, hash);
+        HashMap<RouteCacheKey, List<RouteCacheEntry>> cache = TRUSTED_CACHE.get();
+        List<RouteCacheEntry> entries = cache.get(key);
+        if (entries == null) {
+            return null;
+        }
+        for (int i = 0; i < entries.size(); i++) {
+            RouteCacheEntry entry = entries.get(i);
+            if (entry.bytes.length != size) continue;
+            if (!inlineMatchesBytes(size, lo, hi, entry.bytes)) continue;
+            return entry.routingId;
+        }
+        return null;
+    }
+
+    private static boolean inlineMatchesBytes(int size, long lo, long hi,
+                                              byte[] entryBytes) {
+        for (int i = 0; i < size && i < 8; i++) {
+            if (entryBytes[i] != (byte) (lo >>> (i * 8))) return false;
+        }
+        for (int i = 8; i < size; i++) {
+            if (entryBytes[i] != (byte) (hi >>> ((i - 8) * 8))) return false;
+        }
+        return true;
+    }
+
     /** Copies the full routing id byte array. */
     public static RoutingId fromBytes(byte[] value) {
         Objects.requireNonNull(value, "value");

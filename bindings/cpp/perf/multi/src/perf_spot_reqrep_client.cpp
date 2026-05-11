@@ -1,4 +1,19 @@
 // MULTI_SPOT_REQREP client benchmark: spot request/reply echo workload.
+//
+// Topology (policy MULTI_SPOT_REQREP):
+//   client(requester):  1 spot_node + N spots, each spot has routing_id
+//                       "SPOT-REQREP-<i>". Requests go via
+//                       request_to_spot(server_node_rid, server_spot_rid)
+//                       and the reply is delivered through the spot's recv
+//                       side; the user thread waits on a single poller that
+//                       has every slot spot registered for POLLIN.
+//   server(replier):    1 spot_node + 1 spot with routing_id
+//                       "SPOT-REQREP-SERVER-SPOT" on node
+//                       "SPOT-REQREP-SERVER-NODE", dispatch event handler
+//                       drains routed requests and replies on the same spot.
+//
+// This intentionally mirrors bindings/c/perf/multi/src/perf_multi_spot_reqrep_*
+// so cross-binding results compare on the same data plane.
 
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
@@ -7,41 +22,39 @@
 #include "../common/perf_metric_header.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
-#include <optional>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace {
 
 static const char *k_pattern_env = "SPOT_REQREP";
 static const char *k_pattern_result = "MULTI_SPOT_REQREP";
-static const char *k_channel = "bench";
+static const char *k_server_node_rid_text = "SPOT-REQREP-SERVER-NODE";
+static const char *k_server_spot_rid_text = "SPOT-REQREP-SERVER-SPOT";
 static const char k_payload_fill = 's';
+
+class spot_reqrep_client_bench_t;
 
 struct client_slot_t
 {
-    std::unique_ptr<zlink::service::spot_node_t> node;
+    spot_reqrep_client_bench_t *owner;
+    size_t index;
     std::unique_ptr<zlink::service::spot_t> spot;
-    std::unique_ptr<zlink::dealer_socket_t> dealer;
-    perf::multi::connect_monitor_t monitor;
     std::vector<char> payload;
-    std::optional<zlink::async_result_t<std::vector<zlink::message_t> > > pending;
+    std::atomic<bool> waiting_reply;
+    std::atomic<uint64_t> last_sent_ts_ns;
     uint64_t next_seq;
 
-    client_slot_t () : node (), spot (), dealer (), monitor (), payload (), pending (), next_seq (1)
+    client_slot_t () : owner (NULL), index (0), spot (), payload (),
+                       waiting_reply (false), last_sent_ts_ns (0), next_seq (1)
     {
     }
 };
-
-bool is_supported_transport (const std::string &transport_)
-{
-    return transport_ == "tcp" || transport_ == "tls" || transport_ == "ws"
-           || transport_ == "wss";
-}
 
 bool perf_debug_enabled ()
 {
@@ -55,23 +68,10 @@ void debug_log (const std::string &message_)
     std::cerr << "spot_reqrep_client: " << message_ << std::endl;
 }
 
-template<typename SocketLike>
-void apply_socket_options (SocketLike &socket_,
-                           const perf::multi::multi_bench_settings_t &settings_,
-                           size_t msg_size_)
+zlink::routing_id_t make_text_rid (const char *text_)
 {
-    zlink::common_socket_options_t options = socket_.options ();
-    if (perf::multi::manual_socket_overrides_enabled ()) {
-        options.send_hwm (
-          zlink::message_count_t::value (settings_.sndhwm > 0 ? settings_.sndhwm : 1));
-        options.recv_hwm (
-          zlink::message_count_t::value (settings_.rcvhwm > 0 ? settings_.rcvhwm : 1));
-    }
-    options.send_timeout (std::chrono::milliseconds (settings_.sndtimeo_ms));
-    options.recv_timeout (std::chrono::milliseconds (settings_.rcvtimeo_ms));
-    options.linger (std::chrono::milliseconds (0));
-    options.auto_hwm_msg_unit_bytes (
-      zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)));
+    return zlink::routing_id_t::from_bytes (
+      reinterpret_cast<const uint8_t *> (text_), std::strlen (text_));
 }
 
 class spot_reqrep_client_bench_t
@@ -88,7 +88,14 @@ class spot_reqrep_client_bench_t
           _endpoint (endpoint_),
           _settings (settings_),
           _ctx (),
+          _data_node (),
           _slots (),
+          _poller (),
+          _events (),
+          _active_run_id (1U),
+          _active_deadline_ns (0),
+          _active_reply_count (0),
+          _active_latency (),
           _resource_probe_start (),
           _resource_metrics ()
     {
@@ -97,7 +104,7 @@ class spot_reqrep_client_bench_t
 
     bool run ()
     {
-        if (!setup_slots ())
+        if (!setup ())
             return false;
 
         _resource_probe_start = perf::multi::start_resource_probe ();
@@ -105,12 +112,6 @@ class spot_reqrep_client_bench_t
         unsigned long long active_count = 0;
         const bool active_ok =
           run_active_phase (&active_count, &latency);
-
-        // PERF_MULTI_TEST_POLICY § 1.3.1: send a wire-level stop token
-        // through every dealer so the responder's signal-driven poller
-        // (timeout=-1) wakes up promptly instead of waiting for stdin
-        // STOP / SIGTERM after the active phase ends.
-        send_stop_tokens ();
 
         if (!active_ok)
             return false;
@@ -135,184 +136,168 @@ class spot_reqrep_client_bench_t
     }
 
   private:
-    bool setup_slots ()
+    bool setup ()
     {
+        _data_node.reset (new zlink::service::spot_node_t (_ctx.ctx ()));
+        if (!_data_node || !_data_node->valid ())
+            return false;
+        if (!perf::multi::configure_spot_client_tls (*_data_node, _transport))
+            return false;
+        if (!perf::multi::apply_spot_node_admission_hwm (
+              *_data_node, _settings.sndhwm, _settings.rcvhwm))
+            return false;
+        try {
+            _data_node->connect_peer (_endpoint);
+        }
+        catch (const std::exception &) {
+            return false;
+        }
+
         const size_t payload_size =
           std::max<size_t> (_msg_size, perf_metric::header_size ());
         for (size_t i = 0; i < _settings.clients; ++i) {
-            client_slot_t slot;
-            slot.node.reset (new zlink::service::spot_node_t (_ctx));
-            slot.spot.reset (new zlink::service::spot_t (slot.node->create_spot ()));
-            slot.dealer.reset (new zlink::dealer_socket_t (_ctx));
-            if (!slot.node->valid () || !slot.spot->valid () || !slot.dealer->valid ())
-                return false;
-
-            apply_socket_options (*slot.dealer, _settings, _msg_size);
-            if (!perf::setup_tls_client (*slot.dealer, _transport))
-                return false;
-            zlink::monitor_handle_t monitor = zlink::monitor_handle_t::open (
-              *slot.dealer, zlink::monitor_event::connection_ready);
-            if (!monitor.valid ())
-                return false;
-            slot.monitor.monitor.reset (
-              new zlink::monitor_handle_t (std::move (monitor)));
-            try {
-                slot.dealer->connect (_endpoint);
-            }
-            catch (const zlink::zlink_error_t &) {
+            std::unique_ptr<client_slot_t> slot (new client_slot_t ());
+            slot->owner = this;
+            slot->index = i;
+            slot->spot.reset (
+              new zlink::service::spot_t (_data_node->create_spot ()));
+            if (!slot->spot || !slot->spot->valid ()) {
+                debug_log ("slot spot create failed");
                 return false;
             }
-
-            slot.payload.assign (payload_size, k_payload_fill);
+            const std::string rid_text =
+              std::string ("SPOT-REQREP-") + std::to_string (i);
+            slot->spot->set_routing_id (zlink::routing_id_t::from_bytes (
+              reinterpret_cast<const uint8_t *> (rid_text.data ()),
+              rid_text.size ()));
+            slot->payload.assign (payload_size, k_payload_fill);
             _slots.push_back (std::move (slot));
         }
         if (!perf::multi::recalculate_auto_hwm (_ctx))
             return false;
 
-        std::vector<perf::multi::connect_monitor_t> monitors;
-        monitors.reserve (_slots.size ());
-        for (size_t i = 0; i < _slots.size (); ++i)
-            monitors.push_back (std::move (_slots[i].monitor));
-        const bool ready = perf::multi::wait_all_connect_ready (
-          monitors, _settings.connect_ready_timeout_ms);
-        for (size_t i = 0; i < monitors.size (); ++i)
-            perf::multi::close_connect_monitor (monitors[i]);
-        if (!ready)
-            debug_log ("connect_ready failed");
-        if (!ready || _slots.empty ())
-            return false;
-
-        for (size_t i = 0; i < _slots.size (); ++i) {
-            try {
-                _slots[i].node->attach_channel_dealer_manual (
-                  k_channel, *_slots[i].dealer);
-            }
-            catch (const zlink::zlink_error_t &) {
-                debug_log ("attach_channel_dealer_manual failed");
-                return false;
+        // Register every slot spot in a single poller so the user thread
+        // can wait once for any reply readiness signal.
+        try {
+            for (size_t i = 0; i < _slots.size (); ++i) {
+                _poller.add (
+                  *_slots[i]->spot, zlink::poll_event_flag_t::pollin,
+                  _slots[i].get ());
             }
         }
+        catch (const zlink::zlink_error_t &err) {
+            debug_log (std::string ("poller add failed errno=")
+                       + std::to_string (err.internal_errno ()));
+            return false;
+        }
+        _events.reserve (_slots.size ());
 
-        return true;
+        return !_slots.empty ();
     }
 
-    bool submit_request (client_slot_t &slot_, perf_metric::phase_t phase_)
+    bool submit_request (client_slot_t &slot_)
     {
-        if (slot_.pending.has_value ())
+        if (slot_.waiting_reply.load (std::memory_order_acquire))
             return true;
 
+        const uint64_t sent_ts_ns = perf_metric::now_ns ();
         if (!perf_metric::stamp_payload (slot_.payload.data (),
                                          slot_.payload.size (),
-                                         1U,
-                                         phase_,
+                                         _active_run_id,
+                                         perf_metric::phase_active,
                                          _msg_size,
-                                         slot_.next_seq++,
-                                         perf_metric::now_ns ())) {
+                                         slot_.next_seq,
+                                         sent_ts_ns)) {
             return false;
         }
 
-        std::vector<zlink::message_t> request_parts;
-        request_parts.push_back (
-          zlink::message_t::from_bytes (slot_.payload.data (), slot_.payload.size ()));
-        if (!request_parts.front ().valid ())
+        zlink::message_t request =
+          zlink::advanced::external_message_t::adopt (
+            slot_.payload.data (), slot_.payload.size (), NULL, NULL);
+        if (!request.valid ())
             return false;
+
+        slot_.waiting_reply.store (true, std::memory_order_release);
+        slot_.last_sent_ts_ns.store (sent_ts_ns, std::memory_order_release);
 
         try {
-            slot_.pending.emplace (
-              slot_.spot->request_channel (k_channel)
-                .message (request_parts.front ())
-                .timeout (std::chrono::milliseconds (2000))
-                .submit_async ());
+            const zlink::routing_id_t server_node_rid =
+              make_text_rid (k_server_node_rid_text);
+            const zlink::routing_id_t server_spot_rid =
+              make_text_rid (k_server_spot_rid_text);
+            client_slot_t *slot_ptr = &slot_;
+            const bool ok =
+              slot_.spot
+                ->request_to_spot (server_node_rid, server_spot_rid)
+                .message (request)
+                .timeout (std::chrono::milliseconds (
+                  std::max (1, _settings.rcvtimeo_ms)))
+                .flags (ZLINK_DONTWAIT)
+                .submit ([slot_ptr] (
+                            zlink::request_result_t result,
+                            std::vector<zlink::message_t> parts) {
+                    on_reply (slot_ptr, result, std::move (parts));
+                });
+            if (!ok) {
+                slot_.waiting_reply.store (
+                  false, std::memory_order_release);
+                return true;
+            }
+            ++slot_.next_seq;
             return true;
         }
-        catch (const std::exception &) {
-            debug_log ("request_channel submit failed");
+        catch (const zlink::submit_error_t &err) {
+            slot_.waiting_reply.store (false, std::memory_order_release);
+            const zlink::submit_result_t result = err.result ();
+            if (result == zlink::submit_result_t::backpressured
+                || result == zlink::submit_result_t::not_connected
+                || result == zlink::submit_result_t::not_found)
+                return true;
+            errno = err.internal_errno ();
             return false;
         }
     }
 
-    bool try_complete_reply (client_slot_t &slot_,
-                             unsigned long long *count_out_,
-                             perf::multi::bench_latency_sampler_t *latency_)
+    static void on_reply (client_slot_t *slot_,
+                          zlink::request_result_t result_,
+                          std::vector<zlink::message_t> parts_)
     {
-        if (!slot_.pending.has_value ())
-            return true;
+        if (!slot_ || !slot_->owner)
+            return;
 
-        if (slot_.pending->wait_for (std::chrono::milliseconds (0))
-            != std::future_status::ready) {
-            return true;
-        }
+        spot_reqrep_client_bench_t *bench = slot_->owner;
+        slot_->waiting_reply.store (false, std::memory_order_release);
 
-        std::vector<zlink::message_t> reply_parts;
-        try {
-            reply_parts = slot_.pending->get ();
-        }
-        catch (const std::exception &) {
-            slot_.pending.reset ();
-            debug_log ("request_channel future failed");
-            return false;
-        }
-        slot_.pending.reset ();
-
-        if (reply_parts.size () != 1 || !reply_parts.front ().valid ()) {
-            debug_log ("invalid reply payload");
-            return false;
-        }
+        if (result_ != zlink::request_result_t::ok || parts_.empty ())
+            return;
 
         perf_metric::header_t header;
         if (!perf_metric::decode_payload_header (
-              reply_parts.front ().data (), reply_parts.front ().size (), &header)
+              parts_.front ().data (), parts_.front ().size (), &header)
             || !perf_metric::is_expected (
-              header, 1U, perf_metric::phase_active, _msg_size)) {
-            debug_log ("reply header mismatch");
-            return false;
+              header, bench->_active_run_id,
+              perf_metric::phase_active, bench->_msg_size)) {
+            return;
         }
 
-        if (count_out_)
-            ++(*count_out_);
-        if (latency_) {
-            const uint64_t now_ns = perf_metric::now_ns ();
-            const uint64_t sent_ts_ns =
-              header.sent_ts_ns >= 0 ? static_cast<uint64_t> (header.sent_ts_ns)
-                                     : 0u;
-            const double latency_ns =
-              now_ns >= sent_ts_ns
-                ? static_cast<double> (now_ns - sent_ts_ns) * 0.5
-                : 0.0;
-            latency_->add (latency_ns);
-        }
-        return true;
-    }
+        const uint64_t now_ns = perf_metric::now_ns ();
+        const uint64_t deadline_ns =
+          bench->_active_deadline_ns.load (std::memory_order_acquire);
+        if (deadline_ns != 0 && now_ns >= deadline_ns)
+            return;
+        const uint64_t sent_ts_ns =
+          header.sent_ts_ns >= 0 ? static_cast<uint64_t> (header.sent_ts_ns)
+                                 : 0u;
+        if (sent_ts_ns == 0 || now_ns < sent_ts_ns)
+            return;
 
-    void send_stop_tokens ()
-    {
-        // Bounded retry through transient backpressure; one stop token
-        // per dealer is enough to wake the server's poller and let it
-        // exit cleanly via is_stop_token_message.
-        const char *stop = perf::multi::k_stop_token;
-        const size_t stop_size = std::strlen (stop);
-        for (size_t i = 0; i < _slots.size (); ++i) {
-            if (!_slots[i].dealer)
-                continue;
-            for (int retry = 0; retry < 100; ++retry) {
-                zlink::message_t msg = zlink::message_t::from_bytes (
-                  stop, stop_size);
-                if (!msg.valid ())
-                    break;
-                try {
-                    if (_slots[i].dealer->send (msg) == 0)
-                        break;
-                }
-                catch (const zlink::zlink_error_t &) {
-                    break;
-                }
-                if (errno != EAGAIN && errno != EWOULDBLOCK
-                    && errno != ETIMEDOUT && errno != EINTR) {
-                    break;
-                }
-                std::this_thread::sleep_for (
-                  std::chrono::milliseconds (1));
-            }
+        const double sample_ns =
+          static_cast<double> (now_ns - sent_ts_ns) * 0.5;
+        bench->_active_reply_count.fetch_add (
+          1, std::memory_order_acq_rel);
+        {
+            std::lock_guard<std::mutex> lock (bench->_latency_mutex);
+            bench->_active_latency.add (sample_ns);
         }
     }
 
@@ -322,32 +307,63 @@ class spot_reqrep_client_bench_t
         if (!count_out_ || !latency_out_)
             return false;
 
-        perf::multi::bench_latency_sampler_t latency;
-        unsigned long long count = 0;
+        const int duration_seconds = std::max (1, _settings.duration_seconds);
         const auto deadline = std::chrono::steady_clock::now ()
-                              + std::chrono::seconds (
-                                std::max (1, _settings.duration_seconds));
-
+                              + std::chrono::seconds (duration_seconds);
+        _active_deadline_ns.store (
+          perf_metric::now_ns ()
+            + static_cast<uint64_t> (duration_seconds) * 1000000000ULL,
+          std::memory_order_release);
+        _active_reply_count.store (0, std::memory_order_release);
+        {
+            std::lock_guard<std::mutex> lock (_latency_mutex);
+            _active_latency = perf::multi::bench_latency_sampler_t ();
+        }
         for (size_t i = 0; i < _slots.size (); ++i) {
-            if (!submit_request (_slots[i], perf_metric::phase_active))
-                return false;
+            _slots[i]->waiting_reply.store (
+              false, std::memory_order_release);
+            _slots[i]->next_seq = 1;
         }
 
         while (std::chrono::steady_clock::now () < deadline) {
+            bool submitted_any = false;
             for (size_t i = 0; i < _slots.size (); ++i) {
-                client_slot_t &slot = _slots[i];
-                if (!try_complete_reply (slot, &count, &latency))
-                    return false;
-                if (std::chrono::steady_clock::now () >= deadline)
+                if (_slots[i]->waiting_reply.load (
+                      std::memory_order_acquire))
                     continue;
-                if (!slot.pending.has_value ()
-                    && !submit_request (slot, perf_metric::phase_active))
+                if (!submit_request (*_slots[i]))
                     return false;
+                if (!_slots[i]->waiting_reply.load (
+                      std::memory_order_acquire))
+                    continue;
+                submitted_any = true;
+            }
+            if (submitted_any)
+                continue;
+
+            // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. The
+            // poller is registered with every slot spot's recv side, so
+            // it wakes as soon as any callback has consumed a reply.
+            try {
+                _events = _poller.wait_all (
+                  _slots.size (), std::chrono::milliseconds (-1));
+            }
+            catch (const zlink::recv_error_t &err) {
+                if (err.internal_errno () == EINTR
+                    || err.internal_errno () == EAGAIN)
+                    continue;
+                debug_log (std::string ("poller wait failed errno=")
+                           + std::to_string (err.internal_errno ()));
+                return false;
             }
         }
 
-        *count_out_ = count;
-        *latency_out_ = latency.snapshot ();
+        *count_out_ =
+          _active_reply_count.load (std::memory_order_acquire);
+        {
+            std::lock_guard<std::mutex> lock (_latency_mutex);
+            *latency_out_ = _active_latency.snapshot ();
+        }
         return true;
     }
 
@@ -359,10 +375,25 @@ class spot_reqrep_client_bench_t
     const perf::multi::multi_bench_settings_t _settings;
 
     perf::multi::ctx_guard_t _ctx;
-    std::vector<client_slot_t> _slots;
+    std::unique_ptr<zlink::service::spot_node_t> _data_node;
+    std::vector<std::unique_ptr<client_slot_t> > _slots;
+    zlink::poller_t _poller;
+    std::vector<zlink::poll_event_t> _events;
+
+    const uint32_t _active_run_id;
+    std::atomic<uint64_t> _active_deadline_ns;
+    std::atomic<unsigned long long> _active_reply_count;
+    perf::multi::bench_latency_sampler_t _active_latency;
+    std::mutex _latency_mutex;
     bench_multi_cpu_sample_t _resource_probe_start;
     bench_multi_resource_metrics_t _resource_metrics;
 };
+
+bool is_supported_transport (const std::string &transport_)
+{
+    return transport_ == "tcp" || transport_ == "tls" || transport_ == "ws"
+           || transport_ == "wss";
+}
 
 } // namespace
 
@@ -381,12 +412,9 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
 
     const perf::multi::multi_bench_settings_t settings =
       perf::multi::resolve_multi_bench_settings ();
-    spot_reqrep_client_bench_t *bench =
-      new spot_reqrep_client_bench_t (
-        transport, lib_name, msg_size, endpoint, settings);
-    if (!bench)
-        return false;
-    return bench->run ();
+    spot_reqrep_client_bench_t bench (
+      transport, lib_name, msg_size, endpoint, settings);
+    return bench.run ();
 }
 
 int main (int argc, char **argv)

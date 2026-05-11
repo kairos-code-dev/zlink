@@ -498,7 +498,9 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
 
         tmp_log="${TMP_DIR}/${pattern,,}_${transport}_${size}_run${run_index}.log"
         echo "RUN pattern=${pattern} transport=${transport} size=${size} run=${run_index}"
-        if DOTNET_TieredCompilation=0 \
+        if DOTNET_TieredCompilation=1 \
+          DOTNET_TC_QuickJitForLoops=1 \
+          DOTNET_ReadyToRun=1 \
           PERF_SINGLE_DURATION_SECONDS="${DURATION}" \
           PERF_CONFIGURATION="${CONFIGURATION}" \
           bash -lc "${PERF_BINARY@Q} ${pattern@Q} ${transport@Q} ${size@Q}" \

@@ -71,6 +71,17 @@ internal unsafe struct RoutingIdSnapshot
 
     internal RoutingId? ToRoutingId()
     {
+        if (_size <= 0)
+            return null;
+        // Fast cache lookup using inline (lo, hi, size) — avoids allocating
+        // a byte[] when the routing id is already in the thread cache.
+        if (_large == null)
+        {
+            RoutingId? cached =
+                RoutingId.TryFromInlineCached(_size, _lo, _hi);
+            if (cached != null)
+                return cached;
+        }
         byte[]? bytes = ToByteArray();
         return bytes == null ? null : RoutingId.FromOwnedOptionalBytes(bytes);
     }

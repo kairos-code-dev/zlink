@@ -61,6 +61,7 @@ struct socket_state_t
     ::perf::socket_t *sock;
     std::vector<char> request_buffer;
     size_t payload_size;
+    zlink::message_t request;
     zlink::message_t reply;
     bool awaiting_reply;
     bool send_pending;
@@ -70,6 +71,7 @@ struct socket_state_t
         : sock (NULL),
           request_buffer (),
           payload_size (0),
+          request (),
           reply (),
           awaiting_reply (false),
           send_pending (false),
@@ -346,8 +348,10 @@ class router_router_client_bench_t
             return false;
         }
 
+        state.request = std::move (request);
+
         const int sent =
-          state.sock->send (_server_rid, request, ZLINK_DONTWAIT);
+          state.sock->send (_server_rid, state.request, ZLINK_DONTWAIT);
         if (sent == 0) {
             state.awaiting_reply = true;
             state.send_pending = false;
@@ -373,20 +377,19 @@ class router_router_client_bench_t
         }
 
         zlink::routing_id_t source_rid = routing_id_from_ascii ("x");
-        zlink::message_t reply;
-        const int rc = state.sock->recv (source_rid, reply, ZLINK_DONTWAIT);
+        const int rc = state.sock->recv (source_rid, state.reply, ZLINK_DONTWAIT);
         if (rc != 0)
             return -1;
 
-        if (!reply.valid ()) {
+        if (!state.reply.valid ()) {
             errno = EPROTO;
             return -1;
         }
 
-        if (reply.size () != state.payload_size)
+        if (state.reply.size () != state.payload_size)
             return 1;
         if (!perf_metric::decode_payload_header (
-              reply.data (), reply.size (), header_out)) {
+              state.reply.data (), state.reply.size (), header_out)) {
             return 1;
         }
 

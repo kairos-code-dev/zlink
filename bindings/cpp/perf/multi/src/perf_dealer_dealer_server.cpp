@@ -107,51 +107,38 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
     unsigned long long active_count = 0;
     perf::multi::bench_latency_sampler_t latency (
       static_cast<size_t> (active_seconds) * 5000000U);
+    zlink::message_t part;
+    std::vector<zlink::poll_event_t> events;
     while (!stop_requested && std::chrono::steady_clock::now () < deadline) {
-        const auto now = std::chrono::steady_clock::now ();
-        long wait_ms = 100;
-        const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
-                                 deadline - now)
-                                 .count ();
-        if (remain_ms < wait_ms)
-            wait_ms = remain_ms;
-        if (wait_ms < 1)
-            wait_ms = 1;
-
-        const std::optional<zlink::poll_event_t> event =
-          poller.wait (std::chrono::milliseconds (wait_ms));
-        if (!event)
+        // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait (timeout=-1).
+        // Use wait_all (zlink_poll fast path) to match C reference perf.
+        events = poller.wait_all (1, std::chrono::milliseconds (-1));
+        if (events.empty ())
             continue;
-        if (!(static_cast<short> (event->revents)
+        if (!(static_cast<short> (events[0].revents)
               & static_cast<short> (zlink::poll_event_flag_t::pollin))) {
             continue;
         }
 
         for (;;) {
-            zlink::received_t received;
             const int rc = server.recv (
-              received, zlink::recv_flags_t::dontwait);
+              part, zlink::recv_flags_t::dontwait);
             if (rc != 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
                     break;
                 failed = true;
                 break;
             }
-            if (received.routing_id () || !received.is_single_part ()) {
-                failed = true;
-                break;
-            }
-            const zlink::message_t &inbound = received.parts ()[0];
 
             if (perf::multi::is_stop_token (
-                  inbound.data (), inbound.size ())) {
+                  part.data (), part.size ())) {
                 stop_requested = true;
                 break;
             }
 
             perf_metric::header_t header;
             if (!perf_metric::decode_payload_header (
-                  inbound.data (), inbound.size (), &header)) {
+                  part.data (), part.size (), &header)) {
                 continue;
             }
             if (!perf_metric::is_expected (

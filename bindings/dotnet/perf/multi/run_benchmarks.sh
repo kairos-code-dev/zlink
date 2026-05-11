@@ -718,10 +718,19 @@ run_multi_process() {
     fi
   fi
   local env_prefix=(
+    "PERF_DOTNET_SERVER_STATS=${PERF_DOTNET_SERVER_STATS:-0}"
+    "PERF_DOTNET_TIMING=${PERF_DOTNET_TIMING:-0}"
+    # Match bindings/c/perf/multi/common/perf_multi_runtime.hpp:54:
+    # bench_io_threads() default = 4. .NET default was 0 (no override =>
+    # zlink ctx default 1), which capped per-process to single-core
+    # throughput vs C's multi-core internal IO workers.
+    "PERF_IO_THREADS=${PERF_IO_THREADS:-4}"
     "PERF_MULTI_CLIENTS=${pattern_clients}"
     "PERF_MULTI_DURATION_SECONDS=${DURATION}"
     "PERF_MULTI_CONNECT_READY_TIMEOUT_MS=${effective_ready_timeout}"
-    "DOTNET_TieredCompilation=0"
+    "DOTNET_TieredCompilation=1"
+    "DOTNET_TC_QuickJitForLoops=1"
+    "DOTNET_ReadyToRun=1"
   )
 
   if [[ -n "${endpoint}" ]]; then

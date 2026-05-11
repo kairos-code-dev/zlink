@@ -799,12 +799,8 @@ class spot_client_bench_t
                     continue;
                 }
 
-                client_slot_t *slot = NULL;
-                if (client_slot_t *const *tag =
-                      std::any_cast<client_slot_t *> (
-                        &worker_->events[static_cast<size_t> (i)].tag)) {
-                    slot = *tag;
-                }
+                client_slot_t *slot = static_cast<client_slot_t *> (
+                  worker_->events[static_cast<size_t> (i)].raw_tag);
                 if (!slot || !slot->owner)
                     continue;
                 if (!slot->owner->drain_recv (*slot, false, 0)) {

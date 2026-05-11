@@ -34,6 +34,7 @@ struct client_slot_t
 {
     std::unique_ptr<zlink::service::spot_t> spot;
     std::vector<char> payload;
+    zlink::message_t message;
     uint64_t next_seq = 1;
     bool waiting_reply = false;
 };
@@ -129,16 +130,21 @@ bool submit_request (client_slot_t &slot,
           slot.next_seq,
           perf_metric::now_ns ()))
         return false;
-
-    zlink::message_t message = zlink::advanced::external_message_t::adopt (
-      slot.payload.data (), payload_size, perf::multi::noop_free, NULL);
-    if (!message.valid ())
+    // Re-adopt the payload buffer on every send: send consumes the wrapper's
+    // valid flag, so reusing the same message_t across sends would fail with
+    // EINVAL on the second iteration.
+    slot.message = zlink::advanced::external_message_t::adopt (
+      slot.payload.data (),
+      slot.payload.size (),
+      NULL,
+      NULL);
+    if (!slot.message.valid ())
         return false;
 
     try {
         const bool sent = slot.spot->send_to_spot (
                                       server_node_rid, server_spot_rid)
-                            .message (message)
+                            .message (slot.message)
                             .flags (ZLINK_DONTWAIT)
                             .submit ();
         if (!sent)

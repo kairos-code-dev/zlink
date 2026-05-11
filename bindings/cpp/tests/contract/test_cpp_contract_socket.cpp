@@ -40,6 +40,37 @@ template<typename SocketT> class has_receive_t
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
+template<typename SocketT> class has_single_part_recv_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().recv (
+                      std::declval<zlink::message_t &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+template<typename SocketT> class has_routed_single_part_recv_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().recv (
+                      std::declval<zlink::routing_id_t &> (),
+                      std::declval<zlink::message_t &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
 template<typename SocketT> class has_raw_common_option_set_t
 {
   private:
@@ -148,6 +179,8 @@ static_assert (!has_routed_send_t<zlink::pair_socket_t>::value,
                "pair_socket_t must not expose routed send");
 static_assert (has_receive_t<zlink::pair_socket_t>::value,
                "pair_socket_t must expose recv");
+static_assert (has_single_part_recv_t<zlink::pair_socket_t>::value,
+               "pair_socket_t must expose single-part recv");
 static_assert (!has_attach_discovery_t<zlink::pair_socket_t>::value,
                "pair_socket_t must not expose attach_discovery");
 static_assert (!has_raw_common_option_set_t<zlink::pair_socket_t>::value,
@@ -158,12 +191,16 @@ static_assert (!has_routed_send_t<zlink::dealer_socket_t>::value,
                "dealer_socket_t must not expose routed send");
 static_assert (has_receive_t<zlink::dealer_socket_t>::value,
                "dealer_socket_t must expose recv");
+static_assert (has_single_part_recv_t<zlink::dealer_socket_t>::value,
+               "dealer_socket_t must expose single-part recv");
 static_assert (has_attach_discovery_t<zlink::dealer_socket_t>::value,
                "dealer_socket_t must expose attach_discovery");
 static_assert (has_routed_send_t<zlink::router_socket_t>::value,
                "router_socket_t must expose routed send");
 static_assert (has_receive_t<zlink::router_socket_t>::value,
                "router_socket_t must expose recv");
+static_assert (has_routed_single_part_recv_t<zlink::router_socket_t>::value,
+               "router_socket_t must expose routed single-part recv");
 static_assert (!has_recv_spot_t<zlink::router_socket_t>::value,
                "router_socket_t must not expose recv_spot");
 static_assert (has_attach_discovery_t<zlink::router_socket_t>::value,
@@ -214,6 +251,69 @@ void test_pair_send_recv_single_part ()
     assert (left.recv (inbound) == 0);
     assert (inbound.parts ().size () == 1);
     assert (inbound.parts ()[0].to_string () == "ping");
+}
+
+void test_pair_send_recv_single_part_direct ()
+{
+    zlink::context_t ctx;
+    zlink::pair_socket_t left (ctx);
+    zlink::pair_socket_t right (ctx);
+    zlink::monitor_handle_t left_monitor = left.monitor_handle ();
+    zlink::monitor_handle_t right_monitor = right.monitor_handle ();
+
+    const std::string endpoint =
+      zlink_cpp_contract::unique_inproc ("pair-direct");
+    left.bind (endpoint);
+    right.connect (endpoint);
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      left_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      right_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+
+    zlink::message_t outbound = zlink_cpp_contract::make_message ("direct");
+    right.send (outbound);
+
+    zlink::message_t inbound;
+    assert (left.recv (inbound) == 0);
+    assert (inbound.to_string () == "direct");
+}
+
+void test_router_recv_single_part_direct ()
+{
+    zlink::context_t ctx;
+    zlink::router_socket_t router (ctx);
+    zlink::dealer_socket_t dealer (ctx);
+    zlink::monitor_handle_t router_monitor = router.monitor_handle ();
+    zlink::monitor_handle_t dealer_monitor = dealer.monitor_handle ();
+
+    const std::string endpoint =
+      zlink_cpp_contract::unique_inproc ("router-direct");
+    const zlink::routing_id_t dealer_id =
+      zlink::routing_id_t::from_bytes (
+        reinterpret_cast<const uint8_t *> ("dealer-a"), 8);
+    dealer.set_routing_id (dealer_id);
+
+    router.bind (endpoint);
+    dealer.connect (endpoint);
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      router_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      dealer_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+
+    zlink::message_t outbound = zlink_cpp_contract::make_message ("routed");
+    dealer.send (outbound);
+
+    zlink::routing_id_t source =
+      zlink::routing_id_t::from_bytes (
+        reinterpret_cast<const uint8_t *> ("placeholder"), 11);
+    zlink::message_t inbound;
+    assert (router.recv (source, inbound) == 0);
+    assert (source == dealer_id);
+    assert (inbound.to_string () == "routed");
 }
 
 void test_pair_send_recv_multipart ()
@@ -305,6 +405,8 @@ int main ()
 {
     test_common_auto_hwm_msg_unit_option_contract ();
     test_pair_send_recv_single_part ();
+    test_pair_send_recv_single_part_direct ();
+    test_router_recv_single_part_direct ();
     test_pair_send_recv_multipart ();
     test_pair_ipc_large_message_shutdown ();
     return 0;

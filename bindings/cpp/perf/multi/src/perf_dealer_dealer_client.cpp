@@ -54,12 +54,14 @@ struct socket_state_t
 {
     zlink::dealer_socket_t *sock;
     std::vector<char> payload;
+    zlink::message_t message;
     bool pollout_enabled;
     bool pending;
 
     socket_state_t ()
         : sock (NULL),
           payload (),
+          message (),
           pollout_enabled (false),
           pending (false)
     {
@@ -223,12 +225,7 @@ class dealer_dealer_client_bench_t
             debug_log ("payload size empty");
             return false;
         }
-        zlink::message_t message (payload_size);
-        if (!message.valid ()) {
-            debug_log ("message create failed errno=" + std::to_string (errno));
-            return false;
-        }
-        char *const payload = static_cast<char *> (message.data ());
+        char *const payload = state.payload.data ();
         const uint64_t sent_ts_ns = perf_metric::now_ns ();
         if (!perf_metric::stamp_payload (payload,
                                          payload_size,
@@ -240,8 +237,18 @@ class dealer_dealer_client_bench_t
             debug_log ("stamp payload failed");
             return false;
         }
+        state.message = zlink::advanced::external_message_t::adopt (
+          state.payload.data (),
+          state.payload.size (),
+          NULL,
+          NULL);
+        if (!state.message.valid ()) {
+            debug_log ("message adopt failed");
+            return false;
+        }
         try {
-            sent = state.sock->send (message, zlink::send_flags_t::dontwait);
+            sent = state.sock->send (state.message,
+                                     zlink::send_flags_t::dontwait);
         }
         catch (const zlink::submit_error_t &) {
             debug_log ("send failed errno=" + std::to_string (errno));
@@ -331,10 +338,8 @@ class dealer_dealer_client_bench_t
                 continue;
 
             for (size_t i = 0; i < _poll_events.size (); ++i) {
-                socket_state_t *state = NULL;
-                if (socket_state_t *const *tag =
-                      std::any_cast<socket_state_t *> (&_poll_events[i].tag))
-                    state = *tag;
+                socket_state_t *state =
+                  static_cast<socket_state_t *> (_poll_events[i].raw_tag);
                 if (!state || !state->pending
                     || !(static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollout))) {
                     continue;

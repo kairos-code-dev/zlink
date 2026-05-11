@@ -233,6 +233,7 @@ Options:
                          Requires PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1.
   --send-hwm N           Debug-only override PERF_MULTI_SNDHWM (fallback: --hwm).
   --recv-hwm N           Debug-only override PERF_MULTI_RCVHWM (fallback: --hwm).
+  --buf SIZE             Debug-only override for both PERF_MULTI_SNDBUF and PERF_MULTI_RCVBUF.
   --sndbuf SIZE          Debug-only override PERF_MULTI_SNDBUF (e.g. 64b, 1k, 64k).
   --rcvbuf SIZE          Debug-only override PERF_MULTI_RCVBUF (e.g. 64b, 1k, 64k).
   --sndtimeo N           Override PERF_MULTI_SNDTIMEO_MS (default: 200).
@@ -250,6 +251,8 @@ Options:
   --connect-ready-timeout-ms N
                          Override PERF_MULTI_CONNECT_READY_TIMEOUT_MS (default: 5000).
   --monitor-hwm N        Override PERF_MULTI_MONITOR_HWM (default: 1000).
+  --auto-hwm-profile NAME
+                         Set auto-HWM profile: compact, low_latency, balanced, throughput (default: balanced).
   --server-shutdown-timeout-ms N
                          Override PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS (default: 5000).
   --server-bind-port N
@@ -345,32 +348,35 @@ HAS_EXPLICIT_RUNS=0
 HAS_EXPLICIT_RESULTS_DIR=0
 BUILD_MODE="incremental"
 BUILD_MODE_EXPLICIT=0
-DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-5}"
-CLIENTS="${PERF_MULTI_CLIENTS:-}"
-EFFECTIVE_DEFAULT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-100}"
-EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-10000}"
-HWM="${PERF_MULTI_HWM:-}"
-SNDHWM="${PERF_MULTI_SNDHWM:-}"
-RCVHWM="${PERF_MULTI_RCVHWM:-}"
-SNDBUF="${PERF_MULTI_SNDBUF:-}"
-RCVBUF="${PERF_MULTI_RCVBUF:-}"
-SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-200}"
-RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-200}"
-CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-}"
-SERVICE_CLIENTS="${PERF_MULTI_SERVICE_CLIENTS:-}"
+DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-${PERF_DURATION_SECONDS:-5}}"
+CLIENTS="${PERF_MULTI_CLIENTS:-${PERF_CLIENTS:-}}"
+EFFECTIVE_DEFAULT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
+EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
+HWM="${PERF_MULTI_HWM:-${PERF_HWM:-}}"
+SNDHWM="${PERF_MULTI_SNDHWM:-${PERF_SNDHWM:-}}"
+RCVHWM="${PERF_MULTI_RCVHWM:-${PERF_RCVHWM:-}}"
+SNDBUF="${PERF_MULTI_SNDBUF:-${PERF_SNDBUF:-}}"
+RCVBUF="${PERF_MULTI_RCVBUF:-${PERF_RCVBUF:-}}"
+SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-${PERF_SNDTIMEO_MS:-200}}"
+RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-${PERF_RCVTIMEO_MS:-200}}"
+CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-${PERF_CONNECT_CONCURRENCY:-}}"
+SERVICE_CLIENTS="${PERF_MULTI_SERVICE_CLIENTS:-${PERF_SERVICE_CLIENTS:-}}"
 LATENCY_SAMPLE_CAP="${PERF_MULTI_LATENCY_SAMPLE_CAP:-}"
-TIMEOUT_SECONDS="${PERF_MULTI_TIMEOUT_SECONDS:-}"
-STREAM_MSG_SIZES="${PERF_MULTI_STREAM_MSG_SIZES:-}"
-PUBSUB_XPUB_NODROP="${PERF_MULTI_PUBSUB_XPUB_NODROP:-}"
-SPOT_XPUB_NODROP="${PERF_MULTI_SPOT_XPUB_NODROP:-}"
-RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-3000}"
-TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
-PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
-SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}"
-CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
-MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-1000}"
-SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}"
-SERVER_BIND_PORT="${PERF_MULTI_SERVER_BIND_PORT:-0}"
+TIMEOUT_SECONDS="${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS:-}}"
+STREAM_MSG_SIZES="${PERF_MULTI_STREAM_MSG_SIZES:-${PERF_STREAM_MSG_SIZES:-}}"
+PUBSUB_XPUB_NODROP="${PERF_MULTI_PUBSUB_XPUB_NODROP:-${PERF_PUBSUB_XPUB_NODROP:-}}"
+SPOT_XPUB_NODROP="${PERF_MULTI_SPOT_XPUB_NODROP:-${PERF_SPOT_XPUB_NODROP:-}}"
+RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-${PERF_RUN_COOLDOWN_MS:-3000}}"
+TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-${PERF_TRANSPORT_TRANSITION_MS:-3000}}"
+PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-${PERF_PATTERN_TRANSITION_MS:-3000}}"
+SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-${PERF_SERVER_READY_TIMEOUT_MS:-10000}}"
+CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${PERF_CONNECT_READY_TIMEOUT_MS:-5000}}"
+MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-${PERF_MONITOR_HWM:-1000}}"
+SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}}"
+SERVER_BIND_PORT="${PERF_MULTI_SERVER_BIND_PORT:-${PERF_SERVER_BIND_PORT:-0}}"
+CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-1}"
+CTX_AUTO_HWM_PROFILE="${PERF_MULTI_CTX_AUTO_HWM_PROFILE:-${PERF_CTX_AUTO_HWM_PROFILE:-balanced}}"
+ALLOW_MANUAL_SOCKET_OVERRIDES="${PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}}"
 DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 OUTPUT_FILE=""
@@ -566,6 +572,15 @@ while [[ $# -gt 0 ]]; do
       RCVHWM="${2}"
       shift 2
       ;;
+    --buf)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      SNDBUF="${2}"
+      RCVBUF="${2}"
+      shift 2
+      ;;
     --sndbuf)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
@@ -646,6 +661,14 @@ while [[ $# -gt 0 ]]; do
       MONITOR_HWM="${2}"
       shift 2
       ;;
+    --auto-hwm-profile)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      CTX_AUTO_HWM_PROFILE="${2}"
+      shift 2
+      ;;
     --server-shutdown-timeout-ms)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
@@ -675,6 +698,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ -n "${HWM}" || -n "${SNDHWM}" || -n "${RCVHWM}" || -n "${SNDBUF}" || -n "${RCVBUF}" ]]; then
+  if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" != "1" ]]; then
+    echo "Error: manual HWM/SNDBUF/RCVBUF overrides are debug-only." >&2
+    echo "Set PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1 to use --hwm/--send-hwm/--recv-hwm/--buf/--sndbuf/--rcvbuf." >&2
+    exit 1
+  fi
+fi
+
 if ! is_uint "${TRANSPORT_TRANSITION_MS}"; then
   echo "Error: --transport-transition-ms must be a non-negative integer." >&2
   exit 1
@@ -699,6 +730,18 @@ if ! is_uint "${MONITOR_HWM}"; then
   echo "Error: --monitor-hwm must be a non-negative integer." >&2
   exit 1
 fi
+if ! is_uint "${CTX_AUTO_HWM_ENABLE}"; then
+  echo "Error: PERF_CTX_AUTO_HWM_ENABLE must be a non-negative integer." >&2
+  exit 1
+fi
+case "${CTX_AUTO_HWM_PROFILE}" in
+  ""|compact|low_latency|low-latency|balanced|throughput)
+    ;;
+  *)
+    echo "Error: --auto-hwm-profile must be compact, low_latency, balanced, or throughput." >&2
+    exit 1
+    ;;
+esac
 if [[ -n "${HWM}" ]] && ( ! is_uint "${HWM}" || (( HWM < 1 )) ); then
   echo "Error: --hwm must be a positive integer." >&2
   exit 1
@@ -980,6 +1023,16 @@ if [[ -n "${SNDTIMEO_MS}" ]]; then
 fi
 if [[ -n "${RCVTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_MULTI_RCVTIMEO_MS="${RCVTIMEO_MS}")
+fi
+if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" == "1" ]]; then
+  RUN_ENV+=(PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1)
+fi
+if [[ -n "${CTX_AUTO_HWM_ENABLE}" ]]; then
+  RUN_ENV+=(PERF_CTX_AUTO_HWM_ENABLE="${CTX_AUTO_HWM_ENABLE}")
+fi
+if [[ -n "${CTX_AUTO_HWM_PROFILE}" ]]; then
+  RUN_ENV+=(PERF_CTX_AUTO_HWM_PROFILE="${CTX_AUTO_HWM_PROFILE}")
+  RUN_ENV+=(PERF_AUTO_HWM_PROFILE="${CTX_AUTO_HWM_PROFILE}")
 fi
 if [[ "${HAS_EXPLICIT_RESULTS_DIR}" -eq 0 && -n "${PERF_RESULTS_DIR:-}" ]]; then
   RUN_ENV+=(PERF_RESULTS_DIR="${PERF_RESULTS_DIR:-}")

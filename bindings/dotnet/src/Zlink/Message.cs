@@ -15,6 +15,17 @@ public sealed class Message : IDisposable, IAsyncDisposable
     private ZlinkMsg _msg;
     private bool _valid;
     private ManagedPayloadState? _managedPayload;
+    // Marks instances created via the thread-local hot-path pool. Dispose
+    // returns these to the pool instead of letting them be GC'd, which
+    // eliminates the per-message wrapper allocation in routed echo
+    // workloads (100 clients × every message on both server and clients).
+    private bool _pooled;
+
+    [ThreadStatic]
+    private static Message[]? t_pool;
+    [ThreadStatic]
+    private static int t_poolCount;
+    private const int PoolCapacity = 256;
 
     public Message()
     {
@@ -248,6 +259,7 @@ public sealed class Message : IDisposable, IAsyncDisposable
             managed.DisposeAfterBorrowedSend = true;
         else
             ReleaseSelfHandle(managed);
+        TryReturnToPool();
     }
 
     public ValueTask DisposeAsync()
@@ -598,6 +610,64 @@ public sealed class Message : IDisposable, IAsyncDisposable
         return result;
     }
 
+    // Pool-aware adoption. Returns either a recycled Message from the
+    // thread-local pool (no heap allocation) or a fresh instance tagged
+    // for pool-return on Dispose. Used by the routed single-part recv
+    // fast path (TryReceiveRoutedSingleUnchecked) where Message lifetime
+    // is bounded by the immediate using-scope of the perf caller.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static Message AdoptNativeFromPool(ref ZlinkMsg source)
+    {
+        Message[]? pool = t_pool;
+        int count = t_poolCount;
+        Message result;
+        if (pool != null && count > 0)
+        {
+            count--;
+            result = pool[count];
+            pool[count] = null!;
+            t_poolCount = count;
+            result._msg = source;
+            result._valid = true;
+            result._managedPayload = null;
+            result._pooled = true;
+        }
+        else
+        {
+            result = new Message(false)
+            {
+                _msg = source,
+                _valid = true,
+                _pooled = true,
+            };
+        }
+        source = default;
+        return result;
+    }
+
+    private void TryReturnToPool()
+    {
+        if (!_pooled)
+            return;
+        // Defensive: only return when fully released (no managed payload
+        // in flight, no native handle pending close).
+        if (_valid)
+            return;
+        if (_managedPayload != null)
+            return;
+        Message[]? pool = t_pool;
+        if (pool == null)
+        {
+            pool = new Message[PoolCapacity];
+            t_pool = pool;
+        }
+        int count = t_poolCount;
+        if (count >= PoolCapacity)
+            return;
+        pool[count] = this;
+        t_poolCount = count + 1;
+    }
+
     internal static unsafe Message CopyFromNativeSingle(IntPtr message)
     {
         if (message == IntPtr.Zero)
@@ -629,9 +699,13 @@ public sealed class Message : IDisposable, IAsyncDisposable
     internal void DisposeNativeOwned()
     {
         if (!_valid)
+        {
+            TryReturnToPool();
             return;
+        }
         NativeMethods.zlink_msg_close(ref _msg);
         _valid = false;
+        TryReturnToPool();
     }
 
     internal bool TryPrepareBorrowedSend(out IntPtr data, out int length,

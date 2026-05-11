@@ -72,18 +72,22 @@ bool perf_router_router_server (const std::string &lib_name,
       perf::multi::resolve_multi_bench_settings ();
 
     perf::multi::ctx_guard_t ctx;
-    perf::multi::socket_guard_t server (ctx, zlink::socket_type::router);
+    // Hold the typed router_socket_t directly; matches dealer_router_server
+    // and avoids the perf::socket_t variant visit overhead on every hot
+    // send/recv (cpp.md round 21).
+    zlink::router_socket_t server (ctx.ctx ());
     if (!server.valid ())
         return false;
 
-    server.sock ().set_routing_id ("SERVER");
-    perf::multi::apply_benchmark_socket_options (
-      server.sock (), settings, transport);
-    if (!perf::multi::setup_tls_server (server.sock (), transport))
+    server.set_routing_id (
+      zlink::routing_id_t::from_bytes (
+        reinterpret_cast<const uint8_t *> ("SERVER"), 6));
+    perf::multi::apply_benchmark_socket_options (server, settings, transport);
+    if (!perf::multi::setup_tls_server (server, transport))
         return false;
 
     const std::string endpoint = perf::multi::bind_and_resolve_endpoint (
-      server.sock (), transport, "cpp_multi_router_router",
+      server, transport, "cpp_multi_router_router",
       settings.server_bind_port);
     if (endpoint.empty ())
         return false;
@@ -104,29 +108,38 @@ bool perf_router_router_server (const std::string &lib_name,
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
-    server.sock ().poller_add (poller, zlink::poll_event_flag_t::pollin);
+    poller.add (server, zlink::poll_event_flag_t::pollin);
 
     auto flush_pending = [&] () -> bool {
         while (!pending_replies.empty ()) {
             pending_reply_t &front = pending_replies.front ();
-            zlink::send_result_t result = zlink::send_result_t::sent;
-            const int rc = server.sock ().send_no_wait_result (
-              result, front.rid, front.payload);
-            if (rc != 0) {
-                const int err = errno;
-                if (err == EINTR || err == EHOSTUNREACH || err == ENOTCONN)
+            try {
+                if (server.send (front.rid, front.payload,
+                                 zlink::send_flags_t::dontwait)) {
+                    pending_replies.pop_front ();
+                    continue;
+                }
+                return true; // backpressured
+            } catch (const zlink::submit_error_t &err) {
+                const int err_no = err.internal_errno ();
+                if (err_no == EINTR || err_no == EHOSTUNREACH
+                    || err_no == ENOTCONN)
                     return true;
                 return false;
             }
-            if (result == zlink::send_result_t::sent) {
-                pending_replies.pop_front ();
-                continue;
-            }
-            return true; // backpressured
         }
         return true;
     };
 
+    // Reuse a single routing_id_t and message_t across the drain loop so
+    // the hot recv path matches dealer_router_server's allocation profile.
+    // Previously these were reconstructed per iteration, accumulating
+    // ~per-message overhead that showed up as a ratio gap (~0.81 / 0.82 /
+    // 0.57 at 256B/1024B/65536B) against the C reference echo loop.
+    zlink::routing_id_t source_rid = routing_id_from_ascii ("x");
+    zlink::message_t part;
+    int poll_event_mask =
+      static_cast<int> (zlink::poll_event_flag_t::pollin);
     while (!stop_requested) {
         const zlink::poll_event_flag_t mask =
           pending_replies.empty ()
@@ -134,7 +147,11 @@ bool perf_router_router_server (const std::string &lib_name,
             : static_cast<zlink::poll_event_flag_t> (
                 static_cast<int> (zlink::poll_event_flag_t::pollin)
                 | static_cast<int> (zlink::poll_event_flag_t::pollout));
-        server.sock ().poller_modify (poller, mask);
+        const int next_mask = static_cast<int> (mask);
+        if (next_mask != poll_event_mask) {
+            poller.modify (server, mask);
+            poll_event_mask = next_mask;
+        }
 
         try {
             events =
@@ -173,11 +190,8 @@ bool perf_router_router_server (const std::string &lib_name,
 
         // Drain available messages without blocking.
         while (true) {
-            zlink::routing_id_t source_rid =
-              routing_id_from_ascii ("x");
-            zlink::message_t part;
-            const int recv_rc = server.sock ().recv (
-              source_rid, part, ZLINK_DONTWAIT);
+            const int recv_rc = server.recv (
+              source_rid, part, zlink::recv_flags_t::dontwait);
             if (recv_rc < 0) {
                 const int err = errno;
                 if (err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
@@ -200,23 +214,23 @@ bool perf_router_router_server (const std::string &lib_name,
                 continue;
             }
 
-            zlink::send_result_t result = zlink::send_result_t::sent;
-            const int rc = server.sock ().send_no_wait_result (
-              result, source_rid, part);
-            if (rc != 0) {
-                const int err = errno;
-                if (err == EINTR || err == EHOSTUNREACH || err == ENOTCONN) {
+            try {
+                if (!server.send (source_rid, part,
+                                  zlink::send_flags_t::dontwait)) {
+                    pending_replies.push_back (pending_reply_t {
+                      std::move (source_rid), std::move (part) });
+                }
+            } catch (const zlink::submit_error_t &err) {
+                const int err_no = err.internal_errno ();
+                if (err_no == EINTR || err_no == EHOSTUNREACH
+                    || err_no == ENOTCONN) {
                     pending_replies.push_back (pending_reply_t {
                       std::move (source_rid), std::move (part) });
                     continue;
                 }
-                debug_log ("send failed errno=" + std::to_string (err));
+                debug_log ("send failed errno=" + std::to_string (err_no));
                 failed = true;
                 break;
-            }
-            if (result != zlink::send_result_t::sent) {
-                pending_replies.push_back (pending_reply_t {
-                  std::move (source_rid), std::move (part) });
             }
         }
         if (failed)

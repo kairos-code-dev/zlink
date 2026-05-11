@@ -1026,34 +1026,31 @@ class _MessageSocket(_Socket):
                 return False
             raise
 
-    def recv(self, *, flags=0):
-        """Legacy recv: allocates a fresh Received per call.
-
-        .. deprecated:: Use :py:meth:`recv_into` with a caller-provided
-            Received to avoid the per-recv allocation.
-        """
-        try:
-            routing, owner = _recv_native_parts(self._handle, flags)
-            return Received(owner, routing)
-        except RecvError as ex:
-            if (int(flags) & 1) and ex.result == RecvResult.NO_DATA:
-                return None
-            raise
-
-    def recv_into(self, received, *, flags=0):
+    def recv(self, received=None, *, flags=0):
         """Canonical caller-provided storage recv.
 
-        Pass a long-lived :py:class:`Received` and the binding refills its
-        internal state in place each successful call. See
-        ``doc/spec/bindings/README.md`` "Canonical Recv: Caller-Provided
-        Storage".
+        Pass a long-lived :py:class:`Received` as the first positional
+        argument and the binding refills its internal state in place each
+        successful call. See ``doc/spec/bindings/README.md`` "Canonical
+        Recv: Caller-Provided Storage".
 
-        :returns: ``True`` on success, ``False`` when ``flags`` includes
-            ``DONTWAIT`` and no data is available. Hard errors raise
-            :py:class:`RecvError`.
+        :param received: Caller-provided :py:class:`Received` storage. When
+            provided, the binding refills it and returns ``True`` on success
+            or ``False`` when ``flags`` includes ``DONTWAIT`` and no data is
+            available.
+        :returns: ``True``/``False`` when ``received`` is provided. For
+            backwards compatibility, when ``received`` is ``None``
+            (deprecated), returns a freshly allocated :py:class:`Received`
+            or ``None`` on EAGAIN.
         """
         if received is None:
-            raise TypeError("received must not be None")
+            try:
+                routing, owner = _recv_native_parts(self._handle, flags)
+                return Received(owner, routing)
+            except RecvError as ex:
+                if (int(flags) & 1) and ex.result == RecvResult.NO_DATA:
+                    return None
+                raise
         try:
             routing, owner = _recv_native_parts(self._handle, flags)
         except RecvError as ex:

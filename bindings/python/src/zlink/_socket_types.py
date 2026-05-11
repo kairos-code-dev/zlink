@@ -431,7 +431,19 @@ class RouterSocket(
         if rc != 0:
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
-    def recv(self, *, flags=0):
+    def recv(self, received=None, *, flags=0):
+        """Canonical caller-provided storage routed recv.
+
+        Pass a long-lived :py:class:`Received` as the first positional
+        argument and the binding refills its internal state in place each
+        successful call. See ``doc/spec/bindings/README.md`` "Canonical
+        Recv: Caller-Provided Storage".
+
+        :param received: Caller-provided :py:class:`Received` storage. When
+            provided, returns ``True`` on success or ``False`` when DONTWAIT
+            finds no data. When ``None`` (deprecated), allocates and returns
+            a fresh :py:class:`Received` or ``None`` on EAGAIN.
+        """
         try:
             source_node_rid = ctypes.POINTER(ZlinkRoutingId)()
             source_spot_rid = ctypes.POINTER(ZlinkRoutingId)()
@@ -460,7 +472,7 @@ class RouterSocket(
                 raise
         except RecvError as ex:
             if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
-                return None
+                return None if received is None else False
             raise
         part_count = len(native_parts)
         parts_array = (ZlinkMsg * part_count)()
@@ -471,7 +483,7 @@ class RouterSocket(
         routing_id = RoutingId(source_node) if source_node else None
         spot_rid = RoutingId(source_spot) if source_spot else None
         request_seq_value = int(request_seq.value)
-        return _request_received(
+        fresh = _request_received(
             parts_array,
             part_count,
             routing_id=routing_id,
@@ -485,19 +497,8 @@ class RouterSocket(
                 flags=flags,
             ),
         )
-
-    def recv_into(self, received, *, flags=0):
-        """Canonical caller-provided storage routed recv.
-
-        See ``doc/spec/bindings/README.md`` "Canonical Recv: Caller-Provided
-        Storage". Returns ``True`` on success, ``False`` when DONTWAIT finds
-        no data.
-        """
         if received is None:
-            raise TypeError("received must not be None")
-        fresh = self.recv(flags=flags)
-        if fresh is None:
-            return False
+            return fresh
         received._adopt_from(fresh)
         return True
 

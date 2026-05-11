@@ -245,28 +245,77 @@ class MultipartEnvelope {
 }
 
 export class Received {
-  readonly parts: Message[];
-  readonly routingId: RoutingId | null;
-  readonly spotRid: RoutingId | null;
-  readonly requestSeq: bigint | null;
-  private readonly _replyContext: ReplyContext | null;
+  parts: Message[];
+  routingId: RoutingId | null;
+  spotRid: RoutingId | null;
+  requestSeq: bigint | null;
+  private _replyContext: ReplyContext | null;
 
-  private constructor(
+  /**
+   * Create an empty Received for caller-provided storage. Hand the same
+   * instance to {@code socket.recv(received, flags)} across calls to avoid
+   * the per-recv allocation; the binding overwrites the internal state on
+   * each successful receive. See doc/spec/bindings/README.md "Canonical
+   * Recv: Caller-Provided Storage".
+   */
+  constructor();
+  constructor(
     token: symbol,
     parts: readonly Message[],
+    routingId?: RoutingId | null,
+    requestSeq?: bigint | null,
+    spotRid?: RoutingId | null,
+    replyContext?: ReplyContext | null
+  );
+  constructor(
+    token?: symbol,
+    parts?: readonly Message[],
     routingId: RoutingId | null = null,
     requestSeq: bigint | null = null,
     spotRid: RoutingId | null = null,
     replyContext: ReplyContext | null = null
   ) {
+    if (token === undefined && parts === undefined) {
+      // Empty caller-provided storage instance.
+      this.parts = [];
+      this.routingId = null;
+      this.spotRid = null;
+      this.requestSeq = null;
+      this._replyContext = null;
+      return;
+    }
     if (token !== DOMAIN_CREATE_TOKEN) {
       throw new TypeError('Received values are created by recv operations');
     }
-    this.parts = Object.freeze(parts.slice()) as Message[];
+    this.parts = (parts ?? []).slice() as Message[];
     this.routingId = routingId;
     this.spotRid = spotRid;
     this.requestSeq = requestSeq;
     this._replyContext = replyContext;
+  }
+
+  /**
+   * Replace this Received's internal state with a fresh recv result.
+   * Closes any messages currently owned by this instance before adopting.
+   * @internal
+   */
+  _adoptFrom(source: Received): void {
+    if (source === this) return;
+    // Close any prior owned parts.
+    for (const p of this.parts) {
+      try { p.close(); } catch { /* swallow */ }
+    }
+    this.parts = source.parts;
+    this.routingId = source.routingId;
+    this.spotRid = source.spotRid;
+    this.requestSeq = source.requestSeq;
+    this._replyContext = source._replyContext;
+    // Detach source so it does not double-close.
+    source.parts = [];
+    source.routingId = null;
+    source.spotRid = null;
+    source.requestSeq = null;
+    source._replyContext = null;
   }
 
   /** @internal */

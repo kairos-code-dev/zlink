@@ -333,8 +333,10 @@ class PairSocket {
     send(message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
     send(parts: readonly MessageLike[], flags?: SendFlags): boolean;
-    /** @throws {RecvError} */
+    /** @deprecated allocates Received per call; use the caller-provided overload. */
     recv(flags?: RecvFlags): Received | null;
+    /** Canonical caller-provided storage recv. @throws {RecvError} */
+    recv(result: Received, flags?: RecvFlags): boolean;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
@@ -448,8 +450,10 @@ class DealerSocket {
     send(message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
     send(parts: readonly MessageLike[], flags?: SendFlags): boolean;
-    /** @throws {RecvError} */
+    /** @deprecated allocates Received per call; use the caller-provided overload. */
     recv(flags?: RecvFlags): Received | null;
+    /** Canonical caller-provided storage recv. @throws {RecvError} */
+    recv(result: Received, flags?: RecvFlags): boolean;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
@@ -514,8 +518,10 @@ class RouterSocket {
     send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): boolean;
     /** @throws {SubmitError} */
     send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): boolean;
-    /** @throws {RecvError} */
+    /** @deprecated allocates Received per call; use the caller-provided overload. */
     recv(flags?: RecvFlags): Received | null;
+    /** Canonical caller-provided storage recv. @throws {RecvError} */
+    recv(result: Received, flags?: RecvFlags): boolean;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */

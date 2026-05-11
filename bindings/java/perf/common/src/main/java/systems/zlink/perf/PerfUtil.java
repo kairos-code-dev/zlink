@@ -258,7 +258,8 @@ public final class PerfUtil {
 
     public static systems.zlink.Received recvNoWait(PairSocket socket) {
         try {
-            return socket.recv(RecvFlags.DONT_WAIT);
+            systems.zlink.Received received = new systems.zlink.Received();
+            return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
         } catch (RecvException ex) {
             return recvExceptionToNull(ex);
         }
@@ -266,7 +267,8 @@ public final class PerfUtil {
 
     public static systems.zlink.Received recvNoWait(DealerSocket socket) {
         try {
-            return socket.recv(RecvFlags.DONT_WAIT);
+            systems.zlink.Received received = new systems.zlink.Received();
+            return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
         } catch (RecvException ex) {
             return recvExceptionToNull(ex);
         }
@@ -274,7 +276,8 @@ public final class PerfUtil {
 
     public static systems.zlink.Received recvNoWait(RouterSocket socket) {
         try {
-            return socket.recv(RecvFlags.DONT_WAIT);
+            systems.zlink.Received received = new systems.zlink.Received();
+            return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
         } catch (RecvException ex) {
             return recvExceptionToNull(ex);
         }
@@ -282,7 +285,8 @@ public final class PerfUtil {
 
     public static systems.zlink.Received recvNoWait(StreamSocket socket) {
         try {
-            return socket.recv(RecvFlags.DONT_WAIT);
+            systems.zlink.Received received = new systems.zlink.Received();
+            return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
         } catch (RecvException ex) {
             return recvExceptionToNull(ex);
         }

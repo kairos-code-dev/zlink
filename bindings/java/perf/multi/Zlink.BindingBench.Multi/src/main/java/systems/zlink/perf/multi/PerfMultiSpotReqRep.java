@@ -57,10 +57,11 @@ final class PerfMultiSpotReqRep {
                     || !pollSet.isReady(0, PollEventFlag.POLLIN)) {
                     continue;
                 }
+                systems.zlink.Received received = new systems.zlink.Received();
                 for (;;) {
-                    systems.zlink.Received received;
+                    boolean ok;
                     try {
-                        received = responder.recv(RecvFlags.DONT_WAIT);
+                        ok = responder.recv(received, RecvFlags.DONT_WAIT);
                     } catch (RecvException ex) {
                         if (ex.getResult() == RecvResult.NO_DATA
                             || ex.getResult() == RecvResult.BUSY) {
@@ -68,16 +69,15 @@ final class PerfMultiSpotReqRep {
                         }
                         throw ex;
                     }
+                    if (!ok) break;
 
-                    try (received) {
-                        boolean isStop = PerfStopToken.isStopTokenMessage(
-                            received.firstPart());
-                        try (Message reply = received.firstPart().move()) {
-                            received.reply(reply);
-                        }
-                        if (isStop && ++cooldownSeen >= config.clients()) {
-                            stopRequested.set(true);
-                        }
+                    boolean isStop = PerfStopToken.isStopTokenMessage(
+                        received.firstPart());
+                    try (Message reply = received.firstPart().move()) {
+                        received.reply(reply);
+                    }
+                    if (isStop && ++cooldownSeen >= config.clients()) {
+                        stopRequested.set(true);
                     }
                 }
             }

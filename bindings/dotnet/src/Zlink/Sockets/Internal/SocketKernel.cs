@@ -414,43 +414,6 @@ internal sealed class SocketKernel : IDisposable
         SendSingleCore(ref nativeRoutingId, message, (int)flags);
     }
 
-    /// <summary>
-    /// Routed-send fast path that writes a routing id directly from a
-    /// caller-held <see cref="RoutingIdSnapshot"/>, skipping the heap
-    /// <see cref="RoutingId"/> wrapper materialization and its inline
-    /// cache lookup. Used by the echo hot path
-    /// <see cref="RoutedMessageSocketBase.Send(Received, Message, SendFlags)"/>.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal SendResult SendFromSnapshotResultUnchecked(
-        in RoutingIdSnapshot routingIdSnapshot, Message message, int flags)
-    {
-        if (message == null)
-            throw new ArgumentNullException(nameof(message));
-        ZlinkRoutingId nativeRoutingId = default;
-        routingIdSnapshot.WriteTo(ref nativeRoutingId);
-        return SendSingleResultCore(ref nativeRoutingId, message, flags);
-    }
-
-    internal void SendFromSnapshotUnchecked(
-        in RoutingIdSnapshot routingIdSnapshot, Message message,
-        SendFlags flags = SendFlags.None)
-    {
-        if (message == null)
-            throw new ArgumentNullException(nameof(message));
-        ZlinkRoutingId nativeRoutingId = default;
-        routingIdSnapshot.WriteTo(ref nativeRoutingId);
-        if ((((int)flags) & DontWaitFlag) != 0)
-        {
-            SendResult result = SendSingleNoWaitResultCore(ref nativeRoutingId,
-                message);
-            if (result != SendResult.Sent)
-                throw CreateNoWaitSendException(result);
-            return;
-        }
-        SendSingleCore(ref nativeRoutingId, message, (int)flags);
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal SendResult SendRoutedMessageResultUnchecked(RoutingId routingId,
         Message message, int flags)

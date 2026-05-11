@@ -174,18 +174,6 @@ public sealed class Received : IDisposable
         }
     }
 
-    /// <summary>
-    /// Internal snapshot accessor used by the hot routed-send echo path.
-    /// Lets the kernel write the source routing id directly into the native
-    /// send call without materializing the heap <see cref="RoutingId"/>
-    /// wrapper or hitting the per-recv inline cache lookup.
-    /// </summary>
-    internal ref readonly RoutingIdSnapshot RoutingIdSnapshotRef
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => ref _routingIdSnapshot;
-    }
-
     public ulong? RequestSeq => _metadata?.RequestSeq;
 
     public IReadOnlyList<Message> Parts => PartsCollection;

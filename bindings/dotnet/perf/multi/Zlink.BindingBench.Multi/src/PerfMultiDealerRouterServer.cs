@@ -76,18 +76,16 @@ internal static class PerfMultiDealerRouterServer
                     break;
                 }
 
-                // Echo hot path: send via the canonical
-                // Send(Received, Message, SendFlags) fast path which writes
-                // the routing id directly from the snapshot.
+                if (receivedBuffer.RoutingId == null)
+                    return 2;
+                RoutingId routingId = receivedBuffer.RoutingId.Value;
+
                 if (pendingReplies.Count == 0
-                    && server.Send(receivedBuffer, bodyMessage, SendFlags.DontWait))
+                    && server.Send(routingId, bodyMessage, SendFlags.DontWait))
                 {
                     continue;
                 }
 
-                if (receivedBuffer.RoutingId == null)
-                    return 2;
-                RoutingId routingId = receivedBuffer.RoutingId.Value;
                 using Message reply = bodyMessage.Move();
                 if (!EnqueueReplyOrSend(server, pendingReplies, routingId,
                         reply))

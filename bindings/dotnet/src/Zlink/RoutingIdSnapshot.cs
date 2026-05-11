@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using System.Runtime.CompilerServices;
 using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
@@ -100,30 +99,5 @@ internal unsafe struct RoutingIdSnapshot
         for (int i = 8; i < _size; i++)
             bytes[i] = (byte)(_hi >> ((i - 8) * 8));
         return bytes;
-    }
-
-    /// <summary>
-    /// Write the snapshot bytes into a ZlinkRoutingId without allocating
-    /// any intermediate byte[] or heap RoutingId wrapper. Used by the
-    /// routed-send echo hot path when the caller already holds a
-    /// RoutingIdSnapshot from a recent recv.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void WriteTo(ref ZlinkRoutingId destination)
-    {
-        destination = default;
-        if (_size <= 0)
-            return;
-        destination.Size = _size;
-        if (_large != null)
-        {
-            for (int i = 0; i < _large.Length && i < 255; i++)
-                destination.Data[i] = _large[i];
-            return;
-        }
-        for (int i = 0; i < _size && i < 8; i++)
-            destination.Data[i] = (byte)(_lo >> (i * 8));
-        for (int i = 8; i < _size; i++)
-            destination.Data[i] = (byte)(_hi >> ((i - 8) * 8));
     }
 }

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -47,36 +46,6 @@ public abstract class RoutedMessageSocketBase : SocketBase
         }
 
         Kernel.SendRoutedMessageUnchecked(routingId, message, flags);
-        return true;
-    }
-
-    /// <summary>
-    /// Send <paramref name="message"/> back to the peer identified by
-    /// <paramref name="source"/>. Equivalent to
-    /// <c>Send(source.RoutingId!.Value, message, flags)</c> but skips
-    /// the per-recv heap <see cref="RoutingId"/> materialization and its
-    /// inline-cache dictionary lookup, writing the routing id straight
-    /// from the <see cref="Received"/>'s internal snapshot into the
-    /// native send call. Hot path for routed echo workloads.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool Send(Received source, Message message,
-        SendFlags flags = SendFlags.None)
-    {
-        if (source == null)
-            throw new ArgumentNullException(nameof(source));
-        ref readonly RoutingIdSnapshot snapshot = ref source.RoutingIdSnapshotRef;
-        if (!snapshot.HasValue)
-            throw new ArgumentException(
-                "source has no routing id", nameof(source));
-        if ((flags & SendFlags.DontWait) != 0)
-        {
-            return SocketKernel.TrySendOrThrow(
-                Kernel.SendFromSnapshotResultUnchecked(in snapshot, message,
-                    (int)flags));
-        }
-
-        Kernel.SendFromSnapshotUnchecked(in snapshot, message, flags);
         return true;
     }
 

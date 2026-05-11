@@ -786,3 +786,52 @@
   - 안정성 회복 완료. throughput 12% 손해는 정책 목표를 모두 만족하는 범위 내 trade-off.
   - 추가 회복이 필요해질 경우 thread-local 임시 버퍼 + epoch 단위 swap 구조로 마이그레이션 검토 (현재는 회기 우선).
   - 다음 자동 작업: 미측정 transport (tls/ws/wss) + single suite 채우기.
+
+### 2026-05-11 C++ round 21
+
+- 동일 조합 C 결과:
+  - `MULTI_DEALER_ROUTER,tcp,64,throughput,466282.600`
+  - `MULTI_DEALER_ROUTER,tcp,256,throughput,454073.400`
+  - `MULTI_DEALER_ROUTER,tcp,1024,throughput,460580.200`
+  - `MULTI_DEALER_ROUTER,tcp,65536,throughput,186178.800`
+  - `MULTI_ROUTER_ROUTER,tcp,64,throughput,439403.200`
+  - `MULTI_ROUTER_ROUTER,tcp,256,throughput,427921.200`
+  - `MULTI_ROUTER_ROUTER,tcp,1024,throughput,425239.600`
+  - `MULTI_ROUTER_ROUTER,tcp,65536,throughput,184362.800`
+  - 파일: `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260511_*_c_final_dr_rr.txt`
+- 대상 언어 결과:
+  - `MULTI_DEALER_ROUTER,tcp,64,throughput,481687.200` ratio `1.03`
+  - `MULTI_DEALER_ROUTER,tcp,256,throughput,477297.400` ratio `1.05`
+  - `MULTI_DEALER_ROUTER,tcp,1024,throughput,446993.400` ratio `0.97`
+  - `MULTI_DEALER_ROUTER,tcp,65536,throughput,140513.000` ratio `0.75`
+  - `MULTI_ROUTER_ROUTER,tcp,64,throughput,376523.000` ratio `0.86`
+  - `MULTI_ROUTER_ROUTER,tcp,256,throughput,360159.600` ratio `0.84`
+  - `MULTI_ROUTER_ROUTER,tcp,1024,throughput,370803.600` ratio `0.87`
+  - `MULTI_ROUTER_ROUTER,tcp,65536,throughput,112796.800` ratio `0.61`
+  - 파일: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260511_*_cpp_final_dr_rr.txt`
+- 목표 미달 조합:
+  - suite=multi, pattern=MULTI_DEALER_ROUTER, transport=tcp, size=65536, metric=throughput, c=186178.8, lang=140513.0, ratio=0.75, target=0.90
+  - suite=multi, pattern=MULTI_ROUTER_ROUTER, transport=tcp, size=256, metric=throughput, c=427921.2, lang=360159.6, ratio=0.84, target=0.85 (소폭)
+  - suite=multi, pattern=MULTI_ROUTER_ROUTER, transport=tcp, size=1024, metric=throughput, c=425239.6, lang=370803.6, ratio=0.87, target=0.88 (소폭)
+  - suite=multi, pattern=MULTI_ROUTER_ROUTER, transport=tcp, size=65536, metric=throughput, c=184362.8, lang=112796.8, ratio=0.61, target=0.90
+- 선택한 병목 가설:
+  - `zlink_send_part_rid(ROUTER, FINAL)`가 `submit_simple_part` 경로를 거치면서 매 송신마다 (a) `std::shared_ptr<handle_state_t>` 조회/생성 + lock, (b) `send_sequence_spec_t` 생성과 `copy_routing_id`(256바이트), (c) `prepare/complete_send_step`를 수행한다. C 레퍼런스의 `zlink_send_rid`는 `send_socket_parts → send_socket_routed_parts → socket->send_routed`로 직접 가서 위 비용이 없다.
+  - `zlink_send_part`(DEALER)는 동일 상황에서 이미 `send_socket_singlepart_fast` fast path를 가지고 있어 같은 비용이 없다. `zlink_send_part_rid`만 누락.
+  - 영향: 모든 ROUTER 측 single-part FINAL 송신 (DR server echo, RR client/server)에서 매 호출 overhead 누적.
+- 변경한 라이브러리 파일:
+  - `core/src/api/socket_message_send_api.cpp`: `zlink_send_part_rid`에 ROUTER+FINAL 전용 singlepart fast path 추가. `part_flag_==FINAL && type==ROUTER && !send_sequence_is_open(s_)`일 때 `socket->send_routed`를 직접 호출. 다른 경로(STREAM, MORE 멀티파트)는 무변경.
+  - `bindings/cpp/native/linux-x86_64/libzlink.so.6.0.0` 재배포.
+- 추가/수정한 회귀 테스트:
+  - 없음 (기존 multipart routed 회귀가 fast path와 슬로 path 양쪽을 모두 커버한다고 판단).
+- 실행한 검증 명령:
+  - `cmake --build core/build`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 3 --results-tag c_final_dr_rr`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 3 --results-tag cpp_final_dr_rr`
+- 결과:
+  - DR-65k: ratio `0.59 → 0.75` (개선, 미달).
+  - RR-65k: ratio `0.66 → 0.61` (변동 폭 내 노이즈로 추정, 미달 유지).
+  - RR-256/1024: 0.81-0.84 → 0.84-0.87 (소폭 미달 유지).
+- 다음 판단:
+  - fast path는 send-side 오버헤드의 일부만 흡수. RR/DR-65k의 큰 갭은 송신 외 다른 hot-path에 추가 비용이 남아 있음을 시사한다.
+  - 다음 라운드 가설 후보: (1) recv 경로의 `routing_id_t` 256바이트 copy 회피, (2) C++ wrapper가 `state.reply`를 차기 recv까지 유지하면서 발생하는 buffer churn / RCVHWM 압력, (3) `send_socket_routed_parts`와 `socket->send_routed` 사이의 STREAM-not-router 분기 비용, (4) DR-server 측 `recv → push_back(pending_replies) → send_routed`에서 routing_id move/copy 시퀀스.
+  - 한 라운드 한 가설 원칙대로 (1)부터 검증한다.

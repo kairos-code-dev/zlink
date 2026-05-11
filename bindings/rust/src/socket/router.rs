@@ -72,24 +72,24 @@ impl RouterSocket {
         self.inner.send_to_with_flags(target, parts, flags)
     }
 
-    pub fn recv(&self) -> Result<Received, RecvError> {
-        self.recv_with_flags(RecvFlags::NONE).and_then(|opt| {
-            opt.ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))
-        })
-    }
-
-    pub fn try_recv(&self) -> Result<Option<Received>, RecvError> {
-        recv_router_once(self.inner.handle, ffi::ZLINK_DONTWAIT)
-    }
-
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError> {
+    /// Canonical caller-provided storage routed recv. See
+    /// `doc/spec/bindings/README.md`.
+    pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
         if flags.bits() == 0 {
-            let primed = recv_router_once(self.inner.handle, ffi::ZLINK_DONTWAIT)?;
-            if let Some(received) = primed {
-                return Ok(Some(received));
+            if let Some(received) =
+                recv_router_once(self.inner.handle, ffi::ZLINK_DONTWAIT)?
+            {
+                out.adopt_from(received);
+                return Ok(true);
             }
         }
-        recv_router_once(self.inner.handle, flags.bits())
+        match recv_router_once(self.inner.handle, flags.bits())? {
+            Some(received) => {
+                out.adopt_from(received);
+                Ok(true)
+            }
+            None => Ok(false),
+        }
     }
 
     pub async fn request(

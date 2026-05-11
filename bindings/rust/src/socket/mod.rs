@@ -262,15 +262,21 @@ impl SocketInner {
 
     // -- Recv (direct) -----------------------------------------------------
 
-    pub fn recv(&self) -> Result<Received, RecvError> {
-        let (routing_id, parts) = recv_basic_parts(self.handle, RecvFlags::NONE.bits())?
-            .ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))?;
-        Ok(Received::new(routing_id, parts))
-    }
-
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError> {
-        Ok(recv_basic_parts(self.handle, flags.bits())?
-            .map(|(routing_id, parts)| Received::new(routing_id, parts)))
+    /// Canonical caller-provided storage recv. Pass a long-lived
+    /// [`Received`] and the binding refills its internal state in place
+    /// each successful call.
+    ///
+    /// Returns `Ok(true)` on success, `Ok(false)` when [`RecvFlags::DONTWAIT`]
+    /// finds no data, `Err(_)` on hard error. See
+    /// `doc/spec/bindings/README.md` "Canonical Recv: Caller-Provided Storage".
+    pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
+        match recv_basic_parts(self.handle, flags.bits())? {
+            Some((routing_id, parts)) => {
+                out.adopt_from(Received::new(routing_id, parts));
+                Ok(true)
+            }
+            None => Ok(false),
+        }
     }
 
     pub(crate) fn recv_no_wait(&self) -> Result<Option<Received>, RecvError> {

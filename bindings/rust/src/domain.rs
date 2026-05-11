@@ -101,7 +101,43 @@ pub struct Received {
     reply_context: Option<ReplyContext>,
 }
 
+impl Default for Received {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 impl Received {
+    /// Create an empty `Received` for caller-provided storage.
+    ///
+    /// Hand the same instance to socket `recv` across calls to avoid the
+    /// per-recv allocation; the binding overwrites the internal state on
+    /// each successful receive via [`Received::adopt_from`].
+    ///
+    /// See `doc/spec/bindings/README.md` "Canonical Recv: Caller-Provided
+    /// Storage".
+    pub fn empty() -> Self {
+        Self {
+            routing_id: None,
+            spot_rid: None,
+            request_seq: None,
+            parts: Vec::new(),
+            reply_context: None,
+        }
+    }
+
+    /// Replace `self` with the contents of `source`, dropping any state
+    /// currently held first. After this call `source` is left empty.
+    pub(crate) fn adopt_from(&mut self, source: Received) {
+        // Existing parts are dropped here, which closes any owned Messages
+        // via Message::Drop semantics.
+        self.routing_id = source.routing_id;
+        self.spot_rid = source.spot_rid;
+        self.request_seq = source.request_seq;
+        self.parts = source.parts;
+        self.reply_context = source.reply_context;
+    }
+
     pub(crate) fn new(routing_id: Option<RoutingId>, parts: Vec<Message>) -> Self {
         Self {
             routing_id,

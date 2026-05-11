@@ -57,16 +57,10 @@ impl StreamSocket {
         self.inner.send_to_with_flags(target, parts, flags)
     }
 
-    pub fn recv(&self) -> Result<Received, RecvError> {
-        self.inner.recv()
-    }
-
-    pub fn try_recv(&self) -> Result<Option<Received>, RecvError> {
-        self.inner.recv_no_wait()
-    }
-
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError> {
-        self.inner.recv_with_flags(flags)
+    /// Canonical caller-provided storage recv. See
+    /// `doc/spec/bindings/README.md`.
+    pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
+        self.inner.recv(out, flags)
     }
 
     pub fn disconnect_rid(&self, peer_rid: &RoutingId) -> Result<(), crate::error::ConnectError> {

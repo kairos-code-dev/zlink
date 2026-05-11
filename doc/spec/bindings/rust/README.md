@@ -344,10 +344,11 @@ impl PairSocket {
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
     pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
+    /// Canonical caller-provided storage recv. `Ok(true)` on success,
+    /// `Ok(false)` when `RecvFlags::DONTWAIT` finds no data, `Err(_)`
+    /// on hard error. See doc/spec/bindings/README.md.
     /// # Errors: RecvError
-    pub fn recv(&self) -> Result<Received, RecvError>;
-    /// # Errors: RecvError
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError>;
+    pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -445,10 +446,11 @@ impl DealerSocket {
     pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
     /// # Errors: SubmitError
     pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
+    /// Canonical caller-provided storage recv. `Ok(true)` on success,
+    /// `Ok(false)` when `RecvFlags::DONTWAIT` finds no data, `Err(_)`
+    /// on hard error. See doc/spec/bindings/README.md.
     /// # Errors: RecvError
-    pub fn recv(&self) -> Result<Received, RecvError>;
-    /// # Errors: RecvError
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError>;
+    pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -500,10 +502,11 @@ impl RouterSocket {
     /// # Errors: SubmitError
     pub fn send_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
                            flags: SendFlags) -> Result<bool, SubmitError>;
+    /// Canonical caller-provided storage recv. `Ok(true)` on success,
+    /// `Ok(false)` when `RecvFlags::DONTWAIT` finds no data, `Err(_)`
+    /// on hard error. See doc/spec/bindings/README.md.
     /// # Errors: RecvError
-    pub fn recv(&self) -> Result<Received, RecvError>;
-    /// # Errors: RecvError
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError>;
+    pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -665,10 +668,11 @@ impl StreamSocket {
     /// Two mutually-exclusive receive modes on the same StreamSocket:
     ///   (1) recv(), (2) on_packet(handler). Second attach returns
     ///   Err(HandlerError { code: HandlerResult::Busy, .. }).
+    /// Canonical caller-provided storage recv. `Ok(true)` on success,
+    /// `Ok(false)` when `RecvFlags::DONTWAIT` finds no data, `Err(_)`
+    /// on hard error. See doc/spec/bindings/README.md.
     /// # Errors: RecvError
-    pub fn recv(&self) -> Result<Received, RecvError>;
-    /// # Errors: RecvError
-    pub fn recv_with_flags(&self, flags: RecvFlags) -> Result<Option<Received>, RecvError>;
+    pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>;
     /// Mode (3): framed packet callback mapped to
     /// `zlink_stream_packet_handler`. Wire frame is big-endian `u16`
     /// header_size + `u32` body_size + header + body. The handler receives

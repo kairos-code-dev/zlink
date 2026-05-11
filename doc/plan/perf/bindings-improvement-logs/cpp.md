@@ -960,3 +960,31 @@
   - 핫패스 send/recv path는 C 레퍼런스와 native 호출 단위로 동등하다 (`zlink_send_part` DEALER fast path, `zlink_send_part_rid` ROUTER+FINAL fast path, `zlink_router_recv_part` + 257B struct copy).
   - 65KB 갭은 wrapper-level의 단일 hotspot보다, 100 client × 65KB × in-flight 큐 압력에 대한 hot-loop scheduling/latency 누적이 작은 차이로 vary. 측정 분산도 ±20% 범위.
   - 추가 진전은 (a) 실제 perf record/eBPF sampling으로 runtime hotspot 식별, (b) DR/RR 클라이언트의 in-flight 윈도우/배치 발송 정책 재설계, 또는 (c) 측정 환경(WSL2) 대신 안정된 native Linux로 baseline 확정 중 하나가 필요하다. 이번 라운드에서는 무리하게 더 진행하지 않는다.
+
+### 2026-05-11 C++ round 25 — post cross-binding cleanup snapshot
+
+- Context:
+  - Cross-binding cleanups (canonical `recv(Received, RecvFlags)` ref-out
+    shape) landed across Node / Python / Rust / .NET / Java in the
+    surrounding commits. C++ wrapper already on canonical shape since
+    round 23; no further C++ wrapper change in this round.
+- Measurements (same hardware, WSL2):
+  - C reference 3-run avg, tcp 65536:
+    - `MULTI_DEALER_ROUTER` throughput `177910.000`
+    - `MULTI_ROUTER_ROUTER` throughput `184290.800`
+  - C++ binding 3-run avg, tcp 65536
+    (`cpp_dr_rr_round25_post_cleanup`):
+    - `MULTI_DEALER_ROUTER` throughput `140347.400` → ratio `0.79`
+    - `MULTI_ROUTER_ROUTER` throughput `138209.200` → ratio `0.75`
+- 해석:
+  - Round 24 5-run avg는 0.71 / 0.69, 이번 3-run avg는 0.79 / 0.75.
+    동일 binary 도 측정 윈도우에 따라 0.7~0.85 사이로 흔들리는 round 24
+    분산 관찰과 일치. 65KB target 0.90 은 단일 측정 윈도우로 가끔 도달하지만
+    median으로는 여전히 미달.
+- 결론:
+  - 라운드 25에는 추가 라이브러리/perf 코드 변경 없음. cross-binding
+    canonical recv 마이그레이션이 끝났으므로 baseline이 다시 안정화됐고,
+    측정값은 round 23 / 24의 노이즈 범위 안에 있음을 재확인했다.
+  - 라운드 24에서 정리한 추가 진전 경로 — perf record/eBPF profiling,
+    in-flight 윈도우 재설계, native Linux baseline 확정 — 가 다음 진전을
+    여는 전제임을 다시 한 번 명시한다.

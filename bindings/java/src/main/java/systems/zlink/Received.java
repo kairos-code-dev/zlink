@@ -397,14 +397,22 @@ public final class Received implements AutoCloseable {
             closed = true;
             pendingCursor = cursor;
             cursor = null;
-            int n = realizedParts.size();
-            if (n == 1) {
-                singleToClose = realizedParts.get(0);
-            } else if (n > 1) {
-                toClose = new ArrayList<>(realizedParts);
+            // realizedParts can be null when the caller closed a freshly
+            // constructed (no-arg) Received that was never populated by a
+            // recv. The no-arg ctor + canonical recv pattern allows this:
+            // an empty Received passed to socket.recv(received, DONT_WAIT)
+            // stays null on EAGAIN, and the caller may close() it without
+            // ever having observed a successful recv.
+            if (realizedParts != null) {
+                int n = realizedParts.size();
+                if (n == 1) {
+                    singleToClose = realizedParts.get(0);
+                } else if (n > 1) {
+                    toClose = new ArrayList<>(realizedParts);
+                }
+                partsToRelease = realizedParts;
+                realizedParts = null;
             }
-            partsToRelease = realizedParts;
-            realizedParts = null;
             partsView = Collections.emptyList();
         }
         if (singleToClose != null) {

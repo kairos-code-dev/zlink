@@ -218,6 +218,10 @@ final class PerfMultiRouterRouter {
         }
         long seq = 1L;
         int rrIndex = 0;
+        // Long-lived Received reused across recv on every client socket. The
+        // canonical ref-out recv refills it in place via populateRoutedSinglePart,
+        // avoiding the per-recv Received + ArrayList allocation.
+        systems.zlink.Received replyBuffer = new systems.zlink.Received();
         try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 socketsAsBase, PollEventFlag.POLLIN)) {
             metrics.startActiveWindow();
@@ -255,7 +259,8 @@ final class PerfMultiRouterRouter {
                         pollSet.isReady(idx, PollEventFlag.POLLIN);
                     if (!readable && !waitingReply[idx]) continue;
                     drainReplies(clients.get(idx), idx, waitingReply,
-                        waitingWritable, msgSize, runId, metrics, pollSet);
+                        waitingWritable, msgSize, runId, metrics, pollSet,
+                        replyBuffer);
                 }
             }
             // PERF_MULTI_TEST_POLICY §1.3.1 wire-level stop token: one per
@@ -279,22 +284,34 @@ final class PerfMultiRouterRouter {
                                      boolean[] waitingWritable,
                                      int msgSize, int runId,
                                      PerfUtil.Metrics metrics,
-                                     PerfSocketPollSet pollSet) {
+                                     PerfSocketPollSet pollSet,
+                                     systems.zlink.Received replyBuffer) {
         while (true) {
-            systems.zlink.Received received =
-                PerfUtil.recvNoWait(client);
-            if (received == null) break;
-            try (received) {
-                if (!waitingReply[idx]) continue;
-                waitingReply[idx] = false;
-                PerfUtil.Header header = PerfUtil.decodeHeader(received.firstPart(), msgSize);
-                if (header != null
-                    && header.phase() == PerfUtil.PHASE_ACTIVE) {
-                    metrics.recordNanos(header.latencyNanos() / 2L);
+            boolean ok;
+            try {
+                ok = client.recv(replyBuffer, RecvFlags.DONT_WAIT);
+            } catch (RecvException ex) {
+                if (ex.getResult() == RecvResult.NO_DATA
+                    || ex.getResult() == RecvResult.BUSY) {
+                    break;
                 }
-                waitingWritable[idx] = false;
-                updatePollMask(pollSet, idx, false, false);
+                throw ex;
             }
+            if (!ok) break;
+            if (!waitingReply[idx]) {
+                replyBuffer.close();
+                continue;
+            }
+            waitingReply[idx] = false;
+            PerfUtil.Header header = PerfUtil.decodeHeader(
+                replyBuffer.firstPart(), msgSize);
+            if (header != null
+                && header.phase() == PerfUtil.PHASE_ACTIVE) {
+                metrics.recordNanos(header.latencyNanos() / 2L);
+            }
+            waitingWritable[idx] = false;
+            updatePollMask(pollSet, idx, false, false);
+            replyBuffer.close();
         }
     }
 

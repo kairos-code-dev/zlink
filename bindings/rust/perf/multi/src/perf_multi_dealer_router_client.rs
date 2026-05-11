@@ -12,9 +12,10 @@ fn drain_socket(
     waiting_reply: &mut [bool],
 ) -> bool {
     let mut processed = false;
+    let mut received = zlink::Received::empty();
     loop {
-        match socket.recv_with_flags(RecvFlags::DONT_WAIT) {
-            Ok(received) => {
+        match socket.recv(&mut received, RecvFlags::DONT_WAIT) {
+            Ok(true) => {
                 let data = common::message_payload(received.parts());
                 if !common::is_valid_active_message(data, msg_size) {
                     continue;
@@ -26,7 +27,7 @@ fn drain_socket(
                 waiting_reply[index] = false;
                 processed = true;
             }
-            Err(err) if err.code() == RecvResult::NoData => break,
+            Ok(false) => break,
             Err(err) => panic!("recv failed: {err}"),
         }
     }

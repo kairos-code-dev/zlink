@@ -77,15 +77,17 @@ fn main() {
         common::send_stop_token(|msg| sender.send(msg).map_err(Into::into));
     });
 
+    let mut received = zlink::Received::empty();
     loop {
-        match receiver.recv() {
-            Ok(received) => {
+        match receiver.recv(&mut received, zlink::RecvFlags::NONE) {
+            Ok(true) => {
                 let data = common::message_payload(received.parts());
                 if common::is_stop_token(data) {
                     break;
                 }
                 common::handle_recv(data, config.size, &stats);
             }
+            Ok(false) => continue,
             Err(err) => panic!("dealer-dealer receiver recv failed: {err}"),
         }
     }

@@ -60,11 +60,12 @@ fn main() {
             }
         }
     });
+    let mut received = zlink::Received::empty();
     while !stop.load(Ordering::Acquire) {
         let mut progressed = false;
         loop {
-            match router.recv_with_flags(RecvFlags::DONT_WAIT) {
-                Ok(received) => {
+            match router.recv(&mut received, RecvFlags::DONT_WAIT) {
+                Ok(true) => {
                     let Some(rid) = received.routing_id().cloned() else {
                         continue;
                     };
@@ -72,7 +73,7 @@ fn main() {
                     pending.push_back((rid, reply_bytes));
                     progressed = true;
                 }
-                Err(err) if err.code() == RecvResult::NoData => break,
+                Ok(false) => break,
                 Err(err) => panic!("router recv failed: {err}"),
             }
         }

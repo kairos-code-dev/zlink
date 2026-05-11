@@ -83,10 +83,10 @@ fn main() {
     sender
         .send(&target, Message::copy_from(b"PING").expect("router ping"))
         .expect("router handshake send");
-    let handshake = match receiver.recv() {
-        Ok(received) => received,
-        Err(err) => panic!("receiver handshake recv: {err}"),
-    };
+    let mut handshake = zlink::Received::empty();
+    if let Err(err) = receiver.recv(&mut handshake, zlink::RecvFlags::NONE) {
+        panic!("receiver handshake recv: {err}");
+    }
     let reply_rid = handshake
         .routing_id()
         .expect("receiver handshake rid")
@@ -98,10 +98,10 @@ fn main() {
             Message::copy_from(b"PONG").expect("router pong"),
         )
         .expect("receiver handshake reply");
-    let handshake_reply = match sender.recv() {
-        Ok(received) => received,
-        Err(err) => panic!("sender handshake recv: {err}"),
-    };
+    let mut handshake_reply = zlink::Received::empty();
+    if let Err(err) = sender.recv(&mut handshake_reply, zlink::RecvFlags::NONE) {
+        panic!("sender handshake recv: {err}");
+    }
     assert_eq!(handshake_reply.parts()[0].as_bytes(), b"PONG");
 
     let collector = common::MetricCollector::new();
@@ -121,15 +121,17 @@ fn main() {
         common::send_stop_token(|msg| sender.send(&send_target, msg).map_err(Into::into));
     });
 
+    let mut received = zlink::Received::empty();
     loop {
-        match receiver.recv() {
-            Ok(received) => {
+        match receiver.recv(&mut received, zlink::RecvFlags::NONE) {
+            Ok(true) => {
                 let data = common::message_payload(received.parts());
                 if common::is_stop_token(data) {
                     break;
                 }
                 common::handle_recv(data, config.size, &stats);
             }
+            Ok(false) => continue,
             Err(err) => panic!("router-router receiver recv failed: {err}"),
         }
     }

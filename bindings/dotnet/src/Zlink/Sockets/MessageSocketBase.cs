@@ -77,22 +77,6 @@ public abstract class MessageSocketBase : ConnectableSocketBase
         return Kernel.ReceiveInto(result, (int)flags);
     }
 
-    /// <summary>
-    /// Legacy convenience overload that allocates a fresh
-    /// <see cref="Received"/> per call. Prefer
-    /// <see cref="Recv(Received, RecvFlags)"/> in any hot path. This overload
-    /// exists to keep existing call sites compiling during the migration
-    /// to the canonical caller-provided-storage recv shape.
-    /// </summary>
-    [Obsolete("Use Recv(Received result, RecvFlags) — pass caller-provided storage to avoid the per-recv allocation.")]
-    public Received? Recv(RecvFlags flags = RecvFlags.None)
-    {
-        var result = new Received();
-        if (Recv(result, flags))
-            return result;
-        result.Dispose();
-        return null;
-    }
 
     public void OnSendReady(Action handler)
     {

@@ -42,7 +42,16 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
 
     public Received? Recv(RecvFlags flags = RecvFlags.None)
     {
-        return nativeSocket.Recv(flags);
+        // Bridge to the canonical caller-provided-storage recv. The
+        // framework's IZLinkBackendRouterSocket.Recv signature predates
+        // the binding migration and still allocates a fresh Received per
+        // call; future work can lift the caller-provided pattern up to
+        // the framework adapter too.
+        var result = new Received();
+        if (nativeSocket.Recv(result, flags))
+            return result;
+        result.Dispose();
+        return null;
     }
 
     public bool Send(

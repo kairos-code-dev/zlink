@@ -695,7 +695,8 @@ zlink_submit_result_t zlink_send_part_rid (void *s_,
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    if (socket->socket_type () == ZLINK_CORE_SOCKET_STREAM) {
+    const int type = socket->socket_type ();
+    if (type == ZLINK_CORE_SOCKET_STREAM) {
         if (part_flag_ != ZLINK_PART_FINAL) {
             zlink::part_helper_internal::consume_send_part (part_);
             errno = ENOTSUP;
@@ -709,6 +710,30 @@ zlink_submit_result_t zlink_send_part_rid (void *s_,
             zlink::part_helper_internal::consume_send_part (part_);
             errno = saved_errno;
         }
+        return zlink::submit_result_internal::from_rc (rc);
+    }
+
+    // Singlepart fast path for ROUTER+FINAL. Mirrors the DEALER fast path in
+    // zlink_send_part: when the caller is sending a single FINAL part with
+    // no outstanding multipart sequence on this handle, skip the
+    // submit_simple_part scaffolding (handle_state shared_ptr lookup,
+    // send_sequence_spec construction, copy_routing_id) and hand the part
+    // straight to socket_base_t::send_routed.
+    //
+    // submit_simple_part is required for partial multipart sends (PART_MORE
+    // followed by PART_FINAL) where the core has to remember per-handle
+    // state across calls. For the FINAL-only case the state machine is a
+    // no-op and the allocation shows up as a measurable per-message cost
+    // on RR/DR-server hot paths at 100-socket fan-in.
+    if (part_flag_ == ZLINK_PART_FINAL && type == ZLINK_CORE_SOCKET_ROUTER
+        && !send_sequence_is_open (s_)) {
+        socket_handle_t handle = make_socket_handle (socket);
+        const int rc = handle.socket->send_routed (
+          target_rid_, reinterpret_cast<zlink::msg_t *> (part_),
+          static_cast<int> (flags_ & ZLINK_DONTWAIT));
+        const int saved_errno = errno;
+        zlink::part_helper_internal::consume_send_part (part_);
+        errno = saved_errno;
         return zlink::submit_result_internal::from_rc (rc);
     }
 

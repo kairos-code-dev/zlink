@@ -47,8 +47,8 @@ func TestRecvOwnershipCanBeExplicitlyReleased(t *testing.T) {
 	_ = client.Connect(endpoint)
 	_, _ = client.Send(zlink.SendFlagsNone, newMessage(t, "recv-owned"))
 
-	received, err := server.Recv(zlink.RecvFlagsNone)
-	if err != nil {
+	var received zlink.Received
+	if _, err := server.Recv(&received, zlink.RecvFlagsNone); err != nil {
 		t.Fatalf("Recv() error = %v", err)
 	}
 	if err := received.Close(); err != nil {
@@ -88,8 +88,8 @@ func TestStreamRecvShapeMatchesCallbackShape(t *testing.T) {
 		t.Fatalf("direct Write() error = %v", err)
 	}
 
-	directReceived, err := directServer.Recv(zlink.RecvFlagsNone)
-	if err != nil {
+	var directReceived zlink.Received
+	if _, err := directServer.Recv(&directReceived, zlink.RecvFlagsNone); err != nil {
 		t.Fatalf("direct Recv() error = %v", err)
 	}
 	defer directReceived.Close()

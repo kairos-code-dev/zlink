@@ -221,8 +221,8 @@ func TestRequestReplyCanonicalDealerRouterRoundTrip(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		received, err := routerSocket.Recv(zlink.RecvFlagsNone)
-		if err != nil {
+		var received zlink.Received
+		if _, err := routerSocket.Recv(&received, zlink.RecvFlagsNone); err != nil {
 			t.Errorf("Recv() error = %v", err)
 			return
 		}
@@ -308,8 +308,8 @@ func TestRouterRequestSupportPreservesDataReceiveSurface(t *testing.T) {
 	if _, err := dealerSocket.Send(zlink.SendFlagsNone, payload); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
-	received, err := routerSocket.Recv(zlink.RecvFlagsNone)
-	if err != nil {
+	var received zlink.Received
+	if _, err := routerSocket.Recv(&received, zlink.RecvFlagsNone); err != nil {
 		t.Fatalf("Recv() error = %v", err)
 	}
 	defer received.Close()
@@ -359,8 +359,8 @@ func TestStreamRecvCanonicalRoundTrip(t *testing.T) {
 		t.Fatalf("conn.Write() error = %v", err)
 	}
 
-	received, err := stream.Recv(zlink.RecvFlagsNone)
-	if err != nil {
+	var received zlink.Received
+	if _, err := stream.Recv(&received, zlink.RecvFlagsNone); err != nil {
 		t.Fatalf("Recv() error = %v", err)
 	}
 	defer received.Close()

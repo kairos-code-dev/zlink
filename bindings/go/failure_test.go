@@ -197,7 +197,8 @@ func TestRecvDoesNotSwallowClosedSocketErrors(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	if _, err := socket.Recv(zlink.RecvFlagsDontWait); err == nil {
+	var received zlink.Received
+	if _, err := socket.Recv(&received, zlink.RecvFlagsDontWait); err == nil {
 		t.Fatalf("Recv() on closed socket should surface an error")
 	}
 }
@@ -257,7 +258,8 @@ func TestCallbackModeConflictsWithDirectRecv(t *testing.T) {
 		t.Fatalf("OnPacket() error = %v", err)
 	}
 
-	if _, err := server.Recv(zlink.RecvFlagsNone); err == nil {
+	var received zlink.Received
+	if _, err := server.Recv(&received, zlink.RecvFlagsNone); err == nil {
 		t.Fatalf("Recv() after OnPacket() should fail")
 	}
 

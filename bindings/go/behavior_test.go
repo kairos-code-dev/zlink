@@ -29,8 +29,8 @@ func TestPairSendRecvRoundTrip(t *testing.T) {
 		t.Fatalf("Send() error = %v", err)
 	}
 
-	received, err := server.Recv(zlink.RecvFlagsNone)
-	if err != nil {
+	var received zlink.Received
+	if _, err := server.Recv(&received, zlink.RecvFlagsNone); err != nil {
 		t.Fatalf("Recv() error = %v", err)
 	}
 	defer received.Close()
@@ -61,8 +61,8 @@ func TestPairMultipartRoundTrip(t *testing.T) {
 		t.Fatalf("Send() error = %v", err)
 	}
 
-	received, err := server.Recv(zlink.RecvFlagsNone)
-	if err != nil {
+	var received zlink.Received
+	if _, err := server.Recv(&received, zlink.RecvFlagsNone); err != nil {
 		t.Fatalf("Recv() error = %v", err)
 	}
 	defer received.Close()
@@ -80,12 +80,13 @@ func TestPairRecvEmpty(t *testing.T) {
 	defer socket.Close()
 	_ = socket.Bind(inprocEndpoint("pair-try-recv"))
 
-	received, err := socket.Recv(zlink.RecvFlagsDontWait)
-	if err == nil {
-		t.Fatalf("Recv() should return an error on empty non-blocking receive")
+	var received zlink.Received
+	ok, err := socket.Recv(&received, zlink.RecvFlagsDontWait)
+	if err != nil {
+		t.Fatalf("Recv() error = %v, want nil for non-blocking empty receive", err)
 	}
-	if received != nil {
-		t.Fatalf("Recv() = %v, want nil", received)
+	if ok {
+		t.Fatalf("Recv() returned ok=true on empty non-blocking receive")
 	}
 }
 
@@ -126,8 +127,8 @@ func TestDealerRouterRoundTrip(t *testing.T) {
 		t.Fatalf("dealer Send() error = %v", err)
 	}
 
-	request, err := router.Recv(zlink.RecvFlagsNone)
-	if err != nil {
+	var request zlink.Received
+	if _, err := router.Recv(&request, zlink.RecvFlagsNone); err != nil {
 		t.Fatalf("router Recv() error = %v", err)
 	}
 	defer request.Close()
@@ -136,8 +137,8 @@ func TestDealerRouterRoundTrip(t *testing.T) {
 		t.Fatalf("router SendTo() error = %v", err)
 	}
 
-	response, err := dealer.Recv(zlink.RecvFlagsNone)
-	if err != nil {
+	var response zlink.Received
+	if _, err := dealer.Recv(&response, zlink.RecvFlagsNone); err != nil {
 		t.Fatalf("dealer Recv() error = %v", err)
 	}
 	defer response.Close()

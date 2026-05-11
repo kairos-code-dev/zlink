@@ -263,15 +263,16 @@ func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, done chan<- st
 		if event.Events&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
+		var received zlink.Received
 		for {
-			received, recvErr := server.Recv(zlink.RecvFlagsDontWait)
+			ok, recvErr := server.Recv(&received, zlink.RecvFlagsDontWait)
 			if recvErr != nil {
 				if perfcommon.IsTransient(recvErr) {
 					break
 				}
 				perfcommon.Must(fmt.Errorf("multi router/router server recv: %w", recvErr))
 			}
-			if received == nil {
+			if !ok {
 				break
 			}
 
@@ -341,15 +342,16 @@ func drainRouterReplies(
 	activeAt time.Time,
 ) (bool, error) {
 	drained := false
+	var reply zlink.Received
 	for {
-		reply, err := socket.Recv(zlink.RecvFlagsDontWait)
+		ok, err := socket.Recv(&reply, zlink.RecvFlagsDontWait)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				return drained, nil
 			}
 			return false, err
 		}
-		if reply == nil {
+		if !ok {
 			return drained, nil
 		}
 		part, partErr := reply.SinglePartOrError()

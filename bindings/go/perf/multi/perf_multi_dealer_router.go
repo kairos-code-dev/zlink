@@ -83,14 +83,15 @@ func runMultiDealerRouter(cfg multiConfig) perfcommon.Result {
 					}
 					perfcommon.Must(fmt.Errorf("multi dealer/router send: %w", err))
 				}
-				reply, err := socket.Recv(zlink.RecvFlagsDontWait)
+				var reply zlink.Received
+				ok, err := socket.Recv(&reply, zlink.RecvFlagsDontWait)
 				if err != nil {
 					if perfcommon.IsTransient(err) {
 						continue
 					}
 					perfcommon.Must(fmt.Errorf("multi dealer/router recv: %w", err))
 				}
-				if reply == nil {
+				if !ok {
 					continue
 				}
 				part, err := reply.SinglePartOrError()

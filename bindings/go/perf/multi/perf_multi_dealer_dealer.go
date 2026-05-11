@@ -81,15 +81,16 @@ func runMultiDealerDealer(cfg multiConfig) perfcommon.Result {
 			if event.Events&perfcommon.ZLinkPollIn == 0 {
 				continue
 			}
+			var received zlink.Received
 			for {
-				received, err := server.Recv(zlink.RecvFlagsDontWait)
+				ok, err := server.Recv(&received, zlink.RecvFlagsDontWait)
 				if err != nil {
 					if perfcommon.IsTransient(err) {
 						break
 					}
 					perfcommon.Must(fmt.Errorf("multi dealer/dealer server recv: %w", err))
 				}
-				if received == nil {
+				if !ok {
 					break
 				}
 				part, err := received.SinglePartOrError()

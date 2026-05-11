@@ -247,6 +247,59 @@ public shape를 기준으로 고정한다.
 "구현 기반이 바뀌는 것"이지 "사용자에게 보이는 형태가 자동으로 바뀌는 것"이
 아니다.
 
+### Canonical Recv: Caller-Provided Storage
+
+고수준 binding (C++ / .NET / Java / Node / Python / Go / Rust) 의 raw
+`recv` 표면은 **caller가 미리 만든 `Received` (또는 단일 part 인 경우 `Message`)
+저장소를 매개변수로 받아 내부 상태를 갱신하는 ref-out 형태**를 canonical로 한다.
+매 호출마다 새 `Received` 인스턴스를 할당해 반환하는 형태는 hot path 할당
+오버헤드를 강제하므로 canonical 표면으로 사용하지 않는다.
+
+이 규칙은 `Required` 다. 새로운 binding 을 만들거나 기존 binding 을 갱신할 때
+canonical recv 표면은 이 절을 만족해야 한다.
+
+#### 기본 계약
+
+- `recv` 호출자는 long-lived `Received` (또는 `Message`) 인스턴스를 미리 만들어
+  매 호출마다 같은 인스턴스를 넘긴다. binding 은 그 안의 part collection,
+  routing id 저장소를 가능한 한 재사용해 매 recv 할당을 0 으로 만든다.
+- 반환값은 "받았는가" boolean (또는 success/no-data 를 구분하는 동등 표현) 만
+  포함한다. hard error 는 언어 관용대로 예외 또는 error code 로 전달한다.
+- `recv_flags_t::dontwait` 등 non-blocking flag 가 적용된 호출에서 데이터가
+  없으면 false / `Option::None` / `nil` 같이 언어별 "데이터 없음" 표현으로
+  반환한다. exception 으로 EAGAIN 을 알리지 않는다.
+- multipart 결과는 caller `Received` 에 누적 노출한다. binding 이 임시 컬렉션을
+  만들어 caller `Received` 와 별도로 캐싱하면 안 된다 (할당이 사라지지 않는다).
+- routed recv (router / spot) 에서 routing id 는 caller 가 제공한 `Received`
+  내부 storage 에 채워야 한다. routing id 마다 새 byte 배열을 할당하는 경로는
+  내부 hot path 에 두지 않는다.
+
+#### 언어별 canonical 시그니처
+
+| Binding | Canonical 시그니처 |
+|---|---|
+| C++ | `int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);` 0 = 성공, -1 = 실패 (errno 설정). multipart 결과는 `out.parts` 에 채워진다. dealer 같은 single-part socket 은 `int recv(message_t& part, recv_flags_t flags)` 오버로드도 같은 ref-out 규칙으로 제공한다. |
+| .NET | `bool Recv(Received result, RecvFlags flags = RecvFlags.None);` true = 받음, false = 데이터 없음 (DontWait). hard error 는 `ZlinkException`. |
+| Java | `boolean recv(Received result, RecvFlag... flags);` true = 받음, false = 데이터 없음. hard error 는 `RecvException`. |
+| Node | `recv(received: Received, flags?: RecvFlag): boolean;` true = 받음, false = 데이터 없음. hard error 는 `ZlinkError`. |
+| Python | `def recv_into(self, received: Received, *, flags: int = 0) -> bool: ...` True = 받음, False = 데이터 없음. hard error 는 `RecvError`. |
+| Go | `func (s *Socket) Recv(out *Received, flags RecvFlags) (bool, error)` (true, nil) = 받음, (false, nil) = 데이터 없음, (false, err) = 실패. |
+| Rust | `pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>;` Ok(true) = 받음, Ok(false) = 데이터 없음, Err = 실패. |
+
+C ABI binding 은 이 절의 적용 대상이 아니다. C 바인딩은 `zlink.h` 의 typed
+substrate (`zlink_router_recv_part` 등) 를 그대로 노출한다.
+
+#### Received 재사용 계약
+
+- `Received` 는 새 recv 결과를 받기 전 자동으로 내부 상태를 초기화한다. 같은
+  인스턴스를 반복적으로 recv 에 넘기는 것이 정상 사용이다.
+- 이전 recv 의 part 메시지를 caller 가 따로 `move` 하지 않고 다음 recv 를
+  호출하면 이전 메시지는 적절히 닫혀야 한다. binding 은 part Message 의
+  ownership 을 caller 에게 넘기는 별도 helper (`takeFirstPart` 등) 를 제공한다.
+- thread safety 는 같은 `Received` 인스턴스를 여러 thread 가 동시에 recv 에
+  넘기는 것을 보장하지 않는다. socket 자체는 단일 thread 가 recv 하도록 하는
+  기존 정책이 유지된다.
+
 ### SPOT Operation Builder Policy
 
 SPOT의 send/request/reply 계열은 조합 축이 많다. 대상 경로, payload 개수,

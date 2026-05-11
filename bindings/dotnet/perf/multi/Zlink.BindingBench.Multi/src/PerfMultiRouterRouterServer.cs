@@ -98,12 +98,13 @@ internal static class PerfMultiRouterRouterServer
                 }
                 long t2 = timing ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
 
-                if (receivedBuffer.RoutingId == null)
-                    return 2;
-                RoutingId routingId = receivedBuffer.RoutingId.Value;
-
+                // Echo hot path: route the reply via the canonical
+                // Send(Received, Message, SendFlags) fast path which writes
+                // the routing id straight from receivedBuffer's snapshot,
+                // skipping per-recv RoutingId materialization + inline cache
+                // dictionary lookup.
                 if (pendingReplies.Count == 0
-                    && server.Send(routingId, bodyMessage, SendFlags.DontWait))
+                    && server.Send(receivedBuffer, bodyMessage, SendFlags.DontWait))
                 {
                     sendCount++;
                     long t3 = timing ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
@@ -116,6 +117,9 @@ internal static class PerfMultiRouterRouterServer
                     continue;
                 }
 
+                if (receivedBuffer.RoutingId == null)
+                    return 2;
+                RoutingId routingId = receivedBuffer.RoutingId.Value;
                 Message reply = bodyMessage.Move();
                 if (!EnqueueReplyOrSend(server, pendingReplies, routingId,
                         reply))

@@ -414,6 +414,43 @@ internal sealed class SocketKernel : IDisposable
         SendSingleCore(ref nativeRoutingId, message, (int)flags);
     }
 
+    /// <summary>
+    /// Routed-send fast path that writes a routing id directly from a
+    /// caller-held <see cref="RoutingIdSnapshot"/>, skipping the heap
+    /// <see cref="RoutingId"/> wrapper materialization and its inline
+    /// cache lookup. Used by the echo hot path
+    /// <see cref="RoutedMessageSocketBase.Send(Received, Message, SendFlags)"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal SendResult SendFromSnapshotResultUnchecked(
+        in RoutingIdSnapshot routingIdSnapshot, Message message, int flags)
+    {
+        if (message == null)
+            throw new ArgumentNullException(nameof(message));
+        ZlinkRoutingId nativeRoutingId = default;
+        routingIdSnapshot.WriteTo(ref nativeRoutingId);
+        return SendSingleResultCore(ref nativeRoutingId, message, flags);
+    }
+
+    internal void SendFromSnapshotUnchecked(
+        in RoutingIdSnapshot routingIdSnapshot, Message message,
+        SendFlags flags = SendFlags.None)
+    {
+        if (message == null)
+            throw new ArgumentNullException(nameof(message));
+        ZlinkRoutingId nativeRoutingId = default;
+        routingIdSnapshot.WriteTo(ref nativeRoutingId);
+        if ((((int)flags) & DontWaitFlag) != 0)
+        {
+            SendResult result = SendSingleNoWaitResultCore(ref nativeRoutingId,
+                message);
+            if (result != SendResult.Sent)
+                throw CreateNoWaitSendException(result);
+            return;
+        }
+        SendSingleCore(ref nativeRoutingId, message, (int)flags);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal SendResult SendRoutedMessageResultUnchecked(RoutingId routingId,
         Message message, int flags)
@@ -2853,7 +2890,8 @@ internal sealed class SocketKernel : IDisposable
             return sendResult;
         }
 
-        int rc = NativeMethods.zlink_send_part(Handle, ref message.Handle,
+        // DONT_WAIT-only critical variant: contractually non-blocking.
+        int rc = NativeMethods.zlink_send_part_nowait(Handle, ref message.Handle,
             DontWaitFlag, NativeMethods.ZlinkPartFlag.Final);
         if (rc == 0)
         {
@@ -3532,7 +3570,10 @@ internal sealed class SocketKernel : IDisposable
             return sendResult;
         }
 
-        int rc = NativeMethods.zlink_send_part_rid(Handle, ref routingId,
+        // DONT_WAIT-only critical variant: contractually non-blocking, so
+        // [SuppressGCTransition] is safe and saves the GC safepoint cost on
+        // every routed echo Send.
+        int rc = NativeMethods.zlink_send_part_rid_nowait(Handle, ref routingId,
             ref message.Handle, DontWaitFlag, NativeMethods.ZlinkPartFlag.Final);
         if (rc == 0)
         {

@@ -63,14 +63,20 @@ fn main() {
     let req = Message::copy_from(b"ping").expect("message failed");
     dealer.send(req).expect("send failed");
 
-    let received = router.recv().expect("router recv failed");
+    let mut received = zlink::Received::empty();
+    router
+        .recv(&mut received, zlink::RecvFlags::NONE)
+        .expect("router recv failed");
     let sender_rid = received.routing_id().expect("missing routing id").clone();
     assert_eq!(received.parts()[0].as_str().unwrap(), "ping");
 
     let resp = Message::copy_from(b"pong").expect("message failed");
     router.send(&sender_rid, resp).expect("routed send failed");
 
-    let response = dealer.recv().expect("dealer recv failed");
+    let mut response = zlink::Received::empty();
+    dealer
+        .recv(&mut response, zlink::RecvFlags::NONE)
+        .expect("dealer recv failed");
     assert_eq!(response.parts()[0].as_str().unwrap(), "pong");
     println!(
         "[dealer-router/recv] send: \"ping\" → recv: \"{}\"",

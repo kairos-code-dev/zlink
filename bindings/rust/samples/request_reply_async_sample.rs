@@ -59,7 +59,10 @@ fn main() {
     let expected_routing_id = routing_id.clone();
     let router_thread = router_socket;
     thread::spawn(move || {
-        let received = router_thread.recv().expect("router recv failed");
+        let mut received = zlink::Received::empty();
+        router_thread
+            .recv(&mut received, zlink::RecvFlags::NONE)
+            .expect("router recv failed");
         assert_eq!(received.parts()[0].as_str().unwrap_or("?"), "ping");
         assert_eq!(
             received

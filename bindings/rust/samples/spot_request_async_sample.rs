@@ -55,7 +55,10 @@ fn main() {
 
     let (server_done_tx, server_done_rx) = mpsc::channel();
     thread::spawn(move || {
-        let received = responder.recv().expect("router recv failed");
+        let mut received = zlink::Received::empty();
+        responder
+            .recv(&mut received, zlink::RecvFlags::NONE)
+            .expect("router recv failed");
         assert_eq!(received.parts()[0].as_str().unwrap_or("?"), "spot-ping");
         responder
             .reply(

@@ -61,7 +61,10 @@ fn main() {
     let msg = Message::copy_from(b"hello-pair").expect("message creation failed");
     client.send(msg).expect("send failed");
 
-    let received = server.recv().expect("recv failed");
+    let mut received = zlink::Received::empty();
+    server
+        .recv(&mut received, zlink::RecvFlags::NONE)
+        .expect("recv failed");
     let payload = received.parts()[0].as_str().expect("utf8 error");
     assert_eq!(payload, "hello-pair");
     println!("[pair/recv] send: \"hello-pair\" → recv: \"{}\"", payload);

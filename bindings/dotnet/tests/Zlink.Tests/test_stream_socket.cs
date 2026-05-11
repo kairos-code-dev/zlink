@@ -340,7 +340,7 @@ public sealed class test_stream_socket
         byte[] incoming = "hello"u8.ToArray();
         client.GetStream().Write(incoming, 0, incoming.Length);
 
-        Received received = stream.Recv();
+        var received = new Received(); stream.Recv(received);
         using (Message payloadMessage = received.Parts[0])
         {
             RoutingId routingId = received.RoutingId
@@ -382,7 +382,7 @@ public sealed class test_stream_socket
         byte[] incoming = "routing-id-check"u8.ToArray();
         client.GetStream().Write(incoming, 0, incoming.Length);
 
-        Received received = stream.Recv();
+        var received = new Received(); stream.Recv(received);
         using (Message message = received.Parts[0])
         {
             RoutingId routingId = received.RoutingId
@@ -416,7 +416,7 @@ public sealed class test_stream_socket
             using var client = ConnectRawClient(port);
             NetworkStream ns = client.GetStream();
             SendAll(ns, "probe"u8);
-            Received received = stream.Recv();
+            var received = new Received(); stream.Recv(received);
             using (Message payload = received.Parts[0])
             {
                 RoutingId routingId = received.RoutingId
@@ -512,7 +512,7 @@ public sealed class test_stream_socket
         NetworkStream ns = client.GetStream();
         SendAll(ns, "ok"u8);
 
-        Received received = stream.Recv();
+        var received = new Received(); stream.Recv(received);
         RoutingId serverRoutingId = received.RoutingId
             ?? throw new InvalidOperationException("missing routing id");
         using (Message payload = received.Parts[0])

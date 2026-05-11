@@ -195,10 +195,10 @@ internal static class CoreTestSupport
         int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        var received = new Received();
         while (DateTime.UtcNow < deadline)
         {
-            Received? received = socket.Recv(RecvFlags.DontWait);
-            if (received != null)
+            if (socket.Recv(received, RecvFlags.DontWait))
                 return received;
             Thread.Sleep(10);
         }
@@ -331,8 +331,8 @@ internal static class CoreTestSupport
         _ = maxSize;
         try
         {
-            Received? received = socket.Recv(RecvFlags.DontWait);
-            if (received == null)
+            var received = new Received();
+            if (!socket.Recv(received, RecvFlags.DontWait))
             {
                 lastPart = Array.Empty<byte>();
                 return false;
@@ -367,8 +367,8 @@ internal static class CoreTestSupport
         _ = maxSize;
         try
         {
-            Received? received = socket.Recv(RecvFlags.DontWait);
-            if (received == null)
+            var received = new Received();
+            if (!socket.Recv(received, RecvFlags.DontWait))
             {
                 lastPart = Array.Empty<byte>();
                 return false;
@@ -400,10 +400,10 @@ internal static class CoreTestSupport
     internal static bool ExpectNoMessage(MessageSocketBase socket, int probeMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
+        var received = new Received();
         while (DateTime.UtcNow < deadline)
         {
-            Received? received = socket.Recv(RecvFlags.DontWait);
-            if (received != null)
+            if (socket.Recv(received, RecvFlags.DontWait))
             {
                 DisposeAll(received.Parts);
                 return false;
@@ -437,7 +437,8 @@ internal static class CoreTestSupport
         socket.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(timeoutMs);
         try
         {
-            Received received = socket.Recv();
+            var received = new Received();
+            socket.Recv(received);
             try
             {
                 string payload = received.Parts.Count == 0

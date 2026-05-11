@@ -214,12 +214,20 @@ public sealed class test_callback_delivery
             });
         });
 
-        using Received received = router.Recv();
-        Assert.Equal("ping", received.Parts[0].GetString());
-        Assert.True(received.RequestSeq.HasValue);
-        using Message reply = Message.FromString("pong");
-        router.Reply(received.RoutingId ?? throw new InvalidOperationException(
-            "missing routing id"), received.RequestSeq.Value, reply);
+        var received = new Received();
+        router.Recv(received);
+        try
+        {
+            Assert.Equal("ping", received.Parts[0].GetString());
+            Assert.True(received.RequestSeq.HasValue);
+            using Message reply = Message.FromString("pong");
+            router.Reply(received.RoutingId ?? throw new InvalidOperationException(
+                "missing routing id"), received.RequestSeq.Value, reply);
+        }
+        finally
+        {
+            foreach (Message part in received.Parts) part.Dispose();
+        }
 
         Assert.True(dispatchSignal.Wait(3000));
         Assert.True(callbackSignal.Wait(3000));

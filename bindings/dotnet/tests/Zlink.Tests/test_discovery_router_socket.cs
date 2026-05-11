@@ -52,14 +52,22 @@ public sealed class test_discovery_router_socket
         var received = new ManualResetEventSlim(false);
         var server = Task.Run(() =>
         {
-            using var request = right.Recv();
-            Assert.Equal("ping", request.Parts[0].GetString());
-            using var reply = Message.FromString("pong");
-            right.Reply(
-                request.RoutingId ?? throw new InvalidOperationException("missing source rid"),
-                request.RequestSeq ?? 0UL,
-                reply);
-            received.Set();
+            var request = new Received();
+            right.Recv(request);
+            try
+            {
+                Assert.Equal("ping", request.Parts[0].GetString());
+                using var reply = Message.FromString("pong");
+                right.Reply(
+                    request.RoutingId ?? throw new InvalidOperationException("missing source rid"),
+                    request.RequestSeq ?? 0UL,
+                    reply);
+                received.Set();
+            }
+            finally
+            {
+                foreach (Message part in request.Parts) part.Dispose();
+            }
         });
 
         using var ping = Message.FromString("ping");

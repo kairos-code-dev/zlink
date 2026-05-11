@@ -58,7 +58,8 @@ public sealed class test_pair_tcp
         using Message part2 = Message.FromString("world");
         client.Send(new[] { part1, part2 });
 
-        Received received = server.Recv();
+        var received = new Received();
+        server.Recv(received);
         try
         {
             Assert.Equal(2, received.Parts.Count);
@@ -242,7 +243,8 @@ public sealed class test_pair_tcp
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        Assert.Null(receiver.Recv(RecvFlags.DontWait));
+        var probe = new Received();
+        Assert.False(receiver.Recv(probe, RecvFlags.DontWait));
     }
 
     [Fact]

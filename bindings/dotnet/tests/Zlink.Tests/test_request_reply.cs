@@ -26,14 +26,22 @@ public sealed class test_request_reply
         using var handled = new ManualResetEventSlim(false);
         Task serverTask = Task.Run(() =>
         {
-            using Received received = routerSocket.Recv();
-            Assert.True(received.RequestSeq.HasValue);
-            Assert.NotEqual(0UL, received.RequestSeq.Value);
-            Assert.Equal("ping", received.Parts[0].GetString());
-            using Message reply = Message.FromString("pong");
-            routerSocket.Reply(received.RoutingId ?? throw new InvalidOperationException(
-                "missing routing id"), received.RequestSeq.Value, reply);
-            handled.Set();
+            var received = new Received();
+            routerSocket.Recv(received);
+            try
+            {
+                Assert.True(received.RequestSeq.HasValue);
+                Assert.NotEqual(0UL, received.RequestSeq.Value);
+                Assert.Equal("ping", received.Parts[0].GetString());
+                using Message reply = Message.FromString("pong");
+                routerSocket.Reply(received.RoutingId ?? throw new InvalidOperationException(
+                    "missing routing id"), received.RequestSeq.Value, reply);
+                handled.Set();
+            }
+            finally
+            {
+                foreach (Message part in received.Parts) part.Dispose();
+            }
         });
 
         using Message request = Message.FromString("ping");
@@ -72,7 +80,8 @@ public sealed class test_request_reply
         using Message payload = Message.FromString("plain-data");
         dealerSocket.Send(payload);
 
-        Received received = routerSocket.Recv();
+        var received = new Received();
+        routerSocket.Recv(received);
         try
         {
             string routedPayload = received.Parts.Count == 0
@@ -110,11 +119,19 @@ public sealed class test_request_reply
 
         Task serverTask = Task.Run(() =>
         {
-            using Received received = routerSocket.Recv();
-            using Message reply = Message.FromString("pong-owned");
-            routerSocket.Reply(received.RoutingId ?? throw new InvalidOperationException(
-                "missing routing id"), received.RequestSeq ?? 0UL, reply);
-            handled.Set();
+            var received = new Received();
+            routerSocket.Recv(received);
+            try
+            {
+                using Message reply = Message.FromString("pong-owned");
+                routerSocket.Reply(received.RoutingId ?? throw new InvalidOperationException(
+                    "missing routing id"), received.RequestSeq ?? 0UL, reply);
+                handled.Set();
+            }
+            finally
+            {
+                foreach (Message part in received.Parts) part.Dispose();
+            }
         });
 
         using Message request = Message.FromString("ping-owned");

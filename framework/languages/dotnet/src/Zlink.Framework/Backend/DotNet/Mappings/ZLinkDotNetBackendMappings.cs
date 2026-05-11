@@ -63,7 +63,7 @@ internal static class ZLinkDotNetBackendMappings
     public static ZLinkSpotNodeStatus ToFramework(this SpotNodeStatus status)
     {
         return new ZLinkSpotNodeStatus(
-            status.ServiceName,
+            status.ChannelName,
             status.LocalEndpoint,
             status.NodeRoutingId,
             (ZLinkSpotNodeState)status.State,
@@ -79,7 +79,7 @@ internal static class ZLinkDotNetBackendMappings
     public static ZLinkSpotNodePeerEntry ToFramework(this SpotNodePeerEntry entry)
     {
         return new ZLinkSpotNodePeerEntry(
-            entry.ServiceName,
+            entry.ChannelName,
             entry.LocalEndpoint,
             entry.PeerEndpoint,
             (ZLinkSpotPeerSource)entry.Source,

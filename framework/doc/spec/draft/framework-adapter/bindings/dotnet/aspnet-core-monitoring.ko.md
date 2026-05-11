@@ -52,17 +52,12 @@ framework 등록은 아래처럼 두는 편이 자연스럽다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseDiscovery(registry =>
+    options.UseDiscovery(discovery =>
     {
-        registry.Add("tcp://registry-1:5551");
+        discovery.Add("tcp://registry-1:5551");
     });
 
-    options.UseSpotDiscovery("game.stage", registry =>
-    {
-        registry.Add("tcp://registry-1:5551");
-    });
-
-    options.AddChannel("profile", channel =>
+    options.AddClientServerChannel("profile", channel =>
     {
         channel.EnableServer(server =>
         {
@@ -71,10 +66,17 @@ builder.Services.AddZLinkFramework(options =>
         channel.EnableClient();
     });
 
-    options.AddSpotNode("stage-node", spot =>
+    options.AddSpotMesh("game.stage", mesh =>
     {
-        spot.Bind("tcp://0.0.0.0:9000");
-        spot.EnableRouter();
+        mesh.UseDiscovery(discovery =>
+        {
+            discovery.Add("tcp://registry-1:5551");
+        });
+        mesh.AddNode("stage-node", spot =>
+        {
+            spot.Bind("tcp://0.0.0.0:9000");
+            spot.EnablePubSub();
+        });
     });
 });
 
@@ -99,10 +101,10 @@ builder.Services.AddZLinkMonitoring(monitor =>
 spot source는 같은 애플리케이션에 `AddZLinkFramework(...)` 또는
 `AddZLinkRegistry(...)`로 먼저 올라와 있어야 한다.
 
-여기서 중요한 점은 discovery registration이 capability builder 아래가 아니라
-framework 등록 루트에 있다는 점이다. 일반 channel capability는
-`UseDiscovery(...)`가, SPOT mesh는 `UseSpotDiscovery(...)`가 registry endpoint
-집합을 공급한다.
+여기서 중요한 점은 일반 channel capability와 SPOT mesh가 각자 discovery source를
+가진다는 점이다. 일반 channel은 framework 등록 루트의 `UseDiscovery(...)`가, SPOT
+mesh는 `AddSpotMesh(...)` 안의 `mesh.UseDiscovery(...)`가 registry endpoint 집합을
+공급한다.
 
 source 이름은 아래처럼 잡는 편이 자연스럽다.
 
@@ -295,6 +297,12 @@ public sealed class StageNodeMonitor
 spot도 registry와 같은 이유로 raw monitor보다 snapshot diff 표면이 더 맞다.
 즉 `StatusSnapshot()`, `PeersSnapshot()`, `SubjectsSnapshot()`를 주기적으로 읽고,
 변화를 typed event로 올리는 방향을 기본으로 본다.
+
+`ZLinkSpotEvent` payload에 노출되는 `ZLinkSpotNodeStatus`와 `ZLinkSpotNodePeerEntry`는
+첫 필드가 `ChannelName`이다. spot node에서 채널 이름은 `AddSpotMesh(...)`에 넘긴
+mesh 이름(예: `"game.stage"`)이 그대로 들어간다. framework 내부에서 위 두 record를
+묶는 `ZLinkSpotMonitoringSnapshot`은 internal 타입이므로 application 코드에서 직접
+다루지 않는다.
 
 ## 6. 왜 raw monitor를 그대로 노출하지 않는가
 

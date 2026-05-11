@@ -59,7 +59,7 @@ publish/subscribe는 그 안에서 함께 쓰일 수 있는 한 가지 사용 �
 - `Spot`은 특정 service에 속하지 않는다.
 - `Spot`은 `SpotNode`에 종속된다.
 - `SpotNode`가 channel 이름을 직접 소유하지 않는다.
-- `UseSpotDiscovery(channelName, ...)` 등록이 active channel view를 소유한다.
+- `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))` 등록이 active channel view를 소유한다.
 - 같은 `SpotNode`에는 active SPOT channel view를 하나만 둔다.
 - `SpotNode.router`와 pub/sub mesh는 같은 channel의 다른 `SpotNode`와만 연결된다.
 - 다른 channel 호출은 `SpotNode.router`가 아니라 attach된 channel client 경로로 푼다.
@@ -88,19 +88,22 @@ publish/subscribe는 그 안에서 함께 쓰일 수 있는 한 가지 사용 �
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseSpotDiscovery("game.stage", registry =>
+    options.AddSpotMesh("game.stage", mesh =>
     {
-        registry.Add("tcp://registry1:5551");
-    });
+        mesh.UseDiscovery(discovery =>
+        {
+            discovery.Add("tcp://registry1:5551");
+        });
 
-    options.AddSpotNode("stage-node", spot =>
-    {
-        spot.Bind("tcp://0.0.0.0:9000");
-        spot.EnableRouter();
-        spot.EnablePubSub();
-        spot.AttachChannelClient("orders");
-        spot.AttachSpotPublisherClient("game.stage");
-        spot.AddSpotFactory<StageSpot>("stage");
+        mesh.AddNode("stage-node", node =>
+        {
+            node.Bind("tcp://0.0.0.0:9000");
+            node.EnableRouter();
+            node.EnablePubSub();
+            node.AttachClientServerChannelClient("orders");
+            node.AttachSpotMeshPublisherClient("game.stage");
+            node.AddSpotFactory<StageSpot>("stage");
+        });
     });
 });
 ```
@@ -109,7 +112,7 @@ builder.Services.AddZLinkFramework(options =>
 
 - 논리 `SpotNode` 이름 = `stage-node`
 - backing `SpotNode` 생성
-- `UseSpotDiscovery("game.stage", ...)`가 active channel view를 공급
+- `AddSpotMesh("game.stage", mesh => mesh.UseDiscovery(...))`가 active channel view를 공급
 - 같은 channel의 다른 `SpotNode`와만 mesh 구성
 - local routed router capability 활성화
 - local SPOT pub/sub capability 활성화
@@ -117,9 +120,17 @@ builder.Services.AddZLinkFramework(options =>
 - 필요하면 외부 노드용 spot publish client attach
 - host shutdown 시 lifecycle 정리
 
-애플리케이션에는 `AddSpotNode(...)`를 여러 번 둘 수 있다. 다만 현재 초안에서는
-앱 단위 active SPOT channel view를 하나만 두고, 같은 앱의 여러 `SpotNode`가
-그 view를 공유한다. 그 channel view는 `UseSpotDiscovery(...)` 등록이 정한다.
+`AddSpotMesh(...)`는 같은 channel에 속하는 여러 `SpotNode`를 한 묶음으로 등록한다.
+mesh 안에서는 `mesh.AddNode(name, configure)`로 노드를 추가하고, mesh 단위 discovery
+설정은 `mesh.UseDiscovery(...)`가 정한다. 같은 채널을 가리키는 `SpotNode` 묶음을
+한 mesh에 모아 두기 때문에, 한 앱에서 서로 다른 channel mesh를 따로 등록할 수도 있고
+한 mesh 안에서 같은 channel을 공유하는 여러 node를 같이 둘 수도 있다.
+
+mesh로 묶지 않고 discovery 없이 단일 노드만 띄우는 경우에는 `options.AddSpotNode(...)`
+표면을 직접 쓸 수 있다. 다만 이 standalone 등록은 mesh discovery, `EnableRouter`,
+channel attach 같은 mesh 기능과 함께 쓸 수 없다. RegistrationValidator는 노드가
+mesh 기능을 켜는데 standalone 등록을 쓰면 시작 시점에 `AddSpotMesh` 등록을 강제하는
+오류로 막는다.
 
 여기서 registration 함수들은 역할이 다르다.
 
@@ -129,11 +140,17 @@ builder.Services.AddZLinkFramework(options =>
 - `EnablePubSub()`
   - 현재 SPOT channel 안의 publish/subscribe 축을 켠다. local spot 안에서
     `IZLinkSpotClient.Publish(...)`를 쓸 수 있으려면 이 capability가 필요하다.
-- `AttachChannelClient("orders")`
+- `AttachClientServerChannelClient("orders")`
   - `orders` channel로 outbound send/request를 보낼 `DEALER(client)` 경로를 붙인다.
-- `AttachSpotPublisherClient("game.stage")`
+  - 기존 `AttachChannelClient("orders")`는 standalone `SpotNode` 빌더에서 같은
+    경로를 가리키는 legacy alias로 남아 있다. mesh 노드 빌더에는 `AttachClientServerChannelClient`만
+    있다.
+- `AttachSpotMeshPublisherClient("game.stage")`
   - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
     별도 publisher client를 붙인다.
+  - 기존 `AttachSpotPublisherClient("game.stage")`는 standalone `SpotNode` 빌더에서
+    같은 경로를 가리키는 legacy alias다. mesh 노드 빌더에는
+    `AttachSpotMeshPublisherClient`만 있다.
 - `AddSpotFactory<StageSpot>("stage")`
   - 이 node가 생성하고 소유할 `StageSpot` factory를 `stage` 이름으로 등록한다.
   - 같은 `SpotNode`에 여러 spot factory를 둘 수 있다면, 생성 시에는 이 이름으로
@@ -141,13 +158,14 @@ builder.Services.AddZLinkFramework(options =>
   - 이미 등록된 이름을 다시 쓰면 조용히 덮어쓰지 않고 예외를 던진다.
 
 즉 `SpotNode`는 더 이상 여러 service surface를 동시에 소유하는 hub처럼 설명하지
-않는다. 현재 방향에서는 `UseSpotDiscovery(...)` 등록이 node의 channel
-정체성을 닫고, 다른 channel 호출은 별도 attach된 client 경로로 푼다.
+않는다. 현재 방향에서는 `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))`
+등록이 node의 channel 정체성을 닫고, 다른 channel 호출은 별도 attach된 client
+경로로 푼다.
 
 여기서 중요한 점은 아래와 같다.
 
-- `SpotNode` 생성 호출만으로 channel 범위가 닫히지는 않는다.
-- `UseSpotDiscovery("game.stage", ...)`가 이 node의 mesh 범위를 정한다.
+- mesh 묶음 없이 standalone `SpotNode` 생성 호출만으로는 channel 범위가 닫히지 않는다.
+- `AddSpotMesh("game.stage", mesh => { ... })`가 이 node의 mesh 범위를 정한다.
 - 같은 `SpotNode`에 active SPOT channel view는 하나만 둔다.
 - `EnableRouter()`와 `EnablePubSub()`는 별도 capability다.
 - 다른 channel에 대한 send/request는 attach된 client가 맡는다.
@@ -164,52 +182,55 @@ SPOT도 일반 channel과 마찬가지로 수동 연결은 capability별로 나�
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseSpotDiscovery("game.stage", registry =>
+    options.AddSpotMesh("game.stage", mesh =>
     {
-        registry.Add("tcp://registry1:5551");
-    });
-
-    options.AddSpotNode("stage-node", spot =>
-    {
-        spot.Bind("tcp://0.0.0.0:9000");
-
-        spot.EnableRouter(router =>
+        mesh.UseDiscovery(discovery =>
         {
-            router.UseManualConnections(peers =>
-            {
-                peers.Connect("tcp://10.0.0.10:9000");
-            });
+            discovery.Add("tcp://registry1:5551");
         });
 
-        spot.EnablePubSub(pubsub =>
+        mesh.AddNode("stage-node", node =>
         {
-            pubsub.UseManualConnections(peers =>
-            {
-                // Remote SpotNode mesh PUB endpoint.
-                // The local mesh SUB side connects to this address.
-                peers.Connect("tcp://10.0.0.20:9100");
-            });
-        });
+            node.Bind("tcp://0.0.0.0:9000");
 
-        spot.AttachChannelClient("orders", client =>
-        {
-            client.UseManualConnections(peers =>
+            node.EnableRouter(router =>
             {
-                // Remote orders channel server endpoint
-                peers.Connect("tcp://10.0.0.30:9200");
+                router.UseManualConnections(peers =>
+                {
+                    peers.Connect("tcp://10.0.0.10:9000");
+                });
             });
-        });
 
-        spot.AttachSpotPublisherClient("game.stage", publisher =>
-        {
-            publisher.UseManualConnections(peers =>
+            node.EnablePubSub(pubsub =>
             {
-                // Remote game.stage SPOT publish endpoint
-                peers.Connect("tcp://10.0.0.40:9300");
+                pubsub.UseManualConnections(peers =>
+                {
+                    // Remote SpotNode mesh PUB endpoint.
+                    // The local mesh SUB side connects to this address.
+                    peers.Connect("tcp://10.0.0.20:9100");
+                });
             });
-        });
 
-        spot.AddSpotFactory<StageSpot>("stage");
+            node.AttachClientServerChannelClient("orders", client =>
+            {
+                client.UseManualConnections(peers =>
+                {
+                    // Remote orders channel server endpoint
+                    peers.Connect("tcp://10.0.0.30:9200");
+                });
+            });
+
+            node.AttachSpotMeshPublisherClient("game.stage", publisher =>
+            {
+                publisher.UseManualConnections(peers =>
+                {
+                    // Remote game.stage SPOT publish endpoint
+                    peers.Connect("tcp://10.0.0.40:9300");
+                });
+            });
+
+            node.AddSpotFactory<StageSpot>("stage");
+        });
     });
 });
 ```
@@ -255,79 +276,82 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
 
-    options.UseSpotDiscovery("game.stage", registry =>
+    options.AddSpotMesh("game.stage", mesh =>
     {
-        registry.Add("tcp://registry1:5551");
-    });
-
-    options.AddSpotNode("stage-node", spot =>
-    {
-        spot.Bind("tcp://0.0.0.0:9000");
-
-        spot.EnableRouter(router =>
+        mesh.UseDiscovery(discovery =>
         {
-            router.ConfigureSocket(socket =>
-            {
-                socket.MaxMessageSize = 1024 * 1024;
-                socket.SendTimeout = TimeSpan.FromMilliseconds(200);
-                socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
-                socket.SendHighWaterMark = 10_000;
-                socket.ReceiveHighWaterMark = 10_000;
-                socket.Immediate = true;
-            });
-
-            router.ConfigureRouting(options =>
-            {
-                options.Mandatory = true;
-                options.Handover = true;
-            });
+            discovery.Add("tcp://registry1:5551");
         });
 
-        spot.EnablePubSub(pubsub =>
+        mesh.AddNode("stage-node", node =>
         {
-            pubsub.ConfigurePublisherOptions(pubOpt =>
+            node.Bind("tcp://0.0.0.0:9000");
+
+            node.EnableRouter(router =>
             {
-                pubOpt.SendHighWaterMark = 50_000;
-                pubOpt.SendTimeout = TimeSpan.FromMilliseconds(100);
-                pubOpt.NoDrop = true;
+                router.ConfigureSocket(socket =>
+                {
+                    socket.MaxMessageSize = 1024 * 1024;
+                    socket.SendTimeout = TimeSpan.FromMilliseconds(200);
+                    socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
+                    socket.SendHighWaterMark = 10_000;
+                    socket.ReceiveHighWaterMark = 10_000;
+                    socket.Immediate = true;
+                });
+
+                router.ConfigureRouting(routing =>
+                {
+                    routing.Mandatory = true;
+                    routing.Handover = true;
+                });
             });
 
-            pubsub.ConfigureSubscriberOptions(subOpt =>
+            node.EnablePubSub(pubsub =>
             {
-                subOpt.ReceiveHighWaterMark = 50_000;
-                subOpt.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
-                subOpt.Linger = TimeSpan.Zero;
+                pubsub.ConfigurePublisherOptions(pubOpt =>
+                {
+                    pubOpt.SendHighWaterMark = 50_000;
+                    pubOpt.SendTimeout = TimeSpan.FromMilliseconds(100);
+                    pubOpt.NoDrop = true;
+                });
+
+                pubsub.ConfigureSubscriberOptions(subOpt =>
+                {
+                    subOpt.ReceiveHighWaterMark = 50_000;
+                    subOpt.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
+                    subOpt.Linger = TimeSpan.Zero;
+                });
             });
+
+            node.AttachClientServerChannelClient("orders", client =>
+            {
+                client.ConfigureSocket(socket =>
+                {
+                    socket.ConnectTimeout = TimeSpan.FromSeconds(3);
+                    socket.HandshakeInterval = TimeSpan.FromSeconds(3);
+                    socket.SendHighWaterMark = 5_000;
+                    socket.ReceiveHighWaterMark = 5_000;
+                    socket.Immediate = true;
+                });
+
+                client.ConfigureRouting(routing =>
+                {
+                    routing.ProbeRouter = true;
+                });
+            });
+
+            node.AttachSpotMeshPublisherClient("game.stage", publisher =>
+            {
+                publisher.ConfigureSocket(socket =>
+                {
+                    socket.SendHighWaterMark = 20_000;
+                    socket.SendTimeout = TimeSpan.FromMilliseconds(100);
+                    socket.Immediate = true;
+                });
+            });
+
+            node.AddSpotFactory<StageSpot>("stage");
         });
-
-        spot.AttachChannelClient("orders", client =>
-        {
-            client.ConfigureSocket(socket =>
-            {
-                socket.ConnectTimeout = TimeSpan.FromSeconds(3);
-                socket.HandshakeInterval = TimeSpan.FromSeconds(3);
-                socket.SendHighWaterMark = 5_000;
-                socket.ReceiveHighWaterMark = 5_000;
-                socket.Immediate = true;
-            });
-
-            client.ConfigureRouting(routing =>
-            {
-                routing.ProbeRouter = true;
-            });
-        });
-
-        spot.AttachSpotPublisherClient("game.stage", publisher =>
-        {
-            publisher.ConfigureSocket(socket =>
-            {
-                socket.SendHighWaterMark = 20_000;
-                socket.SendTimeout = TimeSpan.FromMilliseconds(100);
-                socket.Immediate = true;
-            });
-        });
-
-        spot.AddSpotFactory<StageSpot>("stage");
     });
 });
 ```
@@ -690,11 +714,16 @@ reflection이나 과도한 객체 생성이 남지 않게 해야 한다.
 ## 9. discovery와 service name
 
 최신 topology 초안에서는 `SpotNode`가 channel 이름을 직접 소유하지 않는다.
-`UseSpotDiscovery(channelName, ...)` 등록이 active channel view를 공급하고, 그 view가
-같은 channel의 peer mesh 범위를 닫는다.
+`AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))` 등록이 active channel
+view를 공급하고, 그 view가 같은 channel의 peer mesh 범위를 닫는다.
 
-예를 들어 `UseSpotDiscovery("game.stage", ...)`로 등록했다면, 그 `SpotNode`는
-`game.stage` channel mesh 안에서 동작한다고 이해하면 된다.
+예를 들어 `AddSpotMesh("game.stage", mesh => mesh.UseDiscovery(...))`로 등록했다면,
+그 mesh에 속한 `SpotNode`는 `game.stage` channel mesh 안에서 동작한다고 이해하면
+된다.
+
+mesh 등록을 쓰지 않고 옛 방식으로 `UseSpotDiscovery(channelName, ...)`와
+`AddSpotNode(...)`를 따로 호출하는 패턴도 코드에는 남아 있지만, sample 코드는
+mesh 묶음 형태를 권장한다.
 
 ## 10. 결정된 기준
 

@@ -79,18 +79,28 @@
 | options | `IZLinkDispatchOptions` | dispatch mode configuration | 4.4.3 |
 | options | `IZLinkCodecRegistryBuilder` | codec registry builder | 6.1 |
 | serializer | `IZLinkMessageSerializer` | `Message` payload 직렬화/역직렬화 | 4.5 |
+| client | `IZLinkClientServerClient` | client-server channel outbound client base | 5.1 |
 | client | `IZLinkClient` | 서버 간 outbound client | 5.1 |
 | client | `IZLinkSpotClient` | SPOT outbound client | 5.2 |
+| client | `IZLinkSpotMeshPublisherClient` | spot mesh publisher client base | 5.3 |
 | client | `IZLinkSpotPublisherClient` | spot channel publish client | 5.3 |
+| client | `IZLinkFanoutPublisher` | fanout publisher base | 5.4 |
 | client | `IZLinkEventPublisher` | pub/sub event publisher | 5.4 |
 | builder | `IZLinkFrameworkOptions` | framework 등록 루트 builder | 6.1 |
-| builder | `IZLinkChannelBuilder` | channel 등록 builder | 6.1 |
+| builder | `IZLinkChannelBuilder` | legacy/general channel 등록 builder | 6.1 |
+| builder | `IZLinkClientServerChannelBuilder` | client-server channel 등록 builder | 6.1 |
+| builder | `IZLinkFanoutChannelBuilder` | fanout (pub/sub) channel 등록 builder | 6.1 |
+| builder | `IZLinkDealerMeshChannelBuilder` | dealer mesh channel 등록 builder | 6.1 |
+| builder | `IZLinkRouteMeshChannelBuilder` | route mesh channel 등록 builder | 6.1 |
 | builder | `IChannelServerCapabilityBuilder` | channel server capability builder | 6.1 |
 | builder | `IChannelClientCapabilityBuilder` | channel client capability builder | 6.1 |
+| builder | `IDealerMeshChannelClientCapabilityBuilder` | dealer mesh client capability builder | 6.1 |
 | builder | `IChannelPublisherCapabilityBuilder` | channel publisher capability builder | 6.1 |
 | builder | `IChannelSubscriberCapabilityBuilder` | channel subscriber capability builder | 6.1 |
 | builder | `IZLinkStreamNodeBuilder` | STREAM node 등록 builder | 6.1 |
 | builder | `IZLinkSpotNodeBuilder` | SPOT node 등록 builder | 6.3 |
+| builder | `IZLinkSpotMeshBuilder` | SPOT mesh 등록 builder | 6.3 |
+| builder | `IZLinkSpotMeshNodeBuilder` | SPOT mesh node 등록 builder | 6.3 |
 | management | `IZLinkChannelConnectionManager` | channel capability별 수동 연결 제어 | 6.2 |
 | management | `IZLinkSpotManager` | spot 인스턴스 생성/삭제 | 6.3 |
 | management | `IZLinkSpotConnectionManager` | spot capability별 수동 연결 제어 | 6.4 |
@@ -116,10 +126,13 @@ public interface IZLinkHandlerContext
     string? ContentType { get; }
     string? CorrelationId { get; }
     DateTimeOffset? Deadline { get; }
-    IServiceProvider Services { get; }
     CancellationToken ConnectionAborted { get; }
 }
 ```
+
+`IServiceProvider Services`는 현재 단계에서 framework 내부 전용(internal)이며
+public 표면으로 노출하지 않는다. handler 안에서 서비스가 필요하면 service locator로
+context에서 꺼내 쓰지 않고, handler class의 생성자 주입(constructor injection)으로 받는다.
 
 ### 3.2 파생 context
 
@@ -160,6 +173,9 @@ public interface IZLinkRequestHandler<in TRequest, TResponse>
 - `TRequest`는 이미 decode된 body다.
 - `TResponse`도 framework가 encode할 typed 결과다.
 - raw multipart header는 인자로 주지 않는다.
+- 이 인터페이스를 구현한 class는 `ZLinkHandlerScanner`가 attribute 없이도
+  자동으로 endpoint로 등록한다. attribute(`[ZLinkRequest]`)가 붙은 메서드와
+  인터페이스 구현 두 방식 모두 지원된다.
 
 ### 4.2 send handler
 
@@ -174,6 +190,9 @@ public interface IZLinkSendHandler<in TMessage>
         CancellationToken cancellationToken);
 }
 ```
+
+이 인터페이스를 구현하면 `ZLinkHandlerScanner`가 attribute 없이도 endpoint로
+자동 등록한다. attribute(`[ZLinkSend]`) 기반과 interface 기반은 둘 다 지원된다.
 
 ### 4.3 event handler
 
@@ -192,6 +211,9 @@ public interface IZLinkEventHandler<in TEvent>
 이 초안에서는 pub/sub public 이름을 `Event` 계열로 고정한다.
 topic이나 pattern 정보가 필요해도 별도 `Topic` handler 이름을 늘리지 않고,
 `ZLinkEventContext` 안에서 읽는 편을 기본으로 본다.
+
+이 인터페이스를 구현하면 `ZLinkHandlerScanner`가 attribute 없이도 endpoint로
+자동 등록한다. attribute(`[ZLinkEvent]`) 기반과 interface 기반은 둘 다 지원된다.
 
 ### 4.3.1 SPOT lifecycle handler
 
@@ -1116,7 +1138,7 @@ public interface IZLinkRequestCall
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkClient
+public interface IZLinkClientServerClient
 {
     IZLinkSendCall Send<TMessage>(
         string channelName,
@@ -1126,7 +1148,15 @@ public interface IZLinkClient
         string channelName,
         TMessage request);
 }
+
+public interface IZLinkClient : IZLinkClientServerClient
+{
+}
 ```
+
+`IZLinkClient`는 `IZLinkClientServerClient`를 그대로 상속한다. legacy `IZLinkClient`를
+주입받는 코드는 그대로 동작하고, 새로 작성하는 client-server outbound 코드는
+`IZLinkClientServerClient`를 직접 받아도 된다.
 
 runtime은 등록한 `channelName`마다 별도 outbound channel을 만든다.
 각 channel은 capability마다 별도 outbound runtime을 가진다. 특히 수동 연결은
@@ -1276,14 +1306,21 @@ channel로 publish할 때 쓴다. 반면 `IZLinkSpotPublisherClient`는 local sp
 인스턴스가 없는 외부 노드가 특정 spot channel로 publish할 때 쓰는 별도 client다.
 
 ```csharp
-public interface IZLinkSpotPublisherClient
+public interface IZLinkSpotMeshPublisherClient
 {
     IZLinkPublishCall Publish<TEvent>(
         string channelName,
         string topic,
         TEvent message);
 }
+
+public interface IZLinkSpotPublisherClient : IZLinkSpotMeshPublisherClient
+{
+}
 ```
+
+`IZLinkSpotPublisherClient`는 `IZLinkSpotMeshPublisherClient`를 그대로 상속한다.
+단일 SPOT publisher와 mesh publisher 양쪽이 같은 publish 호출 표면을 공유한다.
 
 여기서 `channelName`은 target SPOT channel 이름이다. 즉 이 인터페이스는
 `game.stage`, `game.chat`처럼 여러 SPOT channel이 있을 때 외부 노드가 어느
@@ -1310,14 +1347,22 @@ public interface IZLinkPublishCall
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkEventPublisher
+public interface IZLinkFanoutPublisher
 {
     IZLinkPublishCall Publish<TEvent>(
         string channelName,
         string topic,
         TEvent message);
 }
+
+public interface IZLinkEventPublisher : IZLinkFanoutPublisher
+{
+}
 ```
+
+`IZLinkEventPublisher`는 `IZLinkFanoutPublisher`를 그대로 상속한다. capability별
+새 명명을 따르는 `IZLinkFanoutPublisher`와 기존 별칭 `IZLinkEventPublisher` 모두
+주입 표면으로 쓸 수 있다.
 
 여기서 두 문자열의 역할은 다르다.
 
@@ -1490,8 +1535,9 @@ public readonly record struct ZLinkActorSessionUnbind(
 ### 6.1 framework 등록 루트
 
 이 카탈로그에서는 `AddZLinkFramework(...)`의 builder 표면도 같이 고정한다.
-그래야 샘플 문서에 나오는 `AddChannel(...)`, `UseDiscovery(...)`,
-`UseSpotDiscovery(...)`, `UseFilter(...)`의 소유자가 분명해진다.
+그래야 샘플 문서에 나오는 `AddClientServerChannel(...)`, `AddFanoutChannel(...)`,
+`AddSpotMesh(...)`, `UseDiscovery(...)`, `UseSpotDiscovery(...)`, `UseFilter(...)`의
+소유자가 분명해진다.
 
 channel discovery는 capability별 builder 아래에 다시 두지 않고,
 framework 등록 루트에 한 번만 둔다. 이 discovery registration이 framework 안의
@@ -1532,6 +1578,10 @@ public interface IChannelServerCapabilityBuilder
 {
     void Bind(string endpoint);
 
+    void MapHandlersFromAssemblyContaining<TMarker>();
+
+    void MapHandlersFromAssembly(System.Reflection.Assembly assembly);
+
     void ConfigureSocket(
         Action<IZLinkCommonSocketOptions> configure);
 
@@ -1561,6 +1611,10 @@ public interface IChannelPublisherCapabilityBuilder
 
 public interface IChannelSubscriberCapabilityBuilder
 {
+    void MapEventHandlersFromAssemblyContaining<TMarker>();
+
+    void MapEventHandlersFromAssembly(System.Reflection.Assembly assembly);
+
     void ConfigureSocket(
         Action<IZLinkCommonSocketOptions> configure);
 
@@ -1617,6 +1671,47 @@ public interface IZLinkChannelBuilder
         Action<IChannelSubscriberCapabilityBuilder>? configure = null);
 }
 
+public interface IZLinkClientServerChannelBuilder
+{
+    void EnableServer(
+        Action<IChannelServerCapabilityBuilder>? configure = null);
+
+    void EnableClient(
+        Action<IChannelClientCapabilityBuilder>? configure = null);
+}
+
+public interface IZLinkFanoutChannelBuilder
+{
+    void EnablePublisher(
+        Action<IChannelPublisherCapabilityBuilder>? configure = null);
+
+    void EnableSubscriber(
+        Action<IChannelSubscriberCapabilityBuilder>? configure = null);
+}
+
+public interface IZLinkDealerMeshChannelBuilder
+{
+    void EnableClient(
+        Action<IDealerMeshChannelClientCapabilityBuilder>? configure = null);
+}
+
+public interface IDealerMeshChannelClientCapabilityBuilder
+    : IChannelClientCapabilityBuilder
+{
+    void Bind(string endpoint);
+}
+
+public interface IZLinkRouteMeshChannelBuilder
+{
+    void Bind(string endpoint);
+
+    void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
+
+    void ConfigureRouting(Action<IRoutedPeerOptions> configure);
+
+    void UseManualConnections(Action<IRoutedChannelConnections> configure);
+}
+
 public interface IZLinkFrameworkOptions
 {
     TimeSpan DefaultTimeout { get; set; }
@@ -1637,13 +1732,30 @@ public interface IZLinkFrameworkOptions
     void AddActorSessionLocationWriter<TWriter>()
         where TWriter : class, IZLinkActorSessionLocationWriter;
 
+    // legacy/general 채널 등록. capability별 분기형(아래)이 권장된다.
     void AddChannel(
         string channelName,
         Action<IZLinkChannelBuilder> configure);
 
+    void AddClientServerChannel(
+        string channelName,
+        Action<IZLinkClientServerChannelBuilder> configure);
+
+    void AddFanoutChannel(
+        string channelName,
+        Action<IZLinkFanoutChannelBuilder> configure);
+
+    void AddDealerMeshChannel(
+        string channelName,
+        Action<IZLinkDealerMeshChannelBuilder> configure);
+
     void AddRoutedChannel(
         string routerChannelId,
         Action<IZLinkRoutedChannelBuilder> configure);
+
+    void AddRouteMeshChannel(
+        string channelName,
+        Action<IZLinkRouteMeshChannelBuilder> configure);
 
     void UseDiscovery(
         Action<IZLinkDiscoveryBuilder> configure);
@@ -1665,8 +1777,14 @@ public interface IZLinkFrameworkOptions
     void AddSpotNode(
         string spotNodeName,
         Action<IZLinkSpotNodeBuilder> configure);
+
+    void AddSpotMesh(
+        string channelName,
+        Action<IZLinkSpotMeshBuilder> configure);
 }
 ```
+
+`DefaultTimeout`의 기본값은 30초다.
 
 각 함수의 의미는 아래와 같다.
 
@@ -1690,9 +1808,23 @@ public interface IZLinkFrameworkOptions
   - session actor create/bind와 disconnect/unbind를 application route store에 반영할
     writer를 등록한다.
 - `AddChannel(...)`
-  - logical channel 하나의 capability 구성을 등록한다.
+  - legacy/general 진입점. logical channel 하나에 server/client/publisher/subscriber
+    capability를 한 번에 enable할 수 있다. 새 코드는 아래 capability별 분기형을 권장한다.
+- `AddClientServerChannel(...)`
+  - request/send 용 client-server 채널을 등록한다. builder는 `EnableServer(...)`와
+    `EnableClient(...)`만 노출한다.
+- `AddFanoutChannel(...)`
+  - pub/sub fanout 채널을 등록한다. builder는 `EnablePublisher(...)`와
+    `EnableSubscriber(...)`만 노출한다.
+- `AddDealerMeshChannel(...)`
+  - DEALER mesh 채널을 등록한다. mesh client는 자신을 식별할 local bind endpoint를
+    가져야 하므로 `IDealerMeshChannelClientCapabilityBuilder`에 `Bind(...)`가
+    추가로 노출된다.
 - `AddRoutedChannel(...)`
   - session actor dispatch와 직접 routed handler가 사용할 routed channel mesh를 등록한다.
+- `AddRouteMeshChannel(...)`
+  - route mesh 채널을 등록한다. bind endpoint, socket option, routing option,
+    manual connection을 한 builder 안에서 함께 설정한다.
 - `UseDiscovery(...)`
   - 일반 channel capability들이 공유할 registry endpoint 집합을 등록한다.
   - `client.UseDiscovery(...)`처럼 capability 아래에 다시 두지 않는다.
@@ -1703,8 +1835,15 @@ public interface IZLinkFrameworkOptions
   - handler filter 타입을 framework pipeline에 등록한다.
 - `AddSpotNode(...)`
   - 명명된 `SpotNode`를 등록한다. `EnableRouter()`, `EnablePubSub()`,
-    `AttachChannelClient(...)`, `AddSpotFactory<TSpot>(...)` 같은 capability 구성은
-    builder 람다 안에서 선언한다.
+    `AttachChannelClient(...)`, `AttachClientServerChannelClient(...)`,
+    `AttachSpotPublisherClient(...)`, `AttachSpotMeshPublisherClient(...)`,
+    `AddSpotFactory<TSpot>(...)` 같은 capability 구성은 builder 람다 안에서 선언한다.
+- `AddSpotMesh(...)`
+  - 여러 `SpotNode`가 같은 SPOT mesh discovery view를 공유하도록 묶어 등록한다.
+    mesh builder는 자체 `UseDiscovery(...)`와 `AddNode(spotNodeName, ...)`을 노출한다.
+    mesh node builder는 `EnableRouter`, `EnablePubSub`,
+    `AttachClientServerChannelClient`, `AttachSpotMeshPublisherClient`,
+    `AddSpotFactory<TSpot>(...)`를 노출한다.
 - `EnableServer(...)`
   - local request/send handler를 받을 `ROUTER(server)` capability를 연다.
   - 이 capability는 local bind endpoint가 없으면 다른 프로세스에서 접근할 수
@@ -1756,6 +1895,16 @@ public interface IZLinkEndpointConnections
 
 public interface IZLinkChannelConnectionManager
 {
+    // capability별 분기형 (권장)
+    ValueTask<IZLinkEndpointConnections> GetClientServerClientAsync(
+        string channelName,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkEndpointConnections> GetFanoutSubscriberAsync(
+        string channelName,
+        CancellationToken cancellationToken = default);
+
+    // legacy/general 이름. 위와 같은 capability를 가리킨다.
     ValueTask<IZLinkEndpointConnections> GetClientAsync(
         string channelName,
         CancellationToken cancellationToken = default);
@@ -1765,6 +1914,11 @@ public interface IZLinkChannelConnectionManager
         CancellationToken cancellationToken = default);
 }
 ```
+
+`GetClientServerClientAsync(...)`와 `GetClientAsync(...)`는 같은 client-server client
+capability를 가리키고, `GetFanoutSubscriberAsync(...)`와 `GetSubscriberAsync(...)`는
+같은 fanout subscriber capability를 가리킨다. 새 코드는 capability를 분명히 드러내는
+`GetClientServerClientAsync(...)` / `GetFanoutSubscriberAsync(...)` 쪽을 권장한다.
 
 이 인터페이스는 아무 channel에나 항상 열리는 것이 아니라, 해당 capability가
 manual 모드일 때만 유효한 표면으로 보는 편이 맞다. discovery 모드인 capability는
@@ -1986,11 +2140,54 @@ public interface IZLinkSpotNodeBuilder
     void EnablePubSub(
         Action<ISpotPubSubCapabilityBuilder>? configure = null);
 
+    // legacy/general channel attach
     void AttachChannelClient(
         string channelName,
         Action<ISpotChannelClientCapabilityBuilder>? configure = null);
 
+    // 새 capability별 attach (권장)
+    void AttachClientServerChannelClient(
+        string channelName,
+        Action<ISpotChannelClientCapabilityBuilder>? configure = null);
+
+    // legacy/general spot publisher attach
     void AttachSpotPublisherClient(
+        string channelName,
+        Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
+
+    // 새 capability별 spot mesh publisher attach (권장)
+    void AttachSpotMeshPublisherClient(
+        string channelName,
+        Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
+
+    void AddSpotFactory<TSpot>(string spotName)
+        where TSpot : IZLinkSpot;
+}
+
+public interface IZLinkSpotMeshBuilder
+{
+    void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure);
+
+    void AddNode(
+        string spotNodeName,
+        Action<IZLinkSpotMeshNodeBuilder> configure);
+}
+
+public interface IZLinkSpotMeshNodeBuilder
+{
+    void Bind(string endpoint);
+
+    void EnableRouter(
+        Action<ISpotRouterCapabilityBuilder>? configure = null);
+
+    void EnablePubSub(
+        Action<ISpotPubSubCapabilityBuilder>? configure = null);
+
+    void AttachClientServerChannelClient(
+        string channelName,
+        Action<ISpotChannelClientCapabilityBuilder>? configure = null);
+
+    void AttachSpotMeshPublisherClient(
         string channelName,
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
 
@@ -2071,6 +2268,18 @@ public interface IZLinkSpotConnectionManager
         string spotNodeName,
         CancellationToken cancellationToken = default);
 
+    // 새 capability별 분기형 (권장)
+    ValueTask<IZLinkEndpointConnections> GetClientServerChannelClientAsync(
+        string spotNodeName,
+        string channelName,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkEndpointConnections> GetSpotMeshPublisherClientAsync(
+        string spotNodeName,
+        string channelName,
+        CancellationToken cancellationToken = default);
+
+    // legacy/general 이름. 위와 같은 capability를 가리킨다.
     ValueTask<IZLinkEndpointConnections> GetChannelClientAsync(
         string spotNodeName,
         string channelName,
@@ -2082,6 +2291,11 @@ public interface IZLinkSpotConnectionManager
         CancellationToken cancellationToken = default);
 }
 ```
+
+`GetClientServerChannelClientAsync(...)`와 `GetChannelClientAsync(...)`는 같은 channel
+client capability를 가리키고, `GetSpotMeshPublisherClientAsync(...)`와
+`GetSpotPublisherClientAsync(...)`는 같은 spot publisher capability를 가리킨다.
+새 코드는 capability를 분명히 드러내는 mesh/client-server 형태를 권장한다.
 
 이 관리 인터페이스도 아무 node에나 항상 열리는 것이 아니라, 해당 capability가
 manual 모드일 때만 유효한 표면으로 보는 편이 맞다.
@@ -2213,6 +2427,33 @@ status, service summary, topology, member peers를 제공한다. registry가 아
 시작 전일 수 있고, snapshot 수집도 host lifecycle과 맞물리므로 조회 API는
 비동기로 둔다.
 
+```csharp
+public interface IZLinkRegistryQuery
+{
+    ValueTask<ZLinkRegistryStatus> StatusSnapshotAsync(
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummarySnapshotAsync(
+        ZLinkRegistryServiceSummaryFilter? filter = null,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkRegistryTopologyEntry[]> TopologySnapshotAsync(
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkRegistryTopologyEntry[]> TopologyQueryAsync(
+        ZLinkRegistryTopologyFilter? filter = null,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkMemberPeerEntry[]> MemberPeersAsync(
+        string channelName,
+        CancellationToken cancellationToken = default);
+}
+```
+
+`MemberPeersAsync(...)`는 `channelName` 하나만 받는다. 이전에 존재했던
+`(ZLinkServiceType serviceType, string serviceName, ...)` 형태는 더 이상 없다.
+service type/name 구분 대신, channel 이름 자체가 member peer 집합의 단위가 된다.
+
 ### 10.2 IZLinkRegistryQueryClient
 
 다른 프로세스의 Registry를 원격 조회한다.
@@ -2324,6 +2565,11 @@ public readonly record struct ZLinkSpotEvent(
     : IZLinkRuntimeEvent;
 ```
 
+`ZLinkSpotNodeStatus`와 `ZLinkSpotNodePeerEntry`의 첫 번째 필드는 `ChannelName`이다.
+이전에는 `ServiceName`으로 불렸으나, 현재는 channel 단위로 통일하면서 `ChannelName`으로
+rename되었다. 이 두 record를 필드 단위로 풀어 쓰는 다른 문서는 이 이름을 기준으로
+참고한다.
+
 이 초안에서 source별 의미는 아래처럼 정리한다.
 
 - socket event
@@ -2360,6 +2606,25 @@ public sealed class ZLinkSendAttribute : Attribute
 }
 ```
 
+`ZLinkRequestAttribute`와 `ZLinkSendAttribute`는 channel 이름을 받지 않는다.
+이 attribute는 handler method가 어떤 packet kind를 처리하는지와 packet name
+override만 표현한다. handler를 어떤 inbound channel에 노출할지는 channel
+registration의 server capability mapping이 정한다.
+
+```csharp
+options.AddClientServerChannel("api", channel =>
+{
+    channel.EnableServer(server =>
+    {
+        server.Bind("tcp://0.0.0.0:7101");
+        server.MapHandlersFromAssemblyContaining<ApiHandlerMarker>();
+    });
+});
+```
+
+같은 handler type을 여러 channel에 매핑하는 것은 허용한다. 하지만 같은 channel
+안에서 같은 `kind + packet name`이 둘 이상으로 해석되면 startup validation 오류다.
+
 ### 11.2 event
 
 ```csharp
@@ -2372,6 +2637,18 @@ public sealed class ZLinkEventAttribute : Attribute
 ```
 
 이 초안에서는 pub/sub attribute 이름도 `ZLinkEventAttribute`로 고정한다.
+event handler도 전역으로 모든 subscriber channel에 자동 노출하지 않는다.
+subscriber capability가 어떤 scan 결과를 사용할지 명시해야 한다.
+
+```csharp
+options.AddFanoutChannel("api.events", channel =>
+{
+    channel.EnableSubscriber(subscriber =>
+    {
+        subscriber.MapEventHandlersFromAssemblyContaining<ApiEventMarker>();
+    });
+});
+```
 
 ### 11.3 SPOT
 
@@ -2423,8 +2700,10 @@ attribute 기반 handler의 메서드 시그니처는 아래 규칙을 따른다
 - send handler 반환: `ValueTask` 권장
 
 framework가 강제하는 것은 class 구조가 아니라, resolved packet key 하나는
-하나의 handler에만 매핑된다는 규칙이다. 주제별 handler 묶음(`UserHandlers`)과 패킷별
-단일 class(`UserGetHandler`) 둘 다 허용한다.
+하나의 실행 문맥 안에서 하나의 handler에만 매핑된다는 규칙이다. 일반 channel
+messaging의 실행 문맥은 inbound channel capability이고, actor와 spot은 각각
+자기 실행 문맥을 가진다. 주제별 handler 묶음(`UserHandlers`)과 패킷별 단일
+class(`UserGetHandler`) 둘 다 허용한다.
 
 ## 13. DI 동작 기준
 
@@ -2446,10 +2725,11 @@ framework가 강제하는 것은 class 구조가 아니라, resolved packet key 
   분명하게 만든다.
 
 local handler가 붙는 channel은 route prefix가 아니라 애플리케이션이 그 channel에서
-server 역할을 한다는 뜻이다. handler class attribute보다 channel registration
-(`options.AddChannel("api", channel => channel.EnableServer())`)에 두는 편을 현재
-방향으로 본다. 다만 outbound-only 앱이라면 server capability가 있는 channel은
-없을 수 있어야 한다.
+server 역할을 한다는 뜻이다. channel 이름은 handler class나 method attribute보다
+channel registration
+(`options.AddClientServerChannel("api", channel => channel.EnableServer(...))`)에
+두는 편을 현재 방향으로 본다. 다만 outbound-only 앱이라면 server capability가
+있는 channel은 없을 수 있어야 한다.
 
 ## 14. 결정된 기준
 

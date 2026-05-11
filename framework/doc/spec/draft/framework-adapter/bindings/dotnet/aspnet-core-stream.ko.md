@@ -28,7 +28,7 @@ session 방식으로 정리하는 것이다.
 특히 아래 원칙을 둔다.
 
 - framework가 decode한 `ZlinkStreamHeader`와 `Message body` packet 단위를 처리한다.
-- `playhouse`처럼 header는 고정 메타데이터이고, body는 `header.MsgId`를 보고 각 packet 타입으로 decode하는 방식을 자연스러운 기본 모델로 본다.
+- `playhouse`처럼 header는 고정 메타데이터이고, body는 `header.Name`을 보고 각 packet 타입으로 decode하는 방식을 자연스러운 기본 모델로 본다.
 - 이 decode helper는 `playhouse/extensions`처럼 transport 본체에 넣기보다,
   `Message` 위에 얹는 serializer extension 계층으로 두는 쪽을 기본으로 본다.
 - recv loop는 application 표면에 직접 올리지 않는다.
@@ -139,6 +139,21 @@ public interface IZLinkSessionActorAttachmentContext
         CancellationToken cancellationToken = default);
 }
 
+public interface IZLinkSessionSendCall
+{
+    IZLinkSessionSendCall WithMetadata(string key, string value);
+    IZLinkSessionSendCall WithPacketName(string messageName);
+    IZLinkSessionSendCall Compress();
+    ValueTask SendAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSessionReplyCall
+{
+    IZLinkSessionReplyCall WithMetadata(string key, string value);
+    IZLinkSessionReplyCall Compress();
+    ValueTask SendAsync(CancellationToken cancellationToken = default);
+}
+
 public interface IZLinkSessionContext :
     IZLinkSessionIdentityContext,
     IZLinkSessionChannelClient,
@@ -178,6 +193,7 @@ public interface IZLinkSessionContext :
 - `OnErrorAsync(...)`가 받는 `ZLinkStreamError`는 framework error category enum을
   먼저 주고, 필요할 때만 optional diagnostic detail로 native errno와 메시지를 같이
   들고 있는 편이 자연스럽다.
+- server-to-client 압축은 `IZLinkSessionSendCall.Compress()` / `IZLinkSessionReplyCall.Compress()` builder 호출로 활성화한다.
 
 ## 4. 등록 모델 초안
 

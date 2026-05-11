@@ -116,6 +116,34 @@ view를 소유하는 모델"로 읽는 편이 맞다. 즉:
 `DEALER(client)`가 받는 response는 먼저 보낸 request의 pending reply를 매칭하는
 경로로 보고, 일반 handler dispatch 경로와 섞지 않는다.
 
+### 4.1 handler namespace
+
+handler dispatch key는 전역 packet 이름 하나로 보지 않는다. 같은 프로세스가
+여러 channel에서 server 역할을 할 수 있으므로, 일반 channel messaging의
+handler namespace는 inbound channel runtime 안에 둔다.
+
+기본 dispatch key는 아래 조합이다.
+
+- inbound `channel name`
+- message kind (`request`, `send`, `event`)
+- packet name
+
+따라서 같은 애플리케이션 안에서도 `api` channel의 `AuthenticateReq`와 `admin`
+channel의 `AuthenticateReq`는 서로 다른 handler로 매핑할 수 있어야 한다. 반대로
+같은 handler type을 여러 channel에 다시 매핑하는 것은 허용한다. 이것은 code reuse
+문제이고, dispatch namespace 문제와 다르다.
+
+중복 검사는 실행 문맥 안에서만 수행한다. 일반 channel messaging에서는 같은
+`channel name + kind + packet name`에 handler가 둘 이상이면 startup 오류다.
+다른 channel에서 같은 `kind + packet name`을 다시 쓰는 것은 허용한다. routed
+channel, actor, spot도 같은 원칙을 따르되, 각각의 `router channel`, actor 실행
+문맥, spot 실행 문맥을 namespace로 본다.
+
+handler attribute나 annotation은 packet kind와 packet name override를 표현한다.
+channel name은 배포와 topology를 나타내는 값이므로 handler method attribute에
+기본으로 넣지 않는다. 각 언어 binding은 framework 등록 단계에서 발견된 handler를
+어떤 inbound channel에 노출할지 명시하는 API를 제공해야 한다.
+
 ## 5. Discovery와 수동 연결
 
 두 방식 모두 필요하다.

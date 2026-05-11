@@ -208,7 +208,8 @@ internal sealed class ZLinkPublishCall : IZLinkPublishCall
             null,
             _topic,
             null,
-            null);
+            null,
+            Source: _channelName);
         var message = ZLinkEnvelopeCodec.Encode(header, _message, _message?.GetType());
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink publish submitter is not initialized."))

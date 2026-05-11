@@ -68,12 +68,11 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
     }
 
     public bool Publish(
-        string serviceName,
         string topic,
         Message message,
         SendFlags flags)
     {
-        return nativeSpot.Publish(serviceName, topic)
+        return nativeSpot.Publish(topic)
             .Message(message)
             .Flags(flags)
             .Submit();

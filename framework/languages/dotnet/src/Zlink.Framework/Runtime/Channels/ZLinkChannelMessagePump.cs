@@ -201,7 +201,7 @@ internal sealed class ZLinkChannelMessagePump(
                 header.CorrelationId,
                 header.Deadline,
                 topicMessage.Topic,
-                topicMessage.ServiceName,
+                header.Source,
                 EmptyServiceProvider.Instance,
                 cancellationToken);
             await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)

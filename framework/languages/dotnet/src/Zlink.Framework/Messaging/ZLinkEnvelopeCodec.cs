@@ -24,7 +24,8 @@ internal sealed record ZLinkEnvelopeHeader(
     DateTimeOffset? Deadline,
     string? Topic,
     string? ErrorCode,
-    string? ErrorMessage);
+    string? ErrorMessage,
+    string? Source = null);
 
 internal static class ZLinkEnvelopeCodec
 {

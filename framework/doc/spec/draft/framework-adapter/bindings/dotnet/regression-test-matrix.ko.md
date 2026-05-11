@@ -32,7 +32,9 @@ use case validation은 설계 설명 범위를 보는 문서다. 반면 이 문�
 | test mode | debug, release |
 
 최소 지원 버전이 `net8.0`이므로, 회귀 테스트도 최소 이 두 target framework를 같이
-돌려야 한다. 또한 현재 저장소의 `bindings/dotnet/runtimes/` 패키징 대상과
+돌려야 한다. 현재 저장소의 기본 빌드는 `net8.0` 단일 TFM이며, `net10.0`은 회귀
+matrix 보고용 multi-target 빌드에서 추가로 컴파일·실행하는 형태로 다룬다. 또한
+현재 저장소의 `bindings/dotnet/runtimes/` 패키징 대상과
 `.github/workflows/build.yml`이 만드는 native artifact 조합이 위 여섯 runtime RID를
 기준으로 하고 있으므로, framework CI gate도 같은 범위를 기본으로 본다.
 
@@ -50,10 +52,12 @@ use case validation은 설계 설명 범위를 보는 문서다. 반면 이 문�
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| duplicate channel 이름 등록 | `unit` | startup validation 예외 |
+| duplicate channel 이름 등록 (`AddClientServerChannel`, `AddFanoutChannel`) | `unit` | startup validation 예외 |
+| 같은 채널 안에서 server/client + publisher/subscriber 혼용 (`AddChannel` legacy 경로) | `unit` | `RegistrationValidator` 거부 |
 | server capability에 bind endpoint 없음 | `unit` | startup validation 예외 |
-| `EnableClient()` + discovery 경로 | `integration-single-process` | request/send 성공 |
-| `EnableClient()` + manual 경로 | `integration-single-process` | request/send 성공 |
+| `AddClientServerChannel(...).EnableClient(c => c.UseManualConnections(...))` | `integration-single-process` | manual request/send 성공 |
+| `AddClientServerChannel(...).EnableClient(...)` + 전역 `UseDiscovery(...)` | `integration-single-process` | discovery request/send 성공 |
+| `AddFanoutChannel(...).EnableSubscriber(s => s.UseManualConnections(...))` | `integration-single-process` | manual subscribe 성공 |
 | client capability에 peer acquisition 경로 없음 | `unit` | startup validation 예외 |
 | same capability에 discovery/manual 혼용 | `unit` | startup validation 예외 |
 | publisher capability에 bind endpoint 없음 | `unit` | startup validation 예외 |
@@ -72,6 +76,8 @@ use case validation은 설계 설명 범위를 보는 문서다. 반면 이 문�
 |------|------|-----------|
 | duplicate `spotName` factory | `unit` | startup validation 예외 |
 | `UseSpotDiscovery(...)` 없이 `AddSpotNode(...)` | `unit` | startup validation 예외 |
+| `AddSpotMesh(channel, mesh => mesh.UseDiscovery(...).AddNode(...).AddSpotFactory<T>(...))` | `integration-single-process` | mesh 빌더 한 호출로 discovery + node + spot factory 등록 |
+| `AddSpotNode(...)` + 별도 `UseSpotDiscovery(channel, ...)` 분리 호출 | `integration-single-process` | 등록 순서와 관계없이 같은 채널 view 공유 |
 | `CreateAsync(spotName)` | `integration-single-process` | `SpotRid`, `SpotName`, `Created` 일관성 확인 |
 | `GetAsync(...)`, `ListAsync(...)` | `integration-single-process` | manager 조회 결과 일관성 확인 |
 | `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddSubscribe(...)`, `Context.AddActorJoin(...)` 등록이 descriptor에 반영 |

@@ -89,18 +89,19 @@ API 서버로 channel request를 보내고, gameplay packet은 actor dispatch he
 client stream과 server channel에서 사용하는 match 생성 메시지:
 
 ```csharp
-public sealed record CreateMatchReq(
-    string? MatchName,
-    string? OwnerActorId = null);
+public sealed record CreateMatchReq(string? OwnerActorId = null);
 
 public sealed record CreateMatchRes(
     string MatchId,
     string OwnerActorId);
 
-public sealed record CreateMatchRoomReq(string MatchName);
+public sealed record CreateMatchRoomReq();
 
 public sealed record CreateMatchRoomRes(string MatchId);
 ```
+
+> client는 match id/room name을 직접 지정하지 않는다. 서버가 생성한 `MatchId`만
+> 응답으로 돌려준다.
 
 API 인증 메시지:
 

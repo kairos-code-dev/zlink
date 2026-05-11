@@ -39,20 +39,21 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddChannel("api", channel =>
+    options.AddClientServerChannel("api", channel =>
     {
         channel.EnableServer(server =>
         {
             server.Bind("tcp://0.0.0.0:7101");
+            server.MapHandlersFromAssemblyContaining<Program>();
         });
     });
 
-    options.AddChannel("profile", channel =>
+    options.AddClientServerChannel("profile", channel =>
     {
         channel.EnableClient();
     });
 
-    options.AddChannel("account", channel =>
+    options.AddClientServerChannel("account", channel =>
     {
         channel.EnableClient();
     });
@@ -78,15 +79,16 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddChannel("api", channel =>
+    options.AddClientServerChannel("api", channel =>
     {
         channel.EnableServer(server =>
         {
             server.Bind("tcp://0.0.0.0:7101");
+            server.MapHandlersFromAssemblyContaining<Program>();
         });
     });
 
-    options.AddChannel("profile", channel =>
+    options.AddClientServerChannel("profile", channel =>
     {
         channel.EnableClient(client =>
         {
@@ -111,15 +113,16 @@ client capability에 어떤 peer를 붙일지 직접 정하고, channel은 그 �
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddChannel("api", channel =>
+    options.AddClientServerChannel("api", channel =>
     {
         channel.EnableServer(server =>
         {
             server.Bind("tcp://0.0.0.0:7101");
+            server.MapHandlersFromAssemblyContaining<Program>();
         });
     });
 
-    options.AddChannel("profile", channel =>
+    options.AddClientServerChannel("profile", channel =>
     {
         channel.EnableClient();
     });
@@ -129,7 +132,7 @@ builder.Services.AddZLinkFramework(options =>
         registry.Add("tcp://registry1:5551");
     });
 
-    options.AddChannel("account", channel =>
+    options.AddClientServerChannel("account", channel =>
     {
         channel.EnableClient(client =>
         {
@@ -170,11 +173,10 @@ public sealed class WarmupService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var profileClient = await _connections.GetClientAsync(
-            "profile",
-            stoppingToken);
+        IZLinkEndpointConnections profileConnections = await _connections
+            .GetClientAsync("profile", stoppingToken);
 
-        await profileClient.ConnectAsync(
+        await profileConnections.ConnectAsync(
             "tcp://10.0.10.17:7101",
             stoppingToken);
     }
@@ -200,7 +202,7 @@ builder.Services.AddZLinkFramework(options =>
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
 
-    options.AddChannel("api", channel =>
+    options.AddClientServerChannel("api", channel =>
     {
         channel.EnableServer(server =>
         {
@@ -219,7 +221,10 @@ builder.Services.AddZLinkFramework(options =>
                 routing.Handover = true;
             });
         });
+    });
 
+    options.AddFanoutChannel("api.events", channel =>
+    {
         channel.EnableSubscriber(subscriber =>
         {
             subscriber.ConfigureSocket(socket =>
@@ -231,7 +236,7 @@ builder.Services.AddZLinkFramework(options =>
         });
     });
 
-    options.AddChannel("profile", channel =>
+    options.AddClientServerChannel("profile", channel =>
     {
         channel.EnableClient(client =>
         {
@@ -284,7 +289,7 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddChannel("profile", channel =>
+    options.AddClientServerChannel("profile", channel =>
     {
         channel.EnableClient();
     });
@@ -309,7 +314,7 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddChannel("profile", channel =>
+    options.AddClientServerChannel("profile", channel =>
     {
         channel.EnableClient();
     });
@@ -366,25 +371,33 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddChannel("api", channel =>
+    options.AddClientServerChannel("api", channel =>
     {
         channel.EnableServer(server =>
         {
             server.Bind("tcp://0.0.0.0:7101");
+            server.MapHandlersFromAssemblyContaining<Program>();
         });
+    });
+
+    options.AddFanoutChannel("api.events", channel =>
+    {
         channel.EnablePublisher(publisher =>
         {
             publisher.Bind("tcp://0.0.0.0:7201");
         });
-        channel.EnableSubscriber();
+        channel.EnableSubscriber(subscriber =>
+        {
+            subscriber.MapEventHandlersFromAssemblyContaining<Program>();
+        });
     });
 
-    options.AddChannel("profile", channel =>
+    options.AddClientServerChannel("profile", channel =>
     {
         channel.EnableClient();
     });
 
-    options.AddChannel("account", channel =>
+    options.AddClientServerChannel("account", channel =>
     {
         channel.EnableClient();
     });
@@ -396,6 +409,8 @@ builder.Services.AddZLinkFramework(options =>
     });
 });
 
+// Handler type을 DI에 등록하고 attribute scan 후보를 발견한다.
+// 실제 노출 channel은 위의 MapHandlers... 호출이 정한다.
 builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
 
 var app = builder.Build();
@@ -470,7 +485,7 @@ public sealed class UserHandlers
     {
         await _publisher
             .Publish(
-                "api",
+                "api.events",
                 "user.cache-refreshed",
                 new UserCacheRefreshedEvent
                 {
@@ -492,9 +507,10 @@ public sealed class ItemHandlers
     }
 }
 
-public sealed class UserCacheEventHandlers
+public sealed class UserCacheRefreshedEventHandler
+    : IZLinkEventHandler<UserCacheRefreshedEvent>
 {
-    [ZLinkEvent(PacketName = "user.cache-refreshed")]
+    [ZLinkEvent]
     public ValueTask HandleAsync(
         UserCacheRefreshedEvent message,
         ZLinkEventContext context,
@@ -576,11 +592,21 @@ public sealed class UserCacheRefreshedEvent
 - 같은 `IZLinkClient`를 ZLink handler와 HTTP handler가 함께 쓴다.
 - handler class는 `UserHandlers`, `ItemHandlers`처럼 주제별로 묶어도 된다.
 
+`AddZLinkHandlersFromAssemblyContaining<Program>()`은 handler type을 DI에 올리고
+attribute scan 후보를 발견하는 단계다. handler가 실제로 노출되는 channel은
+`server.MapHandlersFromAssemblyContaining<Program>()` 또는
+`subscriber.MapEventHandlersFromAssemblyContaining<Program>()` 같은 capability별
+mapping 호출이 정한다. 따라서 자동 등록 편의는 유지하지만, 한 프로세스 안의
+여러 channel이 전역 handler registry를 무조건 공유하지는 않는다.
+
 즉 응용 코드 입장에서는 공용 client 하나만 보이지만, framework 내부에서는
 channel별 outbound 경로가 분리되어 관리된다.
 
 그리고 handler class는 dispatch key가 아니라 **코드 조직 단위**다. 실제 dispatch는
 기본적으로 `GetUserRequest`, `GetItemRequest` 같은 payload 타입 이름으로 이뤄진다.
+dispatch namespace는 channel별로 분리된다. 같은 channel 안에서는 같은
+`kind + packet key` 중복을 startup 오류로 보고, 다른 channel에서는 같은 packet
+key를 다시 사용할 수 있다.
 
 ## 5. client와 publisher 인터페이스
 
@@ -653,15 +679,15 @@ GetUserReply reply = await client
 ```csharp
 await publisher
     .Publish(
-        "profile",
+        "api.events",
         "user.cache-refreshed",
         new UserCacheRefreshedEvent { AccountId = accountId })
     .Async(cancellationToken);
 ```
 
-이 예시에서 첫 번째 문자열 `profile`은 publish 대상 `channelName`이고, 두 번째
+이 예시에서 첫 번째 문자열 `api.events`는 publish 대상 `channelName`이고, 두 번째
 문자열 `user.cache-refreshed`는 그 channel 안의 `topic`이다. 즉 같은
-`profile` channel 안에서도 여러 topic을 fan-out 할 수 있다.
+`api.events` channel 안에서도 여러 topic을 fan-out 할 수 있다.
 
 ## 7. handler 시그니처만 따로 보면
 

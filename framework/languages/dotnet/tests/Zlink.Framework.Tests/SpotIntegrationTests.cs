@@ -255,7 +255,6 @@ public sealed class SpotIntegrationTests
                        typeof(ExternalStageEvent)))
             {
                 directPublishResult = publisherBundle.Spot.Publish(
-                    "game.stage",
                     "stage.external",
                     probeEnvelope,
                     global::Systems.Zlink.SendFlags.None);
@@ -267,10 +266,10 @@ public sealed class SpotIntegrationTests
                 $"Messages={subscriberActivation.SubscriptionMessageCount},Dispatches={subscriberActivation.SubscriptionDispatchCount},Ignores={subscriberActivation.SubscriptionIgnoreCount},LastTopic={subscriberActivation.LastSubscriptionTopic},LastPacket={subscriberActivation.LastSubscriptionMessageName}";
             var publisherPeers = string.Join(';',
                 publisherSnapshot.Peers.Select(static entry =>
-                    $"{entry.Source}:{entry.PeerEndpoint}:{entry.State}:{entry.ServiceName}"));
+                    $"{entry.Source}:{entry.PeerEndpoint}:{entry.State}:{entry.ChannelName}"));
             var subscriberPeers = string.Join(';',
                 subscriberSnapshot.Peers.Select(static entry =>
-                    $"{entry.Source}:{entry.PeerEndpoint}:{entry.State}:{entry.ServiceName}"));
+                    $"{entry.Source}:{entry.PeerEndpoint}:{entry.State}:{entry.ChannelName}"));
             throw new TimeoutException(
                 $"SPOT outbound publish failed. PublisherStatus={publisherSnapshot.Status}, PublisherPeers={publisherPeers}, PublisherSubjects={string.Join(';', publisherSnapshot.Subjects.Select(static entry => $"{entry.Role}:{entry.Subject}:{entry.ReadyPeerCount}/{entry.ActivePeerCount}"))}, SubscriberStatus={subscriberSnapshot.Status}, SubscriberPeers={subscriberPeers}, SubscriberSubjects={string.Join(';', subscriberSnapshot.Subjects.Select(static entry => $"{entry.Role}:{entry.Subject}:{entry.ReadyPeerCount}/{entry.ActivePeerCount}"))}, DirectPublishResult={directPublishResult}, RawReceived={rawReceived}, PumpState={pumpState}, SubscriptionState={subscriptionState}, ExternalEvents={recorder.ExternalEvents.Count}",
                 ex);
@@ -363,7 +362,7 @@ public sealed class SpotIntegrationTests
                         received = rawSubscriber.Subscribe(global::Systems.Zlink.RecvFlags.DontWait);
                     }
                     catch (global::Systems.Zlink.ZlinkRecvException ex)
-                        when (ex.Result == global::Systems.Zlink.RecvResult.NoData)
+                        when (ex.Result == global::Systems.Zlink.ZlinkRecvException.ErrorCode.NoData)
                     {
                         received = null;
                     }
@@ -375,7 +374,6 @@ public sealed class SpotIntegrationTests
 
             Assert.NotNull(received);
             using var topicMessage = received!;
-            Assert.Equal("game.stage", topicMessage.ServiceName);
             Assert.Equal("stage.external", topicMessage.Topic);
         }
         finally

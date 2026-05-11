@@ -101,7 +101,7 @@ public sealed class ZlinkStreamConnectorOptions
 
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
-    public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
 
     public TimeSpan HeartbeatInterval { get; init; } = TimeSpan.FromSeconds(10);
 
@@ -132,6 +132,12 @@ public sealed class ZlinkStreamConnectorOptions
 기본 보호 장치다. 수신 payload에 대한 도메인별 크기 제한은 connector 기본 계약에
 넣지 않는다. 수신 제한이 필요한 애플리케이션은 handler나 상위 protocol에서 따로
 검사한다.
+
+`HeartbeatTimeout`은 마지막으로 받은 heartbeat 응답으로부터 이 시간이 지나도록
+추가 응답이 없으면 연결을 죽은 것으로 간주한다는 임계값이다. 기본값은 30초다.
+
+`IdleTimeout`은 어떤 방향으로든 트래픽이 전혀 없는 상태가 이 시간을 넘기면
+connector가 연결을 닫는다는 임계값이다. 기본값은 60초다.
 
 ## 5. Packet 모델
 
@@ -471,7 +477,10 @@ public enum ZlinkStreamErrorCode
     CompressionFailed,
     TlsValidationFailed,
     DecompressionFailed,
-    UserCallbackFailed
+    UserCallbackFailed,
+    // 서버가 kind=Error로 응답했고 request id가 없거나 부합하지 않을 때 발생하는
+    // 일반 원격 오류 코드.
+    RemoteError
 }
 
 public sealed class ZlinkStreamException : Exception

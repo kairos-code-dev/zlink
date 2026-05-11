@@ -285,7 +285,7 @@ internal sealed class ZLinkSpotActivation : IZLinkSpotContext, IAsyncDisposable
     {
         return _submitter.SubmitAsync(
             message,
-            pending => NativeSpot.Publish(ChannelName, topic, pending, SendFlags.DontWait),
+            pending => NativeSpot.Publish(topic, pending, SendFlags.DontWait),
             cancellationToken);
     }
 

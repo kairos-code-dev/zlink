@@ -26,7 +26,7 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `EnableServer(server => server.Bind(...))`만 등록 | 허용 | local request/send handler만 받는다 |
+| `EnableServer(server => server.Bind(...))`만 등록 | 허용 | server capability만 열고, handler mapping이 없으면 처리할 packet이 없다 |
 | `EnableServer()`만 등록 + bind endpoint 없음 | 비허용 | startup validation 오류 |
 | `EnableClient()`만 등록 + 전역 `UseDiscovery(...)` 있음 | 허용 | outbound request/send runtime을 만든다 |
 | `EnableClient()`만 등록 + `UseManualConnections(...)` 있음 | 허용 | manual outbound request/send runtime을 만든다 |
@@ -39,6 +39,8 @@
 | 같은 channel에서 `server + client` 함께 등록 | 허용 | inbound와 outbound runtime을 모두 가진다 |
 | 같은 channel에서 `publisher + subscriber` 함께 등록 | 허용 | event fan-out과 수신을 모두 가진다 |
 | 같은 channel capability 안에서 discovery + manual 함께 등록 | 비허용 | startup validation 오류 |
+| 같은 channel server에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
+| 다른 channel server에 같은 `kind + packetName` handler 등록 | 허용 | channel별 handler namespace를 분리한다 |
 
 ## 4. Spot Capability Matrix
 
@@ -111,6 +113,7 @@
 - 같은 stream node에 session 중복 등록
 - bind endpoint가 없는 stream node
 - routed channel bind endpoint 없음
+- 같은 channel server의 같은 `kind + packetName` handler 중복
 - 같은 routed channel의 같은 `kind + packetName` handler 중복
 
 이 오류들은 런타임에 늦게 드러내지 않고 startup 단계에서 막는 편을 기본으로 본다.

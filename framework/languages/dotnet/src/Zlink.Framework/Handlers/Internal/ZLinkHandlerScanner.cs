@@ -14,6 +14,11 @@ internal static class ZLinkHandlerScanner
 
         foreach (var type in assembly.GetTypes())
         {
+            if (type.IsAbstract || type.IsInterface)
+            {
+                continue;
+            }
+
             foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public))
             {
                 var request = method.GetCustomAttribute<ZLinkRequestAttribute>();
@@ -34,9 +39,76 @@ internal static class ZLinkHandlerScanner
                     endpoints.Add(CreateDescriptor(type, method, @event.PacketName, ZLinkMessageKind.Event));
                 }
             }
+
+            foreach (var iface in type.GetInterfaces())
+            {
+                if (!iface.IsGenericType)
+                {
+                    continue;
+                }
+
+                var def = iface.GetGenericTypeDefinition();
+                if (def == typeof(IZLinkRequestHandler<,>))
+                {
+                    endpoints.Add(CreateInterfaceDescriptor(type, iface, ZLinkMessageKind.Request));
+                }
+                else if (def == typeof(IZLinkSendHandler<>))
+                {
+                    endpoints.Add(CreateInterfaceDescriptor(type, iface, ZLinkMessageKind.Command));
+                }
+                else if (def == typeof(IZLinkEventHandler<>))
+                {
+                    endpoints.Add(CreateInterfaceDescriptor(type, iface, ZLinkMessageKind.Event));
+                }
+            }
         }
 
         return endpoints;
+    }
+
+    private static ZLinkHandlerEndpointDescriptor CreateInterfaceDescriptor(
+        Type declaringType,
+        Type handlerInterface,
+        ZLinkMessageKind kind)
+    {
+        var args = handlerInterface.GetGenericArguments();
+        var messageType = args[0];
+        var replyType = kind == ZLinkMessageKind.Request ? args[1] : null;
+
+        var map = declaringType.GetInterfaceMap(handlerInterface);
+        MethodInfo? targetMethod = null;
+        for (var i = 0; i < map.InterfaceMethods.Length; i++)
+        {
+            if (map.InterfaceMethods[i].Name == nameof(IZLinkEventHandler<object>.HandleAsync))
+            {
+                targetMethod = map.TargetMethods[i];
+                break;
+            }
+        }
+
+        if (targetMethod is null)
+        {
+            throw new ZLinkConfigurationException(
+                $"Handler '{declaringType.FullName}' does not implement HandleAsync for '{handlerInterface.Name}'.");
+        }
+
+        var messageName = ZLinkMessageNameResolver.ResolveFromType(messageType);
+        var contextType = kind switch
+        {
+            ZLinkMessageKind.Request => typeof(ZLinkRequestContext),
+            ZLinkMessageKind.Command => typeof(ZLinkSendContext),
+            _ => typeof(ZLinkEventContext),
+        };
+
+        return new ZLinkHandlerEndpointDescriptor(
+            kind,
+            messageName,
+            declaringType,
+            targetMethod,
+            messageType,
+            replyType,
+            contextType,
+            HasCancellationToken: true);
     }
 
     private static ZLinkHandlerEndpointDescriptor CreateDescriptor(

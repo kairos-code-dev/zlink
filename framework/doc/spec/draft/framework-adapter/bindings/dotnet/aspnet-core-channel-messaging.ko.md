@@ -68,20 +68,21 @@ capability 없이 `EnableClient()`만 선언한 channel만 두고 시작할 수 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddChannel("api", channel =>
+    options.AddClientServerChannel("api", channel =>
     {
         channel.EnableServer(server =>
         {
             server.Bind("tcp://0.0.0.0:7101");
+            server.MapHandlersFromAssemblyContaining<Program>();
         });
     });
 
-    options.AddChannel("profile", channel =>
+    options.AddClientServerChannel("profile", channel =>
     {
         channel.EnableClient();
     });
 
-    options.AddChannel("account", channel =>
+    options.AddClientServerChannel("account", channel =>
     {
         channel.EnableClient();
     });
@@ -95,8 +96,8 @@ builder.Services.AddZLinkFramework(options =>
 ```
 
 이 등록은 framework 전역 runtime, channel runtime factory, codec registry의 기본
-구성을 맡는다. `AddChannel("profile", channel => channel.EnableClient())` 같은
-선언은 그 channel에 접근할 outbound runtime과 `DEALER(client)`를 framework가
+구성을 맡는다. `AddClientServerChannel("profile", channel => channel.EnableClient())`
+같은 선언은 그 channel에 접근할 outbound runtime과 `DEALER(client)`를 framework가
 관리한다는 뜻이다.
 
 위 예시는 `api` channel에서 server 역할을 하고, `profile`, `account` channel에
@@ -107,7 +108,7 @@ builder.Services.AddZLinkFramework(options =>
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddChannel("api", channel =>
+    options.AddClientServerChannel("api", channel =>
     {
         channel.EnableServer(server =>
         {
@@ -115,7 +116,7 @@ builder.Services.AddZLinkFramework(options =>
         });
     });
 
-    options.AddChannel("profile", channel =>
+    options.AddClientServerChannel("profile", channel =>
     {
         channel.EnableClient(client =>
         {
@@ -167,9 +168,10 @@ remote channel에 대해서만 outbound `DEALER(client)`를 만든다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
+    // 예제용 짧은 값. options.DefaultTimeout의 실제 기본은 30초다.
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddChannel("profile", channel =>
+    options.AddClientServerChannel("profile", channel =>
     {
         channel.EnableClient();
     });
@@ -187,6 +189,7 @@ builder.Services.AddZLinkFramework(options =>
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
+    // 예제용 짧은 값. options.DefaultTimeout의 실제 기본은 30초다.
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
 });
@@ -210,6 +213,37 @@ builder.Services.AddZLinkFramework(options =>
 builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
 ```
 
+이 호출은 handler type을 `.NET DI`에 등록하고, attribute scan으로 request/send/event
+후보를 발견하는 단계다. 발견된 handler가 모든 channel에 곧바로 노출된다는 뜻은
+아니다. 실제 dispatch 대상은 inbound channel registration에서 명시적으로 매핑한다.
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.AddClientServerChannel("api", channel =>
+    {
+        channel.EnableServer(server =>
+        {
+            server.Bind("tcp://0.0.0.0:7101");
+            server.MapHandlersFromAssemblyContaining<Program>();
+        });
+    });
+
+    options.AddClientServerChannel("admin", channel =>
+    {
+        channel.EnableServer(server =>
+        {
+            server.Bind("tcp://0.0.0.0:7102");
+            server.MapHandlersFromAssemblyContaining<AdminMarker>();
+        });
+    });
+});
+```
+
+즉 자동 scan은 유지하되, 노출 scope는 channel별로 닫는다. 같은 handler type을
+여러 channel에 매핑하는 것은 허용한다. 같은 channel 안에서 같은
+`kind + packet name`에 둘 이상의 handler가 매핑되면 startup validation 오류다.
+
 또는 endpoint-style registration도 가능하지만, 현재 초안은 DI와 attribute 기반을
 우선 검토한다.
 
@@ -228,8 +262,11 @@ builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
 동작해야 한다.
 
 여기서 local request/send handler가 붙는 channel은 route prefix가 아니라 앱이
-그 channel에서 server 역할을 한다는 뜻이다. 반대로 outbound-only 앱이라면
-server capability가 있는 channel 자체를 두지 않을 수 있어야 한다.
+그 channel에서 server 역할을 한다는 뜻이다. 그래서 channel 이름은
+`[ZLinkRequest]`, `[ZLinkSend]`, `[ZLinkEvent]`의 기본 속성으로 두지 않는다.
+attribute는 packet kind와 packet name override만 나타내고, 어떤 channel에서
+노출할지는 channel registration이 정한다. 반대로 outbound-only 앱이라면 server
+capability가 있는 channel 자체를 두지 않을 수 있어야 한다.
 
 ## 4. 서버 쪽 프로그래밍 모델 초안
 

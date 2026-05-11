@@ -28,7 +28,8 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
             null,
             topic,
             null,
-            null);
+            null,
+            Source: activation.ChannelName);
         var envelope = ZLinkEnvelopeCodec.Encode(header, message, message?.GetType() ?? typeof(TEvent));
         return activation.PublishCurrentAsync(topic, envelope, cancellationToken);
     }
@@ -70,13 +71,14 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
             null,
             topic,
             null,
-            null);
+            null,
+            Source: channelName);
         var envelope = ZLinkEnvelopeCodec.Encode(header, message, message?.GetType() ?? typeof(TEvent));
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("External SPOT publish submitter is not initialized."))
             .SubmitAsync(
                 envelope,
-                pending => bundle.Spot.Publish(channelName, topic, pending, SendFlags.DontWait),
+                pending => bundle.Spot.Publish(topic, pending, SendFlags.DontWait),
                 cancellationToken);
     }
 }

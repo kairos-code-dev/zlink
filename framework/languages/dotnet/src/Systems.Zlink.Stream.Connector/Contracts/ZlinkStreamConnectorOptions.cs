@@ -27,6 +27,10 @@ public sealed class ZlinkStreamConnectorOptions
 
     public TimeSpan HeartbeatInterval { get; init; } = TimeSpan.FromSeconds(10);
 
+    public TimeSpan HeartbeatTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
+
     public int MaxSendFrameSize { get; init; } = 1024 * 1024;
 
     public int MaxSendMetadataSize { get; init; } = 1024;

@@ -37,7 +37,7 @@ public enum ZLinkSpotRole
 }
 
 public sealed record ZLinkSpotNodeStatus(
-    string ServiceName,
+    string ChannelName,
     string LocalEndpoint,
     RoutingId? NodeRoutingId,
     ZLinkSpotNodeState State,
@@ -50,7 +50,7 @@ public sealed record ZLinkSpotNodeStatus(
     ulong LastChangedMs);
 
 public sealed record ZLinkSpotNodePeerEntry(
-    string ServiceName,
+    string ChannelName,
     string LocalEndpoint,
     string PeerEndpoint,
     ZLinkSpotPeerSource Source,

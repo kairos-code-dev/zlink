@@ -79,16 +79,16 @@ Registry만 올리고 서비스 handler는 등록하지 않는 구성도 가능�
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddChannel("api", channel =>
+    options.AddClientServerChannel("api", channel =>
     {
         channel.EnableServer(server =>
         {
             server.Bind("tcp://0.0.0.0:7101");
         });
     });
-    options.UseDiscovery(registry =>
+    options.UseDiscovery(discovery =>
     {
-        registry.Add("tcp://127.0.0.1:5551");
+        discovery.Add("tcp://127.0.0.1:5551");
     });
     options.Codecs.AddProtobuf();
 });
@@ -249,8 +249,7 @@ public interface IZLinkRegistryQuery
         ZLinkRegistryTopologyFilter? filter = null,
         CancellationToken cancellationToken = default);
     ValueTask<ZLinkMemberPeerEntry[]> MemberPeersAsync(
-        ZLinkServiceType serviceType,
-        string serviceName,
+        string channelName,
         CancellationToken cancellationToken = default);
 }
 ```
@@ -350,7 +349,7 @@ builder.Services.AddZLinkRegistry(registry =>
 // --- 서비스 런타임 ---
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddChannel("api", channel =>
+    options.AddClientServerChannel("api", channel =>
     {
         channel.EnableServer(server =>
         {
@@ -401,7 +400,7 @@ var app = builder.Build();
 app.MapGet("/health", async (IZLinkRegistryQuery registry) =>
 {
     var status = await registry.StatusSnapshotAsync();
-    return status.State == RegistryState.Active
+    return status.State == ZLinkRegistryState.Active
         ? Results.Ok(status)
         : Results.StatusCode(503);
 });

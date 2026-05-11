@@ -290,7 +290,6 @@ internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
         SendFlags flags);
 
     bool Publish(
-        string serviceName,
         string topic,
         Message message,
         SendFlags flags);

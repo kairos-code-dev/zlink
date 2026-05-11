@@ -104,8 +104,9 @@ session actor dispatch 샘플의 DTO는
 `framework/languages/dotnet/samples/TicTacToe(session-gateway)/Contracts/Messages.cs`를 따른다.
 
 이 샘플은 service channel과 routed channel 모두 전역 `UseDiscovery(...)` 기반 자동
-연결을 사용한다. game room SPOT node는 `UseSpotDiscovery(...)`로 같은 registry에
-붙는다. sample 코드에는 `UseManualConnections(...)`를 두지 않는다.
+연결을 사용한다. game room SPOT node는 `AddSpotMesh(...)` 안에서
+`mesh.UseDiscovery(...)`로 같은 registry에 붙는다. sample 코드에는
+`UseManualConnections(...)`를 두지 않는다.
 
 핵심 계약은 아래와 같다.
 

@@ -156,7 +156,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             Node.StatusSnapshot(),
             Node.PeersSnapshot()
                 .OrderBy(static entry => entry.PeerEndpoint, StringComparer.Ordinal)
-                .ThenBy(static entry => entry.ServiceName, StringComparer.Ordinal)
+                .ThenBy(static entry => entry.ChannelName, StringComparer.Ordinal)
                 .ToArray(),
             Node.SubjectsSnapshot()
                 .OrderBy(static entry => entry.Subject, StringComparer.Ordinal)

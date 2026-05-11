@@ -18,7 +18,8 @@ fn pair_send_recv_roundtrip() {
     let msg = Message::copy_from(b"pair-payload-42").unwrap();
     client.send(msg).unwrap();
 
-    let received = server.recv().unwrap();
+    let mut received = Received::empty();
+    server.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts().len(), 1);
     assert_eq!(received.parts()[0].as_bytes(), b"pair-payload-42");
 }
@@ -38,7 +39,8 @@ fn pair_multipart_send_recv() {
     ];
     b.send(parts).unwrap();
 
-    let received = a.recv().unwrap();
+    let mut received = Received::empty();
+    a.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts().len(), 2);
     assert_eq!(received.parts()[0].as_bytes(), b"frame-1");
     assert_eq!(received.parts()[1].as_bytes(), b"frame-2");
@@ -50,8 +52,9 @@ fn pair_try_recv_empty() {
     let sock = ctx.pair_socket().unwrap();
     sock.bind("inproc://beh-pair-try").unwrap();
 
-    let result = sock.recv_with_flags(RecvFlags::DONT_WAIT);
-    assert!(result.unwrap().is_none());
+    let mut received = Received::empty();
+    let got = sock.recv(&mut received, RecvFlags::DONT_WAIT).unwrap();
+    assert!(!got);
 }
 
 #[test]
@@ -71,7 +74,8 @@ fn dealer_router_roundtrip() {
     dealer.send(msg).unwrap();
 
     // Router receives with the dealer's routing id
-    let received = router.recv().unwrap();
+    let mut received = Received::empty();
+    router.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts()[0].as_bytes(), b"request-payload");
 
     // Router sends back to the dealer using the received routing id
@@ -80,7 +84,8 @@ fn dealer_router_roundtrip() {
         .send(received.routing_id().expect("missing routing id"), reply)
         .unwrap();
 
-    let response = dealer.recv().unwrap();
+    let mut response = Received::empty();
+    dealer.recv(&mut response, RecvFlags::NONE).unwrap();
     assert_eq!(response.parts()[0].as_bytes(), b"response-payload");
 }
 
@@ -185,7 +190,8 @@ fn dealer_router_send_from_callback() {
         .send(Message::copy_from(b"request-42").unwrap())
         .unwrap();
 
-    let received = router.recv().unwrap();
+    let mut received = Received::empty();
+    router.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts()[0].as_bytes(), b"request-42");
     let reply = Message::copy_from(b"reply-42").unwrap();
     handle
@@ -197,7 +203,8 @@ fn dealer_router_send_from_callback() {
         .common_options()
         .set_recv_timeout(Duration::from_secs(5))
         .unwrap();
-    let response = dealer.recv().unwrap();
+    let mut response = Received::empty();
+    dealer.recv(&mut response, RecvFlags::NONE).unwrap();
     assert_eq!(response.parts()[0].as_bytes(), b"reply-42");
 }
 
@@ -225,7 +232,8 @@ fn pair_send_from_callback() {
     client
         .send(Message::copy_from(b"ping-pair").unwrap())
         .unwrap();
-    let received = server.recv().unwrap();
+    let mut received = Received::empty();
+    server.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts()[0].as_bytes(), b"ping-pair");
     let reply = Message::copy_from(b"pong-pair").unwrap();
     handle.send(reply).unwrap();
@@ -233,6 +241,7 @@ fn pair_send_from_callback() {
         .common_options()
         .set_recv_timeout(Duration::from_secs(5))
         .unwrap();
-    let response = client.recv().unwrap();
+    let mut response = Received::empty();
+    client.recv(&mut response, RecvFlags::NONE).unwrap();
     assert_eq!(response.parts()[0].as_bytes(), b"pong-pair");
 }

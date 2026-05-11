@@ -4,13 +4,16 @@
 use zlink::*;
 
 #[test]
-fn eagain_returns_none_not_error() {
+fn eagain_returns_false_not_error() {
     let ctx = Context::new().unwrap();
     let sock = ctx.pair_socket().unwrap();
     sock.bind("inproc://rf-eagain").unwrap();
 
-    let result = sock.recv_with_flags(RecvFlags::DONT_WAIT);
-    assert!(result.unwrap().is_none(), "EAGAIN must return Ok(None)");
+    let mut received = Received::empty();
+    let got = sock
+        .recv(&mut received, RecvFlags::DONT_WAIT)
+        .expect("EAGAIN must return Ok(false), not Err");
+    assert!(!got, "EAGAIN must return Ok(false)");
 }
 
 #[test]
@@ -50,8 +53,9 @@ fn direct_recv_error_not_hidden_as_empty() {
 
     ctx.shutdown().unwrap();
 
-    let result = sock.recv_with_flags(RecvFlags::DONT_WAIT);
-    // ETERM is not EAGAIN → must be Err, not Ok(None)
+    let mut received = Received::empty();
+    let result = sock.recv(&mut received, RecvFlags::DONT_WAIT);
+    // ETERM is not EAGAIN → must be Err, not Ok(false)
     assert!(
         result.is_err(),
         "non-EAGAIN recv error must be Err, not hidden"

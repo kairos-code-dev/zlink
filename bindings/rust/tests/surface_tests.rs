@@ -20,7 +20,8 @@ fn pair_socket_has_send_recv() {
     // PairSocket exposes: send, recv
     let msg = Message::copy_from(b"test").unwrap();
     let _ = sock.send_with_flags(msg, SendFlags::DONT_WAIT);
-    let _ = sock.recv_with_flags(RecvFlags::DONT_WAIT);
+    let mut received = Received::empty();
+    let _ = sock.recv(&mut received, RecvFlags::DONT_WAIT);
 }
 
 #[test]

@@ -22,7 +22,8 @@ fn send_consumes_message_ownership() {
     a.send(msg).unwrap();
     // `msg` cannot be used here – Rust ownership enforced
 
-    let received = b.recv().unwrap();
+    let mut received = Received::empty();
+    b.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts()[0].as_bytes(), b"owned-data");
 }
 
@@ -57,7 +58,8 @@ fn recv_ownership_transfers_to_caller() {
     let msg = Message::copy_from(b"recv-test").unwrap();
     b.send(msg).unwrap();
 
-    let received = a.recv().unwrap();
+    let mut received = Received::empty();
+    a.recv(&mut received, RecvFlags::NONE).unwrap();
     // Caller owns the parts; dropping them calls zlink_msg_close
     let parts = received.into_parts();
     assert_eq!(parts.len(), 1);
@@ -112,7 +114,8 @@ fn multipart_recv_shape_matches_callback_shape() {
         Message::copy_from(b"frame-y").unwrap(),
     ];
     b1.send(parts).unwrap();
-    let direct = a1.recv().unwrap();
+    let mut direct = Received::empty();
+    a1.recv(&mut direct, RecvFlags::NONE).unwrap();
     let direct_count = direct.parts().len();
     let direct_data: Vec<Vec<u8>> = direct
         .parts()
@@ -133,7 +136,8 @@ fn multipart_recv_shape_matches_callback_shape() {
         Message::copy_from(b"frame-y").unwrap(),
     ];
     b2.send(parts).unwrap();
-    let callback_received = a2.recv().unwrap();
+    let mut callback_received = Received::empty();
+    a2.recv(&mut callback_received, RecvFlags::NONE).unwrap();
     let callback_data: Vec<Vec<u8>> = callback_received
         .parts()
         .iter()
@@ -159,6 +163,7 @@ fn callback_receives_owned_parts() {
 
     let msg = Message::copy_from(b"cb-payload").unwrap();
     client.send(msg).unwrap();
-    let received = server.recv().unwrap();
+    let mut received = Received::empty();
+    server.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts()[0].as_bytes(), b"cb-payload");
 }

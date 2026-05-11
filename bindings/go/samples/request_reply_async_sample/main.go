@@ -34,7 +34,8 @@ func main() {
 
 	requestDone := make(chan error, 1)
 	go func() {
-		received, err := routerSocket.Recv(zlink.RecvFlagsNone)
+		var received zlink.Received
+		_, err := routerSocket.Recv(&received, zlink.RecvFlagsNone)
 		if err != nil {
 			requestDone <- err
 			return

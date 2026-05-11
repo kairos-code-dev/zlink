@@ -34,13 +34,15 @@ func main() {
 	_, err = dealer.Send(zlink.SendFlagsNone, samplecommon.Message("ping"))
 	samplecommon.Must(err)
 
-	request, err := router.Recv(zlink.RecvFlagsNone)
+	var request zlink.Received
+	_, err = router.Recv(&request, zlink.RecvFlagsNone)
 	samplecommon.Must(err)
 	defer request.Close()
 	_, err = router.SendTo(request.RoutingID(), zlink.SendFlagsNone, samplecommon.Message("pong"))
 	samplecommon.Must(err)
 
-	reply, err := dealer.Recv(zlink.RecvFlagsNone)
+	var reply zlink.Received
+	_, err = dealer.Recv(&reply, zlink.RecvFlagsNone)
 	samplecommon.Must(err)
 	defer reply.Close()
 	part, err := reply.SinglePartOrError()

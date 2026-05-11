@@ -33,7 +33,8 @@ func main() {
 	_, err = client.Send(zlink.SendFlagsNone, samplecommon.Message(sent))
 	samplecommon.Must(err)
 
-	received, err := server.Recv(zlink.RecvFlagsNone)
+	var received zlink.Received
+	_, err = server.Recv(&received, zlink.RecvFlagsNone)
 	samplecommon.Must(err)
 	defer received.Close()
 	part, err := received.SinglePartOrError()

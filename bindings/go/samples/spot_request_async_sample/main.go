@@ -39,7 +39,8 @@ func main() {
 
 	serverDone := make(chan error, 1)
 	go func() {
-		received, err := responderRouter.Recv(zlink.RecvFlagsNone)
+		var received zlink.Received
+		_, err := responderRouter.Recv(&received, zlink.RecvFlagsNone)
 		if err != nil {
 			serverDone <- err
 			return

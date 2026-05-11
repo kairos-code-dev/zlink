@@ -11,7 +11,7 @@ import (
 
 type recvSocket interface {
 	zlink.SocketTarget
-	Recv(zlink.RecvFlags) (*zlink.Received, error)
+	Recv(*zlink.Received, zlink.RecvFlags) (bool, error)
 }
 
 func runSingleOneWay(
@@ -85,18 +85,19 @@ func drainSingleOneWayUntilStop(
 	msgSize int,
 	activeAt time.Time,
 ) (bool, error) {
+	var received zlink.Received
 	for {
-		received, err := receiver.Recv(zlink.RecvFlagsDontWait)
+		ok, err := receiver.Recv(&received, zlink.RecvFlagsDontWait)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				return false, nil
 			}
 			return false, err
 		}
-		if received == nil {
+		if !ok {
 			return false, nil
 		}
-		part, err := perfPayloadPart(received)
+		part, err := perfPayloadPart(&received)
 		if err == nil && perfcommon.IsStopTokenMessage(part) {
 			_ = received.Close()
 			return true, nil
@@ -115,15 +116,16 @@ func drainSingleOneWayUntilStop(
 // need to know "did anything arrive."
 func drainSingleOneWayProbe(receiver recvSocket) bool {
 	processed := false
+	var received zlink.Received
 	for {
-		received, err := receiver.Recv(zlink.RecvFlagsDontWait)
+		ok, err := receiver.Recv(&received, zlink.RecvFlagsDontWait)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				return processed
 			}
 			perfcommon.Must(err)
 		}
-		if received == nil {
+		if !ok {
 			return processed
 		}
 		processed = true

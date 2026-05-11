@@ -174,6 +174,16 @@ public sealed class Message : IDisposable, IAsyncDisposable
         return true;
     }
 
+    /// <summary>
+    /// Create a message containing a snapshot copy of <paramref name="data"/>.
+    /// The caller may freely mutate or discard <paramref name="data"/> after
+    /// this call returns; the message holds its own copy of the payload.
+    /// </summary>
+    /// <remarks>
+    /// When the caller can guarantee the array will not be mutated before the
+    /// message is sent or disposed, prefer <see cref="WrapBytes(byte[])"/> to
+    /// avoid the snapshot copy.
+    /// </remarks>
     public static Message FromBytes(byte[] data)
     {
         if (data == null)
@@ -183,7 +193,22 @@ public sealed class Message : IDisposable, IAsyncDisposable
         return message;
     }
 
-    internal static Message FromOwnedBytes(byte[] data)
+    /// <summary>
+    /// Create a message that references <paramref name="data"/> in place,
+    /// without copying the payload bytes. The byte array is pinned only at
+    /// send time and released when the underlying transport finishes with the
+    /// message.
+    /// </summary>
+    /// <remarks>
+    /// Zero-copy. The caller MUST NOT mutate <paramref name="data"/> from when
+    /// this call returns until the message is either sent successfully or
+    /// disposed: an in-flight mutation corrupts the transmitted payload.
+    /// Use <see cref="FromBytes(byte[])"/> when the buffer might be mutated
+    /// before send.
+    /// </remarks>
+    /// <param name="data">Byte buffer the message references. Must remain
+    /// unmodified for the lifetime of the returned message.</param>
+    public static Message WrapBytes(byte[] data)
     {
         if (data == null)
             throw new ArgumentNullException(nameof(data));

@@ -313,7 +313,10 @@ internal static class PerfMultiRouterRouterClient
 
     private static bool TrySend(RouterRouterClientSlot slot)
     {
-        using Message message = Message.FromBytes(slot.Payload);
+        // WrapBytes pins slot.Payload at send time without copying. The
+        // payload is only re-stamped after the previous reply arrives so the
+        // buffer is not mutated while a send is in flight.
+        using Message message = Message.WrapBytes(slot.Payload);
         return ((RouterSocket)slot.Socket).Send(slot.ServerRoutingId, message,
             SendFlags.DontWait);
     }

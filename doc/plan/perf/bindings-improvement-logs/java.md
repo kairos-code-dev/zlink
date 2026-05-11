@@ -314,3 +314,34 @@
   - .NET round 5와 동일하게, plan §3.5.4 트리거 (목표 달성이 어려운 상황 + 사람 판단 대기) 조건이다.
   - public API 우회 없이 server 측 `.move()` / routing id materialization / Received pool / receive wrapper hot path 줄이는 추가 라운드가 필요하지만 효과 추정 폭이 작아 사용자 판단을 받는다.
 
+
+### 2026-05-11 Java round 9 (canonical recv ref-out fast path)
+
+- 배경:
+  - Cross-binding canonical recv 마이그레이션 이후 Java의 `socket.recv(Received, RecvFlags)` 가 두 번의 `Received` 할당을 수반(외부 caller + 내부 fresh + `adoptFrom`). round 6 baseline `MULTI_ROUTER_ROUTER` tcp 64 `218 Kops/s` 대비 round 9 baseline `169 Kops/s` 로 회귀.
+- 변경한 라이브러리 파일:
+  - `bindings/java/src/main/java/systems/zlink/Received.java`:
+    `populateRoutedSinglePart(...)` 추가. caller-provided storage 에 single-part routed recv 결과를 in-place 채움. 기존 parts list 재사용으로 fresh Received + ArrayList 한 쌍의 할당을 제거.
+    Also: `close()` 가 `realizedParts == null` 인 (canonical recv pattern 의 빈 Received) 경우에도 NPE 없이 종료하도록 가드 (별도 commit `20be9e1b4`).
+  - `bindings/java/src/main/java/systems/zlink/RouterRequestSupport.java`:
+    `recvInto(target, flags)` + `recvDirectOnceIntoImpl` 추가. single-part 비-request-seq 경로 (routed echo hot path) 에서 target 을 populate, 다른 경로는 legacy `new Received(...) + adoptFrom` 으로 fallback.
+  - `bindings/java/src/main/java/systems/zlink/RouterSocket.java`:
+    `recv(Received, RecvFlags.DONT_WAIT)` 가 `recvInto` 로 dispatch. blocking recv 은 legacy 유지.
+- 변경한 perf 파일:
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiRouterRouter.java`:
+    server hot path 가 long-lived `receivedBuffer` 를 사용하고 `server.recv(receivedBuffer, DONT_WAIT)` 를 직접 호출 (PerfUtil.recvNoWait per-call alloc 우회).
+- 동일 조합 C 결과 (3-run median, tcp):
+  - `MULTI_DEALER_ROUTER`: 64 `449187.6`, 256 `460855.8`, 1024 `457437.6`
+  - `MULTI_ROUTER_ROUTER`: 64 `433586.2`, 256 `430137.6`, 1024 `421777.2`
+- 대상 언어 결과 (3-run median, tcp, `java_multi_round9_recv_into`):
+  - `MULTI_DEALER_ROUTER`: 64 `282228.6` (`0.628`), 256 `282618.0` (`0.613`), 1024 `278691.2` (`0.609`)
+  - `MULTI_ROUTER_ROUTER`: 64 `171633.6` (`0.396`), 256 `170342.0` (`0.396`), 1024 `167603.6` (`0.397`)
+- 실행한 검증 명령:
+  - `./gradlew --quiet :compileJava :perf-multi:assemble`
+  - `bindings/java/perf/multi/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 5 --runs 3`
+- 결과 분석:
+  - DR는 round 8 baseline (0.42-0.45) 대비 0.60 area 로 큰 개선 — recv-into + canonical Send 패턴이 DR echo에서 효과.
+  - RR는 0.39-0.40 area 로 round 6 baseline (0.53) 까지 회복 못함. 구조적 차이: RR 클라이언트도 routed-send 경로를 거치므로 round-trip 당 routing id 작업이 두 배. recv-side 만으로는 닫기 어려움.
+- 다음 판단:
+  - RR 갭을 더 줄이려면 RR client 측 (routing id 마샬링 + native send) 도 같은 canonical 최적화를 받아야 한다. 작업량 증가.
+  - `populateRoutedSinglePart` API 는 spec 의 canonical recv ref-out 와 일치하며 round 9 의 효과는 single-part routed echo 에 한정. 일반 사용자에게는 기존 `recv(Received, RecvFlags)` 만으로 같은 효과가 자동 적용.

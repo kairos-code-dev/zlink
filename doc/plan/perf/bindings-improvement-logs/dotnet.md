@@ -307,3 +307,48 @@
   - public API 면에서 C++ 단일파트 routed recv를 .NET에 도입할지 사용자 결정이 필요하다. 도입 시 perf만의 우회가 아니라 C++/.NET 표면 일관화이므로 §7.1 정상 경로다.
   - 사용자 지시 "net,java multi 순서대로 진행해서 모두 통과할때까지 반복해서 중단없이 진행"에 따라 측정/분석/문서화는 계속하되, 구조적 제약(`Received` 할당)을 닫으려면 public API 합의가 선행되어야 한다.
 
+
+### 2026-05-11 .NET round 9 (canonical Send(Received,...) + nowait critical send)
+
+- 동일 조합 C 결과 (3-run median, tcp):
+  - `MULTI_DEALER_ROUTER`: 64 `449187.6`, 256 `460855.8`, 1024 `457437.6`
+  - `MULTI_ROUTER_ROUTER`: 64 `433586.2`, 256 `430137.6`, 1024 `421777.2`
+- 대상 언어 결과 (3-run median, tcp, `dotnet_multi_round9_nowait_fix`):
+  - `MULTI_DEALER_ROUTER`: 64 `270215.4` (`0.602`), 256 `269526.8` (`0.585`),
+    1024 `267486.0` (`0.585`)
+  - `MULTI_ROUTER_ROUTER`: 64 `230350.0` (`0.531`), 256 `229202.6` (`0.533`),
+    1024 `226794.8` (`0.538`)
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/RoutingIdSnapshot.cs`:
+    `WriteTo(ref ZlinkRoutingId)` 추가 — 회수된 routing id를 heap
+    `RoutingId` 미생성 + 캐시 lookup 없이 native send struct에 직접 작성.
+  - `bindings/dotnet/src/Zlink/Received.cs`:
+    내부 `RoutingIdSnapshotRef` ref-getter 추가 (kernel 전용 hot path 접근).
+  - `bindings/dotnet/src/Zlink/Sockets/Internal/SocketKernel.cs`:
+    `SendFromSnapshotUnchecked` / `SendFromSnapshotResultUnchecked` 추가,
+    `SendSingleNoWaitResultCore(message)` / `(routingId, message)` 양 변형이
+    `[SuppressGCTransition]` `zlink_send_part_nowait` /
+    `zlink_send_part_rid_nowait`을 호출하도록 dispatch 수정.
+  - `bindings/dotnet/src/Zlink/Sockets/RoutedMessageSocketBase.cs`:
+    canonical `Send(Received source, Message, SendFlags)` overload 공개. recv ref-out 와 짝이 되는 canonical echo send.
+- 변경한 perf 파일:
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiRouterRouterServer.cs`
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiDealerRouterServer.cs`
+  - 두 server hot path가 `server.Send(receivedBuffer, bodyMessage, DontWait)`
+    경로를 우선 사용하도록 정렬.
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release`
+  - `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release`
+  - `bindings/dotnet/perf/multi/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 5 --runs 3`
+- 결과:
+  - Round 8 (0.42 / 0.45 area) 대비 0.53 / 0.60 area로 개선. plan §1 size별
+    목표 0.75-0.82 에는 아직 미달.
+  - `SendFromSnapshot` 자체의 절대 효과는 측정 노이즈 (±3%) 안이지만,
+    `[SuppressGCTransition]` 누락 fix는 hot-path 송신마다 GC safepoint
+    transition을 한 번 줄이는 정확성 fix이기도 하다.
+- 다음 판단:
+  - 남은 gap을 닫으려면 (a) `Message` wrapper 객체 thread-local pool
+    (single-part 경로의 `Message.AdoptNativeFromPool` 이후로도 잔여),
+    (b) `MultipartMessageCollection` 풀링, (c) routing id inline cache의
+    dictionary lookup → ring buffer 대체 같은 더 큰 변경이 필요. 이번
+    라운드의 안전한 범위는 소진.

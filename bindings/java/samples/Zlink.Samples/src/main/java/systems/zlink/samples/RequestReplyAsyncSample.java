@@ -32,7 +32,8 @@ public final class RequestReplyAsyncSample {
             CompletableFuture<Void> replyHandled = new CompletableFuture<>();
 
             Thread routerThread = new Thread(() -> {
-                try (var received = routerSocket.recv()) {
+                try (systems.zlink.Received received = new systems.zlink.Received()) {
+                    routerSocket.recv(received, systems.zlink.RecvFlags.NONE);
                     String request = SampleSupport.singleUtf8(received);
                     if (!SampleSupport.DEALER_REQUEST.equals(request)) {
                         throw new IllegalStateException("unexpected request: " + request);

@@ -24,7 +24,8 @@ public final class PairRecvSample {
                 client.send(outbound);
             }
 
-            try (var received = server.recv()) {
+            try (systems.zlink.Received received = new systems.zlink.Received()) {
+                server.recv(received, systems.zlink.RecvFlags.NONE);
                 String value = SampleSupport.singleUtf8(received);
                 if (!SampleSupport.PAIR_PAYLOAD.equals(value)) {
                     throw new IllegalStateException("unexpected payload: " + value);

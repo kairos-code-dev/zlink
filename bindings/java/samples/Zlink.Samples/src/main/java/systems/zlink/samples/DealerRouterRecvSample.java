@@ -27,7 +27,8 @@ public final class DealerRouterRecvSample {
             }
 
             RoutingId rid;
-            try (var received = router.recv()) {
+            try (systems.zlink.Received received = new systems.zlink.Received()) {
+                router.recv(received, systems.zlink.RecvFlags.NONE);
                 String value = SampleSupport.singleUtf8(received);
                 if (!SampleSupport.DEALER_REQUEST.equals(value)) {
                     throw new IllegalStateException("unexpected request: " + value);
@@ -42,7 +43,8 @@ public final class DealerRouterRecvSample {
                 router.send(rid, reply);
             }
 
-            try (var received = dealer.recv()) {
+            try (systems.zlink.Received received = new systems.zlink.Received()) {
+                dealer.recv(received, systems.zlink.RecvFlags.NONE);
                 String value = SampleSupport.singleUtf8(received);
                 if (!SampleSupport.DEALER_REPLY.equals(value)) {
                     throw new IllegalStateException("unexpected reply: " + value);

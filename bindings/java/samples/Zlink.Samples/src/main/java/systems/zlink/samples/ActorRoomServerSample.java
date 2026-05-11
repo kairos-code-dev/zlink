@@ -54,7 +54,8 @@ public final class ActorRoomServerSample {
                 SampleSupport.waitStreamConnected(monitor);
                 SampleSupport.sendRawTcp(client, "seed".getBytes());
                 RoutingId sessionRid;
-                try (var received = stream.recv()) {
+                try (systems.zlink.Received received = new systems.zlink.Received()) {
+                    stream.recv(received, systems.zlink.RecvFlags.NONE);
                     sessionRid = received.routingId().orElseThrow();
                 }
                 stream.bindActor(node, sessionRid, actorRef,

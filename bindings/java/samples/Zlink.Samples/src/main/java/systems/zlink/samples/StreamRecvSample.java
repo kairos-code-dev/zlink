@@ -25,7 +25,8 @@ public final class StreamRecvSample {
                 SampleSupport.sendRawTcp(rawClient, payload);
 
                 RoutingId rid;
-                try (var received = server.recv()) {
+                try (systems.zlink.Received received = new systems.zlink.Received()) {
+                    server.recv(received, systems.zlink.RecvFlags.NONE);
                     String value = SampleSupport.singleUtf8(received);
                     rid = received.routingId().orElse(null);
                     if (!SampleSupport.STREAM_PAYLOAD.equals(value) || rid == null) {

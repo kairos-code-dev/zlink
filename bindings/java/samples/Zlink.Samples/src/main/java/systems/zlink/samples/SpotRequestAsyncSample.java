@@ -28,7 +28,8 @@ public final class SpotRequestAsyncSample {
             requesterNode.attachChannelDealerManual(channelName, requesterDealer);
 
             Thread responder = new Thread(() -> {
-                try (var received = requesterRouter.recv()) {
+                try (systems.zlink.Received received = new systems.zlink.Received()) {
+                    requesterRouter.recv(received, systems.zlink.RecvFlags.NONE);
                     if (!"spot-ping".equals(SampleSupport.singleUtf8(received))) {
                         throw new IllegalStateException("unexpected spot request");
                     }

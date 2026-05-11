@@ -884,13 +884,25 @@ class ReceivedMessage:
 class ReceivedMultipart:
     def __init__(
         self,
-        owner,
+        owner=None,
         routing_id=None,
         request_seq=None,
         *,
         spot_rid=None,
         reply_sender=None,
     ):
+        # Caller-provided storage path: ReceivedMultipart() / Received()
+        # constructs an empty placeholder for reuse across recv_into calls.
+        # See doc/spec/bindings/README.md "Canonical Recv: Caller-Provided
+        # Storage". Populated state is installed via _adopt_from().
+        if owner is None:
+            self._owner = None
+            self.parts = ()
+            self.routing_id = None
+            self.spot_rid = None
+            self.request_seq = None
+            self._reply_sender = None
+            return
         self._owner = owner
         self.parts = tuple(
             ReceivedMessage._from_owner(owner, index)
@@ -900,6 +912,30 @@ class ReceivedMultipart:
         self.spot_rid = spot_rid
         self.request_seq = request_seq
         self._reply_sender = reply_sender
+
+    def _adopt_from(self, source):
+        """Replace this Received's internal state with the contents of
+        ``source``. Closes any state currently held first; ``source`` is
+        left detached after the call."""
+        if source is self:
+            return
+        if self._owner is not None:
+            try:
+                self._owner.close()
+            except Exception:  # noqa: BLE001
+                pass
+        self._owner = source._owner
+        self.parts = source.parts
+        self.routing_id = source.routing_id
+        self.spot_rid = source.spot_rid
+        self.request_seq = source.request_seq
+        self._reply_sender = source._reply_sender
+        source._owner = None
+        source.parts = ()
+        source.routing_id = None
+        source.spot_rid = None
+        source.request_seq = None
+        source._reply_sender = None
 
     def __iter__(self):
         return iter(self.parts)

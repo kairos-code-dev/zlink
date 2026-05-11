@@ -1027,6 +1027,11 @@ class _MessageSocket(_Socket):
             raise
 
     def recv(self, *, flags=0):
+        """Legacy recv: allocates a fresh Received per call.
+
+        .. deprecated:: Use :py:meth:`recv_into` with a caller-provided
+            Received to avoid the per-recv allocation.
+        """
         try:
             routing, owner = _recv_native_parts(self._handle, flags)
             return Received(owner, routing)
@@ -1034,6 +1039,30 @@ class _MessageSocket(_Socket):
             if (int(flags) & 1) and ex.result == RecvResult.NO_DATA:
                 return None
             raise
+
+    def recv_into(self, received, *, flags=0):
+        """Canonical caller-provided storage recv.
+
+        Pass a long-lived :py:class:`Received` and the binding refills its
+        internal state in place each successful call. See
+        ``doc/spec/bindings/README.md`` "Canonical Recv: Caller-Provided
+        Storage".
+
+        :returns: ``True`` on success, ``False`` when ``flags`` includes
+            ``DONTWAIT`` and no data is available. Hard errors raise
+            :py:class:`RecvError`.
+        """
+        if received is None:
+            raise TypeError("received must not be None")
+        try:
+            routing, owner = _recv_native_parts(self._handle, flags)
+        except RecvError as ex:
+            if (int(flags) & 1) and ex.result == RecvResult.NO_DATA:
+                return False
+            raise
+        fresh = Received(owner, routing)
+        received._adopt_from(fresh)
+        return True
 
     def _attach_recv_handler(self, handler):
         if handler is None:

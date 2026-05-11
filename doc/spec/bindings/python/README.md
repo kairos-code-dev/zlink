@@ -254,7 +254,10 @@ class PairSocket:
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
     def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
     def send(self, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    # Deprecated: allocates a fresh Received per call. Prefer recv_into.
     def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
+    # Canonical caller-provided storage recv. See doc/spec/bindings/README.md.
+    def recv_into(self, received: Received, *, flags: int = 0) -> bool: ...      # Raises: RecvError
     def on_send_ready(self, handler: Callable[[PairSocket], None]) -> None: ...  # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
@@ -322,7 +325,10 @@ class DealerSocket:
     def set_channel_name(self, channel_name: str) -> None: ...                     # Raises: ConfigError
     def get_channel_name(self) -> str: ...                                         # Raises: ConfigError
     def send(self, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    # Deprecated: allocates a fresh Received per call. Prefer recv_into.
     def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
+    # Canonical caller-provided storage recv. See doc/spec/bindings/README.md.
+    def recv_into(self, received: Received, *, flags: int = 0) -> bool: ...      # Raises: RecvError
     def on_send_ready(self, handler: Callable[[DealerSocket], None]) -> None: ...  # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                  # Raises: ConfigError
@@ -364,7 +370,10 @@ class RouterSocket:
     def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
     def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
     def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    # Deprecated: allocates a fresh Received per call. Prefer recv_into.
     def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
+    # Canonical caller-provided storage recv. See doc/spec/bindings/README.md.
+    def recv_into(self, received: Received, *, flags: int = 0) -> bool: ...      # Raises: RecvError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
@@ -492,7 +501,10 @@ class StreamSocket:
     # Two mutually-exclusive receive modes on the same StreamSocket:
     #   (1) recv(), (2) on_packet(handler). Second attach raises
     #   HandlerError(code=HandlerResult.BUSY).
+    # Deprecated: allocates a fresh Received per call. Prefer recv_into.
     def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
+    # Canonical caller-provided storage recv. See doc/spec/bindings/README.md.
+    def recv_into(self, received: Received, *, flags: int = 0) -> bool: ...      # Raises: RecvError
     # Mode (3): framed packet callback mapped to
     # zlink_stream_packet_handler(). Wire frame is big-endian u16
     # header_size + u32 body_size + header + body. The handler receives

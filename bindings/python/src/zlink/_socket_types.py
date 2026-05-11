@@ -486,6 +486,21 @@ class RouterSocket(
             ),
         )
 
+    def recv_into(self, received, *, flags=0):
+        """Canonical caller-provided storage routed recv.
+
+        See ``doc/spec/bindings/README.md`` "Canonical Recv: Caller-Provided
+        Storage". Returns ``True`` on success, ``False`` when DONTWAIT finds
+        no data.
+        """
+        if received is None:
+            raise TypeError("received must not be None")
+        fresh = self.recv(flags=flags)
+        if fresh is None:
+            return False
+        received._adopt_from(fresh)
+        return True
+
     def send_to_spot(self, dest_node_rid, dest_spot_rid, payload, *, flags=0):
         try:
             native_parts = _spot_clone_payload(payload)

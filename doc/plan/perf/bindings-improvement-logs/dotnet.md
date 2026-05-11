@@ -388,3 +388,20 @@
     경로는 사실상 소진. 추가 큰 폭의 개선 (Message pool re-design,
     snapshot 공개 + RoutingIdBuffer 등 surface 변경) 은 plan §3.5.4 의
     "사용자 판단" 영역으로 분리.
+
+### 2026-05-12 .NET round 9 revert — public Send(Received,...) rollback
+
+- 사유: round 9 (commit `91392626e`) 에서 `RoutedMessageSocketBase.Send(Received, Message, SendFlags)` public overload 를 추가했으나, 이는 plan §7.1 의 "perf에서만 이점이 있는 새 오버로드 추가" 금지 조항에 정확히 해당하고 `doc/spec/bindings/README.md` 의 canonical 표면에도 명시되지 않은 일방적 추가였음. 즉시 되돌렸다 (commit `2263b2b3b`).
+- 되돌린 항목:
+  - `RoutedMessageSocketBase.Send(Received, Message, SendFlags)` (public)
+  - `Received.RoutingIdSnapshotRef` (internal accessor — 위 overload 전용)
+  - `RoutingIdSnapshot.WriteTo(ref ZlinkRoutingId)` (internal — 위 overload 전용)
+  - `SocketKernel.SendFromSnapshot{,Result}Unchecked` (internal backers)
+  - `PerfMultiRouterRouterServer` / `PerfMultiDealerRouterServer` 의 `server.Send(receivedBuffer, ...)` 호출 → `server.Send(routingId, bodyMessage, ...)` 복원.
+- 유지한 항목 (내부 구현 정정, public API 무영향):
+  - `SendSingleNoWaitResultCore(message)` / `SendSingleNoWaitResultCore(routingId, message)` 가 `[SuppressGCTransition]` `zlink_send_part_nowait` / `zlink_send_part_rid_nowait` 변형으로 dispatch. DontWaitFlag 가 설정된 호출은 non-blocking 이 계약이므로 GC safepoint 우회 안전.
+- 측정 결과 (revert 후 3-run median, tcp):
+  - `MULTI_DEALER_ROUTER`: 64 `265958` (`0.592`), 256 `263795` (`0.572`), 1024 `262493` (`0.574`)
+  - `MULTI_ROUTER_ROUTER`: 64 `225925` (`0.521`), 256 `224852` (`0.523`), 1024 `225023` (`0.534`)
+- 분석:
+  - public overload 가 있던 round-9 측정 (DR `~0.60`, RR `~0.53`) 과 비교해 측정 변동 폭 (±3%) 안에 위치. 따라서 round-9 의 perf 개선은 사실상 `_nowait` dispatch fix 한 가지에서 왔고 새 public overload 는 perf 가산점 없이 surface 만 늘렸다는 게 확인됐다.

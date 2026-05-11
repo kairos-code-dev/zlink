@@ -929,3 +929,34 @@
   - 64KB만 문제가 되는 이유는 메시지 크기가 커지면서 100개 client socket의 in-flight 데이터가 수 MB 단위로 커지고, 그때 C++ client hot loop의 재송신 타이밍, reply buffer 보유 시간, poll event materialize 비용이 큐 압력과 RTT에 직접 반영되기 때문이다.
   - 작은 메시지는 CPU wrapper 비용이 보이지만 target 기준이 낮고 in-flight byte 압력이 작아 통과한다. 64KB는 memory bandwidth, socket buffer, HWM, poll scheduling이 함께 걸려 같은 wrapper 차이가 throughput gap으로 확대된다.
   - 다음 라운드는 C++ client의 public API 경로 안에서 `poller_t` event materialize 비용과 routed recv source id 복사 비용을 더 줄일 수 있는지 분리 측정한다.
+
+### 2026-05-11 C++ round 24
+
+- 동일 조합 C 결과 (5-run, 같은 하드웨어):
+  - `MULTI_DEALER_ROUTER,tcp,65536,throughput,184544.200`
+  - `MULTI_ROUTER_ROUTER,tcp,65536,throughput,179500.000`
+- 대상 라이브러리 결과 (5-run):
+  - `MULTI_DEALER_ROUTER,tcp,65536,throughput,131022.600` ratio `0.71`
+  - `MULTI_ROUTER_ROUTER,tcp,65536,throughput,123904.800` ratio `0.69`
+- 분산 관찰:
+  - 동일 binary로 3-run avg와 5-run avg에서 ratio가 `0.69 ~ 0.92` 범위로 흔들렸다. 1초 단위 시스템 부하 변동(WSL2 호스트)의 영향.
+  - 같은 코드를 30초 윈도우(5-run × 5s)로 보면 평균은 `0.7` 대로 회귀해 보이지만, 개별 5초 측정에서는 종종 target을 만족했다.
+- 시도한 가설:
+  1. `poller_t::wait_all_poll_items_into_impl`이 `events_.clear()` + `push_back` 패턴으로 매 wait마다 N개의 `poll_event_t` (std::optional + std::any 멤버 포함)를 소멸/재생성. in-place fill + 끝에서 `resize(out)`로 바꾸면 destroy/construct cycle을 한 번씩 줄일 수 있다.
+  2. `routing_id_t::assign_native`이 round 22에서 `memset(257)` + `memcpy(size)`로 작성됐는데, 실제로는 `_native = native_` (단일 struct 대입, 두 SSE move)이 더 적은 메모리 작업으로 끝난다. zlink core는 source rid의 trailing 바이트를 미리 0으로 채워주므로 invariant도 유지된다.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/types.hpp`: `assign_native`을 단일 struct 대입으로 단순화.
+- 배제한 가설:
+  - `poller_t` in-place events_ fill: 5-run 측정에서 perf-neutral. revert.
+- 실행한 검증 명령:
+  - `cmake --build core/build`
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_dealer_router_client cpp_comp_src_router_router_client cpp_comp_src_dealer_router_server cpp_comp_src_router_router_server test_cpp_contract_message test_cpp_contract_socket`
+  - `ctest --test-dir bindings/cpp/build -R '^(test_cpp_contract_message|test_cpp_contract_socket)$' --output-on-failure`
+  - DR/RR 65K 측정 3-run × 3회 + 5-run × 1회.
+- 결과:
+  - `assign_native` 단순화: 측정 노이즈 범위 내. 코드/instruction 측면에서 정리.
+  - poller in-place: 측정 노이즈 범위 내. revert.
+- 다음 판단:
+  - 핫패스 send/recv path는 C 레퍼런스와 native 호출 단위로 동등하다 (`zlink_send_part` DEALER fast path, `zlink_send_part_rid` ROUTER+FINAL fast path, `zlink_router_recv_part` + 257B struct copy).
+  - 65KB 갭은 wrapper-level의 단일 hotspot보다, 100 client × 65KB × in-flight 큐 압력에 대한 hot-loop scheduling/latency 누적이 작은 차이로 vary. 측정 분산도 ±20% 범위.
+  - 추가 진전은 (a) 실제 perf record/eBPF sampling으로 runtime hotspot 식별, (b) DR/RR 클라이언트의 in-flight 윈도우/배치 발송 정책 재설계, 또는 (c) 측정 환경(WSL2) 대신 안정된 native Linux로 baseline 확정 중 하나가 필요하다. 이번 라운드에서는 무리하게 더 진행하지 않는다.

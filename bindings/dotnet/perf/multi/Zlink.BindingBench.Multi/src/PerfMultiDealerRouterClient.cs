@@ -206,10 +206,11 @@ internal static class PerfMultiDealerRouterClient
         if (!readReady && !slot.WaitingForReply)
             return;
 
+        DealerSocket dealerSock = (DealerSocket)slot.Socket;
+        Received receivedMessage = slot.ReusableReceived;
         while (true)
         {
-            using Received? receivedMessage = TryRecvNoWait((DealerSocket)slot.Socket);
-            if (receivedMessage == null)
+            if (!dealerSock.Recv(receivedMessage, RecvFlags.DontWait))
                 break;
 
             if (!slot.WaitingForReply)
@@ -251,14 +252,10 @@ internal static class PerfMultiDealerRouterClient
             }
 
             if (!allowSend)
-            {
-                DisposeReceived(receivedMessage);
                 continue;
-            }
 
             slot.WaitingForWritable = false;
             UpdatePollMask(slot, eventMasks, slotIndex);
-            DisposeReceived(receivedMessage);
         }
     }
 
@@ -303,10 +300,6 @@ internal static class PerfMultiDealerRouterClient
         return ((DealerSocket)slot.Socket).Send(message, SendFlags.DontWait);
     }
 
-    private static void DisposeReceived(Received? received)
-    {
-    }
-
     private static int RemainingMilliseconds(long deadlineTicks)
     {
         long nowTicks = Stopwatch.GetTimestamp();
@@ -326,10 +319,15 @@ internal static class PerfMultiDealerRouterClient
         {
             Socket = socket;
             Payload = payload;
+            ReusableReceived = new Received();
         }
 
         internal SocketBase Socket { get; }
         internal byte[] Payload { get; }
+        // Caller-provided storage reused across every recv on this slot.
+        // The binding overwrites the internal state in place, avoiding the
+        // per-recv Received allocation.
+        internal Received ReusableReceived { get; }
         internal bool WaitingForReply { get; set; }
         internal bool WaitingForWritable { get; set; }
     }
@@ -352,8 +350,4 @@ internal static class PerfMultiDealerRouterClient
         internal uint Rng { get; set; }
     }
 
-    private static Received? TryRecvNoWait(DealerSocket socket)
-    {
-        return socket.Recv(RecvFlags.DontWait);
-    }
 }

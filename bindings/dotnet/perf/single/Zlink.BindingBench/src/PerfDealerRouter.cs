@@ -164,17 +164,15 @@ internal static class PerfDealerRouter
             if (!WaitForInput(poller, events, timeoutMs))
                 continue;
 
-            while (TryReceive(receiver, out Received? received))
+            var receivedBuffer = new Received();
+            while (TryReceive(receiver, receivedBuffer))
             {
-                using (received)
-                {
-                    if (!TryGetPayloadPart(received, out Message payloadPart))
-                        continue;
+                if (!TryGetPayloadPart(receivedBuffer, out Message payloadPart))
+                    continue;
 
-                    return TryDecodeExpectedSingleHeader(
-                        payloadPart.AsReadOnlySpan(), msgSize, ReadyPhase,
-                        out _, RunId);
-                }
+                return TryDecodeExpectedSingleHeader(
+                    payloadPart.AsReadOnlySpan(), msgSize, ReadyPhase,
+                    out _, RunId);
             }
 
         }
@@ -271,18 +269,13 @@ internal static class PerfDealerRouter
         senderThread.IsBackground = true;
         senderThread.Start();
 
+        var receivedBuffer = new Received();
         while (!stopReceived)
         {
-            if (!TryReceiveBlocking(receiver, out Received? receivedMessage))
+            if (!TryReceiveBlocking(receiver, receivedBuffer))
                 continue;
-            using (receivedMessage)
-            {
-                if (receivedMessage != null
-                    && ProcessReceived(receivedMessage))
-                {
-                    stopReceived = true;
-                }
-            }
+            if (ProcessReceived(receivedBuffer))
+                stopReceived = true;
         }
 
         senderThread.Join();
@@ -298,45 +291,37 @@ internal static class PerfDealerRouter
         return received > 0 && latencySamples.Count > 0;
     }
 
-    private static bool TryReceive(RouterSocket receiver,
-        out Received? receivedMessage)
+    private static bool TryReceive(RouterSocket receiver, Received result)
     {
         try
         {
-            receivedMessage = receiver.Recv(RecvFlags.DontWait);
-            return receivedMessage != null;
+            return receiver.Recv(result, RecvFlags.DontWait);
         }
-        catch (ZlinkRecvException ex)
+        catch (ZlinkRecvException)
         {
-            receivedMessage = null;
             return false;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                         || IsWouldBlock(ex.InternalErrno))
         {
-            receivedMessage = null;
             return false;
         }
     }
 
-    private static bool TryReceiveBlocking(RouterSocket receiver,
-        out Received? receivedMessage)
+    private static bool TryReceiveBlocking(RouterSocket receiver, Received result)
     {
         try
         {
-            receivedMessage = receiver.Recv();
-            return receivedMessage != null;
+            return receiver.Recv(result);
         }
         catch (ZlinkRecvException ex) when (IsInterrupted(ex.InternalErrno)
                                             || IsWouldBlock(ex.InternalErrno))
         {
-            receivedMessage = null;
             return false;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                         || IsWouldBlock(ex.InternalErrno))
         {
-            receivedMessage = null;
             return false;
         }
     }

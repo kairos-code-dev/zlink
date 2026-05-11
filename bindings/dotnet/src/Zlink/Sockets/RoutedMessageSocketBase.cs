@@ -102,17 +102,40 @@ public abstract class RoutedMessageSocketBase : SocketBase
         Kernel.RecvHandler(handler);
     }
 
+    /// <summary>
+    /// Receive a routed message into <paramref name="result"/>. Caller-provided
+    /// storage is the canonical recv shape; reuse the same Received instance
+    /// across calls to avoid per-recv allocation. See
+    /// doc/spec/bindings/README.md "Canonical Recv: Caller-Provided Storage".
+    /// </summary>
+    /// <param name="result">Long-lived Received storage. Internal state is
+    /// reset and refilled on each successful call.</param>
+    /// <param name="flags">Recv flags. With <see cref="RecvFlags.DontWait"/>,
+    /// returns <c>false</c> when no data is available; otherwise blocks
+    /// until data arrives or the socket reports a hard error.</param>
+    /// <returns>true on success, false when DontWait is set and no data is
+    /// available.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Received? Recv(RecvFlags flags = RecvFlags.None)
+    public bool Recv(Received result, RecvFlags flags = RecvFlags.None)
     {
-        return (flags & RecvFlags.DontWait) != 0
-            ? Kernel.ReceiveRoutedNoWaitUnchecked()
-            : Kernel.ReceiveRoutedUnchecked(flags);
+        return Kernel.ReceiveRoutedInto(result, (int)flags);
     }
 
-    internal Received? RecvNoWait()
+    /// <summary>
+    /// Legacy convenience overload that allocates a fresh
+    /// <see cref="Received"/> per call. Prefer
+    /// <see cref="Recv(Received, RecvFlags)"/> in any hot path. This overload
+    /// exists to keep existing call sites compiling during the migration
+    /// to the canonical caller-provided-storage recv shape.
+    /// </summary>
+    [Obsolete("Use Recv(Received result, RecvFlags) — pass caller-provided storage to avoid the per-recv allocation.")]
+    public Received? Recv(RecvFlags flags = RecvFlags.None)
     {
-        return Kernel.ReceiveRoutedNoWaitUnchecked();
+        var result = new Received();
+        if (Recv(result, flags))
+            return result;
+        result.Dispose();
+        return null;
     }
 
     public void OnSendReady(Action handler)

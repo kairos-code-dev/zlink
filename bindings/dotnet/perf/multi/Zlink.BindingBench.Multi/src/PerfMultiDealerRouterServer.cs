@@ -37,6 +37,7 @@ internal static class PerfMultiDealerRouterServer
         var sockets = new[] { (SocketBase)server };
         var eventMasks = new[] { SocketPollIn };
         var pendingReplies = new Queue<PendingReply>();
+        var receivedBuffer = new Received();
 
         bool stop = false;
         while (!stop)
@@ -61,14 +62,13 @@ internal static class PerfMultiDealerRouterServer
 
             while (true)
             {
-                using Received? received = TryRecvNoWait(server);
-                if (received == null)
+                if (!TryRecvNoWait(server, receivedBuffer))
                     break;
 
                 // Skip Parts.Count: it materializes a
                 // MultipartMessageCollection wrapper around the lazy
                 // single-part message (one heap alloc per recv).
-                Message bodyMessage = received.SinglePartOrThrow();
+                Message bodyMessage = receivedBuffer.SinglePartOrThrow();
                 ReadOnlySpan<byte> body = bodyMessage.AsReadOnlySpan();
                 if (IsStopTokenPayload(body))
                 {
@@ -76,9 +76,9 @@ internal static class PerfMultiDealerRouterServer
                     break;
                 }
 
-                if (received.RoutingId == null)
+                if (receivedBuffer.RoutingId == null)
                     return 2;
-                RoutingId routingId = received.RoutingId.Value;
+                RoutingId routingId = receivedBuffer.RoutingId.Value;
 
                 if (pendingReplies.Count == 0
                     && server.Send(routingId, bodyMessage, SendFlags.DontWait))
@@ -134,9 +134,9 @@ internal static class PerfMultiDealerRouterServer
         return true;
     }
 
-    private static Received? TryRecvNoWait(RouterSocket socket)
+    private static bool TryRecvNoWait(RouterSocket socket, Received result)
     {
-        return socket.Recv(RecvFlags.DontWait);
+        return socket.Recv(result, RecvFlags.DontWait);
     }
 
     private sealed class PendingReply : IDisposable

@@ -227,10 +227,11 @@ internal static class PerfMultiRouterRouterClient
         if (!readReady && !slot.WaitingForReply)
             return;
 
+        RouterSocket routerSock = (RouterSocket)slot.Socket;
+        Received receivedMessage = slot.ReusableReceived;
         while (true)
         {
-            using Received? receivedMessage = TryRecvNoWait((RouterSocket)slot.Socket);
-            if (receivedMessage == null)
+            if (!routerSock.Recv(receivedMessage, RecvFlags.DontWait))
                 break;
 
             if (!slot.WaitingForReply)
@@ -369,11 +370,14 @@ internal static class PerfMultiRouterRouterClient
             Socket = socket;
             ServerRoutingId = serverRoutingId;
             Payload = payload;
+            ReusableReceived = new Received();
         }
 
         internal SocketBase Socket { get; }
         internal RoutingId ServerRoutingId { get; }
         internal byte[] Payload { get; }
+        // Caller-provided storage reused across every recv on this slot.
+        internal Received ReusableReceived { get; }
         internal bool WaitingForWritable { get; set; }
         internal bool WaitingForReply { get; set; }
     }
@@ -396,8 +400,4 @@ internal static class PerfMultiRouterRouterClient
         internal uint Rng { get; set; }
     }
 
-    private static Received? TryRecvNoWait(RouterSocket socket)
-    {
-        return socket.Recv(RecvFlags.DontWait);
-    }
 }

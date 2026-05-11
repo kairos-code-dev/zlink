@@ -41,6 +41,7 @@ internal static class PerfMultiSpotReqRep
             using var poller = new Poller();
             var events = new List<PollEvent>(1);
             poller.Add(responder, PollEventFlags.PollIn);
+            var receivedBuffer = new Received();
             while (Volatile.Read(ref stopRequested) == 0
                    && Volatile.Read(ref stopTokenSeen) == 0)
             {
@@ -49,18 +50,17 @@ internal static class PerfMultiSpotReqRep
 
                 while (true)
                 {
-                    using Received? received = responder.Recv(RecvFlags.DontWait);
-                    if (received == null)
+                    if (!responder.Recv(receivedBuffer, RecvFlags.DontWait))
                         break;
 
-                    RoutingId routingId = received.RoutingId
+                    RoutingId routingId = receivedBuffer.RoutingId
                         ?? throw new InvalidOperationException("missing routing id");
-                    ulong requestSeq = received.RequestSeq ?? 0UL;
+                    ulong requestSeq = receivedBuffer.RequestSeq ?? 0UL;
                     ReadOnlySpan<byte> body =
-                        received.FirstPart().AsReadOnlySpan();
+                        receivedBuffer.FirstPart().AsReadOnlySpan();
                     bool isStop = StopToken.IsStopToken(body);
 
-                    using Message reply = received.FirstPart().Move();
+                    using Message reply = receivedBuffer.FirstPart().Move();
                     responder.Reply(routingId, requestSeq, reply);
 
                     if (isStop)

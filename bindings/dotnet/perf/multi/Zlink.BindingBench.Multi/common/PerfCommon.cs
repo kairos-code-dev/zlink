@@ -8,45 +8,32 @@ internal static partial class PerfRunner
 {
     internal delegate bool PayloadHandler(ReadOnlySpan<byte> payload);
 
+    // Thread-local Received storage so the helper can use the canonical
+    // caller-provided-storage recv shape without forcing callers to thread a
+    // Received instance through every helper.
+    [ThreadStatic]
+    private static Received? t_helperReceived;
+
     internal static int ReceiveBlocking(SocketBase socket, Span<byte> buffer,
         RecvFlags flags = RecvFlags.None)
     {
+        Received reusable = t_helperReceived ??= new Received();
         while (true)
         {
             try
             {
                 if (socket is MessageSocketBase messageSocket)
                 {
-                    if ((flags & RecvFlags.DontWait) != 0)
-                    {
-                        using Received? maybe = messageSocket.Recv(flags);
-                        if (maybe == null)
-                        {
-                            return 0;
-                        }
-
-                        return CopyReceivedToBuffer(maybe, buffer);
-                    }
-
-                    using Received received = messageSocket.Recv(flags)!;
-                    return CopyReceivedToBuffer(received, buffer);
+                    if (!messageSocket.Recv(reusable, flags))
+                        return 0;
+                    return CopyReceivedToBuffer(reusable, buffer);
                 }
 
                 if (socket is RoutedMessageSocketBase routedSocket)
                 {
-                    if ((flags & RecvFlags.DontWait) != 0)
-                    {
-                        using Received? maybe = routedSocket.Recv(flags);
-                        if (maybe == null)
-                        {
-                            return 0;
-                        }
-
-                        return CopyReceivedToBuffer(maybe, buffer);
-                    }
-
-                    using Received received = routedSocket.Recv(flags)!;
-                    return CopyReceivedToBuffer(received, buffer);
+                    if (!routedSocket.Recv(reusable, flags))
+                        return 0;
+                    return CopyReceivedToBuffer(reusable, buffer);
                 }
 
                 throw new NotSupportedException(

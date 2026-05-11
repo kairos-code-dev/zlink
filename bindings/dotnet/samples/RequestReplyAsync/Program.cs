@@ -24,7 +24,9 @@ Task serverTask = Task.Run(() =>
 {
     try
     {
-        using Received received = routerSocket.Recv();
+        using var received = new Received();
+        if (!routerSocket.Recv(received))
+            throw new InvalidOperationException("recv failed");
         RoutingId routingId = received.RoutingId
             ?? throw new InvalidOperationException("missing routing id");
         string requestPayload = received.Parts[0].GetString();

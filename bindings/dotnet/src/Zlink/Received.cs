@@ -12,12 +12,22 @@ internal delegate void ReceivedReplyHandler(IReadOnlyList<Message> parts,
 
 public sealed class Received : IDisposable
 {
-    private readonly ReceivedMetadata? _metadata;
+    private ReceivedMetadata? _metadata;
     private RoutingIdSnapshot _routingIdSnapshot;
     private MultipartMessageCollection? _parts;
     private Message? _singlePart;
     private bool _closed;
     private RoutingId? _routingId;
+
+    /// <summary>
+    /// Create an empty <see cref="Received"/> for caller-provided storage.
+    /// Hand the same instance to <c>Recv(Received, ...)</c> across calls to
+    /// avoid the per-recv allocation; the binding overwrites the internal
+    /// state on each successful receive.
+    /// </summary>
+    public Received()
+    {
+    }
 
     internal static Received Create(RoutingId? routingId, Message[] parts,
         ulong? requestSeq = null, RoutingId? spotRid = null,
@@ -249,6 +259,60 @@ public sealed class Received : IDisposable
     internal IEnumerator<Message> GetEnumerator()
     {
         return PartsCollection.GetEnumerator();
+    }
+
+    /// <summary>
+    /// Reset internal state so the same Received can be reused for the next
+    /// Recv call. Owned messages from the previous receive are disposed.
+    /// </summary>
+    internal void ResetForReuse()
+    {
+        if (_singlePart != null)
+        {
+            _singlePart.DisposeNativeOwned();
+            _singlePart = null;
+        }
+        if (_parts != null)
+        {
+            _parts.Dispose();
+            _parts = null;
+        }
+        _routingId = null;
+        _routingIdSnapshot = default;
+        _metadata = null;
+        _closed = false;
+    }
+
+    internal void PopulateSinglePart(Message singlePart)
+    {
+        ResetForReuse();
+        _singlePart = singlePart;
+    }
+
+    internal void PopulateMultipart(MultipartMessageCollection parts)
+    {
+        ResetForReuse();
+        _parts = parts;
+    }
+
+    internal void PopulateRoutedSinglePart(Message singlePart,
+        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
+        ulong? requestSeq, ReceivedReplyHandler? replyHandler)
+    {
+        ResetForReuse();
+        _singlePart = singlePart;
+        _routingIdSnapshot = routingId;
+        _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
+    }
+
+    internal void PopulateRoutedMultipart(MultipartMessageCollection parts,
+        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
+        ulong? requestSeq, ReceivedReplyHandler? replyHandler)
+    {
+        ResetForReuse();
+        _parts = parts;
+        _routingIdSnapshot = routingId;
+        _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
     }
 
     private MultipartMessageCollection PartsCollection

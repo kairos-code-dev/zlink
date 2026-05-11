@@ -37,6 +37,10 @@ internal static class PerfMultiRouterRouterServer
         var sockets = new[] { (SocketBase)server };
         var eventMasks = new[] { SocketPollIn };
         var pendingReplies = new Queue<PendingReply>();
+        // Caller-provided Received reused across every recv on the server
+        // hot path. The binding overwrites the internal state in place,
+        // avoiding the per-recv Received allocation.
+        var receivedBuffer = new Received();
 
         bool stop = false;
         long pollCount = 0;
@@ -77,45 +81,37 @@ internal static class PerfMultiRouterRouterServer
             while (true)
             {
                 long t0 = timing ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
-                Received? received = TryRecvNoWait(server);
-                long t1 = timing ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
-                if (received == null)
+                if (!TryRecvNoWait(server, receivedBuffer))
                 {
-                    if (timing) recvTicks += t1 - t0;
+                    if (timing) recvTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
                     break;
                 }
+                long t1 = timing ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                 drainCount++;
 
-                Message bodyMessage = received.SinglePartOrThrow();
+                Message bodyMessage = receivedBuffer.SinglePartOrThrow();
                 ReadOnlySpan<byte> body = bodyMessage.AsReadOnlySpan();
                 if (IsStopTokenPayload(body))
                 {
-                    received.Dispose();
                     stop = true;
                     break;
                 }
                 long t2 = timing ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
 
-                if (received.RoutingId == null)
-                {
-                    received.Dispose();
+                if (receivedBuffer.RoutingId == null)
                     return 2;
-                }
-                RoutingId routingId = received.RoutingId.Value;
+                RoutingId routingId = receivedBuffer.RoutingId.Value;
 
                 if (pendingReplies.Count == 0
                     && server.Send(routingId, bodyMessage, SendFlags.DontWait))
                 {
                     sendCount++;
                     long t3 = timing ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
-                    received.Dispose();
-                    long t4 = timing ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                     if (timing)
                     {
                         recvTicks += t1 - t0;
                         bodyTicks += t2 - t1;
                         sendTicks += t3 - t2;
-                        disposeTicks += t4 - t3;
                     }
                     continue;
                 }
@@ -125,10 +121,8 @@ internal static class PerfMultiRouterRouterServer
                         reply))
                 {
                     reply.Dispose();
-                    received.Dispose();
                     return 2;
                 }
-                received.Dispose();
             }
         }
 
@@ -189,9 +183,9 @@ internal static class PerfMultiRouterRouterServer
         return true;
     }
 
-    private static Received? TryRecvNoWait(RouterSocket socket)
+    private static bool TryRecvNoWait(RouterSocket socket, Received result)
     {
-        return socket.Recv(RecvFlags.DontWait);
+        return socket.Recv(result, RecvFlags.DontWait);
     }
 
     private sealed class PendingReply : IDisposable

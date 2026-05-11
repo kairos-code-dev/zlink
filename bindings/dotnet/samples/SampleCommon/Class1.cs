@@ -105,7 +105,9 @@ public static class SampleSupport
     public static string ReceiveUtf8(MessageSocketBase socket, int timeoutMs)
     {
         _ = timeoutMs;
-        using Received received = socket.Recv();
+        using var received = new Received();
+        if (!socket.Recv(received))
+            throw new InvalidOperationException("recv failed");
         if (received.Parts.Count == 0)
             throw new InvalidOperationException(
                 "Expected at least one message part.");

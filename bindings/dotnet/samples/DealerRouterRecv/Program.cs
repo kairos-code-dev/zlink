@@ -16,7 +16,9 @@ SampleSupport.WaitConnected(routerMonitor, dealerMonitor);
 
 using (Message request = Message.FromString("ping"))
     dealer.Send(request);
-using Received received = router.Recv();
+using var received = new Received();
+if (!router.Recv(received))
+    throw new InvalidOperationException("recv failed");
 RoutingId routingId = received.RoutingId
     ?? throw new InvalidOperationException("missing routing id");
 string requestPayload = received.Parts[0].GetString();

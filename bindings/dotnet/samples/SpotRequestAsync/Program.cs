@@ -18,7 +18,9 @@ requesterNode.AttachChannelDealerManual(channelName, requesterDealer);
 
 Task responderTask = Task.Run(() =>
 {
-    using Received received = responderRouter.Recv();
+    using var received = new Received();
+    if (!responderRouter.Recv(received))
+        throw new InvalidOperationException("recv failed");
     RoutingId routingId = received.RoutingId
         ?? throw new InvalidOperationException("missing routing id");
     string requestPayload = received.Parts[0].GetString();

@@ -1478,6 +1478,110 @@ internal sealed class SocketKernel : IDisposable
             : CreateRoutedReceived(parts!, routingId, spotRid, requestSeq);
     }
 
+    // Canonical ref-out recv: caller provides Received storage and the
+    // kernel rewrites its internal state on each successful receive. Avoids
+    // the per-call Received allocation that the legacy Recv() returning
+    // Received? incurs. See doc/spec/bindings/README.md
+    // "Canonical Recv: Caller-Provided Storage".
+
+    internal bool ReceiveInto(Received result, int flags)
+    {
+        EnsureSupports(nameof(ReceiveInto),
+            SocketTypePolicy.SocketCapability.MessageReceive);
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
+        return TryReceiveIntoMessageCore(result, flags);
+    }
+
+    internal bool ReceiveRoutedInto(Received result, int flags)
+    {
+        EnsureSupports(nameof(ReceiveRoutedInto),
+            SocketTypePolicy.SocketCapability.RoutedReceive);
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
+        return TryReceiveIntoRoutedCore(result, flags);
+    }
+
+    private unsafe bool TryReceiveIntoMessageCore(Received result, int flags)
+    {
+        bool allowNoData = (flags & DontWaitFlag) != 0;
+        if (!ReceiveBasicParts(flags, out _, out Message? singlePart,
+                out MultipartMessageCollection? parts,
+                allowNoData: allowNoData))
+        {
+            return false;
+        }
+        if (singlePart != null)
+            result.PopulateSinglePart(singlePart);
+        else
+            result.PopulateMultipart(parts!);
+        return true;
+    }
+
+    private unsafe bool TryReceiveIntoRoutedCore(Received result, int flags)
+    {
+        bool allowNoData = (flags & DontWaitFlag) != 0;
+        if (!ReceiveRoutedParts(flags, out RoutingIdSnapshot routingId,
+                out RoutingIdSnapshot spotRid, out ulong requestSeq,
+                out Message? singlePart, out MultipartMessageCollection? parts,
+                allowNoData: allowNoData))
+        {
+            return false;
+        }
+        PopulateRoutedReceivedInto(result, singlePart, parts, routingId,
+            spotRid, requestSeq);
+        return true;
+    }
+
+    private void PopulateRoutedReceivedInto(Received result,
+        Message? singlePart, MultipartMessageCollection? parts,
+        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
+        ulong requestSeq)
+    {
+        if (requestSeq == 0)
+        {
+            if (singlePart != null)
+                result.PopulateRoutedSinglePart(singlePart, routingId, spotRid,
+                    null, null);
+            else
+                result.PopulateRoutedMultipart(parts!, routingId, spotRid,
+                    null, null);
+            return;
+        }
+
+        // Request-reply context: capture the routing ids and request seq in
+        // a reply handler closure so Received.Reply() can dispatch via the
+        // kernel. This path allocates a RoutingId / byte[] / closure per
+        // recv; non-request-reply routed traffic (the common router-router
+        // / dealer-router echo case) skips this branch entirely.
+        byte[]? routingIdBytes = routingId.ToByteArray();
+        byte[]? spotRidBytes = spotRid.ToByteArray();
+        RoutingId? replyRoutingId = routingIdBytes == null
+            ? null
+            : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
+        RoutingId? replySpotRid = spotRidBytes == null
+            ? null
+            : RoutingId.FromOwnedOptionalBytes(spotRidBytes);
+        ReceivedReplyHandler replyHandler = (replyParts, sendFlags) =>
+        {
+            if (replyRoutingId is null)
+                throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
+                    (int)ErrorCode.EInval);
+            Message[] copied = new Message[replyParts.Count];
+            for (int i = 0; i < copied.Length; i++)
+                copied[i] = replyParts[i];
+            SendReplyCore(replyRoutingId.Value, replySpotRid, requestSeq,
+                copied, sendFlags);
+        };
+
+        if (singlePart != null)
+            result.PopulateRoutedSinglePart(singlePart, routingId, spotRid,
+                requestSeq, replyHandler);
+        else
+            result.PopulateRoutedMultipart(parts!, routingId, spotRid,
+                requestSeq, replyHandler);
+    }
+
     private unsafe byte[][] ReceiveRawFramesCore(int flags)
     {
         return ReceiveRawFrameSequence(flags, includeRoutingFrames: true)

@@ -18,7 +18,9 @@ NetworkStream network = client.GetStream();
 byte[] request = "hello-stream"u8.ToArray();
 SampleSupport.SendAll(network, request);
 
-using Received received = stream.Recv();
+using var received = new Received();
+if (!stream.Recv(received))
+    throw new InvalidOperationException("recv failed");
 RoutingId routingId = received.RoutingId
     ?? throw new InvalidOperationException("missing routing id");
 string payload = received.Parts[0].GetString();

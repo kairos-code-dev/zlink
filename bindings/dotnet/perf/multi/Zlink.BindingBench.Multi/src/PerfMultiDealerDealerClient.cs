@@ -97,6 +97,7 @@ internal static class PerfMultiDealerDealerClient
         // arrives from the server.
         var stoppedClients = new bool[activeClients.Count];
         int stoppedCount = 0;
+        var receivedBuffer = new Received();
         while (stoppedCount < activeClients.Count)
         {
             if (PollSocketReadReady(pollManager, activeClients,
@@ -108,14 +109,13 @@ internal static class PerfMultiDealerDealerClient
                 if (stoppedClients[i] || !IsSocketReadReady(pollManager, i))
                     continue;
 
+                DealerSocket dealerSock = (DealerSocket)activeClients[i];
                 while (true)
                 {
-                    using Received? received = TryRecvNoWait(
-                        (DealerSocket)activeClients[i]);
-                    if (received == null)
+                    if (!TryRecvNoWait(dealerSock, receivedBuffer))
                         break;
 
-                    ReadOnlySpan<byte> body = received.SinglePartOrThrow()
+                    ReadOnlySpan<byte> body = receivedBuffer.SinglePartOrThrow()
                         .AsReadOnlySpan();
                     if (IsStopTokenPayload(body))
                     {
@@ -160,8 +160,8 @@ internal static class PerfMultiDealerDealerClient
         return (throughput, latencyNs, latencyP95Ns, latencyP99Ns, measureCount);
     }
 
-    private static Received? TryRecvNoWait(DealerSocket socket)
+    private static bool TryRecvNoWait(DealerSocket socket, Received result)
     {
-        return socket.Recv(RecvFlags.DontWait);
+        return socket.Recv(result, RecvFlags.DontWait);
     }
 }

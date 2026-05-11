@@ -1026,30 +1026,35 @@ func (s *directSocket) TrySend(parts ...*Message) (bool, error) {
 	return s.Send(SendFlagsDontWait, parts...)
 }
 
-func (s *directSocket) Recv(flags RecvFlags) (*Received, error) {
+// Recv is the canonical caller-provided storage recv. Pass a long-lived
+// *Received and the binding refills its internal state in place each
+// successful call.
+//
+// Returns (true, nil) on success, (false, nil) when RecvFlagsDontWait
+// finds no data, (false, *RecvError) on hard error.
+//
+// See doc/spec/bindings/README.md "Canonical Recv: Caller-Provided Storage".
+func (s *directSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
+	if out == nil {
+		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+	}
 	var sourceRID *C.zlink_routing_id_t
 	clonedParts, err := recvMultipart(func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t) error {
 		return recvErrorFromResult(C.zlink_recv_part(s.raw(), &sourceRID, part, hasMore, C.zlink_recv_flags_t(flags)))
 	})
 	if err != nil {
-		return nil, err
+		var recvErr *RecvError
+		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+			return false, nil
+		}
+		return false, err
 	}
-	return &Received{
+	fresh := &Received{
 		routingID: routingIDFromCPtr(sourceRID),
 		parts:     clonedParts,
-	}, nil
-}
-
-func (s *directSocket) TryRecv() (*Received, bool, error) {
-	received, err := s.Recv(RecvFlagsDontWait)
-	if err == nil {
-		return received, true, nil
 	}
-	var recvErr *RecvError
-	if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
-		return nil, false, nil
-	}
-	return nil, false, err
+	out.AdoptFrom(fresh)
+	return true, nil
 }
 
 func (s *directSocket) onReceive(handler func(*Received)) error {
@@ -1214,23 +1219,27 @@ func (s *routedSocket) directRecv(flags RecvFlags) (*Received, error) {
 	return received, nil
 }
 
-func (s *routedSocket) Recv(flags RecvFlags) (*Received, error) {
+// Recv is the canonical caller-provided storage recv. Returns
+// (true, nil) on success, (false, nil) when RecvFlagsDontWait finds no
+// data, (false, *RecvError) on hard error. See
+// doc/spec/bindings/README.md "Canonical Recv: Caller-Provided Storage".
+func (s *routedSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
+	if out == nil {
+		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+	}
 	if s.recvHandle != 0 {
-		return nil, &RecvError{Result: RecvBusy, internalErrno: int(C.EBUSY)}
+		return false, &RecvError{Result: RecvBusy, internalErrno: int(C.EBUSY)}
 	}
-	return s.directRecv(flags)
-}
-
-func (s *routedSocket) TryRecv() (*Received, bool, error) {
-	received, err := s.Recv(RecvFlagsDontWait)
-	if err == nil {
-		return received, true, nil
+	fresh, err := s.directRecv(flags)
+	if err != nil {
+		var recvErr *RecvError
+		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+			return false, nil
+		}
+		return false, err
 	}
-	var recvErr *RecvError
-	if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
-		return nil, false, nil
-	}
-	return nil, false, err
+	out.AdoptFrom(fresh)
+	return true, nil
 }
 
 func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (<-chan requestResult, error) {
@@ -1903,12 +1912,10 @@ func (s *StreamSocket) TrySendTo(target RoutingID, parts ...*Message) (bool, err
 	return s.SendTo(target, SendFlagsDontWait, parts...)
 }
 
-func (s *StreamSocket) Recv(flags RecvFlags) (*Received, error) {
-	return (&directSocket{connectionSocket: s.core.connectionSocket}).Recv(flags)
-}
-
-func (s *StreamSocket) TryRecv() (*Received, bool, error) {
-	return (&directSocket{connectionSocket: s.core.connectionSocket}).TryRecv()
+// Recv is the canonical caller-provided storage recv. See
+// doc/spec/bindings/README.md "Canonical Recv: Caller-Provided Storage".
+func (s *StreamSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
+	return (&directSocket{connectionSocket: s.core.connectionSocket}).Recv(out, flags)
 }
 
 func (s *StreamSocket) OnPacket(handler func(RoutingID, *Message, *Message)) error {

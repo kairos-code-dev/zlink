@@ -95,7 +95,9 @@ func (r *dealerRequestSupport) TryRequestCallback(callback RequestReplyCallback,
 	return r.requestCallback(callback, SendFlagsDontWait, timeout, parts...)
 }
 
-func (r *dealerRequestSupport) Recv(flags RecvFlags) (*Received, error) { return r.socket.Recv(flags) }
+func (r *dealerRequestSupport) Recv(out *Received, flags RecvFlags) (bool, error) {
+	return r.socket.Recv(out, flags)
+}
 
 func (r *dealerRequestSupport) onReceive(handler func(*Received)) error {
 	return r.socket.onReceive(handler)

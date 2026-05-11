@@ -339,7 +339,12 @@ func (s *PairSocket) DisconnectRID(rid RoutingID) error
 // Send submits parts on the socket. Returns (false, nil) only for temporary backpressure.
 func (s *PairSocket) Send(flags SendFlags, parts ...*Message) (bool, error)
 // Recv receives a message. Returns *RecvError on failure.
+// Deprecated: use RecvInto with caller-provided storage.
 func (s *PairSocket) Recv(flags RecvFlags) (*Received, error)
+// RecvInto is the canonical caller-provided storage recv. Returns
+// (true, nil) on success, (false, nil) when RecvFlagsDontWait finds no
+// data, (false, *RecvError) on hard error.
+func (s *PairSocket) RecvInto(out *Received, flags RecvFlags) (bool, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *PairSocket) OnSendReady(handler func()) error
 // Option setters/getters return *ConfigError on failure.
@@ -454,7 +459,10 @@ func (s *DealerSocket) ChannelName() (string, error)
 // Send submits parts on the socket. Returns (false, nil) only for temporary backpressure.
 func (s *DealerSocket) Send(flags SendFlags, parts ...*Message) (bool, error)
 // Recv receives a message. Returns *RecvError on failure.
+// Deprecated: use RecvInto with caller-provided storage.
 func (s *DealerSocket) Recv(flags RecvFlags) (*Received, error)
+// RecvInto is the canonical caller-provided storage recv.
+func (s *DealerSocket) RecvInto(out *Received, flags RecvFlags) (bool, error)
 // Request performs a synchronous request — blocks until reply or timeout.
 // timeout = 0 uses the socket default timeout.
 // Returns *SubmitError on submit failure, *RequestError on reply failure
@@ -502,7 +510,10 @@ func (s *RouterSocket) Weight() (int, error)
 // SendTo submits parts to a specific peer. Returns (false, nil) only for temporary backpressure.
 func (s *RouterSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) (bool, error)
 // Recv receives a message. Returns *RecvError on failure.
+// Deprecated: use RecvInto with caller-provided storage.
 func (s *RouterSocket) Recv(flags RecvFlags) (*Received, error)
+// RecvInto is the canonical caller-provided storage recv.
+func (s *RouterSocket) RecvInto(out *Received, flags RecvFlags) (bool, error)
 // Request performs a synchronous request to a specific peer — blocks until
 // reply or timeout. timeout = 0 uses the socket default timeout.
 // Returns *SubmitError on submit failure, *RequestError on reply failure
@@ -631,7 +642,10 @@ func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Messa
 //   (1) Recv, (2) OnPacket(handler). Second attach on the same stream
 //   returns *HandlerError{Code: HandlerResultBusy}.
 // Recv receives a message. Returns *RecvError on failure.
+// Deprecated: use RecvInto with caller-provided storage.
 func (s *StreamSocket) Recv(flags RecvFlags) (*Received, error)
+// RecvInto is the canonical caller-provided storage recv.
+func (s *StreamSocket) RecvInto(out *Received, flags RecvFlags) (bool, error)
 // OnPacket registers the framed packet callback mapped to
 // zlink_stream_packet_handler. The wire frame is big-endian uint16
 // header_size + uint32 body_size + header + body. The handler receives the

@@ -207,6 +207,37 @@ func (r *Received) Parts() []*Message {
 	return r.parts
 }
 
+// AdoptFrom replaces r's internal state with the contents of source.
+// Any messages currently owned by r are closed first; source is left in
+// an empty (already-detached) state after the call. Used by Socket.RecvInto
+// and equivalents to refill caller-provided Received storage without
+// allocating a new value per call. See doc/spec/bindings/README.md
+// "Canonical Recv: Caller-Provided Storage".
+func (r *Received) AdoptFrom(source *Received) {
+	if r == nil || source == nil || r == source {
+		return
+	}
+	// Close any prior owned parts.
+	for _, part := range r.parts {
+		if part != nil {
+			part.Close()
+		}
+	}
+	r.routingID = source.routingID
+	r.spotRID = source.spotRID
+	r.parts = source.parts
+	r.requestSeq = source.requestSeq
+	r.hasRequestSeq = source.hasRequestSeq
+	r.reply = source.reply
+	// Detach source so its lifecycle no-ops.
+	source.routingID = RoutingID{}
+	source.spotRID = RoutingID{}
+	source.parts = nil
+	source.requestSeq = 0
+	source.hasRequestSeq = false
+	source.reply = nil
+}
+
 func (r *Received) RequestSeq() uint64 {
 	if r == nil {
 		return 0

@@ -62,7 +62,9 @@ public class CallbackSendContractTest {
             TestSupport.allowTcpRequestReplyCallbackHandshakeToSettle();
 
             Thread routerThread = new Thread(() -> {
-                try (var received = router.recv()) {
+                try (systems.zlink.Received received = new systems.zlink.Received()) {
+
+                    router.recv(received, systems.zlink.RecvFlags.NONE);
                     RoutingId rid = received.routingId().orElseThrow();
                     assertNotNull(rid,
                         "router must receive routing id from dealer");
@@ -123,7 +125,9 @@ public class CallbackSendContractTest {
             }
 
             Thread rightThread = new Thread(() -> {
-                try (var received = right.recv()) {
+                try (systems.zlink.Received received = new systems.zlink.Received()) {
+
+                    right.recv(received, systems.zlink.RecvFlags.NONE);
                     byte[] data = received.singlePartOrThrow().toByteArray();
                     assertEquals("ping",
                         new String(data, StandardCharsets.UTF_8));
@@ -137,7 +141,9 @@ public class CallbackSendContractTest {
             rightThread.start();
 
             Thread leftThread = new Thread(() -> {
-                try (var received = left.recv()) {
+                try (systems.zlink.Received received = new systems.zlink.Received()) {
+
+                    left.recv(received, systems.zlink.RecvFlags.NONE);
                     replyPayload.set(received.singlePartOrThrow().toByteArray());
                 } catch (Throwable t) {
                     callbackError.set(t);
@@ -192,7 +198,9 @@ public class CallbackSendContractTest {
                     TestSupport.allowTcpRequestReplyCallbackHandshakeToSettle();
 
                     Thread routerThread = new Thread(() -> {
-                        try (var received = router.recv()) {
+                        try (systems.zlink.Received received = new systems.zlink.Received()) {
+
+                            router.recv(received, systems.zlink.RecvFlags.NONE);
                             RoutingId rid = received.routingId().orElseThrow();
                             byte[] data = received.singlePartOrThrow()
                                 .toByteArray();

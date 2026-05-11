@@ -50,7 +50,9 @@ public final class RequestReplyTerminationProbe {
                 server = CompletableFuture.runAsync(() -> {
                     try {
                         log("server recv wait");
-                        try (Received received = routerSocket.recv()) {
+                        try (systems.zlink.Received received = new systems.zlink.Received()) {
+
+                            routerSocket.recv(received, systems.zlink.RecvFlags.NONE);
                             log("server recv got");
                             if (!received.requestSeq().isPresent()) {
                                 throw new IllegalStateException("missing request seq");
@@ -65,7 +67,9 @@ public final class RequestReplyTerminationProbe {
             } else {
                 server = CompletableFuture.runAsync(() -> {
                     log("server recv wait");
-                    try (Received received = routerSocket.recv()) {
+                    try (systems.zlink.Received received = new systems.zlink.Received()) {
+
+                        routerSocket.recv(received, systems.zlink.RecvFlags.NONE);
                         log("server recv got");
                         if (!received.requestSeq().isPresent()) {
                             throw new IllegalStateException("missing request seq");

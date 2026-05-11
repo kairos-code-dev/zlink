@@ -36,7 +36,10 @@ public class CallbackModeContractTest {
                 right.send(outbound);
             }
 
-            try (var received = left.recv()) {
+            try (systems.zlink.Received received = new systems.zlink.Received()) {
+
+
+                left.recv(received, systems.zlink.RecvFlags.NONE);
                 assertArrayEquals("callback-body".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
                 assertTrue(received.isSinglePart());

@@ -85,7 +85,10 @@ public class SocketContractTest {
                 client.send(outbound);
             }
 
-            try (var received = server.recv()) {
+            try (systems.zlink.Received received = new systems.zlink.Received()) {
+
+
+                server.recv(received, systems.zlink.RecvFlags.NONE);
                 assertArrayEquals("pair-contract".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
             }
@@ -105,7 +108,9 @@ public class SocketContractTest {
             dealerSocket.connect(endpoint);
 
             CompletableFuture<Void> server = CompletableFuture.runAsync(() -> {
-                try (Received received = routerSocket.recv()) {
+                try (systems.zlink.Received received = new systems.zlink.Received()) {
+
+                    routerSocket.recv(received, systems.zlink.RecvFlags.NONE);
                     assertArrayEquals("ping".getBytes(StandardCharsets.UTF_8),
                         received.singlePartOrThrow().toByteArray());
                     assertTrue(received.routingId().isPresent());
@@ -142,7 +147,10 @@ public class SocketContractTest {
 
             dealerSocket.send(List.of(Message.copyOfUtf8("plain-data")));
 
-            try (Received received = routerSocket.recv()) {
+            try (systems.zlink.Received received = new systems.zlink.Received()) {
+
+
+                routerSocket.recv(received, systems.zlink.RecvFlags.NONE);
                 assertArrayEquals("plain-data".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
             }
@@ -163,7 +171,9 @@ public class SocketContractTest {
             dealerSocket.connect(endpoint);
 
             CompletableFuture<Void> server = CompletableFuture.runAsync(() -> {
-                try (Received received = routerSocket.recv()) {
+                try (systems.zlink.Received received = new systems.zlink.Received()) {
+
+                    routerSocket.recv(received, systems.zlink.RecvFlags.NONE);
                     received.reply(List.of(Message.copyOfUtf8("pong-callback")));
                 }
             }, serverExecutor);
@@ -443,7 +453,10 @@ public class SocketContractTest {
                 future = dealerSocket.request(request, Duration.ofMillis(50));
             }
 
-            try (Received received = routerSocket.recv()) {
+            try (systems.zlink.Received received = new systems.zlink.Received()) {
+
+
+                routerSocket.recv(received, systems.zlink.RecvFlags.NONE);
                 SubmitException submitException = assertThrows(
                     SubmitException.class,
                     () -> received.reply(List.of(Message.copyOfUtf8("pong")),
@@ -674,12 +687,14 @@ public class SocketContractTest {
             server.bind(endpoint);
             client.connect(endpoint);
 
-            assertNull(server.recv(RecvFlags.DONT_WAIT));
+            try (systems.zlink.Received probe = new systems.zlink.Received()) {
+                assertFalse(server.recv(probe, RecvFlags.DONT_WAIT));
+            }
             try (Message outbound = Message.copyOfUtf8("pair-try")) {
                 assertTrue(client.send(outbound, SendFlags.DONT_WAIT));
             }
-            try (var received = server.recv(RecvFlags.DONT_WAIT)) {
-                assertNotNull(received);
+            try (systems.zlink.Received received = new systems.zlink.Received()) {
+                assertTrue(server.recv(received, RecvFlags.DONT_WAIT));
                 assertEquals(List.of("pair-try"),
                     List.of(received.singlePartOrThrow().toUtf8String()));
             }

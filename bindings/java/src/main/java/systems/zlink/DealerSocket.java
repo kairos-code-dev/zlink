@@ -38,21 +38,6 @@ public final class DealerSocket extends Socket {
     SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }
     SendResult sendNoWaitResult(List<Message> parts) { return super.sendNoWaitResult(parts); }
     /**
-     * @deprecated use {@link #recv(Received, RecvFlags)} with caller-provided
-     * storage to avoid the per-recv {@code Received} allocation. See
-     * {@code doc/spec/bindings/README.md} "Canonical Recv: Caller-Provided
-     * Storage".
-     */
-    @Deprecated
-    public Received recv() { return super.recv(); }
-    /**
-     * @deprecated use {@link #recv(Received, RecvFlags)} with caller-provided
-     * storage.
-     */
-    @Deprecated
-    public Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
-
-    /**
      * Canonical caller-provided storage recv. Pass a long-lived
      * {@link Received} and the binding refills its internal state in place
      * each successful call.

@@ -36,7 +36,10 @@ public class ReceivedContractTest {
             dealer.send(List.of(Message.copyOfUtf8("part-1"),
                 Message.copyOfUtf8("part-2")));
 
-            try (Received inbound = router.recv()) {
+            try (systems.zlink.Received inbound = new systems.zlink.Received()) {
+
+
+                router.recv(inbound, systems.zlink.RecvFlags.NONE);
                 assertTrue(inbound.routingId().isPresent());
                 assertArrayEquals(dealerRid.toBytes(),
                     inbound.routingId().orElseThrow().toBytes());

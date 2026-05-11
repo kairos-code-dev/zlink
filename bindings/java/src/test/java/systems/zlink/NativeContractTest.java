@@ -24,7 +24,10 @@ public class NativeContractTest {
                 assertTrue(right.send(outbound, SendFlags.NONE));
             }
 
-            try (Received inbound = left.recv()) {
+            try (systems.zlink.Received inbound = new systems.zlink.Received()) {
+
+
+                left.recv(inbound, systems.zlink.RecvFlags.NONE);
                 assertArrayEquals(payload,
                     inbound.singlePartOrThrow().toByteArray());
             }

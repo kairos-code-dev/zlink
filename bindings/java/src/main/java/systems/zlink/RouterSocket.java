@@ -40,11 +40,6 @@ public final class RouterSocket extends Socket {
     SendResult sendNoWaitResult(RoutingId rid, List<Message> parts) {
         return super.sendNoWaitResult(rid, parts);
     }
-    @Deprecated
-    public Received recv() { return routedRequests.recv(); }
-    @Deprecated
-    public Received recv(RecvFlags flags) { return routedRequests.recv(flags); }
-
     /** Canonical caller-provided storage recv. See doc/spec/bindings/README.md. */
     public boolean recv(Received result, RecvFlags flags) {
         java.util.Objects.requireNonNull(result, "result");

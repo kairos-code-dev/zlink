@@ -44,18 +44,86 @@ public final class Received implements AutoCloseable {
         }
     }
 
-    private final long requestSequence;
-    private final boolean hasRequestSequence;
-    private final BiConsumer<List<Message>, SendFlags> replySender;
-    private final byte[] routingIdBytes;
-    private final byte[] spotRidBytes;
-    private final Runnable onTerminalState;
+    // Mutable to support the canonical caller-provided storage recv pattern
+    // documented in doc/spec/bindings/README.md. Callers may pass the same
+    // Received instance to multiple recv calls; the binding refills internal
+    // state via adoptFrom() in place, avoiding the per-recv Received
+    // allocation.
+    private long requestSequence;
+    private boolean hasRequestSequence;
+    private BiConsumer<List<Message>, SendFlags> replySender;
+    private byte[] routingIdBytes;
+    private byte[] spotRidBytes;
+    private Runnable onTerminalState;
     private ArrayList<Message> realizedParts;
     private ReceivedPartCursor cursor;
     private RoutingId routingId;
     private RoutingId spotRid;
     private List<Message> partsView;
     private boolean closed;
+
+    /**
+     * Create an empty {@code Received} for caller-provided storage. Hand the
+     * same instance to {@code recv(Received, ...)} across calls to avoid the
+     * per-recv allocation; the binding overwrites the internal state on each
+     * successful receive via {@code adoptFrom}.
+     */
+    public Received() {
+        this.requestSequence = 0L;
+        this.hasRequestSequence = false;
+        this.replySender = null;
+        this.routingIdBytes = null;
+        this.spotRidBytes = null;
+        this.onTerminalState = null;
+        this.realizedParts = null;
+        this.cursor = null;
+        this.routingId = null;
+        this.spotRid = null;
+        this.partsView = null;
+        this.closed = false;
+    }
+
+    /**
+     * Replace this Received's internal state with the contents of
+     * {@code source}, transferring ownership of the parts and routing-id
+     * storage. Closes any state currently held by {@code this} first. After
+     * this call, {@code source} is left in an empty (already-detached) state
+     * and should not be reused.
+     */
+    void adoptFrom(Received source) {
+        Objects.requireNonNull(source, "source");
+        if (source == this) return;
+
+        // Close any state currently held by this Received before adopting.
+        close();
+        this.closed = false;
+
+        this.requestSequence = source.requestSequence;
+        this.hasRequestSequence = source.hasRequestSequence;
+        this.replySender = source.replySender;
+        this.routingIdBytes = source.routingIdBytes;
+        this.spotRidBytes = source.spotRidBytes;
+        this.onTerminalState = source.onTerminalState;
+        this.realizedParts = source.realizedParts;
+        this.cursor = source.cursor;
+        this.routingId = source.routingId;
+        this.spotRid = source.spotRid;
+        this.partsView = source.partsView;
+
+        // Detach source so its own close() / finalizer is a no-op.
+        source.requestSequence = 0L;
+        source.hasRequestSequence = false;
+        source.replySender = null;
+        source.routingIdBytes = null;
+        source.spotRidBytes = null;
+        source.onTerminalState = null;
+        source.realizedParts = null;
+        source.cursor = null;
+        source.routingId = null;
+        source.spotRid = null;
+        source.partsView = null;
+        source.closed = true;
+    }
 
     Received(RoutingId routingId, Message[] parts) {
         this(routingId, null, parts, false, 0L, false, null);

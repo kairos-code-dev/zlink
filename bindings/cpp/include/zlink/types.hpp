@@ -1033,12 +1033,13 @@ class routing_id_t
 
     void assign_native (const zlink_routing_id_t &native_) noexcept
     {
-        std::memset (&_native, 0, sizeof (_native));
+        // Single struct assignment fits in two SSE moves and beats
+        // memset+partial-memcpy for the typical short-rid case (zlink core
+        // already zeros the unused tail when populating the source rid, so
+        // we inherit that invariant). The previous memset-then-partial-copy
+        // form actually wrote more bytes per call than a flat struct copy.
+        _native = native_;
         _view = NULL;
-        const size_t size = static_cast<size_t> (native_.size);
-        _native.size = static_cast<uint8_t> (size);
-        if (size > 0)
-            std::memcpy (_native.data, native_.data, size);
     }
 
     const zlink_routing_id_t &native_ref () const noexcept

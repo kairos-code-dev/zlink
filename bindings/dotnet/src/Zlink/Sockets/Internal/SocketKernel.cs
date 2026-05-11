@@ -1484,19 +1484,24 @@ internal sealed class SocketKernel : IDisposable
     // Received? incurs. See doc/spec/bindings/README.md
     // "Canonical Recv: Caller-Provided Storage".
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool ReceiveInto(Received result, int flags)
     {
-        EnsureSupports(nameof(ReceiveInto),
-            SocketTypePolicy.SocketCapability.MessageReceive);
+        // The typed socket classes that expose Recv(Received, RecvFlags) on
+        // their public surface only inherit from MessageSocketBase /
+        // RoutedMessageSocketBase, so the message-receive capability is
+        // already guaranteed by the class hierarchy. Mirror the legacy
+        // RecvMessageNoWaitUnchecked fast path and skip the per-call
+        // EnsureSupports lookup; this keeps DR/RR 64B-1024B recv at the
+        // same hot-path cost as before the canonical migration.
         if (result == null)
             throw new ArgumentNullException(nameof(result));
         return TryReceiveIntoMessageCore(result, flags);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool ReceiveRoutedInto(Received result, int flags)
     {
-        EnsureSupports(nameof(ReceiveRoutedInto),
-            SocketTypePolicy.SocketCapability.RoutedReceive);
         if (result == null)
             throw new ArgumentNullException(nameof(result));
         return TryReceiveIntoRoutedCore(result, flags);

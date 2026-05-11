@@ -332,7 +332,7 @@ bool Send(Message message, SendFlags flags = SendFlags.None);
 /// <exception cref="ZlinkSubmitException"/>
 bool Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
 /// <exception cref="ZlinkRecvException"/>
-Received? Recv(RecvFlags flags = RecvFlags.None);
+bool Recv(Received result, RecvFlags flags = RecvFlags.None);
 
 // Available on PublisherSocketBase
 /// <exception cref="ZlinkSubmitException"/>
@@ -356,7 +356,7 @@ bool Send(RoutingId routingId, Message message, SendFlags flags = SendFlags.None
 /// <exception cref="ZlinkSubmitException"/>
 bool Send(RoutingId routingId, IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
 /// <exception cref="ZlinkRecvException"/>
-Received? Recv(RecvFlags flags = RecvFlags.None);
+bool Recv(Received result, RecvFlags flags = RecvFlags.None);
 
 // Available on send-capable socket handles.
 /// <exception cref="ZlinkHandlerException"/>
@@ -366,10 +366,21 @@ void OnSendReady(Action handler);
 `Send(...)` and `Publish(...)` return `false` only for temporary backpressure
 when `SendFlags.DontWait` is used. Blocking submit returns `true` on success.
 Route-not-ready and other submit failures still raise `ZlinkSubmitException`.
-`Recv(...)`, `RecvRouted(...)`, `Subscribe(...)`, and
-`ReceiveSubscriptionEvent(...)` return `null` when `RecvFlags.DontWait` finds
-no data and still raise `ZlinkRecvException` for real recv failures.
-`SocketMonitor.Recv(...)` and `Timer.Recv(...)` follow the same no-data rule.
+
+`Recv(Received result, RecvFlags flags)` on `MessageSocketBase` and
+`RoutedMessageSocketBase` is the canonical caller-provided-storage recv shape
+defined in `doc/spec/bindings/README.md`. Pass a long-lived `Received`
+instance (constructed with the public `Received()` constructor) and the
+binding refills its internal state in place each successful call. Returns
+`true` on success, `false` when `RecvFlags.DontWait` finds no data. Hard
+recv failures still raise `ZlinkRecvException`. Reusing the same `Received`
+across calls eliminates the per-recv allocation that the legacy
+`Received? Recv(RecvFlags)` overload incurred.
+
+`Subscribe(...)` and `ReceiveSubscriptionEvent(...)` return `null` when
+`RecvFlags.DontWait` finds no data and still raise `ZlinkRecvException` for
+real recv failures. `SocketMonitor.Recv(...)` and `Timer.Recv(...)` follow
+the same no-data rule.
 
 The binding also exposes the following public infrastructure types:
 

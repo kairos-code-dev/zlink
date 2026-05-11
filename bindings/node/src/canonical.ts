@@ -1732,7 +1732,26 @@ class PublisherSocket extends ConnectableSocket {
 }
 
 class MessageSocket extends SendSocket {
-  recv(flags: RecvFlags = RecvFlags.None): Received | null {
+  /**
+   * Canonical caller-provided storage recv. Pass a long-lived {@link Received}
+   * and the binding refills its internal state in place each successful call.
+   * Returns true on success, false when DontWait finds no data. See
+   * doc/spec/bindings/README.md "Canonical Recv: Caller-Provided Storage".
+   */
+  recv(result: Received, flags?: RecvFlags): boolean;
+  /** @deprecated use {@link recv}(result, flags) with caller-provided storage. */
+  recv(flags?: RecvFlags): Received | null;
+  recv(arg0?: Received | RecvFlags, arg1?: RecvFlags): boolean | Received | null {
+    if (arg0 instanceof Received) {
+      const flags = (arg1 ?? RecvFlags.None);
+      const fresh = this._recvLegacy(flags);
+      if (fresh == null) return false;
+      (arg0 as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(fresh);
+      return true;
+    }
+    return this._recvLegacy((arg0 as RecvFlags | undefined) ?? RecvFlags.None);
+  }
+  private _recvLegacy(flags: RecvFlags): Received | null {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
@@ -1818,7 +1837,23 @@ class RoutedMessageSocket extends ConnectableSocket {
     }
     return true;
   }
-  recv(flags: RecvFlags = RecvFlags.None): Received | null {
+  /**
+   * Canonical caller-provided storage recv. See {@link MessageSocket.recv}.
+   */
+  recv(result: Received, flags?: RecvFlags): boolean;
+  /** @deprecated use {@link recv}(result, flags) with caller-provided storage. */
+  recv(flags?: RecvFlags): Received | null;
+  recv(arg0?: Received | RecvFlags, arg1?: RecvFlags): boolean | Received | null {
+    if (arg0 instanceof Received) {
+      const flags = (arg1 ?? RecvFlags.None);
+      const fresh = this._recvLegacy(flags);
+      if (fresh == null) return false;
+      (arg0 as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(fresh);
+      return true;
+    }
+    return this._recvLegacy((arg0 as RecvFlags | undefined) ?? RecvFlags.None);
+  }
+  private _recvLegacy(flags: RecvFlags): Received | null {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
@@ -2397,7 +2432,23 @@ export class StreamSocket extends SocketBase {
     }
     return true;
   }
-  recv(flags: RecvFlags = RecvFlags.None): Received | null {
+  /**
+   * Canonical caller-provided storage recv. See {@link MessageSocket.recv}.
+   */
+  recv(result: Received, flags?: RecvFlags): boolean;
+  /** @deprecated use {@link recv}(result, flags) with caller-provided storage. */
+  recv(flags?: RecvFlags): Received | null;
+  recv(arg0?: Received | RecvFlags, arg1?: RecvFlags): boolean | Received | null {
+    if (arg0 instanceof Received) {
+      const flags = (arg1 ?? RecvFlags.None);
+      const fresh = this._recvLegacy(flags);
+      if (fresh == null) return false;
+      (arg0 as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(fresh);
+      return true;
+    }
+    return this._recvLegacy((arg0 as RecvFlags | undefined) ?? RecvFlags.None);
+  }
+  private _recvLegacy(flags: RecvFlags): Received | null {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))

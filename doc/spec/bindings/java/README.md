@@ -408,8 +408,9 @@ public final class PairSocket extends Socket {
     boolean send(List<Message> parts);                               // @throws SubmitException
     boolean send(List<Message> parts, SendFlags flags);              // @throws SubmitException
 
-    Received recv();                                                 // @throws RecvException
-    @Nullable Received recv(RecvFlags flags);                        // @throws RecvException
+    @Deprecated Received recv();                                     // @throws RecvException (legacy: returns fresh Received per call)
+    @Deprecated @Nullable Received recv(RecvFlags flags);            // @throws RecvException (legacy)
+    boolean recv(Received result, RecvFlags flags);                  // canonical caller-provided storage @throws RecvException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 }
 ```
@@ -519,8 +520,9 @@ public final class DealerSocket extends Socket {
     boolean send(List<Message> parts);                               // @throws SubmitException
     boolean send(List<Message> parts, SendFlags flags);              // @throws SubmitException
 
-    Received recv();                                                 // @throws RecvException
-    @Nullable Received recv(RecvFlags flags);                        // @throws RecvException
+    @Deprecated Received recv();                                     // @throws RecvException (legacy: returns fresh Received per call)
+    @Deprecated @Nullable Received recv(RecvFlags flags);            // @throws RecvException (legacy)
+    boolean recv(Received result, RecvFlags flags);                  // canonical caller-provided storage @throws RecvException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // --- request (async, no flags) ---
@@ -596,8 +598,9 @@ public final class RouterSocket extends Socket {
     boolean send(RoutingId rid, List<Message> parts);                // @throws SubmitException
     boolean send(RoutingId rid, List<Message> parts, SendFlags flags); // @throws SubmitException
 
-    Received recv();                                                 // @throws RecvException
-    @Nullable Received recv(RecvFlags flags);                        // @throws RecvException
+    @Deprecated Received recv();                                     // @throws RecvException (legacy: returns fresh Received per call)
+    @Deprecated @Nullable Received recv(RecvFlags flags);            // @throws RecvException (legacy)
+    boolean recv(Received result, RecvFlags flags);                  // canonical caller-provided storage @throws RecvException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // --- request to a specific peer (async, no flags) ---
@@ -798,8 +801,9 @@ public final class StreamSocket extends Socket {
     boolean send(RoutingId rid, List<Message> parts);                // @throws SubmitException
     boolean send(RoutingId rid, List<Message> parts, SendFlags flags); // @throws SubmitException
 
-    Received recv();                                                 // @throws RecvException
-    @Nullable Received recv(RecvFlags flags);                        // @throws RecvException
+    @Deprecated Received recv();                                     // @throws RecvException (legacy: returns fresh Received per call)
+    @Deprecated @Nullable Received recv(RecvFlags flags);            // @throws RecvException (legacy)
+    boolean recv(Received result, RecvFlags flags);                  // canonical caller-provided storage @throws RecvException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     // Two mutually-exclusive receive modes on the same StreamSocket:

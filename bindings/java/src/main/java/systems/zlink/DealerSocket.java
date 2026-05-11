@@ -37,8 +37,39 @@ public final class DealerSocket extends Socket {
     public boolean send(List<Message> parts, SendFlags flags) { return super.send(parts, SendFlag.fromValue(flags.value())); }
     SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }
     SendResult sendNoWaitResult(List<Message> parts) { return super.sendNoWaitResult(parts); }
+    /**
+     * @deprecated use {@link #recv(Received, RecvFlags)} with caller-provided
+     * storage to avoid the per-recv {@code Received} allocation. See
+     * {@code doc/spec/bindings/README.md} "Canonical Recv: Caller-Provided
+     * Storage".
+     */
+    @Deprecated
     public Received recv() { return super.recv(); }
+    /**
+     * @deprecated use {@link #recv(Received, RecvFlags)} with caller-provided
+     * storage.
+     */
+    @Deprecated
     public Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
+
+    /**
+     * Canonical caller-provided storage recv. Pass a long-lived
+     * {@link Received} and the binding refills its internal state in place
+     * each successful call.
+     *
+     * @return {@code true} on success, {@code false} when
+     * {@link RecvFlags#DONT_WAIT} finds no data.
+     */
+    public boolean recv(Received result, RecvFlags flags) {
+        java.util.Objects.requireNonNull(result, "result");
+        java.util.Objects.requireNonNull(flags, "flags");
+        Received fresh = super.recv(ReceiveFlag.fromValue(flags.value()));
+        if (fresh == null) {
+            return false;
+        }
+        result.adoptFrom(fresh);
+        return true;
+    }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     public CompletableFuture<List<Message>> request(Message part) { return request(List.of(part)); }
     private CompletableFuture<List<Message>> request(Message part, SendFlags flags) {

@@ -53,8 +53,20 @@ public final class StreamSocket extends Socket {
     SendResult sendNoWaitResult(RoutingId rid, List<Message> parts) {
         return super.sendNoWaitResult(rid, parts);
     }
+    @Deprecated
     public Received recv() { return super.recv(); }
+    @Deprecated
     public Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
+
+    /** Canonical caller-provided storage recv. See doc/spec/bindings/README.md. */
+    public boolean recv(Received result, RecvFlags flags) {
+        Objects.requireNonNull(result, "result");
+        Objects.requireNonNull(flags, "flags");
+        Received fresh = super.recv(ReceiveFlag.fromValue(flags.value()));
+        if (fresh == null) return false;
+        result.adoptFrom(fresh);
+        return true;
+    }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     public void onPacket(StreamPacketHandler handler) {
         Objects.requireNonNull(handler, "handler");

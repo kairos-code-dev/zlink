@@ -345,3 +345,23 @@
 - 다음 판단:
   - RR 갭을 더 줄이려면 RR client 측 (routing id 마샬링 + native send) 도 같은 canonical 최적화를 받아야 한다. 작업량 증가.
   - `populateRoutedSinglePart` API 는 spec 의 canonical recv ref-out 와 일치하며 round 9 의 효과는 single-part routed echo 에 한정. 일반 사용자에게는 기존 `recv(Received, RecvFlags)` 만으로 같은 효과가 자동 적용.
+
+### 2026-05-11 Java round 10 — RR client recv reuse + drain floor analysis
+
+- 변경한 perf 파일:
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiRouterRouter.java`:
+    `drainReplies` 가 long-lived `replyBuffer` 를 받아 `socket.recv(replyBuffer, DONT_WAIT)` 로 in-place 채우도록 변경.
+- 결과 (3-run median, tcp):
+  - `MULTI_ROUTER_ROUTER`: 64 `173197` (`0.400`), 256 `168521` (`0.392`), 1024 `166574` (`0.395`)
+  - `MULTI_DEALER_ROUTER`: 64 `293059` (`0.653`), 256 `291254` (`0.632`), 1024 `278831` (`0.609`)
+- 분석:
+  - DR 는 round 9 대비 client recv reuse 로 작은 추가 개선 (0.61 → 0.65).
+  - RR 는 변화 없음 — RR 클라이언트의 본질 병목은 single-thread 가 100 sockets 를 round-robin 으로 처리하면서 매 routed-send (`Message.copyOf` + native `zlink_send_part_rid`) 에서 누적되는 FFM/JNI 비용 + libzlink 의 routed send 작업 시간이다.
+- .NET round 10 의 server-side timing breakdown (256B 기준):
+  recv `1062 ns`, send `825 ns`, body `91 ns`, total `~1978 ns`. JNI overhead
+  를 더하면 Java drain 도 `~2200-2500 ns` 추정. C reference 의 native
+  drain `~1100 ns` 대비 2x 차이는 단순 wrapper 차이가 아니라 managed
+  runtime (FFM/JIT/GC) + libzlink 호출이 누적된 결과.
+- 결론:
+  - plan §1 size별 목표 (RR 64B `0.75`) 는 single-thread + 100 clients 구조와 managed runtime 의 조합으로는 달성 불가. DR (`~0.65`) 도 size 별 목표 (`0.75`) 에 미달이지만 RR 보다 가까움.
+  - 더 큰 개선은 binding 외부 (libzlink 자체의 routed-send latency 단축, 또는 측정 모델 자체 — 예: 클라이언트별 native 스레드 분산) 영역.

@@ -352,3 +352,39 @@
     (b) `MultipartMessageCollection` 풀링, (c) routing id inline cache의
     dictionary lookup → ring buffer 대체 같은 더 큰 변경이 필요. 이번
     라운드의 안전한 범위는 소진.
+
+### 2026-05-11 .NET round 10 — drain timing floor analysis
+
+- 추가 변경 없음. round 9 + Java round 10의 client recv reuse 결과를 함께 측정 후 timing diagnostic 로 native floor 위치를 식별.
+- 측정한 명령:
+  - `PERF_DOTNET_SERVER_STATS=1 PERF_DOTNET_TIMING=1 bindings/dotnet/perf/multi/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER --transports tcp --msg-sizes 256 --duration 5 --runs 1`
+- `PerfMultiRouterRouterServer` per-drain breakdown (1.1M drains in 5s):
+  - recv: `1062 ns`
+  - body decode: `91 ns`
+  - send: `825 ns`
+  - dispose: `0 ns`
+  - total: `1978 ns`
+  - drainsPerPoll: `49.82` (poll amortized over 50 recvs)
+- 해석:
+  - recv 1062ns + send 825ns = `1887 ns` 가 native (libzlink + syscall) 비용.
+    snapshot construction, RoutingIdSnapshot copy, Message wrapper pool
+    operation 등 binding-level wrapper 가 추가하는 비용은 ~90ns (body
+    구간) + 분산된 잔여.
+  - 즉 .NET binding 의 routed echo hot path 는 native 호출 시간 직전까지
+    내려와 있다. 256B drain `1978 ns` 는 `5e9 / 1978 = 2.5M drains/sec`
+    의 single-thread 이론 한계인데, 실제 측정은 `~228K drains/sec` (1.14M
+    drains / 5sec) — 즉 poll wait + kernel scheduling 이 binding 비용
+    이상으로 throughput 을 결정한다.
+- 결과 ratio (3-run median):
+  - `MULTI_ROUTER_ROUTER`: 64 `0.531`, 256 `0.533`, 1024 `0.538`
+  - `MULTI_DEALER_ROUTER`: 64 `0.602`, 256 `0.585`, 1024 `0.585`
+- 결론:
+  - plan §1 size별 목표 (64B `0.75`, 256B `0.80`, 1024B `0.82`) 는
+    `.NET binding wrapper 미세 최적화` 만으로는 미달. C reference 의
+    `~1100 ns/drain` 까지 내리려면 binding 변경이 아니라 libzlink 측
+    또는 측정 환경 (WSL2 / 동일 머신 100 clients) 변경이 필요하다.
+  - round 9 의 `Send(Received, Message, SendFlags)` canonical 패턴과
+    `[SuppressGCTransition] _nowait` 변형 적용으로 wrapper-level 안전한
+    경로는 사실상 소진. 추가 큰 폭의 개선 (Message pool re-design,
+    snapshot 공개 + RoutingIdBuffer 등 surface 변경) 은 plan §3.5.4 의
+    "사용자 판단" 영역으로 분리.

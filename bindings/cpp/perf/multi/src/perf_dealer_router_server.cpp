@@ -75,6 +75,8 @@ bool perf_dealer_router_server (const std::string &lib_name,
       static_cast<int> (zlink::poll_event_flag_t::pollin);
     zlink::message_t part;
     zlink::poller_t poller;
+    std::vector<zlink::poll_event_t> events;
+    events.reserve (1);
     zlink::routing_id_t source_rid = routing_id_from_ascii ("x");
     poller.add (server, zlink::poll_event_flag_t::pollin);
 
@@ -114,11 +116,10 @@ bool perf_dealer_router_server (const std::string &lib_name,
         }
 
         try {
-            const std::optional<zlink::poll_event_t> event =
-              poller.wait (std::chrono::milliseconds (-1));
-            if (!event)
+            poller.wait_all_into (events, 1, std::chrono::milliseconds (-1));
+            if (events.empty ())
                 continue;
-            const auto revents_value = static_cast<int> (event->revents);
+            const auto revents_value = static_cast<int> (events[0].revents);
             const bool readable =
               (revents_value
                & static_cast<int> (zlink::poll_event_flag_t::pollin))

@@ -83,6 +83,9 @@ bool perf_router_router_server (const std::string &lib_name,
       zlink::routing_id_t::from_bytes (
         reinterpret_cast<const uint8_t *> ("SERVER"), 6));
     perf::multi::apply_benchmark_socket_options (server, settings, transport);
+    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit_typed (
+          server, msg_size))
+        return false;
     if (!perf::multi::setup_tls_server (server, transport))
         return false;
 
@@ -90,6 +93,8 @@ bool perf_router_router_server (const std::string &lib_name,
       server, transport, "cpp_multi_router_router",
       settings.server_bind_port);
     if (endpoint.empty ())
+        return false;
+    if (!perf::multi::recalculate_auto_hwm (ctx))
         return false;
 
     const bench_multi_cpu_sample_t resource_probe_start =
@@ -154,8 +159,7 @@ bool perf_router_router_server (const std::string &lib_name,
         }
 
         try {
-            events =
-              poller.wait_all (1, std::chrono::milliseconds (-1));
+            poller.wait_all_into (events, 1, std::chrono::milliseconds (-1));
         }
         catch (const zlink::zlink_error_t &err) {
             const int err_no = err.internal_errno ();

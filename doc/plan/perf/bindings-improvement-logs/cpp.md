@@ -835,3 +835,97 @@
   - fast path는 send-side 오버헤드의 일부만 흡수. RR/DR-65k의 큰 갭은 송신 외 다른 hot-path에 추가 비용이 남아 있음을 시사한다.
   - 다음 라운드 가설 후보: (1) recv 경로의 `routing_id_t` 256바이트 copy 회피, (2) C++ wrapper가 `state.reply`를 차기 recv까지 유지하면서 발생하는 buffer churn / RCVHWM 압력, (3) `send_socket_routed_parts`와 `socket->send_routed` 사이의 STREAM-not-router 분기 비용, (4) DR-server 측 `recv → push_back(pending_replies) → send_routed`에서 routing_id move/copy 시퀀스.
   - 한 라운드 한 가설 원칙대로 (1)부터 검증한다.
+
+### 2026-05-11 C++ round 22
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260511_155920_c_dr_rr_round22.txt`
+- 대상 라이브러리 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260511_160337_cpp_dr_rr_round22.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260511_160650_cpp_dr_rr_round23_ridcopy.txt`
+- 통과:
+  - `MULTI_DEALER_ROUTER,tcp,{64,256,1024}`: ratio `1.02 / 1.04 / 0.99` ✅
+  - `MULTI_ROUTER_ROUTER,tcp,{64,256,1024}`: ratio `1.04 / 1.01 / 1.02` ✅
+- 목표 미달:
+  - `MULTI_DEALER_ROUTER,tcp,65536`: C `191.260 Kops/s` 대비 C++ 최고 median `141.075 Kops/s`, ratio `0.74` < `0.90`
+  - `MULTI_ROUTER_ROUTER,tcp,65536`: C `181.003 Kops/s` 대비 C++ 최고 median `138.090 Kops/s`, ratio `0.76` < `0.90`
+- 선택한 병목 가설:
+  - RR server가 DR server/C reference와 달리 server socket의 `AUTO_HWM_MSG_UNIT_BYTES` 적용과 context auto-HWM recalc를 하지 않아 64KB에서 server queue sizing이 달랐다.
+  - RR client는 C reference와 달리 한 POLLIN event에서 같은 ROUTER socket reply를 계속 drain해 round-robin fairness가 낮아질 수 있었다.
+  - `routing_id_t`가 native routing id를 복사할 때 실제 rid 길이와 무관하게 전체 native storage를 복사해 routed echo hot path에 불필요한 256바이트 복사가 누적됐다.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/types.hpp`
+    - `routing_id_t` copy/move/native 생성 경로가 native 구조체 전체 대입 대신 `size` 바이트만 복사하도록 변경.
+  - `bindings/cpp/include/zlink/poller.hpp`
+    - raw tag 이벤트에서 빈 `std::any` 복사를 피하도록 이벤트 materialize 경로 보정.
+- 변경한 perf 파일:
+  - `bindings/cpp/perf/multi/src/perf_router_router_server.cpp`
+    - server socket에도 MsgUnit 적용 후 auto-HWM recalc.
+    - `wait_all()` 반환 vector 재생성 대신 `wait_all_into()` 재사용.
+  - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+    - C reference와 동일하게 ROUTER client는 event당 reply 하나 처리 후 다음 socket으로 진행.
+  - `bindings/cpp/perf/multi/src/perf_dealer_router_server.cpp`
+    - 단일 이벤트 wait도 `wait_all_into()` 재사용 경로로 정렬.
+- 배제한 가설:
+  - `zlink_send_part*` 성공 후 consume 재초기화 생략: helper ownership 테스트는 통과했지만 64KB median이 개선되지 않아 되돌림.
+  - C++ `message_t::adopt()` source 재초기화 생략: contract 테스트는 통과했지만 median 개선이 없어 되돌림.
+  - C++ `send(..., dontwait)` 내부를 aggregate internal send로 바꾸는 실험: contract 테스트는 통과했지만 64KB median이 악화되어 되돌림.
+- 실행한 검증 명령:
+  - `cmake --build core/build`
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_router_router_server cpp_comp_src_router_router_client cpp_comp_src_dealer_router_server cpp_comp_src_dealer_router_client test_cpp_contract_message test_cpp_contract_socket`
+  - `ctest --test-dir bindings/cpp/build -R '^(test_cpp_contract_message|test_cpp_contract_socket)$' --output-on-failure`
+  - `bindings/c/perf/run_benchmarks_multi.sh --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 3 --results-tag c_dr_rr_round22`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024,65536 --duration 5 --runs 3 --results-tag cpp_dr_rr_round22`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 256,1024,65536 --duration 5 --runs 3 --results-tag cpp_dr_rr_round23_ridcopy`
+- 결과:
+  - RR 256/1024는 목표 경계 미달에서 통과로 올라왔다.
+  - RR 65536은 `0.61` 수준에서 최고 `0.76`까지 개선됐지만 목표 `0.90`에는 미달.
+  - DR 65536은 `0.74` 전후로 계속 미달.
+- 다음 판단:
+  - 남은 64KB 손실은 단순 send/recv helper 한 지점이 아니라 C++ wrapper의 routed echo round-trip latency 누적이다. 다음 라운드는 server/client 어느 쪽이 지배적인지 분리하기 위해 C server + C++ client, C++ server + C client 교차 측정을 먼저 수행한다.
+
+### 2026-05-11 C++ round 23
+
+- 목적:
+  - 64KB에서만 큰 갭이 남는 이유를 server/client로 분리한다.
+  - C++ client hot loop가 C reference와 다른 지점을 하나씩 맞춘다.
+- 교차 측정 결과:
+  - `DR_Cserver_CPPclient`: median `125.062 Kops/s`
+  - `DR_CPPserver_Cclient`: median `188.377 Kops/s`
+  - `RR_Cserver_CPPclient`: median `117.533 Kops/s`
+  - `RR_CPPserver_Cclient`: median `180.494 Kops/s`
+- 해석:
+  - C++ server + C client는 C reference 64KB 수치에 거의 붙었다.
+  - C server + C++ client는 기존 C++ 전체 실행과 비슷하게 낮았다.
+  - 따라서 남은 64KB 병목의 지배 원인은 C++ server가 아니라 C++ client의 수신/재송신 루프다.
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/types.hpp`
+    - `routing_id_t` native 대입 helper를 추가해 routed recv 경로의 임시 `routing_id_t` 생성과 중복 native 복사를 줄였다.
+  - `bindings/cpp/include/zlink/socket_types.hpp`
+    - `recv_single_part_routed_message()`가 source routing id를 직접 대입하도록 변경했다.
+- 변경한 perf 파일:
+  - `bindings/cpp/perf/multi/src/perf_dealer_router_client.cpp`
+    - reply header decode 직후 `state.reply.close()`를 호출해 64KB reply buffer를 다음 recv까지 붙잡지 않도록 했다.
+    - C reference처럼 reply를 받은 자리에서 즉시 같은 socket에 재송신하지 않고 `send_pending`으로 넘겨 다음 send pass에서 처리하도록 바꿨다.
+  - `bindings/cpp/perf/multi/src/perf_router_router_client.cpp`
+    - reply header decode 직후 `state.reply.close()`를 호출했다.
+- 배제한 가설:
+  - 연결 완료 후 client auto-HWM 재적용과 context recalc: 64KB median이 악화되어 되돌렸다.
+  - ROUTER client send/event round-robin cursor: RR 일부 run에는 도움이 있었지만 DR median을 악화시켜 되돌렸다.
+  - ROUTER client deferred resend: 안정적인 개선으로 이어지지 않아 ROUTER client는 즉시 재송신 경로로 되돌렸다.
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_dealer_router_client cpp_comp_src_router_router_client`
+  - `ctest --test-dir bindings/cpp/build -R '^(test_cpp_contract_message|test_cpp_contract_socket)$' --output-on-failure`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 65536 --duration 5 --runs 3 --results-tag cpp_dr_rr_round29_close_reply`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 65536 --duration 5 --runs 3 --results-tag cpp_dr_rr_round30_deferred_resend`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --reuse-build --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 65536 --duration 5 --runs 3 --results-tag cpp_dr_rr_round34_dr_defer_rr_immediate`
+- 대표 결과:
+  - `cpp_dr_rr_round30_deferred_resend`
+    - DR 65536: `166.172 Kops/s`, round 23 기준 C `191.260 Kops/s` 대비 ratio `0.87`
+    - RR 65536: `131.121 Kops/s`, round 23 기준 C `181.003 Kops/s` 대비 ratio `0.72`
+  - `cpp_dr_rr_round34_dr_defer_rr_immediate`
+    - 부하가 높은 상태에서 실행되어 median 변동이 컸다. DR/RR 모두 round 30보다 낮아 대표 개선값으로 채택하지 않는다.
+- 현재 판단:
+  - 64KB만 문제가 되는 이유는 메시지 크기가 커지면서 100개 client socket의 in-flight 데이터가 수 MB 단위로 커지고, 그때 C++ client hot loop의 재송신 타이밍, reply buffer 보유 시간, poll event materialize 비용이 큐 압력과 RTT에 직접 반영되기 때문이다.
+  - 작은 메시지는 CPU wrapper 비용이 보이지만 target 기준이 낮고 in-flight byte 압력이 작아 통과한다. 64KB는 memory bandwidth, socket buffer, HWM, poll scheduling이 함께 걸려 같은 wrapper 차이가 throughput gap으로 확대된다.
+  - 다음 라운드는 C++ client의 public API 경로 안에서 `poller_t` event materialize 비용과 routed recv source id 복사 비용을 더 줄일 수 있는지 분리 측정한다.

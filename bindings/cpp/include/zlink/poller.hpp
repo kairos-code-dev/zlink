@@ -622,7 +622,10 @@ class poller_t
             ? item->timer
             : NULL;
         event.raw_tag = item ? item->raw_tag : NULL;
-        event.tag = item ? item->tag : std::any ();
+        if (item && item->tag.has_value ())
+            event.tag = item->tag;
+        else
+            event.tag.reset ();
         event.events = item ? item->events : poll_event_flag_t::none;
         event.revents = static_cast<poll_event_flag_t> (native_event_.events);
         return event;
@@ -638,7 +641,10 @@ class poller_t
             event.fd = std::nullopt;
         event.timer = NULL;
         event.raw_tag = item_.raw_tag;
-        event.tag = item_.tag;
+        if (item_.tag.has_value ())
+            event.tag = item_.tag;
+        else
+            event.tag.reset ();
         event.events = item_.events;
         event.revents = static_cast<poll_event_flag_t> (revents_);
         return event;

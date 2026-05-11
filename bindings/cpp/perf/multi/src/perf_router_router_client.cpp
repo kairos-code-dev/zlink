@@ -414,13 +414,17 @@ class router_router_client_bench_t
             return -1;
         }
 
-        if (state.reply.size () != state.payload_size)
+        if (state.reply.size () != state.payload_size) {
+            state.reply.close ();
             return 1;
+        }
         if (!perf_metric::decode_payload_header (
               state.reply.data (), state.reply.size (), header_out)) {
+            state.reply.close ();
             return 1;
         }
 
+        state.reply.close ();
         return 0;
     }
 
@@ -446,8 +450,8 @@ class router_router_client_bench_t
         const auto deadline = std::chrono::steady_clock::now ()
                               + std::chrono::seconds (seconds);
 
-        for (size_t i = 0; i < _socket_states.size (); ++i) {
-            socket_state_t &state = _socket_states[i];
+        for (size_t attempt = 0; attempt < _socket_states.size (); ++attempt) {
+            socket_state_t &state = _socket_states[attempt];
             if (!state.sock || state.awaiting_reply || state.send_pending)
                 continue;
             if (!try_send_request (state, phase))
@@ -517,6 +521,8 @@ class router_router_client_bench_t
                         if (!try_send_request (*state, phase))
                             return false;
                     }
+
+                    break;
                 }
 
                 if ((static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollout))

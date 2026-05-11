@@ -254,6 +254,7 @@ class dealer_router_client_bench_t
 
         const bool decoded = perf_metric::decode_payload_header (
           state.reply.data (), state.reply.size (), header_out);
+        state.reply.close ();
         if (!decoded)
             return 1;
         return 0;
@@ -281,8 +282,8 @@ class dealer_router_client_bench_t
         const auto deadline = std::chrono::steady_clock::now ()
                               + std::chrono::seconds (seconds);
 
-        for (size_t i = 0; i < _socket_states.size (); ++i) {
-            socket_state_t &state = _socket_states[i];
+        for (size_t attempt = 0; attempt < _socket_states.size (); ++attempt) {
+            socket_state_t &state = _socket_states[attempt];
             if (state.awaiting_reply || state.send_pending || !state.sock)
                 continue;
             if (!try_send_request (state, phase))
@@ -290,6 +291,14 @@ class dealer_router_client_bench_t
         }
 
         while (std::chrono::steady_clock::now () < deadline) {
+            for (size_t i = 0; i < _socket_states.size (); ++i) {
+                socket_state_t &state = _socket_states[i];
+                if (!state.sock || state.awaiting_reply || !state.send_pending)
+                    continue;
+                if (!try_send_request (state, phase))
+                    return false;
+            }
+
             _poller.wait_all_into (_poll_events, 0,
                                    std::chrono::milliseconds (-1));
             if (_poll_events.empty ())
@@ -341,12 +350,8 @@ class dealer_router_client_bench_t
                         latency.add (latency_ns);
                     }
 
-                    if (std::chrono::steady_clock::now () >= deadline)
-                        continue;
-
-                    if (!state->send_pending
-                        && !try_send_request (*state, phase))
-                        return false;
+                    if (std::chrono::steady_clock::now () < deadline)
+                        state->send_pending = true;
                 }
 
                 if ((static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollout))

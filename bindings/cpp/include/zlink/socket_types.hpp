@@ -302,10 +302,10 @@ inline int recv_single_part_message (void *handle_,
     }
 
     if (source_rid_out_) {
-        *source_rid_out_ =
-          source_rid && source_rid->size > 0
-            ? native_routing_id (*source_rid)
-            : unchecked_empty_routing_id ();
+        if (source_rid && source_rid->size > 0)
+            assign_routing_id_native (*source_rid_out_, *source_rid);
+        else
+            *source_rid_out_ = unchecked_empty_routing_id ();
     }
     adopt_native_message (part_out_, &part);
     return part_out_.valid () ? 0 : -1;
@@ -339,7 +339,7 @@ inline int recv_single_part_routed_message (void *handle_,
         return -1;
     }
 
-    source_rid_out_ = native_routing_id (*source_node_rid);
+    assign_routing_id_native (source_rid_out_, *source_node_rid);
     adopt_native_message (part_out_, &part);
     return part_out_.valid () ? 0 : -1;
 }

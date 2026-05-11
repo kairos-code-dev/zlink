@@ -403,6 +403,8 @@ namespace detail
 inline routing_id_t native_routing_id (const zlink_routing_id_t &native_);
 inline routing_id_t borrowed_routing_id (const zlink_routing_id_t &native_) noexcept;
 inline routing_id_t unchecked_empty_routing_id () noexcept;
+inline void assign_routing_id_native (routing_id_t &routing_id_,
+                                      const zlink_routing_id_t &native_) noexcept;
 inline zlink_routing_id_t *routing_id_native (routing_id_t &routing_id_) noexcept;
 inline const zlink_routing_id_t *
 routing_id_native (const routing_id_t &routing_id_) noexcept;
@@ -886,29 +888,31 @@ class routing_id_t
         assign (bytes_, size_);
     }
 
-    routing_id_t (const routing_id_t &other_) : _native (other_.native_ref ()), _view (NULL)
+    routing_id_t (const routing_id_t &other_) : _native (), _view (NULL)
     {
+        assign_native (other_.native_ref ());
     }
 
     routing_id_t &operator= (const routing_id_t &other_)
     {
         if (this == &other_)
             return *this;
-        _native = other_.native_ref ();
+        assign_native (other_.native_ref ());
         _view = NULL;
         return *this;
     }
 
     routing_id_t (routing_id_t &&other_) noexcept
-        : _native (other_.native_ref ()), _view (NULL)
+        : _native (), _view (NULL)
     {
+        assign_native (other_.native_ref ());
     }
 
     routing_id_t &operator= (routing_id_t &&other_) noexcept
     {
         if (this == &other_)
             return *this;
-        _native = other_.native_ref ();
+        assign_native (other_.native_ref ());
         _view = NULL;
         return *this;
     }
@@ -995,7 +999,10 @@ class routing_id_t
         std::memset (&_native, 0, sizeof (_native));
     }
 
-    explicit routing_id_t (const zlink_routing_id_t &native_) : _native (native_), _view (NULL) {}
+    explicit routing_id_t (const zlink_routing_id_t &native_) : _native (), _view (NULL)
+    {
+        assign_native (native_);
+    }
 
     struct borrowed_t
     {
@@ -1022,6 +1029,16 @@ class routing_id_t
         _native.size = static_cast<uint8_t> (size_);
         if (size_ > 0)
             std::memcpy (_native.data, bytes_, size_);
+    }
+
+    void assign_native (const zlink_routing_id_t &native_) noexcept
+    {
+        std::memset (&_native, 0, sizeof (_native));
+        _view = NULL;
+        const size_t size = static_cast<size_t> (native_.size);
+        _native.size = static_cast<uint8_t> (size);
+        if (size > 0)
+            std::memcpy (_native.data, native_.data, size);
     }
 
     const zlink_routing_id_t &native_ref () const noexcept
@@ -1057,6 +1074,9 @@ class routing_id_t
     friend inline routing_id_t
     detail::borrowed_routing_id (const zlink_routing_id_t &native_) noexcept;
     friend inline routing_id_t detail::unchecked_empty_routing_id () noexcept;
+    friend inline void
+    detail::assign_routing_id_native (routing_id_t &,
+                                      const zlink_routing_id_t &) noexcept;
     friend inline zlink_routing_id_t *
     detail::routing_id_native (routing_id_t &) noexcept;
     friend inline const zlink_routing_id_t *
@@ -1081,6 +1101,12 @@ inline routing_id_t borrowed_routing_id (const zlink_routing_id_t &native_) noex
 inline routing_id_t unchecked_empty_routing_id () noexcept
 {
     return routing_id_t ();
+}
+
+inline void assign_routing_id_native (routing_id_t &routing_id_,
+                                      const zlink_routing_id_t &native_) noexcept
+{
+    routing_id_.assign_native (native_);
 }
 
 inline zlink_routing_id_t empty_routing_id () noexcept

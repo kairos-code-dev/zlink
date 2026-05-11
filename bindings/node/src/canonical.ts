@@ -1738,20 +1738,7 @@ class MessageSocket extends SendSocket {
    * Returns true on success, false when DontWait finds no data. See
    * doc/spec/bindings/README.md "Canonical Recv: Caller-Provided Storage".
    */
-  recv(result: Received, flags?: RecvFlags): boolean;
-  /** @deprecated use {@link recv}(result, flags) with caller-provided storage. */
-  recv(flags?: RecvFlags): Received | null;
-  recv(arg0?: Received | RecvFlags, arg1?: RecvFlags): boolean | Received | null {
-    if (arg0 instanceof Received) {
-      const flags = (arg1 ?? RecvFlags.None);
-      const fresh = this._recvLegacy(flags);
-      if (fresh == null) return false;
-      (arg0 as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(fresh);
-      return true;
-    }
-    return this._recvLegacy((arg0 as RecvFlags | undefined) ?? RecvFlags.None);
-  }
-  private _recvLegacy(flags: RecvFlags): Received | null {
+  recv(result: Received, flags: RecvFlags = RecvFlags.None): boolean {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
@@ -1760,7 +1747,9 @@ class MessageSocket extends SendSocket {
     } catch (error) {
       throw recvNativeError(error, flags, 'recv failed');
     }
-    return raw ? materializeReceived(raw) : null;
+    if (raw == null) return false;
+    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(materializeReceived(raw));
+    return true;
   }
   onSendReady(handler: SocketSendReadyHandler): void {
     handlerCall('send-ready handler registration failed', () => {
@@ -1840,20 +1829,7 @@ class RoutedMessageSocket extends ConnectableSocket {
   /**
    * Canonical caller-provided storage recv. See {@link MessageSocket.recv}.
    */
-  recv(result: Received, flags?: RecvFlags): boolean;
-  /** @deprecated use {@link recv}(result, flags) with caller-provided storage. */
-  recv(flags?: RecvFlags): Received | null;
-  recv(arg0?: Received | RecvFlags, arg1?: RecvFlags): boolean | Received | null {
-    if (arg0 instanceof Received) {
-      const flags = (arg1 ?? RecvFlags.None);
-      const fresh = this._recvLegacy(flags);
-      if (fresh == null) return false;
-      (arg0 as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(fresh);
-      return true;
-    }
-    return this._recvLegacy((arg0 as RecvFlags | undefined) ?? RecvFlags.None);
-  }
-  private _recvLegacy(flags: RecvFlags): Received | null {
+  recv(result: Received, flags: RecvFlags = RecvFlags.None): boolean {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
@@ -1862,7 +1838,9 @@ class RoutedMessageSocket extends ConnectableSocket {
     } catch (error) {
       throw recvNativeError(error, flags, 'recv failed');
     }
-    return raw ? materializeReceived(raw) : null;
+    if (raw == null) return false;
+    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(materializeReceived(raw));
+    return true;
   }
   onSendReady(handler: SocketSendReadyHandler): void {
     handlerCall('send-ready handler registration failed', () => {
@@ -2435,20 +2413,7 @@ export class StreamSocket extends SocketBase {
   /**
    * Canonical caller-provided storage recv. See {@link MessageSocket.recv}.
    */
-  recv(result: Received, flags?: RecvFlags): boolean;
-  /** @deprecated use {@link recv}(result, flags) with caller-provided storage. */
-  recv(flags?: RecvFlags): Received | null;
-  recv(arg0?: Received | RecvFlags, arg1?: RecvFlags): boolean | Received | null {
-    if (arg0 instanceof Received) {
-      const flags = (arg1 ?? RecvFlags.None);
-      const fresh = this._recvLegacy(flags);
-      if (fresh == null) return false;
-      (arg0 as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(fresh);
-      return true;
-    }
-    return this._recvLegacy((arg0 as RecvFlags | undefined) ?? RecvFlags.None);
-  }
-  private _recvLegacy(flags: RecvFlags): Received | null {
+  recv(result: Received, flags: RecvFlags = RecvFlags.None): boolean {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
@@ -2457,7 +2422,9 @@ export class StreamSocket extends SocketBase {
     } catch (error) {
       throw recvNativeError(error, flags, 'recv failed');
     }
-    return raw ? materializeReceived(raw) : null;
+    if (raw == null) return false;
+    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(materializeReceived(raw));
+    return true;
   }
   onPacket(handler: StreamPacketHandler): void {
     handlerCall('stream packet handler registration failed', () => {

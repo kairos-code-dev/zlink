@@ -38,7 +38,8 @@ async function main() {
       .message(Buffer.from(REQUEST_PAYLOAD))
       .timeout(2000)
       .submitAsync();
-    const received = responderRouter.recv();
+    const received = new zlink.Received();
+    responderRouter.recv(received);
     try {
       assert.ok(received.routingId);
       assert.notEqual(received.requestSeq, null);

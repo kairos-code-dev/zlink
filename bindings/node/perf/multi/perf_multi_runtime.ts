@@ -163,8 +163,9 @@ function resolveMultiLatencySampleCap() {
 }
 
 function recvNoWait(socket) {
+  const received = new zlink.Received();
   try {
-    return socket.recv(RecvFlags.DontWait);
+    return socket.recv(received, RecvFlags.DontWait) ? received : null;
   } catch (error) {
     if (error instanceof zlink.RecvError && error.result === RecvResult.NoData) {
       return null;

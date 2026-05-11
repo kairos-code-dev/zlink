@@ -35,14 +35,16 @@ test('router recv and reply still work through the canonical socket surface', ()
   dealerSocket.connect('inproc://request-reply-contract');
 
   dealerSocket.send('ping');
-  const request = routerSocket.recv();
+  const request = new zlink.Received();
+  routerSocket.recv(request);
   assert.ok(request.routingId instanceof zlink.RoutingId);
   assert.equal(request.routingId.toBytes().toString(), 'request-reply-client');
   assert.equal(request.requestSeq, null);
   assert.equal(request.parts[0].data().toString(), 'ping');
   routerSocket.send(request.routingId, 'pong');
 
-  const reply = dealerSocket.recv();
+  const reply = new zlink.Received();
+  dealerSocket.recv(reply);
   assert.equal(reply.parts[0].data().toString(), 'pong');
   assert.equal(reply.requestSeq, null);
 

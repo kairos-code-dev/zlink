@@ -34,7 +34,8 @@ async function main() {
         }
         const sent = 'hello-pair';
         client.send(Buffer.from(sent));
-        const received = server.recv();
+        const received = new zlink.Received();
+        server.recv(received);
         try {
             const recv = received.parts[0].data().toString();
             assert.equal(recv, sent);

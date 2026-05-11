@@ -5,8 +5,9 @@ const assert = require('node:assert/strict');
 const zlink = require('../..');
 
 function recvMaybe(socket) {
+  const received = new zlink.Received();
   try {
-    return socket.recv(zlink.RecvFlags.DontWait);
+    return socket.recv(received, zlink.RecvFlags.DontWait) ? received : null;
   } catch (error) {
     if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
       return null;
@@ -24,7 +25,8 @@ test('pair messaging uses Message and Received by default', () => {
   receiver.connect('inproc://pair-contract');
   sender.send('ping');
 
-  const received = receiver.recv();
+  const received = new zlink.Received();
+  receiver.recv(received);
   assert.equal(received.parts.length, 1);
   assert.ok(Object.isFrozen(received.parts));
   assert.ok(received.parts[0] instanceof zlink.Message);
@@ -55,7 +57,8 @@ test('recvHandler delivers multipart Message instances', () => {
   receiver.connect('inproc://pair-handler-contract');
 
   sender.send(['left', 'right']);
-  const received = receiver.recv();
+  const received = new zlink.Received();
+  receiver.recv(received);
 
   assert.equal(received.routingId, null);
   assert.deepEqual(

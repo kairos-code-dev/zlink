@@ -25,7 +25,8 @@ async function main() {
         await once(client, 'connect');
         const sent = 'hello-stream';
         client.write(Buffer.from(sent));
-        const received = stream.recv();
+        const received = new zlink.Received();
+        stream.recv(received);
         try {
             assert.ok(received.routingId instanceof zlink.RoutingId);
             const recv = received.parts[0].data().toString();

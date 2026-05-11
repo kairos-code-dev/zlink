@@ -17,7 +17,8 @@ function partStrings(received) {
     return received.parts.map((part) => part.data().toString());
 }
 async function handshakeReceiver(receiver) {
-    const ping = receiver.recv();
+    const ping = new zlink.Received();
+    receiver.recv(ping);
     if (ping.routingId === null || partStrings(ping).join(',') !== 'PING') {
         throw new Error('router-router handshake receive failed');
     }

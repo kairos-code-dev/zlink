@@ -54,7 +54,8 @@ async function handshakeRouterSender(port, sender, receiverRoutingId) {
   port.postMessage({ type: 'connected' });
   await waitForCommand(port, 'handshake');
   sender.send(receiverRoutingId, Buffer.from('PING'));
-  const reply = sender.recv();
+  const reply = new zlink.Received();
+  sender.recv(reply);
   try {
     const text = reply.parts.map((part) => part.data().toString()).join(',');
     if (text !== 'PONG') {

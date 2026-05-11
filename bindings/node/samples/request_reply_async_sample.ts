@@ -48,7 +48,8 @@ async function main() {
       zlink.Message.from(Buffer.from('ping')),
       2000
     );
-    const request = routerSocket.recv();
+    const request = new zlink.Received();
+    routerSocket.recv(request);
     try {
       assert.equal(request.routingId.toBytes().toString(), 'request-reply-client');
       assert.ok(typeof request.requestSeq === 'bigint');

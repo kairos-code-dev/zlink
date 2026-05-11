@@ -16,7 +16,8 @@ test('pair sockets send and receive multipart through canonical api', () => {
     Buffer.from('b')
   ]);
 
-  const received = left.recv();
+  const received = new zlink.Received();
+  left.recv(received);
   assert.deepEqual(received.parts.map((part) => part.data().toString()), ['a', 'b']);
 
   right.close();

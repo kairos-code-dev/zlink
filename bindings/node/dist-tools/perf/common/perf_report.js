@@ -35,7 +35,6 @@ function throughputUnit(pattern) {
     return pattern === 'MULTI_DEALER_ROUTER'
         || pattern === 'MULTI_ROUTER_ROUTER'
         || pattern === 'MULTI_STREAM'
-        || pattern === 'SPOT_REQREP'
         || pattern === 'MULTI_SPOT_REQREP'
         ? 'Kops/s'
         : 'Kmsg/s';

@@ -108,8 +108,9 @@ function resolveSingleLatencySampleCap() {
     return configured > 0 ? configured : 200000;
 }
 function recvNoWait(socket) {
+    const received = new zlink.Received();
     try {
-        return socket.recv(RecvFlags.DontWait);
+        return socket.recv(received, RecvFlags.DontWait) ? received : null;
     }
     catch (error) {
         if (error instanceof zlink.RecvError && error.result === RecvResult.NoData) {
@@ -210,13 +211,14 @@ async function drainRecvSocket(socket, onMessage) {
     try {
         let stopReceived = false;
         let iterCount = 0;
+        let totalReceived = 0;
         if (process.env.PERF_NODE_TRACE === '1') {
             console.error(`[drainRecvSocket] entry`);
         }
         while (!stopReceived) {
             iterCount += 1;
-            if (process.env.PERF_NODE_TRACE === '1' && (iterCount === 1 || iterCount % 50 === 0)) {
-                console.error(`[drainRecvSocket] iter=${iterCount}`);
+            if (process.env.PERF_NODE_TRACE === '1' && (iterCount === 1 || iterCount % 100 === 0)) {
+                console.error(`[drainRecvSocket] iter=${iterCount} totalReceived=${totalReceived}`);
             }
             await sleepImmediate();
             let ready = [];

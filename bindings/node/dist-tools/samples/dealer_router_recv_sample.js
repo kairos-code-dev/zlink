@@ -35,7 +35,8 @@ async function main() {
         const sent = 'ping';
         dealer.send(Buffer.from(sent));
         const reply = 'pong';
-        const request = router.recv();
+        const request = new zlink.Received();
+        router.recv(request);
         try {
             const recvReq = request.parts[0].data().toString();
             assert.equal(recvReq, sent);
@@ -45,7 +46,8 @@ async function main() {
         finally {
             request.close();
         }
-        const response = dealer.recv();
+        const response = new zlink.Received();
+        dealer.recv(response);
         try {
             const recv = response.parts[0].data().toString();
             assert.equal(recv, reply);

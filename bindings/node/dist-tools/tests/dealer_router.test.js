@@ -10,7 +10,8 @@ test('dealer/router uses routing id through Received and routed send', () => {
     router.bind('inproc://dealer-router-contract');
     dealer.connect('inproc://dealer-router-contract');
     dealer.send('hello');
-    const request = router.recv();
+    const request = new zlink.Received();
+    router.recv(request);
     assert.equal(request.parts.length, 1);
     assert.ok(Object.isFrozen(request.parts));
     assert.equal(request.parts[0].data().toString(), 'hello');
@@ -19,7 +20,8 @@ test('dealer/router uses routing id through Received and routed send', () => {
     assert.notEqual(request.parts[0].getProperty('Routing-Id'), null);
     assert.equal(request.parts[0].getProperty('Routing-Id'), request.parts[0].getProperty('Identity'));
     router.send(request.routingId, ['world']);
-    const response = dealer.recv();
+    const response = new zlink.Received();
+    dealer.recv(response);
     assert.equal(response.parts.length, 1);
     assert.ok(Object.isFrozen(response.parts));
     assert.equal(response.parts[0].data().toString(), 'world');

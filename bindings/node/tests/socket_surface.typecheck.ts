@@ -75,9 +75,10 @@ sub.setTlsServer('cert', 'key');
 sub.setTlsClient('ca', 'host');
 sub.options.topicsCount;
 
+const dealerReceived = new zlink.Received();
 const dealer = new zlink.DealerSocket(ctx);
 dealer.send('ok');
-dealer.recv();
+dealer.recv(dealerReceived);
 dealer.onSendReady(() => {});
 dealer.setRoutingId(routingId);
 dealer.getRoutingId();
@@ -86,8 +87,9 @@ dealer.setTlsServer('cert', 'key');
 dealer.setTlsClient('ca', 'host');
 dealer.options.probe = true;
 
+const routerReceived = new zlink.Received();
 const router = new zlink.RouterSocket(ctx);
-router.recv();
+router.recv(routerReceived);
 router.onSendReady(() => {});
 router.setRoutingId(routingId);
 router.getRoutingId();
@@ -99,9 +101,10 @@ router.reply(routingId, 1n, 'ok');
 router.options.mandatory = true;
 router.options.setConnectRoutingId(peerRoutingId);
 
+const streamReceived = new zlink.Received();
 const stream = new zlink.StreamSocket(ctx);
 stream.send(routingId, 'ok');
-stream.recv();
+stream.recv(streamReceived);
 stream.onPacket((sourceRid, header, body) => {
   sourceRid.toString();
   header.data();

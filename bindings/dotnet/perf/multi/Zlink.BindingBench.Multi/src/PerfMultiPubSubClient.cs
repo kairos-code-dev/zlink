@@ -104,14 +104,16 @@ internal static class PerfMultiPubSubClient
         int stoppedCount = 0;
         while (stoppedCount < activeClients.Count)
         {
-            if (PollSocketReadReady(pollManager, activeClients,
-                    pollTimeoutMs) <= 0)
+            int readyCount = PollSocketReadReady(pollManager, activeClients,
+                pollTimeoutMs);
+            if (readyCount <= 0)
             {
                 continue;
             }
 
-            for (int i = 0; i < activeClients.Count; i++)
+            for (int readyOffset = 0; readyOffset < readyCount; readyOffset++)
             {
+                int i = ReadySocketIndexAt(pollManager, readyOffset);
                 if (stoppedClients[i] || !IsSocketReadReady(pollManager, i))
                     continue;
 

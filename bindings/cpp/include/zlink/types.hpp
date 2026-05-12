@@ -24,7 +24,9 @@ class routing_id_t;
 class actor_ref_t;
 class received_t;
 class topic_message_t;
+class base_socket_t;
 class dealer_socket_t;
+class router_socket_t;
 class timer_t;
 namespace service
 {
@@ -1493,7 +1495,22 @@ class received_t
 	    }
 
   private:
+    friend class base_socket_t;
+    friend class router_socket_t;
+
+    enum class send_context_kind_t
+    {
+        none,
+        socket_rid,
+        router_spot
+    };
+
     void materialize_parts () const;
+    void set_send_context (void *handle_, send_context_kind_t kind_) noexcept
+    {
+        _send_context_handle = handle_;
+        _send_context_kind = kind_;
+    }
 
     std::optional<routing_id_t> _routing_id;
     std::optional<routing_id_t> _spot_rid;
@@ -1502,6 +1519,8 @@ class received_t
 	    mutable std::vector<message_t> _parts;
 	    std::function<void(std::vector<message_t> &, send_flags_t)> _reply_fn;
 	    std::function<bool(std::vector<message_t> &, send_flags_t)> _send_fn;
+	    void *_send_context_handle = nullptr;
+	    send_context_kind_t _send_context_kind = send_context_kind_t::none;
 	};
 
 class topic_message_t

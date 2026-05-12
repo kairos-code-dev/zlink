@@ -889,6 +889,50 @@ inline bool received_t::send (message_t &part) const
 
 inline bool received_t::send (message_t &part, send_flags_t flags) const
 {
+    if (_send_context_kind != send_context_kind_t::none) {
+        if (!part.valid ())
+            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+
+        submit_result_t result = submit_result_t::invalid_argument;
+        switch (_send_context_kind) {
+        case send_context_kind_t::socket_rid:
+            if (!_send_context_handle || !_routing_id.has_value ())
+                throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+            result = static_cast<submit_result_t> (
+              zlink_send_part_rid (
+                _send_context_handle,
+                zlink::detail::routing_id_native (*_routing_id),
+                zlink::detail::native_handle (part),
+                static_cast<zlink_send_flags_t> (flags),
+                ZLINK_PART_FINAL));
+            break;
+        case send_context_kind_t::router_spot:
+            if (!_send_context_handle || !_routing_id.has_value ()
+                || !_spot_rid.has_value ())
+                throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+            result = static_cast<submit_result_t> (
+              zlink_router_send_spot_part (
+                _send_context_handle,
+                zlink::detail::routing_id_native (*_routing_id),
+                zlink::detail::routing_id_native (*_spot_rid),
+                zlink::detail::native_handle (part),
+                static_cast<zlink_send_flags_t> (flags),
+                ZLINK_PART_FINAL));
+            break;
+        case send_context_kind_t::none:
+            break;
+        }
+
+        if (result == submit_result_t::ok) {
+            zlink::detail::mark_sent (part);
+            return true;
+        }
+        if (flags == send_flags_t::dontwait
+            && result == submit_result_t::backpressured)
+            return false;
+        throw submit_error_t (result, zlink_errno ());
+    }
+
     std::vector<message_t> parts;
     parts.push_back (std::move (part));
     const bool sent = send (parts, flags);

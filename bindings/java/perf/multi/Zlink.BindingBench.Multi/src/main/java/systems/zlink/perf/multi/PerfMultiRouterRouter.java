@@ -13,7 +13,7 @@ import systems.zlink.RouterSocket;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
 import systems.zlink.perf.PerfControl;
-import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.nio.charset.StandardCharsets;
@@ -98,14 +98,13 @@ final class PerfMultiRouterRouter {
                             receivedBuffer.close();
                             continue;
                         }
-	                        // Fast path: send directly when no pending backlog.
-	                        if (pendingReplies.isEmpty()
-	                            && receivedBuffer.send(receivedBuffer.firstPart(),
-	                                SendFlags.DONT_WAIT)) {
-	                            receivedBuffer.close();
-	                            continue;
-	                        }
-	                        RoutingId rid = receivedBuffer.routingId().orElseThrow();
+                        // Fast path: send directly when no pending backlog.
+                        if (pendingReplies.isEmpty()
+                            && receivedBuffer.send(receivedBuffer.firstPart(),
+                                SendFlags.DONT_WAIT)) {
+                            continue;
+                        }
+                        RoutingId rid = receivedBuffer.routingId().orElseThrow();
                         // Slow path: take ownership of the part to outlive
                         // the Received scope and enqueue / send.
                         Message ownedReply = receivedBuffer.firstPart().move();
@@ -121,6 +120,7 @@ final class PerfMultiRouterRouter {
                     }
                 }
             }
+            receivedBuffer.close();
             return PerfUtil.Result.silent(config);
         }
     }
@@ -238,8 +238,10 @@ final class PerfMultiRouterRouter {
                         waitingWritable[idx]);
                 }
                 rrIndex = (startIndex + 1) % n;
-                pollSet.poll(-1);
-                for (int idx = 0; idx < n; idx++) {
+                int readyCount = pollSet.poll(-1);
+                for (int readyOffset = 0; readyOffset < readyCount;
+                     readyOffset++) {
+                    int idx = pollSet.readyIndexAt(readyOffset);
                     boolean writable =
                         pollSet.isReady(idx, PollEventFlag.POLLOUT);
                     if (writable && waitingWritable[idx] && !waitingReply[idx]) {
@@ -257,6 +259,7 @@ final class PerfMultiRouterRouter {
                         replyBuffer);
                 }
             }
+            replyBuffer.close();
             // PERF_MULTI_TEST_POLICY §1.3.1 wire-level stop token: one per
             // client. Best-effort send, do not block the runner past the
             // result-line timeout.
@@ -301,7 +304,6 @@ final class PerfMultiRouterRouter {
                 msgSize, true);
             waitingWritable[idx] = false;
             updatePollMask(pollSet, idx, false, false);
-            replyBuffer.close();
         }
     }
 

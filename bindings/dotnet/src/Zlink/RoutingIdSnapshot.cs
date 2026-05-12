@@ -100,4 +100,29 @@ internal unsafe struct RoutingIdSnapshot
             bytes[i] = (byte)(_hi >> ((i - 8) * 8));
         return bytes;
     }
+
+    internal void WriteNative(ref ZlinkRoutingId target)
+    {
+        if (_size <= 0)
+            throw new ArgumentOutOfRangeException(nameof(target),
+                "routingId length must be between 1 and 255 bytes.");
+
+        target = default;
+        target.Size = _size;
+        if (_large != null)
+        {
+            fixed (byte* src = _large)
+            fixed (byte* dst = target.Data)
+            {
+                new ReadOnlySpan<byte>(src, _size)
+                    .CopyTo(new Span<byte>(dst, _size));
+            }
+            return;
+        }
+
+        for (int i = 0; i < _size && i < 8; i++)
+            target.Data[i] = (byte)(_lo >> (i * 8));
+        for (int i = 8; i < _size; i++)
+            target.Data[i] = (byte)(_hi >> ((i - 8) * 8));
+    }
 }

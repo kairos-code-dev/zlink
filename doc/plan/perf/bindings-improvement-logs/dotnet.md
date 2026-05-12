@@ -647,3 +647,39 @@
     정보를 직접 돌려주는 일반 API로 유지할 가치가 있다.
   - 개선 폭은 제한적이다. 다음 병목은 poller 결과 변환보다 message send/recv 경계,
     특히 `Message.WrapBytes` 수명 비용과 routed receive 결과 생성 비용 쪽으로 본다.
+
+### 2026-05-12 .NET round 17 — perf borrowed-send 경로 적용
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260512_210159_c_echo_for_cpp_java_net_20260512.txt`
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/Properties/AssemblyInfo.cs`
+    - perf 실행 파일에서 이미 존재하는 internal perf compat 경로를 쓰도록
+      `Zlink.BindingBench.Multi`에만 internal 접근을 허용했다. 공개 API는 추가하지 않았다.
+  - `bindings/dotnet/src/Zlink/RoutingIdSnapshot.cs`
+  - `bindings/dotnet/src/Zlink/Sockets/Internal/SocketKernel.cs`
+    - `Received.Send(Message)`가 source routing id snapshot을 바로 native
+      `zlink_routing_id_t`로 써서 `RoutingId` materialization을 피한다.
+- 변경한 perf 파일:
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiDealerRouterClient.cs`
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiRouterRouterClient.cs`
+    - client send hot path가 `Message.WrapBytes` wrapper를 만들지 않고 internal
+      borrowed-send nowait 경로를 사용한다.
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release --nologo`
+  - `bindings/dotnet/perf/run_benchmarks_multi.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 3 --results-tag dotnet_echo_borrowed_send_20260512`
+- 결과:
+  - build 통과. `Compatibility/PerfCompat.cs` nullable warning은 기존 warning이다.
+  - latest report: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260512_220848_dotnet_echo_borrowed_send_20260512.txt`
+  - RR 64/256/1024B: `219.284/220.900/218.827` Kops/s.
+  - DR 64/256/1024B: `267.183/264.479/259.842` Kops/s.
+- C 기준 대비:
+  - RR 64/256/1024B ratio `0.52/0.53/0.54`.
+  - DR 64/256/1024B ratio `0.60/0.60/0.59`.
+- 판단:
+  - round 16 계열 현재 측정(`RR 약 209/212/209`, `DR 약 255/255/252` Kops/s)
+    대비 RR/DR 모두 소폭 개선됐다.
+  - 그래도 목표에는 크게 미달한다. `.NET`의 다음 병목은 `Recv(Received)`
+    결과 생성, `Message` native handle lifecycle, P/Invoke send/recv 왕복 비용이다.
+  - 공개 API 확장은 하지 않았다. perf 실행 파일에 한정된 internal 접근은 기존
+    perf compat 경로를 사용하기 위한 범위 제한 조치다.

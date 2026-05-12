@@ -132,6 +132,16 @@ internal static partial class PerfRunner
         return pollManager.IsSocketWriteReady(index);
     }
 
+    internal static int ReadySocketCount(PollManager pollManager)
+    {
+        return pollManager.ReadySocketCount;
+    }
+
+    internal static int ReadySocketIndexAt(PollManager pollManager, int offset)
+    {
+        return pollManager.ReadySocketIndexAt(offset);
+    }
+
     private static bool TryConsumeReadyEvent(MonitorSocket monitor)
     {
         return DrainReadyEvents(monitor) > 0;

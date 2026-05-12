@@ -406,6 +406,28 @@ public abstract class Socket implements AutoCloseable {
         return true;
     }
 
+    boolean send(byte[] routingIdBytes, Message part, SendFlag flags) {
+        Objects.requireNonNull(routingIdBytes, "routingIdBytes");
+        Objects.requireNonNull(part, "part");
+        Objects.requireNonNull(flags, "flags");
+        ensureBlockingSendAllowed(flags);
+        while (true) {
+            int rc = sendPartOnce(part, routingIdBytes, flags.getValue(),
+                Native.PART_FINAL);
+            if (rc == 0)
+                return true;
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR)
+                continue;
+            if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0
+                && (errno == ERRNO_EAGAIN
+                    || errno == ERRNO_EWOULDBLOCK_WIN)) {
+                return false;
+            }
+            throwPartSubmitFailure("zlink_send_part_rid");
+        }
+    }
+
     void send(int rid, Message part, SendFlag flags) {
         Objects.requireNonNull(part, "part");
         Objects.requireNonNull(flags, "flags");
@@ -1334,7 +1356,7 @@ public abstract class Socket implements AutoCloseable {
         Objects.requireNonNull(flag, "flag");
         ensureBlockingSendAllowed(flag);
         while (true) {
-            int rc = sendPartOnce(message, null, flag.getValue(),
+            int rc = sendPartOnce(message, (RoutingId) null, flag.getValue(),
                 Native.PART_FINAL);
             if (rc == 0)
                 return;
@@ -1349,7 +1371,7 @@ public abstract class Socket implements AutoCloseable {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flag, "flag");
         while (true) {
-            int rc = sendPartOnce(message, null, flag.getValue(),
+            int rc = sendPartOnce(message, (RoutingId) null, flag.getValue(),
                 Native.PART_FINAL);
             if (rc == 0)
                 return true;
@@ -1365,8 +1387,8 @@ public abstract class Socket implements AutoCloseable {
     SendResult sendMessageFrameNoWaitResult(Message message) {
         Objects.requireNonNull(message, "message");
         while (true) {
-            int rc = sendPartOnce(message, null, SendFlag.DONTWAIT.getValue(),
-                Native.PART_FINAL);
+            int rc = sendPartOnce(message, (RoutingId) null,
+                SendFlag.DONTWAIT.getValue(), Native.PART_FINAL);
             if (rc == 0)
                 return SendResult.SENT;
             int errno = Native.errno();
@@ -1401,6 +1423,25 @@ public abstract class Socket implements AutoCloseable {
                 : Native.sendPartRid(handle, nativeRoutingId, messageHandle,
                     flags, partFlag);
         }
+        if (rc == 0) {
+            message.markTransferred();
+        }
+        return rc;
+    }
+
+    private int sendPartOnce(Message message, byte[] routingIdBytes, int flags,
+                             int partFlag) {
+        SendScratch scratch = sendScratch.get();
+        MemorySegment messageHandle = InternalAccess.messageNativeHandle(message);
+        MemorySegment nativeRoutingId = nativeRoutingId(scratch,
+            routingIdBytes);
+        boolean useCritical =
+            (flags & SendFlag.DONTWAIT.getValue()) != 0;
+        int rc = useCritical
+            ? Native.sendPartRidNoWaitCritical(handle, nativeRoutingId,
+                messageHandle, flags, partFlag)
+            : Native.sendPartRid(handle, nativeRoutingId, messageHandle,
+                flags, partFlag);
         if (rc == 0) {
             message.markTransferred();
         }
@@ -1767,6 +1808,13 @@ public abstract class Socket implements AutoCloseable {
         writeNativeRoutingId(nativeRid, value);
         scratch.cachedRoutingIdBytes = value;
         scratch.cachedRoutingIdSegment = nativeRid;
+        return nativeRid;
+    }
+
+    private static MemorySegment nativeRoutingId(SendScratch scratch,
+                                                 byte[] value) {
+        MemorySegment nativeRid = scratch.nativeRoutingId;
+        writeNativeRoutingId(nativeRid, value);
         return nativeRid;
     }
 

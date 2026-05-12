@@ -1599,9 +1599,7 @@ internal sealed class SocketKernel : IDisposable
     {
         if (part == null)
             throw new ArgumentNullException(nameof(part));
-
-        RoutingId? target = routingId.ToRoutingId();
-        if (!target.HasValue)
+        if (!routingId.HasValue)
         {
             throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
                 (int)ErrorCode.EInval);
@@ -1610,17 +1608,25 @@ internal sealed class SocketKernel : IDisposable
         RoutingId? targetSpot = spotRid.ToRoutingId();
         if (targetSpot.HasValue)
         {
+            RoutingId? target = routingId.ToRoutingId();
+            if (!target.HasValue)
+            {
+                throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
+                    (int)ErrorCode.EInval);
+            }
             return SendToSpotCore(target.Value, targetSpot.Value,
                 new[] { part }, flags);
         }
 
+        ZlinkRoutingId nativeRoutingId = default;
+        routingId.WriteNative(ref nativeRoutingId);
         if ((flags & SendFlags.DontWait) != 0)
         {
-            return SendRoutedMessageResultUnchecked(target.Value, part,
+            return SendSingleResultCore(ref nativeRoutingId, part,
                 (int)flags) == SendResult.Sent;
         }
 
-        SendRoutedMessageUnchecked(target.Value, part, flags);
+        SendSingleCore(ref nativeRoutingId, part, (int)flags);
         return true;
     }
 

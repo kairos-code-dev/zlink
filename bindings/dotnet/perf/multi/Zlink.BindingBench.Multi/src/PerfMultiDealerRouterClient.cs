@@ -118,18 +118,16 @@ internal static class PerfMultiDealerRouterClient
             // (-1). The benchDeadlineTicks check at the top of the loop
             // ends the active phase; the wire-level stop token sent
             // afterwards instructs the server to wind down.
-            if (PollSocketEvents(pollManager, sockets, eventMasks,
-                    pollTimeoutMs) <= 0)
+            int readyCount = PollSocketEvents(pollManager, sockets, eventMasks,
+                pollTimeoutMs);
+            if (readyCount <= 0)
             {
-                for (int i = 0; i < slots.Length; i++)
-                    HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
-                        runId, PerfPhase.Active, ref seq, metrics, allowSend: true,
-                        activeDeadlineTicks: benchDeadlineTicks);
                 continue;
             }
 
-            for (int i = 0; i < slots.Length; i++)
-                HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
+            for (int i = 0; i < readyCount; i++)
+                HandleClientEvent(pollManager, slots,
+                    ReadySocketIndexAt(pollManager, i), eventMasks, msgSize,
                     runId, PerfPhase.Active, ref seq, metrics, allowSend: true,
                     activeDeadlineTicks: benchDeadlineTicks);
         }
@@ -293,11 +291,10 @@ internal static class PerfMultiDealerRouterClient
 
     private static bool TrySend(DealerRouterClientSlot slot)
     {
-        // WrapBytes pins slot.Payload at send time without copying. The
-        // payload is only re-stamped after the previous reply arrives so the
-        // buffer is not mutated while a send is in flight.
-        using Message message = Message.WrapBytes(slot.Payload);
-        return ((DealerSocket)slot.Socket).Send(message, SendFlags.DontWait);
+        // The payload is only re-stamped after the previous reply arrives, so
+        // the borrowed buffer is not mutated while a send is in flight.
+        return ((DealerSocket)slot.Socket).SendBorrowedSingleNoWaitResult(
+            slot.Payload) == SendResult.Sent;
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)

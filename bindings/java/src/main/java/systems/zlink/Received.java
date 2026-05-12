@@ -103,38 +103,36 @@ public final class Received implements AutoCloseable {
                                   BiConsumer<List<Message>, SendFlags> replySender,
                                   Runnable onTerminalState) {
         Objects.requireNonNull(singlePart, "singlePart");
-        synchronized (this) {
-            // Discard any prior owned state without recycling the parts list,
-            // so we can reuse it without reallocation.
-            if (realizedParts != null && !realizedParts.isEmpty()) {
-                for (int i = 0; i < realizedParts.size(); i++) {
-                    Message part = realizedParts.get(i);
-                    if (part != null) {
-                        try { part.close(); } catch (RuntimeException ignored) {}
-                    }
+        // Discard any prior owned state without recycling the parts list,
+        // so we can reuse it without reallocation.
+        if (realizedParts != null && !realizedParts.isEmpty()) {
+            for (int i = 0; i < realizedParts.size(); i++) {
+                Message part = realizedParts.get(i);
+                if (part != null) {
+                    try { part.close(); } catch (RuntimeException ignored) {}
                 }
-                realizedParts.clear();
             }
-            ReceivedPartCursor pendingCursor = cursor;
-            cursor = null;
-            this.closed = false;
-            this.routingId = null;
-            this.spotRid = null;
-            this.routingIdBytes = routingIdBytes;
-            this.spotRidBytes = spotRidBytes;
-            this.requestSequence = requestSequence;
-            this.hasRequestSequence = hasRequestSequence;
-            this.replySender = replySender;
-            this.sendSender = null;
-            this.sendRouter = null;
-            this.onTerminalState = onTerminalState;
-            if (this.realizedParts == null) {
-                this.realizedParts = acquirePartsList(1);
-            }
-            this.realizedParts.add(singlePart);
-            this.partsView = null;
-            closeCursorQuietly(pendingCursor);
+            realizedParts.clear();
         }
+        ReceivedPartCursor pendingCursor = cursor;
+        cursor = null;
+        this.closed = false;
+        this.routingId = null;
+        this.spotRid = null;
+        this.routingIdBytes = routingIdBytes;
+        this.spotRidBytes = spotRidBytes;
+        this.requestSequence = requestSequence;
+        this.hasRequestSequence = hasRequestSequence;
+        this.replySender = replySender;
+        this.sendSender = null;
+        this.sendRouter = null;
+        this.onTerminalState = onTerminalState;
+        if (this.realizedParts == null) {
+            this.realizedParts = acquirePartsList(1);
+        }
+        this.realizedParts.add(singlePart);
+        this.partsView = null;
+        closeCursorQuietly(pendingCursor);
     }
 
     /**
@@ -402,6 +400,10 @@ public final class Received implements AutoCloseable {
 
     /** Returns whether exactly one payload part was received. */
     public boolean isSinglePart() {
+        ArrayList<Message> parts = realizedParts;
+        if (!closed && cursor == null && parts != null) {
+            return parts.size() == 1;
+        }
         synchronized (this) {
             ensureOpen();
             ensureRealizedThroughLocked(1);
@@ -411,6 +413,10 @@ public final class Received implements AutoCloseable {
 
     /** Returns the first payload part. */
     public Message firstPart() {
+        ArrayList<Message> parts = realizedParts;
+        if (!closed && cursor == null && parts != null && !parts.isEmpty()) {
+            return parts.get(0);
+        }
         synchronized (this) {
             ensureOpen();
             ensureRealizedThroughLocked(0);
@@ -422,6 +428,10 @@ public final class Received implements AutoCloseable {
 
     /** Returns the only payload part or throws when the result is multipart. */
     public Message singlePartOrThrow() {
+        ArrayList<Message> parts = realizedParts;
+        if (!closed && cursor == null && parts != null && parts.size() == 1) {
+            return parts.get(0);
+        }
         synchronized (this) {
             ensureOpen();
             ensureRealizedThroughLocked(1);
@@ -465,6 +475,10 @@ public final class Received implements AutoCloseable {
         RouterSocket router = sendRouter;
         if (router != null) {
             try {
+                if (spotRidBytes == null && routingIdBytes != null) {
+                    return router.send(routingIdBytes, part,
+                        SendFlag.fromValue(flags.value()));
+                }
                 RoutingId nodeRid = routingIdOrThrow();
                 RoutingId spot = spotRidOrNull();
                 return spot == null
@@ -522,6 +536,21 @@ public final class Received implements AutoCloseable {
 
     @Override
     public void close() {
+        ArrayList<Message> fastParts = realizedParts;
+        if (!closed && cursor == null && fastParts != null
+            && fastParts.size() == 1) {
+            Message part = fastParts.get(0);
+            closed = true;
+            realizedParts = null;
+            partsView = Collections.emptyList();
+            releasePartsList(fastParts);
+            try {
+                part.close();
+            } catch (RuntimeException ignored) {
+            }
+            return;
+        }
+
         ReceivedPartCursor pendingCursor;
         Message singleToClose = null;
         List<Message> toClose = null;

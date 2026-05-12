@@ -1010,3 +1010,35 @@
   - 이 변경은 측정 의미를 C와 다르게 만드는 perf 우회가 아니라 공개 wrapper 의미를
     맞추는 정리다. 다음 성능 라운드에서는 기존 C 기준과 비교해 wrapper 비용 변화만
     별도로 확인한다.
+
+### 2026-05-12 C++ round 27 — single-part received send 직접화
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260512_210159_c_echo_for_cpp_java_net_20260512.txt`
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/types.hpp`
+  - `bindings/cpp/include/zlink/types_impl.hpp`
+  - `bindings/cpp/include/zlink/base_socket.hpp`
+  - `bindings/cpp/include/zlink/socket_types.hpp`
+- 변경한 perf 파일:
+  - `bindings/cpp/perf/multi/src/perf_dealer_router_server.cpp`
+  - `bindings/cpp/perf/multi/src/perf_router_router_server.cpp`
+- 선택한 병목 가설:
+  - routed echo server의 `received_t::send(message_t&)`가 단일 payload도 vector
+    wrapper 경로로 보내면서 불필요한 container 생성과 send lambda 경유를 한다.
+  - 단일 part는 `received_t` 내부 send context에서 바로 `zlink_send_part_rid`
+    또는 `zlink_router_send_spot_part`로 보낼 수 있다.
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target cpp_comp_src_dealer_router_server cpp_comp_src_router_router_server cpp_comp_src_dealer_router_client cpp_comp_src_router_router_client -j2`
+  - `bindings/cpp/perf/run_benchmarks_multi.sh --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 65536 --duration 3 --runs 3 --results-tag cpp_echo_64k_received_send_context_20260512`
+- 결과:
+  - build 통과. 기존 sign-compare warning은 남아 있다.
+  - latest report: `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260512_213844_cpp_echo_64k_received_send_context_20260512.txt`
+  - RR 65536B: `132.067 Kops/s`, C `175.939 Kops/s` 대비 ratio `0.75`.
+  - DR 65536B: `134.831 Kops/s`, C `179.168 Kops/s` 대비 ratio `0.75`.
+- 판단:
+  - round 시작 시 current 64KB 결과(`RR 127.707`, `DR 129.382` Kops/s)보다
+    소폭 개선됐지만 목표 `0.90`에는 아직 멀다.
+  - 남은 C++ 64KB 병목은 server 단일-part send wrapper만으로 설명되지 않는다.
+    round 23/24의 결론처럼 client receive/send loop의 wrapper 비용과 100 client
+    64KB in-flight 압력이 함께 작용하는 영역으로 본다.

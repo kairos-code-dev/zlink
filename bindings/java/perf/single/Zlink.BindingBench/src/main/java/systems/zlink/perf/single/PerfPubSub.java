@@ -10,7 +10,7 @@ import systems.zlink.PubSocket;
 import systems.zlink.RecvFlags;
 import systems.zlink.SubSocket;
 import systems.zlink.TopicMessage;
-import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.time.Duration;

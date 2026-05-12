@@ -7,7 +7,7 @@ import systems.zlink.DealerSocket;
 import systems.zlink.Message;
 import systems.zlink.MonitorEventType;
 import systems.zlink.PollEventFlag;
-import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.time.Duration;

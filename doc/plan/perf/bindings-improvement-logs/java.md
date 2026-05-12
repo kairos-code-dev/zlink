@@ -710,3 +710,46 @@
     RR 1024B를 `238.164` → `244.776` Kops/s로 올렸다.
   - 목표에는 아직 못 미친다. Java의 다음 병목은 FFM downcall 자체, `Message`
     native handle lifecycle, routing id byte[] 생성 비용이다.
+
+### 2026-05-12 Java round 21 — Received 단일-part fast path와 close 정렬
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260512_210159_c_echo_for_cpp_java_net_20260512.txt`
+- 변경한 라이브러리 파일:
+  - `bindings/java/src/main/java/systems/zlink/Received.java`
+    - single-part routed recv hot path에서 `populateRoutedSinglePart`,
+      `firstPart`, `singlePartOrThrow`, `isSinglePart`, `close`가 불필요한
+      synchronized/list 경유를 줄이도록 fast path를 추가했다.
+  - `bindings/java/src/main/java/systems/zlink/Socket.java`
+    - `Received.send(Message)`가 source routing id byte[]를 가진 경우
+      `RoutingId` 객체를 만들지 않고 package-private routed send 경로를 사용한다.
+- 변경한 perf 파일:
+  - `bindings/java/perf/common/src/main/java/systems/zlink/perf/PerfSocketPollSet.java`
+    - perf helper를 `systems.zlink` package로 두어 공개 API 추가 없이 Poller의
+      package-private ready cache를 사용한다.
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiDealerRouter.java`
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiRouterRouter.java`
+    - ready index만 처리한다.
+    - .NET perf와 같이 성공한 fast-path echo 뒤 매번 `Received.close()`를 호출하지
+      않고 다음 recv에서 caller-provided `Received`가 이전 상태를 덮어쓰게 했다.
+- 배제한 가설:
+  - direct `ByteBuffer` borrow send와 `Message.wrapDirect` 공개화는 단독 측정에서
+    개선이 없어 되돌렸다. 이번 라운드는 공개 API를 추가하지 않는다.
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew --quiet :compileJava :perf-multi:compileJava :perf-single:compileJava`
+  - `bindings/java/perf/run_benchmarks_multi.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 3 --results-tag java_echo_received_fastpath_no_public_api_20260512`
+- 결과:
+  - compile 및 perf compile 통과.
+  - latest report: `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_220516_java_echo_received_fastpath_no_public_api_20260512.txt`
+  - RR 64/256/1024B: `237.525/231.971/229.981` Kops/s.
+  - DR 64/256/1024B: `313.713/306.929/300.592` Kops/s.
+- C 기준 대비:
+  - RR 64/256/1024B ratio `0.56/0.55/0.57`.
+  - DR 64/256/1024B ratio `0.70/0.70/0.68`.
+- 판단:
+  - round 20 15초 측정(`RR 249.857/246.756/244.776`, `DR 316.651/318.112`)
+    과 직접 수치 비교는 duration이 달라 조심해야 한다. 같은 3-run 짧은 측정
+    흐름에서는 `Received` fast path와 close 정렬 후 DR 64B가 Java 목표 `0.70`에
+    도달했고, DR 256/1024B와 RR 전체는 아직 미달이다.
+  - 남은 병목은 Java FFM downcall 왕복, per-recv `Message` wrapper/native memory
+    lifecycle, routed receive source id byte[] 생성 비용으로 본다.

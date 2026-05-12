@@ -12,7 +12,7 @@ import systems.zlink.RouterSocket;
 import systems.zlink.RoutingId;
 import systems.zlink.SendFlags;
 import systems.zlink.perf.PerfControl;
-import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.time.Duration;
@@ -71,13 +71,12 @@ final class PerfMultiDealerRouter {
                             receivedBuffer.close();
                             continue;
                         }
-	                        if (pendingReplies.isEmpty()
-	                            && receivedBuffer.send(receivedBuffer.firstPart(),
-	                                SendFlags.DONT_WAIT)) {
-	                            receivedBuffer.close();
-	                            continue;
-	                        }
-	                        RoutingId rid = receivedBuffer.routingId().orElseThrow();
+                        if (pendingReplies.isEmpty()
+                            && receivedBuffer.send(receivedBuffer.firstPart(),
+                                SendFlags.DONT_WAIT)) {
+                            continue;
+                        }
+                        RoutingId rid = receivedBuffer.routingId().orElseThrow();
                         Message reply = receivedBuffer.firstPart().move();
                         receivedBuffer.close();
                         if (pendingReplies.isEmpty()
@@ -89,6 +88,7 @@ final class PerfMultiDealerRouter {
                     }
                 }
             }
+            receivedBuffer.close();
             return PerfUtil.Result.silent(config);
         }
     }
@@ -184,8 +184,9 @@ final class PerfMultiDealerRouter {
                         waitingWritable[idx]);
                 }
                 rrIndex = (startIndex + 1) % n;
-                pollSet.poll(-1);
-                for (int idx = 0; idx < n; idx++) {
+                int readyCount = pollSet.poll(-1);
+                for (int readyOffset = 0; readyOffset < readyCount; readyOffset++) {
+                    int idx = pollSet.readyIndexAt(readyOffset);
                     boolean writable =
                         pollSet.isReady(idx, PollEventFlag.POLLOUT);
                     if (writable && waitingWritable[idx] && !waitingReply[idx]) {
@@ -203,6 +204,7 @@ final class PerfMultiDealerRouter {
                         replyBuffer);
                 }
             }
+            replyBuffer.close();
             for (DealerSocket client : clients) {
                 try (Message stop = PerfStopToken.newMessage();
                      PerfSocketPollSet stopPoll = PerfSocketPollSet.fromSockets(
@@ -241,7 +243,6 @@ final class PerfMultiDealerRouter {
             waitingReply[idx] = false;
             waitingWritable[idx] = false;
             updatePollMask(pollSet, idx, false, false);
-            replyBuffer.close();
         }
     }
 

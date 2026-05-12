@@ -112,52 +112,27 @@ internal static class PerfMultiRouterRouterClient
         long benchStartTicks = Stopwatch.GetTimestamp();
         long benchDeadlineTicks = benchStartTicks
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
-        bool timing = Environment.GetEnvironmentVariable(
-            "PERF_DOTNET_TIMING") == "1";
-        long scheduleTicks = 0;
-        long pollTicks = 0;
-        long handleTicks = 0;
-        long passes = 0;
         while (Stopwatch.GetTimestamp() < benchDeadlineTicks)
         {
-            long t0 = timing ? Stopwatch.GetTimestamp() : 0;
             TryScheduleIdleSends(slots, eventMasks, msgSize, runId, PerfPhase.Active,
                 ref seq, ref rrIndex);
-            long t1 = timing ? Stopwatch.GetTimestamp() : 0;
 
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait.
-            if (PollSocketEvents(pollManager, sockets, eventMasks,
-                    pollTimeoutMs) <= 0)
+            int readyCount = PollSocketEvents(pollManager, sockets, eventMasks,
+                pollTimeoutMs);
+            if (readyCount <= 0)
             {
-                long t2no = timing ? Stopwatch.GetTimestamp() : 0;
-                for (int i = 0; i < slots.Length; i++)
-                    HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
-                        runId, PerfPhase.Active, ref seq, metrics, allowSend: true,
-                        activeDeadlineTicks: benchDeadlineTicks);
-                long t3no = timing ? Stopwatch.GetTimestamp() : 0;
-                if (timing) { scheduleTicks += t1 - t0; pollTicks += t2no - t1; handleTicks += t3no - t2no; passes++; }
                 continue;
             }
 
-            long t2 = timing ? Stopwatch.GetTimestamp() : 0;
-            for (int i = 0; i < slots.Length; i++)
-                HandleClientEvent(pollManager, slots, i, eventMasks, msgSize,
+            for (int i = 0; i < readyCount; i++)
+                HandleClientEvent(pollManager, slots,
+                    ReadySocketIndexAt(pollManager, i), eventMasks, msgSize,
                     runId, PerfPhase.Active, ref seq, metrics, allowSend: true,
                     activeDeadlineTicks: benchDeadlineTicks);
-            long t3 = timing ? Stopwatch.GetTimestamp() : 0;
-            if (timing) { scheduleTicks += t1 - t0; pollTicks += t2 - t1; handleTicks += t3 - t2; passes++; }
         }
 
         long benchEndTicks = Stopwatch.GetTimestamp();
-        if (timing && passes > 0)
-        {
-            double tickPerNs = 1_000_000_000.0 / Stopwatch.Frequency;
-            double cpuNs = (scheduleTicks + pollTicks + handleTicks) * tickPerNs;
-            double wallNs = (benchEndTicks - benchStartTicks) * tickPerNs;
-            Console.Error.WriteLine(
-                $"[dotnet-client-timing] passes={passes} per-pass ns: schedule={scheduleTicks * tickPerNs / passes:F0} poll={pollTicks * tickPerNs / passes:F0} handle={handleTicks * tickPerNs / passes:F0} total={(scheduleTicks + pollTicks + handleTicks) * tickPerNs / passes:F0} cpu%={cpuNs / wallNs * 100:F1}");
-        }
-
         double elapsedSeconds = (benchEndTicks - benchStartTicks)
             / (double)Stopwatch.Frequency;
         double configuredSeconds = Math.Max(1.0, durationSeconds);
@@ -314,12 +289,10 @@ internal static class PerfMultiRouterRouterClient
 
     private static bool TrySend(RouterRouterClientSlot slot)
     {
-        // WrapBytes pins slot.Payload at send time without copying. The
-        // payload is only re-stamped after the previous reply arrives so the
-        // buffer is not mutated while a send is in flight.
-        using Message message = Message.WrapBytes(slot.Payload);
-        return ((RouterSocket)slot.Socket).Send(slot.ServerRoutingId, message,
-            SendFlags.DontWait);
+        // The payload is only re-stamped after the previous reply arrives, so
+        // the borrowed buffer is not mutated while a send is in flight.
+        return ((RouterSocket)slot.Socket).SendBorrowedSingleNoWaitResult(
+            slot.ServerRoutingId, slot.Payload) == SendResult.Sent;
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)

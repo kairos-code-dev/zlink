@@ -13,7 +13,7 @@ import systems.zlink.SubmitException;
 import systems.zlink.SubmitResult;
 import systems.zlink.ZlinkException;
 import systems.zlink.perf.PerfControl;
-import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.util.ArrayList;
@@ -225,10 +225,12 @@ final class PerfMultiDealerDealer {
 
     private static void pollWritable(PerfSocketPollSet pollSet, boolean[] pending,
                                      int timeoutMs) {
-        if (pollSet.poll(timeoutMs) <= 0) {
+        int readyCount = pollSet.poll(timeoutMs);
+        if (readyCount <= 0) {
             return;
         }
-        for (int i = 0; i < pending.length; i++) {
+        for (int readyOffset = 0; readyOffset < readyCount; readyOffset++) {
+            int i = pollSet.readyIndexAt(readyOffset);
             if (!pending[i]) {
                 continue;
             }

@@ -146,10 +146,9 @@ bool perf_dealer_router_server (const std::string &lib_name,
                 break;
             }
 
-            std::vector<zlink::message_t> &parts = received.parts ();
-            if (parts.empty ())
+            if (!received.is_single_part ())
                 continue;
-            zlink::message_t &part = parts[0];
+            zlink::message_t &part = received.first_part ();
             if (perf::multi::is_stop_token (part.data (), part.size ())) {
                 stop_requested = true;
                 break;

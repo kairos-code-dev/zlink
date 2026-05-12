@@ -980,19 +980,34 @@ class base_socket_t : public socket_handle_t
             };
         }
 
-        received_ = received_t (
+        const std::optional<routing_id_t> source_rid =
           zlink::detail::routing_id_empty (envelope.source_rid)
             ? std::nullopt
-            : std::optional<routing_id_t> (envelope.source_rid),
+            : std::optional<routing_id_t> (envelope.source_rid);
+        const std::optional<routing_id_t> source_spot_rid =
           zlink::detail::routing_id_empty (envelope.source_spot_rid)
             ? std::nullopt
-            : std::optional<routing_id_t> (envelope.source_spot_rid),
-          envelope.has_request_seq
-            ? std::optional<uint64_t> (envelope.request_seq)
-            : std::nullopt,
-          std::move (envelope.parts),
-          std::function<void(std::vector<message_t> &, send_flags_t)> (),
-          std::move (send_fn));
+            : std::optional<routing_id_t> (envelope.source_spot_rid);
+        const std::optional<uint64_t> request_seq =
+          envelope.has_request_seq ? std::optional<uint64_t> (envelope.request_seq)
+                                   : std::nullopt;
+
+        if (envelope.parts.size () == 1u) {
+            received_ = received_t (
+              source_rid, source_spot_rid, request_seq,
+              std::move (envelope.parts[0]),
+              std::function<void(std::vector<message_t> &, send_flags_t)> (),
+              std::move (send_fn));
+        } else {
+            received_ = received_t (
+              source_rid, source_spot_rid, request_seq,
+              std::move (envelope.parts),
+              std::function<void(std::vector<message_t> &, send_flags_t)> (),
+              std::move (send_fn));
+        }
+        if (source_rid.has_value () && !source_spot_rid.has_value ())
+            received_.set_send_context (
+              handle (), received_t::send_context_kind_t::socket_rid);
         return 0;
     }
 

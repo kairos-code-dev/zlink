@@ -11,7 +11,7 @@ import systems.zlink.SendFlags;
 import systems.zlink.SubSocket;
 import systems.zlink.TopicMessage;
 import systems.zlink.perf.PerfControl;
-import systems.zlink.perf.PerfSocketPollSet;
+import systems.zlink.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.time.Duration;

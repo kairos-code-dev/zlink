@@ -852,6 +852,8 @@ class router_socket_t : public routed_message_socket_t
 	                          return false;
 	                      throw submit_error_t (result, zlink_errno ());
 	                  });
+	                out_.set_send_context (
+	                  router_handle_, received_t::send_context_kind_t::router_spot);
 	            } else {
 	                out_.set_send_fn (
 	                  [router_handle_, send_node_rid] (
@@ -880,6 +882,8 @@ class router_socket_t : public routed_message_socket_t
 	                          return false;
 	                      throw submit_error_t (result, zlink_errno ());
 	                  });
+	                out_.set_send_context (
+	                  router_handle_, received_t::send_context_kind_t::socket_rid);
 	            }
 	        }
 	        return 0;

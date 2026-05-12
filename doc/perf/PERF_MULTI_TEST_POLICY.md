@@ -65,6 +65,23 @@
   `zlink_stream_packet_handler()`를 기준으로 packet receive surface를 테스트한다.
 - `while (send 실패)` 식의 즉시 재시도는 금지한다.
 
+#### Ready source dispatch
+
+poller wait 이후 hot path는 poller가 ready로 보고한 source만 처리해야 한다.
+이는 측정 의미를 바꾸기 위한 규칙이 아니라, 언어별 perf harness가 불필요한
+반복 작업을 측정값에 섞지 않도록 하는 구현 parity 규칙이다.
+
+- C `zlink_poll`처럼 API가 poll item 배열에 `revents`를 기록하는 형태라면,
+  poll item 배열을 순회할 수 있다. 이 경우에도 `revents == 0` 항목은 즉시
+  건너뛰고, 실제 recv drain이나 send 재개는 ready bit가 있는 source에서만
+  수행한다.
+- C++처럼 wait 결과가 ready event 목록이면 그 목록만 dispatch한다.
+- Java, .NET 등 managed binding perf는 poll 결과를 ready index 목록이나
+  ready event 목록으로 보존해야 한다. active hot path에서 매 wake마다 전체
+  socket 수를 다시 훑으면서 `isReady(index)`를 반복 호출하는 구조는 피한다.
+- 이 규칙은 echo client의 `inflight 1`, nonblocking send, `POLLIN` drain,
+  `POLLOUT` backpressure 의미를 바꾸지 않는다.
+
 ### 1.2 Backpressure 전략
 
 역할별 backpressure 전략:

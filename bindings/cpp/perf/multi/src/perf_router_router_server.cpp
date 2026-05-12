@@ -193,17 +193,23 @@ bool perf_router_router_server (const std::string &lib_name,
                 break;
             }
 
-            zlink::message_t part;
-            if (!take_router_payload (received.parts (), part)) {
-                debug_log ("recv failed errno=" + std::to_string (errno));
-                failed = true;
-                break;
+            zlink::message_t moved_part;
+            zlink::message_t *part = NULL;
+            if (received.is_single_part ()) {
+                part = &received.first_part ();
+            } else {
+                if (!take_router_payload (received.parts (), moved_part)) {
+                    debug_log ("recv failed errno=" + std::to_string (errno));
+                    failed = true;
+                    break;
+                }
+                part = &moved_part;
             }
-            if (perf::multi::is_stop_token (part.data (), part.size ())) {
+            if (perf::multi::is_stop_token (part->data (), part->size ())) {
                 stop_requested = true;
                 break;
             }
-            if (part.size () == 0)
+            if (part->size () == 0)
                 continue;
             const std::optional<zlink::routing_id_t> &source_rid =
               received.routing_id ();
@@ -215,21 +221,21 @@ bool perf_router_router_server (const std::string &lib_name,
 
             if (!pending_replies.empty ()) {
                 pending_replies.push_back (pending_reply_t {
-                  *source_rid, std::move (part) });
+                  *source_rid, std::move (*part) });
                 continue;
             }
 
             try {
-                if (!received.send (part, zlink::send_flags_t::dontwait)) {
+                if (!received.send (*part, zlink::send_flags_t::dontwait)) {
                     pending_replies.push_back (pending_reply_t {
-                      *source_rid, std::move (part) });
+                      *source_rid, std::move (*part) });
                 }
             } catch (const zlink::submit_error_t &err) {
                 const int err_no = err.internal_errno ();
                 if (err_no == EINTR || err_no == EHOSTUNREACH
                     || err_no == ENOTCONN) {
                     pending_replies.push_back (pending_reply_t {
-                      *source_rid, std::move (part) });
+                      *source_rid, std::move (*part) });
                     continue;
                 }
                 debug_log ("send failed errno=" + std::to_string (err_no));

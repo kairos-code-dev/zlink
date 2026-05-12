@@ -1,14 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink.perf;
+package systems.zlink;
 
-import systems.zlink.Poller;
-import systems.zlink.PollEvent;
-import systems.zlink.PollEventFlag;
-import systems.zlink.Socket;
-import systems.zlink.ZlinkException;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -22,9 +16,10 @@ public final class PerfSocketPollSet implements AutoCloseable {
     private final boolean[] readyOut;
     private final boolean[] readyErr;
     private final boolean[] readyPri;
+    private final int[] readyIndexes;
     private final int[] currentMasks;
-    private final List<PollEvent> events;
     private final Poller poller = new Poller();
+    private int readyCount;
 
     private PerfSocketPollSet(List<Socket> sockets,
                               PollEventFlag... initialEvents) {
@@ -33,8 +28,8 @@ public final class PerfSocketPollSet implements AutoCloseable {
         this.readyOut = new boolean[this.sockets.length];
         this.readyErr = new boolean[this.sockets.length];
         this.readyPri = new boolean[this.sockets.length];
+        this.readyIndexes = new int[this.sockets.length];
         this.currentMasks = new int[this.sockets.length];
-        this.events = new ArrayList<>(this.sockets.length);
         clearReadyEvents();
         int initialMask = mask(initialEvents);
         for (int i = 0; i < this.sockets.length; i++) {
@@ -70,11 +65,22 @@ public final class PerfSocketPollSet implements AutoCloseable {
         };
     }
 
+    public int readyCount() {
+        return readyCount;
+    }
+
+    public int readyIndexAt(int offset) {
+        if (offset < 0 || offset >= readyCount) {
+            throw new IndexOutOfBoundsException("ready offset " + offset);
+        }
+        return readyIndexes[offset];
+    }
+
     public int poll(int timeoutMs) {
         clearReadyEvents();
         int eventCount;
         try {
-            eventCount = poller.wait(events, Duration.ofMillis(timeoutMs));
+            eventCount = poller.pollCount(Duration.ofMillis(timeoutMs));
         } catch (ZlinkException ex) {
             int errno = ex.getInternalErrno();
             if (errno == ERRNO_EINTR
@@ -86,19 +92,25 @@ public final class PerfSocketPollSet implements AutoCloseable {
         }
         int count = Math.min(eventCount, sockets.length);
         for (int i = 0; i < count; i++) {
-            PollEvent event = events.get(i);
-            Object tag = event.tag();
+            Object tag = poller.readyTag(i);
             Integer index = tag instanceof Integer readyIndex
                 ? readyIndex
                 : null;
-            if (index != null) {
-                readyIn[index] = event.revents().contains(PollEventFlag.POLLIN);
-                readyOut[index] = event.revents().contains(PollEventFlag.POLLOUT);
-                readyErr[index] = event.revents().contains(PollEventFlag.POLLERR);
-                readyPri[index] = event.revents().contains(PollEventFlag.POLLPRI);
+            if (index != null && index >= 0 && index < sockets.length) {
+                boolean hasIn = poller.readyHasEvent(i, PollEventFlag.POLLIN);
+                boolean hasOut = poller.readyHasEvent(i, PollEventFlag.POLLOUT);
+                boolean hasErr = poller.readyHasEvent(i, PollEventFlag.POLLERR);
+                boolean hasPri = poller.readyHasEvent(i, PollEventFlag.POLLPRI);
+                readyIn[index] = hasIn;
+                readyOut[index] = hasOut;
+                readyErr[index] = hasErr;
+                readyPri[index] = hasPri;
+                if (hasIn || hasOut || hasErr || hasPri) {
+                    readyIndexes[readyCount++] = index;
+                }
             }
         }
-        return count;
+        return readyCount;
     }
 
     @Override
@@ -111,6 +123,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
         Arrays.fill(readyOut, false);
         Arrays.fill(readyErr, false);
         Arrays.fill(readyPri, false);
+        readyCount = 0;
     }
 
     private void checkIndex(int index) {

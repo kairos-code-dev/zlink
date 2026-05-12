@@ -210,6 +210,16 @@ typedef void (*zlink_actor_join_handler_fn)(
   size_t part_count,
   void *userdata);
 
+typedef struct zlink_actor_lookup_result_t {
+  zlink_request_result_t result;
+  zlink_actor_ref_t actor;
+  uint32_t flags;
+} zlink_actor_lookup_result_t;
+
+typedef void (*zlink_actor_lookup_handler_fn)(
+  const zlink_actor_lookup_result_t *result,
+  void *userdata);
+
 typedef struct zlink_spot_actor_lifecycle_info_t {
   zlink_actor_ref_t previous_actor;
   zlink_actor_ref_t current_actor;
@@ -322,7 +332,33 @@ busy, invalid-state 계열 값을 사용한다. 새 오류 enum 값을 추가하
 첫 구현에서는 0으로 채운다. 새 public bit가 필요하면 별도 초안에서 이름, 값, 하위
 호환 의미를 정의한 뒤 추가한다.
 
+`zlink_actor_lookup_result_t` 필드 의미:
+
+| 필드 | 의미 |
+|------|------|
+| `result` | lookup operation의 최종 결과다. 성공이면 checked Actor ref가 확인된 상태다 |
+| `actor` | 성공 시 target node에 존재하는 Actor ref다 |
+| `flags` | 현재는 예약 필드다. 구현 전까지 공개 bit를 추가하지 않는다 |
+
 ### 변경 대상 함수
+
+아래 함수는 기존 공개 signature 또는 반환 의미가 바뀐다. 모두 C ABI breaking
+change다.
+
+| 함수 | 변경 요약 |
+|------|-----------|
+| `zlink_spot_node_actor_join_spot()` | join 전용 completion 타입을 사용한다 |
+| `zlink_remote_actor_get_ref()` | unchecked ref 생성 helper에서 async checked lookup으로 바꾼다 |
+| `zlink_spot_node_actor_leave_spot()` | 동기 request API에서 async submit API로 바꾼다 |
+| `zlink_spot_node_actor_destroy()` | 동기 request API에서 async submit API로 바꾼다 |
+| `zlink_stream_bind_actor()` | `node` 인자를 제거하고 async submit API로 바꾼다 |
+| `zlink_stream_unbind_actor()` | `node` 인자를 제거하고 async submit API로 바꾼다 |
+| `zlink_stream_send_bound_actor_part()` | `node` 인자를 제거하고 stream owner를 사용한다 |
+
+`zlink_spot_node_actor_send_bound_session_msg()`는 ABI를 유지하지만 구현 계약을
+명확히 한다. 이 함수는 Actor에서 bound session으로 보내는 fire-and-forget relay이며,
+내부 queue나 runtime lock을 즉시 확보할 수 없으면 호출 thread를 기다리게 하지 않고
+submit 실패로 돌려보내야 한다.
 
 `zlink_spot_node_actor_join_spot()`은 handler 타입을 바꾼다.
 
@@ -352,37 +388,74 @@ join 성공 뒤 최종 Actor ref를 반드시 돌려줘야 하므로, 기존 com
 - C binding sample과 perf/sample build 수정
 - C++, .NET, Go, Java, Node, Python, Rust binding의 native signature 갱신
 - 각 binding의 join completion wrapper에서 최종 Actor ref 노출
+- 각 binding의 remote Actor lookup wrapper에서 checked Actor ref 노출
+- 각 binding의 leave/destroy wrapper를 blocking 호출이 아니라 completion 또는 언어별
+  future/promise/task 형태로 갱신
+- 각 binding의 stream Actor bind/unbind wrapper를 blocking 호출이 아니라 completion 또는
+  언어별 future/promise/task 형태로 갱신
 - 기존 `zlink_reply_handler_fn` 기반 join callback 테스트 제거 또는 갱신
+
+### async 변경 정책
+
+remote node의 결과가 필요한 API는 호출 thread에서 결과를 기다리지 않는다. 함수는
+submit 성공 여부만 즉시 반환하고, 최종 결과는 callback으로 전달한다. 이 규칙은 local
+대상에도 똑같이 적용한다. 같은 API가 local일 때는 동기로 끝나고 remote일 때만
+비동기가 되면 caller가 위치에 따라 다른 제어 흐름을 가져야 하기 때문이다.
+
+이 초안에서 아래 API는 nonblocking submit API로 정의한다.
+
+| API | 즉시 반환값 | 최종 결과 전달 |
+|-----|-------------|----------------|
+| `zlink_spot_node_actor_join_spot()` | `zlink_submit_result_t` | `zlink_actor_join_handler_fn` |
+| `zlink_remote_actor_get_ref()` | `zlink_submit_result_t` | `zlink_actor_lookup_handler_fn` |
+| `zlink_spot_node_actor_leave_spot()` | `zlink_submit_result_t` | `zlink_reply_handler_fn` |
+| `zlink_spot_node_actor_destroy()` | `zlink_submit_result_t` | `zlink_reply_handler_fn` |
+| `zlink_stream_bind_actor()` | `zlink_submit_result_t` | `zlink_reply_handler_fn` |
+| `zlink_stream_unbind_actor()` | `zlink_submit_result_t` | `zlink_reply_handler_fn` |
+
+submit 단계에서는 인자 검증, handle 검증, 요청 enqueue만 수행한다. remote node 응답,
+Spot admission, Actor owner 확인, attach/detach commit처럼 시간이 걸릴 수 있는 결과는
+completion으로만 전달한다. submit 단계에서 실패한 요청은 completion을 호출하지 않는다.
+
+`zlink_stream_send_bound_actor_part()`와 `zlink_spot_node_actor_send_bound_session_msg()`는
+fire-and-forget relay API이므로 completion을 추가하지 않는다. 다만 이 둘도 submit API인
+이상 호출 thread를 무기한 blocking하면 안 된다. 내부 queue나 runtime lock을 즉시 확보할
+수 없으면 `ZLINK_SUBMIT_BACKPRESSURED` 같은 submit 결과로 실패해야 한다.
 
 `zlink_remote_actor_get_ref()`는 unchecked ref 생성 helper가 아니라 remote Actor
 lookup API로 의미를 바꾼다. remote lookup은 네트워크 요청이므로 request owner
 `SpotNode`와 timeout을 인자로 받아야 한다.
 
 ```c
-ZLINK_EXPORT zlink_request_result_t zlink_remote_actor_get_ref(
+ZLINK_EXPORT zlink_submit_result_t zlink_remote_actor_get_ref(
   void *node,
   const zlink_routing_id_t *target_node_rid,
   const char *actor_id,
-  zlink_actor_ref_t *out,
+  zlink_actor_lookup_handler_fn handler,
+  void *userdata,
   uint32_t timeout_ms);
 ```
 
 변경점:
 
 - `node`는 lookup request를 제출하는 request owner `SpotNode`다.
-- target node에 해당 Actor가 있으면 checked ref를 `out`에 반환한다.
-- target node에 해당 Actor가 없으면 not-found 계열 결과로 실패한다.
+- target node에 해당 Actor가 있으면 checked ref를 completion의 `result->actor`에
+  반환한다.
+- target node에 해당 Actor가 없으면 not-found 계열 completion으로 실패한다.
 - lookup 대상은 commit된 live Actor뿐이다. remote join 준비 중인 pending target Actor는
   lookup 결과로 노출하지 않는다.
-- target node와 연결되어 있지 않으면 not-connected 계열 결과로 실패한다. 여기서 연결은
-  STREAM session attach가 아니라 SpotNode 사이의 control path를 뜻한다.
+- target node와 연결되어 있지 않으면 not-connected 계열 completion으로 실패한다. 여기서
+  연결은 STREAM session attach가 아니라 SpotNode 사이의 control path를 뜻한다.
 - `target_node_rid`가 request owner node 자신이면 local lookup과 같은 의미로 처리할 수
   있다.
-- `timeout_ms == 0`은 nonblocking lookup이다. 즉시 완료할 수 없으면 timed-out 또는
-  not-connected 계열 결과로 실패한다.
+- `handler == NULL`이면 invalid argument 계열 submit 실패다.
+- `timeout_ms > 0`이면 submit 뒤 completion까지의 operation timeout이다.
+  `timeout_ms == 0`이면 timeout을 설치하지 않는다.
+- `result` pointer는 callback 호출 중에만 유효하다. application이 Actor ref를 나중에
+  사용해야 하면 callback 안에서 `result->actor` 값을 복사한다.
 - 이 함수는 Actor를 생성하지 않고, Actor 위치를 바꾸지 않고, active route를
   갱신하지 않는다.
-- 성공으로 반환된 checked ref는 이후 join, session attach, destroy 같은 ref 기반
+- 성공 completion으로 반환된 checked ref는 이후 join, session attach, destroy 같은 ref 기반
   API에 사용할 수 있다.
 
 `zlink_remote_actor_get_ref()`와 `zlink_discovery_resolve_actor()`는 목적이 다르다.
@@ -392,21 +465,26 @@ Registry에 공개된 active route를 조회해 현재 공개 위치를 얻는 A
 
 ### timeout 정책
 
-Actor 위치 관련 request API는 `timeout_ms`를 아래처럼 해석한다.
+Actor 위치와 attach 관련 API는 `timeout_ms`를 아래처럼 해석한다.
 
 | API | `timeout_ms == 0` | timeout 대상 |
 |-----|-------------------|--------------|
 | `zlink_spot_node_actor_join_spot()` | operation timeout 없음 | join request accept/reject, remote handoff, route 갱신 |
+| `zlink_remote_actor_get_ref()` | operation timeout 없음 | remote Actor lookup completion |
 | `zlink_spot_node_actor_leave_spot()` | operation timeout 없음 | Entry Spot 복귀와 route 갱신 |
 | `zlink_spot_node_actor_destroy()` | operation timeout 없음 | Actor 제거, session detach, route cleanup |
-| `zlink_remote_actor_get_ref()` | nonblocking lookup | remote Actor lookup request |
-| `zlink_stream_bind_actor()` | operation timeout 없음 | session Actor mapping attach |
-| `zlink_stream_unbind_actor()` | operation timeout 없음 | session Actor mapping detach |
+| `zlink_stream_bind_actor()` | operation timeout 없음 | remote attach completion |
+| `zlink_stream_unbind_actor()` | operation timeout 없음 | remote detach completion |
 
-`zlink_remote_actor_get_ref()`만 `timeout_ms == 0`을 nonblocking lookup으로 해석한다.
-나머지 Actor 위치/attach API에서 `timeout_ms == 0`은 timeout을 설치하지 않는다는
-뜻이다. submit 단계의 즉시 실패 여부는 각 API의 `flags` 인자 또는 기존 request
-규칙을 따른다.
+Actor 위치/attach API에서 `timeout_ms == 0`은 timeout을 설치하지 않는다는 뜻이다.
+`timeout_ms`는 runtime mutex 획득 대기 시간이 아니라 submit 뒤 completion까지의 작업
+timeout이다. submit 단계의 즉시 실패 여부는 각 API의 인자 검증과 기존 submit 규칙을
+따른다.
+
+timeout이 없는 작업도 영원히 성공을 보장하지 않는다. 대상 SpotNode와의 control path가
+끊기거나, request owner가 닫히거나, target Spot/Actor가 제거되어 더 이상 완료할 수 없게
+되면 not-connected, terminated, not-found, conflict 같은 기존 request result로
+completion을 호출한다.
 
 ### 추가 대상 함수
 
@@ -416,6 +494,12 @@ ZLINK_EXPORT zlink_handler_result_t zlink_spot_actor_lifecycle_handler(
   zlink_spot_actor_lifecycle_handler_fn on_join,
   zlink_spot_actor_lifecycle_handler_fn on_leave,
   void *userdata);
+
+ZLINK_EXPORT zlink_config_result_t zlink_stream_bound_actors(
+  void *stream,
+  const zlink_routing_id_t *session_rid,
+  zlink_actor_ref_t *entries,
+  size_t *count);
 ```
 
 `zlink_spot_actor_lifecycle_handler()`는 특정 Spot의 Actor 위치 변경 callback을
@@ -430,6 +514,13 @@ handler 등록은 현재 Spot에 이미 속한 Actor를 replay하지 않는다. 
 `spot == NULL`이면 invalid handle 계열 실패다. 같은 Spot의 lifecycle callback 안에서
 이 함수를 재진입 호출하면 deadlock 방지를 위해 invalid-state 또는 deadlock 계열로
 실패한다.
+
+`zlink_stream_bound_actors()`는 특정 STREAM session에 attach된 Actor ref 목록을
+반환한다. 일반 snapshot API와 같은 2-pass 규칙을 따른다. `entries == NULL`이면 필요한
+개수를 `*count`에 반환하고, `entries != NULL`이면 최대 `*count`개를 채운 뒤 실제로 채운
+개수를 `*count`에 반환한다. session mapping이 없으면 성공하면서 `*count == 0`이다.
+이 함수는 `stream`의 local session mapping만 읽고, remote Actor owner에 존재 확인 요청을
+보내지 않는다.
 
 ### 유지 대상 함수
 
@@ -460,30 +551,50 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply(
   zlink_msg_t *parts,
   size_t part_count);
 
-ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_leave_spot(
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_leave_spot(
   void *node,
   const zlink_actor_ref_t *actor,
   const zlink_routing_id_t *current_spot_rid,
+  zlink_reply_handler_fn handler,
+  void *userdata,
   uint32_t timeout_ms);
 
-ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_destroy(
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_destroy(
   void *node,
   const zlink_actor_ref_t *actor,
+  zlink_reply_handler_fn handler,
+  void *userdata,
   uint32_t timeout_ms);
 
-ZLINK_EXPORT zlink_request_result_t zlink_stream_bind_actor(
-  void *node,
+ZLINK_EXPORT zlink_submit_result_t zlink_stream_bind_actor(
   void *stream,
   const zlink_routing_id_t *session_rid,
   const zlink_actor_ref_t *actor,
+  zlink_reply_handler_fn handler,
+  void *userdata,
   uint32_t timeout_ms);
 
-ZLINK_EXPORT zlink_request_result_t zlink_stream_unbind_actor(
-  void *node,
+ZLINK_EXPORT zlink_submit_result_t zlink_stream_unbind_actor(
   void *stream,
   const zlink_routing_id_t *session_rid,
   const char *actor_id,
+  zlink_reply_handler_fn handler,
+  void *userdata,
   uint32_t timeout_ms);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_stream_send_bound_actor_part(
+  void *stream,
+  const zlink_routing_id_t *session_rid,
+  const char *actor_id,
+  zlink_msg_t *part,
+  zlink_send_flags_t flags,
+  zlink_part_flag_t part_flag);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg(
+  void *node,
+  const zlink_actor_ref_t *actor,
+  zlink_msg_t *message,
+  zlink_send_flags_t flags);
 ```
 
 유지 대상이지만 의미가 바뀌는 부분:
@@ -493,11 +604,19 @@ ZLINK_EXPORT zlink_request_result_t zlink_stream_unbind_actor(
   admission에 사용한다.
 - `zlink_spot_node_actor_leave_spot()`은 명시적 leave API로 남는다. user Spot에서
   Entry Spot으로 실제 위치가 바뀐 leave 성공은 source Spot `on_leave`와 Entry Spot
-  `on_join` callback을 발생시킨다.
+  `on_join` callback을 발생시킨다. local Actor와 remote Actor 모두 같은 submit +
+  completion 경로를 사용한다.
 - `zlink_spot_node_actor_destroy()`는 Actor가 Entry Spot에 있을 때만 성공한다.
-  destroy 성공은 Entry Spot `on_leave` callback을 발생시킨다.
+  destroy 성공은 Entry Spot `on_leave` callback을 발생시킨다. local Actor와 remote
+  Actor 모두 같은 submit + completion 경로를 사용한다.
 - `zlink_stream_bind_actor()`는 active route를 만들거나 갱신하지 않는다.
 - `zlink_stream_unbind_actor()`는 active route를 제거하지 않는다.
+- `zlink_stream_bound_actors()`는 session Actor mapping을 조회하는 새 API다. 기존
+  `zlink_spot_node_actors_snapshot()`과 `zlink_spot_actors_snapshot()`은 Actor 위치 기준
+  snapshot이므로 session별 mapping 조회를 대신하지 않는다.
+- `zlink_spot_node_actor_send_bound_session_msg()`는 completion 없는 fire-and-forget
+  relay API로 유지한다. 구현은 내부 lock이나 queue가 즉시 준비되지 않았을 때 호출
+  thread를 기다리게 하지 않고 submit 실패로 돌려보내야 한다.
 
 ### join completion 타입
 
@@ -511,6 +630,9 @@ source node의 ref가 아니라 target node에서 활성화된 Actor ref를 반�
 
 실패 시 `result->actor`와 `joined_spot_rid`는 사용하지 않는다. 실패 원인은
 `result->result`로 판단한다.
+
+`result` pointer는 callback 호출 중에만 유효하다. application이 최종 Actor ref나
+join epoch를 나중에 사용해야 하면 callback 안에서 필요한 값을 복사한다.
 
 join 성공 뒤 caller가 최종 Actor ref를 받아야 session attach나 후속 위치 이동을
 정확히 수행할 수 있으므로, join 계열 API에서 `handler == NULL`은 invalid argument
@@ -665,16 +787,61 @@ Actor의 실제 위치 변경이 완료된 뒤 Spot lifecycle callback을 호출
 session attach는 Actor 위치와 독립이다.
 
 ```c
-zlink_request_result_t zlink_stream_bind_actor(
-  void *node,
+zlink_submit_result_t zlink_stream_bind_actor(
   void *stream,
   const zlink_routing_id_t *session_rid,
   const zlink_actor_ref_t *actor,
+  zlink_reply_handler_fn handler,
+  void *userdata,
+  uint32_t timeout_ms);
+
+zlink_submit_result_t zlink_stream_unbind_actor(
+  void *stream,
+  const zlink_routing_id_t *session_rid,
+  const char *actor_id,
+  zlink_reply_handler_fn handler,
+  void *userdata,
   uint32_t timeout_ms);
 ```
 
 계약:
 
+- bind와 unbind는 nonblocking submit API다. remote Actor owner의 응답이 필요해도 호출
+  thread를 blocking하지 않는다.
+- 최종 결과는 `zlink_reply_handler_fn` completion으로 전달한다. completion payload는
+  없으므로 `parts == NULL`, `part_count == 0`이다.
+- `handler == NULL`이면 invalid argument 계열 submit 실패다. submit 단계에서 실패한
+  작업은 completion을 호출하지 않는다.
+- local Actor bind/unbind도 같은 completion 경로를 사용한다. 성공 결과를 함수 반환값으로
+  직접 돌려주지 않는다.
+- `timeout_ms > 0`이면 submit 뒤 completion까지의 operation timeout이다.
+  `timeout_ms == 0`이면 timeout을 설치하지 않는다.
+- `stream`은 STREAM session Actor mapping을 소유한다. `stream`은 생성 또는 attach 시점에
+  session owner `SpotNode`와 연결되어 있어야 하며, remote Actor owner와의 control path와
+  relay는 이 owner `SpotNode`가 수행한다.
+- bind 대상 Actor의 owner node는 `actor->node_rid`로 찾는다.
+- `stream` 하나만으로는 client session을 식별하지 않는다. 하나의 raw STREAM socket은
+  여러 client session을 multiplex할 수 있으므로, `session_rid`가 있어야 특정 client
+  session을 고를 수 있다.
+- `stream`, `session_rid` 조합이 하나의 STREAM session binding key다.
+- Actor가 remote node에 있으면 stream owner `SpotNode`가 `actor->node_rid`의 `SpotNode`로
+  bind 정보를 전달한다. 이후 session-bound relay도 stream owner `SpotNode`를 통해 remote
+  Actor owner로 전달된다.
+- unbind는 `stream`, `session_rid`, `actor_id`로 session mapping을 찾고, 그 mapping에
+  저장된 Actor ref를 기준으로 Actor owner에 detach를 전달한다.
+- `zlink_stream_send_bound_actor_part()`도 별도 `SpotNode` 인자를 받지 않는다. `stream`과
+  `session_rid`로 session mapping을 찾고, `actor_id`에 저장된 Actor ref의 owner로 message
+  part를 relay한다.
+- `zlink_spot_node_actor_send_bound_session_msg()`는 Actor가 attach된 session으로 message를
+  돌려보내는 반대 방향 relay다. request owner `node`는 호출을 제출하는 SpotNode이고,
+  실제 session mapping은 `actor->node_rid`가 가리키는 Actor owner에서 확인한다. Actor가
+  remote node에 있으면 request owner는 Actor owner로 relay request를 전달하고, Actor
+  owner는 저장된 bound session ref를 기준으로 stream owner에 message를 전달한다.
+- session에 attach된 Actor 목록을 확인하려면 `zlink_stream_bound_actors()`를
+  사용한다.
+- session Actor snapshot은 local session mapping에 저장된 Actor ref를 반환한다. remote
+  Actor owner와 통신하지 않으므로, 반환된 ref가 이미 stale일 수 있다. caller가 현재
+  존재 여부까지 확인해야 하면 ref 기반 API나 remote lookup을 별도로 호출한다.
 - 하나의 session은 여러 Actor ref를 attach할 수 있다.
 - 같은 session에 같은 Actor ref를 다시 attach하면 idempotent success다.
 - 같은 session에 같은 actor id로 다른 generation을 attach하면 해당 actor id 항목을
@@ -684,7 +851,7 @@ zlink_request_result_t zlink_stream_bind_actor(
   새 ref로 교체한다.
 - session attach 성공은 active route를 갱신하지 않는다.
 - session detach 성공은 active route를 제거하지 않는다.
-- Actor가 같은 node 안에서 Spot만 바뀌면 Actor ref는 유지되므로 기존 session
+- Actor가 같은 owner node 안에서 Spot만 바뀌면 Actor ref는 유지되므로 기존 session
   mapping도 유지된다.
 - remote join 성공으로 Actor ref가 바뀌어도 session mapping을 자동으로 compare-and-swap
   하지 않는다. application은 join completion의 최종 Actor ref를 사용해 필요한
@@ -697,6 +864,12 @@ zlink_request_result_t zlink_stream_bind_actor(
 - remote join 뒤 기존 session mapping이 retired source Actor ref를 가리키는 상태에서
   session-bound send를 수행하면 target Actor로 우회하지 않고 stale 또는 not-found
   계열 실패로 끝난다.
+- `zlink_stream_send_bound_actor_part()`와 `zlink_spot_node_actor_send_bound_session_msg()`가
+  `ZLINK_SUBMIT_OK`를 반환하면 message 소유권은 라이브러리로 이전된다.
+- 이 두 Actor relay API가 submit 실패를 반환하면 message 소유권은 caller에게 남는다.
+  이 경우 implementation은 `part` 또는 `message`를 close하거나 reinit하지 않는다.
+- 내부 queue나 runtime lock을 즉시 확보하지 못해 backpressured 계열로 실패한 경우도
+  submit 실패이므로 message 소유권은 caller에게 남는다.
 
 이 초안은 Actor당 단일 session 제약을 유지한다. 하나의 session은 여러 Actor를
 attach할 수 있지만, 하나의 Actor가 동시에 여러 session에 attach되는 것은 허용하지
@@ -759,13 +932,18 @@ explicit leave:
   요청을 전달한다.
 - `current_spot_rid`는 Actor owner node 안에서 Actor가 현재 속한 Spot rid와 일치해야
   한다. 일치하지 않으면 stale leave로 보고 invalid-state 계열 실패다.
-- Actor가 이미 Entry Spot에 있으면 leave는 idempotent success다. 이 경우 route가 이미
-  존재하지만 stale이면 Entry Spot 위치로 갱신하고, `on_leave`와 `on_join`은 호출하지
-  않는다. route가 없으면 새 route를 만들지 않는다.
+- Actor가 이미 Entry Spot에 있고 `current_spot_rid`도 그 Entry Spot rid와 일치하면
+  leave는 idempotent success다. 이 경우 route가 이미 존재하지만 stale이면 Entry Spot
+  위치로 갱신하고, `on_leave`와 `on_join`은 호출하지 않는다. route가 없으면 새 route를
+  만들지 않는다.
+- Actor가 이미 Entry Spot에 있는데 caller가 user Spot rid를 `current_spot_rid`로 넘기면
+  stale leave로 보고 invalid-state 계열 실패다.
 - user Spot에서 Entry Spot으로 실제 위치가 바뀐 leave 성공은 source Spot `on_leave`와
   Entry Spot `on_join` lifecycle callback을 scheduling한다.
 - user Spot에서 Entry Spot으로 실제 위치가 바뀐 leave 성공은 active route를 Entry Spot
   위치로 갱신한다.
+- leave 최종 결과는 `zlink_reply_handler_fn` completion으로 전달한다. completion
+  payload는 없으므로 `parts == NULL`, `part_count == 0`이다.
 - leave 실패나 timeout이면 Actor current Spot과 active route는 호출 전 상태를
   유지하고 lifecycle callback을 호출하지 않는다.
 
@@ -784,6 +962,8 @@ Actor destroy:
 - destroy 성공 시 Entry Spot에서 Actor를 제거하고, active route가 이 Actor ref를
   가리키면 route를 제거한다.
 - destroy 성공은 current Spot의 `on_leave` lifecycle callback을 scheduling한다.
+- destroy 최종 결과는 `zlink_reply_handler_fn` completion으로 전달한다. completion
+  payload는 없으므로 `parts == NULL`, `part_count == 0`이다.
 - destroy 실패나 timeout이면 Actor current Spot과 active route는 호출 전 상태를
   유지하고 `on_leave`를 호출하지 않는다.
 
@@ -802,13 +982,17 @@ remote join:
 
 | 상황 | 결과 |
 |------|------|
-| `node == NULL` | invalid handle 또는 invalid argument 계열 |
+| SpotNode 기반 API에서 `node == NULL` | invalid handle 또는 invalid argument 계열 |
+| stream Actor API에서 `stream == NULL` | invalid handle 또는 invalid argument 계열 |
+| stream Actor API에서 stream owner SpotNode 없음 | invalid-state 계열 |
+| stream Actor snapshot에서 `count == NULL` | invalid argument 계열 |
 | `actor == NULL` | invalid argument 계열 |
+| async Actor API에서 `handler == NULL` | invalid argument 계열 submit 실패 |
 | `dest_node_rid == NULL` | invalid argument 계열 |
 | `join_spot`에서 `dest_spot_rid == NULL` | invalid argument 계열 |
 | `join_spot` target이 Entry Spot | invalid argument 계열 |
 | remote lookup에서 `target_node_rid == NULL` | invalid argument 계열 |
-| remote lookup에서 `actor_id == NULL` 또는 `out == NULL` | invalid argument 계열 |
+| remote lookup에서 `actor_id == NULL` | invalid argument 계열 |
 | remote lookup target Actor 없음 | not-found 계열 |
 | target Spot 없음 | not-found 계열 |
 | target node 연결 없음 | not-connected 계열 |
@@ -849,6 +1033,7 @@ remote join:
   - remote create-or-get API 제거
   - join completion result 추가
   - lifecycle callback 등록 API 추가
+  - stream bound Actor 조회 API 추가
 - `doc/spec/bindings/*`
   - breaking C ABI 변경에 맞춰 Actor join completion과 lifecycle callback surface 갱신
 - `doc/guide/07-4-actor.ko.md`
@@ -875,8 +1060,8 @@ remote join:
 | LOC-09 | stale route repair | idempotent join 성공 뒤 route가 현재 위치로 갱신된다 |
 | LOC-10 | session bind after join | join completion의 Actor ref로 attach할 수 있다 |
 | LOC-11 | one session multiple actors | 같은 session에 여러 Actor가 attach된다 |
-| LOC-12 | session bind no route update | bind 성공만으로 route가 바뀌지 않는다 |
-| LOC-13 | session unbind no route remove | unbind 성공만으로 route가 제거되지 않는다 |
+| LOC-12 | session bind no route update | bind completion 성공만으로 route가 바뀌지 않는다 |
+| LOC-13 | session unbind no route remove | unbind completion 성공만으로 route가 제거되지 않는다 |
 | LOC-14 | matching destroy cleanup | active route가 같은 ref를 가리키면 destroy 뒤 제거된다 |
 | LOC-15 | stale destroy no cleanup | active route가 다른 generation이면 제거하지 않는다 |
 | LOC-16 | target onJoin | target Spot의 `on_join` callback이 호출된다 |
@@ -902,6 +1087,18 @@ remote join:
 | LOC-36 | idempotent Entry leave no publish | route가 없는 Entry Spot Actor에 leave를 호출해도 새 active route를 만들지 않는다 |
 | LOC-37 | remote lookup hides pending target | remote join pending target Actor는 lookup 결과로 반환되지 않는다 |
 | LOC-38 | leave during pending join | pending join 중 leave는 busy 또는 invalid-state 계열로 실패한다 |
+| LOC-39 | bind remote Actor through stream owner | bind는 stream owner `SpotNode`를 통해 `actor.node_rid`의 remote Actor owner에 attach를 전달한다 |
+| LOC-40 | unbind uses stored Actor ref | unbind는 session mapping에 저장된 Actor ref를 기준으로 remote Actor owner에 detach를 전달한다 |
+| LOC-41 | stream bound actors query | session에 attach된 Actor ref 목록을 2-pass 방식으로 조회할 수 있다 |
+| LOC-42 | stream bound actors empty | session mapping이 없으면 성공하고 count 0을 반환한다 |
+| LOC-43 | stream relay uses stream owner | `zlink_stream_send_bound_actor_part()`는 별도 SpotNode 인자 없이 stream owner를 통해 relay한다 |
+| LOC-44 | remote bind async completion | remote Actor bind는 submit에서 blocking하지 않고 completion으로 최종 결과를 전달한다 |
+| LOC-45 | remote bind timeout completion | remote Actor bind timeout은 timed-out 계열 completion으로 전달된다 |
+| LOC-46 | bind handler required | bind/unbind에서 handler가 NULL이면 submit 단계에서 invalid argument 계열로 실패한다 |
+| LOC-47 | remote lookup async completion | remote Actor lookup은 submit에서 blocking하지 않고 completion으로 checked ref를 전달한다 |
+| LOC-48 | leave async completion | local/remote leave는 submit에서 blocking하지 않고 completion으로 최종 결과를 전달한다 |
+| LOC-49 | destroy async completion | local/remote destroy는 submit에서 blocking하지 않고 completion으로 최종 결과를 전달한다 |
+| LOC-50 | relay submit backpressure | relay submit이 내부 queue나 runtime lock을 즉시 확보하지 못하면 blocking하지 않고 backpressured 계열로 실패한다 |
 
 ## 후속 진단 과제
 

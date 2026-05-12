@@ -44,8 +44,8 @@ builder.Services.AddZLinkFramework(options =>
         channel.EnableServer(server =>
         {
             server.Bind("tcp://0.0.0.0:7101");
-            server.MapHandlersFromAssemblyContaining<Program>();
         });
+        channel.MapHandlerGroup("api");
     });
 
     options.AddClientServerChannel("profile", channel =>
@@ -84,8 +84,8 @@ builder.Services.AddZLinkFramework(options =>
         channel.EnableServer(server =>
         {
             server.Bind("tcp://0.0.0.0:7101");
-            server.MapHandlersFromAssemblyContaining<Program>();
         });
+        channel.MapHandlerGroup("api");
     });
 
     options.AddClientServerChannel("profile", channel =>
@@ -118,8 +118,8 @@ builder.Services.AddZLinkFramework(options =>
         channel.EnableServer(server =>
         {
             server.Bind("tcp://0.0.0.0:7101");
-            server.MapHandlersFromAssemblyContaining<Program>();
         });
+        channel.MapHandlerGroup("api");
     });
 
     options.AddClientServerChannel("profile", channel =>
@@ -336,7 +336,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .Async<GetUserReply>(cancellationToken);
+        .Submit<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -376,8 +376,8 @@ builder.Services.AddZLinkFramework(options =>
         channel.EnableServer(server =>
         {
             server.Bind("tcp://0.0.0.0:7101");
-            server.MapHandlersFromAssemblyContaining<Program>();
         });
+        channel.MapHandlerGroup("api");
     });
 
     options.AddFanoutChannel("api.events", channel =>
@@ -386,10 +386,8 @@ builder.Services.AddZLinkFramework(options =>
         {
             publisher.Bind("tcp://0.0.0.0:7201");
         });
-        channel.EnableSubscriber(subscriber =>
-        {
-            subscriber.MapEventHandlersFromAssemblyContaining<Program>();
-        });
+        channel.EnableSubscriber();
+        channel.MapHandlerGroup("api.events");
     });
 
     options.AddClientServerChannel("profile", channel =>
@@ -410,7 +408,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 
 // Handler type을 DI에 등록하고 attribute scan 후보를 발견한다.
-// 실제 노출 channel은 위의 MapHandlers... 호출이 정한다.
+// 실제 노출 channel은 위의 MapHandlerGroup(...) 호출이 정한다.
 builder.Services.AddZLinkHandlersFromAssemblyContaining<Program>();
 
 var app = builder.Build();
@@ -424,7 +422,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .Async<GetUserReply>(cancellationToken);
+        .Submit<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -438,13 +436,14 @@ app.MapPost("/profiles/refresh-cache", async (
         .Send(
             "profile",
             new RefreshUserCacheCommand { AccountId = request.AccountId })
-        .Async(cancellationToken);
+        .Submit(cancellationToken);
 
     return Results.Accepted();
 });
 
 app.Run();
 
+[ZLinkHandlerGroup("api")]
 public sealed class UserHandlers
 {
     private readonly IZLinkClient _client;
@@ -468,7 +467,7 @@ public sealed class UserHandlers
             .Request(
                 "account",
                 new GetAccountRequest { AccountId = request.AccountId })
-            .Async<GetAccountReply>(cancellationToken);
+            .Submit<GetAccountReply>(cancellationToken);
 
         return new GetUserReply
         {
@@ -491,10 +490,11 @@ public sealed class UserHandlers
                 {
                     AccountId = command.AccountId
                 })
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
     }
 }
 
+[ZLinkHandlerGroup("api")]
 public sealed class ItemHandlers
 {
     [ZLinkRequest]
@@ -507,13 +507,14 @@ public sealed class ItemHandlers
     }
 }
 
+[ZLinkHandlerGroup("api.events")]
 public sealed class UserCacheRefreshedEventHandler
-    : IZLinkEventHandler<UserCacheRefreshedEvent>
+    : IZLinkPublishHandler<UserCacheRefreshedEvent>
 {
-    [ZLinkEvent]
+    [ZLinkPublish]
     public ValueTask HandleAsync(
         UserCacheRefreshedEvent message,
-        ZLinkEventContext context,
+        ZLinkPublishContext context,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
@@ -593,11 +594,10 @@ public sealed class UserCacheRefreshedEvent
 - handler class는 `UserHandlers`, `ItemHandlers`처럼 주제별로 묶어도 된다.
 
 `AddZLinkHandlersFromAssemblyContaining<Program>()`은 handler type을 DI에 올리고
-attribute scan 후보를 발견하는 단계다. handler가 실제로 노출되는 channel은
-`server.MapHandlersFromAssemblyContaining<Program>()` 또는
-`subscriber.MapEventHandlersFromAssemblyContaining<Program>()` 같은 capability별
-mapping 호출이 정한다. 따라서 자동 등록 편의는 유지하지만, 한 프로세스 안의
-여러 channel이 전역 handler registry를 무조건 공유하지는 않는다.
+`[ZLinkHandlerGroup(...)]` attribute scan 후보를 발견하는 단계다. handler가 실제로
+노출되는 channel은 채널 등록 쪽의 `channel.MapHandlerGroup("...")` 호출이 정한다.
+따라서 자동 등록 편의는 유지하지만, 한 프로세스 안의 여러 channel이 전역 handler
+registry를 무조건 공유하지는 않는다.
 
 즉 응용 코드 입장에서는 공용 client 하나만 보이지만, framework 내부에서는
 channel별 outbound 경로가 분리되어 관리된다.
@@ -629,7 +629,7 @@ await client
     .Send(
         "profile",
         new RefreshUserCacheCommand { AccountId = accountId })
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 ```
 
 ```csharp
@@ -637,7 +637,7 @@ var reply = await client
     .Request(
         "profile",
         new GetUserRequest { AccountId = accountId })
-    .Async<GetUserReply>(cancellationToken);
+    .Submit<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
@@ -646,7 +646,7 @@ var fastReply = await client
         "profile",
         new GetUserRequest { AccountId = accountId })
     .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .Async<GetUserReply>(cancellationToken);
+    .Submit<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
@@ -655,7 +655,7 @@ await client
         "profile",
         new RefreshUserCacheCommand { AccountId = accountId })
     .WithPacketName("profile.refresh-cache")
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 ```
 
 ### 6.1 framework client의 reply 처리 기준
@@ -673,7 +673,7 @@ GetUserReply reply = await client
     .Request(
         "profile",
         new GetUserRequest { AccountId = accountId })
-    .Async<GetUserReply>(cancellationToken);
+    .Submit<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
@@ -682,7 +682,7 @@ await publisher
         "api.events",
         "user.cache-refreshed",
         new UserCacheRefreshedEvent { AccountId = accountId })
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 ```
 
 이 예시에서 첫 번째 문자열 `api.events`는 publish 대상 `channelName`이고, 두 번째
@@ -771,7 +771,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .Async<GetUserReply>(cancellationToken);
+        .Submit<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });

@@ -22,7 +22,7 @@
 - channel `server/client/publisher/subscriber` capability (`EnableServer(...)`,
   `EnableClient(...)`, `EnablePublisher(...)`, `EnableSubscriber(...)` 빌더)
 - 채널 등록 분기 — `AddClientServerChannel(...)`, `AddFanoutChannel(...)`,
-  `AddDealerMeshChannel(...)`, `AddRoutedChannel(...)`, `AddRouteMeshChannel(...)`
+  `AddDealerMeshChannel(...)`, `AddRouteChannel(...)`, `AddRouteMeshChannel(...)`
 - 전역 `UseDiscovery(...)`
 - channel manual connection manager (`UseManualConnections(...)`,
   `IZLinkChannelConnectionManager`, `IZLinkEndpointConnections`)
@@ -30,15 +30,22 @@
 - `AddSpotMesh(...)`, `AddSpotNode(...)`, `UseSpotDiscovery(...)`
 - `IZLinkSpotManager`, `IZLinkSpotClient`, `IZLinkSpotPublisherClient`,
   `IZLinkSpotConnectionManager`
-- attribute 기반 handler 등록 (별도 handler 인터페이스 없음)과 spot
-  packet/subscribe/timer descriptor
+- `[ZLinkHandlerGroup("...")]` 클래스 attribute + channel 등록의
+  `channel.MapHandlerGroup("...")` 호출로 이루어지는 handler group mapping 모델.
+  `MapHandlersFromAssemblyContaining<TMarker>()` 같은 assembly scan은 보조 표면
+  으로만 유지하고, 정식 sample, scope, regression 기준은 group mapping 모델로
+  맞춘다.
+- spot packet/subscribe/timer descriptor
 - `AddStreamNode(...)`와 framework Header 기반 packet session 등록
 - `AddZLinkRegistry(...)`, `IZLinkRegistryQuery`(`MemberPeersAsync(string, CancellationToken)`),
   `IZLinkRegistryQueryClient`
 - `AddZLinkMonitoring(...)`과 socket/registry/spot source
 - `.NET DI`와 hosted service lifecycle 통합
 - backend adapter layer와 backend dependency policy 적용
-- 기본 codec은 JSON 한 종류이며 추가 serializer는 별도 extension package 대상
+- 기본 codec은 JSON 한 종류로 framework core가 lock-in한다. protobuf, msgpack
+  같은 추가 codec은 framework core 패키지가 아니라 별도 codec extension package에서
+  제공한다 (예: `Systems.Zlink.Framework.Codec.Protobuf`). sample이 protobuf
+  payload를 다루더라도 framework core 자체는 protobuf 의존을 갖지 않는다.
 - 저장소가 현재 패키징하는 runtime RID 전체(`win-x64`, `win-arm64`, `linux-x64`,
   `linux-arm64`, `osx-x64`, `osx-arm64`)를 CI gate 범위에 포함
 

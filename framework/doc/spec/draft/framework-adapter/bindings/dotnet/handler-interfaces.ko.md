@@ -1583,10 +1583,6 @@ public interface IChannelServerCapabilityBuilder
 {
     void Bind(string endpoint);
 
-    void MapHandlersFromAssemblyContaining<TMarker>();
-
-    void MapHandlersFromAssembly(System.Reflection.Assembly assembly);
-
     void ConfigureSocket(
         Action<IZLinkCommonSocketOptions> configure);
 
@@ -1616,10 +1612,6 @@ public interface IChannelPublisherCapabilityBuilder
 
 public interface IChannelSubscriberCapabilityBuilder
 {
-    void MapEventHandlersFromAssemblyContaining<TMarker>();
-
-    void MapEventHandlersFromAssembly(System.Reflection.Assembly assembly);
-
     void ConfigureSocket(
         Action<IZLinkCommonSocketOptions> configure);
 
@@ -1645,6 +1637,8 @@ public interface IZLinkRouteChannelBuilder
     void ConfigureRouting(Action<IRoutePeerOptions> configure);
 
     void UseManualConnections(Action<IRouteChannelConnections> configure);
+
+    void MapHandlerGroup(string groupName);
 
     void AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkRouteSendHandler<TMessage>;
@@ -1674,6 +1668,10 @@ public interface IZLinkChannelBuilder
 
     void EnableSubscriber(
         Action<IChannelSubscriberCapabilityBuilder>? configure = null);
+
+    // 이 채널에 노출할 handler group 이름을 매핑한다. 같은 채널에 여러 그룹을
+    // 매핑할 수도 있고, 같은 그룹을 여러 채널에 매핑할 수도 있다.
+    void MapHandlerGroup(string groupName);
 }
 
 public interface IZLinkClientServerChannelBuilder
@@ -1683,6 +1681,8 @@ public interface IZLinkClientServerChannelBuilder
 
     void EnableClient(
         Action<IChannelClientCapabilityBuilder>? configure = null);
+
+    void MapHandlerGroup(string groupName);
 }
 
 public interface IZLinkFanoutChannelBuilder
@@ -1692,6 +1692,8 @@ public interface IZLinkFanoutChannelBuilder
 
     void EnableSubscriber(
         Action<IChannelSubscriberCapabilityBuilder>? configure = null);
+
+    void MapHandlerGroup(string groupName);
 }
 
 public interface IZLinkDealerMeshChannelBuilder
@@ -2596,6 +2598,15 @@ rename되었다. 이 두 record를 필드 단위로 풀어 쓰는 다른 문서�
 ### 11.1 서버 간 messaging
 
 ```csharp
+// 클래스 attribute. handler 클래스가 어느 논리 그룹에 속하는지 표시한다.
+// 이 그룹을 어느 채널에 노출할지는 channel builder의 MapHandlerGroup(...)이 정한다.
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+public sealed class ZLinkHandlerGroupAttribute : Attribute
+{
+    public ZLinkHandlerGroupAttribute(string groupName);
+    public string GroupName { get; }
+}
+
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class ZLinkRequestAttribute : Attribute
 {
@@ -2611,24 +2622,44 @@ public sealed class ZLinkSendAttribute : Attribute
 }
 ```
 
+`ZLinkHandlerGroupAttribute`는 handler 클래스가 어느 논리 그룹에 속하는지 표시한다.
+그룹 이름은 사용자가 정하는 문자열이고, 실제 채널 이름과는 분리된다. 같은 그룹을
+여러 채널에 매핑할 수 있고, 같은 채널에 여러 그룹을 매핑할 수 있다.
+
 `ZLinkRequestAttribute`와 `ZLinkSendAttribute`는 channel 이름을 받지 않는다.
 이 attribute는 handler method가 어떤 packet kind를 처리하는지와 packet name
 override만 표현한다. handler를 어떤 inbound channel에 노출할지는 channel
-registration의 server capability mapping이 정한다.
+registration의 `MapHandlerGroup(...)` mapping이 정한다.
 
 ```csharp
+[ZLinkHandlerGroup("api")]
+public sealed class ProfileHandlers
+{
+    [ZLinkRequest]
+    public ValueTask<GetProfileReply> GetAsync(
+        GetProfileRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        // ...
+    }
+}
+
 options.AddClientServerChannel("api", channel =>
 {
-    channel.EnableServer(server =>
-    {
-        server.Bind("tcp://0.0.0.0:7101");
-        server.MapHandlersFromAssemblyContaining<ApiHandlerMarker>();
-    });
+    channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
+    channel.MapHandlerGroup("api");
 });
 ```
 
-같은 handler type을 여러 channel에 매핑하는 것은 허용한다. 하지만 같은 channel
-안에서 같은 `kind + packet name`이 둘 이상으로 해석되면 startup validation 오류다.
+같은 handler 그룹을 여러 channel에 매핑하는 것은 허용한다. 하지만 같은 channel
+안에서 같은 `kind + packet name`이 둘 이상으로 해석되면 (같은 그룹에 충돌이 있거나,
+다른 그룹의 충돌이 한 채널에 같이 붙거나) startup validation 오류다.
+
+attribute scan 보조 표면으로 `MapHandlersFromAssemblyContaining<TMarker>()` /
+`MapHandlersFromAssembly(...)`를 둘 수도 있다 (예: 빠른 prototype, group attribute
+없이 한 번에 매핑하는 경우). 이 보조 표면은 framework가 제공할 수 있지만, 정식
+sample, scope, regression matrix는 group mapping 모델을 기본으로 본다.
 
 ### 11.2 publish
 
@@ -2647,15 +2678,21 @@ public sealed class ZLinkPublishAttribute : Attribute
 `[ZLinkPublish]` 세 표면이 같은 패턴으로 읽히도록 하기 위함이다.
 
 publish handler도 전역으로 모든 subscriber channel에 자동 노출하지 않는다.
-subscriber capability가 어떤 scan 결과를 사용할지 명시해야 한다.
+subscriber capability를 가진 채널에서도 `MapHandlerGroup(...)`으로 노출할 그룹을
+명시한다.
 
 ```csharp
+[ZLinkHandlerGroup("api.events")]
+public sealed class CacheInvalidatedHandler
+    : IZLinkPublishHandler<CacheInvalidatedEvent>
+{
+    // ...
+}
+
 options.AddFanoutChannel("api.events", channel =>
 {
-    channel.EnableSubscriber(subscriber =>
-    {
-        subscriber.MapEventHandlersFromAssemblyContaining<ApiEventMarker>();
-    });
+    channel.EnableSubscriber();
+    channel.MapHandlerGroup("api.events");
 });
 ```
 

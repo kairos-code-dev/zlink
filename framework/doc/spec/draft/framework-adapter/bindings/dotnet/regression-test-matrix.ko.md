@@ -63,6 +63,12 @@ matrix 보고용 multi-target 빌드에서 추가로 컴파일·실행하는 형
 | publisher capability에 bind endpoint 없음 | `unit` | startup validation 예외 |
 | publisher-only channel | `integration-single-process` | publish submit 성공 |
 | subscriber discovery attach | `integration-multi-process` | remote publish 수신 |
+| handler group mapping | `unit` | `AddZLinkHandlers...()`만으로는 전역 dispatch 대상이 되지 않고, `channel.MapHandlerGroup("...")`로 매핑한 그룹의 handler만 그 채널에서 dispatch |
+| 같은 channel server의 handler 중복 | `unit` | 같은 `kind + packetName`이 둘 이상이면 startup validation 예외 |
+| 다른 channel server의 같은 packet handler | `integration-single-process` | 같은 `kind + packetName`을 서로 다른 channel에 매핑해도 각 channel에서 독립 dispatch |
+| 같은 그룹을 여러 채널에 매핑 | `integration-single-process` | 같은 `[ZLinkHandlerGroup("api")]`를 두 채널에 `MapHandlerGroup`으로 노출해도 채널마다 독립 dispatch namespace |
+| `MapHandlerGroup`이 가리키는 그룹 없음 | `unit` | 매핑한 그룹에 해당 handler가 하나도 없으면 startup validation 경고/오류 |
+| event handler group mapping | `unit` | `channel.MapHandlerGroup("...")`로 매핑한 그룹의 publish handler만 그 subscriber channel에서 dispatch |
 | HTTP handler에서 `IZLinkClient` 사용 | `integration-single-process` | route handler와 same DI container에서 정상 동작 |
 | send async submit backpressure | `integration-single-process` | HWM 도달 시 caller thread를 block하지 않고 ready 이후 완료 |
 | publish async submit backpressure | `integration-single-process` | `NoDrop` 또는 HWM 조건에서 thread를 block하지 않고 `SendTimeout` 정책으로 완료 또는 실패 |

@@ -41,6 +41,9 @@
 | 같은 channel capability 안에서 discovery + manual 함께 등록 | 비허용 | startup validation 오류 |
 | 같은 channel server에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 다른 channel server에 같은 `kind + packetName` handler 등록 | 허용 | channel별 handler namespace를 분리한다 |
+| `channel.MapHandlerGroup("...")`로 명시한 그룹의 handler만 그 channel에서 dispatch | 허용 | `[ZLinkHandlerGroup("...")]`와 mapping 조합으로 노출 범위 제한 |
+| 같은 channel에 여러 그룹 매핑 | 허용 | `MapHandlerGroup`을 여러 번 호출해 그룹 union을 한 채널에 노출 |
+| `MapHandlerGroup`이 가리키는 그룹에 handler 0개 | 비허용 | startup validation 오류 또는 경고 |
 
 ## 4. Spot Capability Matrix
 
@@ -67,9 +70,9 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `AddRoutedChannel(...)` + 전역 `UseDiscovery(...)` 있음 | 허용 | discovery 기반 routed channel node를 만든다 |
-| `AddRoutedChannel(...)` + `UseManualConnections(...)` 있음 | 허용 | manual routed channel node를 만든다 |
-| `AddRoutedChannel(...)` + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
+| `AddRouteChannel(...)` + 전역 `UseDiscovery(...)` 있음 | 허용 | discovery 기반 routed channel node를 만든다 |
+| `AddRouteChannel(...)` + `UseManualConnections(...)` 있음 | 허용 | manual routed channel node를 만든다 |
+| `AddRouteChannel(...)` + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | routed channel bind endpoint 없음 | 비허용 | startup validation 오류 |
 | 같은 routed channel에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 같은 actor type factory 중복 등록 | 비허용 | builder 등록 시점 오류 |

@@ -1,6 +1,6 @@
 [스펙 목차](../../README.ko.md)
 
-[개요](./overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [Actor 모델](./actor-model.ko.md) | [Session Actor Dispatch 사용성](./session-gateway-usability.ko.md) | [Session Gateway 보관본](./session-gateway.ko.md) | [검증](../usecase-validation.ko.md) | [.NET](../bindings/dotnet/README.ko.md) | [Java](../bindings/java/README.ko.md) | [Node.js](../bindings/node/README.ko.md) | [Python](../bindings/python/README.ko.md) | [Go](../bindings/go/README.ko.md) | [Rust](../bindings/rust/README.ko.md) | [C++](../bindings/cpp/README.ko.md)
+[개요](./overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [Actor 모델](./actor-model.ko.md) | [Session Actor Dispatch 사용성](./session-gateway-usability.ko.md) | [Session Gateway 보관본](./session-gateway.ko.md) | [검증](../usecase-validation.ko.md) | [.NET](../bindings/dotnet/README.ko.md) | [.NET Session Actor Dispatch](../bindings/dotnet/session-actor-dispatch.ko.md) | [Java](../bindings/java/README.ko.md) | [Node.js](../bindings/node/README.ko.md) | [Python](../bindings/python/README.ko.md) | [Go](../bindings/go/README.ko.md) | [Rust](../bindings/rust/README.ko.md) | [C++](../bindings/cpp/README.ko.md)
 
 # Draft -- ZLink Framework
 
@@ -12,10 +12,10 @@
 
 ## 1. 목적
 
-이 초안 묶음은 zlink의 `.NET`, `Java`, `Node.js`, `Python`, `C++` 바인딩
-위에 `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, standalone
-host/runtime 사용자를 위한 `ZLink Framework` 방향을 정리한다. 제품 개요와
-핵심 가치는 [overview.ko.md](./overview.ko.md)를 참고한다.
+이 초안 묶음은 zlink의 `.NET`, `Java`, `Node.js`, `Python`, `Go`, `Rust`, `C++` 바인딩
+위에 `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `net/http` / `Gin`,
+`Axum`, standalone host/runtime 사용자를 위한 `ZLink Framework` 방향을 정리한다.
+제품 개요와 핵심 가치는 [overview.ko.md](./overview.ko.md)를 참고한다.
 
 ## 1.1 버전 기준
 
@@ -45,8 +45,8 @@ host/runtime 사용자를 위한 `ZLink Framework` 방향을 정리한다. 제�
 | 5 | [channel-topology.ko.md](./channel-topology.ko.md) | channel grouping, Discovery, 수동 연결, 상호작용 모델과 내부 transport 매핑. 내부 배선이 어떻게 구성되는지 다룬다. |
 | 6 | [framework-api.ko.md](./framework-api.ko.md) | `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `C++` standalone host 기준의 API 표면 방향. 각 환경에서 handler와 client가 어떤 모양으로 보이는지 다룬다. |
 | 7 | [actor-model.ko.md](./actor-model.ko.md) | actor 개념을 cross-binding 기준으로 정의한다. actor 라이프사이클 (Entry Spot / session bind / user Spot join), application 로직 vs framework 자동 처리, outbound actor 호출, session actor dispatch 패턴, 등록 표면을 다룬다. |
-| 8 | [session-gateway.ko.md](./session-gateway.ko.md) | 이전 session gateway/actor relay 초안. 현재 public API 기준이 아니며, 배경과 문제 맥락을 확인할 때만 사용한다. |
-| 9 | [session-gateway-usability.ko.md](./session-gateway-usability.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 cross-binding 사용성 결정 초안. typed handler 의미, route resolver 계약, helper 의미, `SessionProxy` 의미, error 매트릭스를 다룬다. 구체 .NET 시그니처와 등록 코드, sample은 [bindings/dotnet/session-actor-dispatch.ko.md](../bindings/dotnet/session-actor-dispatch.ko.md)에 분리되어 있다. |
+| 8 | [session-gateway-usability.ko.md](./session-gateway-usability.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 cross-binding 사용성 결정 초안. typed handler 의미, route resolver 계약, helper 의미, `SessionProxy` 의미, error 매트릭스를 다룬다. 구체 .NET 시그니처와 등록 코드, sample은 [bindings/dotnet/session-actor-dispatch.ko.md](../bindings/dotnet/session-actor-dispatch.ko.md)에 분리되어 있다. |
+| 9 | [session-gateway.ko.md](./session-gateway.ko.md) | 이전 session gateway/actor relay 초안의 보관본. 현재 public API 기준이 아니며, 배경과 문제 맥락을 확인할 때만 사용한다. 현재 기준은 위 §8이다. |
 | 10 | [../bindings/dotnet/README.ko.md](../bindings/dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 상세 초안. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
 | 11 | [../bindings/java/README.ko.md](../bindings/java/README.ko.md) | `Java`와 `Spring Boot` 전용 상세 초안 진입점. |
 | 12 | [../bindings/node/README.ko.md](../bindings/node/README.ko.md) | `Node.js`와 `NestJS` 전용 상세 초안 진입점. |
@@ -58,8 +58,8 @@ host/runtime 사용자를 위한 `ZLink Framework` 방향을 정리한다. 제�
 
 개요(1)로 전체 그림을 잡고, use case(2)로 무엇을 해결하려는지 본 뒤,
 모델(3-4)로 설계 방향을 확인하고, topology(5)로 내부 매핑을 이해하고,
-API 표면(6)을 본 다음, actor 모델(7)과 그 use case 정책(8-9)을 잡고,
-언어별 상세(10-16)로 내려간 뒤, 마지막으로 검증(17)에서 빠진 부분을 확인하는
+API 표면(6)을 본 다음, actor 모델(7)과 그 use case 정책(8)을 잡고 (이전 보관본은
+§9), 언어별 상세(10-16)로 내려간 뒤, 마지막으로 검증(17)에서 빠진 부분을 확인하는
 흐름이다.
 
 언어별 상세 초안을 새로 읽을 때는 아래 순서를 기본으로 본다.

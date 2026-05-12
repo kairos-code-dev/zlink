@@ -1209,7 +1209,7 @@ public sealed class SampleSession
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken)
     {

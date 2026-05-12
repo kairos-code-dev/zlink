@@ -613,7 +613,7 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken);
 }
@@ -663,13 +663,13 @@ public interface IZLinkSessionActorDispatchContext
     IZLinkSessionRequestCall Request<TRequest>(TRequest request);
 
     ValueTask DispatchToActorAsync(
-        ZlinkStreamHeader header,
+        ZLinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
-        ZlinkStreamHeader header,
+        ZLinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default);
 }
@@ -766,7 +766,7 @@ session callback 실행 계약은 아래와 같이 고정한다.
 즉 현재 방향은 아래처럼 정리된다.
 
 - header session
-  - `OnDispatchAsync(...)`로 decoded `ZlinkStreamHeader`와 `body`를 받는다.
+  - `OnDispatchAsync(...)`로 decoded `ZLinkStreamHeader`와 `body`를 받는다.
   - stream에 응답을 보내거나 actor로 넘기는 동작은 `Context`를 통해 수행한다.
 - 공통 lifecycle
   - `OnConnectedAsync(...)`

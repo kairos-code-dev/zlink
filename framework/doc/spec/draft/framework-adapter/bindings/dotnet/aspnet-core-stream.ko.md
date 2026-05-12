@@ -27,7 +27,7 @@ session 방식으로 정리하는 것이다.
 `STREAM`은 일반 channel messaging handler와 같은 감각으로 억지로 맞추지 않는다.
 특히 아래 원칙을 둔다.
 
-- framework가 decode한 `ZlinkStreamHeader`와 `Message body` packet 단위를 처리한다.
+- framework가 decode한 `ZLinkStreamHeader`와 `Message body` packet 단위를 처리한다.
 - `playhouse`처럼 header는 고정 메타데이터이고, body는 `header.Name`을 보고 각 packet 타입으로 decode하는 방식을 자연스러운 기본 모델로 본다.
 - 이 decode helper는 `playhouse/extensions`처럼 transport 본체에 넣기보다,
   `Message` 위에 얹는 serializer extension 계층으로 두는 쪽을 기본으로 본다.
@@ -97,7 +97,7 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken);
 }
@@ -118,13 +118,13 @@ public interface IZLinkSessionActorDispatchContext
     IZLinkSessionRequestCall Request<TRequest>(TRequest request);
 
     ValueTask DispatchToActorAsync(
-        ZlinkStreamHeader header,
+        ZLinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
-        ZlinkStreamHeader header,
+        ZLinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default);
 }
@@ -274,4 +274,4 @@ application 표면으로는 올리지 않는다**는 뜻이다.
   handshake 실패와 socket/node 단위 오류는 runtime monitoring에서 다루고, session
   callback에는 올리지 않는다.
 - raw chunk 직접 처리 표면은 현재 공개 계약에 넣지 않는다. 현 단계의 session은
-  framework가 decode한 `ZlinkStreamHeader`와 `Message body`를 받는 계약으로 둔다.
+  framework가 decode한 `ZLinkStreamHeader`와 `Message body`를 받는 계약으로 둔다.

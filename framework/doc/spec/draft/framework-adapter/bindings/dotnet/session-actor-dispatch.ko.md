@@ -461,7 +461,7 @@ public sealed class TicTacToeSession : IZLinkSession
     public IZLinkSessionContext Context { get; set; } = default!;
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken)
     {

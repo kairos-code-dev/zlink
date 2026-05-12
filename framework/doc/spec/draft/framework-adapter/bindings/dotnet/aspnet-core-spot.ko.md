@@ -398,7 +398,7 @@ dispatch event 종류와 drain 대상은 아래처럼 정리된다.
 | dispatch event | `SpotDispatchSubjectKind` | drain 방법 |
 |---------------|--------------------------|------------|
 | `SubscribeReadable` | `Spot` | `Subscribe()` |
-| `RoutedReadable` | `Spot` | `RecvRouted()` |
+| `RouteReadable` | `Spot` | `RecvRoute()` |
 | `ChannelReplyReadable` | `ChannelDealer` | `DrainChannelReplyFrom(subject)` |
 
 timer는 이 low-level dispatch table에 직접 기대지 않고, framework runtime이 만든
@@ -453,9 +453,9 @@ await spotClient
         "stage.state.updated",
         new StageStateUpdatedEvent
         {
-            StageRid = stage.Context.SpotRid.ToString()
+            StageRid = stage.SpotRid.ToString()
         })
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 
 var spotInfo = await spotManager.GetAsync(stage.SpotRid, cancellationToken);
 ```
@@ -505,14 +505,14 @@ await client
     .SendChannel(
         "orders",
         new RoomNoticeMessage())
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 
 var reply = await client
     .RequestChannel(
         "orders",
         new GetStageStateRequest())
     .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .Async<GetStageStateReply>(cancellationToken);
+    .Submit<GetStageStateReply>(cancellationToken);
 ```
 
 `Stage wrapper` 같은 상위 모델을 생각하면 timer도 같이 필요하다.
@@ -563,13 +563,13 @@ var reply = await spotClient
         "orders",
         new GetStageStateRequest())
     .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .Async<GetStageStateReply>(cancellationToken);
+    .Submit<GetStageStateReply>(cancellationToken);
 
 await spotClient
     .Publish(
         "stage.state.updated",
         new StageStateUpdatedEvent())
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 ```
 
 `Stage wrapper` 같은 상위 계층이 별도 directory나 lookup을 얹는 것은 가능하지만,
@@ -588,7 +588,7 @@ await spotPublisherClient
         "game.stage",
         "stage.state.updated",
         new StageStateUpdatedEvent())
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 ```
 
 이 인터페이스는 local spot 문맥이 없는 외부 노드에서도 target SPOT channel 이름을

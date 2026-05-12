@@ -169,6 +169,10 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
 - 수동 연결 capability는 startup 등록뿐 아니라 런타임 `connect`,
   `disconnect`, `list` 제어도 지원해야 한다.
 - 다만 같은 capability 안에서는 `Discovery`와 수동 연결을 섞지 않는다.
+- actor 모델은 discovery 기반 자동 연결을 권장한다. session-bound actor와 actor
+  route resolver는 reconnect, scale-in/out, 위치 갱신을 dynamic하게 다루므로
+  manual peer set과 잘 맞지 않는다. manual 연결은 single-peer 테스트나 sample
+  topology 검증에서만 actor 경로에 함께 쓴다.
 
 `SPOT`도 같은 원칙으로 capability별 manual 연결을 나눠서 봐야 한다.
 

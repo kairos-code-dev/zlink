@@ -24,10 +24,9 @@ pub/sub, `SPOT`, `STREAM`, channel discovery를 사용할 수 있게 하는 상�
 - pub/sub integration
 - spot integration
 - stream integration
-- channel discovery
+- channel별 Discovery
 - runtime monitoring
 - registry topology inspection
-- channel별 Discovery
 - framework-friendly handler / client / event API
 
 즉 raw socket과 low-level discovery를 프레임워크 사용자가 직접 다루지 않고도,

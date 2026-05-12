@@ -38,11 +38,9 @@
 - `stream` callback은 write와 peer 식별을 함께 가진 stream 객체를 받고,
   session error는 error kind enum과 native detail을 함께 가진 구조화된 값으로
   받는 편이 자연스럽다.
-- `stream` session callback은 transport callback 안에서 직접 호출하지 않는다.
-  framework는 callback을 managed task 또는 해당 언어의 동등한 비동기 실행 단위로
-  넘긴 뒤 application callback을 호출한다.
-- 같은 stream session의 callback은 직렬로 실행한다. packet dispatch와 lifecycle
-  callback이 같은 session 안에서 서로 병렬로 겹치면 안 된다.
+- stream 직렬성 / callback 실행 규칙의 권위는
+  [interaction-model.ko.md §3.4](./interaction-model.ko.md)에 둔다. 이 문서는
+  필요한 곳에서 같은 규칙을 따른다고만 적고, 정의는 한 곳에서만 한다.
 
 ### 2.2 클라이언트 쪽
 
@@ -69,8 +67,10 @@
   target `RoutingId`를 숨기는 형태를 우선한다.
 - session server와 play server를 분리하는 구조에서는 `actorId`를 client-facing
   공개 키로 사용한다. session -> actor 방향은 actor create/dispatch helper로,
-  actor -> client 방향은 `IZLinkSessionProxy`로 나눈다. 자세한 초안은
-  [session-gateway-usability.ko.md](./session-gateway-usability.ko.md)를 기준으로 한다.
+  actor -> client 방향은 `IZLinkSessionProxy`로 나눈다. actor 개념의 라이프사이클
+  과 표면은 [actor-model.ko.md](./actor-model.ko.md)에서, gateway use case의 사용성
+  결정은 [session-gateway-usability.ko.md](./session-gateway-usability.ko.md)에서
+  본다.
 
 ### 2.3 transport 통합 축
 
@@ -172,10 +172,10 @@ public sealed class ProfileHandlers
 send queue와 ready notification으로 이어서 처리한다. send 대기 한계는 call
 builder가 아니라 channel 또는 socket의 `SendTimeout` 옵션을 따른다.
 framework는 core socket 기본값을 직접 사용하지 않고, channel/socket option에
-resolved된 `SendTimeout` 값을 async pending deadline으로 사용한다. 별도 설정이
-없으면 framework 기본값은 `TimeSpan.FromMilliseconds(200)`이다. 사용자가
-`.NET` option에서 `SendTimeout = null`을 명시한 경우에만 core `-1`과 같은
-무한 대기로 본다.
+resolved된 `SendTimeout` 값을 async pending deadline으로 사용한다. `200ms` 기본값은
+**.NET 바인딩에 한정한 framework 기본값**이며, cross-binding 정책은 "각 binding이 자기
+idiom에 맞는 기본값을 정한다"로 둔다. 사용자가 `.NET` option에서 `SendTimeout = null`을
+명시한 경우에만 core `-1`과 같은 무한 대기로 본다.
 publish도 send와 같은 submit 규칙을 따른다. subscriber 처리 완료를 기다리지 않고,
 local publish transport에 메시지를 맡길 수 있을 때까지 비동기로 기다린다.
 

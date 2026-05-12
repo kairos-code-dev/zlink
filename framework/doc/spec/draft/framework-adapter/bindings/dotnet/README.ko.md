@@ -69,6 +69,16 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
   [doc/spec/bindings/README.md](/home/hep7/project/kairos/zlink/doc/spec/bindings/README.md)의
   `Naming Policy`를 그대로 따른다. `.NET`에서는 public API 전체를 `PascalCase`로
   적고, 단어 구성 자체를 임의로 바꾸지 않는다.
+- `Zlink` vs `ZLink` casing 의도는 다음과 같이 본다.
+  - native binding 패키지(`bindings/dotnet/src/Zlink/...`)와 그 안에서 export하는
+    raw transport 타입(예: `DealerSocket`, `RouterSocket`, `SpotNode`, `Spot`)은
+    `Zlink` namespace 아래에 있다. wire/transport 레벨이다.
+  - framework adapter 표면 타입은 `ZLink` prefix로 통일한다 (예:
+    `IZLinkSession`, `ZLinkStreamHeader`, `IZLinkActorContext`,
+    `IZLinkSessionProxy`). 즉 framework가 사용자에게 노출하는 모든 interface, record,
+    enum, exception은 `ZLink`를 쓴다.
+  - 패키지 id와 namespace 단어(`Systems.Zlink.*`)는 native binding 규칙을 따른다.
+    type 이름과 namespace 이름의 casing 의도는 별개다.
 - `zlink.systems` 도메인 기반 package와 namespace는 역순 도메인 규칙을 따른다.
   `.NET` NuGet package id와 namespace는 `Systems.Zlink.*`를 사용한다.
   Unity package id는 lowercase reverse-DNS인 `systems.zlink.*`를 사용한다.
@@ -144,8 +154,7 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 | [channel-messaging-samples.ko.md](./channel-messaging-samples.ko.md) | channel 등록, handler, HTTP handler, outbound client를 한 번에 보는 샘플 |
 | [spot-samples.ko.md](./spot-samples.ko.md) | room, stage, zone 기준 SPOT 등록, handler, channel send/request, publish를 한 번에 보는 샘플 |
 | [stream-samples.ko.md](./stream-samples.ko.md) | STREAM framework Header 기반 packet session과 등록 코드를 한 번에 보는 샘플 |
-| [tictactoe-game-sample.ko.md](./tictactoe-game-sample.ko.md) | TicTacToe direct 샘플과 session actor dispatch 샘플의 contract 방향 |
-| [tictactoe-game-sample.ko.md](./tictactoe-game-sample.ko.md) | API 서버, Play 서버, STREAM connector, SPOT actor를 함께 쓰는 틱택토 게임 샘플 초안 |
+| [tictactoe-game-sample.ko.md](./tictactoe-game-sample.ko.md) | API 서버, Play 서버, STREAM connector, SPOT actor를 함께 쓰는 틱택토 게임 샘플 초안 (TicTacToe direct + session actor dispatch contract) |
 
 ### 2.5 범위 원칙
 

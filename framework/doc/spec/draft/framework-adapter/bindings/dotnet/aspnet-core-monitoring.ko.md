@@ -112,10 +112,13 @@ source 이름은 아래처럼 잡는 편이 자연스럽다.
   - `channel + capability`
   - 예: `profile.server`, `profile.client`
 - discovery
-  - 별도 monitoring source 이름을 두지 않는다.
+  - framework는 별도 monitoring source 이름을 두지 않는다.
   - 현재 provider 상태는 `IZLinkRegistryQuery.TopologySnapshotAsync(...)`,
     `ServiceSummarySnapshotAsync(...)`, `MemberPeersAsync(...)`로 조회한다.
-  - 예: `profile.client.discovery`, `game.stage.discovery`
+  - 만약 application logging 쪽에서 discovery 활동을 별도 식별자로 남기고 싶으면
+    `profile.client.discovery`, `game.stage.discovery`처럼 application logging
+    convention으로 둘 수 있다. 이 이름은 framework monitoring source 등록 이름이
+    아니다.
 - registry
   - infrastructure source 이름
   - 예: `registry`

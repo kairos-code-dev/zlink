@@ -68,7 +68,7 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken);
 }
@@ -89,13 +89,13 @@ public interface IZLinkSessionActorDispatchContext
     IZLinkSessionRequestCall Request<TRequest>(TRequest request);
 
     ValueTask DispatchToActorAsync(
-        ZlinkStreamHeader header,
+        ZLinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default);
 
     ValueTask DispatchToActorAsync(
         IZLinkActorRef actor,
-        ZlinkStreamHeader header,
+        ZLinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default);
 }
@@ -181,7 +181,7 @@ public sealed class ClientHeaderSession
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken)
     {
@@ -233,7 +233,7 @@ public sealed class ClientHeaderSession
 
 이 샘플을 읽을 때 중요한 점은 아래와 같다.
 
-- application은 `ZlinkStreamHeader.Name`을 dispatch 기준으로 쓴다.
+- application은 `ZLinkStreamHeader.Name`을 dispatch 기준으로 쓴다.
 - body는 고정 타입 하나로 바로 올리지 않는다.
 - header session이 `header.MsgId`를 보고 `ClientInput`, `Ping` 같은 각 packet
   타입으로
@@ -329,7 +329,7 @@ public sealed class ClientHeaderSession : IZLinkSession
     }
 
     public ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken)
     {

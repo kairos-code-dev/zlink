@@ -117,7 +117,7 @@ public sealed class ZlinkStreamConnectorOptions
 
     public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.None;
 
-    public IZlinkStreamHeaderCodec? HeaderCodec { get; init; }
+    public IZLinkStreamHeaderCodec? HeaderCodec { get; init; }
 
     public IZlinkStreamCompressionCodec? CompressionCodec { get; init; }
 
@@ -201,7 +201,7 @@ public enum ZlinkStreamMessageKind : byte
 }
 
 [Flags]
-public enum ZlinkStreamHeaderFlags : byte
+public enum ZLinkStreamHeaderFlags : byte
 {
     None = 0,
     HasRequestSeq = 0x01,
@@ -211,19 +211,19 @@ public enum ZlinkStreamHeaderFlags : byte
 
 public readonly record struct ZlinkStreamRequestSeq(ulong Value);
 
-public sealed record ZlinkStreamHeader(
+public sealed record ZLinkStreamHeader(
     ZlinkStreamMessageKind Kind,
     ZlinkStreamCodec Codec,
-    ZlinkStreamHeaderFlags Flags,
+    ZLinkStreamHeaderFlags Flags,
     ZlinkStreamRequestSeq? RequestSeq,
     string Name,
     ZlinkStreamMetadata Metadata);
 
-public interface IZlinkStreamHeaderCodec
+public interface IZLinkStreamHeaderCodec
 {
-    ReadOnlyMemory<byte> Encode(ZlinkStreamHeader header);
+    ReadOnlyMemory<byte> Encode(ZLinkStreamHeader header);
 
-    ZlinkStreamHeader Decode(ReadOnlyMemory<byte> header);
+    ZLinkStreamHeader Decode(ReadOnlyMemory<byte> header);
 }
 ```
 

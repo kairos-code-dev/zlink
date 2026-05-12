@@ -30,14 +30,14 @@ recv 방식은 이 샘플 문서에 넣지 않는다.
 ```csharp
 public interface IZLinkStream
 {
-    bool Write(
+    ValueTask WriteAsync(
         Message payload,
-        SendFlags flags = SendFlags.None);
+        CancellationToken cancellationToken = default);
 
-    bool Write(
+    ValueTask WriteAsync(
         Message header,
         Message body,
-        SendFlags flags = SendFlags.None);
+        CancellationToken cancellationToken = default);
 }
 
 public enum ZLinkStreamSessionError
@@ -198,7 +198,7 @@ public sealed class ClientHeaderSession
                         {
                             Input = input
                         })
-                    .Async(cancellationToken);
+                    .Submit(cancellationToken);
 
                 break;
             }
@@ -214,14 +214,14 @@ public sealed class ClientHeaderSession
                         {
                             Sequence = ping.Sequence
                         })
-                    .Async(cancellationToken);
+                    .Submit(cancellationToken);
 
                 await Context
                     .Reply(new Pong
                     {
                         Sequence = ping.Sequence
                     })
-                    .Async(cancellationToken);
+                    .Submit(cancellationToken);
                 break;
             }
         }
@@ -335,7 +335,7 @@ public sealed class ClientHeaderSession : IZLinkSession
     {
         return Context
             .Reply(new Pong())
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
     }
 }
 ```

@@ -623,7 +623,7 @@ app.MapPost("/stage/query", async (
         .Request(
             "orders",
             new SampleGetStateRequest { SpotRid = request.StageRid })
-        .Async<SampleGetStateReply>(cancellationToken);
+        .Submit<SampleGetStateReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -690,7 +690,7 @@ app.MapPost("/stage/publish", async (
                 ActorCount = request.UserCount,
                 ConnectedSessionCount = request.UserCount
             })
-        .Async(cancellationToken);
+        .Submit(cancellationToken);
 
     return Results.Accepted();
 });
@@ -875,13 +875,16 @@ actor create와 actor packet dispatch를 framework runtime으로 넘길 때 쓰�
 표면에서 다룬다.
 
 ```csharp
-public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
+public sealed class SampleSpot(
+    IZLinkSpotContext context,
+    IZLinkSpotActorMembership membership) : IZLinkSpot
 {
     private readonly Dictionary<string, SampleActor> _actors =
         new(StringComparer.Ordinal);
     private IZLinkTimer? _sessionTimeoutSweep;
 
     public IZLinkSpotContext Context { get; } = context;
+    public IZLinkSpotActorMembership Membership { get; } = membership;
 
     public string RoomId => Context.SpotRid.ToString();
 
@@ -915,11 +918,11 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         if (actor.Spot is SampleSpot current && !ReferenceEquals(current, this))
         {
-            await current.Context.LeaveActorAsync(actor, cancellationToken);
+            await current.Membership.LeaveActorAsync(actor, cancellationToken);
         }
 
         _actors[actor.ActorId] = actor;
-        await Context.JoinActorAsync(actor, cancellationToken);
+        await Membership.JoinActorAsync(actor, cancellationToken);
 
         PublishSampleState();
 
@@ -940,7 +943,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
             return;
         }
 
-        await Context.LeaveActorAsync(actor, cancellationToken);
+        await Membership.LeaveActorAsync(actor, cancellationToken);
         PublishSampleState();
     }
 
@@ -958,37 +961,28 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
         PublishSampleState();
     }
 
-    public ValueTask BroadcastChatAsync(
+    public async ValueTask BroadcastChatAsync(
         SampleActor sender,
         SampleSendRoomChatCommand command,
+        IZLinkSessionProxy sessionProxy,
         CancellationToken cancellationToken)
     {
+        // actor가 stream을 직접 들고 broadcast하지 않는다 (actor-model.ko.md §10
+        // 정책: server -> client push는 IZLinkSessionProxy 경유). 같은 room의 모든
+        // actor에게 broadcast 할 때도 actor id마다 SessionProxy로 보낸다.
+        SampleRoomChatPushed pushed = new()
+        {
+            FromActorId = sender.ActorId,
+            Text = command.Text
+        };
+
         foreach (SampleActor actor in _actors.Values)
         {
-            if (actor.Stream is null)
-            {
-                continue;
-            }
-
-            using Message body = new SampleRoomChatPushed
-            {
-                FromActorId = sender.ActorId,
-                Text = command.Text
-            }.ToProtoMessage();
-
-            using Message header = new RouteHeader
-            {
-                MsgId = "SampleRoomChatPushed",
-                StageId = RoomId,
-                AccountId = actor.ActorId
-            }.ToProtoMessage();
-
-            actor.Stream.Write(
-                header,
-                body);
+            await sessionProxy
+                .Send(actor.ActorId, pushed)
+                .WithPacketName("SampleRoomChatPushed")
+                .Submit(cancellationToken);
         }
-
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask PublishSampleStateAsync(
@@ -1002,7 +996,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
                 ActorCount = ActorCount,
                 ConnectedSessionCount = ConnectedSessionCount
             })
-        .Async(cancellationToken);
+        .Submit(cancellationToken);
     }
 
     public async ValueTask SweepInactiveActorsAsync(
@@ -1085,7 +1079,7 @@ public sealed class SampleActor : IZLinkActor
                 Y = Y
             })
             .WithPacketName("SampleActorSnapshot")
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
     }
 
     public ValueTask OnDisconnectedAsync(
@@ -1131,7 +1125,7 @@ public sealed class SampleActor : IZLinkActor
     {
         return _context
             .JoinSpot(room.SpotRid, request)
-            .Async<SampleJoinRoomReply>(cancellationToken);
+            .Submit<SampleJoinRoomReply>(cancellationToken);
     }
 
     public ValueTask ReplyAsync<TMessage>(
@@ -1140,7 +1134,7 @@ public sealed class SampleActor : IZLinkActor
     {
         return _context
             .Reply(message)
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
     }
 
 }
@@ -1257,7 +1251,7 @@ public sealed class SampleSession
                     AccountId = auth.AccountId,
                     CurrentRoomId = (actor.Spot as SampleSpot)?.RoomId ?? string.Empty
                 })
-                .Async(cancellationToken);
+                .Submit(cancellationToken);
             return;
         }
 
@@ -1281,7 +1275,7 @@ public sealed class SampleSession
 
             await Context
                 .Reply(joinReply)
-                .Async(cancellationToken);
+                .Submit(cancellationToken);
             return;
         }
 
@@ -1381,7 +1375,7 @@ public sealed record SampleAuthenticationResult(
 6. `SampleSession`은 room 정보를 actor packet으로 넘기고, actor 쪽 handler는
    `IZLinkActorContext.JoinSpot(...)`로 target room의 join callback을 호출한다.
 7. 등록된 `SampleJoinRoomHandler`가 같은 `SampleSpot` 실행 문맥에서 승인,
-   `Context.JoinActorAsync(actor)` 호출, 기존 room에서의 이탈, 결과 생성까지
+   `Membership.JoinActorAsync(actor)` (framework가 주입하는 `IZLinkSpotActorMembership`) 호출, 기존 room에서의 이탈, 결과 생성까지
    마무리한다.
 8. 그 뒤의 `SampleHeartbeatCommand`, `SampleMoveActorCommand`,
    `SampleSendRoomChatCommand` 같은 패킷은 framework 내부 `SubmitAsync(...)`를 통해
@@ -1426,7 +1420,7 @@ public sealed record SampleAuthenticationResult(
                 {
                     SpotRid = spot.Context.SpotRid.ToString()
                 })
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
 
         return new SampleGetStateReply
         {
@@ -1461,7 +1455,7 @@ public sealed class SampleReportStateHandler
                 {
                     SpotRid = spot.Context.SpotRid.ToString()
                 })
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
     }
 }
 
@@ -1490,7 +1484,7 @@ public sealed class SampleStateUpdatedHandler
                     ConnectedSessionCount = message.ConnectedSessionCount
                 })
             .WithTimeout(TimeSpan.FromMilliseconds(200))
-            .Async<SampleSyncStateReply>(cancellationToken);
+            .Submit<SampleSyncStateReply>(cancellationToken);
     }
 }
 
@@ -1555,7 +1549,7 @@ public sealed class SampleSessionTimeoutSweepHandler
 - `Context.AddSubscribe<THandler>(...)`는 topic subscription consumer를 등록한다.
 - `Context.AddTimer<THandler>(...)`는 spot lifecycle 안에서 timer를 등록한다.
 - 다른 channel 호출은 attach된 channel client를 통해 보낸다.
-- **`RequestChannel(...).Async(...)`는 같은 spot execution context 안에서 완료된다.**
+- **`RequestChannel(...).Submit(...)`는 같은 spot execution context 안에서 완료된다.**
   arbitrary thread 에서 promise 를 직접 resolve 하지 않으므로, continuation 도
   spot state 에 대해 별도 lock 없이 접근할 수 있다.
 
@@ -1646,9 +1640,9 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
 - 새 spot 인스턴스를 만들고 싶다
   - `IZLinkSpotManager.CreateAsync("stage", ...)`
 - attach된 다른 channel에 send packet을 보내고 싶다
-  - `SendChannel(...).Async(...)`
+  - `SendChannel(...).Submit(...)`
 - attach된 다른 channel에 request packet을 보내고 싶다
-  - `RequestChannel(...).WithTimeout(...).Async(...)`
+  - `RequestChannel(...).WithTimeout(...).Submit(...)`
 - 다른 SPOT peer와 직접 RID routed 호출을 하고 싶다
   - 현재 framework core 기본 표면에는 없다. 필요하면 stage wrapper나 별도 확장
     패키지에서 다룬다.
@@ -1657,9 +1651,9 @@ framework용 marker interface를 직접 붙이는 방식을 전제로 하지 않
 - 특정 `spotRid`가 어떤 이름으로 생성됐는지 다시 보고 싶다
   - `IZLinkSpotManager.GetAsync(spotRid)` 또는 `ListAsync()`
 - stage 안에서 fan-out 하고 싶다
-  - `Publish(topic, ...).Async(...)`
+  - `Publish(topic, ...).Submit(...)`
 - local spot 인스턴스가 없는 외부 노드에서 특정 SPOT channel로 publish하고 싶다
-  - `IZLinkSpotPublisherClient.Publish(channelName, topic, ...).Async(...)`
+  - `IZLinkSpotPublisherClient.Publish(channelName, topic, ...).Submit(...)`
 - stage 안에서 heartbeat timeout sweep 같은 주기 작업을 돌리고 싶다
   - `SampleSpot.OnInitializeAsync()`에서 `Context.AddTimer<THandler>(...)` 등록
 

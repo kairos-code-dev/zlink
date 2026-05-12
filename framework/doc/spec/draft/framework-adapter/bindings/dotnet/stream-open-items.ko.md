@@ -52,42 +52,21 @@ registration surface와 테스트 기준이 바뀌지 않게 만드는 데 목�
 
 ## 3. write API
 
-### 3.1 현재 비어 있는 점
+**확정 -- 본문은 [handler-interfaces.ko.md](./handler-interfaces.ko.md) §4.4와
+[aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) §3을 본다.**
 
-현재 문서는 수신 handler에 더 초점이 맞춰져 있다. 하지만 실제 `STREAM` 구현에서는
-송신 표면도 같이 있어야 한다.
+요지:
 
-### 3.2 확정 기준
-
-- raw write와 framed write는 overload만으로 구분한다.
-- framed write는 `Message header, Message body` 시그니처를 사용한다.
-- 현재 `STREAM` 기본 표면에는 별도 reply helper를 두지 않는다.
-- header encode와 body encode는 serializer 확장 helper가 맡고, session은 이미 만든
-  `Message`를 `Write(...)`로 넘긴다.
-- `SendFlags`는 session write 표면에 그대로 노출한다.
-
-### 3.3 정리
-
-- raw write와 framed write는 이름이 아니라 파라미터 overload로 구분한다.
-- 현재 framework session의 send/write 표면은 async submit으로 둔다. blocking
-  write를 task로 감싸지 않고, nonblocking write와 ready notification으로
-  backpressure를 처리해야 한다.
-
-```csharp
-ValueTask WriteAsync(
-    Message payload,
-    CancellationToken cancellationToken = default);
-
-ValueTask WriteAsync(
-    Message header,
-    Message body,
-    CancellationToken cancellationToken = default);
-```
-
-- temporary backpressure는 `false` 반환값으로 노출하지 않는다. framework
-  session/socket write 대기 한계는 해당 socket/channel option의 `SendTimeout`을
-  따른다. 단, stream connector public option에는 별도 `SendTimeout`을 두지 않고,
-  connector request reply 대기에는 `RequestTimeout`만 사용한다.
+- `IZLinkStream.WriteAsync(payload, ct)` / `WriteAsync(header, body, ct)` 두
+  overload만 둔다.
+- 동기 `bool Write(...)` 표면은 deprecated이며 framework 내부 fast path에서만
+  쓴다. application 코드는 `WriteAsync(...)` 또는 actor 경로(`IZLinkSessionProxy`)
+  를 쓴다.
+- temporary backpressure는 boolean 반환값으로 노출하지 않고 framework 내부
+  nonblocking write + ready notification으로 처리한다. write 대기 한계는 해당
+  socket/channel option의 `SendTimeout`을 따른다.
+- stream connector public option에는 별도 `SendTimeout`을 두지 않고, connector
+  request reply 대기에는 `RequestTimeout`만 사용한다.
 
 ## 4. Monitor Event -> Session Lifecycle
 

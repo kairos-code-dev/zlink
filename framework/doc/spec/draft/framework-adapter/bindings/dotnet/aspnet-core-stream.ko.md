@@ -57,14 +57,14 @@ public interface IZLinkStream
 
     string? RemoteAddr { get; }
 
-    bool Write(
+    ValueTask WriteAsync(
         Message payload,
-        SendFlags flags = SendFlags.None);
+        CancellationToken cancellationToken = default);
 
-    bool Write(
+    ValueTask WriteAsync(
         Message header,
         Message body,
-        SendFlags flags = SendFlags.None);
+        CancellationToken cancellationToken = default);
 }
 
 public enum ZLinkStreamSessionError

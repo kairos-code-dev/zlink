@@ -558,13 +558,21 @@ SPOT spec ([aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md))의 `IZLinkSpotCon
 handler를 부르고, 합류 성공 시 어떤 actor type을 생성할지"를 매핑한다.
 
 ```csharp
-public sealed class TicTacToeGameSpot : IZLinkSpot
+public sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot
 {
-    public void OnInitialize(IZLinkSpotContext context)
+    public IZLinkSpotContext Context { get; } = context;
+
+    // packet/subscribe/timer/actor-join 등록은 Configure()에서 한다.
+    public void Configure()
     {
-        context.AddActorJoin<TicTacToeGameJoinHandler, PlayerActor, JoinMatchReq, JoinMatchSpotResult>();
+        Context.AddActorJoin<TicTacToeGameJoinHandler, PlayerActor, JoinMatchReq, JoinMatchSpotResult>();
         // ...
     }
+
+    // 비동기 초기화가 필요하면 OnInitializeAsync를 쓴다.
+    // context는 생성자 주입 또는 framework가 Configure() 단계에서 attach한 값을 쓴다.
+    public ValueTask OnInitializeAsync(CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
 }
 ```
 

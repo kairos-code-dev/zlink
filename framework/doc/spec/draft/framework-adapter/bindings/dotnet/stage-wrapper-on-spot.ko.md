@@ -154,7 +154,7 @@
 1. client session이 인증을 끝내고 actor를 찾는다.
 2. `JoinRoom` 같은 packet이 오면 framework가 target `Spot` 실행 문맥으로
    join 요청을 넣는다.
-3. join handler는 `IZLinkSpotContext.JoinActorAsync(actor)`를 호출해
+3. join handler는 `IZLinkSpotActorMembership.JoinActorAsync(actor)`를 호출해
    `actorId -> spot runtime` 연결을 membership으로 기록한다.
 4. 그 뒤 session에서 packet이 오면 framework Header 기반 `header/body` 형태로
    정규화한다.

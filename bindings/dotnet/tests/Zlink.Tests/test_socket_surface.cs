@@ -415,7 +415,6 @@ public sealed class test_socket_surface
             typeof(PairSocket).FullName!,
             typeof(PollEvent).FullName!,
             typeof(PollEventFlags).FullName!,
-            typeof(PollReadyEvent).FullName!,
             typeof(Poller).FullName!,
             typeof(PubSocket).FullName!,
             typeof(PubSocketOptions).FullName!,
@@ -714,9 +713,7 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(Poller),
             nameof(Poller.Wait), typeof(TimeSpan)));
         Assert.True(HasPublicInstanceMethod(typeof(Poller),
-            nameof(Poller.WaitAll), typeof(int), typeof(TimeSpan)));
-        Assert.True(HasPublicInstanceMethod(typeof(Poller),
-            nameof(Poller.WaitReady), typeof(Span<PollReadyEvent>),
+            nameof(Poller.Wait), typeof(Span<PollEvent>),
             typeof(TimeSpan), typeof(int).MakeByRefType()));
         Assert.Null(typeof(Poller).GetMethod(nameof(Poller.Wait),
             new[] { typeof(Span<PollEvent>), typeof(int), typeof(int).MakeByRefType() }));
@@ -724,10 +721,8 @@ public sealed class test_socket_surface
             typeof(PollEvent).GetProperty(nameof(PollEvent.Socket))!.PropertyType);
         Assert.Equal(typeof(Timer),
             typeof(PollEvent).GetProperty(nameof(PollEvent.Timer))!.PropertyType);
-        Assert.Equal(typeof(object),
-            typeof(PollReadyEvent).GetProperty(nameof(PollReadyEvent.Tag))!.PropertyType);
         Assert.Equal(typeof(PollEventFlags),
-            typeof(PollReadyEvent).GetProperty(nameof(PollReadyEvent.Revents))!.PropertyType);
+            typeof(PollEvent).GetProperty(nameof(PollEvent.Revents))!.PropertyType);
         Assert.Equal(typeof(Action<MonitorEvent>),
             typeof(SocketMonitor).GetField(nameof(SocketMonitor.IgnoreHandler),
                 BindingFlags.Static | BindingFlags.Public)!.FieldType);

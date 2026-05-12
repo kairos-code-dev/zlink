@@ -1531,16 +1531,6 @@ class _Lib:
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkPollerEvent),
-                ctypes.c_long,
-                ctypes.POINTER(ctypes.c_int),
-            ],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_poller_wait_all",
-            [
-                ctypes.c_void_p,
-                ctypes.POINTER(ZlinkPollerEvent),
                 ctypes.c_int,
                 ctypes.c_long,
                 ctypes.POINTER(ctypes.c_int),

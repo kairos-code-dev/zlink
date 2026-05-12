@@ -345,7 +345,7 @@ class spot_reqrep_client_bench_t
             // poller is registered with every slot spot's recv side, so
             // it wakes as soon as any callback has consumed a reply.
             try {
-                _events = _poller.wait_all (
+                _events = _poller.wait (
                   _slots.size (), std::chrono::milliseconds (-1));
             }
             catch (const zlink::recv_error_t &err) {

@@ -634,7 +634,7 @@ func TestSurfaceSpotDoesNotExposeDirectMessaging(t *testing.T) {
 	if !hasMethod((*zlink.Timer)(nil), "Start") || !hasMethod((*zlink.Timer)(nil), "Recv") || !hasMethod((*zlink.Timer)(nil), "OnFire") {
 		t.Fatalf("Timer should expose canonical timer methods")
 	}
-	if !hasMethod((*zlink.Poller)(nil), "Wait") || !hasMethod((*zlink.Poller)(nil), "WaitAll") || !hasMethod((*zlink.Poller)(nil), "AddTimer") {
+	if !hasMethod((*zlink.Poller)(nil), "Wait") || !hasMethod((*zlink.Poller)(nil), "WaitMany") || !hasMethod((*zlink.Poller)(nil), "AddTimer") {
 		t.Fatalf("Poller should expose canonical poller methods")
 	}
 	if hasMethod((*zlink.XPubSocket)(nil), "OnSubscribe") {

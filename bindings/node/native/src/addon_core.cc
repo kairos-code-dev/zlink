@@ -4859,13 +4859,13 @@ napi_value poller_wait(napi_env env, napi_callback_info info)
     zlink_poller_event_t event;
     memset(&event, 0, sizeof(event));
     zlink_config_result_t err = ZLINK_CONFIG_OK;
-    int rc = zlink_poller_wait(poller, &event, timeout, &err);
+    int rc = zlink_poller_wait(poller, &event, 1, timeout, &err);
     if (err != ZLINK_CONFIG_OK)
         return throw_last_error(env, "poller_wait failed");
     return create_poller_event_result(env, event, rc);
 }
 
-napi_value poller_wait_all(napi_env env, napi_callback_info info)
+napi_value poller_wait_many(napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
     size_t argc = 3;
@@ -4876,12 +4876,16 @@ napi_value poller_wait_all(napi_env env, napi_callback_info info)
     int32_t timeout = 0;
     napi_get_value_int32(env, argv[1], &n_events);
     napi_get_value_int32(env, argv[2], &timeout);
+    if (n_events <= 0) {
+        napi_throw_range_error(env, NULL, "maxEvents must be a positive integer");
+        return NULL;
+    }
     std::vector<zlink_poller_event_t> events(static_cast<size_t>(n_events));
     zlink_config_result_t err = ZLINK_CONFIG_OK;
-    int rc = zlink_poller_wait_all(
+    int rc = zlink_poller_wait(
       poller, events.data(), n_events, timeout, &err);
     if (err != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "poller_wait_all failed");
+        return throw_last_error(env, "poller_wait_many failed");
     napi_value out;
     napi_create_array_with_length(env, rc > 0 ? static_cast<size_t>(rc) : 0, &out);
     for (int i = 0; i < rc; ++i) {

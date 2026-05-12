@@ -89,7 +89,7 @@ void poller_thread (void *arg_)
     args->ready.store (1);
 
     zlink_poller_event_t event;
-    const int rc = zlink_poller_wait (poller, &event, -1);
+    const int rc = zlink_poller_wait (poller, &event, 1, -1, NULL);
     if (rc == -1)
         args->wait_errno.store (zlink_errno ());
 

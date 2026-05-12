@@ -3006,8 +3006,7 @@ class registry_query_client_t {
 
 ### poll_event_t
 
-Readiness result returned by `poller_t::wait(...)` and
-`poller_t::wait_all(...)`.
+Readiness result returned by `poller_t::wait(...)`.
 
 ```cpp
 enum class poll_event_flag_t : short {
@@ -3082,8 +3081,12 @@ class poller_t {
     std::optional<poll_event_t> wait(
         std::optional<std::chrono::milliseconds> timeout = std::nullopt);
     /// @throws recv_error_t
-    std::vector<poll_event_t> wait_all(
+    std::vector<poll_event_t> wait(
         size_t max_events,
+        std::optional<std::chrono::milliseconds> timeout = std::nullopt);
+    /// @throws recv_error_t
+    size_t wait(std::vector<poll_event_t>& events,
+        size_t max_events = 0,
         std::optional<std::chrono::milliseconds> timeout = std::nullopt);
 
     /// @throws close_error_t

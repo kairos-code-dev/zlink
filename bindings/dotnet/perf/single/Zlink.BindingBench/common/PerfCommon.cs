@@ -140,11 +140,9 @@ internal static partial class PerfRunner
     {
         try
         {
-            IReadOnlyList<PollEvent> ready = poller.WaitAll(events.Length,
-                TimeSpan.FromMilliseconds(timeoutMs));
-            for (int i = 0; i < ready.Count && i < events.Length; i++)
-                events[i] = ready[i];
-            return ready.Count > 0;
+            int written = poller.Wait(events, TimeSpan.FromMilliseconds(timeoutMs),
+                out _);
+            return written > 0;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
                                         || IsWouldBlock(ex.InternalErrno))

@@ -44,7 +44,7 @@ inline bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        events = poller.wait_all (0, std::chrono::milliseconds (wait_ms));
+        events = poller.wait (0, std::chrono::milliseconds (wait_ms));
         const int rc = static_cast<int> (events.size ());
         if (rc < 0) {
             if (errno == EINTR || errno == EAGAIN)

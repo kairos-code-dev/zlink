@@ -2450,7 +2450,8 @@ public final class Poller implements AutoCloseable {
     // --- poll ---
     int size();                                                      // @throws ConfigException
     @Nullable PollEvent wait(Duration timeout);                      // @throws RecvException
-    List<PollEvent> waitAll(int maxEvents, Duration timeout);         // @throws RecvException
+    List<PollEvent> wait(int maxEvents, Duration timeout);            // @throws RecvException
+    int wait(List<PollEvent> destination, Duration timeout);          // @throws RecvException
 
     void clear();                                                    // @throws ConfigException
     void close();                                                    // @throws CloseException
@@ -2460,7 +2461,7 @@ public final class Poller implements AutoCloseable {
 ### PollEvent
 
 Immutable readiness result returned by `Poller.wait(...)` and
-`Poller.waitAll(...)`.
+`Poller.wait(int, Duration)`.
 
 ```java
 public record PollEvent(@Nullable Socket socket,

@@ -208,7 +208,7 @@ static napi_value init(napi_env env, napi_value exports)
         {"pollerAddTimer", 0, poller_add_timer, 0, 0, 0, napi_default, 0},
         {"pollerRemoveTimer", 0, poller_remove_timer, 0, 0, 0, napi_default, 0},
         {"pollerWait", 0, poller_wait, 0, 0, 0, napi_default, 0},
-        {"pollerWaitAll", 0, poller_wait_all, 0, 0, 0, napi_default, 0},
+        {"pollerWaitMany", 0, poller_wait_many, 0, 0, 0, napi_default, 0},
 
         {"timerNew", 0, timer_new, 0, 0, 0, napi_default, 0},
         {"spotTimerNew", 0, spot_timer_new, 0, 0, 0, napi_default, 0},

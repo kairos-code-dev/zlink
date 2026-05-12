@@ -294,7 +294,7 @@ bool service_dealer_slots(dealer_client_state_t *state,
     bool progressed = false;
     std::vector<zlink_poller_event_t> events(state->slots.size());
     const int poll_rc =
-      zlink_poller_wait_all(state->poller,
+      zlink_poller_wait(state->poller,
                             events.empty() ? NULL : &events[0],
                             static_cast<int>(events.size()),
                             timeout_ms);

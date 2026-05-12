@@ -245,10 +245,10 @@ public final class Poller implements AutoCloseable {
             return 0;
         }
         MemorySegment events = ensureNativeEvents(items.size());
-        int readyCount = Native.pollerWaitAll(handle, events, items.size(),
+        int readyCount = Native.pollerWait(handle, events, items.size(),
           timeoutMs);
         if (readyCount < 0)
-            throw ZlinkException.fromLastError("zlink_poller_wait_all");
+            throw ZlinkException.fromLastError("zlink_poller_wait");
         ensureReadyCacheCapacity(readyCount);
         for (int i = 0; i < readyCount; i++) {
             long base = (long) i * POLLER_EVENT_SIZE;
@@ -266,7 +266,7 @@ public final class Poller implements AutoCloseable {
         return pollCount(timeoutMs) > 0;
     }
 
-    public int pollCount(Duration timeout) {
+    int pollCount(Duration timeout) {
         return pollCount(toIntMillis(timeout));
     }
 
@@ -286,11 +286,11 @@ public final class Poller implements AutoCloseable {
     }
 
     public PollEvent wait(Duration timeout) {
-        List<PollEvent> events = waitAll(1, timeout);
+        List<PollEvent> events = wait(1, timeout);
         return events.isEmpty() ? null : events.get(0);
     }
 
-    public List<PollEvent> waitAll(int maxEvents, Duration timeout) {
+    public List<PollEvent> wait(int maxEvents, Duration timeout) {
         if (maxEvents <= 0)
             throw new IllegalArgumentException("maxEvents must be > 0");
         int readyCount = pollCount(toIntMillis(timeout));
@@ -303,6 +303,17 @@ public final class Poller implements AutoCloseable {
               readyRevents(i)));
         }
         return out;
+    }
+
+    public int wait(List<PollEvent> destination, Duration timeout) {
+        Objects.requireNonNull(destination, "destination");
+        destination.clear();
+        int readyCount = pollCount(toIntMillis(timeout));
+        for (int i = 0; i < readyCount; i++) {
+            destination.add(toPollEvent(cachedReadyItem(i), readyFd(i),
+              readyRevents(i)));
+        }
+        return readyCount;
     }
 
     int readyCount() {
@@ -320,7 +331,7 @@ public final class Poller implements AutoCloseable {
         return item == null ? null : item.timer;
     }
 
-    public Object readyTag(int index) {
+    Object readyTag(int index) {
         PollItem item = cachedReadyItem(index);
         return item == null ? null : item.tag;
     }
@@ -340,7 +351,7 @@ public final class Poller implements AutoCloseable {
         return readyReventsCache[index];
     }
 
-    public boolean readyHasEvent(int index, PollEventFlag event) {
+    boolean readyHasEvent(int index, PollEventFlag event) {
         Objects.requireNonNull(event, "event");
         return (readyRevents(index) & event.value()) != 0;
     }

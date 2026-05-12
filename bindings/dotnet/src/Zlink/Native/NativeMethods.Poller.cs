@@ -46,7 +46,7 @@ internal static partial class NativeMethods
         IntPtr timer);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_poller_wait_all(IntPtr poller,
+    internal static extern int zlink_poller_wait(IntPtr poller,
         [Out] ZlinkPollerEvent[] events, int nEvents, long timeout,
         out int errorOut);
 

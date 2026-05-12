@@ -160,13 +160,13 @@ typedef enum zlink_request_result_t
 | `TERMINATED` | `ETERM` | request 경로가 명시적인 종료 completion을 방출하기 전까지는 예약값 |
 | `PROTOCOL_ERROR` | `EPROTO` | reply envelope 또는 error reply payload가 잘못됨 |
 | `INTERNAL_ERROR` | 그 외 내부 completion 실패 | 더 세분화된 public bucket 없이 request completion이 실패함 |
-| `REJECTED` | `ECONNREFUSED` | target이 admission 또는 join request를 명시적으로 거부함 |
-| `CONFLICT` | `EEXIST`, `ESTALE` 계열 | checked ref generation 불일치, 중복 생성 등 caller가 다시 조회해야 하는 충돌 |
+| `REJECTED` | `EACCES`, `ECONNREFUSED` | target이 admission 또는 join request를 명시적으로 거부함 |
+| `CONFLICT` | `ESTALE` | checked ref generation 불일치, 중복 생성 등 caller가 다시 조회해야 하는 충돌 |
 | `BUSY` | `EBUSY` | Actor가 join 또는 bind 상태라 destroy나 bind 변경을 완료할 수 없음 |
 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | target node 또는 Actor owner route에 도달할 수 없음 |
-| `INVALID_ARGUMENT` | `EINVAL` | NULL 인자, 잘못된 Actor id, 잘못된 routing id 등 호출 인자 오류 |
+| `INVALID_ARGUMENT` | `EINVAL`, `EFAULT` | NULL 인자, 잘못된 Actor id, 잘못된 routing id 등 호출 인자 오류 |
 | `INVALID_STATE` | `EFSM` | handle의 현재 상태가 해당 request와 맞지 않음 |
-| `NOT_SUPPORTED` | `ENOTSUP` | 현재 handle 또는 mode에서 지원하지 않는 request |
+| `NOT_SUPPORTED` | `ENOTSUP`, `EOPNOTSUPP` | 현재 handle 또는 mode에서 지원하지 않는 request |
 
 ### 적용 대상 함수
 
@@ -435,8 +435,8 @@ typedef enum zlink_config_result_t
 | Proxy | `zlink_proxy`, `zlink_proxy_steerable` |
 | Timer config | `zlink_timer_start`, `zlink_timer_stop` |
 
-`zlink_poll`, `zlink_poller_size`, `zlink_poller_wait`, `zlink_poller_wait_all`
-은 plain `int` 반환 + `error_out_` 출력 형태이며,
+`zlink_poll`, `zlink_poller_size`, `zlink_poller_wait`는 plain `int` 반환 +
+`error_out_` 출력 형태이며,
 `zlink_config_result_t`를 직접 반환하는 함수는 아니다.
 
 ---

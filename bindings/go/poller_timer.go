@@ -392,7 +392,7 @@ func (p *Poller) Wait(timeout time.Duration) (*PollerEvent, error) {
 	if err != nil {
 		return nil, err
 	}
-	count := C.zlink_poller_wait(p.handle, &raw, C.long(ms), &errCode)
+	count := C.zlink_poller_wait(p.handle, &raw, 1, C.long(ms), &errCode)
 	if count < 0 {
 		if errCode != 0 {
 			if errCode == C.ZLINK_CONFIG_INTERNAL_ERROR && currentErrno() == int(C.EINTR) {
@@ -411,7 +411,7 @@ func (p *Poller) Wait(timeout time.Duration) (*PollerEvent, error) {
 	return p.eventFromC(raw), nil
 }
 
-func (p *Poller) WaitAll(timeout time.Duration) ([]PollerEvent, error) {
+func (p *Poller) WaitMany(timeout time.Duration) ([]PollerEvent, error) {
 	if p == nil || p.closed || p.handle == nil {
 		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
@@ -425,7 +425,7 @@ func (p *Poller) WaitAll(timeout time.Duration) ([]PollerEvent, error) {
 	if err != nil {
 		return nil, err
 	}
-	count := C.zlink_poller_wait_all(p.handle, &events[0], C.int(size), C.long(ms), &errCode)
+	count := C.zlink_poller_wait(p.handle, &events[0], C.int(size), C.long(ms), &errCode)
 	if count < 0 {
 		if errCode != 0 {
 			if errCode == C.ZLINK_CONFIG_INTERNAL_ERROR && currentErrno() == int(C.EINTR) {

@@ -253,7 +253,7 @@ bool run_active_window (std::vector<client_slot_t> &slots,
             // timer cap. The outer while-loop check on wall-time
             // deadline still bounds total runtime; the poller wakes
             // promptly when a reply lands.
-            std::vector<zlink::poll_event_t> events = poller.wait_all (
+            std::vector<zlink::poll_event_t> events = poller.wait (
               slots.size (), std::chrono::milliseconds (-1));
             (void) events;
         }

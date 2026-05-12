@@ -26,7 +26,7 @@ using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::print_client_result_lines;
 using perf_multi_client::refresh_connected_client_auto_hwm;
 using perf_multi_client::resolve_case_msg_sizes;
-using perf_multi_client::wait_all_client_connect_ready;
+using perf_multi_client::wait_client_connect_ready_all;
 
 int recv_one_pubsub_message (void *socket,
                              size_t expected_msg_size,
@@ -164,10 +164,10 @@ bool run_recv_duration (const std::vector<void *> &sockets,
             active_deadline - now)
             .count ());
         const int poll_rc =
-          zlink_poller_wait_all (poller, events.empty () ? NULL : &events[0],
-                                 static_cast<int> (events.size ()),
-                                 timeout_ms <= 0 ? 0 : timeout_ms,
-                                 NULL);
+          zlink_poller_wait (poller, events.empty () ? NULL : &events[0],
+                             static_cast<int> (events.size ()),
+                             timeout_ms <= 0 ? 0 : timeout_ms,
+                             NULL);
         if (poll_rc < 0) {
             const int err = zlink_errno ();
             if (err == EINTR || err == EAGAIN)
@@ -339,7 +339,7 @@ inline int run_client_benchmark (const std::string &lib_name,
         close_client_sockets (&sockets);
         return 1;
     }
-    if (!wait_all_client_connect_ready (
+    if (!wait_client_connect_ready_all (
           monitors,
           base_settings.connect_ready_timeout_ms)) {
         close_client_monitors (&monitors);

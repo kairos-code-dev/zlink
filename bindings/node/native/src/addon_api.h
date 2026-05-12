@@ -227,7 +227,7 @@ napi_value poller_remove_fd(napi_env env, napi_callback_info info);
 napi_value poller_add_timer(napi_env env, napi_callback_info info);
 napi_value poller_remove_timer(napi_env env, napi_callback_info info);
 napi_value poller_wait(napi_env env, napi_callback_info info);
-napi_value poller_wait_all(napi_env env, napi_callback_info info);
+napi_value poller_wait_many(napi_env env, napi_callback_info info);
 
 napi_value timer_new(napi_env env, napi_callback_info info);
 napi_value spot_timer_new(napi_env env, napi_callback_info info);

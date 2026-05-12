@@ -615,7 +615,7 @@ zlink_poller_add_timer(poller, timer, my_timer_ctx);
 
 for (;;) {
     zlink_poller_event_t event;
-    int rc = zlink_poller_wait(poller, &event, -1, NULL);
+    int rc = zlink_poller_wait(poller, &event, 1, -1, NULL);
     if (rc < 0)
         break;
 
@@ -635,9 +635,9 @@ for (;;) {
 zlink_poller_destroy(&poller);
 ```
 
-`zlink_poller_wait()`는 이벤트가 1개 준비되면 `1`, timeout이면 `0`,
+`zlink_poller_wait()`는 기록한 이벤트 수를 반환하고, timeout이면 `0`,
 오류 시 `-1`을 반환한다. `timeout`은 밀리초 단위이며, `-1`은 무기한 대기,
-`0`은 non-blocking이다.
+`0`은 non-blocking이다. 이벤트 하나만 필요하면 `n_events=1`을 넘긴다.
 
 ### 12.2 일괄 대기
 
@@ -645,7 +645,7 @@ zlink_poller_destroy(&poller);
 
 ```c
 zlink_poller_event_t events[16];
-int n = zlink_poller_wait_all(poller, events, 16, 0, NULL);
+int n = zlink_poller_wait(poller, events, 16, 0, NULL);
 for (int i = 0; i < n; i++) {
     /* events[i] 처리 */
 }

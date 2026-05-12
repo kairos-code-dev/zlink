@@ -165,7 +165,7 @@ bool run_recv_duration (const std::vector<void *> &sockets,
             deadline - now)
             .count ());
         const int poll_rc =
-          zlink_poller_wait_all (poller, events.empty () ? NULL : &events[0],
+          zlink_poller_wait(poller, events.empty () ? NULL : &events[0],
                                  static_cast<int> (events.size ()),
                                  timeout_ms > 5 ? 5 : std::max (1, timeout_ms));
         if (poll_rc < 0) {

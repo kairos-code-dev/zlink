@@ -1303,11 +1303,13 @@ inline int zlink_poller_remove (void *poller_, void *socket_)
     return -1;
 }
 
-inline int zlink_poller_wait_all (void *poller_,
-                                  zlink_poller_event_t *events_,
-                                  int n_events_,
-                                  long timeout_)
+inline int zlink_poller_wait (void *poller_,
+                              zlink_poller_event_t *events_,
+                              int n_events_,
+                              long timeout_,
+                              zlink_config_result_t *error_out_ = NULL)
 {
+    (void) error_out_;
     zlink_poller_handle_t *poller =
       static_cast<zlink_poller_handle_t *> (poller_);
     if (!poller)
@@ -1338,15 +1340,6 @@ inline int zlink_poller_wait_all (void *poller_,
         ++out;
     }
     return out;
-}
-
-inline int zlink_poller_wait (void *poller_,
-                              zlink_poller_event_t *event_,
-                              long timeout_,
-                              zlink_config_result_t *error_out_ = NULL)
-{
-    (void) error_out_;
-    return zlink_poller_wait_all (poller_, event_, 1, timeout_);
 }
 
 inline int zlink_recv_handler (void *socket_,

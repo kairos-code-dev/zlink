@@ -67,7 +67,7 @@ public sealed class test_stream_socket
     {
         return typeof(StreamSocket).GetMethod("Recv",
             BindingFlags.Instance | BindingFlags.Public, binder: null,
-            types: new[] { typeof(RecvFlags) },
+            types: new[] { typeof(Received), typeof(RecvFlags) },
             modifiers: null) != null;
     }
 
@@ -340,7 +340,7 @@ public sealed class test_stream_socket
         byte[] incoming = "hello"u8.ToArray();
         client.GetStream().Write(incoming, 0, incoming.Length);
 
-        var received = new Received(); stream.Recv(received);
+        var received = new Received(); stream.Recv(received, RecvFlags.None);
         using (Message payloadMessage = received.Parts[0])
         {
             RoutingId routingId = received.RoutingId
@@ -382,7 +382,7 @@ public sealed class test_stream_socket
         byte[] incoming = "routing-id-check"u8.ToArray();
         client.GetStream().Write(incoming, 0, incoming.Length);
 
-        var received = new Received(); stream.Recv(received);
+        var received = new Received(); stream.Recv(received, RecvFlags.None);
         using (Message message = received.Parts[0])
         {
             RoutingId routingId = received.RoutingId
@@ -416,7 +416,7 @@ public sealed class test_stream_socket
             using var client = ConnectRawClient(port);
             NetworkStream ns = client.GetStream();
             SendAll(ns, "probe"u8);
-            var received = new Received(); stream.Recv(received);
+            var received = new Received(); stream.Recv(received, RecvFlags.None);
             using (Message payload = received.Parts[0])
             {
                 RoutingId routingId = received.RoutingId
@@ -512,7 +512,7 @@ public sealed class test_stream_socket
         NetworkStream ns = client.GetStream();
         SendAll(ns, "ok"u8);
 
-        var received = new Received(); stream.Recv(received);
+        var received = new Received(); stream.Recv(received, RecvFlags.None);
         RoutingId serverRoutingId = received.RoutingId
             ?? throw new InvalidOperationException("missing routing id");
         using (Message payload = received.Parts[0])

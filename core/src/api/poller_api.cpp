@@ -668,86 +668,10 @@ zlink_config_result_t zlink_poller_remove_timer (void *poller_, void *timer_)
 }
 
 int zlink_poller_wait (void *poller_,
-                       zlink_poller_event_t *event_,
+                       zlink_poller_event_t *events_,
+                       int n_events_,
                        long timeout_,
                        zlink_config_result_t *error_out_)
-{
-    poller_handle_t *poller = as_poller_handle (poller_);
-    if (!poller || !event_) {
-        if (poller && !event_)
-            errno = EINVAL;
-        if (error_out_)
-            *error_out_ = !poller ? ZLINK_CONFIG_INVALID_HANDLE
-                                  : ZLINK_CONFIG_INVALID_ARGUMENT;
-        return -1;
-    }
-    zlink::clock_t clock;
-    const uint64_t deadline_ms =
-      timeout_ > 0 ? clock.now_ms () + static_cast<uint64_t> (timeout_) : 0;
-    while (true) {
-        zlink::socket_poller_t::event_t native_event;
-        const int rc = poller->poller.wait (
-          &native_event, 1, remaining_timeout_ms (timeout_, clock, deadline_ms));
-        if (rc < 0) {
-            if (errno == EAGAIN) {
-                if (error_out_)
-                    *error_out_ = ZLINK_CONFIG_OK;
-                return 0;
-            }
-            if (error_out_)
-                *error_out_ = zlink::config_result_internal::from_errno (errno);
-            return rc;
-        }
-        if (rc == 0) {
-            if (error_out_)
-                *error_out_ = ZLINK_CONFIG_OK;
-            return 0;
-        }
-
-        const poller_registration_t *registration =
-          find_registration_for_native (poller, native_event);
-        if (is_hidden_completion_registration (registration)) {
-            const int drain_rc =
-              drain_hidden_completion_registration (registration);
-            if (drain_rc < 0) {
-                if (error_out_)
-                    *error_out_ =
-                      zlink::config_result_internal::from_errno (errno);
-                return -1;
-            }
-            // Mirror zlink_poller_wait_all: when a hidden completion drain
-            // fires user callbacks (e.g. reply handlers that flip caller-
-            // visible state), surface it to the caller so it can act on
-            // the just-fired completion and submit follow-up work. Looping
-            // back into wait() here would block until the next timeout,
-            // capping callback-driven throughput at 1 / timeout per slot.
-            if (drain_rc > 0) {
-                if (error_out_)
-                    *error_out_ = ZLINK_CONFIG_OK;
-                return 0;
-            }
-            continue;
-        }
-
-        if (fill_public_poller_event_from_registration (registration,
-                                                        native_event,
-                                                        event_)
-            != 0) {
-            if (error_out_)
-                *error_out_ = zlink::config_result_internal::from_errno (errno);
-            return -1;
-        }
-        if (error_out_)
-            *error_out_ = ZLINK_CONFIG_OK;
-        return rc;
-    }
-}
-
-int zlink_poller_wait_all (void *poller_,
-                           zlink_poller_event_t *events_,
-                           int n_events_,
-                           long timeout_,
-                           zlink_config_result_t *error_out_)
 {
     poller_handle_t *poller = as_poller_handle (poller_);
     if (!poller) {

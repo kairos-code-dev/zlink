@@ -592,7 +592,7 @@ zlink_poller_add_timer(poller, timer, my_timer_ctx);
 
 for (;;) {
     zlink_poller_event_t event;
-    int rc = zlink_poller_wait(poller, &event, -1, NULL);
+    int rc = zlink_poller_wait(poller, &event, 1, -1, NULL);
     if (rc < 0)
         break;
 
@@ -615,9 +615,10 @@ for (;;) {
 zlink_poller_destroy(&poller);
 ```
 
-`zlink_poller_wait()` returns 1 when one event is ready, 0 on timeout,
+`zlink_poller_wait()` returns the number of events written, 0 on timeout,
 and -1 on error (with `error_out` set). Pass `timeout` in milliseconds;
-`-1` means block indefinitely, `0` means non-blocking.
+`-1` means block indefinitely, `0` means non-blocking. Use `n_events=1`
+when a loop only needs one event.
 
 ### 12.2 Batch Wait
 
@@ -625,7 +626,7 @@ To drain multiple ready events without re-entering the poll loop:
 
 ```c
 zlink_poller_event_t events[16];
-int n = zlink_poller_wait_all(poller, events, 16, 0, NULL);
+int n = zlink_poller_wait(poller, events, 16, 0, NULL);
 for (int i = 0; i < n; i++) {
     /* handle events[i] */
 }

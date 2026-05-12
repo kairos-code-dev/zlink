@@ -386,7 +386,7 @@ class poller_t
         zlink_poller_event_t native_event;
         zlink_config_result_t error = ZLINK_CONFIG_OK;
         const int rc = zlink_poller_wait (
-          _poller, &native_event, timeout_, &error);
+          _poller, &native_event, 1, timeout_, &error);
         if (rc <= 0) {
             if (rc == 0)
                 return std::nullopt;
@@ -402,22 +402,22 @@ class poller_t
     }
 
   public:
-    std::vector<poll_event_t> wait_all (
+    std::vector<poll_event_t> wait (
       size_t max_events_,
       std::optional<std::chrono::milliseconds> timeout_ = std::nullopt)
     {
         std::vector<poll_event_t> events;
-        wait_all_into_impl (
+        wait_into_impl (
           events, max_events_,
           timeout_ ? static_cast<long> (timeout_->count ()) : -1L);
         return events;
     }
 
-    size_t wait_all_into (std::vector<poll_event_t> &events_,
-                          size_t max_events_ = 0,
-                          std::optional<std::chrono::milliseconds> timeout_ = std::nullopt)
+    size_t wait (std::vector<poll_event_t> &events_,
+                 size_t max_events_ = 0,
+                 std::optional<std::chrono::milliseconds> timeout_ = std::nullopt)
     {
-        return wait_all_into_impl (
+        return wait_into_impl (
           events_, max_events_,
           timeout_ ? static_cast<long> (timeout_->count ()) : -1L);
     }
@@ -442,9 +442,9 @@ class poller_t
     }
 
   private:
-    size_t wait_all_into_impl (std::vector<poll_event_t> &events_,
-                               size_t max_events_,
-                               long timeout_)
+    size_t wait_into_impl (std::vector<poll_event_t> &events_,
+                           size_t max_events_,
+                           long timeout_)
     {
         if (!_poller) {
             throw recv_error_t (recv_result_t::invalid_handle, zlink_errno ());
@@ -464,12 +464,12 @@ class poller_t
           max_events_ > 0
             ? std::min (max_events_, static_cast<size_t> (registered))
             : static_cast<size_t> (registered);
-        if (can_wait_all_with_poll_items ())
-            return wait_all_poll_items_into_impl (events_, capacity, timeout_);
+        if (can_wait_with_poll_items ())
+            return wait_poll_items_into_impl (events_, capacity, timeout_);
 
         _native_events.resize (capacity);
         error = ZLINK_CONFIG_OK;
-        const int rc = zlink_poller_wait_all (
+        const int rc = zlink_poller_wait (
           _poller, &_native_events[0], static_cast<int> (capacity), timeout_, &error);
         if (rc <= 0) {
             if (rc == 0) {
@@ -493,10 +493,10 @@ class poller_t
         return static_cast<size_t> (rc);
     }
 
-    bool can_wait_all_with_poll_items () const noexcept
+    bool can_wait_with_poll_items () const noexcept
     {
         // zlink_poll only resolves raw socket handles; SPOT and timer items
-        // must go through the persistent zlink_poller_wait_all path.
+        // must go through the persistent zlink_poller_wait path.
         if (_has_service_items)
             return false;
         for (size_t i = 0; i < _items.size (); ++i) {
@@ -506,9 +506,9 @@ class poller_t
         return true;
     }
 
-    size_t wait_all_poll_items_into_impl (std::vector<poll_event_t> &events_,
-                                          size_t capacity_,
-                                          long timeout_)
+    size_t wait_poll_items_into_impl (std::vector<poll_event_t> &events_,
+                                      size_t capacity_,
+                                      long timeout_)
     {
         _poll_items.resize (_items.size ());
         for (size_t i = 0; i < _items.size (); ++i) {

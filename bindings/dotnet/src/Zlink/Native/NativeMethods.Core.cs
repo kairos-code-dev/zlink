@@ -149,63 +149,50 @@ internal static partial class NativeMethods
     internal static extern IntPtr zlink_strerror(int errnum);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    [SuppressGCTransition]
     internal static extern int zlink_msg_init(ref ZlinkMsg msg);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    [SuppressGCTransition]
     internal static extern int zlink_msg_init_size(ref ZlinkMsg msg,
         nuint size);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    [SuppressGCTransition]
     internal static extern int zlink_msg_init_data(ref ZlinkMsg msg,
         IntPtr data, nuint size, IntPtr freeFn, IntPtr hint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    [SuppressGCTransition]
     internal static extern int zlink_msg_close(ref ZlinkMsg msg);
 
     [DllImport(LibraryName, EntryPoint = "zlink_msg_close",
         CallingConvention = CallingConvention.Cdecl)]
-    [SuppressGCTransition]
     internal static extern int zlink_msg_close(IntPtr msg);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    [SuppressGCTransition]
     internal static extern int zlink_msg_move(ref ZlinkMsg dest,
         ref ZlinkMsg src);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    [SuppressGCTransition]
     internal static extern int zlink_msg_copy(ref ZlinkMsg dest,
         ref ZlinkMsg src);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    [SuppressGCTransition]
     internal static extern int zlink_msg_adopt(ref ZlinkMsg dest,
         IntPtr src);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    [SuppressGCTransition]
     internal static extern IntPtr zlink_msg_data(ref ZlinkMsg msg);
 
     [DllImport(LibraryName, EntryPoint = "zlink_msg_data",
         CallingConvention = CallingConvention.Cdecl)]
-    [SuppressGCTransition]
     internal static extern IntPtr zlink_msg_data(IntPtr msg);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    [SuppressGCTransition]
     internal static extern nuint zlink_msg_size(ref ZlinkMsg msg);
 
     [DllImport(LibraryName, EntryPoint = "zlink_msg_size",
         CallingConvention = CallingConvention.Cdecl)]
-    [SuppressGCTransition]
     internal static extern nuint zlink_msg_size(IntPtr msg);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    [SuppressGCTransition]
     internal static extern int zlink_msg_refcnt(ref ZlinkMsg msg);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

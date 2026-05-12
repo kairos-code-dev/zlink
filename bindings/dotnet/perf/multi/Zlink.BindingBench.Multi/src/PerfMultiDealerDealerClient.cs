@@ -38,7 +38,7 @@ internal static class PerfMultiDealerDealerClient
                 monitors.Add(monitor);
             }
 
-            List<SocketBase> activeClients = WaitAllClientConnectReady(
+            List<SocketBase> activeClients = WaitClientConnectReadyAll(
                 pollManager, clients, monitors, readyTimeoutMs);
             if (activeClients.Count != clients.Count)
             {

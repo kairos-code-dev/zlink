@@ -684,7 +684,7 @@ void test_router_recv_dontwait_no_data_does_not_break_poller_rearm ()
 
     zlink_poller_event_t event;
     memset (&event, 0, sizeof (event));
-    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 5000, NULL));
+    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 1, 5000, NULL));
     TEST_ASSERT_EQUAL_INT (ZLINK_POLLER_SOURCE_SOCKET, event.source_kind);
     TEST_ASSERT_EQUAL_PTR (router, event.socket);
 
@@ -715,7 +715,7 @@ void test_router_recv_dontwait_no_data_does_not_break_poller_rearm ()
     int wait_rc = 0;
     do {
         memset (&event, 0, sizeof (event));
-        wait_rc = zlink_poller_wait (poller, &event, 50, NULL);
+        wait_rc = zlink_poller_wait (poller, &event, 1, 50, NULL);
         if (wait_rc == 1)
             break;
     } while (std::chrono::steady_clock::now () < deadline);

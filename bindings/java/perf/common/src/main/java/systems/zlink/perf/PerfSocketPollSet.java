@@ -3,10 +3,12 @@
 package systems.zlink.perf;
 
 import systems.zlink.Poller;
+import systems.zlink.PollEvent;
 import systems.zlink.PollEventFlag;
 import systems.zlink.Socket;
 import systems.zlink.ZlinkException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -21,6 +23,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
     private final boolean[] readyErr;
     private final boolean[] readyPri;
     private final int[] currentMasks;
+    private final List<PollEvent> events;
     private final Poller poller = new Poller();
 
     private PerfSocketPollSet(List<Socket> sockets,
@@ -31,6 +34,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
         this.readyErr = new boolean[this.sockets.length];
         this.readyPri = new boolean[this.sockets.length];
         this.currentMasks = new int[this.sockets.length];
+        this.events = new ArrayList<>(this.sockets.length);
         clearReadyEvents();
         int initialMask = mask(initialEvents);
         for (int i = 0; i < this.sockets.length; i++) {
@@ -70,7 +74,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
         clearReadyEvents();
         int eventCount;
         try {
-            eventCount = poller.pollCount(Duration.ofMillis(timeoutMs));
+            eventCount = poller.wait(events, Duration.ofMillis(timeoutMs));
         } catch (ZlinkException ex) {
             int errno = ex.getInternalErrno();
             if (errno == ERRNO_EINTR
@@ -82,15 +86,16 @@ public final class PerfSocketPollSet implements AutoCloseable {
         }
         int count = Math.min(eventCount, sockets.length);
         for (int i = 0; i < count; i++) {
-            Object tag = poller.readyTag(i);
+            PollEvent event = events.get(i);
+            Object tag = event.tag();
             Integer index = tag instanceof Integer readyIndex
                 ? readyIndex
                 : null;
             if (index != null) {
-                readyIn[index] = poller.readyHasEvent(i, PollEventFlag.POLLIN);
-                readyOut[index] = poller.readyHasEvent(i, PollEventFlag.POLLOUT);
-                readyErr[index] = poller.readyHasEvent(i, PollEventFlag.POLLERR);
-                readyPri[index] = poller.readyHasEvent(i, PollEventFlag.POLLPRI);
+                readyIn[index] = event.revents().contains(PollEventFlag.POLLIN);
+                readyOut[index] = event.revents().contains(PollEventFlag.POLLOUT);
+                readyErr[index] = event.revents().contains(PollEventFlag.POLLERR);
+                readyPri[index] = event.revents().contains(PollEventFlag.POLLPRI);
             }
         }
         return count;

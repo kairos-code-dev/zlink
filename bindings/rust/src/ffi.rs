@@ -1603,12 +1603,6 @@ unsafe extern "C" {
     pub fn zlink_poller_remove_fd(poller: *mut c_void, fd: zlink_fd_t) -> c_int;
     pub fn zlink_poller_wait(
         poller: *mut c_void,
-        event: *mut zlink_poller_event_t,
-        timeout: c_long,
-        error_out: *mut c_int,
-    ) -> c_int;
-    pub fn zlink_poller_wait_all(
-        poller: *mut c_void,
         events: *mut zlink_poller_event_t,
         n_events: c_int,
         timeout: c_long,

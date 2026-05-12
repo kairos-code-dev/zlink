@@ -119,7 +119,7 @@ class Poller:
             return []
         events = (ZlinkPollerEvent * len(self._items))()
         error_out = ctypes.c_int()
-        ready = lib().zlink_poller_wait_all(
+        ready = lib().zlink_poller_wait(
             self._handle,
             events,
             len(self._items),

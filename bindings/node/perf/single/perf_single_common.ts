@@ -234,7 +234,7 @@ function resolveSingleIdleDrainMs(overrides = {}) {
 // (and short `pollTimeoutMs`) are no longer used; phase end is signaled
 // purely by the sender emitting `STOP_TOKEN_BYTES` on the wire.
 //
-// Note: Node's `pollerWaitAll` is a synchronous N-API call that blocks the
+// Note: Node's `pollerWaitMany` is a synchronous N-API call that blocks the
 // JS event loop until a wakeup arrives. Callers spawn this drain as an
 // unawaited Promise, so we must yield to the event loop at least once
 // before the first blocking wait — otherwise queued worker postMessages
@@ -260,7 +260,7 @@ async function drainRecvSocket(socket, onMessage) {
       await sleepImmediate();
       let ready = [];
       try {
-        ready = poller.waitAll(Math.max(1, poller.size), -1);
+        ready = poller.waitMany(Math.max(1, poller.size), -1);
       } catch (error) {
         const text = String(error && error.message ? error.message : error);
         if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {

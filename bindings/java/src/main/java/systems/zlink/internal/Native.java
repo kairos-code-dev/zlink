@@ -407,10 +407,6 @@ public final class Native {
                     ValueLayout.ADDRESS));
     private static final MethodHandle MH_POLLER_WAIT = downcall("zlink_poller_wait",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_POLLER_WAIT_ALL = downcall("zlink_poller_wait_all",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG,
                     ValueLayout.ADDRESS));
 
@@ -2746,39 +2742,14 @@ public final class Native {
         }
     }
 
-    public static int pollerWaitAll(MemorySegment poller, MemorySegment events,
-                                    int count, int timeoutMs) {
+    public static int pollerWait(MemorySegment poller, MemorySegment events,
+                                 int count, int timeoutMs) {
         if (events == null || events.address() == 0 || count <= 0)
             return 0;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
             errorOut.set(ValueLayout.JAVA_INT, 0, 0);
-            int rc = (int) MH_POLLER_WAIT_ALL.invokeExact(poller, events, count,
-                (long) timeoutMs, errorOut);
-            if (rc < 0) {
-                int error = errorOut.get(ValueLayout.JAVA_INT, 0);
-                if (error != 0) {
-                    throw new systems.zlink.ConfigException(
-                        systems.zlink.ConfigResult.fromValue(error),
-                        errno());
-                }
-            }
-            return rc;
-        } catch (RuntimeException ex) {
-            throw ex;
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_poller_wait_all failed", t);
-        }
-    }
-
-    public static int pollerWait(MemorySegment poller, MemorySegment event,
-                                 int timeoutMs) {
-        if (event == null || event.address() == 0)
-            return 0;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
-            errorOut.set(ValueLayout.JAVA_INT, 0, 0);
-            int rc = (int) MH_POLLER_WAIT.invokeExact(poller, event,
+            int rc = (int) MH_POLLER_WAIT.invokeExact(poller, events, count,
                 (long) timeoutMs, errorOut);
             if (rc < 0) {
                 int error = errorOut.get(ValueLayout.JAVA_INT, 0);
@@ -2794,6 +2765,11 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException("zlink_poller_wait failed", t);
         }
+    }
+
+    public static int pollerWait(MemorySegment poller, MemorySegment event,
+                                 int timeoutMs) {
+        return pollerWait(poller, event, 1, timeoutMs);
     }
 
     public static MemorySegment registryNew(MemorySegment ctx) {

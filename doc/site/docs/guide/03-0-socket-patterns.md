@@ -6,6 +6,8 @@ English | [한국어](03-0-socket-patterns.ko.md)
 
 zlink provides 8 socket types. Each socket implements a unique messaging pattern, and communication is only possible between valid socket combinations.
 
+> Terms such as **hot path**, **control path**, and **admission guard** used in this document are defined in [Section 8 (Terminology)](#8-terminology).
+
 ## 2. Socket Summary
 
 | Socket | Pattern | Direction | Routing Strategy | Primary Use |
@@ -45,6 +47,8 @@ Only valid socket combinations can be connected. Connecting incompatible sockets
 | **Fair-queue** (`fq_t`) | Receives fairly from all peers | DEALER/SUB recv |
 | **Fan-out** (`dist_t`) | Replicates and sends to all subscribers | PUB/XPUB |
 | **ID routing** | Directs to a specific peer via routing_id frame | ROUTER/STREAM |
+
+> `lb_t`, `fq_t`, and `dist_t` are **internal implementation type names** that appear in the source tree and internals documentation. The parenthetical labels (Round-robin, Fair-queue, Fan-out) are their functional descriptions for everyday use. You do not need to know the internal type names unless you are reading or modifying the core source.
 
 > For internal implementation details of routing strategies, see [architecture.md](../internals/architecture.md).
 
@@ -96,6 +100,11 @@ See the individual documents for detailed usage of each socket type.
 | [03-5-stream.md](03-5-stream.md) | STREAM | External client RAW communication |
 
 ## 7. Disconnecting a Peer by Routing ID
+
+The `connect`/`disconnect` lifecycle normally works with endpoint strings.
+However, when a socket receives a message its `source_rid` identifies the
+sending peer directly. If you need to tear down only that peer connection —
+without knowing its endpoint string — use `zlink_disconnect_rid()`.
 
 When a receive path gives you `source_rid` and you need to close only that
 peer connection, use `zlink_disconnect_rid()`. You do not need to keep the
@@ -210,7 +219,7 @@ zlink_poller_add(poller, socket, ZLINK_POLLIN, user_data);
 
 while (running) {
     zlink_poller_event_t ev;
-    if (zlink_poller_wait(poller, &ev, timeout_ms) <= 0) continue;
+    if (zlink_poller_wait(poller, &ev, 1, timeout_ms, NULL) <= 0) continue;
     if (ev.events & ZLINK_POLLIN) {
         zlink_routing_id_t rid;
         zlink_msg_t *parts = NULL;

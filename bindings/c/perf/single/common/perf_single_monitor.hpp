@@ -119,7 +119,7 @@ inline bool wait_for_socket_monitor_event_with_activity (
         zlink_poller_event_t event_info;
         const int poll_rc =
           zlink_poller_wait(
-            poller, &event_info, timeout_ms > 0 ? timeout_ms : 1, NULL);
+            poller, &event_info, 1, timeout_ms > 0 ? timeout_ms : 1, NULL);
         if (poll_rc < 0) {
             if (zlink_errno() == EINTR)
                 continue;

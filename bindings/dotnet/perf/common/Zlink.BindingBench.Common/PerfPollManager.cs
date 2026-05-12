@@ -56,7 +56,7 @@ public sealed class MonitorReadyPoller : IDisposable
 public sealed class SocketReadyPoller : IDisposable
 {
     private PollEventFlags[] _revents = Array.Empty<PollEventFlags>();
-    private PollReadyEvent[] _readyEvents = Array.Empty<PollReadyEvent>();
+    private PollEvent[] _events = Array.Empty<PollEvent>();
     private Poller? _poller;
     private SocketBase[] _registeredSockets = Array.Empty<SocketBase>();
     private PollEventFlags[] _registeredMasks = Array.Empty<PollEventFlags>();
@@ -79,7 +79,7 @@ public sealed class SocketReadyPoller : IDisposable
             if (_poller == null || _activePollerSize == 0)
                 return 0;
 
-            int written = _poller.WaitReady(_readyEvents.AsSpan(0, count),
+            int written = _poller.Wait(_events.AsSpan(0, count),
                 TimeSpan.FromMilliseconds(timeoutMs), out _);
             if (written == 0)
                 return 0;
@@ -87,7 +87,7 @@ public sealed class SocketReadyPoller : IDisposable
             int ready = 0;
             for (int i = 0; i < written; i++)
             {
-                PollReadyEvent pollEvent = _readyEvents[i];
+                PollEvent pollEvent = _events[i];
                 if (pollEvent.Tag is not int index
                     || (uint)index >= (uint)count
                     || _registeredMasks[index] == PollEventFlags.None)
@@ -147,8 +147,8 @@ public sealed class SocketReadyPoller : IDisposable
     {
         if (_revents.Length < count)
             _revents = new PollEventFlags[count];
-        if (_readyEvents.Length < count)
-            _readyEvents = new PollReadyEvent[count];
+        if (_events.Length < count)
+            _events = new PollEvent[count];
         if (_registeredSockets.Length < count)
             _registeredSockets = new SocketBase[count];
         if (_registeredMasks.Length < count)

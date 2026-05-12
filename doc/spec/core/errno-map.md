@@ -442,8 +442,8 @@ typedef enum zlink_config_result_t
 | Proxy | `zlink_proxy`, `zlink_proxy_steerable` |
 | Timer config | `zlink_timer_start`, `zlink_timer_stop` |
 
-`zlink_poll`, `zlink_poller_size`, `zlink_poller_wait`, and
-`zlink_poller_wait_all` remain plain `int` APIs with `error_out_`. They do
+`zlink_poll`, `zlink_poller_size`, and `zlink_poller_wait` remain plain
+`int` APIs with `error_out_`. They do
 not directly return `zlink_config_result_t`.
 
 `zlink_registry_set()` returns `NOT_SUPPORTED` for an unknown

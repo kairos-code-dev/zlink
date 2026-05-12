@@ -150,7 +150,7 @@ class dealer_router_client_bench_t
             _poller.add (sock, zlink::poll_event_flag_t::pollin, &slot);
         }
 
-        const bool ready = perf::multi::wait_all_connect_ready (
+        const bool ready = perf::multi::wait_connect_ready_all (
           _monitors, _settings.connect_ready_timeout_ms);
         for (size_t i = 0; i < _monitors.size (); ++i)
             perf::multi::close_connect_monitor (_monitors[i]);
@@ -299,7 +299,7 @@ class dealer_router_client_bench_t
                     return false;
             }
 
-            _poller.wait_all_into (_poll_events, 0,
+            _poller.wait (_poll_events, 0,
                                    std::chrono::milliseconds (-1));
             if (_poll_events.empty ())
                 continue;

@@ -24,7 +24,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         "zlink_poller_remove",
         "zlink_poller_remove_fd",
         "zlink_poller_remove_timer",
-        "zlink_poller_wait_all"
+        "zlink_poller_wait"
     };
 
     private readonly List<PollItem> _items = new();
@@ -233,7 +233,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
             return 0;
 
         EnsureEventCapacity(_items.Count);
-        int ready = NativeMethods.zlink_poller_wait_all(_handle, _nativeEvents,
+        int ready = NativeMethods.zlink_poller_wait(_handle, _nativeEvents,
             _items.Count, timeoutMs, out _);
         if (ready < 0)
             throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
@@ -248,35 +248,18 @@ public sealed class Poller : IDisposable, IAsyncDisposable
     public PollEvent? Wait(TimeSpan timeout)
     {
         PollEvent[] destination = new PollEvent[1];
-        int written = Wait(destination, ToTimeoutMilliseconds(timeout),
+        int written = WaitCore(destination, ToTimeoutMilliseconds(timeout),
             out _);
         return written == 0 ? null : destination[0];
     }
 
-    // Reusable scratch buffer for WaitAll. The returned IReadOnlyList shares
-    // this buffer (truncated to the written length); the caller must consume
-    // the result before the next WaitAll/Wait call on this poller. Eliminates
-    // the per-poll PollEvent[maxEvents] heap allocation that otherwise grows
-    // with the registered socket count (100 clients × thousands of polls per
-    // second is meaningful Gen 0 pressure).
-    private PollEvent[] _waitAllBuffer = Array.Empty<PollEvent>();
-
-    public IReadOnlyList<PollEvent> WaitAll(int maxEvents, TimeSpan timeout)
+    public int Wait(Span<PollEvent> destination, TimeSpan timeout,
+        out int totalReady)
     {
-        if (maxEvents < 0)
-            throw new ArgumentOutOfRangeException(nameof(maxEvents));
-        if (maxEvents == 0)
-            return Array.Empty<PollEvent>();
-        if (_waitAllBuffer.Length < maxEvents)
-            _waitAllBuffer = new PollEvent[maxEvents];
-        int written = Wait(_waitAllBuffer.AsSpan(0, maxEvents),
-            ToTimeoutMilliseconds(timeout), out _);
-        if (written == 0)
-            return Array.Empty<PollEvent>();
-        return new ArraySegment<PollEvent>(_waitAllBuffer, 0, written);
+        return WaitCore(destination, ToTimeoutMilliseconds(timeout), out totalReady);
     }
 
-    public int WaitReady(Span<PollReadyEvent> destination, TimeSpan timeout,
+    private int WaitCore(Span<PollEvent> destination, int timeoutMs,
         out int totalReady)
     {
         EnsureNotDisposed();
@@ -287,32 +270,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         }
 
         EnsureEventCapacity(_items.Count);
-        int ready = NativeMethods.zlink_poller_wait_all(_handle, _nativeEvents,
-            _items.Count, ToTimeoutMilliseconds(timeout), out _);
-        if (ready < 0)
-            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
-        totalReady = ready;
-        if (ready == 0)
-            return 0;
-
-        int written = Math.Min(destination.Length, ready);
-        for (int i = 0; i < written; i++)
-            destination[i] = MapReadyEvent(_nativeEvents[i]);
-        return written;
-    }
-
-    internal int Wait(Span<PollEvent> destination, int timeoutMs,
-        out int totalReady)
-    {
-        EnsureNotDisposed();
-        if (_items.Count == 0)
-        {
-            totalReady = 0;
-            return 0;
-        }
-
-        EnsureEventCapacity(_items.Count);
-        int ready = NativeMethods.zlink_poller_wait_all(_handle, _nativeEvents,
+        int ready = NativeMethods.zlink_poller_wait(_handle, _nativeEvents,
             _items.Count, timeoutMs, out _);
         if (ready < 0)
             throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
@@ -442,13 +400,6 @@ public sealed class Poller : IDisposable, IAsyncDisposable
         return new PollEvent(item?.Socket, fd, timer, item?.Tag,
             item?.Events ?? (PollEventFlags)nativeEvent.Events,
             (PollEventFlags)nativeEvent.Events);
-    }
-
-    private PollReadyEvent MapReadyEvent(ZlinkPollerEvent nativeEvent)
-    {
-        PollItem? item = FindUserDataItem(nativeEvent.UserData);
-        PollEventFlags revents = (PollEventFlags)nativeEvent.Events;
-        return new PollReadyEvent(item?.Tag, item?.Events ?? revents, revents);
     }
 
     private PollItem? FindSocketItem(IntPtr handle)
@@ -584,21 +535,6 @@ public readonly struct PollEvent
     public IZlinkSocket? Socket { get; }
     public int? Fd { get; }
     public Timer? Timer { get; }
-    public object? Tag { get; }
-    public PollEventFlags Events { get; }
-    public PollEventFlags Revents { get; }
-}
-
-public readonly struct PollReadyEvent
-{
-    internal PollReadyEvent(object? tag, PollEventFlags events,
-        PollEventFlags revents)
-    {
-        Tag = tag;
-        Events = events;
-        Revents = revents;
-    }
-
     public object? Tag { get; }
     public PollEventFlags Events { get; }
     public PollEventFlags Revents { get; }

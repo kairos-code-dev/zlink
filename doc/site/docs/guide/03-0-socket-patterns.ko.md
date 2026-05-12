@@ -212,7 +212,7 @@ zlink_poller_add(poller, socket, ZLINK_POLLIN, user_data);
 
 while (running) {
     zlink_poller_event_t ev;
-    if (zlink_poller_wait(poller, &ev, timeout_ms) <= 0) continue;
+    if (zlink_poller_wait(poller, &ev, 1, timeout_ms, NULL) <= 0) continue;
     if (ev.events & ZLINK_POLLIN) {
         zlink_routing_id_t rid;
         zlink_msg_t *parts = NULL;

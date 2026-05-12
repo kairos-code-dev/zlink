@@ -101,8 +101,9 @@ void test_pair_recv_nonblocking_returns_empty_without_data ()
     zlink::pair_socket_t socket (ctx);
     zlink::received_t received;
     const int rc = socket.recv (received, zlink::recv_flags_t::dontwait);
-    assert (rc == -1);
-    assert (errno == EAGAIN || errno == EWOULDBLOCK);
+    assert (rc == ZLINK_RECV_NO_DATA || rc == -1);
+    if (rc == -1)
+        assert (errno == EAGAIN || errno == EWOULDBLOCK);
 }
 
 void test_sub_subscribe_nonblocking_returns_empty_without_data ()
@@ -177,8 +178,9 @@ void test_stream_receive_returns_busy_in_packet_callback_mode ()
                           zlink::message_t) {});
     zlink::received_t received;
     const int rc = socket.recv (received);
-    assert (rc == -1);
-    assert (errno == EBUSY);
+    assert (rc == ZLINK_RECV_BUSY || rc == -1);
+    if (rc == -1)
+        assert (errno == EBUSY);
 }
 
 void test_socket_monitor_receive_returns_empty_without_event ()

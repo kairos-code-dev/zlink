@@ -139,7 +139,7 @@ bool wait_for_spot_reply_via_poller (void *poller_,
         if (probe_ && probe_->invoked)
             return true;
         zlink_poller_event_t ev;
-        const int rc = zlink_poller_wait (poller_, &ev, 50, NULL);
+        const int rc = zlink_poller_wait (poller_, &ev, 1, 50, NULL);
         TEST_ASSERT_TRUE (rc >= 0);
     }
     return probe_ && probe_->invoked;
@@ -170,7 +170,7 @@ void test_spot_poller_wait_reports_original_spot_for_subscribe ()
       zlink_publish (pub_spot, "poll.spot.topic", &part, 1, 0));
 
     zlink_poller_event_t ev;
-    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &ev, 1000, NULL));
+    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &ev, 1, 1000, NULL));
     TEST_ASSERT_EQUAL_INT (ZLINK_POLLER_SOURCE_SOCKET, ev.source_kind);
     TEST_ASSERT_EQUAL_PTR (sub_spot, ev.socket);
     TEST_ASSERT_EQUAL_PTR (&user_tag, ev.user_data);
@@ -228,7 +228,7 @@ void test_spot_poller_wait_reports_original_spot_for_routed_recv ()
                                  &ignore_reply, NULL, 0, 1000));
 
     zlink_poller_event_t ev;
-    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &ev, 1000, NULL));
+    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &ev, 1, 1000, NULL));
     TEST_ASSERT_EQUAL_INT (ZLINK_POLLER_SOURCE_SOCKET, ev.source_kind);
     TEST_ASSERT_EQUAL_PTR (recv_spot, ev.socket);
     TEST_ASSERT_EQUAL_PTR (&user_tag, ev.user_data);
@@ -334,15 +334,15 @@ void test_spot_poller_progresses_spot_request_reply_completion ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-// Regression: when zlink_poller_wait_all observes a hidden completion
+// Regression: when zlink_poller_wait observes a hidden completion
 // drain (a reply landing on a registered spot socket) but the matching
 // registration was added with user_data == NULL, the previous
 // implementation looped back into wait() until the user-supplied timeout
 // expired, capping throughput at 1 / poll_timeout per slot. Ensure that
-// wait_all returns promptly so callers can act on the just-fired
+// wait returns promptly so callers can act on the just-fired
 // reply callback (e.g. flip waiting_reply=false and submit the next
 // request) within the same iteration.
-void test_spot_poller_wait_all_returns_promptly_after_reply ()
+void test_spot_poller_wait_returns_promptly_after_reply ()
 {
     void *ctx = zlink_ctx_new ();
     void *node = zlink_spot_node_new (ctx, NULL);
@@ -402,13 +402,13 @@ void test_spot_poller_wait_all_returns_promptly_after_reply ()
 
     // Give the dispatcher a moment to enqueue the completion. The signal
     // byte should now be on the inproc PAIR pipe, making the registered
-    // completion fd readable. wait_all must return promptly even though
+    // completion fd readable. wait must return promptly even though
     // the registration's user_data is NULL.
     std::this_thread::sleep_for (std::chrono::milliseconds (20));
 
     zlink_poller_event_t events[4];
     const auto wait_start = std::chrono::steady_clock::now ();
-    const int rc = zlink_poller_wait_all (
+    const int rc = zlink_poller_wait (
       poller, events, static_cast<int> (sizeof (events) / sizeof (events[0])),
       5000, NULL);
     const auto wait_elapsed =
@@ -436,10 +436,10 @@ void test_spot_poller_wait_all_returns_promptly_after_reply ()
 
 // Regression: spot->spot routed send must wake a poller that waits with a
 // large timeout. Reproduces the SPOT_SENDSEND throughput cap observed when
-// the perf client's poller_wait_all timeout was raised to -1 / 100 ms — the
+// the perf client's poller wait timeout was raised to -1 / 100 ms — the
 // client hangs because the receiving spot's routed_recv signal does not
 // fire on the poller's hidden completion / fd registration.
-void test_spot_poller_wait_all_returns_promptly_after_spot_to_spot_send ()
+void test_spot_poller_wait_returns_promptly_after_spot_to_spot_send ()
 {
     void *ctx = zlink_ctx_new ();
     void *node = zlink_spot_node_new (ctx, NULL);
@@ -476,7 +476,7 @@ void test_spot_poller_wait_all_returns_promptly_after_spot_to_spot_send ()
 
     zlink_poller_event_t events[4];
     const auto wait_start = std::chrono::steady_clock::now ();
-    const int rc = zlink_poller_wait_all (
+    const int rc = zlink_poller_wait (
       poller, events, static_cast<int> (sizeof (events) / sizeof (events[0])),
       5000, NULL);
     const auto wait_elapsed =
@@ -546,12 +546,12 @@ void test_spot_poller_accepts_pollin_or_pollout_combined ()
       poller, receiver_spot, &user_tag,
       static_cast<short> (ZLINK_POLLIN | ZLINK_POLLOUT)));
 
-    // POLLOUT half: the spot is initially writable, so a wait_all with a
+    // POLLOUT half: the spot is initially writable, so a wait with a
     // generous timeout must return immediately with a POLLOUT event.
     {
         zlink_poller_event_t events[4];
         const auto wait_start = std::chrono::steady_clock::now ();
-        const int rc = zlink_poller_wait_all (
+        const int rc = zlink_poller_wait (
           poller, events,
           static_cast<int> (sizeof (events) / sizeof (events[0])), 5000, NULL);
         const long long elapsed_ms =
@@ -571,7 +571,7 @@ void test_spot_poller_accepts_pollin_or_pollout_combined ()
         TEST_ASSERT_TRUE (saw_pollout);
     }
 
-    // POLLIN half: a routed send from the peer spot must wake wait_all
+    // POLLIN half: a routed send from the peer spot must wake wait
     // promptly and surface a POLLIN event for the receiver_spot.
     zlink_msg_t part;
     init_string_part (&part, "ssbi-payload");
@@ -583,7 +583,7 @@ void test_spot_poller_accepts_pollin_or_pollout_combined ()
     {
         zlink_poller_event_t events[4];
         const auto wait_start = std::chrono::steady_clock::now ();
-        const int rc = zlink_poller_wait_all (
+        const int rc = zlink_poller_wait (
           poller, events,
           static_cast<int> (sizeof (events) / sizeof (events[0])), 5000, NULL);
         const long long elapsed_ms =
@@ -626,7 +626,7 @@ void test_spot_poller_accepts_pollin_or_pollout_combined ()
 // single-event variant previously looped back into wait() after firing
 // the hidden completion drain (no public event to surface), capping
 // callback-driven throughput at 1 / poll_timeout per slot. The fix
-// mirrors zlink_poller_wait_all and returns 0 once the drain fires
+// uses the same hidden completion path and returns 0 once the drain fires
 // any user callback so the caller can act on the just-received reply
 // and submit follow-up work.
 void test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop ()
@@ -696,7 +696,7 @@ void test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop ()
         zlink_poller_event_t event;
         const auto wait_start = std::chrono::steady_clock::now ();
         const int rc =
-          zlink_poller_wait (poller, &event, 5000, NULL);
+          zlink_poller_wait (poller, &event, 1, 5000, NULL);
         const auto wait_elapsed =
           std::chrono::steady_clock::now () - wait_start;
         const long long elapsed_ms =
@@ -732,8 +732,8 @@ int main (void)
     RUN_TEST (test_spot_poller_wait_reports_original_spot_for_subscribe);
     RUN_TEST (test_spot_poller_wait_reports_original_spot_for_routed_recv);
     RUN_TEST (test_spot_poller_progresses_spot_request_reply_completion);
-    RUN_TEST (test_spot_poller_wait_all_returns_promptly_after_reply);
-    RUN_TEST (test_spot_poller_wait_all_returns_promptly_after_spot_to_spot_send);
+    RUN_TEST (test_spot_poller_wait_returns_promptly_after_reply);
+    RUN_TEST (test_spot_poller_wait_returns_promptly_after_spot_to_spot_send);
     RUN_TEST (test_spot_poller_accepts_pollin_or_pollout_combined);
     RUN_TEST (
       test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop);

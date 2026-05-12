@@ -146,7 +146,7 @@ bool perf_router_router_server (const std::string &lib_name,
         }
 
         try {
-            poller.wait_all_into (events, 1, std::chrono::milliseconds (-1));
+            poller.wait (events, 1, std::chrono::milliseconds (-1));
         }
         catch (const zlink::zlink_error_t &err) {
             const int err_no = err.internal_errno ();

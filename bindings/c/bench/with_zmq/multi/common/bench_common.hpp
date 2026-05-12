@@ -426,7 +426,7 @@ inline bool wait_connect_ready_unique(connect_monitor_t &monitor_,
     return ok;
 }
 
-inline bool wait_all_connect_ready(std::vector<connect_monitor_t> &monitors,
+inline bool wait_connect_ready_all(std::vector<connect_monitor_t> &monitors,
                                    int timeout_ms_)
 {
     if (monitors.empty())

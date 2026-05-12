@@ -233,7 +233,7 @@ void run_server_event_loop (stream_handler_context_t &handler_context_)
             poller.add (
               *handler_context_.server, zlink::poll_event_flag_t::pollout, 0);
             const std::vector<zlink::poll_event_t> events =
-              poller.wait_all (
+              poller.wait (
                 1, std::chrono::milliseconds (k_aux_poll_wait_ms));
             for (size_t i = 0; i < events.size (); ++i) {
                 const short revents = static_cast<short> (events[i].revents);

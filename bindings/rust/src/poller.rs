@@ -142,11 +142,12 @@ impl Poller {
             ffi::zlink_poller_wait(
                 self.handle,
                 &mut raw,
+                1,
                 timeout_ms as std::ffi::c_long,
                 std::ptr::null_mut(),
             )
         };
-        if rc != 0 {
+        if rc < 0 {
             let errno = crate::error::last_errno();
             if errno == libc::EAGAIN || errno == libc::ETIMEDOUT {
                 return Ok(None);
@@ -169,7 +170,7 @@ impl Poller {
     /// Wait for multiple events at once.
     ///
     /// Returns the events that fired. Empty vec on timeout.
-    pub fn wait_all(&self, timeout_ms: i64) -> Result<Vec<PollEvent>, RecvError> {
+    pub fn wait_many(&self, timeout_ms: i64) -> Result<Vec<PollEvent>, RecvError> {
         let max_events = self.size().max(1) as usize;
         let mut raw = vec![
             ffi::zlink_poller_event_t {
@@ -181,7 +182,7 @@ impl Poller {
             max_events
         ];
         let rc = unsafe {
-            ffi::zlink_poller_wait_all(
+            ffi::zlink_poller_wait(
                 self.handle,
                 raw.as_mut_ptr(),
                 max_events as i32,
@@ -189,7 +190,7 @@ impl Poller {
                 std::ptr::null_mut(),
             )
         };
-        if rc != 0 {
+        if rc < 0 {
             let errno = crate::error::last_errno();
             if errno == libc::EAGAIN || errno == libc::ETIMEDOUT {
                 return Ok(Vec::new());

@@ -166,7 +166,7 @@ public:
     {
         if (!_poller)
             return -1;
-        return zlink_poller_wait(_poller, event_, timeout_ms_, NULL);
+        return zlink_poller_wait(_poller, event_, 1, timeout_ms_, NULL);
     }
 
 private:

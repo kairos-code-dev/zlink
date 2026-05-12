@@ -558,7 +558,7 @@ internal static class PerfClientHelpers
 {
     static bool IsSupportedTransport(string transport);
     static string ParseEndpointArg(string[] args);
-    static void WaitAllClientConnectReady(List<MonitorSocket> monitors, int timeoutMs);
+    static void WaitClientConnectReadyAll(List<MonitorSocket> monitors, int timeoutMs);
     static void TrySendStopToken(...);          // stop-token 전송 보조
     static void DisposeAllQuietly(...);         // 자원 정리 보조
 }
@@ -1565,7 +1565,7 @@ head -20 bindings/dotnet/perf/results/multi/tmp/perf_*.txt
 **multi common/ (PerfClientHelpers.cs):**
 
 - [ ] **CL-8.18** `IsSupportedTransport` / `ParseEndpointArg`
-- [ ] **CL-8.19** `WaitAllClientConnectReady` MonitorSocket 기반
+- [ ] **CL-8.19** `WaitClientConnectReadyAll` MonitorSocket 기반
 - [ ] **CL-8.20** `PerfClientHelpers` 는 연결 준비/정리 보조만 포함 (공통 send/recv 측정 루프 없음)
 
 **multi common/ (PerfServerEntry.cs / PerfClientEntry.cs):**

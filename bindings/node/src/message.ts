@@ -40,6 +40,10 @@ interface SendContext {
   send(parts: readonly Message[], flags: SendFlags): boolean;
 }
 
+function freezeMessageParts(parts: readonly Message[]): Message[] {
+  return Object.freeze(parts.slice()) as Message[];
+}
+
 function invalidMultipartError(partsLength: number): RecvError {
   return new RecvError(
     RecvResult.NotSupported,
@@ -228,7 +232,7 @@ class MultipartEnvelope {
   readonly parts: Message[];
 
   constructor(parts: readonly Message[]) {
-    this.parts = Object.freeze(parts.slice()) as Message[];
+    this.parts = freezeMessageParts(parts);
   }
 
   isSinglePart(): boolean {
@@ -292,7 +296,7 @@ export class Received {
   ) {
     if (token === undefined && parts === undefined) {
       // Empty caller-provided storage instance.
-      this.parts = [];
+      this.parts = freezeMessageParts([]);
       this.routingId = null;
       this.spotRid = null;
       this.requestSeq = null;
@@ -303,7 +307,7 @@ export class Received {
     if (token !== DOMAIN_CREATE_TOKEN) {
       throw new TypeError('Received values are created by recv operations');
     }
-    this.parts = (parts ?? []).slice() as Message[];
+    this.parts = freezeMessageParts(parts ?? []);
     this.routingId = routingId;
     this.spotRid = spotRid;
     this.requestSeq = requestSeq;
@@ -329,7 +333,7 @@ export class Received {
     this._replyContext = source._replyContext;
     this._sendContext = source._sendContext;
     // Detach source so it does not double-close.
-    source.parts = [];
+    source.parts = freezeMessageParts([]);
     source.routingId = null;
     source.spotRid = null;
     source.requestSeq = null;

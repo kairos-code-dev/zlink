@@ -1027,7 +1027,7 @@ bool run_active_window(spot_reqrep_client_state_t *state,
         if (send_progress)
             continue;
 
-        const int event_count = zlink_poller_wait_all(
+        const int event_count = zlink_poller_wait(
           state->poller,
           state->events.empty() ? NULL : &state->events[0],
           static_cast<int>(state->events.size()),

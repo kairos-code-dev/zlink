@@ -3986,16 +3986,19 @@ export class Poller {
       throw recvNativeError(error, RecvFlags.None, 'poller wait failed');
     }
   }
-  waitAll(maxEvents: number, timeoutMs: number): PollEvent[] {
+  waitMany(maxEvents: number, timeoutMs: number): PollEvent[] {
+    if (!Number.isInteger(maxEvents) || maxEvents <= 0) {
+      throw new RangeError('maxEvents must be a positive integer');
+    }
     try {
-      return (requireNative().pollerWaitAll(this._native, maxEvents | 0, timeoutMs | 0) as RawPollerEvent[])
+      return (requireNative().pollerWaitMany(this._native, maxEvents | 0, timeoutMs | 0) as RawPollerEvent[])
         .map((raw) => this.eventFromRaw(raw));
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : String(error);
       if (/Resource temporarily unavailable|temporarily unavailable|would block/i.test(message)) {
         return [];
       }
-      throw recvNativeError(error, RecvFlags.None, 'poller waitAll failed');
+      throw recvNativeError(error, RecvFlags.None, 'poller waitMany failed');
     }
   }
   destroy(): void {

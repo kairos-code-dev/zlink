@@ -11,7 +11,7 @@ namespace Systems.Zlink;
 public sealed class SocketMonitor : IDisposable, IAsyncDisposable
 {
     private static readonly NativeMethods.ZlinkMonitorHandlerDelegate NativeIgnore =
-        NativeMethods.zlink_monitor_ignore_handler;
+        OnIgnoredNativeEvent;
     private static readonly NativeMethods.ZlinkMonitorHandlerDelegate NativeCallback =
         OnNativeEvent;
     public static readonly Action<MonitorEvent> IgnoreHandler = static _ => { };
@@ -172,6 +172,11 @@ public sealed class SocketMonitor : IDisposable, IAsyncDisposable
         GCHandle handle = GCHandle.FromIntPtr(userData);
         if (handle.Target is SocketMonitor monitor)
             monitor.OnNativeEventCore(ref native);
+    }
+
+    private static void OnIgnoredNativeEvent(ref ZlinkMonitorEvent native,
+        IntPtr userData)
+    {
     }
 }
 

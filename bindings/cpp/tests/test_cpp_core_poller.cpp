@@ -42,7 +42,7 @@ void test_poller_modify_switches_event_mask ()
 
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
-    poller.wait_all (events, 0, std::chrono::milliseconds (1000));
+    poller.wait (events, 0, std::chrono::milliseconds (1000));
     assert (events.size () == 1);
     zlink::pair_socket_t **second_tag =
       std::any_cast<zlink::pair_socket_t *> (&events[0].tag);

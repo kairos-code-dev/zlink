@@ -24,7 +24,7 @@ internal static partial class PerfRunner
         return !string.IsNullOrWhiteSpace(normalizedEndpoint);
     }
 
-    internal static List<SocketBase> WaitAllClientConnectReady(
+    internal static List<SocketBase> WaitClientConnectReadyAll(
         PollManager pollManager, List<SocketBase> clients,
         List<MonitorSocket> monitors, int readyTimeoutMs)
     {

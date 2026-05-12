@@ -2131,7 +2131,7 @@ impl<T: Clone + Send + Sync + 'static> Poller<T> {
     /// # Errors: RecvError
     pub fn wait(&self, timeout_ms: i64) -> Result<Option<PollEvent<T>>, RecvError>;
     /// # Errors: RecvError
-    pub fn wait_all(&self, timeout_ms: i64) -> Result<Vec<PollEvent<T>>, RecvError>;
+    pub fn wait_many(&self, timeout_ms: i64) -> Result<Vec<PollEvent<T>>, RecvError>;
     /// Number of registered pollable items.
     /// Maps to `zlink_poller_size`.
     pub fn size(&self) -> Result<usize, ConfigError>;

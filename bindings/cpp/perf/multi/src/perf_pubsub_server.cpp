@@ -95,7 +95,7 @@ bool run_phase (::perf::socket_t &publisher,
             return false;
         }
 
-        events = poller.wait_all (
+        events = poller.wait (
           0,
           std::chrono::milliseconds (compute_wait_ms (settings, deadline)));
         const int poll_rc = static_cast<int> (events.size ());

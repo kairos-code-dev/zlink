@@ -79,7 +79,7 @@ async function main() {
                 continue;
             }
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven `-1` wait.
-            const ready = poller.waitAll(poller.size, -1);
+            const ready = poller.waitMany(poller.size, -1);
             if (ready.length === 0) {
                 continue;
             }

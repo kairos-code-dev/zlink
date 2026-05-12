@@ -794,7 +794,7 @@ class spot_client_bench_t
             // (stop tokens / peer close); the outer benchmark loop joins
             // these threads via stop_recv_workers().
             worker_->events =
-              worker_->poller.wait_all (0, std::chrono::milliseconds (-1));
+              worker_->poller.wait (0, std::chrono::milliseconds (-1));
         const int poll_rc = static_cast<int> (worker_->events.size ());
             if (poll_rc < 0) {
                 if (bench->_recv_stop.load (std::memory_order_acquire))

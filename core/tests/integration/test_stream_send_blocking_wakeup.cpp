@@ -281,7 +281,7 @@ bool wait_stream_poller_no_event (
     if (!poller_ || !event_ || !error_out_)
         return false;
 
-    const int rc = zlink_poller_wait (poller_, event_, timeout_ms_, error_out_);
+    const int rc = zlink_poller_wait (poller_, event_, 1, timeout_ms_, error_out_);
     if (rc == 0)
         return true;
     return rc == -1 && errno == EAGAIN;
@@ -514,7 +514,7 @@ void test_stream_send_ready_pollout_share_recovery_axis ()
     while (std::chrono::steady_clock::now () < poll_deadline) {
         zlink_poller_event_t event;
         zlink_config_result_t error = ZLINK_CONFIG_OK;
-        const int rc = zlink_poller_wait (poller, &event, 50, &error);
+        const int rc = zlink_poller_wait (poller, &event, 1, 50, &error);
         if (rc <= 0)
             continue;
         if (event.socket == server && (event.events & ZLINK_POLLOUT) != 0) {
@@ -604,7 +604,7 @@ void test_stream_pollout_only_observes_recovery_readiness ()
     const auto poll_deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
     while (std::chrono::steady_clock::now () < poll_deadline) {
-        const int rc = zlink_poller_wait (poller, &event, 50, &error);
+        const int rc = zlink_poller_wait (poller, &event, 1, 50, &error);
         if (rc <= 0)
             continue;
         TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, error);
@@ -620,7 +620,7 @@ void test_stream_pollout_only_observes_recovery_readiness ()
     TEST_ASSERT_NOT_NULL (poller);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_poller_add (poller, server, server, ZLINK_POLLOUT));
-    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 0, &error));
+    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 1, 0, &error));
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, error);
     TEST_ASSERT_EQUAL_PTR (server, event.socket);
     TEST_ASSERT_TRUE ((event.events & ZLINK_POLLOUT) != 0);

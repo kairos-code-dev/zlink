@@ -27,9 +27,9 @@ typedef int zlink_fd_t;
 
 ### Poller Event Masks
 
-공개 헤더는 `zlink_poller_event_mask_t` 같은 별도 typedef를 내보내지
-않는다. poller API는 `events`, `revents`, 각 이벤트 마스크 인자에 raw
-`short` 비트마스크를 사용한다.
+공개 헤더는 `typedef short zlink_poller_event_mask_t;`를 편의 별칭으로
+내보냅니다. poller API의 `events`, `revents`, 각 이벤트 마스크 인자에
+사용되는 `short` 비트마스크의 별칭입니다.
 
 ### zlink_poller_source_kind_t
 
@@ -105,12 +105,16 @@ SPOT의 subscribe / routed / channel reply / timer readiness를 한 owner 기준
 ## 상수
 
 ```c
-#define ZLINK_POLLIN          1
-#define ZLINK_POLLOUT         2
-#define ZLINK_POLLERR         4
-#define ZLINK_POLLPRI         8
-#define ZLINK_POLLITEMS_DFLT 16
-#define ZLINK_HAVE_POLLER     1
+typedef enum zlink_poller_event_flag_e
+{
+    ZLINK_POLLIN         = 1,
+    ZLINK_POLLOUT        = 2,
+    ZLINK_POLLERR        = 4,
+    ZLINK_POLLPRI        = 8,
+    ZLINK_POLLITEMS_DFLT = 16
+} zlink_poller_event_flag_e;
+
+#define ZLINK_HAVE_POLLER 1
 ```
 
 | 상수 | 값 | 설명 |
@@ -398,50 +402,19 @@ zlink_config_result_t zlink_poller_remove_timer (void *poller_, void *timer_);
 
 ### zlink_poller_wait
 
-단일 이벤트를 기다립니다.
+단일 호출로 하나 이상의 이벤트를 기다립니다.
 
 ```c
-int zlink_poller_wait (void *poller_, zlink_poller_event_t *event_, long timeout_, zlink_config_result_t *error_out_);
-```
-
-등록된 소스 중 하나에 이벤트가 준비되거나 타임아웃이 만료될 때까지
-블록합니다. 성공 시 `event_`에 이벤트 세부 정보가 채워집니다. 실패 시
-`*error_out_`에 설정 결과(`zlink_config_result_t`)가 기록되고, 성공 시
-기본 결과값이 반환됩니다.
-
-**매개변수:**
-
-| 이름 | 설명 |
-|------|------|
-| `poller_` | 폴러 핸들 |
-| `event_` | 채울 단일 이벤트 구조체 포인터 |
-| `timeout_` | 최대 대기 시간(밀리초); `0`이면 즉시, `-1`이면 무한 대기 |
-| `error_out_` | 실패 또는 타임아웃 시 `zlink_config_result_t`가 기록됨 |
-
-**반환값:** 이벤트를 수신한 경우 `0`, 타임아웃 또는 실패 시 `-1`이며
-`*error_out_`에 `zlink_config_result_t`가 기록됩니다(타임아웃 시 `EAGAIN`).
-`zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
-
-**스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
-
-**참고:** `zlink_poller_wait_all`
-
----
-
-### zlink_poller_wait_all
-
-단일 호출로 여러 이벤트를 기다립니다.
-
-```c
-int zlink_poller_wait_all (void *poller_,
-                           zlink_poller_event_t *events_,
-                           int n_events_,
-                           long timeout_,
-                           zlink_config_result_t *error_out_);
+int zlink_poller_wait (void *poller_,
+                       zlink_poller_event_t *events_,
+                       int n_events_,
+                       long timeout_,
+                       zlink_config_result_t *error_out_);
 ```
 
 등록된 소스 중 하나 이상에 이벤트가 준비될 때까지 블록한 후, `events_`에
-최대 `n_events_`개의 이벤트를 채웁니다. 실패 시 `*error_out_`에 설정
+최대 `n_events_`개의 이벤트를 채웁니다. 이벤트 하나만 기다릴 때는 길이가 1인
+배열과 `n_events_ == 1`을 넘깁니다. 실패 시 `*error_out_`에 설정
 결과(`zlink_config_result_t`)가 기록되고, 성공 시 이벤트 수가 기본 반환값으로
 반환됩니다.
 
@@ -453,15 +426,13 @@ int zlink_poller_wait_all (void *poller_,
 | `events_` | 채울 이벤트 구조체 배열 |
 | `n_events_` | 반환할 최대 이벤트 수 |
 | `timeout_` | 최대 대기 시간(밀리초); `0`이면 즉시, `-1`이면 무한 대기 |
-| `error_out_` | 실패 또는 타임아웃 시 `zlink_config_result_t`가 기록됨 |
+| `error_out_` | 성공 또는 타임아웃 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t`가 기록됨 |
 
-**반환값:** `events_`에 저장된 이벤트 수, 실패 시 `-1`이며 `*error_out_`에
-`zlink_config_result_t`가 기록됩니다(타임아웃 시 `EAGAIN`). `zlink_errno()`는
-진단용 내부 errno를 그대로 유지합니다.
+**반환값:** `events_`에 저장된 이벤트 수, 타임아웃 시 `0`, 실패 시 `-1`이며
+`*error_out_`에 `zlink_config_result_t`가 기록됩니다. `zlink_errno()`는 진단용
+내부 errno를 그대로 유지합니다.
 
 **스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
-
-**참고:** `zlink_poller_wait`
 
 ---
 

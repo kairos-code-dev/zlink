@@ -26,7 +26,7 @@ using perf_multi_client::refresh_connected_client_auto_hwm;
 using perf_multi_client::resolve_case_max_msg_size;
 using perf_multi_client::resolve_case_msg_sizes;
 using perf_multi_client::run_echo_duration;
-using perf_multi_client::wait_all_client_connect_ready;
+using perf_multi_client::wait_client_connect_ready_all;
 
 inline int run_client_benchmark (const std::string &lib_name,
                                  const std::string &transport,
@@ -85,7 +85,7 @@ inline int run_client_benchmark (const std::string &lib_name,
             return 1;
         }
 
-        if (!wait_all_client_connect_ready (
+        if (!wait_client_connect_ready_all (
               monitors,
               settings.connect_ready_timeout_ms)) {
             close_client_monitors (&monitors);

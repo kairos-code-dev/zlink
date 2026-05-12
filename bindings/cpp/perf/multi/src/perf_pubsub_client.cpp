@@ -175,7 +175,7 @@ class pubsub_client_bench_t
             // timer cap. Outer loop bounds wall-time via the
             // steady_clock deadline check.
             _poll_events =
-              _poller.wait_all (0, std::chrono::milliseconds (-1));
+              _poller.wait (0, std::chrono::milliseconds (-1));
         const int poll_rc = static_cast<int> (_poll_events.size ());
             if (poll_rc < 0) {
                 if (errno == EINTR || errno == EAGAIN)

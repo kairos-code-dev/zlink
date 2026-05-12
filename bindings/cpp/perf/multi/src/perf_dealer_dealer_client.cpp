@@ -161,12 +161,12 @@ class dealer_dealer_client_bench_t
             (void) _poller.modify (sock, zlink::poll_event_flag_t::none);
         }
 
-        const bool ready = perf::multi::wait_all_connect_ready (
+        const bool ready = perf::multi::wait_connect_ready_all (
           _monitors, _settings.connect_ready_timeout_ms);
         for (size_t i = 0; i < _monitors.size (); ++i)
             perf::multi::close_connect_monitor (_monitors[i]);
         if (!ready) {
-            debug_log ("wait_all_connect_ready failed");
+            debug_log ("wait_connect_ready_all failed");
             return false;
         }
 
@@ -333,7 +333,7 @@ class dealer_dealer_client_bench_t
             // timer cap. Outer loop bounds total wall-time via the
             // steady_clock deadline check above.
             _poll_events =
-                  _poller.wait_all (0, std::chrono::milliseconds (-1));
+                  _poller.wait (0, std::chrono::milliseconds (-1));
             if (_poll_events.empty ())
                 continue;
 

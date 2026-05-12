@@ -1690,14 +1690,10 @@ ZLINK_EXPORT zlink_config_result_t zlink_poller_modify_fd (void *poller_,
 ZLINK_EXPORT zlink_config_result_t zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
 ZLINK_EXPORT zlink_config_result_t zlink_poller_remove_timer (void *poller_, void *timer_);
 ZLINK_EXPORT int zlink_poller_wait (void *poller_,
-                                    zlink_poller_event_t *event_,
+                                    zlink_poller_event_t *events_,
+                                    int n_events_,
                                     long timeout_,
                                     zlink_config_result_t *error_out_);
-ZLINK_EXPORT int zlink_poller_wait_all (void *poller_,
-                                        zlink_poller_event_t *events_,
-                                        int n_events_,
-                                        long timeout_,
-                                        zlink_config_result_t *error_out_);
 
 /** @brief Start a built-in proxy between frontend and backend sockets. */
 ZLINK_EXPORT zlink_config_result_t zlink_proxy (void *frontend_, void *backend_, void *capture_);

@@ -1147,8 +1147,13 @@ internal sealed class SocketKernel : IDisposable
 
             _streamAttached = false;
             _streamPacketHandler = null;
+            _streamUInt32PacketHandler = null;
+            _streamFramedPacketHandler = null;
+            _streamUInt32FramedPacketHandler = null;
             _streamRawCallback = null;
+            _streamPacketCallback = null;
             _streamRawContext = null;
+            _streamPacketContext = null;
         }
 
         _handle.Dispose();
@@ -2092,8 +2097,8 @@ internal sealed class SocketKernel : IDisposable
                     throw ZlinkException.CreateRecvException(
                         NativeMethods.zlink_errno());
                 bool initialized = true;
-                // DONT_WAIT-only critical variant: the underlying C call is
-                // non-blocking, so [SuppressGCTransition] is safe.
+                // DONT_WAIT-only variant: avoid blocking while still allowing
+                // managed free callbacks during native message handling.
                 IntPtr sourceNodeRid;
                 IntPtr sourceSpotRid;
                 ulong receivedRequestSeq;
@@ -3730,9 +3735,8 @@ internal sealed class SocketKernel : IDisposable
             return sendResult;
         }
 
-        // DONT_WAIT-only critical variant: contractually non-blocking, so
-        // [SuppressGCTransition] is safe and saves the GC safepoint cost on
-        // every routed echo Send.
+        // DONT_WAIT-only variant: avoid blocking while still allowing managed
+        // free callbacks during native message handling.
         int rc = NativeMethods.zlink_send_part_rid_nowait(Handle, ref routingId,
             ref message.Handle, DontWaitFlag, NativeMethods.ZlinkPartFlag.Final);
         if (rc == 0)

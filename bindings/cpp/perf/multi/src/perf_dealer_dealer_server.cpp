@@ -111,8 +111,8 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
     std::vector<zlink::poll_event_t> events;
     while (!stop_requested && std::chrono::steady_clock::now () < deadline) {
         // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait (timeout=-1).
-        // Use wait_all (zlink_poll fast path) to match C reference perf.
-        events = poller.wait_all (1, std::chrono::milliseconds (-1));
+        // Use wait(max_events=1) through the zlink_poll fast path to match C reference perf.
+        events = poller.wait (1, std::chrono::milliseconds (-1));
         if (events.empty ())
             continue;
         if (!(static_cast<short> (events[0].revents)

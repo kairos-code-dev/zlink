@@ -79,7 +79,7 @@ async function main() {
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven `-1` wait. The echo
             // reply (POLLIN) or send-readiness (POLLOUT) wakeup arrives via core,
             // so timer-bound polling is unnecessary.
-            const ready = poller.waitAll(poller.size, -1);
+            const ready = poller.waitMany(poller.size, -1);
             if (ready.length === 0) {
                 continue;
             }

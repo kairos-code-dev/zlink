@@ -2385,9 +2385,7 @@ public sealed class Poller : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkRecvException"/>
     PollEvent? Wait(TimeSpan timeout);
     /// <exception cref="ZlinkRecvException"/>
-    IReadOnlyList<PollEvent> WaitAll(int maxEvents, TimeSpan timeout);
-    /// <exception cref="ZlinkRecvException"/>
-    int WaitReady(Span<PollReadyEvent> destination, TimeSpan timeout,
+    int Wait(Span<PollEvent> destination, TimeSpan timeout,
         out int totalReady);
 
     /// <exception cref="ZlinkConfigException"/>
@@ -2401,13 +2399,11 @@ public sealed class Poller : IDisposable, IAsyncDisposable
 }
 ```
 
-`WaitReady(...)`는 등록할 때 넘긴 `tag`와 readiness flag만 필요한 호출자를 위한
-빠른 경로다. `Wait(...)`와 `WaitAll(...)`은 socket, file descriptor, timer 중 어떤
-항목이 ready인지 완전한 `PollEvent`로 돌려준다. 반대로 `WaitReady(...)`는
-`destination`에 `PollReadyEvent`만 채우며, socket 객체나 timer 객체를 다시 찾는
-처리를 하지 않는다. 여러 socket을 같은 poller에 등록하고 `tag`로 애플리케이션의
-index를 넣은 코드는 이 API를 쓰면 poll loop의 객체 생성과 lookup 비용을 줄일 수
-있다.
+`Wait(TimeSpan)`은 이벤트 하나를 기다린다. 여러 이벤트를 한 번에 받거나 호출자가
+버퍼를 재사용해야 하는 경우에는 `Wait(Span<PollEvent>, TimeSpan, out int)`를
+사용한다. 이 overload는 `destination`에 기록한 개수를 반환하고, core가 보고한
+전체 ready 개수는 `totalReady`에 기록한다. `destination`이 core ready 개수보다
+작으면 앞쪽 이벤트만 기록된다.
 
 ```csharp
 public readonly struct PollEvent
@@ -2415,15 +2411,6 @@ public readonly struct PollEvent
     IZlinkSocket? Socket { get; }
     int? Fd { get; }
     Timer? Timer { get; }
-    object? Tag { get; }
-    PollEventFlags Events { get; }
-    PollEventFlags Revents { get; }
-}
-```
-
-```csharp
-public readonly struct PollReadyEvent
-{
     object? Tag { get; }
     PollEventFlags Events { get; }
     PollEventFlags Revents { get; }
@@ -2626,7 +2613,7 @@ updated in the same change.
 | SPOT node topology | `zlink_spot_node_new`, `zlink_spot_node_destroy`, `zlink_spot_node_bind`, peer connect/disconnect, discovery/channel attachments, publish-ingress attachment, entry spot, spot lookup, snapshots, `zlink_set_spot_node_option`, `zlink_get_spot_node_option` | `SpotNode`, `SpotNodeMode`, attachment APIs including `AttachPubIngress`, snapshot/query APIs, `CreateSpot`, `EntrySpot`, `SpotLookup`, `DisconnectPeerRid` |
 | SPOT messaging | `zlink_spot_new`, `zlink_spot_destroy`, `zlink_spot_send_channel_part`, `zlink_spot_publish_part`, `zlink_spot_subscribe_part`, `zlink_spot_subscription_event_recv`, `zlink_spot_request_*_part`, `zlink_spot_send_spot_part`, `zlink_spot_reply_*_part`, `zlink_spot_recv_part`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_spot_channel_reply_progress_from`, `zlink_set_spot_option`, `zlink_get_spot_option` | `Spot`, direct request-timeout property, channel send/request, SPOT topic publish/subscribe, routed send/request/reply/recv, dispatch callbacks, internal channel reply progress |
 | SPOT actor lifecycle | `zlink_spot_node_actor_*`, `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_remote_actor_get_ref`, `zlink_spot_actors_snapshot` | `Actor`, `ActorRef`, `ActorCreateResult`, join/leave/create/destroy/admission APIs, actor receive/send/bound-session APIs, actor snapshots |
-| Polling and timers | `zlink_poll`, `zlink_poller_*`, `zlink_timer_*`, `zlink_spot_timer_new` | `Poller`, `PollEvent`, `PollReadyEvent`, `Timer`; legacy array `zlink_poll` is intentionally not exposed |
+| Polling and timers | `zlink_poll`, `zlink_poller_*`, `zlink_timer_*`, `zlink_spot_timer_new` | `Poller`, `PollEvent`, `Timer`; legacy array `zlink_poll` is intentionally not exposed |
 | Utilities | `zlink_proxy`, `zlink_proxy_steerable`, `zlink_multipart_close`, `zlink_sleep`, `zlink_stopwatch_*`, `zlink_thread_*`, `zlink_atomic_counter_*` | `Zlink.Proxy`, `Zlink.ProxySteerable`, `Zlink.MultipartClose`, `Zlink.Sleep(TimeSpan)`, `ZlinkStopwatch`, `ZlinkThread`, `AtomicCounter` |
 
 ## Core API Surface 6.0.0 Alignment

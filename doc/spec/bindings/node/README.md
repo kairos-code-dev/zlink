@@ -2086,7 +2086,7 @@ class Poller {
     /** @throws {RecvError} */
     wait(timeoutMs: number): PollEvent | null;
     /** @throws {RecvError} */
-    waitAll(maxEvents: number, timeoutMs: number): PollEvent[];
+    waitMany(maxEvents: number, timeoutMs: number): PollEvent[];
     /** @throws {CloseError} */
     destroy(): void;
     /** @throws {CloseError} */

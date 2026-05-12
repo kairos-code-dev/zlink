@@ -231,7 +231,7 @@ inline int recv_one_message (void *socket,
       socket, router_surface, scratch, flags, scratch.size ());
 }
 
-inline bool wait_all_client_connect_ready (std::vector<ready_monitor_t> &monitors,
+inline bool wait_client_connect_ready_all (std::vector<ready_monitor_t> &monitors,
                                            int timeout_ms)
 {
     if (monitors.empty ())

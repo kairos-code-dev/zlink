@@ -115,7 +115,7 @@ static inline int wait_for_socket_monitor_event (void *monitor,
             break;
 
         zlink_poller_event_t pe;
-        rc = zlink_poller_wait (poller, &pe, remaining, NULL);
+        rc = zlink_poller_wait (poller, &pe, 1, remaining, NULL);
         if (rc <= 0)
             continue;
 
@@ -166,7 +166,7 @@ static inline int wait_for_socket_monitor_event_with_activity (
             break;
 
         zlink_poller_event_t pe;
-        rc = zlink_poller_wait (poller, &pe, remaining, NULL);
+        rc = zlink_poller_wait (poller, &pe, 1, remaining, NULL);
         if (rc <= 0 || pe.socket != monitor)
             continue;
 
@@ -233,7 +233,7 @@ static inline int wait_for_subscription_event (void *subject_,
             break;
 
         zlink_poller_event_t pe;
-        rc = zlink_poller_wait (poller, &pe, remaining, NULL);
+        rc = zlink_poller_wait (poller, &pe, 1, remaining, NULL);
         if (rc <= 0)
             continue;
 

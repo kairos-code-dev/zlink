@@ -205,13 +205,13 @@ class router_router_client_bench_t
             _poller.add (sock, zlink::poll_event_flag_t::pollin, &slot);
         }
 
-        const bool ready = perf::multi::wait_all_connect_ready (
+        const bool ready = perf::multi::wait_connect_ready_all (
           _monitors, _settings.connect_ready_timeout_ms);
         for (size_t i = 0; i < _monitors.size (); ++i)
             perf::multi::close_connect_monitor (_monitors[i]);
         if (!ready)
         {
-            debug_log ("wait_all_connect_ready failed");
+            debug_log ("wait_connect_ready_all failed");
             return false;
         }
 
@@ -248,9 +248,9 @@ class router_router_client_bench_t
         }
 
         while (remaining > 0 && std::chrono::steady_clock::now () < deadline) {
-            // wait_all_into reuses _poll_events' backing storage so the
+            // wait(events, ...) reuses _poll_events' backing storage so the
             // hot poll loop avoids allocating a fresh vector per wake.
-            _poller.wait_all_into (
+            _poller.wait (
               _poll_events, 0, std::chrono::milliseconds (-1));
             if (_poll_events.empty ())
                 continue;
@@ -459,9 +459,9 @@ class router_router_client_bench_t
         }
 
         while (std::chrono::steady_clock::now () < deadline) {
-            // wait_all_into reuses _poll_events' backing storage so the
+            // wait(events, ...) reuses _poll_events' backing storage so the
             // hot poll loop avoids allocating a fresh vector per wake.
-            _poller.wait_all_into (
+            _poller.wait (
               _poll_events, 0, std::chrono::milliseconds (-1));
             if (_poll_events.empty ())
                 continue;

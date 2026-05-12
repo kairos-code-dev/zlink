@@ -8,13 +8,13 @@ namespace perf {
 namespace multi {
 
 template<typename WaitStartFn,
-         typename WaitReadyFn,
+         typename ReadyWaitFn,
          typename PublishStartFn,
          typename RunPhaseFn>
 inline bool run_spot_server_cases(const multi_bench_settings_t &settings,
                                   const std::vector<size_t> &msg_sizes,
                                   WaitStartFn wait_start_fn,
-                                  WaitReadyFn wait_ready_fn,
+                                  ReadyWaitFn wait_ready_fn,
                                   PublishStartFn publish_start_fn,
                                   RunPhaseFn run_phase_fn)
 {

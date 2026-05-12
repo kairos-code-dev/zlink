@@ -522,7 +522,7 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        events = poller.wait_all (0, std::chrono::milliseconds (wait_ms));
+        events = poller.wait (0, std::chrono::milliseconds (wait_ms));
         const int rc = static_cast<int> (events.size ());
         if (rc < 0) {
             if (errno == EINTR || errno == EAGAIN)
@@ -543,7 +543,7 @@ inline bool wait_connect_ready (connect_monitor_t &mon, int timeout_ms)
     return wait_connect_ready_count (mon, 1, timeout_ms);
 }
 
-inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
+inline bool wait_connect_ready_all (std::vector<connect_monitor_t> &monitors,
                                     int timeout_ms)
 {
     if (monitors.empty ())
@@ -594,7 +594,7 @@ inline bool wait_all_connect_ready (std::vector<connect_monitor_t> &monitors,
         if (wait_ms < 1)
             wait_ms = 1;
 
-        events = poller.wait_all (0, std::chrono::milliseconds (wait_ms));
+        events = poller.wait (0, std::chrono::milliseconds (wait_ms));
         const int rc = static_cast<int> (events.size ());
         if (rc < 0) {
             if (errno == EINTR || errno == EAGAIN)

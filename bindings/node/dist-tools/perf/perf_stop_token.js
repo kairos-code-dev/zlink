@@ -7,7 +7,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // using a single sentinel message instead of `senderDone` flags + short
 // polling cadences. The sender emits this token once at phase end with
 // bounded backpressure retry; the receiver, waiting on `poller.wait(-1)`
-// or `poller.waitAll(n, -1)`, drains in-flight messages and exits when
+// or `poller.waitMany(n, -1)`, drains in-flight messages and exits when
 // it sees the token. This mirrors `k_stop_token` / `is_stop_token` in
 // `bindings/cpp/perf/single/common/perf_single_common.hpp` and keeps
 // the wire bytes identical across language bindings.

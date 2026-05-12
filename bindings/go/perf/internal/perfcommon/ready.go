@@ -16,7 +16,7 @@ type ReadyConfig struct {
 	Ready     <-chan struct{}
 }
 
-func WaitReady(cfg ReadyConfig) error {
+func WaitUntilReady(cfg ReadyConfig) error {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = SingleReadyTimeout()
@@ -46,7 +46,7 @@ func WaitConnected(monitors ...*zlink.SocketMonitor) {
 
 func WaitConnectedWithTimeout(timeout time.Duration, monitors ...*zlink.SocketMonitor) {
 	for _, monitor := range monitors {
-		Must(WaitReady(ReadyConfig{
+		Must(WaitUntilReady(ReadyConfig{
 			Monitor:   monitor,
 			MinEvents: 1,
 			Timeout:   timeout,

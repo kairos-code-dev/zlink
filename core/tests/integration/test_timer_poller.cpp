@@ -83,7 +83,7 @@ void test_timer_poller_and_recv ()
     zlink_poller_event_t ev;
     bool got_event = false;
     for (int attempt = 0; attempt < 5; ++attempt) {
-        const int rc = zlink_poller_wait (poller, &ev, 500, NULL);
+        const int rc = zlink_poller_wait (poller, &ev, 1, 500, NULL);
         if (rc == 1) {
             got_event = true;
             break;

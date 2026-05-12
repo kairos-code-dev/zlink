@@ -211,7 +211,7 @@ public sealed class Timer : IDisposable, IAsyncDisposable
             if (rc != 0)
                 throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
 
-            int ready = NativeMethods.zlink_poller_wait_all(poller,
+            int ready = NativeMethods.zlink_poller_wait(poller,
                 new ZlinkPollerEvent[1], 1, 0, out _);
             if (ready < 0)
                 throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());

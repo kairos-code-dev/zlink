@@ -21,13 +21,14 @@ use super::{check_send_flags_rc, prepare_send_parts, submit_part_sequence};
 ///
 /// # Example
 /// ```no_run
-/// use zlink::{Context, Message, RoutingId};
+/// use zlink::{Context, Message, Received, RecvFlags, RoutingId};
 ///
 /// let ctx = Context::new().unwrap();
 /// let mut router = ctx.router_socket().unwrap();
 /// let handle = router.send_handle();
 ///
-/// let received = router.recv().unwrap();
+/// let mut received = Received::empty();
+/// router.recv(&mut received, RecvFlags::NONE).unwrap();
 /// let reply = Message::copy_from(b"pong").unwrap();
 /// handle
 ///     .send_to(received.routing_id().expect("missing routing id"), reply)

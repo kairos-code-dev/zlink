@@ -435,8 +435,8 @@ typedef enum zlink_config_result_t
 | Proxy | `zlink_proxy`, `zlink_proxy_steerable` |
 | Timer config | `zlink_timer_start`, `zlink_timer_stop` |
 
-`zlink_poll`, `zlink_poller_size`, `zlink_poller_wait`, `zlink_poller_wait_all`
-은 plain `int` 반환 + `error_out_` 출력 형태이며,
+`zlink_poll`, `zlink_poller_size`, `zlink_poller_wait`는 plain `int` 반환 +
+`error_out_` 출력 형태이며,
 `zlink_config_result_t`를 직접 반환하는 함수는 아니다.
 
 ---

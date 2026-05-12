@@ -193,7 +193,7 @@ monitor.close();
 const poller = new zlink.Poller();
 poller.add(pub, [zlink.PollEventFlag.PollIn], 'pub');
 poller.modify(pub, [zlink.PollEventFlag.PollIn, zlink.PollEventFlag.PollOut]);
-poller.waitAll(1, 0);
+poller.waitMany(1, 0);
 poller.remove(pub);
 poller.size;
 poller.close();

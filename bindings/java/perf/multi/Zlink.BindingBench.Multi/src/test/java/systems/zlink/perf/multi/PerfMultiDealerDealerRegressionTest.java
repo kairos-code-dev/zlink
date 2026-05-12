@@ -56,9 +56,9 @@ class PerfMultiDealerDealerRegressionTest {
         String clientOut = waitAndRead(client, clientOutput, PROCESS_TIMEOUT, "client");
         String serverOut = waitAndRead(server, serverOutput, PROCESS_TIMEOUT, "server");
 
-        assertTrue(serverOut.contains("RESULT,current,DEALER_DEALER,tcp,64,throughput,"),
+        assertTrue(serverOut.contains("RESULT,java,DEALER_DEALER,tcp,64,throughput,"),
             "unexpected server output:\n" + serverOut);
-        assertTrue(!clientOut.contains("RESULT,current,DEALER_DEALER,tcp,64,throughput,"),
+        assertTrue(!clientOut.contains("RESULT,java,DEALER_DEALER,tcp,64,throughput,"),
             "unexpected client output:\n" + clientOut);
     }
 

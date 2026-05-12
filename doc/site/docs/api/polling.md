@@ -27,9 +27,9 @@ typedef int zlink_fd_t;
 
 ### Poller Event Masks
 
-The public header does not export a dedicated `zlink_poller_event_mask_t`
-typedef. Poller APIs use raw `short` bitmasks for `events`, `revents`, and
-event-mask parameters.
+The public header exports `typedef short zlink_poller_event_mask_t;` as a
+convenience alias for the `short` bitmask used in poller APIs for `events`,
+`revents`, and event-mask parameters.
 
 ### zlink_poller_source_kind_t
 
@@ -105,12 +105,16 @@ channel-reply / timer readiness, the current public contract still uses
 ## Constants
 
 ```c
-#define ZLINK_POLLIN          1
-#define ZLINK_POLLOUT         2
-#define ZLINK_POLLERR         4
-#define ZLINK_POLLPRI         8
-#define ZLINK_POLLITEMS_DFLT 16
-#define ZLINK_HAVE_POLLER     1
+typedef enum zlink_poller_event_flag_e
+{
+    ZLINK_POLLIN         = 1,
+    ZLINK_POLLOUT        = 2,
+    ZLINK_POLLERR        = 4,
+    ZLINK_POLLPRI        = 8,
+    ZLINK_POLLITEMS_DFLT = 16
+} zlink_poller_event_flag_e;
+
+#define ZLINK_HAVE_POLLER 1
 ```
 
 | Constant | Value | Description |
@@ -413,51 +417,19 @@ the same poller.
 
 ### zlink_poller_wait
 
-Wait for a single event.
+Wait for one or more events in a single call.
 
 ```c
-int zlink_poller_wait (void *poller_, zlink_poller_event_t *event_, long timeout_, zlink_config_result_t *error_out_);
-```
-
-Blocks until one of the registered sources has an event ready, or the timeout
-expires. On success, `event_` is populated with the event details. Writes the
-configuration result into `*error_out_` on failure; returns the primary result
-value on success.
-
-**Parameters:**
-
-| Name | Description |
-|------|-------------|
-| `poller_` | Poller handle |
-| `event_` | Pointer to a single event structure to fill |
-| `timeout_` | Maximum wait in milliseconds; `0` for immediate, `-1` for indefinite |
-| `error_out_` | Receives a `zlink_config_result_t` on failure or timeout |
-
-**Returns:** `0` if an event was received, `-1` on timeout or failure with the
-`zlink_config_result_t` written through `*error_out_` (`EAGAIN` on timeout).
-`zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**Thread safety:** Must not be called concurrently with other operations on
-the same poller.
-
-**See also:** `zlink_poller_wait_all`
-
----
-
-### zlink_poller_wait_all
-
-Wait for multiple events in a single call.
-
-```c
-int zlink_poller_wait_all (void *poller_,
-                           zlink_poller_event_t *events_,
-                           int n_events_,
-                           long timeout_,
-                           zlink_config_result_t *error_out_);
+int zlink_poller_wait (void *poller_,
+                       zlink_poller_event_t *events_,
+                       int n_events_,
+                       long timeout_,
+                       zlink_config_result_t *error_out_);
 ```
 
 Blocks until at least one registered source has an event ready, then fills
-`events_` with up to `n_events_` events. Writes the configuration result into
+`events_` with up to `n_events_` events. To wait for one event, pass an array
+with one element and `n_events_ == 1`. Writes the configuration result into
 `*error_out_` on failure; returns the count as the primary return on success.
 
 **Parameters:**
@@ -468,16 +440,14 @@ Blocks until at least one registered source has an event ready, then fills
 | `events_` | Array of event structures to fill |
 | `n_events_` | Maximum number of events to return |
 | `timeout_` | Maximum wait in milliseconds; `0` for immediate, `-1` for indefinite |
-| `error_out_` | Receives a `zlink_config_result_t` on failure or timeout |
+| `error_out_` | Receives `ZLINK_CONFIG_OK` on success or timeout, or a `zlink_config_result_t` on failure |
 
-**Returns:** The number of events stored in `events_`, or `-1` on failure with
-the `zlink_config_result_t` written through `*error_out_` (`EAGAIN` on
-timeout). `zlink_errno()` retains the detailed internal errno for diagnostics.
+**Returns:** The number of events stored in `events_`, `0` on timeout, or `-1`
+on failure with the `zlink_config_result_t` written through `*error_out_`.
+`zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same poller.
-
-**See also:** `zlink_poller_wait`
 
 ---
 

@@ -1750,9 +1750,9 @@ func (p *Poller) RemoveFd(fd int) error
 func (p *Poller) AddTimer(timer *Timer, userData ...interface{}) error
 func (p *Poller) RemoveTimer(timer *Timer) error
 func (p *Poller) Size() int
-// Wait / WaitAll block for readiness. Return *RecvError on failure.
+// Wait / WaitMany block for readiness. Return *RecvError on failure.
 func (p *Poller) Wait(timeout time.Duration) (*PollerEvent, error)
-func (p *Poller) WaitAll(timeout time.Duration) ([]PollerEvent, error)
+func (p *Poller) WaitMany(timeout time.Duration) ([]PollerEvent, error)
 // Close closes the poller. Returns *CloseError on failure.
 func (p *Poller) Close() error
 ```

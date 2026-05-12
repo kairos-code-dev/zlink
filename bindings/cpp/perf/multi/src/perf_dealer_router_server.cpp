@@ -103,7 +103,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
         }
 
         try {
-            poller.wait_all_into (events, 1, std::chrono::milliseconds (-1));
+            poller.wait (events, 1, std::chrono::milliseconds (-1));
             if (events.empty ())
                 continue;
             const auto revents_value = static_cast<int> (events[0].revents);

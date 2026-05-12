@@ -54,6 +54,7 @@ public final class Received implements AutoCloseable {
     private boolean hasRequestSequence;
     private BiConsumer<List<Message>, SendFlags> replySender;
     private BiFunction<List<Message>, SendFlags, Boolean> sendSender;
+    private RouterSocket sendRouter;
     private byte[] routingIdBytes;
     private byte[] spotRidBytes;
     private Runnable onTerminalState;
@@ -75,6 +76,7 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = false;
         this.replySender = null;
         this.sendSender = null;
+        this.sendRouter = null;
         this.routingIdBytes = null;
         this.spotRidBytes = null;
         this.onTerminalState = null;
@@ -124,6 +126,7 @@ public final class Received implements AutoCloseable {
             this.hasRequestSequence = hasRequestSequence;
             this.replySender = replySender;
             this.sendSender = null;
+            this.sendRouter = null;
             this.onTerminalState = onTerminalState;
             if (this.realizedParts == null) {
                 this.realizedParts = acquirePartsList(1);
@@ -153,6 +156,7 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = source.hasRequestSequence;
         this.replySender = source.replySender;
         this.sendSender = source.sendSender;
+        this.sendRouter = source.sendRouter;
         this.routingIdBytes = source.routingIdBytes;
         this.spotRidBytes = source.spotRidBytes;
         this.onTerminalState = source.onTerminalState;
@@ -167,6 +171,7 @@ public final class Received implements AutoCloseable {
         source.hasRequestSequence = false;
         source.replySender = null;
         source.sendSender = null;
+        source.sendRouter = null;
         source.routingIdBytes = null;
         source.spotRidBytes = null;
         source.onTerminalState = null;
@@ -215,6 +220,7 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.sendSender = null;
+        this.sendRouter = null;
         this.onTerminalState = onTerminalState;
         Message[] ownedParts = Objects.requireNonNull(parts, "parts");
         Message[] safeParts = trustedParts ? ownedParts
@@ -245,6 +251,7 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.sendSender = null;
+        this.sendRouter = null;
         this.onTerminalState = onTerminalState;
         Message[] ownedParts = Objects.requireNonNull(parts, "parts");
         Message[] safeParts = trustedParts ? ownedParts
@@ -273,6 +280,7 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.sendSender = null;
+        this.sendRouter = null;
         this.onTerminalState = onTerminalState;
         this.realizedParts = acquirePartsList(1);
         this.realizedParts.add(Objects.requireNonNull(singlePart, "singlePart"));
@@ -298,6 +306,7 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.sendSender = null;
+        this.sendRouter = null;
         this.onTerminalState = onTerminalState;
         this.realizedParts = acquirePartsList(1);
         this.realizedParts.add(Objects.requireNonNull(singlePart, "singlePart"));
@@ -317,6 +326,7 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.sendSender = null;
+        this.sendRouter = null;
         this.onTerminalState = onTerminalState;
         this.realizedParts = acquirePartsList(4);
         this.realizedParts.add(Objects.requireNonNull(firstPart, "firstPart"));
@@ -336,6 +346,7 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.sendSender = null;
+        this.sendRouter = null;
         this.onTerminalState = onTerminalState;
         this.realizedParts = acquirePartsList(4);
         this.realizedParts.add(Objects.requireNonNull(firstPart, "firstPart"));
@@ -445,11 +456,25 @@ public final class Received implements AutoCloseable {
     }
 
     public boolean send(Message part) {
-        return send(List.of(Objects.requireNonNull(part, "part")), SendFlags.NONE);
+        return send(part, SendFlags.NONE);
     }
 
     public boolean send(Message part, SendFlags flags) {
-        return send(List.of(Objects.requireNonNull(part, "part")), flags);
+        Objects.requireNonNull(part, "part");
+        Objects.requireNonNull(flags, "flags");
+        RouterSocket router = sendRouter;
+        if (router != null) {
+            try {
+                RoutingId nodeRid = routingIdOrThrow();
+                RoutingId spot = spotRidOrNull();
+                return spot == null
+                    ? router.send(nodeRid, part, flags)
+                    : router.sendToSpot(nodeRid, spot, part, flags);
+            } catch (IllegalStateException ex) {
+                throw new SubmitException(SubmitResult.TERMINATED);
+            }
+        }
+        return send(List.of(part), flags);
     }
 
     public boolean send(List<Message> parts) {
@@ -457,23 +482,42 @@ public final class Received implements AutoCloseable {
     }
 
     public boolean send(List<Message> parts, SendFlags flags) {
+        Objects.requireNonNull(parts, "parts");
+        Objects.requireNonNull(flags, "flags");
+        RouterSocket router = sendRouter;
+        if (router != null) {
+            try {
+                RoutingId nodeRid = routingIdOrThrow();
+                RoutingId spot = spotRidOrNull();
+                return spot == null
+                    ? router.send(nodeRid, parts, flags)
+                    : router.sendToSpot(nodeRid, spot, parts, flags);
+            } catch (IllegalStateException ex) {
+                throw new SubmitException(SubmitResult.TERMINATED);
+            }
+        }
         if (sendSender == null) {
             throw new SubmitException(SubmitResult.INVALID_STATE);
         }
         try {
-            return sendSender.apply(Objects.requireNonNull(parts, "parts"),
-                Objects.requireNonNull(flags, "flags"));
+            return sendSender.apply(parts, flags);
         } catch (IllegalStateException ex) {
             throw new SubmitException(SubmitResult.TERMINATED);
         }
     }
 
+    void setSendRouter(RouterSocket router) {
+        this.sendRouter = router;
+        this.sendSender = null;
+    }
+
     void setSendSender(BiFunction<List<Message>, SendFlags, Boolean> sendSender) {
         this.sendSender = sendSender;
+        this.sendRouter = null;
     }
 
     boolean hasSendSender() {
-        return sendSender != null;
+        return sendRouter != null || sendSender != null;
     }
 
     @Override

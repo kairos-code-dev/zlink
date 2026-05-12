@@ -505,8 +505,8 @@ final class RouterRequestSupport implements AutoCloseable {
         try {
             int rc;
             while (true) {
-                rc = Native.routerRecvPart(socket.handle(), sourceNodeRidOut,
-                    sourceSpotRidOut, requestSeqOut,
+                rc = routerRecvPart(sourceNodeRidOut, sourceSpotRidOut,
+                    requestSeqOut,
                     InternalAccess.messageNativeHandle(firstPart), hasMoreOut,
                     flags.value());
                 if (rc == 0) break;
@@ -528,20 +528,13 @@ final class RouterRequestSupport implements AutoCloseable {
                 byte[] nodeRidBytes = readRoutingIdBytesOut(sourceNodeRidOut);
                 byte[] spotRidBytes = readRoutingIdBytesOut(sourceSpotRidOut);
                 firstPartConsumed = true;
-	                target.populateRoutedSinglePart(nodeRidBytes, spotRidBytes,
-	                    firstPart, 0L, false, null, lazyCompletionRunnable);
-	                if (nodeRidBytes != null && spotRidBytes == null) {
-	                    target.setSendSender((sendParts, sendFlags) ->
-	                        socket.send(RoutingId.fromTrusted(nodeRidBytes),
-	                            sendParts, sendFlags));
-	                } else if (nodeRidBytes != null) {
-	                    target.setSendSender((sendParts, sendFlags) ->
-	                        socket.sendToSpot(RoutingId.fromTrusted(nodeRidBytes),
-	                            RoutingId.fromTrusted(spotRidBytes), sendParts,
-	                            sendFlags));
-	                }
-	                return true;
-	            }
+                target.populateRoutedSinglePart(nodeRidBytes, spotRidBytes,
+                    firstPart, 0L, false, null, lazyCompletionRunnable);
+                if (nodeRidBytes != null) {
+                    target.setSendRouter(socket);
+                }
+                return true;
+            }
 
             // Cold path (multipart or request-seq): fall back to the legacy
             // allocate-and-adopt implementation so surface semantics stay
@@ -588,8 +581,8 @@ final class RouterRequestSupport implements AutoCloseable {
                 Message next = new Message();
                 boolean nextOk = false;
                 try {
-                    int rc = Native.routerRecvPart(socket.handle(),
-                        sourceNodeRidOut, sourceSpotRidOut, requestSeqOut,
+                    int rc = routerRecvPart(sourceNodeRidOut, sourceSpotRidOut,
+                        requestSeqOut,
                         InternalAccess.messageNativeHandle(next), hasMoreOut,
                         flags.value());
                     if (rc != 0) {
@@ -665,8 +658,8 @@ final class RouterRequestSupport implements AutoCloseable {
         try {
             int rc;
             while (true) {
-                rc = Native.routerRecvPart(socket.handle(), sourceNodeRidOut,
-                    sourceSpotRidOut, requestSeqOut,
+                rc = routerRecvPart(sourceNodeRidOut, sourceSpotRidOut,
+                    requestSeqOut,
                     InternalAccess.messageNativeHandle(firstPart), hasMoreOut,
                     flags.value());
                 if (rc == 0) break;
@@ -711,8 +704,8 @@ final class RouterRequestSupport implements AutoCloseable {
                 Message next = new Message();
                 boolean nextOk = false;
                 try {
-                    int rc2 = Native.routerRecvPart(socket.handle(),
-                        sourceNodeRidOut, sourceSpotRidOut, requestSeqOut,
+                    int rc2 = routerRecvPart(sourceNodeRidOut, sourceSpotRidOut,
+                        requestSeqOut,
                         InternalAccess.messageNativeHandle(next), hasMoreOut,
                         flags.value());
                     if (rc2 != 0) {
@@ -807,6 +800,21 @@ final class RouterRequestSupport implements AutoCloseable {
         throw ZlinkException.fromLastError(apiName);
     }
 
+    private int routerRecvPart(MemorySegment sourceNodeRidOut,
+                               MemorySegment sourceSpotRidOut,
+                               MemorySegment requestSeqOut,
+                               MemorySegment partOut,
+                               MemorySegment hasMoreOut,
+                               int flags) {
+        if ((flags & RecvFlags.DONT_WAIT.value()) != 0) {
+            return Native.routerRecvPartNoWaitCritical(socket.handle(),
+                sourceNodeRidOut, sourceSpotRidOut, requestSeqOut, partOut,
+                hasMoreOut, flags);
+        }
+        return Native.routerRecvPart(socket.handle(), sourceNodeRidOut,
+            sourceSpotRidOut, requestSeqOut, partOut, hasMoreOut, flags);
+    }
+
     private final class RouterReceiveCursor implements ReceivedPartCursor {
         private final Arena arena = Arena.ofConfined();
         private final MemorySegment sourceNodeRidOut = arena.allocate(
@@ -828,8 +836,8 @@ final class RouterRequestSupport implements AutoCloseable {
                 Message next = new Message();
                 boolean success = false;
                 try {
-                    int rc = Native.routerRecvPart(socket.handle(),
-                        sourceNodeRidOut, sourceSpotRidOut, requestSeqOut,
+                    int rc = routerRecvPart(sourceNodeRidOut, sourceSpotRidOut,
+                        requestSeqOut,
                         next.nativeHandle(), hasMoreOut,
                         RecvFlags.DONT_WAIT.value());
                     if (rc == 0) {

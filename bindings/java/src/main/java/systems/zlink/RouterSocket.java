@@ -41,32 +41,27 @@ public final class RouterSocket extends Socket {
         return super.sendNoWaitResult(rid, parts);
     }
     /** Canonical caller-provided storage recv. See doc/spec/bindings/README.md. */
-	    public boolean recv(Received result, RecvFlags flags) {
-	        java.util.Objects.requireNonNull(result, "result");
-	        java.util.Objects.requireNonNull(flags, "flags");
-	        if (flags == RecvFlags.DONT_WAIT) {
-	            boolean ok = routedRequests.recvInto(result, flags);
-	            if (ok) attachSendSender(result);
-	            return ok;
-	        }
-	        Received fresh = routedRequests.recv(flags);
-	        if (fresh == null) return false;
-	        result.adoptFrom(fresh);
-	        attachSendSender(result);
-	        return true;
-	    }
-	    private void attachSendSender(Received result) {
-	        if (result.hasSendSender()) return;
-	        RoutingId nodeRid = result.routingIdOrNull();
-	        if (nodeRid == null) return;
-	        RoutingId spotRid = result.spotRidOrNull();
-	        if (spotRid == null) {
-	            result.setSendSender((parts, flags) -> send(nodeRid, parts, flags));
-	        } else {
-	            result.setSendSender((parts, flags) -> sendToSpot(nodeRid, spotRid,
-	                parts, flags));
-	        }
-	    }
+    public boolean recv(Received result, RecvFlags flags) {
+        java.util.Objects.requireNonNull(result, "result");
+        java.util.Objects.requireNonNull(flags, "flags");
+        if (flags == RecvFlags.DONT_WAIT) {
+            boolean ok = routedRequests.recvInto(result, flags);
+            if (ok) attachSendRouter(result);
+            return ok;
+        }
+        Received fresh = routedRequests.recv(flags);
+        if (fresh == null) return false;
+        result.adoptFrom(fresh);
+        attachSendRouter(result);
+        return true;
+    }
+
+    private void attachSendRouter(Received result) {
+        if (result.hasSendSender()) return;
+        if (result.routingIdOrNull() != null) {
+            result.setSendRouter(this);
+        }
+    }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     public CompletableFuture<List<Message>> request(RoutingId rid, Message part) {
         return request(rid, List.of(part));

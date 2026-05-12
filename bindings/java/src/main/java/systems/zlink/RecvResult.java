@@ -22,11 +22,16 @@ public enum RecvResult {
     }
 
     public static RecvResult fromValue(int value) {
-        for (RecvResult result : values()) {
-            if (result.value == value) {
-                return result;
-            }
-        }
-        throw new IllegalArgumentException("invalid RecvResult value: " + value);
+        return switch (value) {
+            case 0 -> OK;
+            case 201 -> NO_DATA;
+            case 202 -> BUSY;
+            case 203 -> TERMINATED;
+            case 204 -> INVALID_HANDLE;
+            case 205 -> NOT_SUPPORTED;
+            case 206 -> INTERNAL_ERROR;
+            default -> throw new IllegalArgumentException(
+                "invalid RecvResult value: " + value);
+        };
     }
 }

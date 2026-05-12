@@ -661,3 +661,52 @@
   - Java는 ready-only recv로 큰 폭의 개선이 있었지만 RR 전체가 아직 낮다.
   - 다음 후보는 public poller ready cache 이후에도 남는 FFM call 비용과
     `Message.copyOf(byte[])` 송신 수명 비용이다.
+
+### 2026-05-12 Java round 20 — profiler 기반 routed recv/send hot path 축소
+
+- profiler 입력:
+  - .NET RR 1024B client/server는 `dotnet-trace` CPU sample로 확인했다.
+    client는 `SocketReadyPoller.Poll`, `ReceiveRouterParts`,
+    `TrySend`, `PopulateRoutedReceivedInto` 순서가 컸고, server는 poller wait와
+    ROUTER recv가 대부분이었다. `dotnet-counters` 기준 GC pause는 평균
+    `0.096 ms/s`로 작아, .NET은 allocation보다 poll/recv/send boundary가 더
+    큰 병목이다.
+  - Java RR 1024B는 JFR로 확인했다. CPU sample은 FFM downcall stub에 몰렸고,
+    allocation은 `Message`, `NativeMemorySegmentImpl`, `RecvResult[]`,
+    `byte[]`, `RouterRequestSupport` lambda가 상위였다.
+- 변경한 라이브러리 파일:
+  - `bindings/java/src/main/java/systems/zlink/RecvResult.java`
+    - `values()` 순회 대신 `switch`로 native result를 enum에 매핑한다.
+  - `bindings/java/src/main/java/systems/zlink/RouterRequestSupport.java`
+    - `DONT_WAIT` ROUTER recv에서 이미 준비된 critical FFM downcall을 사용한다.
+    - routed single-part recv hot path에서 per-recv send lambda를 만들지 않고
+      `Received`에 router send context를 직접 보관한다.
+  - `bindings/java/src/main/java/systems/zlink/Received.java`
+    - `send(Message, SendFlags)`가 router send context를 알면 `List.of`를 만들지
+      않고 단일 메시지 send 경로를 직접 호출한다.
+  - `bindings/java/src/main/java/systems/zlink/RouterSocket.java`
+    - caller-provided `Received` recv 뒤 send context를 lambda 대신 router context로
+      붙인다.
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew --quiet :compileJava :perf-multi:compileJava`
+  - `cd bindings/java && ./gradlew --quiet :test --tests systems.zlink.contract.SocketContractTest --tests systems.zlink.contract.CallbackSendContractTest --tests systems.zlink.ReceivedContractTest --tests systems.zlink.contract.ReceivedContractTest`
+  - `cd bindings/java && ./gradlew --quiet :perf-multi:installDist`
+  - `bindings/java/perf/run_benchmarks_multi.sh --pattern MULTI_ROUTER_ROUTER --transports tcp --msg-sizes 1024 --clients 100 --duration 15 --reuse-build --results-tag java_rr1024_recv_send_context_20260512`
+  - `bindings/java/perf/run_benchmarks_multi.sh --pattern MULTI_ROUTER_ROUTER --transports tcp --msg-sizes 64,256 --clients 100 --duration 15 --reuse-build --results-tag java_rr_small_recv_send_context_20260512`
+  - `bindings/java/perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_ROUTER --transports tcp --msg-sizes 256,1024 --clients 100 --duration 15 --reuse-build --results-tag java_dr_recv_send_context_20260512`
+- 결과:
+  - compile 및 관련 contract subset 통과.
+  - `:test --tests '*Router*' --tests '*Received*' --tests '*Socket*'`는
+    `SocketSubscriptionContractTest.subscriptionEventRecordShapeMatchesSpec`의
+    기존 shape 기대값 실패로 전체 실패했다. 이번 변경 경로인 Received/Socket
+    subset은 통과했다.
+  - RR 64/256/1024B: `249.857/246.756/244.776` Kops/s.
+  - DR 256/1024B: `316.651/318.112` Kops/s.
+- C 기준 대비:
+  - RR 64/256/1024B ratio `0.589/0.586/0.593`.
+  - DR 256/1024B ratio `0.714/0.720`.
+- 판단:
+  - `Received.send(Message)` hot path allocation 제거와 critical recv downcall은
+    RR 1024B를 `238.164` → `244.776` Kops/s로 올렸다.
+  - 목표에는 아직 못 미친다. Java의 다음 병목은 FFM downcall 자체, `Message`
+    native handle lifecycle, routing id byte[] 생성 비용이다.

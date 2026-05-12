@@ -28,7 +28,10 @@
 
 - C 기준: `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260512_121228_c_multi_echo_recheck_20260512.txt`
 - .NET 최신 결과: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260512_122828_dotnet_multi_echo_poller_tag_20260512.txt`
-- Java 최신 결과: `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_122555_java_multi_echo_ready_only_recv_20260512.txt`
+- Java 최신 결과:
+  - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_125540_java_rr_small_recv_send_context_20260512.txt`
+  - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_125237_java_rr1024_recv_send_context_20260512.txt`
+  - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_125259_java_dr_recv_send_context_20260512.txt`
 
 multi perf 측정 의미는 정책과 C 기준에 맞춘 상태다. .NET/Java multi runner는
 기본 server/client I/O thread를 모두 `4`로 출력하고, 각 size 케이스에서 raw
@@ -74,11 +77,11 @@ wrapper가 없으므로 예외로 두고, C perf는 계속 명시 routing id 기
 
 | Pattern | Size | C Kops/s | Java Kops/s | Ratio | 목표 |
 |---------|------|----------|-------------|-------|------|
-| MULTI_ROUTER_ROUTER | 64B | 423.978 | 241.055 | 0.569 | 0.70 |
-| MULTI_ROUTER_ROUTER | 256B | 421.436 | 239.729 | 0.569 | 0.75 |
-| MULTI_ROUTER_ROUTER | 1024B | 412.499 | 238.164 | 0.577 | 0.77 |
-| MULTI_DEALER_ROUTER | 256B | 443.658 | 323.044 | 0.728 | 0.75 |
-| MULTI_DEALER_ROUTER | 1024B | 441.970 | 313.887 | 0.710 | 0.77 |
+| MULTI_ROUTER_ROUTER | 64B | 423.978 | 249.857 | 0.589 | 0.70 |
+| MULTI_ROUTER_ROUTER | 256B | 421.436 | 246.756 | 0.586 | 0.75 |
+| MULTI_ROUTER_ROUTER | 1024B | 412.499 | 244.776 | 0.593 | 0.77 |
+| MULTI_DEALER_ROUTER | 256B | 443.658 | 316.651 | 0.714 | 0.75 |
+| MULTI_DEALER_ROUTER | 1024B | 441.970 | 318.112 | 0.720 | 0.77 |
 
 Java `MULTI_DEALER_ROUTER` 64B는 ready socket만 recv하도록 C 기준과 맞춘 뒤
 `0.723`으로 목표 `0.70`을 넘었다. 나머지 echo 조합은 아직 미달이다.
@@ -90,9 +93,10 @@ Java `MULTI_DEALER_ROUTER` 64B는 ready socket만 recv하도록 C 기준과 맞�
    `Recv(DontWait)`를 호출하지 않게 했다. 그래도 RR/DR 모두 목표와 큰 차이가 남는다.
    다음 후보는 public `Poller.WaitAll` 결과 처리 비용과 `Message.WrapBytes` send
    수명 비용을 더 줄이는 것이다.
-2. `Java`: client 종료 시 socket보다 context를 먼저 닫던 `MULTI_DEALER_ROUTER`
-   수명 순서 버그를 고쳤고, echo client가 POLLIN ready socket만 drain하도록 C 기준과
-   맞췄다. 이 변경으로 DR 64B는 목표를 넘었지만 RR 전체와 DR 256B 이상은 남았다.
+2. `Java`: profiler에서 `RecvResult.values()` 배열 생성, ROUTER `DONT_WAIT`
+   recv의 일반 FFM downcall, `Received.send(Message)`의 `List.of`와 per-recv lambda
+   비용을 확인했다. 이를 줄인 뒤 RR 1024B는 `238.164` → `244.776` Kops/s로
+   올랐지만 RR 전체와 DR 256B 이상은 아직 남았다.
 3. 두 언어 모두 다음 병목은 client poller loop와 public message send/recv 경계다.
    perf 전용 native 우회가 아니라 binding public API 내부 비용을 줄이는 방향으로
    이어 간다.

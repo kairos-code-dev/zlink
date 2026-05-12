@@ -121,6 +121,7 @@ context의 join 상태 (예: `IsJoined`, `SpotRid` 노출) 로 확인한다.
 | JoinSpot | target spot에 join 요청 전송, accept/reject 결과를 application에 반환 |
 | leave | (자동) user Spot → Entry Spot 이동, spot 쪽에 leave 통보 |
 | destroy | (자동) actor 정리, location writer에 unbind 통보, `OnDisconnectedAsync` 호출 |
+| session-bound actor 등록 | **session-bound 경로에서는 actor 생성과 session bind를 `CreateActorAsync(...)` 한 번에 atomic하게 묶는다.** unbound standalone actor는 별도 actor node 측 등록 표면(예: actor factory + actor node side `CreateActor` helper)을 통한다. session callback 안에서 unbound actor를 만드는 표면은 두지 않는다. |
 
 application은 위 시점에 다음만 책임진다: factory 코드, actor 클래스의
 `Configure()` / handler 코드, location resolver / writer 구현, 그리고 actor 안에서
@@ -219,3 +220,6 @@ binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다�
   인터페이스만 제공한다.
 - server → client push는 반드시 session proxy를 통한다. actor가 stream socket을
   직접 들고 있지 않다.
+- session-bound actor의 생성 + bind는 `CreateActorAsync(...)` (또는
+  `CreateRemoteActorAsync(...)`)가 atomic하게 묶는다. unbound standalone actor 생성은
+  session 표면이 아니라 actor node 측 등록 표면을 통해 따로 다룬다.

@@ -1,6 +1,6 @@
 [스펙 목차](../../README.ko.md)
 
-[초안 묶음](./README.ko.md) | [Session Gateway 보관본](./session-gateway.ko.md) | [framework API](./framework-api.ko.md)
+[초안 묶음](./README.ko.md) | [Actor 모델](./actor-model.ko.md) | [Session Gateway 보관본](./session-gateway.ko.md) | [framework API](./framework-api.ko.md)
 
 # Draft -- Session Actor Dispatch Usability
 
@@ -9,6 +9,11 @@
 > session actor dispatch 모델로 정리하기 위한 개선 방향을 정리한다.
 > API 이름, handler 모양, error 형식은 구현과 테스트가 확정되기 전까지 바뀔 수
 > 있다.
+>
+> actor 자체의 라이프사이클 (Entry Spot 머무름, session bind, user Spot join 등)
+> 과 framework 자동 처리 vs application 로직 분담은
+> [actor-model.ko.md](./actor-model.ko.md)에서 별도로 정의한다. 본 문서는 그 actor
+> 모델의 **session actor dispatch use case**에 한정해 사용성 결정을 다룬다.
 
 ## 1. 목적
 
@@ -967,7 +972,11 @@ handler를 등록한다. `IZLinkActorRef`는 session이 local 또는 remote acto
 
 ### 10.2.1 actor create lifecycle
 
-`CreateActorAsync(...)`와 `CreateRemoteActorAsync(...)`는 같은 lifecycle 규칙을 따른다.
+`CreateActorAsync(...)`와 `CreateRemoteActorAsync(...)`는 **actor 생성과 session
+bind를 한 호출 안에서 atomic하게 묶는** helper다. 즉 session-bound actor 경로에서
+session callback이 actor를 만드는 표면은 이 둘 뿐이다. unbound standalone actor는
+이 표면으로 만들지 않으며, actor node 측 별도 등록 표면(예: actor node가 직접 부르는
+`CreateActor` 계열 helper)으로 다룬다. 두 helper는 같은 lifecycle 규칙을 따른다.
 
 1. framework가 현재 session에 대한 새 `BindingToken`을 만든다.
 2. target actor runtime에 actor create 요청을 보낸다.

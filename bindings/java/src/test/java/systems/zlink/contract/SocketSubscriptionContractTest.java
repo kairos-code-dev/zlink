@@ -133,10 +133,9 @@ public class SocketSubscriptionContractTest {
     public void subscriptionEventRecordShapeMatchesSpec() {
         RecordComponent[] components = SubscriptionEvent.class.getRecordComponents();
         assertNotNull(components);
-        assertEquals(4, components.length);
+        assertEquals(3, components.length);
         assertEquals("routingId", components[0].getName());
-        assertEquals("channelName", components[1].getName());
-        assertEquals("topic", components[2].getName());
-        assertEquals("subscribed", components[3].getName());
+        assertEquals("topic", components[1].getName());
+        assertEquals("subscribed", components[2].getName());
     }
 }

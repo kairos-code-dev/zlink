@@ -791,10 +791,18 @@ class Received:
     parts: tuple[Message, ...]
 
     def is_single_part(self) -> bool: ...
-    def first_part(self) -> Message: ...              # Raises: RecvError
-    def single_part_or_throw(self) -> Message: ...    # Raises: RecvError
+	    def first_part(self) -> Message: ...              # Raises: RecvError
+	    def single_part_or_throw(self) -> Message: ...    # Raises: RecvError
 
-    # reply requires request_seq; None or invalid reply context raises
+	    # send sends a regular routed message to the sender of this Received.
+	    def send(
+	        self,
+	        parts: Message | bytes | list[Message],
+	        *,
+	        flags: int = 0,
+	    ) -> bool: ...                                    # Raises: SubmitError
+
+	    # reply requires request_seq; None or invalid reply context raises
     # SubmitError.
     def reply(
         self,

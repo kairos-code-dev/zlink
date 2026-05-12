@@ -890,6 +890,7 @@ class ReceivedMultipart:
         *,
         spot_rid=None,
         reply_sender=None,
+        send_sender=None,
     ):
         # Caller-provided storage path: ReceivedMultipart() / Received()
         # constructs an empty placeholder for reuse across recv_into calls.
@@ -902,6 +903,7 @@ class ReceivedMultipart:
             self.spot_rid = None
             self.request_seq = None
             self._reply_sender = None
+            self._send_sender = None
             return
         self._owner = owner
         self.parts = tuple(
@@ -912,6 +914,7 @@ class ReceivedMultipart:
         self.spot_rid = spot_rid
         self.request_seq = request_seq
         self._reply_sender = reply_sender
+        self._send_sender = send_sender
 
     def _adopt_from(self, source):
         """Replace this Received's internal state with the contents of
@@ -930,12 +933,14 @@ class ReceivedMultipart:
         self.spot_rid = source.spot_rid
         self.request_seq = source.request_seq
         self._reply_sender = source._reply_sender
+        self._send_sender = source._send_sender
         source._owner = None
         source.parts = ()
         source.routing_id = None
         source.spot_rid = None
         source.request_seq = None
         source._reply_sender = None
+        source._send_sender = None
 
     def __iter__(self):
         return iter(self.parts)
@@ -1031,6 +1036,11 @@ class TopicMessage:
 
 
 class Received(ReceivedMultipart):
+    def send(self, parts, *, flags=0):
+        if self._send_sender is None:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        return self._send_sender(parts, flags=int(flags))
+
     def reply(self, parts, *, flags=0):
         if self.request_seq is None or self._reply_sender is None:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)

@@ -1545,12 +1545,16 @@ internal sealed class SocketKernel : IDisposable
     {
         if (requestSeq == 0)
         {
+            ReceivedSendHandler? sendHandler = CreateRoutedSendHandler(routingId,
+                spotRid);
+            ReceivedSendSingleHandler? sendSingleHandler =
+                CreateRoutedSendSingleHandler(routingId, spotRid);
             if (singlePart != null)
                 result.PopulateRoutedSinglePart(singlePart, routingId, spotRid,
-                    null, null);
+                    null, null, sendHandler, sendSingleHandler);
             else
                 result.PopulateRoutedMultipart(parts!, routingId, spotRid,
-                    null, null);
+                    null, null, sendHandler, sendSingleHandler);
             return;
         }
 
@@ -1581,10 +1585,120 @@ internal sealed class SocketKernel : IDisposable
 
         if (singlePart != null)
             result.PopulateRoutedSinglePart(singlePart, routingId, spotRid,
-                requestSeq, replyHandler);
+                requestSeq, replyHandler, CreateRoutedSendHandler(routingId, spotRid),
+                CreateRoutedSendSingleHandler(routingId, spotRid));
         else
             result.PopulateRoutedMultipart(parts!, routingId, spotRid,
-                requestSeq, replyHandler);
+                requestSeq, replyHandler, CreateRoutedSendHandler(routingId, spotRid),
+                CreateRoutedSendSingleHandler(routingId, spotRid));
+    }
+
+    private ReceivedSendHandler? CreateRoutedSendHandler(
+        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid)
+    {
+        RoutingId? target = routingId.ToRoutingId();
+        if (target == null)
+            return null;
+        RoutingId? targetSpot = spotRid.ToRoutingId();
+        if (targetSpot.HasValue)
+        {
+            RoutingId nodeRid = target.Value;
+            RoutingId spotTarget = targetSpot.Value;
+            return (sendParts, sendFlags) => SendToSpotCore(nodeRid, spotTarget,
+                sendParts, sendFlags);
+        }
+        return (sendParts, sendFlags) =>
+        {
+            if ((sendFlags & SendFlags.DontWait) != 0)
+            {
+                return SendNoWaitResult(target.Value, sendParts) == SendResult.Sent;
+            }
+            Send(target.Value, sendParts, sendFlags);
+            return true;
+        };
+    }
+
+    private unsafe ReceivedSendSingleHandler? CreateRoutedSendSingleHandler(
+        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid)
+    {
+        if (!routingId.HasValue)
+            return null;
+        RoutingId? targetSpot = spotRid.ToRoutingId();
+        if (targetSpot.HasValue)
+        {
+            RoutingId? targetNode = routingId.ToRoutingId();
+            if (!targetNode.HasValue)
+                return null;
+            RoutingId nodeRid = targetNode.Value;
+            RoutingId spotTarget = targetSpot.Value;
+            return (sendPart, sendFlags) => SendToSpotCore(nodeRid, spotTarget,
+                new[] { sendPart }, sendFlags);
+        }
+
+        RoutingId? target = routingId.ToRoutingId();
+        if (!target.HasValue)
+            return null;
+        RoutingId targetRid = target.Value;
+        return (sendPart, sendFlags) =>
+        {
+            if ((sendFlags & SendFlags.DontWait) != 0)
+            {
+                return SendRoutedMessageResultUnchecked(targetRid, sendPart,
+                    (int)sendFlags)
+                    == SendResult.Sent;
+            }
+            SendRoutedMessageUnchecked(targetRid, sendPart, sendFlags);
+            return true;
+        };
+    }
+
+    private unsafe bool SendToSpotCore(RoutingId destNodeRid,
+        RoutingId destSpotRid, IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
+    {
+        byte[] nodeRidBytes = RoutingIdCodec.FromRoutingId(destNodeRid);
+        byte[] spotRidBytes = RoutingIdCodec.FromRoutingId(destSpotRid);
+        ZlinkRoutingId nodeRid = NativeHelpers.WriteRoutingId(nodeRidBytes);
+        ZlinkRoutingId spotRid = NativeHelpers.WriteRoutingId(spotRidBytes);
+        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        try
+        {
+            for (int i = 0; i < cloned.Length; i++)
+            {
+                ZlinkMsg nativePart = default;
+                cloned[i].MoveTo(ref nativePart);
+                bool submitted = false;
+                try
+                {
+                    int rc = NativeMethods.zlink_router_send_spot_part(Handle,
+                        ref nodeRid, ref spotRid, ref nativePart, (int)flags,
+                        i + 1 < cloned.Length
+                            ? NativeMethods.ZlinkPartFlag.More
+                            : NativeMethods.ZlinkPartFlag.Final);
+                    submitted = true;
+                    if (rc != 0)
+                        throw ZlinkException.CreateSubmitException(
+                            NativeMethods.zlink_errno());
+                }
+                finally
+                {
+                    if (!submitted)
+                        NativeMethods.zlink_msg_close(ref nativePart);
+                }
+            }
+            return true;
+        }
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
+        {
+            return false;
+        }
+        catch
+        {
+            RequestReplySupport.DisposeParts(cloned);
+            throw;
+        }
     }
 
     private unsafe byte[][] ReceiveRawFramesCore(int flags)
@@ -1657,8 +1771,13 @@ internal sealed class SocketKernel : IDisposable
     {
         if (requestSeq == 0)
         {
-            return Received.Create(routingIdBytes, parts,
+            Received received = Received.Create(routingIdBytes, parts,
                 adoptRoutingBytes: true, spotRidBytes: spotRidBytes);
+            RoutingIdSnapshot routingId = RoutingIdSnapshot.FromBytes(routingIdBytes);
+            RoutingIdSnapshot spotRid = RoutingIdSnapshot.FromBytes(spotRidBytes);
+            received.SetSendHandler(CreateRoutedSendHandler(routingId, spotRid),
+                CreateRoutedSendSingleHandler(routingId, spotRid));
+            return received;
         }
 
         RoutingId? replyRoutingId = routingIdBytes == null
@@ -1667,7 +1786,7 @@ internal sealed class SocketKernel : IDisposable
         RoutingId? replySpotRid = spotRidBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(spotRidBytes);
-        return Received.Create(replyRoutingId, parts, requestSeq,
+        Received request = Received.Create(replyRoutingId, parts, requestSeq,
             replySpotRid, replyHandler: (replyParts, sendFlags) =>
             {
                 if (replyRoutingId is null)
@@ -1683,6 +1802,14 @@ internal sealed class SocketKernel : IDisposable
                 SendReplyCore(replyRoutingId.Value, replySpotRid, requestSeq,
                     copied, sendFlags);
             });
+        RoutingIdSnapshot requestRoutingId =
+            RoutingIdSnapshot.FromBytes(routingIdBytes);
+        RoutingIdSnapshot requestSpotRid =
+            RoutingIdSnapshot.FromBytes(spotRidBytes);
+        request.SetSendHandler(CreateRoutedSendHandler(requestRoutingId,
+                requestSpotRid),
+            CreateRoutedSendSingleHandler(requestRoutingId, requestSpotRid));
+        return request;
     }
 
     private Received CreateRoutedReceived(Message singlePart,
@@ -1690,8 +1817,13 @@ internal sealed class SocketKernel : IDisposable
     {
         if (requestSeq == 0)
         {
-            return Received.Create(routingIdBytes, singlePart,
+            Received received = Received.Create(routingIdBytes, singlePart,
                 adoptRoutingBytes: true, spotRidBytes: spotRidBytes);
+            RoutingIdSnapshot routingId = RoutingIdSnapshot.FromBytes(routingIdBytes);
+            RoutingIdSnapshot spotRid = RoutingIdSnapshot.FromBytes(spotRidBytes);
+            received.SetSendHandler(CreateRoutedSendHandler(routingId, spotRid),
+                CreateRoutedSendSingleHandler(routingId, spotRid));
+            return received;
         }
 
         RoutingId? replyRoutingId = routingIdBytes == null
@@ -1700,7 +1832,7 @@ internal sealed class SocketKernel : IDisposable
         RoutingId? replySpotRid = spotRidBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(spotRidBytes);
-        return Received.Create(replyRoutingId, singlePart, requestSeq,
+        Received request = Received.Create(replyRoutingId, singlePart, requestSeq,
             replySpotRid, replyHandler: (replyParts, sendFlags) =>
             {
                 if (replyRoutingId is null)
@@ -1716,6 +1848,14 @@ internal sealed class SocketKernel : IDisposable
                 SendReplyCore(replyRoutingId.Value, replySpotRid, requestSeq,
                     copied, sendFlags);
             });
+        RoutingIdSnapshot requestRoutingId =
+            RoutingIdSnapshot.FromBytes(routingIdBytes);
+        RoutingIdSnapshot requestSpotRid =
+            RoutingIdSnapshot.FromBytes(spotRidBytes);
+        request.SetSendHandler(CreateRoutedSendHandler(requestRoutingId,
+                requestSpotRid),
+            CreateRoutedSendSingleHandler(requestRoutingId, requestSpotRid));
+        return request;
     }
 
     private Received CreateRoutedReceived(MultipartMessageCollection parts,
@@ -1762,8 +1902,12 @@ internal sealed class SocketKernel : IDisposable
                     throw ZlinkException.CreateRecvException(
                         NativeMethods.zlink_errno());
                 bool initialized = true;
-                int rc = NativeMethods.zlink_recv_part(Handle,
-                    out IntPtr sourceRoutingId, ref part, out int hasMore, flags);
+                int rc = (flags & DontWaitFlag) != 0
+                    ? NativeMethods.zlink_recv_part_nowait(Handle,
+                        out IntPtr sourceRoutingId, ref part, out int hasMore,
+                        flags)
+                    : NativeMethods.zlink_recv_part(Handle,
+                        out sourceRoutingId, ref part, out hasMore, flags);
                 if (rc != 0)
                 {
                     if (initialized)
@@ -2888,8 +3032,11 @@ internal sealed class SocketKernel : IDisposable
                 payload.CopyTo(new Span<byte>((void*)dataPtr, payload.Length));
             }
 
-            int rc = NativeMethods.zlink_send_part(Handle, ref nativePart, flags,
-                NativeMethods.ZlinkPartFlag.Final);
+            int rc = (flags & DontWaitFlag) != 0
+                ? NativeMethods.zlink_send_part_nowait(Handle, ref nativePart,
+                    flags, NativeMethods.ZlinkPartFlag.Final)
+                : NativeMethods.zlink_send_part(Handle, ref nativePart, flags,
+                    NativeMethods.ZlinkPartFlag.Final);
             initialized = false;
             if (rc != 0)
                 throw ZlinkException.CreateSubmitException(
@@ -3582,8 +3729,12 @@ internal sealed class SocketKernel : IDisposable
             ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
 
-            int rc = NativeMethods.zlink_send_part_rid(Handle, ref routingId,
-                ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
+            int rc = (flags & DontWaitFlag) != 0
+                ? NativeMethods.zlink_send_part_rid_nowait(Handle,
+                    ref routingId, ref nativePart, flags,
+                    NativeMethods.ZlinkPartFlag.Final)
+                : NativeMethods.zlink_send_part_rid(Handle, ref routingId,
+                    ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
             initialized = false;
             if (rc != 0)
                 throw ZlinkException.CreateSubmitException(
@@ -3611,8 +3762,12 @@ internal sealed class SocketKernel : IDisposable
             ZlinkException.ThrowSubmitIfError(initRc);
             initialized = true;
 
-            int rc = NativeMethods.zlink_send_part_rid(Handle, ref routingId,
-                ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
+            int rc = (flags & DontWaitFlag) != 0
+                ? NativeMethods.zlink_send_part_rid_nowait(Handle,
+                    ref routingId, ref nativePart, flags,
+                    NativeMethods.ZlinkPartFlag.Final)
+                : NativeMethods.zlink_send_part_rid(Handle, ref routingId,
+                    ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
             initialized = false;
             if (rc == 0)
                 return SendResult.Sent;

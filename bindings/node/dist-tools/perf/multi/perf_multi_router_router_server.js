@@ -58,7 +58,7 @@ async function main() {
                             received.close();
                             continue;
                         }
-                        if (pending.length === 0 && trySocketSend(router, received.routingId, received.parts)) {
+                        if (pending.length === 0 && received.send(received.parts, zlink.SendFlags.DontWait)) {
                             received.close();
                             continue;
                         }

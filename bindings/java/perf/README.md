@@ -81,6 +81,13 @@ policy-supported modes and save the measured output in the documented format.
 - Multi: recv-only receive path
 - Multi STREAM uses the shared core stream client path required by policy.
 - Both suites print the same report body to stdout and to the saved report file.
+- Multi uses server/client context I/O threads `4` by default, matching the C
+  multi policy. Override only with the documented `--io-threads`,
+  `--server-io-threads`, or `--client-io-threads` options.
+- Raw socket multi patterns set each size case as the socket
+  `AUTO_HWM_MSG_UNIT_BYTES` value and then call context auto-HWM recalculation
+  before active measurement. The value is the HWM planning unit, not a payload
+  size limit.
 
 ## Smoke
 

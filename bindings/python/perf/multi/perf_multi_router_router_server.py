@@ -51,15 +51,14 @@ def main(argv=None):
                         received = recv_nonblocking(router)
                         if received is None:
                             break
-                        with received:
-                            payload = received.to_bytes_list()[0]
-                            routing_id = bytes(received.routing_id)
-                        if pending or not send_nonblocking(
-                            router,
-                            payload,
-                            routing_id=routing_id,
-                        ):
-                            pending.append((routing_id, payload))
+	                        with received:
+	                            payload = received.to_bytes_list()[0]
+	                            routing_id = bytes(received.routing_id)
+	                            sent = False if pending else received.send(
+	                                payload, flags=zlink.SendFlags.DONT_WAIT
+	                            )
+	                        if not sent:
+	                            pending.append((routing_id, payload))
                     safe_poll(poller, -1)
 
 

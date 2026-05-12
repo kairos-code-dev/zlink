@@ -48,12 +48,7 @@ public final class DealerSocket extends Socket {
     public boolean recv(Received result, RecvFlags flags) {
         java.util.Objects.requireNonNull(result, "result");
         java.util.Objects.requireNonNull(flags, "flags");
-        Received fresh = super.recv(ReceiveFlag.fromValue(flags.value()));
-        if (fresh == null) {
-            return false;
-        }
-        result.adoptFrom(fresh);
-        return true;
+        return super.recvInto(result, ReceiveFlag.fromValue(flags.value()));
     }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
     public CompletableFuture<List<Message>> request(Message part) { return request(List.of(part)); }

@@ -528,10 +528,20 @@ final class RouterRequestSupport implements AutoCloseable {
                 byte[] nodeRidBytes = readRoutingIdBytesOut(sourceNodeRidOut);
                 byte[] spotRidBytes = readRoutingIdBytesOut(sourceSpotRidOut);
                 firstPartConsumed = true;
-                target.populateRoutedSinglePart(nodeRidBytes, spotRidBytes,
-                    firstPart, 0L, false, null, lazyCompletionRunnable);
-                return true;
-            }
+	                target.populateRoutedSinglePart(nodeRidBytes, spotRidBytes,
+	                    firstPart, 0L, false, null, lazyCompletionRunnable);
+	                if (nodeRidBytes != null && spotRidBytes == null) {
+	                    target.setSendSender((sendParts, sendFlags) ->
+	                        socket.send(RoutingId.fromTrusted(nodeRidBytes),
+	                            sendParts, sendFlags));
+	                } else if (nodeRidBytes != null) {
+	                    target.setSendSender((sendParts, sendFlags) ->
+	                        socket.sendToSpot(RoutingId.fromTrusted(nodeRidBytes),
+	                            RoutingId.fromTrusted(spotRidBytes), sendParts,
+	                            sendFlags));
+	                }
+	                return true;
+	            }
 
             // Cold path (multipart or request-seq): fall back to the legacy
             // allocate-and-adopt implementation so surface semantics stay

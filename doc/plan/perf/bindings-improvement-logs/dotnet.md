@@ -405,3 +405,160 @@
   - `MULTI_ROUTER_ROUTER`: 64 `225925` (`0.521`), 256 `224852` (`0.523`), 1024 `225023` (`0.534`)
 - 분석:
   - public overload 가 있던 round-9 측정 (DR `~0.60`, RR `~0.53`) 과 비교해 측정 변동 폭 (±3%) 안에 위치. 따라서 round-9 의 perf 개선은 사실상 `_nowait` dispatch fix 한 가지에서 왔고 새 public overload 는 perf 가산점 없이 surface 만 늘렸다는 게 확인됐다.
+
+### 2026-05-12 .NET round 11 — 정책값 표시 고정 + RoutingId inline direct cache
+
+- 변경한 정책/문서 파일:
+  - `doc/perf/PERF_POLICY.md`: multi 기본 server/client I/O thread는 모두 `4`이며,
+    raw socket multi는 size별 payload size를 auto-HWM message unit으로 설정한 뒤
+    context auto-HWM을 재계산해야 한다고 명시.
+  - `doc/perf/PERF_MULTI_TEST_POLICY.md`: 위 규칙을 multi 전용 정책에 같은 의미로
+    고정. 이 값은 payload 최대 크기 제한이 아니라 HWM 예산 계획 단위임을 설명.
+  - `bindings/dotnet/perf/README.md`: .NET multi의 `PERF_IO_THREADS=4`,
+    size별 msg unit, auto-HWM 재계산 규칙 추가.
+- 변경한 runner 파일:
+  - `bindings/dotnet/perf/multi/run_benchmarks.sh`: Effective Options에
+    `server_io_threads`, `client_io_threads`, `hwm`, `send_hwm`, `recv_hwm`를
+    명확히 출력하도록 정리.
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/RoutingId.cs`: 16B 이하 routing id에 thread-local
+    inline direct cache를 추가. cache hit 시 dictionary/list 탐색 전에
+    size/lo/hi/hash로 빠르게 `RoutingId`를 찾는다.
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiRouterRouterServer.cs`
+    및 `PerfMultiDealerRouterServer.cs`: hot path에서 `RoutingId` nullable property를
+    한 번만 읽도록 정리. public API 우회 없음.
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release`
+  - `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release`
+  - `ZLINK_LIBRARY_PATH=/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.6.0.0 dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~test_pair_tcp|FullyQualifiedName~test_router_multiple_dealers|FullyQualifiedName~test_pubsub|FullyQualifiedName~test_message|FullyQualifiedName~test_socket_surface'`
+  - `bindings/dotnet/perf/multi/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 1 --results-tag dotnet_multi_final_after_effective_options`
+- 결과:
+  - raw socket/message subset 48개 통과.
+  - latest report: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260512_073918_dotnet_multi_final_after_effective_options.txt`
+  - Effective Options에 multi `server_io_threads=4`, `client_io_threads=4`,
+    `hwm=auto-hwm`, `send_hwm=auto-hwm`, `recv_hwm=auto-hwm` 출력 확인.
+  - latest throughput: RR 64 `218.829`, 256 `219.901`, 1024 `213.948`
+    Kops/s. DR 64 `263.200`, 256 `258.584`, 1024 `258.030` Kops/s.
+- 목표 미달:
+  - C 기준 `perf_c_multi_linux_20260512_071252_c_multi_current_dotnet_java_check.txt`
+    대비 RR 256B ratio `0.782`로 .NET 256B 목표 `0.80`에 소폭 미달.
+  - DR 64/256/1024B ratio는 `0.586/0.573/0.596`으로 .NET 목표
+    `0.75/0.80/0.82`에 미달.
+- 다음 판단:
+  - 측정 의미는 C와 맞다. multi thread 수와 auto-HWM size 단위가 문서, runner
+    출력, 실행 값에서 일치한다.
+  - 남은 큰 손실은 `MULTI_DEALER_ROUTER`이다. 다음 작업은 public surface를 늘리지
+    않고 `RoutingId` 캐시 hit 경로, `Message` wrapper 수명, nowait P/Invoke 전환
+    수를 더 줄일 수 있는지 확인한다.
+
+### 2026-05-12 .NET round 12 — non-routed DONT_WAIT recv nowait P/Invoke
+
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/Native/NativeMethods.Socket.cs`:
+    `zlink_recv_part_nowait` P/Invoke 선언 추가. 실제 entrypoint는
+    `zlink_recv_part`이며, `DONT_WAIT` 호출에 한해 `[SuppressGCTransition]`을 적용한다.
+  - `bindings/dotnet/src/Zlink/Sockets/Internal/SocketKernel.cs`:
+    `ReceiveBasicParts`가 `DontWaitFlag` 설정 시 nowait P/Invoke를 사용하도록 변경.
+- 변경한 perf 파일:
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiRouterRouterServer.cs`
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiDealerRouterServer.cs`
+  - reusable `Received` server buffer를 `using var`로 묶어 stop token으로 빠져나갈 때도
+    마지막 수신 메시지가 정리되게 했다.
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release --nologo`
+  - `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release --nologo`
+  - `ZLINK_LIBRARY_PATH=/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.6.0.0 dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~test_pair_tcp|FullyQualifiedName~test_router_multiple_dealers|FullyQualifiedName~test_pubsub|FullyQualifiedName~test_message|FullyQualifiedName~test_socket_surface' --nologo`
+  - `bindings/dotnet/perf/multi/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 1 --results-tag dotnet_multi_nowait_recv_final`
+- 결과:
+  - raw socket/message subset 48개 통과.
+  - latest report: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260512_075327_dotnet_multi_nowait_recv_final.txt`
+  - RR 64/256/1024B: `216.541/218.182/218.406` Kops/s.
+  - DR 64/256/1024B: `266.710/262.427/259.028` Kops/s.
+  - DR 단독 측정(`dotnet_multi_dealer_recv_nowait`)에서는 DR 64/256/1024B가
+    `268.494/269.066/263.068` Kops/s로 round 11 대비 256B 중심 개선을 확인했다.
+- 목표 미달:
+  - C 기준 대비 latest full run RR 256B ratio `0.776`으로 .NET 256B 목표
+    `0.80`에 소폭 미달.
+  - DR 64/256/1024B ratio `0.594/0.582/0.598`로 .NET 목표
+    `0.75/0.80/0.82`에 미달.
+- 다음 판단:
+  - non-routed recv P/Invoke safepoint 비용은 줄였지만, 남은 큰 gap은 routed echo
+    server의 `RoutingId` materialization과 routed send native call 쪽이다.
+
+### 2026-05-12 .NET round 13 — borrowed send nowait + borrowed hint 축소
+
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/Native/NativeMethods.Socket.cs`:
+    `zlink_send_part`와 `zlink_send_part_rid`의 `DONT_WAIT` 전용 P/Invoke 선언에
+    `[SuppressGCTransition]`을 적용했다.
+  - `bindings/dotnet/src/Zlink/Sockets/Internal/SocketKernel.cs`:
+    borrowed single-part send 경로가 `DONT_WAIT`일 때 nowait P/Invoke를 사용하도록
+    했다. routed/non-routed 모두 같은 방식이다.
+  - `bindings/dotnet/src/Zlink/Message.cs`:
+    borrowed send submit 성공 뒤에는 native free callback이 pinned byte[] handle만
+    해제하도록 하여 Message wrapper를 in-flight 동안 붙잡지 않게 했다. public
+    `Message` 객체 풀링은 Dispose 뒤 참조가 다시 살아나는 위험이 있어 적용하지
+    않았다.
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release --nologo`
+  - `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release --nologo`
+  - `ZLINK_LIBRARY_PATH=/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.6.0.0 dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~test_pair_tcp|FullyQualifiedName~test_router_multiple_dealers|FullyQualifiedName~test_pubsub|FullyQualifiedName~test_message|FullyQualifiedName~test_socket_surface' --nologo`
+  - `bindings/dotnet/perf/multi/run_benchmarks.sh --reuse-build --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 3 --results-tag dotnet_multi_current_no_wrap_pool_3run`
+- 결과:
+  - `Zlink` 및 multi perf project build 통과. 전체 solution build는 현재 Spot sample/test
+    API 불일치가 남아 실패하므로 이번 perf 변경 검증에서는 제외했다.
+  - raw socket/message subset 48개 통과.
+  - latest report: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260512_082822_dotnet_multi_current_no_wrap_pool_3run.txt`
+  - latest aggregated DR 64/256/1024B: `267.089/263.614/262.203` Kops/s.
+  - latest aggregated RR 64/256/1024B: `220.157/214.300/212.202` Kops/s.
+- 목표 미달:
+  - C 기준 `perf_c_multi_linux_20260512_071252_c_multi_current_dotnet_java_check.txt`
+    대비 DR 64/256/1024B ratio `0.594/0.584/0.606`로 .NET 목표
+    `0.75/0.80/0.82`에 미달.
+  - RR 256B ratio `0.762`로 .NET 256B 목표 `0.80`에 미달.
+- 다음 판단:
+  - borrowed send의 GC transition과 Message wrapper lifetime 비용은 줄였지만,
+    throughput 개선은 측정 변동폭 안에 있다.
+  - DR의 큰 gap은 여전히 public routed send/recv surface에서 `RoutingId`와
+    `Message` ownership을 안전하게 유지하기 위해 필요한 관리 비용, 그리고 native
+    poll/send/recv 왕복 비용이 합쳐진 영역이다. perf 전용 public overload는 round 9
+    revert에서 이미 금지 사례로 확인했으므로 다시 추가하지 않는다.
+
+### 2026-05-12 .NET round 14 — Received.Send routed echo surface
+
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/Received.cs`: `Received.Send(...)` public API 추가.
+  - `bindings/dotnet/src/Zlink/Sockets/Internal/SocketKernel.cs`: ROUTER 수신 결과에
+    원래 송신 경로로 보내는 send context를 주입. SPOT source rid가 있는 경우
+    `zlink_router_send_spot_part` 경로를 사용한다.
+  - `bindings/dotnet/src/Zlink/Service/Spot.cs`: SPOT routed 수신 결과에
+    `SendToSpot` 기반 send context를 주입.
+- 변경한 sample/perf 파일:
+  - `bindings/dotnet/samples/DealerRouterRecv/Program.cs`
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiDealerRouterServer.cs`
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiRouterRouterServer.cs`
+- 의미:
+  - routed echo에서 `RoutingId`를 사용자가 다시 꺼내 조합하는 대신, `Received` 내부의
+    receive context가 알고 있는 원래 송신 경로로 보낸다. 이는 perf 전용 API가 아니라
+    사용자 코드에서 필요한 의미 API다.
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release --nologo`
+  - `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release --nologo`
+  - `dotnet build bindings/dotnet/samples/DealerRouterRecv/DealerRouterRecv.csproj -c Release --nologo`
+  - `bindings/dotnet/perf/multi/run_benchmarks.sh --reuse-build --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 1 --results-tag dotnet_multi_received_send_cached_rid_confirm`
+- 결과:
+  - latest report: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260512_113041_dotnet_multi_received_send_cached_rid_confirm.txt`
+  - DR 64/256/1024B: `259.362/262.219/257.595` Kops/s.
+  - RR 64/256/1024B: `198.943/201.816/200.742` Kops/s.
+  - `Received.Send(Message)` 초안은 단일 message에서도 배열과 새 routed send 경로를 타서
+    회귀했다. 이후 단일 part 전용 send context를 추가해 배열 할당을 제거했고, routing id는
+    기존 `RoutingId` native cache 경로를 사용하도록 조정했다.
+- 목표 미달:
+  - C 기준 `perf_c_multi_linux_20260512_071252_c_multi_current_dotnet_java_check.txt`
+    대비 DR 64/256/1024B ratio `0.577/0.581/0.595`로 .NET 목표
+    `0.75/0.80/0.82`에 미달.
+  - RR 64/256B ratio `0.717/0.718`로 .NET 목표 `0.75/0.80`에 미달.
+- 다음 판단:
+  - API 의미 반영은 완료됐다. 남은 성능 작업은 `Received.Send` delegate 경유 비용,
+    `Message` wrapper 수명, nonblocking routed send 결과 변환 비용을 더 줄이는 쪽으로
+    이어 간다.

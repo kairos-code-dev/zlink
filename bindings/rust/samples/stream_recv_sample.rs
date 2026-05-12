@@ -1,7 +1,7 @@
 //! STREAM direct recv sample – demonstrates STREAM socket with direct recv.
 //! The STREAM socket binds as a server; a raw TCP client connects inward.
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::TcpStream;
 
 use zlink::{Context, SocketMonitor};
@@ -68,6 +68,16 @@ fn main() {
         .recv(&mut received, zlink::RecvFlags::NONE)
         .expect("server recv failed");
     assert_eq!(received.parts()[0].as_bytes(), b"hello-stream");
+    received
+        .send(vec![
+            zlink::Message::copy_from(b"hello-stream").expect("reply message failed"),
+        ])
+        .expect("stream reply failed");
+    let mut response = [0u8; 12];
+    tcp_client
+        .read_exact(&mut response)
+        .expect("tcp read failed");
+    assert_eq!(&response, b"hello-stream");
     println!(
         "[stream/recv] send: \"hello-stream\" → recv: \"{}\"",
         received.parts()[0].as_str().unwrap()

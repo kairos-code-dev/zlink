@@ -19,7 +19,7 @@ def main():
                             raise AssertionError("unexpected stream payload")
                         if not received.routing_id:
                             raise AssertionError("stream sample expected a routing id")
-                        server.send(received.routing_id, b"hello-stream")
+                        received.send(b"hello-stream")
                     reply = client.recv(64)
                     if reply != b"hello-stream":
                         raise AssertionError(f"unexpected stream reply: {reply!r}")

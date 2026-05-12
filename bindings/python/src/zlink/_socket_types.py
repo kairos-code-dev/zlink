@@ -489,6 +489,11 @@ class RouterSocket(
             routing_id=routing_id,
             spot_rid=spot_rid,
             request_seq=request_seq_value if request_seq_value != 0 else None,
+            send_sender=lambda payload, *, flags=0, routing_id=routing_id, spot_rid=spot_rid: (
+                self.send_to_spot(routing_id, spot_rid, payload, flags=flags)
+                if spot_rid is not None
+                else self.send(routing_id, payload, flags=flags)
+            ),
             reply_sender=lambda payload, *, flags=0, routing_id=routing_id, spot_rid=spot_rid, request_seq=request_seq_value: self._reply_from_receive_context(
                 routing_id,
                 spot_rid,

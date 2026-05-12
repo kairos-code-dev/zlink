@@ -266,6 +266,10 @@ public final class Poller implements AutoCloseable {
         return pollCount(timeoutMs) > 0;
     }
 
+    public int pollCount(Duration timeout) {
+        return pollCount(toIntMillis(timeout));
+    }
+
     List<PollEvent> poll(int timeoutMs) {
         int readyCount = pollCount(timeoutMs);
         if (readyCount == 0)
@@ -316,7 +320,7 @@ public final class Poller implements AutoCloseable {
         return item == null ? null : item.timer;
     }
 
-    Object readyTag(int index) {
+    public Object readyTag(int index) {
         PollItem item = cachedReadyItem(index);
         return item == null ? null : item.tag;
     }
@@ -334,6 +338,11 @@ public final class Poller implements AutoCloseable {
     short readyRevents(int index) {
         checkReadyIndex(index);
         return readyReventsCache[index];
+    }
+
+    public boolean readyHasEvent(int index, PollEventFlag event) {
+        Objects.requireNonNull(event, "event");
+        return (readyRevents(index) & event.value()) != 0;
     }
 
     private PollEvent toPollEvent(PollItem item, int fd, int revents) {

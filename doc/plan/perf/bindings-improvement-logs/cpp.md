@@ -988,3 +988,25 @@
   - 라운드 24에서 정리한 추가 진전 경로 — perf record/eBPF profiling,
     in-flight 윈도우 재설계, native Linux baseline 확정 — 가 다음 진전을
     여는 전제임을 다시 한 번 명시한다.
+
+### 2026-05-12 C++ round 26 — received_t::send routed echo surface
+
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/types.hpp`
+  - `bindings/cpp/include/zlink/types_impl.hpp`
+  - `bindings/cpp/include/zlink/socket_types.hpp`
+  - `bindings/cpp/include/zlink/services/spot.hpp`
+- 변경한 sample/perf 파일:
+  - `bindings/cpp/samples/dealer_router_recv_sample.cpp`
+  - `bindings/cpp/perf/multi/src/perf_dealer_router_server.cpp`
+  - `bindings/cpp/perf/multi/src/perf_router_router_server.cpp`
+- 의미:
+  - `received_t::send(...)`를 추가해 object binding의 routed echo 의미를
+    C++에도 맞췄다. immediate echo path는 `received_t` 내부 send context를 사용하고,
+    backpressure queue에 들어간 항목만 명시 routing id를 보관해 재전송한다.
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build -j2`
+- 다음 판단:
+  - 이 변경은 측정 의미를 C와 다르게 만드는 perf 우회가 아니라 공개 wrapper 의미를
+    맞추는 정리다. 다음 성능 라운드에서는 기존 C 기준과 비교해 wrapper 비용 변화만
+    별도로 확인한다.

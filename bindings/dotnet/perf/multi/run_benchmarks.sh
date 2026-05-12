@@ -28,6 +28,17 @@ REPORT=""
 REUSE_BUILD=0
 CLEAN_BUILD=0
 BUILD_DIR=""
+DISPLAY_IO_THREADS="${PERF_IO_THREADS:-4}"
+if [[ "${PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}" == "1" \
+  || "${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}" == "1" ]]; then
+  DISPLAY_HWM="${PERF_MULTI_HWM:-manual-unset}"
+  DISPLAY_SNDHWM="${PERF_MULTI_SNDHWM:-${PERF_MULTI_HWM:-manual-unset}}"
+  DISPLAY_RCVHWM="${PERF_MULTI_RCVHWM:-${PERF_MULTI_HWM:-manual-unset}}"
+else
+  DISPLAY_HWM="auto-hwm"
+  DISPLAY_SNDHWM="auto-hwm"
+  DISPLAY_RCVHWM="auto-hwm"
+fi
 
 prune_report_dir() {
   local report_dir="$1"
@@ -785,6 +796,11 @@ print_line "- patterns: ${PATTERN}"
 print_line "- transports: ${TRANSPORTS}"
 print_line "- msg_sizes: ${MSG_SIZES:-default(pattern)}"
 print_line "- clients: ${CLIENTS:-default(pattern)}"
+print_line "- server_io_threads: ${DISPLAY_IO_THREADS}"
+print_line "- client_io_threads: ${DISPLAY_IO_THREADS}"
+print_line "- hwm: ${DISPLAY_HWM}"
+print_line "- send_hwm: ${DISPLAY_SNDHWM}"
+print_line "- recv_hwm: ${DISPLAY_RCVHWM}"
 print_line "- runtime: ${CORE_LIB}"
 print_line "- pin_cpu: off"
 print_line "- case_cooldown_ms: ${CASE_COOLDOWN_MS}"
@@ -1210,6 +1226,11 @@ print_line "- msg_sizes: ${MSG_SIZES:-default(pattern)}"
 print_line "- clients: ${CLIENTS:-default(pattern)}"
 print_line "- duration_seconds: ${DURATION}"
 print_line "- pin_cpu: off"
+print_line "- server_io_threads: ${DISPLAY_IO_THREADS}"
+print_line "- client_io_threads: ${DISPLAY_IO_THREADS}"
+print_line "- hwm: ${DISPLAY_HWM}"
+print_line "- send_hwm: ${DISPLAY_SNDHWM}"
+print_line "- recv_hwm: ${DISPLAY_RCVHWM}"
 print_line "- case_cooldown_ms: ${CASE_COOLDOWN_MS}"
 if [[ "${result_lines}" -eq "${expected_result_lines}" && "${status}" -eq 0 ]]; then
   completion_status="complete"

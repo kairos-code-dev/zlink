@@ -3,16 +3,12 @@
 package systems.zlink.perf;
 
 import systems.zlink.Poller;
-import systems.zlink.PollEvent;
 import systems.zlink.PollEventFlag;
 import systems.zlink.Socket;
 import systems.zlink.ZlinkException;
 import java.time.Duration;
 import java.util.Arrays;
-import java.util.EnumSet;
-import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 public final class PerfSocketPollSet implements AutoCloseable {
@@ -20,20 +16,27 @@ public final class PerfSocketPollSet implements AutoCloseable {
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
     private final Socket[] sockets;
-    private final EnumSet<PollEventFlag>[] readyEvents;
+    private final boolean[] readyIn;
+    private final boolean[] readyOut;
+    private final boolean[] readyErr;
+    private final boolean[] readyPri;
+    private final int[] currentMasks;
     private final Poller poller = new Poller();
-    private final Map<Socket, Integer> indices = new IdentityHashMap<>();
 
-    @SuppressWarnings("unchecked")
     private PerfSocketPollSet(List<Socket> sockets,
                               PollEventFlag... initialEvents) {
         this.sockets = sockets.toArray(Socket[]::new);
-        this.readyEvents = new EnumSet[this.sockets.length];
+        this.readyIn = new boolean[this.sockets.length];
+        this.readyOut = new boolean[this.sockets.length];
+        this.readyErr = new boolean[this.sockets.length];
+        this.readyPri = new boolean[this.sockets.length];
+        this.currentMasks = new int[this.sockets.length];
         clearReadyEvents();
+        int initialMask = mask(initialEvents);
         for (int i = 0; i < this.sockets.length; i++) {
             Socket socket = Objects.requireNonNull(this.sockets[i], "socket");
-            poller.add(socket, initialEvents);
-            indices.put(socket, i);
+            poller.add(socket, Integer.valueOf(i), initialEvents);
+            currentMasks[i] = initialMask;
         }
     }
 
@@ -45,19 +48,29 @@ public final class PerfSocketPollSet implements AutoCloseable {
 
     public void setEvents(int index, PollEventFlag... newEvents) {
         checkIndex(index);
+        int newMask = mask(newEvents);
+        if (currentMasks[index] == newMask) {
+            return;
+        }
         poller.modify(sockets[index], newEvents);
+        currentMasks[index] = newMask;
     }
 
     public boolean isReady(int index, PollEventFlag event) {
         checkIndex(index);
-        return readyEvents[index].contains(event);
+        return switch (event) {
+            case POLLIN -> readyIn[index];
+            case POLLOUT -> readyOut[index];
+            case POLLERR -> readyErr[index];
+            case POLLPRI -> readyPri[index];
+        };
     }
 
     public int poll(int timeoutMs) {
         clearReadyEvents();
-        List<PollEvent> events;
+        int eventCount;
         try {
-            events = poller.waitAll(sockets.length, Duration.ofMillis(timeoutMs));
+            eventCount = poller.pollCount(Duration.ofMillis(timeoutMs));
         } catch (ZlinkException ex) {
             int errno = ex.getInternalErrno();
             if (errno == ERRNO_EINTR
@@ -67,14 +80,20 @@ public final class PerfSocketPollSet implements AutoCloseable {
             }
             throw ex;
         }
-        for (PollEvent event : events) {
-            Socket socket = event.socket();
-            Integer index = socket == null ? null : indices.get(socket);
+        int count = Math.min(eventCount, sockets.length);
+        for (int i = 0; i < count; i++) {
+            Object tag = poller.readyTag(i);
+            Integer index = tag instanceof Integer readyIndex
+                ? readyIndex
+                : null;
             if (index != null) {
-                readyEvents[index] = EnumSet.copyOf(event.revents());
+                readyIn[index] = poller.readyHasEvent(i, PollEventFlag.POLLIN);
+                readyOut[index] = poller.readyHasEvent(i, PollEventFlag.POLLOUT);
+                readyErr[index] = poller.readyHasEvent(i, PollEventFlag.POLLERR);
+                readyPri[index] = poller.readyHasEvent(i, PollEventFlag.POLLPRI);
             }
         }
-        return events.size();
+        return count;
     }
 
     @Override
@@ -83,14 +102,32 @@ public final class PerfSocketPollSet implements AutoCloseable {
     }
 
     private void clearReadyEvents() {
-        Arrays.setAll(readyEvents,
-            ignored -> EnumSet.noneOf(PollEventFlag.class));
+        Arrays.fill(readyIn, false);
+        Arrays.fill(readyOut, false);
+        Arrays.fill(readyErr, false);
+        Arrays.fill(readyPri, false);
     }
 
     private void checkIndex(int index) {
         if (index < 0 || index >= sockets.length) {
             throw new IndexOutOfBoundsException("index " + index);
         }
+    }
+
+    private static int mask(PollEventFlag... events) {
+        int mask = 0;
+        if (events == null) {
+            return mask;
+        }
+        for (PollEventFlag event : events) {
+            mask |= switch (event) {
+                case POLLIN -> 1;
+                case POLLOUT -> 2;
+                case POLLERR -> 4;
+                case POLLPRI -> 8;
+            };
+        }
+        return mask;
     }
 
 }

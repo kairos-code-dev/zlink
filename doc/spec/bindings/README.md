@@ -1057,9 +1057,10 @@ public API는 part helper 호출 결과를 언어별 multipart 객체로 조립�
 
 #### `Received`
 
-PAIR / DEALER / ROUTER / SPOT 의 recv 결과. topic 필드가 없는 점 외에는
-`TopicMessage` 와 동일한 편의 메서드 집합 + request-reply 용 `reply()` 를
-가진다.
+PAIR / DEALER / ROUTER / STREAM / SPOT 의 recv 결과. topic 필드가 없는 점 외에는
+`TopicMessage` 와 동일한 편의 메서드 집합을 가진다. routed recv 결과는
+일반 응답 전송용 `send()` 를 제공하고, request-reply 결과는 `reply()` 도
+함께 제공한다.
 
 | 구성 | 타입 | 의미 |
 |------|------|------|
@@ -1070,8 +1071,20 @@ PAIR / DEALER / ROUTER / SPOT 의 recv 결과. topic 필드가 없는 점 외에
 | `is_single_part()` | `bool` | 동일 |
 | `first_part()` | `Message` | 동일 |
 | `single_part_or_throw()` | `Message` | 동일 |
+| `send(parts, flags?)` | `bool` | 이 `Received` 의 송신자에게 일반 routed message 를 보낸다. routed source context 가 없으면 `SubmitError` |
 | `reply(parts, flags?)` | — | request 였을 때만 유효. `request_seq` 없거나 reply context 가 invalid 하면 `SubmitError` |
 | `close()` / 동등 | — | 동일 |
+
+`send()` 규칙:
+- request 여부와 무관하다. `request_seq` 가 없어도 routed source context 가
+  있으면 호출할 수 있다.
+- `send()` 는 request-reply 의미를 갖지 않는다. 단순히 이 `Received` 를 보낸
+  쪽으로 일반 routed message 를 보낸다.
+- `ROUTER` 와 `STREAM` 수신 결과는 peer routing id 로 보낸다.
+  `SPOT` routed 수신 결과는 source node rid 와 source spot rid 로 보낸다.
+- `DONTWAIT` 같은 non-blocking submit flag 는 언어별 routed `send` 와 같은
+  방식으로 처리한다. backpressure 를 값으로 표현하는 언어는 `false` 를
+  반환하고, 예외 기반 언어는 기존 `send` 와 같은 submit 오류를 낸다.
 
 `reply()` 규칙:
 - **`request_seq` 가 `null` 이면 호출 금지**. 호출 시 `SubmitError`

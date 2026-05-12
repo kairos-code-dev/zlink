@@ -1412,31 +1412,37 @@ class received_t
 
     received_t (std::optional<routing_id_t> routing_id_,
                 std::optional<routing_id_t> spot_rid_,
-                std::optional<uint64_t> request_seq_,
-                std::vector<message_t> parts_,
-                std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_ =
-                  std::function<void(std::vector<message_t> &, send_flags_t)> ())
+	                std::optional<uint64_t> request_seq_,
+	                std::vector<message_t> parts_,
+	                std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_ =
+	                  std::function<void(std::vector<message_t> &, send_flags_t)> (),
+	                std::function<bool(std::vector<message_t> &, send_flags_t)> send_fn_ =
+	                  std::function<bool(std::vector<message_t> &, send_flags_t)> ())
         : _routing_id (std::move (routing_id_)),
           _spot_rid (std::move (spot_rid_)),
           _request_seq (std::move (request_seq_)),
-          _single_part (),
-          _parts (std::move (parts_)),
-          _reply_fn (std::move (reply_fn_))
+	          _single_part (),
+	          _parts (std::move (parts_)),
+	          _reply_fn (std::move (reply_fn_)),
+	          _send_fn (std::move (send_fn_))
     {
     }
 
     received_t (std::optional<routing_id_t> routing_id_,
                 std::optional<routing_id_t> spot_rid_,
-                std::optional<uint64_t> request_seq_,
-                message_t part_,
-                std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_ =
-                  std::function<void(std::vector<message_t> &, send_flags_t)> ())
+	                std::optional<uint64_t> request_seq_,
+	                message_t part_,
+	                std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_ =
+	                  std::function<void(std::vector<message_t> &, send_flags_t)> (),
+	                std::function<bool(std::vector<message_t> &, send_flags_t)> send_fn_ =
+	                  std::function<bool(std::vector<message_t> &, send_flags_t)> ())
         : _routing_id (std::move (routing_id_)),
           _spot_rid (std::move (spot_rid_)),
           _request_seq (std::move (request_seq_)),
-          _single_part (std::move (part_)),
-          _parts (),
-          _reply_fn (std::move (reply_fn_))
+	          _single_part (std::move (part_)),
+	          _parts (),
+	          _reply_fn (std::move (reply_fn_)),
+	          _send_fn (std::move (send_fn_))
     {
     }
 
@@ -1465,16 +1471,26 @@ class received_t
     message_t &first_part ();
     message_t single_part_or_throw ();
     void reply (message_t &part) const;
-    void reply (message_t &part, send_flags_t flags) const;
-    void reply (std::vector<message_t> &parts) const;
-    void reply (std::vector<message_t> &parts, send_flags_t flags) const;
-    void close ();
+	    void reply (message_t &part, send_flags_t flags) const;
+	    void reply (std::vector<message_t> &parts) const;
+	    void reply (std::vector<message_t> &parts, send_flags_t flags) const;
+	    bool send (message_t &part) const;
+	    bool send (message_t &part, send_flags_t flags) const;
+	    bool send (std::vector<message_t> &parts) const;
+	    bool send (std::vector<message_t> &parts, send_flags_t flags) const;
+	    void close ();
 
     void set_reply_fn (
       std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_)
-    {
-        _reply_fn = std::move (reply_fn_);
-    }
+	    {
+	        _reply_fn = std::move (reply_fn_);
+	    }
+
+	    void set_send_fn (
+	      std::function<bool(std::vector<message_t> &, send_flags_t)> send_fn_)
+	    {
+	        _send_fn = std::move (send_fn_);
+	    }
 
   private:
     void materialize_parts () const;
@@ -1482,10 +1498,11 @@ class received_t
     std::optional<routing_id_t> _routing_id;
     std::optional<routing_id_t> _spot_rid;
     std::optional<uint64_t> _request_seq;
-    mutable std::optional<message_t> _single_part;
-    mutable std::vector<message_t> _parts;
-    std::function<void(std::vector<message_t> &, send_flags_t)> _reply_fn;
-};
+	    mutable std::optional<message_t> _single_part;
+	    mutable std::vector<message_t> _parts;
+	    std::function<void(std::vector<message_t> &, send_flags_t)> _reply_fn;
+	    std::function<bool(std::vector<message_t> &, send_flags_t)> _send_fn;
+	};
 
 class topic_message_t
 {

@@ -81,7 +81,8 @@ Examples of policy-enforced capability boundaries:
 Common hot-path helpers are value-typed:
 
 - `Message`
-- `Received`
+- `Received` with `send(...)` for normal routed send-back over the original
+  receive context and `reply(...)` for request-reply messages
 - `TopicMessage`
 - `RoutingId`
 - `SubscriptionEvent`

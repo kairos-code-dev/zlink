@@ -7,20 +7,9 @@
 
 #include <cerrno>
 #include <chrono>
-#include <cstring>
 #include <deque>
 #include <optional>
 #include <vector>
-
-namespace {
-
-zlink::routing_id_t routing_id_from_ascii (const char *value_)
-{
-    return zlink::routing_id_t::from_bytes (
-      reinterpret_cast<const uint8_t *> (value_), std::strlen (value_));
-}
-
-} // namespace
 
 bool perf_dealer_router_server (const std::string &lib_name,
                                 const std::string &transport,
@@ -73,11 +62,9 @@ bool perf_dealer_router_server (const std::string &lib_name,
     std::deque<pending_reply_t> pending_replies;
     int poll_event_mask =
       static_cast<int> (zlink::poll_event_flag_t::pollin);
-    zlink::message_t part;
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events;
     events.reserve (1);
-    zlink::routing_id_t source_rid = routing_id_from_ascii ("x");
     poller.add (server, zlink::poll_event_flag_t::pollin);
 
     auto flush_pending = [&] () -> bool {
@@ -148,8 +135,9 @@ bool perf_dealer_router_server (const std::string &lib_name,
 
         // Drain available messages without blocking.
         while (true) {
+            zlink::received_t received;
             const int recv_rc = server.recv (
-              source_rid, part, ZLINK_DONTWAIT);
+              received, zlink::recv_flags_t::dontwait);
             if (recv_rc < 0) {
                 const int err = errno;
                 if (err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
@@ -158,22 +146,31 @@ bool perf_dealer_router_server (const std::string &lib_name,
                 break;
             }
 
+            std::vector<zlink::message_t> &parts = received.parts ();
+            if (parts.empty ())
+                continue;
+            zlink::message_t &part = parts[0];
             if (perf::multi::is_stop_token (part.data (), part.size ())) {
                 stop_requested = true;
                 break;
             }
             if (part.size () == 0)
                 continue;
+            const std::optional<zlink::routing_id_t> &source_rid =
+              received.routing_id ();
+            if (!source_rid) {
+                failed = true;
+                break;
+            }
             if (!pending_replies.empty ()) {
                 pending_replies.push_back (pending_reply_t {
-                  std::move (source_rid), std::move (part) });
+                  *source_rid, std::move (part) });
                 continue;
             }
             try {
-                if (!server.send (
-                      source_rid, part, zlink::send_flags_t::dontwait)) {
+                if (!received.send (part, zlink::send_flags_t::dontwait)) {
                     pending_replies.push_back (pending_reply_t {
-                      std::move (source_rid), std::move (part) });
+                      *source_rid, std::move (part) });
                 }
             }
             catch (const zlink::submit_error_t &err) {
@@ -181,7 +178,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
                 if (err_no == EINTR || err_no == EHOSTUNREACH
                     || err_no == ENOTCONN) {
                     pending_replies.push_back (pending_reply_t {
-                      std::move (source_rid), std::move (part) });
+                      *source_rid, std::move (part) });
                     continue;
                 }
                 failed = true;

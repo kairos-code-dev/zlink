@@ -575,14 +575,12 @@ fn router_received_from_raw(
     };
     if let Some(spot_rid) = spot_rid {
         if request_seq == 0 {
-            let mut received = Received::new(Some(rid), parts);
-            received.spot_rid = Some(spot_rid);
-            received
+            Received::with_router_spot_send_context(handle, rid, spot_rid, parts)
         } else {
             Received::with_spot_reply_context(handle, rid, spot_rid, request_seq, parts)
         }
     } else if request_seq == 0 {
-        Received::new(Some(rid), parts)
+        Received::with_router_send_context(handle, rid, parts)
     } else {
         Received::with_router_reply_context(handle, rid, request_seq, parts)
     }

@@ -60,6 +60,9 @@ public final class StreamSocket extends Socket {
         Received fresh = super.recv(ReceiveFlag.fromValue(flags.value()));
         if (fresh == null) return false;
         result.adoptFrom(fresh);
+        result.routingId().ifPresent(rid ->
+            result.setSendSender((parts, sendFlags) -> send(rid, parts,
+                sendFlags)));
         return true;
     }
     public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }

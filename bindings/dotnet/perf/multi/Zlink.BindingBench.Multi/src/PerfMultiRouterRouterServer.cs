@@ -40,7 +40,7 @@ internal static class PerfMultiRouterRouterServer
         // Caller-provided Received reused across every recv on the server
         // hot path. The binding overwrites the internal state in place,
         // avoiding the per-recv Received allocation.
-        var receivedBuffer = new Received();
+        using var receivedBuffer = new Received();
 
         bool stop = false;
         long pollCount = 0;
@@ -98,12 +98,8 @@ internal static class PerfMultiRouterRouterServer
                 }
                 long t2 = timing ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
 
-                if (receivedBuffer.RoutingId == null)
-                    return 2;
-                RoutingId routingId = receivedBuffer.RoutingId.Value;
-
                 if (pendingReplies.Count == 0
-                    && server.Send(routingId, bodyMessage, SendFlags.DontWait))
+                    && receivedBuffer.Send(bodyMessage, SendFlags.DontWait))
                 {
                     sendCount++;
                     long t3 = timing ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
@@ -115,6 +111,11 @@ internal static class PerfMultiRouterRouterServer
                     }
                     continue;
                 }
+
+                RoutingId? maybeRoutingId = receivedBuffer.RoutingId;
+                if (maybeRoutingId == null)
+                    return 2;
+                RoutingId routingId = maybeRoutingId.Value;
 
                 Message reply = bodyMessage.Move();
                 if (!EnqueueReplyOrSend(server, pendingReplies, routingId,

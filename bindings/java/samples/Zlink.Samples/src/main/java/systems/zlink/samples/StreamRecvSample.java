@@ -24,19 +24,18 @@ public final class StreamRecvSample {
                     SampleSupport.STREAM_PAYLOAD.getBytes(StandardCharsets.UTF_8);
                 SampleSupport.sendRawTcp(rawClient, payload);
 
-                RoutingId rid;
                 try (systems.zlink.Received received = new systems.zlink.Received()) {
                     server.recv(received, systems.zlink.RecvFlags.NONE);
                     String value = SampleSupport.singleUtf8(received);
-                    rid = received.routingId().orElse(null);
-                    if (!SampleSupport.STREAM_PAYLOAD.equals(value) || rid == null) {
+                    if (!SampleSupport.STREAM_PAYLOAD.equals(value)
+                        || received.routingId().isEmpty()) {
                         throw new IllegalStateException("unexpected stream delivery");
                     }
-                }
 
-                try (Message reply = Message.copyOfUtf8(
-                         SampleSupport.STREAM_PAYLOAD)) {
-                    server.send(rid, reply);
+                    try (Message reply = Message.copyOfUtf8(
+                             SampleSupport.STREAM_PAYLOAD)) {
+                        received.send(reply);
+                    }
                 }
 
                 String echoed = new String(

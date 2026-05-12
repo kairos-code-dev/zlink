@@ -36,6 +36,10 @@ interface ReplyContext {
   reply(parts: readonly Message[], flags: SendFlags): void;
 }
 
+interface SendContext {
+  send(parts: readonly Message[], flags: SendFlags): boolean;
+}
+
 function invalidMultipartError(partsLength: number): RecvError {
   return new RecvError(
     RecvResult.NotSupported,
@@ -53,6 +57,14 @@ function invalidReplyContextError(): SubmitError {
     SubmitResult.InvalidState,
     0,
     'reply is only valid for request-reply receive contexts'
+  );
+}
+
+function invalidSendContextError(): SubmitError {
+  return new SubmitError(
+    SubmitResult.InvalidState,
+    0,
+    'send is only valid for received routed message contexts'
   );
 }
 
@@ -250,6 +262,7 @@ export class Received {
   spotRid: RoutingId | null;
   requestSeq: bigint | null;
   private _replyContext: ReplyContext | null;
+  private _sendContext: SendContext | null;
 
   /**
    * Create an empty Received for caller-provided storage. Hand the same
@@ -265,7 +278,8 @@ export class Received {
     routingId?: RoutingId | null,
     requestSeq?: bigint | null,
     spotRid?: RoutingId | null,
-    replyContext?: ReplyContext | null
+    replyContext?: ReplyContext | null,
+    sendContext?: SendContext | null
   );
   constructor(
     token?: symbol,
@@ -273,7 +287,8 @@ export class Received {
     routingId: RoutingId | null = null,
     requestSeq: bigint | null = null,
     spotRid: RoutingId | null = null,
-    replyContext: ReplyContext | null = null
+    replyContext: ReplyContext | null = null,
+    sendContext: SendContext | null = null
   ) {
     if (token === undefined && parts === undefined) {
       // Empty caller-provided storage instance.
@@ -282,6 +297,7 @@ export class Received {
       this.spotRid = null;
       this.requestSeq = null;
       this._replyContext = null;
+      this._sendContext = null;
       return;
     }
     if (token !== DOMAIN_CREATE_TOKEN) {
@@ -292,6 +308,7 @@ export class Received {
     this.spotRid = spotRid;
     this.requestSeq = requestSeq;
     this._replyContext = replyContext;
+    this._sendContext = sendContext;
   }
 
   /**
@@ -310,12 +327,14 @@ export class Received {
     this.spotRid = source.spotRid;
     this.requestSeq = source.requestSeq;
     this._replyContext = source._replyContext;
+    this._sendContext = source._sendContext;
     // Detach source so it does not double-close.
     source.parts = [];
     source.routingId = null;
     source.spotRid = null;
     source.requestSeq = null;
     source._replyContext = null;
+    source._sendContext = null;
   }
 
   /** @internal */
@@ -324,9 +343,10 @@ export class Received {
     routingId: RoutingId | null = null,
     requestSeq: bigint | null = null,
     spotRid: RoutingId | null = null,
-    replyContext: ReplyContext | null = null
+    replyContext: ReplyContext | null = null,
+    sendContext: SendContext | null = null
   ): Received {
-    return new Received(DOMAIN_CREATE_TOKEN, parts, routingId, requestSeq, spotRid, replyContext);
+    return new Received(DOMAIN_CREATE_TOKEN, parts, routingId, requestSeq, spotRid, replyContext, sendContext);
   }
 
   isSinglePart(): boolean {
@@ -355,6 +375,16 @@ export class Received {
     }
     const parts = Array.isArray(partOrParts) ? partOrParts : [partOrParts];
     this._replyContext.reply(parts, flags);
+  }
+
+  send(part: Message, flags?: SendFlags): boolean;
+  send(parts: Message[], flags?: SendFlags): boolean;
+  send(partOrParts: Message | readonly Message[], flags: SendFlags = SendFlags.None): boolean {
+    if (!this._sendContext) {
+      throw invalidSendContextError();
+    }
+    const parts = Array.isArray(partOrParts) ? partOrParts : [partOrParts];
+    return this._sendContext.send(parts, flags);
   }
 
   close(): void {

@@ -6,9 +6,9 @@
 #include "../common/perf_entry.hpp"
 
 #include <cerrno>
-#include <cstring>
 #include <chrono>
 #include <deque>
+#include <optional>
 #include <vector>
 
 namespace {
@@ -16,12 +16,6 @@ namespace {
 bool perf_debug_enabled ()
 {
     return std::getenv ("PERF_DEBUG") != NULL;
-}
-
-zlink::routing_id_t routing_id_from_ascii (const char *value_)
-{
-    return zlink::routing_id_t::from_bytes (
-      reinterpret_cast<const uint8_t *> (value_), std::strlen (value_));
 }
 
 void debug_log (const std::string &message_)
@@ -136,13 +130,6 @@ bool perf_router_router_server (const std::string &lib_name,
         return true;
     };
 
-    // Reuse a single routing_id_t and message_t across the drain loop so
-    // the hot recv path matches dealer_router_server's allocation profile.
-    // Previously these were reconstructed per iteration, accumulating
-    // ~per-message overhead that showed up as a ratio gap (~0.81 / 0.82 /
-    // 0.57 at 256B/1024B/65536B) against the C reference echo loop.
-    zlink::routing_id_t source_rid = routing_id_from_ascii ("x");
-    zlink::message_t part;
     int poll_event_mask =
       static_cast<int> (zlink::poll_event_flag_t::pollin);
     while (!stop_requested) {
@@ -194,8 +181,9 @@ bool perf_router_router_server (const std::string &lib_name,
 
         // Drain available messages without blocking.
         while (true) {
+            zlink::received_t received;
             const int recv_rc = server.recv (
-              source_rid, part, zlink::recv_flags_t::dontwait);
+              received, zlink::recv_flags_t::dontwait);
             if (recv_rc < 0) {
                 const int err = errno;
                 if (err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
@@ -205,31 +193,43 @@ bool perf_router_router_server (const std::string &lib_name,
                 break;
             }
 
+            zlink::message_t part;
+            if (!take_router_payload (received.parts (), part)) {
+                debug_log ("recv failed errno=" + std::to_string (errno));
+                failed = true;
+                break;
+            }
             if (perf::multi::is_stop_token (part.data (), part.size ())) {
                 stop_requested = true;
                 break;
             }
             if (part.size () == 0)
                 continue;
+            const std::optional<zlink::routing_id_t> &source_rid =
+              received.routing_id ();
+            if (!source_rid) {
+                debug_log ("recv missing routing id");
+                failed = true;
+                break;
+            }
 
             if (!pending_replies.empty ()) {
                 pending_replies.push_back (pending_reply_t {
-                  std::move (source_rid), std::move (part) });
+                  *source_rid, std::move (part) });
                 continue;
             }
 
             try {
-                if (!server.send (source_rid, part,
-                                  zlink::send_flags_t::dontwait)) {
+                if (!received.send (part, zlink::send_flags_t::dontwait)) {
                     pending_replies.push_back (pending_reply_t {
-                      std::move (source_rid), std::move (part) });
+                      *source_rid, std::move (part) });
                 }
             } catch (const zlink::submit_error_t &err) {
                 const int err_no = err.internal_errno ();
                 if (err_no == EINTR || err_no == EHOSTUNREACH
                     || err_no == ENOTCONN) {
                     pending_replies.push_back (pending_reply_t {
-                      std::move (source_rid), std::move (part) });
+                      *source_rid, std::move (part) });
                     continue;
                 }
                 debug_log ("send failed errno=" + std::to_string (err_no));

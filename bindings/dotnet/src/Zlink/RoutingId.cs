@@ -13,8 +13,11 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     private const int MaxSize = 255;
     private const int MaxHexStringLength = MaxSize * 2;
     private const int ThreadCacheMaxEntries = 256;
+    private const int InlineDirectCacheEntries = 256;
     [ThreadStatic]
     private static Dictionary<RouteCacheKey, List<RouteCacheEntry>>? t_ownedCache;
+    [ThreadStatic]
+    private static InlineRouteCacheEntry[]? t_inlineDirectCache;
     private readonly byte[]? _bytes;
     private readonly int _hash;
     private readonly NativeRoutingIdBox? _native;
@@ -160,6 +163,9 @@ public readonly struct RoutingId : IEquatable<RoutingId>
             hash ^= (hi >> ((i - 8) * 8)) & 0xFFUL;
             hash *= prime;
         }
+        RoutingId? direct = TryFromInlineDirectCache(size, lo, hi, hash);
+        if (direct != null)
+            return direct;
         RouteCacheKey key = RouteCacheKey.FromHash(size, hash);
         Dictionary<RouteCacheKey, List<RouteCacheEntry>>? cache = t_ownedCache;
         if (cache == null || !cache.TryGetValue(key,
@@ -174,6 +180,7 @@ public readonly struct RoutingId : IEquatable<RoutingId>
                 continue;
             if (!InlineMatchesBytes(size, lo, hi, entryBytes))
                 continue;
+            StoreInlineDirectCache(size, lo, hi, hash, entries[i].RoutingId);
             return entries[i].RoutingId;
         }
         return null;
@@ -268,6 +275,7 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         }
 
         RoutingId created = new RoutingId(bytes, takeOwnership: true);
+        StoreInlineDirectCache(bytes, key.Hash, created);
         if (cache.Count >= ThreadCacheMaxEntries)
             cache.Clear();
         if (!cache.TryGetValue(key, out entries))
@@ -295,6 +303,7 @@ public readonly struct RoutingId : IEquatable<RoutingId>
 
         byte[] ownedBytes = bytes.ToArray();
         RoutingId created = new RoutingId(ownedBytes, takeOwnership: true);
+        StoreInlineDirectCache(ownedBytes, key.Hash, created);
         if (cache.Count >= ThreadCacheMaxEntries)
             cache.Clear();
         if (!cache.TryGetValue(key, out entries))
@@ -315,7 +324,7 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         }
 
         private int Length { get; }
-        private ulong Hash { get; }
+        internal ulong Hash { get; }
 
         internal static RouteCacheKey FromHash(int length, ulong hash)
         {
@@ -362,6 +371,50 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         internal byte[] Bytes { get; }
         internal RoutingId RoutingId { get; }
     }
+
+    private static RoutingId? TryFromInlineDirectCache(int size, ulong lo,
+        ulong hi, ulong hash)
+    {
+        InlineRouteCacheEntry[]? cache = t_inlineDirectCache;
+        if (cache == null)
+            return null;
+
+        ref InlineRouteCacheEntry entry = ref cache[(int)hash
+            & (InlineDirectCacheEntries - 1)];
+        if (entry.RoutingId == null || entry.Size != size
+            || entry.Hash != hash || entry.Lo != lo || entry.Hi != hi)
+        {
+            return null;
+        }
+        return entry.RoutingId;
+    }
+
+    private static void StoreInlineDirectCache(byte[] bytes, ulong hash,
+        RoutingId routingId)
+    {
+        if (bytes.Length <= 0 || bytes.Length > 16)
+            return;
+
+        ulong lo = 0;
+        ulong hi = 0;
+        for (int i = 0; i < bytes.Length && i < 8; i++)
+            lo |= (ulong)bytes[i] << (i * 8);
+        for (int i = 8; i < bytes.Length; i++)
+            hi |= (ulong)bytes[i] << ((i - 8) * 8);
+        StoreInlineDirectCache(bytes.Length, lo, hi, hash, routingId);
+    }
+
+    private static void StoreInlineDirectCache(int size, ulong lo, ulong hi,
+        ulong hash, RoutingId routingId)
+    {
+        InlineRouteCacheEntry[] cache = t_inlineDirectCache
+            ??= new InlineRouteCacheEntry[InlineDirectCacheEntries];
+        cache[(int)hash & (InlineDirectCacheEntries - 1)] =
+            new InlineRouteCacheEntry(size, hash, lo, hi, routingId);
+    }
+
+    private readonly record struct InlineRouteCacheEntry(int Size, ulong Hash,
+        ulong Lo, ulong Hi, RoutingId? RoutingId);
 
     private sealed class NativeRoutingIdBox
     {

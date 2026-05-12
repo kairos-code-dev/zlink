@@ -41,7 +41,7 @@ async function main() {
             const recvReq = request.parts[0].data().toString();
             assert.equal(recvReq, sent);
             assert.ok(request.routingId instanceof zlink.RoutingId);
-            router.send(request.routingId, Buffer.from(reply));
+            request.send(Buffer.from(reply));
         }
         finally {
             request.close();

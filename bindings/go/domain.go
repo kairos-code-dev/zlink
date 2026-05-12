@@ -176,6 +176,7 @@ type Received struct {
 	requestSeq    uint64
 	hasRequestSeq bool
 	reply         func(SendFlags, []*Message) error
+	send          func(SendFlags, []*Message) (bool, error)
 }
 
 func (r *Received) RoutingID() RoutingID {
@@ -229,6 +230,7 @@ func (r *Received) AdoptFrom(source *Received) {
 	r.requestSeq = source.requestSeq
 	r.hasRequestSeq = source.hasRequestSeq
 	r.reply = source.reply
+	r.send = source.send
 	// Detach source so its lifecycle no-ops.
 	source.routingID = RoutingID{}
 	source.spotRID = RoutingID{}
@@ -236,6 +238,7 @@ func (r *Received) AdoptFrom(source *Received) {
 	source.requestSeq = 0
 	source.hasRequestSeq = false
 	source.reply = nil
+	source.send = nil
 }
 
 func (r *Received) RequestSeq() uint64 {
@@ -288,6 +291,20 @@ func (r *Received) ReplyWithFlags(parts []*Message, flags SendFlags) error {
 		return err
 	}
 	return r.reply(flags, parts)
+}
+
+func (r *Received) Send(parts []*Message) (bool, error) {
+	return r.SendWithFlags(parts, SendFlagsNone)
+}
+
+func (r *Received) SendWithFlags(parts []*Message, flags SendFlags) (bool, error) {
+	if r == nil {
+		return false, &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	if r.send == nil {
+		return false, &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	return r.send(flags, parts)
 }
 
 func validateReplyFlags(flags SendFlags) error {
@@ -403,6 +420,43 @@ func (s SubscriptionEvent) Topic() string {
 func receivedReplyToRouter(reply func(RoutingID, uint64, SendFlags, ...*Message) error, routingID RoutingID, requestSeq uint64) func(SendFlags, []*Message) error {
 	return func(flags SendFlags, parts []*Message) error {
 		return reply(routingID, requestSeq, flags, parts...)
+	}
+}
+
+func receivedSendToRouter(send func(RoutingID, SendFlags, ...*Message) (bool, error), routingID RoutingID) func(SendFlags, []*Message) (bool, error) {
+	return func(flags SendFlags, parts []*Message) (bool, error) {
+		return send(routingID, flags, parts...)
+	}
+}
+
+type routerSenderToSpot interface {
+	SendToSpot(RoutingID, RoutingID, SendFlags, ...*Message) (bool, error)
+}
+
+func receivedSendToSpotPeer(socket routerSenderToSpot, nodeRID RoutingID, spotRID RoutingID) func(SendFlags, []*Message) (bool, error) {
+	return func(flags SendFlags, parts []*Message) (bool, error) {
+		return socket.SendToSpot(nodeRID, spotRID, flags, parts...)
+	}
+}
+
+func receivedSendFromSpot(socket *Spot, routingID RoutingID, spotRID RoutingID) func(SendFlags, []*Message) (bool, error) {
+	return func(flags SendFlags, parts []*Message) (bool, error) {
+		if len(parts) == 0 {
+			return false, &SubmitError{Result: SubmitInvalidArgument}
+		}
+		if spotRID.Size() == 0 {
+			return false, &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
+		}
+		op := socket.SendToSpot(routingID, spotRID).Message(parts[0])
+		for _, part := range parts[1:] {
+			op = op.Message(part)
+		}
+		submit := op.Flags(flags)
+		sent, err := submit.Submit(nil)
+		if err != nil {
+			return false, err
+		}
+		return sent, nil
 	}
 }
 

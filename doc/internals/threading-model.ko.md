@@ -13,7 +13,7 @@
 | 스레드 | 역할 | 수량 |
 |--------|------|------|
 | Application thread | `zlink_send()`, `zlink_recv()`, `bind()`, `connect()` 등 호출 | 사용자 정의 |
-| I/O thread | Boost.Asio `io_context` 실행. 비동기 네트워크 I/O, 프레임 인코딩/디코딩, socket 이벤트 dispatch | 설정 가능 (기본: 1) |
+| I/O thread | Boost.Asio `io_context` 실행. 비동기 네트워크 I/O, 프레임 인코딩/디코딩, socket 이벤트 dispatch | 설정 가능 (기본: 4) |
 | Reaper thread | 종료된 socket과 session의 지연 소멸 | 1 (전역) |
 | SpotNode data-plane thread | `mesh-pub`, `fanout`, `external-router` 소켓 독점 소유; 인그레스 큐 drain; 로컬 팬아웃·피어 메시 전달 | SpotNode당 1개 |
 | Dispatch worker thread | Spot dispatch 콜백 실행; Spot별 직렬화·코얼레싱 | SpotNode당 N개 (기본: `min(2, cpu_count)` ~ `max(1, cpu_count)`) |
@@ -22,7 +22,7 @@ I/O thread 수는 context 생성 시 설정한다:
 
 ```c
 void *ctx = zlink_ctx_new();
-zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);  /* 기본값은 ZLINK_IO_THREADS_DFLT = 1 */
+zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);  /* 기본값은 ZLINK_IO_THREADS_DFLT = 4 */
 ```
 
 I/O thread는 context 생성 시 시작되고 `zlink_ctx_term()` 호출 시 종료된다.

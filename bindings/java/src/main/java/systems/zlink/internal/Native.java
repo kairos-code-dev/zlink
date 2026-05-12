@@ -214,6 +214,14 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    // DONT_WAIT-only critical variant. Caller MUST guarantee DONT_WAIT so
+    // zlink_recv_part cannot block while the JVM elides safepoint transitions.
+    private static final MethodHandle MH_RECV_PART_CRITICAL =
+            downcallCritical("zlink_recv_part",
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                            ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                            ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                            ValueLayout.JAVA_INT));
     private static final MethodHandle MH_STREAM_ATTACH = downcall("zlink_stream_attach",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_STREAM_ATTACH_RAW = downcall("zlink_stream_attach_raw",
@@ -1397,6 +1405,19 @@ public final class Native {
                 hasMoreOut, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_recv_part failed", t);
+        }
+    }
+
+    public static int recvPartNoWaitCritical(MemorySegment socket,
+                                             MemorySegment sourceRidOut,
+                                             MemorySegment partOut,
+                                             MemorySegment hasMoreOut,
+                                             int flags) {
+        try {
+            return (int) MH_RECV_PART_CRITICAL.invokeExact(socket,
+                sourceRidOut, partOut, hasMoreOut, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_recv_part (critical) failed", t);
         }
     }
 

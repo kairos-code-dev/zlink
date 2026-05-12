@@ -19,12 +19,10 @@ using (Message request = Message.FromString("ping"))
 using var received = new Received();
 if (!router.Recv(received))
     throw new InvalidOperationException("recv failed");
-RoutingId routingId = received.RoutingId
-    ?? throw new InvalidOperationException("missing routing id");
 string requestPayload = received.Parts[0].GetString();
 SampleSupport.EnsureEqual("ping", requestPayload, "request");
 
 using var reply = Message.FromString("pong");
-router.Send(routingId, reply);
+received.Send(reply);
 string payload = SampleSupport.ReceiveUtf8(dealer, 2000);
 Console.WriteLine($"[dealer-router/recv] send: \"ping\" -> recv: \"{payload}\"");

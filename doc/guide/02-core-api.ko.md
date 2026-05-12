@@ -15,7 +15,7 @@ Context는 zlink의 최상위 객체로, I/O thread pool과 socket을 관리한�
 void *ctx = zlink_ctx_new();
 
 /* Configure — increase I/O threads for multi-connection servers */
-zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* default 1; 4 is optimal under heavy load */
+zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* default 4 */
 
 /* Query */
 /* 조회 (error_out 는 성공 시 ZLINK_CONFIG_OK) */
@@ -30,7 +30,7 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
-| `ZLINK_IO_THREADS` | `1` | I/O thread 수 |
+| `ZLINK_IO_THREADS` | `4` | I/O thread 수 |
 | `ZLINK_MAX_SOCKETS` | `4095` | 최대 socket 수 |
 | `ZLINK_SOCKET_LIMIT` | — | 읽기 전용: 실제 socket 한도 |
 | `ZLINK_THREAD_PRIORITY` | `-1` | I/O thread OS 우선순위 |

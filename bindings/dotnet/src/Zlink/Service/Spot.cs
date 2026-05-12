@@ -1980,15 +1980,17 @@ public sealed class Spot : IDisposable, IAsyncDisposable
         RoutingId? spotRid = spotRidBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(spotRidBytes);
-        if (requestSeq == 0)
-            return Received.Create(nodeRid, parts, spotRid: spotRid);
-        return Received.Create(nodeRid, parts, requestSeq, spotRid,
+        Received received = requestSeq == 0
+            ? Received.Create(nodeRid, parts, spotRid: spotRid)
+            : Received.Create(nodeRid, parts, requestSeq, spotRid,
             (replyParts, sendFlags) => ReplyToSpot(
                 nodeRid ?? throw new ZlinkSubmitException(
                     SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
                 spotRid ?? throw new ZlinkSubmitException(
                     SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
                 requestSeq, replyParts, sendFlags));
+        received.SetSendHandler(CreateRoutedSendHandler(nodeRid, spotRid));
+        return received;
     }
 
     public ActorJoinRequest? RecvActorJoin(RecvFlags flags = RecvFlags.None)
@@ -2534,7 +2536,19 @@ public sealed class Spot : IDisposable, IAsyncDisposable
                     spotRid ?? throw new ZlinkSubmitException(
                         SubmitResult.InvalidArgument, (int)ErrorCode.EInval),
                     requestSeq, replyParts, sendFlags));
+        received.SetSendHandler(CreateRoutedSendHandler(nodeRid, spotRid));
         CallbackDelivery.Post(_routedReceiveHandlerContext, () => handler(received));
+    }
+
+    private ReceivedSendHandler? CreateRoutedSendHandler(RoutingId? nodeRid,
+        RoutingId? spotRid)
+    {
+        if (!nodeRid.HasValue || !spotRid.HasValue)
+            return null;
+        RoutingId targetNode = nodeRid.Value;
+        RoutingId targetSpot = spotRid.Value;
+        return (sendParts, sendFlags) => SendToSpot(targetNode, targetSpot,
+            sendParts, sendFlags);
     }
 
     private unsafe void OnNativeDispatchEvent(IntPtr spot,

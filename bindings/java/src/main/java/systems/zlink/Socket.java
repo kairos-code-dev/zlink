@@ -51,6 +51,8 @@ public abstract class Socket implements AutoCloseable {
     private final SocketType socketTypeHint;
     private final ThreadLocal<SendScratch> sendScratch =
       ThreadLocal.withInitial(SendScratch::new);
+    private final ThreadLocal<RecvScratch> recvScratch =
+      ThreadLocal.withInitial(RecvScratch::new);
     private final ThreadLocal<LegacyReceiveState> legacyReceiveState =
       ThreadLocal.withInitial(LegacyReceiveState::new);
     private final ThreadLocal<Received> activeLazyReceive =
@@ -109,13 +111,23 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
+    private static final class RecvScratch {
+        final Arena arena = Arena.ofAuto();
+        final MemorySegment sourceRidOut = arena.allocate(ValueLayout.ADDRESS);
+        final MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
+    }
+
     private static final class SendScratch {
+        private static final int ROUTING_ID_CACHE_CAPACITY = 256;
         private final Arena arena = Arena.ofConfined();
         private final MemorySegment nativeMsg = arena.allocate(
             NativeLayouts.MSG_LAYOUT);
         private final MemorySegment nativeRoutingId = arena.allocate(
             NativeLayouts.ROUTING_ID_LAYOUT);
         private byte[] cachedRoutingIdBytes;
+        private byte[][] cachedRoutingIdKeys;
+        private MemorySegment[] cachedRoutingIdSegments;
+        private MemorySegment cachedRoutingIdSegment;
     }
 
     Socket(Context ctx, SocketType type) {
@@ -578,6 +590,77 @@ public abstract class Socket implements AutoCloseable {
 
     Received recvNoWaitOrNull() {
         return messagePlane.recvNoWaitOrNull();
+    }
+
+    boolean recvInto(Received result, ReceiveFlag flags) {
+        Objects.requireNonNull(result, "result");
+        Objects.requireNonNull(flags, "flags");
+        if (flags == ReceiveFlag.DONTWAIT
+            && !legacyReceiveState.get().hasPending()) {
+            return recvIntoNoWait(result);
+        }
+        Message frame = nextRecvFrame(flags, flags == ReceiveFlag.DONTWAIT);
+        if (frame == null) {
+            return false;
+        }
+        if (!frame.more()) {
+            result.populateRoutedSinglePart(null, null, frame, 0L, false,
+                null, null);
+            return true;
+        }
+
+        Received fresh = new Received((byte[]) null, null, frame,
+            new BasicReceiveCursor(flags.getValue()), 0L, false, null, null);
+        result.adoptFrom(fresh);
+        return true;
+    }
+
+    private boolean recvIntoNoWait(Received result) {
+        prepareRecvLikeOperation();
+        RecvScratch scratch = recvScratch.get();
+        while (true) {
+            Message frame = new Message();
+            boolean success = false;
+            try {
+                int rc = Native.recvPartNoWaitCritical(handle,
+                    scratch.sourceRidOut, frame.nativeHandle(),
+                    scratch.hasMoreOut, ReceiveFlag.DONTWAIT.getValue());
+                if (rc == 0) {
+                    success = true;
+                    boolean hasMore =
+                        scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                    frame.finishReceive(hasMore);
+                    if (!hasMore) {
+                        result.populateRoutedSinglePart(null, null, frame, 0L,
+                            false, null, null);
+                    } else {
+                        Received fresh = new Received((byte[]) null, null,
+                            frame,
+                            new BasicReceiveCursor(
+                                ReceiveFlag.DONTWAIT.getValue()),
+                            0L, false, null, null);
+                        result.adoptFrom(fresh);
+                    }
+                    return true;
+                }
+            } finally {
+                if (!success) {
+                    try {
+                        frame.close();
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            }
+
+            int errno = Native.errno();
+            if (errno == ERRNO_EINTR) {
+                continue;
+            }
+            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
+                return false;
+            }
+            throw ZlinkException.fromLastError("zlink_recv_part");
+        }
     }
 
     Optional<Received> recvNoWait() {
@@ -1671,18 +1754,55 @@ public abstract class Socket implements AutoCloseable {
     private static MemorySegment nativeRoutingId(SendScratch scratch,
                                                  RoutingId routingId) {
         byte[] value = routingId.trustedBytes();
-        MemorySegment nativeRid = scratch.nativeRoutingId;
         if (scratch.cachedRoutingIdBytes == value) {
+            return scratch.cachedRoutingIdSegment;
+        }
+        MemorySegment cachedRid = cachedNativeRoutingId(scratch, value);
+        if (cachedRid != null) {
+            scratch.cachedRoutingIdBytes = value;
+            scratch.cachedRoutingIdSegment = cachedRid;
+            return cachedRid;
+        }
+        MemorySegment nativeRid = scratch.nativeRoutingId;
+        writeNativeRoutingId(nativeRid, value);
+        scratch.cachedRoutingIdBytes = value;
+        scratch.cachedRoutingIdSegment = nativeRid;
+        return nativeRid;
+    }
+
+    private static MemorySegment cachedNativeRoutingId(SendScratch scratch,
+                                                       byte[] value) {
+        byte[][] keys = scratch.cachedRoutingIdKeys;
+        MemorySegment[] segments = scratch.cachedRoutingIdSegments;
+        if (keys == null || segments == null) {
+            keys = new byte[SendScratch.ROUTING_ID_CACHE_CAPACITY][];
+            segments = new MemorySegment[SendScratch.ROUTING_ID_CACHE_CAPACITY];
+            scratch.cachedRoutingIdKeys = keys;
+            scratch.cachedRoutingIdSegments = segments;
+        }
+        int slot = System.identityHashCode(value)
+            & (SendScratch.ROUTING_ID_CACHE_CAPACITY - 1);
+        MemorySegment nativeRid = segments[slot];
+        if (keys[slot] == value && nativeRid != null) {
             return nativeRid;
         }
-        scratch.cachedRoutingIdBytes = value;
+        if (nativeRid == null) {
+            nativeRid = scratch.arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+            segments[slot] = nativeRid;
+        }
+        keys[slot] = value;
+        writeNativeRoutingId(nativeRid, value);
+        return nativeRid;
+    }
+
+    private static void writeNativeRoutingId(MemorySegment nativeRid,
+                                             byte[] value) {
         nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
             (byte) value.length);
         if (value.length > 0) {
             MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeRid,
                 NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
         }
-        return nativeRid;
     }
 
     private static MemorySegment nativeRoutingIdU32(SendScratch scratch,

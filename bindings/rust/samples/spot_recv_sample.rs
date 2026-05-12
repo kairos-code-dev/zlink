@@ -78,7 +78,7 @@ fn main() {
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
         match publisher
-            .publish(SERVICE_NAME, TOPIC)
+            .publish(TOPIC)
             .message(Message::copy_from(b"hello-spot").unwrap())
             .submit()
         {
@@ -92,7 +92,6 @@ fn main() {
         match subscriber.subscribe_with_flags(RecvFlags::DONT_WAIT) {
             Ok(Some(message)) => {
                 let payload = message.parts[0].as_str().unwrap_or("(binary)");
-                assert_eq!(message.service_name.as_deref(), Some(SERVICE_NAME));
                 assert_eq!(message.topic, TOPIC);
                 assert_eq!(payload, "hello-spot");
                 println!(

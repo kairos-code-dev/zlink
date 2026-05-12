@@ -7,7 +7,7 @@ use crate::error::{
 use crate::ffi;
 use crate::flags::SendFlags;
 use crate::message::{IntoMultipart, Message, RoutingId};
-use crate::socket::{prepare_send_parts, submit_part_sequence};
+use crate::socket::{check_send_flags_rc, prepare_send_parts, submit_part_sequence};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SendResult {
@@ -40,6 +40,74 @@ enum ReplyContext {
         peer_rid: RoutingId,
         request_seq: u64,
     },
+}
+
+#[allow(clippy::large_enum_variant)]
+enum SendContext {
+    Router {
+        handle: *mut c_void,
+        routing_id: RoutingId,
+    },
+    RouterSpot {
+        handle: *mut c_void,
+        node_rid: RoutingId,
+        spot_rid: RoutingId,
+    },
+    Spot {
+        handle: *mut c_void,
+        node_rid: RoutingId,
+        spot_rid: RoutingId,
+    },
+}
+
+impl SendContext {
+    fn send_with_flags(&self, parts: Vec<Message>, flags: SendFlags) -> Result<bool, SubmitError> {
+        let mut parts = parts.into_multipart();
+        let mut native = prepare_send_parts(&mut parts).map_err(|_| submit_state_error())?;
+        let rc = match self {
+            Self::Router { handle, routing_id } => submit_part_sequence(
+                &mut native,
+                |part, part_flag, _| unsafe {
+                    ffi::zlink_send_part_rid(
+                        *handle,
+                        routing_id.as_raw(),
+                        part,
+                        flags.bits(),
+                        part_flag,
+                    )
+                },
+            )?,
+            Self::RouterSpot {
+                handle,
+                node_rid,
+                spot_rid,
+            } => submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+                ffi::zlink_router_send_spot_part(
+                    *handle,
+                    node_rid.as_raw(),
+                    spot_rid.as_raw(),
+                    part,
+                    flags.bits(),
+                    part_flag,
+                )
+            })?,
+            Self::Spot {
+                handle,
+                node_rid,
+                spot_rid,
+            } => submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
+                ffi::zlink_spot_send_spot_part(
+                    *handle,
+                    node_rid.as_raw(),
+                    spot_rid.as_raw(),
+                    part,
+                    flags.bits(),
+                    part_flag,
+                )
+            })?,
+        };
+        check_send_flags_rc(rc)
+    }
 }
 
 impl ReplyContext {
@@ -99,6 +167,7 @@ pub struct Received {
     pub request_seq: Option<u64>,
     pub parts: Vec<Message>,
     reply_context: Option<ReplyContext>,
+    send_context: Option<SendContext>,
 }
 
 impl Default for Received {
@@ -123,6 +192,7 @@ impl Received {
             request_seq: None,
             parts: Vec::new(),
             reply_context: None,
+            send_context: None,
         }
     }
 
@@ -136,6 +206,7 @@ impl Received {
         self.request_seq = source.request_seq;
         self.parts = source.parts;
         self.reply_context = source.reply_context;
+        self.send_context = source.send_context;
     }
 
     pub(crate) fn new(routing_id: Option<RoutingId>, parts: Vec<Message>) -> Self {
@@ -145,6 +216,46 @@ impl Received {
             request_seq: None,
             parts,
             reply_context: None,
+            send_context: None,
+        }
+    }
+
+    pub(crate) fn with_router_send_context(
+        handle: *mut c_void,
+        routing_id: RoutingId,
+        parts: Vec<Message>,
+    ) -> Self {
+        Self {
+            routing_id: Some(routing_id.clone()),
+            spot_rid: None,
+            request_seq: None,
+            parts,
+            reply_context: None,
+            send_context: Some(SendContext::Router { handle, routing_id }),
+        }
+    }
+
+    pub(crate) fn set_router_send_context(&mut self, handle: *mut c_void, routing_id: RoutingId) {
+        self.send_context = Some(SendContext::Router { handle, routing_id });
+    }
+
+    pub(crate) fn with_router_spot_send_context(
+        handle: *mut c_void,
+        node_rid: RoutingId,
+        spot_rid: RoutingId,
+        parts: Vec<Message>,
+    ) -> Self {
+        Self {
+            routing_id: Some(node_rid.clone()),
+            spot_rid: Some(spot_rid.clone()),
+            request_seq: None,
+            parts,
+            reply_context: None,
+            send_context: Some(SendContext::RouterSpot {
+                handle,
+                node_rid,
+                spot_rid,
+            }),
         }
     }
 
@@ -154,6 +265,7 @@ impl Received {
         request_seq: u64,
         parts: Vec<Message>,
     ) -> Self {
+        let send_routing_id = routing_id.clone();
         Self {
             routing_id: Some(routing_id.clone()),
             spot_rid: None,
@@ -163,6 +275,10 @@ impl Received {
                 handle,
                 routing_id,
                 request_seq,
+            }),
+            send_context: Some(SendContext::Router {
+                handle,
+                routing_id: send_routing_id,
             }),
         }
     }
@@ -174,6 +290,8 @@ impl Received {
         request_seq: u64,
         parts: Vec<Message>,
     ) -> Self {
+        let send_node_rid = node_rid.clone();
+        let send_spot_rid = spot_rid.clone();
         Self {
             routing_id: Some(node_rid.clone()),
             spot_rid: Some(spot_rid.clone()),
@@ -184,6 +302,11 @@ impl Received {
                 node_rid,
                 spot_rid,
                 request_seq,
+            }),
+            send_context: Some(SendContext::RouterSpot {
+                handle,
+                node_rid: send_node_rid,
+                spot_rid: send_spot_rid,
             }),
         }
     }
@@ -203,6 +326,53 @@ impl Received {
                 handle,
                 peer_rid,
                 request_seq,
+            }),
+            send_context: None,
+        }
+    }
+
+    pub(crate) fn with_spot_send_context(
+        handle: *mut c_void,
+        node_rid: RoutingId,
+        spot_rid: RoutingId,
+        parts: Vec<Message>,
+    ) -> Self {
+        Self {
+            routing_id: Some(node_rid.clone()),
+            spot_rid: Some(spot_rid.clone()),
+            request_seq: None,
+            parts,
+            reply_context: None,
+            send_context: Some(SendContext::Spot {
+                handle,
+                node_rid,
+                spot_rid,
+            }),
+        }
+    }
+
+    pub(crate) fn with_spot_reply_and_send_context(
+        handle: *mut c_void,
+        node_rid: RoutingId,
+        spot_rid: RoutingId,
+        request_seq: u64,
+        parts: Vec<Message>,
+    ) -> Self {
+        Self {
+            routing_id: Some(node_rid.clone()),
+            spot_rid: Some(spot_rid.clone()),
+            request_seq: Some(request_seq),
+            parts,
+            reply_context: Some(ReplyContext::Spot {
+                handle,
+                node_rid: node_rid.clone(),
+                spot_rid: spot_rid.clone(),
+                request_seq,
+            }),
+            send_context: Some(SendContext::Spot {
+                handle,
+                node_rid,
+                spot_rid,
             }),
         }
     }
@@ -251,6 +421,21 @@ impl Received {
             .as_ref()
             .ok_or_else(submit_state_error)?
             .reply_with_flags(parts, flags)
+    }
+
+    pub fn send(&self, parts: Vec<Message>) -> Result<bool, SubmitError> {
+        self.send_with_flags(parts, SendFlags::NONE)
+    }
+
+    pub fn send_with_flags(
+        &self,
+        parts: Vec<Message>,
+        flags: SendFlags,
+    ) -> Result<bool, SubmitError> {
+        self.send_context
+            .as_ref()
+            .ok_or_else(submit_state_error)?
+            .send_with_flags(parts, flags)
     }
 
     pub fn into_parts(self) -> Vec<Message> {

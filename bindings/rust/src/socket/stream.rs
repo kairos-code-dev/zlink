@@ -60,7 +60,13 @@ impl StreamSocket {
     /// Canonical caller-provided storage recv. See
     /// `doc/spec/bindings/README.md`.
     pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
-        self.inner.recv(out, flags)
+        let received = self.inner.recv(out, flags)?;
+        if received {
+            if let Some(routing_id) = out.routing_id.clone() {
+                out.set_router_send_context(self.inner.handle, routing_id);
+            }
+        }
+        Ok(received)
     }
 
     pub fn disconnect_rid(&self, peer_rid: &RoutingId) -> Result<(), crate::error::ConnectError> {

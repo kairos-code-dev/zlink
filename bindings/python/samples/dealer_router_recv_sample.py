@@ -21,7 +21,7 @@ def main():
                         raise AssertionError(f"unexpected routing id: {request.routing_id!r}")
                     if request.to_bytes_list() != [b"ping"]:
                         raise AssertionError("unexpected dealer-router request payload")
-                    router.send(request.routing_id, b"pong")
+                    request.send(b"pong")
 
                 with dealer.recv() as reply:
                     if reply.to_bytes_list() != [b"pong"]:

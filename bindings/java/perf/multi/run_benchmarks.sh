@@ -843,17 +843,18 @@ done
 requested_patterns="$(IFS=,; echo "${patterns[*]}")"
 display_msg_sizes="${MSG_SIZES}"
 display_clients="${CLIENTS}"
-display_server_io_threads="${SERVER_IO_THREADS:-${COMMON_IO_THREADS:-2}}"
-display_client_io_threads="${CLIENT_IO_THREADS:-${COMMON_IO_THREADS:-2}}"
-if printf '%s\n' "${patterns[@]}" | grep -qx 'MULTI_STREAM'; then
-  if [[ -z "${SERVER_IO_THREADS}" && -z "${COMMON_IO_THREADS}" ]]; then
-    display_server_io_threads="${display_server_io_threads} (STREAM: 4)"
-  fi
-  if [[ -z "${CLIENT_IO_THREADS}" && -z "${COMMON_IO_THREADS}" ]]; then
-    display_client_io_threads="${display_client_io_threads} (STREAM: 4)"
-  fi
+display_server_io_threads="${SERVER_IO_THREADS:-${COMMON_IO_THREADS:-4}}"
+display_client_io_threads="${CLIENT_IO_THREADS:-${COMMON_IO_THREADS:-4}}"
+if [[ "${PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}" == "1" \
+  || "${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}" == "1" ]]; then
+  display_hwm="${HWM:-manual-unset}"
+  display_send_hwm="${SEND_HWM:-${HWM:-manual-unset}}"
+  display_recv_hwm="${RECV_HWM:-${HWM:-manual-unset}}"
+else
+  display_hwm="auto-hwm"
+  display_send_hwm="auto-hwm"
+  display_recv_hwm="auto-hwm"
 fi
-
 skip_entries=()
 run_patterns=()
 for pattern in "${patterns[@]}"; do
@@ -902,12 +903,8 @@ for pattern_index in "${!patterns[@]}"; do
   bare_pattern="${pattern#MULTI_}"
   pattern_clients="$(default_clients_for_pattern "${pattern}")"
   pattern_msg_sizes="$(default_msg_sizes_for_pattern "${pattern}")"
-  pattern_server_io_threads="${SERVER_IO_THREADS:-${COMMON_IO_THREADS:-2}}"
-  pattern_client_io_threads="${CLIENT_IO_THREADS:-${COMMON_IO_THREADS:-2}}"
-  if [[ "${pattern}" == "MULTI_STREAM" ]]; then
-    pattern_server_io_threads="${SERVER_IO_THREADS:-${COMMON_IO_THREADS:-4}}"
-    pattern_client_io_threads="${CLIENT_IO_THREADS:-${COMMON_IO_THREADS:-4}}"
-  fi
+  pattern_server_io_threads="${SERVER_IO_THREADS:-${COMMON_IO_THREADS:-4}}"
+  pattern_client_io_threads="${CLIENT_IO_THREADS:-${COMMON_IO_THREADS:-4}}"
   IFS=',' read -r -a msg_sizes <<< "$(trim_csv "${pattern_msg_sizes}")"
 
   for transport_index in "${!transports[@]}"; do
@@ -994,7 +991,7 @@ python_status=0
 python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${report}" "${requested_patterns}" "${TRANSPORTS}" "${display_msg_sizes}" \
   "${display_clients}" "${RUNS}" "${DURATION}" "${RESULTS_TAG}" \
   "${PIN_CPU}" "${display_server_io_threads}" "${display_client_io_threads}" \
-  "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" \
+  "${display_hwm}" "${display_send_hwm}" "${display_recv_hwm}" "${SNDTIMEO_MS}" "${RCVTIMEO_MS}" \
   "${CONNECT_READY_TIMEOUT_MS}" "${MONITOR_HWM}" "${SERVER_BIND_PORT}" \
   "${CONNECT_CONCURRENCY}" "${tmp_progress}" "${expected_result_lines}" "${actual_result_lines}" <<'PY' || python_status=$?
 import csv
@@ -1080,9 +1077,9 @@ start_options = [
     ("pin_cpu", "on" if pin_cpu == "1" else "off"),
     ("server_io_threads", server_io_threads),
     ("client_io_threads", client_io_threads),
-    ("hwm", hwm or "default(binding)"),
-    ("send_hwm", send_hwm or "default(binding)"),
-    ("recv_hwm", recv_hwm or "default(binding)"),
+    ("hwm", hwm),
+    ("send_hwm", send_hwm),
+    ("recv_hwm", recv_hwm),
     ("send_timeout_ms", sndtimeo_ms),
     ("recv_timeout_ms", rcvtimeo_ms),
     ("connect_concurrency", connect_concurrency or "auto"),

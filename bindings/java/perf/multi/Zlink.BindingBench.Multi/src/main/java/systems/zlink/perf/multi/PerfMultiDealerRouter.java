@@ -6,6 +6,7 @@ import systems.zlink.Context;
 import systems.zlink.DealerSocket;
 import systems.zlink.Message;
 import systems.zlink.MonitorEventType;
+import systems.zlink.MonitorSocket;
 import systems.zlink.PollEventFlag;
 import systems.zlink.RouterSocket;
 import systems.zlink.RoutingId;
@@ -16,9 +17,10 @@ import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 
 final class PerfMultiDealerRouter {
     private static final MonitorEventType READY_EVENT =
@@ -43,6 +45,7 @@ final class PerfMultiDealerRouter {
             PerfUtil.recalculateAutoHwm(ctx);
             int stops = 0;
             Deque<PendingReply> pendingReplies = new ArrayDeque<>();
+            systems.zlink.Received receivedBuffer = new systems.zlink.Received();
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 List.of(server), PollEventFlag.POLLIN)) {
                 // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait (-1);
@@ -60,34 +63,28 @@ final class PerfMultiDealerRouter {
                         flushPending(server, pendingReplies);
                     }
                     while (true) {
-                        systems.zlink.Received received =
-                            PerfUtil.recvNoWait(server);
-                        if (received == null) {
+                        if (!server.recv(receivedBuffer, systems.zlink.RecvFlags.DONT_WAIT)) {
                             break;
                         }
-                        try (received) {
-                            if (PerfStopToken.isStopTokenMessage(received.firstPart())) {
-                                stops++;
-                                continue;
-                            }
-                            PerfUtil.Header header = PerfUtil.decodeHeader(
-                                received.firstPart(), config.size());
-                            if (header == null) {
-                                continue;
-                            }
-                            Message reply = received.firstPart().move();
-                            PendingReply pending = new PendingReply(
-                                received.routingId().orElseThrow(), reply);
-                            if (!pendingReplies.isEmpty()) {
-                                pendingReplies.addLast(pending);
-                                continue;
-                            }
-                            if (!server.send(pending.routingId(), pending.payload(),
-                                SendFlags.DONT_WAIT)) {
-                                pendingReplies.addLast(pending);
-                                continue;
-                            }
-                            pending.close();
+                        if (PerfStopToken.isStopTokenMessage(receivedBuffer.firstPart())) {
+                            stops++;
+                            receivedBuffer.close();
+                            continue;
+                        }
+	                        if (pendingReplies.isEmpty()
+	                            && receivedBuffer.send(receivedBuffer.firstPart(),
+	                                SendFlags.DONT_WAIT)) {
+	                            receivedBuffer.close();
+	                            continue;
+	                        }
+	                        RoutingId rid = receivedBuffer.routingId().orElseThrow();
+                        Message reply = receivedBuffer.firstPart().move();
+                        receivedBuffer.close();
+                        if (pendingReplies.isEmpty()
+                            && server.send(rid, reply, SendFlags.DONT_WAIT)) {
+                            reply.close();
+                        } else {
+                            pendingReplies.addLast(new PendingReply(rid, reply));
                         }
                     }
                 }
@@ -97,64 +94,192 @@ final class PerfMultiDealerRouter {
     }
 
     static PerfUtil.Result runClient(PerfUtil.Config config) {
-        CountDownLatch connected = new CountDownLatch(config.clients());
-        CountDownLatch go = new CountDownLatch(1);
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-        PerfMultiSendLoops.runClients(config.clients(), (index, duration) -> new Thread(() -> {
-            try (Context ctx = PerfUtil.newContext(config);
-                 DealerSocket client = new DealerSocket(ctx);
-                 var monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY)) {
+        List<MonitorSocket> monitors = new ArrayList<>(config.clients());
+        List<DealerSocket> clients = new ArrayList<>(config.clients());
+        try (Context ctx = PerfUtil.newContext(config)) {
+            for (int i = 0; i < config.clients(); i++) {
+                DealerSocket client = new DealerSocket(ctx);
+                MonitorSocket monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY);
                 PerfUtil.applyMonitorOptions(monitor, config);
                 PerfUtil.applySocketOptions(client, config);
                 PerfUtil.configureClientTls(client, config.transport());
                 client.connect(config.endpoint());
-                PerfUtil.waitForMonitorEvent(monitor, READY_EVENT, 1,
-                    Duration.ofMillis(config.connectReadyTimeoutMs()),
+                clients.add(client);
+                monitors.add(monitor);
+            }
+            Duration readyTimeout =
+                Duration.ofMillis(config.connectReadyTimeoutMs());
+            for (int i = 0; i < monitors.size(); i++) {
+                PerfUtil.waitForMonitorEvent(monitors.get(i), READY_EVENT, 1,
+                    readyTimeout,
                     "dealer/router client ready");
+                monitors.get(i).close();
+            }
+            monitors.clear();
+            for (DealerSocket client : clients) {
                 PerfUtil.applyAutoHwmMsgUnit(client, config.size());
-                PerfUtil.recalculateAutoHwm(ctx);
-                connected.countDown();
-                if (connected.getCount() == 0L) {
-                    metrics.startActiveWindow();
-                    go.countDown();
-                }
-                PerfUtil.await(go, "dealer/router start", Duration.ofSeconds(10));
-                try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                    List.of(client), PollEventFlag.POLLIN)) {
-                    long activeEnd = System.nanoTime() + duration * 1_000_000_000L;
-                    while (System.nanoTime() < activeEnd) {
-                        try (Message request = PerfUtil.payload(config.size(),
-                                 (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
-                            sendUntilSent(client, pollSet, request, activeEnd);
-                        }
-                        if (!awaitReadable(pollSet, activeEnd)) {
-                            break;
-                        }
-                        while (true) {
-                            systems.zlink.Received received =
-                                PerfUtil.recvNoWait(client);
-                            if (received == null) {
-                                break;
-                            }
-                            try (received) {
-                                PerfUtil.Header header = PerfUtil.decodeHeader(
-                                    received.firstPart(), config.size());
-                                if (header != null && header.phase() == PerfUtil.PHASE_ACTIVE) {
-                                    metrics.recordNanos(header.latencyNanos() / 2L);
-                                }
-                            }
-                        }
-                    }
-                    // PERF_MULTI_TEST_POLICY § 1.3.1: phase end is signaled
-                    // via a wire-level stop token (one per client).
-                    try (Message stop = PerfStopToken.newMessage()) {
-                        sendUntilSent(client, pollSet, stop,
-                            System.nanoTime() + Duration.ofSeconds(5).toNanos());
-                    }
+            }
+            PerfUtil.recalculateAutoHwm(ctx);
+            runDealerRouterClientLoop(clients, config, metrics);
+            return metrics.finishMulti(config);
+        } finally {
+            for (MonitorSocket monitor : monitors) {
+                try {
+                    monitor.close();
+                } catch (Exception ignored) {
                 }
             }
-        }, "multi-dr-client-" + index), config.durationSeconds());
-        return metrics.finishMulti(config);
+            for (DealerSocket client : clients) {
+                try {
+                    client.close();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
+
+    private static void runDealerRouterClientLoop(List<DealerSocket> clients,
+                                                  PerfUtil.Config config,
+                                                  PerfUtil.Metrics metrics) {
+        int n = clients.size();
+        int msgSize = config.size();
+        int runId = PerfUtil.runId();
+        byte[][] payloads = new byte[n][];
+        boolean[] waitingReply = new boolean[n];
+        boolean[] waitingWritable = new boolean[n];
+        for (int i = 0; i < n; i++) {
+            payloads[i] = new byte[Math.max(msgSize, PerfUtil.HEADER_SIZE)];
+            Arrays.fill(payloads[i], (byte) 'a');
+        }
+        List<systems.zlink.Socket> socketsAsBase = new ArrayList<>(n);
+        socketsAsBase.addAll(clients);
+        long seq = 1L;
+        int rrIndex = 0;
+        systems.zlink.Received replyBuffer = new systems.zlink.Received();
+        try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
+                socketsAsBase, PollEventFlag.POLLIN)) {
+            metrics.startActiveWindow();
+            long activeEnd = System.nanoTime()
+                + (long) config.durationSeconds() * 1_000_000_000L;
+            while (System.nanoTime() < activeEnd) {
+                int startIndex = rrIndex;
+                for (int i = 0; i < n; i++) {
+                    int idx = (startIndex + i) % n;
+                    if (waitingReply[idx] || waitingWritable[idx]) continue;
+                    stampMetricHeader(payloads[idx], runId,
+                        (byte) PerfUtil.PHASE_ACTIVE, msgSize, seq++,
+                        PerfUtil.nowNs());
+                    if (trySendPayload(clients.get(idx), payloads[idx])) {
+                        waitingReply[idx] = true;
+                    } else {
+                        waitingWritable[idx] = true;
+                    }
+                    updatePollMask(pollSet, idx, waitingReply[idx],
+                        waitingWritable[idx]);
+                }
+                rrIndex = (startIndex + 1) % n;
+                pollSet.poll(-1);
+                for (int idx = 0; idx < n; idx++) {
+                    boolean writable =
+                        pollSet.isReady(idx, PollEventFlag.POLLOUT);
+                    if (writable && waitingWritable[idx] && !waitingReply[idx]) {
+                        if (trySendPayload(clients.get(idx), payloads[idx])) {
+                            waitingWritable[idx] = false;
+                            waitingReply[idx] = true;
+                            updatePollMask(pollSet, idx, true, false);
+                        }
+                    }
+                    boolean readable =
+                        pollSet.isReady(idx, PollEventFlag.POLLIN);
+                    if (!readable && !waitingReply[idx]) continue;
+                    drainReplies(clients.get(idx), idx, waitingReply,
+                        waitingWritable, msgSize, metrics, pollSet,
+                        replyBuffer);
+                }
+            }
+            for (DealerSocket client : clients) {
+                try (Message stop = PerfStopToken.newMessage();
+                     PerfSocketPollSet stopPoll = PerfSocketPollSet.fromSockets(
+                         List.of(client), PollEventFlag.POLLOUT)) {
+                    stopPoll.setEvents(0);
+                    sendUntilSent(client, stopPoll, stop,
+                        System.nanoTime() + Duration.ofSeconds(5).toNanos());
+                }
+            }
+        }
+    }
+
+    private static boolean trySendPayload(DealerSocket client, byte[] payload) {
+        try (Message message = Message.copyOf(payload)) {
+            return client.send(message, SendFlags.DONT_WAIT);
+        }
+    }
+
+    private static void drainReplies(DealerSocket client, int idx,
+                                     boolean[] waitingReply,
+                                     boolean[] waitingWritable,
+                                     int msgSize,
+                                     PerfUtil.Metrics metrics,
+                                     PerfSocketPollSet pollSet,
+                                     systems.zlink.Received replyBuffer) {
+        while (true) {
+            if (!client.recv(replyBuffer, systems.zlink.RecvFlags.DONT_WAIT)) {
+                break;
+            }
+            if (!waitingReply[idx]) {
+                replyBuffer.close();
+                continue;
+            }
+            PerfUtil.recordActiveLatency(metrics, replyBuffer.firstPart(),
+                msgSize, true);
+            waitingReply[idx] = false;
+            waitingWritable[idx] = false;
+            updatePollMask(pollSet, idx, false, false);
+            replyBuffer.close();
+        }
+    }
+
+    private static final int METRIC_MAGIC = 0x5A4C4E4B;
+
+    private static void stampMetricHeader(byte[] buf, int runId, byte phase,
+                                          int msgSize, long seq,
+                                          long sentTsNs) {
+        writeIntLe(buf, 0, METRIC_MAGIC);
+        writeIntLe(buf, 4, runId);
+        buf[8] = phase;
+        writeIntLe(buf, 9, msgSize);
+        writeLongLe(buf, 13, seq);
+        writeLongLe(buf, 21, sentTsNs);
+    }
+
+    private static void writeIntLe(byte[] buf, int offset, int value) {
+        buf[offset] = (byte) value;
+        buf[offset + 1] = (byte) (value >>> 8);
+        buf[offset + 2] = (byte) (value >>> 16);
+        buf[offset + 3] = (byte) (value >>> 24);
+    }
+
+    private static void writeLongLe(byte[] buf, int offset, long value) {
+        buf[offset] = (byte) value;
+        buf[offset + 1] = (byte) (value >>> 8);
+        buf[offset + 2] = (byte) (value >>> 16);
+        buf[offset + 3] = (byte) (value >>> 24);
+        buf[offset + 4] = (byte) (value >>> 32);
+        buf[offset + 5] = (byte) (value >>> 40);
+        buf[offset + 6] = (byte) (value >>> 48);
+        buf[offset + 7] = (byte) (value >>> 56);
+    }
+
+    private static void updatePollMask(PerfSocketPollSet pollSet, int idx,
+                                       boolean waitingReply,
+                                       boolean waitingWritable) {
+        if (waitingWritable && !waitingReply) {
+            pollSet.setEvents(idx, PollEventFlag.POLLIN,
+                PollEventFlag.POLLOUT);
+        } else {
+            pollSet.setEvents(idx, PollEventFlag.POLLIN);
+        }
     }
 
     private static void sendUntilSent(DealerSocket client, PerfSocketPollSet pollSet,

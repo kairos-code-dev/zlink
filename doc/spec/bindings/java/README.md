@@ -1557,10 +1557,16 @@ public final class Received implements AutoCloseable {
     Optional<Long> requestSeq();                   // present for request messages only
     List<Message> parts();
     boolean isSinglePart();
-    Message firstPart();                                             // @throws RecvException
-    Message singlePartOrThrow();                                     // @throws RecvException
+	    Message firstPart();                                             // @throws RecvException
+	    Message singlePartOrThrow();                                     // @throws RecvException
 
-    // Valid only when requestSeq is present and the reply context is live.
+	    // Send a regular routed message to the sender of this Received.
+	    boolean send(Message part);                                      // @throws SubmitException
+	    boolean send(Message part, SendFlags flags);                     // @throws SubmitException
+	    boolean send(List<Message> parts);                               // @throws SubmitException
+	    boolean send(List<Message> parts, SendFlags flags);              // @throws SubmitException
+
+	    // Valid only when requestSeq is present and the reply context is live.
     void reply(Message part);                                        // @throws SubmitException
     void reply(Message part, SendFlags flags);                       // @throws SubmitException
     void reply(List<Message> parts);                                 // @throws SubmitException

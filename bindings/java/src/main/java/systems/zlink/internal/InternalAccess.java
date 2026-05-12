@@ -24,6 +24,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.List;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 
 /**
  * Non-exported bridge for package-private root-package internals.
@@ -121,6 +122,9 @@ public final class InternalAccess {
         staticMethod("receivedForceMaterialize", void.class, Received.class);
     private static final MethodHandle RECEIVED_TAKE_PARTS =
         staticMethod("receivedTakeParts", List.class, Received.class);
+    private static final MethodHandle RECEIVED_SET_SEND_SENDER =
+        staticMethod("receivedSetSendSender", void.class, Received.class,
+          BiFunction.class);
     private static final MethodHandle IN_CALLBACK =
         staticMethod("inCallback", boolean.class);
     private static final MethodHandle ENTER_CALLBACK =
@@ -451,6 +455,16 @@ public final class InternalAccess {
     public static List<Message> receivedTakeParts(Received received) {
         try {
             return (List<Message>) RECEIVED_TAKE_PARTS.invokeExact(received);
+        } catch (Throwable t) {
+            throw unchecked(t);
+        }
+    }
+
+    public static void receivedSetSendSender(Received received,
+                                             BiFunction<List<Message>, SendFlags,
+                                                 Boolean> sendSender) {
+        try {
+            RECEIVED_SET_SEND_SENDER.invokeExact(received, sendSender);
         } catch (Throwable t) {
             throw unchecked(t);
         }

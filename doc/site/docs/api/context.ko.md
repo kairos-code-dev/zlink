@@ -59,7 +59,7 @@ typedef enum zlink_auto_hwm_profile_t
 ## 기본값
 
 ```c
-#define ZLINK_IO_THREADS_DFLT           1
+#define ZLINK_IO_THREADS_DFLT           4
 #define ZLINK_MAX_SOCKETS_DFLT          4095
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
@@ -70,7 +70,7 @@ typedef enum zlink_auto_hwm_profile_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_IO_THREADS_DFLT` | 1 | 기본 I/O 스레드 수 |
+| `ZLINK_IO_THREADS_DFLT` | 4 | 기본 I/O 스레드 수 |
 | `ZLINK_MAX_SOCKETS_DFLT` | 4095 | 기본 최대 소켓 수 |
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | 기본 스레드 우선순위 (OS 기본값) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | 기본 스케줄링 정책 (OS 기본값) |

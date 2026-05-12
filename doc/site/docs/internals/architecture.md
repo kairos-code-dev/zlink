@@ -868,7 +868,7 @@ The top-level object that manages global state.
 **Key roles**:
 
 1. **I/O Thread Pool Management**
-   - Set thread count with `zlink_ctx_set(ctx, ZLINK_IO_THREADS, n)` (default: 1)
+   - Set thread count with `zlink_ctx_set(ctx, ZLINK_IO_THREADS, n)` (default: 4)
    - Each I/O thread holds an independent `io_context`
    - Selects the least-loaded I/O thread for new connections (affinity mask support)
 
@@ -892,7 +892,7 @@ ctx_t internal structure:
 |  _pending_connections: multimap       Pending connections|
 |                                                          |
 |  _max_sockets: int     (default: 1023)                   |
-|  _io_thread_count: int (default: 1)                      |
+|  _io_thread_count: int (default: 4)                      |
 |  _max_msgsz: int       (max message size)                |
 +----------------------------------------------------------+
 ```

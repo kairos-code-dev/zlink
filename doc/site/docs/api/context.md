@@ -63,7 +63,7 @@ typedef enum zlink_auto_hwm_profile_t
 ## Default Values
 
 ```c
-#define ZLINK_IO_THREADS_DFLT           1
+#define ZLINK_IO_THREADS_DFLT           4
 #define ZLINK_MAX_SOCKETS_DFLT          4095
 #define ZLINK_THREAD_PRIORITY_DFLT      -1
 #define ZLINK_THREAD_SCHED_POLICY_DFLT  -1
@@ -74,7 +74,7 @@ typedef enum zlink_auto_hwm_profile_t
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `ZLINK_IO_THREADS_DFLT` | 1 | Default number of I/O threads |
+| `ZLINK_IO_THREADS_DFLT` | 4 | Default number of I/O threads |
 | `ZLINK_MAX_SOCKETS_DFLT` | 4095 | Default maximum socket count |
 | `ZLINK_THREAD_PRIORITY_DFLT` | -1 | Default thread priority (OS default) |
 | `ZLINK_THREAD_SCHED_POLICY_DFLT` | -1 | Default scheduling policy (OS default) |

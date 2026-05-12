@@ -62,15 +62,28 @@ fn main() {
     while !stop.load(Ordering::Acquire) {
         let mut progressed = false;
         loop {
-            match router.recv(&mut received, RecvFlags::DONT_WAIT) {
-                Ok(true) => {
-                    let Some(rid) = received.routing_id().cloned() else {
-                        continue;
-                    };
-                    let reply_bytes = common::message_payload(received.parts()).to_vec();
-                    pending.push_back((rid, reply_bytes));
-                    progressed = true;
-                }
+	            match router.recv(&mut received, RecvFlags::DONT_WAIT) {
+	                Ok(true) => {
+	                    let Some(rid) = received.routing_id().cloned() else {
+	                        continue;
+	                    };
+	                    let reply_bytes = common::message_payload(received.parts()).to_vec();
+	                    if pending.is_empty() {
+	                        match received.send_with_flags(
+	                            vec![Message::copy_from(&reply_bytes).expect("reply")],
+	                            SendFlags::DONT_WAIT,
+	                        ) {
+	                            Ok(true) => {
+	                                progressed = true;
+	                                continue;
+	                            }
+	                            Ok(false) => {}
+	                            Err(err) => panic!("received send failed: {err}"),
+	                        }
+	                    }
+	                    pending.push_back((rid, reply_bytes));
+	                    progressed = true;
+	                }
                 Ok(false) => break,
                 Err(err) => panic!("router recv failed: {err}"),
             }

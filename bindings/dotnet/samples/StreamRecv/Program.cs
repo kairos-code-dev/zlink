@@ -21,13 +21,13 @@ SampleSupport.SendAll(network, request);
 using var received = new Received();
 if (!stream.Recv(received))
     throw new InvalidOperationException("recv failed");
-RoutingId routingId = received.RoutingId
-    ?? throw new InvalidOperationException("missing routing id");
+if (received.RoutingId == null)
+    throw new InvalidOperationException("missing routing id");
 string payload = received.Parts[0].GetString();
 SampleSupport.EnsureEqual("hello-stream", payload, "payload");
 
 using var reply = Message.FromString("hello-stream");
-stream.Send(routingId, reply);
+received.Send(reply);
 string echoed = System.Text.Encoding.UTF8.GetString(
     SampleSupport.ReceiveExact(network, "hello-stream".Length));
 Console.WriteLine(

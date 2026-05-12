@@ -29,7 +29,7 @@ int main ()
 
     const std::string reply_payload = detail::k_dealer_router_reply;
     zlink::message_t reply = detail::make_message (reply_payload);
-    router.send (*inbound.routing_id (), reply);
+    inbound.send (reply);
     inbound.close ();
 
     zlink::received_t echoed;

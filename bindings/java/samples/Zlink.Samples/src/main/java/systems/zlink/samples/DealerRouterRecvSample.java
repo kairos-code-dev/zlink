@@ -4,7 +4,6 @@ import systems.zlink.Context;
 import systems.zlink.DealerSocket;
 import systems.zlink.Message;
 import systems.zlink.RouterSocket;
-import systems.zlink.RoutingId;
 
 public final class DealerRouterRecvSample {
     public static void main(String[] args) {
@@ -26,21 +25,15 @@ public final class DealerRouterRecvSample {
                 dealer.send(request);
             }
 
-            RoutingId rid;
             try (systems.zlink.Received received = new systems.zlink.Received()) {
                 router.recv(received, systems.zlink.RecvFlags.NONE);
                 String value = SampleSupport.singleUtf8(received);
                 if (!SampleSupport.DEALER_REQUEST.equals(value)) {
                     throw new IllegalStateException("unexpected request: " + value);
                 }
-                rid = received.routingId().orElse(null);
-                if (rid == null) {
-                    throw new IllegalStateException("router delivery missing routing id");
+                try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
+                    received.send(reply);
                 }
-            }
-
-            try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
-                router.send(rid, reply);
             }
 
             try (systems.zlink.Received received = new systems.zlink.Received()) {

@@ -948,6 +948,38 @@ class base_socket_t : public socket_handle_t
         if (rc != 0)
             return rc;
 
+        std::function<bool(std::vector<message_t> &, send_flags_t)> send_fn;
+        if (!zlink::detail::routing_id_empty (envelope.source_rid)) {
+            void *raw_handle = handle ();
+            const routing_id_t send_rid (envelope.source_rid);
+            send_fn = [raw_handle, send_rid] (
+                        std::vector<message_t> &send_parts_,
+                        send_flags_t flags_) {
+                std::vector<zlink_msg_t> native;
+                if (detail::move_parts_to_native (send_parts_, native) != 0)
+                    throw last_error ();
+                size_t failed_index = 0;
+                const submit_result_t result = static_cast<submit_result_t> (
+                  detail::submit_native_parts (
+                    native, failed_index,
+                    [&] (zlink_msg_t *part_out_,
+                         zlink_part_flag_t part_flag_, bool) {
+                        return zlink_send_part_rid (
+                          raw_handle, zlink::detail::routing_id_native (send_rid),
+                          part_out_, static_cast<zlink_send_flags_t> (flags_),
+                          part_flag_);
+                    }));
+                if (result == submit_result_t::ok)
+                    return true;
+                detail::restore_parts_from_native (
+                  send_parts_, native, failed_index);
+                if (flags_ == send_flags_t::dontwait
+                    && result == submit_result_t::backpressured)
+                    return false;
+                throw submit_error_t (result, zlink_errno ());
+            };
+        }
+
         received_ = received_t (
           zlink::detail::routing_id_empty (envelope.source_rid)
             ? std::nullopt
@@ -958,7 +990,9 @@ class base_socket_t : public socket_handle_t
           envelope.has_request_seq
             ? std::optional<uint64_t> (envelope.request_seq)
             : std::nullopt,
-          std::move (envelope.parts));
+          std::move (envelope.parts),
+          std::function<void(std::vector<message_t> &, send_flags_t)> (),
+          std::move (send_fn));
         return 0;
     }
 

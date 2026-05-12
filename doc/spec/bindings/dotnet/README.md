@@ -1250,9 +1250,15 @@ public sealed class Received : IDisposable
     /// <exception cref="ZlinkRecvException"/>
     Message FirstPart();
     /// <exception cref="ZlinkRecvException"/>
-    Message SinglePartOrThrow();
+	    Message SinglePartOrThrow();
 
-    // Reply requires a non-null RequestSeq. A null or invalid reply context
+	    // Send a regular routed message to the sender of this Received.
+	    /// <exception cref="ZlinkSubmitException"/>
+	    bool Send(Message part, SendFlags flags = SendFlags.None);
+	    /// <exception cref="ZlinkSubmitException"/>
+	    bool Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+
+	    // Reply requires a non-null RequestSeq. A null or invalid reply context
     // raises ZlinkSubmitException.
     /// <exception cref="ZlinkSubmitException"/>
     void Reply(Message part, SendFlags flags = SendFlags.None);

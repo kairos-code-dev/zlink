@@ -365,3 +365,269 @@
 - 결론:
   - plan §1 size별 목표 (RR 64B `0.75`) 는 single-thread + 100 clients 구조와 managed runtime 의 조합으로는 달성 불가. DR (`~0.65`) 도 size 별 목표 (`0.75`) 에 미달이지만 RR 보다 가까움.
   - 더 큰 개선은 binding 외부 (libzlink 자체의 routed-send latency 단축, 또는 측정 모델 자체 — 예: 클라이언트별 native 스레드 분산) 영역.
+
+### 2026-05-12 Java round 11 — multi RR latency timestamp fix + DR recv reuse
+
+- 배경:
+  - `MULTI_ROUTER_ROUTER` Java multi 결과에서 p95/p99 latency가
+    `888818081520 ms`처럼 비정상적으로 출력됐다.
+  - 원인은 RR client hot path가 reusable `byte[]` payload에 metric header를 직접
+    쓰면서 timestamp에 `System.nanoTime()` 원값을 넣은 것이다. 공통 decoder는
+    `PerfUtil.nowNs()` 기준 epoch-normalized timestamp와 비교하므로 시간 기준이
+    섞였다.
+- 변경한 perf 파일:
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiRouterRouter.java`:
+    direct `byte[]` header stamp timestamp를 `System.nanoTime()`에서
+    `PerfUtil.nowNs()`로 변경.
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiDealerRouter.java`:
+    server/client recv hot path를 `PerfUtil.recvNoWait()`의 per-call
+    `Received` 생성에서 caller-provided `Received` 재사용 패턴으로 정렬.
+- 변경한 라이브러리 파일:
+  - `bindings/java/src/main/java/systems/zlink/PairSocket.java`:
+    contract test가 요구하는 `recv(RecvFlags)` 공개 위임 메서드 복원.
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew --quiet :perf-multi:compileJava :test --tests "systems.zlink.contract.SocketContractTest" --tests "systems.zlink.contract.ReceivedContractTest" --tests "systems.zlink.contract.MessageCopyWrapContractTest"`
+  - `bindings/java/perf/multi/run_benchmarks.sh --pattern ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 1 --results-tag java_multi_rr_latency_timestamp_fix_rebuilt`
+  - `bindings/java/perf/multi/run_benchmarks.sh --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 1 --results-tag java_multi_dr_recv_reuse`
+- 결과:
+  - contract subset 23개 통과.
+  - RR latency 정상화: 64B mean/p95/p99 `0.172/0.283/0.385 ms`,
+    256B `0.176/0.292/0.385 ms`, 1024B `0.170/0.277/0.353 ms`.
+  - Java multi throughput (tcp, 1-run): RR 64 `208.747 Kops/s`, 256
+    `203.347`, 1024 `204.787`; DR 64 `254.596`, 256 `283.112`,
+    1024 `280.001`.
+- 목표 미달:
+  - 같은 turn의 C 기준(`perf_c_multi_linux_20260512_071252_c_multi_current_dotnet_java_check.txt`)
+    대비 RR 64/256/1024 ratio는 약 `0.75/0.72/0.93`이다. 256B는 Java 목표
+    `0.75`에 약간 미달한다.
+  - DR 64/256/1024 ratio는 약 `0.57/0.63/0.65`로 Java 목표 `0.70/0.75/0.77`
+    미달이다.
+- 다음 판단:
+  - latency 이상치는 측정 버그로 수정 완료.
+  - DR/RR routed multi throughput 미달은 계속 남아 있다. 다음 자동 작업은 Java
+    multi DR 64B와 dotnet multi DR/RR를 기준으로 routed send/recv hot path의
+    남은 managed allocation과 native transition을 추가 분석한다.
+
+### 2026-05-12 Java round 12 — 정책값 표시 고정 + send routing id cache 정리
+
+- 변경한 정책/문서 파일:
+  - `doc/perf/PERF_POLICY.md`: multi 기본 server/client I/O thread는 모두 `4`이며,
+    raw socket multi는 size별 payload size를 auto-HWM message unit으로 설정한 뒤
+    context auto-HWM을 재계산해야 한다고 명시.
+  - `doc/perf/PERF_MULTI_TEST_POLICY.md`: 위 규칙을 multi 전용 정책에 같은 의미로
+    고정. 이 값은 payload 최대 크기 제한이 아니라 HWM 예산 계획 단위임을 설명.
+  - `bindings/java/perf/README.md`: Java multi의 `io_threads=4`, size별
+    `AUTO_HWM_MSG_UNIT_BYTES`, auto-HWM 재계산 규칙 추가.
+- 변경한 runner 파일:
+  - `bindings/java/perf/multi/run_benchmarks.sh`: Effective Options에
+    `server_io_threads: 4`, `client_io_threads: 4`, `hwm: auto-hwm`,
+    `send_hwm: auto-hwm`, `recv_hwm: auto-hwm`가 명확히 출력되도록 정리.
+- 변경한 라이브러리 파일:
+  - `bindings/java/src/main/java/systems/zlink/Socket.java`: send scratch에
+    native routing id segment cache를 추가. 동일 `RoutingId` byte[] identity가
+    반복되는 hot path에서 native struct 재작성 비용을 줄인다.
+  - `bindings/java/src/main/java/systems/zlink/RoutingId.java`: direct inline cache
+    추가 실험은 제거. 빌드는 통과했지만 latest 1-run에서 RR 이득이 없고 DR 수치가
+    낮아져, 복잡도 대비 근거가 부족하다고 판단했다.
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew --quiet :compileJava :perf-multi:compileJava :test --tests "systems.zlink.contract.SocketContractTest" --tests "systems.zlink.contract.ReceivedContractTest" --tests "systems.zlink.contract.RequestReplyTerminationContractTest" --tests "systems.zlink.contract.MessageCopyWrapContractTest"`
+  - `bindings/java/perf/multi/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 1 --results-tag java_multi_final_after_effective_options`
+- 결과:
+  - Java contract subset 통과.
+  - latest report: `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_073850_java_multi_final_after_effective_options.txt`
+  - Effective Options에 multi `server_io_threads=4`, `client_io_threads=4`,
+    `hwm=auto-hwm`, `send_hwm=auto-hwm`, `recv_hwm=auto-hwm` 출력 확인.
+  - RR latency는 정상 범위: 64B `0.172/0.285/0.381 ms`, 256B
+    `0.170/0.277/0.364 ms`, 1024B `0.180/0.294/0.385 ms`.
+  - latest throughput: RR 64 `203.900`, 256 `205.847`, 1024 `197.535`
+    Kops/s. DR 64 `278.460`, 256 `273.037`, 1024 `283.636` Kops/s.
+- 목표 미달:
+  - C 기준 `perf_c_multi_linux_20260512_071252_c_multi_current_dotnet_java_check.txt`
+    대비 RR 256B ratio `0.732`로 Java 256B 목표 `0.75`에 소폭 미달.
+  - DR 64/256/1024B ratio는 `0.620/0.605/0.655`로 Java 목표
+    `0.70/0.75/0.77`에 미달.
+- 다음 판단:
+  - 측정 의미는 C와 맞다. multi thread 수와 auto-HWM size 단위가 문서, runner
+    출력, 실행 값에서 일치한다.
+  - 남은 큰 손실은 `MULTI_DEALER_ROUTER`이다. 다음 작업은 perf 우회가 아니라
+    Java binding 내부에서 `Received` 재사용 이후에도 남는 `Message` wrapper 생성,
+    routing id native 변환, FFM transition 수를 더 줄일 수 있는지 확인한다.
+
+### 2026-05-12 Java round 13 — echo server header decode 제거
+
+- 변경한 perf 파일:
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiRouterRouter.java`
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiDealerRouter.java`
+- 변경 내용:
+  - multi echo server hot path에서 stop token이 아닌 일반 payload에 대해
+    `PerfUtil.decodeHeader(...)`를 호출하던 검증을 제거했다.
+  - echo server는 stop token만 구분하면 되고, 일반 payload는 그대로 돌려보내면
+    된다. C/.NET server도 같은 의미이므로 이 변경은 측정 의미를 C 기준에 더
+    맞춘다.
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew --quiet :perf-multi:compileJava :test --tests "systems.zlink.contract.SocketContractTest" --tests "systems.zlink.contract.ReceivedContractTest" --tests "systems.zlink.contract.MessageCopyWrapContractTest"`
+  - `bindings/java/perf/multi/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 1 --results-tag java_multi_echo_server_no_header_decode`
+- 결과:
+  - contract subset 통과.
+  - latest report: `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_074204_java_multi_echo_server_no_header_decode.txt`
+  - RR 64/256/1024B: `206.522/198.088/199.603` Kops/s.
+  - DR 64/256/1024B: `283.456/287.231/281.870` Kops/s. round 12 대비
+    DR 256B가 `273.037 → 287.231` Kops/s로 개선.
+- 목표 미달:
+  - C 기준 대비 RR 256B ratio `0.705`로 Java 256B 목표 `0.75` 미달.
+  - DR 64/256/1024B ratio `0.631/0.637/0.651`로 Java 목표
+    `0.70/0.75/0.77` 미달.
+- 다음 판단:
+  - 이 변경은 라이브러리 최적화는 아니지만 C 기준과 다른 서버-side 검증 비용을
+    제거한 정책 정렬이다.
+  - 남은 미달은 binding 내부 routed send/recv 비용이다. 다음 개선 후보는
+    `Message` wrapper 재사용 범위 확대와 routing id native 변환 캐시의 hit path
+    단축이다.
+
+### 2026-05-12 Java round 14 — Dealer recv-in-place + DONT_WAIT critical recv
+
+- 변경한 라이브러리 파일:
+  - `bindings/java/src/main/java/systems/zlink/DealerSocket.java`: public
+    `recv(Received, RecvFlags)`가 fresh `Received`를 만든 뒤 `adoptFrom`하지 않고,
+    base socket의 in-place recv helper를 직접 사용하도록 변경.
+  - `bindings/java/src/main/java/systems/zlink/Socket.java`: non-routed
+    `DONT_WAIT` recv-in-place fast path 추가. thread-local recv scratch를 사용해
+    per-recv `Arena` allocation을 피하고, single-part reply는 caller-provided
+    `Received`에 바로 채운다.
+  - `bindings/java/src/main/java/systems/zlink/internal/Native.java`:
+    `zlink_recv_part`의 `DONT_WAIT` 전용 critical FFM downcall 추가.
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew --quiet :compileJava :perf-multi:compileJava :test --tests "systems.zlink.contract.SocketContractTest" --tests "systems.zlink.contract.ReceivedContractTest" --tests "systems.zlink.contract.MessageCopyWrapContractTest"`
+  - `bindings/java/perf/multi/run_benchmarks.sh --reuse-build --pattern ROUTER_ROUTER,DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 1 --results-tag java_multi_recv_into_critical_final`
+- 결과:
+  - contract subset 통과.
+  - latest report: `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_075351_java_multi_recv_into_critical_final.txt`
+  - RR 64/256/1024B: `205.711/200.024/198.785` Kops/s.
+  - DR 64/256/1024B: `278.977/277.085/276.795` Kops/s.
+  - 단독 DR 측정(`java_multi_dealer_recv_critical`)에서는 DR 64/256/1024B가
+    `282.889/286.113/278.128` Kops/s까지 확인됐다. full RR+DR run에서는
+    순서와 열 상태 영향으로 1-run 값이 다소 낮다.
+- 목표 미달:
+  - C 기준 대비 latest full run RR 256B ratio `0.712`로 Java 256B 목표
+    `0.75` 미달.
+  - DR 64/256/1024B ratio `0.621/0.614/0.639`로 Java 목표
+    `0.70/0.75/0.77` 미달.
+- 다음 판단:
+  - non-routed recv allocation과 FFM transition 비용은 줄였지만, DR/RR gap의
+    대부분은 여전히 routed echo server의 `RoutingId` materialization과
+    routed send native call 쪽에 남아 있다.
+
+### 2026-05-12 Java round 15 — metrics lock 제거 + header allocation 제거
+
+- 변경한 라이브러리/perf 파일:
+  - `bindings/java/perf/common/src/main/java/systems/zlink/perf/PerfUtil.java`
+  - `bindings/java/perf/common/src/main/java/systems/zlink/perf/PerfMetricHeader.java`
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiDealerRouter.java`
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiRouterRouter.java`
+- 변경 내용:
+  - `PerfUtil.Metrics`의 `recordNanos`, `finishSingle`, `finishMulti`에서
+    불필요한 `synchronized`를 제거했다. 내부 collector는 이미 `LongAdder`와
+    thread-local reservoir를 사용한다.
+  - multi client recv hot path에서 metric header를 `Header` record로 만들지 않고
+    바로 latency sample을 기록하도록 했다.
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew --quiet :compileJava :perf-multi:compileJava :test --tests "systems.zlink.contract.SocketContractTest" --tests "systems.zlink.contract.ReceivedContractTest" --tests "systems.zlink.contract.MessageCopyWrapContractTest"`
+  - `bindings/java/perf/multi/run_benchmarks.sh --reuse-build --pattern DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 1 --results-tag java_multi_no_header_alloc`
+- 결과:
+  - contract subset 통과.
+  - `java_multi_no_header_alloc` DR 64/256/1024B: `296.768/297.134/264.571`
+    Kops/s.
+  - metrics lock 제거 단독 측정에서는 DR 64/256/1024B:
+    `292.845/300.412/292.310` Kops/s.
+- 판단:
+  - metrics lock 제거는 multi DR의 client-side contention을 줄이는 의미가 있었다.
+  - header allocation 제거는 64/256B에는 유리했지만 1024B는 run 변동이 컸다.
+
+### 2026-05-12 Java round 16 — C 기준과 같은 single app thread client loop
+
+- 변경한 perf 파일:
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiDealerRouter.java`
+- 변경 내용:
+  - `MULTI_DEALER_ROUTER` client를 client별 Java thread/context 모델에서 하나의
+    `Context`와 하나의 app thread poller loop 모델로 바꿨다.
+  - C 기준 `perf_multi_dealer_router_client.cpp`는 같은 context 안에 client socket
+    100개를 만들고, round-robin poller loop에서 inflight 1 request/reply를 구동한다.
+  - server/client context I/O thread 수는 정책대로 각각 `4`이며, app thread 수는
+    측정 구조이므로 C 기준과 같은 단일 poller loop가 맞다.
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew --quiet :compileJava :perf-multi:compileJava :test --tests "systems.zlink.contract.SocketContractTest" --tests "systems.zlink.contract.ReceivedContractTest" --tests "systems.zlink.contract.MessageCopyWrapContractTest"`
+  - `bindings/java/perf/multi/run_benchmarks.sh --reuse-build --pattern DEALER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 1 --results-tag java_multi_dr_single_poller`
+- 결과:
+  - contract subset 통과.
+  - DR 64/256/1024B: `289.467/293.095/291.095` Kops/s.
+- 판단:
+  - per-thread 모델보다 처리량은 낮아졌지만, C 기준과 같은 측정 구조로 맞췄다.
+  - 남은 차이는 single poller loop에서 Java public API가 만드는 `Message.copyOf`
+    송신 비용과 poller wait 결과 처리 비용이다.
+
+### 2026-05-12 Java round 17 — Poller ready cache와 poll event mask cache
+
+- 변경한 라이브러리 파일:
+  - `bindings/java/src/main/java/systems/zlink/Poller.java`: `pollCount(Duration)`,
+    `readyTag(int)`, `readyHasEvent(int, PollEventFlag)` 공개 메서드를 추가했다.
+    기존 `waitAll`이 만드는 `List<PollEvent>` allocation 없이, poller 내부 ready
+    cache를 읽기 위한 좁은 API다. `readyTimer`는 공개하지 않아 기존 계약 테스트를
+    유지했다.
+  - `bindings/java/perf/common/src/main/java/systems/zlink/perf/PerfSocketPollSet.java`:
+    `waitAll` 대신 `pollCount(Duration)`와 ready cache를 사용한다. ready flag는
+    boolean 배열로 유지하고, 같은 event mask로 반복 `modify`하지 않도록 cache를
+    둔다.
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew --quiet :compileJava :perf-multi:compileJava :test --tests "systems.zlink.contract.SocketContractTest" --tests "systems.zlink.contract.ReceivedContractTest" --tests "systems.zlink.contract.MessageCopyWrapContractTest"`
+  - `bindings/java/perf/multi/run_benchmarks.sh --reuse-build --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 3 --results-tag java_multi_current_3run`
+- 결과:
+  - contract subset 통과.
+  - latest report: `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_082249_java_multi_current_3run.txt`
+  - 3-run median DR 64/256/1024B: `298.314/298.128/286.681` Kops/s.
+  - 3-run median RR 64/256/1024B: `209.934/203.013/197.283` Kops/s.
+- 목표 미달:
+  - C 기준 `perf_c_multi_linux_20260512_071252_c_multi_current_dotnet_java_check.txt`
+    대비 DR 64/256/1024B ratio `0.664/0.661/0.662`로 Java 목표
+    `0.70/0.75/0.77`에 미달.
+  - RR 256B ratio `0.722`로 Java 256B 목표 `0.75`에 미달.
+- 다음 판단:
+  - single poller 구조로 측정 의미는 C와 맞다.
+  - 남은 미달은 public `Message.copyOf(byte[])` 기반 송신에서 매 request마다 native
+    message를 새로 만들고 payload를 복사하는 비용, 그리고 Java FFM call overhead가
+    합쳐진 영역이다. perf 전용 internal API 호출은 금지이므로, 다음 개선은 공개
+    API의 일반적인 send 입력 경로 또는 Message lifecycle 자체를 깊게 만드는 쪽에서
+    찾아야 한다.
+
+### 2026-05-12 Java round 18 — Received.send routed echo surface
+
+- 변경한 라이브러리 파일:
+  - `bindings/java/src/main/java/systems/zlink/Received.java`: `send(...)` public API와
+    내부 send context를 추가했다.
+  - `bindings/java/src/main/java/systems/zlink/RouterSocket.java`
+  - `bindings/java/src/main/java/systems/zlink/RouterRequestSupport.java`
+  - `bindings/java/src/main/java/systems/zlink/InternalAccess.java`
+  - `bindings/java/src/main/java/systems/zlink/internal/InternalAccess.java`
+  - `bindings/java/src/main/java/systems/zlink/service/spot/SpotRoutedSupport.java`
+- 변경한 sample/perf 파일:
+  - `bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/DealerRouterRecvSample.java`
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiDealerRouter.java`
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiRouterRouter.java`
+- 의미:
+  - ROUTER 수신 결과는 peer routing id로, SPOT routed 수신 결과는 source node rid와
+    source spot rid를 함께 보존한 원래 송신 경로로 보낸다. 사용자가 routing id
+    필드를 직접 조합하지 않아도 되는 공개 API다.
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew --quiet :compileJava :samples:compileJava :perf-multi:compileJava`
+  - `bindings/java/perf/multi/run_benchmarks.sh --reuse-build --pattern DEALER_ROUTER,ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 3 --runs 1 --results-tag java_multi_received_send_smoke_alone`
+- 결과:
+  - latest report: `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_112858_java_multi_received_send_smoke_alone.txt`
+  - DR 64/256/1024B: `291.729/298.963/286.528` Kops/s.
+  - RR 64/256/1024B: `207.701/205.741/198.788` Kops/s.
+- 목표 미달:
+  - C 기준 `perf_c_multi_linux_20260512_071252_c_multi_current_dotnet_java_check.txt`
+    대비 DR 64/256/1024B ratio `0.649/0.663/0.662`로 Java 목표
+    `0.70/0.75/0.77`에 미달.
+  - RR 256B ratio `0.732`로 Java 256B 목표 `0.75`에 미달.
+- 다음 판단:
+  - API 의미 반영은 완료됐다. 남은 성능 작업은 public `Message.copyOf(byte[])`
+    송신 비용과 FFM 호출/객체 수명 비용을 줄이는 쪽으로 이어 간다.

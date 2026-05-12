@@ -67,11 +67,11 @@ fn main() {
     router
         .recv(&mut received, zlink::RecvFlags::NONE)
         .expect("router recv failed");
-    let sender_rid = received.routing_id().expect("missing routing id").clone();
+    assert!(received.routing_id().is_some());
     assert_eq!(received.parts()[0].as_str().unwrap(), "ping");
 
     let resp = Message::copy_from(b"pong").expect("message failed");
-    router.send(&sender_rid, resp).expect("routed send failed");
+    received.send(vec![resp]).expect("received send failed");
 
     let mut response = zlink::Received::empty();
     dealer

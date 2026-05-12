@@ -67,6 +67,10 @@ The C binding keeps the canonical C shape.
 - request/reply and publish/subscribe also follow explicit C part-based
   signatures
 
+Object binding helpers such as `Received.send(...)` do not apply to C. C callers
+must use the source routing ids returned by the receive API and call the
+matching `zlink_*_send_*_part(...)` function explicitly.
+
 The C binding does not introduce a second high-level naming layer above the
 public C API. The higher-level SPOT operation builder policy in
 `doc/spec/bindings/README.md` does not apply to C; C keeps explicit

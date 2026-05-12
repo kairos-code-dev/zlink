@@ -14,7 +14,7 @@ scheduled. The public API safety contract lives in
 | Thread | Role | Count |
 |--------|------|-------|
 | Application thread | Calls `zlink_send()`, `zlink_recv()`, `bind()`, `connect()`, etc. | User-defined |
-| I/O thread | Runs a Boost.Asio `io_context`; performs async network I/O, frame encoding/decoding, and socket event dispatch | Configurable (default: 1) |
+| I/O thread | Runs a Boost.Asio `io_context`; performs async network I/O, frame encoding/decoding, and socket event dispatch | Configurable (default: 4) |
 | Reaper thread | Deferred destruction of terminated sockets and sessions | 1 (global) |
 | SpotNode data-plane thread | Exclusively owns `mesh-pub`, `fanout`, `external-router` sockets; drains ingress queues; handles local fanout and peer mesh forwarding | 1 per SpotNode |
 | Dispatch worker thread | Executes Spot dispatch callbacks; per-Spot serialization and coalescing | N per SpotNode (default: `min(2, cpu_count)` – `max(1, cpu_count)`) |
@@ -23,7 +23,7 @@ Set the I/O thread count at context creation time:
 
 ```c
 void *ctx = zlink_ctx_new();
-zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);  /* default is ZLINK_IO_THREADS_DFLT = 1 */
+zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);  /* default is ZLINK_IO_THREADS_DFLT = 4 */
 ```
 
 I/O threads are started when the context is created and stopped when

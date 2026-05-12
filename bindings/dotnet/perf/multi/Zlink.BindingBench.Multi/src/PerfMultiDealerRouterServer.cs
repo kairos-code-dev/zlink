@@ -37,7 +37,7 @@ internal static class PerfMultiDealerRouterServer
         var sockets = new[] { (SocketBase)server };
         var eventMasks = new[] { SocketPollIn };
         var pendingReplies = new Queue<PendingReply>();
-        var receivedBuffer = new Received();
+        using var receivedBuffer = new Received();
 
         bool stop = false;
         while (!stop)
@@ -76,15 +76,16 @@ internal static class PerfMultiDealerRouterServer
                     break;
                 }
 
-                if (receivedBuffer.RoutingId == null)
-                    return 2;
-                RoutingId routingId = receivedBuffer.RoutingId.Value;
-
                 if (pendingReplies.Count == 0
-                    && server.Send(routingId, bodyMessage, SendFlags.DontWait))
+                    && receivedBuffer.Send(bodyMessage, SendFlags.DontWait))
                 {
                     continue;
                 }
+
+                RoutingId? maybeRoutingId = receivedBuffer.RoutingId;
+                if (maybeRoutingId == null)
+                    return 2;
+                RoutingId routingId = maybeRoutingId.Value;
 
                 using Message reply = bodyMessage.Move();
                 if (!EnqueueReplyOrSend(server, pendingReplies, routingId,

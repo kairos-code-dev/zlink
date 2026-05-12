@@ -38,7 +38,7 @@ func main() {
 	_, err = router.Recv(&request, zlink.RecvFlagsNone)
 	samplecommon.Must(err)
 	defer request.Close()
-	_, err = router.SendTo(request.RoutingID(), zlink.SendFlagsNone, samplecommon.Message("pong"))
+	_, err = request.Send([]*zlink.Message{samplecommon.Message("pong")})
 	samplecommon.Must(err)
 
 	var reply zlink.Received

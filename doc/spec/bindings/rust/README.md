@@ -900,7 +900,7 @@ pub struct Received {
     pub spot_rid: Option<RoutingId>,     // Set only for SPOT routed recv
     pub request_seq: Option<u64>,        // Set in request-reply mode, else None
     pub parts: Vec<Message>,
-    // non-public: source socket ref (Arc<SocketInner>) for reply()
+	    // non-public: source context for send() / reply()
 }
 
 impl Received {
@@ -908,9 +908,19 @@ impl Received {
     /// # Errors: RecvError
     pub fn first_part(&self) -> Result<&Message, RecvError>;
     /// # Errors: RecvError
-    pub fn single_part_or_error(self) -> Result<Message, RecvError>;
+	    pub fn single_part_or_error(self) -> Result<Message, RecvError>;
 
-    /// Reply to this received request. Only valid when `request_seq` is
+	    /// Send a regular routed message to the sender of this Received.
+	    /// # Errors: SubmitError on invalid send context or submit failure.
+	    pub fn send(&self, parts: Vec<Message>) -> Result<bool, SubmitError>;
+	    /// # Errors: SubmitError on invalid send context or submit failure.
+	    pub fn send_with_flags(
+	        &self,
+	        parts: Vec<Message>,
+	        flags: SendFlags,
+	    ) -> Result<bool, SubmitError>;
+
+	    /// Reply to this received request. Only valid when `request_seq` is
     /// `Some(..)`; otherwise returns `SubmitError` for invalid reply
     /// context. On submit failure
     /// returns `SubmitError`. routing_id / spot_rid / request_seq are

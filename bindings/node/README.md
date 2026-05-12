@@ -55,7 +55,9 @@ helpers on the canonical path.
 
 Canonical receive results are domain objects:
 
-- `Received`: `{ routingId: Buffer | null, parts: Message[] }`
+- `Received`: `{ routingId: Buffer | null, parts: Message[] }`, with
+  `send(...)` for sending a normal routed message back over the original
+  receive context and `reply(...)` for request-reply messages
 - `Subscribed`: `{ routingId: Buffer | null, topic: string, parts: Message[] }`
 - `SubscriptionEvent`:
   `{ routingId: Buffer | null, topic: string, subscribed: boolean }`

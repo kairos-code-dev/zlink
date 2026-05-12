@@ -13,6 +13,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.List;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 
 /**
  * Direct bridge for package-private binding internals used by service
@@ -213,6 +214,12 @@ final class InternalAccess {
 
     public static List<Message> receivedTakeParts(Received received) {
         return received.takeParts();
+    }
+
+    public static void receivedSetSendSender(Received received,
+                                             BiFunction<List<Message>, SendFlags,
+                                                 Boolean> sendSender) {
+        received.setSendSender(sendSender);
     }
 
     public static boolean inCallback() {

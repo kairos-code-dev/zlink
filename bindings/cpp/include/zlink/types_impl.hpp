@@ -882,6 +882,33 @@ inline void received_t::reply (std::vector<message_t> &parts, send_flags_t flags
     _reply_fn (parts, flags);
 }
 
+inline bool received_t::send (message_t &part) const
+{
+    return send (part, send_flags_t::none);
+}
+
+inline bool received_t::send (message_t &part, send_flags_t flags) const
+{
+    std::vector<message_t> parts;
+    parts.push_back (std::move (part));
+    const bool sent = send (parts, flags);
+    if (!parts.empty ())
+        part = std::move (parts.front ());
+    return sent;
+}
+
+inline bool received_t::send (std::vector<message_t> &parts) const
+{
+    return send (parts, send_flags_t::none);
+}
+
+inline bool received_t::send (std::vector<message_t> &parts, send_flags_t flags) const
+{
+    if (!_send_fn)
+        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+    return _send_fn (parts, flags);
+}
+
 inline void received_t::close ()
 {
     if (_single_part.has_value ()) {

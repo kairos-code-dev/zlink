@@ -3249,11 +3249,15 @@ fn spot_received_from_raw(
     };
     if let Some(spot_rid) = spot_rid {
         if request_seq == 0 {
-            let mut received = Received::new(Some(node_rid), parts);
-            received.spot_rid = Some(spot_rid);
-            received
+            Received::with_spot_send_context(handle, node_rid, spot_rid, parts)
         } else {
-            Received::with_spot_reply_context(handle, node_rid, spot_rid, request_seq, parts)
+            Received::with_spot_reply_and_send_context(
+                handle,
+                node_rid,
+                spot_rid,
+                request_seq,
+                parts,
+            )
         }
     } else if request_seq == 0 {
         Received::new(Some(node_rid), parts)

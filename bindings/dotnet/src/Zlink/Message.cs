@@ -643,31 +643,33 @@ public sealed class Message : IDisposable, IAsyncDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static Message AdoptNativeFromPool(ref ZlinkMsg source)
     {
+        Message result = RentFromPool();
+        result._msg = source;
+        result._valid = true;
+        result._managedPayload = null;
+        source = default;
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Message RentFromPool()
+    {
         Message[]? pool = t_pool;
         int count = t_poolCount;
-        Message result;
         if (pool != null && count > 0)
         {
             count--;
-            result = pool[count];
+            Message result = pool[count];
             pool[count] = null!;
             t_poolCount = count;
-            result._msg = source;
-            result._valid = true;
+            result._msg = default;
+            result._valid = false;
             result._managedPayload = null;
             result._pooled = true;
+            return result;
         }
-        else
-        {
-            result = new Message(false)
-            {
-                _msg = source,
-                _valid = true,
-                _pooled = true,
-            };
-        }
-        source = default;
-        return result;
+
+        return new Message(false) { _pooled = true };
     }
 
     private void TryReturnToPool()
@@ -747,20 +749,19 @@ public sealed class Message : IDisposable, IAsyncDisposable
         }
 
         managed.PinnedHandle = GCHandle.Alloc(managed.Bytes, GCHandleType.Pinned);
-        if (!managed.SelfHandle.IsAllocated)
-            managed.SelfHandle = GCHandle.Alloc(this);
         managed.InFlight = true;
         data = managed.Length == 0
             ? IntPtr.Zero
             : managed.PinnedHandle.AddrOfPinnedObject();
         length = managed.Length;
-        hint = GCHandle.ToIntPtr(managed.SelfHandle);
+        hint = GCHandle.ToIntPtr(managed.PinnedHandle);
         return true;
     }
 
     internal void DetachAfterPreparedSend()
     {
         EnsureValid();
+        _managedPayload = null;
         _valid = false;
     }
 
@@ -778,7 +779,12 @@ public sealed class Message : IDisposable, IAsyncDisposable
     internal static void CompleteBorrowedSend(GCHandle handle)
     {
         if (handle.Target is Message message)
+        {
             message.CompleteBorrowedSendCore();
+            return;
+        }
+        if (handle.IsAllocated)
+            handle.Free();
     }
 
     private void Close()
@@ -863,6 +869,7 @@ public sealed class Message : IDisposable, IAsyncDisposable
         {
             managed.DisposeAfterBorrowedSend = false;
             ReleaseSelfHandle(managed);
+            TryReturnToPool();
         }
     }
 

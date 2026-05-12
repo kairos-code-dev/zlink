@@ -221,11 +221,23 @@ perf는 추가 quorum 완화나 우회 gate를 두지 않는다.
 - multi 기본 정책은 context auto-HWM 이다. perf는
   `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` 을 켜고 benchmark socket과 spot handle의
   기본 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF` 를 core 계산값에 맡긴다.
+- multi 기본 context I/O thread 수는 server와 client 모두 `4`다. C 기준과
+  binding perf는 이 값을 같게 적용해야 한다. 언어 runtime 기본값을 그대로
+  쓰거나 single suite 기본값 `1`을 multi에 가져오면 비교 의미가 달라진다.
 - 기본 실행에서는 pattern/role 특례 없이 같은 context budget을 공유한다.
   숫자 HWM이나 transport buffer를 직접 주입해서 결과를 고정하지 않는다.
 - raw multi benchmark socket은 실행 중인 메시지 크기를
   `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`로 전달할 수 있다. 이 값은 최대 메시지
   크기 제한이 아니라 auto-HWM 예산을 메시지 슬롯으로 바꾸는 계획 단위다.
+- C, .NET, Java 등 raw socket multi perf는 size 케이스마다 아래 순서를
+  지켜야 한다.
+  1. socket 생성과 bind/connect 준비를 끝낸다.
+  2. 해당 케이스의 payload size를 모든 benchmark raw socket에
+     `AUTO_HWM_MSG_UNIT_BYTES`로 설정한다.
+  3. 같은 context에서 auto-HWM 재계산을 호출한다.
+  4. ready gate 이후 active phase를 시작한다.
+- 이 순서가 빠지면 작은 메시지와 큰 메시지가 같은 HWM 계획 단위를 쓰게 되어
+  C 기준과 비교 의미가 달라진다.
 - SPOT node와 SPOT handle은 이 공통 옵션을 설정하지 않는다.
   `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 raw socket 옵션이므로 SPOT 서비스
   핸들에 적용하려는 코드는 정책 위반이다. C API에서는 해당 호출이 `EINVAL`로
@@ -941,8 +953,8 @@ run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
 | `--clean-build` | 빌드 디렉터리 삭제 후 클린 configure/build 수행 | off (기본은 증분 빌드) |
 | `--pin-cpu` | CPU 고정 (Linux: taskset, Windows: processor affinity) | off |
 | `--io-threads N` | 서버/클라이언트 io threads 동시 설정 (레거시 별칭) | — |
-| `--server-io-threads N` | 서버 io threads (Linux sh만 지원) | non-stream=2, stream=4 |
-| `--client-io-threads N` | 클라이언트 io threads (Linux sh만 지원) | non-stream=2, stream=4 |
+| `--server-io-threads N` | 서버 io threads (Linux sh만 지원) | 4 |
+| `--client-io-threads N` | 클라이언트 io threads (Linux sh만 지원) | 4 |
 | `--msg-sizes LIST` | 메시지 크기 목록 (쉼표 구분). STREAM 계열은 § 8.2 참조 | `64,256,1024,65536,131072,262144` (STREAM: `64,256,1024,65536`) |
 | `--transports LIST` | transport 목록 (쉼표 구분) | `tcp,tls,ws,wss` |
 | `--output PATH` | 결과를 파일에 동시 출력 (tee) | stdout만 |
@@ -1245,11 +1257,11 @@ core/perf/run_benchmarks_multi.sh --duration 10
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `PERF_MULTI_RUN_COOLDOWN_MS` | run 간 cooldown(ms) | 3000 |
-| `PERF_MULTI_SERVER_IO_THREADS` | 서버 I/O threads (non-stream) | 2 |
-| `PERF_MULTI_CLIENT_IO_THREADS` | 클라이언트 I/O threads (non-stream) | 2 |
+| `PERF_MULTI_SERVER_IO_THREADS` | 서버 I/O threads | 4 |
+| `PERF_MULTI_CLIENT_IO_THREADS` | 클라이언트 I/O threads | 4 |
 | `PERF_MULTI_STREAM_SERVER_IO_THREADS` | 서버 I/O threads (stream) | 4 |
 | `PERF_MULTI_STREAM_CLIENT_IO_THREADS` | 클라이언트 I/O threads (stream) | 4 |
-| `PERF_MULTI_DEFAULT_IO_THREADS` | I/O threads 공통 기본값 | 2 |
+| `PERF_MULTI_DEFAULT_IO_THREADS` | I/O threads 공통 기본값 | 4 |
 | `PERF_SKIP_NOFILE_CHECK` | nofile limit 검사 생략 | 0 |
 | `PERF_SKIP_MEMORY_CHECK` | 메모리 가드 검사 생략 | 0 |
 | `PERF_MULTI_MEMORY_BUDGET_PCT` | MemAvailable 대비 예산 비율(%) | 70 |

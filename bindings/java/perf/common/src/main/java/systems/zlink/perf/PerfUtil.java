@@ -115,7 +115,7 @@ public final class PerfUtil {
             delegate.startActiveWindow();
         }
 
-        public synchronized void recordNanos(long value) {
+        public void recordNanos(long value) {
             delegate.recordNanos(value);
         }
 
@@ -123,11 +123,11 @@ public final class PerfUtil {
             delegate.recordMillis(value);
         }
 
-        public synchronized Result finishSingle(Config config) {
+        public Result finishSingle(Config config) {
             return delegate.finishSingle(config);
         }
 
-        public synchronized Result finishMulti(Config config) {
+        public Result finishMulti(Config config) {
             return delegate.finishMulti(config);
         }
     }
@@ -171,6 +171,13 @@ public final class PerfUtil {
 
     public static Header decodeHeader(Message message, int expectedSize) {
         return PerfMetricHeader.decode(message, expectedSize);
+    }
+
+    public static boolean recordActiveLatency(Metrics metrics, Message message,
+                                              int expectedSize,
+                                              boolean halfRoundTrip) {
+        return PerfMetricHeader.recordActiveLatency(metrics, message,
+            expectedSize, halfRoundTrip);
     }
 
     public static String endpoint(String transport, String token) {

@@ -22,6 +22,76 @@
 - [ ] Rust 목표 달성
 - [ ] 전체 언어 최종 결과 요약
 
+## 현재 상태 요약 (2026-05-12)
+
+최근 점검 기준은 아래 C multi 결과다.
+
+- C 기준: `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260512_071252_c_multi_current_dotnet_java_check.txt`
+- .NET 최신 결과: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260512_113041_dotnet_multi_received_send_cached_rid_confirm.txt`
+- Java 최신 결과: `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_112858_java_multi_received_send_smoke_alone.txt`
+
+multi perf 측정 의미는 정책과 C 기준에 맞춘 상태다. .NET/Java multi runner는
+기본 server/client I/O thread를 모두 `4`로 출력하고, 각 size 케이스에서 raw
+socket payload size를 auto-HWM message unit으로 설정한 뒤 context auto-HWM을
+재계산한다. 이 값은 payload 최대 크기 제한이 아니라 HWM 예산을 메시지 슬롯 수로
+환산하기 위한 기준 단위다.
+
+`MULTI_DEALER_ROUTER`와 `MULTI_ROUTER_ROUTER` echo 계열 client는 C 기준과 같은
+단일 app thread poller loop에서 client socket들을 구동한다. 따라서 여기의 thread
+수 비교에서 맞춰야 하는 값은 context I/O thread 수이며, server/client 모두 `4`다.
+latency는 왕복 echo 패턴에서 RTT의 절반으로 기록하고, one-way 패턴은 송신 시각부터
+수신 시각까지의 값을 그대로 기록한다.
+
+echo 서버의 "받은 쪽으로 다시 보낸다" 동작은 object binding에서
+`Received.Send(...)` 계열 API로 표현한다. 이 API는 request-reply 의미의
+`Reply(...)`가 아니라, `Received` 내부 receive context가 알고 있는 원래 송신
+경로로 일반 routed message를 보내는 기능이다. ROUTER에서 직접 받은 메시지는
+peer routing id로 보내고, SPOT routed 수신은 source node rid와 source spot rid를
+함께 보존한 원래 경로로 보낸다. 사용자가 routing id 필드를 조합해 send target을
+다시 만들게 하지 않는 것이 이 API의 목적이다.
+
+perf의 echo hot path도 이 의미를 그대로 사용한다. .NET, Java, Node, Python, Go,
+Rust, C++ multi `DEALER_ROUTER` / `ROUTER_ROUTER` 서버는 가능한 경우
+`received.Send(...)` 또는 언어별 동일 이름 API로 즉시 echo를 시도하고,
+backpressure 큐에 들어간 항목만 기존처럼 명시 routing id를 보관해 재전송한다. 이는
+측정 의미를 바꾸는 perf 우회가 아니라, 공개 API가 실제 사용자 코드에서 기대하는
+"받은 상대에게 send" 의미를 perf에도 적용한 것이다. C binding은 object receive
+wrapper가 없으므로 예외로 두고, C perf는 계속 명시 routing id 기반 C API를 기준으로
+사용한다.
+
+현재 남은 .NET multi 미달 조합은 아래와 같다.
+
+| Pattern | Size | C Kops/s | .NET Kops/s | Ratio | 목표 |
+|---------|------|----------|-------------|-------|------|
+| MULTI_ROUTER_ROUTER | 64B | 277.591 | 198.943 | 0.717 | 0.75 |
+| MULTI_ROUTER_ROUTER | 256B | 281.103 | 201.816 | 0.718 | 0.80 |
+| MULTI_DEALER_ROUTER | 64B | 449.326 | 259.362 | 0.577 | 0.75 |
+| MULTI_DEALER_ROUTER | 256B | 451.103 | 262.219 | 0.581 | 0.80 |
+| MULTI_DEALER_ROUTER | 1024B | 432.950 | 257.595 | 0.595 | 0.82 |
+
+현재 남은 Java multi 미달 조합은 아래와 같다.
+
+| Pattern | Size | C Kops/s | Java Kops/s | Ratio | 목표 |
+|---------|------|----------|-------------|-------|------|
+| MULTI_ROUTER_ROUTER | 256B | 281.103 | 205.741 | 0.732 | 0.75 |
+| MULTI_DEALER_ROUTER | 64B | 449.326 | 291.729 | 0.649 | 0.70 |
+| MULTI_DEALER_ROUTER | 256B | 451.103 | 298.963 | 0.663 | 0.75 |
+| MULTI_DEALER_ROUTER | 1024B | 432.950 | 286.528 | 0.662 | 0.77 |
+
+다음 개선은 perf 우회가 아니라 binding 라이브러리 내부 최적화로 진행한다.
+
+1. `.NET`: `RoutingId` inline direct cache는 유지한다. `Received.Send(...)`로
+   routed echo의 의미를 공개 API에 맞췄으므로, 다음 측정에서는 routing id
+   materialization 감소 효과를 확인한다. 남은 후보는 `Message` wrapper와 routing id
+   변환이 실제로 남기는 비용을 더 줄이는 것이다.
+2. `Java`: `Socket` send scratch의 native routing id cache, non-routed
+   recv-in-place, `Poller` ready cache 공개 경로, `PerfSocketPollSet` event mask
+   cache는 유지한다. 다음 후보는 public `Message.copyOf` 기반 송신에서 남는 native
+   message 생성/복사 비용과 poller wait 경로의 객체 생성을 더 줄이는 것이다.
+3. 두 언어 모두 `MULTI_DEALER_ROUTER`가 가장 큰 미달 영역이다. `Received.Send(...)`
+   반영 후 동일 C 기준으로 64B, 256B, 1024B를 재측정하고, 그래도 남는 손실은
+   binding 라이브러리 내부의 메시지 생성/복사/수명 비용으로 좁혀 분석한다.
+
 ## 1. 범위와 목표
 
 이번 작업은 perf 자체를 빠르게 만드는 일이 아니라, 각 언어 binding 라이브러리가
@@ -468,7 +538,7 @@ perf 실행 중 실패가 나오면 먼저 실패를 정상 신호로 취급한�
   - JNI boundary에서 byte array copy가 반복되는지 확인한다.
   - direct buffer, native handle lifecycle, exception 변환이 hot path에 들어가는지
     확인한다.
-  - `-server`, `-XX:TieredStopAtLevel=1` 등 perf 실행 옵션이 정책 권장값과 맞는지
+  - `-server`, `-XX:TieredStopAtLevel=4` 등 perf 실행 옵션이 정책 권장값과 맞는지
     확인한다.
 - 완료 조건:
   - 정책에 정의된 single + multi 조합을 같은 pattern, transport, message size

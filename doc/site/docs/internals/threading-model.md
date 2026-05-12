@@ -9,7 +9,7 @@
 | Thread | Role | Count |
 |--------|------|------|
 | Application Thread | Calls zlink_send/recv | User-defined |
-| I/O Thread | Boost.Asio io_context async processing | Configurable (default 1; see `ZLINK_IO_THREADS_DFLT`) |
+| I/O Thread | Boost.Asio io_context async processing | Configurable (default 4; see `ZLINK_IO_THREADS_DFLT`) |
 | Reaper Thread | Resource cleanup for terminated sockets/sessions | 1 |
 
 ### 1.2 Thread Diagram

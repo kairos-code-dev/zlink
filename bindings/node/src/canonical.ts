@@ -1139,7 +1139,8 @@ function materializeReceived(
     requestSeq?: bigint | null;
     spotRid?: Buffer | null;
   },
-  reply?: (requestSeq: bigint, parts: readonly Message[], flags: SendFlags) => void
+  reply?: (requestSeq: bigint, parts: readonly Message[], flags: SendFlags) => void,
+  send?: (parts: readonly Message[], flags: SendFlags) => boolean
 ): Received {
   const requestSeq = raw.requestSeq ?? null;
   return Received.create(
@@ -1151,6 +1152,13 @@ function materializeReceived(
       ? {
           reply(parts: readonly Message[], flags: SendFlags): void {
             reply(requestSeq, parts, flags);
+          }
+        }
+      : null,
+    send
+      ? {
+          send(parts: readonly Message[], flags: SendFlags): boolean {
+            return send(parts, flags);
           }
         }
       : null
@@ -1833,13 +1841,29 @@ class RoutedMessageSocket extends ConnectableSocket {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? requireNative().routerRecvMessageNoWait(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null
-        : requireNative().routerRecvMessage(this.nativeHandle(), flags | 0) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null;
+        ? requireNative().routerRecvMessageNoWait(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null; spotRid?: Buffer | null; requestSeq?: bigint | null } | null
+        : requireNative().routerRecvMessage(this.nativeHandle(), flags | 0) as { parts: MessageSnapshot[]; routingId?: Buffer | null; spotRid?: Buffer | null; requestSeq?: bigint | null } | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'recv failed');
     }
     if (raw == null) return false;
-    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(materializeReceived(raw));
+    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(
+      materializeReceived(raw, undefined, (parts, sendFlags) => {
+        if (!raw.routingId) {
+          throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
+        }
+        const source = RoutingId.fromBytes(raw.routingId);
+        if (raw.spotRid) {
+          return (this as unknown as RouterSocket).sendToSpot(
+            source,
+            RoutingId.fromBytes(raw.spotRid),
+            parts,
+            sendFlags
+          );
+        }
+        return this.send(source, parts, sendFlags);
+      })
+    );
     return true;
   }
   onSendReady(handler: SocketSendReadyHandler): void {
@@ -2423,7 +2447,14 @@ export class StreamSocket extends SocketBase {
       throw recvNativeError(error, flags, 'recv failed');
     }
     if (raw == null) return false;
-    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(materializeReceived(raw));
+    (result as Received & { _adoptFrom: (s: Received) => void })._adoptFrom(
+      materializeReceived(raw, undefined, (parts, sendFlags) => {
+        if (!raw.routingId) {
+          throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
+        }
+        return this.send(RoutingId.fromBytes(raw.routingId), parts, sendFlags);
+      })
+    );
     return true;
   }
   onPacket(handler: StreamPacketHandler): void {
@@ -3611,6 +3642,17 @@ export class Spot extends NativeHandle {
           return;
         }
         this.replyToRouterInternal(sourceRid, requestSeq, parts, flags);
+      },
+      (parts, flags) => {
+        if (!raw.sourceRid || !raw.spotRid) {
+          throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
+        }
+        return this.sendToSpotDirect(
+          RoutingId.fromBytes(raw.sourceRid),
+          RoutingId.fromBytes(raw.spotRid),
+          parts,
+          flags
+        );
       }
     );
   }
@@ -3619,23 +3661,30 @@ export class Spot extends NativeHandle {
       requireNative().spotRoutedHandler(this._native, (sourceRid: Buffer | null, spotRid: Buffer | null, requestSeq: bigint, parts: Buffer[]) => {
         const source = wrapRoutingId(sourceRid);
         const spot = wrapRoutingId(spotRid);
-        handler(Received.create(
-          messagesFromNativeBuffers(parts),
-          source,
-          requestSeq,
-          spot,
-          source
-            ? {
-                reply: (replyParts, flags) => {
-                  if (spot) {
-                    this.replyToSpotInternal(source, spot, requestSeq, replyParts, flags);
-                    return;
+        handler(
+          Received.create(
+            messagesFromNativeBuffers(parts),
+            source,
+            requestSeq,
+            spot,
+            source
+              ? {
+                  reply: (replyParts, flags) => {
+                    if (spot) {
+                      this.replyToSpotInternal(source, spot, requestSeq, replyParts, flags);
+                      return;
+                    }
+                    this.replyToRouterInternal(source, requestSeq, replyParts, flags);
                   }
-                  this.replyToRouterInternal(source, requestSeq, replyParts, flags);
                 }
-              }
-            : null
-        )
+              : null,
+            source && spot
+              ? {
+                  send: (sendParts, sendFlags) =>
+                    this.sendToSpotDirect(source, spot, sendParts, sendFlags)
+                }
+              : null
+          )
         );
       });
     });

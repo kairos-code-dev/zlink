@@ -378,6 +378,17 @@ def _make_spot_routed_reply_sender(spot, node_rid, spot_rid, seq):
     )
 
 
+def _make_spot_routed_send_sender(spot, node_rid, spot_rid):
+    if not node_rid or not spot_rid:
+        return None
+    return lambda payload, *, flags=0: (
+        spot.send_to_spot(node_rid, spot_rid)
+        .message(payload)
+        .flags(flags)
+        .submit()
+    )
+
+
 def _payload_parts(payload):
     if isinstance(payload, (list, tuple)):
         parts = list(payload)
@@ -447,6 +458,7 @@ def _make_routed_received(
     part_count,
     *,
     reply_sender=None,
+    send_sender=None,
 ):
     routing_id = (
         _routing_id_bytes(source_node_rid)
@@ -465,6 +477,7 @@ def _make_routed_received(
         request_seq=int(request_seq),
         spot_rid=spot_routing_id,
         reply_sender=reply_sender,
+        send_sender=send_sender,
     )
     received.source_node_rid = routing_id
     received.source_spot_rid = received.spot_rid
@@ -619,7 +632,7 @@ def _recv_spot_subscribed(handle, flags):
     )
 
 
-def _recv_spot_routed(handle, flags, *, reply_sender_factory=None):
+def _recv_spot_routed(handle, flags, *, reply_sender_factory=None, send_sender_factory=None):
     source_node_rid = None
     source_spot_rid = None
     request_seq = 0
@@ -662,6 +675,9 @@ def _recv_spot_routed(handle, flags, *, reply_sender_factory=None):
     reply_sender = None
     if reply_sender_factory is not None:
         reply_sender = reply_sender_factory(node_rid, spot_rid, request_seq)
+    send_sender = None
+    if send_sender_factory is not None:
+        send_sender = send_sender_factory(node_rid, spot_rid)
 
     return _make_routed_received(
         source_node_rid,
@@ -670,6 +686,7 @@ def _recv_spot_routed(handle, flags, *, reply_sender_factory=None):
         _prepare_native_parts(native_parts),
         len(native_parts),
         reply_sender=reply_sender,
+        send_sender=send_sender,
     )
 
 
@@ -2340,6 +2357,11 @@ class Spot:
                     spot_rid,
                     seq,
                 ),
+                send_sender_factory=lambda node_rid, spot_rid: _make_spot_routed_send_sender(
+                    self,
+                    node_rid,
+                    spot_rid,
+                ),
             )
         except RecvError as ex:
             if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
@@ -2379,6 +2401,15 @@ class Spot:
                         if source_spot_rid is not None
                         else None,
                         int(request_seq),
+                    ),
+                    send_sender=_make_spot_routed_send_sender(
+                        self,
+                        _routing_id_bytes(source_node_rid)
+                        if source_node_rid is not None
+                        else None,
+                        _routing_id_bytes(source_spot_rid)
+                        if source_spot_rid is not None
+                        else None,
                     ),
                 )
                 handler(received)

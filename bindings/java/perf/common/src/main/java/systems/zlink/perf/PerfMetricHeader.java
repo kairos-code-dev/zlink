@@ -33,4 +33,30 @@ final class PerfMetricHeader {
         long latencyNanos = Math.max(0L, PerfUtil.nowNs() - sentTsNs);
         return new PerfUtil.Header((byte) phase, latencyNanos);
     }
+
+    static boolean recordActiveLatency(PerfUtil.Metrics metrics,
+                                       Message message,
+                                       int expectedSize,
+                                       boolean halfRoundTrip) {
+        if (message == null || message.size() < PerfUtil.HEADER_SIZE) {
+            return false;
+        }
+        if (message.readIntLe(0) != GENERIC_MAGIC) {
+            return false;
+        }
+        if (message.readIntLe(4) != PerfMeasurement.runId()) {
+            return false;
+        }
+        int phase = message.readIntLe(8) & 0xFF;
+        if (phase != PerfUtil.PHASE_ACTIVE) {
+            return false;
+        }
+        if (message.readIntLe(9) != expectedSize) {
+            return false;
+        }
+        long sentTsNs = message.readLongLe(21);
+        long latencyNanos = Math.max(0L, PerfUtil.nowNs() - sentTsNs);
+        metrics.recordNanos(halfRoundTrip ? latencyNanos / 2L : latencyNanos);
+        return true;
+    }
 }

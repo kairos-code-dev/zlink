@@ -1406,7 +1406,8 @@ and pre-drained parts when the core callback supplies them.
 `received_t` is the single canonical recv result for PAIR, DEALER, ROUTER,
 STREAM, and SPOT routed receive paths. It owns `message_t` parts; its destructor
 releases them. `routing_id`, `spot_rid`, and `request_seq` are optional because
-not every transport path carries the same metadata. `reply(...)` is valid only
+not every transport path carries the same metadata. `send(...)` sends a regular
+routed message to the sender of this `received_t`. `reply(...)` is valid only
 when `request_seq()` has a value; otherwise it throws `submit_error_t`.
 
 ```cpp
@@ -1425,9 +1426,20 @@ public:
     /// @throws recv_error_t
     message_t& first_part();
     /// @throws recv_error_t
-    message_t single_part_or_throw();
+	    message_t single_part_or_throw();
 
-    // Reply context is encapsulated. Callers do not pass routing_id, spot_rid,
+	    // Send context is encapsulated. Callers do not pass routing_id or
+	    // spot_rid again.
+	    /// @throws submit_error_t
+	    bool send(message_t& part);
+	    /// @throws submit_error_t
+	    bool send(message_t& part, int flags);
+	    /// @throws submit_error_t
+	    bool send(std::vector<message_t>& parts);
+	    /// @throws submit_error_t
+	    bool send(std::vector<message_t>& parts, int flags);
+
+	    // Reply context is encapsulated. Callers do not pass routing_id, spot_rid,
     // or request_seq again.
     /// @throws submit_error_t
     void reply(message_t& part);

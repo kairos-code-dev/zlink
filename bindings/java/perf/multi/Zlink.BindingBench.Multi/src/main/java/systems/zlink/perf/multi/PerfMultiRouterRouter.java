@@ -98,20 +98,14 @@ final class PerfMultiRouterRouter {
                             receivedBuffer.close();
                             continue;
                         }
-                        PerfUtil.Header header = PerfUtil.decodeHeader(
-                            receivedBuffer.firstPart(), config.size());
-                        if (header == null) {
-                            receivedBuffer.close();
-                            continue;
-                        }
-                        RoutingId rid = receivedBuffer.routingId().orElseThrow();
-                        // Fast path: send directly when no pending backlog.
-                        if (pendingReplies.isEmpty()
-                            && server.send(rid, receivedBuffer.firstPart(),
-                                SendFlags.DONT_WAIT)) {
-                            receivedBuffer.close();
-                            continue;
-                        }
+	                        // Fast path: send directly when no pending backlog.
+	                        if (pendingReplies.isEmpty()
+	                            && receivedBuffer.send(receivedBuffer.firstPart(),
+	                                SendFlags.DONT_WAIT)) {
+	                            receivedBuffer.close();
+	                            continue;
+	                        }
+	                        RoutingId rid = receivedBuffer.routingId().orElseThrow();
                         // Slow path: take ownership of the part to outlive
                         // the Received scope and enqueue / send.
                         Message ownedReply = receivedBuffer.firstPart().move();
@@ -234,7 +228,7 @@ final class PerfMultiRouterRouter {
                     if (waitingReply[idx] || waitingWritable[idx]) continue;
                     stampMetricHeader(payloads[idx], runId,
                         (byte) PerfUtil.PHASE_ACTIVE, msgSize, seq++,
-                        System.nanoTime());
+                        PerfUtil.nowNs());
                     if (trySendPayload(clients.get(idx), payloads[idx])) {
                         waitingReply[idx] = true;
                     } else {
@@ -303,12 +297,8 @@ final class PerfMultiRouterRouter {
                 continue;
             }
             waitingReply[idx] = false;
-            PerfUtil.Header header = PerfUtil.decodeHeader(
-                replyBuffer.firstPart(), msgSize);
-            if (header != null
-                && header.phase() == PerfUtil.PHASE_ACTIVE) {
-                metrics.recordNanos(header.latencyNanos() / 2L);
-            }
+            PerfUtil.recordActiveLatency(metrics, replyBuffer.firstPart(),
+                msgSize, true);
             waitingWritable[idx] = false;
             updatePollMask(pollSet, idx, false, false);
             replyBuffer.close();

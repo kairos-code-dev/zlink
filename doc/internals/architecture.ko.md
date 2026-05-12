@@ -838,7 +838,7 @@ Application 스레드와 I/O 스레드 사이에서 `msg_t` 를 락-프리로 �
 **주요 역할**:
 
 1. **I/O 스레드 풀 관리**
-   - `zlink_ctx_set(ctx, ZLINK_IO_THREADS, n)`으로 스레드 수 설정 (기본: 1)
+   - `zlink_ctx_set(ctx, ZLINK_IO_THREADS, n)`으로 스레드 수 설정 (기본: 4)
    - 각 I/O 스레드는 독립적인 `io_context` 보유
    - 새 연결 시 부하가 가장 적은 I/O 스레드 선택 (어피니티 마스크 지원)
 
@@ -862,7 +862,7 @@ ctx_t internal structure:
 |  _pending_connections: multimap       Pending connections|
 |                                                          |
 |  _max_sockets: int     (default: 1023)                   |
-|  _io_thread_count: int (default: 1)                      |
+|  _io_thread_count: int (default: 4)                      |
 |  _max_msgsz: int       (max message size)                |
 +----------------------------------------------------------+
 ```

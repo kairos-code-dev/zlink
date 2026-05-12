@@ -1026,6 +1026,10 @@ func (s *directSocket) TrySend(parts ...*Message) (bool, error) {
 	return s.Send(SendFlagsDontWait, parts...)
 }
 
+func (s *directSocket) TryRecv(out *Received) (bool, error) {
+	return s.Recv(out, RecvFlagsDontWait)
+}
+
 // Recv is the canonical caller-provided storage recv. Pass a long-lived
 // *Received and the binding refills its internal state in place each
 // successful call.
@@ -1214,6 +1218,13 @@ func (s *routedSocket) directRecv(flags RecvFlags) (*Received, error) {
 			received.reply = receivedReplyToRouter(s.reply, received.routingID, received.requestSeq)
 		} else {
 			received.reply = receivedReplyToSpotPeer(s, received.routingID, received.spotRID, received.requestSeq)
+		}
+	}
+	if received.routingID.Size() > 0 {
+		if received.spotRID.Size() == 0 {
+			received.send = receivedSendToRouter(s.SendTo, received.routingID)
+		} else {
+			received.send = receivedSendToSpotPeer(s, received.routingID, received.spotRID)
 		}
 	}
 	return received, nil
@@ -1915,7 +1926,14 @@ func (s *StreamSocket) TrySendTo(target RoutingID, parts ...*Message) (bool, err
 // Recv is the canonical caller-provided storage recv. See
 // doc/spec/bindings/README.md "Canonical Recv: Caller-Provided Storage".
 func (s *StreamSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
-	return (&directSocket{connectionSocket: s.core.connectionSocket}).Recv(out, flags)
+	ok, err := (&directSocket{connectionSocket: s.core.connectionSocket}).Recv(out, flags)
+	if err != nil || !ok {
+		return ok, err
+	}
+	if out.routingID.Size() > 0 {
+		out.send = receivedSendToRouter(s.SendTo, out.routingID)
+	}
+	return true, nil
 }
 
 func (s *StreamSocket) OnPacket(handler func(RoutingID, *Message, *Message)) error {

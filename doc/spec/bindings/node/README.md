@@ -904,10 +904,20 @@ class Received {
     isSinglePart(): boolean;
     /** @throws {RecvError} */
     firstPart(): Message;
-    /** @throws {RecvError} */
-    singlePartOrThrow(): Message;
+	    /** @throws {RecvError} */
+	    singlePartOrThrow(): Message;
 
-    /** reply requires requestSeq; null or invalid reply context raises SubmitError. */
+	    /** send a regular routed message to the sender of this Received. */
+	    /** @throws {SubmitError} */
+	    send(part: Message): boolean;
+	    /** @throws {SubmitError} */
+	    send(part: Message, flags: SendFlags): boolean;
+	    /** @throws {SubmitError} */
+	    send(parts: Message[]): boolean;
+	    /** @throws {SubmitError} */
+	    send(parts: Message[], flags: SendFlags): boolean;
+
+	    /** reply requires requestSeq; null or invalid reply context raises SubmitError. */
     /** @throws {SubmitError} */
     reply(part: Message): void;
     /** @throws {SubmitError} */

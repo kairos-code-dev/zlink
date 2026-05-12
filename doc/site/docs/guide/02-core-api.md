@@ -15,7 +15,7 @@ A Context is the top-level object in zlink that manages the I/O thread pool and 
 void *ctx = zlink_ctx_new();
 
 /* Configure — increase I/O threads for multi-connection servers */
-zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* default 1; 4 is optimal under heavy load */
+zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* default 4 */
 
 /* Query (error_out receives ZLINK_CONFIG_OK on success) */
 zlink_config_result_t err;
@@ -29,7 +29,7 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `ZLINK_IO_THREADS` | 1 | Number of I/O threads |
+| `ZLINK_IO_THREADS` | 4 | Number of I/O threads |
 | `ZLINK_MAX_SOCKETS` | 4095 | Maximum number of sockets |
 | `ZLINK_MAX_MSGSZ` | -1 | Maximum message size (-1: unlimited) |
 

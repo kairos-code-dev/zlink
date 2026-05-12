@@ -283,8 +283,10 @@ func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, done chan<- st
 					_ = received.Close()
 					break
 				}
-				if len(pending) == 0 {
-					sent, sendErr := tryRouterSend(server, received.RoutingID(), part.Data())
+					if len(pending) == 0 {
+						sent, sendErr := received.SendWithFlags(
+							[]*zlink.Message{perfcommon.NewMessage(part.Data())},
+							zlink.SendFlagsDontWait)
 					if sendErr != nil {
 						_ = received.Close()
 						perfcommon.Must(fmt.Errorf("multi router/router server send: %w", sendErr))

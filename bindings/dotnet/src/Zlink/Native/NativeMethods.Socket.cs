@@ -67,6 +67,17 @@ internal static partial class NativeMethods
         out IntPtr sourceRoutingId, ref ZlinkMsg part, out int hasMore,
         int flags);
 
+    // DONT_WAIT-only fast variant: same C function, different P/Invoke
+    // signature with [SuppressGCTransition]. Caller MUST guarantee the
+    // DONT_WAIT bit is set in flags so the underlying call is non-blocking
+    // (otherwise GC suspension is unsafe).
+    [DllImport(LibraryName, EntryPoint = "zlink_recv_part",
+        CallingConvention = CallingConvention.Cdecl)]
+    [SuppressGCTransition]
+    internal static extern int zlink_recv_part_nowait(IntPtr socket,
+        out IntPtr sourceRoutingId, ref ZlinkMsg part, out int hasMore,
+        int flags);
+
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_recv_part(IntPtr router,
         out IntPtr sourceNodeRoutingId, out IntPtr sourceSpotRoutingId,

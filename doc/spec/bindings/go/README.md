@@ -753,9 +753,13 @@ func (r *Received) IsSinglePart() bool
 // FirstPart returns parts[0] or *RecvError when parts is empty.
 func (r *Received) FirstPart() (*Message, error)
 // SinglePartOrError returns the only part or *RecvError when parts != 1.
-func (r *Received) SinglePartOrError() (*Message, error)
+	func (r *Received) SinglePartOrError() (*Message, error)
 
-// Reply sends a reply for this received request. Only valid when
+	// Send sends a regular routed message to the sender of this Received.
+	func (r *Received) Send(parts []*Message) (bool, error)
+	func (r *Received) SendWithFlags(parts []*Message, flags SendFlags) (bool, error)
+
+	// Reply sends a reply for this received request. Only valid when
 // HasRequestSeq() is true; otherwise returns *SubmitError for invalid
 // reply context. Submit failures also return *SubmitError.
 // RoutingID/SpotRID/RequestSeq are encapsulated — caller does not pass

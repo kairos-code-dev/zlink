@@ -12,6 +12,7 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 
 /**
  * Aggregates one recv result, including an optional routing id and the owned
@@ -52,6 +53,7 @@ public final class Received implements AutoCloseable {
     private long requestSequence;
     private boolean hasRequestSequence;
     private BiConsumer<List<Message>, SendFlags> replySender;
+    private BiFunction<List<Message>, SendFlags, Boolean> sendSender;
     private byte[] routingIdBytes;
     private byte[] spotRidBytes;
     private Runnable onTerminalState;
@@ -72,6 +74,7 @@ public final class Received implements AutoCloseable {
         this.requestSequence = 0L;
         this.hasRequestSequence = false;
         this.replySender = null;
+        this.sendSender = null;
         this.routingIdBytes = null;
         this.spotRidBytes = null;
         this.onTerminalState = null;
@@ -120,6 +123,7 @@ public final class Received implements AutoCloseable {
             this.requestSequence = requestSequence;
             this.hasRequestSequence = hasRequestSequence;
             this.replySender = replySender;
+            this.sendSender = null;
             this.onTerminalState = onTerminalState;
             if (this.realizedParts == null) {
                 this.realizedParts = acquirePartsList(1);
@@ -148,6 +152,7 @@ public final class Received implements AutoCloseable {
         this.requestSequence = source.requestSequence;
         this.hasRequestSequence = source.hasRequestSequence;
         this.replySender = source.replySender;
+        this.sendSender = source.sendSender;
         this.routingIdBytes = source.routingIdBytes;
         this.spotRidBytes = source.spotRidBytes;
         this.onTerminalState = source.onTerminalState;
@@ -161,6 +166,7 @@ public final class Received implements AutoCloseable {
         source.requestSequence = 0L;
         source.hasRequestSequence = false;
         source.replySender = null;
+        source.sendSender = null;
         source.routingIdBytes = null;
         source.spotRidBytes = null;
         source.onTerminalState = null;
@@ -208,6 +214,7 @@ public final class Received implements AutoCloseable {
         this.requestSequence = requestSequence;
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
+        this.sendSender = null;
         this.onTerminalState = onTerminalState;
         Message[] ownedParts = Objects.requireNonNull(parts, "parts");
         Message[] safeParts = trustedParts ? ownedParts
@@ -237,6 +244,7 @@ public final class Received implements AutoCloseable {
         this.requestSequence = requestSequence;
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
+        this.sendSender = null;
         this.onTerminalState = onTerminalState;
         Message[] ownedParts = Objects.requireNonNull(parts, "parts");
         Message[] safeParts = trustedParts ? ownedParts
@@ -264,6 +272,7 @@ public final class Received implements AutoCloseable {
         this.requestSequence = requestSequence;
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
+        this.sendSender = null;
         this.onTerminalState = onTerminalState;
         this.realizedParts = acquirePartsList(1);
         this.realizedParts.add(Objects.requireNonNull(singlePart, "singlePart"));
@@ -288,6 +297,7 @@ public final class Received implements AutoCloseable {
         this.requestSequence = requestSequence;
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
+        this.sendSender = null;
         this.onTerminalState = onTerminalState;
         this.realizedParts = acquirePartsList(1);
         this.realizedParts.add(Objects.requireNonNull(singlePart, "singlePart"));
@@ -306,6 +316,7 @@ public final class Received implements AutoCloseable {
         this.requestSequence = requestSequence;
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
+        this.sendSender = null;
         this.onTerminalState = onTerminalState;
         this.realizedParts = acquirePartsList(4);
         this.realizedParts.add(Objects.requireNonNull(firstPart, "firstPart"));
@@ -324,6 +335,7 @@ public final class Received implements AutoCloseable {
         this.requestSequence = requestSequence;
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
+        this.sendSender = null;
         this.onTerminalState = onTerminalState;
         this.realizedParts = acquirePartsList(4);
         this.realizedParts.add(Objects.requireNonNull(firstPart, "firstPart"));
@@ -430,6 +442,38 @@ public final class Received implements AutoCloseable {
         } catch (IllegalStateException ex) {
             throw new SubmitException(SubmitResult.TERMINATED);
         }
+    }
+
+    public boolean send(Message part) {
+        return send(List.of(Objects.requireNonNull(part, "part")), SendFlags.NONE);
+    }
+
+    public boolean send(Message part, SendFlags flags) {
+        return send(List.of(Objects.requireNonNull(part, "part")), flags);
+    }
+
+    public boolean send(List<Message> parts) {
+        return send(parts, SendFlags.NONE);
+    }
+
+    public boolean send(List<Message> parts, SendFlags flags) {
+        if (sendSender == null) {
+            throw new SubmitException(SubmitResult.INVALID_STATE);
+        }
+        try {
+            return sendSender.apply(Objects.requireNonNull(parts, "parts"),
+                Objects.requireNonNull(flags, "flags"));
+        } catch (IllegalStateException ex) {
+            throw new SubmitException(SubmitResult.TERMINATED);
+        }
+    }
+
+    void setSendSender(BiFunction<List<Message>, SendFlags, Boolean> sendSender) {
+        this.sendSender = sendSender;
+    }
+
+    boolean hasSendSender() {
+        return sendSender != null;
     }
 
     @Override

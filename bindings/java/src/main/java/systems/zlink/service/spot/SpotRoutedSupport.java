@@ -221,18 +221,22 @@ final class SpotRoutedSupport implements AutoCloseable {
                         activeLazyReceive.remove();
                     }
                 };
-                Received received = InternalAccess.receivedLazy(source,
-                    sourceSpot, firstPart, cursor, requestSeq,
-                    requestSeq != 0L, requestSeq == 0L ? null
-                    : (replyParts, sendFlags) -> {
+	                Received received = InternalAccess.receivedLazy(source,
+	                    sourceSpot, firstPart, cursor, requestSeq,
+	                    requestSeq != 0L, requestSeq == 0L ? null
+	                    : (replyParts, sendFlags) -> {
                         if (sourceSpot != null) {
                             replyToSpot(source, sourceSpot, requestSeq,
                                 replyParts, sendFlags);
                         } else {
                             replyToRouter(source, requestSeq, replyParts,
                                 sendFlags);
-                        }
-                    }, onTerminal);
+	                        }
+	                    }, onTerminal);
+	                if (source != null && sourceSpot != null) {
+	                    InternalAccess.receivedSetSendSender(received, (sendParts, sendFlags) ->
+	                        sendToSpot(source, sourceSpot, sendParts, sendFlags));
+	                }
                 ref[0] = received;
                 if (hasMore) {
                     activeLazyReceive.set(received);

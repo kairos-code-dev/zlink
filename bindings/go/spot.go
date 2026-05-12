@@ -1150,6 +1150,7 @@ func (s *Spot) RecvRouted(flags RecvFlags) (*Received, error) {
 		requestSeq:    uint64(requestSeq),
 		hasRequestSeq: requestSeq != 0,
 		reply:         receivedReplyToSpot(s, routingIDFromCPtr(sourceRID), routingIDFromCPtr(spotRID), uint64(requestSeq)),
+		send:          receivedSendFromSpot(s, routingIDFromCPtr(sourceRID), routingIDFromCPtr(spotRID)),
 	}, nil
 }
 

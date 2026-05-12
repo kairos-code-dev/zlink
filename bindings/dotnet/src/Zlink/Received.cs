@@ -9,6 +9,9 @@ namespace Systems.Zlink;
 
 internal delegate void ReceivedReplyHandler(IReadOnlyList<Message> parts,
     SendFlags flags);
+internal delegate bool ReceivedSendSingleHandler(Message part, SendFlags flags);
+internal delegate bool ReceivedSendHandler(IReadOnlyList<Message> parts,
+    SendFlags flags);
 
 public sealed class Received : IDisposable
 {
@@ -18,6 +21,8 @@ public sealed class Received : IDisposable
     private Message? _singlePart;
     private bool _closed;
     private RoutingId? _routingId;
+    private ReceivedSendSingleHandler? _sendSingleHandler;
+    private ReceivedSendHandler? _sendHandler;
 
     /// <summary>
     /// Create an empty <see cref="Received"/> for caller-provided storage.
@@ -241,6 +246,29 @@ public sealed class Received : IDisposable
         replyHandler(parts, flags);
     }
 
+    public bool Send(Message part, SendFlags flags = SendFlags.None)
+    {
+        if (part == null)
+            throw new ArgumentNullException(nameof(part));
+        if (_sendSingleHandler != null)
+            return _sendSingleHandler(part, flags);
+        return Send(new[] { part }, flags);
+    }
+
+    public bool Send(IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
+    {
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
+        if (_sendHandler == null)
+        {
+            throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
+                (int)ErrorCode.EInval);
+        }
+
+        return _sendHandler(parts, flags);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Dispose()
     {
@@ -280,6 +308,8 @@ public sealed class Received : IDisposable
         _routingId = null;
         _routingIdSnapshot = default;
         _metadata = null;
+        _sendSingleHandler = null;
+        _sendHandler = null;
         _closed = false;
     }
 
@@ -297,22 +327,37 @@ public sealed class Received : IDisposable
 
     internal void PopulateRoutedSinglePart(Message singlePart,
         RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
-        ulong? requestSeq, ReceivedReplyHandler? replyHandler)
+        ulong? requestSeq, ReceivedReplyHandler? replyHandler,
+        ReceivedSendHandler? sendHandler = null,
+        ReceivedSendSingleHandler? sendSingleHandler = null)
     {
         ResetForReuse();
         _singlePart = singlePart;
         _routingIdSnapshot = routingId;
         _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
+        _sendSingleHandler = sendSingleHandler;
+        _sendHandler = sendHandler;
     }
 
     internal void PopulateRoutedMultipart(MultipartMessageCollection parts,
         RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
-        ulong? requestSeq, ReceivedReplyHandler? replyHandler)
+        ulong? requestSeq, ReceivedReplyHandler? replyHandler,
+        ReceivedSendHandler? sendHandler = null,
+        ReceivedSendSingleHandler? sendSingleHandler = null)
     {
         ResetForReuse();
         _parts = parts;
         _routingIdSnapshot = routingId;
         _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
+        _sendSingleHandler = sendSingleHandler;
+        _sendHandler = sendHandler;
+    }
+
+    internal void SetSendHandler(ReceivedSendHandler? sendHandler,
+        ReceivedSendSingleHandler? sendSingleHandler = null)
+    {
+        _sendSingleHandler = sendSingleHandler;
+        _sendHandler = sendHandler;
     }
 
     private MultipartMessageCollection PartsCollection

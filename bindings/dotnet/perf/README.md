@@ -76,8 +76,14 @@ The shell runners execute the existing Release benchmark outputs produced by the
 Gate 1 `dotnet build` step.
 Multi runs spawn separate server/client processes and write raw logs under
 `results/multi/tmp/` before extracting report metrics.
-Managed runs set `DOTNET_TieredCompilation=0` to reduce per-size startup
-variance.
+Managed runs set `DOTNET_TieredCompilation=1`,
+`DOTNET_TC_QuickJitForLoops=1`, and `DOTNET_ReadyToRun=1` so the measured
+active window uses the same tiered-runtime policy as `doc/perf/PERF_POLICY.md`.
+
+Multi uses `PERF_IO_THREADS=4` by default for both server and client processes,
+matching the C multi policy. Raw socket multi patterns set the current message
+size as `AutoHwmMessageUnitBytes` on every benchmark socket and then call
+context auto-HWM recalculation before active measurement.
 
 ## Results
 

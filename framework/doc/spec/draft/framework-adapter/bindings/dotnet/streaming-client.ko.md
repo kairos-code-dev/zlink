@@ -360,7 +360,7 @@ connector는 이 문서에서 정의한 helper header만 decode한다. 수신 pa
 `On(...)`에 등록한 이름별 handler로 전달한다. helper header decode에 실패하면
 `ErrorReceived`로 오류를 전달하고 packet body를 사용자에게 raw 형태로 넘기지 않는다.
 
-`Send(...).Async(...)`는 응답을 기다리지 않는 submit API다. 실제 transport write는
+`Send(...).Submit(...)`는 응답을 기다리지 않는 submit API다. 실제 transport write는
 connector 내부에서 비동기로 처리한다. 호출 시점에는 frame size, packet name,
 metadata size, connection 상태처럼 즉시 판단할 수 있는 validation 실패만 예외로
 보고한다. write 중 발생한 오류는 `ErrorReceived`로 전달한다.
@@ -389,7 +389,7 @@ public sealed class ZlinkStreamSendBuilder
 
     public ZlinkStreamSendBuilder Compress();
 
-    public ValueTask Async(CancellationToken cancellationToken = default);
+    public ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public sealed class ZlinkStreamRequestBuilder
@@ -404,18 +404,18 @@ public sealed class ZlinkStreamRequestBuilder
 
     public ZlinkStreamRequestBuilder Compress();
 
-    public ValueTask<ZlinkStreamEncodedBody> Async(
+    public ValueTask<ZlinkStreamEncodedBody> Submit(
         CancellationToken cancellationToken = default);
 
-    public void Async(
+    public void Submit(
         Action<ZlinkStreamResult> callback);
 
-    public void Async(
+    public void Submit(
         Action<ZlinkStreamResult<ZlinkStreamEncodedBody>> callback);
 }
 ```
 
-builder instance는 1회 실행만 허용한다. 같은 builder에서 `Async`를 두 번
+builder instance는 1회 실행만 허용한다. 같은 builder에서 `Submit`을 두 번
 호출하면 validation error로 처리한다.
 
 ```csharp
@@ -423,7 +423,7 @@ var reply = await client
     .Request(new GetProfileRequest { AccountId = accountId })
     .WithTimeout(TimeSpan.FromMilliseconds(200))
     .Metadata("traceId", traceId)
-    .Async<GetProfileReply>(cancellationToken);
+    .Submit<GetProfileReply>(cancellationToken);
 ```
 
 packet 이름을 명시하지 않은 경우 기본 이름은 namespace를 제외한 body CLR 타입
@@ -433,13 +433,13 @@ packet 이름을 명시하지 않은 경우 기본 이름은 namespace를 제외
 ```csharp
 client
     .Send(new ChatMessage { Text = "hello" })
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 
 client
     .Send(new ChatMessage { Text = "hello" })
     .WithPacketName("chat.message")
     .Metadata("traceId", traceId)
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 ```
 
 client-to-server compression은 명시 호출에서만 적용한다.
@@ -448,7 +448,7 @@ client-to-server compression은 명시 호출에서만 적용한다.
 client
     .Send(new UploadReplayChunk { Bytes = chunk })
     .Compress()
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 ```
 
 `.Compress()`는 body만 압축하고 helper header `flags`에 `body compressed`를 표시한다.
@@ -652,13 +652,13 @@ using Systems.Zlink.Stream.Connector.Codecs;
 
 client
     .Send(new ChatMessage("hello"))
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 
 var reply = await client
     .Request(new ChatRequest("hello"))
     .WithPacketName("chat.request")
     .WithTimeout(TimeSpan.FromSeconds(1))
-    .Async<ChatReply>(cancellationToken);
+    .Submit<ChatReply>(cancellationToken);
 ```
 
 codec extension은 body bytes와 `ZlinkStreamCodec` 값을 함께 만든다. connector는 그
@@ -700,9 +700,9 @@ Unity 상세 계약은 [unity-stream-connector.ko.md](./unity-stream-connector.k
 `.NET` 구현 완료 기준은 아래와 같다.
 
 - `tcp://`, `tls://`, `ws://`, `wss://` endpoint에 연결할 수 있다.
-- `Send(...).Async(...)`로 보낸 packet을 framework STREAM 서버가 받는다.
+- `Send(...).Submit(...)`로 보낸 packet을 framework STREAM 서버가 받는다.
 - 서버가 helper header로 쓴 packet을 client가 typed handler로 받는다.
-- callback request와 `Request(...).Async(...)`가 각각 동작한다.
+- callback request와 `Request(...).Submit(...)`가 각각 동작한다.
 - request timeout, close 중 pending request 실패, disconnected send를 테스트한다.
 - TLS 자체 서명 인증서 검증 옵션을 테스트한다.
 - partial read, multi-packet read, send frame limit을 테스트한다.

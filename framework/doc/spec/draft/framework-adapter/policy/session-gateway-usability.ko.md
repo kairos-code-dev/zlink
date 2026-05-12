@@ -327,7 +327,7 @@ public interface IZLinkSessionProxySendCall
         string key,
         string value);
 
-    ValueTask Async(
+    ValueTask Submit(
         CancellationToken cancellationToken = default);
 }
 
@@ -341,7 +341,7 @@ public interface IZLinkSessionProxyRequestCall
 
     IZLinkSessionProxyRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Async<TReply>(
+    ValueTask<TReply> Submit<TReply>(
         CancellationToken cancellationToken = default);
 }
 ```
@@ -630,7 +630,7 @@ public interface IZLinkActorSendCall
 {
     IZLinkActorSendCall WithPacketName(string packetName);
     IZLinkActorSendCall WithMetadata(string key, string value);
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorRequestCall
@@ -638,7 +638,7 @@ public interface IZLinkActorRequestCall
     IZLinkActorRequestCall WithPacketName(string packetName);
     IZLinkActorRequestCall WithMetadata(string key, string value);
     IZLinkActorRequestCall WithTimeout(TimeSpan timeout);
-    ValueTask<TReply> Async<TReply>(
+    ValueTask<TReply> Submit<TReply>(
         CancellationToken cancellationToken = default);
 }
 ```
@@ -1039,7 +1039,7 @@ public async ValueTask OnDispatchAsync(
         authenticatedActors.Remember(request.ActorId, actor);
 
         await Context.Reply(new AuthRep(ok: true))
-            .Async(cancellationToken);
+            .Submit(cancellationToken);
         return;
     }
 
@@ -1096,11 +1096,11 @@ resolver를 통해 target을 찾는 것이다.
 ```csharp
 await sessionProxy
     .Send(actorId, new GameStateChangedMsg(gameId, board))
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 
 GamePromptRep prompt = await sessionProxy
     .Request(actorId, new ChooseMoveReq(gameId, board))
-    .Async<GamePromptRep>(cancellationToken);
+    .Submit<GamePromptRep>(cancellationToken);
 ```
 
 이 호출은 내부적으로 아래 순서로 처리된다.
@@ -1219,7 +1219,7 @@ direct target API는 public application 표면에서 기본으로 노출하지 �
 // 일반 application 표면으로 권장하지 않는다.
 await spotClient
     .SendTo(spotNodeRid, spotId, message)
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 ```
 
 `SpotNodeId`나 `RoutingId`를 알아야만 호출할 수 있는 API가 public 문서와 sample에
@@ -1415,7 +1415,7 @@ public sealed class TicTacToeSession : IZLinkSession
             authenticatedActors.Remember(request.ActorId, actor);
 
             await Context.Reply(new AuthRep(ok: true))
-                .Async(cancellationToken);
+                .Submit(cancellationToken);
             return;
         }
 

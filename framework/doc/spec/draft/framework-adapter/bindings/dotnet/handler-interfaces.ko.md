@@ -654,7 +654,7 @@ public interface IZLinkSessionSendCall
 
     IZLinkSessionSendCall Compress();
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionReplyCall
@@ -663,7 +663,7 @@ public interface IZLinkSessionReplyCall
 
     IZLinkSessionReplyCall Compress();
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionRequestCall
@@ -672,7 +672,7 @@ public interface IZLinkSessionRequestCall
 
     IZLinkSessionRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
 }
 ```
 
@@ -864,7 +864,7 @@ public interface IZLinkActorSendCall
 
     IZLinkActorSendCall Compress();
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorReplyCall
@@ -873,7 +873,7 @@ public interface IZLinkActorReplyCall
 
     IZLinkActorReplyCall Compress();
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorFactory
@@ -1129,7 +1129,7 @@ public interface IZLinkSendCall
 {
     IZLinkSendCall WithPacketName(string packetName);
 
-    ValueTask Async(
+    ValueTask Submit(
         CancellationToken cancellationToken = default);
 }
 
@@ -1139,7 +1139,7 @@ public interface IZLinkRequestCall
 
     IZLinkRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Async<TReply>(
+    ValueTask<TReply> Submit<TReply>(
         CancellationToken cancellationToken = default);
 }
 
@@ -1348,7 +1348,7 @@ public interface IZLinkPublishCall
 {
     IZLinkPublishCall WithPacketName(string packetName);
 
-    ValueTask Async(
+    ValueTask Submit(
         CancellationToken cancellationToken = default);
 }
 
@@ -1418,7 +1418,7 @@ public interface IZLinkActorClientSendCall
         string key,
         string value);
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorClientRequestCall
@@ -1431,7 +1431,7 @@ public interface IZLinkActorClientRequestCall
 
     IZLinkActorClientRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
 }
 ```
 
@@ -1461,7 +1461,7 @@ public interface IZLinkSessionProxySendCall
         string key,
         string value);
 
-    ValueTask Async(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionProxyRequestCall
@@ -1474,7 +1474,7 @@ public interface IZLinkSessionProxyRequestCall
 
     IZLinkSessionProxyRequestCall WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> Submit<TReply>(CancellationToken cancellationToken = default);
 }
 ```
 

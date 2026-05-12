@@ -144,14 +144,14 @@ public interface IZLinkSessionSendCall
     IZLinkSessionSendCall WithMetadata(string key, string value);
     IZLinkSessionSendCall WithPacketName(string messageName);
     IZLinkSessionSendCall Compress();
-    ValueTask SendAsync(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionReplyCall
 {
     IZLinkSessionReplyCall WithMetadata(string key, string value);
     IZLinkSessionReplyCall Compress();
-    ValueTask SendAsync(CancellationToken cancellationToken = default);
+    ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionContext :

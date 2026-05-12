@@ -1,6 +1,6 @@
 [스펙 목차](../../README.ko.md)
 
-[개요](./overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [Session Actor Dispatch 사용성](./session-gateway-usability.ko.md) | [Session Gateway 보관본](./session-gateway.ko.md) | [검증](../usecase-validation.ko.md) | [.NET](../bindings/dotnet/README.ko.md) | [Java](../bindings/java/README.ko.md) | [Node.js](../bindings/node/README.ko.md) | [Python](../bindings/python/README.ko.md) | [Go](../bindings/go/README.ko.md) | [Rust](../bindings/rust/README.ko.md) | [C++](../bindings/cpp/README.ko.md)
+[개요](./overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [Actor 모델](./actor-model.ko.md) | [Session Actor Dispatch 사용성](./session-gateway-usability.ko.md) | [Session Gateway 보관본](./session-gateway.ko.md) | [검증](../usecase-validation.ko.md) | [.NET](../bindings/dotnet/README.ko.md) | [Java](../bindings/java/README.ko.md) | [Node.js](../bindings/node/README.ko.md) | [Python](../bindings/python/README.ko.md) | [Go](../bindings/go/README.ko.md) | [Rust](../bindings/rust/README.ko.md) | [C++](../bindings/cpp/README.ko.md)
 
 # Draft -- ZLink Framework
 
@@ -44,21 +44,23 @@ host/runtime 사용자를 위한 `ZLink Framework` 방향을 정리한다. 제�
 | 4 | [message-model.ko.md](./message-model.ko.md) | `header + body` 메시지 구조, header 필드, body codec 방향. wire 수준 메시지 형식을 다룬다. |
 | 5 | [channel-topology.ko.md](./channel-topology.ko.md) | channel grouping, Discovery, 수동 연결, 상호작용 모델과 내부 transport 매핑. 내부 배선이 어떻게 구성되는지 다룬다. |
 | 6 | [framework-api.ko.md](./framework-api.ko.md) | `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `C++` standalone host 기준의 API 표면 방향. 각 환경에서 handler와 client가 어떤 모양으로 보이는지 다룬다. |
-| 7 | [session-gateway.ko.md](./session-gateway.ko.md) | 이전 session gateway/actor relay 초안. 현재 public API 기준이 아니며, 배경과 문제 맥락을 확인할 때만 사용한다. |
-| 8 | [session-gateway-usability.ko.md](./session-gateway-usability.ko.md) | 현재 session actor dispatch 기준 초안. typed handler, route resolver, session actor dispatch helper, `SessionProxy` 방향을 다룬다. |
-| 9 | [../bindings/dotnet/README.ko.md](../bindings/dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 상세 초안. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
-| 10 | [../bindings/java/README.ko.md](../bindings/java/README.ko.md) | `Java`와 `Spring Boot` 전용 상세 초안 진입점. |
-| 11 | [../bindings/node/README.ko.md](../bindings/node/README.ko.md) | `Node.js`와 `NestJS` 전용 상세 초안 진입점. |
-| 12 | [../bindings/python/README.ko.md](../bindings/python/README.ko.md) | `Python`과 `FastAPI` 전용 상세 초안 진입점. |
-| 13 | [../bindings/go/README.ko.md](../bindings/go/README.ko.md) | `Go`와 `net/http` 계열 전용 상세 초안 진입점. |
-| 14 | [../bindings/rust/README.ko.md](../bindings/rust/README.ko.md) | `Rust`와 `Axum` 전용 상세 초안 진입점. |
-| 15 | [../bindings/cpp/README.ko.md](../bindings/cpp/README.ko.md) | `C++` standalone host/runtime 전용 상세 초안 진입점. |
-| 16 | [../usecase-validation.ko.md](../usecase-validation.ko.md) | 각 use case를 현재 초안이 얼마나 설명하는지 점검하는 체크리스트. |
+| 7 | [actor-model.ko.md](./actor-model.ko.md) | actor 개념을 cross-binding 기준으로 정의한다. actor 라이프사이클 (Entry Spot / session bind / user Spot join), application 로직 vs framework 자동 처리, outbound actor 호출, session actor dispatch 패턴, 등록 표면을 다룬다. |
+| 8 | [session-gateway.ko.md](./session-gateway.ko.md) | 이전 session gateway/actor relay 초안. 현재 public API 기준이 아니며, 배경과 문제 맥락을 확인할 때만 사용한다. |
+| 9 | [session-gateway-usability.ko.md](./session-gateway-usability.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 사용성 결정 초안. typed handler, route resolver, session actor dispatch helper, `SessionProxy` 방향을 다룬다. |
+| 10 | [../bindings/dotnet/README.ko.md](../bindings/dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 상세 초안. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
+| 11 | [../bindings/java/README.ko.md](../bindings/java/README.ko.md) | `Java`와 `Spring Boot` 전용 상세 초안 진입점. |
+| 12 | [../bindings/node/README.ko.md](../bindings/node/README.ko.md) | `Node.js`와 `NestJS` 전용 상세 초안 진입점. |
+| 13 | [../bindings/python/README.ko.md](../bindings/python/README.ko.md) | `Python`과 `FastAPI` 전용 상세 초안 진입점. |
+| 14 | [../bindings/go/README.ko.md](../bindings/go/README.ko.md) | `Go`와 `net/http` 계열 전용 상세 초안 진입점. |
+| 15 | [../bindings/rust/README.ko.md](../bindings/rust/README.ko.md) | `Rust`와 `Axum` 전용 상세 초안 진입점. |
+| 16 | [../bindings/cpp/README.ko.md](../bindings/cpp/README.ko.md) | `C++` standalone host/runtime 전용 상세 초안 진입점. |
+| 17 | [../usecase-validation.ko.md](../usecase-validation.ko.md) | 각 use case를 현재 초안이 얼마나 설명하는지 점검하는 체크리스트. |
 
 개요(1)로 전체 그림을 잡고, use case(2)로 무엇을 해결하려는지 본 뒤,
 모델(3-4)로 설계 방향을 확인하고, topology(5)로 내부 매핑을 이해하고,
-API 표면(6-8)으로 구체적인 모양을 보고, 마지막으로 검증(16)에서 빠진 부분을
-확인하는 흐름이다.
+API 표면(6)을 본 다음, actor 모델(7)과 그 use case 정책(8-9)을 잡고,
+언어별 상세(10-16)로 내려간 뒤, 마지막으로 검증(17)에서 빠진 부분을 확인하는
+흐름이다.
 
 언어별 상세 초안을 새로 읽을 때는 아래 순서를 기본으로 본다.
 
@@ -77,6 +79,7 @@ API 표면(6-8)으로 구체적인 모양을 보고, 마지막으로 검증(16)�
 | 메시지 구조, header 필드, codec | message-model | 필요하면 message-model을 링크 |
 | channel grouping, Discovery, 내부 매핑 | channel-topology | 필요하면 channel-topology를 링크 |
 | 프레임워크별 API 표면, DI, handler 등록 | framework-api, dotnet/ | 필요하면 해당 문서를 링크 |
+| actor 개념, 라이프사이클, session bind, user Spot join, session actor dispatch | actor-model, session-gateway-usability | 필요하면 해당 문서를 링크 |
 
 ## 4. 문서 작성 원칙
 
@@ -136,6 +139,9 @@ framework adapter 초안의 public 이름 규칙은
   나누지 않는다. send 계열 public 호출은 기본 async submit으로 설명하고,
   backpressure는 framework 내부의 nonblocking send, pending queue, ready
   notification으로 처리한다.
+- builder terminator는 `Submit` (그리고 reply가 있는 경우 `Submit<TReply>`)
+  단일 어휘로 통일한다. blocking 대안 terminator를 두지 않으며,
+  `Async()` / `SendAsync()`처럼 다른 이름의 종결자도 noise로 보고 두지 않는다.
 
 문서에서 우선 따라야 할 언어별 케이싱은 아래와 같다.
 

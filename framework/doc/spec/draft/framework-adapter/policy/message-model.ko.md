@@ -42,7 +42,7 @@ typed request body를 받고, header metadata가 필요하면 context에서 조�
 
 | 필드 | 용도 |
 |------|------|
-| `message-kind` | request, response, command, event 구분 |
+| `message-kind` | request, response, command, event 구분. dispatch key 문맥은 `{request, command, event}` 셋. response는 client측 reply correlation 전용이라 dispatch key로 노출하지 않는다. |
 | `channel` | 논리 channel 이름 |
 | `packet-name` | handler 선택에 쓰는 이름 |
 | `content-type` | body codec 식별 |

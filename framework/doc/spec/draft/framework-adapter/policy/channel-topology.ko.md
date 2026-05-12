@@ -125,7 +125,7 @@ handler namespace는 inbound channel runtime 안에 둔다.
 기본 dispatch key는 아래 조합이다.
 
 - inbound `channel name`
-- message kind (`request`, `send`, `event`)
+- message kind (`request`, `command`, `event`). dispatch key 어휘에는 `send`를 포함하지 않는다. response는 client측 reply correlation으로만 다루므로 dispatch key 집합에 두지 않는다.
 - packet name
 
 따라서 같은 애플리케이션 안에서도 `api` channel의 `AuthenticateReq`와 `admin`
@@ -134,10 +134,13 @@ channel의 `AuthenticateReq`는 서로 다른 handler로 매핑할 수 있어야
 문제이고, dispatch namespace 문제와 다르다.
 
 중복 검사는 실행 문맥 안에서만 수행한다. 일반 channel messaging에서는 같은
-`channel name + kind + packet name`에 handler가 둘 이상이면 startup 오류다.
+`channel name + kind + packet name`에 handler가 둘 이상이면 startup 오류다. 여기서
+`kind`는 dispatch key 어휘인 `{request, command, event}` 중 하나다.
 다른 channel에서 같은 `kind + packet name`을 다시 쓰는 것은 허용한다. routed
 channel, actor, spot도 같은 원칙을 따르되, 각각의 `router channel`, actor 실행
-문맥, spot 실행 문맥을 namespace로 본다.
+문맥, spot 실행 문맥을 namespace로 본다. actor 측 dispatch namespace의 정확한
+모델 (`actorId` 단위 packet 등록, `Configure()` 시점에 한 번 등록 등) 은
+[actor-model.ko.md](./actor-model.ko.md) §5에 정의한다.
 
 handler attribute나 annotation은 packet kind와 packet name override를 표현한다.
 channel name은 배포와 topology를 나타내는 값이므로 handler method attribute에

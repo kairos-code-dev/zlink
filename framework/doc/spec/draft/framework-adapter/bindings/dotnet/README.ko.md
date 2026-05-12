@@ -1,6 +1,6 @@
 [스펙 목차](../../../README.ko.md)
 
-[Framework Adapter 정책](../../policy/README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Stream Connector](./streaming-client.ko.md) | [Unity Stream Connector](./unity-stream-connector.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [Monitoring](./aspnet-core-monitoring.ko.md) | [Registry](./aspnet-core-registry.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md) | [Scope](./implementation-scope-and-nongoals.ko.md) | [Backend Policy](./backend-dependency-policy.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [STREAM 샘플](./stream-samples.ko.md)
+[Framework Adapter 정책](../../policy/README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Actor](./aspnet-core-actor.ko.md) | [Session Actor Dispatch](./session-actor-dispatch.ko.md) | [Stream Connector](./streaming-client.ko.md) | [Unity Stream Connector](./unity-stream-connector.ko.md) | [STREAM Decisions](./stream-open-items.ko.md) | [Monitoring](./aspnet-core-monitoring.ko.md) | [Registry](./aspnet-core-registry.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md) | [Scope](./implementation-scope-and-nongoals.ko.md) | [Backend Policy](./backend-dependency-policy.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [STREAM 샘플](./stream-samples.ko.md)
 
 # Draft -- ZLink Framework For .NET
 
@@ -111,6 +111,8 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 |------|------------|
 | [aspnet-core-channel-messaging.ko.md](./aspnet-core-channel-messaging.ko.md) | channel 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, lifecycle, middleware/filter |
 | [aspnet-core-spot.ko.md](./aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish/subscribe, discovery |
+| [aspnet-core-actor.ko.md](./aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkActorClient, IZLinkSessionProxy, session actor dispatch (gateway) 패턴 |
+| [session-actor-dispatch.ko.md](./session-actor-dispatch.ko.md) | session actor dispatch의 .NET 시그니처와 등록 코드 (`IZLinkSessionProxy`, `IZLinkActorClient`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../../policy/session-gateway-usability.ko.md). |
 | [aspnet-core-stream.ko.md](./aspnet-core-stream.ko.md) | STREAM 개념, framework Header 기반 packet session, monitor 기반 lifecycle, recv 비지원 방향 |
 | [streaming-client.ko.md](./streaming-client.ko.md) | `.NET` / Unity Stream Connector, TCP/TLS/WS/WSS transport, header/body packet 송수신 |
 | [unity-stream-connector.ko.md](./unity-stream-connector.ko.md) | Unity package, `MonoBehaviour` wrapper, main thread callback dispatch, lifecycle |
@@ -153,6 +155,7 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 | channel 등록 (AddZLinkFramework), lifecycle | [aspnet-core-channel-messaging](./aspnet-core-channel-messaging.ko.md) | 필요하면 링크 |
 | handler/client 사용 예시, dispatch 흐름 | aspnet-core-channel-messaging, 샘플 | |
 | SPOT 개념, 등록, lifecycle | [aspnet-core-spot](./aspnet-core-spot.ko.md) | 필요하면 링크 |
+| Actor 라이프사이클, session bind, user Spot join, session actor dispatch | [aspnet-core-actor](./aspnet-core-actor.ko.md) | 필요하면 링크 |
 | Registry 구동, topology 조회 | [aspnet-core-registry](./aspnet-core-registry.ko.md) | 필요하면 링크 |
 
 ## 3. 핵심 방향
@@ -161,6 +164,12 @@ native runtime 범위를 framework 쪽도 그대로 따른다.
 - handler, client, filter 생성은 같은 `.NET DI` 컨테이너를 기준으로 맞춘다.
 - `channel name` 기준 direct call을 기본으로 둔다.
 - gateway나 전용 load balancer 없이 channel별 `Discovery`로 직접 호출한다.
+- channel messaging handler는 attribute scan으로 찾되, 모든 channel에 전역 노출하지
+  않는다. `EnableServer(...)` 또는 `EnableSubscriber(...)` 같은 inbound capability
+  등록에서 발견된 handler를 어느 channel에 매핑할지 명시한다.
+- `[ZLinkRequest]`, `[ZLinkSend]`, `[ZLinkPublish]`는 channel 이름을 받지 않는다.
+  channel 이름은 배포와 topology 값이므로 handler attribute가 아니라 channel
+  registration이 소유한다.
 - `SPOT`도 별도 low-level runtime이 아니라, framework lifecycle 안에서
   다룰 수 있어야 한다.
 - 일반 channel messaging은 `channelName` 호출을 기본으로 두고, `rid` 지정은

@@ -46,7 +46,7 @@ host/runtime 사용자를 위한 `ZLink Framework` 방향을 정리한다. 제�
 | 6 | [framework-api.ko.md](./framework-api.ko.md) | `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `C++` standalone host 기준의 API 표면 방향. 각 환경에서 handler와 client가 어떤 모양으로 보이는지 다룬다. |
 | 7 | [actor-model.ko.md](./actor-model.ko.md) | actor 개념을 cross-binding 기준으로 정의한다. actor 라이프사이클 (Entry Spot / session bind / user Spot join), application 로직 vs framework 자동 처리, outbound actor 호출, session actor dispatch 패턴, 등록 표면을 다룬다. |
 | 8 | [session-gateway.ko.md](./session-gateway.ko.md) | 이전 session gateway/actor relay 초안. 현재 public API 기준이 아니며, 배경과 문제 맥락을 확인할 때만 사용한다. |
-| 9 | [session-gateway-usability.ko.md](./session-gateway-usability.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 사용성 결정 초안. typed handler, route resolver, session actor dispatch helper, `SessionProxy` 방향을 다룬다. |
+| 9 | [session-gateway-usability.ko.md](./session-gateway-usability.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 cross-binding 사용성 결정 초안. typed handler 의미, route resolver 계약, helper 의미, `SessionProxy` 의미, error 매트릭스를 다룬다. 구체 .NET 시그니처와 등록 코드, sample은 [bindings/dotnet/session-actor-dispatch.ko.md](../bindings/dotnet/session-actor-dispatch.ko.md)에 분리되어 있다. |
 | 10 | [../bindings/dotnet/README.ko.md](../bindings/dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 상세 초안. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
 | 11 | [../bindings/java/README.ko.md](../bindings/java/README.ko.md) | `Java`와 `Spring Boot` 전용 상세 초안 진입점. |
 | 12 | [../bindings/node/README.ko.md](../bindings/node/README.ko.md) | `Node.js`와 `NestJS` 전용 상세 초안 진입점. |

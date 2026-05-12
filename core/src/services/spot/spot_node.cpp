@@ -359,6 +359,11 @@ void spot_node_t::untrack_owned_socket (const socket_base_t *socket_)
     _lifecycle.unregister_socket (socket_);
 }
 
+bool spot_node_t::owns_socket (const socket_base_t *socket_) const
+{
+    return _lifecycle.owns_socket (socket_);
+}
+
 int spot_node_t::wait_owned_socket_removals (int timeout_ms_)
 {
     return _lifecycle.wait_drained (timeout_ms_);

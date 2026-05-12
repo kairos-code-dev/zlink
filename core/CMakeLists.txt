@@ -838,6 +838,7 @@ set(api-sources
   src/api/service_poller_api.cpp
     src/api/service_registry_api.cpp
     src/api/service_spot_node_api.cpp
+    src/api/service_spot_actor_async_internal.cpp
     src/api/service_spot_actor_api.cpp
     src/api/service_spot_api.cpp
     src/api/service_spot_dispatch_context.cpp
@@ -1517,6 +1518,13 @@ endif()
 set(ZLINK_BUILD_TESTS
     ${BUILD_TESTS}
     CACHE BOOL "Build the tests for Zlink")
+
+if(ZLINK_BUILD_TESTS)
+  add_compile_definitions(ZLINK_BUILD_TESTS=1)
+  foreach(target ${build_targets})
+    target_compile_definitions(${target} PRIVATE ZLINK_BUILD_TESTS=1)
+  endforeach()
+endif()
 
 if(ZLINK_BUILD_TESTS)
   enable_testing() # Enable testing only works in root scope

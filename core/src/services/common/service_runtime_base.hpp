@@ -39,6 +39,7 @@ class service_runtime_base_t
     int wait_drained (int timeout_ms_);
     int force_wait_remaining (int timeout_ms_);
     size_t owned_socket_count () const;
+    bool owns_socket (const socket_base_t *socket_) const;
     void clear_tracked_sockets ();
 
   private:

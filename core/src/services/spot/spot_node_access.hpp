@@ -124,6 +124,7 @@ struct spot_node_access_t
     static void track_owned_socket (spot_node_t *node_, socket_base_t *socket_);
     static void untrack_owned_socket (spot_node_t *node_,
                                      const socket_base_t *socket_);
+    static bool owns_socket (spot_node_t *node_, const socket_base_t *socket_);
     static spot_internal_receiver_t *ensure_internal_receiver (spot_node_t *node_);
     static spot_internal_receiver_t *internal_receiver (spot_node_t *node_);
     static std::set<actor_handle_t *> &actor_handles (spot_node_t *node_);

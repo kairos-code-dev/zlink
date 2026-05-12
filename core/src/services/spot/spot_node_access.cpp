@@ -492,6 +492,12 @@ void spot_node_access_t::untrack_owned_socket (spot_node_t *node_,
         node_->untrack_owned_socket (socket_);
 }
 
+bool spot_node_access_t::owns_socket (spot_node_t *node_,
+                                      const socket_base_t *socket_)
+{
+    return node_ && socket_ && node_->owns_socket (socket_);
+}
+
 spot_internal_receiver_t *
 spot_node_access_t::ensure_internal_receiver (spot_node_t *node_)
 {

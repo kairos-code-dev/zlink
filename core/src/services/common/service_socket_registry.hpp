@@ -89,6 +89,16 @@ class service_socket_registry_t
         return _owned_sockets.size () + _closing_sockets.size ();
     }
 
+    bool contains_socket (const socket_base_t *socket_) const
+    {
+        if (!socket_)
+            return false;
+        scoped_lock_t lock (_sync);
+        const int socket_id = socket_->socket_id ();
+        return _owned_sockets.count (socket_id) != 0
+               || _closing_sockets.count (socket_id) != 0;
+    }
+
     void clear ()
     {
         scoped_lock_t lock (_sync);

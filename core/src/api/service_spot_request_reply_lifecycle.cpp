@@ -17,6 +17,8 @@
 #include "services/spot/spot_runtime.hpp"
 #include "services/spot/spot_subject_access.hpp"
 
+void zlink_actor_run_lifecycle_for_spot (void *spot_);
+
 namespace
 {
 using zlink::spot_reqrep_internal::spot_request_reply_index_mutex;
@@ -303,6 +305,7 @@ void zlink::spot_reqrep_internal::run_spot_dispatch_worker_once (void *spot_)
       zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
         state);
     run_pending_spot_dispatch_events (state);
+    zlink_actor_run_lifecycle_for_spot (spot_);
 }
 
 void zlink::spot_reqrep_internal::maybe_dispatch_spot_info (

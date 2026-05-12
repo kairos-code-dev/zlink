@@ -134,6 +134,7 @@ class spot_node_t : public discovery_observer_t
     int ensure_healthy () const;
     void debug_mark_fault (int err_);
     void untrack_owned_socket (const socket_base_t *socket_);
+    bool owns_socket (const socket_base_t *socket_) const;
     void snapshot_raw_subscription_filters (std::set<std::string> *out_) const;
     bool update_aggregate_subscription (const std::string &raw_filter_,
                                         bool pattern_,

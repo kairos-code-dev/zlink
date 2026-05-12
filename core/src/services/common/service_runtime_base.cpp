@@ -232,6 +232,11 @@ size_t zlink::service_runtime_base_t::owned_socket_count () const
     return _sockets.socket_count ();
 }
 
+bool zlink::service_runtime_base_t::owns_socket (const socket_base_t *socket_) const
+{
+    return _sockets.contains_socket (socket_);
+}
+
 void zlink::service_runtime_base_t::clear_tracked_sockets ()
 {
     _sockets.clear ();

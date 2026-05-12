@@ -1459,12 +1459,12 @@ framework가 공통 error kind를 제공해야 한다.
 | error kind | 발생 조건 |
 |------------|-----------|
 | `ActorNotAuthenticated` | 인증되지 않은 session이 relay 대상 packet을 보냈다. |
-| `ActorRouteNotFound` | play route를 찾지 못했다. |
+| `ActorRouteNotFound` | play route를 찾지 못했다. resolver 결과의 `RouterChannelId` 또는 `TargetNodeRid`가 빠지면 같은 error로 본다. |
 | `ActorCreateFailed` | local 또는 remote actor를 만들지 못했다. |
 | `ActorAlreadyExists` | actor runtime 정책상 같은 actor id의 중복 create를 허용하지 않는다. |
 | `ActorSessionNotBound` | `SessionProxy` 대상 actor의 session binding이 없다. |
-| `SessionRouteNotFound` | actor의 현재 session node를 찾지 못했다. |
-| `SessionLocationUpdateFailed` | auth/reconnect 시 session 위치 writer 갱신이 실패했다. |
+| `SessionRouteNotFound` | actor의 현재 session node를 찾지 못했다. resolver 결과의 `RouterChannelId`, `SessionRouterId`, `SessionId`, `BindingToken` 중 하나라도 빠지면 같은 error로 본다. session 서버가 routed mesh 어디로 가야 하는지(`RouterChannelId`), 그 안의 어느 stream binding인지(`SessionId` + `BindingToken`)를 함께 확인할 수 없으면 route가 유효하지 않다. |
+| `SessionLocationUpdateFailed` | auth/reconnect 시 session 위치 writer 갱신이 실패했다. writer가 `RouterChannelId` 또는 `BindingToken`을 기록하지 못한 경우도 포함한다. |
 | `SessionProxyTimeout` | session proxy request가 제한 시간 안에 완료되지 않았다. |
 | `ActorDispatchTimeout` | actor dispatch request가 제한 시간 안에 완료되지 않았다. |
 | `ActorDispatchHandlerFailed` | play handler가 예외를 던졌거나 reply를 만들지 못했다. |

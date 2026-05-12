@@ -784,33 +784,46 @@ public sealed class JoinMatchHandler(IZLinkSessionProxy clientPush)
 
 ### 9.3 라우팅 record
 
+handler-interfaces.ko.md §5.7과 동일한 필드 구성을 사용한다. session route는
+`RouterChannelId`까지 함께 들고 다닌다.
+
 ```csharp
 public readonly record struct ZLinkActorRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid);
 
 public readonly record struct ZLinkActorSessionRoute(
+    string RouterChannelId,
     RoutingId SessionRouterId,
+    string SessionId,
     string BindingToken);
 
 public readonly record struct ZLinkActorSessionBinding(
     string ActorId,
+    string RouterChannelId,
     RoutingId SessionRouterId,
+    string SessionId,
     string BindingToken);
 
 public readonly record struct ZLinkActorSessionUnbind(
     string ActorId,
+    string SessionId,
     string BindingToken);
 ```
 
 - **`ZLinkActorRoute`** -- "actor가 사는 Play 서버 위치". `IZLinkActorPlayRouteResolver`
   결과로 돌려준다.
 - **`ZLinkActorSessionRoute`** -- "actor의 client가 현재 묶인 Session 서버 위치".
-  `IZLinkActorSessionRouteResolver` 결과로 돌려주고, `BindingToken`은 동일 actor가
-  여러 번 재접속해도 어느 binding이 유효한지 확인하는 nonce다.
-- **`ZLinkActorSessionBinding`** / **`ZLinkActorSessionUnbind`** --
-  `IZLinkActorSessionLocationWriter`가 받는 인자. session attach / detach 시점에
-  framework가 호출한다.
+  `IZLinkActorSessionRouteResolver` 결과로 돌려준다. `RouterChannelId`는 framework가
+  어느 routed mesh로 session 서버에 닿을지 정하는 채널이고, `SessionId`는 target
+  session 서버 안의 stream 식별값, `BindingToken`은 동일 actor가 여러 번 재접속해도
+  어느 binding이 유효한지 확인하는 nonce다.
+- **`ZLinkActorSessionBinding`** -- `IZLinkActorSessionLocationWriter.BindSessionAsync(...)`
+  가 받는 인자. session attach 시점에 framework가 actor의 현재 session 위치(`RouterChannelId`,
+  `SessionRouterId`, `SessionId`, `BindingToken`)를 함께 넘긴다.
+- **`ZLinkActorSessionUnbind`** -- `UnbindSessionAsync(...)`가 받는 인자.
+  conditional delete를 위해 `SessionId`와 `BindingToken`만 받는다. 이전 stream의
+  늦은 unbind가 새 binding token을 가진 session route를 지우지 못하게 하기 위함이다.
 
 ### 9.4 등록 패턴
 

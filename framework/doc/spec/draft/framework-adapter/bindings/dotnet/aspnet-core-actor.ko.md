@@ -213,7 +213,7 @@ sequenceDiagram
     Note over FW: bind 성공 시 discovery에 actor route publish
 
     Note over FW: 3. user Spot join (선택, bind 후에만 가능)
-    Act->>FW: Context.JoinSpot(spotRid, request).Submit<T>()
+    Act->>FW: Context.JoinSpot<T, TReq>(spotName, request).Submit()
     FW->>Spot: actor join 요청
     Spot-->>FW: accept + reply
     FW-->>Act: reply 반환
@@ -251,7 +251,8 @@ actor가 Entry Spot에 있는 동안 받는 packet은 actor 자신이 `Configure
 - **인증 / 권한 확인** -- 인증 packet이 도착하면 actor가 검증한 뒤 결과를 reply
   하거나 fail 응답 후 disconnect.
 - **target Spot 선택** -- 클라이언트의 요청 packet에서 어느 game room / stage에
-  들어갈지 결정한 뒤 `Context.JoinSpot(targetSpotRid, request).Submit<T>()` 호출.
+  들어갈지 결정한 뒤 `Context.JoinSpot<TReply, TReq>(targetSpotName, request).Submit(...)`
+  호출. `targetSpotName`은 `gameId`, `matchId`, `roomId` 같은 domain spot 이름이다.
 - **session 초기 상태 설정** -- session metadata, profile lookup 등.
 
 ```csharp
@@ -277,7 +278,8 @@ public sealed class PlayerActor(string actorId, IAuthService auth) : IZLinkActor
 즉 "Entry Spot 전용 handler" 라는 별도 등록 표면은 두지 않는다. actor가 처리하는
 packet 묶음은 `Configure()`에서 한 번 등록하고, 각 packet이 Entry 단계에서 의미가
 있는지 / user Spot 단계에서 의미가 있는지는 application 로직 안에서
-`Context.IsJoined` 또는 `Context.SpotRid` 로 판별한다.
+`Context.IsJoined` 또는 `Context.SpotName` 으로 판별한다. `RoutingId` 같은 transport
+위치값은 actor handler 표면에 노출하지 않는다.
 
 ## 4. Handler 모델
 
@@ -351,10 +353,12 @@ internal sealed class JoinMatchHandler(
         JoinMatchReq request,
         CancellationToken cancellationToken)
     {
+        // request.MatchId는 application domain spot 이름이다.
+        // RoutingId 변환은 framework 내부 spot route resolver가 푼다.
         var result = await actor.Context
-            .JoinSpot(RoutingId.FromString(request.MatchId), request)
+            .JoinSpot<JoinMatchSpotResult, JoinMatchReq>(request.MatchId, request)
             .WithTimeout(TimeSpan.FromSeconds(2))
-            .Submit<JoinMatchSpotResult>(cancellationToken)
+            .Submit(cancellationToken)
             .ConfigureAwait(false);
 
         await routes.BindActorPlayAsync(actor.ActorId, cancellationToken);
@@ -422,7 +426,7 @@ public interface IZLinkActorContext
 {
     string ActorId { get; }
     string? SessionId { get; }
-    RoutingId? SpotRid { get; }
+    string? SpotName { get; }
     bool IsJoined { get; }
 
     void AddPacket<THandler>() where THandler : class;
@@ -431,18 +435,16 @@ public interface IZLinkActorContext
     IZLinkSpot GetSpot();
     TSpot GetSpot<TSpot>() where TSpot : IZLinkSpot;
 
-    IZLinkActorJoinSpotCall JoinSpot<TRequest>(RoutingId spotRid, TRequest request);
+    // 사용자에게 보이는 표면은 domain spot 이름(string). RoutingId는 framework 내부에서만.
+    IZLinkActorJoinSpotCall<TReply> JoinSpot<TReply, TRequest>(
+        string spotName,
+        TRequest request);
 
     IZLinkRequestCall RequestChannel<TRequest>(string channelName, TRequest request);
     IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message);
 
     IZLinkActorSendCall Send<TMessage>(TMessage message);
     IZLinkActorReplyCall Reply<TMessage>(TMessage message);
-
-    ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
-        RoutingId spotRid,
-        TRequest request,
-        CancellationToken cancellationToken = default);
 }
 ```
 
@@ -451,10 +453,10 @@ public interface IZLinkActorContext
 | 표면 | 의미 |
 | --- | --- |
 | `ActorId` / `SessionId` | identity. session bind된 actor만 `SessionId`가 채워진다 |
-| `SpotRid` / `IsJoined` | user Spot join된 경우 그 spot의 routing id와 join 상태 (Entry Spot에 있을 때는 `IsJoined`가 false) |
+| `SpotName` / `IsJoined` | user Spot join된 경우 그 spot의 domain 이름과 join 상태 (Entry Spot에 있을 때는 `IsJoined`가 false). `RoutingId`는 framework 내부 표면이며 actor handler에 노출하지 않는다 |
 | `AddPacket<...>()` | 이 actor가 받을 packet handler 등록. `Configure()`에서만 호출 |
 | `GetSpot()` / `GetSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
-| `JoinSpot(...)` / `JoinSpotAsync(...)` | user Spot에 join 요청 (Entry → user Spot으로 이동). bound session 필요 |
+| `JoinSpot(spotName, request).Submit(...)` | user Spot에 join 요청 (Entry → user Spot으로 이동). bound session 필요. `spotName`은 application domain spot 이름(`string`) |
 | `RequestChannel` / `SendChannel` | 일반 channel을 향한 outbound 호출 (actor 안에서) |
 | `Send<TMessage>(...)` | bound client stream으로 데이터 push (session-bound actor 전용) |
 | `Reply<TMessage>(...)` | client request의 응답을 send (session-bound actor 전용) |
@@ -572,17 +574,19 @@ join handler는 별도 핸들러 인터페이스를 구현한다 (자세한 시�
 ### 7.2 actor가 spot에 합류하기
 
 다른 곳에 사는 actor(예: session-attached actor)가 특정 spot에 합류하려면 자기
-context의 `JoinSpot(...)` 또는 `JoinSpotAsync(...)`를 부른다.
+context의 `JoinSpot(spotName, request)`를 부른다. `spotName`은 application domain
+spot 이름(`string`)이고, `RoutingId` 변환은 framework 내부 spot route resolver가
+푼다.
 
 ```csharp
 var result = await actor.Context
-    .JoinSpot(spotRid, new JoinMatchReq(...))
+    .JoinSpot<JoinMatchSpotResult, JoinMatchReq>(matchId, new JoinMatchReq(...))
     .WithTimeout(TimeSpan.FromSeconds(2))
-    .Submit<JoinMatchSpotResult>(cancellationToken);
+    .Submit(cancellationToken);
 ```
 
 이 호출은 spot 쪽의 join handler에서 결과를 돌려준다. 성공하면 actor 측
-`Context.IsJoined`가 `true`가 되고 `Context.SpotRid`가 채워진다. 이후 spot은
+`Context.IsJoined`가 `true`가 되고 `Context.SpotName`이 채워진다. 이후 spot은
 actor 객체에 직접 접근할 수 있다 (spot handler에서 `actor` 인자로 받음).
 
 ### 7.3 actor stream client

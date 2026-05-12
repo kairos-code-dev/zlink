@@ -95,11 +95,14 @@ actor가 `Entry Spot`에 있는 동안 받는 packet의 handler는 application�
 
 - **인증 / 권한 확인** -- 인증 packet 검증 후 reply 또는 fail.
 - **target Spot 선택** -- 클라이언트가 들어갈 game room / stage 결정 후
-  `JoinSpot(targetSpotRid, request)` 호출.
+  `JoinSpot(targetSpotName, request)` 호출. `targetSpotName`은 application
+  domain spot 이름(`string`)이고 `RoutingId` 변환은 framework 내부 spot route
+  resolver가 푼다.
 - **session 초기 상태 설정** -- session metadata, profile lookup 등.
 
 actor 코드 입장에서 entry 단계인지 user Spot 단계인지 구분이 필요하면 actor
-context의 join 상태 (예: `IsJoined`, `SpotRid` 노출) 로 확인한다.
+context의 join 상태 (예: `IsJoined`, `SpotName` 노출) 로 확인한다. `RoutingId`
+같은 transport 위치값은 actor handler 표면에 노출하지 않는다.
 
 ## 4. 라이프사이클 단계
 
@@ -146,6 +149,12 @@ validation 오류로 막는다.
 
 다른 application 코드가 특정 actor를 부를 때는 **actor id**만 안다. 호출자는
 actor가 어느 노드 어느 spot에 사는지 알 필요가 없다.
+
+actor 안에서 user Spot에 join할 때도 같은 규칙이다. actor context의 `JoinSpot(...)`
+public 시그니처는 **`string spotName`** 을 받는다. `RoutingId` 같은 transport 위치값은
+actor handler 표면에 노출하지 않는다. `spotName -> RoutingId` 변환은 framework 내부
+spot route resolver가 푼다. application 코드는 `gameId`, `matchId`, `roomId` 같은
+domain key를 그대로 들고 다니면 된다.
 
 framework는 application이 등록한 두 resolver에 라우팅을 위임한다.
 

@@ -1323,10 +1323,11 @@ public sealed class JoinMatchHandler
         JoinMatchReq request,
         CancellationToken cancellationToken)
     {
-        var joined = await actor.Context.JoinSpot(
-                RoutingId.FromString(request.MatchId),
-                request)
-            .Async<JoinMatchSpotResult>(cancellationToken);
+        // request.MatchId는 application 도메인 spot 이름이다. RoutingId 변환은
+        // framework 내부 spot route resolver가 푼다. handler는 string spotName만 본다.
+        var joined = await actor.Context
+            .JoinSpot<JoinMatchSpotResult>(request.MatchId, request)
+            .Submit(cancellationToken);
         return joined.ToReply();
     }
 }

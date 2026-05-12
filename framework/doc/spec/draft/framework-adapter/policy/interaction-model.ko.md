@@ -77,6 +77,9 @@
 - send backpressure 대기 한계는 call builder가 아니라 channel 또는 socket의
   `SendTimeout` 옵션을 따른다. request의 `WithTimeout(...)`은 reply 대기 시간만
   정한다.
+- spot/actor join은 caller가 `string spotName`을 받아서 들고 다닐 수 있다.
+  `RoutingId` 변환은 framework 내부 spot route resolver가 푼다. application
+  표면에는 transport 위치값을 노출하지 않는다.
 
 ### 3.3 publish-subscribe
 
@@ -112,6 +115,10 @@
 
 stream session 위에 actor/session 모델을 얹을 수 있다. 이 경우 session은 연결과
 packet ingress를 맡고, actor는 계정 또는 플레이어 같은 논리 객체를 표현한다.
+actor 자체의 라이프사이클(Entry Spot 머무름, session bind, user Spot join /
+leave, destroy)과 application 로직 분담은 [actor-model.ko.md](./actor-model.ko.md)
+가 별도로 정의한다. 본 절은 그 actor 모델이 상호작용 모델 중 stream session
+경로와 어떻게 결합되는지만 다룬다.
 
 actor가 아직 `Spot`에 attach되지 않았다면 actor dispatch는 일반 actor session
 dispatch로 처리할 수 있다. 하지만 actor가 특정 `Spot`에 attach된 뒤에는 actor의

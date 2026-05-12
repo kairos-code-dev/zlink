@@ -40,7 +40,7 @@
 | context | `IZLinkSpotContext` | SPOT handler context 기반 | 3.2 |
 | handler | `IZLinkRequestHandler<TRequest, TResponse>` | request-response handler | 4.1 |
 | handler | `IZLinkSendHandler<TMessage>` | one-way send handler | 4.2 |
-| handler | `IZLinkEventHandler<TEvent>` | pub/sub event handler | 4.3 |
+| handler | `IZLinkPublishHandler<TMessage>` | pub/sub publish handler | 4.3 |
 | handler | `IZLinkSpotPacketHandler<TSpot, TMessage>` | SPOT one-way packet handler | 4.3.1 |
 | handler | `IZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | SPOT request-response handler | 4.3.1 |
 | handler | `IZLinkSpotSubscriptionHandler<TSpot, TEvent>` | SPOT subscription handler | 4.3.1 |
@@ -140,7 +140,7 @@ context에서 꺼내 쓰지 않고, handler class의 생성자 주입(constructo
 |-------------|--------|----------|
 | `ZLinkRequestContext` | request-response handler | caller metadata, timeout |
 | `ZLinkSendContext` | one-way send handler | caller metadata |
-| `ZLinkEventContext` | event handler | topic, source |
+| `ZLinkPublishContext` | publish handler | topic, source |
 | `ZLinkSpotRequestContext` | SPOT request handler | self spot info, source rid, source spot rid |
 | `ZLinkSpotSubscriptionContext` | SPOT subscription handler | self spot info, topic, source rid, dispatch metadata |
 
@@ -151,7 +151,7 @@ context에서 꺼내 쓰지 않고, handler class의 생성자 주입(constructo
 가능해야 한다. 이 초안에서는 별도 `Self` wrapper를 두지 않고
 SPOT 생성자에서 받는 `IZLinkSpotContext`에 `SpotRid`, `NodeRid`,
 `SpotName`을 직접 둔다. handler 호출에 붙는 `ZLinkRequestContext`,
-`ZLinkSendContext`, `ZLinkEventContext`와 SPOT 객체가 들고 있는
+`ZLinkSendContext`, `ZLinkPublishContext`와 SPOT 객체가 들고 있는
 `IZLinkSpotContext`는 목적이 다르다.
 
 ## 4. Handler 인터페이스
@@ -194,26 +194,28 @@ public interface IZLinkSendHandler<in TMessage>
 이 인터페이스를 구현하면 `ZLinkHandlerScanner`가 attribute 없이도 endpoint로
 자동 등록한다. attribute(`[ZLinkSend]`) 기반과 interface 기반은 둘 다 지원된다.
 
-### 4.3 event handler
+### 4.3 publish handler
 
-pub/sub 이벤트를 처리하는 handler다.
+pub/sub로 publish된 메시지를 처리하는 handler다. 이름은 producer 쪽 동사
+(`IZLinkEventPublisher.Publish(...)`)와 일치시켜 `Request` / `Send` / `Publish`
+세 표면을 같은 패턴으로 읽도록 한다. payload 자체는 `*Event` 같은 의미적 이름을
+그대로 써도 된다.
 
 ```csharp
-public interface IZLinkEventHandler<in TEvent>
+public interface IZLinkPublishHandler<in TMessage>
 {
     ValueTask HandleAsync(
-        TEvent message,
-        ZLinkEventContext context,
+        TMessage message,
+        ZLinkPublishContext context,
         CancellationToken cancellationToken);
 }
 ```
 
-이 초안에서는 pub/sub public 이름을 `Event` 계열로 고정한다.
 topic이나 pattern 정보가 필요해도 별도 `Topic` handler 이름을 늘리지 않고,
-`ZLinkEventContext` 안에서 읽는 편을 기본으로 본다.
+`ZLinkPublishContext` 안에서 읽는다.
 
 이 인터페이스를 구현하면 `ZLinkHandlerScanner`가 attribute 없이도 endpoint로
-자동 등록한다. attribute(`[ZLinkEvent]`) 기반과 interface 기반은 둘 다 지원된다.
+자동 등록한다. attribute(`[ZLinkPublish]`) 기반과 interface 기반은 둘 다 지원된다.
 
 ### 4.3.1 SPOT lifecycle handler
 
@@ -348,7 +350,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     public SubscriptionEvent ReceiveSubscriptionEvent(
         RecvFlags flags = RecvFlags.None);
 
-    public Received RecvRouted(RecvFlags flags = RecvFlags.None);
+    public Received RecvRoute(RecvFlags flags = RecvFlags.None);
 
     // channel 이름 기반 호출 (attach된 dealer 경유)
     public void SendChannel(string channelName, ReadOnlyMemory<byte> payload);
@@ -373,7 +375,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     // dispatch_info 기반 통합 dispatch callback
     public void OnDispatchEvent(Action<Spot, SpotDispatchInfo> handler);
 
-    public void OnRoutedReceive(Action<Received> handler);
+    public void OnRouteReceive(Action<Received> handler);
 
     // CHANNEL_REPLY_READABLE dispatch 시 사용
     public void DrainChannelReplyFrom(object dealerSubject);
@@ -407,7 +409,7 @@ public readonly struct SpotDispatchInfo
 public enum SpotDispatchEvent
 {
     SubscribeReadable    = 1,
-    RoutedReadable       = 2,
+    RouteReadable       = 2,
     TimerReadable        = 3,
     ChannelReplyReadable = 4,
     ActorReadable        = 5,
@@ -433,8 +435,8 @@ spot.OnDispatchEvent((s, info) =>
         case SpotDispatchEvent.SubscribeReadable:
             /* s.Subscribe() 로 drain */
             break;
-        case SpotDispatchEvent.RoutedReadable:
-            /* s.RecvRouted() 로 drain */
+        case SpotDispatchEvent.RouteReadable:
+            /* s.RecvRoute() 로 drain */
             break;
         case SpotDispatchEvent.ChannelReplyReadable:
             /* info.Subject 가 dealer handle */
@@ -807,7 +809,7 @@ public interface IZLinkActorContext
 {
     string ActorId { get; }
     string? SessionId { get; }
-    RoutingId? SpotRid { get; }
+    string? SpotName { get; }
     bool IsJoined { get; }
 
     void AddPacket<THandler>()
@@ -821,8 +823,10 @@ public interface IZLinkActorContext
     TSpot GetSpot<TSpot>()
         where TSpot : IZLinkSpot;
 
-    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
-        RoutingId spotRid,
+    // spot은 application domain spot 이름(string)으로 식별한다. RoutingId 변환은
+    // framework 내부 spot route resolver가 푼다.
+    IZLinkActorJoinSpotCall<TReply> JoinSpot<TReply, TRequest>(
+        string spotName,
         TRequest request);
 
     IZLinkRequestCall RequestChannel<TRequest>(
@@ -836,18 +840,13 @@ public interface IZLinkActorContext
     IZLinkActorSendCall Send<TMessage>(TMessage message);
 
     IZLinkActorReplyCall Reply<TMessage>(TMessage message);
-
-    ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
-        RoutingId spotRid,
-        TRequest request,
-        CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkActorJoinSpotCall
+public interface IZLinkActorJoinSpotCall<TReply>
 {
-    IZLinkActorJoinSpotCall WithTimeout(TimeSpan timeout);
+    IZLinkActorJoinSpotCall<TReply> WithTimeout(TimeSpan timeout);
 
-    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<TReply> Submit(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorStreamClient
@@ -930,7 +929,13 @@ actor packet handler 등록은 이 단계에서 `Context.AddPacket<THandler>(...
 
 `GetSpot(...)`은 actor가 `Spot`에 join된 뒤에만 유효하다. join 전 호출은 명확한
 실패로 처리한다. actor membership 변경은 actor callback이 아니라
-`IZLinkSpotContext.JoinActorAsync(...)`와 `LeaveActorAsync(...)`에서 처리한다.
+`IZLinkSpotActorMembership.JoinActorAsync(...)`와 `LeaveActorAsync(...)`에서
+처리한다 (§4.4.1 참고).
+
+`JoinSpot(spotName, request)`는 application domain spot 이름(`string`)을 받는다.
+`gameId`, `matchId`, `roomId` 같은 domain key를 그대로 사용할 수 있고,
+`spotName -> RoutingId` 변환은 framework 내부 spot route resolver가 푼다. actor
+handler 표면에는 `RoutingId`를 노출하지 않는다.
 
 `Send(...)`와 `Reply(...)`는 현재 actor에 연결된 stream client로 packet을 쓴다.
 context는 `IZLinkStream`이나 `IZLinkActorStreamClient` 객체를 직접 노출하지 않는다.
@@ -1184,9 +1189,9 @@ timeout은 request/send에서 다르게 다룬다.
 - `Request(...)`는 reply를 기다리므로 `WithTimeout(...)`을 둘 수 있다.
 - `Send(...)`는 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
 - `Publish(...)`도 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
-- `Send(...).Async(...)`는 handler 완료를 기다리는 호출이 아니다. framework가
+- `Send(...).Submit(...)`는 handler 완료를 기다리는 호출이 아니다. framework가
   메시지를 transport에 맡길 수 있을 때까지 기다리는 비동기 submit이다.
-- `Publish(...).Async(...)`도 같은 의미다. subscriber의 handler 완료나 subscriber
+- `Publish(...).Submit(...)`도 같은 의미다. subscriber의 handler 완료나 subscriber
   수신을 기다리지 않고, local publish transport에 submit될 때까지 기다린다.
 - send backpressure 대기 한계는 builder가 아니라 channel 또는 socket의
   `SendTimeout` 옵션을 따른다.
@@ -1195,8 +1200,8 @@ timeout은 request/send에서 다르게 다룬다.
   기본값을 직접 사용하지 않고, framework가 socket/channel option에 설정한
   resolved `SendTimeout` 값을 읽는다. 사용자가 `SendTimeout = null`을 명시한
   경우에만 core `-1`과 같은 무한 대기로 본다.
-- `Request(...).Async<TReply>(...)`도 request packet을 보내는 단계에서는
-  `Send(...).Async(...)`와 같은 nonblocking submit 경로를 사용한다.
+- `Request(...).Submit<TReply>(...)`도 request packet을 보내는 단계에서는
+  `Send(...).Submit(...)`와 같은 nonblocking submit 경로를 사용한다.
 - `Request(...).WithTimeout(...)`은 reply 대기 시간만 정한다.
 - 이 초안은 별도 public no-wait 옵션을 제공하지 않는다. temporary backpressure는
   public `false` 반환값이 아니라 framework 내부 queue와 ready notification으로
@@ -1232,12 +1237,12 @@ timeout은 request/send에서 다르게 다룬다.
 var reply = await client
     .Request("profile", new GetProfileRequest { AccountId = accountId })
     .WithTimeout(TimeSpan.FromMilliseconds(200))
-    .Async<GetProfileReply>(cancellationToken);
+    .Submit<GetProfileReply>(cancellationToken);
 
 await client
     .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })
     .WithPacketName("profile.refresh-cache")
-    .Async(cancellationToken);
+    .Submit(cancellationToken);
 ```
 
 ### 5.2 IZLinkSpotClient
@@ -1586,7 +1591,7 @@ public interface IChannelServerCapabilityBuilder
         Action<IZLinkCommonSocketOptions> configure);
 
     void ConfigureRouting(
-        Action<IRoutedPeerOptions> configure);
+        Action<IRoutePeerOptions> configure);
 }
 
 public interface IChannelClientCapabilityBuilder
@@ -1622,7 +1627,7 @@ public interface IChannelSubscriberCapabilityBuilder
         Action<IChannelSubscriberConnections> configure);
 }
 
-public interface IRoutedChannelConnections
+public interface IRouteChannelConnections
 {
     void Connect(string endpoint);
 
@@ -1631,21 +1636,21 @@ public interface IRoutedChannelConnections
     IReadOnlyList<string> ListConnections();
 }
 
-public interface IZLinkRoutedChannelBuilder
+public interface IZLinkRouteChannelBuilder
 {
     void Bind(string endpoint);
 
     void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
 
-    void ConfigureRouting(Action<IRoutedPeerOptions> configure);
+    void ConfigureRouting(Action<IRoutePeerOptions> configure);
 
-    void UseManualConnections(Action<IRoutedChannelConnections> configure);
+    void UseManualConnections(Action<IRouteChannelConnections> configure);
 
     void AddSendHandler<THandler, TMessage>(string? packetName = null)
-        where THandler : class, IZLinkRoutedSendHandler<TMessage>;
+        where THandler : class, IZLinkRouteSendHandler<TMessage>;
 
     void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
-        where THandler : class, IZLinkRoutedRequestHandler<TRequest, TReply>;
+        where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>;
 }
 
 public interface IZLinkStreamNodeBuilder
@@ -1707,9 +1712,9 @@ public interface IZLinkRouteMeshChannelBuilder
 
     void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
 
-    void ConfigureRouting(Action<IRoutedPeerOptions> configure);
+    void ConfigureRouting(Action<IRoutePeerOptions> configure);
 
-    void UseManualConnections(Action<IRoutedChannelConnections> configure);
+    void UseManualConnections(Action<IRouteChannelConnections> configure);
 }
 
 public interface IZLinkFrameworkOptions
@@ -1749,9 +1754,9 @@ public interface IZLinkFrameworkOptions
         string channelName,
         Action<IZLinkDealerMeshChannelBuilder> configure);
 
-    void AddRoutedChannel(
+    void AddRouteChannel(
         string routerChannelId,
-        Action<IZLinkRoutedChannelBuilder> configure);
+        Action<IZLinkRouteChannelBuilder> configure);
 
     void AddRouteMeshChannel(
         string channelName,
@@ -1820,7 +1825,7 @@ public interface IZLinkFrameworkOptions
   - DEALER mesh 채널을 등록한다. mesh client는 자신을 식별할 local bind endpoint를
     가져야 하므로 `IDealerMeshChannelClientCapabilityBuilder`에 `Bind(...)`가
     추가로 노출된다.
-- `AddRoutedChannel(...)`
+- `AddRouteChannel(...)`
   - session actor dispatch와 직접 routed handler가 사용할 routed channel mesh를 등록한다.
 - `AddRouteMeshChannel(...)`
   - route mesh 채널을 등록한다. bind endpoint, socket option, routing option,
@@ -2045,7 +2050,7 @@ public interface IZLinkCommonSocketOptions
     bool Immediate { get; set; }
 }
 
-public interface IRoutedPeerOptions
+public interface IRoutePeerOptions
 {
     RoutingId RoutingId { get; set; }
 
@@ -2091,7 +2096,7 @@ public interface ISpotRouterCapabilityBuilder
         Action<IZLinkCommonSocketOptions> configure);
 
     void ConfigureRouting(
-        Action<IRoutedPeerOptions> configure);
+        Action<IRoutePeerOptions> configure);
 
     void UseManualConnections(
         Action<ISpotRouterConnections> configure);
@@ -2391,7 +2396,7 @@ request 메시지 타입에는 framework 전용 marker interface를 붙이지 �
 ```csharp
 var reply = await client
     .Request("profile", new GetProfileRequest { AccountId = accountId })
-    .Async<GetProfileReply>(cancellationToken);
+    .Submit<GetProfileReply>(cancellationToken);
 ```
 
 handler는 메서드 시그니처만으로 request/reply 타입을 읽는다. client 호출부는
@@ -2625,19 +2630,23 @@ options.AddClientServerChannel("api", channel =>
 같은 handler type을 여러 channel에 매핑하는 것은 허용한다. 하지만 같은 channel
 안에서 같은 `kind + packet name`이 둘 이상으로 해석되면 startup validation 오류다.
 
-### 11.2 event
+### 11.2 publish
 
 ```csharp
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ZLinkEventAttribute : Attribute
+public sealed class ZLinkPublishAttribute : Attribute
 {
-    public ZLinkEventAttribute();
+    public ZLinkPublishAttribute();
     public string? PacketName { get; init; }
 }
 ```
 
-이 초안에서는 pub/sub attribute 이름도 `ZLinkEventAttribute`로 고정한다.
-event handler도 전역으로 모든 subscriber channel에 자동 노출하지 않는다.
+이 초안에서는 pub/sub attribute 이름을 `ZLinkPublishAttribute`로 고정한다.
+이름을 `Event`가 아니라 `Publish`로 둔 이유는 producer 쪽 동사
+(`IZLinkEventPublisher.Publish(...)`)와 일치시켜 `[ZLinkRequest]` / `[ZLinkSend]` /
+`[ZLinkPublish]` 세 표면이 같은 패턴으로 읽히도록 하기 위함이다.
+
+publish handler도 전역으로 모든 subscriber channel에 자동 노출하지 않는다.
 subscriber capability가 어떤 scan 결과를 사용할지 명시해야 한다.
 
 ```csharp

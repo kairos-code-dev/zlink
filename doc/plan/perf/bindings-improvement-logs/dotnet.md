@@ -562,3 +562,39 @@
   - API 의미 반영은 완료됐다. 남은 성능 작업은 `Received.Send` delegate 경유 비용,
     `Message` wrapper 수명, nonblocking routed send 결과 변환 비용을 더 줄이는 쪽으로
     이어 간다.
+
+### 2026-05-12 .NET round 15 — Received send context 직접화와 ready-only recv
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260512_121228_c_multi_echo_recheck_20260512.txt`
+- 대상 언어 결과:
+  - `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260512_122828_dotnet_multi_echo_poller_tag_20260512.txt`
+- 선택한 병목 가설:
+  - ref-out routed recv hot path가 `Received.Send(...)`용 delegate를 매 수신마다 만들고,
+    echo client가 POLLIN ready가 아닌 waiting slot에도 `Recv(DontWait)`를 호출해
+    C 기준보다 불필요한 EAGAIN 호출을 만든다.
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/Received.cs`
+  - `bindings/dotnet/src/Zlink/Sockets/Internal/SocketKernel.cs`
+- 변경한 perf 파일:
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiDealerRouterClient.cs`
+  - `bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/src/PerfMultiRouterRouterClient.cs`
+  - `bindings/dotnet/perf/common/Zlink.BindingBench.Common/PerfPollManager.cs`
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release --nologo`
+  - `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release --nologo`
+  - `bindings/dotnet/perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 5 --runs 1 --results-tag dotnet_multi_echo_poller_tag_20260512`
+- 결과:
+  - build 통과. `Compatibility/PerfCompat.cs`의 nullable warning은 기존 warning이다.
+  - DR 64/256/1024B: `272.008/274.240/269.636` Kops/s.
+  - RR 64/256/1024B: `215.295/214.040/208.208` Kops/s.
+  - round 14 대비 DR은 약 `+12.6/+12.0/+12.0` Kops/s, RR은 약
+    `+16.4/+12.2/+7.5` Kops/s 개선됐다.
+- 목표 미달 조합:
+  - `MULTI_ROUTER_ROUTER` 64/256/1024B ratio `0.508/0.508/0.505`.
+  - `MULTI_DEALER_ROUTER` 64/256/1024B ratio `0.603/0.618/0.610`.
+- 다음 판단:
+  - `Received.Send` delegate 비용과 POLLIN 없는 recv 시도는 줄였지만, .NET은 새 C 기준에서
+    여전히 목표와 큰 차이가 있다.
+  - timing 기준 client loop가 100% CPU를 사용하며, 다음 후보는 public `Poller.WaitAll`
+    결과 처리와 `Message.WrapBytes` send 수명 비용이다.

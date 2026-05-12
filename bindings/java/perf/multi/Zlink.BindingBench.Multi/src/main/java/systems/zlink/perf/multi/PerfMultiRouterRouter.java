@@ -251,7 +251,7 @@ final class PerfMultiRouterRouter {
                     }
                     boolean readable =
                         pollSet.isReady(idx, PollEventFlag.POLLIN);
-                    if (!readable && !waitingReply[idx]) continue;
+                    if (!readable) continue;
                     drainReplies(clients.get(idx), idx, waitingReply,
                         waitingWritable, msgSize, runId, metrics, pollSet,
                         replyBuffer);

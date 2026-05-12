@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Systems.Zlink.Native;
+using Systems.Zlink.Sockets.Internal;
 
 namespace Systems.Zlink;
 
@@ -23,6 +24,9 @@ public sealed class Received : IDisposable
     private RoutingId? _routingId;
     private ReceivedSendSingleHandler? _sendSingleHandler;
     private ReceivedSendHandler? _sendHandler;
+    private SocketKernel? _sendKernel;
+    private RoutingIdSnapshot _sendRoutingIdSnapshot;
+    private RoutingIdSnapshot _sendSpotRidSnapshot;
 
     /// <summary>
     /// Create an empty <see cref="Received"/> for caller-provided storage.
@@ -250,6 +254,11 @@ public sealed class Received : IDisposable
     {
         if (part == null)
             throw new ArgumentNullException(nameof(part));
+        if (_sendKernel != null)
+        {
+            return _sendKernel.SendReceivedSingle(_sendRoutingIdSnapshot,
+                _sendSpotRidSnapshot, part, flags);
+        }
         if (_sendSingleHandler != null)
             return _sendSingleHandler(part, flags);
         return Send(new[] { part }, flags);
@@ -260,6 +269,11 @@ public sealed class Received : IDisposable
     {
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
+        if (_sendKernel != null)
+        {
+            return _sendKernel.SendReceivedParts(_sendRoutingIdSnapshot,
+                _sendSpotRidSnapshot, parts, flags);
+        }
         if (_sendHandler == null)
         {
             throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
@@ -310,6 +324,9 @@ public sealed class Received : IDisposable
         _metadata = null;
         _sendSingleHandler = null;
         _sendHandler = null;
+        _sendKernel = null;
+        _sendRoutingIdSnapshot = default;
+        _sendSpotRidSnapshot = default;
         _closed = false;
     }
 
@@ -329,7 +346,8 @@ public sealed class Received : IDisposable
         RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
         ulong? requestSeq, ReceivedReplyHandler? replyHandler,
         ReceivedSendHandler? sendHandler = null,
-        ReceivedSendSingleHandler? sendSingleHandler = null)
+        ReceivedSendSingleHandler? sendSingleHandler = null,
+        SocketKernel? sendKernel = null)
     {
         ResetForReuse();
         _singlePart = singlePart;
@@ -337,13 +355,15 @@ public sealed class Received : IDisposable
         _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
         _sendSingleHandler = sendSingleHandler;
         _sendHandler = sendHandler;
+        SetSendContext(sendKernel, routingId, spotRid);
     }
 
     internal void PopulateRoutedMultipart(MultipartMessageCollection parts,
         RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
         ulong? requestSeq, ReceivedReplyHandler? replyHandler,
         ReceivedSendHandler? sendHandler = null,
-        ReceivedSendSingleHandler? sendSingleHandler = null)
+        ReceivedSendSingleHandler? sendSingleHandler = null,
+        SocketKernel? sendKernel = null)
     {
         ResetForReuse();
         _parts = parts;
@@ -351,13 +371,25 @@ public sealed class Received : IDisposable
         _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
         _sendSingleHandler = sendSingleHandler;
         _sendHandler = sendHandler;
+        SetSendContext(sendKernel, routingId, spotRid);
     }
 
     internal void SetSendHandler(ReceivedSendHandler? sendHandler,
         ReceivedSendSingleHandler? sendSingleHandler = null)
     {
+        _sendKernel = null;
+        _sendRoutingIdSnapshot = default;
+        _sendSpotRidSnapshot = default;
         _sendSingleHandler = sendSingleHandler;
         _sendHandler = sendHandler;
+    }
+
+    internal void SetSendContext(SocketKernel? sendKernel,
+        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid)
+    {
+        _sendKernel = sendKernel;
+        _sendRoutingIdSnapshot = routingId;
+        _sendSpotRidSnapshot = spotRid;
     }
 
     private MultipartMessageCollection PartsCollection

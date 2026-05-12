@@ -631,3 +631,33 @@
 - 다음 판단:
   - API 의미 반영은 완료됐다. 남은 성능 작업은 public `Message.copyOf(byte[])`
     송신 비용과 FFM 호출/객체 수명 비용을 줄이는 쪽으로 이어 간다.
+
+### 2026-05-12 Java round 19 — client close 순서와 ready-only recv
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260512_121228_c_multi_echo_recheck_20260512.txt`
+- 대상 언어 결과:
+  - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_122555_java_multi_echo_ready_only_recv_20260512.txt`
+- 선택한 병목 가설:
+  - `MULTI_DEALER_ROUTER` client가 측정 종료 뒤 socket보다 context를 먼저 닫아
+    `Context.close()`에서 멈출 수 있다.
+  - echo client loop가 POLLIN ready가 아닌 waiting slot에도 `recv(DONT_WAIT)`를
+    호출해 C 기준보다 불필요한 EAGAIN 호출을 만든다.
+- 변경한 perf 파일:
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiDealerRouter.java`
+  - `bindings/java/perf/multi/Zlink.BindingBench.Multi/src/main/java/systems/zlink/perf/multi/PerfMultiRouterRouter.java`
+- 실행한 검증 명령:
+  - `cd bindings/java && ./gradlew --quiet :perf-multi:compileJava`
+  - `bindings/java/perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 5 --runs 1 --results-tag java_multi_echo_ready_only_recv_20260512`
+- 결과:
+  - build 통과.
+  - DR 64/256/1024B: `326.136/323.044/313.887` Kops/s.
+  - RR 64/256/1024B: `241.055/239.729/238.164` Kops/s.
+  - DR 64B ratio는 `0.723`으로 Java 64B 목표 `0.70`을 통과했다.
+- 목표 미달 조합:
+  - `MULTI_ROUTER_ROUTER` 64/256/1024B ratio `0.569/0.569/0.577`.
+  - `MULTI_DEALER_ROUTER` 256/1024B ratio `0.728/0.710`.
+- 다음 판단:
+  - Java는 ready-only recv로 큰 폭의 개선이 있었지만 RR 전체가 아직 낮다.
+  - 다음 후보는 public poller ready cache 이후에도 남는 FFM call 비용과
+    `Message.copyOf(byte[])` 송신 수명 비용이다.

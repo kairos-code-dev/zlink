@@ -1545,16 +1545,12 @@ internal sealed class SocketKernel : IDisposable
     {
         if (requestSeq == 0)
         {
-            ReceivedSendHandler? sendHandler = CreateRoutedSendHandler(routingId,
-                spotRid);
-            ReceivedSendSingleHandler? sendSingleHandler =
-                CreateRoutedSendSingleHandler(routingId, spotRid);
             if (singlePart != null)
                 result.PopulateRoutedSinglePart(singlePart, routingId, spotRid,
-                    null, null, sendHandler, sendSingleHandler);
+                    null, null, sendKernel: this);
             else
                 result.PopulateRoutedMultipart(parts!, routingId, spotRid,
-                    null, null, sendHandler, sendSingleHandler);
+                    null, null, sendKernel: this);
             return;
         }
 
@@ -1591,6 +1587,60 @@ internal sealed class SocketKernel : IDisposable
             result.PopulateRoutedMultipart(parts!, routingId, spotRid,
                 requestSeq, replyHandler, CreateRoutedSendHandler(routingId, spotRid),
                 CreateRoutedSendSingleHandler(routingId, spotRid));
+    }
+
+    internal bool SendReceivedSingle(RoutingIdSnapshot routingId,
+        RoutingIdSnapshot spotRid, Message part, SendFlags flags)
+    {
+        if (part == null)
+            throw new ArgumentNullException(nameof(part));
+
+        RoutingId? target = routingId.ToRoutingId();
+        if (!target.HasValue)
+        {
+            throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
+                (int)ErrorCode.EInval);
+        }
+
+        RoutingId? targetSpot = spotRid.ToRoutingId();
+        if (targetSpot.HasValue)
+        {
+            return SendToSpotCore(target.Value, targetSpot.Value,
+                new[] { part }, flags);
+        }
+
+        if ((flags & SendFlags.DontWait) != 0)
+        {
+            return SendRoutedMessageResultUnchecked(target.Value, part,
+                (int)flags) == SendResult.Sent;
+        }
+
+        SendRoutedMessageUnchecked(target.Value, part, flags);
+        return true;
+    }
+
+    internal bool SendReceivedParts(RoutingIdSnapshot routingId,
+        RoutingIdSnapshot spotRid, IReadOnlyList<Message> parts, SendFlags flags)
+    {
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
+
+        RoutingId? target = routingId.ToRoutingId();
+        if (!target.HasValue)
+        {
+            throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
+                (int)ErrorCode.EInval);
+        }
+
+        RoutingId? targetSpot = spotRid.ToRoutingId();
+        if (targetSpot.HasValue)
+            return SendToSpotCore(target.Value, targetSpot.Value, parts, flags);
+
+        if ((flags & SendFlags.DontWait) != 0)
+            return SendNoWaitResult(target.Value, parts) == SendResult.Sent;
+
+        Send(target.Value, parts, flags);
+        return true;
     }
 
     private ReceivedSendHandler? CreateRoutedSendHandler(

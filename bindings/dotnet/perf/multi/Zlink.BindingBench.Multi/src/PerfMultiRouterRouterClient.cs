@@ -224,7 +224,7 @@ internal static class PerfMultiRouterRouterClient
         }
 
         bool readReady = IsSocketReadReady(pollManager, slotIndex);
-        if (!readReady && !slot.WaitingForReply)
+        if (!readReady)
             return;
 
         RouterSocket routerSock = (RouterSocket)slot.Socket;

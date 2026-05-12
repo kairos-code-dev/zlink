@@ -97,7 +97,8 @@ final class PerfMultiDealerRouter {
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         List<MonitorSocket> monitors = new ArrayList<>(config.clients());
         List<DealerSocket> clients = new ArrayList<>(config.clients());
-        try (Context ctx = PerfUtil.newContext(config)) {
+        Context ctx = PerfUtil.newContext(config);
+        try {
             for (int i = 0; i < config.clients(); i++) {
                 DealerSocket client = new DealerSocket(ctx);
                 MonitorSocket monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY);
@@ -135,6 +136,10 @@ final class PerfMultiDealerRouter {
                     client.close();
                 } catch (Exception ignored) {
                 }
+            }
+            try {
+                ctx.close();
+            } catch (Exception ignored) {
             }
         }
     }
@@ -192,7 +197,7 @@ final class PerfMultiDealerRouter {
                     }
                     boolean readable =
                         pollSet.isReady(idx, PollEventFlag.POLLIN);
-                    if (!readable && !waitingReply[idx]) continue;
+                    if (!readable) continue;
                     drainReplies(clients.get(idx), idx, waitingReply,
                         waitingWritable, msgSize, metrics, pollSet,
                         replyBuffer);

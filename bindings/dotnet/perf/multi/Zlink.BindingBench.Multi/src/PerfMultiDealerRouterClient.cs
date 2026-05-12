@@ -203,7 +203,7 @@ internal static class PerfMultiDealerRouterClient
         }
 
         bool readReady = IsSocketReadReady(pollManager, slotIndex);
-        if (!readReady && !slot.WaitingForReply)
+        if (!readReady)
             return;
 
         DealerSocket dealerSock = (DealerSocket)slot.Socket;

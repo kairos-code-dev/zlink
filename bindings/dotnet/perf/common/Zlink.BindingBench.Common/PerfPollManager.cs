@@ -56,12 +56,11 @@ public sealed class MonitorReadyPoller : IDisposable
 public sealed class SocketReadyPoller : IDisposable
 {
     private PollEventFlags[] _revents = Array.Empty<PollEventFlags>();
+    private PollReadyEvent[] _readyEvents = Array.Empty<PollReadyEvent>();
     private Poller? _poller;
     private SocketBase[] _registeredSockets = Array.Empty<SocketBase>();
     private PollEventFlags[] _registeredMasks = Array.Empty<PollEventFlags>();
     private PollEventFlags[] _requestedMasks = Array.Empty<PollEventFlags>();
-    private readonly Dictionary<SocketBase, int> _socketIndexes =
-        new(SocketReferenceComparer.Instance);
     private int _activePollerSize;
 
     public int Poll(IReadOnlyList<SocketBase> sockets,
@@ -80,20 +79,18 @@ public sealed class SocketReadyPoller : IDisposable
             if (_poller == null || _activePollerSize == 0)
                 return 0;
 
-            IReadOnlyList<PollEvent> events = _poller.WaitAll(count,
-                TimeSpan.FromMilliseconds(timeoutMs));
-            if (events.Count == 0)
+            int written = _poller.WaitReady(_readyEvents.AsSpan(0, count),
+                TimeSpan.FromMilliseconds(timeoutMs), out _);
+            if (written == 0)
                 return 0;
 
             int ready = 0;
-            for (int i = 0; i < events.Count; i++)
+            for (int i = 0; i < written; i++)
             {
-                PollEvent pollEvent = events[i];
-                if (pollEvent.Socket is not SocketBase socket)
-                    continue;
-
-                int index = FindSocketIndex(pollEvent, socket, count);
-                if (index < 0)
+                PollReadyEvent pollEvent = _readyEvents[i];
+                if (pollEvent.Tag is not int index
+                    || (uint)index >= (uint)count
+                    || _registeredMasks[index] == PollEventFlags.None)
                     continue;
 
                 _revents[index] = pollEvent.Revents;
@@ -150,6 +147,8 @@ public sealed class SocketReadyPoller : IDisposable
     {
         if (_revents.Length < count)
             _revents = new PollEventFlags[count];
+        if (_readyEvents.Length < count)
+            _readyEvents = new PollReadyEvent[count];
         if (_registeredSockets.Length < count)
             _registeredSockets = new SocketBase[count];
         if (_registeredMasks.Length < count)
@@ -212,13 +211,11 @@ public sealed class SocketReadyPoller : IDisposable
     {
         _poller?.Dispose();
         _poller = new Poller();
-        _socketIndexes.Clear();
         _activePollerSize = 0;
 
         for (int i = 0; i < count; i++)
         {
             _registeredSockets[i] = sockets[i];
-            _socketIndexes[sockets[i]] = i;
             PollEventFlags mask = eventMasks[i];
             _registeredMasks[i] = mask;
             if (mask != PollEventFlags.None)
@@ -226,36 +223,6 @@ public sealed class SocketReadyPoller : IDisposable
                 _poller.Add(sockets[i], mask, i);
                 _activePollerSize++;
             }
-        }
-    }
-
-    private int FindSocketIndex(PollEvent pollEvent, SocketBase socket,
-        int count)
-    {
-        if (pollEvent.Tag is int taggedIndex
-            && (uint)taggedIndex < (uint)count
-            && ReferenceEquals(_registeredSockets[taggedIndex], socket))
-        {
-            return taggedIndex;
-        }
-
-        return _socketIndexes.TryGetValue(socket, out int index) && index < count
-            ? index
-            : -1;
-    }
-
-    private sealed class SocketReferenceComparer : IEqualityComparer<SocketBase>
-    {
-        internal static readonly SocketReferenceComparer Instance = new();
-
-        public bool Equals(SocketBase? x, SocketBase? y)
-        {
-            return ReferenceEquals(x, y);
-        }
-
-        public int GetHashCode(SocketBase obj)
-        {
-            return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
         }
     }
 }

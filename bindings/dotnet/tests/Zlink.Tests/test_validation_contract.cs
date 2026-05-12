@@ -124,9 +124,7 @@ public sealed class test_validation_contract
         Assert.Throws<ArgumentException>(() =>
             spot.SetSubscription("topic\0"));
         Assert.Throws<ArgumentException>(() =>
-            spot.Publish("svc\0", "topic").Message(message).Submit());
-        Assert.Throws<ArgumentException>(() =>
-            spot.Publish("svc", "topic\0").Message(message).Submit());
+            spot.Publish("topic\0").Message(message).Submit());
         Assert.Throws<ArgumentException>(() =>
             ctx.Options.ThreadNamePrefix = "io\0");
         Assert.Throws<ArgumentException>(() =>
@@ -155,7 +153,7 @@ public sealed class test_validation_contract
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             spot.SetSubscription(overlong));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            spot.Publish("svc", overlong).Message(message).Submit());
+            spot.Publish(overlong).Message(message).Submit());
     }
 
     [Fact]

@@ -47,10 +47,9 @@ public sealed class test_domain_objects
         using var first = Message.FromString("a");
         using var second = Message.FromString("b");
         var topicMessage = new TopicMessage(CoreTestSupport.RoutingIdUtf8("route-b"),
-            "svc:prices", "prices", new[] { first.Move(), second.Move() });
+            "prices", new[] { first.Move(), second.Move() });
 
         Assert.False(topicMessage.IsSinglePart);
-        Assert.Equal("svc:prices", topicMessage.ServiceName);
         Assert.Equal("prices", topicMessage.Topic);
         Assert.Equal(CoreTestSupport.RoutingIdUtf8("route-b").ToHex(),
             topicMessage.RoutingId?.ToString());

@@ -48,24 +48,17 @@ public sealed class test_spot_pubsub_basic
         using var spot = node.CreateSpot();
 
         string tooLongTopic = new string('a', 256);
-        string tooLongService = new string('s', 256);
 
         using (Message message = Message.FromString("x"))
             Assert.ThrowsAny<ArgumentException>(() =>
-                spot.Publish("", "topic").Message(message).Submit());
+                spot.Publish("").Message(message).Submit());
         Assert.ThrowsAny<ArgumentException>(() =>
             spot.SetSubscription(string.Empty));
-        using (Message message = Message.FromString("x"))
-            Assert.ThrowsAny<ArgumentException>(() =>
-                spot.Publish("svc", "").Message(message).Submit());
-        using (Message message = Message.FromString("x"))
-            Assert.Throws<ArgumentOutOfRangeException>(() =>
-                spot.Publish(tooLongService, "topic").Message(message).Submit());
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             spot.SetSubscription(tooLongTopic));
         using (Message message = Message.FromString("x"))
             Assert.Throws<ArgumentOutOfRangeException>(() =>
-                spot.Publish("svc", tooLongTopic).Message(message).Submit());
+                spot.Publish(tooLongTopic).Message(message).Submit());
     }
 
     [Fact]
@@ -100,7 +93,7 @@ public sealed class test_spot_pubsub_basic
 
         using Message message = Message.FromString("payload");
         Assert.Throws<ObjectDisposedException>(() =>
-            spot.Publish("svc", "topic").Message(message).Submit());
+            spot.Publish("topic").Message(message).Submit());
     }
 
     [Fact]
@@ -219,7 +212,7 @@ public sealed class test_spot_pubsub_basic
             () =>
             {
                 using var message = Message.FromString(payload);
-                publisher.Publish(serviceName, topic).Message(message).Submit();
+                publisher.Publish(topic).Message(message).Submit();
 
                 try
                 {
@@ -234,7 +227,6 @@ public sealed class test_spot_pubsub_basic
             10000));
 
         using var received = subscribed!;
-        Assert.Equal(serviceName, received.ServiceName);
         Assert.Equal(topic, received.Topic);
         Assert.Equal(payload, received.SinglePartOrThrow().GetString());
     }
@@ -295,7 +287,7 @@ public sealed class test_spot_pubsub_basic
             () =>
             {
                 using var message = Message.FromString(payload);
-                publisher.Publish(serviceName, topic).Message(message).Submit();
+                publisher.Publish(topic).Message(message).Submit();
 
                 try
                 {
@@ -310,7 +302,6 @@ public sealed class test_spot_pubsub_basic
             10000));
 
         using var received = subscribed!;
-        Assert.Equal(serviceName, received.ServiceName);
         Assert.Equal(topic, received.Topic);
         Assert.Equal(payload, received.SinglePartOrThrow().GetString());
     }

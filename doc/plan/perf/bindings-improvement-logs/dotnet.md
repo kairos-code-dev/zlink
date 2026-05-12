@@ -598,3 +598,52 @@
     여전히 목표와 큰 차이가 있다.
   - timing 기준 client loop가 100% CPU를 사용하며, 다음 후보는 public `Poller.WaitAll`
     결과 처리와 `Message.WrapBytes` send 수명 비용이다.
+
+### 2026-05-12 .NET round 16 — Poller ready-only public API
+
+- 동일 조합 C 결과:
+  - `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260512_121228_c_multi_echo_recheck_20260512.txt`
+- 대상 언어 결과:
+  - `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260512_143832_dotnet_multi_waitready_final2_20260512.txt`
+- 선택한 병목 가설:
+  - multi echo client는 poller가 돌려준 socket 객체가 아니라 등록 시 넣은 index tag와
+    readiness flag만 필요하다.
+  - 기존 public `Poller.WaitAll(...)`은 `PollEvent`를 만들면서 socket/fd/timer lookup과
+    `IReadOnlyList<PollEvent>` 반환 비용을 낸다. 이는 일반 multi-socket 애플리케이션에도
+    같은 비용으로 나타난다.
+- 변경한 라이브러리 파일:
+  - `bindings/dotnet/src/Zlink/Poller.cs`
+  - `bindings/dotnet/tests/Zlink.Tests/test_socket_surface.cs`
+  - `doc/spec/bindings/dotnet/README.md`
+- 변경한 perf 파일:
+  - `bindings/dotnet/perf/common/Zlink.BindingBench.Common/PerfPollManager.cs`
+- 보조 테스트 정리:
+  - `bindings/dotnet/tests/Zlink.Tests/test_domain_objects.cs`
+  - `bindings/dotnet/tests/Zlink.Tests/test_spot_pubsub_basic.cs`
+  - `bindings/dotnet/tests/Zlink.Tests/test_validation_contract.cs`
+  - 위 파일은 현재 공개 SPOT publish API가 `Publish(topic)` 형태인데 테스트가 옛
+    `Publish(service, topic)` 호출과 `TopicMessage.ServiceName` 검증을 남겨 두어
+    test project 빌드를 막고 있었다.
+- 실행한 검증 명령:
+  - `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release --nologo`
+  - `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release --nologo`
+  - `dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release --filter 'FullyQualifiedName~test_socket_surface|FullyQualifiedName~test_validation_contract' --nologo`
+  - `bindings/dotnet/perf/run_benchmarks_multi.sh --reuse-build --pattern MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER --transports tcp --msg-sizes 64,256,1024 --duration 5 --runs 1 --results-tag dotnet_multi_waitready_final2_20260512`
+- 결과:
+  - build 통과. `Compatibility/PerfCompat.cs` nullable warning은 기존 warning이다.
+  - surface/validation filtered test 24개가 모두 passed다.
+  - `test_pair_tcp`는 native receive/poller 경로 일부가
+    `Invalid Program: attempted to call a UnmanagedCallersOnly method from managed code`
+    오류로 test host를 abort시켜 이번 검증 목록에서 분리했다.
+  - DR 64/256/1024B: `279.250/275.976/271.783` Kops/s.
+  - RR 64/256/1024B: `217.516/215.558/211.090` Kops/s.
+  - round 15 대비 DR은 약 `+7.2/+1.7/+2.1` Kops/s, RR은 약
+    `+2.2/+1.5/+2.9` Kops/s 개선됐다.
+- 목표 미달 조합:
+  - `MULTI_ROUTER_ROUTER` 64/256/1024B ratio `0.513/0.511/0.512`.
+  - `MULTI_DEALER_ROUTER` 64/256/1024B ratio `0.619/0.622/0.615`.
+- 다음 판단:
+  - public `WaitReady(...)`는 perf 전용 우회가 아니라 tag 기반 poll loop에 필요한
+    정보를 직접 돌려주는 일반 API로 유지할 가치가 있다.
+  - 개선 폭은 제한적이다. 다음 병목은 poller 결과 변환보다 message send/recv 경계,
+    특히 `Message.WrapBytes` 수명 비용과 routed receive 결과 생성 비용 쪽으로 본다.

@@ -27,7 +27,7 @@
 최근 점검 기준은 아래 C multi 결과다.
 
 - C 기준: `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260512_121228_c_multi_echo_recheck_20260512.txt`
-- .NET 최신 결과: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260512_122828_dotnet_multi_echo_poller_tag_20260512.txt`
+- .NET 최신 결과: `bindings/dotnet/perf/results/multi/report/perf_dotnet_multi_linux_20260512_143832_dotnet_multi_waitready_final2_20260512.txt`
 - Java 최신 결과:
   - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_125540_java_rr_small_recv_send_context_20260512.txt`
   - `bindings/java/perf/results/multi/report/perf_java_multi_linux_20260512_125237_java_rr1024_recv_send_context_20260512.txt`
@@ -66,12 +66,12 @@ wrapper가 없으므로 예외로 두고, C perf는 계속 명시 routing id 기
 
 | Pattern | Size | C Kops/s | .NET Kops/s | Ratio | 목표 |
 |---------|------|----------|-------------|-------|------|
-| MULTI_ROUTER_ROUTER | 64B | 423.978 | 215.295 | 0.508 | 0.75 |
-| MULTI_ROUTER_ROUTER | 256B | 421.436 | 214.040 | 0.508 | 0.80 |
-| MULTI_ROUTER_ROUTER | 1024B | 412.499 | 208.208 | 0.505 | 0.82 |
-| MULTI_DEALER_ROUTER | 64B | 450.881 | 272.008 | 0.603 | 0.75 |
-| MULTI_DEALER_ROUTER | 256B | 443.658 | 274.240 | 0.618 | 0.80 |
-| MULTI_DEALER_ROUTER | 1024B | 441.970 | 269.636 | 0.610 | 0.82 |
+| MULTI_ROUTER_ROUTER | 64B | 423.978 | 217.516 | 0.513 | 0.75 |
+| MULTI_ROUTER_ROUTER | 256B | 421.436 | 215.558 | 0.511 | 0.80 |
+| MULTI_ROUTER_ROUTER | 1024B | 412.499 | 211.090 | 0.512 | 0.82 |
+| MULTI_DEALER_ROUTER | 64B | 450.881 | 279.250 | 0.619 | 0.75 |
+| MULTI_DEALER_ROUTER | 256B | 443.658 | 275.976 | 0.622 | 0.80 |
+| MULTI_DEALER_ROUTER | 1024B | 441.970 | 271.783 | 0.615 | 0.82 |
 
 현재 남은 Java multi 미달 조합은 아래와 같다.
 
@@ -90,9 +90,11 @@ Java `MULTI_DEALER_ROUTER` 64B는 ready socket만 recv하도록 C 기준과 맞�
 
 1. `.NET`: `Received.Send(...)` delegate 주입을 ref-out routed recv hot path에서
    직접 send context로 바꿨고, echo client는 POLLIN ready가 없는 socket에 대해
-   `Recv(DontWait)`를 호출하지 않게 했다. 그래도 RR/DR 모두 목표와 큰 차이가 남는다.
-   다음 후보는 public `Poller.WaitAll` 결과 처리 비용과 `Message.WrapBytes` send
-   수명 비용을 더 줄이는 것이다.
+   `Recv(DontWait)`를 호출하지 않게 했다. 이후 public `Poller.WaitReady(...)`를
+   추가해 tag와 readiness flag만 필요한 poll loop가 `PollEvent` 전체를 만들지 않게
+   했다. 그래도 RR/DR 모두 목표와 큰 차이가 남는다. 다음 후보는
+   `Message.WrapBytes` send 수명 비용과 routed receive 결과 생성 비용을 더 줄이는
+   것이다.
 2. `Java`: profiler에서 `RecvResult.values()` 배열 생성, ROUTER `DONT_WAIT`
    recv의 일반 FFM downcall, `Received.send(Message)`의 `List.of`와 per-recv lambda
    비용을 확인했다. 이를 줄인 뒤 RR 1024B는 `238.164` → `244.776` Kops/s로

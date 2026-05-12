@@ -44,9 +44,9 @@ public sealed class test_socket_surface
             typeof(string), typeof(Message)));
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "CreateSpot"));
         Assert.True(HasPublicInstanceMethod(typeof(PairSocket), "Recv",
-            typeof(RecvFlags)));
+            typeof(Received), typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(DealerSocket),
-            "Recv", typeof(RecvFlags)));
+            "Recv", typeof(Received), typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(PairSocket),
             nameof(MessageSocketBase.OnSendReady)));
         Assert.True(HasPublicInstanceMethod(typeof(PubSocket),
@@ -60,9 +60,9 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Send",
             typeof(Message)));
         Assert.True(HasPublicInstanceMethod(typeof(RouterSocket), "Recv",
-            typeof(RecvFlags)));
+            typeof(Received), typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(StreamSocket), "Recv",
-            typeof(RecvFlags)));
+            typeof(Received), typeof(RecvFlags)));
 
         Assert.True(HasPublicInstanceMethod(typeof(StreamSocket),
             nameof(StreamSocket.OnPacket)));
@@ -78,7 +78,7 @@ public sealed class test_socket_surface
             typeof(uint), typeof(byte[]), typeof(SendFlags)));
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Connect"));
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Disconnect"));
-        Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "DisconnectRid",
+        Assert.True(HasPublicInstanceMethod(typeof(StreamSocket), "DisconnectRid",
             typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(PairSocket), "DisconnectRid",
             typeof(RoutingId)));
@@ -211,7 +211,7 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Send",
             typeof(IReadOnlyList<Message>), typeof(SendFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(MessageSocketBase), "Recv",
-            typeof(RecvFlags)));
+            typeof(Received), typeof(RecvFlags)));
         Assert.False(HasPublicInstanceMethod(typeof(MessageSocketBase), "TrySend",
             typeof(Message)));
         Assert.False(HasPublicInstanceMethod(typeof(MessageSocketBase), "TrySend",
@@ -355,7 +355,7 @@ public sealed class test_socket_surface
         Assert.False(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "Send",
             typeof(string), typeof(Message), typeof(SendFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "Recv",
-            typeof(RecvFlags)));
+            typeof(Received), typeof(RecvFlags)));
         Assert.False(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "TrySend",
             typeof(RoutingId), typeof(Message)));
         Assert.False(HasPublicInstanceMethod(typeof(RoutedMessageSocketBase), "TrySend",
@@ -415,6 +415,7 @@ public sealed class test_socket_surface
             typeof(PairSocket).FullName!,
             typeof(PollEvent).FullName!,
             typeof(PollEventFlags).FullName!,
+            typeof(PollReadyEvent).FullName!,
             typeof(Poller).FullName!,
             typeof(PubSocket).FullName!,
             typeof(PubSocketOptions).FullName!,
@@ -551,7 +552,7 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode), "AttachPubIngress",
             typeof(PubSocket)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot), nameof(Spot.Publish),
-            typeof(string), typeof(string)));
+            typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot), nameof(Spot.SendChannel),
             typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
@@ -591,7 +592,7 @@ public sealed class test_socket_surface
                 .PropertyType);
         Assert.False(HasPublicInstanceMethod(typeof(SpotDispatchInfo),
             nameof(SpotDispatchInfo.DrainChannelReply)));
-        Assert.False(HasPublicInstanceMethod(typeof(SocketBase),
+        Assert.True(HasPublicInstanceMethod(typeof(SocketBase),
             "SetChannelName", typeof(string)));
         Assert.False(HasPublicInstanceMethod(typeof(SocketBase),
             "GetChannelName"));
@@ -714,12 +715,19 @@ public sealed class test_socket_surface
             nameof(Poller.Wait), typeof(TimeSpan)));
         Assert.True(HasPublicInstanceMethod(typeof(Poller),
             nameof(Poller.WaitAll), typeof(int), typeof(TimeSpan)));
+        Assert.True(HasPublicInstanceMethod(typeof(Poller),
+            nameof(Poller.WaitReady), typeof(Span<PollReadyEvent>),
+            typeof(TimeSpan), typeof(int).MakeByRefType()));
         Assert.Null(typeof(Poller).GetMethod(nameof(Poller.Wait),
             new[] { typeof(Span<PollEvent>), typeof(int), typeof(int).MakeByRefType() }));
         Assert.Equal(typeof(IZlinkSocket),
             typeof(PollEvent).GetProperty(nameof(PollEvent.Socket))!.PropertyType);
         Assert.Equal(typeof(Timer),
             typeof(PollEvent).GetProperty(nameof(PollEvent.Timer))!.PropertyType);
+        Assert.Equal(typeof(object),
+            typeof(PollReadyEvent).GetProperty(nameof(PollReadyEvent.Tag))!.PropertyType);
+        Assert.Equal(typeof(PollEventFlags),
+            typeof(PollReadyEvent).GetProperty(nameof(PollReadyEvent.Revents))!.PropertyType);
         Assert.Equal(typeof(Action<MonitorEvent>),
             typeof(SocketMonitor).GetField(nameof(SocketMonitor.IgnoreHandler),
                 BindingFlags.Static | BindingFlags.Public)!.FieldType);

@@ -61,10 +61,9 @@ def main():
                                         publisher_node.status_snapshot()
                                         subscriber_node.status_snapshot()
                                         subscriber_node.subjects_snapshot()
-                                        publisher.publish(
-                                            SERVICE_NAME,
-                                            TOPIC,
-                                        ).message(b"hello-spot").submit()
+                                        publisher.publish(TOPIC).message(
+                                            b"hello-spot"
+                                        ).submit()
                                         try:
                                             received = subscriber.subscribe(
                                                 flags=zlink.RecvFlags.DONT_WAIT
@@ -79,10 +78,6 @@ def main():
                                         if received is None:
                                             return False
                                         with received:
-                                            if received.service_name != SERVICE_NAME:
-                                                raise AssertionError(
-                                                    f"unexpected service: {received.service_name!r}"
-                                                )
                                             if received.topic != "room:lobby":
                                                 raise AssertionError(
                                                     f"unexpected spot topic: {received.topic!r}"

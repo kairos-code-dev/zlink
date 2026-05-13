@@ -4,7 +4,6 @@
 
 int main ()
 {
-    try {
     zlink::context_t ctx;
     zlink::service::spot_node_t gateway_node (ctx);
     zlink::service::spot_node_t play_node (ctx);
@@ -13,7 +12,7 @@ int main ()
     actor_sample_capture_t capture;
     zlink::routing_id_t play_node_rid = play_node.routing_id ();
     zlink::service::actor_t play_actor =
-      gateway_node.create_actor ("play-session-actor");
+      play_node.create_actor ("play-session-actor");
     assert (play_actor.valid ());
     zlink::actor_ref_t concrete = play_actor.ref ();
 
@@ -62,9 +61,8 @@ int main ()
       .timeout (std::chrono::milliseconds (1000))
       .submit_async ()
       .get ();
+    std::printf (
+      "[actor/gateway] stream payload: \"client-input\" -> actor: \"%s\"\n",
+      capture.payload.c_str ());
     return 0;
-    } catch (const zlink::request_error_t &err) {
-        std::printf ("[actor/gateway] skipped: %s\n", err.what ());
-        return 0;
-    }
 }

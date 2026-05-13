@@ -61,12 +61,8 @@ async function main() {
             stream.onPacket((sourceRid) => resolve(sourceRid));
             client.write(frame(Buffer.from('open')));
         });
-        stream.bindActor(session, actor.ref()).timeout(2000).submit(() => { });
-        const joinReply = new Promise((resolve) => {
-            actor.join(spot).message(Buffer.from('join-gateway')).timeout(2000).submit((result, parts) => {
-                resolve({ result, parts });
-            });
-        });
+        await stream.bindActor(session, actor.ref()).timeout(2000).submitAsync();
+        const joinReply = actor.join(spot).message(Buffer.from('join-gateway')).timeout(2000).submitAsync();
         const joinRequest = waitForJoin(spot);
         spot.replyActorJoin(joinRequest, true).message(Buffer.from('ok')).submit();
         await joinReply;
@@ -75,13 +71,13 @@ async function main() {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
         assert.deepEqual(payloads, ['relay']);
-        actor.leave(spot).submit(() => { });
+        await actor.leave(spot).timeout(2000).submitAsync();
         console.log('[actor/gateway] stream relayed payload to actor: "relay"');
     }
     finally {
         if (session) {
             try {
-                stream.unbindActor(session, 'gateway-player-1').timeout(2000).submit(() => { });
+                await stream.unbindActor(session, 'gateway-player-1').timeout(2000).submitAsync();
             }
             catch (_) {
             }

@@ -30,6 +30,7 @@ fn main() {
     registry
         .bind(&registry_pub, &registry_router)
         .expect("registry bind failed");
+    registry.set_broadcast_interval(50).unwrap();
     publisher_discovery
         .connect_registry(&registry_router)
         .expect("publisher discovery connect failed");
@@ -46,6 +47,12 @@ fn main() {
         .attach_discovery(&subscriber_discovery)
         .expect("subscriber discovery attach failed");
     publisher_node
+        .set_routing_id(&zlink::RoutingId::from_bytes(b"z-rust-spot-recv-publisher"))
+        .expect("publisher routing id failed");
+    subscriber_node
+        .set_routing_id(&zlink::RoutingId::from_bytes(b"a-rust-spot-recv-subscriber"))
+        .expect("subscriber routing id failed");
+    publisher_node
         .bind(&publisher_endpoint)
         .expect("publisher bind failed");
     subscriber_node
@@ -55,9 +62,21 @@ fn main() {
     let subscriber = subscriber_node
         .create_spot()
         .expect("subscriber spot failed");
+    publisher
+        .set_routing_id(&zlink::RoutingId::from_bytes(
+            b"z-rust-spot-recv-publisher-spot",
+        ))
+        .expect("publisher spot routing id failed");
+    subscriber
+        .set_routing_id(&zlink::RoutingId::from_bytes(
+            b"a-rust-spot-recv-subscriber-spot",
+        ))
+        .expect("subscriber spot routing id failed");
     subscriber
         .set_subscription(TOPIC)
         .expect("set_subscription failed");
+    sample_support::wait_spot_peer_connected(&publisher_node, Duration::from_secs(5));
+    sample_support::wait_spot_peer_connected(&subscriber_node, Duration::from_secs(5));
     sample_support::wait_until(
         || {
             query
@@ -77,6 +96,8 @@ fn main() {
 
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
+        let _ = publisher_node.status_snapshot();
+        let _ = subscriber_node.status_snapshot();
         match publisher
             .publish(TOPIC)
             .message(Message::copy_from(b"hello-spot").unwrap())

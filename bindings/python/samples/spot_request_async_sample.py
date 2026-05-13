@@ -35,8 +35,7 @@ async def main():
                                 responder_router.reply(
                                     received.routing_id,
                                     received.request_seq,
-                                    [REPLY_PAYLOAD],
-                                )
+                                ).message(REPLY_PAYLOAD).submit()
                             finally:
                                 received.close()
 

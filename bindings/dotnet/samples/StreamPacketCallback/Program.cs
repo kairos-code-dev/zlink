@@ -7,6 +7,7 @@ if (!SampleSupport.IsNativeAvailable())
 
 using var ctx = new Context();
 using var stream = new Systems.Zlink.StreamSocket(ctx);
+stream.Options.Linger = TimeSpan.Zero;
 string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
 int port = SampleSupport.ExtractPort(endpoint);
 using var monitor = stream.MonitorOpen(SocketEvent.Accepted);
@@ -31,4 +32,4 @@ SampleSupport.SendStreamPacket(client.GetStream(), "hello-stream"u8);
 SampleSupport.WaitOrThrow(() => signal.IsSet, 2000,
     "stream packet callback timeout");
 Console.WriteLine(
-    $"[stream/packet-callback] recv: \"{callbackPayload}\"");
+    $"[stream/packet-callback] send: \"hello-stream\" -> recv: \"{callbackPayload}\"");

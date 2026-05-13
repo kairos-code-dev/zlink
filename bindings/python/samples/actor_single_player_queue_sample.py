@@ -26,9 +26,8 @@ def main():
                         )
                         if item is None:
                             return
-                        join_info, message = item
-                        message.close()
-                        current_spot.reply_actor_join(join_info, True).message(
+                        item.message.close()
+                        current_spot.reply_actor_join(item, True).message(
                             b"ok"
                         ).submit()
                     elif info.event == zlink.SpotDispatchEvent.ACTOR_READABLE:

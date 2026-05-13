@@ -7,6 +7,7 @@
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -85,12 +86,24 @@ inline void actor_sample_dispatch (
     if (info_.event == zlink::spot_dispatch_event_t::actor_readable) {
         assert (info_.actor.has_value ());
         for (;;) {
-            std::optional<zlink::actor_part_t> part =
-              state_.actor->recv_part (ZLINK_DONTWAIT);
-            if (!part)
+            zlink_actor_recv_info_t native_info;
+            std::memset (&native_info, 0, sizeof (native_info));
+            zlink_msg_t native_part;
+            std::memset (&native_part, 0, sizeof (native_part));
+            zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+            zlink_recv_result_t rc = zlink_spot_node_actor_recv_part (
+              zlink::detail::native_handle (*state_.node),
+              zlink::detail::actor_ref_native (*info_.actor), &native_info,
+              &native_part, &has_more, ZLINK_RECV_FLAGS_DONTWAIT);
+            if (rc == ZLINK_RECV_NO_DATA)
                 break;
+            assert (rc == ZLINK_RECV_OK);
+            zlink::message_t part;
+            assert (zlink_msg_move (zlink::detail::native_handle (part),
+                                    &native_part)
+                    == 0);
             std::lock_guard<std::mutex> lock (state_.capture->mutex);
-            state_.capture->payload += part->part.to_string ();
+            state_.capture->payload += part.to_string ();
             state_.capture->actor_read = true;
             state_.capture->cv.notify_all ();
         }

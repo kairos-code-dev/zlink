@@ -26,10 +26,9 @@ def main():
                     item = current_spot.recv_actor_join(flags=zlink.RecvFlags.DONT_WAIT)
                     if item is None:
                         return
-                    join_info, message = item
-                    joins.append(message.to_bytes())
-                    message.close()
-                    current_spot.reply_actor_join(join_info, True).message(
+                    joins.append(item.message.to_bytes())
+                    item.message.close()
+                    current_spot.reply_actor_join(item, True).message(
                         b"joined"
                     ).submit()
 
@@ -62,7 +61,10 @@ def main():
 
                             if joins != [b"join-room"]:
                                 raise AssertionError("unexpected join request")
-                            if replies[0] != (zlink.RequestResult.OK, [b"joined"]):
+                            if (
+                                replies[0][0].result != zlink.RequestResult.OK
+                                or replies[0][1] != [b"joined"]
+                            ):
                                 raise AssertionError("unexpected join reply")
                             if spot.actors_snapshot()[0].actor_id != "room-1":
                                 raise AssertionError("joined actor snapshot missing")

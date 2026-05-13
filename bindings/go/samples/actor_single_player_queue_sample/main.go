@@ -65,6 +65,7 @@ func main() {
 	leaveParts2 := leave2.Parts
 	zlink.MultipartClose(leaveParts2)
 	samplecommon.Must(actor.Close())
+	fmt.Println("[actor/single-player] join: \"join-first\" -> rejoin: \"join-second\"")
 }
 
 func acceptJoin(spot *zlink.Spot, expected string) {

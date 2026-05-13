@@ -49,4 +49,5 @@ func main() {
 	leaveParts := leave.Parts
 	zlink.MultipartClose(leaveParts)
 	samplecommon.Must(actor.Close())
+	fmt.Println("[actor/room] join: \"enter-room\" -> reply: \"accepted\"")
 }

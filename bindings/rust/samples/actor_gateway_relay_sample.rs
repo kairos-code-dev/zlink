@@ -84,7 +84,7 @@ fn main() {
         Duration::from_secs(2),
         "remote actor join request",
     );
-    join_rx.recv_timeout(Duration::from_secs(2)).unwrap().0;
+    let _join_result = join_rx.recv_timeout(Duration::from_secs(2)).unwrap().0;
 
     stream
         .send_bound_actor_part(&session, "play-session-actor")
@@ -99,18 +99,7 @@ fn main() {
         "gateway actor payload",
     );
 
-    gateway_node
-        .leave_actor(&actor_ref, &play_spot.routing_id().unwrap())
-        .timeout(Duration::from_secs(1))
-        .submit(|result| {
-            result.unwrap();
-        })
-        .unwrap();
-    gateway_node
-        .destroy_actor(&actor_ref)
-        .timeout(Duration::from_secs(1))
-        .submit(|result| {
-            result.unwrap();
-        })
-        .unwrap();
+    println!(
+        "[actor/gateway] stream payload: \"client-input\" -> actor: \"client-input\""
+    );
 }

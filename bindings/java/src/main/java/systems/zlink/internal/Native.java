@@ -599,7 +599,8 @@ public final class Native {
       "zlink_spot_subscribe_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_REQUEST_CHANNEL_PART = downcall(
       "zlink_spot_request_channel_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,

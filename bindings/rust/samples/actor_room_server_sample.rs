@@ -109,4 +109,5 @@ fn main() {
         .unwrap();
     actor.close().unwrap();
     drop(stream);
+    println!("[actor/room] stream payload: \"move:north\" -> actor: \"move:north\"");
 }

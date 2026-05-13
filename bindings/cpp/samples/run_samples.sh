@@ -10,7 +10,10 @@ BUILD_DIR="${CPP_DIR}/build"
 CONFIGURE_ARGS=(
   -DZLINK_CORE_DIR=${ROOT_DIR}/core
   -DZLINK_CPP_CORE_BUILD_DIR=${CORE_BUILD_DIR}
+  -DZLINK_CPP_USE_CORE_BUILD_RUNTIME=ON
   -DZLINK_CPP_BUILD_SAMPLES=ON
+  -DZLINK_CPP_BUILD_TESTS=OFF
+  -DZLINK_CPP_BUILD_BENCHMARKS=OFF
 )
 
 if [[ $# -gt 0 ]]; then
@@ -19,9 +22,6 @@ fi
 
 echo "[cpp-samples] configure: ${BUILD_DIR}"
 cmake -S "${CPP_DIR}" -B "${BUILD_DIR}" "${CONFIGURE_ARGS[@]}"
-
-echo "[cpp-samples] build"
-cmake --build "${BUILD_DIR}" -j"$(nproc)"
 
 sample_bins=(
   sample_cpp_request_reply_async_sample
@@ -39,6 +39,9 @@ sample_bins=(
   sample_cpp_actor_gateway_relay_sample
   sample_cpp_actor_single_player_queue_sample
 )
+
+echo "[cpp-samples] build"
+cmake --build "${BUILD_DIR}" --target "${sample_bins[@]}" -j"$(nproc)"
 
 pass_count=0
 

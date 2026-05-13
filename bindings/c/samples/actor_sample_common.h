@@ -43,6 +43,16 @@ static inline void actor_sample_capture_reset (actor_sample_capture_t *capture)
     capture->join_result = ZLINK_REQUEST_INTERNAL_ERROR;
 }
 
+static inline void actor_sample_capture_reset_actor (
+  actor_sample_capture_t *capture)
+{
+    pthread_mutex_lock (&capture->actor_signal.mutex);
+    capture->actor_signal.ready = 0;
+    pthread_mutex_unlock (&capture->actor_signal.mutex);
+    capture->payload_len = 0;
+    memset (capture->payload, 0, sizeof (capture->payload));
+}
+
 static inline void actor_sample_set_rid (zlink_routing_id_t *rid,
                                          const char *text)
 {

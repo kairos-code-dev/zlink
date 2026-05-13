@@ -17,7 +17,6 @@ static void join_only_dispatch (
 
 int main ()
 {
-    try {
     zlink::context_t ctx;
     zlink::service::spot_node_t node (ctx);
     zlink::service::spot_t first_spot = node.create_spot ();
@@ -91,9 +90,8 @@ int main ()
 
     (void) actor.leave (second_spot).submit_async ().get ();
     actor.close ();
+    std::printf (
+      "[actor/single-player] queued payload: \"before-between-\" -> actor: \"%s\"\n",
+      second_capture.payload.c_str ());
     return 0;
-    } catch (const zlink::request_error_t &err) {
-        std::printf ("[actor/single-player] skipped: %s\n", err.what ());
-        return 0;
-    }
 }

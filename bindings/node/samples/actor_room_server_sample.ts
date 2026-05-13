@@ -54,27 +54,23 @@ async function main() {
       stream.onPacket((sourceRid) => resolve(sourceRid));
       client.write(frame(Buffer.from('open')));
     });
-    stream.bindActor(session, actor.ref()).timeout(2000).submit(() => {});
+    await stream.bindActor(session, actor.ref()).timeout(2000).submitAsync();
 
-    const replyPromise = new Promise((resolve) => {
-      actor.join(spot).message(Buffer.from('join-room')).timeout(2000).submit((result, parts) => {
-        resolve({ result, parts });
-      });
-    });
+    const replyPromise = actor.join(spot).message(Buffer.from('join-room')).timeout(2000).submitAsync();
 
     const request = waitForJoin(spot);
     assert.equal(request.message.data().toString(), 'join-room');
     spot.replyActorJoin(request, true).message(Buffer.from('welcome')).submit();
 
     const reply = await replyPromise;
-    assert.equal(reply.result, zlink.RequestResult.Ok);
+    assert.equal(reply.result.result, zlink.RequestResult.Ok);
     assert.equal(reply.parts[0].data().toString(), 'welcome');
-    actor.leave(spot).submit(() => {});
+    await actor.leave(spot).timeout(2000).submitAsync();
     console.log('[actor/room] join accepted with reply: "welcome"');
   } finally {
     if (session) {
       try {
-        stream.unbindActor(session, 'room-player-1').timeout(2000).submit(() => {});
+        await stream.unbindActor(session, 'room-player-1').timeout(2000).submitAsync();
       } catch (_) {
       }
     }

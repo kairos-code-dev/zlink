@@ -1501,6 +1501,14 @@ zlink_request_result_t commit_accepted_join_locked (
         actor_handle_t *target = request_->pending_target;
         if (!source || !target || !target->pending_remote_join)
             return ZLINK_REQUEST_CONFLICT;
+        void *source_bound_stream = source->bound_stream;
+        zlink::spot_node_t *source_bound_session_node =
+          source->bound_session_node;
+        zlink_routing_id_t source_bound_session_rid =
+          source->bound_session_rid;
+        const bool transfer_bound_session =
+          source_bound_stream && source_bound_session_node
+          && valid_routing_id (&source_bound_session_rid);
 
         zlink_actor_ref_t source_ref;
         zlink_actor_ref_t target_ref;
@@ -1522,6 +1530,22 @@ zlink_request_result_t commit_accepted_join_locked (
         std::unique_ptr<actor_handle_t> retired =
           remove_actor_locked (source, false);
         LIBZLINK_UNUSED (retired);
+        if (transfer_bound_session) {
+            actor_session_state_t::binding_map_t::iterator binding_it =
+              find_session_binding_locked (source_bound_stream,
+                                           &source_bound_session_rid);
+            if (binding_it != session_bindings_end_locked ()) {
+                session_binding_t &binding = binding_it->second;
+                session_binding_t::actor_entry_t &entry =
+                  binding.actors[target->actor_id];
+                entry.actor = target;
+                fill_ref (target, &entry.ref);
+                target->bound_session_node = source_bound_session_node;
+                target->bound_stream = source_bound_stream;
+                target->bound_session_rid = source_bound_session_rid;
+                target->last_changed_ms = now_ms ();
+            }
+        }
         create_active_route_locked (target);
         if (readable_actor_out_ && !target->queue.empty ())
             *readable_actor_out_ = target;
@@ -1726,6 +1750,12 @@ zlink_request_result_t run_bind_operation_locked (
     if (!arg_)
         return ZLINK_REQUEST_INVALID_STATE;
     zlink::spot_node_t *stream_owner = stream_owner_locked (arg_->stream);
+    if (!stream_owner) {
+        stream_owner = resolve_node_by_rid_locked (arg_->actor.node_rid);
+        if (stream_owner)
+            actor_runtime().sessions.stream_owners[arg_->stream] =
+              stream_owner;
+    }
     if (!stream_owner) {
         errno = EFSM;
         return ZLINK_REQUEST_INVALID_STATE;

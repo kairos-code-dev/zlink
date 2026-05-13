@@ -19,6 +19,19 @@ async function reservePort() {
   return port;
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForSpotPeer(node: { statusSnapshot(): { connectedPeerCount: number } }): Promise<void> {
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    if (node.statusSnapshot().connectedPeerCount > 0) return;
+    await delay(25);
+  }
+  throw new Error('spot peer connection did not become ready');
+}
+
 async function main() {
   const ctx = new zlink.Context();
   const registry = new zlink.Registry(ctx);
@@ -31,24 +44,34 @@ async function main() {
   const topic = 'room:lobby';
   const sent = 'hello-spot';
   const registryPub = `tcp://127.0.0.1:${await reservePort()}`;
-  const registryRouter = `tcp://127.0.0.1:${await reservePort()}`;
-  const publisherEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const subscriberEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const registryRouter = `tcp://127.0.0.1:${await reservePort()}`;
+    const publisherEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const subscriberEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
 
   try {
     registry.bind(registryPub, registryRouter);
+    registry.setBroadcastInterval(50);
     publisherDiscovery.connectRegistry(registryRouter);
     subscriberDiscovery.connectRegistry(registryRouter);
+    publisherNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('z-node-spot-recv-publisher')));
+    subscriberNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('a-node-spot-recv-subscriber')));
     publisherNode.attachDiscovery(publisherDiscovery);
     subscriberNode.attachDiscovery(subscriberDiscovery);
     publisherNode.bind(publisherEndpoint);
     subscriberNode.bind(subscriberEndpoint);
     publisher = publisherNode.createSpot();
     subscriber = subscriberNode.createSpot();
+    publisher.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('z-node-spot-recv-publisher-spot')));
+    subscriber.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('a-node-spot-recv-subscriber-spot')));
     subscriber.setSubscription(topic);
+    await waitForSpotPeer(publisherNode);
+    await waitForSpotPeer(subscriberNode);
     const deadline = Date.now() + 15000;
     let received = null;
     while (Date.now() < deadline) {
+      publisherNode.statusSnapshot();
+      subscriberNode.statusSnapshot();
+      subscriberNode.subjectsSnapshot();
       publisher.publish(topic).message(Buffer.from(sent)).submit();
       try {
         received = subscriber.subscribe(zlink.RecvFlags.DontWait);
@@ -63,11 +86,10 @@ async function main() {
           throw error;
         }
       }
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await delay(25);
     }
     if (!received) {
-      console.log('[spot/recv] remote delivery not observed before timeout');
-      return;
+      throw new Error('spot delivery did not arrive');
     }
     try {
             assert.equal(received.topic, topic);

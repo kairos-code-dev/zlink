@@ -4,7 +4,6 @@
 
 int main ()
 {
-    try {
     zlink::context_t ctx;
     zlink::service::spot_node_t node (ctx);
     zlink::service::spot_t spot = node.create_spot ();
@@ -48,9 +47,8 @@ int main ()
 
     (void) actor.leave (spot).submit_async ().get ();
     actor.close ();
+    std::printf (
+      "[actor/room] stream payload: \"move:north\" -> actor: \"%s\"\n",
+      capture.payload.c_str ());
     return 0;
-    } catch (const zlink::request_error_t &err) {
-        std::printf ("[actor/room] skipped: %s\n", err.what ());
-        return 0;
-    }
 }

@@ -58,6 +58,7 @@ func main() {
 	samplecommon.Must(destroy.Err)
 	destroyParts := destroy.Parts
 	zlink.MultipartClose(destroyParts)
+	fmt.Println("[actor/gateway] join: \"join-play\" -> reply: \"accepted\"")
 }
 
 func mustRID(rid zlink.RoutingID, err error) zlink.RoutingID {

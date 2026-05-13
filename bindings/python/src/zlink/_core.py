@@ -3,7 +3,7 @@
 import ctypes
 import errno as _errno
 import sys
-import types
+import traceback
 
 from ._enums import (
     BindResult,
@@ -537,15 +537,9 @@ def _report_unhandled_callback_exception(handler):
     exc_type, exc_value, exc_traceback = sys.exc_info()
     if exc_type is None:
         return
-    sys.unraisablehook(
-        types.SimpleNamespace(
-            exc_type=exc_type,
-            exc_value=exc_value,
-            exc_traceback=exc_traceback,
-            err_msg="Unhandled zlink callback exception",
-            object=handler,
-        )
-    )
+    print(f"Unhandled zlink callback exception in {handler!r}",
+          file=sys.stderr)
+    traceback.print_exception(exc_type, exc_value, exc_traceback)
 
 
 class _ReceivedPartsOwner:

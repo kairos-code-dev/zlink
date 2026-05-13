@@ -171,8 +171,9 @@ updated to match this document.
   recalculation method mapped to `zlink_ctx_auto_hwm_recalculate(...)`.
 - Message lifecycle: owned `message_t`, `multipart_t`, and advanced external
   message wrappers.
-- Routing identities: `routing_id_t`, `actor_ref_t`, and
-  `service::spot_node_t::remote_actor_ref(...)`. Routed Spot APIs pass the
+- Routing identities: `routing_id_t` and `actor_ref_t`. A checked ref for an
+  Actor that lives on a remote node is obtained asynchronously via
+  `service::spot_node_t::remote_actor_get_ref(...)`. Routed Spot APIs pass the
   destination node and Spot routing ids as explicit parameters.
 - Raw socket creation/lifecycle: typed socket classes only. Native socket
   handles are internal implementation details and are not part of the
@@ -254,7 +255,9 @@ instead of a separate service-layer capability.
 
 ```cpp
 struct actor_ref_t;
-struct actor_create_result_t;
+struct actor_join_result_t;
+struct actor_lookup_result_t;
+struct spot_actor_lifecycle_info_t;
 struct actor_route_t;
 struct actor_recv_info_t;
 struct actor_join_info_t;
@@ -262,17 +265,21 @@ class actor_join_request_t;
 struct actor_part_t;
 class timer_t;
 class actor_t;
-// Convenience form is service::spot_node_t::remote_actor_ref(...).
 ```
 
-`spot_node_t` exposes Actor factory/lookup, remote create-or-get, admission,
-join/leave, and Actor snapshots. `spot_t` exposes Actor join receive/reply and
-joined Actor snapshots. `stream_socket_t` exposes Actor bind/unbind and bound
-Actor send methods that take the owner node and session routing id explicitly.
-Discovery exposes Actor route resolve.
+`spot_node_t` exposes Actor factory/lookup, async remote Actor lookup, async
+ref-based destroy/join/leave, and Actor snapshots. `spot_t` exposes Actor join
+receive/reply, Actor lifecycle handler registration, and joined Actor
+snapshots. `stream_socket_t` exposes async Actor bind/unbind, bound Actor
+send, and the session attach snapshot (`bound_actors`). Discovery exposes
+Actor route resolve.
 
-`generation == 0` is an unchecked remote ref. One Actor can join only one Spot
-at a time; one STREAM session can bind multiple Actors.
+`generation == 0` is an unchecked remote ref. There is no remote-Actor create
+API and no admission handler; an Actor that must originate on a remote node is
+created on that SpotNode directly via `create_actor`. **A bound STREAM session
+is not required to join a user Spot** — Actor location and session attach are
+independent state transitions. One Actor can join only one Spot at a time; one
+STREAM session can bind multiple Actors.
 
 ## Core
 
@@ -460,8 +467,10 @@ the concrete socket classes and the capability-specific methods listed below.
 
 Nonblocking data-plane helpers follow this rule:
 
-- `send(...)` and `publish(...)` return `false` only for temporary
-  backpressure when `send_flags_t::dontwait` is used.
+- Operation builder submits — `send().message(...).submit()`,
+  `publish(topic).message(...).submit()`, and other builder paths — return
+  `false` only for temporary backpressure when `send_flags_t::dontwait` has
+  been configured via the builder's `.flags(...)` stage.
 - Blocking submit returns `true` on success. Route-not-ready and other submit
   failures still throw `submit_error_t`.
 - `recv(received_t& out, recv_flags_t flags)` follows a unified
@@ -510,11 +519,8 @@ Bidirectional exclusive pair socket. Sends and receives messages without routing
 class pair_socket_t {
     explicit pair_socket_t(context_t& ctx);
 
-    // --- send ---
-    /// @throws submit_error_t
-    bool send(message_t& part, send_flags_t flags = send_flags_t::none);
-    /// @throws submit_error_t
-    bool send(std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    // --- send (operation builder) ---
+    send_op_t send();
 
     // --- receive ---
     /// Receive one message into a caller-provided received_t.
@@ -537,15 +543,8 @@ Publisher socket. Sends topic-prefixed messages to all matching subscribers.
 class pub_socket_t {
     explicit pub_socket_t(context_t& ctx);
 
-    // --- publish ---
-    /// @throws submit_error_t
-    bool publish(const std::string& topic,
-                 message_t& part,
-                 int flags = 0);
-    /// @throws submit_error_t
-    bool publish(const std::string& topic,
-                 std::vector<message_t>& parts,
-                 int flags = 0);
+    // --- publish (operation builder) ---
+    send_op_t publish(const std::string& topic);
     /// @throws handler_error_t
     template<class Handler>
     void on_send_ready(Handler&& handler);
@@ -597,11 +596,8 @@ Asynchronous client socket for fair-queued request distribution.
 class dealer_socket_t {
     explicit dealer_socket_t(context_t& ctx);
 
-    // --- send ---
-    /// @throws submit_error_t
-    bool send(message_t& part, send_flags_t flags = send_flags_t::none);
-    /// @throws submit_error_t
-    bool send(std::vector<message_t>& parts, send_flags_t flags = send_flags_t::none);
+    // --- send (operation builder) ---
+    send_op_t send();
 
     // --- receive ---
     /// Returns 0 on success, -1 on error (errno set).
@@ -611,25 +607,8 @@ class dealer_socket_t {
     template<class Handler>
     void on_send_ready(Handler&& handler);
 
-    // --- request (coroutine, blocking submit — no flags) ---
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request(message_t& part,
-                                                   std::chrono::milliseconds timeout = {});
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request(std::vector<message_t>& parts,
-                                                   std::chrono::milliseconds timeout = {});
-
-    // --- request (callback submit; callback receives result + parts) ---
-    /// @throws submit_error_t
-    bool request(message_t& part,
-                 request_callback_t callback,
-                 int flags = 0,
-                 std::chrono::milliseconds timeout = {});
-    /// @throws submit_error_t
-    bool request(std::vector<message_t>& parts,
-                 request_callback_t callback,
-                 int flags = 0,
-                 std::chrono::milliseconds timeout = {});
+    // --- request (operation builder) ---
+    request_op_t request();
 
     // --- identity / routing ---
     /// @throws config_error_t
@@ -664,15 +643,8 @@ Server socket that routes messages to specific peers by routing id.
 class router_socket_t {
     explicit router_socket_t(context_t& ctx);
 
-    // --- routed send ---
-    /// @throws submit_error_t
-    bool send(const routing_id_t& target_rid,
-              message_t& part,
-              send_flags_t flags = send_flags_t::none);
-    /// @throws submit_error_t
-    bool send(const routing_id_t& target_rid,
-              std::vector<message_t>& parts,
-              send_flags_t flags = send_flags_t::none);
+    // --- routed send (operation builder) ---
+    send_op_t send(const routing_id_t& target_rid);
 
     // --- receive (unified routed surface) ---
     // One recv surface covers regular ROUTER traffic and spot-origin routed
@@ -694,93 +666,24 @@ class router_socket_t {
     /// @throws config_error_t
     void get_routing_id(routing_id_t& routing_id) const;
 
-    // --- request (coroutine, blocking submit — no flags) ---
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request(const routing_id_t& peer_rid,
-                                                   message_t& part,
-                                                   std::chrono::milliseconds timeout = {});
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request(const routing_id_t& peer_rid,
-                                                   std::vector<message_t>& parts,
-                                                   std::chrono::milliseconds timeout = {});
+    // --- request (operation builder) ---
+    request_op_t request(const routing_id_t& peer_rid);
 
-    // --- request (callback submit; callback receives result + parts) ---
-    /// @throws submit_error_t
-    bool request(const routing_id_t& peer_rid,
-                 message_t& part,
-                 request_callback_t callback,
-                 int flags = 0,
-                 std::chrono::milliseconds timeout = {});
-    /// @throws submit_error_t
-    bool request(const routing_id_t& peer_rid,
-                 std::vector<message_t>& parts,
-                 request_callback_t callback,
-                 int flags = 0,
-                 std::chrono::milliseconds timeout = {});
+    // --- reply (operation builder) ---
+    reply_op_t reply(const routing_id_t& rid, uint64_t request_seq);
 
-    // --- reply ---
-    /// @throws submit_error_t
-    void reply(const routing_id_t& rid, uint64_t request_seq,
-               message_t& part, int flags = 0);
-    /// @throws submit_error_t
-    void reply(const routing_id_t& rid, uint64_t request_seq,
-               std::vector<message_t>& parts, int flags = 0);
+    // --- router → spot routed send (operation builder) ---
+    send_op_t send_to_spot(const routing_id_t& dest_node_rid,
+                           const routing_id_t& dest_spot_rid);
 
-    // --- router → spot routed send ---
-    /// @throws submit_error_t
-    bool send_to_spot(const routing_id_t& dest_node_rid,
-                      const routing_id_t& dest_spot_rid,
-                      message_t& part,
-                      int flags = 0);
-    /// @throws submit_error_t
-    bool send_to_spot(const routing_id_t& dest_node_rid,
-                      const routing_id_t& dest_spot_rid,
-                      std::vector<message_t>& parts,
-                      int flags = 0);
+    // --- router → spot routed request (operation builder) ---
+    request_op_t request_to_spot(const routing_id_t& dest_node_rid,
+                                 const routing_id_t& dest_spot_rid);
 
-    // --- router → spot routed request (coroutine, blocking submit — no flags) ---
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request_to_spot(
-        const routing_id_t& dest_node_rid,
-        const routing_id_t& dest_spot_rid,
-        message_t& part,
-        std::chrono::milliseconds timeout = {});
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> request_to_spot(
-        const routing_id_t& dest_node_rid,
-        const routing_id_t& dest_spot_rid,
-        std::vector<message_t>& parts,
-        std::chrono::milliseconds timeout = {});
-
-    // --- router → spot routed request (callback receives result + parts) ---
-    /// @throws submit_error_t
-    bool request_to_spot(const routing_id_t& dest_node_rid,
-                         const routing_id_t& dest_spot_rid,
-                         message_t& part,
-                         request_callback_t callback,
-                         int flags = 0,
-                         std::chrono::milliseconds timeout = {});
-    /// @throws submit_error_t
-    bool request_to_spot(const routing_id_t& dest_node_rid,
-                         const routing_id_t& dest_spot_rid,
-                         std::vector<message_t>& parts,
-                         request_callback_t callback,
-                         int flags = 0,
-                         std::chrono::milliseconds timeout = {});
-
-    // --- router → spot routed reply ---
-    /// @throws submit_error_t
-    void reply_to_spot(const routing_id_t& dest_node_rid,
-                       const routing_id_t& dest_spot_rid,
-                       uint64_t request_seq,
-                       message_t& part,
-                       int flags = 0);
-    /// @throws submit_error_t
-    void reply_to_spot(const routing_id_t& dest_node_rid,
-                       const routing_id_t& dest_spot_rid,
-                       uint64_t request_seq,
-                       std::vector<message_t>& parts,
-                       int flags = 0);
+    // --- router → spot routed reply (operation builder) ---
+    reply_op_t reply_to_spot(const routing_id_t& dest_node_rid,
+                             const routing_id_t& dest_spot_rid,
+                             uint64_t request_seq);
 
     // --- router-specific options ---
     /// @throws config_error_t
@@ -800,15 +703,8 @@ Extended publisher. Like pub_socket_t but also receives subscription events.
 class xpub_socket_t {
     explicit xpub_socket_t(context_t& ctx);
 
-    // --- publish ---
-    /// @throws submit_error_t
-    bool publish(const std::string& topic,
-                 message_t& part,
-                 int flags = 0);
-    /// @throws submit_error_t
-    bool publish(const std::string& topic,
-                 std::vector<message_t>& parts,
-                 int flags = 0);
+    // --- publish (operation builder) ---
+    send_op_t publish(const std::string& topic);
     /// @throws handler_error_t
     template<class Handler>
     void on_send_ready(Handler&& handler);
@@ -859,15 +755,8 @@ Raw TCP stream socket. Bind-only; it does not expose `connect`,
 class stream_socket_t {
     explicit stream_socket_t(context_t& ctx);
 
-    // --- routed send ---
-    /// @throws submit_error_t
-    bool send(const routing_id_t& target_rid,
-              message_t& part,
-              int flags = 0);
-    /// @throws submit_error_t
-    bool send(const routing_id_t& target_rid,
-              std::vector<message_t>& parts,
-              int flags = 0);
+    // --- routed send (operation builder) ---
+    send_op_t send(const routing_id_t& target_rid);
 
     // --- receive (two mutually-exclusive modes) ---
     /// (1) raw recv. Returns 0 on success, -1 on error (errno set).
@@ -897,28 +786,23 @@ class stream_socket_t {
     /// @throws config_error_t
     stream_socket_options_t options();
 
-    /// @throws request_error_t
-    void bind_actor(service::spot_node_t& owner_node,
-                    const routing_id_t& session_rid,
-                    const actor_ref_t& actor,
-                    std::chrono::milliseconds timeout = {});
-    /// @throws request_error_t
-    void unbind_actor(service::spot_node_t& owner_node,
-                      const routing_id_t& session_rid,
-                      const std::string& actor_id,
-                      std::chrono::milliseconds timeout = {});
-    /// @throws submit_error_t
-    bool send_bound_actor(service::spot_node_t& owner_node,
-                          const routing_id_t& session_rid,
-                          const std::string& actor_id,
-                          message_t& part,
-                          int flags = 0);
-    /// @throws submit_error_t
-    bool send_bound_actor(service::spot_node_t& owner_node,
-                          const routing_id_t& session_rid,
-                          const std::string& actor_id,
-                          std::vector<message_t>& parts,
-                          int flags = 0);
+    /// Async Actor bind (operation builder). The stream is associated with
+    /// its session owner SpotNode at attach time; no SpotNode argument is
+    /// required here. A bind does not require nor imply a Spot join.
+    actor_bind_op_t bind_actor(const routing_id_t& session_rid,
+                               const actor_ref_t& actor);
+    /// Async Actor unbind (operation builder).
+    actor_unbind_op_t unbind_actor(const routing_id_t& session_rid,
+                                   const std::string& actor_id);
+    /// Session-bound relay send (operation builder). Multipart payload is
+    /// accumulated through `.message(...)` like other send builders.
+    send_op_t send_bound_actor(const routing_id_t& session_rid,
+                               const std::string& actor_id);
+    /// Snapshot of Actor refs attached to the given session. Follows the
+    /// standard 2-pass snapshot convention. Returns local mapping only.
+    /// @throws config_error_t
+    std::vector<actor_ref_t> bound_actors(
+        const routing_id_t& session_rid) const;
 };
 ```
 
@@ -1283,6 +1167,17 @@ using request_callback_t =
     std::function<void(request_result_t, std::vector<message_t>)>;
 ```
 
+Actor-specific completion callback types deliver the dedicated result structs:
+
+```cpp
+using actor_join_callback_t =
+    std::function<void(const actor_join_result_t&, std::vector<message_t>)>;
+using actor_lookup_callback_t =
+    std::function<void(const actor_lookup_result_t&)>;
+using spot_actor_lifecycle_callback_t =
+    std::function<void(spot_t&, const spot_actor_lifecycle_info_t&)>;
+```
+
 Request sequence values are plain `uint64_t` values. The binding does not wrap
 them in a dedicated value object because the wrapper would not add validation
 or hide any caller-facing complexity.
@@ -1296,16 +1191,6 @@ Routed Spot destinations are also passed as explicit routing id parameters:
 Actor value types mirror the C structs used by SPOT Actor dispatch.
 
 ```cpp
-enum class actor_create_status_t : int {
-    created = ZLINK_ACTOR_CREATE_CREATED,
-    existing = ZLINK_ACTOR_CREATE_EXISTING
-};
-
-enum class actor_admission_result_t : int {
-    accept = ZLINK_ACTOR_ADMISSION_ACCEPT,
-    reject = ZLINK_ACTOR_ADMISSION_REJECT
-};
-
 class actor_ref_t {
     actor_ref_t() noexcept;
 
@@ -1340,9 +1225,27 @@ public:
     const message_t& message() const noexcept;
 };
 
-struct actor_create_result_t {
-    actor_create_status_t status;
+struct actor_join_result_t {
+    request_result_t result;
     actor_ref_t actor;
+    routing_id_t joined_spot_rid;
+    uint64_t join_epoch;
+    uint32_t flags;
+};
+
+struct actor_lookup_result_t {
+    request_result_t result;
+    actor_ref_t actor;
+    uint32_t flags;
+};
+
+struct spot_actor_lifecycle_info_t {
+    actor_ref_t previous_actor;
+    actor_ref_t current_actor;
+    std::optional<routing_id_t> previous_spot_rid;
+    std::optional<routing_id_t> current_spot_rid;
+    uint64_t join_epoch;
+    uint32_t flags;
 };
 
 struct actor_route_t {
@@ -1428,27 +1331,15 @@ public:
     /// @throws recv_error_t
 	    message_t single_part_or_throw();
 
-	    // Send context is encapsulated. Callers do not pass routing_id or
-	    // spot_rid again.
-	    /// @throws submit_error_t
-	    bool send(message_t& part);
-	    /// @throws submit_error_t
-	    bool send(message_t& part, int flags);
-	    /// @throws submit_error_t
-	    bool send(std::vector<message_t>& parts);
-	    /// @throws submit_error_t
-	    bool send(std::vector<message_t>& parts, int flags);
+    // Send context (routing_id / spot_rid) is encapsulated. Returns an
+    // operation builder; accumulate payload via `.message(...)`.
+    send_op_t send();
 
-	    // Reply context is encapsulated. Callers do not pass routing_id, spot_rid,
-    // or request_seq again.
-    /// @throws submit_error_t
-    void reply(message_t& part);
-    /// @throws submit_error_t
-    void reply(message_t& part, int flags);
-    /// @throws submit_error_t
-    void reply(std::vector<message_t>& parts);
-    /// @throws submit_error_t
-    void reply(std::vector<message_t>& parts, int flags);
+    // Reply context (routing_id, spot_rid, request_seq) is encapsulated.
+    // Returns an operation builder; accumulate reply payload via
+    // `.message(...)`. Submit fails if there is no valid reply context
+    // (no request_seq).
+    reply_op_t reply();
 
     /// @throws close_error_t
     void close();
@@ -2678,44 +2569,33 @@ class spot_node_t {
     std::vector<spot_node_socket_snapshot_entry_t> internal_sockets_snapshot(
         const spot_node_socket_snapshot_filter_t& filter) const;
 
-    // --- Actor dispatch ---
+    // --- Actor dispatch (operation builders) ---
     /// @throws config_error_t
     actor_t create_actor(const std::string& actor_id);
     /// @throws config_error_t
     actor_ref_t actor_lookup(const std::string& actor_id) const;
-    /// @throws config_error_t
-    static actor_ref_t remote_actor_ref(const routing_id_t& target_node_rid,
-                                        const std::string& actor_id);
-    /// @throws request_error_t
-    actor_create_result_t create_remote_actor(const routing_id_t& target_node_rid,
-                                              const std::string& actor_id,
-                                              message_t& message,
-                                              std::chrono::milliseconds timeout = {});
-    /// @throws request_error_t
-    void destroy_actor(const actor_ref_t& actor,
-                       std::chrono::milliseconds timeout = {});
-    /// @throws handler_error_t
-    template<class Handler>
-    void on_actor_admission(Handler&& handler);
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> join_actor(
-        const actor_ref_t& actor,
-        const routing_id_t& dest_node_rid,
-        const routing_id_t& dest_spot_rid,
-        message_t& message,
-        std::chrono::milliseconds timeout = {});
-    /// @throws submit_error_t
-    bool join_actor(const actor_ref_t& actor,
-                    const routing_id_t& dest_node_rid,
-                    const routing_id_t& dest_spot_rid,
-                    message_t& message,
-                    request_callback_t callback,
-                    int flags = 0,
-                    std::chrono::milliseconds timeout = {});
-    /// @throws request_error_t
-    void leave_actor(const actor_ref_t& actor,
-                     const routing_id_t& current_spot_rid,
-                     std::chrono::milliseconds timeout = {});
+    /// Async remote Actor lookup. Completion delivers `actor_lookup_result_t`
+    /// (checked ref on success).
+    actor_lookup_op_t remote_actor_get_ref(const routing_id_t& target_node_rid,
+                                           const std::string& actor_id);
+    /// Async destroy. Completion is a reply callback. Succeeds only while the
+    /// Actor is in the Entry Spot.
+    actor_destroy_op_t destroy_actor(const actor_ref_t& actor);
+    /// Async user-Spot join. Completion delivers `actor_join_result_t`
+    /// (final Actor ref, joined Spot rid, join_epoch) plus reply message
+    /// parts. `dest_spot_rid` must be a user Spot, not the Entry Spot.
+    /// A bound STREAM session is NOT required to join a user Spot.
+    /// Multipart join state payload accumulates through `.message(...)`.
+    actor_join_op_t join_actor(const actor_ref_t& actor,
+                               const routing_id_t& dest_node_rid,
+                               const routing_id_t& dest_spot_rid);
+    /// Async leave to the same node's Entry Spot. Completion is a reply
+    /// callback.
+    actor_leave_op_t leave_actor(const actor_ref_t& actor,
+                                 const routing_id_t& current_spot_rid);
+    /// Actor-to-session relay (operation builder). Fire-and-forget reverse
+    /// send back through the bound STREAM session.
+    send_op_t send_bound_session_msg(const actor_ref_t& actor);
     /// @throws config_error_t
     std::vector<spot_node_spot_entry_t> spots_snapshot() const;
     /// @throws config_error_t
@@ -2761,6 +2641,15 @@ class request_ready_op_t;
 class request_callback_ready_op_t;
 class reply_op_t;
 class reply_ready_op_t;
+class actor_join_op_t;
+class actor_join_ready_op_t;
+class actor_join_callback_ready_op_t;
+class actor_join_reply_op_t;
+class actor_leave_op_t;
+class actor_destroy_op_t;
+class actor_lookup_op_t;
+class actor_bind_op_t;
+class actor_unbind_op_t;
 
 class spot_t {
     // explicit spot_t(spot_node_t&) is internal. User code creates a Spot
@@ -2836,9 +2725,18 @@ class spot_t {
     // --- Actor dispatch ---
     /// @throws recv_error_t
     std::optional<actor_join_request_t> recv_actor_join(int flags = 0);
-    /// @throws submit_error_t
-    void reply_actor_join(const actor_join_request_t& request, bool accepted,
-                          message_t& message);
+    /// Reply to an Actor join admission request (operation builder).
+    /// Multipart reply payload accumulates through `.message(...)`.
+    /// `accepted = true` accepts the join; `false` rejects.
+    actor_join_reply_op_t reply_actor_join(
+        const actor_join_request_t& request, bool accepted);
+    /// Register Actor lifecycle callbacks for this Spot. `on_join` fires
+    /// after an Actor enters this Spot; `on_leave` fires after an Actor
+    /// leaves. Passing empty function for both removes the registration.
+    /// Handler signature: void(const spot_actor_lifecycle_info_t& info)
+    /// @throws handler_error_t
+    template<class JoinHandler, class LeaveHandler>
+    void on_actor_lifecycle(JoinHandler&& on_join, LeaveHandler&& on_leave);
     /// @throws config_error_t
     std::vector<actor_ref_t> actors_snapshot() const;
 
@@ -2911,6 +2809,109 @@ public:
     void submit() &&;
 };
 
+// --- Actor operation builders ---
+
+class actor_join_ready_op_t;
+class actor_join_callback_ready_op_t;
+
+/// Builder returned by `spot_node_t::join_actor(...)` and
+/// `actor_t::join(...)`. Multipart join state payload is mandatory; the
+/// type system moves the builder into `actor_join_ready_op_t` only after
+/// the first `message(...)` call.
+class actor_join_op_t {
+public:
+    actor_join_op_t(actor_join_op_t&&) noexcept;
+    actor_join_op_t& operator=(actor_join_op_t&&) noexcept;
+    actor_join_ready_op_t message(message_t& part) &&;
+};
+
+class actor_join_ready_op_t {
+public:
+    actor_join_ready_op_t(actor_join_ready_op_t&&) noexcept;
+    actor_join_ready_op_t& operator=(actor_join_ready_op_t&&) noexcept;
+    actor_join_ready_op_t&& message(message_t& part) &&;
+    actor_join_ready_op_t&& timeout(std::chrono::milliseconds timeout) &&;
+    actor_join_callback_ready_op_t flags(int flags) &&;
+    /// @throws request_error_t (co_await), submit_error_t (submit)
+    async_result_t<actor_join_result_t> submit_async() &&;
+    /// @throws submit_error_t
+    bool submit(actor_join_callback_t callback) &&;
+};
+
+class actor_join_callback_ready_op_t {
+public:
+    actor_join_callback_ready_op_t(actor_join_callback_ready_op_t&&) noexcept;
+    actor_join_callback_ready_op_t&
+        operator=(actor_join_callback_ready_op_t&&) noexcept;
+    actor_join_callback_ready_op_t&& message(message_t& part) &&;
+    actor_join_callback_ready_op_t&& timeout(std::chrono::milliseconds timeout) &&;
+    actor_join_callback_ready_op_t&& flags(int flags) &&;
+    /// @throws submit_error_t
+    bool submit(actor_join_callback_t callback) &&;
+};
+
+/// Builder returned by `spot_t::reply_actor_join(...)`. Multipart reply
+/// payload accumulates through `.message(...)`.
+class actor_join_reply_op_t {
+public:
+    actor_join_reply_op_t(actor_join_reply_op_t&&) noexcept;
+    actor_join_reply_op_t& operator=(actor_join_reply_op_t&&) noexcept;
+    actor_join_reply_op_t&& message(message_t& part) &&;
+    /// Reply with no payload parts also submits cleanly.
+    /// @throws submit_error_t
+    void submit() &&;
+};
+
+/// Payload-less operation builders for Actor leave/destroy/lookup/bind/unbind.
+/// All four expose the same shape: optional `timeout(...)`, then `submit_async()`
+/// or `submit(callback)`.
+class actor_leave_op_t {
+public:
+    actor_leave_op_t(actor_leave_op_t&&) noexcept;
+    actor_leave_op_t& operator=(actor_leave_op_t&&) noexcept;
+    actor_leave_op_t&& timeout(std::chrono::milliseconds timeout) &&;
+    /// @throws request_error_t (co_await), submit_error_t (submit)
+    async_result_t<std::vector<message_t>> submit_async() &&;
+    /// @throws submit_error_t
+    bool submit(request_callback_t callback) &&;
+};
+
+class actor_destroy_op_t {
+public:
+    actor_destroy_op_t(actor_destroy_op_t&&) noexcept;
+    actor_destroy_op_t& operator=(actor_destroy_op_t&&) noexcept;
+    actor_destroy_op_t&& timeout(std::chrono::milliseconds timeout) &&;
+    async_result_t<std::vector<message_t>> submit_async() &&;
+    bool submit(request_callback_t callback) &&;
+};
+
+class actor_lookup_op_t {
+public:
+    actor_lookup_op_t(actor_lookup_op_t&&) noexcept;
+    actor_lookup_op_t& operator=(actor_lookup_op_t&&) noexcept;
+    actor_lookup_op_t&& timeout(std::chrono::milliseconds timeout) &&;
+    async_result_t<actor_lookup_result_t> submit_async() &&;
+    bool submit(actor_lookup_callback_t callback) &&;
+};
+
+class actor_bind_op_t {
+public:
+    actor_bind_op_t(actor_bind_op_t&&) noexcept;
+    actor_bind_op_t& operator=(actor_bind_op_t&&) noexcept;
+    actor_bind_op_t&& timeout(std::chrono::milliseconds timeout) &&;
+    async_result_t<std::vector<message_t>> submit_async() &&;
+    bool submit(request_callback_t callback) &&;
+};
+
+class actor_unbind_op_t {
+public:
+    actor_unbind_op_t(actor_unbind_op_t&&) noexcept;
+    actor_unbind_op_t& operator=(actor_unbind_op_t&&) noexcept;
+    actor_unbind_op_t&& timeout(std::chrono::milliseconds timeout) &&;
+    async_result_t<std::vector<message_t>> submit_async() &&;
+    bool submit(request_callback_t callback) &&;
+};
+
 } // namespace service
 ```
 
@@ -2920,6 +2921,12 @@ The first `message(...)` call moves the operation into a ready state; repeated
 consume the ready operation and must not be callable twice. Async request
 submission uses `submit_async()` and has no submit flags; callback submission
 may add `flags(...)` before `submit(callback)`.
+
+`actor_join_op_t` follows the same payload-mandatory shape as `request_op_t`.
+`actor_leave_op_t`, `actor_destroy_op_t`, `actor_lookup_op_t`,
+`actor_bind_op_t`, and `actor_unbind_op_t` are payload-less builders — they
+support `timeout(...)` and either `submit_async()` or `submit(callback)`.
+`actor_join_reply_op_t` follows `reply_op_t` shape but accepts a 0-part reply.
 
 `on_dispatch_event(...)` is the canonical SPOT readable-notification surface.
 For `SUBSCRIBE_READABLE` and `ROUTED_READABLE`, callers must keep draining with
@@ -2944,24 +2951,20 @@ class actor_t {
 
     /// @throws request_error_t
     void close(std::chrono::milliseconds timeout = {});
-    /// @throws request_error_t (co_await), submit_error_t (submit)
-    async_result_t<std::vector<message_t>> join(
-        spot_t& spot,
-        message_t& message,
-        std::chrono::milliseconds timeout = {});
-    /// @throws submit_error_t
-    bool join(spot_t& spot, message_t& message,
-              request_callback_t callback,
-              int flags = 0,
-              std::chrono::milliseconds timeout = {});
-    /// @throws request_error_t
-    void leave(spot_t& spot, std::chrono::milliseconds timeout = {});
+    /// Async user-Spot join (operation builder). Completion delivers
+    /// `actor_join_result_t` (final Actor ref, joined Spot rid, join_epoch)
+    /// plus reply parts. `spot` must be a user Spot, not the Entry Spot.
+    /// A bound STREAM session is NOT required to join a user Spot.
+    /// Multipart join state accumulates through `.message(...)`.
+    actor_join_op_t join(spot_t& spot);
+    /// Async leave to the same node's Entry Spot (operation builder).
+    /// Completion is delivered through the reply callback.
+    actor_leave_op_t leave(spot_t& spot);
     /// @throws recv_error_t
     std::optional<actor_part_t> recv_part(int flags = 0);
-    /// @throws submit_error_t
-    bool send_bound_session(message_t& part, int flags = 0);
-    /// @throws submit_error_t
-    bool send_bound_session(std::vector<message_t>& parts, int flags = 0);
+    /// Actor-to-session relay (operation builder). Multipart payload
+    /// accumulates through `.message(...)`.
+    send_op_t send_bound_session();
     /// @throws request_error_t
     void close_bound_session(std::chrono::milliseconds timeout = {});
 };

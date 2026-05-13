@@ -571,10 +571,41 @@ Actor에 대해 part 순서를 유지한다.
 
 ### 9.3 Active route publish
 
-Actor active route는 Actor 생성 시점이나 Spot join 시점에 publish하지 않는다.
-Actor owner SpotNode의 Discovery에서 Actor route sync가 켜져 있고 STREAM bind가
-성공한 시점에 publish한다. unbind와 session disconnect cleanup은 active route를
-제거하지 않는다. active route가 가리키는 Actor가 destroy되면 route cleanup을 수행한다.
+Actor active route는 Actor 생성 시점이나 STREAM session bind 시점이 아니라 **user
+Spot join 성공 commit 시점**에 publish한다. user Spot에서 Entry Spot으로 leave가
+성공해 위치가 실제로 바뀌면 Entry Spot 위치로 갱신한다. session bind/unbind는 active
+route를 만들거나 제거하지 않는다. active route가 가리키는 Actor가 destroy되면 route를
+제거하고, active route가 다른 generation의 Actor를 가리키면 destroy는 그 route를
+건드리지 않는다. 위 동작은 Actor owner `SpotNode`의 Discovery에서
+`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`가 켜져 있고 Registry와 통신할 수 있을 때 Registry
+visible 상태가 된다.
+
+### 9.4 Actor lifecycle callback
+
+`zlink_spot_actor_lifecycle_handler()`로 등록한 Spot lifecycle callback은 Actor의 실제
+위치 변경이 commit되고 active route 갱신이 끝난 뒤 dispatch worker context에서 실행된다.
+Entry Spot과 user Spot 모두 callback 대상이고, 같은 Spot의 dispatch callback과 lifecycle
+callback은 동시에 실행되지 않는다. handler 등록은 이미 Spot에 속해 있던 Actor를 replay
+하지 않는다.
+
+| trigger | callback | `previous_actor` | `current_actor` |
+|---------|----------|------------------|-----------------|
+| Actor 생성 | Entry Spot `on_join` | zero-value ref | 생성된 Actor ref |
+| user Spot join 성공 | target Spot `on_join` (+ source Spot `on_leave`) | source Actor ref | target Actor ref |
+| explicit leave 성공 | source user Spot `on_leave` + Entry Spot `on_join` | 같은 Actor ref | 같은 Actor ref |
+| Actor destroy 성공 | current Spot `on_leave` | destroy되는 ref | zero-value ref |
+| idempotent join / idempotent leave | 호출 없음 | — | — |
+
+`zlink_spot_actor_lifecycle_info_t.join_epoch`는 `on_join`이면 `current_actor`가
+가리키는 slot의 commit epoch, `on_leave`면 `previous_actor`가 가리키는 slot의 commit
+epoch다. remote join에서는 source `on_leave`, target `on_join`, join completion이 서로
+다른 SpotNode의 epoch 값을 가질 수 있다.
+
+`info` pointer는 callback 실행 동안만 유효하므로 필요한 값은 callback 안에서 복사한다.
+join completion handler는 commit이 끝난 뒤 호출되지만 lifecycle callback이 이미 실행
+되었는지는 보장하지 않는다. application state machine은 join 완료를 결정할 때
+lifecycle callback이 아니라 join completion handler가 돌려준 최종 Actor ref를 기준으로
+삼는다.
 
 ## 10. Entry Spot과 Spot queue 소유권
 
@@ -652,7 +683,7 @@ sequenceDiagram
   Stream->>Node: stream callback(session_rid)
   Node->>List: bind actor_ref
   List->>ActorObj: attach bound session ref
-  Node->>Node: publish active route on bind success
+  Note over Node: bind does not publish active route<br/>(route is published at user Spot join)
 
   Node->>List: relay to actor_id
   List->>ActorObj: resolve local actor
@@ -688,7 +719,7 @@ sequenceDiagram
   ActorNode->>ActorObj: attach bound session ref
   ActorNode-->>SessNode: bind OK
   SessNode->>List: store actor_ref
-  ActorNode->>ActorNode: publish active route on bind success
+  Note over ActorNode: bind does not publish active route<br/>(route is published at user Spot join)
 
   SessNode->>List: relay to actor_id
   List-->>SessNode: actor_ref
@@ -863,9 +894,11 @@ STREAM session 연결 흐름은 §12를 본다. 공개 join 계약은
 ### 14.1 Local join 내부 순서
 
 local join은 같은 `SpotNode` 안에서 Actor의 current Spot만 바꾼다. accept가 이루어지기 전까지
-source Spot이 Actor의 current Spot으로 남는다. accept 처리와 current Spot 교체는 같은
-`SpotNode` critical section 또는 event-loop turn 안에서 수행한다. Entry Spot이 아닌
-target Spot으로 join하려면 source Actor에 bound STREAM session ref가 있어야 한다.
+source Spot이 Actor의 current Spot으로 남는다. accept 처리, current Spot 교체, active
+route 갱신, lifecycle callback scheduling은 같은 `SpotNode` critical section 또는
+event-loop turn 안에서 수행한다. session attach 여부는 join 요청의 유효성 조건이
+아니므로 bound STREAM session ref 검증을 거치지 않는다. `dest_spot_rid`가 Entry Spot
+이면 invalid-argument 계열로 즉시 실패한다.
 
 ```mermaid
 sequenceDiagram
@@ -876,7 +909,6 @@ sequenceDiagram
   participant Target as Target Spot
 
   Caller->>Node: join_spot(actor_ref, node_rid, target_spot, state)
-  Node->>ActorObj: validate bound session ref unless target Entry
   Node->>ActorObj: open join_epoch
   Note over ActorObj,Source: current spot remains Source
   Node->>Target: enqueue ACTOR_JOIN_READABLE
@@ -936,7 +968,6 @@ sequenceDiagram
   Caller->>CallerNode: join_spot(actor_ref, target_node, target_spot)
   CallerNode->>SourceNode: begin join handoff
   SourceNode->>SourceNode: create JoinOp with reply path
-  SourceNode->>SourceActor: validate bound session ref
   SourceNode->>SourceActor: open join_epoch
   Note over SourceActor,SourceSpot: source remains active until commit
   SourceNode->>TargetNode: prepare remote join with state

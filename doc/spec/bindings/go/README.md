@@ -102,7 +102,6 @@ Go exposes Actor dispatch through exported identifiers in package `zlink`.
 
 ```go
 type ActorRef struct { NodeRID RoutingID; ActorID string; Generation uint64 }
-type ActorCreateResult struct { Status ActorCreateStatus; Actor ActorRef }
 type ActorRoute struct { Actor ActorRef; Joined bool; JoinedSpotRID *RoutingID }
 type ActorRecvInfo struct { Actor ActorRef; SourceNodeRID RoutingID; SourceSessionRID RoutingID; Flags uint32 }
 type ActorJoinInfo struct {
@@ -117,25 +116,43 @@ type ActorJoinInfo struct {
 }
 type ActorPart struct { Info ActorRecvInfo; Message *Message; More bool }
 type ActorJoinRequest struct { Info ActorJoinInfo; Message *Message }
-type ActorAdmissionResult int
-const (
-    ActorAdmissionAccept ActorAdmissionResult = 1
-    ActorAdmissionReject ActorAdmissionResult = 2
-)
-func RemoteActorRef(targetNodeRID RoutingID, actorID string) (ActorRef, error)
+type ActorJoinResult struct {
+    Result RequestResult
+    Actor ActorRef
+    JoinedSpotRID RoutingID
+    JoinEpoch uint64
+    Flags uint32
+}
+type ActorLookupResult struct {
+    Result RequestResult
+    Actor ActorRef
+    Flags uint32
+}
+type SpotActorLifecycleInfo struct {
+    PreviousActor ActorRef
+    CurrentActor ActorRef
+    PreviousSpotRID *RoutingID
+    CurrentSpotRID *RoutingID
+    JoinEpoch uint64
+    Flags uint32
+}
 ```
 
-`SpotNode` exposes `Actor`, `ActorLookup`, `CreateRemoteActor`,
-`DestroyRemoteActor`, `OnActorAdmission`, `JoinActor`, `LeaveActor`,
-`SpotsSnapshot`, and `ActorsSnapshot`. `Spot` exposes `RecvActorJoin`,
-`ReplyActorJoin`, and `ActorsSnapshot`. `StreamSocket` exposes `BindActor`,
-`UnbindActor`, and `SendBoundActor`. `Discovery` exposes `ResolveActor`.
+`SpotNode` exposes `Actor`, `ActorLookup`, `RemoteActorGetRef` (async),
+`DestroyActor` (async), `JoinActor` (async, dedicated completion), `LeaveActor`
+(async), `SpotsSnapshot`, and `ActorsSnapshot`. `Spot` exposes `RecvActorJoin`,
+`ReplyActorJoin`, `OnActorLifecycle`, and `ActorsSnapshot`. `StreamSocket`
+exposes `BindActor` (async), `UnbindActor` (async), `SendBoundActor`, and
+`BoundActors`. `Discovery` exposes `ResolveActor`.
 
 `Generation == 0` is an unchecked remote ref. Actor join requests and replies
-carry a single `Message` payload.
-Actor IDs are non-empty UTF-8 strings up to 255 bytes and must not contain NUL.
-Leaving a Spot does not drain unread Actor messages. Remote actor creation is
-create-or-get: the admission callback runs only when the target actor is missing.
+carry a single `Message` payload. Actor IDs are non-empty UTF-8 strings up to
+255 bytes and must not contain NUL. Leaving a Spot does not drain unread Actor
+messages. There is no remote-Actor create API and no admission handler; Actors
+that must originate on a remote node are created on that SpotNode directly via
+`Actor`. `RemoteActorGetRef` is an async lookup that returns a checked ref.
+**A bound STREAM session is not required to join a user Spot** — Actor
+location and session attach are independent state transitions.
 
 ## Core
 
@@ -235,8 +252,11 @@ methods is not part of this contract.
 
 Go nonblocking data-plane helpers follow this rule:
 
-- Submit methods that take `SendFlags` return `(false, nil)` only for temporary
-  backpressure when `SendFlagsDontWait` is used.
+- Operation builder submits — `send().Message(...).Submit(ctx)`,
+  `publish(topic).Message(...).Submit(ctx)`, and other builder paths —
+  return `(false, nil)` only for temporary backpressure when
+  `SendFlagsDontWait` has been configured via the builder's `.Flags(...)`
+  stage.
 - Route-not-ready and other submit failures return a non-nil error.
 - Receive methods that take `RecvFlags` return `(nil, nil)` when no message is
   currently available and a non-nil error for real recv failures.
@@ -336,8 +356,9 @@ func (s *PairSocket) Connect(endpoint string) error
 func (s *PairSocket) Disconnect(endpoint string) error
 // DisconnectRID closes the peer selected by routing id. Returns *ConnectError on failure.
 func (s *PairSocket) DisconnectRID(rid RoutingID) error
-// Send submits parts on the socket. Returns (false, nil) only for temporary backpressure.
-func (s *PairSocket) Send(flags SendFlags, parts ...*Message) (bool, error)
+// Send returns an operation builder. Accumulate parts via .Message(...) and
+// submit with .Submit(ctx) / .SubmitCallback(ctx, callback).
+func (s *PairSocket) Send() SendOp
 // Recv is the canonical caller-provided storage recv. Returns
 // (true, nil) on success, (false, nil) when RecvFlagsDontWait finds no
 // data, (false, *RecvError) on hard error.
@@ -376,8 +397,8 @@ func (s *PubSocket) Connect(endpoint string) error
 func (s *PubSocket) Disconnect(endpoint string) error
 // DisconnectRID closes the peer selected by routing id. Returns *ConnectError on failure.
 func (s *PubSocket) DisconnectRID(rid RoutingID) error
-// Publish sends parts on the given topic. Returns (false, nil) only for temporary backpressure.
-func (s *PubSocket) Publish(topic string, flags SendFlags, parts ...*Message) (bool, error)
+// Publish returns an operation builder. Accumulate parts via .Message(...).
+func (s *PubSocket) Publish(topic string) SendOp
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *PubSocket) OnSendReady(handler func()) error
 // Option setters/getters return *ConfigError on failure.
@@ -453,22 +474,14 @@ func (s *DealerSocket) Weight() (int, error)
 // It must be set before attach and becomes read-only after attach.
 func (s *DealerSocket) SetChannelName(value string) error
 func (s *DealerSocket) ChannelName() (string, error)
-// Send submits parts on the socket. Returns (false, nil) only for temporary backpressure.
-func (s *DealerSocket) Send(flags SendFlags, parts ...*Message) (bool, error)
+// Send returns an operation builder. Accumulate parts via .Message(...).
+func (s *DealerSocket) Send() SendOp
 // Recv is the canonical caller-provided storage recv.
 func (s *DealerSocket) Recv(out *Received, flags RecvFlags) (bool, error)
-// Request performs a synchronous request — blocks until reply or timeout.
-// timeout = 0 uses the socket default timeout.
-// Returns *SubmitError on submit failure, *RequestError on reply failure
-// (e.g. timeout, protocol error).
-func (s *DealerSocket) Request(parts [][]byte, timeout time.Duration) ([]*Message, error)
-// RequestCallback performs a callback-based request submit.
-// timeout = 0 uses the socket default timeout.
-// Returns (false, nil) only for temporary backpressure. The callback receives a
-// RequestResult which maps to *RequestError for failures.
-// The reply parts slice is nil/empty on failure.
-func (s *DealerSocket) RequestCallback(parts [][]byte, cb func(RequestResult, []*Message),
-    flags SendFlags, timeout time.Duration) (bool, error)
+// Request returns a request operation builder. Accumulate parts via
+// .Message(...) and submit with .Submit(ctx) (async) or
+// .SubmitCallback(ctx, callback).
+func (s *DealerSocket) Request() RequestOp
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *DealerSocket) OnSendReady(handler func()) error
 // AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
@@ -501,45 +514,27 @@ func (s *RouterSocket) SetRequestTimeout(value time.Duration) error
 func (s *RouterSocket) RequestTimeout() (time.Duration, error)
 func (s *RouterSocket) SetWeight(value int) error
 func (s *RouterSocket) Weight() (int, error)
-// SendTo submits parts to a specific peer. Returns (false, nil) only for temporary backpressure.
-func (s *RouterSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) (bool, error)
+// SendTo returns a routed send operation builder.
+func (s *RouterSocket) SendTo(target RoutingID) SendOp
 // Recv is the canonical caller-provided storage recv.
 func (s *RouterSocket) Recv(out *Received, flags RecvFlags) (bool, error)
-// Request performs a synchronous request to a specific peer — blocks until
-// reply or timeout. timeout = 0 uses the socket default timeout.
-// Returns *SubmitError on submit failure, *RequestError on reply failure
-// (e.g. timeout, protocol error).
-func (s *RouterSocket) Request(peerRid RoutingID, parts [][]byte, timeout time.Duration) ([]*Message, error)
-// RequestCallback performs a callback-based request submit to a specific peer.
-// timeout = 0 uses the socket default timeout.
-// Returns (false, nil) only for temporary backpressure. The callback receives a RequestResult
-// which maps to *RequestError for failures.
-// The reply parts slice is nil/empty on failure.
-func (s *RouterSocket) RequestCallback(peerRid RoutingID, parts [][]byte,
-    cb func(RequestResult, []*Message), flags SendFlags, timeout time.Duration) (bool, error)
-// Reply submits a reply to a request from peer rid.
-func (s *RouterSocket) Reply(rid RoutingID, requestSeq uint64, flags SendFlags, parts ...*Message) (bool, error)
+// Request returns a request operation builder for a specific peer.
+func (s *RouterSocket) Request(peerRid RoutingID) RequestOp
+// Reply returns a reply operation builder for a previously-received request.
+func (s *RouterSocket) Reply(rid RoutingID, requestSeq uint64) ReplyOp
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *RouterSocket) OnSendReady(handler func()) error
 // AttachDiscovery binds a discovery handle. Returns *ConfigError on failure.
 func (s *RouterSocket) AttachDiscovery(discovery *Discovery) error
 
-// --- router → spot routed send ---
-// SendToSpot submits parts routed to a spot.
-func (s *RouterSocket) SendToSpot(destNodeRid, destSpotRid RoutingID,
-    flags SendFlags, parts ...*Message) (bool, error)
-
-// --- router → spot routed request (callback, blocking submit) ---
-// RequestToSpot submits a routed request;
-// callback receives RequestResult (maps to *RequestError on completion failure).
-func (s *RouterSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID,
-    callback RequestReplyCallback, flags SendFlags,
-    timeout time.Duration, parts ...*Message) (bool, error)
-
-// --- router → spot routed reply ---
-// ReplyToSpot submits a routed reply.
+// --- router → spot routed (operation builders) ---
+// SendToSpot returns a routed send operation builder targeting a Spot.
+func (s *RouterSocket) SendToSpot(destNodeRid, destSpotRid RoutingID) SendOp
+// RequestToSpot returns a routed request operation builder targeting a Spot.
+func (s *RouterSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp
+// ReplyToSpot returns a routed reply operation builder.
 func (s *RouterSocket) ReplyToSpot(destNodeRid, destSpotRid RoutingID,
-    requestSeq uint64, flags SendFlags, parts ...*Message) (bool, error)
+    requestSeq uint64) ReplyOp
 
 // NOTE: RouterSocket has one routed receive surface. Recv receives both
 // regular ROUTER traffic and spot-origin routed traffic. Received carries
@@ -564,8 +559,8 @@ func (s *XPubSocket) Connect(endpoint string) error
 func (s *XPubSocket) Disconnect(endpoint string) error
 // DisconnectRID closes the peer selected by routing id. Returns *ConnectError on failure.
 func (s *XPubSocket) DisconnectRID(rid RoutingID) error
-// Publish sends parts on the given topic. Returns (false, nil) only for temporary backpressure.
-func (s *XPubSocket) Publish(topic string, flags SendFlags, parts ...*Message) (bool, error)
+// Publish returns an operation builder.
+func (s *XPubSocket) Publish(topic string) SendOp
 // ReceiveSubscriptionEvent receives an XPub subscription event. Returns *RecvError on failure.
 func (s *XPubSocket) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
@@ -627,8 +622,8 @@ func (s *StreamSocket) SetRoutingID(id RoutingID) error
 func (s *StreamSocket) RoutingID() (RoutingID, error)
 // DisconnectRID closes the peer selected by routing id. Returns *ConnectError on failure.
 func (s *StreamSocket) DisconnectRID(rid RoutingID) error
-// SendTo submits parts to a specific peer. Returns (false, nil) only for temporary backpressure.
-func (s *StreamSocket) SendTo(target RoutingID, flags SendFlags, parts ...*Message) (bool, error)
+// SendTo returns a routed send operation builder.
+func (s *StreamSocket) SendTo(target RoutingID) SendOp
 // Two mutually-exclusive receive modes on the same StreamSocket:
 //   (1) Recv, (2) OnPacket(handler). Second attach on the same stream
 //   returns *HandlerError{Code: HandlerResultBusy}.
@@ -642,12 +637,17 @@ func (s *StreamSocket) Recv(out *Received, flags RecvFlags) (bool, error)
 func (s *StreamSocket) OnPacket(handler func(source RoutingID, header *Message, body *Message)) error
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
 func (s *StreamSocket) OnSendReady(handler func()) error
-func (s *StreamSocket) BindActor(node *SpotNode, sessionRID RoutingID,
-    actor ActorRef, timeout time.Duration) error
-func (s *StreamSocket) UnbindActor(node *SpotNode, sessionRID RoutingID,
-    timeout time.Duration) error
-func (s *StreamSocket) SendBoundActor(node *SpotNode, sessionRID RoutingID,
-    message *Message, flags SendFlags) (bool, error)
+// BindActor returns an Actor bind operation builder. The stream is bound to
+// its session-owner SpotNode at attach time; no SpotNode argument is required
+// here. A bind does not require nor imply a Spot join.
+func (s *StreamSocket) BindActor(sessionRID RoutingID, actor ActorRef) ActorBindOp
+// UnbindActor returns an Actor unbind operation builder.
+func (s *StreamSocket) UnbindActor(sessionRID RoutingID, actorID string) ActorUnbindOp
+// SendBoundActor returns a session-bound relay send operation builder.
+func (s *StreamSocket) SendBoundActor(sessionRID RoutingID, actorID string) SendOp
+// BoundActors returns the snapshot of Actor refs attached to the given session
+// (local mapping only). Returns *ConfigError on failure.
+func (s *StreamSocket) BoundActors(sessionRID RoutingID) ([]ActorRef, error)
 // Option setters/getters return *ConfigError on failure.
 func (s *StreamSocket) SetNotify(value bool) error
 func (s *StreamSocket) Notify() (bool, error)
@@ -755,17 +755,15 @@ func (r *Received) FirstPart() (*Message, error)
 // SinglePartOrError returns the only part or *RecvError when parts != 1.
 	func (r *Received) SinglePartOrError() (*Message, error)
 
-	// Send sends a regular routed message to the sender of this Received.
-	func (r *Received) Send(parts []*Message) (bool, error)
-	func (r *Received) SendWithFlags(parts []*Message, flags SendFlags) (bool, error)
+// Send returns an operation builder for a regular routed message back to
+// the sender of this Received. Source rid / spot rid are encapsulated.
+func (r *Received) Send() SendOp
 
-	// Reply sends a reply for this received request. Only valid when
-// HasRequestSeq() is true; otherwise returns *SubmitError for invalid
-// reply context. Submit failures also return *SubmitError.
-// RoutingID/SpotRID/RequestSeq are encapsulated — caller does not pass
-// them again.
-func (r *Received) Reply(parts []*Message) error
-func (r *Received) ReplyWithFlags(parts []*Message, flags SendFlags) error
+// Reply returns an operation builder for replying to this received request.
+// Only valid when HasRequestSeq() is true; otherwise Submit returns
+// *SubmitError for invalid reply context. RoutingID/SpotRID/RequestSeq are
+// encapsulated.
+func (r *Received) Reply() ReplyOp
 
 // Close releases the received bundle. Returns *CloseError on failure.
 func (r *Received) Close() error
@@ -1316,15 +1314,21 @@ func (n *SpotNode) SpotLookup(spotRID RoutingID) (*Spot, error)
 // Actor dispatch methods return typed request/config/submit errors.
 func (n *SpotNode) Actor(actorID string) (*Actor, error)
 func (n *SpotNode) ActorLookup(actorID string) (ActorRef, error)
-func (n *SpotNode) CreateRemoteActor(targetNodeRID RoutingID, actorID string,
-    message *Message, timeout time.Duration) (ActorCreateResult, error)
-func (n *SpotNode) DestroyRemoteActor(actor ActorRef, timeout time.Duration) error
-func (n *SpotNode) OnActorAdmission(handler func(actorID string, message *Message) ActorAdmissionResult) error
-func (n *SpotNode) JoinActor(actor ActorRef, destNodeRID RoutingID,
-    destSpotRID RoutingID, message *Message, callback RequestReplyCallback,
-    flags SendFlags, timeout time.Duration) (bool, error)
-func (n *SpotNode) LeaveActor(actor ActorRef, destSpotRID RoutingID,
-    timeout time.Duration) error
+// RemoteActorGetRef returns an Actor lookup operation builder. Completion
+// delivers ActorLookupResult (checked ref on success).
+func (n *SpotNode) RemoteActorGetRef(targetNodeRID RoutingID, actorID string) ActorLookupOp
+// DestroyActor returns an Actor destroy operation builder. Succeeds only
+// when the Actor is in the Entry Spot.
+func (n *SpotNode) DestroyActor(actor ActorRef) ActorDestroyOp
+// JoinActor returns a user-Spot join operation builder. Completion delivers
+// ActorJoinResult plus reply parts. destSpotRID must be a user Spot. A bound
+// STREAM session is NOT required.
+func (n *SpotNode) JoinActor(actor ActorRef, destNodeRID, destSpotRID RoutingID) ActorJoinOp
+// LeaveActor returns an Actor leave operation builder. Moves the Actor to
+// the same node's Entry Spot.
+func (n *SpotNode) LeaveActor(actor ActorRef, currentSpotRID RoutingID) ActorLeaveOp
+// SendBoundSessionMsg returns an Actor-to-session relay operation builder.
+func (n *SpotNode) SendBoundSessionMsg(actor ActorRef) SendOp
 func (n *SpotNode) StatusSnapshot() (*SpotNodeStatus, error)
 func (n *SpotNode) PeersSnapshot() ([]SpotNodePeerEntry, error)
 func (n *SpotNode) PeersQuery(filter *SpotNodePeerFilter) ([]SpotNodePeerEntry, error)
@@ -1390,6 +1394,76 @@ type ReplySubmitOp interface {
     Submit(ctx context.Context) error
 }
 
+// --- Actor operation builders ---
+
+// SpotNode.JoinActor(...) / Actor.Join(spot) return ActorJoinOp.
+// Multipart join state payload is mandatory; the builder moves to
+// ActorJoinSubmitOp only after the first .Message(...).
+type ActorJoinOp interface {
+    Message(message *Message) ActorJoinSubmitOp
+}
+
+type ActorJoinSubmitOp interface {
+    Message(message *Message) ActorJoinSubmitOp
+    Timeout(timeout time.Duration) ActorJoinSubmitOp
+    Flags(flags SendFlags) ActorJoinCallbackSubmitOp
+    // Submit blocks until completion and returns ActorJoinResult + reply parts.
+    Submit(ctx context.Context) (ActorJoinResult, []*Message, error)
+    SubmitCallback(ctx context.Context,
+        callback func(result ActorJoinResult, parts []*Message)) (bool, error)
+}
+
+type ActorJoinCallbackSubmitOp interface {
+    Message(message *Message) ActorJoinCallbackSubmitOp
+    Timeout(timeout time.Duration) ActorJoinCallbackSubmitOp
+    Flags(flags SendFlags) ActorJoinCallbackSubmitOp
+    SubmitCallback(ctx context.Context,
+        callback func(result ActorJoinResult, parts []*Message)) (bool, error)
+}
+
+// Spot.ReplyActorJoin(request, accepted) returns ActorJoinReplyOp.
+// Multipart reply payload is optional; Submit() is visible directly.
+type ActorJoinReplyOp interface {
+    Message(message *Message) ActorJoinReplyOp
+    Submit(ctx context.Context) error
+}
+
+// Payload-less Actor operation builders: leave, destroy, lookup, bind, unbind.
+type ActorLeaveOp interface {
+    Timeout(timeout time.Duration) ActorLeaveOp
+    Submit(ctx context.Context) ([]*Message, error)
+    SubmitCallback(ctx context.Context,
+        callback func(result RequestResult, parts []*Message)) (bool, error)
+}
+
+type ActorDestroyOp interface {
+    Timeout(timeout time.Duration) ActorDestroyOp
+    Submit(ctx context.Context) ([]*Message, error)
+    SubmitCallback(ctx context.Context,
+        callback func(result RequestResult, parts []*Message)) (bool, error)
+}
+
+type ActorLookupOp interface {
+    Timeout(timeout time.Duration) ActorLookupOp
+    Submit(ctx context.Context) (ActorLookupResult, error)
+    SubmitCallback(ctx context.Context,
+        callback func(result ActorLookupResult)) (bool, error)
+}
+
+type ActorBindOp interface {
+    Timeout(timeout time.Duration) ActorBindOp
+    Submit(ctx context.Context) ([]*Message, error)
+    SubmitCallback(ctx context.Context,
+        callback func(result RequestResult, parts []*Message)) (bool, error)
+}
+
+type ActorUnbindOp interface {
+    Timeout(timeout time.Duration) ActorUnbindOp
+    Submit(ctx context.Context) ([]*Message, error)
+    SubmitCallback(ctx context.Context,
+        callback func(result RequestResult, parts []*Message)) (bool, error)
+}
+
 // Spot is a pub/sub facade owned by SpotNode. Public Spot handles come from
 // SpotNode.Spot(), SpotNode.EntrySpot(), or SpotNode.SpotLookup(...).
 func (s *Spot) Publish(topic string) SendOp
@@ -1405,9 +1479,17 @@ func (s *Spot) Subscribe(flags RecvFlags) (*TopicMessage, error)
 func (s *Spot) ReceiveSubscriptionEvent(flags RecvFlags) (*SubscriptionEvent, error)
 // RecvActorJoin receives the next actor join request. Returns *RecvError on failure.
 func (s *Spot) RecvActorJoin(flags RecvFlags) (*ActorJoinRequest, error)
-// ReplyActorJoin replies to an actor join request. Returns *SubmitError on submit failure.
-func (s *Spot) ReplyActorJoin(request *ActorJoinRequest, result ActorAdmissionResult,
-    flags SendFlags, message *Message) (bool, error)
+// ReplyActorJoin returns an Actor join reply operation builder. Multipart
+// reply payload accumulates through .Message(...); a zero-message Submit()
+// is allowed. accepted: true = accept, false = reject.
+func (s *Spot) ReplyActorJoin(request *ActorJoinRequest, accepted bool) ActorJoinReplyOp
+// OnActorLifecycle registers Actor lifecycle callbacks for this Spot.
+// onJoin fires after an Actor enters this Spot; onLeave fires after an Actor
+// leaves. Passing nil for both removes the registration.
+// Returns *HandlerError on failure.
+func (s *Spot) OnActorLifecycle(
+    onJoin func(spot *Spot, info SpotActorLifecycleInfo),
+    onLeave func(spot *Spot, info SpotActorLifecycleInfo)) error
 // ActorsSnapshot lists actors currently joined to this Spot. Returns *ConfigError on failure.
 func (s *Spot) ActorsSnapshot() ([]ActorRef, error)
 // OnSendReady registers a send-ready handler. Returns *HandlerError on failure.
@@ -1466,12 +1548,16 @@ after submit returns a validation error.
 ```go
 // Actor is owned by a SpotNode and represents one local actor identity.
 func (a *Actor) Ref() ActorRef
-func (a *Actor) Join(spot *Spot, message *Message,
-    callback RequestReplyCallback, flags SendFlags,
-    timeout time.Duration) (bool, error)
-func (a *Actor) Leave(spot *Spot, timeout time.Duration) error
+// Join returns an operation builder for an async user-Spot join.
+// Completion delivers ActorJoinResult plus reply parts. spot must be a user
+// Spot. A bound STREAM session is NOT required.
+func (a *Actor) Join(spot *Spot) ActorJoinOp
+// Leave returns an operation builder for an async leave to the same node's
+// Entry Spot.
+func (a *Actor) Leave(spot *Spot) ActorLeaveOp
 func (a *Actor) RecvPart(flags RecvFlags) (*ActorPart, error)
-func (a *Actor) SendBoundSession(message *Message, flags SendFlags) (bool, error)
+// SendBoundSession returns an Actor-to-session relay operation builder.
+func (a *Actor) SendBoundSession() SendOp
 // CloseBoundSession closes the bound session. Returns *RequestError on failure.
 func (a *Actor) CloseBoundSession(timeout time.Duration) error
 // Close destroys the Actor through its ActorRef. Returns *RequestError on failure.

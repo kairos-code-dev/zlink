@@ -41,13 +41,14 @@ Entry Spot 자체는 `SpotNode`가 소유하므로 파사드를 닫아도 Entry 
 zlink_actor_ref_t ref;
 zlink_spot_node_actor_new(node, "player-42", &ref);
 
-zlink_stream_bind_actor(node, stream, &session_rid, &ref, 2000);
+/* async submit; bind completion fires via reply handler */
+zlink_stream_bind_actor(stream, &session_rid, &ref,
+                        my_bind_handler, userdata, 2000);
 
 zlink_msg_t part;
 zlink_msg_init_size(&part, 5);
 memcpy(zlink_msg_data(&part), "hello", 5);
 zlink_stream_send_bound_actor_part(
-  node,
   stream,
   &session_rid,
   "player-42",
@@ -88,10 +89,11 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
 ```
 
 Actor 주소를 다른 노드에서 알아야 하면, Actor 소유 Discovery에서
-`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`를 켜고 Actor를 STREAM 세션에 바인딩한 뒤
-`zlink_discovery_resolve_actor()`로 조회한다. Actor 생성이나 Spot 참가만으로는
-활성 경로(active route)가 공개되지 않는다. **활성 경로는 STREAM 세션 바인딩 성공 시점에만
-게시된다.**
+`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`를 켜고 Actor를 user Spot으로 join한 뒤
+`zlink_discovery_resolve_actor()`로 조회한다. Actor 생성만으로는 활성 경로(active
+route)가 공개되지 않는다. **활성 경로는 user Spot join 성공 시점에 게시되고, user
+Spot에서 Entry Spot으로 leave 성공 시점에 Entry Spot 위치로 갱신된다.** STREAM 세션
+바인딩이나 해제는 활성 경로를 만들거나 제거하지 않는다.
 
 로컬 노드에서 ID로 기존 Actor를 조회하려면:
 
@@ -105,49 +107,67 @@ if (rc == ZLINK_CONFIG_OK) {
 }
 ```
 
-원격 Actor가 필요하면 호출 노드에서 `zlink_spot_node_create_remote_actor()`를
-사용한다. 대상 노드에 이미 같은 Actor ID가 있으면 새로 만들지 않고 기존
-결과를 반환한다. 대상 노드가 입장 허용(admission) 핸들러에서 요청을 거부하면
-요청은 거부 결과로 끝난다. 원격 생성-또는-조회는 대상 Spot 참가 핸들러를 거치지 않는다.
-새로 만들어진 원격 Actor도 대상 노드의 Entry Spot에 속한다.
-
-원격 Actor 생성 허용 여부를 제어하려면 `SpotNode`에 입장 허용 핸들러를 등록한다.
-핸들러는 이 노드로 향하는 모든 `zlink_spot_node_create_remote_actor()` 요청에 대해
-동기적으로 실행된다:
+원격 노드에 존재하는 Actor의 checked ref가 필요하면
+`zlink_remote_actor_get_ref()`로 비동기 lookup을 수행한다. 이 함수는 submit에서 blocking
+하지 않고 lookup 완료를 callback으로 전달한다. 대상 노드에 Actor가 있으면
+`result->actor`에 checked ref가 들어 있고, 없으면 not-found 계열 completion으로
+끝난다.
 
 ```c
-zlink_actor_admission_result_t my_admission(
-  void *node_,
-  const char *actor_id_,
-  const zlink_msg_t *parts_,
-  size_t part_count_,
-  void *userdata_)
+static void on_lookup(
+    const zlink_actor_lookup_result_t *result, void *userdata)
 {
-    /* actor_id와 선택적 payload parts를 검사 */
-    if (/* 거부 조건 */)
-        return ZLINK_ACTOR_ADMISSION_REJECT;
-    return ZLINK_ACTOR_ADMISSION_ACCEPT;
+    if (result->result == ZLINK_REQUEST_OK) {
+        zlink_actor_ref_t ref = result->actor;  /* callback 안에서 복사 */
+        /* ref를 join, bind, destroy 등에 사용 */
+    } else {
+        /* not-found, not-connected, timed-out 등 */
+    }
 }
 
-zlink_spot_node_actor_admission_handler(node, my_admission, userdata);
+zlink_remote_actor_get_ref(
+    node,                /* lookup 요청을 제출하는 SpotNode */
+    &target_node_rid,
+    "player-42",
+    on_lookup,
+    NULL,                /* userdata */
+    3000);               /* timeout_ms */
 ```
 
-`NULL`을 전달하면 이전에 등록된 핸들러를 제거한다 (기본 동작: 모든 원격 생성 요청 허용).
+원격 Actor 생성 API와 입장 허용(admission) 핸들러는 제거되었다. 원격 노드에서
+시작해야 하는 Actor는 application이 해당 SpotNode에서
+`zlink_spot_node_actor_new()`로 직접 생성한다. 같은 process 안에 SpotNode handle이
+있다면 그 handle을 사용하고, 다른 process라면 원격 SpotNode가 제공하는 application
+계층 RPC로 생성 요청을 전달한다. 생성 뒤 필요하면 `zlink_spot_node_actor_join_spot()`
+으로 원하는 user Spot에 이동하고, join completion이 반환한 최종 Actor ref를 후속
+작업에 사용한다.
 
 ## 2. Spot join
 
 Actor를 사용자 Spot으로 보내려면 `zlink_spot_node_actor_join_spot()`으로 참가 요청을
 전송한다. 대상 Spot은 `ACTOR_JOIN_READABLE` 디스패치 이벤트를 받고,
 `zlink_spot_actor_join_recv()`로 요청 payload를 읽은 뒤 `zlink_spot_actor_join_reply()`로
-수락 또는 거부를 전달한다.
+수락 또는 거부를 전달한다. join completion은 전용 `zlink_actor_join_handler_fn`으로
+전달되며, 최종 Actor ref와 joined Spot rid를 포함한다.
 
 ```c
-/* join request 보내기 */
+static void on_join(
+    const zlink_actor_join_result_t *result,
+    zlink_msg_t *parts, size_t part_count, void *userdata)
+{
+    if (result->result == ZLINK_REQUEST_OK) {
+        /* 성공: result->actor가 최종 Actor ref (remote join이면 target node ref) */
+        zlink_actor_ref_t final_ref = result->actor;
+        /* 후속 session attach나 위치 이동에 final_ref를 사용 */
+    }
+    zlink_multipart_close(parts, part_count);
+}
+
 zlink_spot_node_actor_join_spot(
   node, &actor_ref,
   &dest_node_rid, &dest_spot_rid,
   &payload_msg, 1,    /* join state payload parts */
-  my_join_handler,    /* completion callback */
+  on_join,            /* zlink_actor_join_handler_fn completion */
   userdata,
   0, 3000);           /* flags, timeout_ms */
 
@@ -167,44 +187,93 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE: {
 }
 ```
 
-참가 대기 중에는 새 참가, 탈퇴, 소멸이 busy 계열 오류로 실패한다. Entry Spot이 아닌
-사용자 Spot으로 참가하려면 해당 Actor에 바인딩된 STREAM 세션이 있어야 한다.
-`timeout_ms`는 작업 타임아웃이며, 제출 단계의 비차단 여부는 `ZLINK_DONTWAIT`
-플래그로 제어한다.
+참가 대기 중에는 새 참가, 탈퇴, 소멸이 busy 계열 오류로 실패한다. **session 바인딩이
+없어도 user Spot으로 join할 수 있다.** Actor 위치 이동과 session attach는 서로 다른
+상태 전이이기 때문이다. `join_spot`의 `dest_spot_rid`는 target node의 user Spot이어야
+하며 Entry Spot은 target이 아니다. 같은 Spot에 대한 idempotent join은 admission 없이
+성공 completion으로 끝난다. `timeout_ms`는 작업 타임아웃이며, 제출 단계의 비차단
+여부는 `ZLINK_DONTWAIT` 플래그로 제어한다.
+
+> target user Spot에 dispatch handler가 없으면 join request는 자동 accept되지 않는다.
+> `timeout_ms > 0`이면 timeout까지 pending이고, `timeout_ms == 0`이면 handler가
+> 등록되어 처리하거나 Spot/SpotNode가 종료될 때까지 pending 상태로 남는다.
+
+### Spot lifecycle handler
+
+Actor의 위치 변경(생성, join, leave, destroy)을 관측하려면 해당 Spot에 lifecycle
+handler를 등록한다. callback은 위치 변경이 commit된 뒤 실행된다.
+
+```c
+static void on_spot_join(
+    void *spot, const zlink_spot_actor_lifecycle_info_t *info, void *ud)
+{
+    /* info->current_actor가 이 Spot에 들어온 Actor */
+}
+
+static void on_spot_leave(
+    void *spot, const zlink_spot_actor_lifecycle_info_t *info, void *ud)
+{
+    /* info->previous_actor가 이 Spot에서 떠난 Actor.
+       destroy면 info->current_actor는 zero-value ref */
+}
+
+zlink_spot_actor_lifecycle_handler(spot, on_spot_join, on_spot_leave, userdata);
+```
+
+`on_join == NULL` 또는 `on_leave == NULL`은 해당 callback을 받지 않는다. 둘 다 NULL이면
+기존 lifecycle handler 등록을 제거한다. handler 등록은 이미 Spot에 있는 Actor를
+replay하지 않으며, 등록 이후 발생한 transition만 callback 대상이다.
+
+lifecycle callback은 관측용이다. application state machine이 join 완료나 session
+attach 순서를 결정할 때는 join completion handler와 반환된 최종 Actor ref를 기준으로
+삼는다.
 
 ## 3. Spot leave
 
-`leave`는 Actor를 현재 Spot에서 Entry Spot으로 돌려보내는 동작이다. Actor가 이미
-Entry Spot에 있으면 멱등(idempotent) 성공으로 처리된다. 탈퇴 후 Actor 메시지는 Entry Spot
-디스패치 이벤트로 올라간다.
+`leave`는 Actor를 현재 Spot에서 같은 node의 Entry Spot으로 돌려보내는 async submit
+API다. Actor가 이미 Entry Spot에 있으면 멱등(idempotent) 성공이고, lifecycle callback은
+발생하지 않는다. 탈퇴 후 Actor 메시지는 Entry Spot 디스패치 이벤트로 올라간다.
 
 ```c
-/* game Spot에서 Entry Spot으로 복귀 */
+static void on_leave(
+    zlink_request_result_t result,
+    zlink_msg_t *parts, size_t part_count, void *userdata)
+{
+    /* completion payload는 없음. result로 성공/실패 판단 */
+}
+
 zlink_spot_node_actor_leave_spot(
   node, &actor_ref,
   &current_spot_rid,  /* Actor의 현재 Spot rid */
+  on_leave,
+  userdata,
   2000);
 ```
 
-`current_spot_rid`는 오래된 탈퇴 요청을 막기 위한 낙관적 검사(optimistic check)다. 호출자가 알고 있는
-현재 Spot과 실제 현재 Spot이 다르면 잘못된 상태 오류로 실패한다. 참가 대기
-중에는 탈퇴가 `EBUSY`로 실패하며, 탈퇴가 대기 중인 참가를 취소하지는 않는다.
+`current_spot_rid`는 오래된 탈퇴 요청을 막기 위한 낙관적 검사(optimistic check)다.
+호출자가 알고 있는 현재 Spot과 실제 현재 Spot이 다르면 invalid-state 계열 실패다.
+참가 대기 중에는 탈퇴가 busy로 실패하며, 탈퇴가 대기 중인 참가를 취소하지는 않는다.
+leave 성공으로 user Spot에서 Entry Spot으로 위치가 바뀌면 active route가 Entry Spot
+위치로 갱신된다.
 
 ## 4. Actor 종료
 
-Actor 소멸은 Actor가 Entry Spot에 있을 때만 허용된다. 사용자 Spot에 있으면 먼저
-`leave`로 Entry Spot으로 돌려보내야 한다.
+Actor 소멸은 Actor가 Entry Spot에 있을 때만 성공한다. 사용자 Spot에 있으면 먼저
+`leave`로 Entry Spot으로 돌려보내야 한다. destroy 역시 async submit API다.
 
 ```c
-/* 먼저 leave */
-zlink_spot_node_actor_leave_spot(node, &ref, &current_spot_rid, 2000);
-/* Entry Spot 복귀 확인 뒤 destroy */
-zlink_spot_node_actor_destroy(node, &ref, 2000);
+static void on_destroy(
+    zlink_request_result_t result,
+    zlink_msg_t *parts, size_t part_count, void *userdata) { /* ... */ }
+
+/* 먼저 leave 후 leave completion에서 destroy submit */
+zlink_spot_node_actor_destroy(node, &ref, on_destroy, userdata, 2000);
 ```
 
-바인딩된 STREAM 세션이 있는 상태에서 소멸(destroy)하면, 세션 Actor 목록 항목과 바인딩된
-세션 참조가 먼저 정리된다. 클라이언트 연결 자체는 닫히지 않는다. 연결까지
-함께 닫으려면 소멸 전에 `zlink_spot_node_actor_close_bound_session()`을 호출한다.
+destroy 성공 시 Entry Spot의 Actor slot이 제거되고, active route가 같은 ref를 가리키면
+route도 함께 제거된다. session attach 상태는 Actor 위치와 독립이므로 destroy 전에
+별도로 session attach를 해제해야 한다면 `zlink_stream_unbind_actor()`를 호출한다.
+연결까지 닫아야 하면 `zlink_spot_node_actor_close_bound_session()`을 사용한다.
 
 수신 트리거 없이 STREAM 클라이언트에 메시지를 밀어 넣으려면
 `zlink_spot_node_actor_send_bound_session_msg()`를 사용한다. Actor에 활성 바인딩 세션이

@@ -178,10 +178,11 @@ typedef enum zlink_request_result_t
 | 분류 | 함수 |
 |---|---|
 | Routed/channel request completion | `zlink_dealer_request`, `zlink_router_request`, `zlink_spot_request_channel`, `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_router_request_spot` |
-| Actor join completion | `zlink_spot_node_actor_join_spot` |
-| Actor lifecycle request | `zlink_spot_node_actor_destroy`, `zlink_spot_node_create_remote_actor`, `zlink_spot_node_actor_close_bound_session` |
-| STREAM Actor mapping request | `zlink_stream_bind_actor`, `zlink_stream_unbind_actor` |
+| Actor join completion (전용 typedef) | `zlink_spot_node_actor_join_spot` (`zlink_actor_join_handler_fn`) |
+| Actor lookup completion (전용 typedef) | `zlink_remote_actor_get_ref` (`zlink_actor_lookup_handler_fn`) |
+| Actor lifecycle request | `zlink_spot_node_actor_destroy`, `zlink_spot_node_actor_close_bound_session` |
 | Ref 기반 Actor leave | `zlink_spot_node_actor_leave_spot` |
+| STREAM Actor mapping request | `zlink_stream_bind_actor`, `zlink_stream_unbind_actor` |
 
 ---
 
@@ -270,7 +271,7 @@ typedef enum zlink_handler_result_t
 | Send-ready handler | `zlink_send_ready_handler` |
 | Spot handler | `zlink_spot_handler` |
 | Spot dispatch-event handler | `zlink_spot_dispatch_event_handler` |
-| SpotNode Actor admission handler | `zlink_spot_node_actor_admission_handler` |
+| Spot Actor lifecycle handler | `zlink_spot_actor_lifecycle_handler` |
 | Socket monitor handler | `zlink_socket_monitor_handler` |
 | Timer handler | `zlink_timer_handler` |
 
@@ -589,10 +590,10 @@ reply는 이미 진행 중인 request에 대한 응답이라 admission 판정을
 
 | Result enum | 함수 |
 |---|---|
-| `zlink_submit_result_t` | `zlink_send_part`, `zlink_send_part_rid`, `zlink_publish_part`, `zlink_dealer_request_part`, `zlink_router_request_part`, `zlink_router_reply_part`, `zlink_spot_request_channel_part`, `zlink_spot_request_spot_part`, `zlink_spot_request_router_part`, `zlink_router_request_spot_part`, `zlink_spot_send_channel_part`, `zlink_spot_send_spot_part`, `zlink_router_send_spot_part`, `zlink_spot_reply_spot_part`, `zlink_spot_reply_router_part`, `zlink_router_reply_spot_part`, `zlink_spot_node_actor_join_spot`, `zlink_spot_actor_join_reply`, `zlink_stream_send_bound_actor_part`, `zlink_spot_node_actor_send_bound_session_msg` |
-| `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback), `zlink_spot_node_actor_destroy`, `zlink_spot_node_create_remote_actor`, `zlink_spot_node_actor_leave_spot`, `zlink_spot_node_actor_close_bound_session`, `zlink_stream_bind_actor`, `zlink_stream_unbind_actor` |
+| `zlink_submit_result_t` | `zlink_send_part`, `zlink_send_part_rid`, `zlink_publish_part`, `zlink_dealer_request_part`, `zlink_router_request_part`, `zlink_router_reply_part`, `zlink_spot_request_channel_part`, `zlink_spot_request_spot_part`, `zlink_spot_request_router_part`, `zlink_router_request_spot_part`, `zlink_spot_send_channel_part`, `zlink_spot_send_spot_part`, `zlink_router_send_spot_part`, `zlink_spot_reply_spot_part`, `zlink_spot_reply_router_part`, `zlink_router_reply_spot_part`, `zlink_spot_node_actor_join_spot`, `zlink_spot_node_actor_leave_spot`, `zlink_spot_node_actor_destroy`, `zlink_spot_actor_join_reply`, `zlink_stream_bind_actor`, `zlink_stream_unbind_actor`, `zlink_stream_send_bound_actor_part`, `zlink_remote_actor_get_ref`, `zlink_spot_node_actor_send_bound_session_msg` |
+| `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback), `zlink_actor_join_handler_fn` (completion callback), `zlink_actor_lookup_handler_fn` (completion callback), `zlink_spot_node_actor_close_bound_session` |
 | `zlink_recv_result_t` | `zlink_router_recv_part`, `zlink_spot_recv_part`, `zlink_recv_part`, `zlink_subscribe_part`, `zlink_xpub_recv_part`, `zlink_spot_subscribe_part`, `zlink_spot_subscription_event_recv`, `zlink_socket_monitor_recv`, `zlink_timer_recv`, `zlink_spot_node_actor_recv_part`, `zlink_spot_actor_join_recv` |
-| `zlink_handler_result_t` | `zlink_recv_handler` (raw STREAM only), `zlink_stream_packet_handler`, `zlink_send_ready_handler`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_spot_node_actor_admission_handler`, `zlink_socket_monitor_handler`, `zlink_timer_handler` |
+| `zlink_handler_result_t` | `zlink_recv_handler` (raw STREAM only), `zlink_stream_packet_handler`, `zlink_send_ready_handler`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_spot_actor_lifecycle_handler`, `zlink_socket_monitor_handler`, `zlink_timer_handler` |
 | `zlink_close_result_t` | `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_close`, `zlink_monitor_close`, `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_destroy`, `zlink_poller_destroy`, `zlink_timer_destroy` |
 | `zlink_bind_result_t` | `zlink_bind`, `zlink_spot_node_bind`, `zlink_registry_bind` |
 | `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_unbind`, `zlink_spot_node_connect_peer`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid`, `zlink_discovery_connect_registry`, `zlink_registry_query_client_connect` |

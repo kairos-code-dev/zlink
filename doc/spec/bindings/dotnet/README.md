@@ -150,8 +150,6 @@ dispatch is a separate service-layer capability, not a subsection of SPOT.
 
 ```csharp
 public readonly struct ActorRef : IEquatable<ActorRef> { ... }
-public sealed record ActorCreateResult(ActorCreateStatus Status,
-                                       ActorRef Actor);
 public sealed record ActorRoute(ActorRef Actor, bool Joined,
                                 RoutingId? JoinedSpotRid);
 public sealed record ActorRecvInfo(ActorRef Actor, RoutingId SourceNodeRid,
@@ -164,25 +162,44 @@ public sealed record ActorJoinInfo(ActorRef SourceActor,
                                    RoutingId TargetSpotRid,
                                    ulong JoinEpoch,
                                    uint Flags);
+public sealed record ActorJoinResult(RequestResult Result,
+                                     ActorRef Actor,
+                                     RoutingId JoinedSpotRid,
+                                     ulong JoinEpoch,
+                                     uint Flags);
+public sealed record ActorLookupResult(RequestResult Result,
+                                       ActorRef Actor,
+                                       uint Flags);
+public sealed record SpotActorLifecycleInfo(ActorRef PreviousActor,
+                                            ActorRef CurrentActor,
+                                            RoutingId? PreviousSpotRid,
+                                            RoutingId? CurrentSpotRid,
+                                            ulong JoinEpoch,
+                                            uint Flags);
 public sealed record ActorPart(ActorRecvInfo Info, Message Message,
                                bool More);
 public sealed class ActorJoinRequest { ... }
 public sealed class Actor : IDisposable, IAsyncDisposable { ... }
 ```
 
-`SpotNode` exposes Actor factory/lookup, unchecked remote refs, remote
-create-or-get, ref-based destroy/join/leave, admission, and Actor snapshots.
-`Actor` owns handle-based join/leave, destroy, receive, and bound-session
-operations. `Spot` exposes Actor join receive/reply and joined Actor snapshots.
-`StreamSocket` exposes Actor bind/unbind and bound Actor send. `Discovery`
-exposes Actor route resolve.
+`SpotNode` exposes Actor factory/lookup, async remote Actor lookup, async
+ref-based destroy/join/leave, and Actor snapshots. `Actor` owns handle-based
+join/leave, destroy, receive, and bound-session operations. `Spot` exposes
+Actor join receive/reply, Actor lifecycle handler registration, and joined
+Actor snapshots. `StreamSocket` exposes async Actor bind/unbind, bound Actor
+send, and the session attach snapshot (`BoundActors`). `Discovery` exposes
+Actor route resolve.
 
-`Generation == 0` is an unchecked remote ref and is not invalid.
-`SpotNode.RemoteActorRef(nodeRid, actorId)` is the unchecked remote-ref factory.
-The public contract does not expose raw native Actor pointers.
-`ActorJoinRequest` carries only public join metadata and the join message; the
-native reply context stays inside the binding and is consumed by
-`Spot.ReplyActorJoin(...)`.
+`Generation == 0` is an unchecked remote ref and is not invalid. The public
+contract does not expose raw native Actor pointers. `ActorJoinRequest` carries
+only public join metadata and the join message; the native reply context stays
+inside the binding and is consumed by `Spot.ReplyActorJoin(...)`. There is no
+remote-Actor create API and no admission handler; an Actor that must originate
+on a remote node is created on that SpotNode directly via `CreateActor`. A
+checked ref for an existing remote Actor is obtained asynchronously via
+`SpotNode.RemoteActorGetRef(...)`. **A bound STREAM session is not required to
+join a user Spot** — Actor location and session attach are independent state
+transitions.
 
 ## Out Of Scope
 
@@ -326,19 +343,13 @@ void Disconnect(string address);
 /// <exception cref="ZlinkConnectException"/>
 void DisconnectRid(RoutingId rid);
 
-// Available on MessageSocketBase
-/// <exception cref="ZlinkSubmitException"/>
-bool Send(Message message, SendFlags flags = SendFlags.None);
-/// <exception cref="ZlinkSubmitException"/>
-bool Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+// Available on MessageSocketBase (operation builder)
+SendOperation Send();
 /// <exception cref="ZlinkRecvException"/>
 bool Recv(Received result, RecvFlags flags = RecvFlags.None);
 
-// Available on PublisherSocketBase
-/// <exception cref="ZlinkSubmitException"/>
-bool Publish(string topic, Message message, SendFlags flags = SendFlags.None);
-/// <exception cref="ZlinkSubmitException"/>
-bool Publish(string topic, IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+// Available on PublisherSocketBase (operation builder)
+SendOperation Publish(string topic);
 
 // Available on SubscriberSocketBase
 /// <exception cref="ZlinkConfigException"/>
@@ -350,11 +361,8 @@ SubscriptionEntry? SubscriptionAt(int index);
 /// <exception cref="ZlinkRecvException"/>
 TopicMessage? Subscribe(RecvFlags flags = RecvFlags.None);
 
-// Available on RoutedMessageSocketBase
-/// <exception cref="ZlinkSubmitException"/>
-bool Send(RoutingId routingId, Message message, SendFlags flags = SendFlags.None);
-/// <exception cref="ZlinkSubmitException"/>
-bool Send(RoutingId routingId, IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+// Available on RoutedMessageSocketBase (operation builder)
+SendOperation Send(RoutingId routingId);
 /// <exception cref="ZlinkRecvException"/>
 bool Recv(Received result, RecvFlags flags = RecvFlags.None);
 
@@ -363,9 +371,10 @@ bool Recv(Received result, RecvFlags flags = RecvFlags.None);
 void OnSendReady(Action handler);
 ```
 
-`Send(...)` and `Publish(...)` return `false` only for temporary backpressure
-when `SendFlags.DontWait` is used. Blocking submit returns `true` on success.
-Route-not-ready and other submit failures still raise `ZlinkSubmitException`.
+`Send().Message(...).Submit()` and `Publish(topic).Message(...).Submit()` return
+`false` only for temporary backpressure when `.Flags(SendFlags.DontWait)` was
+configured. Blocking submit returns `true` on success. Route-not-ready and
+other submit failures still raise `ZlinkSubmitException`.
 
 `Recv(Received result, RecvFlags flags)` on `MessageSocketBase` and
 `RoutedMessageSocketBase` is the canonical caller-provided-storage recv shape
@@ -579,40 +588,12 @@ public sealed class DealerSocket : MessageSocketBase
     /// <exception cref="ZlinkConfigException"/>
     string GetChannelName();
 
-    // --- request (Task, blocking submit, no flags) ---
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> Request(Message part, CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> Request(Message part, TimeSpan timeout,
-                                         CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> Request(IReadOnlyList<Message> parts,
-                                         CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> Request(IReadOnlyList<Message> parts, TimeSpan timeout,
-                                         CancellationToken ct = default);
-
-    // --- request (callback submit) ---
-    // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
-    // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool Request(Message part,
-                 RequestCallback callback,
-                 SendFlags flags = SendFlags.None,
-                 TimeSpan? timeout = null);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool Request(IReadOnlyList<Message> parts,
-                 RequestCallback callback,
-                 SendFlags flags = SendFlags.None,
-                 TimeSpan? timeout = null);
+    // --- request (operation builder) ---
+    RequestOperation Request();
 }
 ```
 
-`DealerSocket.Request(...)` requires every connected peer to be a ROUTER. If a
+`DealerSocket.Request()` requires every connected peer to be a ROUTER. If a
 Dealer is connected to a mixture of ROUTER and DEALER peers, request can fail.
 The binding does not try to infer or validate peer socket types at runtime; the
 application is responsible for keeping this topology valid.
@@ -636,92 +617,21 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase
     /// <exception cref="ZlinkConfigException"/>
     void AttachDiscovery(Discovery discovery);
 
-    // --- request (Task, blocking submit, no flags) ---
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> Request(RoutingId peerRid, Message part,
-                                         CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> Request(RoutingId peerRid, Message part, TimeSpan timeout,
-                                         CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> Request(RoutingId peerRid, IReadOnlyList<Message> parts,
-                                         CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> Request(RoutingId peerRid, IReadOnlyList<Message> parts,
-                                         TimeSpan timeout, CancellationToken ct = default);
+    // --- request to a specific peer (operation builder) ---
+    RequestOperation Request(RoutingId peerRid);
 
-    // --- request (callback submit) ---
-    // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
-    // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool Request(RoutingId peerRid, Message part,
-                 RequestCallback callback,
-                 SendFlags flags = SendFlags.None,
-                 TimeSpan? timeout = null);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool Request(RoutingId peerRid, IReadOnlyList<Message> parts,
-                 RequestCallback callback,
-                 SendFlags flags = SendFlags.None,
-                 TimeSpan? timeout = null);
+    // --- reply (operation builder) ---
+    ReplyOperation Reply(RoutingId rid, ulong requestSeq);
 
-    // --- reply ---
-    /// <exception cref="ZlinkSubmitException"/>
-    void Reply(RoutingId rid, ulong requestSeq, Message message,
-               SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    void Reply(RoutingId rid, ulong requestSeq, IReadOnlyList<Message> parts,
-               SendFlags flags = SendFlags.None);
+    // --- router -> spot routed send (operation builder) ---
+    SendOperation SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
 
-    // --- router -> spot routed send ---
-    /// <exception cref="ZlinkSubmitException"/>
-    bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message message,
-                    SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                    IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+    // --- router -> spot routed request (operation builder) ---
+    RequestOperation RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
 
-    // --- router -> spot routed request (Task, blocking submit, no flags) ---
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                                               Message message, TimeSpan timeout = default,
-                                               CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed (timeout, peer terminated, etc.).</exception>
-    Task<IReadOnlyList<Message>> RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                                               IReadOnlyList<Message> parts,
-                                               TimeSpan timeout = default,
-                                               CancellationToken ct = default);
-
-    // --- router -> spot routed request (callback submit) ---
-    // Callback receives a RequestResult for the reply phase (see ZlinkRequestException / RequestResult).
-    // The reply payload is delivered as an IReadOnlyList<Message> (empty list on failure).
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       Message message,
-                       RequestCallback callback,
-                       SendFlags flags = SendFlags.None,
-                       TimeSpan? timeout = null);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool RequestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                       IReadOnlyList<Message> parts,
-                       RequestCallback callback,
-                       SendFlags flags = SendFlags.None,
-                       TimeSpan? timeout = null);
-
-    // --- router -> spot routed reply ---
-    /// <exception cref="ZlinkSubmitException"/>
-    void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     ulong requestSeq, Message message,
-                     SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    void ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     ulong requestSeq, IReadOnlyList<Message> parts,
-                     SendFlags flags = SendFlags.None);
+    // --- router -> spot routed reply (operation builder) ---
+    ReplyOperation ReplyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                               ulong requestSeq);
 
     // RouterSocket has one routed receive surface. Recv receives both regular
     // ROUTER traffic and spot-origin routed traffic. Received.RoutingId carries
@@ -782,19 +692,17 @@ public sealed class StreamSocket : RoutedMessageSocketBase
     /// <exception cref="ZlinkHandlerException"/>
     void OnPacket(StreamPacketHandler handler);
 
-    /// <exception cref="ZlinkRequestException"/>
-    void BindActor(SpotNode node, RoutingId sessionRid, ActorRef actor,
-                   TimeSpan timeout = default);
-    /// <exception cref="ZlinkRequestException"/>
-    void UnbindActor(SpotNode node, RoutingId sessionRid, string actorId,
-                     TimeSpan timeout = default);
-    /// <exception cref="ZlinkSubmitException"/>
-    bool SendBoundActor(SpotNode node, RoutingId sessionRid, string actorId,
-                        Message message, SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    bool SendBoundActor(SpotNode node, RoutingId sessionRid, string actorId,
-                        IReadOnlyList<Message> parts,
-                        SendFlags flags = SendFlags.None);
+    /// Async Actor bind (operation builder). The stream is bound to its
+    /// session-owner SpotNode at attach time; no SpotNode argument is
+    /// required here. A bind does not require nor imply a Spot join.
+    ActorBindOperation BindActor(RoutingId sessionRid, ActorRef actor);
+    /// Async Actor unbind (operation builder).
+    ActorUnbindOperation UnbindActor(RoutingId sessionRid, string actorId);
+    /// Session-bound relay send (operation builder).
+    SendOperation SendBoundActor(RoutingId sessionRid, string actorId);
+    /// Snapshot of Actor refs attached to the given session (local mapping only).
+    /// <exception cref="ZlinkConfigException"/>
+    IReadOnlyList<ActorRef> BoundActors(RoutingId sessionRid);
 }
 ```
 
@@ -1252,18 +1160,15 @@ public sealed class Received : IDisposable
     /// <exception cref="ZlinkRecvException"/>
 	    Message SinglePartOrThrow();
 
-	    // Send a regular routed message to the sender of this Received.
-	    /// <exception cref="ZlinkSubmitException"/>
-	    bool Send(Message part, SendFlags flags = SendFlags.None);
-	    /// <exception cref="ZlinkSubmitException"/>
-	    bool Send(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+    // Send a regular routed message back to the sender of this Received
+    // (operation builder). Source rid / spot rid are encapsulated.
+    SendOperation Send();
 
-	    // Reply requires a non-null RequestSeq. A null or invalid reply context
-    // raises ZlinkSubmitException.
-    /// <exception cref="ZlinkSubmitException"/>
-    void Reply(Message part, SendFlags flags = SendFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    void Reply(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+    // Reply to this received request (operation builder). Valid only when
+    // RequestSeq is non-null; otherwise Submit() raises ZlinkSubmitException
+    // for invalid reply context. RoutingId / SpotRid / RequestSeq are
+    // encapsulated.
+    ReplyOperation Reply();
 
     /// <exception cref="ZlinkCloseException"/>
     void Dispose();
@@ -1328,11 +1233,6 @@ public readonly struct ActorRef : IEquatable<ActorRef>
     bool IsUnchecked { get; }
 }
 
-public enum ActorCreateStatus { Created = 1, Existing = 2 }
-public enum ActorAdmissionResult { Accept = 1, Reject = 2 }
-
-public sealed record ActorCreateResult(ActorCreateStatus Status,
-                                       ActorRef Actor);
 public sealed record ActorRoute(ActorRef Actor, bool Joined,
                                 RoutingId? JoinedSpotRid);
 public sealed record ActorRecvInfo(ActorRef Actor,
@@ -1347,6 +1247,20 @@ public sealed record ActorJoinInfo(ActorRef SourceActor,
                                    RoutingId TargetSpotRid,
                                    ulong JoinEpoch,
                                    uint Flags);
+public sealed record ActorJoinResult(RequestResult Result,
+                                     ActorRef Actor,
+                                     RoutingId JoinedSpotRid,
+                                     ulong JoinEpoch,
+                                     uint Flags);
+public sealed record ActorLookupResult(RequestResult Result,
+                                       ActorRef Actor,
+                                       uint Flags);
+public sealed record SpotActorLifecycleInfo(ActorRef PreviousActor,
+                                            ActorRef CurrentActor,
+                                            RoutingId? PreviousSpotRid,
+                                            RoutingId? CurrentSpotRid,
+                                            ulong JoinEpoch,
+                                            uint Flags);
 public sealed record ActorPart(ActorRecvInfo Info, Message Message,
                                bool More);
 public sealed class ActorJoinRequest
@@ -1366,28 +1280,26 @@ public sealed record SpotNodeActorEntry(ActorRef Actor, bool Joined,
                                         uint PendingMessageCount,
                                         ulong LastChangedMs);
 
-public delegate ActorAdmissionResult ActorAdmissionHandler(string actorId,
-                                                           Message message);
+public delegate void ActorJoinHandler(ActorJoinResult result,
+                                      IReadOnlyList<Message> replyParts);
+public delegate void ActorLookupHandler(ActorLookupResult result);
+public delegate void ActorLifecycleHandler(Spot spot,
+                                           SpotActorLifecycleInfo info);
 
 public sealed class Actor : IDisposable, IAsyncDisposable
 {
     ActorRef Ref { get; }
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed.</exception>
-    Task<IReadOnlyList<Message>> Join(Spot spot, Message message,
-                                      TimeSpan timeout = default,
-                                      CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool Join(Spot spot, Message message,
-              RequestCallback callback,
-              SendFlags flags = SendFlags.None,
-              TimeSpan? timeout = null);
-    /// <exception cref="ZlinkRequestException"/>
-    void Leave(Spot spot, TimeSpan timeout = default);
+    /// Async user-Spot join (operation builder). Completion delivers the
+    /// final <see cref="ActorJoinResult"/> and reply parts. <paramref name="spot"/>
+    /// must be a user Spot. A bound STREAM session is NOT required.
+    ActorJoinOperation Join(Spot spot);
+    /// Async leave to the same node's Entry Spot (operation builder).
+    ActorLeaveOperation Leave(Spot spot);
     /// <exception cref="ZlinkRecvException"/>
     ActorPart? RecvPart(RecvFlags flags = RecvFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    bool SendBoundSession(Message message, SendFlags flags = SendFlags.None);
+    /// Actor-to-session relay (operation builder). Multipart payload
+    /// accumulates through <c>.Message(...)</c>.
+    SendOperation SendBoundSession();
     /// <exception cref="ZlinkRequestException"/>
     void CloseBoundSession(TimeSpan timeout = default);
     /// <exception cref="ZlinkRequestException"/>
@@ -1406,12 +1318,13 @@ parts. There is no public per-Actor queue limit option.
 `ActorJoinRequest` keeps the reply context opaque: callers can inspect
 `Info` and `Message`, but `Spot.ReplyActorJoin(...)` receives the request
 object so the binding can use the native context without exposing it.
-`CreateRemoteActor(...)` is create-or-get: the remote admission handler is
-called only when the target Actor does not already exist. Discovery Actor
-routes become active when a STREAM session bind succeeds, not when an Actor is
-created. `Actor.Close(...)` destroys the local Actor handle. `SpotNode`
-also exposes ref-based `DestroyActor(...)`, `JoinActor(...)`, and
-`LeaveActor(...)` methods for callers that hold only an `ActorRef`.
+The Discovery Actor active route becomes visible at **user Spot join**
+success commit, and is updated to the Entry Spot location when an explicit
+leave succeeds; STREAM session bind/unbind does not affect the active route.
+`Actor.Close(...)` destroys the local Actor handle. `SpotNode` also exposes
+ref-based async `DestroyActor(...)`, `JoinActor(...)`, and `LeaveActor(...)`
+methods for callers that hold only an `ActorRef`. `RemoteActorGetRef(...)` is
+an async lookup that returns a checked ref for an Actor on a remote node.
 
 ### SpotDispatchEvent
 
@@ -1836,34 +1749,24 @@ public sealed class SpotNode : IDisposable, IAsyncDisposable
     Actor CreateActor(string actorId);
     /// <exception cref="ZlinkConfigException"/>
     ActorRef ActorLookup(string actorId);
-    /// <exception cref="ZlinkConfigException"/>
-    static ActorRef RemoteActorRef(RoutingId targetNodeRid, string actorId);
-    /// <exception cref="ZlinkRequestException"/>
-    ActorCreateResult CreateRemoteActor(RoutingId targetNodeRid,
-                                        string actorId,
-                                        Message message,
-                                        TimeSpan timeout = default);
-    /// <exception cref="ZlinkRequestException"/>
-    void DestroyActor(ActorRef actor, TimeSpan timeout = default);
-    /// <exception cref="ZlinkHandlerException"/>
-    void OnActorAdmission(ActorAdmissionHandler handler);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    /// <exception cref="ZlinkRequestException">Reply phase failed.</exception>
-    Task<IReadOnlyList<Message>> JoinActor(ActorRef actor,
-                                           RoutingId destNodeRid,
-                                           RoutingId destSpotRid,
-                                           Message message,
-                                           TimeSpan timeout = default,
-                                           CancellationToken ct = default);
-    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
-    bool JoinActor(ActorRef actor, RoutingId destNodeRid,
-                   RoutingId destSpotRid, Message message,
-                   RequestCallback callback,
-                   SendFlags flags = SendFlags.None,
-                   TimeSpan? timeout = null);
-    /// <exception cref="ZlinkRequestException"/>
-    void LeaveActor(ActorRef actor, RoutingId currentSpotRid,
-                    TimeSpan timeout = default);
+    /// Async remote Actor lookup (operation builder). Completion delivers
+    /// <see cref="ActorLookupResult"/> (checked ref on success).
+    ActorLookupOperation RemoteActorGetRef(RoutingId targetNodeRid, string actorId);
+    /// Async destroy (operation builder). Succeeds only while the Actor is
+    /// in the Entry Spot.
+    ActorDestroyOperation DestroyActor(ActorRef actor);
+    /// Async user-Spot join (operation builder). Completion delivers
+    /// <see cref="ActorJoinResult"/> (final Actor ref, joined Spot rid,
+    /// join_epoch) plus reply parts. <paramref name="destSpotRid"/> must be a
+    /// user Spot. A bound STREAM session is NOT required. Multipart join
+    /// state payload accumulates through <c>.Message(...)</c>.
+    ActorJoinOperation JoinActor(ActorRef actor, RoutingId destNodeRid,
+                                 RoutingId destSpotRid);
+    /// Async leave to the same node's Entry Spot (operation builder).
+    ActorLeaveOperation LeaveActor(ActorRef actor, RoutingId currentSpotRid);
+    /// Actor-to-session relay (operation builder). Fire-and-forget reverse
+    /// send through the bound STREAM session.
+    SendOperation SendBoundSessionMsg(ActorRef actor);
 
     // Close/Dispose cascades through live Spot handles before closing the node.
     /// <exception cref="ZlinkCloseException"/>
@@ -1944,12 +1847,20 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     /// <exception cref="ZlinkHandlerException"/>
     void OnDispatchEvent(Action<SpotDispatchInfo> handler);
 
-    // --- actor join / snapshot ---
+    // --- actor join / snapshot / lifecycle ---
     /// <exception cref="ZlinkRecvException"/>
     ActorJoinRequest? RecvActorJoin(RecvFlags flags = RecvFlags.None);
-    /// <exception cref="ZlinkSubmitException"/>
-    void ReplyActorJoin(ActorJoinRequest request, bool accepted,
-                        Message message);
+    /// Reply to an Actor join admission request (operation builder).
+    /// Multipart reply payload accumulates through <c>.Message(...)</c>; a
+    /// zero-message <c>Submit()</c> is allowed.
+    ActorJoinReplyOperation ReplyActorJoin(ActorJoinRequest request, bool accepted);
+    /// Register Actor lifecycle callbacks for this Spot. <paramref name="onJoin"/>
+    /// fires after an Actor enters this Spot; <paramref name="onLeave"/> fires
+    /// after an Actor leaves. Passing <c>null</c> for both removes the
+    /// registration.
+    /// <exception cref="ZlinkHandlerException"/>
+    void OnActorLifecycle(ActorLifecycleHandler? onJoin,
+                          ActorLifecycleHandler? onLeave);
     /// <exception cref="ZlinkConfigException"/>
     ActorRef[] ActorsSnapshot();
 
@@ -2011,6 +1922,86 @@ public interface ReplySubmitOperation
     ReplySubmitOperation Flags(SendFlags flags);
     /// <exception cref="ZlinkSubmitException"/>
     void Submit();
+}
+
+// --- Actor operation builders ---
+
+// SpotNode.JoinActor(...) / Actor.Join(spot) return ActorJoinOperation.
+// Multipart join state payload is mandatory; the staged shape moves to
+// ActorJoinSubmitOperation only after the first Message(...).
+public interface ActorJoinOperation
+{
+    ActorJoinSubmitOperation Message(Message message);
+}
+
+public interface ActorJoinSubmitOperation
+{
+    ActorJoinSubmitOperation Message(Message message);
+    ActorJoinSubmitOperation Timeout(TimeSpan timeout);
+    ActorJoinCallbackSubmitOperation Flags(SendFlags flags);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    /// <exception cref="ZlinkRequestException">Reply phase failed.</exception>
+    Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> SubmitAsync(
+        CancellationToken ct = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool Submit(ActorJoinHandler callback);
+}
+
+public interface ActorJoinCallbackSubmitOperation
+{
+    ActorJoinCallbackSubmitOperation Message(Message message);
+    ActorJoinCallbackSubmitOperation Timeout(TimeSpan timeout);
+    ActorJoinCallbackSubmitOperation Flags(SendFlags flags);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool Submit(ActorJoinHandler callback);
+}
+
+// Spot.ReplyActorJoin(request, accepted) returns ActorJoinReplyOperation.
+// Multipart reply payload is optional; Submit() is visible directly.
+public interface ActorJoinReplyOperation
+{
+    ActorJoinReplyOperation Message(Message message);
+    /// <exception cref="ZlinkSubmitException"/>
+    void Submit();
+}
+
+// Payload-less Actor operation builders.
+public interface ActorLeaveOperation
+{
+    ActorLeaveOperation Timeout(TimeSpan timeout);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    /// <exception cref="ZlinkRequestException">Reply phase failed.</exception>
+    Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
+    /// <exception cref="ZlinkSubmitException">Submit phase failed.</exception>
+    bool Submit(ReplyHandler callback);
+}
+
+public interface ActorDestroyOperation
+{
+    ActorDestroyOperation Timeout(TimeSpan timeout);
+    Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
+    bool Submit(ReplyHandler callback);
+}
+
+public interface ActorLookupOperation
+{
+    ActorLookupOperation Timeout(TimeSpan timeout);
+    Task<ActorLookupResult> SubmitAsync(CancellationToken ct = default);
+    bool Submit(ActorLookupHandler callback);
+}
+
+public interface ActorBindOperation
+{
+    ActorBindOperation Timeout(TimeSpan timeout);
+    Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
+    bool Submit(ReplyHandler callback);
+}
+
+public interface ActorUnbindOperation
+{
+    ActorUnbindOperation Timeout(TimeSpan timeout);
+    Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
+    bool Submit(ReplyHandler callback);
 }
 ```
 
@@ -2606,13 +2597,13 @@ updated in the same change.
 | Raw send and recv | `zlink_send_part`, `zlink_send_part_rid`, `zlink_recv_part` | `Send(...)`, routed `Send(...)`, `Recv(...)`, `Received` |
 | Raw request and reply | `zlink_dealer_request_part`, `zlink_router_request_part`, `zlink_router_reply_part`, `zlink_router_recv_part` | `DealerSocket.Request*`, `RouterSocket.Request*`, `RouterSocket.Reply`, `RouterSocket.Recv` |
 | Pub/sub | `zlink_publish_part`, `zlink_subscribe_part`, `zlink_xpub_recv_part`, `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at` | `Publish(...)`, `Subscribe(...)`, `ReceiveSubscriptionEvent(...)`, subscription methods, topic-count/subscription introspection |
-| STREAM and actor bridge | `zlink_stream_packet_handler`, `zlink_stream_bind_actor`, `zlink_stream_unbind_actor`, `zlink_stream_send_bound_actor_part`; `zlink_recv_handler` is internal-only | `StreamSocket.OnPacket`, `StreamSocket.Recv`, `BindActor`, `UnbindActor`, `SendBoundActor` |
+| STREAM and actor bridge | `zlink_stream_packet_handler`, `zlink_stream_bind_actor` (async), `zlink_stream_unbind_actor` (async), `zlink_stream_send_bound_actor_part`, `zlink_stream_bound_actors`; `zlink_recv_handler` is internal-only | `StreamSocket.OnPacket`, `StreamSocket.Recv`, `BindActor`, `UnbindActor`, `SendBoundActor`, `BoundActors` |
 | Send-ready callbacks | `zlink_send_ready_handler` | `OnSendReady(...)` on send-capable handles |
 | Socket monitoring | `zlink_socket_monitor_open`, `zlink_socket_monitor_handler`, `zlink_socket_monitor_recv`, `zlink_monitor_snapshot`, `zlink_monitor_close`, `zlink_monitor_ignore_handler` | `SocketMonitor`, `MonitorEvent`, `MonitorSnapshot`, `SocketMonitor.IgnoreHandler` |
 | Registry and Discovery | `zlink_registry_*`, `zlink_discovery_*`, `zlink_registry_query_*`, `zlink_set_tls_server`, `zlink_set_tls_client` on service handles | `Registry`, `Discovery`, `RegistryQueryClient`, service entry/filter records, service TLS methods |
 | SPOT node topology | `zlink_spot_node_new`, `zlink_spot_node_destroy`, `zlink_spot_node_bind`, peer connect/disconnect, discovery/channel attachments, publish-ingress attachment, entry spot, spot lookup, snapshots, `zlink_set_spot_node_option`, `zlink_get_spot_node_option` | `SpotNode`, `SpotNodeMode`, attachment APIs including `AttachPubIngress`, snapshot/query APIs, `CreateSpot`, `EntrySpot`, `SpotLookup`, `DisconnectPeerRid` |
 | SPOT messaging | `zlink_spot_new`, `zlink_spot_destroy`, `zlink_spot_send_channel_part`, `zlink_spot_publish_part`, `zlink_spot_subscribe_part`, `zlink_spot_subscription_event_recv`, `zlink_spot_request_*_part`, `zlink_spot_send_spot_part`, `zlink_spot_reply_*_part`, `zlink_spot_recv_part`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_spot_channel_reply_progress_from`, `zlink_set_spot_option`, `zlink_get_spot_option` | `Spot`, direct request-timeout property, channel send/request, SPOT topic publish/subscribe, routed send/request/reply/recv, dispatch callbacks, internal channel reply progress |
-| SPOT actor lifecycle | `zlink_spot_node_actor_*`, `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_remote_actor_get_ref`, `zlink_spot_actors_snapshot` | `Actor`, `ActorRef`, `ActorCreateResult`, join/leave/create/destroy/admission APIs, actor receive/send/bound-session APIs, actor snapshots |
+| SPOT actor lifecycle | `zlink_spot_node_actor_*`, `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_spot_actor_lifecycle_handler`, `zlink_remote_actor_get_ref` (async), `zlink_spot_actors_snapshot` | `Actor`, `ActorRef`, `ActorJoinResult`, `ActorLookupResult`, `SpotActorLifecycleInfo`, async join/leave/destroy/remote-lookup APIs, actor receive/send/bound-session APIs, `Spot.OnActorLifecycle`, actor snapshots |
 | Polling and timers | `zlink_poll`, `zlink_poller_*`, `zlink_timer_*`, `zlink_spot_timer_new` | `Poller`, `PollEvent`, `Timer`; legacy array `zlink_poll` is intentionally not exposed |
 | Utilities | `zlink_proxy`, `zlink_proxy_steerable`, `zlink_multipart_close`, `zlink_sleep`, `zlink_stopwatch_*`, `zlink_thread_*`, `zlink_atomic_counter_*` | `Zlink.Proxy`, `Zlink.ProxySteerable`, `Zlink.MultipartClose`, `Zlink.Sleep(TimeSpan)`, `ZlinkStopwatch`, `ZlinkThread`, `AtomicCounter` |
 

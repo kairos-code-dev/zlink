@@ -573,11 +573,45 @@ preserves part order within the same Actor.
 
 ### 9.3 Active route publish
 
-The Actor active route is not published when the Actor is created or when it
-joins a Spot. It is published when the Actor owner SpotNode's Discovery has
-actor route sync enabled and a `zlink_stream_bind_actor()` call succeeds.
-Unbind and session disconnect cleanup do not remove the active route. When the
-Actor that the active route points to is destroyed, route cleanup is performed.
+The Actor active route is not published when the Actor is created or when a
+STREAM session is bound. It is published at the **user Spot join success
+commit** and is updated to the Entry Spot location when an explicit leave
+moves the Actor from a user Spot back to the Entry Spot. Session bind and
+unbind do not publish or remove the active route. When the Actor named by an
+active route is destroyed, the route is removed; when a destroy targets an
+Actor of a different generation than the one in the route, the route is
+preserved. These updates become Registry-visible when the owning `SpotNode`'s
+Discovery has `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` enabled and is connected
+to the Registry.
+
+### 9.4 Actor lifecycle callback
+
+Spot lifecycle callbacks registered via `zlink_spot_actor_lifecycle_handler()`
+run on the dispatch worker context after the actual location change has
+committed and the active route update is complete. Both Entry Spot and user
+Spot can receive them. The same Spot's dispatch callback and lifecycle
+callback never execute concurrently. Registration does not replay Actors that
+were already in the Spot.
+
+| Trigger | Callback | `previous_actor` | `current_actor` |
+|---------|----------|------------------|-----------------|
+| Actor creation | Entry Spot `on_join` | zero-value ref | newly created ref |
+| User Spot join success | target Spot `on_join` (+ source Spot `on_leave`) | source ref | target ref |
+| Explicit leave success | source user Spot `on_leave` + Entry Spot `on_join` | same ref | same ref |
+| Destroy success | current Spot `on_leave` | destroyed ref | zero-value ref |
+| Idempotent join / idempotent leave | none | — | — |
+
+`zlink_spot_actor_lifecycle_info_t.join_epoch` is the commit epoch of the
+slot named by `current_actor` for `on_join`, and by `previous_actor` for
+`on_leave`. In a remote join the source `on_leave`, target `on_join`, and join
+completion may carry epoch values from different SpotNodes.
+
+The `info` pointer is valid only inside the callback; copy values inside the
+callback if needed later. The join completion handler runs after commit, but
+the public contract does not guarantee whether the lifecycle callback has
+already executed. The application state machine relies on the join completion
+handler's final Actor ref, not on the lifecycle callback, to decide that a
+join has finished.
 
 ## 10. Entry Spot and Spot queue ownership
 
@@ -657,7 +691,7 @@ sequenceDiagram
   Stream->>Node: stream callback(session_rid)
   Node->>List: bind actor_ref
   List->>ActorObj: attach bound session ref
-  Node->>Node: publish active route on bind success
+  Note over Node: bind does not publish active route<br/>(route is published at user Spot join)
 
   Node->>List: relay to actor_id
   List->>ActorObj: resolve local actor
@@ -693,7 +727,7 @@ sequenceDiagram
   ActorNode->>ActorObj: attach bound session ref
   ActorNode-->>SessNode: bind OK
   SessNode->>List: store actor_ref
-  ActorNode->>ActorNode: publish active route on bind success
+  Note over ActorNode: bind does not publish active route<br/>(route is published at user Spot join)
 
   SessNode->>List: relay to actor_id
   List-->>SessNode: actor_ref
@@ -876,9 +910,12 @@ For STREAM session binding flow see section 12. For the public join contract see
 ### 14.1 Local join internal sequence
 
 Local join only changes `current Spot` within the same `SpotNode`. The source Spot
-remains the Actor's `current Spot` until accept. The accept step and `current Spot`
-swap execute in the same `SpotNode` critical section or event-loop turn. Joining a
-non-Entry user Spot requires the source Actor to have a bound STREAM session ref.
+remains the Actor's `current Spot` until accept. Accept handling, `current Spot`
+swap, active route update, and lifecycle callback scheduling all execute in the
+same `SpotNode` critical section or event-loop turn. Bound STREAM session ref is
+not a precondition for join — Actor location and session attach are independent
+state transitions. The `dest_spot_rid` must be a user Spot; passing the Entry
+Spot rid fails immediately as invalid-argument-class.
 
 ```mermaid
 sequenceDiagram
@@ -889,7 +926,6 @@ sequenceDiagram
   participant Target as Target Spot
 
   Caller->>Node: join_spot(actor_ref, node_rid, target_spot, state)
-  Node->>ActorObj: validate bound session ref unless target Entry
   Node->>ActorObj: open join_epoch
   Note over ActorObj,Source: current spot remains Source
   Node->>Target: enqueue ACTOR_JOIN_READABLE
@@ -951,7 +987,6 @@ sequenceDiagram
   Caller->>CallerNode: join_spot(actor_ref, target_node, target_spot)
   CallerNode->>SourceNode: begin join handoff
   SourceNode->>SourceNode: create JoinOp with reply path
-  SourceNode->>SourceActor: validate bound session ref
   SourceNode->>SourceActor: open join_epoch
   Note over SourceActor,SourceSpot: source remains active until commit
   SourceNode->>TargetNode: prepare remote join with state

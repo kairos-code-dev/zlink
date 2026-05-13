@@ -105,7 +105,6 @@ Python exposes Actor dispatch through public `zlink` package symbols only.
 
 ```python
 class ActorRef: ...
-class ActorCreateResult: ...
 class ActorRoute: ...
 class ActorRecvInfo: ...
 class ActorJoinInfo: ...
@@ -114,26 +113,29 @@ class ActorJoinRequest: ...
 class SpotNodeSpotEntry: ...
 class SpotNodeActorEntry: ...
 class Actor: ...
-
-def remote_actor_ref(target_node_rid, actor_id): ...
+class ActorJoinResult: ...
+class ActorLookupResult: ...
+class SpotActorLifecycleInfo: ...
 ```
 
-`SpotNode` exposes `actor`, `actor_lookup`, `create_remote_actor`,
-`destroy_actor`, `on_actor_admission`, `join_actor`, `leave_actor`,
+`SpotNode` exposes `actor`, `actor_lookup`, `remote_actor_get_ref` (async),
+`destroy_actor` (async), `join_actor` (async), `leave_actor` (async),
 `spots_snapshot`, and `actors_snapshot`. `Spot` exposes `recv_actor_join`,
-`reply_actor_join`, and `actors_snapshot`. `StreamSocket` exposes
-`bind_actor`, `unbind_actor`, and `send_bound_actor`. `Discovery` exposes
-`resolve_actor`.
+`reply_actor_join`, `on_actor_lifecycle`, and `actors_snapshot`.
+`StreamSocket` exposes `bind_actor` (async), `unbind_actor` (async),
+`send_bound_actor`, and `bound_actors`. `Discovery` exposes `resolve_actor`.
 
 `ActorRef.generation == 0` is an unchecked remote ref. Actor creation places
 the Actor in the Entry Spot. The application cannot remove the Entry Spot.
 Actor IDs are non-empty UTF-8 strings up to 255 bytes and must not contain NUL.
-Leaving a Spot does not drain unread Actor messages. Remote actor creation is
-create-or-get: the admission callback runs only when the target actor is missing.
-Joining a user Spot requires a bound STREAM session. One Actor can join only
-one Spot at a time, and a STREAM session can bind multiple Actors. Actor
-readable dispatch uses a callback-lifetime ActorRef subject, not a native
-Actor pointer.
+Leaving a Spot does not drain unread Actor messages. There is no remote-Actor
+create API and no admission handler; Actors that must originate on a remote
+node are created on that SpotNode directly via `actor`. `remote_actor_get_ref`
+is an async lookup that returns a checked ref. **A bound STREAM session is
+not required to join a user Spot** — Actor location and session attach are
+independent state transitions. One Actor can join only one Spot at a time, and
+a STREAM session can bind multiple Actors. Actor readable dispatch uses a
+callback-lifetime ActorRef subject, not a native Actor pointer.
 
 ## Core
 
@@ -225,8 +227,10 @@ All sockets support `with` / `async with` context managers.
 
 Python nonblocking data-plane helpers follow this rule:
 
-- `send(...)` and `publish(...)` return `False` only for temporary
-  backpressure when `flags` includes `DONTWAIT`.
+- Operation builder submits — `send().message(...).submit()`,
+  `publish(topic).message(...).submit()`, and other builder paths — return
+  `False` only for temporary backpressure when `DONTWAIT` has been
+  configured via the builder's `.flags(...)` stage.
 - Blocking submit returns `True` on success. Route-not-ready and other submit
   failures still raise `SubmitError`.
 - `recv(...)`, `subscribe(...)`, `receive_subscription_event(...)`,
@@ -253,7 +257,8 @@ class PairSocket:
     def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
     def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
-    def send(self, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    # Send (operation builder).
+    def send(self) -> SendOp: ...
     # Deprecated: allocates a fresh Received per call. Prefer recv_into.
     def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
     # Canonical caller-provided storage recv. See doc/spec/bindings/README.md.
@@ -277,7 +282,8 @@ class PubSocket:
     def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
     def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
-    def publish(self, topic: str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    # Publish (operation builder).
+    def publish(self, topic: str) -> SendOp: ...
     def on_send_ready(self, handler: Callable[[PubSocket], None]) -> None: ...   # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
@@ -324,7 +330,8 @@ class DealerSocket:
     def get_routing_id(self) -> RoutingId | None: ...                              # Raises: ConfigError
     def set_channel_name(self, channel_name: str) -> None: ...                     # Raises: ConfigError
     def get_channel_name(self) -> str: ...                                         # Raises: ConfigError
-    def send(self, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    # Send (operation builder).
+    def send(self) -> SendOp: ...
     # Deprecated: allocates a fresh Received per call. Prefer recv_into.
     def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
     # Canonical caller-provided storage recv. See doc/spec/bindings/README.md.
@@ -333,22 +340,8 @@ class DealerSocket:
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                  # Raises: ConfigError
 
-    # --- request (async) — no flags ---
-    # timeout = 0 uses the socket default timeout.
-    # Raises: SubmitError on submit failure; RequestError on request completion failure.
-    async def request(self, payload: Message | bytes | list,
-                      *, timeout: int = 0) -> list[Message]: ...
-
-    # --- request (callback submit) ---
-    # timeout = 0 uses the socket default timeout.
-    # Returns False only for temporary backpressure when flags includes DONTWAIT.
-    # Raises: SubmitError on submit failure other than temporary backpressure.
-    # Callback receives RequestResult;
-    #   non-OK indicates request-completion failure (RequestError semantics).
-    # Callback receives an empty list on failure.
-    def request_callback(self, payload: Message | bytes | list,
-                         callback: Callable[[RequestResult, list[Message]], None],
-                         *, flags: int = 0, timeout: int = 0) -> bool: ...
+    # Dealer request (operation builder).
+    def request(self) -> RequestOp: ...
 
     def close(self) -> None: ...                                                   # Raises: CloseError
 ```
@@ -369,7 +362,8 @@ class RouterSocket:
     def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
     def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
     def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
-    def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    # Routed send (operation builder).
+    def send(self, routing_id: RoutingId) -> SendOp: ...
     # Deprecated: allocates a fresh Received per call. Prefer recv_into.
     def recv(self, *, flags: int = 0) -> Received | None: ...                    # Raises: RecvError
     # Canonical caller-provided storage recv. See doc/spec/bindings/README.md.
@@ -378,58 +372,20 @@ class RouterSocket:
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def attach_discovery(self, discovery: Discovery) -> None: ...                # Raises: ConfigError
 
-    # --- request (async) — no flags ---
-    # timeout = 0 uses the socket default timeout.
-    # Raises: SubmitError on submit failure; RequestError on request completion failure.
-    async def request(self, peer_rid: RoutingId,
-                      payload: Message | bytes | list,
-                      *, timeout: int = 0) -> list[Message]: ...
+    # Request to a specific peer (operation builder).
+    def request(self, peer_rid: RoutingId) -> RequestOp: ...
+    # Reply to a received request (operation builder).
+    def reply(self, routing_id: RoutingId, request_seq: int) -> ReplyOp: ...
 
-    # --- request (callback submit) ---
-    # timeout = 0 uses the socket default timeout.
-    # Returns False only for temporary backpressure when flags includes DONTWAIT.
-    # Raises: SubmitError on submit failure other than temporary backpressure.
-    # Callback receives RequestResult;
-    #   non-OK indicates request-completion failure (RequestError semantics).
-    # Callback receives an empty list on failure.
-    def request_callback(self, peer_rid: RoutingId,
-                         payload: Message | bytes | list,
-                         callback: Callable[[RequestResult, list[Message]], None],
-                         *, flags: int = 0, timeout: int = 0) -> bool: ...
-
-    # --- reply ---
-    def reply(self, routing_id: RoutingId, request_seq: int,
-              payload: Message | bytes | list, *, flags: int = 0) -> None: ...   # Raises: SubmitError
-
-    # --- router → spot routed send ---
-    def send_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-                     payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
-
-    # --- router → spot routed request (async) — no flags ---
-    # timeout = 0 uses the socket default timeout.
-    # Raises: SubmitError on submit failure; RequestError on request completion failure.
-    async def request_to_spot(self, dest_node_rid: RoutingId,
-                              dest_spot_rid: RoutingId,
-                              payload: Message | bytes | list,
-                              *, timeout: int = 0) -> list[Message]: ...
-
-    # --- router → spot routed request (callback submit) ---
-    # timeout = 0 uses the socket default timeout.
-    # Returns False only for temporary backpressure when flags includes DONTWAIT.
-    # Raises: SubmitError on submit failure other than temporary backpressure.
-    # Callback receives RequestResult;
-    #   non-OK indicates request-completion failure (RequestError semantics).
-    # Callback receives an empty list on failure.
-    def request_to_spot_callback(self, dest_node_rid: RoutingId,
-                                 dest_spot_rid: RoutingId,
-                                 payload: Message | bytes | list,
-                                 callback: Callable[[RequestResult, list[Message]], None],
-                                 *, flags: int = 0, timeout: int = 0) -> bool: ...
-
-    # --- router → spot routed reply ---
+    # Router → spot routed send (operation builder).
+    def send_to_spot(self, dest_node_rid: RoutingId,
+                     dest_spot_rid: RoutingId) -> SendOp: ...
+    # Router → spot routed request (operation builder).
+    def request_to_spot(self, dest_node_rid: RoutingId,
+                        dest_spot_rid: RoutingId) -> RequestOp: ...
+    # Router → spot routed reply (operation builder).
     def reply_to_spot(self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-                      request_seq: int,
-                      payload: Message | bytes | list, *, flags: int = 0) -> None: ...  # Raises: SubmitError
+                      request_seq: int) -> ReplyOp: ...
 
     # NOTE: RouterSocket has one routed receive surface. recv receives both
     # regular ROUTER traffic and spot-origin routed traffic.
@@ -455,7 +411,8 @@ class XPubSocket:
     def connect(self, endpoint: str) -> None: ...                                # Raises: ConnectError
     def disconnect(self, endpoint: str) -> None: ...                             # Raises: ConnectError
     def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
-    def publish(self, topic: str, payload: Message | bytes | list, *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    # Publish (operation builder).
+    def publish(self, topic: str) -> SendOp: ...
     def receive_subscription_event(self, *, flags: int = 0) -> SubscriptionEvent | None: ...  # Raises: RecvError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
@@ -497,7 +454,8 @@ class StreamSocket:
     def set_routing_id(self, routing_id: RoutingId | bytes) -> None: ...         # Raises: ConfigError
     def get_routing_id(self) -> RoutingId | None: ...                            # Raises: ConfigError
     def disconnect_rid(self, routing_id: RoutingId) -> None: ...                 # Raises: ConnectError
-    def send(self, routing_id: RoutingId, payload: Message | bytes | list[Message], *, flags: int = 0) -> bool: ...  # Raises: SubmitError
+    # Routed send (operation builder).
+    def send(self, routing_id: RoutingId) -> SendOp: ...
     # Two mutually-exclusive receive modes on the same StreamSocket:
     #   (1) recv(), (2) on_packet(handler). Second attach raises
     #   HandlerError(code=HandlerResult.BUSY).
@@ -515,13 +473,16 @@ class StreamSocket:
         handler: Callable[[RoutingId, "Message", "Message"], None],
     ) -> None: ...                                                               # Raises: HandlerError
     def on_send_ready(self, handler: Callable) -> None: ...                      # Raises: HandlerError
-    def bind_actor(self, node: SpotNode, session_rid: RoutingId,
-                   actor: ActorRef, *, timeout: int = 0) -> None: ...            # Raises: RequestError
-    def unbind_actor(self, node: SpotNode, session_rid: RoutingId,
-                     actor_id: str, *, timeout: int = 0) -> None: ...            # Raises: RequestError
-    def send_bound_actor(self, node: SpotNode, session_rid: RoutingId,
-                         actor_id: str, payload: Message | bytes | list,
-                         *, flags: int = 0) -> bool: ...                        # Raises: SubmitError except temporary backpressure
+    # Async Actor bind (operation builder). The stream is bound to its
+    # session-owner SpotNode at attach time; no SpotNode argument is required
+    # here. A bind does not require nor imply a Spot join.
+    def bind_actor(self, session_rid: RoutingId, actor: ActorRef) -> ActorBindOp: ...
+    # Async Actor unbind (operation builder).
+    def unbind_actor(self, session_rid: RoutingId, actor_id: str) -> ActorUnbindOp: ...
+    # Session-bound relay send (operation builder).
+    def send_bound_actor(self, session_rid: RoutingId, actor_id: str) -> SendOp: ...
+    # Snapshot of Actor refs attached to the given session (local mapping only).
+    def bound_actors(self, session_rid: RoutingId) -> list[ActorRef]: ...        # Raises: ConfigError
     def monitor_open(self, events: MonitorEventMask = MonitorEventMask.ALL) -> MonitorSocket: ...  # Raises: ConfigError
     def close(self) -> None: ...                                                 # Raises: CloseError
 ```
@@ -794,22 +755,15 @@ class Received:
 	    def first_part(self) -> Message: ...              # Raises: RecvError
 	    def single_part_or_throw(self) -> Message: ...    # Raises: RecvError
 
-	    # send sends a regular routed message to the sender of this Received.
-	    def send(
-	        self,
-	        parts: Message | bytes | list[Message],
-	        *,
-	        flags: int = 0,
-	    ) -> bool: ...                                    # Raises: SubmitError
+    # Send a regular routed message back to the sender of this Received.
+    # Source rid / spot rid are encapsulated; the builder accumulates payload
+    # via .message(...).
+    def send(self) -> SendOp: ...
 
-	    # reply requires request_seq; None or invalid reply context raises
-    # SubmitError.
-    def reply(
-        self,
-        parts: Message | list[Message],
-        *,
-        flags: int = 0,
-    ) -> None: ...                                    # Raises: SubmitError
+    # Reply to this received request (operation builder). Valid only when
+    # request_seq is present. routing_id / spot_rid / request_seq are
+    # encapsulated.
+    def reply(self) -> ReplyOp: ...
 
     def close(self) -> None: ...                      # Raises: CloseError
     def __enter__(self) -> "Received": ...
@@ -852,14 +806,6 @@ The native reply context stored inside `zlink_actor_join_info_t` remains
 internal and is not exposed as a Python field.
 
 ```python
-class ActorCreateStatus(IntEnum):
-    CREATED = 1
-    EXISTING = 2
-
-class ActorAdmissionResult(IntEnum):
-    ACCEPT = 1
-    REJECT = 2
-
 @dataclass(frozen=True)
 class ActorRef:
     node_rid: RoutingId
@@ -867,9 +813,27 @@ class ActorRef:
     generation: int
 
 @dataclass(frozen=True)
-class ActorCreateResult:
-    status: ActorCreateStatus
+class ActorJoinResult:
+    result: RequestResult
     actor: ActorRef
+    joined_spot_rid: RoutingId
+    join_epoch: int
+    flags: int
+
+@dataclass(frozen=True)
+class ActorLookupResult:
+    result: RequestResult
+    actor: ActorRef
+    flags: int
+
+@dataclass(frozen=True)
+class SpotActorLifecycleInfo:
+    previous_actor: ActorRef
+    current_actor: ActorRef
+    previous_spot_rid: RoutingId | None
+    current_spot_rid: RoutingId | None
+    join_epoch: int
+    flags: int
 
 @dataclass(frozen=True)
 class ActorRoute:
@@ -1372,18 +1336,24 @@ class SpotNode:
     def spot_lookup(self, spot_rid: RoutingId) -> Spot | None: ...               # Raises: ConfigError
     def actor(self, actor_id: str) -> Actor: ...                                 # Raises: ConfigError
     def actor_lookup(self, actor_id: str) -> ActorRef: ...                       # Raises: ConfigError
-    def create_remote_actor(self, target_node_rid: RoutingId, actor_id: str,
-                            payload: Message | bytes, *, timeout: int = 0
-                            ) -> ActorCreateResult: ...                         # Raises: RequestError
-    def destroy_actor(self, actor_ref: ActorRef, *, timeout: int = 0) -> None: ...  # Raises: RequestError
-    def on_actor_admission(self, handler: Callable[[str, Message], ActorAdmissionResult]) -> None: ...  # Raises: HandlerError
+    # Async remote Actor lookup (operation builder). Completion delivers
+    # ActorLookupResult (checked ref on success).
+    def remote_actor_get_ref(self, target_node_rid: RoutingId,
+                             actor_id: str) -> ActorLookupOp: ...
+    # Async destroy (operation builder). Succeeds only when the Actor is in
+    # the Entry Spot.
+    def destroy_actor(self, actor_ref: ActorRef) -> ActorDestroyOp: ...
+    # Async user-Spot join (operation builder). Completion delivers
+    # ActorJoinResult plus reply parts. dest_spot_rid must be a user Spot.
+    # No bound STREAM session is required.
     def join_actor(self, actor_ref: ActorRef,
-                   dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-                   payload: Message | bytes,
-                   callback: Callable[[RequestResult, list[Message]], None],
-                   *, flags: int = 0, timeout: int = 0) -> bool: ...             # Raises: SubmitError
-    def leave_actor(self, actor_ref: ActorRef, dest_spot_rid: RoutingId,
-                    *, timeout: int = 0) -> None: ...                            # Raises: RequestError
+                   dest_node_rid: RoutingId,
+                   dest_spot_rid: RoutingId) -> ActorJoinOp: ...
+    # Async leave to the same node's Entry Spot (operation builder).
+    def leave_actor(self, actor_ref: ActorRef,
+                    current_spot_rid: RoutingId) -> ActorLeaveOp: ...
+    # Actor-to-session relay (operation builder).
+    def send_bound_session_msg(self, actor_ref: ActorRef) -> SendOp: ...
     def status_snapshot(self) -> SpotNodeStatus: ...                             # Raises: ConfigError
     def peers_snapshot(self) -> list[SpotNodePeerEntry]: ...                     # Raises: ConfigError
     def peers_query(self, filter_: SpotNodePeerFilter | None = None
@@ -1417,13 +1387,15 @@ class Actor:
     @property
     def actor_ref(self) -> ActorRef: ...
     def ref(self) -> ActorRef: ...
-    def join(self, spot: Spot, payload: Message | bytes,
-             callback: Callable[[RequestResult, list[Message]], None],
-             *, flags: int = 0, timeout: int = 0) -> bool: ...                  # Raises: SubmitError
-    def leave(self, spot: Spot) -> None: ...                                    # Raises: ConfigError
+    # Async user-Spot join (operation builder). Completion delivers
+    # ActorJoinResult plus reply parts. spot must be a user Spot.
+    # A bound STREAM session is NOT required.
+    def join(self, spot: Spot) -> ActorJoinOp: ...
+    # Async leave to the same node's Entry Spot (operation builder).
+    def leave(self, spot: Spot) -> ActorLeaveOp: ...
     def recv_part(self, *, flags: int = 0) -> ActorPart | None: ...             # Raises: RecvError
-    def send_bound_session(self, payload: Message | bytes,
-                           *, flags: int = 0) -> bool: ...                     # Raises: SubmitError except temporary backpressure
+    # Actor-to-session relay (operation builder).
+    def send_bound_session(self) -> SendOp: ...
     def close_bound_session(self, *, timeout: int = 0) -> None: ...             # Raises: RequestError
     def close(self, *, timeout: int = 0) -> None: ...                           # Raises: RequestError
 ```
@@ -1461,6 +1433,59 @@ class ReplyOp:
     def flags(self, flags: int) -> ReplyOp: ...
     def submit(self) -> None: ...                                                # Raises: SubmitError
 
+# --- Actor operation builders ---
+
+# SpotNode.join_actor(...) / Actor.join(spot) return ActorJoinOp.
+# Multipart join state payload is mandatory; the builder stays in the
+# message-required stage until the first message(...) is added.
+class ActorJoinOp:
+    def message(self, payload: Message | bytes) -> ActorJoinOp: ...
+    def messages(self, *payloads: Message | bytes) -> ActorJoinOp: ...
+    def timeout(self, timeout: int) -> ActorJoinOp: ...
+    def flags(self, flags: int) -> ActorJoinCallbackOp: ...
+    async def submit_async(self) -> tuple[ActorJoinResult, list[Message]]: ...   # Raises: SubmitError, RequestError
+    def submit(self, callback: Callable[[ActorJoinResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
+
+class ActorJoinCallbackOp:
+    def message(self, payload: Message | bytes) -> ActorJoinCallbackOp: ...
+    def messages(self, *payloads: Message | bytes) -> ActorJoinCallbackOp: ...
+    def timeout(self, timeout: int) -> ActorJoinCallbackOp: ...
+    def flags(self, flags: int) -> ActorJoinCallbackOp: ...
+    def submit(self, callback: Callable[[ActorJoinResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
+
+# Spot.reply_actor_join(request, accepted) returns ActorJoinReplyOp.
+# Multipart reply payload is optional; submit() is visible directly.
+class ActorJoinReplyOp:
+    def message(self, payload: Message | bytes) -> ActorJoinReplyOp: ...
+    def messages(self, *payloads: Message | bytes) -> ActorJoinReplyOp: ...
+    def submit(self) -> None: ...                                                # Raises: SubmitError
+
+# Payload-less Actor operation builders: leave, destroy, lookup, bind, unbind.
+class ActorLeaveOp:
+    def timeout(self, timeout: int) -> ActorLeaveOp: ...
+    async def submit_async(self) -> list[Message]: ...                           # Raises: SubmitError, RequestError
+    def submit(self, callback: Callable[[RequestResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
+
+class ActorDestroyOp:
+    def timeout(self, timeout: int) -> ActorDestroyOp: ...
+    async def submit_async(self) -> list[Message]: ...                           # Raises: SubmitError, RequestError
+    def submit(self, callback: Callable[[RequestResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
+
+class ActorLookupOp:
+    def timeout(self, timeout: int) -> ActorLookupOp: ...
+    async def submit_async(self) -> ActorLookupResult: ...                       # Raises: SubmitError, RequestError
+    def submit(self, callback: Callable[[ActorLookupResult], None]) -> bool: ...  # Raises: SubmitError
+
+class ActorBindOp:
+    def timeout(self, timeout: int) -> ActorBindOp: ...
+    async def submit_async(self) -> list[Message]: ...                           # Raises: SubmitError, RequestError
+    def submit(self, callback: Callable[[RequestResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
+
+class ActorUnbindOp:
+    def timeout(self, timeout: int) -> ActorUnbindOp: ...
+    async def submit_async(self) -> list[Message]: ...                           # Raises: SubmitError, RequestError
+    def submit(self, callback: Callable[[RequestResult, list[Message]], None]) -> bool: ...  # Raises: SubmitError
+
 class Spot:
     # __init__(node) is internal. Public code obtains Spot handles through
     # SpotNode factories.
@@ -1497,8 +1522,18 @@ class Spot:
     def on_routed_receive(self, handler: Callable[[Received], None]) -> None: ...  # Raises: HandlerError
     def on_dispatch_event(self, handler: Callable[[Spot, SpotDispatchInfo], None]) -> None: ...  # Raises: HandlerError
     def recv_actor_join(self, *, flags: int = 0) -> ActorJoinRequest | None: ...  # Raises: RecvError
-    def reply_actor_join(self, request: ActorJoinRequest, accepted: bool,
-                         payload: Message | bytes) -> bool: ...                 # Raises: SubmitError
+    # Reply to an Actor join admission request (operation builder).
+    # Multipart reply payload accumulates through .message(...); a
+    # zero-message submit() is allowed.
+    def reply_actor_join(self, request: ActorJoinRequest,
+                         accepted: bool) -> ActorJoinReplyOp: ...
+    # Register Actor lifecycle callbacks for this Spot. Passing None for
+    # both removes the registration. Handlers receive SpotActorLifecycleInfo.
+    def on_actor_lifecycle(
+        self,
+        on_join: Callable[[Spot, SpotActorLifecycleInfo], None] | None,
+        on_leave: Callable[[Spot, SpotActorLifecycleInfo], None] | None,
+    ) -> None: ...                                                              # Raises: HandlerError
     def actors_snapshot(self) -> list[ActorRef]: ...                            # Raises: ConfigError
     def drain_channel_reply_from(self, dealer: DealerSocket) -> None: ...        # Raises: ConfigError
 
@@ -1868,10 +1903,6 @@ def strerror(code: int) -> str:
 
 def has(capability: str) -> bool:
     """Check if the library supports a given capability (e.g. 'ipc', 'tls')."""
-    ...
-
-def remote_actor_ref(target_node_rid: RoutingId, actor_id: str) -> ActorRef:
-    """Create an unchecked remote actor reference."""
     ...
 
 def proxy(frontend, backend, capture=None) -> None:

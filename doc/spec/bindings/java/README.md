@@ -125,7 +125,7 @@ ways:
 | Spot data plane | `zlink_spot_send_channel_part`, `zlink_spot_publish_part`, `zlink_spot_subscribe_part`, `zlink_spot_subscription_event_recv`, `zlink_spot_recv_part` | `Spot.sendChannel`, `publish`, `subscribe`, `receiveSubscriptionEvent`, `recvRouted` | Public API |
 | Spot request/reply | `zlink_spot_request_channel_part`, `zlink_spot_request_spot_part`, `zlink_spot_request_router_part`, `zlink_spot_send_spot_part`, `zlink_spot_reply_spot_part`, `zlink_spot_reply_router_part`, `zlink_spot_channel_reply_progress_from` | `Spot.requestChannel`, `requestToSpot`, `requestToRouter`, `sendToSpot`, `replyToSpot`, `replyToRouter`; channel reply progress stays internal | Public API |
 | Spot dispatch callbacks | `zlink_spot_handler`, `zlink_spot_dispatch_event_handler` | `Spot.onRoutedReceive`, `Spot.onDispatchEvent`, `SpotDispatchInfo` | Public API |
-| Actor dispatch | `zlink_remote_actor_get_ref`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup`, `zlink_spot_node_create_remote_actor`, `zlink_spot_node_actor_destroy`, `zlink_spot_node_actor_admission_handler`, `zlink_spot_node_actor_join_spot`, `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_spot_node_actor_leave_spot`, `zlink_spot_node_actor_recv_part`, `zlink_spot_node_actor_send_bound_session_msg`, `zlink_spot_node_actor_close_bound_session` | `Actor`, `ActorRef`, actor result/info records, `SpotNode` actor methods, `Spot.recvActorJoin`, `Spot.replyActorJoin` | Public API |
+| Actor dispatch | `zlink_remote_actor_get_ref` (async), `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup`, `zlink_spot_node_actor_destroy` (async), `zlink_spot_node_actor_join_spot` (async + dedicated completion), `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`, `zlink_spot_actor_lifecycle_handler`, `zlink_spot_node_actor_leave_spot` (async), `zlink_spot_node_actor_recv_part`, `zlink_spot_node_actor_send_bound_session_msg`, `zlink_spot_node_actor_close_bound_session`, `zlink_stream_bound_actors` | `Actor`, `ActorRef`, `ActorJoinResult`, `ActorLookupResult`, `SpotActorLifecycleInfo`, `SpotNode` actor methods, `Spot.recvActorJoin`, `Spot.replyActorJoin`, `Spot.onActorLifecycle`, `StreamSocket.boundActors` | Public API |
 | Spot snapshots | `zlink_spot_node_status_snapshot`, `zlink_spot_node_peers_snapshot`, `zlink_spot_node_peers_query`, `zlink_spot_node_subjects_snapshot`, `zlink_spot_node_internal_sockets_snapshot`, `zlink_spot_node_spots_snapshot`, `zlink_spot_node_actors_snapshot`, `zlink_spot_actors_snapshot`, registry/discovery topology snapshot/query entrypoints | `statusSnapshot`, peer/subject/internal-socket/spot/actor snapshot methods, registry/discovery topology records | Public API |
 | Polling | `zlink_poll`, `zlink_poller_*` | `Poller`, `PollEvent`, `PollEventFlag` | Public API; legacy array `zlink_poll` is intentionally not exposed |
 | Poller timers | `zlink_poller_add_timer`, `zlink_poller_remove_timer` | `Poller.add(Timer, Object)`, `Poller.remove(Timer)`, `PollEvent.timer` | Required Java API |
@@ -201,12 +201,12 @@ stay focused on signatures.
 Java exposes Actor dispatch through public classes in
 `systems.zlink.service.spot` and related service packages.
 
-`SpotNode` exposes `createActor`, `actorLookup`, `remoteActorRef`,
-`createRemoteActor`, `destroyActor`, `onActorAdmission`, `joinActor`,
-`leaveActor`, `spotsSnapshot`, and `actorsSnapshot`. `Spot` exposes
-`recvActorJoin`, `replyActorJoin`, and `actorsSnapshot`. `StreamSocket`
-exposes `bindActor`, `unbindActor`, and `sendBoundActor`. `Discovery` exposes
-`resolveActor`.
+`SpotNode` exposes `createActor`, `actorLookup`, `remoteActorGetRef` (async),
+`destroyActor` (async), `joinActor` (async, dedicated completion), `leaveActor`
+(async), `spotsSnapshot`, and `actorsSnapshot`. `Spot` exposes `recvActorJoin`,
+`replyActorJoin`, `onActorLifecycle`, and `actorsSnapshot`. `StreamSocket`
+exposes `bindActor` (async), `unbindActor` (async), `sendBoundActor`, and
+`boundActors`. `Discovery` exposes `resolveActor`.
 
 `generation == 0` is an unchecked remote ref. Actor readable dispatch uses
 preloaded parts when Java moves native callbacks to managed executors.
@@ -301,9 +301,11 @@ CommonSocketOptions options();
 // RouterSocket and DealerSocket.
 ```
 
-`send(...)` and `publish(...)` return `false` only for temporary backpressure
-when `SendFlags.DONT_WAIT` is used. Blocking submit returns `true` on success.
-Route-not-ready and other submit failures still raise `SubmitException`.
+`SendOp.submit()` from `send().message(...)` and `publish(topic).message(...)`
+returns `false` only for temporary backpressure when `SendFlags.DONT_WAIT` has
+been configured via the builder's `.flags(...)` stage. Blocking submit returns
+`true` on success. Route-not-ready and other submit failures still raise
+`SubmitException`.
 Blocking no-argument receive methods do not return `null`. Nullable overloads
 that accept `RecvFlags` return `null` when `RecvFlags.DONT_WAIT` finds no data.
 Timer `recv(...)` reports no data through `RecvException` with
@@ -403,10 +405,8 @@ public final class PairSocket extends Socket {
     void disconnect(String endpoint);                                // @throws ConnectException
     void disconnectRid(RoutingId routingId);                         // @throws ConnectException
 
-    boolean send(Message part);                                      // @throws SubmitException
-    boolean send(Message part, SendFlags flags);                     // @throws SubmitException
-    boolean send(List<Message> parts);                               // @throws SubmitException
-    boolean send(List<Message> parts, SendFlags flags);              // @throws SubmitException
+    // --- send (operation builder) ---
+    SendOp send();
 
     @Deprecated Received recv();                                     // @throws RecvException (legacy: returns fresh Received per call)
     @Deprecated @Nullable Received recv(RecvFlags flags);            // @throws RecvException (legacy)
@@ -430,10 +430,8 @@ public final class PubSocket extends Socket {
     void disconnectRid(RoutingId routingId);                         // @throws ConnectException
     void attachDiscovery(Discovery discovery);                       // @throws ConfigException
 
-    boolean publish(String topicId, Message part);                   // @throws SubmitException
-    boolean publish(String topicId, Message part, SendFlags flags);  // @throws SubmitException
-    boolean publish(String topicId, List<Message> parts);            // @throws SubmitException
-    boolean publish(String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
+    // --- publish (operation builder) ---
+    SendOp publish(String topicId);
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
     PubSocketOptions options();
@@ -515,47 +513,16 @@ public final class DealerSocket extends Socket {
     void setRoutingId(RoutingId rid);                                // @throws ConfigException
     RoutingId routingId();                                           // @throws ConfigException
 
-    boolean send(Message part);                                      // @throws SubmitException
-    boolean send(Message part, SendFlags flags);                     // @throws SubmitException
-    boolean send(List<Message> parts);                               // @throws SubmitException
-    boolean send(List<Message> parts, SendFlags flags);              // @throws SubmitException
+    // --- send (operation builder) ---
+    SendOp send();
 
     @Deprecated Received recv();                                     // @throws RecvException (legacy: returns fresh Received per call)
     @Deprecated @Nullable Received recv(RecvFlags flags);            // @throws RecvException (legacy)
     boolean recv(Received result, RecvFlags flags);                  // canonical caller-provided storage @throws RecvException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
-    // --- request (async, no flags) ---
-    CompletableFuture<List<Message>> request(Message part);                           // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> request(Message part, Duration timeout);         // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> request(List<Message> parts);                    // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> request(List<Message> parts, Duration timeout);  // @throws SubmitException; future completes with RequestException on failure
-
-    // --- request (callback submit) ---
-    boolean request(Message part,
-                    RequestCallback callback);                 // @throws SubmitException; callback receives RequestResult
-    boolean request(Message part,
-                    RequestCallback callback,
-                    Duration timeout);                                                  // @throws SubmitException; callback receives RequestResult
-    boolean request(Message part,
-                    RequestCallback callback,
-                    SendFlags flags);                                                   // @throws SubmitException; false only on temporary backpressure
-    boolean request(Message part,
-                    RequestCallback callback,
-                    SendFlags flags,
-                    Duration timeout);                                                  // @throws SubmitException; false only on temporary backpressure
-    boolean request(List<Message> parts,
-                    RequestCallback callback);                 // @throws SubmitException; callback receives RequestResult
-    boolean request(List<Message> parts,
-                    RequestCallback callback,
-                    Duration timeout);                                                  // @throws SubmitException; callback receives RequestResult
-    boolean request(List<Message> parts,
-                    RequestCallback callback,
-                    SendFlags flags);                                                   // @throws SubmitException; false only on temporary backpressure
-    boolean request(List<Message> parts,
-                    RequestCallback callback,
-                    SendFlags flags,
-                    Duration timeout);                                                  // @throws SubmitException; false only on temporary backpressure
+    // --- request (operation builder) ---
+    RequestOp request();
 
     DealerSocketOptions options();
 }
@@ -593,119 +560,29 @@ public final class RouterSocket extends Socket {
     void setRoutingId(RoutingId rid);                                // @throws ConfigException
     RoutingId routingId();                                           // @throws ConfigException
 
-    boolean send(RoutingId rid, Message part);                       // @throws SubmitException
-    boolean send(RoutingId rid, Message part, SendFlags flags);      // @throws SubmitException
-    boolean send(RoutingId rid, List<Message> parts);                // @throws SubmitException
-    boolean send(RoutingId rid, List<Message> parts, SendFlags flags); // @throws SubmitException
+    // --- routed send (operation builder) ---
+    SendOp send(RoutingId rid);
 
     @Deprecated Received recv();                                     // @throws RecvException (legacy: returns fresh Received per call)
     @Deprecated @Nullable Received recv(RecvFlags flags);            // @throws RecvException (legacy)
     boolean recv(Received result, RecvFlags flags);                  // canonical caller-provided storage @throws RecvException
     void onSendReady(SendReadyHandler handler);                      // @throws HandlerException
 
-    // --- request to a specific peer (async, no flags) ---
-    CompletableFuture<List<Message>> request(RoutingId rid, Message part);                          // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> request(RoutingId rid, Message part, Duration timeout);        // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts);                   // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> request(RoutingId rid, List<Message> parts, Duration timeout); // @throws SubmitException; future completes with RequestException on failure
+    // --- request to a specific peer (operation builder) ---
+    RequestOp request(RoutingId rid);
 
-    // --- request to a specific peer (callback submit) ---
-    boolean request(RoutingId rid, Message part,
-                    RequestCallback callback);                 // @throws SubmitException; callback receives RequestResult
-    boolean request(RoutingId rid, Message part,
-                    RequestCallback callback,
-                    Duration timeout);                                                  // @throws SubmitException; callback receives RequestResult
-    boolean request(RoutingId rid, Message part,
-                    RequestCallback callback,
-                    SendFlags flags);                                                   // @throws SubmitException; false only on temporary backpressure
-    boolean request(RoutingId rid, Message part,
-                    RequestCallback callback,
-                    SendFlags flags,
-                    Duration timeout);                                                  // @throws SubmitException; false only on temporary backpressure
-    boolean request(RoutingId rid, List<Message> parts,
-                    RequestCallback callback);                 // @throws SubmitException; callback receives RequestResult
-    boolean request(RoutingId rid, List<Message> parts,
-                    RequestCallback callback,
-                    Duration timeout);                                                  // @throws SubmitException; callback receives RequestResult
-    boolean request(RoutingId rid, List<Message> parts,
-                    RequestCallback callback,
-                    SendFlags flags);                                                   // @throws SubmitException; false only on temporary backpressure
-    boolean request(RoutingId rid, List<Message> parts,
-                    RequestCallback callback,
-                    SendFlags flags,
-                    Duration timeout);                                                  // @throws SubmitException; false only on temporary backpressure
+    // --- reply to a received request (operation builder) ---
+    ReplyOp reply(RoutingId rid, long requestSeq);
 
-    // --- reply to a received request ---
-    void reply(RoutingId rid, long requestSeq, Message message);                        // @throws SubmitException
-    void reply(RoutingId rid, long requestSeq, Message message, SendFlags flags);       // @throws SubmitException
-    void reply(RoutingId rid, long requestSeq, List<Message> parts);                    // @throws SubmitException
-    void reply(RoutingId rid, long requestSeq, List<Message> parts, SendFlags flags);   // @throws SubmitException
+    // --- router -> spot routed send (operation builder) ---
+    SendOp sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
 
-    // --- router -> spot routed send ---
-    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part);      // @throws SubmitException
-    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, Message part,
-                       SendFlags flags);                                                 // @throws SubmitException
-    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts); // @throws SubmitException
-    boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid, List<Message> parts,
-                       SendFlags flags);                                                 // @throws SubmitException
+    // --- router -> spot routed request (operation builder) ---
+    RequestOp requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
 
-    // --- router -> spot routed request (async, no flags) ---
-    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                              RoutingId destSpotRid,
-                                              Message part);                             // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                              RoutingId destSpotRid,
-                                              Message part, Duration timeout);           // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                              RoutingId destSpotRid,
-                                              List<Message> parts);                      // @throws SubmitException; future completes with RequestException on failure
-    CompletableFuture<List<Message>> requestToSpot(RoutingId destNodeRid,
-                                              RoutingId destSpotRid,
-                                              List<Message> parts, Duration timeout);    // @throws SubmitException; future completes with RequestException on failure
-
-    // --- router -> spot routed request (callback submit) ---
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          Message part,
-                          RequestCallback callback);            // @throws SubmitException; callback receives RequestResult
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          Message part,
-                          RequestCallback callback,
-                          Duration timeout);                                             // @throws SubmitException; callback receives RequestResult
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          Message part,
-                          RequestCallback callback,
-                          SendFlags flags);                                              // @throws SubmitException; false only on temporary backpressure
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          Message part,
-                          RequestCallback callback,
-                          SendFlags flags,
-                          Duration timeout);                                             // @throws SubmitException; false only on temporary backpressure
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          List<Message> parts,
-                          RequestCallback callback);            // @throws SubmitException; callback receives RequestResult
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          List<Message> parts,
-                          RequestCallback callback,
-                          Duration timeout);                                             // @throws SubmitException; callback receives RequestResult
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          List<Message> parts,
-                          RequestCallback callback,
-                          SendFlags flags);                                              // @throws SubmitException; false only on temporary backpressure
-    boolean requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                          List<Message> parts,
-                          RequestCallback callback,
-                          SendFlags flags,
-                          Duration timeout);                                             // @throws SubmitException; false only on temporary backpressure
-
-    // --- router -> spot routed reply ---
-    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, Message message);                                  // @throws SubmitException
-    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, Message message, SendFlags flags);                 // @throws SubmitException
-    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, List<Message> parts);                              // @throws SubmitException
-    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, List<Message> parts, SendFlags flags);             // @throws SubmitException
+    // --- router -> spot routed reply (operation builder) ---
+    ReplyOp replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+                        long requestSeq);
 
     RouterSocketOptions options();
 }
@@ -744,10 +621,8 @@ public final class XPubSocket extends Socket {
     void disconnect(String endpoint);                                // @throws ConnectException
     void disconnectRid(RoutingId routingId);                         // @throws ConnectException
 
-    boolean publish(String topicId, Message part);                   // @throws SubmitException
-    boolean publish(String topicId, Message part, SendFlags flags);  // @throws SubmitException
-    boolean publish(String topicId, List<Message> parts);            // @throws SubmitException
-    boolean publish(String topicId, List<Message> parts, SendFlags flags); // @throws SubmitException
+    // --- publish (operation builder) ---
+    SendOp publish(String topicId);
 
     SubscriptionEvent receiveSubscriptionEvent();                    // @throws RecvException
     @Nullable SubscriptionEvent receiveSubscriptionEvent(RecvFlags flags); // @throws RecvException
@@ -796,10 +671,8 @@ public final class StreamSocket extends Socket {
     void setRoutingId(RoutingId rid);                                // @throws ConfigException
     RoutingId routingId();                                           // @throws ConfigException
 
-    boolean send(RoutingId rid, Message part);                       // @throws SubmitException
-    boolean send(RoutingId rid, Message part, SendFlags flags);      // @throws SubmitException
-    boolean send(RoutingId rid, List<Message> parts);                // @throws SubmitException
-    boolean send(RoutingId rid, List<Message> parts, SendFlags flags); // @throws SubmitException
+    // --- routed send (operation builder) ---
+    SendOp send(RoutingId rid);
 
     @Deprecated Received recv();                                     // @throws RecvException (legacy: returns fresh Received per call)
     @Deprecated @Nullable Received recv(RecvFlags flags);            // @throws RecvException (legacy)
@@ -816,24 +689,16 @@ public final class StreamSocket extends Socket {
     //   Raw direct stream callbacks are implementation detail.
     void onPacket(StreamPacketHandler handler);                      // @throws HandlerException
 
-    void bindActor(SpotNode node, RoutingId sessionRid, ActorRef actor,
-                   Duration timeout);                                // @throws RequestException
-    void bindActor(SpotNode node, RoutingId sessionRid,
-                   ActorRef actor);                                  // @throws RequestException
-    void unbindActor(SpotNode node, RoutingId sessionRid, String actorId,
-                     Duration timeout);                              // @throws RequestException
-    void unbindActor(SpotNode node, RoutingId sessionRid,
-                     String actorId);                                // @throws RequestException
-    boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
-                           String actorId, Message part);            // @throws SubmitException; false only on temporary backpressure
-    boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
-                           String actorId, Message part,
-                           SendFlags flags);                         // @throws SubmitException; false only on temporary backpressure
-    boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
-                           String actorId, List<Message> parts);      // @throws SubmitException; false only on temporary backpressure
-    boolean sendBoundActor(SpotNode node, RoutingId sessionRid,
-                           String actorId, List<Message> parts,
-                           SendFlags flags);                         // @throws SubmitException; false only on temporary backpressure
+    // --- Actor bind/unbind (operation builders) ---
+    // The stream is bound to its session-owner SpotNode at attach time; no
+    // SpotNode argument is passed here. A bind does not require nor imply a
+    // Spot join.
+    ActorBindOp bindActor(RoutingId sessionRid, ActorRef actor);
+    ActorUnbindOp unbindActor(RoutingId sessionRid, String actorId);
+    // --- session-bound relay send (operation builder) ---
+    SendOp sendBoundActor(RoutingId sessionRid, String actorId);
+    // Snapshot of Actor refs attached to the given session (local mapping only).
+    List<ActorRef> boundActors(RoutingId sessionRid);                 // @throws ConfigException
 
     StreamSocketOptions options();
 }
@@ -1208,20 +1073,10 @@ public enum TopologyState {
     STOPPED(6)
 }
 
-public enum ActorCreateStatus {
-    CREATED(1),
-    EXISTING(2)
-}
-
-public enum ActorAdmissionResult {
-    ACCEPT(1),
-    REJECT(2)
-}
 ```
 
-`ActorAdmissionResult` maps to the C `zlink_actor_admission_result_t` enum.
-`AutoHwmRecalcReason` maps the
-`MonitorSnapshot.autoHwmLastRecalcReason` field.
+`AutoHwmRecalcReason` maps the `MonitorSnapshot.autoHwmLastRecalcReason`
+field.
 
 ### ZlinkException
 
@@ -1560,17 +1415,14 @@ public final class Received implements AutoCloseable {
 	    Message firstPart();                                             // @throws RecvException
 	    Message singlePartOrThrow();                                     // @throws RecvException
 
-	    // Send a regular routed message to the sender of this Received.
-	    boolean send(Message part);                                      // @throws SubmitException
-	    boolean send(Message part, SendFlags flags);                     // @throws SubmitException
-	    boolean send(List<Message> parts);                               // @throws SubmitException
-	    boolean send(List<Message> parts, SendFlags flags);              // @throws SubmitException
+    // Send a regular routed message back to the sender of this Received.
+    // Source rid / spot rid are encapsulated; the builder accumulates payload
+    // via .message(...).
+    SendOp send();
 
-	    // Valid only when requestSeq is present and the reply context is live.
-    void reply(Message part);                                        // @throws SubmitException
-    void reply(Message part, SendFlags flags);                       // @throws SubmitException
-    void reply(List<Message> parts);                                 // @throws SubmitException
-    void reply(List<Message> parts, SendFlags flags);                // @throws SubmitException
+    // Reply to this received request. Valid only when requestSeq is present.
+    // Routing id, spot id, and request seq are encapsulated.
+    ReplyOp reply();
 
     void close();                                                    // @throws CloseException
 }
@@ -1827,50 +1679,26 @@ public final class SpotNode implements AutoCloseable {
     int dispatchWorkersMax();                                        // @throws ConfigException
     void dispatchWorkersMax(int value);                              // @throws ConfigException
 
-    // --- actor dispatch ---
+    // --- actor dispatch (operation builders) ---
     Actor createActor(String actorId);                               // @throws ConfigException
     ActorRef actorLookup(String actorId);                            // @throws ConfigException
-    static ActorRef remoteActorRef(RoutingId targetNodeRid,
-                                   String actorId);                  // @throws ConfigException
-    ActorCreateResult createRemoteActor(RoutingId targetNodeRid,
-                                        String actorId,
-                                        Message message);            // @throws RequestException
-    ActorCreateResult createRemoteActor(RoutingId targetNodeRid,
-                                        String actorId,
-                                        Message message,
-                                        Duration timeout);           // @throws RequestException
-    void destroyActor(ActorRef actor);                               // @throws RequestException
-    void destroyActor(ActorRef actor,
-                      Duration timeout);                             // @throws RequestException
-    void onActorAdmission(ActorAdmissionHandler handler);            // @throws HandlerException
-    CompletableFuture<List<Message>> joinActor(ActorRef actor,
-                      RoutingId destNodeRid,
-                      RoutingId destSpotRid,
-                      Message message);                              // @throws SubmitException
-    CompletableFuture<List<Message>> joinActor(ActorRef actor,
-                      RoutingId destNodeRid,
-                      RoutingId destSpotRid,
-                      Message message,
-                      Duration timeout);                             // @throws SubmitException
-    boolean joinActor(ActorRef actor, RoutingId destNodeRid,
-                      RoutingId destSpotRid, Message message,
-                      RequestCallback callback); // @throws SubmitException
-    boolean joinActor(ActorRef actor, RoutingId destNodeRid,
-                      RoutingId destSpotRid, Message message,
-                      RequestCallback callback,
-                      Duration timeout);                             // @throws SubmitException
-    boolean joinActor(ActorRef actor, RoutingId destNodeRid,
-                      RoutingId destSpotRid, Message message,
-                      RequestCallback callback,
-                      SendFlags flags);                              // @throws SubmitException
-    boolean joinActor(ActorRef actor, RoutingId destNodeRid,
-                      RoutingId destSpotRid, Message message,
-                      RequestCallback callback,
-                      SendFlags flags,
-                      Duration timeout);                             // @throws SubmitException
-    void leaveActor(ActorRef actor, RoutingId currentSpotRid);       // @throws RequestException
-    void leaveActor(ActorRef actor, RoutingId currentSpotRid,
-                    Duration timeout);                               // @throws RequestException
+    // Async remote Actor lookup. Completion delivers ActorLookupResult
+    // (checked ref on success).
+    ActorLookupOp remoteActorGetRef(RoutingId targetNodeRid, String actorId);
+    // Async destroy. Succeeds only when the Actor is in the Entry Spot.
+    ActorDestroyOp destroyActor(ActorRef actor);
+    // Async user-Spot join. Completion delivers ActorJoinResult (final
+    // Actor ref, joined Spot rid, join_epoch) plus reply parts.
+    // destSpotRid must be a user Spot (Entry Spot is not a valid target).
+    // A bound STREAM session is NOT required to join a user Spot.
+    // Multipart join state payload accumulates through .message(...).
+    ActorJoinOp joinActor(ActorRef actor, RoutingId destNodeRid,
+                          RoutingId destSpotRid);
+    // Async leave to the same node's Entry Spot.
+    ActorLeaveOp leaveActor(ActorRef actor, RoutingId currentSpotRid);
+    // Actor-to-session relay (operation builder). Fire-and-forget reverse
+    // send through the bound STREAM session.
+    SendOp sendBoundSessionMsg(ActorRef actor);
 
     SpotNodeStatus statusSnapshot();                                 // @throws ConfigException
     List<SpotNodePeerEntry> peersSnapshot();                         // @throws ConfigException
@@ -1952,8 +1780,14 @@ public final class Spot implements AutoCloseable {
     // --- actor dispatch ---
     ActorJoinRequest recvActorJoin();                                // @throws RecvException
     @Nullable ActorJoinRequest recvActorJoin(RecvFlags flags);       // @throws RecvException
-    void replyActorJoin(ActorJoinRequest request, boolean accepted,
-                        Message message);                            // @throws SubmitException
+    // Reply to an Actor join admission request (operation builder).
+    // Multipart reply payload accumulates through .message(...);
+    // a zero-message submit is allowed.
+    ActorJoinReplyOp replyActorJoin(ActorJoinRequest request, boolean accepted);
+    // Register Actor lifecycle callbacks for this Spot. Passing null for
+    // both removes the registration. Handler receives SpotActorLifecycleInfo.
+    void onActorLifecycle(@Nullable ActorLifecycleHandler onJoin,
+                          @Nullable ActorLifecycleHandler onLeave);   // @throws HandlerException
     List<ActorRef> actorsSnapshot();                                 // @throws ConfigException
 
     void close();                                                    // @throws CloseException
@@ -1997,16 +1831,87 @@ public interface ReplySubmitOp {
     ReplySubmitOp flags(SendFlags flags);
     void submit();                                                   // @throws SubmitException
 }
+
+// --- Actor operation builders ---
+
+// SpotNode.joinActor(...) / Actor.join(spot) returns ActorJoinOp.
+// Multipart join state payload is mandatory; the staged shape moves to
+// ActorJoinSubmitOp only after the first message(...).
+public interface ActorJoinOp {
+    ActorJoinSubmitOp message(Message part);
+}
+
+public interface ActorJoinSubmitOp {
+    ActorJoinSubmitOp message(Message part);
+    ActorJoinSubmitOp timeout(Duration timeout);
+    ActorJoinCallbackSubmitOp flags(SendFlags flags);
+    CompletableFuture<ActorJoinCompletion> submitAsync();             // @throws SubmitException; future completes with RequestException on failure
+    boolean submit(ActorJoinHandler callback);                        // @throws SubmitException
+}
+
+public interface ActorJoinCallbackSubmitOp {
+    ActorJoinCallbackSubmitOp message(Message part);
+    ActorJoinCallbackSubmitOp timeout(Duration timeout);
+    ActorJoinCallbackSubmitOp flags(SendFlags flags);
+    boolean submit(ActorJoinHandler callback);                        // @throws SubmitException
+}
+
+// Reply builder for Spot.replyActorJoin(request, accepted).
+// Multipart reply payload is optional; submit() is visible directly.
+public interface ActorJoinReplyOp {
+    ActorJoinReplyOp message(Message part);
+    void submit();                                                    // @throws SubmitException
+}
+
+// Payload-less Actor operation builders: leave, destroy, lookup, bind, unbind.
+// All four expose optional timeout(...), then either submitAsync() or
+// submit(callback). They never require a message(...) call.
+public interface ActorLeaveOp {
+    ActorLeaveOp timeout(Duration timeout);
+    CompletableFuture<List<Message>> submitAsync();                   // @throws SubmitException
+    boolean submit(ReplyHandler callback);                            // @throws SubmitException
+}
+
+public interface ActorDestroyOp {
+    ActorDestroyOp timeout(Duration timeout);
+    CompletableFuture<List<Message>> submitAsync();                   // @throws SubmitException
+    boolean submit(ReplyHandler callback);                            // @throws SubmitException
+}
+
+public interface ActorLookupOp {
+    ActorLookupOp timeout(Duration timeout);
+    CompletableFuture<ActorLookupResult> submitAsync();               // @throws SubmitException
+    boolean submit(ActorLookupHandler callback);                      // @throws SubmitException
+}
+
+public interface ActorBindOp {
+    ActorBindOp timeout(Duration timeout);
+    CompletableFuture<List<Message>> submitAsync();                   // @throws SubmitException
+    boolean submit(ReplyHandler callback);                            // @throws SubmitException
+}
+
+public interface ActorUnbindOp {
+    ActorUnbindOp timeout(Duration timeout);
+    CompletableFuture<List<Message>> submitAsync();                   // @throws SubmitException
+    boolean submit(ReplyHandler callback);                            // @throws SubmitException
+}
 ```
 
 `SendOp`, `RequestOp`, and `ReplyOp` are staged builders. A caller must add at
 least one `message(...)` before any submit method is visible. Repeated
-`message(...)` calls append multipart payload parts in order, so `Spot` does
-not expose separate single-message and `List<Message>` overloads for
-send/request/reply paths. `RequestSubmitOp.submitAsync()` is the async request
-form and does not accept submit flags. Calling `.flags(...)` moves the request
-operation to the callback-submit stage. Submit consumes the operation; using
-the same operation object again after submit must fail with a validation error.
+`message(...)` calls append multipart payload parts in order, so neither `Spot`
+nor raw socket types expose separate single-message and `List<Message>`
+overloads for send/request/reply paths. `RequestSubmitOp.submitAsync()` is the
+async request form and does not accept submit flags. Calling `.flags(...)`
+moves the request operation to the callback-submit stage. Submit consumes the
+operation; using the same operation object again after submit must fail with a
+validation error.
+
+`ActorJoinOp` follows the same payload-mandatory shape as `RequestOp`.
+`ActorJoinReplyOp` follows the `ReplyOp` shape but accepts a 0-part reply.
+`ActorLeaveOp`, `ActorDestroyOp`, `ActorLookupOp`, `ActorBindOp`, and
+`ActorUnbindOp` are payload-less builders — they support `timeout(...)` and
+either `submitAsync()` or `submit(callback)`.
 
 `onDispatchEvent` delivers `SpotDispatchInfo`. `CHANNEL_REPLY_READABLE`
 dispatches are readiness notifications for internal request-progress work.
@@ -2052,28 +1957,16 @@ Actor object owned by a `SpotNode` and identified by `ActorRef`.
 ```java
 public final class Actor implements AutoCloseable {
     ActorRef ref();                                                  // @throws ConfigException
-    CompletableFuture<List<Message>> join(Spot spot, Message message); // @throws SubmitException
-    CompletableFuture<List<Message>> join(Spot spot, Message message,
-                                          Duration timeout);          // @throws SubmitException
-    boolean join(Spot spot, Message message,
-                 RequestCallback callback); // @throws SubmitException
-    boolean join(Spot spot, Message message,
-                 RequestCallback callback,
-                 Duration timeout);                                 // @throws SubmitException
-    boolean join(Spot spot, Message message,
-                 RequestCallback callback,
-                 SendFlags flags);                                  // @throws SubmitException
-    boolean join(Spot spot, Message message,
-                 RequestCallback callback,
-                 SendFlags flags,
-                 Duration timeout);                                 // @throws SubmitException
-    void leave(Spot spot);                                           // @throws RequestException
-    void leave(Spot spot, Duration timeout);                         // @throws RequestException
+    // Async user-Spot join (operation builder). Completion delivers
+    // ActorJoinResult plus reply parts. spot must be a user Spot.
+    // A bound STREAM session is NOT required.
+    ActorJoinOp join(Spot spot);
+    // Async leave to the same node's Entry Spot (operation builder).
+    ActorLeaveOp leave(Spot spot);
     ActorPart recvPart();                                            // @throws RecvException
     @Nullable ActorPart recvPart(RecvFlags flags);                   // @throws RecvException
-    boolean sendBoundSession(Message message);                       // @throws SubmitException; false only on temporary backpressure
-    boolean sendBoundSession(Message message,
-                             SendFlags flags);                       // @throws SubmitException; false only on temporary backpressure
+    // Actor-to-session relay (operation builder).
+    SendOp sendBoundSession();
     void closeBoundSession();                                        // @throws RequestException
     void closeBoundSession(Duration timeout);                        // @throws RequestException
     void close();                                                    // @throws RequestException
@@ -2091,8 +1984,6 @@ Actor value objects:
 ```java
 public record ActorRef(RoutingId nodeRid, String actorId, long generation) {
 }
-
-public record ActorCreateResult(ActorCreateStatus status, ActorRef actor) {}
 
 public record ActorRoute(ActorRef actor,
                          boolean joined,
@@ -2126,15 +2017,49 @@ public final class ActorJoinRequest implements AutoCloseable {
     void close();
 }
 
+public record ActorJoinResult(RequestResult result,
+                              ActorRef actor,
+                              RoutingId joinedSpotRid,
+                              long joinEpoch,
+                              int flags) {}
+
+// Returned by the Future-style joinActor(...) variant to carry both the
+// ActorJoinResult and the reply payload (parts).
+public record ActorJoinCompletion(ActorJoinResult result,
+                                  List<Message> replyParts) {}
+
+public record ActorLookupResult(RequestResult result,
+                                ActorRef actor,
+                                int flags) {}
+
+public record SpotActorLifecycleInfo(
+        ActorRef previousActor,
+        ActorRef currentActor,
+        Optional<RoutingId> previousSpotRid,
+        Optional<RoutingId> currentSpotRid,
+        long joinEpoch,
+        int flags) {}
+
 @FunctionalInterface
-public interface ActorAdmissionHandler {
-    ActorAdmissionResult onActorAdmission(String actorId, Message message);
+public interface ActorJoinHandler {
+    void onJoinResult(ActorJoinResult result, List<Message> replyParts);
+}
+
+@FunctionalInterface
+public interface ActorLookupHandler {
+    void onLookupResult(ActorLookupResult result);
+}
+
+@FunctionalInterface
+public interface ActorLifecycleHandler {
+    void onLifecycleEvent(Spot spot, SpotActorLifecycleInfo info);
 }
 ```
 
-`ActorPart` owns its message and closes that message from `close()`. The
-`message` passed to `ActorAdmissionHandler` is valid only for the callback
-duration. Applications must copy it if they need to retain it after returning.
+`ActorPart` owns its message and closes that message from `close()`.
+`SpotActorLifecycleInfo` is valid only for the duration of the
+`ActorLifecycleHandler` callback; applications must copy fields they need to
+retain.
 
 ### RegistryQueryClient
 

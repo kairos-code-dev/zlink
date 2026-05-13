@@ -322,71 +322,131 @@ substrate (`zlink_router_recv_part`, `zlink_subscribe_part` 등) 를 그대로
   것을 보장하지 않는다. socket 자체는 단일 thread 가 recv 하도록 하는 기존
   정책이 유지된다.
 
-### SPOT Operation Builder Policy
+### Operation Builder Policy
 
-SPOT의 send/request/reply 계열은 조합 축이 많다. 대상 경로, payload 개수,
-`flags`, `timeout`, async/callback 완료 방식을 모두 `Spot` 메서드 오버로드로
-펼치면 `Spot`이 얕고 넓은 인터페이스가 된다. 고수준 바인딩은 이 조합
-복잡성을 operation 객체 안으로 숨겨야 한다.
+zlink의 send/request/reply/publish 계열과 Actor 위치·세션 attach 계열은 모두
+조합 축이 많다. 대상 경로, payload part 개수, `flags`, `timeout`, async/callback
+완료 방식을 일반 메서드 오버로드로 펼치면 socket과 service handle이 얕고
+넓은 인터페이스가 되며 multipart payload를 외부 List/Vector 컨테이너로
+포장해야 한다. 고수준 바인딩은 이 조합 복잡성을 operation 객체 안으로
+숨기고, multipart는 builder의 `message(...)` 반복으로 자연스럽게 누적한다.
 
-이 정책은 `Spot` endpoint가 소유한 data-plane 시작점에 적용한다.
-`RouterSocket` / `router_socket_t`의 router-to-spot helper는 router socket
-capability 표면이므로 이 절의 적용 대상이 아니다. 그 표면을 별도 builder로
-정리하려면 `RouterSocket` 정책과 모든 언어 문서를 함께 바꾼다.
-
-이 정책은 C ABI 바인딩에도 적용하지 않는다. C 바인딩은 `zlink.h`에 맞춘
+이 정책은 C ABI 바인딩에는 적용하지 않는다. C 바인딩은 `zlink.h`에 맞춘
 함수형 계약을 유지한다. C++ / Java / .NET / Node / Python / Go / Rust 같은
-고수준 바인딩의 canonical `Spot` endpoint public API에는 아래 형태를 적용한다.
+고수준 바인딩의 canonical public API에 적용한다.
 
-- `Spot`은 작업 시작점만 노출한다.
-  - `publish(...)`
-  - `sendChannel(...)` / `send_channel(...)`
-  - `sendToSpot(...)` / `send_to_spot(...)`
-  - `requestChannel(...)` / `request_channel(...)`
-  - `requestToSpot(...)` / `request_to_spot(...)`
-  - `requestToRouter(...)` / `request_to_router(...)`
-  - `replyToSpot(...)` / `reply_to_spot(...)`
-  - `replyToRouter(...)` / `reply_to_router(...)`
-- 시작점은 즉시 전송하지 않고 `SendOp`, `RequestOp`, `ReplyOp` 또는 언어별
-  동등 operation builder를 반환한다.
-- payload는 operation builder의 `message(...)`를 반복 호출해서 누적한다.
-  단일 payload와 multipart payload를 별도 `Spot` 오버로드로 나누지 않는다.
-- 메시지가 하나도 없는 `submit`은 금지한다. 타입 시스템으로 막을 수 있는
-  언어는 compile-time에서 막고, 그렇지 않은 언어는 `submit` 시점에
-  validation error로 막는다.
-- `flags`, `timeout`, callback, async 선택은 `Spot` 메서드 파라미터가 아니라
-  operation builder의 선택 단계로 둔다.
-- async request는 submit flags를 받지 않는다. callback request는
-  non-blocking submit을 표현하기 위해 `flags`를 받을 수 있다.
+#### 적용 대상 시작점
+
+operation builder 시작점은 **모든 송신·요청·응답·게시·Actor 위치·Actor session
+attach 표면**에서 동일한 패턴으로 노출한다. 이름은 언어 관례에 맞게 변환한다.
+
+##### Spot facade (`Spot` / `spot_t`)
+
+- `publish(topic)`
+- `sendChannel(channelName)` / `send_channel(channel_name)`
+- `sendToSpot(destNodeRid, destSpotRid)` / `send_to_spot(...)`
+- `requestChannel(channelName)` / `request_channel(...)`
+- `requestToSpot(destNodeRid, destSpotRid)` / `request_to_spot(...)`
+- `requestToRouter(peerRid)` / `request_to_router(...)`
+- `replyToSpot(destNodeRid, destSpotRid, requestSeq)` / `reply_to_spot(...)`
+- `replyToRouter(peerRid, requestSeq)` / `reply_to_router(...)`
+- `replyActorJoin(request, accepted)` (Actor join admission reply)
+
+##### Raw socket facade
+
+- `PubSocket.publish(topic)` / `XPubSocket.publish(topic)`
+- `DealerSocket.send()` / `DealerSocket.request()`
+- `RouterSocket.send(rid)` / `RouterSocket.request(rid)` / `RouterSocket.reply(rid, requestSeq)`
+- `RouterSocket.sendToSpot(destNodeRid, destSpotRid)` / `requestToSpot(...)` /
+  `replyToSpot(destNodeRid, destSpotRid, requestSeq)`
+- `PairSocket.send()` (PAIR send)
+- `StreamSocket.sendTo(rid)` (STREAM peer send)
+- 다른 raw send-capable socket의 송신 entrypoint도 동일하게 builder 시작점을
+  노출한다.
+
+##### SpotNode·StreamSocket Actor 표면
+
+- `SpotNode.joinActor(actor, destNodeRid, destSpotRid)` / `join_actor(...)`
+- `SpotNode.leaveActor(actor, currentSpotRid)` / `leave_actor(...)`
+- `SpotNode.destroyActor(actor)` / `destroy_actor(...)`
+- `SpotNode.remoteActorGetRef(targetNodeRid, actorId)` / `remote_actor_get_ref(...)`
+- `StreamSocket.bindActor(sessionRid, actor)` / `bind_actor(...)`
+- `StreamSocket.unbindActor(sessionRid, actorId)` / `unbind_actor(...)`
+- `StreamSocket.sendBoundActor(sessionRid, actorId)` / `send_bound_actor(...)`
+- `SpotNode.sendBoundSessionMsg(actor)` / `send_bound_session_msg(...)`
+
+#### 공통 builder 규칙
+
+- 시작점은 즉시 전송하지 않고 `SendOp`, `RequestOp`, `ReplyOp`,
+  `ActorJoinOp`, `ActorLeaveOp`, `ActorDestroyOp`, `ActorLookupOp`,
+  `ActorBindOp`, `ActorUnbindOp` 같은 언어별 operation builder를 반환한다.
+  서로 다른 시작점이라도 multipart payload 표현은 모두 `.message(...)`
+  반복으로 통일한다.
+- payload는 builder의 `message(part)` 반복 호출로 누적한다. 단일 payload와
+  multipart payload를 별도 시작점 오버로드로 나누지 않는다. 외부 List/Vector
+  컨테이너로 multipart를 포장하지 않는다.
+- payload가 의미상 필수인 작업(send/request/reply/publish, Actor join,
+  ActorReplyJoin 등)에서 메시지가 하나도 없는 `submit`은 금지한다. 타입
+  시스템으로 막을 수 있는 언어는 compile-time에서 막고, 그렇지 않은 언어는
+  `submit` 시점에 validation error로 막는다.
+- payload가 없는 작업(Actor `leave`, `destroy`, `bindActor`, `unbindActor`,
+  `remoteActorGetRef`)은 builder가 `message(...)` 단계 없이 곧바로 submit이
+  가능하다. 단 builder 형태와 옵션 단계(`flags(...)`, `timeout(...)`,
+  `callback(...)`, `await`/`submitAsync()`)는 동일하게 노출한다.
+- `flags`, `timeout`, callback, async 선택은 시작점 파라미터가 아니라
+  builder의 선택 단계로 둔다. 시작점은 대상 주소·요청 시퀀스처럼 의미상
+  키만 받는다.
+- async request·async Actor operation은 submit flags를 받지 않는다. callback
+  형태는 non-blocking submit을 표현하기 위해 `flags`를 받을 수 있다.
 - builder는 한 번 submit된 뒤 다시 submit될 수 없다. 언어가 move-only 또는
   ownership 타입을 제공하면 타입으로 막고, 그렇지 않으면 런타임 상태 검사로
   막는다.
+- Actor join 시작점은 admission completion 형태가 다르므로 reply payload와
+  최종 Actor ref를 함께 캡처하는 전용 completion 결과(`ActorJoinResult`)를
+  builder가 노출한다. lookup·destroy·leave·bind·unbind는 일반 reply
+  completion (`RequestResult`) 형태를 사용한다.
 
-공통 흐름은 아래와 같다. 이름은 언어 관례에 맞게 변환한다.
+#### 공통 흐름 예시
+
+이름은 언어 관례에 맞게 변환한다.
 
 ```java
 spot.publish(topic)
-    .message(message1)
-    .message(message2)
+    .message(part1)
+    .message(part2)
     .flags(SendFlags.DONTWAIT)
     .submit();
+
+routerSocket.requestToSpot(destNodeRid, destSpotRid)
+    .message(reqPart)
+    .timeout(Duration.ofSeconds(3))
+    .submitAsync();
+
+spotNode.joinActor(actor, destNodeRid, destUserSpotRid)
+    .message(joinStatePart)
+    .timeout(Duration.ofSeconds(3))
+    .submit(joinCallback);
+
+streamSocket.bindActor(sessionRid, actorRef)
+    .timeout(Duration.ofSeconds(2))
+    .submit(replyCallback);
 ```
 
-언어별 적용 기준은 다음과 같다.
+#### 언어별 적용 기준
 
 | Binding | Canonical operation-builder shape |
 |---|---|
 | C++ | move-only fluent builder. `submit()`은 rvalue 또는 one-shot state로 중복 submit을 막는다. |
-| Java | staged builder. `message(...)` 전에는 `submit()` / `submitAsync()`가 보이지 않아야 한다. |
+| Java | staged builder. payload가 의무인 작업은 `message(...)` 전에는 `submit()` / `submitAsync()`가 보이지 않아야 한다. payload 없는 작업은 시작점이 곧바로 submit 단계를 노출한다. |
 | .NET | fluent builder. 가능하면 interface stage로 최소 payload rule을 표현하되, public surface가 과도하게 장황해지면 submit-time validation을 허용한다. |
 | Node | fluent builder. TypeScript declaration은 payload stage를 표현하고, 런타임도 같은 validation을 수행한다. |
 | Python | fluent builder. `message(...)` 반복과 Python 관용의 `messages(*parts)` convenience를 함께 허용한다. |
 | Go | fluent builder. `context.Context`는 operation 시작점이 아니라 `Submit(ctx)` / `SubmitCallback(ctx, callback)` 실행 시점에 전달한다. |
-| Rust | typestate builder. `Empty` 상태에서 `message(...)` 후 `Ready` 상태로 바뀌며, `Ready` 상태에서만 submit 메서드가 존재한다. |
+| Rust | typestate builder. payload 의무 작업은 `Empty` 상태에서 `message(...)` 후 `Ready` 상태로 바뀌며 `Ready` 상태에서만 submit 메서드가 존재한다. payload 없는 작업은 시작점이 곧바로 submit 가능한 typestate를 반환한다. |
 
-이 규칙은 POSD 기준에서 Required다. 새 SPOT send/request/reply public API를
-추가하거나 정리할 때는 operation builder 형태를 기준으로 하고, 기존 오버로드를
-canonical API로 더 늘리지 않는다.
+이 규칙은 POSD 기준에서 Required다. 새 send/request/reply/publish 또는 Actor
+위치·attach public API를 추가하거나 정리할 때는 이 operation builder 형태를
+기준으로 하고, 기존 오버로드를 canonical API로 더 늘리지 않는다.
 
 ## Core Alignment Rules
 
@@ -547,11 +607,20 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   Actor part를 nonblocking으로 미리 drain해서 public dispatch info가 그 part를
   반환하게 해야 한다.
 - Spot join request는 message를 포함한다. join reply도 accept/reject 결과와
-  함께 message를 caller에게 돌려줘야 한다.
-- Remote Actor create-or-get은 target Actor가 없을 때만 admission handler를
-  호출한다. 이미 있으면 existing 결과를 반환한다.
-- Discovery Actor route는 Actor 생성 시점이 아니라 STREAM bind 성공 시점에
-  active route로 보인다.
+  함께 message를 caller에게 돌려줘야 한다. join completion은 전용 `actor join`
+  result 타입으로 최종 Actor ref(remote join이면 target node의 ref)와 joined
+  Spot rid를 application에 전달해야 한다.
+- remote Actor 생성과 admission handler는 공개 표면에서 제거되었다. 원격 노드에서
+  시작해야 하는 Actor는 application이 해당 SpotNode에서 직접 `actor_new`로
+  생성한다. 원격 Actor의 checked ref가 필요하면 async `remote_actor_get_ref`
+  lookup을 사용한다.
+- Discovery Actor active route는 Actor 생성 시점이나 STREAM bind 시점이 아니라
+  **user Spot join 성공 commit 시점**에 publish하고, user Spot에서 Entry Spot
+  으로 leave가 성공하면 Entry Spot 위치로 갱신한다. session bind/unbind는 active
+  route를 만들거나 제거하지 않는다.
+- session attach와 Actor 위치 이동은 서로 다른 상태 전이다. user Spot으로 join
+  하는 데 bound STREAM session은 필요하지 않다. Actor 위치 이동은 session
+  mapping을 자동으로 바꾸지 않는다.
 - Actor별 queue limit option은 없다. 바인딩은 이를 public option으로 만들면
   안 된다.
 - 제거된 Actor ref 함수, stream actor lookup/send helper, session actor key
@@ -873,33 +942,36 @@ C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 
     - 그 외 실패: typed exception
   - return-based 언어 (C/Go/Rust): 에러 반환 (C=result enum,
     Go=`error`, Rust=`Err(E)`).
-- 언어별 flags 표현:
-  - C / C++: `int flags = 0`
-  - Java: 일반 socket은 `SendFlags flags` overload, SPOT builder는
-    `.flags(SendFlags flags)`
-  - .NET: 일반 socket은 `SendFlags flags = SendFlags.None`, SPOT builder는
-    `.Flags(SendFlags flags)`
-  - Go: 일반 socket은 `flags SendFlags`, SPOT builder는 `Flags(flags)`
-  - Rust: 일반 socket은 base 함수 (blocking) + `_with_flags` 변형, SPOT
-    builder는 `flags(flags)`
-  - Node: 일반 socket은 `flags?: SendFlags`, SPOT builder는 `.flags(flags)`
-  - Python: 일반 socket은 `*, flags: int = 0`, SPOT builder는 `.flags(flags)`
+- 언어별 flags 표현 (builder 단계로 통일):
+  - C: `int flags = 0` (C ABI는 builder 정책 적용 안 됨)
+  - C++ / Java / .NET / Node / Python / Go / Rust: builder의 `.flags(...)`
+    단계로 표현한다. 모든 send/request/reply/publish/Actor 송신·attach
+    표면이 builder를 반환하므로 raw socket 시그니처에 별도 `flags` 인자나
+    `_with_flags` 변형을 두지 않는다.
 
 ### Naming Policy
 
-#### 오버로드 우선, 이름 분화 금지
+#### 한 entrypoint, 빌더 단계로 변형 표현
 
-파라미터로 구분 가능한 변형은 동일한 이름을 사용한다.
-별도 이름(`request_callback`, `send_nonblocking` 등)을 만들지 않는다.
+같은 작업의 변형(async/callback, single/multipart, flags 유무, timeout 유무)은
+동일한 entrypoint 이름을 사용하고, 변형은 builder 단계로 표현한다. 별도 이름
+(`request_callback`, `send_nonblocking`, `send_with_flags` 등)을 만들지 않는다.
 
 ```
-// GOOD: one name, parameters distinguish the form.
-request(parts, timeout)                    // coroutine
-request(parts, callback, flags, timeout)   // callback
+// GOOD: one name, builder absorbs the form.
+spot.request_channel(channel)
+    .message(part)
+    .timeout(Duration::from_secs(3))
+    .submit_async()                        // coroutine variant
+
+spot.request_channel(channel)
+    .message(part)
+    .flags(SendFlags::DONTWAIT)
+    .submit(callback)                      // callback variant
 
 // BAD: split names for the same operation.
-request(parts, timeout)
-request_callback(parts, callback, flags, timeout)
+request_channel(channel, parts, timeout)
+request_channel_callback(channel, parts, callback, flags, timeout)
 ```
 
 #### 공통 결과 타입 이름
@@ -931,7 +1003,7 @@ SPOT routed 네이밍은 두 축을 함께 가져간다.
   - `request_to_router(peer_rid) -> RequestOp`
 
 `SendOp`, `RequestOp`, `ReplyOp`의 payload와 option은
-`SPOT Operation Builder Policy` 절이 정한 `message(...)`, `flags(...)`,
+`Operation Builder Policy` 절이 정한 `message(...)`, `flags(...)`,
 `timeout(...)`, `submit...` 단계로 표현한다. 따라서 새 canonical SPOT
 surface에서는 같은 시작점에 `Message` / `List<Message>` / `flags` / `timeout`
 조합 오버로드를 추가하지 않는다.
@@ -945,20 +1017,25 @@ surface에서는 같은 시작점에 `Message` / `List<Message>` / `flags` / `ti
 
 ### Request Policy
 
-request 는 coroutine 변형과 callback 변형 두 가지를 제공한다.
-**함수 이름은 둘 다 `request`** 이고 callback 파라미터 유무로 구분한다.
-SPOT operation builder 대상에서는 작업 시작점 이름이 `requestChannel` /
-`requestToSpot` / `requestToRouter` 이며, 완료 방식은 builder의
-`submitAsync` / `submit(callback)` 또는 언어별 동등 submit 메서드로 구분한다.
+request 는 coroutine 변형과 callback 변형 두 완료 방식을 제공하며, 두 방식
+모두 동일한 `request` entrypoint 가 반환하는 `RequestOp` operation builder
+의 submit 단계로 선택한다. 별도 이름 (`request_callback`, `requestAsync` 등)
+을 만들지 않는다.
+
+SPOT operation builder 대상의 작업 시작점은 `requestChannel` /
+`requestToSpot` / `requestToRouter` 이고, raw `DealerSocket` /
+`RouterSocket` 의 작업 시작점은 `request` / `request(peer)` 이다. 어느
+시작점이든 builder의 `submitAsync` / `submit(callback)` (또는 언어별 동등
+submit 메서드) 로 완료 방식을 선택한다.
 
 #### Coroutine / Async request
 
-```
-async request(parts, timeout = 0) → List<Message>    // throws on any failure
-```
+builder의 async submit 메서드 (`submit_async()` / `submitAsync()` /
+`await op.submit()`).
 
 - flags 파라미터 없음. submit 은 항상 blocking (코루틴 대기).
-- `timeout = 0` 이면 소켓 기본 timeout 을 사용한다. 호출 시 생략 가능.
+- timeout 은 builder의 `.timeout(...)` 단계로 전달한다. 지정하지 않으면 소켓
+  기본 timeout 을 사용한다.
 - submit 실패 시 예외. reply 실패 시 예외 (ETIMEDOUT 등).
 - **성공 시 reply payload 의 `List<Message>` 만 반환한다.** caller 는 이미
   자기가 보낸 request 의 routing_id 와 request_seq 를 알고 있으므로
@@ -968,14 +1045,12 @@ async request(parts, timeout = 0) → List<Message>    // throws on any failure
 
 #### Callback request
 
-```
-request(parts, callback, flags = 0, timeout = 0)    // blocking success=true,
-                                                    // non-blocking temporary
-                                                    // backpressure=false
-```
+builder의 callback submit 메서드 (`submit(callback)`).
 
-- flags 파라미터 있음. `DONTWAIT` 으로 non-blocking submit 가능.
-- `timeout = 0` 이면 소켓 기본 timeout 을 사용한다. 호출 시 생략 가능.
+- flags 파라미터 있음. builder의 `.flags(...)` 단계로 전달하며,
+  `DONTWAIT` 으로 non-blocking submit 가능.
+- timeout 은 builder의 `.timeout(...)` 단계로 전달한다. 지정하지 않으면 소켓
+  기본 timeout 을 사용한다.
 - submit 단계는 아래처럼 해석한다.
   - exception 기반 언어:
     blocking 성공=`true`, non-blocking temporary backpressure=`false`,
@@ -1059,8 +1134,9 @@ public API는 part helper 호출 결과를 언어별 multipart 객체로 조립�
 
 PAIR / DEALER / ROUTER / STREAM / SPOT 의 recv 결과. topic 필드가 없는 점 외에는
 `TopicMessage` 와 동일한 편의 메서드 집합을 가진다. routed recv 결과는
-일반 응답 전송용 `send()` 를 제공하고, request-reply 결과는 `reply()` 도
-함께 제공한다.
+일반 응답 전송용 `send()` operation builder 를 제공하고, request-reply 결과는
+`reply()` builder 도 함께 제공한다. 두 entrypoint 모두 `Operation Builder
+Policy` 를 따라 payload 와 옵션을 builder 단계로 누적한다.
 
 | 구성 | 타입 | 의미 |
 |------|------|------|
@@ -1071,8 +1147,8 @@ PAIR / DEALER / ROUTER / STREAM / SPOT 의 recv 결과. topic 필드가 없는 �
 | `is_single_part()` | `bool` | 동일 |
 | `first_part()` | `Message` | 동일 |
 | `single_part_or_throw()` | `Message` | 동일 |
-| `send(parts, flags?)` | `bool` | 이 `Received` 의 송신자에게 일반 routed message 를 보낸다. routed source context 가 없으면 `SubmitError` |
-| `reply(parts, flags?)` | — | request 였을 때만 유효. `request_seq` 없거나 reply context 가 invalid 하면 `SubmitError` |
+| `send()` | `SendOp` | 이 `Received` 의 송신자에게 일반 routed message 를 보내는 operation builder. routed source context 가 없으면 submit 시점에 `SubmitError` |
+| `reply()` | `ReplyOp` | request 였을 때만 유효한 reply operation builder. `request_seq` 없거나 reply context 가 invalid 하면 submit 시점에 `SubmitError` |
 | `close()` / 동등 | — | 동일 |
 
 `send()` 규칙:
@@ -1082,21 +1158,22 @@ PAIR / DEALER / ROUTER / STREAM / SPOT 의 recv 결과. topic 필드가 없는 �
   쪽으로 일반 routed message 를 보낸다.
 - `ROUTER` 와 `STREAM` 수신 결과는 peer routing id 로 보낸다.
   `SPOT` routed 수신 결과는 source node rid 와 source spot rid 로 보낸다.
-- `DONTWAIT` 같은 non-blocking submit flag 는 언어별 routed `send` 와 같은
-  방식으로 처리한다. backpressure 를 값으로 표현하는 언어는 `false` 를
-  반환하고, 예외 기반 언어는 기존 `send` 와 같은 submit 오류를 낸다.
+- payload 누적과 `flags(...)` 같은 옵션은 `SendOp` builder 단계로 표현하며,
+  `DONTWAIT` 같은 non-blocking submit flag 도 builder 의 `.flags(...)`
+  단계로 전달한다.
 
 `reply()` 규칙:
-- **`request_seq` 가 `null` 이면 호출 금지**. 호출 시 `SubmitError`
-  계열로 처리한다. `request_seq == 0`, 잘못된 `(routing_id, request_seq)`
-  조합 등 invalid reply context 도 같은 submit domain 으로 본다.
+- **`request_seq` 가 `null` 이면 호출 금지**. 호출 시 builder 의 submit 단계에서
+  `SubmitError` 계열로 처리한다. `request_seq == 0`, 잘못된 `(routing_id,
+  request_seq)` 조합 등 invalid reply context 도 같은 submit domain 으로
+  본다.
 - `Received` 가 내부적으로 source socket 참조를 보유한다 (binding 이 recv /
   handler 에서 Received 를 만들 때 주입).
-- socket 이 close 된 후 `reply()` 호출하면 `SubmitError(TERMINATED)`.
+- socket 이 close 된 후 `reply().submit()` 호출하면 `SubmitError(TERMINATED)`.
 - 서버 측 사용자가 `(peerRid, requestSeq)` 를 따로 보관할 필요 없음 —
   `Received` 하나로 완결.
-- 별도 `router.reply(peerRid, seq, parts)` 저수준 호출도 pull-mode 호환성
-  위해 남겨두되, **권장 경로는 `received.reply(...)`**.
+- 별도 `router.reply(peerRid, seq).message(...).submit()` 경로도 pull-mode
+  호환성 위해 남겨두되, **권장 경로는 `received.reply().message(...).submit()`**.
 
 #### `SubscriptionEvent`
 
@@ -1504,23 +1581,27 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 
 기준이 되는 core 공개 타입과 함수는 아래다.
 
-- 타입: `zlink_actor_ref_t`, `zlink_actor_create_result_t`,
-  `zlink_actor_route_t`, `zlink_actor_recv_info_t`,
-  `zlink_actor_join_info_t`, `zlink_actor_create_status_t`,
-  `zlink_actor_admission_result_t`, `zlink_actor_admission_handler_fn`,
+- 타입: `zlink_actor_ref_t`, `zlink_actor_route_t`, `zlink_actor_recv_info_t`,
+  `zlink_actor_join_info_t`, `zlink_actor_join_result_t`,
+  `zlink_actor_lookup_result_t`, `zlink_spot_actor_lifecycle_info_t`,
+  `zlink_actor_join_handler_fn`, `zlink_actor_lookup_handler_fn`,
+  `zlink_spot_actor_lifecycle_handler_fn`,
   `zlink_spot_node_spot_entry_t`, `zlink_spot_node_actor_entry_t`
 - `SpotNode` 축: `zlink_spot_node_actor_new`,
-  `zlink_spot_node_actor_lookup`, `zlink_remote_actor_get_ref`,
-  `zlink_spot_node_create_remote_actor`, `zlink_spot_node_actor_destroy`,
-  `zlink_spot_node_actor_admission_handler`,
-  `zlink_spot_node_actor_join_spot`, `zlink_spot_node_actor_leave_spot`,
+  `zlink_spot_node_actor_lookup`, `zlink_remote_actor_get_ref` (async lookup),
+  `zlink_spot_node_actor_destroy` (async submit),
+  `zlink_spot_node_actor_join_spot` (async submit + 전용 completion typedef),
+  `zlink_spot_node_actor_leave_spot` (async submit),
   `zlink_spot_node_actor_recv_part`,
   `zlink_spot_node_actor_send_bound_session_msg`,
   `zlink_spot_node_actor_close_bound_session`
 - `Spot` 축: `zlink_spot_actor_join_recv`,
-  `zlink_spot_actor_join_reply`, `zlink_spot_actors_snapshot`
-- `StreamSocket` 축: `zlink_stream_bind_actor`,
-  `zlink_stream_unbind_actor`, `zlink_stream_send_bound_actor_part`
+  `zlink_spot_actor_join_reply`, `zlink_spot_actor_lifecycle_handler`,
+  `zlink_spot_actors_snapshot`
+- `StreamSocket` 축: `zlink_stream_bind_actor` (async submit),
+  `zlink_stream_unbind_actor` (async submit),
+  `zlink_stream_send_bound_actor_part`,
+  `zlink_stream_bound_actors`
 - `Discovery` 축: `zlink_discovery_resolve_actor`
 - snapshot 축: `zlink_spot_node_spots_snapshot`,
   `zlink_spot_node_actors_snapshot`, `zlink_spot_actors_snapshot`
@@ -1529,10 +1610,10 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 
 | Public owner | Actor capability |
 |---|---|
-| `SpotNode` | local Actor 생성/조회, remote Actor ref 생성, remote create-or-get, destroy, admission handler, join/leave, node-level Actor snapshot |
+| `SpotNode` | local Actor 생성/조회, async remote Actor lookup, async destroy, async join/leave, node-level Actor snapshot |
 | `Actor` | Actor ref 보유, Actor part recv, bound STREAM session message send, bound session close |
-| `Spot` | Actor join request recv/reply, 현재 Spot에 join된 Actor snapshot |
-| `StreamSocket` / session facade | STREAM session에 Actor bind/unbind, bound Actor 대상 send |
+| `Spot` | Actor join request recv/reply, Actor lifecycle handler (`on_join`/`on_leave`), 현재 Spot에 join된 Actor snapshot |
+| `StreamSocket` / session facade | async STREAM session Actor bind/unbind, bound Actor 대상 send, session attach 목록 조회 |
 | `Discovery` | active Actor route 조회 |
 
 바인딩은 아래 도메인 객체를 public contract로 제공해야 한다. 이름은 언어 관례에
@@ -1541,11 +1622,13 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 | 객체 | 필수 의미 |
 |---|---|
 | `ActorRef` | `node_rid`, `actor_id`, `generation` |
-| `ActorCreateResult` | created/existing 상태와 `ActorRef` |
 | `ActorRoute` | route 대상 Actor, join 여부, join된 Spot routing id |
 | `ActorRecvInfo` | 수신 Actor, source node/session routing id, flags |
 | `ActorPart` | `ActorRecvInfo`, message part, more 여부 |
 | `ActorJoinInfo` + join message | join 요청 판단과 응답에 필요한 `source_actor`, `target_actor`, `source_node_rid`, `source_spot_rid`, `target_node_rid`, `target_spot_rid`, `join_epoch`, `flags`, join message. 언어 관례에 따라 `ActorJoinRequest` wrapper나 tuple/pair로 묶을 수 있다. native reply context는 binding 내부에서만 보관하며 public field로 노출하지 않는다 |
+| `ActorJoinResult` | join completion에 전달. `result`, 최종 `actor` ref(remote join이면 target node ref), `joined_spot_rid`, `join_epoch`, `flags` |
+| `ActorLookupResult` | remote Actor lookup completion에 전달. `result`, checked `actor` ref, `flags` |
+| `SpotActorLifecycleInfo` | Spot lifecycle handler에 전달. `previous_actor`, `current_actor`, `previous_spot_rid`, `current_spot_rid`, `join_epoch`, `flags` |
 | `SpotNodeSpotEntry` | Spot routing id, dispatch handler 여부, joined/pending Actor 수, route sync 상태, 변경 시각 |
 | `SpotNodeActorEntry` | Actor ref, joined 여부, joined Spot routing id, route sync 상태, pending message 수, 변경 시각 |
 
@@ -1556,11 +1639,17 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 - `generation == 0`은 unchecked remote ref이며 유효하지 않은 값으로 보지 않는다.
 - local Actor는 `SpotNode`가 만들고, lifecycle handle은 언어별 `Actor` 타입으로
   노출한다. 한 Actor는 동시에 하나의 Spot에만 join할 수 있다.
-- `leave`는 unread Actor message를 비우지 않는다.
-- remote Actor create-or-get은 target Actor가 없을 때만 admission handler를
-  호출한다. 이미 있으면 existing 결과를 반환한다.
+- `leave`는 async submit API다. unread Actor message를 비우지 않는다. 같은 node의
+  Entry Spot으로만 돌아가며, user Spot에서 leave가 성공하면 source `on_leave`와
+  Entry Spot `on_join` lifecycle callback이 발생하고 active route가 Entry Spot
+  위치로 갱신된다.
+- 원격 노드에서 시작해야 하는 Actor는 application이 해당 SpotNode에서 직접
+  `actor_new`로 생성한다. remote Actor의 checked ref는 async
+  `remote_actor_get_ref` lookup으로 얻는다. remote create-or-get과 admission
+  handler는 공개 표면에 없다.
 - Spot join request는 message를 포함한다. join reply도 accept/reject 결과와
-  함께 message를 caller에게 돌려줘야 한다.
+  함께 message를 caller에게 돌려줘야 한다. join completion은 `ActorJoinResult`
+  값으로 caller에게 최종 Actor ref와 joined Spot rid를 전달한다.
 - `ActorJoinInfo`가 native `zlink_actor_join_info_t`의 모든 필드를 public
   field로 노출해야 한다는 뜻은 아니다. 언어별 binding은 reply에 필요한 native
   request context를 opaque 내부 상태로 보관한다. public 값 객체에는 사용자가
@@ -1574,8 +1663,10 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
   된다.
 - STREAM에서 Actor로 보내는 public API는 bound session과 actor id를 선택자로
   사용한다.
-- Discovery Actor route는 Actor 생성 시점이 아니라 STREAM bind 성공 시점에
-  active route로 보인다.
+- Discovery Actor active route는 Actor 생성 시점이나 STREAM bind 시점이 아니라
+  user Spot join 성공 commit 시점에 publish되고, user Spot에서 Entry Spot으로
+  leave가 성공하면 Entry Spot 위치로 갱신된다. session bind/unbind는 active
+  route에 영향을 주지 않는다.
 - `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` 는 Discovery의 typed option/property로
   노출한다. raw option bag으로 노출하지 않는다.
 - Actor별 queue limit option은 없다. 바인딩은 이를 public option으로 만들면
@@ -1646,10 +1737,10 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | local Actor create | `SpotNode` | `zlink_spot_node_actor_new` |
 | local Actor lookup | `SpotNode` | `zlink_spot_node_actor_lookup` |
 | unchecked remote Actor ref | `SpotNode` | `zlink_remote_actor_get_ref` |
-| remote create-or-get | `SpotNode` | `zlink_spot_node_create_remote_actor` |
+| remote Actor lookup (async) | `SpotNode` | `zlink_remote_actor_get_ref` |
 | Actor destroy by ref | `SpotNode` | `zlink_spot_node_actor_destroy` |
 | owned Actor close/destroy | `Actor` | `zlink_spot_node_actor_destroy` |
-| Actor admission handler | `SpotNode` | `zlink_spot_node_actor_admission_handler` |
+| Spot Actor lifecycle handler | `Spot` | `zlink_spot_actor_lifecycle_handler` |
 | Actor join by ref | `SpotNode` | `zlink_spot_node_actor_join_spot` |
 | owned Actor join | `Actor` | `zlink_spot_node_actor_join_spot` |
 | Actor leave by ref | `SpotNode` | `zlink_spot_node_actor_leave_spot` |
@@ -1662,6 +1753,7 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | STREAM bind Actor | `StreamSocket` / session facade | `zlink_stream_bind_actor` |
 | STREAM unbind Actor | `StreamSocket` / session facade | `zlink_stream_unbind_actor` |
 | STREAM send bound Actor | `StreamSocket` / session facade | `zlink_stream_send_bound_actor_part` |
+| STREAM bound Actor snapshot | `StreamSocket` / session facade | `zlink_stream_bound_actors` |
 | active Actor route resolve | `Discovery` | `zlink_discovery_resolve_actor` |
 | node Spot snapshot | `SpotNode` | `zlink_spot_node_spots_snapshot` |
 | node Actor snapshot | `SpotNode` | `zlink_spot_node_actors_snapshot` |
@@ -2103,30 +2195,27 @@ core 가 request-reply dispatch 를 처리한다. 바인딩은 dispatch owner �
 
 #### Request API 변형
 
-request 는 두 층으로 나눈다.
+request 는 두 완료 방식을 가진다.
 
-- coroutine / await request
+- coroutine / await (async) request
 - callback completion request
 
-coroutine / await request 는 완성된 request-reply 연산으로 보고, 기본 이름은
-항상 `request` 로 둔다.
+두 방식 모두 `request` entrypoint 가 반환하는 `RequestOp` operation builder
+를 통해 노출된다. builder 의 submit 단계가 완료 방식을 고르며, 별도 이름
+(`request_callback`, `request_async`)을 만들지 않는다.
 
-callback completion request 는 submit 단계가 따로 있으므로, public surface 는
-같은 `request` 이름 아래에서 `flags` 로 submit 방식을 고른다.
-
-오버로드가 가능한 언어는 아래 형태를 권장한다.
-
-- `request(parts, timeout)`
-- `request(parts, callback, flags, timeout)`
-
-오버로드가 어려운 언어도 의미는 동일해야 한다. exception 기반 언어에서는
-별도 `TryRequest` 이름을 두지 않는다.
+- async 변형: builder의 `.submit_async()` / `.submit_await()` /
+  `await op.submit()` 같은 언어별 비동기 submit 메서드를 사용한다.
+  submit flags 는 받지 않는다.
+- callback 변형: builder의 `.flags(...)` 단계를 거친 뒤
+  `.submit(callback)` 으로 완료한다. `DONTWAIT` 같은 non-blocking submit
+  flag 를 표현할 수 있다.
 
 C binding 은 `zlink_*_request_part(..., flags, part_flag, timeout, ...)`
-substrate 형태를 유지한다.
-즉 callback request submit 제어를 별도 함수명이 아니라 flags 로 표현한다.
+substrate 형태를 유지한다 (C ABI 는 builder 정책 적용 안 됨). 즉 C 에서는
+callback request submit 제어를 별도 함수명이 아니라 flags 로 표현한다.
 
-| | `request(parts, timeout)` | `request(parts, callback, flags, timeout)` |
+| | async submit (`builder.submit_async()`) | callback submit (`builder.submit(callback)`) |
 |---|---|---|
 | submit | blocking / suspending | blocking 또는 non-blocking (`flags`) |
 | reply 전달 | 반환값 `List<Message>` | callback |
@@ -2264,9 +2353,9 @@ zlink_config_result_t zlink_unset_subscription(void *handle, const char *filter)
 
 SPOT routed direct messaging 은 특정 Spot 또는 Router peer, routed reply 대상에
 직접 메시지를 보낸다. Core substrate는 아래 part 기반 C 함수로 표현된다.
-고수준 바인딩의 `Spot` facade는 이 기능을 `SPOT Operation Builder Policy`에
-맞춘 operation builder 시작점으로 노출한다. `RouterSocket`의 router-to-spot
-helper는 router socket capability 표면이므로 기존 router socket 규칙을 따른다.
+고수준 바인딩의 `Spot` facade와 `RouterSocket`의 router-to-spot helper 모두
+이 기능을 `Operation Builder Policy`에 맞춘 operation builder 시작점으로
+노출한다. raw socket의 일반 send/request/reply도 동일한 builder 패턴을 따른다.
 
 ```c
 /* spot -> spot */
@@ -2285,11 +2374,13 @@ zlink_submit_result_t zlink_router_send_spot_part(void *router,
 ```
 
 바인딩 규칙:
-- C ABI와 RouterSocket helper의 routed send 는 기존 `sendRid` 패턴과 동일하다.
-- 고수준 `Spot` endpoint의 routed send/request/reply 는 이 문서의
-  `SPOT Operation Builder Policy`를 따른다.
-- 목적지 주소는 `peer_rid` 또는 reply 대상의
-  `dest_node_rid + dest_spot_rid` 로 지정한다.
+- C ABI는 part 기반 함수형 계약을 유지한다.
+- 고수준 바인딩의 `Spot` endpoint, `RouterSocket`의 router-to-spot helper,
+  그리고 raw `DealerSocket`/`RouterSocket`/`PubSocket`/`StreamSocket` 등의
+  일반 send/request/reply/publish 표면 모두 이 문서의
+  `Operation Builder Policy`를 따른다.
+- 목적지 주소·요청 시퀀스는 builder 시작점 인자로 받고, payload·flags·timeout·
+  callback은 builder 단계로 표현한다.
 - routed recv 는 아래 Event Dispatcher 의 handler/recv surface 를 사용한다.
 
 #### SPOT Lifecycle / Attachment
@@ -3359,32 +3450,32 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 
 | 안티패턴 | 올바른 패턴 | 이유 |
 |---|---|---|
-| `sendWithRoutingId(id, msg)` | `send(id, msg)` | `RoutingId` 타입이 이미 의미를 전달 |
-| `sendMultipartMessages(parts)` | `send(parts)` | multipart-only이므로 이름에 반복 불필요 |
-| `publishToTopic(topic, msg)` | `publish(topic, msg)` | publish는 topic이 있는 동작 |
+| `sendWithRoutingId(id, msg)` | `send(id).message(msg).submit()` | builder가 RoutingId와 payload를 단계로 분리 |
+| `sendMultipartMessages(parts)` | `send().message(p1).message(p2).submit()` | builder의 `.message(...)` 반복으로 multipart 표현 |
+| `publishToTopic(topic, msg)` | `publish(topic).message(msg).submit()` | publish는 topic이 있는 동작, builder가 payload를 단계로 분리 |
 | `recvWithTimeout(timeout)` | `recv(timeout)` | 시그니처로 충분 |
 | `setLingerTimeoutMilliseconds(ms)` | `setLinger(duration)` | 타입이 단위를 전달 |
 
-파라미터 조합이 다를 때 이름을 늘리는 대신 각 언어의 고유 disambiguation
-메커니즘을 사용한다.
+송신·요청·응답·게시·Actor 표면은 `Operation Builder Policy` 에 따라 builder
+시작점만 노출하고, payload·flags·timeout·callback 등 모든 변형 축은 builder
+단계로 표현한다. 시작점 이름은 동작(action)만 담고 파라미터의 존재, 타입,
+개수를 이름에 반복하지 않는다.
+
+비-builder public 표면(예: snapshot, lookup, getter/setter) 에서 파라미터
+조합이 다를 때 이름을 늘리는 대신 각 언어의 고유 disambiguation 메커니즘을
+사용한다.
 
 - Java / C# / C++: overloading
   - 이름은 하나, 시그니처가 구분
-  - 예: `send(Message msg)`, `send(RoutingId id, Message msg)`
 - Go: 가변 인자 / functional option / 별도 메서드
   - overloading이 없으므로 동작 의미가 다른 경우에만 최소 접미사를 허용한다
-  - 예: `Send(msg Message)`, `SendTo(id RoutingId, msg Message)`
   - 파라미터를 그대로 이름에 넣지 않는다
 - Python: keyword argument / optional parameter
   - 이름은 하나, keyword가 구분
-  - 예: `send(self, message, *, routing_id=None)`
 - Node/TypeScript: optional parameter / union type
   - 이름은 하나, 타입이 구분
-  - 예: `send(message: Message)`, `send(routingId: RoutingId, message: Message)`
 - Rust: trait bound / `Option<T>` / newtype
   - overloading이 없으므로 `impl Into<T>`, `Option<T>`, strong newtype으로 구분
-  - 예: `send(msg: impl Into<Message>)`,
-    `send_to(id: RoutingId, msg: impl Into<Message>)`
   - 동작 의미가 다른 경우에만 최소 접미사를 허용한다
   - 파라미터를 그대로 이름에 넣지 않는다
 

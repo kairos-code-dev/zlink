@@ -112,13 +112,12 @@ The C binding exposes the Actor dispatch contract directly through
 Required public C surface includes:
 
 - `zlink_actor_ref_t`, `zlink_actor_recv_info_t`, `zlink_actor_join_info_t`,
-  `zlink_actor_create_result_t`, `zlink_actor_route_t`,
+  `zlink_actor_route_t`, `zlink_actor_join_result_t`,
+  `zlink_actor_lookup_result_t`, `zlink_spot_actor_lifecycle_info_t`,
+  `zlink_actor_join_handler_fn`, `zlink_actor_lookup_handler_fn`,
+  `zlink_spot_actor_lifecycle_handler_fn`,
   `zlink_spot_node_spot_entry_t`, `zlink_spot_node_actor_entry_t`
-- `zlink_actor_create_status_t`, `zlink_actor_admission_result_t`,
-  `zlink_actor_admission_handler_fn`
 - `ZLINK_ACTOR_ID_MAX`,
-  `ZLINK_ACTOR_CREATE_CREATED`, `ZLINK_ACTOR_CREATE_EXISTING`,
-  `ZLINK_ACTOR_ADMISSION_ACCEPT`, `ZLINK_ACTOR_ADMISSION_REJECT`,
   `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`,
   `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE`,
   `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE`,
@@ -136,14 +135,13 @@ Required public C surface includes:
   `ZLINK_RECV_OK`, `ZLINK_RECV_BUSY`, `ZLINK_RECV_NOT_SUPPORTED`
 - `zlink_spot_node_actor_new`, `zlink_spot_node_actor_destroy`,
   `zlink_spot_node_actor_lookup`,
-  `zlink_remote_actor_get_ref`
-- `zlink_spot_node_create_remote_actor`,
-  `zlink_spot_node_actor_admission_handler`
-- `zlink_spot_node_actor_join_spot`,
+  `zlink_remote_actor_get_ref` (async submit + lookup completion)
+- `zlink_spot_node_actor_join_spot` (async submit + join completion),
   `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`,
-  `zlink_spot_node_actor_leave_spot`
+  `zlink_spot_node_actor_leave_spot` (async submit + reply completion),
+  `zlink_spot_actor_lifecycle_handler`
 - `zlink_stream_bind_actor`, `zlink_stream_unbind_actor`,
-  `zlink_stream_send_bound_actor_part`
+  `zlink_stream_send_bound_actor_part`, `zlink_stream_bound_actors`
 - `zlink_spot_node_actor_send_bound_session_msg`,
   `zlink_spot_node_actor_close_bound_session`,
   `zlink_spot_node_actor_recv_part`
@@ -161,15 +159,15 @@ zlink_spot_node_actor_new();
 zlink_spot_node_actor_destroy();
 zlink_spot_node_actor_lookup();
 zlink_remote_actor_get_ref();
-zlink_spot_node_create_remote_actor();
-zlink_spot_node_actor_admission_handler();
 zlink_spot_node_actor_join_spot();
 zlink_spot_actor_join_recv();
 zlink_spot_actor_join_reply();
 zlink_spot_node_actor_leave_spot();
+zlink_spot_actor_lifecycle_handler();
 zlink_stream_bind_actor();
 zlink_stream_unbind_actor();
 zlink_stream_send_bound_actor_part();
+zlink_stream_bound_actors();
 zlink_spot_node_actor_send_bound_session_msg();
 zlink_spot_node_actor_close_bound_session();
 zlink_spot_node_actor_recv_part();

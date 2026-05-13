@@ -547,10 +547,13 @@ free(peers);
 
 Actor addresses are resolved through core Actor active routes, not through an
 application key-value store. Enable `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` on
-the Actor owner Discovery, bind the Actor to a STREAM session, then use
-`zlink_discovery_resolve_actor()` to read the current Actor ref. Domain keys
-such as match ids and user ids should live in an external store such as Redis
-or a database.
+the Actor owner Discovery, move the Actor into a user Spot via
+`zlink_spot_node_actor_join_spot()`, then use
+`zlink_discovery_resolve_actor()` to read the current Actor ref. The active
+route is published at user Spot join success and is updated to the Entry Spot
+location when an explicit leave succeeds; STREAM session bind/unbind has no
+effect on the active route. Domain keys such as match ids and user ids should
+live in an external store such as Redis or a database.
 
 ## 7. Operational Patterns
 

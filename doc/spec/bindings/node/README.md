@@ -120,26 +120,11 @@ API lists can stay focused on signatures.
 Node exposes Actor dispatch through the package public entrypoint only.
 
 ```typescript
-const ActorCreateStatus = Object.freeze({
-    Created: 1,
-    Existing: 2
-});
-type ActorCreateStatus =
-    typeof ActorCreateStatus[keyof typeof ActorCreateStatus];
-
-const ActorAdmissionResult = Object.freeze({
-    Accept: 1,
-    Reject: 2
-});
-type ActorAdmissionResult =
-    typeof ActorAdmissionResult[keyof typeof ActorAdmissionResult];
-
 type ActorRef = {
     nodeRid: RoutingId;
     actorId: string;
     generation: bigint;
 };
-type ActorCreateResult = { status: ActorCreateStatus; actor: ActorRef };
 type ActorRoute = { actor: ActorRef; joined: boolean; joinedSpotRid: RoutingId | null };
 type ActorRecvInfo = { actor: ActorRef; sourceNodeRid: RoutingId; sourceSessionRid: RoutingId; flags: number };
 type ActorJoinInfo = {
@@ -154,28 +139,52 @@ type ActorJoinInfo = {
 };
 type ActorPart = { info: ActorRecvInfo; message: Message; more: boolean };
 type ActorJoinRequest = { info: ActorJoinInfo; message: Message };
+type ActorJoinResult = {
+    result: RequestResult;
+    actor: ActorRef;
+    joinedSpotRid: RoutingId;
+    joinEpoch: bigint;
+    flags: number;
+};
+type ActorLookupResult = {
+    result: RequestResult;
+    actor: ActorRef;
+    flags: number;
+};
+type SpotActorLifecycleInfo = {
+    previousActor: ActorRef;
+    currentActor: ActorRef;
+    previousSpotRid: RoutingId | null;
+    currentSpotRid: RoutingId | null;
+    joinEpoch: bigint;
+    flags: number;
+};
 ```
 
 `ActorJoinRequest` carries the public join information and message. The native
 reply context needed by `replyActorJoin(...)` is retained inside the binding and
 is not exposed as a public field.
 
-`SpotNode` exposes `createActor`, `actorLookup`, `remoteActorRef`,
-`createRemoteActor`, `destroyActor`, `onActorAdmission`, `joinActor`,
-`leaveActor`, `spotsSnapshot`, and `actorsSnapshot`. `Spot` exposes
-`recvActorJoin`, `replyActorJoin`, and `actorsSnapshot`. `StreamSocket`
-exposes `bindActor`, `unbindActor`, and `sendBoundActor`. `Actor` exposes
-`actorRef`, `ref`, `join`, `leave`, `recvPart`, `sendBoundSession`,
-`closeBoundSession`, and `close`. `Discovery` exposes `resolveActor`.
+`SpotNode` exposes `createActor`, `actorLookup`, `remoteActorGetRef` (async),
+`destroyActor` (async), `joinActor` (async, dedicated completion),
+`leaveActor` (async), `spotsSnapshot`, and `actorsSnapshot`. `Spot` exposes
+`recvActorJoin`, `replyActorJoin`, `onActorLifecycle`, and `actorsSnapshot`.
+`StreamSocket` exposes `bindActor` (async), `unbindActor` (async),
+`sendBoundActor`, and `boundActors`. `Actor` exposes `actorRef`, `ref`,
+`join`, `leave`, `recvPart`, `sendBoundSession`, `closeBoundSession`, and
+`close`. `Discovery` exposes `resolveActor`.
 
 Actor ids are non-empty UTF-8 strings up to 255 bytes and must not contain NUL.
 `generation === 0n` is an unchecked remote ref. Actor readable dispatch returns
 preloaded parts through the dispatch info using the callback lifetime ActorRef
-subject. Actor creation places the Actor in the Entry Spot. Joining a user Spot
-requires a bound STREAM session. One Actor binds to only one STREAM session, and
-one STREAM session can bind multiple Actors. `leave` does not drain unread Actor
-messages. Remote Actor create-or-get calls the admission handler only when the
-target Actor does not already exist.
+subject. Actor creation places the Actor in the Entry Spot. **A bound STREAM
+session is not required to join a user Spot** — Actor location and session
+attach are independent state transitions. One Actor binds to only one STREAM
+session, and one STREAM session can bind multiple Actors. `leave` does not
+drain unread Actor messages. There is no remote-Actor create API and no
+admission handler; Actors that must originate on a remote node are created on
+that SpotNode directly via `createActor`. A checked ref for a remote Actor is
+obtained asynchronously via `remoteActorGetRef`.
 
 ## Core
 
@@ -288,8 +297,10 @@ type BaseSocket =
 
 Node / TypeScript nonblocking data-plane helpers follow this rule:
 
-- `send(...)` and `publish(...)` return `false` only for temporary
-  backpressure when `SendFlags.DontWait` is used.
+- Operation builder submits — `send().message(...).submit()`,
+  `publish(topic).message(...).submit()`, and other builder paths — return
+  `false` only for temporary backpressure when `SendFlags.DontWait` has been
+  configured via the builder's `.flags(...)` stage.
 - Blocking submit returns `true` on success. Route-not-ready and other submit
   failures still throw `SubmitError`.
 - `recv(...)`, `subscribe(...)`, `receiveSubscriptionEvent(...)`,
@@ -329,10 +340,8 @@ class PairSocket {
     disconnect(endpoint: string): void;
     /** @throws {ConnectError} */
     disconnectRid(routingId: RoutingId): void;
-    /** @throws {SubmitError} */
-    send(message: MessageLike, flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
-    send(parts: readonly MessageLike[], flags?: SendFlags): boolean;
+    /** Send (operation builder). */
+    send(): SendOp;
     /** @deprecated allocates Received per call; use the caller-provided overload. */
     recv(flags?: RecvFlags): Received | null;
     /** Canonical caller-provided storage recv. @throws {RecvError} */
@@ -366,10 +375,8 @@ class PubSocket {
     disconnect(endpoint: string): void;
     /** @throws {ConnectError} */
     disconnectRid(routingId: RoutingId): void;
-    /** @throws {SubmitError} */
-    publish(topic: string, message: MessageLike, flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
-    publish(topic: string, parts: readonly MessageLike[], flags?: SendFlags): boolean;
+    /** Publish (operation builder). */
+    publish(topic: string): SendOp;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
     /** @throws {ConfigError} */
@@ -446,10 +453,8 @@ class DealerSocket {
     setChannelName(channelName: string): void;
     /** @throws {ConfigError} */
     getChannelName(): string;
-    /** @throws {SubmitError} */
-    send(message: MessageLike, flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
-    send(parts: readonly MessageLike[], flags?: SendFlags): boolean;
+    /** Send (operation builder). */
+    send(): SendOp;
     /** @deprecated allocates Received per call; use the caller-provided overload. */
     recv(flags?: RecvFlags): Received | null;
     /** Canonical caller-provided storage recv. @throws {RecvError} */
@@ -461,29 +466,8 @@ class DealerSocket {
     /** @throws {ConfigError} */
     monitorOpen(events?: readonly MonitorEventType[]): MonitorSocket;
 
-    // --- dealer request (async) — no flags, timeout = 0 uses socket default ---
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    request(message: MessageLike, timeout?: number): Promise<Message[]>;
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    request(parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-
-    // --- dealer request (callback submit) — timeout = 0 uses socket default ---
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    request(message: MessageLike,
-            callback: RequestCallback,
-            flags?: SendFlags,
-            timeout?: number): boolean;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    request(parts: readonly MessageLike[],
-            callback: RequestCallback,
-            flags?: SendFlags,
-            timeout?: number): boolean;
+    /** Dealer request (operation builder). */
+    request(): RequestOp;
 
     /** @throws {CloseError} */
     close(): void;
@@ -514,10 +498,8 @@ class RouterSocket {
     setRoutingId(routingId: RoutingId): void;
     /** @throws {ConfigError} */
     getRoutingId(): RoutingId;
-    /** @throws {SubmitError} */
-    send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
-    send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): boolean;
+    /** Routed send (operation builder). */
+    send(routingId: RoutingId): SendOp;
     /** @deprecated allocates Received per call; use the caller-provided overload. */
     recv(flags?: RecvFlags): Received | null;
     /** Canonical caller-provided storage recv. @throws {RecvError} */
@@ -527,75 +509,18 @@ class RouterSocket {
     /** @throws {ConfigError} */
     attachDiscovery(discovery: Discovery): void;
 
-    // --- router request (async) — no flags, timeout = 0 uses socket default ---
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    request(peerRid: RoutingId, message: MessageLike,
-            timeout?: number): Promise<Message[]>;
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    request(peerRid: RoutingId, parts: readonly MessageLike[],
-            timeout?: number): Promise<Message[]>;
+    /** Request to a specific peer (operation builder). */
+    request(peerRid: RoutingId): RequestOp;
+    /** Reply to a received request (operation builder). */
+    reply(peerRid: RoutingId, requestSeq: bigint): ReplyOp;
 
-    // --- router request (callback submit) — timeout = 0 uses socket default ---
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    request(peerRid: RoutingId, message: MessageLike,
-            callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    request(peerRid: RoutingId, parts: readonly MessageLike[],
-            callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-
-    // --- router reply ---
-    /** @throws {SubmitError} */
-    reply(peerRid: RoutingId, requestSeq: bigint, message: MessageLike,
-          flags?: SendFlags): void;
-    /** @throws {SubmitError} */
-    reply(peerRid: RoutingId, requestSeq: bigint, parts: readonly MessageLike[],
-          flags?: SendFlags): void;
-
-    // --- router → spot routed send ---
-    /** @throws {SubmitError} */
-    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-               message: MessageLike, flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
-    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-               parts: readonly MessageLike[], flags?: SendFlags): boolean;
-
-    // --- router → spot routed request (async) — no flags ---
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  message: MessageLike, timeout?: number): Promise<Message[]>;
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  parts: readonly MessageLike[], timeout?: number): Promise<Message[]>;
-
-    // --- router → spot routed request (callback submit) ---
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  message: MessageLike,
-                  callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-    /**
-     * @throws {SubmitError} on submit failure other than temporary backpressure.
-     * Callback receives `RequestResult` directly (not a `RequestError`).
-     */
-    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                  parts: readonly MessageLike[],
-                  callback: RequestCallback, flags?: SendFlags, timeout?: number): boolean;
-
-    // --- router → spot routed reply ---
-    /** @throws {SubmitError} */
+    /** Router → spot routed send (operation builder). */
+    sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): SendOp;
+    /** Router → spot routed request (operation builder). */
+    requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): RequestOp;
+    /** Router → spot routed reply (operation builder). */
     replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                requestSeq: bigint, message: MessageLike, flags?: SendFlags): void;
-    /** @throws {SubmitError} */
-    replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId,
-                requestSeq: bigint, parts: readonly MessageLike[], flags?: SendFlags): void;
+                requestSeq: bigint): ReplyOp;
 
     // NOTE: RouterSocket has one routed receive surface. recv receives both
     // regular ROUTER traffic and spot-origin routed traffic.
@@ -631,10 +556,8 @@ class XPubSocket {
     disconnect(endpoint: string): void;
     /** @throws {ConnectError} */
     disconnectRid(routingId: RoutingId): void;
-    /** @throws {SubmitError} */
-    publish(topic: string, message: MessageLike, flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
-    publish(topic: string, parts: readonly MessageLike[], flags?: SendFlags): boolean;
+    /** Publish (operation builder). */
+    publish(topic: string): SendOp;
     /** @throws {RecvError} */
     receiveSubscriptionEvent(flags?: RecvFlags): SubscriptionEvent | null;
     /** @throws {HandlerError} */
@@ -699,10 +622,8 @@ class StreamSocket {
     setRoutingId(routingId: RoutingId): void;
     /** @throws {ConfigError} */
     getRoutingId(): RoutingId;
-    /** @throws {SubmitError} */
-    send(routingId: RoutingId, message: MessageLike, flags?: SendFlags): boolean;
-    /** @throws {SubmitError} */
-    send(routingId: RoutingId, parts: readonly MessageLike[], flags?: SendFlags): boolean;
+    /** Routed send (operation builder). */
+    send(routingId: RoutingId): SendOp;
     /**
      * Two public receive modes on the same StreamSocket:
      *   (1) recv(), (2) onPacket(handler). Second attach throws
@@ -721,20 +642,19 @@ class StreamSocket {
     onPacket(handler: StreamPacketHandler): void;
     /** @throws {HandlerError} */
     onSendReady(handler: SocketSendReadyHandler): void;
-    /** @throws {RequestError} */
-    bindActor(node: SpotNode, sessionRid: RoutingId,
-              actor: ActorRef, timeoutMs?: number): void;
-    /** @throws {RequestError} */
-    unbindActor(node: SpotNode, sessionRid: RoutingId,
-                actorId: string, timeoutMs?: number): void;
-    /** @throws {SubmitError} on submit failure other than temporary backpressure. */
-    sendBoundActor(node: SpotNode, sessionRid: RoutingId,
-                   actorId: string, message: MessageLike,
-                   flags?: SendFlags): boolean;
-    /** @throws {SubmitError} on submit failure other than temporary backpressure. */
-    sendBoundActor(node: SpotNode, sessionRid: RoutingId,
-                   actorId: string, parts: readonly MessageLike[],
-                   flags?: SendFlags): boolean;
+    /** Async Actor bind (operation builder). The stream is bound to its
+     *  session-owner SpotNode at attach time; no SpotNode argument is
+     *  required here. A bind does not require nor imply a Spot join.
+     */
+    bindActor(sessionRid: RoutingId, actor: ActorRef): ActorBindOp;
+    /** Async Actor unbind (operation builder). */
+    unbindActor(sessionRid: RoutingId, actorId: string): ActorUnbindOp;
+    /** Session-bound relay send (operation builder). */
+    sendBoundActor(sessionRid: RoutingId, actorId: string): SendOp;
+    /** Snapshot of Actor refs attached to the given session (local mapping only).
+     *  @throws {ConfigError}
+     */
+    boundActors(sessionRid: RoutingId): ActorRef[];
     /** @throws {ConfigError} */
     monitorOpen(events?: readonly MonitorEventType[]): MonitorSocket;
     /** @throws {CloseError} */
@@ -907,25 +827,17 @@ class Received {
 	    /** @throws {RecvError} */
 	    singlePartOrThrow(): Message;
 
-	    /** send a regular routed message to the sender of this Received. */
-	    /** @throws {SubmitError} */
-	    send(part: Message): boolean;
-	    /** @throws {SubmitError} */
-	    send(part: Message, flags: SendFlags): boolean;
-	    /** @throws {SubmitError} */
-	    send(parts: Message[]): boolean;
-	    /** @throws {SubmitError} */
-	    send(parts: Message[], flags: SendFlags): boolean;
+    /** Send a regular routed message back to the sender of this Received
+     *  (operation builder). Source rid / spot rid are encapsulated.
+     */
+    send(): SendOp;
 
-	    /** reply requires requestSeq; null or invalid reply context raises SubmitError. */
-    /** @throws {SubmitError} */
-    reply(part: Message): void;
-    /** @throws {SubmitError} */
-    reply(part: Message, flags: SendFlags): void;
-    /** @throws {SubmitError} */
-    reply(parts: Message[]): void;
-    /** @throws {SubmitError} */
-    reply(parts: Message[], flags: SendFlags): void;
+    /** Reply to this received request (operation builder). Valid only when
+     *  requestSeq is non-null; otherwise submit() raises SubmitError for
+     *  invalid reply context. routingId / spotRid / requestSeq are
+     *  encapsulated.
+     */
+    reply(): ReplyOp;
 
     /** @throws {CloseError} */
     close(): void;
@@ -1543,23 +1455,25 @@ class SpotNode {
     createActor(actorId: string): Actor;
     /** @throws {ConfigError} */
     actorLookup(actorId: string): ActorRef;
-    static remoteActorRef(targetNodeRid: RoutingId, actorId: string): ActorRef;
-    /** @throws {RequestError} */
-    createRemoteActor(targetNodeRid: RoutingId, actorId: string,
-                      message: MessageLike, timeoutMs?: number): ActorCreateResult;
-    /** @throws {RequestError} */
-    destroyActor(actor: ActorRef, timeoutMs?: number): void;
-    /** @throws {HandlerError} */
-    onActorAdmission(handler: ActorAdmissionHandler): void;
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId,
-              message: MessageLike, timeout?: number): Promise<Message[]>;
-    /** @throws {SubmitError} */
-    joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId,
-              message: MessageLike, callback: RequestCallback,
-              flags?: SendFlags, timeout?: number): boolean;
-    /** @throws {RequestError} */
-    leaveActor(actor: ActorRef, currentSpotRid: RoutingId, timeoutMs?: number): void;
+    /** Async remote Actor lookup (operation builder). Completion delivers
+     *  `ActorLookupResult` (checked ref on success).
+     */
+    remoteActorGetRef(targetNodeRid: RoutingId, actorId: string): ActorLookupOp;
+    /** Async destroy (operation builder). Succeeds only when the Actor is
+     *  in the Entry Spot.
+     */
+    destroyActor(actor: ActorRef): ActorDestroyOp;
+    /** Async user-Spot join (operation builder). Completion delivers
+     *  `ActorJoinResult` plus reply parts. `destSpotRid` must be a user
+     *  Spot. A bound STREAM session is NOT required. Multipart join state
+     *  payload accumulates through `.message(...)`.
+     */
+    joinActor(actor: ActorRef, destNodeRid: RoutingId,
+              destSpotRid: RoutingId): ActorJoinOp;
+    /** Async leave to the same node's Entry Spot (operation builder). */
+    leaveActor(actor: ActorRef, currentSpotRid: RoutingId): ActorLeaveOp;
+    /** Actor-to-session relay (operation builder). */
+    sendBoundSessionMsg(actor: ActorRef): SendOp;
     /** @throws {ConfigError} */
     statusSnapshot(): SpotNodeStatus;
     /** @throws {ConfigError} */
@@ -1608,17 +1522,17 @@ the SpotNode dispatch callback worker pool.
 class Actor {
     readonly actorRef: ActorRef;
     ref(): ActorRef;
-    /** @throws {ZlinkError} Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
-    join(spot: Spot, message: MessageLike, timeout?: number): Promise<Message[]>;
-    /** @throws {SubmitError} */
-    join(spot: Spot, message: MessageLike, callback: RequestCallback,
-         flags?: SendFlags, timeout?: number): boolean;
-    /** @throws {RequestError} */
-    leave(spot: Spot, timeoutMs?: number): void;
+    /** Async user-Spot join (operation builder). Completion delivers
+     *  ActorJoinResult plus reply parts. `spot` must be a user Spot.
+     *  A bound STREAM session is NOT required.
+     */
+    join(spot: Spot): ActorJoinOp;
+    /** Async leave to the same node's Entry Spot (operation builder). */
+    leave(spot: Spot): ActorLeaveOp;
     /** @throws {RecvError} */
     recvPart(flags?: RecvFlags): ActorPart | null;
-    /** @throws {SubmitError} on submit failure other than temporary backpressure. */
-    sendBoundSession(message: MessageLike, flags?: SendFlags): boolean;
+    /** Actor-to-session relay (operation builder). */
+    sendBoundSession(): SendOp;
     /** @throws {RequestError} */
     closeBoundSession(timeoutMs?: number): void;
     /** @throws {RequestError} */
@@ -1629,8 +1543,8 @@ class Actor {
 `Actor` is a ref-centered public object. The public contract does not expose a
 native Actor pointer. An Actor belongs to exactly one Spot at a time. Newly
 created Actors start in the Entry Spot. The application cannot remove the
-Entry Spot. Joining a non-entry Spot requires a STREAM session that was
-successfully bound with `StreamSocket.bindActor(...)`.
+Entry Spot. **A bound STREAM session is not required to join a user Spot** —
+Actor location and session attach are independent state transitions.
 
 ### Spot
 
@@ -1672,9 +1586,18 @@ class Spot {
     onDispatchEvent(handler: SpotDispatchEventHandler): void;
     /** @throws {RecvError} */
     recvActorJoin(flags?: RecvFlags): ActorJoinRequest | null;
-    /** @throws {SubmitError} */
-    replyActorJoin(request: ActorJoinRequest, accepted: boolean,
-                   message: MessageLike): void;
+    /** Reply to an Actor join admission request (operation builder).
+     *  Multipart reply payload accumulates through `.message(...)`;
+     *  a zero-message `submit()` is allowed.
+     */
+    replyActorJoin(request: ActorJoinRequest, accepted: boolean): ActorJoinReplyOp;
+    /** Register Actor lifecycle callbacks for this Spot. `onJoin` fires after
+     *  an Actor enters this Spot; `onLeave` fires after an Actor leaves.
+     *  Passing `null` for both removes the registration.
+     *  @throws {HandlerError}
+     */
+    onActorLifecycle(onJoin: ActorLifecycleHandler | null,
+                     onLeave: ActorLifecycleHandler | null): void;
     /** @throws {ConfigError} */
     actorsSnapshot(): ActorRef[];
     // --- identity / routing ---
@@ -1731,6 +1654,72 @@ interface ReplySubmitOp {
     flags(flags: SendFlags): ReplySubmitOp;
     /** @throws {SubmitError} */
     submit(): void;
+}
+
+// --- Actor operation builders ---
+
+// SpotNode.joinActor(...) / Actor.join(spot) returns ActorJoinOp.
+// Multipart join state payload is mandatory; the staged shape moves to
+// ActorJoinSubmitOp only after the first message(...).
+interface ActorJoinOp {
+    message(message: MessageLike): ActorJoinSubmitOp;
+}
+
+interface ActorJoinSubmitOp {
+    message(message: MessageLike): ActorJoinSubmitOp;
+    timeout(timeoutMs: number): ActorJoinSubmitOp;
+    flags(flags: SendFlags): ActorJoinCallbackSubmitOp;
+    /** Rejects with `SubmitError` on submit failure or `RequestError` on reply failure. */
+    submitAsync(): Promise<{ result: ActorJoinResult; parts: Message[] }>;
+    /** @throws {SubmitError} */
+    submit(callback: ActorJoinHandler): boolean;
+}
+
+interface ActorJoinCallbackSubmitOp {
+    message(message: MessageLike): ActorJoinCallbackSubmitOp;
+    timeout(timeoutMs: number): ActorJoinCallbackSubmitOp;
+    flags(flags: SendFlags): ActorJoinCallbackSubmitOp;
+    /** @throws {SubmitError} */
+    submit(callback: ActorJoinHandler): boolean;
+}
+
+// Spot.replyActorJoin(request, accepted) returns ActorJoinReplyOp.
+// Multipart reply payload is optional; submit() is visible directly.
+interface ActorJoinReplyOp {
+    message(message: MessageLike): ActorJoinReplyOp;
+    /** @throws {SubmitError} */
+    submit(): void;
+}
+
+// Payload-less Actor operation builders: leave, destroy, lookup, bind, unbind.
+interface ActorLeaveOp {
+    timeout(timeoutMs: number): ActorLeaveOp;
+    submitAsync(): Promise<Message[]>;
+    submit(callback: ReplyHandler): boolean;
+}
+
+interface ActorDestroyOp {
+    timeout(timeoutMs: number): ActorDestroyOp;
+    submitAsync(): Promise<Message[]>;
+    submit(callback: ReplyHandler): boolean;
+}
+
+interface ActorLookupOp {
+    timeout(timeoutMs: number): ActorLookupOp;
+    submitAsync(): Promise<ActorLookupResult>;
+    submit(callback: ActorLookupHandler): boolean;
+}
+
+interface ActorBindOp {
+    timeout(timeoutMs: number): ActorBindOp;
+    submitAsync(): Promise<Message[]>;
+    submit(callback: ReplyHandler): boolean;
+}
+
+interface ActorUnbindOp {
+    timeout(timeoutMs: number): ActorUnbindOp;
+    submitAsync(): Promise<Message[]>;
+    submit(callback: ReplyHandler): boolean;
 }
 ```
 
@@ -2176,9 +2165,11 @@ interface SpotDispatchInfo {
   actorRef: ActorRef | null;
   recvActorPart(flags?: RecvFlags): ActorPart | null;
 }
-type ActorAdmissionHandler =
-    (actorId: string, message: Message) => ActorAdmissionResult;
 type SpotDispatchEventHandler = (info: SpotDispatchInfo) => void;
+type ReplyHandler = (result: RequestResult, parts: readonly Message[]) => void;
+type ActorJoinHandler = (result: ActorJoinResult, parts: readonly Message[]) => void;
+type ActorLookupHandler = (result: ActorLookupResult) => void;
+type ActorLifecycleHandler = (spot: Spot, info: SpotActorLifecycleInfo) => void;
 type RequestCallback = (result: RequestResult, parts: readonly Message[]) => void;
 type TimerHandler = (timer: Timer, fireCount: bigint) => void;
 ```

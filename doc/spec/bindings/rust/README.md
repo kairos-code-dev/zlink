@@ -103,7 +103,6 @@ Rust exposes Actor dispatch through public crate items.
 
 ```rust
 pub struct ActorRef { pub node_rid: RoutingId, pub actor_id: String, pub generation: u64 }
-pub struct ActorCreateResult { pub status: ActorCreateStatus, pub actor: ActorRef }
 pub struct ActorRoute { pub actor: ActorRef, pub joined: bool, pub joined_spot_rid: Option<RoutingId> }
 pub struct ActorRecvInfo { pub actor: ActorRef, pub source_node_rid: RoutingId, pub source_session_rid: RoutingId, pub flags: u32 }
 pub struct ActorJoinInfo {
@@ -117,27 +116,47 @@ pub struct ActorJoinInfo {
     pub flags: u32,
 }
 pub struct ActorJoinRequest { pub info: ActorJoinInfo, pub message: Message }
-impl SpotNode {
-    pub fn remote_actor_ref(target_node_rid: &RoutingId, actor_id: &str)
-        -> Result<ActorRef, ConfigError>;
+pub struct ActorJoinResult {
+    pub result: RequestResult,
+    pub actor: ActorRef,
+    pub joined_spot_rid: RoutingId,
+    pub join_epoch: u64,
+    pub flags: u32,
+}
+pub struct ActorLookupResult {
+    pub result: RequestResult,
+    pub actor: ActorRef,
+    pub flags: u32,
+}
+pub struct SpotActorLifecycleInfo {
+    pub previous_actor: ActorRef,
+    pub current_actor: ActorRef,
+    pub previous_spot_rid: Option<RoutingId>,
+    pub current_spot_rid: Option<RoutingId>,
+    pub join_epoch: u64,
+    pub flags: u32,
 }
 ```
 
-`SpotNode` exposes local Actor lifecycle, remote create-or-get, admission,
-join/leave, and Actor snapshots. `Spot` exposes Actor join receive/reply and
-joined Actor snapshots. `StreamSocket` exposes Actor bind/unbind and bound
-Actor send. `Discovery` exposes Actor route resolve.
+`SpotNode` exposes local Actor lifecycle, async remote Actor lookup, async
+destroy, async join/leave, and Actor snapshots. `Spot` exposes Actor join
+receive/reply, Actor lifecycle handler registration, and joined Actor
+snapshots. `StreamSocket` exposes async Actor bind/unbind, bound Actor send,
+and session attach snapshot. `Discovery` exposes Actor route resolve.
 
 `generation == 0` is an unchecked remote ref and is not invalid. Actor handles
 are represented by `ActorRef`; public `void *actor` handles are not exposed.
 Actor IDs are non-empty UTF-8 strings up to 255 bytes and must not contain NUL.
-Leaving a Spot does not drain unread Actor messages. Remote actor creation is
-create-or-get: the admission callback runs only when the target actor is missing.
-Every Actor belongs to exactly one Spot. The Entry Spot is the default Spot
+Leaving a Spot does not drain unread Actor messages. There is no remote-Actor
+create API and no admission handler; Actors that must originate on a remote
+node are created on that SpotNode directly via `actor`. A checked ref for a
+remote Actor is obtained asynchronously via `remote_actor_get_ref`. Every
+Actor belongs to exactly one Spot. The Entry Spot is the default Spot
 assigned immediately after Actor creation and cannot be removed by the
-application. Joining a user Spot requires the Actor to have a bound STREAM
-session. One Actor may bind to one STREAM session; one session may bind many
-Actors. Per-Actor queue limit options are not part of the Rust public surface.
+application. **A bound STREAM session is not required to join a user Spot** —
+Actor location and session attach are independent state transitions. One
+Actor may bind to one STREAM session; one session may bind many Actors.
+Per-Actor queue limit options are not part of the Rust public surface.
 
 ## Core
 
@@ -310,8 +329,10 @@ that implements those methods is not part of this contract.
 
 Rust nonblocking data-plane helpers follow this rule:
 
-- `_with_flags(...)` submit variants return `Ok(false)` only for temporary
-  backpressure when `SendFlags::DontWait` is used.
+- Operation builder submits — `send().message(...).submit()`,
+  `publish(topic).message(...).submit()`, and other builder paths — return
+  `Ok(false)` only for temporary backpressure when `SendFlags::DontWait`
+  has been configured via the builder's `.flags(...)` stage.
 - Route-not-ready and other submit failures still return
   `Err(SubmitError)`.
 - `_with_flags(...)` receive variants return `Ok(None)` when no message is
@@ -340,10 +361,9 @@ impl PairSocket {
     pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
     /// # Errors: ConnectError
     pub fn disconnect_rid(&self, rid: &RoutingId) -> Result<(), ConnectError>;
-    /// # Errors: SubmitError
-    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
+    /// Send (operation builder). Returns `SendOp<Empty>` typestate; add at
+    /// least one `message(...)` to transition to `Ready` before `submit()`.
+    pub fn send(&self) -> SendOp<Empty>;
     /// Canonical caller-provided storage recv. `Ok(true)` on success,
     /// `Ok(false)` when `RecvFlags::DONTWAIT` finds no data, `Err(_)`
     /// on hard error. See doc/spec/bindings/README.md.
@@ -373,10 +393,8 @@ impl PubSocket {
     pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
     /// # Errors: ConnectError
     pub fn disconnect_rid(&self, rid: &RoutingId) -> Result<(), ConnectError>;
-    /// # Errors: SubmitError
-    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
+    /// Publish (operation builder).
+    pub fn publish(&self, topic: &str) -> SendOp<Empty>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -442,10 +460,8 @@ impl DealerSocket {
     pub fn set_channel_name(&self, channel_name: &str) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn channel_name(&self) -> Result<String, ConfigError>;
-    /// # Errors: SubmitError
-    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
+    /// Send (operation builder).
+    pub fn send(&self) -> SendOp<Empty>;
     /// Canonical caller-provided storage recv. `Ok(true)` on success,
     /// `Ok(false)` when `RecvFlags::DONTWAIT` finds no data, `Err(_)`
     /// on hard error. See doc/spec/bindings/README.md.
@@ -455,19 +471,8 @@ impl DealerSocket {
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
 
-    // --- dealer request (async) — no flags ---
-    // `timeout = None` uses the socket default request timeout.
-    /// # Errors: SubmitError on submit, RequestError on completion
-    pub async fn request(&self, parts: &[&[u8]], timeout: Option<Duration>)
-        -> Result<Vec<Message>, RequestError>;
-
-    // --- dealer request (callback, blocking submit) ---
-    // `timeout = None` uses the socket default request timeout.
-    // The callback receives Result<Vec<Message>, RequestError>.
-    /// # Errors: SubmitError on submit; callback receives Result<Vec<Message>, RequestError>
-    pub fn request_callback<F: FnOnce(Result<Vec<Message>, RequestError>) + 'static>(
-        &self, parts: &[&[u8]], cb: F, timeout: Option<Duration>)
-        -> Result<(), SubmitError>;
+    /// Dealer request (operation builder).
+    pub fn request(&self) -> RequestOp<Empty>;
     pub fn send_handle(&self) -> SendHandle;
     pub fn common_options(&self) -> CommonSocketOptions<'_, Self>;
     pub fn dealer_options(&self) -> DealerSocketOptions<'_>;
@@ -496,12 +501,8 @@ impl RouterSocket {
     pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError>;
     /// # Errors: ConfigError
     pub fn routing_id(&self) -> Result<RoutingId, ConfigError>;
-    /// # Errors: SubmitError
-    pub fn send(&self, target: &RoutingId, parts: impl IntoMultipart)
-        -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
-                           flags: SendFlags) -> Result<bool, SubmitError>;
+    /// Routed send (operation builder).
+    pub fn send(&self, target: &RoutingId) -> SendOp<Empty>;
     /// Canonical caller-provided storage recv. `Ok(true)` on success,
     /// `Ok(false)` when `RecvFlags::DONTWAIT` finds no data, `Err(_)`
     /// on hard error. See doc/spec/bindings/README.md.
@@ -516,61 +517,20 @@ impl RouterSocket {
     /// # Errors: ConfigError
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError>;
 
-    // --- router request (async) — no flags ---
-    // `timeout = None` uses the socket default request timeout.
-    /// # Errors: SubmitError on submit, RequestError on completion
-    pub async fn request(&self, peer_rid: &RoutingId, parts: &[&[u8]],
-        timeout: Option<Duration>) -> Result<Vec<Message>, RequestError>;
+    /// Request to a specific peer (operation builder).
+    pub fn request(&self, peer_rid: &RoutingId) -> RequestOp<Empty>;
+    /// Reply to a received request (operation builder).
+    pub fn reply(&self, rid: &RoutingId, request_seq: u64) -> ReplyOp<Empty>;
 
-    // --- router request (callback, blocking submit) ---
-    // `timeout = None` uses the socket default request timeout.
-    // The callback receives Result<Vec<Message>, RequestError>.
-    /// # Errors: SubmitError on submit; callback receives Result<Vec<Message>, RequestError>
-    pub fn request_callback<F: FnOnce(Result<Vec<Message>, RequestError>) + 'static>(
-        &self, peer_rid: &RoutingId, parts: &[&[u8]], cb: F,
-        timeout: Option<Duration>) -> Result<(), SubmitError>;
-    // --- router reply ---
-    /// # Errors: SubmitError
-    pub fn reply(&self, rid: &RoutingId, request_seq: u64,
-        parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn reply_with_flags(&self, rid: &RoutingId, request_seq: u64,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
-
-    // --- router → spot routed send ---
-    /// # Errors: SubmitError
-    pub fn send_to_spot(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
-        parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_to_spot_with_flags(&self, dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId,
-        parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
-
-    // --- router → spot routed request (async) — no flags ---
-    // Duration::ZERO uses the socket default timeout.
-    // Submit failure yields SubmitError; request failure (timeout, etc.)
-    // yields RequestError; both unify under ZlinkError at this API seam.
-    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
-    pub async fn request_to_spot(&self, dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId, parts: impl IntoMultipart,
-        timeout: Duration) -> Result<Vec<Message>, ZlinkError>;
-
-    // --- router → spot routed request (callback) ---
-    // Duration::ZERO uses the socket default timeout.
-    // The callback receives Result<Vec<Message>, RequestError>.
-    /// # Errors: SubmitError (submit failure). Callback receives Result<Vec<Message>, RequestError>.
-    pub fn request_to_spot_callback<F>(&self, dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId, parts: impl IntoMultipart, callback: F,
-        flags: SendFlags, timeout: Duration)
-        -> Result<(), SubmitError>
-        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
-
-    // --- router → spot routed reply ---
-    /// # Errors: SubmitError
-    pub fn reply_to_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-        request_seq: u64, parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn reply_to_spot_with_flags(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId,
-        request_seq: u64, parts: impl IntoMultipart, flags: SendFlags) -> Result<(), SubmitError>;
+    /// Router → spot routed send (operation builder).
+    pub fn send_to_spot(&self, dest_node_rid: &RoutingId,
+        dest_spot_rid: &RoutingId) -> SendOp<Empty>;
+    /// Router → spot routed request (operation builder).
+    pub fn request_to_spot(&self, dest_node_rid: &RoutingId,
+        dest_spot_rid: &RoutingId) -> RequestOp<Empty>;
+    /// Router → spot routed reply (operation builder).
+    pub fn reply_to_spot(&self, dest_node_rid: &RoutingId,
+        dest_spot_rid: &RoutingId, request_seq: u64) -> ReplyOp<Empty>;
 
     // NOTE: RouterSocket has one routed receive surface. recv and
     // recv_with_flags receive both regular ROUTER traffic and spot-origin
@@ -598,10 +558,8 @@ impl XPubSocket {
     pub fn disconnect(&self, addr: &str) -> Result<(), ConnectError>;
     /// # Errors: ConnectError
     pub fn disconnect_rid(&self, rid: &RoutingId) -> Result<(), ConnectError>;
-    /// # Errors: SubmitError
-    pub fn publish(&self, topic: &str, parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn publish_with_flags(&self, topic: &str, parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
+    /// Publish (operation builder).
+    pub fn publish(&self, topic: &str) -> SendOp<Empty>;
     /// # Errors: RecvError
     pub fn receive_subscription_event(&self) -> Result<SubscriptionEvent, RecvError>;
     /// # Errors: RecvError
@@ -659,12 +617,8 @@ impl StreamSocket {
     pub fn routing_id(&self) -> Result<RoutingId, ConfigError>;
     /// # Errors: ConnectError
     pub fn disconnect_rid(&self, rid: &RoutingId) -> Result<(), ConnectError>;
-    /// # Errors: SubmitError
-    pub fn send(&self, target: &RoutingId, parts: impl IntoMultipart)
-        -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
-                           flags: SendFlags) -> Result<bool, SubmitError>;
+    /// Routed send (operation builder).
+    pub fn send(&self, target: &RoutingId) -> SendOp<Empty>;
     /// Two mutually-exclusive receive modes on the same StreamSocket:
     ///   (1) recv(), (2) on_packet(handler). Second attach returns
     ///   Err(HandlerError { code: HandlerResult::Busy, .. }).
@@ -681,17 +635,21 @@ impl StreamSocket {
     /// # Errors: HandlerError
     pub fn on_packet<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn(RoutingId, Message, Message) + Send + 'static;
-    /// Bind an Actor to one STREAM session before user Spot join.
-    /// # Errors: RequestError
-    pub fn bind_actor(&self, node: &SpotNode, session_rid: &RoutingId,
-        actor: &ActorRef, timeout: Duration) -> Result<(), RequestError>;
-    /// # Errors: RequestError
-    pub fn unbind_actor(&self, node: &SpotNode, session_rid: &RoutingId,
-        actor_id: &str, timeout: Duration) -> Result<(), RequestError>;
-    /// # Errors: SubmitError
-    pub fn send_bound_actor_part(&self, node: &SpotNode, session_rid: &RoutingId,
-        actor_id: &str, parts: impl IntoMultipart, flags: SendFlags)
-        -> Result<(), SubmitError>;
+    /// Async Actor bind (operation builder). The stream is associated with
+    /// its session owner SpotNode at attach time; no SpotNode argument is
+    /// required here. A bind does not require nor imply a Spot join.
+    pub fn bind_actor(&self, session_rid: &RoutingId, actor: &ActorRef)
+        -> ActorBindOp<Empty>;
+    /// Async Actor unbind (operation builder).
+    pub fn unbind_actor(&self, session_rid: &RoutingId, actor_id: &str)
+        -> ActorUnbindOp<Empty>;
+    /// Session-bound relay send (operation builder).
+    pub fn send_bound_actor_part(&self, session_rid: &RoutingId,
+        actor_id: &str) -> SendOp<Empty>;
+    /// Snapshot of Actor refs attached to the given session (local mapping only).
+    /// # Errors: ConfigError
+    pub fn bound_actors(&self, session_rid: &RoutingId)
+        -> Result<Vec<ActorRef>, ConfigError>;
     /// # Errors: HandlerError
     pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
         where F: Fn() + Send + 'static;
@@ -705,20 +663,21 @@ impl StreamSocket {
 
 ### SendHandle
 
-A thread-safe handle for sending from callbacks.
+A thread-safe handle for sending from callbacks. `SendHandle` is `Send + Sync`
+so it can be moved into background tasks or other-thread callbacks. The
+returned operation builders are also `Send + Sync` so the full
+`.message(...).submit()` chain may be invoked off-thread.
 
 ```rust
 impl SendHandle {
-    /// # Errors: SubmitError
-    pub fn send(&self, parts: impl IntoMultipart) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_with_flags(&self, parts: impl IntoMultipart, flags: SendFlags) -> Result<bool, SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_to(&self, target: &RoutingId, parts: impl IntoMultipart)
-        -> Result<(), SubmitError>;
-    /// # Errors: SubmitError
-    pub fn send_to_with_flags(&self, target: &RoutingId, parts: impl IntoMultipart,
-        flags: SendFlags) -> Result<(), SubmitError>;
+    /// Send back through the originating socket (operation builder).
+    /// Valid only for socket types whose canonical send takes no target rid
+    /// (PAIR, DEALER, PUB, XPUB).
+    pub fn send(&self) -> SendOp<Empty>;
+    /// Send through the originating socket targeting a specific peer
+    /// (operation builder). Valid only for socket types whose canonical
+    /// send takes a target routing id (ROUTER, STREAM).
+    pub fn send_to(&self, target: &RoutingId) -> SendOp<Empty>;
 }
 ```
 
@@ -910,29 +869,16 @@ impl Received {
     /// # Errors: RecvError
 	    pub fn single_part_or_error(self) -> Result<Message, RecvError>;
 
-	    /// Send a regular routed message to the sender of this Received.
-	    /// # Errors: SubmitError on invalid send context or submit failure.
-	    pub fn send(&self, parts: Vec<Message>) -> Result<bool, SubmitError>;
-	    /// # Errors: SubmitError on invalid send context or submit failure.
-	    pub fn send_with_flags(
-	        &self,
-	        parts: Vec<Message>,
-	        flags: SendFlags,
-	    ) -> Result<bool, SubmitError>;
+    /// Send a regular routed message back to the sender of this Received
+    /// (operation builder). Source rid / spot rid are encapsulated; the
+    /// builder accumulates payload via `.message(...)`.
+    pub fn send(&self) -> SendOp<Empty>;
 
-	    /// Reply to this received request. Only valid when `request_seq` is
-    /// `Some(..)`; otherwise returns `SubmitError` for invalid reply
-    /// context. On submit failure
-    /// returns `SubmitError`. routing_id / spot_rid / request_seq are
-    /// encapsulated — caller does not pass them again.
-    /// # Errors: SubmitError on invalid reply context or submit failure.
-    pub fn reply(&self, parts: Vec<Message>) -> Result<(), SubmitError>;
-    /// # Errors: SubmitError on invalid reply context or submit failure.
-    pub fn reply_with_flags(
-        &self,
-        parts: Vec<Message>,
-        flags: SendFlags,
-    ) -> Result<(), SubmitError>;
+    /// Reply to this received request (operation builder). Only valid when
+    /// `request_seq` is `Some(..)`; otherwise `submit()` returns
+    /// `SubmitError` for invalid reply context. routing_id / spot_rid /
+    /// request_seq are encapsulated.
+    pub fn reply(&self) -> ReplyOp<Empty>;
 
     /// # Errors: CloseError
     pub fn close(self) -> Result<(), CloseError>;
@@ -1634,27 +1580,26 @@ impl SpotNode {
     pub fn create_actor(&self, actor_id: &str) -> Result<Actor, ConfigError>;
     /// # Errors: ConfigError
     pub fn actor_lookup(&self, actor_id: &str) -> Result<ActorRef, ConfigError>;
-    /// # Errors: ConfigError
-    pub fn remote_actor_ref(target_node_rid: &RoutingId, actor_id: &str)
-        -> Result<ActorRef, ConfigError>;
-    /// # Errors: RequestError
-    pub fn create_remote_actor(&self, target_node_rid: &RoutingId, actor_id: &str,
-        message: Message, timeout: Duration) -> Result<ActorCreateResult, RequestError>;
-    /// Destroy a local or remote Actor through its ActorRef.
-    /// # Errors: RequestError
-    pub fn destroy_actor(&self, actor: &ActorRef, timeout: Duration)
-        -> Result<(), RequestError>;
-    /// # Errors: HandlerError
-    pub fn on_actor_admission<F>(&mut self, handler: F) -> Result<(), HandlerError>
-        where F: Fn(&str, Message) -> ActorAdmissionResult + Send + 'static;
-    /// # Errors: SubmitError
-    pub fn join_actor_callback<F>(&self, actor: &ActorRef,
-        dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId, message: Message,
-        callback: F, flags: SendFlags, timeout: Duration) -> Result<(), SubmitError>
-        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
-    /// # Errors: RequestError
-    pub fn leave_actor(&self, actor: &ActorRef, dest_spot_rid: &RoutingId,
-        timeout: Duration) -> Result<(), RequestError>;
+    /// Async remote Actor lookup (operation builder). Completion delivers
+    /// `ActorLookupResult` (checked ref on success).
+    pub fn remote_actor_get_ref(&self, target_node_rid: &RoutingId,
+        actor_id: &str) -> ActorLookupOp<Empty>;
+    /// Async destroy (operation builder). Succeeds only while the Actor is
+    /// in the Entry Spot.
+    pub fn destroy_actor(&self, actor: &ActorRef) -> ActorDestroyOp<Empty>;
+    /// Async user-Spot join (operation builder). Completion delivers
+    /// `ActorJoinResult` (final Actor ref, joined Spot rid, join_epoch) plus
+    /// reply message parts. `dest_spot_rid` must be a user Spot, not the
+    /// Entry Spot. A bound STREAM session is NOT required to join a user Spot.
+    /// Multipart join state accumulates through `.message(...)`.
+    pub fn join_actor(&self, actor: &ActorRef,
+        dest_node_rid: &RoutingId, dest_spot_rid: &RoutingId)
+        -> ActorJoinOp<Empty>;
+    /// Async leave to the same node's Entry Spot (operation builder).
+    pub fn leave_actor(&self, actor: &ActorRef,
+        current_spot_rid: &RoutingId) -> ActorLeaveOp<Empty>;
+    /// Actor-to-session relay (operation builder).
+    pub fn send_bound_session_msg(&self, actor: &ActorRef) -> SendOp<Empty>;
     /// # Errors: ConfigError
     pub fn spots_snapshot(&self) -> Result<Vec<SpotNodeSpotEntry>, ConfigError>;
     /// # Errors: ConfigError
@@ -1709,28 +1654,27 @@ impl Actor {
     pub fn close_with_timeout(&mut self, timeout: Duration) -> Result<(), RequestError>;
     /// # Errors: RequestError
     pub fn close(&mut self) -> Result<(), RequestError>;
-    /// # Errors: SubmitError
-    pub fn join_callback<F>(&self, spot: &Spot, message: Message,
-        callback: F, flags: SendFlags, timeout: Duration) -> Result<(), SubmitError>
-        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
-    /// # Errors: ConfigError
-    pub fn leave(&self, spot: &Spot) -> Result<(), ConfigError>;
+    /// Async user-Spot join (operation builder). Completion delivers
+    /// `ActorJoinResult` plus reply parts. `spot` must be a user Spot.
+    /// A bound STREAM session is NOT required.
+    pub fn join(&self, spot: &Spot) -> ActorJoinOp<Empty>;
+    /// Async leave to the same node's Entry Spot (operation builder).
+    pub fn leave(&self, spot: &Spot) -> ActorLeaveOp<Empty>;
     /// # Errors: RecvError
     pub fn recv_part_with_flags(&self, flags: RecvFlags)
         -> Result<Option<(ActorRecvInfo, Message, bool)>, RecvError>;
     /// # Errors: RecvError
     pub fn recv_part(&self) -> Result<(ActorRecvInfo, Message, bool), RecvError>;
-    /// # Errors: SubmitError
-    pub fn send_bound_session_msg(&self, message: Message, flags: SendFlags)
-        -> Result<(), SubmitError>;
+    /// Actor-to-session relay (operation builder).
+    pub fn send_bound_session_msg(&self) -> SendOp<Empty>;
     /// # Errors: RequestError
     pub fn close_bound_session(&self, timeout: Duration) -> Result<(), RequestError>;
 }
 ```
 
-`Actor::join_callback` resolves the destination node from the target `Spot`.
-For remote joins where the destination node is already known, use
-`SpotNode::join_actor_callback`.
+`Actor::join` resolves the destination node from the target `Spot`. For
+remote joins where the destination node is already known, use
+`SpotNode::join_actor`.
 
 ### Spot
 
@@ -1789,6 +1733,71 @@ impl ReplyOp<Ready> {
     pub fn submit(self) -> Result<(), SubmitError>;
 }
 
+// --- Actor operation builders (typestate) ---
+// All builders mirror the SendOp/RequestOp typestate pattern. Payload-mandatory
+// builders (ActorJoinOp) require a `message(...)` to reach `Ready`, while
+// payload-less builders (ActorLeaveOp, ActorDestroyOp, ActorLookupOp,
+// ActorBindOp, ActorUnbindOp) expose submit directly from the `Empty`
+// typestate. ActorJoinReplyOp accepts a 0-part reply and can submit from
+// either typestate.
+
+impl ActorJoinOp<Empty> {
+    pub fn message(self, message: Message) -> ActorJoinOp<Ready>;
+}
+
+impl ActorJoinOp<Ready> {
+    pub fn message(self, message: Message) -> Self;
+    pub fn timeout(self, timeout: Duration) -> Self;
+    pub fn flags(self, flags: SendFlags) -> Self;
+    /// # Errors: SubmitError on submit, RequestError on completion
+    pub async fn submit_async(self)
+        -> Result<(ActorJoinResult, Vec<Message>), ZlinkError>;
+    /// # Errors: SubmitError on submit; callback receives final result.
+    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+        where F: FnOnce(ActorJoinResult, Vec<Message>) + Send + 'static;
+}
+
+impl ActorJoinReplyOp<Empty> {
+    pub fn message(self, message: Message) -> ActorJoinReplyOp<Empty>;
+    /// # Errors: SubmitError
+    pub fn submit(self) -> Result<(), SubmitError>;
+}
+
+impl ActorLeaveOp<Empty> {
+    pub fn timeout(self, timeout: Duration) -> Self;
+    pub async fn submit_async(self) -> Result<Vec<Message>, ZlinkError>;
+    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
+}
+
+impl ActorDestroyOp<Empty> {
+    pub fn timeout(self, timeout: Duration) -> Self;
+    pub async fn submit_async(self) -> Result<Vec<Message>, ZlinkError>;
+    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
+}
+
+impl ActorLookupOp<Empty> {
+    pub fn timeout(self, timeout: Duration) -> Self;
+    pub async fn submit_async(self) -> Result<ActorLookupResult, ZlinkError>;
+    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+        where F: FnOnce(ActorLookupResult) + Send + 'static;
+}
+
+impl ActorBindOp<Empty> {
+    pub fn timeout(self, timeout: Duration) -> Self;
+    pub async fn submit_async(self) -> Result<Vec<Message>, ZlinkError>;
+    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
+}
+
+impl ActorUnbindOp<Empty> {
+    pub fn timeout(self, timeout: Duration) -> Self;
+    pub async fn submit_async(self) -> Result<Vec<Message>, ZlinkError>;
+    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+        where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
+}
+
 impl Spot {
     // Spot::new(&node) is internal. Public code obtains Spot handles through
     // SpotNode factories.
@@ -1831,9 +1840,19 @@ impl Spot {
         -> Result<Option<ActorJoinRequest>, RecvError>;
     /// # Errors: RecvError
     pub fn recv_actor_join(&self) -> Result<ActorJoinRequest, RecvError>;
-    /// # Errors: SubmitError
-    pub fn reply_actor_join(&self, request: &ActorJoinRequest, accepted: bool,
-        message: Message) -> Result<(), SubmitError>;
+    /// Reply to an Actor join admission request (operation builder).
+    /// Multipart reply payload accumulates through `.message(...)`; a
+    /// zero-message `submit()` is allowed.
+    pub fn reply_actor_join(&self, request: &ActorJoinRequest,
+        accepted: bool) -> ActorJoinReplyOp<Empty>;
+    /// Register Actor lifecycle callbacks for this Spot. `on_join` fires
+    /// after an Actor enters this Spot; `on_leave` fires after an Actor
+    /// leaves. Passing `None` for both removes the registration.
+    /// # Errors: HandlerError
+    pub fn on_actor_lifecycle<J, L>(&mut self, on_join: Option<J>,
+        on_leave: Option<L>) -> Result<(), HandlerError>
+        where J: Fn(&Spot, SpotActorLifecycleInfo) + Send + 'static,
+              L: Fn(&Spot, SpotActorLifecycleInfo) + Send + 'static;
     /// # Errors: ConfigError
     pub fn actors_snapshot(&self) -> Result<Vec<ActorRef>, ConfigError>;
     /// # Errors: HandlerError

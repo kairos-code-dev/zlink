@@ -22,7 +22,30 @@
 - [ ] Rust 목표 달성
 - [ ] 전체 언어 최종 결과 요약
 
-## 현재 상태 요약 (2026-05-12)
+## 현재 상태 요약 (2026-05-13)
+
+2026-05-13 재개 기준 C core multi 결과는 아래 파일이다.
+
+- C 기준: `bindings/c/perf/baseline/perf_c_multi_linux_20260513_101034.txt`
+- C++ 최신 비교 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260513_174642_cpp_dr_rr_after_singlepart_send_20260513.txt`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260513_172245_cpp_dr_rr_64k_singlepart_send_fastpath_20260513.txt`
+
+C++은 raw socket send builder의 단일 part submit에서 vector 조립을 건너뛰는 내부
+fast path를 추가했다. `MULTI_DEALER_ROUTER,tcp,65536`은 이전 `135.802 Kops/s`에서
+최고 `146.663 Kops/s`까지 올랐지만 C 기준 `190.471 Kops/s` 대비 약 `0.77`이라
+목표 `0.90`에는 아직 미달이다. `MULTI_ROUTER_ROUTER,tcp,65536`은 C 기준
+`184.498 Kops/s` 대비 `0.60`대에 머물러 있다.
+
+이번 라운드에서 `zlink_msg_copy`의 의미도 바로잡았다. 이 함수는 payload를 깊게
+복사하지 않고 refcount를 올려 같은 native message storage를 공유한다. C++ 문서성
+주석과 계약 테스트는 이 의미에 맞게 갱신했다.
+
+perf와 테스트는 동시에 실행하지 않는다. 테스트나 빌드가 끝난 뒤 perf 실행 전에
+관련 프로세스가 없는지 확인하고, perf가 끝난 뒤 다음 테스트를 실행한다. 동시 실행은
+CPU load와 socket scheduling을 바꿔 64KB echo 결과를 쉽게 오염시킨다.
+
+이전 2026-05-12 기준은 아래와 같다.
 
 최근 점검 기준은 아래 C multi 결과다.
 

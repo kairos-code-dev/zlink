@@ -30,14 +30,17 @@ void test_bytes_roundtrip ()
 
 void test_copy_and_move_preserve_payload ()
 {
-    zlink::message_t original = zlink::message_t::from_string ("copied");
+    const std::string payload (1024, 'c');
+    zlink::message_t original = zlink::message_t::from_string (payload);
     zlink::message_t copy (original);
     zlink::message_t moved (std::move (original));
 
     assert (copy.valid ());
-    assert (copy.to_string () == "copied");
+    assert (copy.to_string () == payload);
     assert (moved.valid ());
-    assert (moved.to_string () == "copied");
+    assert (moved.to_string () == payload);
+    assert (copy.ref_count () == 2);
+    assert (moved.ref_count () == 2);
 }
 
 void test_diagnostic_surface_uses_canonical_names ()

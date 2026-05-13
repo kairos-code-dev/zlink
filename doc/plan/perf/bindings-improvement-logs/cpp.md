@@ -1064,3 +1064,60 @@
   - 검증하지 못한 C++ 실험 변경은 되돌렸다.
   - C++ 다음 라운드는 먼저 core actor/SPOT C API 변경과 C++ wrapper를 동기화해
     perf target이 다시 빌드 가능한 상태인지 확인한 뒤 진행해야 한다.
+
+### 2026-05-13 C++ round 29 — raw send 단일 파트 경로 직접화
+
+- 동일 조합 C 기준:
+  - `bindings/c/perf/baseline/perf_c_multi_linux_20260513_101034.txt`
+  - `MULTI_DEALER_ROUTER,tcp,65536,throughput,190471.400`
+  - `MULTI_ROUTER_ROUTER,tcp,65536,throughput,184497.800`
+- 대상 라이브러리 이전 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260513_163806_cpp_dr_rr_64k_current_20260513.txt`
+  - DR 64KB: `135802.333` Kops/s, C 기준 대비 ratio `0.713`
+  - RR 64KB: `116294.667` Kops/s, C 기준 대비 ratio `0.630`
+- 변경한 라이브러리 파일:
+  - `bindings/cpp/include/zlink/services/spot.hpp`
+    - raw socket send builder의 단일 part submit에서 `std::vector<message_t>`와
+      `std::vector<zlink_msg_t>`를 만들지 않고 `zlink_send_part`,
+      `zlink_send_part_rid`, `zlink_publish_part`,
+      `zlink_router_send_spot_part`를 직접 호출한다.
+    - 성공 시 `message_t` wrapper는 이미 native send API에 소유권을 넘긴 상태로
+      보고 `mark_sent()`로 wrapper valid flag만 내린다.
+- 의미 정정:
+  - `zlink_msg_copy`는 payload를 새 버퍼로 복제하지 않고 refcount를 올려 같은
+    storage를 공유한다.
+  - `bindings/cpp/include/zlink/message.hpp`의 잘못된 copy 설명을
+    "message handle copy" 의미로 고쳤다.
+  - `bindings/cpp/tests/contract/test_cpp_contract_message.cpp`에 1024B 메시지 copy 후
+    양쪽 refcount가 `2`가 되는 계약 테스트를 추가했다. 짧은 payload는 내부 저장
+    형태 때문에 refcount가 `1`일 수 있어 큰 payload로 검증한다.
+- 실행한 검증 명령:
+  - `cmake --build bindings/cpp/build --target test_cpp_contract_message test_cpp_contract_socket cpp_comp_src_dealer_router_server cpp_comp_src_router_router_server cpp_comp_src_dealer_router_client cpp_comp_src_router_router_client -j2`
+  - `ctest --test-dir bindings/cpp/build -R '^(test_cpp_contract_message|test_cpp_contract_socket)$' --output-on-failure`
+  - 사용자가 다른 테스트 동시 실행 가능성을 지적한 뒤 같은 계약 테스트를 다시 단독 실행했다.
+- 대상 라이브러리 결과:
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260513_172245_cpp_dr_rr_64k_singlepart_send_fastpath_20260513.txt`
+    - DR 64KB: `146663.333` Kops/s, ratio `0.770`
+    - RR 64KB: `118172.000` Kops/s, ratio `0.641`
+  - `bindings/cpp/perf/results/multi/report/perf_cpp_multi_linux_20260513_174642_cpp_dr_rr_after_singlepart_send_20260513.txt`
+    - DR 64B/256B/1024B/64KB: `427921.333` / `425805.000` / `422174.667` / `143286.000`
+    - RR 64B/256B/1024B/64KB: `419608.333` / `421633.000` / `416424.333` / `111410.667`
+- 배제한 가설:
+  - 서버에서 `received.send().message(part)`를 직접 쓰는 변경은 DR 64KB를 크게 악화해
+    되돌렸다.
+  - client poller를 send pending 상태에서 `POLLOUT`만 보도록 바꾼 변경은 개선이 없어
+    되돌렸다.
+  - server가 `poller.wait(events, 1, ...)` 대신 단건 `poller.wait()`를 쓰는 변경은
+    개선이 없어 되돌렸다.
+  - `poller_t::modify()`의 socket lookup을 unordered map으로 바꾸는 변경은
+    `perf_cpp_multi_linux_20260513_191630_cpp_dr_rr_64k_poller_socket_index_20260513.txt`
+    에서 DR/RR 64KB가 `117470.667` / `114698.333` Kops/s로 악화되어 되돌렸다.
+- 현재 판단:
+  - raw send builder의 단일 part 직접화는 DR 64KB에 유효하지만 목표 `0.90`에는
+    아직 부족하다.
+  - RR 64KB는 측정 편차가 크고 이번 긴 실행에서는 여전히 `0.60`대다.
+  - 남은 병목은 server send wrapper 한 지점이 아니라 C++ client receive/send loop,
+    100 client socket의 64KB in-flight 압력, routed receive의 source id 처리,
+    poll event materialize 비용이 함께 누적되는 영역으로 본다.
+  - 다음 라운드는 공개 API 의미를 바꾸지 않는 범위에서 client hot loop의
+    receive 결과 생성과 재송신 타이밍을 다시 분리 측정한다.

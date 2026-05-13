@@ -1453,6 +1453,57 @@ inline bool send_ready_op_t::submit () &&
         if (_state.kind == detail::spot_op_kind_t::raw_publish
             && _state.topic.empty ())
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+        if (_state.single_part.has_value ()) {
+            message_t &part = *_state.single_part;
+            if (!part.valid ())
+                throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+
+            zlink_submit_result_t direct_rc = ZLINK_SUBMIT_INVALID_ARGUMENT;
+            switch (_state.kind) {
+            case detail::spot_op_kind_t::raw_send:
+                direct_rc = zlink_send_part (
+                  _state.raw_socket, zlink::detail::native_handle (part),
+                  static_cast<zlink_send_flags_t> (_state.flags),
+                  ZLINK_PART_FINAL);
+                break;
+            case detail::spot_op_kind_t::raw_routed_send:
+                direct_rc = zlink_send_part_rid (
+                  _state.raw_socket,
+                  zlink::detail::routing_id_native (*_state.first_rid),
+                  zlink::detail::native_handle (part),
+                  static_cast<zlink_send_flags_t> (_state.flags),
+                  ZLINK_PART_FINAL);
+                break;
+            case detail::spot_op_kind_t::raw_publish:
+                direct_rc = zlink_publish_part (
+                  _state.raw_socket, _state.topic.c_str (),
+                  zlink::detail::native_handle (part),
+                  static_cast<zlink_send_flags_t> (_state.flags),
+                  ZLINK_PART_FINAL);
+                break;
+            case detail::spot_op_kind_t::raw_router_send_spot:
+                direct_rc = zlink_router_send_spot_part (
+                  _state.raw_socket,
+                  zlink::detail::routing_id_native (*_state.first_rid),
+                  zlink::detail::routing_id_native (*_state.second_rid),
+                  zlink::detail::native_handle (part),
+                  static_cast<zlink_send_flags_t> (_state.flags),
+                  ZLINK_PART_FINAL);
+                break;
+            default:
+                break;
+            }
+
+            const submit_result_t rc = static_cast<submit_result_t> (direct_rc);
+            if (rc == submit_result_t::ok) {
+                zlink::detail::mark_sent (part);
+                return true;
+            }
+            if (_state.flags == send_flags_t::dontwait
+                && rc == submit_result_t::backpressured)
+                return false;
+            throw submit_error_t (rc, zlink_errno ());
+        }
         std::vector<message_t> parts;
         if (_state.single_part.has_value ())
             parts.push_back (std::move (*_state.single_part));

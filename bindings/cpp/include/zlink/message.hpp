@@ -360,7 +360,7 @@ class message_t
     }
 
     /**
-     * @brief Deep-copy this message into another native message.
+     * @brief Copy this message handle into another native message.
      * @param dest_ Destination native message.
      * @return 0 on success, -1 on failure.
      */

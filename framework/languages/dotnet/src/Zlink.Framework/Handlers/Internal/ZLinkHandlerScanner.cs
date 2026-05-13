@@ -106,7 +106,8 @@ internal static class ZLinkHandlerScanner
             kind,
             messageName,
             declaringType,
-            targetMethod,
+            ZLinkHandlerMethodInvokerFactory.Create(targetMethod),
+            BuildArgumentPlan(targetMethod.GetParameters(), contextType),
             messageType,
             replyType,
             contextType,
@@ -155,12 +156,44 @@ internal static class ZLinkHandlerScanner
             kind,
             messageName,
             declaringType,
-            method,
+            ZLinkHandlerMethodInvokerFactory.Create(method),
+            BuildArgumentPlan(parameters, contextType),
             messageType,
             replyType,
             contextType,
             hasCancellationToken,
             groups);
+    }
+
+    private static ZLinkHandlerArgumentKind[] BuildArgumentPlan(
+        IReadOnlyList<ParameterInfo> parameters,
+        Type? contextType)
+    {
+        var plan = new ZLinkHandlerArgumentKind[parameters.Count];
+        if (parameters.Count == 0)
+        {
+            return plan;
+        }
+
+        plan[0] = ZLinkHandlerArgumentKind.Message;
+        for (var i = 1; i < parameters.Count; i++)
+        {
+            if (parameters[i].ParameterType == typeof(CancellationToken))
+            {
+                plan[i] = ZLinkHandlerArgumentKind.CancellationToken;
+                continue;
+            }
+
+            if (contextType is not null && parameters[i].ParameterType.IsAssignableFrom(contextType))
+            {
+                plan[i] = ZLinkHandlerArgumentKind.Context;
+                continue;
+            }
+
+            plan[i] = ZLinkHandlerArgumentKind.Default;
+        }
+
+        return plan;
     }
 
     private static IReadOnlySet<string> ResolveGroups(Type declaringType)

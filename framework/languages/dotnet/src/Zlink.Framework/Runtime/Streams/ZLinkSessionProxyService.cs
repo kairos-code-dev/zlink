@@ -41,7 +41,6 @@ internal sealed class ZLinkSessionProxySendCall<TMessage>(
     string actorId,
     TMessage message) : IZLinkSessionProxySendCall
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(message);
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
 
@@ -70,7 +69,10 @@ internal sealed class ZLinkSessionProxySendCall<TMessage>(
                 _packetName ?? throw new InvalidOperationException("Packet name is required."),
                 false,
                 new Dictionary<string, string>(_metadata, StringComparer.Ordinal)),
-            JsonSerializer.SerializeToUtf8Bytes(message, message?.GetType() ?? typeof(TMessage), JsonOptions));
+            JsonSerializer.SerializeToUtf8Bytes(
+                message,
+                message?.GetType() ?? typeof(TMessage),
+                ZLinkJsonSerializerOptions.Default));
 
         await routedClient.SendTo(runtime.ResolveDefaultRouterChannelId(), route.SessionRouterId, packet)
             .WithPacketName(ZLinkInternalPacketNames.SessionProxy)
@@ -107,7 +109,6 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
     string actorId,
     TRequest request) : IZLinkSessionProxyRequestCall
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
     private TimeSpan? _timeout;
@@ -143,7 +144,10 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
                 _packetName ?? throw new InvalidOperationException("Packet name is required."),
                 true,
                 new Dictionary<string, string>(_metadata, StringComparer.Ordinal)),
-            JsonSerializer.SerializeToUtf8Bytes(request, request?.GetType() ?? typeof(TRequest), JsonOptions));
+            JsonSerializer.SerializeToUtf8Bytes(
+                request,
+                request?.GetType() ?? typeof(TRequest),
+                ZLinkJsonSerializerOptions.Default));
 
         byte[] reply;
         try
@@ -162,8 +166,8 @@ internal sealed class ZLinkSessionProxyRequestCall<TRequest>(
                 innerException: ex);
         }
 
-        return JsonSerializer.Deserialize<TReply>(reply, JsonOptions)
-            ?? throw new InvalidOperationException("Session proxy reply body is null.");
+            return JsonSerializer.Deserialize<TReply>(reply, ZLinkJsonSerializerOptions.Default)
+                ?? throw new InvalidOperationException("Session proxy reply body is null.");
     }
 
     private async ValueTask<ZLinkActorSessionRoute> ResolveRouteAsync(CancellationToken cancellationToken)

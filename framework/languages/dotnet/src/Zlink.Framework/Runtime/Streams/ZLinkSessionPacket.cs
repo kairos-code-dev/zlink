@@ -6,8 +6,6 @@ internal sealed class ZLinkSessionPacket(
     ZlinkStreamHeader header,
     Message body) : IZLinkSessionPacket, IDisposable
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     public string PacketName => header.Name;
 
     public ZLinkMessageMetadata Metadata { get; } = new(
@@ -29,7 +27,7 @@ internal sealed class ZLinkSessionPacket(
                 $"Session packet decode only supports '{ZlinkStreamCodec.Json}', not '{header.Codec}'.");
         }
 
-        return JsonSerializer.Deserialize<TMessage>(body.AsReadOnlySpan(), JsonOptions)
+        return JsonSerializer.Deserialize<TMessage>(body.AsReadOnlySpan(), ZLinkJsonSerializerOptions.Default)
             ?? throw new InvalidOperationException($"Session packet '{PacketName}' body is null.");
     }
 

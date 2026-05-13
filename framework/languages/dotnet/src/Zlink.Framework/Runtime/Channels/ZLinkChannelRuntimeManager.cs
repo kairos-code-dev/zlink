@@ -1,4 +1,5 @@
 using Zlink.Framework.Backend.Contracts;
+using Zlink.Framework.Runtime.Core;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -8,6 +9,9 @@ internal sealed class ZLinkChannelRuntimeManager(
     ZLinkFrameworkRegistration registration,
     ZLinkChannelMessagePump channelMessagePump)
 {
+    private readonly ZLinkChannelBundleFactory _bundleFactory = new(backendAdapterFactory, registration);
+    private readonly ZLinkRouteChannelInitializer _routeChannels = new(services, registration);
+
     public ZLinkChannelRuntimeBundle GetOrCreateClientBundle(
         ZLinkFrameworkRuntimeState state,
         string channelName)
@@ -25,51 +29,9 @@ internal sealed class ZLinkChannelRuntimeManager(
                 throw new InvalidOperationException($"Channel client '{channelName}' is not registered.");
             }
 
-            var adapter = backendAdapterFactory.CreateChannelAdapter();
-            var dealer = adapter.CreateDealerSocket(state.Context);
-            dealer.SetChannelName(channelName);
-            if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint))
-            {
-                dealer.Bind(channel.Client.BindEndpoint);
-            }
-
-            var bundle = new ZLinkChannelRuntimeBundle(
-                dealer,
-                new ZLinkAsyncSubmitter(
-                    dealer.OnSendReady,
-                    channel.Client.SocketOptions.SendTimeout,
-                    state.StopTokenSource.Token));
-
-            try
-            {
-                if (channel.Client.ManualConnections.Count > 0)
-                {
-                    foreach (var endpoint in channel.Client.ManualConnections)
-                    {
-                        dealer.Connect(endpoint);
-                        _ = bundle.TryAddManualConnection(endpoint);
-                    }
-                }
-                else
-                {
-                    var discovery = CreateDiscovery(
-                        adapter,
-                        state,
-                        channelName,
-                        ResolveClientAutoConnectType(channel),
-                        registration.Discovery?.Endpoints ?? []);
-                    dealer.AttachDiscovery(discovery);
-                    bundle.Discovery = discovery;
-                }
-
-                state.ClientBundles.Add(channelName, bundle);
-                return bundle;
-            }
-            catch
-            {
-                _ = Task.Run(async () => await bundle.DisposeAsync().ConfigureAwait(false));
-                throw;
-            }
+            var bundle = _bundleFactory.CreateClientBundle(state, channelName, channel);
+            state.ClientBundles.Add(channelName, bundle);
+            return bundle;
         }
     }
 
@@ -90,7 +52,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                 throw new InvalidOperationException($"Channel publisher '{channelName}' is not registered.");
             }
 
-            var bundle = CreatePublisherBundle(state, channelName, channel);
+            var bundle = _bundleFactory.CreatePublisherBundle(state, channelName, channel);
             state.PublisherBundles.Add(channelName, bundle);
             return bundle;
         }
@@ -116,7 +78,7 @@ internal sealed class ZLinkChannelRuntimeManager(
 
             if (channel.Server is not null)
             {
-                var bundle = CreateServerBundle(state, adapter, channelName, channel);
+                var bundle = _bundleFactory.CreateServerBundle(state, adapter, channelName, channel);
                 state.ServerBundles.Add(channelName, bundle);
                 state.ListenerTasks.Add(Task.Run(
                     () => channelMessagePump.RunServerLoopAsync(
@@ -128,7 +90,7 @@ internal sealed class ZLinkChannelRuntimeManager(
 
             if (channel.Subscriber is not null)
             {
-                var bundle = CreateSubscriberBundle(state, adapter, channelName, channel);
+                var bundle = _bundleFactory.CreateSubscriberBundle(state, adapter, channelName, channel);
                 state.SubscriberBundles.Add(channelName, bundle);
                 state.ListenerTasks.Add(Task.Run(
                     () => channelMessagePump.RunSubscriberLoopAsync(
@@ -151,7 +113,9 @@ internal sealed class ZLinkChannelRuntimeManager(
                 continue;
             }
 
-            state.PublisherBundles.Add(entry.Key, CreatePublisherBundle(state, entry.Key, entry.Value, adapter));
+            state.PublisherBundles.Add(
+                entry.Key,
+                _bundleFactory.CreatePublisherBundle(state, entry.Key, entry.Value, adapter));
         }
     }
 
@@ -170,46 +134,7 @@ internal sealed class ZLinkChannelRuntimeManager(
         ZLinkFrameworkRuntimeState state,
         IZLinkChannelBackendAdapter adapter)
     {
-        foreach (var routedRegistration in registration.RouteChannels.Values)
-        {
-            var router = adapter.CreateRouterSocket(state.Context);
-            router.SetChannelName(routedRegistration.RouterChannelId);
-            if (routedRegistration.RoutingOptions.RoutingId.Size > 0)
-            {
-                router.SetRoutingId(routedRegistration.RoutingOptions.RoutingId);
-            }
-
-            router.Bind(routedRegistration.BindEndpoint!);
-            IZLinkBackendDiscovery? discovery = null;
-            if (routedRegistration.ManualConnections.Count == 0
-                && registration.Discovery?.Endpoints.Count > 0)
-            {
-                discovery = CreateDiscovery(
-                    adapter,
-                    state,
-                    routedRegistration.RouterChannelId,
-                    ZLinkAutoConnectType.RouteMesh,
-                    registration.Discovery.Endpoints);
-                router.AttachDiscovery(discovery);
-            }
-
-            var handlers = new ZLinkRouteHandlerRegistry(CreateRouteHandlerDescriptors(routedRegistration));
-            var runtime = new ZLinkRouteChannelRuntime(
-                services,
-                routedRegistration,
-                router,
-                discovery,
-                handlers,
-                new ZLinkSessionActorDispatchRoutePacketDispatcher(services),
-                state.StopTokenSource.Token);
-            foreach (var endpoint in routedRegistration.ManualConnections)
-            {
-                runtime.Connect(endpoint);
-            }
-
-            runtime.Start();
-            state.RouteChannels.Add(routedRegistration.RouterChannelId, runtime);
-        }
+        _routeChannels.Initialize(state, adapter);
     }
 
     public IZLinkEndpointConnections GetClientConnections(
@@ -295,149 +220,6 @@ internal sealed class ZLinkChannelRuntimeManager(
             _ => throw new InvalidOperationException(
                 $"Socket monitoring source '{sourceName}' is not registered."),
         };
-    }
-
-    private ZLinkChannelRuntimeBundle CreateServerBundle(
-        ZLinkFrameworkRuntimeState state,
-        IZLinkChannelBackendAdapter adapter,
-        string channelName,
-        ZLinkChannelRegistration channel)
-    {
-        var router = adapter.CreateRouterSocket(state.Context);
-        router.SetChannelName(channelName);
-        router.Bind(channel.Server!.BindEndpoint!);
-        var bundle = new ZLinkChannelRuntimeBundle(router);
-
-        if (registration.Discovery is not null)
-        {
-            var discovery = CreateDiscovery(
-                adapter,
-                state,
-                channelName,
-                ZLinkAutoConnectType.ClientServer,
-                registration.Discovery.Endpoints);
-            router.AttachDiscovery(discovery);
-            bundle.Discovery = discovery;
-        }
-
-        return bundle;
-    }
-
-    private ZLinkChannelRuntimeBundle CreateSubscriberBundle(
-        ZLinkFrameworkRuntimeState state,
-        IZLinkChannelBackendAdapter adapter,
-        string channelName,
-        ZLinkChannelRegistration channel)
-    {
-        var subscriber = adapter.CreateSubscriberSocket(state.Context);
-        subscriber.SetChannelName(channelName);
-        subscriber.SetSubscription(string.Empty);
-        var bundle = new ZLinkChannelRuntimeBundle(subscriber);
-
-        if (channel.Subscriber!.ManualConnections.Count > 0)
-        {
-            foreach (var endpoint in channel.Subscriber.ManualConnections)
-            {
-                subscriber.Connect(endpoint);
-                _ = bundle.TryAddManualConnection(endpoint);
-            }
-        }
-        else
-        {
-            var discovery = CreateDiscovery(
-                adapter,
-                state,
-                channelName,
-                ZLinkAutoConnectType.Fanout,
-                registration.Discovery?.Endpoints ?? []);
-            subscriber.AttachDiscovery(discovery);
-            bundle.Discovery = discovery;
-        }
-
-        return bundle;
-    }
-
-    private ZLinkChannelRuntimeBundle CreatePublisherBundle(
-        ZLinkFrameworkRuntimeState state,
-        string channelName,
-        ZLinkChannelRegistration channel,
-        IZLinkChannelBackendAdapter? adapter = null)
-    {
-        adapter ??= backendAdapterFactory.CreateChannelAdapter();
-        var publisher = adapter.CreatePublisherSocket(state.Context);
-        publisher.SetChannelName(channelName);
-        publisher.Bind(channel.Publisher!.BindEndpoint!);
-        var bundle = new ZLinkChannelRuntimeBundle(
-            publisher,
-            new ZLinkAsyncSubmitter(
-                publisher.OnSendReady,
-                channel.Publisher.SocketOptions.SendTimeout,
-                state.StopTokenSource.Token));
-
-        if (registration.Discovery is not null)
-        {
-            var discovery = CreateDiscovery(
-                adapter,
-                state,
-                channelName,
-                ZLinkAutoConnectType.Fanout,
-                registration.Discovery.Endpoints);
-            publisher.AttachDiscovery(discovery);
-            bundle.Discovery = discovery;
-        }
-
-        return bundle;
-    }
-
-    private static IZLinkBackendDiscovery CreateDiscovery(
-        IZLinkChannelBackendAdapter adapter,
-        ZLinkFrameworkRuntimeState state,
-        string channelName,
-        ZLinkAutoConnectType autoConnectType,
-        IReadOnlyCollection<string> endpoints)
-    {
-        var discovery = adapter.CreateDiscovery(state.Context, autoConnectType, channelName);
-        foreach (var endpoint in endpoints)
-        {
-            discovery.ConnectRegistry(endpoint);
-        }
-
-        return discovery;
-    }
-
-    private static ZLinkAutoConnectType ResolveClientAutoConnectType(ZLinkChannelRegistration channel)
-    {
-        return channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh
-            ? ZLinkAutoConnectType.DealerMesh
-            : ZLinkAutoConnectType.ClientServer;
-    }
-
-    private static IEnumerable<ZLinkRouteHandlerDescriptor> CreateRouteHandlerDescriptors(
-        ZLinkRouteChannelRegistration routedRegistration)
-    {
-        foreach (var handler in routedRegistration.SendHandlers)
-        {
-            yield return new ZLinkRouteHandlerDescriptor(
-                ZLinkMessageKind.Command,
-                routedRegistration.RouterChannelId,
-                handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
-                handler.HandlerType,
-                handler.MessageType,
-                null,
-                handler.HandlerType.GetMethod(nameof(IZLinkRouteSendHandler<object>.HandleAsync))!);
-        }
-
-        foreach (var handler in routedRegistration.RequestHandlers)
-        {
-            yield return new ZLinkRouteHandlerDescriptor(
-                ZLinkMessageKind.Request,
-                routedRegistration.RouterChannelId,
-                handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
-                handler.HandlerType,
-                handler.MessageType,
-                handler.ReplyType,
-                handler.HandlerType.GetMethod(nameof(IZLinkRouteRequestHandler<object, object>.HandleAsync))!);
-        }
     }
 
     private static (string ChannelName, string Capability) ParseChannelCapabilitySource(string sourceName)

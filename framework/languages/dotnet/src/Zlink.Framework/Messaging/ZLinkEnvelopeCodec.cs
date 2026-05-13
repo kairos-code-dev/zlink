@@ -29,7 +29,6 @@ internal sealed record ZLinkEnvelopeHeader(
 
 internal static class ZLinkEnvelopeCodec
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private const string JsonContentType = "application/json";
 
     public static Message Encode(
@@ -40,10 +39,10 @@ internal static class ZLinkEnvelopeCodec
         var envelope = new ZLinkSerializedEnvelope(
             header,
             bodyType is not null && body is not null
-                ? JsonSerializer.SerializeToElement(body, bodyType, JsonOptions)
+                ? JsonSerializer.SerializeToElement(body, bodyType, ZLinkJsonSerializerOptions.Default)
                 : null);
         return Message.FromString(
-            JsonSerializer.Serialize(envelope, JsonOptions));
+            JsonSerializer.Serialize(envelope, ZLinkJsonSerializerOptions.Default));
     }
 
     public static ZLinkEnvelopeHeader DecodeHeader(Message message)
@@ -61,14 +60,14 @@ internal static class ZLinkEnvelopeCodec
                 : null;
         }
 
-        return envelope.Body.Value.Deserialize(bodyType, JsonOptions);
+        return envelope.Body.Value.Deserialize(bodyType, ZLinkJsonSerializerOptions.Default);
     }
 
     private static ZLinkSerializedEnvelope DecodeEnvelope(Message message)
     {
         var envelope = JsonSerializer.Deserialize<ZLinkSerializedEnvelope>(
             message.AsReadOnlySpan(),
-            JsonOptions);
+            ZLinkJsonSerializerOptions.Default);
 
         return envelope ?? throw new InvalidOperationException("Invalid ZLink envelope header.");
     }

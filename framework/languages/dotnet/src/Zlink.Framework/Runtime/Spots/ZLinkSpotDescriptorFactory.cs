@@ -21,7 +21,7 @@ internal static class ZLinkSpotDescriptorFactory
                     HandlerType = handlerType,
                     SpotType = arguments[0],
                     MessageType = arguments[1],
-                    HandleMethod = handlerType.GetMethod("HandleAsync")!,
+                    Invoker = CreateInvoker(handlerType),
                     MessageName = ZLinkMessageNameResolver.ResolveFromType(arguments[1]),
                 };
             }
@@ -36,7 +36,7 @@ internal static class ZLinkSpotDescriptorFactory
                     SpotType = arguments[0],
                     MessageType = arguments[1],
                     ReplyType = arguments[2],
-                    HandleMethod = handlerType.GetMethod("HandleAsync")!,
+                    Invoker = CreateInvoker(handlerType),
                     MessageName = ZLinkMessageNameResolver.ResolveFromType(arguments[1]),
                 };
             }
@@ -67,7 +67,7 @@ internal static class ZLinkSpotDescriptorFactory
                 HandlerType = handlerType,
                 SpotType = arguments[0],
                 MessageType = arguments[1],
-                HandleMethod = handlerType.GetMethod("HandleAsync")!,
+                Invoker = CreateInvoker(handlerType),
                 MessageName = ZLinkMessageNameResolver.ResolveFromType(arguments[1]),
             };
         }
@@ -97,7 +97,7 @@ internal static class ZLinkSpotDescriptorFactory
                 Period = TimeSpan.Zero,
                 HandlerType = handlerType,
                 SpotType = arguments[0],
-                HandleMethod = handlerType.GetMethod("HandleAsync")!,
+                Invoker = CreateInvoker(handlerType),
             };
         }
 
@@ -137,7 +137,7 @@ internal static class ZLinkSpotDescriptorFactory
                 ActorType = arguments[1],
                 RequestType = arguments[2],
                 ReplyType = arguments[3],
-                HandleMethod = handlerType.GetMethod("HandleAsync")!,
+                Invoker = CreateInvoker(handlerType),
                 MessageName = ZLinkMessageNameResolver.ResolveFromType(arguments[2]),
             };
         }
@@ -162,5 +162,12 @@ internal static class ZLinkSpotDescriptorFactory
             throw new InvalidOperationException(
                 $"SPOT actor join handler '{handlerType}' targets actor '{actualActorType}', but registration expects '{expectedActorType}'.");
         }
+    }
+
+    private static ZLinkHandlerMethodInvoker CreateInvoker(Type handlerType)
+    {
+        var method = handlerType.GetMethod("HandleAsync")
+            ?? throw new InvalidOperationException($"Handler '{handlerType}' does not expose HandleAsync.");
+        return ZLinkHandlerMethodInvokerFactory.Create(method);
     }
 }

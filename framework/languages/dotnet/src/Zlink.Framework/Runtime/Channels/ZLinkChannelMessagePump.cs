@@ -1,4 +1,5 @@
 using Zlink.Framework.Backend.Contracts;
+using Zlink.Framework.Runtime.Core;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -20,7 +21,7 @@ internal sealed class ZLinkChannelMessagePump(
                 received = router.Recv(RecvFlags.DontWait);
                 if (received is null)
                 {
-                    await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+                    await ZLinkPollingBackoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -55,7 +56,7 @@ internal sealed class ZLinkChannelMessagePump(
                 topicMessage = subscriber.Subscribe(RecvFlags.DontWait);
                 if (topicMessage is null)
                 {
-                    await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+                    await ZLinkPollingBackoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 

@@ -144,40 +144,54 @@ public sealed class ZlinkStreamHeaderCodec : IZlinkStreamHeaderCodec
     }
 
     internal static int GetMetadataPayloadSize(ZlinkStreamMetadata metadata)
-        => metadata.Count == 0 ? 0 : EncodeMetadata(metadata).Length;
+        => metadata.Count == 0 ? 0 : CalculateMetadataPayloadSize(metadata);
 
     private static byte[] EncodeMetadata(ZlinkStreamMetadata metadata)
+    {
+        var buffer = new byte[CalculateMetadataPayloadSize(metadata)];
+        var offset = 0;
+        buffer[offset++] = (byte)metadata.Count;
+        foreach (var (key, value) in metadata.Values)
+        {
+            var keyLength = Encoding.UTF8.GetByteCount(key);
+            var valueLength = Encoding.UTF8.GetByteCount(value);
+
+            buffer[offset++] = (byte)keyLength;
+            offset += Encoding.UTF8.GetBytes(key, buffer.AsSpan(offset, keyLength));
+            BinaryPrimitives.WriteUInt16BigEndian(buffer.AsSpan(offset, 2), (ushort)valueLength);
+            offset += 2;
+            offset += Encoding.UTF8.GetBytes(value, buffer.AsSpan(offset, valueLength));
+        }
+
+        return buffer;
+    }
+
+    private static int CalculateMetadataPayloadSize(ZlinkStreamMetadata metadata)
     {
         if (metadata.Count > byte.MaxValue)
         {
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.ValidationFailed, "Metadata entry count must not exceed 255.");
         }
 
-        using var stream = new System.IO.MemoryStream();
-        stream.WriteByte((byte)metadata.Count);
+        var size = 1;
         foreach (var (key, value) in metadata.Values)
         {
-            var keyBytes = Encoding.UTF8.GetBytes(key);
-            var valueBytes = Encoding.UTF8.GetBytes(value);
-            if (keyBytes.Length is 0 or > byte.MaxValue)
+            var keyLength = Encoding.UTF8.GetByteCount(key);
+            var valueLength = Encoding.UTF8.GetByteCount(value);
+            if (keyLength is 0 or > byte.MaxValue)
             {
                 throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.ValidationFailed, "Metadata key length is invalid.");
             }
 
-            if (valueBytes.Length > ushort.MaxValue)
+            if (valueLength > ushort.MaxValue)
             {
                 throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.ValidationFailed, "Metadata value is too large.");
             }
 
-            stream.WriteByte((byte)keyBytes.Length);
-            stream.Write(keyBytes);
-            var length = new byte[2];
-            BinaryPrimitives.WriteUInt16BigEndian(length, (ushort)valueBytes.Length);
-            stream.Write(length);
-            stream.Write(valueBytes);
+            size = checked(size + 1 + keyLength + 2 + valueLength);
         }
 
-        return stream.ToArray();
+        return size;
     }
 
     private static ZlinkStreamMetadata DecodeMetadata(ReadOnlySpan<byte> metadata)

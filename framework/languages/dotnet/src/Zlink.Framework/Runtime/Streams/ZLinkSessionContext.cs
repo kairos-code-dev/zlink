@@ -1,7 +1,4 @@
 using Systems.Zlink.Stream.Connector.Protocol;
-using Systems.Zlink.Stream.Connector.Protocol.Compression;
-using Systems.Zlink.Stream.Connector.Contracts;
-using System.Text.Json;
 
 namespace Zlink.Framework.Runtime.Streams;
 
@@ -13,12 +10,15 @@ internal sealed class ZLinkSessionContext(
     : IZLinkSessionContext, IZLinkSessionActorAttachmentContext
 {
     private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private IZLinkActor? _actor;
     private ZlinkStreamHeader? _currentDispatchHeader;
     private readonly ZLinkSessionRequestTracker _requests = new();
+    private ZLinkSessionStreamTransport? _transport;
     private readonly ZLinkSessionActorBindingRegistry _actorBindings = new(runtime);
+
+    private ZLinkSessionStreamTransport Transport
+        => _transport ??= new ZLinkSessionStreamTransport(stream, _requests);
 
     public string SessionId => stream.SessionId;
 
@@ -272,7 +272,7 @@ internal sealed class ZLinkSessionContext(
 
     internal bool Write(Message payload)
     {
-        return stream.Write(payload);
+        return Transport.Write(payload);
     }
 
     internal ValueTask SendRawAsync(
@@ -281,16 +281,7 @@ internal sealed class ZLinkSessionContext(
         ReadOnlyMemory<byte> body,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var header = new ZlinkStreamHeader(
-            ZlinkStreamMessageKind.Send,
-            codec,
-            ZlinkStreamHeaderFlags.None,
-            null,
-            packetName,
-            ZlinkStreamMetadata.Empty);
-        WriteRawFrame(header, body.Span, "Client stream send failed.");
-        return ValueTask.CompletedTask;
+        return Transport.SendRawAsync(packetName, codec, body, cancellationToken);
     }
 
     internal async ValueTask<Message> RequestRawAsync(
@@ -300,27 +291,8 @@ internal sealed class ZLinkSessionContext(
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        using var pending = _requests.Start();
-
-        var header = new ZlinkStreamHeader(
-            ZlinkStreamMessageKind.Request,
-            codec,
-            ZlinkStreamHeaderFlags.HasRequestSeq,
-            pending.RequestSeq,
-            packetName,
-            ZlinkStreamMetadata.Empty);
-        WriteRawFrame(header, body.Span, "Client stream request send failed.");
-
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(timeout);
-        using var registration = timeoutSource.Token.Register(static state =>
-        {
-            var item = (ZLinkPendingSessionRequest)state!;
-            item.Cancel();
-        }, pending);
-
-        return await pending.Task.ConfigureAwait(false);
+        return await Transport.RequestRawAsync(packetName, codec, body, timeout, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     internal ValueTask ReplyRawAsync(
@@ -329,21 +301,7 @@ internal sealed class ZLinkSessionContext(
         ReadOnlyMemory<byte> body,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (requestHeader.RequestSeq is not { } requestSeq)
-        {
-            throw new InvalidOperationException("Raw reply is only available for a request packet.");
-        }
-
-        var header = new ZlinkStreamHeader(
-            ZlinkStreamMessageKind.Response,
-            codec,
-            ZlinkStreamHeaderFlags.HasRequestSeq,
-            requestSeq,
-            requestHeader.Name,
-            ZlinkStreamMetadata.Empty);
-        WriteRawFrame(header, body.Span, "Client stream reply send failed.");
-        return ValueTask.CompletedTask;
+        return Transport.ReplyRawAsync(requestHeader, codec, body, cancellationToken);
     }
 
     internal ValueTask ReplyErrorAsync(
@@ -351,26 +309,7 @@ internal sealed class ZLinkSessionContext(
         Exception exception,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (requestHeader.RequestSeq is not { } requestSeq)
-        {
-            return ValueTask.CompletedTask;
-        }
-
-        var header = new ZlinkStreamHeader(
-            ZlinkStreamMessageKind.Error,
-            ZlinkStreamCodec.Json,
-            ZlinkStreamHeaderFlags.HasRequestSeq,
-            requestSeq,
-            requestHeader.Name,
-            ZlinkStreamMetadata.Empty);
-        var body = JsonSerializer.SerializeToUtf8Bytes(
-            new ZLinkStreamWireError(
-                exception.GetType().Name,
-                exception.Message),
-            JsonOptions);
-        WriteRawFrame(header, body, "Client stream error reply send failed.");
-        return ValueTask.CompletedTask;
+        return Transport.ReplyErrorAsync(requestHeader, exception, cancellationToken);
     }
 
     internal async ValueTask<TReply> RequestClientAsync<TRequest, TReply>(
@@ -379,203 +318,7 @@ internal sealed class ZLinkSessionContext(
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        using var pending = _requests.Start();
-
-        ReadOnlyMemory<byte> body = JsonSerializer.SerializeToUtf8Bytes(request, JsonOptions);
-        var header = new ZlinkStreamHeader(
-            ZlinkStreamMessageKind.Request,
-            ZlinkStreamCodec.Json,
-            ZlinkStreamHeaderFlags.HasRequestSeq,
-            pending.RequestSeq,
-            packetName,
-            ZlinkStreamMetadata.Empty);
-        var frame = ZLinkStreamFrameCodec.Encode(HeaderCodec.Encode(header).Span, body.Span);
-        using var payloadMessage = Message.FromBytes(frame);
-        if (!Write(payloadMessage))
-        {
-            throw new InvalidOperationException("Client stream request send failed.");
-        }
-
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(timeout);
-        using var registration = timeoutSource.Token.Register(static state =>
-        {
-            var item = (ZLinkPendingSessionRequest)state!;
-            item.Cancel();
-        }, pending);
-
-        using var reply = await pending.Task.ConfigureAwait(false);
-        return JsonSerializer.Deserialize<TReply>(reply.AsReadOnlySpan(), JsonOptions)
-            ?? throw new InvalidOperationException("Client stream request reply body is null.");
-    }
-
-    private void WriteRawFrame(
-        ZlinkStreamHeader header,
-        ReadOnlySpan<byte> body,
-        string failureMessage)
-    {
-        var frame = ZLinkStreamFrameCodec.Encode(HeaderCodec.Encode(header).Span, body);
-        using var payloadMessage = Message.FromBytes(frame);
-        if (!Write(payloadMessage))
-        {
-            throw new InvalidOperationException(failureMessage);
-        }
-    }
-
-}
-
-internal sealed record ZLinkStreamWireError(
-    string? Code,
-    string? Message);
-
-internal abstract class ZLinkSessionStreamCallBase<TMessage>(
-    ZLinkSessionContext context,
-    TMessage message)
-{
-    private static readonly IZlinkStreamPacketNameResolver MessageNameResolver = new ZlinkStreamPacketNameResolver();
-    private static readonly IZlinkStreamCompressionCodec CompressionCodec = new ZlinkStreamLz4CompressionCodec();
-    private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
-    private string _messageName = MessageNameResolver.Resolve(typeof(TMessage));
-    private ZlinkStreamMetadata _metadata = ZlinkStreamMetadata.Empty;
-    private bool _compress;
-    private int _executed;
-
-    public ZLinkSessionStreamCallBase<TMessage> WithMetadata(string key, string value)
-    {
-        _metadata = _metadata.With(key, value);
-        return this;
-    }
-
-    public ZLinkSessionStreamCallBase<TMessage> WithPacketName(string messageName)
-    {
-        if (string.IsNullOrWhiteSpace(messageName))
-        {
-            throw new InvalidOperationException("Stream packet name must not be empty.");
-        }
-
-        _messageName = messageName;
-        return this;
-    }
-
-    public ZLinkSessionStreamCallBase<TMessage> Compress()
-    {
-        _compress = true;
-        return this;
-    }
-
-    protected ValueTask ExecuteAsync(CancellationToken cancellationToken = default)
-    {
-        _ = cancellationToken;
-
-        if (Interlocked.Exchange(ref _executed, 1) != 0)
-        {
-            throw new InvalidOperationException("Stream send builders can be executed only once.");
-        }
-
-        ReadOnlyMemory<byte> body = JsonSerializer.SerializeToUtf8Bytes(message, JsonOptions);
-        var flags = ZlinkStreamHeaderFlags.None;
-
-        if (_compress)
-        {
-            body = CompressionCodec.Compress(body);
-            flags |= ZlinkStreamHeaderFlags.BodyCompressed;
-        }
-
-        var header = CreateHeader(ZlinkStreamCodec.Json, flags, _messageName, _metadata, context.CurrentDispatchHeader);
-        var frame = ZLinkStreamFrameCodec.Encode(HeaderCodec.Encode(header).Span, body.Span);
-        using var payloadMessage = Message.FromBytes(frame);
-
-        if (!context.Write(payloadMessage))
-        {
-            throw new InvalidOperationException("Client stream send failed.");
-        }
-
-        return ValueTask.CompletedTask;
-    }
-
-    protected abstract ZlinkStreamHeader CreateHeader(
-        ZlinkStreamCodec codec,
-        ZlinkStreamHeaderFlags flags,
-        string messageName,
-        ZlinkStreamMetadata metadata,
-        ZlinkStreamHeader? currentDispatchHeader);
-
-}
-
-internal sealed class ZLinkSessionSendCall<TMessage>(
-    ZLinkSessionContext context,
-    TMessage message)
-    : ZLinkSessionStreamCallBase<TMessage>(context, message), IZLinkSessionSendCall
-{
-    IZLinkSessionSendCall IZLinkSessionSendCall.WithMetadata(string key, string value)
-        => (IZLinkSessionSendCall)WithMetadata(key, value);
-
-    IZLinkSessionSendCall IZLinkSessionSendCall.WithPacketName(string messageName)
-        => (IZLinkSessionSendCall)WithPacketName(messageName);
-
-    IZLinkSessionSendCall IZLinkSessionSendCall.Compress()
-        => (IZLinkSessionSendCall)Compress();
-
-    public ValueTask Submit(CancellationToken cancellationToken = default)
-    {
-        return ExecuteAsync(cancellationToken);
-    }
-
-    protected override ZlinkStreamHeader CreateHeader(
-        ZlinkStreamCodec codec,
-        ZlinkStreamHeaderFlags flags,
-        string messageName,
-        ZlinkStreamMetadata metadata,
-        ZlinkStreamHeader? currentDispatchHeader)
-    {
-        _ = currentDispatchHeader;
-        return new ZlinkStreamHeader(
-            ZlinkStreamMessageKind.Send,
-            codec,
-            flags,
-            null,
-            messageName,
-            metadata);
-    }
-}
-
-internal sealed class ZLinkSessionReplyCall<TMessage>(
-    ZLinkSessionContext context,
-    TMessage message)
-    : ZLinkSessionStreamCallBase<TMessage>(context, message), IZLinkSessionReplyCall
-{
-    IZLinkSessionReplyCall IZLinkSessionReplyCall.WithMetadata(string key, string value)
-        => (IZLinkSessionReplyCall)WithMetadata(key, value);
-
-    IZLinkSessionReplyCall IZLinkSessionReplyCall.Compress()
-        => (IZLinkSessionReplyCall)Compress();
-
-    public ValueTask Submit(CancellationToken cancellationToken = default)
-    {
-        return ExecuteAsync(cancellationToken);
-    }
-
-    protected override ZlinkStreamHeader CreateHeader(
-        ZlinkStreamCodec codec,
-        ZlinkStreamHeaderFlags flags,
-        string messageName,
-        ZlinkStreamMetadata metadata,
-        ZlinkStreamHeader? currentDispatchHeader)
-    {
-        if (currentDispatchHeader?.RequestSeq is not { } requestSeq)
-        {
-            throw new InvalidOperationException("Reply is only available while handling a request packet.");
-        }
-
-        return new ZlinkStreamHeader(
-            ZlinkStreamMessageKind.Response,
-            codec,
-            flags | ZlinkStreamHeaderFlags.HasRequestSeq,
-            requestSeq,
-            currentDispatchHeader.Name,
-            metadata);
+        return await Transport.RequestJsonAsync<TRequest, TReply>(request, packetName, timeout, cancellationToken)
+            .ConfigureAwait(false);
     }
 }

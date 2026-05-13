@@ -1,17 +1,25 @@
 using System.Collections.Concurrent;
 using System.Reflection;
-using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Handlers.Internal;
 
+internal enum ZLinkHandlerArgumentKind
+{
+    Message,
+    Context,
+    CancellationToken,
+    Default
+}
+
 internal sealed record ZLinkHandlerEndpointDescriptor(
     ZLinkMessageKind Kind,
     string MessageName,
     Type DeclaringType,
-    MethodInfo Method,
+    ZLinkHandlerMethodInvoker Invoker,
+    IReadOnlyList<ZLinkHandlerArgumentKind> ArgumentPlan,
     Type MessageType,
     Type? ReplyType,
     Type? ContextType,
@@ -164,16 +172,7 @@ internal sealed class ZLinkHandlerDispatcher(
         {
             var handler = scope.ServiceProvider.GetRequiredService(endpoint.DeclaringType);
             var args = BuildArguments(endpoint, message, scopedContext, ct);
-            object? result;
-            try
-            {
-                result = endpoint.Method.Invoke(handler, args);
-            }
-            catch (TargetInvocationException ex) when (ex.InnerException is not null)
-            {
-                ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
-                throw; // unreachable
-            }
+            var result = endpoint.Invoker(handler, args);
             return await ZLinkHandlerResultAwaiter.AwaitAsync(result);
         }
 
@@ -199,25 +198,21 @@ internal sealed class ZLinkHandlerDispatcher(
         ZLinkHandlerContext context,
         CancellationToken cancellationToken)
     {
-        var parameters = endpoint.Method.GetParameters();
-        var args = new object?[parameters.Length];
+        var args = new object?[endpoint.ArgumentPlan.Count];
 
-        if (parameters.Length > 0)
+        for (var i = 0; i < endpoint.ArgumentPlan.Count; i++)
         {
-            args[0] = message;
-        }
-
-        for (var i = 1; i < parameters.Length; i++)
-        {
-            if (typeof(CancellationToken) == parameters[i].ParameterType)
+            switch (endpoint.ArgumentPlan[i])
             {
-                args[i] = cancellationToken;
-                continue;
-            }
-
-            if (endpoint.ContextType is not null && parameters[i].ParameterType.IsAssignableFrom(endpoint.ContextType))
-            {
-                args[i] = context;
+                case ZLinkHandlerArgumentKind.Message:
+                    args[i] = message;
+                    break;
+                case ZLinkHandlerArgumentKind.Context:
+                    args[i] = context;
+                    break;
+                case ZLinkHandlerArgumentKind.CancellationToken:
+                    args[i] = cancellationToken;
+                    break;
             }
         }
 

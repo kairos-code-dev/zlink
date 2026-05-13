@@ -50,38 +50,8 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             throw new TimeoutException("ZLink async submit timed out before the socket became writable.");
         }
 
-        var pending = new PendingSubmit(
-            message,
-            trySubmit,
-            deadline,
-            Drain,
-            new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously),
-            completeOnAccepted: true);
-        pending.StartDeadlineTimer();
-        CancellationTokenRegistration cancellationRegistration = default;
-        if (cancellationToken.CanBeCanceled || _stopToken.CanBeCanceled)
-        {
-            var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stopToken);
-            cancellationRegistration = linkedSource.Token.Register(static state =>
-            {
-                var item = (PendingSubmit)state!;
-                item.TryCancel();
-            }, pending);
-            pending.SetCancellation(linkedSource, cancellationRegistration);
-        }
-
-        lock (_gate)
-        {
-            ThrowIfDisposed();
-            if (_pending.Count >= _capacity)
-            {
-                pending.Dispose();
-                throw new InvalidOperationException("ZLink async submit queue is full.");
-            }
-
-            _pending.Enqueue(pending);
-        }
-
+        var pending = PendingSubmit.CreateCommand(message, trySubmit, deadline, Drain);
+        EnqueuePending(pending, cancellationToken);
         return new ValueTask(pending.Task);
     }
 
@@ -118,37 +88,8 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             throw new TimeoutException("ZLink async submit timed out before the socket became writable.");
         }
 
-        var pendingSubmit = new PendingSubmit(
-            message,
-            Submit,
-            deadline,
-            Drain,
-            completion,
-            completeOnAccepted: false);
-        pendingSubmit.StartDeadlineTimer();
-        if (cancellationToken.CanBeCanceled || _stopToken.CanBeCanceled)
-        {
-            var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stopToken);
-            var cancellationRegistration = linkedSource.Token.Register(static state =>
-            {
-                var item = (PendingSubmit)state!;
-                item.TryCancel();
-            }, pendingSubmit);
-            pendingSubmit.SetCancellation(linkedSource, cancellationRegistration);
-        }
-
-        lock (_gate)
-        {
-            ThrowIfDisposed();
-            if (_pending.Count >= _capacity)
-            {
-                pendingSubmit.Dispose();
-                throw new InvalidOperationException("ZLink async submit queue is full.");
-            }
-
-            _pending.Enqueue(pendingSubmit);
-        }
-
+        var pendingSubmit = PendingSubmit.CreateRequest(message, Submit, deadline, Drain, completion);
+        EnqueuePending(pendingSubmit, cancellationToken);
         return AwaitResultAsync<T>(pendingSubmit.Task);
     }
 
@@ -178,6 +119,30 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     private void OnSendReady()
     {
         Drain();
+    }
+
+    private void EnqueuePending(PendingSubmit pending, CancellationToken cancellationToken)
+    {
+        try
+        {
+            lock (_gate)
+            {
+                ThrowIfDisposed();
+                if (_pending.Count >= _capacity)
+                {
+                    throw new InvalidOperationException("ZLink async submit queue is full.");
+                }
+
+                _pending.Enqueue(pending);
+            }
+
+            pending.Activate(cancellationToken, _stopToken);
+        }
+        catch
+        {
+            pending.Dispose();
+            throw;
+        }
     }
 
     private void Drain()
@@ -308,91 +273,4 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         return (T)(await task.ConfigureAwait(false))!;
     }
 
-    private sealed class PendingSubmit(
-        Message message,
-        Func<Message, bool> trySubmit,
-        DateTimeOffset? deadline,
-        Action wake,
-        TaskCompletionSource<object?> completion,
-        bool completeOnAccepted) : IDisposable
-    {
-        private System.Threading.Timer? _deadlineTimer;
-        private CancellationTokenSource? _linkedCancellation;
-        private CancellationTokenRegistration _cancellationRegistration;
-        private int _completed;
-
-        public Message Message { get; } = message;
-
-        public Func<Message, bool> TrySubmit { get; } = trySubmit;
-
-        public DateTimeOffset? Deadline { get; } = deadline;
-
-        public bool CompleteOnAccepted { get; } = completeOnAccepted;
-
-        public Task<object?> Task => completion.Task;
-
-        public bool IsCompleted => Volatile.Read(ref _completed) != 0;
-
-        public void StartDeadlineTimer()
-        {
-            if (Deadline is not { } deadline)
-            {
-                return;
-            }
-
-            var dueTime = deadline - DateTimeOffset.UtcNow;
-            if (dueTime < TimeSpan.Zero)
-            {
-                dueTime = TimeSpan.Zero;
-            }
-
-            _deadlineTimer = new System.Threading.Timer(static state =>
-            {
-                var item = (PendingSubmit)state!;
-                item.TryFail(new TimeoutException("ZLink async submit timed out before the socket became writable."));
-            }, this, dueTime, Timeout.InfiniteTimeSpan);
-        }
-
-        public void SetCancellation(
-            CancellationTokenSource linkedCancellation,
-            CancellationTokenRegistration cancellationRegistration)
-        {
-            _linkedCancellation = linkedCancellation;
-            _cancellationRegistration = cancellationRegistration;
-        }
-
-        public void TryComplete(object? result)
-        {
-            if (Interlocked.Exchange(ref _completed, 1) == 0)
-            {
-                completion.TrySetResult(result);
-            }
-        }
-
-        public void TryCancel()
-        {
-            if (Interlocked.Exchange(ref _completed, 1) == 0)
-            {
-                completion.TrySetCanceled();
-                wake();
-            }
-        }
-
-        public void TryFail(Exception exception)
-        {
-            if (Interlocked.Exchange(ref _completed, 1) == 0)
-            {
-                completion.TrySetException(exception);
-                wake();
-            }
-        }
-
-        public void Dispose()
-        {
-            _deadlineTimer?.Dispose();
-            _cancellationRegistration.Dispose();
-            _linkedCancellation?.Dispose();
-            Message.Dispose();
-        }
-    }
 }

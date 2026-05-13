@@ -34,7 +34,7 @@ internal static class ZLinkActorPacketDescriptorFactory
                 MessageType = arguments[1],
                 ReplyType = null,
                 Kind = ZLinkMessageKind.Command,
-                HandleMethod = FindHandleMethod(handlerType),
+                Invoker = CreateInvoker(handlerType),
                 MessageName = messageName ?? MessageNameResolver.Resolve(arguments[1])
             };
         }
@@ -61,7 +61,7 @@ internal static class ZLinkActorPacketDescriptorFactory
                 MessageType = arguments[1],
                 ReplyType = arguments[2],
                 Kind = ZLinkMessageKind.Request,
-                HandleMethod = FindHandleMethod(handlerType),
+                Invoker = CreateInvoker(handlerType),
                 MessageName = messageName ?? MessageNameResolver.Resolve(arguments[1])
             };
         }
@@ -82,7 +82,7 @@ internal static class ZLinkActorPacketDescriptorFactory
                 MessageType = arguments[0],
                 ReplyType = null,
                 Kind = ZLinkMessageKind.Command,
-                HandleMethod = FindHandleMethod(handlerType),
+                Invoker = CreateInvoker(handlerType),
                 MessageName = messageName ?? MessageNameResolver.Resolve(arguments[0])
             };
         }
@@ -103,7 +103,7 @@ internal static class ZLinkActorPacketDescriptorFactory
                 MessageType = arguments[0],
                 ReplyType = arguments[1],
                 Kind = ZLinkMessageKind.Request,
-                HandleMethod = FindHandleMethod(handlerType),
+                Invoker = CreateInvoker(handlerType),
                 MessageName = messageName ?? MessageNameResolver.Resolve(arguments[0])
             };
         }
@@ -112,9 +112,10 @@ internal static class ZLinkActorPacketDescriptorFactory
             $"Actor packet handler '{handlerType}' must implement a supported actor handler interface.");
     }
 
-    private static MethodInfo FindHandleMethod(Type handlerType)
+    private static ZLinkHandlerMethodInvoker CreateInvoker(Type handlerType)
     {
-        return handlerType.GetMethod("HandleAsync", BindingFlags.Instance | BindingFlags.Public)
+        var method = handlerType.GetMethod("HandleAsync", BindingFlags.Instance | BindingFlags.Public)
             ?? throw new InvalidOperationException($"Actor packet handler '{handlerType}' does not expose HandleAsync.");
+        return ZLinkHandlerMethodInvokerFactory.Create(method);
     }
 }

@@ -14,25 +14,14 @@ internal sealed class ZLinkMonitoringHostedService(
     ZLinkRegistryRuntime? registryRuntime) : IHostedService, IAsyncDisposable
 {
     private readonly IZLinkMonitoringBackendAdapter _monitoringAdapter = backendAdapterFactory.CreateMonitoringAdapter();
+    private readonly ZLinkMonitoringSourceValidator _sourceValidator = new(services, registration);
     private readonly List<IAsyncDisposable> _monitors = [];
     private CancellationTokenSource? _stopTokenSource;
     private Task? _pollingTask;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        if (frameworkRuntime is null
-            && (registration.SocketSources.Count > 0
-                || registration.SpotSources.Count > 0))
-        {
-            throw new ZLinkConfigurationException(
-                "Monitoring socket or spot sources require AddZLinkFramework(...).");
-        }
-
-        if (registryRuntime is null && registration.RegistrySources.Count > 0)
-        {
-            throw new ZLinkConfigurationException(
-                "Monitoring registry sources require AddZLinkRegistry(...).");
-        }
+        _sourceValidator.ValidateRequiredRuntimes(frameworkRuntime, registryRuntime);
 
         try
         {
@@ -46,7 +35,7 @@ internal sealed class ZLinkMonitoringHostedService(
                 await registryRuntime.StartAsync(cancellationToken);
             }
 
-            await PreflightPollingSourcesAsync(frameworkRuntime, registryRuntime, cancellationToken);
+            await _sourceValidator.PreflightPollingSourcesAsync(frameworkRuntime, registryRuntime, cancellationToken);
             AttachSocketMonitors(frameworkRuntime);
         }
         catch
@@ -65,7 +54,12 @@ internal sealed class ZLinkMonitoringHostedService(
         }
 
         _stopTokenSource = new CancellationTokenSource();
-        _pollingTask = RunPollingAsync(
+        var pollingRunner = new ZLinkMonitoringPollingRunner(
+            services,
+            registration,
+            registryEvent => QueueDispatch(registryEvent),
+            spotEvent => QueueDispatch(spotEvent));
+        _pollingTask = pollingRunner.RunAsync(
             frameworkRuntime,
             registryRuntime,
             _stopTokenSource.Token);
@@ -167,191 +161,6 @@ internal sealed class ZLinkMonitoringHostedService(
         finally
         {
             SynchronizationContext.SetSynchronizationContext(previous);
-        }
-    }
-
-    private async Task PreflightPollingSourcesAsync(
-        ZLinkFrameworkRuntime? frameworkRuntime,
-        ZLinkRegistryRuntime? registryRuntime,
-        CancellationToken cancellationToken)
-    {
-        if (registryRuntime is not null && registration.RegistrySources.Count > 0)
-        {
-            _ = await services.GetRequiredService<IZLinkRegistryQuery>()
-                .StatusSnapshotAsync(cancellationToken);
-        }
-
-        if (frameworkRuntime is null)
-        {
-            return;
-        }
-
-        foreach (var source in registration.SpotSources.Values)
-        {
-            try
-            {
-                _ = frameworkRuntime.GetSpotMonitoringSnapshot(source.SourceName);
-            }
-            catch (InvalidOperationException ex)
-            {
-                throw new ZLinkConfigurationException(ex.Message);
-            }
-        }
-    }
-
-    private async Task RunPollingAsync(
-        ZLinkFrameworkRuntime? frameworkRuntime,
-        ZLinkRegistryRuntime? registryRuntime,
-        CancellationToken cancellationToken)
-    {
-        var tasks = new List<Task>(
-            registration.RegistrySources.Count + registration.SpotSources.Count);
-
-        if (registryRuntime is not null)
-        {
-            var registryQuery = services.GetRequiredService<IZLinkRegistryQuery>();
-            foreach (var source in registration.RegistrySources.Values)
-            {
-                tasks.Add(RunRegistryLoopAsync(source, registryQuery, cancellationToken));
-            }
-        }
-
-        if (frameworkRuntime is not null)
-        {
-            foreach (var source in registration.SpotSources.Values)
-            {
-                tasks.Add(RunSpotLoopAsync(source, frameworkRuntime, cancellationToken));
-            }
-        }
-
-        if (tasks.Count == 0)
-        {
-            return;
-        }
-
-        await Task.WhenAll(tasks);
-    }
-
-    private async Task RunRegistryLoopAsync(
-        ZLinkPollingMonitoringRegistration source,
-        IZLinkRegistryQuery query,
-        CancellationToken cancellationToken)
-    {
-        ZLinkRegistryStatus? previousStatus = null;
-        IReadOnlyList<ZLinkRegistryTopologyEntry>? previousTopology = null;
-        IReadOnlyList<ZLinkRegistryServiceSummaryEntry>? previousSummary = null;
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var timestamp = DateTimeOffset.UtcNow;
-            var status = await query.StatusSnapshotAsync(cancellationToken);
-            var topology = (await query.TopologySnapshotAsync(cancellationToken))
-                .OrderBy(static entry => entry.ChannelName, StringComparer.Ordinal)
-                .ThenBy(static entry => entry.Endpoint, StringComparer.Ordinal)
-                .ThenBy(static entry => entry.RoutingId?.ToString(), StringComparer.Ordinal)
-                .ToArray();
-            var summary = (await query.ServiceSummarySnapshotAsync(cancellationToken: cancellationToken))
-                .OrderBy(static entry => entry.ChannelName, StringComparer.Ordinal)
-                .ThenBy(static entry => entry.AutoConnectType)
-                .ThenBy(static entry => entry.ServiceRole)
-                .ToArray();
-
-            if (previousStatus is null || previousStatus != status)
-            {
-                previousStatus = status;
-                QueueDispatch(new ZLinkRegistryEvent(
-                    source.SourceName,
-                    timestamp,
-                    ZLinkRegistryEventKind.StatusChanged,
-                    status,
-                    null,
-                    null));
-            }
-
-            if (previousTopology is null || !previousTopology.SequenceEqual(topology))
-            {
-                previousTopology = topology;
-                QueueDispatch(new ZLinkRegistryEvent(
-                    source.SourceName,
-                    timestamp,
-                    ZLinkRegistryEventKind.TopologyChanged,
-                    null,
-                    topology,
-                    null));
-            }
-
-            if (previousSummary is null || !previousSummary.SequenceEqual(summary))
-            {
-                previousSummary = summary;
-                QueueDispatch(new ZLinkRegistryEvent(
-                    source.SourceName,
-                    timestamp,
-                    ZLinkRegistryEventKind.ServiceSummaryChanged,
-                    null,
-                    null,
-                    summary));
-            }
-
-            await Task.Delay(source.Interval, cancellationToken);
-        }
-    }
-
-    private async Task RunSpotLoopAsync(
-        ZLinkPollingMonitoringRegistration source,
-        ZLinkFrameworkRuntime frameworkRuntime,
-        CancellationToken cancellationToken)
-    {
-        ZLinkSpotMonitoringSnapshot? previous = null;
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            ZLinkSpotMonitoringSnapshot snapshot;
-            try
-            {
-                snapshot = frameworkRuntime.GetSpotMonitoringSnapshot(source.SourceName);
-            }
-            catch (InvalidOperationException ex)
-            {
-                throw new ZLinkConfigurationException(ex.Message);
-            }
-
-            var timestamp = DateTimeOffset.UtcNow;
-
-            if (previous is null || previous.Status != snapshot.Status)
-            {
-                QueueDispatch(new ZLinkSpotEvent(
-                    source.SourceName,
-                    timestamp,
-                    ZLinkSpotEventKind.StatusChanged,
-                    snapshot.Status,
-                    null,
-                    null));
-            }
-
-            if (previous is null || !previous.Peers.SequenceEqual(snapshot.Peers))
-            {
-                QueueDispatch(new ZLinkSpotEvent(
-                    source.SourceName,
-                    timestamp,
-                    ZLinkSpotEventKind.PeersChanged,
-                    null,
-                    snapshot.Peers,
-                    null));
-            }
-
-            if (previous is null || !previous.Subjects.SequenceEqual(snapshot.Subjects))
-            {
-                QueueDispatch(new ZLinkSpotEvent(
-                    source.SourceName,
-                    timestamp,
-                    ZLinkSpotEventKind.SubjectsChanged,
-                    null,
-                    null,
-                    snapshot.Subjects));
-            }
-
-            previous = snapshot;
-            await Task.Delay(source.Interval, cancellationToken);
         }
     }
 

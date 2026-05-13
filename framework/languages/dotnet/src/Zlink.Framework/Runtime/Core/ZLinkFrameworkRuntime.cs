@@ -10,14 +10,15 @@ internal readonly record struct CreateActorResult(
 internal sealed class ZLinkFrameworkRuntime
 {
     private readonly IServiceProvider _services;
-    private readonly IZLinkBackendAdapterFactory _backendAdapterFactory;
     private readonly ZLinkFrameworkRegistration _registration;
     private readonly ZLinkRegistryRuntime? _registryRuntime;
     private readonly ZLinkChannelRuntimeManager _channels;
     private readonly ZLinkStreamRuntimeManager _streams;
     private readonly ZLinkSpotRuntimeManager _spots;
+    private readonly ZLinkFrameworkRuntimeStateFactory _stateFactory;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ZLinkActorSessionManager _actorSessionManager;
+    private readonly ZLinkFrameworkActorFacade _actors;
     private readonly ZLinkSessionActorBindingTable _sessionActorBindings = new();
     private ZLinkFrameworkRuntimeState? _state;
 
@@ -30,7 +31,6 @@ internal sealed class ZLinkFrameworkRuntime
         ZLinkRegistryRuntime? registryRuntime = null)
     {
         _services = services;
-        _backendAdapterFactory = backendAdapterFactory;
         _registration = registration;
         _registryRuntime = registryRuntime;
         _channels = new ZLinkChannelRuntimeManager(
@@ -40,7 +40,19 @@ internal sealed class ZLinkFrameworkRuntime
             new ZLinkChannelMessagePump(handlerRegistry, dispatcher, registration));
         _streams = new ZLinkStreamRuntimeManager(services, backendAdapterFactory, registration);
         _spots = new ZLinkSpotRuntimeManager(services, this, backendAdapterFactory, registration);
+        _stateFactory = new ZLinkFrameworkRuntimeStateFactory(
+            backendAdapterFactory,
+            registration,
+            _channels,
+            _streams,
+            _spots);
         _actorSessionManager = new ZLinkActorSessionManager(this, services, GetActorSpotNode);
+        _actors = new ZLinkFrameworkActorFacade(
+            registration,
+            _spots,
+            _actorSessionManager,
+            GetOrStartState,
+            GetActorSpotNode);
     }
 
     public IZLinkBackendContext? Context => _state?.Context;
@@ -68,25 +80,7 @@ internal sealed class ZLinkFrameworkRuntime
                 return;
             }
 
-            var channelAdapter = _backendAdapterFactory.CreateChannelAdapter();
-            var state = new ZLinkFrameworkRuntimeState(channelAdapter.CreateContext(), _registration);
-
-            try
-            {
-                _channels.InitializeInboundChannels(state, channelAdapter);
-                _channels.InitializePublisherChannels(state, channelAdapter);
-                _channels.InitializeClientChannels(state);
-                _channels.InitializeRouteChannels(state, channelAdapter);
-                _streams.InitializeStreamNodes(state);
-                _spots.InitializeSpotNodes(state);
-            }
-            catch
-            {
-                await state.DisposeAsync();
-                throw;
-            }
-
-            _state = state;
+            _state = await _stateFactory.CreateAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -183,139 +177,43 @@ internal sealed class ZLinkFrameworkRuntime
         TRequest request,
         CancellationToken cancellationToken = default)
     {
-        var state = GetOrStartState();
-        var actorState = _actorSessionManager.GetOrCreateState(actor.ActorId);
-        var node = GetActorSpotNode();
-
-        if (node is not null && actorState.NativeActorRef is { } actorRef)
-        {
-            return await NativeJoinActorAsync<TRequest, TReply>(
-                state,
-                spotRid,
-                actor,
-                actorRef,
-                node,
-                request,
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        return await _spots.JoinActorAsync<TRequest, TReply>(
-            state,
+        return await _actors.JoinActorAsync<TRequest, TReply>(
             spotRid,
             actor,
             request,
             cancellationToken);
     }
 
-    private async ValueTask<TReply> NativeJoinActorAsync<TRequest, TReply>(
-        ZLinkFrameworkRuntimeState state,
-        RoutingId spotRid,
-        IZLinkActor actor,
-        ZLinkBackendActorRef actorRef,
-        IZLinkBackendSpotNode node,
-        TRequest request,
-        CancellationToken cancellationToken)
-    {
-        var activation = _spots.GetActivationBySpotRid(state, spotRid)
-            ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
-
-        if (!activation.TryResolveActorJoinDescriptor(typeof(TRequest), out var descriptor) || descriptor is null)
-        {
-            throw new InvalidOperationException(
-                $"SPOT '{activation.SpotName}' does not register an actor join handler for '{typeof(TRequest)}'.");
-        }
-
-        var joinHeader = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Request,
-            activation.ChannelName,
-            descriptor.MessageName,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            null, null, null, null, null);
-        using var joinMessage = ZLinkEnvelopeCodec.Encode(joinHeader, request, typeof(TRequest));
-
-        var tcs = new TaskCompletionSource<(RequestResult Result, IReadOnlyList<Message> Reply)>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        using var reg = cancellationToken.Register(
-            static s => ((TaskCompletionSource<(RequestResult, IReadOnlyList<Message>)>)s!).TrySetCanceled(),
-            tcs);
-
-        var submitted = node.JoinActor(
-            actorRef,
-            activation.NodeRid,
-            activation.SpotRid,
-            joinMessage,
-            (result, reply) => tcs.TrySetResult((result, reply)),
-            _registration.DefaultTimeout);
-
-        if (!submitted)
-        {
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor join submit failed for '{actor.ActorId}' to SPOT '{activation.SpotName}'.");
-        }
-
-        var (joinResult, replyParts) = await tcs.Task.ConfigureAwait(false);
-
-        if (joinResult != RequestResult.Ok)
-        {
-            foreach (var part in replyParts)
-            {
-                part.Dispose();
-            }
-
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor join was rejected for '{actor.ActorId}' to SPOT '{activation.SpotName}'.");
-        }
-
-        if (replyParts.Count == 0)
-        {
-            throw new InvalidOperationException(
-                $"Actor join reply for '{typeof(TRequest)}' was empty.");
-        }
-
-        using var replyMessage = replyParts[0];
-        for (int i = 1; i < replyParts.Count; i++)
-        {
-            replyParts[i].Dispose();
-        }
-
-        var replyObj = ZLinkEnvelopeCodec.DecodeBody(replyMessage, typeof(TReply));
-        return (TReply?)replyObj
-            ?? throw new InvalidOperationException($"Actor join reply for '{typeof(TRequest)}' was null.");
-    }
-
     internal async ValueTask JoinActorToSpotAsync(
         ZLinkSpotActivation activation,
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
-        => await _actorSessionManager.JoinActorToSpotAsync(activation, actor, cancellationToken);
+        => await _actors.JoinActorToSpotAsync(activation, actor, cancellationToken);
 
     internal async ValueTask LeaveActorFromSpotAsync(
         ZLinkSpotActivation activation,
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
-        => await _actorSessionManager.LeaveActorFromSpotAsync(activation, actor, cancellationToken);
+        => await _actors.LeaveActorFromSpotAsync(activation, actor, cancellationToken);
 
     internal async ValueTask AttachActorAsync(
         IZLinkActor actor,
         IZLinkStream stream,
         CancellationToken cancellationToken = default)
-        => await _actorSessionManager.AttachActorAsync(actor, stream, cancellationToken);
+        => await _actors.AttachActorAsync(actor, stream, cancellationToken);
 
     internal async ValueTask DisconnectActorAsync(
         IZLinkActor actor,
         IZLinkStream stream,
         CancellationToken cancellationToken = default)
-        => await _actorSessionManager.DisconnectActorAsync(actor, stream, cancellationToken);
+        => await _actors.DisconnectActorAsync(actor, stream, cancellationToken);
 
     internal async ValueTask SubmitActorAsync(
         IZLinkActor actor,
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default)
-        => await _actorSessionManager.SubmitActorAsync(actor, header, body, cancellationToken);
+        => await _actors.SubmitActorAsync(actor, header, body, cancellationToken);
 
     internal async ValueTask<bool> TrySubmitEntrySpotActorAsync(
         IZLinkActor actor,
@@ -393,24 +291,24 @@ internal sealed class ZLinkFrameworkRuntime
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default)
-        => await _actorSessionManager.CreateAndBindActorAsync(actorId, actorType, cancellationToken);
+        => await _actors.CreateLocalActorAsync(actorId, actorType, cancellationToken);
 
     internal async ValueTask<byte[]> SubmitActorForReplyAsync(
         string actorId,
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default)
-        => await _actorSessionManager.SubmitActorForReplyAsync(actorId, header, body, cancellationToken);
+        => await _actors.SubmitActorForReplyAsync(actorId, header, body, cancellationToken);
 
     internal async ValueTask SubmitActorByIdAsync(
         string actorId,
         ZlinkStreamHeader header,
         Message body,
         CancellationToken cancellationToken = default)
-        => await _actorSessionManager.SubmitActorByIdAsync(actorId, header, body, cancellationToken);
+        => await _actors.SubmitActorByIdAsync(actorId, header, body, cancellationToken);
 
     internal ZLinkActorRuntimeState GetOrCreateActorState(string actorId)
-        => _actorSessionManager.GetOrCreateState(actorId);
+        => _actors.GetOrCreateActorState(actorId);
 
     internal string ResolveDefaultRouterChannelId()
     {
@@ -522,6 +420,14 @@ internal sealed class ZLinkFrameworkRuntime
     internal ZLinkSpotMonitoringSnapshot GetSpotMonitoringSnapshot(string spotNodeName)
     {
         return _spots.GetMonitoringSnapshot(GetOrStartState(), spotNodeName);
+    }
+
+    internal ZLinkSpotNodeRuntime GetSpotNodeRuntime(string spotNodeName)
+    {
+        var state = GetOrStartState();
+        return state.SpotNodes.TryGetValue(spotNodeName, out var node)
+            ? node
+            : throw new InvalidOperationException($"SPOT node '{spotNodeName}' is not registered.");
     }
 
     private async ValueTask<ZLinkFrameworkRuntimeState> GetStartedStateAsync(

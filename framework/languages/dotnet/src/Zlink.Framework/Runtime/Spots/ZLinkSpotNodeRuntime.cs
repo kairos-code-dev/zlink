@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Spots;
@@ -10,21 +9,13 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly ZLinkFrameworkRegistration _frameworkRegistration;
     private readonly ZLinkSpotNodeRegistration _registration;
     private readonly string _spotChannelName;
-    private readonly IZLinkBackendContext _context;
-    private readonly IZLinkChannelBackendAdapter _channelAdapter;
-    private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _stopSource = new();
-    private readonly object _connectionsGate = new();
-    private readonly Dictionary<string, ZLinkSpotAttachedChannelBundle> _channelBundles = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, ZLinkSpotPublisherBundle> _publisherBundles = new(StringComparer.Ordinal);
-    private readonly Dictionary<RoutingId, ZLinkSpotActivation> _spots = [];
-    private readonly HashSet<string> _routerManualConnections = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _pubSubManualConnections = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _pubSubDiscoveredConnections = new(StringComparer.Ordinal);
+    private readonly ZLinkSpotPeerConnectionSet _peerConnections = new();
+    private readonly ZLinkSpotNodeBundleRegistry _bundles;
+    private readonly ZLinkSpotNodeCatalog _spots;
     private Task? _discoveryPeerReconciliationTask;
     private IZLinkBackendSpot? _entrySpot;
     private ZLinkEntrySpotActivation? _entrySpotActivation;
-    private static readonly ZlinkStreamHeaderCodec EntrySpotHeaderCodec = new();
 
     public ZLinkSpotNodeRuntime(
         IServiceProvider services,
@@ -40,10 +31,27 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         _runtime = runtime;
         _frameworkRegistration = frameworkRegistration;
         _registration = registration;
-        _context = context;
-        _channelAdapter = channelAdapter;
         Node = node;
         _spotChannelName = spotChannelName;
+        _bundles = new ZLinkSpotNodeBundleRegistry(
+            registration.SpotNodeName,
+            frameworkRegistration,
+            registration,
+            context,
+            channelAdapter,
+            node,
+            _peerConnections,
+            _stopSource.Token,
+            ConnectDiscoveredPubSubPeers);
+        _spots = new ZLinkSpotNodeCatalog(
+            services,
+            runtime,
+            frameworkRegistration,
+            registration,
+            node,
+            spotChannelName,
+            GetOrCreateAttachedChannelBundle,
+            ConnectDiscoveredPubSubPeers);
     }
 
     public string Name => _registration.SpotNodeName;
@@ -52,11 +60,11 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public IZLinkBackendSpotNode Node { get; }
 
-    public IReadOnlyDictionary<string, ZLinkSpotAttachedChannelBundle> AttachedChannelBundles => _channelBundles;
+    public IReadOnlyDictionary<string, ZLinkSpotAttachedChannelBundle> AttachedChannelBundles => _bundles.AttachedChannelBundles;
 
-    public IReadOnlyDictionary<string, ZLinkSpotPublisherBundle> PublisherBundles => _publisherBundles;
+    public IReadOnlyDictionary<string, ZLinkSpotPublisherBundle> PublisherBundles => _bundles.PublisherBundles;
 
-    public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Values;
+    public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Spots;
 
     public IZLinkBackendDiscovery? SpotDiscovery { get; set; }
 
@@ -91,7 +99,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 }
 
                 _ = Task.Run(
-                    () => DispatchEntrySpotActorPartsAsync(runtime, activation, actorParts, stopToken),
+                    () => ZLinkEntrySpotActorDispatcher.DispatchAsync(runtime, activation, actorParts, stopToken),
                     CancellationToken.None);
             });
         }
@@ -99,97 +107,6 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         {
             SynchronizationContext.SetSynchronizationContext(previous);
         }
-    }
-
-    private static async Task DispatchEntrySpotActorPartsAsync(
-        ZLinkFrameworkRuntime runtime,
-        ZLinkEntrySpotActivation? activation,
-        IReadOnlyList<ZLinkBackendActorPart> parts,
-        CancellationToken cancellationToken)
-    {
-        int i = 0;
-        while (i < parts.Count)
-        {
-            var headerPart = parts[i++];
-            var actorState = runtime.GetOrCreateActorState(headerPart.Actor.ActorId);
-            var actor = actorState.Actor;
-            if (actor is null)
-            {
-                headerPart.Message.Dispose();
-                while (i < parts.Count && parts[i - 1].More)
-                {
-                    parts[i++].Message.Dispose();
-                }
-                continue;
-            }
-
-            if (!headerPart.More)
-            {
-                var header = EntrySpotHeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
-                headerPart.Message.Dispose();
-                using var emptyBody = Message.FromBytes(ReadOnlySpan<byte>.Empty);
-                await DispatchEntrySpotActorPacketAsync(
-                        runtime,
-                        activation,
-                        actor,
-                        header,
-                        emptyBody,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                continue;
-            }
-
-            if (i >= parts.Count)
-            {
-                headerPart.Message.Dispose();
-                continue;
-            }
-
-            var bodyPart = parts[i++];
-            var streamHeader = EntrySpotHeaderCodec.Decode(headerPart.Message.AsReadOnlyMemory());
-            headerPart.Message.Dispose();
-            using var body = bodyPart.Message;
-            await DispatchEntrySpotActorPacketAsync(
-                    runtime,
-                    activation,
-                    actor,
-                    streamHeader,
-                    body,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private static async ValueTask DispatchEntrySpotActorPacketAsync(
-        ZLinkFrameworkRuntime runtime,
-        ZLinkEntrySpotActivation? activation,
-        IZLinkActor actor,
-        ZlinkStreamHeader header,
-        Message body,
-        CancellationToken cancellationToken)
-    {
-        if (activation is not null
-            && activation.TryResolveActorPacket(actor.GetType(), header, out var descriptor)
-            && descriptor is not null)
-        {
-            var actorState = runtime.GetOrCreateActorState(actor.ActorId);
-            var previousDispatch = actorState.CurrentDispatch;
-            actorState.CurrentDispatch = new ZLinkActorDispatchState(header);
-            try
-            {
-                await activation.InvokeActorPacketAsync(descriptor, actor, header, body, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            finally
-            {
-                actorState.CurrentDispatch = previousDispatch;
-            }
-
-            return;
-        }
-
-        await runtime.SubmitActorAsync(actor, header, body, cancellationToken)
-            .ConfigureAwait(false);
     }
 
     public bool TryResolveEntrySpotActorPacket(
@@ -309,96 +226,22 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public void AddChannelBundle(string channelName, ZLinkSpotAttachedChannelBundle bundle)
     {
-        _channelBundles.Add(channelName, bundle);
+        _bundles.AddChannelBundle(channelName, bundle);
     }
 
     public void AddPublisherBundle(string channelName, ZLinkSpotPublisherBundle bundle)
     {
-        _publisherBundles.Add(channelName, bundle);
+        _bundles.AddPublisherBundle(channelName, bundle);
     }
 
     public ZLinkSpotAttachedChannelBundle GetOrCreateAttachedChannelBundle(string channelName)
     {
-        if (_channelBundles.TryGetValue(channelName, out var existing))
-        {
-            return existing;
-        }
-
-        if (!_registration.AttachedChannelClients.TryGetValue(channelName, out var attached))
-        {
-            throw new InvalidOperationException(
-                $"SPOT node '{Name}' attached channel client '{channelName}' is not registered.");
-        }
-
-        var dealer = _channelAdapter.CreateDealerSocket(_context);
-        dealer.SetChannelName(attached.ChannelName);
-        var bundle = new ZLinkSpotAttachedChannelBundle(dealer);
-
-        if (attached.ManualConnections.Count > 0)
-        {
-            foreach (var endpoint in attached.ManualConnections)
-            {
-                dealer.Connect(endpoint);
-                _ = bundle.TryAddManualConnection(endpoint);
-            }
-
-            Node.AttachChannelDealerManual(attached.ChannelName, dealer);
-        }
-        else
-        {
-            var discovery = _channelAdapter.CreateDiscovery(
-                _context,
-                ZLinkAutoConnectType.ClientServer,
-                attached.ChannelName);
-            foreach (var endpoint in _frameworkRegistration.Discovery?.Endpoints ?? [])
-            {
-                discovery.ConnectRegistry(endpoint);
-            }
-
-            Node.AttachChannelDealer(discovery, dealer);
-            bundle.Discovery = discovery;
-        }
-
-        _channelBundles.Add(channelName, bundle);
-        return bundle;
+        return _bundles.GetOrCreateAttachedChannelBundle(channelName);
     }
 
     public ZLinkSpotPublisherBundle GetOrCreatePublisherBundle(string channelName)
     {
-        if (_publisherBundles.TryGetValue(channelName, out var existing))
-        {
-            return existing;
-        }
-
-        if (!_registration.AttachedSpotPublisherClients.TryGetValue(channelName, out var attached))
-        {
-            throw new InvalidOperationException(
-                $"SPOT node '{Name}' publisher client '{channelName}' is not registered.");
-        }
-
-        ConnectDiscoveredPubSubPeers();
-
-        var publisher = Node.CreateSpot();
-        var bundle = new ZLinkSpotPublisherBundle(
-            publisher,
-            new ZLinkAsyncSubmitter(
-                publisher.OnSendReady,
-                attached.SocketOptions.SendTimeout,
-                _stopSource.Token));
-
-        if (attached.ManualConnections.Count > 0)
-        {
-            foreach (var endpoint in attached.ManualConnections)
-            {
-                if (TryAddPubSubConnection(endpoint))
-                {
-                    Node.ConnectPeer(endpoint);
-                }
-            }
-        }
-
-        _publisherBundles.Add(channelName, bundle);
-        return bundle;
+        return _bundles.GetOrCreatePublisherBundle(channelName);
     }
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
@@ -406,151 +249,32 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         RoutingId? requestedSpotRid,
         CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            if (!_registration.SpotFactories.TryGetValue(spotName, out var spotType))
-            {
-                throw new InvalidOperationException(
-                    $"SPOT factory '{spotName}' is not registered on node '{Name}'.");
-            }
-
-            foreach (var channelName in _registration.AttachedChannelClients.Keys)
-            {
-                GetOrCreateAttachedChannelBundle(channelName);
-            }
-
-            if (requestedSpotRid is RoutingId existingRid
-                && _spots.TryGetValue(existingRid, out var existing))
-            {
-                if (!string.Equals(existing.SpotName, spotName, StringComparison.Ordinal))
-                {
-                    throw new InvalidOperationException(
-                        $"SPOT routing id '{existingRid}' already belongs to '{existing.SpotName}'.");
-                }
-
-                return new ZLinkSpotCreateResult(existing.SpotRid, existing.SpotName, false);
-            }
-
-            var nativeSpot = Node.CreateSpot();
-            var spotCreated = false;
-            ZLinkSpotActivation? activation = null;
-            try
-            {
-                ConnectDiscoveredPubSubPeers();
-
-                if (requestedSpotRid is RoutingId providedRid)
-                {
-                    nativeSpot.SetRoutingId(providedRid);
-                }
-
-                var spotScope = _services.CreateAsyncScope();
-                try
-                {
-                    activation = new ZLinkSpotActivation(
-                        _runtime,
-                        spotScope,
-                        nativeSpot,
-                        Node.RoutingId,
-                        spotName,
-                        _spotChannelName,
-                        _frameworkRegistration.DefaultTimeout,
-                        _registration.Router?.SocketOptions.SendTimeout
-                            ?? TimeSpan.FromMilliseconds(200));
-
-                    var spot = (IZLinkSpot)ActivatorUtilities.CreateInstance(
-                        spotScope.ServiceProvider,
-                        spotType,
-                        activation);
-
-                    activation.AttachSpot(spot);
-                    spot.Configure();
-                    activation.BindDescriptors();
-                    await activation.InitializeAsync(cancellationToken);
-                    _spots.Add(activation.SpotRid, activation);
-                    spotCreated = true;
-
-                    return new ZLinkSpotCreateResult(activation.SpotRid, spotName, true);
-                }
-                catch
-                {
-                    if (activation is null)
-                    {
-                        await spotScope.DisposeAsync();
-                    }
-                    else
-                    {
-                        await activation.DisposeAsync();
-                    }
-
-                    throw;
-                }
-            }
-            finally
-            {
-                if (!spotCreated && activation is null)
-                {
-                    await nativeSpot.DisposeAsync();
-                }
-            }
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        return await _spots.CreateAsync(spotName, requestedSpotRid, cancellationToken);
     }
 
     public ValueTask<ZLinkSpotInfo?> GetAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (_spots.TryGetValue(spotRid, out var activation))
-        {
-            return ValueTask.FromResult<ZLinkSpotInfo?>(
-                new ZLinkSpotInfo(activation.SpotRid, activation.SpotName));
-        }
-
-        return ValueTask.FromResult<ZLinkSpotInfo?>(null);
+        return _spots.GetAsync(spotRid, cancellationToken);
     }
 
     public ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        IReadOnlyList<ZLinkSpotInfo> items = _spots.Values
-            .Select(static activation => new ZLinkSpotInfo(activation.SpotRid, activation.SpotName))
-            .OrderBy(static item => item.SpotName, StringComparer.Ordinal)
-            .ToArray();
-        return ValueTask.FromResult(items);
+        return _spots.ListAsync(cancellationToken);
     }
 
     public async ValueTask<bool> RemoveAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            if (!_spots.Remove(spotRid, out var activation))
-            {
-                return false;
-            }
-
-            await activation.CloseAsync(cancellationToken);
-            await activation.DisposeAsync();
-            return true;
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        return await _spots.RemoveAsync(spotRid, cancellationToken);
     }
 
     public ValueTask<bool> ConnectRouterAsync(string endpoint, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!TryAddRouterConnection(endpoint))
+        if (!_peerConnections.TryAddRouterManual(endpoint))
         {
             return ValueTask.FromResult(false);
         }
@@ -569,7 +293,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public ValueTask<bool> ConnectPubSubAsync(string endpoint, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!TryAddPubSubConnection(endpoint))
+        if (!_peerConnections.TryAddPubSubManual(endpoint))
         {
             return ValueTask.FromResult(false);
         }
@@ -588,29 +312,23 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public void DisconnectRouter(string endpoint)
     {
         Node.DisconnectPeer(endpoint);
-        RemoveRouterConnection(endpoint);
+        _peerConnections.RemoveRouterManual(endpoint);
     }
 
     public void DisconnectPubSub(string endpoint)
     {
         Node.DisconnectPeer(endpoint);
-        RemovePubSubConnection(endpoint);
+        _peerConnections.RemovePubSub(endpoint);
     }
 
     public IReadOnlyList<string> ListRouterConnections()
     {
-        lock (_connectionsGate)
-        {
-            return _routerManualConnections.OrderBy(static endpoint => endpoint, StringComparer.Ordinal).ToArray();
-        }
+        return _peerConnections.ListRouterManual();
     }
 
     public IReadOnlyList<string> ListPubSubConnections()
     {
-        lock (_connectionsGate)
-        {
-            return _pubSubManualConnections.OrderBy(static endpoint => endpoint, StringComparer.Ordinal).ToArray();
-        }
+        return _peerConnections.ListPubSubManual();
     }
 
     public void ConnectDiscoveredPubSubPeers()
@@ -636,7 +354,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 continue;
             }
 
-            if (TryAddDiscoveredPubSubConnection(peer.Endpoint))
+            if (_peerConnections.TryAddPubSubDiscovered(peer.Endpoint))
             {
                 try
                 {
@@ -667,20 +385,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             }
         }
 
-        foreach (var activation in _spots.Values.ToArray())
-        {
-            await activation.DisposeAsync();
-        }
+        await _spots.DisposeAsync();
 
-        foreach (var publisher in _publisherBundles.Values)
-        {
-            await publisher.DisposeAsync();
-        }
-
-        foreach (var channel in _channelBundles.Values)
-        {
-            await channel.DisposeAsync();
-        }
+        await _bundles.DisposeAsync();
 
         if (_entrySpot is not null)
         {
@@ -695,49 +402,6 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
         await Node.DisposeAsync();
         _stopSource.Dispose();
-        _gate.Dispose();
-    }
-
-    private bool TryAddRouterConnection(string endpoint)
-    {
-        lock (_connectionsGate)
-        {
-            return _routerManualConnections.Add(endpoint);
-        }
-    }
-
-    private bool TryAddPubSubConnection(string endpoint)
-    {
-        lock (_connectionsGate)
-        {
-            return _pubSubManualConnections.Add(endpoint);
-        }
-    }
-
-    private void RemoveRouterConnection(string endpoint)
-    {
-        lock (_connectionsGate)
-        {
-            _routerManualConnections.Remove(endpoint);
-        }
-    }
-
-    private void RemovePubSubConnection(string endpoint)
-    {
-        lock (_connectionsGate)
-        {
-            _pubSubManualConnections.Remove(endpoint);
-            _pubSubDiscoveredConnections.Remove(endpoint);
-        }
-    }
-
-    private bool TryAddDiscoveredPubSubConnection(string endpoint)
-    {
-        lock (_connectionsGate)
-        {
-            return !_pubSubManualConnections.Contains(endpoint)
-                && _pubSubDiscoveredConnections.Add(endpoint);
-        }
     }
 
     private async Task ReconcileDiscoveryPeersAsync()

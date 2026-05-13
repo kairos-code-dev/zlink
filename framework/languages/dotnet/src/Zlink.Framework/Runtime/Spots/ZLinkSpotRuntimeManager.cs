@@ -1,5 +1,4 @@
 using Zlink.Framework.Backend.Contracts;
-using System.Security.Cryptography;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -9,65 +8,16 @@ internal sealed class ZLinkSpotRuntimeManager(
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkFrameworkRegistration registration)
 {
+    private readonly ZLinkSpotNodeInitializer _nodeInitializer = new(
+        services,
+        runtime,
+        backendAdapterFactory,
+        registration);
+    private readonly ZLinkEntrySpotActorRouter _entrySpotActors = new();
+
     public void InitializeSpotNodes(ZLinkFrameworkRuntimeState state)
     {
-        if (registration.SpotNodes.Count == 0)
-        {
-            return;
-        }
-
-        var channelAdapter = backendAdapterFactory.CreateChannelAdapter();
-        var spotAdapter = backendAdapterFactory.CreateSpotAdapter();
-
-        foreach (var spotNodeRegistration in registration.SpotNodes.Values)
-        {
-            var node = spotAdapter.CreateSpotNode(state.Context);
-            node.SetRoutingId(CreateNodeRoutingId(spotNodeRegistration));
-            node.Bind(spotNodeRegistration.BindEndpoint!);
-
-            var nodeRuntime = new ZLinkSpotNodeRuntime(
-                services,
-                runtime,
-                registration,
-                spotNodeRegistration,
-                state.Context,
-                channelAdapter,
-                node,
-                registration.SpotDiscovery?.ChannelName ?? spotNodeRegistration.SpotNodeName);
-
-            if (registration.SpotDiscovery is not null
-                && registration.SpotDiscovery.Endpoints.Count > 0)
-            {
-                var discovery = CreateDiscovery(
-                    channelAdapter,
-                    state,
-                    registration.SpotDiscovery.ChannelName,
-                    ZLinkAutoConnectType.SpotMesh,
-                    registration.SpotDiscovery.Endpoints);
-                node.AttachDiscovery(discovery);
-                nodeRuntime.SpotDiscovery = discovery;
-                nodeRuntime.StartDiscoveryPeerReconciliation();
-                state.SpotDiscoveries.Add($"{spotNodeRegistration.SpotNodeName}.discovery", discovery);
-            }
-
-            foreach (var endpoint in spotNodeRegistration.Router?.ManualConnections ?? [])
-            {
-                _ = nodeRuntime.ConnectRouterAsync(endpoint, CancellationToken.None);
-            }
-
-            foreach (var endpoint in spotNodeRegistration.PubSub?.ManualConnections ?? [])
-            {
-                _ = nodeRuntime.ConnectPubSubAsync(endpoint, CancellationToken.None);
-            }
-
-            foreach (var channelName in spotNodeRegistration.AttachedSpotPublisherClients.Keys)
-            {
-                nodeRuntime.GetOrCreatePublisherBundle(channelName);
-            }
-
-            nodeRuntime.InitializeEntrySpot();
-            state.SpotNodes.Add(spotNodeRegistration.SpotNodeName, nodeRuntime);
-        }
+        _nodeInitializer.Initialize(state);
     }
 
     public ZLinkSpotPublisherBundle GetPublisherBundle(
@@ -177,35 +127,14 @@ internal sealed class ZLinkSpotRuntimeManager(
         Message body,
         CancellationToken cancellationToken)
     {
-        foreach (var node in state.SpotNodes.Values)
-        {
-            if (!node.TryResolveEntrySpotActorPacket(actor.GetType(), header, out var descriptor)
-                || descriptor is null)
-            {
-                continue;
-            }
-
-            var previousDispatch = runtimeState.CurrentDispatch;
-            runtimeState.CurrentDispatch = new ZLinkActorDispatchState(header);
-            try
-            {
-                await node.InvokeEntrySpotActorPacketAsync(
-                        descriptor,
-                        actor,
-                        header,
-                        body,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            finally
-            {
-                runtimeState.CurrentDispatch = previousDispatch;
-            }
-
-            return true;
-        }
-
-        return false;
+        return await _entrySpotActors.TrySubmitAsync(
+                state,
+                actor,
+                runtimeState,
+                header,
+                body,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask<EntrySpotActorReplyDispatchResult> TrySubmitEntrySpotActorForReplyAsync(
@@ -216,34 +145,14 @@ internal sealed class ZLinkSpotRuntimeManager(
         Message body,
         CancellationToken cancellationToken)
     {
-        foreach (var node in state.SpotNodes.Values)
-        {
-            if (!node.TryResolveEntrySpotActorPacket(actor.GetType(), header, out var descriptor)
-                || descriptor is null)
-            {
-                continue;
-            }
-
-            var previousDispatch = runtimeState.CurrentDispatch;
-            runtimeState.CurrentDispatch = new ZLinkActorDispatchState(header);
-            try
-            {
-                var reply = await node.InvokeEntrySpotActorPacketForReplyAsync(
-                        descriptor,
-                        actor,
-                        header,
-                        body,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                return new EntrySpotActorReplyDispatchResult(true, reply);
-            }
-            finally
-            {
-                runtimeState.CurrentDispatch = previousDispatch;
-            }
-        }
-
-        return new EntrySpotActorReplyDispatchResult(false, null);
+        return await _entrySpotActors.TrySubmitForReplyAsync(
+                state,
+                actor,
+                runtimeState,
+                header,
+                body,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask NotifyEntrySpotActorJoinedAsync(
@@ -252,31 +161,8 @@ internal sealed class ZLinkSpotRuntimeManager(
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken)
     {
-        foreach (var node in state.SpotNodes.Values)
-        {
-            if (!node.TryResolveEntrySpotActorJoined(actor.GetType(), out var descriptor)
-                || descriptor is null)
-            {
-                continue;
-            }
-
-            try
-            {
-                await node.InvokeEntrySpotActorLifecycleAsync(
-                        descriptor,
-                        actor,
-                        info,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch
-            {
-            }
-        }
+        await _entrySpotActors.NotifyJoinedAsync(state, actor, info, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask NotifyEntrySpotActorLeftAsync(
@@ -285,31 +171,8 @@ internal sealed class ZLinkSpotRuntimeManager(
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken)
     {
-        foreach (var node in state.SpotNodes.Values)
-        {
-            if (!node.TryResolveEntrySpotActorLeft(actor.GetType(), out var descriptor)
-                || descriptor is null)
-            {
-                continue;
-            }
-
-            try
-            {
-                await node.InvokeEntrySpotActorLifecycleAsync(
-                        descriptor,
-                        actor,
-                        info,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch
-            {
-            }
-        }
+        await _entrySpotActors.NotifyLeftAsync(state, actor, info, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public IZLinkEndpointConnections GetRouterConnections(
@@ -401,34 +264,6 @@ internal sealed class ZLinkSpotRuntimeManager(
         string spotNodeName)
     {
         return GetNode(state, spotNodeName).GetMonitoringSnapshot();
-    }
-
-    private static IZLinkBackendDiscovery CreateDiscovery(
-        IZLinkChannelBackendAdapter adapter,
-        ZLinkFrameworkRuntimeState state,
-        string channelName,
-        ZLinkAutoConnectType autoConnectType,
-        IReadOnlyCollection<string> endpoints)
-    {
-        var discovery = adapter.CreateDiscovery(state.Context, autoConnectType, channelName);
-        foreach (var endpoint in endpoints)
-        {
-            discovery.ConnectRegistry(endpoint);
-        }
-
-        return discovery;
-    }
-
-    private static RoutingId CreateNodeRoutingId(ZLinkSpotNodeRegistration registration)
-    {
-        var bytes = RandomNumberGenerator.GetBytes(16);
-        bytes[0] = registration.AttachedSpotPublisherClients.Count switch
-        {
-            > 0 when registration.SpotFactories.Count == 0 => 0xf0,
-            > 0 => 0x80,
-            _ => 0x10,
-        };
-        return RoutingId.FromBytes(bytes);
     }
 
     private static ZLinkSpotNodeRuntime GetNode(

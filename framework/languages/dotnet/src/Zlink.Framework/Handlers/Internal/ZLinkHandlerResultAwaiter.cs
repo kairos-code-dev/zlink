@@ -1,7 +1,12 @@
+using System.Collections.Concurrent;
+using System.Reflection;
+
 namespace Zlink.Framework.Handlers.Internal;
 
 internal static class ZLinkHandlerResultAwaiter
 {
+    private static readonly ConcurrentDictionary<Type, Func<object, ValueTask<object?>>> GenericAwaiters = new();
+
     public static async ValueTask<object?> AwaitAsync(object? result)
     {
         if (result is null)
@@ -19,21 +24,33 @@ internal static class ZLinkHandlerResultAwaiter
                 return null;
         }
 
-        var resultType = result.GetType();
-        if (resultType.IsGenericType && resultType.GetGenericTypeDefinition() == typeof(Task<>))
-        {
-            var task = (Task)result;
-            await task.ConfigureAwait(false);
-            return resultType.GetProperty(nameof(Task<object>.Result))!.GetValue(result);
-        }
-
-        if (resultType.IsGenericType && resultType.GetGenericTypeDefinition() == typeof(ValueTask<>))
-        {
-            var asTask = (Task)resultType.GetMethod(nameof(ValueTask<object>.AsTask))!.Invoke(result, null)!;
-            await asTask.ConfigureAwait(false);
-            return asTask.GetType().GetProperty(nameof(Task<object>.Result))!.GetValue(asTask);
-        }
-
-        return result;
+        return IsGenericAwaitable(result.GetType())
+            ? await GenericAwaiters.GetOrAdd(result.GetType(), CreateGenericAwaiter)(result).ConfigureAwait(false)
+            : result;
     }
+
+    private static bool IsGenericAwaitable(Type resultType)
+    {
+        return resultType.IsGenericType
+            && (resultType.GetGenericTypeDefinition() == typeof(Task<>)
+                || resultType.GetGenericTypeDefinition() == typeof(ValueTask<>));
+    }
+
+    private static Func<object, ValueTask<object?>> CreateGenericAwaiter(Type resultType)
+    {
+        var resultValueType = resultType.GetGenericArguments()[0];
+        var methodName = resultType.GetGenericTypeDefinition() == typeof(Task<>)
+            ? nameof(AwaitTaskAsync)
+            : nameof(AwaitValueTaskAsync);
+        var method = typeof(ZLinkHandlerResultAwaiter)
+            .GetMethod(methodName, BindingFlags.Static | BindingFlags.NonPublic)!
+            .MakeGenericMethod(resultValueType);
+        return (Func<object, ValueTask<object?>>)method.CreateDelegate(typeof(Func<object, ValueTask<object?>>));
+    }
+
+    private static async ValueTask<object?> AwaitTaskAsync<T>(object result)
+        => await ((Task<T>)result).ConfigureAwait(false);
+
+    private static async ValueTask<object?> AwaitValueTaskAsync<T>(object result)
+        => await ((ValueTask<T>)result).ConfigureAwait(false);
 }

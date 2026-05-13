@@ -1,22 +1,15 @@
 using Microsoft.Extensions.DependencyInjection;
-using Systems.Zlink.Stream.Connector.Protocol;
-using Systems.Zlink.Stream.Connector.Protocol.Compression;
-using System.Text;
-using System.Text.Json;
 
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object spot)
 {
-    private static readonly ZlinkStreamLz4CompressionCodec CompressionCodec = new();
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     public async ValueTask InvokePacketAsync(
         ZLinkSpotDescriptor descriptor,
         object? message,
         CancellationToken cancellationToken)
     {
-        await InvokeAsync(descriptor.HandlerType, descriptor.HandleMethod, [spot, message, cancellationToken])
+        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, [spot, message, cancellationToken])
             .ConfigureAwait(false);
     }
 
@@ -25,7 +18,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         object? message,
         CancellationToken cancellationToken)
     {
-        return await InvokeAsync(descriptor.HandlerType, descriptor.HandleMethod, [spot, message, cancellationToken])
+        return await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, [spot, message, cancellationToken])
             .ConfigureAwait(false);
     }
 
@@ -34,7 +27,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         object? message,
         CancellationToken cancellationToken)
     {
-        await InvokeAsync(descriptor.HandlerType, descriptor.HandleMethod, [spot, message, cancellationToken])
+        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, [spot, message, cancellationToken])
             .ConfigureAwait(false);
     }
 
@@ -42,7 +35,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
         ZLinkSpotTimerDescriptor descriptor,
         CancellationToken cancellationToken)
     {
-        await InvokeAsync(descriptor.HandlerType, descriptor.HandleMethod, [spot, cancellationToken])
+        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, [spot, cancellationToken])
             .ConfigureAwait(false);
     }
 
@@ -58,7 +51,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
                 $"SPOT actor join handler '{descriptor.HandlerType}' expects actor '{descriptor.ActorType}', but received '{actor.GetType()}'.");
         }
 
-        return await InvokeAsync(descriptor.HandlerType, descriptor.HandleMethod, [spot, actor, request, cancellationToken])
+        return await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, [spot, actor, request, cancellationToken])
             .ConfigureAwait(false);
     }
 
@@ -75,12 +68,12 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
                 $"SPOT actor packet handler '{descriptor.HandlerType}' expects actor '{descriptor.ActorType}', but received '{actor.GetType()}'.");
         }
 
-        var message = DecodeMessage(header, body, descriptor.MessageType);
+        var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
         object?[] arguments = descriptor.Surface == ZLinkSpotActorHandlerSurface.EntrySpot
             ? [actor, message, cancellationToken]
             : [spot, actor, message, cancellationToken];
 
-        await InvokeAsync(descriptor.HandlerType, descriptor.HandleMethod, arguments)
+        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, arguments)
             .ConfigureAwait(false);
     }
 
@@ -103,14 +96,14 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
                 $"SPOT actor packet handler '{descriptor.HandlerType}' expects actor '{descriptor.ActorType}', but received '{actor.GetType()}'.");
         }
 
-        var message = DecodeMessage(header, body, descriptor.MessageType);
+        var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
         object?[] arguments = descriptor.Surface == ZLinkSpotActorHandlerSurface.EntrySpot
             ? [actor, message, cancellationToken]
             : [spot, actor, message, cancellationToken];
 
-        var reply = await InvokeAsync(descriptor.HandlerType, descriptor.HandleMethod, arguments)
+        var reply = await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, arguments)
             .ConfigureAwait(false);
-        return JsonSerializer.SerializeToUtf8Bytes(reply, descriptor.ReplyType, JsonOptions);
+        return ZLinkStreamPacketPayloadCodec.EncodeJson(reply, descriptor.ReplyType);
     }
 
     public async ValueTask InvokeActorLifecycleAsync(
@@ -129,63 +122,18 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             ? [actor, info, cancellationToken]
             : [spot, actor, info, cancellationToken];
 
-        await InvokeAsync(descriptor.HandlerType, descriptor.HandleMethod, arguments)
+        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, arguments)
             .ConfigureAwait(false);
     }
 
     private async ValueTask<object?> InvokeAsync(
         Type handlerType,
-        System.Reflection.MethodInfo method,
+        ZLinkHandlerMethodInvoker invoker,
         object?[] arguments)
     {
         var handler = services.GetRequiredService(handlerType);
-        var result = method.Invoke(handler, arguments);
+        var result = invoker(handler, arguments);
         return await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
     }
 
-    private static object? DecodeMessage(
-        ZlinkStreamHeader header,
-        Message body,
-        Type messageType)
-    {
-        if (messageType == typeof(Message))
-        {
-            return body;
-        }
-
-        var payload = body.AsReadOnlyMemory();
-        if ((header.Flags & ZlinkStreamHeaderFlags.BodyCompressed) != 0)
-        {
-            payload = CompressionCodec.Decompress(payload);
-        }
-
-        if (messageType == typeof(ZlinkStreamEncodedBody))
-        {
-            return new ZlinkStreamEncodedBody(header.Codec, payload);
-        }
-
-        if (header.Codec == ZlinkStreamCodec.Raw)
-        {
-            if (messageType == typeof(string))
-            {
-                return Encoding.UTF8.GetString(payload.Span);
-            }
-
-            if (messageType == typeof(byte[]))
-            {
-                return payload.ToArray();
-            }
-
-            throw new InvalidOperationException(
-                $"Raw actor packet '{header.Name}' cannot be decoded as '{messageType}'.");
-        }
-
-        if (header.Codec == ZlinkStreamCodec.Json)
-        {
-            return JsonSerializer.Deserialize(payload.Span, messageType, JsonOptions);
-        }
-
-        throw new InvalidOperationException(
-            $"Actor packet '{header.Name}' uses codec '{header.Codec}'. Register a ZlinkStreamEncodedBody handler and decode it explicitly.");
-    }
 }

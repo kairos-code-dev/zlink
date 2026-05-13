@@ -27,15 +27,12 @@ public sealed class StreamIntegrationTests
     {
         var runtimeType = typeof(ZLinkStreamSessionRuntime);
 
-        Assert.Null(runtimeType.GetMethod("MarkConnectedAsync", BindingFlags.Instance | BindingFlags.Public));
-        Assert.Null(runtimeType.GetMethod("DispatchPacketAsync", BindingFlags.Instance | BindingFlags.Public));
-        Assert.Null(runtimeType.GetMethod("MarkDisconnectedAsync", BindingFlags.Instance | BindingFlags.Public));
-        Assert.True(runtimeType.GetMethod("MarkConnectedAsync", BindingFlags.Instance | BindingFlags.NonPublic)?.IsPrivate);
-        Assert.True(runtimeType.GetMethod("DispatchPacketAsync", BindingFlags.Instance | BindingFlags.NonPublic)?.IsPrivate);
-        Assert.True(runtimeType.GetMethod("MarkDisconnectedAsync", BindingFlags.Instance | BindingFlags.NonPublic)?.IsPrivate);
-        Assert.NotNull(runtimeType.GetMethod("EnqueueConnected", BindingFlags.Instance | BindingFlags.Public));
-        Assert.NotNull(runtimeType.GetMethod("EnqueuePacket", BindingFlags.Instance | BindingFlags.Public));
-        Assert.NotNull(runtimeType.GetMethod("EnqueueDisconnected", BindingFlags.Instance | BindingFlags.Public));
+        Assert.Null(runtimeType.GetMethod("MarkConnectedAsync"));
+        Assert.Null(runtimeType.GetMethod("DispatchPacketAsync"));
+        Assert.Null(runtimeType.GetMethod("MarkDisconnectedAsync"));
+        Assert.NotNull(runtimeType.GetMethod("EnqueueConnected"));
+        Assert.NotNull(runtimeType.GetMethod("EnqueuePacket"));
+        Assert.NotNull(runtimeType.GetMethod("EnqueueDisconnected"));
     }
 
     [Fact]

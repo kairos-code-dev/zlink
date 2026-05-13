@@ -24,7 +24,7 @@ internal sealed class ZLinkRouteHandlerInvoker(IServiceProvider services)
             scope.ServiceProvider,
             cancellationToken);
         var handler = scope.ServiceProvider.GetRequiredService(descriptor.HandlerType);
-        var result = descriptor.HandleMethod.Invoke(handler, [message, context, cancellationToken]);
+        var result = descriptor.Invoker(handler, [message, context, cancellationToken]);
         await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
     }
 
@@ -49,7 +49,7 @@ internal sealed class ZLinkRouteHandlerInvoker(IServiceProvider services)
             scope.ServiceProvider,
             cancellationToken);
         var handler = scope.ServiceProvider.GetRequiredService(descriptor.HandlerType);
-        var result = descriptor.HandleMethod.Invoke(handler, [message, context, cancellationToken]);
+        var result = descriptor.Invoker(handler, [message, context, cancellationToken]);
         var reply = await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
         return new ZLinkRouteHandlerReply(reply, descriptor.ReplyType);
     }

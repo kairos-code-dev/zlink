@@ -3,7 +3,6 @@ using Microsoft.Extensions.Hosting;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Reflection;
 using System.Text;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Protocol;
@@ -1543,45 +1542,11 @@ public sealed class SpotIntegrationTests
         ZLinkFrameworkRuntime runtime,
         string spotNodeName)
     {
-        var stateField = typeof(ZLinkFrameworkRuntime).GetField("_state",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var state = stateField.GetValue(runtime)!;
-        var spotNodesProperty = state.GetType().GetProperty("SpotNodes",
-            BindingFlags.Instance | BindingFlags.Public)!;
-        var spotNodes = (IReadOnlyDictionary<string, ZLinkSpotNodeRuntime>)spotNodesProperty.GetValue(state)!;
-        return spotNodes[spotNodeName];
+        return runtime.GetSpotNodeRuntime(spotNodeName);
     }
 
     private static string GetSubscriptionPumpState(ZLinkSpotActivation activation)
     {
-        var field = typeof(ZLinkSpotActivation).GetField("_subscriptionPump",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-        if (field is null)
-        {
-            return "not-used";
-        }
-
-        var task = (Task?)field.GetValue(activation);
-        if (task is null)
-        {
-            return "null";
-        }
-
-        if (task.IsFaulted)
-        {
-            return task.Exception?.GetBaseException().ToString() ?? "faulted";
-        }
-
-        if (task.IsCanceled)
-        {
-            return "canceled";
-        }
-
-        if (task.IsCompleted)
-        {
-            return "completed";
-        }
-
-        return "running";
+        return activation.SubscriptionPumpState;
     }
 }

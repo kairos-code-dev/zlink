@@ -37,7 +37,6 @@ internal sealed class ZLinkActorClientSendCall<TMessage>(
     string actorId,
     TMessage message) : IZLinkActorClientSendCall
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(message);
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
 
@@ -64,7 +63,10 @@ internal sealed class ZLinkActorClientSendCall<TMessage>(
             actorId,
             string.Empty,
             CreateHeaderSnapshot(ZlinkStreamMessageKind.Send, packetName, _metadata),
-            JsonSerializer.SerializeToUtf8Bytes(message, message?.GetType() ?? typeof(TMessage), JsonOptions));
+            JsonSerializer.SerializeToUtf8Bytes(
+                message,
+                message?.GetType() ?? typeof(TMessage),
+                ZLinkJsonSerializerOptions.Default));
 
         await routedClient.SendTo(route.RouterChannelId, route.TargetNodeRid, packet)
             .WithPacketName(ZLinkInternalPacketNames.ActorDispatch)
@@ -114,7 +116,6 @@ internal sealed class ZLinkActorClientRequestCall<TRequest>(
     string actorId,
     TRequest request) : IZLinkActorClientRequestCall
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
@@ -148,7 +149,10 @@ internal sealed class ZLinkActorClientRequestCall<TRequest>(
             actorId,
             string.Empty,
             CreateHeaderSnapshot(packetName, _metadata),
-            JsonSerializer.SerializeToUtf8Bytes(request, request?.GetType() ?? typeof(TRequest), JsonOptions));
+            JsonSerializer.SerializeToUtf8Bytes(
+                request,
+                request?.GetType() ?? typeof(TRequest),
+                ZLinkJsonSerializerOptions.Default));
 
         try
         {
@@ -157,7 +161,7 @@ internal sealed class ZLinkActorClientRequestCall<TRequest>(
                 .WithTimeout(_timeout ?? registration.DefaultTimeout)
                 .SubmitAsync<byte[]>(cancellationToken)
                 .ConfigureAwait(false);
-            return JsonSerializer.Deserialize<TReply>(reply, JsonOptions)
+            return JsonSerializer.Deserialize<TReply>(reply, ZLinkJsonSerializerOptions.Default)
                 ?? throw new InvalidOperationException("Actor client reply body is null.");
         }
         catch (TimeoutException ex)

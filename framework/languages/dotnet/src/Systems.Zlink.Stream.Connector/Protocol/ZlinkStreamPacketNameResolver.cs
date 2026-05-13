@@ -1,13 +1,17 @@
+using System.Collections.Concurrent;
+using System.Reflection;
+
 namespace Systems.Zlink.Stream.Connector.Protocol;
 
 public sealed class ZlinkStreamPacketNameResolver : IZlinkStreamPacketNameResolver
 {
+    private static readonly ConcurrentDictionary<Type, string> Cache = new();
+
     public string Resolve(Type bodyType)
     {
         ArgumentNullException.ThrowIfNull(bodyType);
-        var attribute = bodyType.GetCustomAttributes(typeof(ZlinkStreamPacketNameAttribute), false)
-            .OfType<ZlinkStreamPacketNameAttribute>()
-            .FirstOrDefault();
-        return attribute?.Name ?? bodyType.Name;
+        return Cache.GetOrAdd(bodyType, static type =>
+            type.GetCustomAttribute<ZlinkStreamPacketNameAttribute>(inherit: false)?.Name
+            ?? type.Name);
     }
 }

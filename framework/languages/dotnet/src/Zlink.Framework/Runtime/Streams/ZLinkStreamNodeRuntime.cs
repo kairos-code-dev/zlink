@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend.Contracts;
 using System.Threading;
+using Zlink.Framework.Runtime.Core;
 
 namespace Zlink.Framework.Runtime.Streams;
 
@@ -170,7 +171,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             }
             catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
             {
-                await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+                await ZLinkPollingBackoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                 continue;
             }
 

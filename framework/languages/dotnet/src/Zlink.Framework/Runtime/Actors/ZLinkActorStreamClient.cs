@@ -26,7 +26,6 @@ internal abstract class ZLinkActorStreamCallBase<TMessage>(
     private static readonly IZlinkStreamPacketNameResolver MessageNameResolver = new ZlinkStreamPacketNameResolver();
     private static readonly IZlinkStreamCompressionCodec CompressionCodec = new ZlinkStreamLz4CompressionCodec();
     private static readonly ZlinkStreamHeaderCodec HeaderCodec = new();
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private string _messageName = MessageNameResolver.Resolve(typeof(TMessage));
     private ZlinkStreamMetadata _metadata = ZlinkStreamMetadata.Empty;
@@ -67,7 +66,7 @@ internal abstract class ZLinkActorStreamCallBase<TMessage>(
 
         var stream = state.Stream
             ?? throw new InvalidOperationException("Actor does not have an active client stream.");
-        ReadOnlyMemory<byte> body = JsonSerializer.SerializeToUtf8Bytes(message, JsonOptions);
+        ReadOnlyMemory<byte> body = JsonSerializer.SerializeToUtf8Bytes(message, ZLinkJsonSerializerOptions.Default);
         var flags = ZlinkStreamHeaderFlags.None;
 
         if (_compress)

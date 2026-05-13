@@ -1,17 +1,11 @@
-using System.Buffers.Binary;
-
 using System.Security.Authentication;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Channels;
-
-using K4os.Compression.LZ4;
 
 namespace Systems.Zlink.Stream.Connector.Runtime;
 
 public sealed class ZlinkStreamConnector : IAsyncDisposable
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ZlinkStreamPendingRequests _pending = new();
     private readonly ZlinkStreamTypedHandlerRegistry _typedHandlers = new();
     private readonly Channel<ZlinkStreamHandlerWorkItem> _handlerQueue =
@@ -22,16 +16,16 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         });
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
-    private readonly object _callbackGate = new();
+    private readonly ZlinkStreamConnectorCallbacks _callbacks = new();
     private readonly IZlinkStreamHeaderCodec _headerCodec;
     private readonly IZlinkStreamCompressionCodec? _compressionCodec;
     private readonly IZlinkStreamPacketNameResolver _nameResolver;
+    private readonly ZlinkStreamFrameSender _frameSender;
+    private readonly ZlinkStreamReceiveDispatcher _receiveDispatcher;
     private IZlinkStreamConnection? _connection;
     private CancellationTokenSource? _receiveCts;
     private Task? _receiveTask;
     private readonly Task _handlerPump;
-    private Func<ZlinkStreamError, CancellationToken, ValueTask>? _errorReceived;
-    private Func<CancellationToken, ValueTask>? _disconnected;
     private int _disposed;
 
     public ZlinkStreamConnector(ZlinkStreamConnectorOptions options)
@@ -50,24 +44,31 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         }
 
         _nameResolver = options.NameResolver ?? new ZlinkStreamPacketNameResolver();
-        _handlerPump = Task.Run(HandlerPumpAsync);
+        _frameSender = new ZlinkStreamFrameSender(
+            options,
+            _headerCodec,
+            _compressionCodec,
+            _sendGate,
+            () => _connection);
+        _receiveDispatcher = new ZlinkStreamReceiveDispatcher(
+            _headerCodec,
+            _pending,
+            _typedHandlers,
+            _handlerQueue,
+            _frameSender,
+            _callbacks);
+        _handlerPump = Task.Run(_receiveDispatcher.HandlerPumpAsync);
     }
 
     public event Func<ZlinkStreamError, CancellationToken, ValueTask>? ErrorReceived
     {
         add
         {
-            lock (_callbackGate)
-            {
-                _errorReceived += value;
-            }
+            _callbacks.AddErrorReceived(value);
         }
         remove
         {
-            lock (_callbackGate)
-            {
-                _errorReceived -= value;
-            }
+            _callbacks.RemoveErrorReceived(value);
         }
     }
 
@@ -75,17 +76,11 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
     {
         add
         {
-            lock (_callbackGate)
-            {
-                _disconnected += value;
-            }
+            _callbacks.AddDisconnected(value);
         }
         remove
         {
-            lock (_callbackGate)
-            {
-                _disconnected -= value;
-            }
+            _callbacks.RemoveDisconnected(value);
         }
     }
 
@@ -209,9 +204,9 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         bool compress,
         CancellationToken cancellationToken)
     {
-        var frame = BuildOutboundFrame(kind, name, body, metadata, compress, null);
-        ValidateSendReady(frame.HeaderBytes, frame.BodyBytes);
-        await SendPacketAsync(frame.HeaderBytes, frame.BodyBytes, cancellationToken).ConfigureAwait(false);
+        var frame = _frameSender.BuildOutboundFrame(kind, name, body, metadata, compress, null);
+        _frameSender.ValidateSendReady(frame.HeaderBytes, frame.BodyBytes);
+        await _frameSender.SendPacketAsync(frame.HeaderBytes, frame.BodyBytes, cancellationToken).ConfigureAwait(false);
     }
 
     internal async ValueTask<ZlinkStreamEncodedBody> RequestEncodedAsync(
@@ -223,17 +218,17 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var pending = _pending.Create();
-        var frame = BuildOutboundFrame(ZlinkStreamMessageKind.Request, name, body, metadata, compress, pending.RequestSeq);
+        var frame = _frameSender.BuildOutboundFrame(ZlinkStreamMessageKind.Request, name, body, metadata, compress, pending.RequestSeq);
 
         try
         {
-            ValidateSendReady(frame.HeaderBytes, frame.BodyBytes);
+            _frameSender.ValidateSendReady(frame.HeaderBytes, frame.BodyBytes);
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(timeout);
-            await SendPacketAsync(frame.HeaderBytes, frame.BodyBytes, timeoutCts.Token).ConfigureAwait(false);
+            await _frameSender.SendPacketAsync(frame.HeaderBytes, frame.BodyBytes, timeoutCts.Token).ConfigureAwait(false);
             var packet = await _pending.WaitAsync(pending, timeout, cancellationToken).ConfigureAwait(false);
             var replyHeader = _headerCodec.Decode(packet.Header);
-            var replyBody = DecompressIfNeeded(replyHeader, packet.Body);
+            var replyBody = _frameSender.DecompressIfNeeded(replyHeader, packet.Body);
             return new ZlinkStreamEncodedBody(replyHeader.Codec, replyBody);
         }
         catch
@@ -251,7 +246,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         TimeSpan timeout,
         Action<ZlinkStreamResult> callback)
     {
-        QueueRequestCallback(
+        _callbacks.QueueRequestCallback(
             () => RequestEncodedAsync(name, body, metadata, compress, timeout, CancellationToken.None),
             reply => ZlinkStreamResult.Success(),
             ZlinkStreamResult.Failure,
@@ -266,7 +261,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         TimeSpan timeout,
         Action<ZlinkStreamResult<ZlinkStreamEncodedBody>> callback)
     {
-        QueueRequestCallback(
+        _callbacks.QueueRequestCallback(
             () => RequestEncodedAsync(name, body, metadata, compress, timeout, CancellationToken.None),
             ZlinkStreamResult<ZlinkStreamEncodedBody>.Success,
             ZlinkStreamResult<ZlinkStreamEncodedBody>.Failure,
@@ -300,7 +295,7 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
                 }
 
                 var packet = await ZlinkStreamFrameCodec.ReadAsync(connection, cancellationToken).ConfigureAwait(false);
-                await DispatchPacketAsync(packet, cancellationToken).ConfigureAwait(false);
+                await _receiveDispatcher.DispatchPacketAsync(packet, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -311,243 +306,13 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
             var error = ex is ZlinkStreamException streamException
                 ? streamException.Error
                 : new ZlinkStreamError(ZlinkStreamErrorCode.FrameDecodeFailed, "Receive loop failed.", ex);
-            await PublishErrorAsync(error, CancellationToken.None).ConfigureAwait(false);
+            await _callbacks.PublishErrorAsync(error, CancellationToken.None).ConfigureAwait(false);
         }
         finally
         {
             Interlocked.Exchange(ref _connection, null);
             _pending.FailAll(new ZlinkStreamError(ZlinkStreamErrorCode.Disconnected, "Connector disconnected."));
-            var disconnected = SnapshotDisconnected();
-            if (disconnected is not null)
-            {
-                await InvokeUserCallbackAsync(
-                    () => disconnected(CancellationToken.None),
-                    CancellationToken.None).ConfigureAwait(false);
-            }
-        }
-    }
-
-    private async ValueTask DispatchPacketAsync(ZlinkStreamFrame frame, CancellationToken cancellationToken)
-    {
-        ZlinkStreamHeader header;
-        try
-        {
-            header = _headerCodec.Decode(frame.Header);
-        }
-        catch (ZlinkStreamException ex)
-        {
-            await PublishErrorAsync(ex.Error, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-        catch (Exception ex)
-        {
-            await PublishErrorAsync(new ZlinkStreamError(
-                ZlinkStreamErrorCode.FrameDecodeFailed,
-                "Stream header decode failed.",
-                ex), cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        if (_pending.TryComplete(header, frame, ParseErrorBody))
-        {
-            return;
-        }
-
-        if (header.Kind == ZlinkStreamMessageKind.Error && header.RequestSeq is null)
-        {
-            await PublishErrorAsync(ParseErrorBody(frame.Body), cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        await QueueTypedHandlersAsync(header, frame.Body, cancellationToken).ConfigureAwait(false);
-    }
-
-    private ValueTask QueueTypedHandlersAsync(
-        ZlinkStreamHeader header,
-        ReadOnlyMemory<byte> body,
-        CancellationToken cancellationToken)
-    {
-        var handlers = _typedHandlers.Snapshot(header.Name);
-        if (handlers.Count == 0)
-        {
-            return ValueTask.CompletedTask;
-        }
-
-        var payload = DecompressIfNeeded(header, body);
-        if (!_handlerQueue.Writer.TryWrite(new ZlinkStreamHandlerWorkItem(header, payload, handlers)))
-        {
-            return PublishErrorAsync(
-                new ZlinkStreamError(ZlinkStreamErrorCode.Disconnected, "Connector handler queue is closed."),
-                cancellationToken);
-        }
-
-        return ValueTask.CompletedTask;
-    }
-
-    private async Task HandlerPumpAsync()
-    {
-        await foreach (var item in _handlerQueue.Reader.ReadAllAsync().ConfigureAwait(false))
-        {
-            await DispatchTypedHandlersAsync(item.Header, item.Payload, item.Handlers, CancellationToken.None)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private async ValueTask DispatchTypedHandlersAsync(
-        ZlinkStreamHeader header,
-        ReadOnlyMemory<byte> payload,
-        IReadOnlyList<ZlinkStreamTypedHandlerRegistry.TypedHandler> handlers,
-        CancellationToken cancellationToken)
-    {
-        foreach (var handler in handlers)
-        {
-            try
-            {
-                var bodyObject = new ZlinkStreamEncodedBody(header.Codec, payload);
-                await handler.Invoke(new ZlinkStreamMessage(header.Name, header.Metadata, bodyObject), bodyObject, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                await PublishErrorAsync(new ZlinkStreamError(
-                    ZlinkStreamErrorCode.UserCallbackFailed,
-                    "Typed message handler failed.",
-                    ex), cancellationToken).ConfigureAwait(false);
-            }
-        }
-    }
-
-    private void ValidateSendReady(ReadOnlyMemory<byte> header, ReadOnlyMemory<byte> body)
-    {
-        ZlinkStreamFrameCodec.ValidateSendFrame(header.Length, body.Length, Options.MaxSendFrameSize);
-        if (_connection is null)
-        {
-            throw Error(ZlinkStreamErrorCode.Disconnected, "Connector is not connected.");
-        }
-    }
-
-    private async ValueTask SendPacketAsync(
-        ReadOnlyMemory<byte> header,
-        ReadOnlyMemory<byte> body,
-        CancellationToken cancellationToken)
-    {
-        var connection = _connection;
-        if (connection is null)
-        {
-            throw Error(ZlinkStreamErrorCode.Disconnected, "Connector is not connected.");
-        }
-
-        try
-        {
-            await _sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                if (Options.EnableSegmentedSend && connection.CanWriteSegments)
-                {
-                    await connection.WriteAsync(
-                        ZlinkStreamFrameCodec.EncodePrefix(header.Length, body.Length),
-                        cancellationToken).ConfigureAwait(false);
-                    if (header.Length > 0)
-                    {
-                        await connection.WriteAsync(header, cancellationToken).ConfigureAwait(false);
-                    }
-
-                    if (body.Length > 0)
-                    {
-                        await connection.WriteAsync(body, cancellationToken).ConfigureAwait(false);
-                    }
-                }
-                else
-                {
-                    var frame = ZlinkStreamFrameCodec.Encode(header, body, Options.MaxSendFrameSize);
-                    await connection.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
-                }
-            }
-            finally
-            {
-                _sendGate.Release();
-            }
-        }
-        catch (Exception ex) when (ex is not ZlinkStreamException)
-        {
-            throw Error(ZlinkStreamErrorCode.SendFailed, "Send failed.", ex);
-        }
-    }
-
-    private ReadOnlyMemory<byte> EncodeHeaderForSend(ZlinkStreamHeader header)
-    {
-        var encoded = _headerCodec.Encode(header);
-        var metadataLength = ZlinkStreamHeaderCodec.GetMetadataPayloadSize(header.Metadata);
-        if (metadataLength > Options.MaxSendMetadataSize)
-        {
-            throw Error(
-                ZlinkStreamErrorCode.ValidationFailed,
-                $"Metadata payload exceeds MaxSendMetadataSize ({Options.MaxSendMetadataSize}).");
-        }
-
-        return encoded;
-    }
-
-    private ZlinkStreamOutboundFrame BuildOutboundFrame(
-        ZlinkStreamMessageKind kind,
-        string name,
-        ZlinkStreamEncodedBody body,
-        ZlinkStreamMetadata metadata,
-        bool compress,
-        ZlinkStreamRequestSeq? requestSeq)
-    {
-        ValidateName(name);
-        var bodyBytes = body.Body;
-        var flags = requestSeq is null
-            ? ZlinkStreamHeaderFlags.None
-            : ZlinkStreamHeaderFlags.HasRequestSeq;
-
-        if (compress)
-        {
-            bodyBytes = CompressBody(bodyBytes);
-            flags |= ZlinkStreamHeaderFlags.BodyCompressed;
-        }
-
-        var header = new ZlinkStreamHeader(kind, body.Codec, flags, requestSeq, name, metadata);
-        return new ZlinkStreamOutboundFrame(header, EncodeHeaderForSend(header), bodyBytes);
-    }
-
-    private ReadOnlyMemory<byte> CompressBody(ReadOnlyMemory<byte> body)
-    {
-        if (Options.Compression == ZlinkStreamCompression.None || _compressionCodec is null)
-        {
-            throw Error(ZlinkStreamErrorCode.CompressionFailed, "Compression codec is not configured.");
-        }
-
-        try
-        {
-            return _compressionCodec.Compress(body);
-        }
-        catch (Exception ex)
-        {
-            throw Error(ZlinkStreamErrorCode.CompressionFailed, "Compression failed.", ex);
-        }
-    }
-
-    private ReadOnlyMemory<byte> DecompressIfNeeded(ZlinkStreamHeader header, ReadOnlyMemory<byte> body)
-    {
-        if (!header.Flags.HasFlag(ZlinkStreamHeaderFlags.BodyCompressed))
-        {
-            return body;
-        }
-
-        if (Options.Compression == ZlinkStreamCompression.None || _compressionCodec is null)
-        {
-            throw Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Compressed body received without a compression codec.");
-        }
-
-        try
-        {
-            return _compressionCodec.Decompress(body);
-        }
-        catch (Exception ex)
-        {
-            throw Error(ZlinkStreamErrorCode.DecompressionFailed, "Decompression failed.", ex);
+            await _callbacks.NotifyDisconnectedAsync(CancellationToken.None).ConfigureAwait(false);
         }
     }
 
@@ -566,104 +331,6 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         }
 
         return ResolveName(body.MessageType);
-    }
-
-    private async ValueTask PublishErrorAsync(ZlinkStreamError error, CancellationToken cancellationToken)
-    {
-        var handler = SnapshotErrorReceived();
-        if (handler is not null)
-        {
-            await InvokeUserCallbackAsync(() => handler(error, cancellationToken), cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private async ValueTask InvokeUserCallbackAsync(
-        Func<ValueTask> callback,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await callback().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            var handler = SnapshotErrorReceived();
-            if (handler is not null)
-            {
-                try
-                {
-                    await handler(new ZlinkStreamError(
-                        ZlinkStreamErrorCode.UserCallbackFailed,
-                        "User callback failed.",
-                        ex), cancellationToken).ConfigureAwait(false);
-                }
-                catch
-                {
-                }
-            }
-        }
-    }
-
-    private void QueueRequestCallback<TResult>(
-        Func<ValueTask<ZlinkStreamEncodedBody>> request,
-        Func<ZlinkStreamEncodedBody, TResult> success,
-        Func<ZlinkStreamError, TResult> failure,
-        Action<TResult> callback)
-    {
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var reply = await request().ConfigureAwait(false);
-                callback(success(reply));
-            }
-            catch (ZlinkStreamException ex)
-            {
-                callback(failure(ex.Error));
-            }
-            catch (Exception ex)
-            {
-                callback(failure(new ZlinkStreamError(
-                    ZlinkStreamErrorCode.SendFailed,
-                    ex.Message,
-                    ex)));
-            }
-        });
-    }
-
-    private Func<ZlinkStreamError, CancellationToken, ValueTask>? SnapshotErrorReceived()
-    {
-        lock (_callbackGate)
-        {
-            return _errorReceived;
-        }
-    }
-
-    private Func<CancellationToken, ValueTask>? SnapshotDisconnected()
-    {
-        lock (_callbackGate)
-        {
-            return _disconnected;
-        }
-    }
-
-    private static ZlinkStreamError ParseErrorBody(ReadOnlyMemory<byte> body)
-    {
-        try
-        {
-            var dto = JsonSerializer.Deserialize<WireError>(body.Span, JsonOptions);
-            return new ZlinkStreamError(
-                ZlinkStreamErrorCode.RemoteError,
-                dto?.Message ?? "Remote stream error.");
-        }
-        catch (Exception ex)
-        {
-            return new ZlinkStreamError(
-                ZlinkStreamErrorCode.FrameDecodeFailed,
-                "Remote stream error body could not be decoded.",
-                ex);
-        }
     }
 
     internal static void ValidateName(string name)
@@ -693,5 +360,4 @@ public sealed class ZlinkStreamConnector : IAsyncDisposable
         Exception? exception = null)
         => new(new ZlinkStreamError(code, message, exception));
 
-    private sealed record WireError(string? Code, string? Message);
 }

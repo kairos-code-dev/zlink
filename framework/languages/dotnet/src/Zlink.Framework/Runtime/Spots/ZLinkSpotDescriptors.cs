@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Backend.Contracts;
-using System.Reflection;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -12,7 +11,7 @@ internal sealed class ZLinkSpotDescriptor
 
     public required Type MessageType { get; init; }
 
-    public required MethodInfo HandleMethod { get; init; }
+    public required ZLinkHandlerMethodInvoker Invoker { get; init; }
 
     public required string MessageName { get; init; }
 
@@ -31,7 +30,7 @@ internal sealed class ZLinkSpotSubscriptionDescriptor
 
     public required Type MessageType { get; init; }
 
-    public required MethodInfo HandleMethod { get; init; }
+    public required ZLinkHandlerMethodInvoker Invoker { get; init; }
 
     public required string MessageName { get; init; }
 }
@@ -46,7 +45,7 @@ internal sealed class ZLinkSpotTimerDescriptor
 
     public required Type SpotType { get; init; }
 
-    public required MethodInfo HandleMethod { get; init; }
+    public required ZLinkHandlerMethodInvoker Invoker { get; init; }
 }
 
 internal sealed class ZLinkSpotActorJoinDescriptor
@@ -61,7 +60,7 @@ internal sealed class ZLinkSpotActorJoinDescriptor
 
     public required Type ReplyType { get; init; }
 
-    public required MethodInfo HandleMethod { get; init; }
+    public required ZLinkHandlerMethodInvoker Invoker { get; init; }
 
     public required string MessageName { get; init; }
 }
@@ -78,7 +77,7 @@ internal sealed class ZLinkActorPacketDescriptor
 
     public required ZLinkMessageKind Kind { get; init; }
 
-    public required MethodInfo HandleMethod { get; init; }
+    public required ZLinkHandlerMethodInvoker Invoker { get; init; }
 
     public required string MessageName { get; init; }
 }

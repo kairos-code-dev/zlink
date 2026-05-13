@@ -19,11 +19,11 @@ sealed class CreateGameHandler(
         var created = await spots.CreateAsync(SampleTypes.GameSpot, cancellationToken);
         logger.LogInformation(
             "play: TicTacToeGame spot created. gameId={GameId}, endpoint={Endpoint}",
-            created.SpotRid.ToHex(),
+            created.SpotId.Value,
             settings.PlayEndpoint);
 
         return new CreateGameRes(
-            created.SpotRid.ToHex(),
+            created.SpotId.Value,
             settings.PlayEndpoint,
             request.GameName);
     }

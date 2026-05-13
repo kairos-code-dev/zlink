@@ -1,5 +1,3 @@
-using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink;
 using TicTacToe.Server.Play.Actors;
 
 namespace TicTacToe.Server.Play.Sessions;
@@ -48,21 +46,20 @@ sealed class PlaySession(
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
-        Message body,
+        IZLinkSessionPacket packet,
         CancellationToken cancellationToken)
     {
         var actorId = _actorId;
 
         logger.LogInformation(
             "client -> play stream: message received. name={MessageName}, kind={Kind}, actor={ActorId}",
-            header.Name,
-            header.Kind,
+            packet.PacketName,
+            packet.Header.Kind,
             actorId ?? "(unauthenticated)");
 
-        if (string.Equals(header.Name, nameof(AuthenticateReq), StringComparison.Ordinal))
+        if (string.Equals(packet.PacketName, nameof(AuthenticateReq), StringComparison.Ordinal))
         {
-            var actor = await authenticator.AuthenticateAsync(Context, body, cancellationToken);
+            var actor = await authenticator.AuthenticateAsync(Context, packet.Body, cancellationToken);
             _actorId = actor.ActorId;
             return;
         }
@@ -74,8 +71,8 @@ sealed class PlaySession(
 
         logger.LogInformation(
             "play stream -> actor: dispatching packet. name={MessageName}, actor={ActorId}",
-            header.Name,
+            packet.PacketName,
             actorId);
-        await Context.DispatchToActorAsync(header, body, cancellationToken);
+        await Context.DispatchToActorAsync(packet, cancellationToken);
     }
 }

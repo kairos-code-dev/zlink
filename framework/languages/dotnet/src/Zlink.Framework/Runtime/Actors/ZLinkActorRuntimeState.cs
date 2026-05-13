@@ -1,16 +1,10 @@
 using Zlink.Framework.Backend.Contracts;
 using Microsoft.Extensions.DependencyInjection;
-using Systems.Zlink.Stream.Connector.Protocol;
-using Systems.Zlink.Stream.Connector.Protocol.Compression;
-using System.Text;
-using System.Text.Json;
 
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorRuntimeState
 {
-    private static readonly ZlinkStreamLz4CompressionCodec CompressionCodec = new();
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ZLinkActorPacketRegistry _packets = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -88,13 +82,13 @@ internal sealed class ZLinkActorRuntimeState
                 $"Actor packet handler '{descriptor.HandlerType}' expects actor '{descriptor.ActorType}', but received '{actor.GetType()}'.");
         }
 
-        var message = DecodeMessage(header, body, descriptor.MessageType);
+        var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
         var handler = services.GetRequiredService(descriptor.HandlerType);
         var metadata = CreateMessageMetadata(services, header);
         var arguments = descriptor.ActorType is null
             ? new[] { message, CreateSendContext(services, actor.ActorId, header, metadata, cancellationToken), cancellationToken }
             : [actor, message, cancellationToken];
-        var result = descriptor.HandleMethod.Invoke(handler, arguments);
+        var result = descriptor.Invoker(handler, arguments);
         await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
     }
 
@@ -112,7 +106,7 @@ internal sealed class ZLinkActorRuntimeState
             throw new InvalidOperationException($"No actor request handler is registered for '{header.Name}'.");
         }
 
-        var message = DecodeMessage(header, body, descriptor.MessageType);
+        var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
         var handler = services.GetRequiredService(descriptor.HandlerType);
         var metadata = CreateMessageMetadata(services, header);
         var arguments = descriptor.ActorType is null
@@ -132,55 +126,9 @@ internal sealed class ZLinkActorRuntimeState
                 cancellationToken
             }
             : [actor, message!, cancellationToken];
-        var result = descriptor.HandleMethod.Invoke(handler, arguments);
+        var result = descriptor.Invoker(handler, arguments);
         var reply = await ZLinkHandlerResultAwaiter.AwaitAsync(result).ConfigureAwait(false);
-        return JsonSerializer.SerializeToUtf8Bytes(reply, descriptor.ReplyType, JsonOptions);
-    }
-
-    private static object? DecodeMessage(
-        ZlinkStreamHeader header,
-        Message body,
-        Type messageType)
-    {
-        if (messageType == typeof(Message))
-        {
-            return body;
-        }
-
-        var payload = body.AsReadOnlyMemory();
-        if ((header.Flags & ZlinkStreamHeaderFlags.BodyCompressed) != 0)
-        {
-            payload = CompressionCodec.Decompress(payload);
-        }
-
-        if (messageType == typeof(ZlinkStreamEncodedBody))
-        {
-            return new ZlinkStreamEncodedBody(header.Codec, payload);
-        }
-
-        if (header.Codec == ZlinkStreamCodec.Raw)
-        {
-            if (messageType == typeof(string))
-            {
-                return Encoding.UTF8.GetString(payload.Span);
-            }
-
-            if (messageType == typeof(byte[]))
-            {
-                return payload.ToArray();
-            }
-
-            throw new InvalidOperationException(
-                $"Raw actor packet '{header.Name}' cannot be decoded as '{messageType}'.");
-        }
-
-        if (header.Codec == ZlinkStreamCodec.Json)
-        {
-            return JsonSerializer.Deserialize(payload.Span, messageType, JsonOptions);
-        }
-
-        throw new InvalidOperationException(
-            $"Actor packet '{header.Name}' uses codec '{header.Codec}'. Register a ZlinkStreamEncodedBody handler and decode it explicitly.");
+        return ZLinkStreamPacketPayloadCodec.EncodeJson(reply, descriptor.ReplyType);
     }
 
     private static ZLinkActorSendContext CreateSendContext(

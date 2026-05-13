@@ -17,20 +17,21 @@ namespace Systems.Zlink.Stream.Connector.Transport;
 
 internal sealed class WebSocketConnection(ClientWebSocket webSocket) : IZlinkStreamConnection
 {
-    private readonly Queue<byte> _pendingBytes = new();
+    private readonly byte[] _receiveBuffer = new byte[8192];
+    private byte[]? _pendingMessage;
+    private int _pendingOffset;
 
     public bool CanWriteSegments => false;
 
     public async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken)
     {
-        while (_pendingBytes.Count == 0)
+        while (_pendingMessage is null)
         {
-            var temp = new byte[8192];
             using var message = new System.IO.MemoryStream();
             WebSocketReceiveResult result;
             do
             {
-                result = await webSocket.ReceiveAsync(temp, cancellationToken).ConfigureAwait(false);
+                result = await webSocket.ReceiveAsync(_receiveBuffer, cancellationToken).ConfigureAwait(false);
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
                     return 0;
@@ -41,24 +42,29 @@ internal sealed class WebSocketConnection(ClientWebSocket webSocket) : IZlinkStr
                     throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "WebSocket text messages are not supported.");
                 }
 
-                message.Write(temp, 0, result.Count);
+                message.Write(_receiveBuffer, 0, result.Count);
             }
             while (!result.EndOfMessage);
 
-            foreach (var value in message.ToArray())
+            if (message.Length == 0)
             {
-                _pendingBytes.Enqueue(value);
+                continue;
             }
+
+            _pendingMessage = message.ToArray();
+            _pendingOffset = 0;
         }
 
-        var count = Math.Min(buffer.Length, _pendingBytes.Count);
-        var output = new byte[count];
-        for (var i = 0; i < count; i++)
+        var remaining = _pendingMessage.Length - _pendingOffset;
+        var count = Math.Min(buffer.Length, remaining);
+        _pendingMessage.AsMemory(_pendingOffset, count).CopyTo(buffer);
+        _pendingOffset += count;
+        if (_pendingOffset == _pendingMessage.Length)
         {
-            output[i] = _pendingBytes.Dequeue();
+            _pendingMessage = null;
+            _pendingOffset = 0;
         }
 
-        output.AsMemory().CopyTo(buffer);
         return count;
     }
 

@@ -12,7 +12,7 @@ internal sealed class TicTacToeJoinService
     {
         var spotRid = RoutingId.FromString(request.GameId);
         var reply = await actor.Context.JoinSpot(
-                spotRid,
+                ZLinkSpotId.FromRoutingId(spotRid),
                 new TicTacToeGameJoinReq(request.GameId, actor.ActorId))
             .WithTimeout(SampleTimeouts.Request)
             .SubmitAsync<TicTacToeGameJoinRes>(cancellationToken);

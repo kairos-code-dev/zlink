@@ -8,6 +8,8 @@ namespace Zlink.Framework.Messaging;
 
 internal static class ZLinkMessageNameResolver
 {
+    private static readonly ConcurrentDictionary<Type, string> Cache = new();
+
     public static string ResolveFromMessage(object? message)
     {
         var messageType = message?.GetType()
@@ -17,7 +19,9 @@ internal static class ZLinkMessageNameResolver
 
     public static string ResolveFromType(Type type)
     {
-        return type.GetCustomAttribute<ZLinkPacketAttribute>()?.PacketName
-            ?? type.Name;
+        ArgumentNullException.ThrowIfNull(type);
+        return Cache.GetOrAdd(type, static messageType =>
+            messageType.GetCustomAttribute<ZLinkPacketAttribute>()?.PacketName
+            ?? messageType.Name);
     }
 }
